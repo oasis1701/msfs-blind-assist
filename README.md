@@ -3,7 +3,7 @@
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 ![Platform: Windows](https://img.shields.io/badge/platform-Windows-blue.svg)
 ![.NET Framework 4.8.1](https://img.shields.io/badge/.NET%20Framework-4.8.1-512BD4.svg)
-![GitHub Downloads](https://img.shields.io/github/downloads/oasis1701/FBWBA/total.svg)
+![GitHub Downloads](https://img.shields.io/github/downloads/oasis1701/FlyByWire-Blind-Access/total.svg)
 
 > A fully accessible Windows application allowing totally blind flight simulation enthusiasts to control the FlyByWire A32NX aircraft in Microsoft Flight Simulator 2020 with a keyboard and the use of their screen reader.
 
