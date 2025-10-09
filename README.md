@@ -86,10 +86,10 @@ FBWBA provides control over 17 aircraft panels organized into four main sections
 
 FBWBA features a dual-mode global hotkey system for quick access to information and functions, as well as application hotkeys for jumping around the application elements
 
-####Application hotkeys:
+#### Application hotkeys:
 - Control+1 to jump to the section list
--Control+2 to jump to the panels list
--Left or right Alt to access the file menu
+- Control+2 to jump to the panels list
+- Left or right Alt to access the file menu
 
 #### Output Mode - Press "]" (Right bracket), to activate
 
