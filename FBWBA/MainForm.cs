@@ -693,6 +693,9 @@ namespace FBWBA
                 case HotkeyAction.ShowChecklist:
                     ShowChecklistDialog();
                     break;
+                case HotkeyAction.ShowNavigationDisplay:
+                    ShowNavigationDisplayDialog();
+                    break;
                 case HotkeyAction.ToggleVisualApproach:
                     ToggleVisualApproachMonitoring();
                     break;
@@ -1092,6 +1095,15 @@ namespace FBWBA
             hotkeyManager.ExitOutputHotkeyMode();
 
             var dialog = new PFDForm(announcer, simConnectManager);
+            dialog.Show();
+        }
+
+        private void ShowNavigationDisplayDialog()
+        {
+            // Ensure output hotkey mode is deactivated before showing window
+            hotkeyManager.ExitOutputHotkeyMode();
+
+            var dialog = new NavigationDisplayForm(announcer, simConnectManager);
             dialog.Show();
         }
 

@@ -122,6 +122,9 @@
     <Compile Include="Forms\ChecklistForm.cs">
       <SubType>Form</SubType>
     </Compile>
+    <Compile Include="Forms\NavigationDisplayForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
     <Compile Include="Services\GeoNamesService.cs" />
     <Compile Include="Services\VATSIMService.cs" />
     <Compile Include="Models\LocationData.cs" />

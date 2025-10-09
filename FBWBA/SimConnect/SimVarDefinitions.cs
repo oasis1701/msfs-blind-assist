@@ -691,6 +691,36 @@ namespace FBWBA.SimConnect
                 DisplayName = "Pull Baro Knob",
                 Type = SimVarType.Event
             },
+            ["A32NX.FCU_EFIS_L_CSTR_PUSH"] = new SimVarDefinition
+            {
+                Name = "A32NX.FCU_EFIS_L_CSTR_PUSH",
+                DisplayName = "Toggle Constraints",
+                Type = SimVarType.Event
+            },
+            ["A32NX.FCU_EFIS_L_WPT_PUSH"] = new SimVarDefinition
+            {
+                Name = "A32NX.FCU_EFIS_L_WPT_PUSH",
+                DisplayName = "Toggle Waypoints",
+                Type = SimVarType.Event
+            },
+            ["A32NX.FCU_EFIS_L_VORD_PUSH"] = new SimVarDefinition
+            {
+                Name = "A32NX.FCU_EFIS_L_VORD_PUSH",
+                DisplayName = "Toggle VOR/DME",
+                Type = SimVarType.Event
+            },
+            ["A32NX.FCU_EFIS_L_NDB_PUSH"] = new SimVarDefinition
+            {
+                Name = "A32NX.FCU_EFIS_L_NDB_PUSH",
+                DisplayName = "Toggle NDB",
+                Type = SimVarType.Event
+            },
+            ["A32NX.FCU_EFIS_L_ARPT_PUSH"] = new SimVarDefinition
+            {
+                Name = "A32NX.FCU_EFIS_L_ARPT_PUSH",
+                DisplayName = "Toggle Airports",
+                Type = SimVarType.Event
+            },
 
             // INSTRUMENT SECTION - Autobrake and Gear Panel
             // NOTE: Autobrakes may only be settable under specific flight conditions
@@ -1979,9 +2009,209 @@ namespace FBWBA.SimConnect
                 DisplayName = "ND FM Message",
                 Type = SimVarType.LVar,
                 UpdateFrequency = UpdateFrequency.Continuous,
-                IsAnnounced = true,
+                IsAnnounced = false, // Changed to false - bitfield requires custom announcement logic
                 Units = "number"
             },
+
+            // NAVIGATION DISPLAY VARIABLES (for Navigation Display window - on-demand only)
+            // Waypoint Information
+            ["A32NX_EFIS_L_TO_WPT_IDENT_0"] = new SimVarDefinition
+            {
+                Name = "A32NX_EFIS_L_TO_WPT_IDENT_0",
+                DisplayName = "Waypoint Ident Part 1",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                Units = "number"
+            },
+            ["A32NX_EFIS_L_TO_WPT_IDENT_1"] = new SimVarDefinition
+            {
+                Name = "A32NX_EFIS_L_TO_WPT_IDENT_1",
+                DisplayName = "Waypoint Ident Part 2",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                Units = "number"
+            },
+            ["A32NX_EFIS_L_TO_WPT_DISTANCE"] = new SimVarDefinition
+            {
+                Name = "A32NX_EFIS_L_TO_WPT_DISTANCE",
+                DisplayName = "Waypoint Distance",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                Units = "nautical miles"
+            },
+            ["A32NX_EFIS_L_TO_WPT_BEARING"] = new SimVarDefinition
+            {
+                Name = "A32NX_EFIS_L_TO_WPT_BEARING",
+                DisplayName = "Waypoint Bearing (Magnetic)",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                Units = "degrees"
+            },
+            ["A32NX_EFIS_L_TO_WPT_TRUE_BEARING"] = new SimVarDefinition
+            {
+                Name = "A32NX_EFIS_L_TO_WPT_TRUE_BEARING",
+                DisplayName = "Waypoint Bearing (True)",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                Units = "degrees"
+            },
+            ["A32NX_EFIS_L_TO_WPT_ETA"] = new SimVarDefinition
+            {
+                Name = "A32NX_EFIS_L_TO_WPT_ETA",
+                DisplayName = "Waypoint ETA",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                Units = "seconds"
+            },
+
+            // Cross Track Error (Flight Plan Mode)
+            ["A32NX_FG_CROSS_TRACK_ERROR"] = new SimVarDefinition
+            {
+                Name = "A32NX_FG_CROSS_TRACK_ERROR",
+                DisplayName = "Cross Track Error",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                Units = "meters"
+            },
+
+            // ILS/Radio Navigation Deviation
+            ["A32NX_RADIO_RECEIVER_LOC_IS_VALID"] = new SimVarDefinition
+            {
+                Name = "A32NX_RADIO_RECEIVER_LOC_IS_VALID",
+                DisplayName = "Localizer Signal Valid",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Invalid", [1] = "Valid" }
+            },
+            ["A32NX_RADIO_RECEIVER_LOC_DEVIATION"] = new SimVarDefinition
+            {
+                Name = "A32NX_RADIO_RECEIVER_LOC_DEVIATION",
+                DisplayName = "Localizer Deviation",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                Units = "degrees"
+            },
+            ["A32NX_RADIO_RECEIVER_GS_IS_VALID"] = new SimVarDefinition
+            {
+                Name = "A32NX_RADIO_RECEIVER_GS_IS_VALID",
+                DisplayName = "Glideslope Signal Valid",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Invalid", [1] = "Valid" }
+            },
+            ["A32NX_RADIO_RECEIVER_GS_DEVIATION"] = new SimVarDefinition
+            {
+                Name = "A32NX_RADIO_RECEIVER_GS_DEVIATION",
+                DisplayName = "Glideslope Deviation",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                Units = "degrees"
+            },
+
+            // Navigation Display Settings (Read-only status)
+            ["A32NX_EFIS_L_ND_MODE"] = new SimVarDefinition
+            {
+                Name = "A32NX_EFIS_L_ND_MODE",
+                DisplayName = "ND Mode",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "ROSE ILS", [1] = "ROSE VOR", [2] = "ROSE NAV", [3] = "ARC", [4] = "PLAN"
+                }
+            },
+            ["A32NX_EFIS_L_ND_RANGE"] = new SimVarDefinition
+            {
+                Name = "A32NX_EFIS_L_ND_RANGE",
+                DisplayName = "ND Range",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "10 NM", [1] = "20 NM", [2] = "40 NM", [3] = "80 NM", [4] = "160 NM", [5] = "320 NM"
+                }
+            },
+
+            // EFIS Control Variables (Writable - for changing ND mode/range)
+            ["A32NX_FCU_EFIS_L_EFIS_MODE"] = new SimVarDefinition
+            {
+                Name = "A32NX_FCU_EFIS_L_EFIS_MODE",
+                DisplayName = "EFIS Mode Control",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "ROSE ILS", [1] = "ROSE VOR", [2] = "ROSE NAV", [3] = "ARC", [4] = "PLAN"
+                }
+            },
+            ["A32NX_FCU_EFIS_L_EFIS_RANGE"] = new SimVarDefinition
+            {
+                Name = "A32NX_FCU_EFIS_L_EFIS_RANGE",
+                DisplayName = "EFIS Range Control",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "10 NM", [1] = "20 NM", [2] = "40 NM", [3] = "80 NM", [4] = "160 NM", [5] = "320 NM"
+                }
+            },
+
+            // Navigation Performance
+            ["A32NX_FMGC_L_RNP"] = new SimVarDefinition
+            {
+                Name = "A32NX_FMGC_L_RNP",
+                DisplayName = "Required Navigation Performance",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                Units = "number"
+            },
+
+            // Approach Messages (encoded strings)
+            ["A32NX_EFIS_L_APPR_MSG_0"] = new SimVarDefinition
+            {
+                Name = "A32NX_EFIS_L_APPR_MSG_0",
+                DisplayName = "Approach Message Part 1",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                Units = "number"
+            },
+            ["A32NX_EFIS_L_APPR_MSG_1"] = new SimVarDefinition
+            {
+                Name = "A32NX_EFIS_L_APPR_MSG_1",
+                DisplayName = "Approach Message Part 2",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                Units = "number"
+            },
+
+            // FM Message Flags
+            ["A32NX_EFIS_L_ND_FM_MESSAGE_FLAGS"] = new SimVarDefinition
+            {
+                Name = "A32NX_EFIS_L_ND_FM_MESSAGE_FLAGS",
+                DisplayName = "ND FM Messages",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                Units = "number"
+            },
+
+            // Vertical Navigation
+            ["A32NX_PFD_TARGET_ALTITUDE"] = new SimVarDefinition
+            {
+                Name = "A32NX_PFD_TARGET_ALTITUDE",
+                DisplayName = "Target Altitude",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                Units = "feet"
+            },
+            ["A32NX_PFD_VERTICAL_PROFILE_LATCHED"] = new SimVarDefinition
+            {
+                Name = "A32NX_PFD_VERTICAL_PROFILE_LATCHED",
+                DisplayName = "Vertical Profile Latched",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Not Latched", [1] = "Latched" }
+            },
+
             ["CLEAR_MASTER_WARNING"] = new SimVarDefinition
             {
                 Name = "A32NX_MASTER_WARNING",
@@ -2218,7 +2448,8 @@ namespace FBWBA.SimConnect
                 Name = "A32NX_FCU_AFS_DISPLAY_ALT_VALUE",
                 Type = SimVarType.LVar,
                 DisplayName = "FCU Altitude",
-                UpdateFrequency = UpdateFrequency.Never
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                Units = "feet"
             },
 
             // SPEED TAPE VALUES (for hotkey readouts)
