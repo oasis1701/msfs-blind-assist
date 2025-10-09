@@ -1,0 +1,65 @@
+<?xml version='1.0' encoding='utf-8'?>
+<SettingsFile xmlns="http://schemas.microsoft.com/VisualStudio/2004/01/settings" CurrentProfile="(Default)">
+  <Profiles>
+    <Profile Name="(Default)" />
+  </Profiles>
+  <Settings>
+    <Setting Name="AnnouncementMode" Type="System.String" Scope="User">
+      <Value Profile="(Default)">ScreenReader</Value>
+    </Setting>
+    <Setting Name="GeoNamesApiUsername" Type="System.String" Scope="User">
+      <Value Profile="(Default)"></Value>
+    </Setting>
+    <Setting Name="NearbyCitiesRange" Type="System.Int32" Scope="User">
+      <Value Profile="(Default)">25</Value>
+    </Setting>
+    <Setting Name="RegionalCitiesRange" Type="System.Int32" Scope="User">
+      <Value Profile="(Default)">50</Value>
+    </Setting>
+    <Setting Name="MajorCitiesRange" Type="System.Int32" Scope="User">
+      <Value Profile="(Default)">185</Value>
+    </Setting>
+    <Setting Name="LandmarksRange" Type="System.Int32" Scope="User">
+      <Value Profile="(Default)">30</Value>
+    </Setting>
+    <Setting Name="DistanceUnits" Type="System.String" Scope="User">
+      <Value Profile="(Default)">miles</Value>
+    </Setting>
+    <Setting Name="AirportsRange" Type="System.Int32" Scope="User">
+      <Value Profile="(Default)">50</Value>
+    </Setting>
+    <Setting Name="TerrainRange" Type="System.Int32" Scope="User">
+      <Value Profile="(Default)">30</Value>
+    </Setting>
+    <Setting Name="WaterBodiesRange" Type="System.Int32" Scope="User">
+      <Value Profile="(Default)">20</Value>
+    </Setting>
+    <Setting Name="TouristLandmarksRange" Type="System.Int32" Scope="User">
+      <Value Profile="(Default)">25</Value>
+    </Setting>
+    <Setting Name="MaxNearbyPlacesToShow" Type="System.Int32" Scope="User">
+      <Value Profile="(Default)">10</Value>
+    </Setting>
+    <Setting Name="MaxMajorCitiesToShow" Type="System.Int32" Scope="User">
+      <Value Profile="(Default)">10</Value>
+    </Setting>
+    <Setting Name="MaxAirportsToShow" Type="System.Int32" Scope="User">
+      <Value Profile="(Default)">8</Value>
+    </Setting>
+    <Setting Name="MaxTerrainFeaturesToShow" Type="System.Int32" Scope="User">
+      <Value Profile="(Default)">8</Value>
+    </Setting>
+    <Setting Name="MaxWaterBodiesToShow" Type="System.Int32" Scope="User">
+      <Value Profile="(Default)">8</Value>
+    </Setting>
+    <Setting Name="MaxTouristLandmarksToShow" Type="System.Int32" Scope="User">
+      <Value Profile="(Default)">8</Value>
+    </Setting>
+    <Setting Name="MajorCityPopulationThreshold" Type="System.Int32" Scope="User">
+      <Value Profile="(Default)">50000</Value>
+    </Setting>
+    <Setting Name="MajorCityAPIThreshold" Type="System.String" Scope="User">
+      <Value Profile="(Default)">cities15000</Value>
+    </Setting>
+  </Settings>
+</SettingsFile>

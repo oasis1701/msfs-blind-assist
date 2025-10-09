@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">x64</Platform>
+    <ProjectGuid>{A1B2C3D4-E5F6-4321-8765-432109876543}</ProjectGuid>
+    <OutputType>WinExe</OutputType>
+    <RootNamespace>FBWBA</RootNamespace>
+    <AssemblyName>FBWBA</AssemblyName>
+    <TargetFrameworkVersion>v4.8.1</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+    <Deterministic>true</Deterministic>
+    <NuGetPackageImportStamp>
+    </NuGetPackageImportStamp>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|x64' ">
+    <PlatformTarget>x64</PlatformTarget>
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\x64\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|x64' ">
+    <PlatformTarget>x64</PlatformTarget>
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\x64\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="Microsoft.FlightSimulator.SimConnect">
+      <HintPath>$(MSFS_SDK)\SimConnect SDK\lib\managed\Microsoft.FlightSimulator.SimConnect.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Data.SQLite, Version=1.0.119.0, Culture=neutral, PublicKeyToken=db937bc2d44ff139, processorArchitecture=MSIL">
+      <HintPath>..\packages\Stub.System.Data.SQLite.Core.NetFramework.1.0.119.0\lib\net46\System.Data.SQLite.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="System.Xml.Linq" />
+    <Reference Include="System.Data.DataSetExtensions" />
+    <Reference Include="Microsoft.CSharp" />
+    <Reference Include="System.Data" />
+    <Reference Include="System.Deployment" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Net.Http" />
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Xml" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="MainForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="MainForm.Designer.cs">
+      <DependentUpon>MainForm.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Program.cs" />
+    <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="SimConnect\SimConnectManager.cs" />
+    <Compile Include="SimConnect\SimVarDefinitions.cs" />
+    <Compile Include="SimConnect\SimVarMonitor.cs" />
+    <Compile Include="SimConnect\MobiFlightWasmModule.cs" />
+    <Compile Include="Controls\AccessiblePanel.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Accessibility\ScreenReaderAnnouncer.cs" />
+    <Compile Include="Accessibility\TolkWrapper.cs" />
+    <Compile Include="Accessibility\NvdaControllerWrapper.cs" />
+    <Compile Include="Hotkeys\HotkeyManager.cs" />
+    <Compile Include="Database\Models\Airport.cs" />
+    <Compile Include="Database\Models\Runway.cs" />
+    <Compile Include="Database\Models\ParkingSpot.cs" />
+    <Compile Include="Database\AirportDatabase.cs" />
+    <Compile Include="Database\DatabaseBuilder.cs" />
+    <Compile Include="Forms\RunwayTeleportForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Forms\GateTeleportForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Forms\DatabaseProgressForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Forms\DatabaseProgressForm.Designer.cs">
+      <DependentUpon>DatabaseProgressForm.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Forms\AnnouncementSettingsForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Forms\DestinationRunwayForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Forms\METARReportForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Forms\PFDForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Forms\GeoNamesApiKeyForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Forms\LocationInfoForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Forms\FCUInputForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Forms\HotkeyListForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Forms\AboutForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Forms\ChecklistForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Services\GeoNamesService.cs" />
+    <Compile Include="Services\VATSIMService.cs" />
+    <Compile Include="Models\LocationData.cs" />
+    <Compile Include="Navigation\NavigationCalculator.cs" />
+    <Compile Include="Navigation\VisualApproachMonitor.cs" />
+    <EmbeddedResource Include="MainForm.resx">
+      <DependentUpon>MainForm.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Properties\Resources.resx">
+      <Generator>ResXFileCodeGenerator</Generator>
+      <LastGenOutput>Resources.Designer.cs</LastGenOutput>
+      <SubType>Designer</SubType>
+    </EmbeddedResource>
+    <Compile Include="Properties\Resources.Designer.cs">
+      <AutoGen>True</AutoGen>
+      <DependentUpon>Resources.resx</DependentUpon>
+    </Compile>
+    <None Include="packages.config" />
+    <None Include="Properties\Settings.settings">
+      <Generator>SettingsSingleFileGenerator</Generator>
+      <LastGenOutput>Settings.Designer.cs</LastGenOutput>
+    </None>
+    <Compile Include="Properties\Settings.Designer.cs">
+      <AutoGen>True</AutoGen>
+      <DependentUpon>Settings.settings</DependentUpon>
+      <DesignTimeSharedInput>True</DesignTimeSharedInput>
+    </Compile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="App.config" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="SimConnect.cfg">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Libraries\Tolk.dll">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <PropertyGroup>
+    <PostBuildEvent>
+      xcopy /Y "$(MSFS_SDK)\SimConnect SDK\lib\SimConnect.dll" "$(TargetDir)"
+      xcopy /Y "$(ProjectDir)Libraries\Tolk.dll" "$(TargetDir)"
+      xcopy /Y "$(ProjectDir)..\nvda_controllerClient\x64\nvdaControllerClient.dll" "$(TargetDir)"
+    </PostBuildEvent>
+  </PropertyGroup>
+  <Import Project="..\packages\Stub.System.Data.SQLite.Core.NetFramework.1.0.119.0\build\net46\Stub.System.Data.SQLite.Core.NetFramework.targets" Condition="Exists('..\packages\Stub.System.Data.SQLite.Core.NetFramework.1.0.119.0\build\net46\Stub.System.Data.SQLite.Core.NetFramework.targets')" />
+  <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">
+    <PropertyGroup>
+      <ErrorText>This project references NuGet package(s) that are missing on this computer. Use NuGet Package Restore to download them.  For more information, see http://go.microsoft.com/fwlink/?LinkID=322105. The missing file is {0}.</ErrorText>
+    </PropertyGroup>
+    <Error Condition="!Exists('..\packages\Stub.System.Data.SQLite.Core.NetFramework.1.0.119.0\build\net46\Stub.System.Data.SQLite.Core.NetFramework.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\Stub.System.Data.SQLite.Core.NetFramework.1.0.119.0\build\net46\Stub.System.Data.SQLite.Core.NetFramework.targets'))" />
+  </Target>
+</Project>
