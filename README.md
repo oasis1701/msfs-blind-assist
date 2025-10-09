@@ -11,6 +11,10 @@
 
 FBWBA is designed from the ground up to make flying the FlyByWire Airbus A320neo accessible to blind and visually impaired pilots. Using SimConnect integration and comprehensive screen reader support, the application provides control over all major aircraft systems through an intuitive keyboard-only interface.
 
+## Author
+
+FBWBA is developed and maintained by **Hadi Rezaei**, a blind pilot passionate about making flight simulation accessible to the visually impaired community.
+
 ## Discord
 Please join our community to get support, hang out, contribute or fly the a32nx with us
 https://discord.gg/7udKUYFFY7
