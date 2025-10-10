@@ -28,7 +28,7 @@ namespace FBWBA.Forms
 
             // Get version info from assembly
             var version = Assembly.GetExecutingAssembly().GetName().Version;
-            var versionString = $"{version.Major}.{version.Minor:D2}a"; // Format as 0.01a
+            var versionString = $"v{version.Major}.{version.Minor}.{version.Build}"; // Format as v0.2.3
             var copyright = Assembly.GetExecutingAssembly()
                 .GetCustomAttribute<AssemblyCopyrightAttribute>()?.Copyright ?? "Copyright © 2025";
 
@@ -37,7 +37,7 @@ namespace FBWBA.Forms
             {
                 Text = $"FlyByWire Blind Access\r\n\r\n" +
                        $"Version {versionString}\r\n\r\n" +
-                       $"Accessible A320 Control Application\r\n" +
+                       $"Accessible application to control the Fly By Wire A32nx aircraft"\r\n" +
                        $"for Microsoft Flight Simulator\r\n\r\n" +
                        $"{copyright}",
                 Font = new Font("Segoe UI", 10),
