@@ -5,6 +5,8 @@ VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FBWBA", "FBWBA\FBWBA.csproj", "{A1B2C3D4-E5F6-4321-8765-432109876543}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FBWBAUpdater", "FBWBAUpdater\FBWBAUpdater.csproj", "{B2C3D4E5-F6A7-4321-8765-543210987654}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -15,6 +17,10 @@ Global
 		{A1B2C3D4-E5F6-4321-8765-432109876543}.Debug|x64.Build.0 = Debug|x64
 		{A1B2C3D4-E5F6-4321-8765-432109876543}.Release|x64.ActiveCfg = Release|x64
 		{A1B2C3D4-E5F6-4321-8765-432109876543}.Release|x64.Build.0 = Release|x64
+		{B2C3D4E5-F6A7-4321-8765-543210987654}.Debug|x64.ActiveCfg = Debug|x64
+		{B2C3D4E5-F6A7-4321-8765-543210987654}.Debug|x64.Build.0 = Debug|x64
+		{B2C3D4E5-F6A7-4321-8765-543210987654}.Release|x64.ActiveCfg = Release|x64
+		{B2C3D4E5-F6A7-4321-8765-543210987654}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

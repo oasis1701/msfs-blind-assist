@@ -9,6 +9,7 @@ namespace FBWBA
         private System.Windows.Forms.ToolStripMenuItem announcementSettingsMenuItem;
         private System.Windows.Forms.ToolStripMenuItem geoNamesSettingsMenuItem;
         private System.Windows.Forms.ToolStripMenuItem hotkeyListMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem updateApplicationMenuItem;
         private System.Windows.Forms.ToolStripMenuItem aboutMenuItem;
         private System.Windows.Forms.ListBox sectionsListBox;
         private System.Windows.Forms.ListBox panelsListBox;
@@ -32,6 +33,7 @@ namespace FBWBA
             this.announcementSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.geoNamesSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.hotkeyListMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.updateApplicationMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.aboutMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.sectionsListBox = new System.Windows.Forms.ListBox();
             this.panelsListBox = new System.Windows.Forms.ListBox();
@@ -60,6 +62,7 @@ namespace FBWBA
             this.announcementSettingsMenuItem,
             this.geoNamesSettingsMenuItem,
             this.hotkeyListMenuItem,
+            this.updateApplicationMenuItem,
             this.aboutMenuItem});
             this.fileMenuItem.Name = "fileMenuItem";
             this.fileMenuItem.Size = new System.Drawing.Size(46, 24);
@@ -100,6 +103,15 @@ namespace FBWBA
             this.hotkeyListMenuItem.Size = new System.Drawing.Size(220, 26);
             this.hotkeyListMenuItem.Text = "&Hotkey List";
             this.hotkeyListMenuItem.Click += new System.EventHandler(this.HotkeyListMenuItem_Click);
+            //
+            // updateApplicationMenuItem
+            //
+            this.updateApplicationMenuItem.AccessibleName = "Update Application";
+            this.updateApplicationMenuItem.AccessibleDescription = "Check for and install application updates from GitHub";
+            this.updateApplicationMenuItem.Name = "updateApplicationMenuItem";
+            this.updateApplicationMenuItem.Size = new System.Drawing.Size(220, 26);
+            this.updateApplicationMenuItem.Text = "&Update Application";
+            this.updateApplicationMenuItem.Click += new System.EventHandler(this.UpdateApplicationMenuItem_Click);
             //
             // aboutMenuItem
             //

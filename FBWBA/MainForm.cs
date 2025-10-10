@@ -1301,6 +1301,78 @@ namespace FBWBA
             }
         }
 
+        private async void UpdateApplicationMenuItem_Click(object sender, EventArgs e)
+        {
+            try
+            {
+                announcer.AnnounceImmediate("Checking for updates...");
+
+                var updateService = new UpdateService();
+                var result = await updateService.CheckForUpdatesAsync();
+
+                if (!string.IsNullOrEmpty(result.ErrorMessage))
+                {
+                    announcer.AnnounceImmediate($"Update check failed: {result.ErrorMessage}");
+                    MessageBox.Show(
+                        result.ErrorMessage,
+                        "Update Check Failed",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error
+                    );
+                    return;
+                }
+
+                if (!result.IsUpdateAvailable)
+                {
+                    announcer.AnnounceImmediate("You are running the latest version.");
+                    MessageBox.Show(
+                        $"You are running the latest version ({result.CurrentVersion}).",
+                        "No Updates Available",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information
+                    );
+                    return;
+                }
+
+                // Show update dialog
+                announcer.AnnounceImmediate($"Update available: version {result.LatestVersion}");
+                using (var updateDialog = new UpdateAvailableForm(result, updateService))
+                {
+                    if (updateDialog.ShowDialog(this) == DialogResult.OK && updateDialog.ShouldUpdate)
+                    {
+                        try
+                        {
+                            // Launch updater
+                            announcer.AnnounceImmediate("Launching updater. Application will close and restart.");
+                            updateService.LaunchUpdater(updateDialog.DownloadedZipPath);
+
+                            // Close the main application
+                            Application.Exit();
+                        }
+                        catch (Exception ex)
+                        {
+                            MessageBox.Show(
+                                $"Failed to launch updater: {ex.Message}",
+                                "Update Error",
+                                MessageBoxButtons.OK,
+                                MessageBoxIcon.Error
+                            );
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                announcer.AnnounceImmediate($"Update failed: {ex.Message}");
+                MessageBox.Show(
+                    $"An error occurred while checking for updates: {ex.Message}",
+                    "Update Error",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error
+                );
+            }
+        }
+
         private void AboutMenuItem_Click(object sender, EventArgs e)
         {
             using (var aboutForm = new AboutForm())
