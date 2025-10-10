@@ -943,8 +943,17 @@ namespace FBWBA
             {
                 if (double.TryParse(dialog.InputValue, out double value))
                 {
-                    simConnectManager.SendEvent("A32NX.FCU_ALT_SET", (uint)value);
-                    announcer.AnnounceImmediate($"Altitude set to {value}");
+                    // FCU_ALT_SET requires values to be multiples of 100 feet
+                    // Round to nearest 100 to ensure compatibility
+                    uint roundedValue = (uint)(Math.Round(value / 100) * 100);
+
+                    // Set FCU altitude increment mode to 100ft before setting altitude
+                    // This ensures intermediate values like 2500, 3500, 31500 work correctly
+                    simConnectManager.SendEvent("A32NX.FCU_ALT_INCREMENT_SET", 100);
+                    System.Threading.Thread.Sleep(50); // Brief delay for mode to activate
+
+                    simConnectManager.SendEvent("A32NX.FCU_ALT_SET", roundedValue);
+                    announcer.AnnounceImmediate($"Altitude set to {roundedValue}");
                 }
             }
         }
