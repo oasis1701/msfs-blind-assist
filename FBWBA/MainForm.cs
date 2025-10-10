@@ -909,7 +909,10 @@ namespace FBWBA
             {
                 if (double.TryParse(dialog.InputValue, out double value))
                 {
-                    simConnectManager.SendEvent("A32NX.FCU_SPD_SET", (uint)(value * 100)); // Multiply by 100 for the sim
+                    // Determine if Mach (< 1.0) or knots (>= 100)
+                    // Mach numbers need to be multiplied by 100, knots are sent as-is
+                    uint valueToSend = value < 1.0 ? (uint)(value * 100) : (uint)value;
+                    simConnectManager.SendEvent("A32NX.FCU_SPD_SET", valueToSend);
                     announcer.AnnounceImmediate($"Speed set to {value}");
                 }
             }
