@@ -238,6 +238,16 @@ namespace FBWBA
                 return;
             }
 
+            // Handle visual approach announcements
+            if (e.VarName == "VISUAL_APPROACH_STATUS" ||
+                e.VarName == "VISUAL_APPROACH_ERROR" ||
+                e.VarName == "VISUAL_APPROACH_GUIDANCE")
+            {
+                // Use the announcer for immediate announcement
+                announcer.AnnounceImmediate(e.Description);
+                return;
+            }
+
             // Handle LED state announcements (from MobiFlight WASM)
             if (e.VarName?.StartsWith("A32NX_ECP_LIGHT_") == true)
             {

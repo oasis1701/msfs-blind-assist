@@ -60,7 +60,8 @@ namespace FBWBA.SimConnect
         // Visual approach monitoring
         private System.Windows.Forms.Timer visualApproachTimer;
         private bool visualApproachActive = false;
-        
+        private string lastVisualApproachAnnouncement = "";
+
         // Data requests for specific functions
         private enum DATA_REQUESTS
         {
@@ -1009,6 +1010,14 @@ namespace FBWBA.SimConnect
                 // Check if monitoring should continue
                 if (!visualGuidance.ShouldContinue)
                 {
+                    // Announce why monitoring is stopping
+                    SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                    {
+                        VarName = "VISUAL_APPROACH_STATUS",
+                        Value = 0,
+                        Description = $"Visual approach monitoring stopped: {visualGuidance.StopReason}"
+                    });
+
                     StopVisualApproachMonitoring();
                     return;
                 }
@@ -1022,12 +1031,17 @@ namespace FBWBA.SimConnect
                 // Format and announce guidance
                 string announcement = Navigation.VisualApproachMonitor.FormatGuidanceAnnouncement(visualGuidance);
 
-                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                // Only announce if the message has changed (prevents spam)
+                if (announcement != lastVisualApproachAnnouncement)
                 {
-                    VarName = "VISUAL_APPROACH_GUIDANCE",
-                    Value = 0,
-                    Description = announcement
-                });
+                    lastVisualApproachAnnouncement = announcement;
+                    SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                    {
+                        VarName = "VISUAL_APPROACH_GUIDANCE",
+                        Value = 0,
+                        Description = announcement
+                    });
+                }
             }
             catch (Exception ex)
             {
@@ -1037,41 +1051,28 @@ namespace FBWBA.SimConnect
 
         private string FormatILSGuidanceAnnouncement(ILSGuidance guidance)
         {
-            string headingText = $"heading {guidance.CurrentHeading:000}";
+            // Simplified format: one announcement with direct heading to centerline
             string gsText = guidance.GlideSlopeDeviation > 0
-                ? $"{Math.Abs(guidance.GlideSlopeDeviation):0000} feet above glideslope"
-                : $"{Math.Abs(guidance.GlideSlopeDeviation):0000} feet below glideslope";
+                ? $"{Math.Abs(guidance.GlideSlopeDeviation):0} feet above glideslope"
+                : $"{Math.Abs(guidance.GlideSlopeDeviation):0} feet below glideslope";
 
             switch (guidance.State)
             {
-                case ILSGuidanceState.VectoringToSetup:
-                    // Stage 1: Vectoring to setup point
-                    return $"Vector {headingText}, {guidance.DistanceToSetupPoint:F1} miles to intercept setup, " +
-                           $"{guidance.DistanceToThreshold:F1} miles to threshold, {gsText}";
-
-                case ILSGuidanceState.TurningToIntercept:
-                    // Stage 2: Near setup point, turn to intercept
-                    return $"Approaching setup point, turn intercept {headingText}, " +
-                           $"{guidance.DistanceToCenterline:F1} miles to centerline, " +
-                           $"{guidance.DistanceToThreshold:F1} miles to threshold, {gsText}";
-
-                case ILSGuidanceState.Intercepting:
-                    // Stage 3: On intercept heading, closing to centerline
-                    return $"Intercept {headingText}, {guidance.DistanceToCenterline:F1} miles to centerline, " +
-                           $"{guidance.DistanceToThreshold:F1} miles to threshold, {gsText}";
-
                 case ILSGuidanceState.Established:
                     // Established on localizer
-                    return $"Established on localizer, {headingText}, " +
+                    return $"Established on localizer, heading {guidance.CurrentHeading:000}, " +
                            $"{guidance.DistanceToThreshold:F1} miles to threshold, {gsText}";
 
                 case ILSGuidanceState.TooFar:
                     // Beyond 100nm - warning only
                     return $"Caution: {guidance.DistanceToThreshold:F1} miles from runway. " +
-                           $"Guidance available within 100 miles. Vector {headingText} toward destination.";
+                           $"Guidance available within 100 miles. Turn {guidance.TurnDirection} to heading {guidance.CurrentHeading:000} toward destination.";
 
                 default:
-                    return $"Vector {headingText}, {guidance.DistanceToThreshold:F1} miles to threshold, {gsText}";
+                    // Simplified: Direct-to centerline (VectoringToSetup state)
+                    return $"Turn {guidance.TurnDirection} to heading {guidance.InterceptHeading:000}, " +
+                           $"{guidance.DistanceToSetupPoint:F1} miles to centerline point, " +
+                           $"{guidance.DistanceToThreshold:F1} miles to threshold, {gsText}";
             }
         }
 
@@ -2262,6 +2263,7 @@ namespace FBWBA.SimConnect
         {
             visualApproachActive = false;
             visualApproachTimer.Stop();
+            lastVisualApproachAnnouncement = ""; // Reset for next session
             System.Diagnostics.Debug.WriteLine("[SimConnectManager] Visual approach monitoring stopped");
 
             SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs

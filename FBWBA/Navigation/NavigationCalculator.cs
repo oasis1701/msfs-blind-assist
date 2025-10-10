@@ -103,7 +103,7 @@ namespace FBWBA.Navigation
         /// <summary>
         /// Calculates a point at specified distance and bearing from origin
         /// </summary>
-        private static (double lat, double lon) CalculatePointAtDistance(double originLat, double originLon, double bearing, double distanceNM)
+        public static (double lat, double lon) CalculatePointAtDistance(double originLat, double originLon, double bearing, double distanceNM)
         {
             double bearingRad = bearing * DEGREES_TO_RADIANS;
             double originLatRad = originLat * DEGREES_TO_RADIANS;
@@ -242,7 +242,7 @@ namespace FBWBA.Navigation
         }
 
         /// <summary>
-        /// Calculates complete ILS guidance information using three-stage vectoring system
+        /// Calculates complete ILS guidance information using simplified direct-to centerline approach
         /// </summary>
         public static ILSGuidance CalculateILSGuidance(SimConnectManager.AircraftPosition aircraft, Runway runway, Airport airport)
         {
@@ -253,43 +253,32 @@ namespace FBWBA.Navigation
             double glideSlopeDeviation = aircraft.Altitude - requiredGSAltitude;
             bool onLocalizer = IsOnLocalizer(aircraft, runway);
 
-            // Calculate FAF position
-            var (fafLat, fafLon) = CalculateFinalApproachFix(runway);
-            double distanceToFAF = CalculateDistance(aircraft.Latitude, aircraft.Longitude, fafLat, fafLon);
+            // Simplified: Calculate point 12nm behind threshold on extended centerline
+            double reciprocalHeading = (runway.HeadingMag + 180.0) % 360.0;
+            var (centerlinePointLat, centerlinePointLon) = CalculatePointAtDistance(
+                runway.StartLat, runway.StartLon, reciprocalHeading, 12.0);
 
-            // Determine best intercept side and calculate setup point
-            int interceptSide = DetermineBestInterceptSide(aircraft, runway);
-            var (setupLat, setupLon) = CalculateInterceptSetupPoint(runway, interceptSide);
-            double distanceToSetupPoint = CalculateDistance(aircraft.Latitude, aircraft.Longitude, setupLat, setupLon);
+            // Calculate direct bearing to centerline point
+            double guidanceHeading = CalculateBearing(
+                aircraft.Latitude, aircraft.Longitude, centerlinePointLat, centerlinePointLon);
 
-            // Determine current guidance stage
-            ILSGuidanceState state = DetermineGuidanceStage(aircraft, distanceToSetupPoint, perpendicularDistance, distanceToThreshold, runway);
+            double distanceToCenterlinePoint = CalculateDistance(
+                aircraft.Latitude, aircraft.Longitude, centerlinePointLat, centerlinePointLon);
 
-            // Calculate appropriate heading based on stage
-            double guidanceHeading;
-            switch (state)
-            {
-                case ILSGuidanceState.VectoringToSetup:
-                    // Stage 1: Direct heading to setup point
-                    guidanceHeading = CalculateBearing(aircraft.Latitude, aircraft.Longitude, setupLat, setupLon);
-                    break;
+            // Determine turn direction
+            double headingDiff = guidanceHeading - aircraft.HeadingMagnetic;
+            if (headingDiff > 180) headingDiff -= 360;
+            if (headingDiff < -180) headingDiff += 360;
+            string turnDirection = headingDiff > 0 ? "right" : "left";
 
-                case ILSGuidanceState.TurningToIntercept:
-                case ILSGuidanceState.Intercepting:
-                    // Stage 2 & 3: 30-degree intercept heading
-                    guidanceHeading = Calculate30DegreeInterceptHeading(runway, interceptSide);
-                    break;
-
-                case ILSGuidanceState.Established:
-                    // On localizer: fly runway heading
-                    guidanceHeading = runway.HeadingMag;
-                    break;
-
-                default:
-                    // Fallback
-                    guidanceHeading = CalculateBearing(aircraft.Latitude, aircraft.Longitude, setupLat, setupLon);
-                    break;
-            }
+            // Determine simple state
+            ILSGuidanceState state;
+            if (distanceToThreshold > 100.0)
+                state = ILSGuidanceState.TooFar;
+            else if (onLocalizer && perpendicularDistance < 0.5)
+                state = ILSGuidanceState.Established;
+            else
+                state = ILSGuidanceState.VectoringToSetup; // Simplified - always vectoring
 
             return new ILSGuidance
             {
@@ -301,13 +290,14 @@ namespace FBWBA.Navigation
                 RequiredAltitude = requiredGSAltitude,
                 CurrentHeading = guidanceHeading,
                 IsOnLocalizer = onLocalizer,
-                FAFLatitude = fafLat,
-                FAFLongitude = fafLon,
-                SetupPointLatitude = setupLat,
-                SetupPointLongitude = setupLon,
-                DistanceToSetupPoint = distanceToSetupPoint,
-                DistanceToFAF = distanceToFAF,
-                InterceptSide = interceptSide
+                FAFLatitude = centerlinePointLat,
+                FAFLongitude = centerlinePointLon,
+                SetupPointLatitude = centerlinePointLat,
+                SetupPointLongitude = centerlinePointLon,
+                DistanceToSetupPoint = distanceToCenterlinePoint,
+                DistanceToFAF = distanceToCenterlinePoint,
+                InterceptSide = 0, // Not used in simplified approach
+                TurnDirection = turnDirection
             };
         }
     }
@@ -323,14 +313,15 @@ namespace FBWBA.Navigation
         public double CurrentHeading { get; set; }
         public bool IsOnLocalizer { get; set; }
 
-        // New properties for three-stage vectoring
+        // Properties for simplified direct-to centerline approach
         public double FAFLatitude { get; set; }
         public double FAFLongitude { get; set; }
         public double SetupPointLatitude { get; set; }
         public double SetupPointLongitude { get; set; }
         public double DistanceToSetupPoint { get; set; }
         public double DistanceToFAF { get; set; }
-        public int InterceptSide { get; set; }  // -1 for left, +1 for right
+        public int InterceptSide { get; set; }  // Not used in simplified approach
+        public string TurnDirection { get; set; } // "left" or "right"
     }
 
     public enum ILSGuidanceState
