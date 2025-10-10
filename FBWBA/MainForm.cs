@@ -223,7 +223,7 @@ namespace FBWBA
                 e.VarName == "HEADING_MAGNETIC" || e.VarName == "HEADING_TRUE" ||
                 e.VarName == "SPEED_GD" || e.VarName == "SPEED_S" || e.VarName == "SPEED_F" ||
                 e.VarName == "SPEED_VFE" || e.VarName == "SPEED_VLS" || e.VarName == "SPEED_VS" ||
-                e.VarName == "FUEL_QUANTITY")
+                e.VarName == "FUEL_QUANTITY" || e.VarName == "WAYPOINT_INFO")
             {
                 // Use the announcer for immediate announcement
                 announcer.AnnounceImmediate(e.Description);
@@ -705,6 +705,9 @@ namespace FBWBA
                     break;
                 case HotkeyAction.ShowNavigationDisplay:
                     ShowNavigationDisplayDialog();
+                    break;
+                case HotkeyAction.ReadWaypointInfo:
+                    simConnectManager.RequestWaypointInfo();
                     break;
                 case HotkeyAction.ToggleVisualApproach:
                     ToggleVisualApproachMonitoring();

@@ -78,6 +78,7 @@ namespace FBWBA.Hotkeys
         private const int HOTKEY_CHECKLIST = 9052;
         private const int HOTKEY_FUEL_QUANTITY = 9053;
         private const int HOTKEY_NAV_DISPLAY = 9054;
+        private const int HOTKEY_WAYPOINT_INFO = 9055;
 
         private IntPtr windowHandle;
         private bool outputHotkeyModeActive = false;
@@ -221,6 +222,9 @@ namespace FBWBA.Hotkeys
                         case HOTKEY_NAV_DISPLAY:
                             TriggerHotkey(HotkeyAction.ShowNavigationDisplay);
                             break;
+                        case HOTKEY_WAYPOINT_INFO:
+                            TriggerHotkey(HotkeyAction.ReadWaypointInfo);
+                            break;
                     }
                     DeactivateOutputHotkeyMode();
                     return true;
@@ -330,6 +334,7 @@ namespace FBWBA.Hotkeys
             RegisterHotKey(windowHandle, HOTKEY_CHECKLIST, MOD_SHIFT, 0x43);     // Shift+C (Checklist Window)
             RegisterHotKey(windowHandle, HOTKEY_FUEL_QUANTITY, MOD_NONE, 0x46);  // F (Fuel Quantity)
             RegisterHotKey(windowHandle, HOTKEY_NAV_DISPLAY, MOD_NONE, 0x4E);    // N (Navigation Display)
+            RegisterHotKey(windowHandle, HOTKEY_WAYPOINT_INFO, MOD_NONE, 0x57);  // W (Waypoint Info)
 
             // Auto-timeout disabled - hotkey mode stays active until used or escape pressed
             
@@ -374,6 +379,7 @@ namespace FBWBA.Hotkeys
             UnregisterHotKey(windowHandle, HOTKEY_CHECKLIST);
             UnregisterHotKey(windowHandle, HOTKEY_FUEL_QUANTITY);
             UnregisterHotKey(windowHandle, HOTKEY_NAV_DISPLAY);
+            UnregisterHotKey(windowHandle, HOTKEY_WAYPOINT_INFO);
 
             OutputHotkeyModeChanged?.Invoke(this, false);
         }
@@ -556,6 +562,7 @@ namespace FBWBA.Hotkeys
         ReadSpeedVS,
         ShowChecklist,
         ReadFuelQuantity,
-        ShowNavigationDisplay
+        ShowNavigationDisplay,
+        ReadWaypointInfo
     }
 }

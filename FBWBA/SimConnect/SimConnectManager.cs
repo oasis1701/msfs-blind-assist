@@ -432,6 +432,15 @@ namespace FBWBA.SimConnect
             public double value;
             public double managedStatus;
         }
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
+        public struct WaypointInfo
+        {
+            public double ident0;
+            public double ident1;
+            public double distance;
+            public double bearing;
+        }
         
         private void SimConnect_OnRecvSimobjectData(Microsoft.FlightSimulator.SimConnect.SimConnect sender, SIMCONNECT_RECV_SIMOBJECT_DATA data)
         {
@@ -749,7 +758,59 @@ namespace FBWBA.SimConnect
                         Description = $"Stall Speed {speedVSData.value:0} knots"
                     });
                     break;
+
+                case (DATA_REQUESTS)315: // Waypoint Info
+                    WaypointInfo waypointData = (WaypointInfo)data.dwData[0];
+
+                    // Unpack waypoint name from encoded doubles
+                    string waypointName = UnpackWaypointName(waypointData.ident0, waypointData.ident1);
+
+                    string description;
+                    if (string.IsNullOrWhiteSpace(waypointName))
+                    {
+                        description = "No active waypoint";
+                    }
+                    else
+                    {
+                        // Convert bearing from radians to degrees
+                        double bearingDegrees = waypointData.bearing * (180.0 / Math.PI);
+                        // Normalize to 0-360 range
+                        if (bearingDegrees < 0) bearingDegrees += 360;
+
+                        description = $"{waypointName}, {waypointData.distance:0.0} NM, {bearingDegrees:0} degrees";
+                    }
+
+                    SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                    {
+                        VarName = "WAYPOINT_INFO",
+                        Value = waypointData.distance,
+                        Description = description
+                    });
+                    break;
             }
+        }
+
+        /// <summary>
+        /// Unpack waypoint name from FlyByWire encoded format
+        /// </summary>
+        private string UnpackWaypointName(double ident0, double ident1)
+        {
+            double[] values = { ident0, ident1 };
+            string result = "";
+
+            for (int i = 0; i < values.Length * 8; i++)
+            {
+                int word = i / 8;
+                int charPos = i % 8;
+                int code = (int)(values[word] / Math.Pow(2, charPos * 6)) & 0x3F;
+
+                if (code > 0)
+                {
+                    result += (char)(code + 31);
+                }
+            }
+
+            return result.Trim();
         }
 
         /// <summary>
@@ -1789,6 +1850,41 @@ namespace FBWBA.SimConnect
                 catch (Exception ex)
                 {
                     System.Diagnostics.Debug.WriteLine($"Error requesting Speed VS: {ex.Message}");
+                }
+            }
+        }
+
+        public void RequestWaypointInfo()
+        {
+            if (IsConnected && simConnect != null)
+            {
+                try
+                {
+                    var tempDefId = (DATA_DEFINITIONS)315;
+                    simConnect.ClearDataDefinition(tempDefId);
+
+                    // Add all waypoint variables to definition
+                    simConnect.AddToDataDefinition(tempDefId,
+                        "L:A32NX_EFIS_L_TO_WPT_IDENT_0", "number",
+                        SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+                    simConnect.AddToDataDefinition(tempDefId,
+                        "L:A32NX_EFIS_L_TO_WPT_IDENT_1", "number",
+                        SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+                    simConnect.AddToDataDefinition(tempDefId,
+                        "L:A32NX_EFIS_L_TO_WPT_DISTANCE", "number",
+                        SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+                    simConnect.AddToDataDefinition(tempDefId,
+                        "L:A32NX_EFIS_L_TO_WPT_BEARING", "radians",
+                        SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+
+                    simConnect.RegisterDataDefineStruct<WaypointInfo>(tempDefId);
+                    simConnect.RequestDataOnSimObject((DATA_REQUESTS)315,
+                        tempDefId, SIMCONNECT_OBJECT_ID_USER,
+                        SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Error requesting waypoint info: {ex.Message}");
                 }
             }
         }
