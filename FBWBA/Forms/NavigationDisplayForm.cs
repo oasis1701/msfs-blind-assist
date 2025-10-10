@@ -459,13 +459,6 @@ namespace FBWBA.Forms
                 data.AppendLine($"Cross Track: {FormatCrossTrackError(xte)}");
             }
 
-            string modeText = GetNdModeText((int)currentMode);
-            data.AppendLine($"ND Mode: {modeText}");
-
-            double currentRange = GetVariableRawValue("A32NX_EFIS_L_ND_RANGE");
-            string rangeText = GetNdRangeText((int)currentRange);
-            data.AppendLine($"ND Range: {rangeText}");
-
             double rnp = GetVariableRawValue("A32NX_FMGC_L_RNP");
             if (rnp > 0)
             {
@@ -525,6 +518,14 @@ namespace FBWBA.Forms
 
             double linearDev = GetVariableRawValue("A32NX_PFD_LINEAR_DEVIATION_ACTIVE");
             data.AppendLine($"Linear Deviation: {(linearDev > 0.5 ? "Active" : "Not Active")}");
+
+            // Display ND mode and range at the bottom
+            string modeText = GetNdModeText((int)currentMode);
+            data.AppendLine($"ND Mode: {modeText}");
+
+            double currentRange = GetVariableRawValue("A32NX_EFIS_L_ND_RANGE");
+            string rangeText = GetNdRangeText((int)currentRange);
+            data.AppendLine($"ND Range: {rangeText}");
 
             data.AppendLine("Press F5 to refresh, Press ESC to close");
 
