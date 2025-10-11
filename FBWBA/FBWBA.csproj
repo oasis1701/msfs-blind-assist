@@ -72,6 +72,7 @@
     <Compile Include="SimConnect\SimVarDefinitions.cs" />
     <Compile Include="SimConnect\SimVarMonitor.cs" />
     <Compile Include="SimConnect\MobiFlightWasmModule.cs" />
+    <Compile Include="SimConnect\EWDMessageLookup.cs" />
     <Compile Include="Controls\AccessiblePanel.cs">
       <SubType>Component</SubType>
     </Compile>
@@ -127,6 +128,9 @@
       <SubType>Form</SubType>
     </Compile>
     <Compile Include="Forms\NavigationDisplayForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Forms\ECAMDisplayForm.cs">
       <SubType>Form</SubType>
     </Compile>
     <Compile Include="Services\GeoNamesService.cs" />

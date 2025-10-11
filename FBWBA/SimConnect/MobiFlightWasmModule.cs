@@ -72,6 +72,7 @@ namespace FBWBA.SimConnect
         public event EventHandler<MobiFlightLVarUpdateEventArgs> LVarUpdated;
         public event EventHandler<string> ResponseReceived;
         public event EventHandler<MobiFlightLedValueEventArgs> LedValueReceived;
+        public event EventHandler<MobiFlightStringLVarEventArgs> StringLVarReceived;
 
         // Variable tracking
         private Dictionary<string, int> registeredLVars = new Dictionary<string, int>();
@@ -87,6 +88,9 @@ namespace FBWBA.SimConnect
 
         // LED variable reading tracking
         private Dictionary<string, DateTime> pendingLedReads = new Dictionary<string, DateTime>();
+
+        // ECAM string L-variable reading tracking
+        private Dictionary<string, DateTime> pendingStringLVarReads = new Dictionary<string, DateTime>();
 
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
         public struct CommandData
@@ -120,6 +124,12 @@ namespace FBWBA.SimConnect
         {
             public string LedVariable { get; set; }
             public float Value { get; set; }
+        }
+
+        public class MobiFlightStringLVarEventArgs : EventArgs
+        {
+            public string VariableName { get; set; }
+            public string Value { get; set; }
         }
 
         public MobiFlightWasmModule(Microsoft.FlightSimulator.SimConnect.SimConnect simConnect)
@@ -288,6 +298,19 @@ namespace FBWBA.SimConnect
             System.Diagnostics.Debug.WriteLine($"[MobiFlight] Reading LED variable directly: {lvarName}");
         }
 
+        public void ReadStringLVar(string lvarName)
+        {
+            // Use MF.SimVars.Set to directly read and return the string L-variable value
+            // This sends the value back through the response channel
+            string command = $"MF.SimVars.Set.(L:{lvarName})";
+            SendMFCommand(command);
+
+            // Track this read request
+            pendingStringLVarReads[lvarName] = DateTime.Now;
+
+            System.Diagnostics.Debug.WriteLine($"[MobiFlight] Reading string L-variable: {lvarName}");
+        }
+
         private void SendFBWBACommand(string command)
         {
             try
@@ -382,8 +405,40 @@ namespace FBWBA.SimConnect
             }
             else
             {
-                // Check if this is a numeric response to a pending LED read
-                if (float.TryParse(response, out float value) && pendingLedReads.Count > 0)
+                // PRIORITY 1: Check if we're waiting for string L-var responses (ECAM data)
+                // If so, treat ALL responses as strings, even if they look like numbers (e.g., "0")
+                if (pendingStringLVarReads.Count > 0)
+                {
+                    // Find the OLDEST string L-var read request (FIFO order) within last 5 seconds
+                    // This assumes responses arrive in the same order as requests
+                    var oldestStringRead = pendingStringLVarReads
+                        .Where(kvp => DateTime.Now - kvp.Value < TimeSpan.FromSeconds(5))
+                        .OrderBy(kvp => kvp.Value) // OLDEST first (FIFO)
+                        .FirstOrDefault();
+
+                    if (!oldestStringRead.Equals(default(KeyValuePair<string, DateTime>)))
+                    {
+                        string lvarName = oldestStringRead.Key;
+                        pendingStringLVarReads.Remove(lvarName);
+
+                        // Trigger string L-var event with the response as-is (even if it's "0")
+                        StringLVarReceived?.Invoke(this, new MobiFlightStringLVarEventArgs
+                        {
+                            VariableName = lvarName,
+                            Value = response
+                        });
+
+                        System.Diagnostics.Debug.WriteLine($"[MobiFlight] String L-var received (FIFO): {lvarName} = '{response}' (Remaining: {pendingStringLVarReads.Count})");
+                        return; // Don't continue processing - we consumed this response
+                    }
+                    else
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[MobiFlight] String response received but no matching pending request (all timed out): {response}");
+                    }
+                }
+
+                // PRIORITY 2: Only check for LED reads if we're NOT waiting for string L-vars
+                if (pendingStringLVarReads.Count == 0 && float.TryParse(response, out float value) && pendingLedReads.Count > 0)
                 {
                     // Find the most recent LED read request (within last 2 seconds)
                     var recentRead = pendingLedReads
@@ -406,9 +461,9 @@ namespace FBWBA.SimConnect
                         System.Diagnostics.Debug.WriteLine($"[MobiFlight] LED value received: {ledVariable} = {value}");
                     }
                 }
-                else
+                else if (pendingStringLVarReads.Count == 0 && pendingLedReads.Count == 0)
                 {
-                    System.Diagnostics.Debug.WriteLine($"[MobiFlight] Unknown response: {response}");
+                    System.Diagnostics.Debug.WriteLine($"[MobiFlight] Unknown response (no pending requests): {response}");
                 }
             }
         }
@@ -601,6 +656,8 @@ namespace FBWBA.SimConnect
                 registrationTimeoutOccurred = false;
                 registeredLVars.Clear();
                 lvarList.Clear();
+                pendingLedReads.Clear();
+                pendingStringLVarReads.Clear();
 
                 System.Diagnostics.Debug.WriteLine("[MobiFlight] Disconnected");
                 ConnectionStatusChanged?.Invoke(this, "MobiFlight WASM disconnected");

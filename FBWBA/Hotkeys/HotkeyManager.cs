@@ -79,6 +79,7 @@ namespace FBWBA.Hotkeys
         private const int HOTKEY_FUEL_QUANTITY = 9053;
         private const int HOTKEY_NAV_DISPLAY = 9054;
         private const int HOTKEY_WAYPOINT_INFO = 9055;
+        private const int HOTKEY_ECAM_DISPLAY = 9056;
 
         private IntPtr windowHandle;
         private bool outputHotkeyModeActive = false;
@@ -225,6 +226,9 @@ namespace FBWBA.Hotkeys
                         case HOTKEY_WAYPOINT_INFO:
                             TriggerHotkey(HotkeyAction.ReadWaypointInfo);
                             break;
+                        case HOTKEY_ECAM_DISPLAY:
+                            TriggerHotkey(HotkeyAction.ShowECAM);
+                            break;
                     }
                     DeactivateOutputHotkeyMode();
                     return true;
@@ -335,6 +339,7 @@ namespace FBWBA.Hotkeys
             RegisterHotKey(windowHandle, HOTKEY_FUEL_QUANTITY, MOD_NONE, 0x46);  // F (Fuel Quantity)
             RegisterHotKey(windowHandle, HOTKEY_NAV_DISPLAY, MOD_NONE, 0x4E);    // N (Navigation Display)
             RegisterHotKey(windowHandle, HOTKEY_WAYPOINT_INFO, MOD_NONE, 0x57);  // W (Waypoint Info)
+            RegisterHotKey(windowHandle, HOTKEY_ECAM_DISPLAY, MOD_SHIFT, 0x55);  // Shift+U (ECAM Display)
 
             // Auto-timeout disabled - hotkey mode stays active until used or escape pressed
             
@@ -380,6 +385,7 @@ namespace FBWBA.Hotkeys
             UnregisterHotKey(windowHandle, HOTKEY_FUEL_QUANTITY);
             UnregisterHotKey(windowHandle, HOTKEY_NAV_DISPLAY);
             UnregisterHotKey(windowHandle, HOTKEY_WAYPOINT_INFO);
+            UnregisterHotKey(windowHandle, HOTKEY_ECAM_DISPLAY);
 
             OutputHotkeyModeChanged?.Invoke(this, false);
         }
@@ -563,6 +569,7 @@ namespace FBWBA.Hotkeys
         ShowChecklist,
         ReadFuelQuantity,
         ShowNavigationDisplay,
-        ReadWaypointInfo
+        ReadWaypointInfo,
+        ShowECAM
     }
 }

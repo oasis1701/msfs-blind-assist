@@ -22,6 +22,7 @@ namespace FBWBA.SimConnect
         public event EventHandler<SimVarUpdateEventArgs> SimVarUpdated;
         public event EventHandler<AircraftPosition> AircraftPositionReceived;
         public event EventHandler<WindData> WindReceived;
+        public event EventHandler<ECAMDataEventArgs> ECAMDataReceived;
         
         // Connection state
         public bool IsConnected { get; private set; }
@@ -33,6 +34,14 @@ namespace FBWBA.SimConnect
         public bool IsMobiFlightConnected => mobiFlightWasm?.IsConnected == true;
         public bool CanSendHVars => mobiFlightWasm?.CanSendHVars == true;
         public string MobiFlightStatus => mobiFlightWasm?.ConnectionStatus ?? "Not Available";
+
+        // ECAM data collection via MobiFlight
+        private Dictionary<string, string> ecamStringData = new Dictionary<string, string>();
+        private int ecamStringsReceived = 0;
+        private int ecamTotalStringsExpected = 14;
+        private double ecamMasterWarning = 0;
+        private double ecamMasterCaution = 0;
+        private double ecamStallWarning = 0;
         
         // Variable tracking for individual registrations
         private ConcurrentDictionary<string, int> variableDataDefinitions = new ConcurrentDictionary<string, int>();  // Maps variable keys to data definition IDs
@@ -70,6 +79,7 @@ namespace FBWBA.SimConnect
             REQUEST_AIRCRAFT_POSITION = 4,
             REQUEST_WIND_DATA = 5,
             REQUEST_ATC_ID = 6,
+            REQUEST_ECAM_MESSAGES = 350,
             // Individual variable requests start from 1000
             INDIVIDUAL_VARIABLE_BASE = 1000
         }
@@ -82,6 +92,7 @@ namespace FBWBA.SimConnect
             AIRCRAFT_POSITION = 5,
             WIND_DATA = 6,
             ATC_ID_INFO = 7,
+            ECAM_MESSAGES = 350,
             // Individual variable definitions start from 1000
             INDIVIDUAL_VARIABLE_BASE = 1000
         }
@@ -147,6 +158,42 @@ namespace FBWBA.SimConnect
         {
             public double Direction;
             public double Speed;
+        }
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
+        public struct ECAMMessages
+        {
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)]
+            public string leftLine1;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)]
+            public string leftLine2;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)]
+            public string leftLine3;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)]
+            public string leftLine4;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)]
+            public string leftLine5;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)]
+            public string leftLine6;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)]
+            public string leftLine7;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)]
+            public string rightLine1;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)]
+            public string rightLine2;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)]
+            public string rightLine3;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)]
+            public string rightLine4;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)]
+            public string rightLine5;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)]
+            public string rightLine6;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)]
+            public string rightLine7;
+            public double masterWarning;
+            public double masterCaution;
+            public double stallWarning;
         }
 
         public SimConnectManager(IntPtr handle)
@@ -452,7 +499,23 @@ namespace FBWBA.SimConnect
                 // Look up which variable this was
                 if (pendingRequests.TryRemove((int)data.dwRequestID, out string varKey))
                 {
-                    
+                    // Check if this is an ECAM status variable
+                    if (varKey == "A32NX_MASTER_WARNING")
+                    {
+                        ecamMasterWarning = specificValue.value;
+                        System.Diagnostics.Debug.WriteLine($"[SimConnectManager] ECAM Master Warning updated: {specificValue.value}");
+                    }
+                    else if (varKey == "A32NX_MASTER_CAUTION")
+                    {
+                        ecamMasterCaution = specificValue.value;
+                        System.Diagnostics.Debug.WriteLine($"[SimConnectManager] ECAM Master Caution updated: {specificValue.value}");
+                    }
+                    else if (varKey == "A32NX_STALL_WARNING")
+                    {
+                        ecamStallWarning = specificValue.value;
+                        System.Diagnostics.Debug.WriteLine($"[SimConnectManager] ECAM Stall Warning updated: {specificValue.value}");
+                    }
+
                     // Format the description based on variable type
                     string description = $"{specificValue.value:F1}";
                     if (SimVarDefinitions.Variables.ContainsKey(varKey))
@@ -470,7 +533,7 @@ namespace FBWBA.SimConnect
                             description = $"{specificValue.value:F1}V";
                         }
                     }
-                    
+
                     // Send update with the actual variable key
                     SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
                     {
@@ -527,6 +590,8 @@ namespace FBWBA.SimConnect
                     WindData windData = (WindData)data.dwData[0];
                     ProcessWindData(windData);
                     break;
+
+                // REQUEST_ECAM_MESSAGES case removed - now handled via MobiFlight
 
                 case (DATA_REQUESTS)300: // Heading only
                     SingleValue headingData = (SingleValue)data.dwData[0];
@@ -831,6 +896,51 @@ namespace FBWBA.SimConnect
 
                 double currentValue = data.value;
 
+                // Check if this is an ECAM message line variable (numeric code)
+                if (varKey.StartsWith("A32NX_Ewd_LOWER_"))
+                {
+                    // Convert numeric code to text message via EWDMessageLookup
+                    long numericCode = (long)currentValue;
+                    string messageText = EWDMessageLookup.GetMessage(numericCode);
+
+                    // Store the converted text in ecamStringData
+                    ecamStringData[varKey] = messageText;
+                    ecamStringsReceived++;
+
+                    System.Diagnostics.Debug.WriteLine($"[SimConnectManager] ECAM Line received: {varKey} = Code:{numericCode} → '{messageText}' ({ecamStringsReceived}/{ecamTotalStringsExpected})");
+
+                    // Check if all 14 ECAM lines have been received
+                    if (ecamStringsReceived >= ecamTotalStringsExpected)
+                    {
+                        // Fire the ECAM data received event with all collected data
+                        ECAMDataReceived?.Invoke(this, new ECAMDataEventArgs
+                        {
+                            LeftLine1 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_1") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_1"] : "",
+                            LeftLine2 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_2") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_2"] : "",
+                            LeftLine3 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_3") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_3"] : "",
+                            LeftLine4 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_4") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_4"] : "",
+                            LeftLine5 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_5") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_5"] : "",
+                            LeftLine6 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_6") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_6"] : "",
+                            LeftLine7 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_7") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_7"] : "",
+                            RightLine1 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_1") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_1"] : "",
+                            RightLine2 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_2") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_2"] : "",
+                            RightLine3 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_3") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_3"] : "",
+                            RightLine4 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_4") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_4"] : "",
+                            RightLine5 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_5") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_5"] : "",
+                            RightLine6 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_6") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_6"] : "",
+                            RightLine7 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_7") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_7"] : "",
+                            MasterWarning = ecamMasterWarning > 0.5,
+                            MasterCaution = ecamMasterCaution > 0.5,
+                            StallWarning = ecamStallWarning > 0.5
+                        });
+
+                        System.Diagnostics.Debug.WriteLine("[SimConnectManager] All ECAM data collected and event fired");
+                    }
+
+                    // Don't send SimVarUpdated for ECAM codes - they're handled via ECAMDataReceived event
+                    return;
+                }
+
                 // Check if this is a forced update request
                 bool isForceUpdate = false;
                 lock (forceUpdateVariables)
@@ -1060,6 +1170,8 @@ namespace FBWBA.SimConnect
                 System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error processing wind data: {ex.Message}");
             }
         }
+
+        // ProcessECAMData method removed - now using MobiFlight WASM for string L:vars
 
         private void ProcessVisualApproachGuidance(AircraftPosition data)
         {
@@ -2500,6 +2612,53 @@ namespace FBWBA.SimConnect
             }
         }
 
+        public void RequestECAMMessages()
+        {
+            if (!IsConnected || simConnect == null)
+            {
+                System.Diagnostics.Debug.WriteLine("[SimConnectManager] Cannot request ECAM messages - not connected");
+                return;
+            }
+
+            try
+            {
+                // Reset collection state
+                ecamStringData.Clear();
+                ecamStringsReceived = 0;
+
+                System.Diagnostics.Debug.WriteLine("[SimConnectManager] Requesting ECAM message codes via SimConnect...");
+
+                // Request all 14 numeric L-vars via standard SimConnect (NO MobiFlight needed!)
+                // These return numeric codes that get looked up in EWDMessageLookup
+                RequestVariable("A32NX_Ewd_LOWER_LEFT_LINE_1");
+                RequestVariable("A32NX_Ewd_LOWER_LEFT_LINE_2");
+                RequestVariable("A32NX_Ewd_LOWER_LEFT_LINE_3");
+                RequestVariable("A32NX_Ewd_LOWER_LEFT_LINE_4");
+                RequestVariable("A32NX_Ewd_LOWER_LEFT_LINE_5");
+                RequestVariable("A32NX_Ewd_LOWER_LEFT_LINE_6");
+                RequestVariable("A32NX_Ewd_LOWER_LEFT_LINE_7");
+
+                RequestVariable("A32NX_Ewd_LOWER_RIGHT_LINE_1");
+                RequestVariable("A32NX_Ewd_LOWER_RIGHT_LINE_2");
+                RequestVariable("A32NX_Ewd_LOWER_RIGHT_LINE_3");
+                RequestVariable("A32NX_Ewd_LOWER_RIGHT_LINE_4");
+                RequestVariable("A32NX_Ewd_LOWER_RIGHT_LINE_5");
+                RequestVariable("A32NX_Ewd_LOWER_RIGHT_LINE_6");
+                RequestVariable("A32NX_Ewd_LOWER_RIGHT_LINE_7");
+
+                // Request numeric status variables
+                RequestVariable("A32NX_MASTER_WARNING");
+                RequestVariable("A32NX_MASTER_CAUTION");
+                RequestVariable("A32NX_STALL_WARNING");
+
+                System.Diagnostics.Debug.WriteLine("[SimConnectManager] All 14 ECAM code requests sent via SimConnect");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error requesting ECAM messages: {ex.Message}");
+            }
+        }
+
         /// <summary>
         /// Convert MHz frequency to BCD16 Hz format for COM_STBY_RADIO_SET event
         /// Example: 122.800 MHz → 122800000 Hz → BCD16 encoding
@@ -2547,5 +2706,26 @@ namespace FBWBA.SimConnect
         public string VarName { get; set; }
         public double Value { get; set; }
         public string Description { get; set; }
+    }
+
+    public class ECAMDataEventArgs : EventArgs
+    {
+        public string LeftLine1 { get; set; }
+        public string LeftLine2 { get; set; }
+        public string LeftLine3 { get; set; }
+        public string LeftLine4 { get; set; }
+        public string LeftLine5 { get; set; }
+        public string LeftLine6 { get; set; }
+        public string LeftLine7 { get; set; }
+        public string RightLine1 { get; set; }
+        public string RightLine2 { get; set; }
+        public string RightLine3 { get; set; }
+        public string RightLine4 { get; set; }
+        public string RightLine5 { get; set; }
+        public string RightLine6 { get; set; }
+        public string RightLine7 { get; set; }
+        public bool MasterWarning { get; set; }
+        public bool MasterCaution { get; set; }
+        public bool StallWarning { get; set; }
     }
 }
