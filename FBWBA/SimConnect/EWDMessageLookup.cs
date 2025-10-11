@@ -506,18 +506,27 @@ namespace FBWBA.SimConnect
                 return "";
             }
 
-            // Remove all ANSI escape sequences
-            // Pattern matches: \x1b followed by any combination of <, digits, >, ending with m or )
-            string cleaned = Regex.Replace(rawMessage, @"\x1b[<\d>]*[m)]", "");
+            // Remove all ANSI escape sequences - use two passes for safety
+            // Pass 1: Remove ANSI codes with escape character
+            // Pattern matches: ESC followed by optional (<digits> OR digits), ending with m or )
+            // Examples: \x1b<4m (color), \x1b4m (underline), \x1bm (reset), \x1b)m (reset variant)
+            string cleaned = Regex.Replace(rawMessage, @"[\x1b\u001b](<\d+>|\d+)?[m)]", "");
+
+            // Pass 2: Remove any leftover ANSI-like patterns (in case ESC was already corrupted)
+            // This catches <3m, <4m, etc. that might be left behind
+            cleaned = Regex.Replace(cleaned, @"<\d+>m?", "");
+
+            // Pass 3: Remove standalone formatting codes like "4m" or "5m" at word boundaries
+            cleaned = Regex.Replace(cleaned, @"\b\d[m]\b", "");
 
             return cleaned.Trim();
         }
 
         /// <summary>
-        /// Extracts priority level from ANSI codes for categorization
+        /// Extracts color information from ANSI codes for display
         /// </summary>
         /// <param name="rawMessage">Message with ANSI codes</param>
-        /// <returns>Priority string (WARNING, CAUTION, MEMO, INFO, or empty)</returns>
+        /// <returns>Color string (Red, Amber, Green, White, Cyan, Gray, or empty)</returns>
         public static string GetMessagePriority(string rawMessage)
         {
             if (string.IsNullOrWhiteSpace(rawMessage))
@@ -525,10 +534,12 @@ namespace FBWBA.SimConnect
                 return "";
             }
 
-            if (rawMessage.Contains("\x1b<2m")) return "WARNING";    // Red
-            if (rawMessage.Contains("\x1b<4m")) return "CAUTION";    // Amber
-            if (rawMessage.Contains("\x1b<3m")) return "";           // Green (memo - don't show priority)
-            if (rawMessage.Contains("\x1b<6m")) return "INFO";       // Cyan
+            if (rawMessage.Contains("\x1b<2m")) return "Red";      // Warning
+            if (rawMessage.Contains("\x1b<4m")) return "Amber";    // Caution
+            if (rawMessage.Contains("\x1b<3m")) return "Green";    // Memo
+            if (rawMessage.Contains("\x1b<5m")) return "White";    // Action items
+            if (rawMessage.Contains("\x1b<6m")) return "Cyan";     // Info
+            if (rawMessage.Contains("\x1b<7m")) return "Gray";     // Conditions
 
             return "";
         }
