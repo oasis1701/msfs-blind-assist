@@ -1982,6 +1982,7 @@ namespace FBWBA.SimConnect
             ["A32NX_MASTER_CAUTION"] = new SimVarDefinition
             {
                 Name = "A32NX_MASTER_CAUTION",
+                DisplayName = "Master Caution",
                 Type = SimVarType.LVar,
                 UpdateFrequency = UpdateFrequency.Continuous,
                 IsAnnounced = true,  // Critical alert
@@ -1990,6 +1991,7 @@ namespace FBWBA.SimConnect
             ["A32NX_MASTER_WARNING"] = new SimVarDefinition
             {
                 Name = "A32NX_MASTER_WARNING",
+                DisplayName = "Master Warning",
                 Type = SimVarType.LVar,
                 UpdateFrequency = UpdateFrequency.Continuous,
                 IsAnnounced = true,  // Critical alert
@@ -2099,6 +2101,7 @@ namespace FBWBA.SimConnect
             ["A32NX_AUTOPILOT_AUTOLAND_WARNING"] = new SimVarDefinition
             {
                 Name = "A32NX_AUTOPILOT_AUTOLAND_WARNING",
+                DisplayName = "Autoland Warning",
                 Type = SimVarType.LVar,
                 UpdateFrequency = UpdateFrequency.Continuous,
                 IsAnnounced = true,  // Critical alert

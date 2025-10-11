@@ -887,12 +887,19 @@ namespace FBWBA.SimConnect
             {
                 // Find the variable key for this request ID
                 var variableEntry = variableDataDefinitions.FirstOrDefault(x => x.Value == requestId);
-                if (variableEntry.Key == null) return;
+                if (variableEntry.Key == null)
+                {
+                    return;
+                }
 
                 string varKey = variableEntry.Key;
+
                 var varDef = SimVarDefinitions.Variables.ContainsKey(varKey) ? SimVarDefinitions.Variables[varKey] : null;
 
-                if (varDef == null) return;
+                if (varDef == null)
+                {
+                    return;
+                }
 
                 double currentValue = data.value;
 
@@ -956,30 +963,18 @@ namespace FBWBA.SimConnect
                 }
                 lastVariableValues.AddOrUpdate(varKey, currentValue, (key, oldValue) => currentValue);
 
-                // Fire update for announced variables that changed OR forced updates
-                if (varDef.IsAnnounced && (hasChanged || isForceUpdate))
-                {
-                    string description = FormatVariableValue(varKey, varDef, currentValue);
+                // Always fire SimVarUpdated event - displays need current values even if unchanged
+                // The event recipients will decide what to do based on IsAnnounced and hasChanged
+                string description = FormatVariableValue(varKey, varDef, currentValue);
 
-                    SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
-                    {
-                        VarName = varKey,
-                        Value = currentValue,
-                        Description = description
-                    });
-                }
-                // Always fire event for non-announced variables (for display updates)
-                else if (!varDef.IsAnnounced)
-                {
-                    string description = FormatVariableValue(varKey, varDef, currentValue);
+                System.Diagnostics.Debug.WriteLine($"[ProcessIndividualVariableResponse] Firing SimVarUpdated for {varKey}: Value={currentValue}, IsAnnounced={varDef.IsAnnounced}, HasChanged={hasChanged}, ForceUpdate={isForceUpdate}");
 
-                    SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
-                    {
-                        VarName = varKey,
-                        Value = currentValue,
-                        Description = description
-                    });
-                }
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = varKey,
+                    Value = currentValue,
+                    Description = description
+                });
             }
             catch (Exception ex)
             {
@@ -1380,9 +1375,15 @@ namespace FBWBA.SimConnect
         /// <param name="forceUpdate">If true, will always fire SimVarUpdated event even if value hasn't changed</param>
         public void RequestVariable(string varKey, bool forceUpdate = false)
         {
-            if (!IsConnected || simConnect == null) return;
+            if (!IsConnected || simConnect == null)
+            {
+                return;
+            }
 
-            if (!variableDataDefinitions.ContainsKey(varKey)) return;
+            if (!variableDataDefinitions.ContainsKey(varKey))
+            {
+                return;
+            }
 
             try
             {
@@ -1402,7 +1403,7 @@ namespace FBWBA.SimConnect
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error requesting variable {varKey}: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"[RequestVariable] Error requesting variable {varKey}: {ex.Message}");
             }
         }
 

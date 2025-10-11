@@ -161,6 +161,68 @@ namespace FBWBA
                 return;
             }
 
+            // Step 1: ALWAYS store the value first (needed by all consumers)
+            currentSimVarValues[e.VarName] = e.Value;
+
+            // Step 2: Handle special one-off announcements (terminal cases only)
+            if (HandleSpecialAnnouncements(e))
+            {
+                return; // These are terminal - no further processing needed
+            }
+
+            // Step 3: Update display values (if this variable is used in any panel display)
+            // This happens silently without announcements - users read the display manually
+            if (SimVarDefinitions.Variables.ContainsKey(e.VarName) &&
+                SimVarDefinitions.PanelDisplayVariables.Values.Any(list => list.Contains(e.VarName)))
+            {
+                displayValues[e.VarName] = e.Value;
+
+                // Signal completion for pending requests
+                if (pendingDisplayRequests != null && pendingDisplayRequests.ContainsKey(e.VarName))
+                {
+                    pendingDisplayRequests[e.VarName].TrySetResult(true);
+                }
+
+                // Update display textbox if visible
+                if (currentControls.ContainsKey("_DISPLAY_"))
+                {
+                    TextBox displayBox = currentControls["_DISPLAY_"] as TextBox;
+                    if (displayBox != null)
+                    {
+                        UpdateDisplayText(displayBox);
+                    }
+                }
+                // DON'T return - continue processing for announcements if needed
+            }
+
+            // Step 4: Update UI controls (if this variable has a control in current panel)
+            UpdateControlFromSimVar(e.VarName, e.Value);
+
+            // Step 5: Handle pending state announcements (button press feedback)
+            if (pendingStateAnnouncements.TryRemove(e.VarName, out _))
+            {
+                AnnounceVariableState(e.VarName, e.Value);
+                // DON'T return - might also need continuous monitoring
+            }
+
+            // Step 6: Process continuous monitoring for auto-announcements
+            // Only announce variables marked with IsAnnounced = true and UpdateFrequency = Continuous
+            if (SimVarDefinitions.Variables.ContainsKey(e.VarName))
+            {
+                var varDef = SimVarDefinitions.Variables[e.VarName];
+                if (varDef.IsAnnounced && varDef.UpdateFrequency == UpdateFrequency.Continuous)
+                {
+                    simVarMonitor.ProcessUpdate(e.VarName, e.Value, e.Description);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Handles special announcements that should terminate processing.
+        /// Returns true if the event was handled and no further processing is needed.
+        /// </summary>
+        private bool HandleSpecialAnnouncements(SimVarUpdateEventArgs e)
+        {
             // Handle flight phase updates
             if (e.VarName == "A32NX_FMGC_FLIGHT_PHASE")
             {
@@ -179,45 +241,19 @@ namespace FBWBA
                         announcer.Announce($"Entering {phaseName} phase");
                     }
                 }
-                return;
+                return true;
             }
 
-            // Handle display updates for specific variables
-            if (SimVarDefinitions.Variables.ContainsKey(e.VarName) && 
-                SimVarDefinitions.PanelDisplayVariables.Values.Any(list => list.Contains(e.VarName)))
-            {
-                // Store display value silently (no announcement)
-                displayValues[e.VarName] = e.Value;
-                
-                // Signal completion if this was a pending request
-                if (pendingDisplayRequests != null && pendingDisplayRequests.ContainsKey(e.VarName))
-                {
-                    pendingDisplayRequests[e.VarName].TrySetResult(true);
-                }
-                
-                // Update display text silently if it's the current panel's display
-                if (currentControls.ContainsKey("_DISPLAY_"))
-                {
-                    TextBox displayBox = currentControls["_DISPLAY_"] as TextBox;
-                    if (displayBox != null)
-                    {
-                        UpdateDisplayText(displayBox);
-                    }
-                }
-                return;  // Exit early - no further processing or announcements
-            }
-            
-            // Handle individual FCU value announcements
+            // Handle FCU hotkey value announcements
             if (e.VarName == "FCU_HEADING" || e.VarName == "FCU_SPEED" || e.VarName == "FCU_ALTITUDE" ||
-                e.VarName == "FCU_HEADING_WITH_STATUS" || e.VarName == "FCU_SPEED_WITH_STATUS" || e.VarName == "FCU_ALTITUDE_WITH_STATUS" ||
-                e.VarName == "FCU_VSFPA_VALUE")
+                e.VarName == "FCU_HEADING_WITH_STATUS" || e.VarName == "FCU_SPEED_WITH_STATUS" ||
+                e.VarName == "FCU_ALTITUDE_WITH_STATUS" || e.VarName == "FCU_VSFPA_VALUE")
             {
-                // Use the announcer for immediate announcement
                 announcer.AnnounceImmediate(e.Description);
-                return;
+                return true;
             }
 
-            // Handle individual aircraft variable announcements
+            // Handle aircraft variable hotkey announcements
             if (e.VarName == "ALTITUDE_AGL" || e.VarName == "ALTITUDE_MSL" || e.VarName == "AIRSPEED_INDICATED" ||
                 e.VarName == "AIRSPEED_TRUE" || e.VarName == "GROUND_SPEED" || e.VarName == "VERTICAL_SPEED" ||
                 e.VarName == "HEADING_MAGNETIC" || e.VarName == "HEADING_TRUE" ||
@@ -225,17 +261,15 @@ namespace FBWBA
                 e.VarName == "SPEED_VFE" || e.VarName == "SPEED_VLS" || e.VarName == "SPEED_VS" ||
                 e.VarName == "FUEL_QUANTITY" || e.VarName == "WAYPOINT_INFO")
             {
-                // Use the announcer for immediate announcement
                 announcer.AnnounceImmediate(e.Description);
-                return;
+                return true;
             }
 
             // Handle ILS guidance announcements
             if (e.VarName == "ILS_GUIDANCE")
             {
-                // Use the announcer for immediate announcement
                 announcer.AnnounceImmediate(e.Description);
-                return;
+                return true;
             }
 
             // Handle visual approach announcements
@@ -243,66 +277,50 @@ namespace FBWBA
                 e.VarName == "VISUAL_APPROACH_ERROR" ||
                 e.VarName == "VISUAL_APPROACH_GUIDANCE")
             {
-                // Use the announcer for immediate announcement
                 announcer.AnnounceImmediate(e.Description);
-                return;
+                return true;
             }
 
             // Handle LED state announcements (from MobiFlight WASM)
             if (e.VarName?.StartsWith("A32NX_ECP_LIGHT_") == true)
             {
-                // This is an LED state update from ECAM buttons
-                string ledState = e.Value > 0 ? "On" : "Off";
                 announcer.AnnounceImmediate(e.Description);
-                // System.Diagnostics.Debug.WriteLine($"[MainForm] LED announcement: {e.Description} {ledState}");
-                return;
+                return true;
             }
-            
-            // Handle display updates
+
+            // Handle special display updates
             if (e.VarName == "DISPLAY_UPDATE")
             {
-                // Store the value temporarily - we'll collect multiple values
-                // This is a simplified approach - in production we'd track which variable was requested
-                return;
+                return true;
             }
-            
+
+            // Handle FCU_VALUES special case
             if (e.VarName == "FCU_VALUES")
             {
                 announcer.Announce(e.Description);
+                return true;
             }
-            else
+
+            return false; // Not a special case, continue normal processing
+        }
+
+        /// <summary>
+        /// Announces the state of a variable based on its value descriptions.
+        /// </summary>
+        private void AnnounceVariableState(string varName, double value)
+        {
+            if (SimVarDefinitions.Variables.ContainsKey(varName))
             {
-                // Store the current value
-                currentSimVarValues[e.VarName] = e.Value;
-
-                // Update the control if it exists
-                UpdateControlFromSimVar(e.VarName, e.Value);
-
-                // Check if this is a pending state announcement
-                if (pendingStateAnnouncements.TryRemove(e.VarName, out _))
+                var varDef = SimVarDefinitions.Variables[varName];
+                if (varDef.ValueDescriptions != null && varDef.ValueDescriptions.ContainsKey(value))
                 {
-                    // Announce the state immediately
-                    if (SimVarDefinitions.Variables.ContainsKey(e.VarName))
-                    {
-                        var varDef = SimVarDefinitions.Variables[e.VarName];
-                        if (varDef.ValueDescriptions != null && varDef.ValueDescriptions.ContainsKey(e.Value))
-                        {
-                            string stateDescription = varDef.ValueDescriptions[e.Value];
-                            announcer.AnnounceImmediate(stateDescription);
-                        }
-                        else
-                        {
-                            // Fallback to display name + value if no descriptions
-                            announcer.AnnounceImmediate($"{varDef.DisplayName}: {e.Value}");
-                        }
-                    }
-                    return; // Don't process through SimVarMonitor to avoid duplicate handling
+                    string stateDescription = varDef.ValueDescriptions[value];
+                    announcer.AnnounceImmediate(stateDescription);
                 }
                 else
                 {
-                    // Process monitor only for non-display variables and non-FCU state variables
-                    // Display variables are handled silently above
-                    simVarMonitor.ProcessUpdate(e.VarName, e.Value, e.Description);
+                    // Fallback to display name + value if no descriptions
+                    announcer.AnnounceImmediate($"{varDef.DisplayName}: {value}");
                 }
             }
         }
@@ -421,13 +439,13 @@ namespace FBWBA
             {
                 var displayVars = SimVarDefinitions.PanelDisplayVariables[currentPanel];
                 List<string> values = new List<string>();
-                
+
                 foreach (var varKey in displayVars)
                 {
                     if (SimVarDefinitions.Variables.ContainsKey(varKey))
                     {
                         var varDef = SimVarDefinitions.Variables[varKey];
-                        
+
                         if (displayValues.ContainsKey(varKey))
                         {
                             double value = displayValues[varKey];
@@ -480,7 +498,7 @@ namespace FBWBA
                         }
                     }
                 }
-                
+
                 displayBox.Text = string.Join("\r\n", values);
             }
         }
