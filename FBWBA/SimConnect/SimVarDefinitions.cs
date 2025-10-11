@@ -1481,6 +1481,14 @@ namespace FBWBA.SimConnect
                 UpdateFrequency = UpdateFrequency.OnRequest,
                 Units = "number"
             },
+            ["A32NX_AUTOTHRUST_THRUST_LIMIT_TOGA"] = new SimVarDefinition
+            {
+                Name = "A32NX_AUTOTHRUST_THRUST_LIMIT_TOGA",
+                DisplayName = "Autothrust TOGA Limit",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                Units = "percent"
+            },
             ["A32NX_AUTOPILOT_VS_SELECTED"] = new SimVarDefinition
             {
                 Name = "A32NX_AUTOPILOT_VS_SELECTED",

@@ -29,6 +29,9 @@ namespace FBWBA.Forms
         private bool _masterWarning = false;
         private bool _masterCaution = false;
         private bool _stallWarning = false;
+        private bool _pack1On = false;
+        private bool _pack2On = false;
+        private double _togaThrustLimit = 0;
         private readonly IntPtr previousWindow;
 
         public ECAMDisplayForm(ScreenReaderAnnouncer announcer, SimConnectManager simConnectManager)
@@ -158,7 +161,12 @@ namespace FBWBA.Forms
                 // The OnECAMDataReceived event handler will update the UI when data arrives
                 _simConnectManager?.RequestECAMMessages();
 
-                System.Diagnostics.Debug.WriteLine("[ECAMDisplayForm] ECAM data requested, waiting for MobiFlight response");
+                // Request PACK and TOGA variables directly (like Warnings panel does)
+                _simConnectManager?.RequestVariable("A32NX_OVHD_COND_PACK_1_PB_IS_ON");
+                _simConnectManager?.RequestVariable("A32NX_OVHD_COND_PACK_2_PB_IS_ON");
+                _simConnectManager?.RequestVariable("A32NX_AUTOTHRUST_THRUST_LIMIT_TOGA");
+
+                System.Diagnostics.Debug.WriteLine("[ECAMDisplayForm] ECAM data requested, waiting for response");
             }
             catch (Exception ex)
             {
@@ -170,18 +178,32 @@ namespace FBWBA.Forms
         {
             var data = new System.Text.StringBuilder();
 
-            // Show master warnings/cautions if active
+            // Show stall warning if active (critical safety information)
             if (_stallWarning)
             {
                 data.AppendLine("[STALL WARNING: ACTIVE]");
             }
-            if (_masterWarning)
+
+            // Show PACK status
+            if (_pack1On)
             {
-                data.AppendLine("[MASTER WARNING: ACTIVE]");
+                data.AppendLine("PACK 1: ON");
             }
-            if (_masterCaution)
+            if (_pack2On)
             {
-                data.AppendLine("[MASTER CAUTION: ACTIVE]");
+                data.AppendLine("PACK 2: ON");
+            }
+
+            // Show TOGA thrust limit if available
+            if (_togaThrustLimit > 0)
+            {
+                data.AppendLine($"TOGA THRUST LIMIT: {_togaThrustLimit:F1}% N1");
+            }
+
+            // Add separator if any status information was shown
+            if (_stallWarning || _pack1On || _pack2On || _togaThrustLimit > 0)
+            {
+                data.AppendLine();
             }
 
             // Collect and display left side messages
@@ -292,8 +314,46 @@ namespace FBWBA.Forms
 
         private void OnSimVarUpdated(object sender, SimVarUpdateEventArgs e)
         {
-            // Handle individual variable updates if needed
-            // Currently using ECAMDataReceived event for batch updates
+            // Handle PACK and TOGA variable updates
+            if (e.VarName == "A32NX_OVHD_COND_PACK_1_PB_IS_ON")
+            {
+                if (InvokeRequired)
+                {
+                    BeginInvoke(new Action(() => OnSimVarUpdated(sender, e)));
+                    return;
+                }
+                _pack1On = e.Value > 0.5;
+                UpdateDisplay();
+            }
+            else if (e.VarName == "A32NX_OVHD_COND_PACK_2_PB_IS_ON")
+            {
+                if (InvokeRequired)
+                {
+                    BeginInvoke(new Action(() => OnSimVarUpdated(sender, e)));
+                    return;
+                }
+                _pack2On = e.Value > 0.5;
+                UpdateDisplay();
+            }
+            else if (e.VarName == "A32NX_AUTOTHRUST_THRUST_LIMIT_TOGA")
+            {
+                if (InvokeRequired)
+                {
+                    BeginInvoke(new Action(() => OnSimVarUpdated(sender, e)));
+                    return;
+                }
+                _togaThrustLimit = e.Value;
+                UpdateDisplay();
+            }
+        }
+
+        private void UpdateDisplay()
+        {
+            // Only update if we have ECAM message data
+            if (_messageLines.Count > 0)
+            {
+                ecamTextBox.Text = FormatECAMData();
+            }
         }
 
         private void OnECAMDataReceived(object sender, ECAMDataEventArgs e)
