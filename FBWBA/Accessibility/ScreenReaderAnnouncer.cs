@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Windows.Forms;
 
 namespace FBWBA.Accessibility
 {
@@ -15,6 +17,11 @@ namespace FBWBA.Accessibility
         private NvdaControllerWrapper nvdaWrapper;
         private AnnouncementMode currentMode;
 
+        // Speech queue for sequential announcements
+        private Queue<string> announcementQueue;
+        private Timer queueTimer;
+        private const int QUEUE_INTERVAL_MS = 600; // 600ms delay between queued messages
+
         // Native methods for screen reader detection
         [DllImport("user32.dll")]
         private static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
@@ -26,6 +33,12 @@ namespace FBWBA.Accessibility
 
         public ScreenReaderAnnouncer(IntPtr handle)
         {
+            // Initialize speech queue and timer
+            announcementQueue = new Queue<string>();
+            queueTimer = new Timer();
+            queueTimer.Interval = QUEUE_INTERVAL_MS;
+            queueTimer.Tick += QueueTimer_Tick;
+
             // Load announcement mode from settings
             LoadAnnouncementMode();
             System.Diagnostics.Debug.WriteLine($"[ScreenReaderAnnouncer] Loaded mode from settings: {currentMode}");
@@ -326,7 +339,59 @@ namespace FBWBA.Accessibility
         {
             Announce(message);
         }
-        
+
+        /// <summary>
+        /// Adds a message to the announcement queue for sequential delivery with delays.
+        /// Ideal for ECAM messages where multiple messages may appear simultaneously.
+        /// </summary>
+        public void AnnounceWithQueue(string message)
+        {
+            if (string.IsNullOrEmpty(message))
+                return;
+
+            lock (announcementQueue)
+            {
+                announcementQueue.Enqueue(message);
+                System.Diagnostics.Debug.WriteLine($"[ScreenReaderAnnouncer] Queued message: '{message}' (Queue size: {announcementQueue.Count})");
+
+                // Start timer if it's not already running
+                if (!queueTimer.Enabled)
+                {
+                    System.Diagnostics.Debug.WriteLine("[ScreenReaderAnnouncer] Starting queue timer");
+                    queueTimer.Start();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Timer tick handler that processes one message from the queue at a time.
+        /// </summary>
+        private void QueueTimer_Tick(object sender, EventArgs e)
+        {
+            string messageToSpeak = null;
+
+            lock (announcementQueue)
+            {
+                if (announcementQueue.Count > 0)
+                {
+                    messageToSpeak = announcementQueue.Dequeue();
+                    System.Diagnostics.Debug.WriteLine($"[ScreenReaderAnnouncer] Processing queued message: '{messageToSpeak}' (Remaining: {announcementQueue.Count})");
+                }
+                else
+                {
+                    // Queue is empty, stop the timer
+                    System.Diagnostics.Debug.WriteLine("[ScreenReaderAnnouncer] Queue empty, stopping timer");
+                    queueTimer.Stop();
+                }
+            }
+
+            // Announce outside the lock to avoid holding it during speech
+            if (messageToSpeak != null)
+            {
+                Announce(messageToSpeak);
+            }
+        }
+
         public void Cleanup()
         {
             Dispose();
@@ -336,6 +401,27 @@ namespace FBWBA.Accessibility
         {
             if (!disposed)
             {
+                // Stop and dispose queue timer
+                if (queueTimer != null)
+                {
+                    try
+                    {
+                        queueTimer.Stop();
+                        queueTimer.Dispose();
+                    }
+                    catch { }
+                    queueTimer = null;
+                }
+
+                // Clear any pending announcements
+                if (announcementQueue != null)
+                {
+                    lock (announcementQueue)
+                    {
+                        announcementQueue.Clear();
+                    }
+                }
+
                 if (speechSynthesizer != null)
                 {
                     try

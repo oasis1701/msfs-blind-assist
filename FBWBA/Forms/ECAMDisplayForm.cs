@@ -302,25 +302,8 @@ namespace FBWBA.Forms
         /// </summary>
         private string CleanECAMMessage(string rawMessage)
         {
-            if (string.IsNullOrWhiteSpace(rawMessage))
-            {
-                return "";
-            }
-
-            // Remove all ANSI escape sequences - use two passes for safety
-            // Pass 1: Remove ANSI codes with escape character
-            // Pattern matches: ESC followed by optional (<digits> OR digits), ending with m or )
-            // Examples: \x1b<4m (color), \x1b4m (underline), \x1bm (reset), \x1b)m (reset variant)
-            string cleaned = Regex.Replace(rawMessage, @"[\x1b\u001b](<\d+>|\d+)?[m)]", "");
-
-            // Pass 2: Remove any leftover ANSI-like patterns (in case ESC was already corrupted)
-            // This catches <3m, <4m, etc. that might be left behind
-            cleaned = Regex.Replace(cleaned, @"<\d+>m?", "");
-
-            // Pass 3: Remove standalone formatting codes like "4m" or "5m" at word boundaries
-            cleaned = Regex.Replace(cleaned, @"\b\d[m]\b", "");
-
-            return cleaned.Trim();
+            // Use centralized cleaning logic from EWDMessageLookup
+            return EWDMessageLookup.CleanANSICodes(rawMessage);
         }
 
         /// <summary>

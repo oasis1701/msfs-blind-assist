@@ -495,37 +495,68 @@ namespace FBWBA.SimConnect
         }
 
         /// <summary>
-        /// Removes ANSI escape sequences for screen reader compatibility
+        /// Looks up an ECAM message by its numeric code and returns raw text with ANSI codes intact
         /// </summary>
-        /// <param name="rawMessage">Message with ANSI codes</param>
+        /// <param name="code">9-digit numeric code (e.g., 000020001 for PARK BRK)</param>
+        /// <returns>Raw message text with ANSI codes, or empty string if not found</returns>
+        public static string GetRawMessage(long code)
+        {
+            // Convert to 9-digit string with leading zeros
+            string codeString = code.ToString("D9");
+
+            if (Messages.TryGetValue(codeString, out string rawMessage))
+            {
+                return rawMessage;
+            }
+
+            return ""; // Return empty string for unknown codes or code 0
+        }
+
+        /// <summary>
+        /// Removes ANSI escape sequences for screen reader compatibility
+        /// NOTE: SimConnect corrupts \x1b escape characters in these ways:
+        /// - \x1b<3m becomes <3m (escape stripped)
+        /// - \x1b4m becomes ƴm (escape corrupted to ƴ)
+        /// - \x1bm becomes m (escape stripped, m remains)
+        /// </summary>
+        /// <param name="rawMessage">Message with corrupted ANSI codes from SimConnect</param>
         /// <returns>Cleaned message text</returns>
-        private static string CleanANSICodes(string rawMessage)
+        public static string CleanANSICodes(string rawMessage)
         {
             if (string.IsNullOrWhiteSpace(rawMessage))
             {
                 return "";
             }
 
-            // Remove all ANSI escape sequences - use two passes for safety
-            // Pass 1: Remove ANSI codes with escape character
-            // Pattern matches: ESC followed by optional (<digits> OR digits), ending with m or )
-            // Examples: \x1b<4m (color), \x1b4m (underline), \x1bm (reset), \x1b)m (reset variant)
-            string cleaned = Regex.Replace(rawMessage, @"[\x1b\u001b](<\d+>|\d+)?[m)]", "");
+            // Pass 1: Remove <digit>m patterns (no closing > bracket)
+            // Example: <4m, <3m, <2m
+            string cleaned = Regex.Replace(rawMessage, @"<\d+m", "");
 
-            // Pass 2: Remove any leftover ANSI-like patterns (in case ESC was already corrupted)
-            // This catches <3m, <4m, etc. that might be left behind
-            cleaned = Regex.Replace(cleaned, @"<\d+>m?", "");
+            // Pass 2: Remove corrupted escape character pattern ƴm
+            // This is what \x1b4m becomes after SimConnect corruption
+            cleaned = Regex.Replace(cleaned, @"ƴm", "");
 
-            // Pass 3: Remove standalone formatting codes like "4m" or "5m" at word boundaries
-            cleaned = Regex.Replace(cleaned, @"\b\d[m]\b", "");
+            // Pass 3: Remove digit+m patterns (like 4m from underline codes)
+            // No word boundaries - just remove them anywhere
+            cleaned = Regex.Replace(cleaned, @"\d+m", "");
+
+            // Pass 4: Remove )m pattern (from reset codes like \x1b)m)
+            cleaned = Regex.Replace(cleaned, @"\)m", "");
+
+            // Pass 5: Clean any remaining non-printable control characters
+            cleaned = Regex.Replace(cleaned, @"[\x00-\x1F]", " ");
+
+            // Final cleanup: collapse multiple spaces and trim
+            cleaned = Regex.Replace(cleaned, @"\s+", " ");
 
             return cleaned.Trim();
         }
 
         /// <summary>
         /// Extracts color information from ANSI codes for display
+        /// NOTE: SimConnect strips the \x1b escape character, so we match patterns WITHOUT it
         /// </summary>
-        /// <param name="rawMessage">Message with ANSI codes</param>
+        /// <param name="rawMessage">Message with ANSI codes (escape character already stripped by SimConnect)</param>
         /// <returns>Color string (Red, Amber, Green, White, Cyan, Gray, or empty)</returns>
         public static string GetMessagePriority(string rawMessage)
         {
@@ -534,12 +565,13 @@ namespace FBWBA.SimConnect
                 return "";
             }
 
-            if (rawMessage.Contains("\x1b<2m")) return "Red";      // Warning
-            if (rawMessage.Contains("\x1b<4m")) return "Amber";    // Caution
-            if (rawMessage.Contains("\x1b<3m")) return "Green";    // Memo
-            if (rawMessage.Contains("\x1b<5m")) return "White";    // Action items
-            if (rawMessage.Contains("\x1b<6m")) return "Cyan";     // Info
-            if (rawMessage.Contains("\x1b<7m")) return "Gray";     // Conditions
+            // Match patterns WITHOUT escape character (SimConnect strips \x1b before delivery)
+            if (rawMessage.Contains("<2m")) return "Red";      // Warning
+            if (rawMessage.Contains("<4m")) return "Amber";    // Caution
+            if (rawMessage.Contains("<3m")) return "Green";    // Memo
+            if (rawMessage.Contains("<5m")) return "White";    // Action items
+            if (rawMessage.Contains("<6m")) return "Cyan";     // Info
+            if (rawMessage.Contains("<7m")) return "Gray";     // Conditions
 
             return "";
         }

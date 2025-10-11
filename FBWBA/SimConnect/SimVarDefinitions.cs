@@ -2011,99 +2011,99 @@ namespace FBWBA.SimConnect
             {
                 Name = "A32NX_Ewd_LOWER_LEFT_LINE_1",
                 Type = SimVarType.LVar,
-                UpdateFrequency = UpdateFrequency.OnRequest,  // Requested on-demand for ECAM display
-                IsAnnounced = false
+                UpdateFrequency = UpdateFrequency.Continuous,  // Continuously monitored for real-time ECAM announcements
+                IsAnnounced = true
             },
             ["A32NX_Ewd_LOWER_LEFT_LINE_2"] = new SimVarDefinition
             {
                 Name = "A32NX_Ewd_LOWER_LEFT_LINE_2",
                 Type = SimVarType.LVar,
-                UpdateFrequency = UpdateFrequency.OnRequest,
-                IsAnnounced = false
+                UpdateFrequency = UpdateFrequency.Continuous,
+                IsAnnounced = true
             },
             ["A32NX_Ewd_LOWER_LEFT_LINE_3"] = new SimVarDefinition
             {
                 Name = "A32NX_Ewd_LOWER_LEFT_LINE_3",
                 Type = SimVarType.LVar,
-                UpdateFrequency = UpdateFrequency.OnRequest,
-                IsAnnounced = false
+                UpdateFrequency = UpdateFrequency.Continuous,
+                IsAnnounced = true
             },
             ["A32NX_Ewd_LOWER_LEFT_LINE_4"] = new SimVarDefinition
             {
                 Name = "A32NX_Ewd_LOWER_LEFT_LINE_4",
                 Type = SimVarType.LVar,
-                UpdateFrequency = UpdateFrequency.OnRequest,
-                IsAnnounced = false
+                UpdateFrequency = UpdateFrequency.Continuous,
+                IsAnnounced = true
             },
             ["A32NX_Ewd_LOWER_LEFT_LINE_5"] = new SimVarDefinition
             {
                 Name = "A32NX_Ewd_LOWER_LEFT_LINE_5",
                 Type = SimVarType.LVar,
-                UpdateFrequency = UpdateFrequency.OnRequest,
-                IsAnnounced = false
+                UpdateFrequency = UpdateFrequency.Continuous,
+                IsAnnounced = true
             },
             ["A32NX_Ewd_LOWER_LEFT_LINE_6"] = new SimVarDefinition
             {
                 Name = "A32NX_Ewd_LOWER_LEFT_LINE_6",
                 Type = SimVarType.LVar,
-                UpdateFrequency = UpdateFrequency.OnRequest,
-                IsAnnounced = false
+                UpdateFrequency = UpdateFrequency.Continuous,
+                IsAnnounced = true
             },
             ["A32NX_Ewd_LOWER_LEFT_LINE_7"] = new SimVarDefinition
             {
                 Name = "A32NX_Ewd_LOWER_LEFT_LINE_7",
                 Type = SimVarType.LVar,
-                UpdateFrequency = UpdateFrequency.OnRequest,
-                IsAnnounced = false
+                UpdateFrequency = UpdateFrequency.Continuous,
+                IsAnnounced = true
             },
             ["A32NX_Ewd_LOWER_RIGHT_LINE_1"] = new SimVarDefinition
             {
                 Name = "A32NX_Ewd_LOWER_RIGHT_LINE_1",
                 Type = SimVarType.LVar,
-                UpdateFrequency = UpdateFrequency.OnRequest,
-                IsAnnounced = false
+                UpdateFrequency = UpdateFrequency.Continuous,
+                IsAnnounced = true
             },
             ["A32NX_Ewd_LOWER_RIGHT_LINE_2"] = new SimVarDefinition
             {
                 Name = "A32NX_Ewd_LOWER_RIGHT_LINE_2",
                 Type = SimVarType.LVar,
-                UpdateFrequency = UpdateFrequency.OnRequest,
-                IsAnnounced = false
+                UpdateFrequency = UpdateFrequency.Continuous,
+                IsAnnounced = true
             },
             ["A32NX_Ewd_LOWER_RIGHT_LINE_3"] = new SimVarDefinition
             {
                 Name = "A32NX_Ewd_LOWER_RIGHT_LINE_3",
                 Type = SimVarType.LVar,
-                UpdateFrequency = UpdateFrequency.OnRequest,
-                IsAnnounced = false
+                UpdateFrequency = UpdateFrequency.Continuous,
+                IsAnnounced = true
             },
             ["A32NX_Ewd_LOWER_RIGHT_LINE_4"] = new SimVarDefinition
             {
                 Name = "A32NX_Ewd_LOWER_RIGHT_LINE_4",
                 Type = SimVarType.LVar,
-                UpdateFrequency = UpdateFrequency.OnRequest,
-                IsAnnounced = false
+                UpdateFrequency = UpdateFrequency.Continuous,
+                IsAnnounced = true
             },
             ["A32NX_Ewd_LOWER_RIGHT_LINE_5"] = new SimVarDefinition
             {
                 Name = "A32NX_Ewd_LOWER_RIGHT_LINE_5",
                 Type = SimVarType.LVar,
-                UpdateFrequency = UpdateFrequency.OnRequest,
-                IsAnnounced = false
+                UpdateFrequency = UpdateFrequency.Continuous,
+                IsAnnounced = true
             },
             ["A32NX_Ewd_LOWER_RIGHT_LINE_6"] = new SimVarDefinition
             {
                 Name = "A32NX_Ewd_LOWER_RIGHT_LINE_6",
                 Type = SimVarType.LVar,
-                UpdateFrequency = UpdateFrequency.OnRequest,
-                IsAnnounced = false
+                UpdateFrequency = UpdateFrequency.Continuous,
+                IsAnnounced = true
             },
             ["A32NX_Ewd_LOWER_RIGHT_LINE_7"] = new SimVarDefinition
             {
                 Name = "A32NX_Ewd_LOWER_RIGHT_LINE_7",
                 Type = SimVarType.LVar,
-                UpdateFrequency = UpdateFrequency.OnRequest,
-                IsAnnounced = false
+                UpdateFrequency = UpdateFrequency.Continuous,
+                IsAnnounced = true
             },
 
             ["A32NX_AUTOPILOT_AUTOLAND_WARNING"] = new SimVarDefinition

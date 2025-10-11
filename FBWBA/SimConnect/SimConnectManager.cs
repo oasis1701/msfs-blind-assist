@@ -42,7 +42,9 @@ namespace FBWBA.SimConnect
         private double ecamMasterWarning = 0;
         private double ecamMasterCaution = 0;
         private double ecamStallWarning = 0;
-        
+        private Dictionary<string, string> ecamAnnouncementData = new Dictionary<string, string>();  // ECAM messages with color for announcements
+        private HashSet<string> previousECAMMessages = new HashSet<string>();  // Track previous message set for change detection
+
         // Variable tracking for individual registrations
         private ConcurrentDictionary<string, int> variableDataDefinitions = new ConcurrentDictionary<string, int>();  // Maps variable keys to data definition IDs
         private ConcurrentDictionary<int, string> pendingRequests = new ConcurrentDictionary<int, string>();  // Track pending requests
@@ -908,16 +910,31 @@ namespace FBWBA.SimConnect
                 {
                     // Convert numeric code to text message via EWDMessageLookup
                     long numericCode = (long)currentValue;
-                    string messageText = EWDMessageLookup.GetMessage(numericCode);
 
-                    // Store the converted text in ecamStringData
-                    ecamStringData[varKey] = messageText;
+                    // Get raw message with ANSI codes
+                    string rawMessage = EWDMessageLookup.GetRawMessage(numericCode);
+
+                    // Store RAW message for ECAM Display window (it will clean and extract color itself)
+                    ecamStringData[varKey] = rawMessage;
+
+                    // Clean message for screen reader announcements
+                    string priority = EWDMessageLookup.GetMessagePriority(rawMessage);
+                    string cleanText = EWDMessageLookup.CleanANSICodes(rawMessage);
+
+                    // Create announcement text WITH color appended for screen readers (with comma)
+                    string announcementText = cleanText;
+                    if (!string.IsNullOrEmpty(priority) && !string.IsNullOrWhiteSpace(cleanText))
+                    {
+                        announcementText = $"{cleanText}, {priority}";
+                    }
+                    ecamAnnouncementData[varKey] = announcementText;
+
                     ecamStringsReceived++;
 
-                    System.Diagnostics.Debug.WriteLine($"[SimConnectManager] ECAM Line received: {varKey} = Code:{numericCode} → '{messageText}' ({ecamStringsReceived}/{ecamTotalStringsExpected})");
+                    System.Diagnostics.Debug.WriteLine($"[SimConnectManager] ECAM Line received: {varKey} = Code:{numericCode} → Display:'{cleanText}' | Announce:'{announcementText}' ({ecamStringsReceived}/{ecamTotalStringsExpected})");
 
-                    // Check if all 14 ECAM lines have been received
-                    if (ecamStringsReceived >= ecamTotalStringsExpected)
+                    // Check if all 14 ECAM lines have been received (modulo ensures it fires every 14 lines)
+                    if (ecamStringsReceived % ecamTotalStringsExpected == 0)
                     {
                         // Fire the ECAM data received event with all collected data
                         ECAMDataReceived?.Invoke(this, new ECAMDataEventArgs
@@ -942,9 +959,12 @@ namespace FBWBA.SimConnect
                         });
 
                         System.Diagnostics.Debug.WriteLine("[SimConnectManager] All ECAM data collected and event fired");
+
+                        // Announce new ECAM messages (batch processing after all 14 lines collected)
+                        AnnounceECAMChanges();
                     }
 
-                    // Don't send SimVarUpdated for ECAM codes - they're handled via ECAMDataReceived event
+                    // Don't continue with normal processing for ECAM codes - batch collection is handled above
                     return;
                 }
 
@@ -1167,6 +1187,56 @@ namespace FBWBA.SimConnect
         }
 
         // ProcessECAMData method removed - now using MobiFlight WASM for string L:vars
+
+        /// <summary>
+        /// Announce ECAM message changes after all 14 lines are collected.
+        /// Only announces NEW messages that weren't in the previous set.
+        /// Uses announcement dictionary which includes color descriptions.
+        /// </summary>
+        private void AnnounceECAMChanges()
+        {
+            try
+            {
+                // Collect all current non-empty announcement messages (with color)
+                var currentMessages = new HashSet<string>();
+                foreach (var kvp in ecamAnnouncementData)
+                {
+                    if (!string.IsNullOrWhiteSpace(kvp.Value))
+                    {
+                        currentMessages.Add(kvp.Value);
+                    }
+                }
+
+                // Find new messages (in current but not in previous)
+                var newMessages = new List<string>();
+                foreach (var message in currentMessages)
+                {
+                    if (!previousECAMMessages.Contains(message))
+                    {
+                        newMessages.Add(message);
+                    }
+                }
+
+                // Announce each new message
+                foreach (var message in newMessages)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[SimConnectManager] New ECAM message detected for announcement: '{message}'");
+                    SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                    {
+                        VarName = "ECAM_MESSAGE",
+                        Value = 0,
+                        Description = message
+                    });
+                }
+
+                // Update previous set for next comparison
+                previousECAMMessages = currentMessages;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error announcing ECAM changes: {ex.Message}");
+            }
+        }
 
         private void ProcessVisualApproachGuidance(AircraftPosition data)
         {

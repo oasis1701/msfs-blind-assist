@@ -301,6 +301,13 @@ namespace FBWBA
                 return true;
             }
 
+            // Handle ECAM message announcements (using queue for sequential delivery)
+            if (e.VarName == "ECAM_MESSAGE")
+            {
+                announcer.AnnounceWithQueue(e.Description);
+                return true;
+            }
+
             return false; // Not a special case, continue normal processing
         }
 
