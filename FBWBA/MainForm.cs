@@ -503,99 +503,6 @@ namespace FBWBA
             }
         }
 
-        private void UpdateEngineDisplays(TextBox engine1TextBox, TextBox engine2TextBox)
-        {
-            if (SimVarDefinitions.PanelDisplayVariables.ContainsKey("Engines"))
-            {
-                var displayVars = SimVarDefinitions.PanelDisplayVariables["Engines"];
-                List<string> engine1Values = new List<string>();
-                List<string> engine2Values = new List<string>();
-
-                foreach (var varKey in displayVars)
-                {
-                    if (SimVarDefinitions.Variables.ContainsKey(varKey))
-                    {
-                        var varDef = SimVarDefinitions.Variables[varKey];
-
-                        // Special handling for oil variables - always show "check ECAM" message
-                        if (varKey.Contains("OIL_QTY"))
-                        {
-                            string formattedLine = "Oil quantity and pressure: check ECAM";
-
-                            // Separate by engine index (1 or 2)
-                            if (varKey.EndsWith(":1"))
-                            {
-                                engine1Values.Add(formattedLine);
-                            }
-                            else if (varKey.EndsWith(":2"))
-                            {
-                                engine2Values.Add(formattedLine);
-                            }
-                        }
-                        else if (displayValues.ContainsKey(varKey))
-                        {
-                            double value = displayValues[varKey];
-                            string displayValue;
-
-                            // Format values based on their units
-                            switch (varDef.Units)
-                            {
-                                case "percent":
-                                    displayValue = $"{value:F1}%";
-                                    break;
-                                case "celsius":
-                                    displayValue = $"{value:F0}°C";
-                                    break;
-                                case "kg per hour":
-                                    displayValue = $"{value:F0} Kg/h";
-                                    break;
-                                case "number":
-                                    // For oil quantity, display with 1 decimal place
-                                    displayValue = $"{value:F1}";
-                                    break;
-                                default:
-                                    displayValue = $"{value:F1}";
-                                    break;
-                            }
-
-                            string formattedLine = $"{varDef.DisplayName}: {displayValue}";
-
-                            // Separate by engine index (1 or 2)
-                            if (varKey.EndsWith(":1"))
-                            {
-                                engine1Values.Add(formattedLine);
-                            }
-                            else if (varKey.EndsWith(":2"))
-                            {
-                                engine2Values.Add(formattedLine);
-                            }
-                        }
-                        else
-                        {
-                            string formattedLine = $"{varDef.DisplayName}: --";
-
-                            // Separate by engine index (1 or 2)
-                            if (varKey.EndsWith(":1"))
-                            {
-                                engine1Values.Add(formattedLine);
-                            }
-                            else if (varKey.EndsWith(":2"))
-                            {
-                                engine2Values.Add(formattedLine);
-                            }
-                        }
-                    }
-                }
-
-                // Add ECAM message to both engines
-                engine1Values.Add("check ECAM for more details");
-                engine2Values.Add("check ECAM for more details");
-
-                // Update the text boxes
-                engine1TextBox.Text = string.Join("\r\n", engine1Values);
-                engine2TextBox.Text = string.Join("\r\n", engine2Values);
-            }
-        }
 
         /// <summary>
         /// Converts a decimal squawk code to BCD (Binary Coded Decimal) format for XPNDR_SET event.
@@ -2272,182 +2179,87 @@ namespace FBWBA
             // Add display field if this panel has display variables
             if (SimVarDefinitions.PanelDisplayVariables.ContainsKey(currentPanel))
             {
-                // Special handling for Engines panel - create two separate text fields
-                if (currentPanel == "Engines")
+                // Standard display for other panels
+                // Add separator row
+                int separatorRow = layout.RowCount++;
+                layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 10));
+
+                // Add display row
+                int displayRow = layout.RowCount++;
+                layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 60));
+
+                Label displayLabel = new Label();
+                displayLabel.Text = "Status Display:";
+                displayLabel.TextAlign = ContentAlignment.TopLeft;
+                displayLabel.AutoSize = false;
+                displayLabel.Size = new Size(140, 25);
+                layout.Controls.Add(displayLabel, 0, displayRow);
+
+                // Panel to hold textbox and button
+                Panel displayPanel = new Panel();
+                displayPanel.Size = new Size(240, 55);
+
+                // Read-only multiline textbox for display
+                TextBox displayTextBox = new TextBox();
+                displayTextBox.Multiline = true;
+                displayTextBox.ReadOnly = true;
+                displayTextBox.Size = new Size(240, 30);
+                displayTextBox.Location = new Point(0, 0);
+                displayTextBox.AccessibleName = "Status display";
+                displayTextBox.Text = "";  // Empty by default
+
+                // Refresh button
+                Button refreshButton = new Button();
+                refreshButton.Text = "Refresh";
+                refreshButton.Size = new Size(80, 23);
+                refreshButton.Location = new Point(0, 32);
+                refreshButton.AccessibleName = "Refresh status";
+
+                refreshButton.Click += async (s2, e2) =>
                 {
-                    // Add separator row
-                    int separatorRow = layout.RowCount++;
-                    layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 10));
+                    displayTextBox.Text = "Loading...";
+                    displayValues.Clear();  // Clear old values for this panel
 
-                    // Engine 1 display
-                    int engine1Row = layout.RowCount++;
-                    layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 90));
+                    // Get the display variables for this panel
+                    var displayVars = SimVarDefinitions.PanelDisplayVariables[currentPanel];
 
-                    Label engine1Label = new Label();
-                    engine1Label.Text = "Engine 1:";
-                    engine1Label.TextAlign = ContentAlignment.TopLeft;
-                    engine1Label.AutoSize = false;
-                    engine1Label.Size = new Size(140, 25);
-                    layout.Controls.Add(engine1Label, 0, engine1Row);
-
-                    TextBox engine1TextBox = new TextBox();
-                    engine1TextBox.Multiline = true;
-                    engine1TextBox.ReadOnly = true;
-                    engine1TextBox.Size = new Size(240, 80);
-                    engine1TextBox.AccessibleName = "Engine 1 parameters";
-                    engine1TextBox.Text = "";
-                    layout.Controls.Add(engine1TextBox, 1, engine1Row);
-
-                    // Engine 2 display
-                    int engine2Row = layout.RowCount++;
-                    layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 90));
-
-                    Label engine2Label = new Label();
-                    engine2Label.Text = "Engine 2:";
-                    engine2Label.TextAlign = ContentAlignment.TopLeft;
-                    engine2Label.AutoSize = false;
-                    engine2Label.Size = new Size(140, 25);
-                    layout.Controls.Add(engine2Label, 0, engine2Row);
-
-                    TextBox engine2TextBox = new TextBox();
-                    engine2TextBox.Multiline = true;
-                    engine2TextBox.ReadOnly = true;
-                    engine2TextBox.Size = new Size(240, 80);
-                    engine2TextBox.AccessibleName = "Engine 2 parameters";
-                    engine2TextBox.Text = "";
-                    layout.Controls.Add(engine2TextBox, 1, engine2Row);
-
-                    // Refresh button row
-                    int refreshRow = layout.RowCount++;
-                    layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 35));
-
-                    Button refreshButton = new Button();
-                    refreshButton.Text = "Refresh Engine Data";
-                    refreshButton.Size = new Size(150, 25);
-                    refreshButton.AccessibleName = "Refresh engine data";
-                    layout.Controls.Add(refreshButton, 1, refreshRow);
-
-                    refreshButton.Click += async (s2, e2) =>
+                    // Create a task completion source for each variable
+                    var pendingValues = new Dictionary<string, TaskCompletionSource<bool>>();
+                    foreach (var varKey in displayVars)
                     {
-                        engine1TextBox.Text = "Loading...";
-                        engine2TextBox.Text = "Loading...";
-                        displayValues.Clear();
+                        pendingValues[varKey] = new TaskCompletionSource<bool>();
+                    }
 
-                        var displayVars = SimVarDefinitions.PanelDisplayVariables[currentPanel];
-                        var pendingValues = new Dictionary<string, TaskCompletionSource<bool>>();
-                        foreach (var varKey in displayVars)
-                        {
-                            pendingValues[varKey] = new TaskCompletionSource<bool>();
-                        }
+                    // Store the pending values temporarily
+                    pendingDisplayRequests = pendingValues;
 
-                        pendingDisplayRequests = pendingValues;
-
-                        foreach (var varKey in displayVars)
-                        {
-                            if (SimVarDefinitions.Variables.ContainsKey(varKey))
-                            {
-                                simConnectManager.RequestVariable(varKey);
-                            }
-                        }
-
-                        var allTasks = pendingValues.Values.Select(tcs => tcs.Task).ToArray();
-                        var timeoutTask = Task.Delay(2000);
-                        await Task.WhenAny(Task.WhenAll(allTasks), timeoutTask);
-
-                        pendingDisplayRequests = null;
-
-                        // Update both engine displays
-                        UpdateEngineDisplays(engine1TextBox, engine2TextBox);
-                    };
-
-                    // Store references to both textboxes
-                    currentControls["_ENGINE1_DISPLAY_"] = engine1TextBox;
-                    currentControls["_ENGINE2_DISPLAY_"] = engine2TextBox;
-                }
-                else
-                {
-                    // Standard display for other panels
-                    // Add separator row
-                    int separatorRow = layout.RowCount++;
-                    layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 10));
-
-                    // Add display row
-                    int displayRow = layout.RowCount++;
-                    layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 60));
-
-                    Label displayLabel = new Label();
-                    displayLabel.Text = "Status Display:";
-                    displayLabel.TextAlign = ContentAlignment.TopLeft;
-                    displayLabel.AutoSize = false;
-                    displayLabel.Size = new Size(140, 25);
-                    layout.Controls.Add(displayLabel, 0, displayRow);
-
-                    // Panel to hold textbox and button
-                    Panel displayPanel = new Panel();
-                    displayPanel.Size = new Size(240, 55);
-
-                    // Read-only multiline textbox for display
-                    TextBox displayTextBox = new TextBox();
-                    displayTextBox.Multiline = true;
-                    displayTextBox.ReadOnly = true;
-                    displayTextBox.Size = new Size(240, 30);
-                    displayTextBox.Location = new Point(0, 0);
-                    displayTextBox.AccessibleName = "Status display";
-                    displayTextBox.Text = "";  // Empty by default
-
-                    // Refresh button
-                    Button refreshButton = new Button();
-                    refreshButton.Text = "Refresh";
-                    refreshButton.Size = new Size(80, 23);
-                    refreshButton.Location = new Point(0, 32);
-                    refreshButton.AccessibleName = "Refresh status";
-
-                    refreshButton.Click += async (s2, e2) =>
+                    // Request all values
+                    foreach (var varKey in displayVars)
                     {
-                        displayTextBox.Text = "Loading...";
-                        displayValues.Clear();  // Clear old values for this panel
-
-                        // Get the display variables for this panel
-                        var displayVars = SimVarDefinitions.PanelDisplayVariables[currentPanel];
-
-                        // Create a task completion source for each variable
-                        var pendingValues = new Dictionary<string, TaskCompletionSource<bool>>();
-                        foreach (var varKey in displayVars)
+                        if (SimVarDefinitions.Variables.ContainsKey(varKey))
                         {
-                            pendingValues[varKey] = new TaskCompletionSource<bool>();
+                            simConnectManager.RequestVariable(varKey);
                         }
+                    }
 
-                        // Store the pending values temporarily
-                        pendingDisplayRequests = pendingValues;
+                    // Wait for all responses or timeout after 2 seconds
+                    var allTasks = pendingValues.Values.Select(tcs => tcs.Task).ToArray();
+                    var timeoutTask = Task.Delay(2000);
+                    await Task.WhenAny(Task.WhenAll(allTasks), timeoutTask);
 
-                        // Request all values
-                        foreach (var varKey in displayVars)
-                        {
-                            if (SimVarDefinitions.Variables.ContainsKey(varKey))
-                            {
-                                simConnectManager.RequestVariable(varKey);
-                            }
-                        }
+                    // Clear pending requests
+                    pendingDisplayRequests = null;
 
-                        // Wait for all responses or timeout after 2 seconds
-                        var allTasks = pendingValues.Values.Select(tcs => tcs.Task).ToArray();
-                        var timeoutTask = Task.Delay(2000);
-                        await Task.WhenAny(Task.WhenAll(allTasks), timeoutTask);
+                    // Update display - NO announcement, user will read with NVDA
+                    UpdateDisplayText(displayTextBox);
+                };
 
-                        // Clear pending requests
-                        pendingDisplayRequests = null;
+                displayPanel.Controls.Add(displayTextBox);
+                displayPanel.Controls.Add(refreshButton);
+                layout.Controls.Add(displayPanel, 1, displayRow);
 
-                        // Update display - NO announcement, user will read with NVDA
-                        UpdateDisplayText(displayTextBox);
-                    };
-
-                    displayPanel.Controls.Add(displayTextBox);
-                    displayPanel.Controls.Add(refreshButton);
-                    layout.Controls.Add(displayPanel, 1, displayRow);
-
-                    // Store reference to display textbox
-                    currentControls["_DISPLAY_"] = displayTextBox;
-                }
+                // Store reference to display textbox
+                currentControls["_DISPLAY_"] = displayTextBox;
             }
 
             controlsContainer.Controls.Add(layout);

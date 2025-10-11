@@ -2795,19 +2795,6 @@ namespace FBWBA.SimConnect
                 "COM_TRANSMIT:2",
                 "COM_TRANSMIT:3"
             },
-            ["Engines"] = new List<string>
-            {
-                "A32NX_ENGINE_N1:1",
-                "A32NX_ENGINE_N2:1",
-                "A32NX_ENGINE_EGT:1",
-                "A32NX_ENGINE_FF:1",
-                "A32NX_ENGINE_OIL_QTY:1",
-                "A32NX_ENGINE_N1:2",
-                "A32NX_ENGINE_N2:2",
-                "A32NX_ENGINE_EGT:2",
-                "A32NX_ENGINE_FF:2",
-                "A32NX_ENGINE_OIL_QTY:2"
-            },
             ["ECAM"] = new List<string>
             {
                 "A32NX_ECAM_SFAIL"

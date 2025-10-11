@@ -32,6 +32,20 @@ namespace FBWBA.Forms
         private bool _pack1On = false;
         private bool _pack2On = false;
         private double _togaThrustLimit = 0;
+
+        // Engine parameters
+        private double _engine1N1 = 0;
+        private double _engine1N2 = 0;
+        private double _engine1EGT = 0;
+        private double _engine1FuelFlow = 0;
+        private double _engine2N1 = 0;
+        private double _engine2N2 = 0;
+        private double _engine2EGT = 0;
+        private double _engine2FuelFlow = 0;
+
+        // Fuel quantity
+        private double _fuelQuantity = 0;
+
         private readonly IntPtr previousWindow;
 
         public ECAMDisplayForm(ScreenReaderAnnouncer announcer, SimConnectManager simConnectManager)
@@ -166,6 +180,19 @@ namespace FBWBA.Forms
                 _simConnectManager?.RequestVariable("A32NX_OVHD_COND_PACK_2_PB_IS_ON");
                 _simConnectManager?.RequestVariable("A32NX_AUTOTHRUST_THRUST_LIMIT_TOGA");
 
+                // Request engine parameters
+                _simConnectManager?.RequestVariable("A32NX_ENGINE_N1:1");
+                _simConnectManager?.RequestVariable("A32NX_ENGINE_N2:1");
+                _simConnectManager?.RequestVariable("A32NX_ENGINE_EGT:1");
+                _simConnectManager?.RequestVariable("A32NX_ENGINE_FF:1");
+                _simConnectManager?.RequestVariable("A32NX_ENGINE_N1:2");
+                _simConnectManager?.RequestVariable("A32NX_ENGINE_N2:2");
+                _simConnectManager?.RequestVariable("A32NX_ENGINE_EGT:2");
+                _simConnectManager?.RequestVariable("A32NX_ENGINE_FF:2");
+
+                // Request fuel quantity
+                _simConnectManager?.RequestFuelQuantity();
+
                 System.Diagnostics.Debug.WriteLine("[ECAMDisplayForm] ECAM data requested, waiting for response");
             }
             catch (Exception ex)
@@ -200,11 +227,15 @@ namespace FBWBA.Forms
                 data.AppendLine($"TOGA THRUST LIMIT: {_togaThrustLimit:F1}% N1");
             }
 
-            // Add separator if any status information was shown
-            if (_stallWarning || _pack1On || _pack2On || _togaThrustLimit > 0)
-            {
-                data.AppendLine();
-            }
+            // Show engine parameters
+            data.AppendLine();
+            data.AppendLine("Engine Parameters");
+            data.AppendLine($"Left Engine: N1: {_engine1N1:F1}%, N2: {_engine1N2:F1}%, EGT: {_engine1EGT:F0}°C, Fuel Flow: {_engine1FuelFlow:F0} Kg/h");
+            data.AppendLine($"Right Engine: N1: {_engine2N1:F1}%, N2: {_engine2N2:F1}%, EGT: {_engine2EGT:F0}°C, Fuel Flow: {_engine2FuelFlow:F0} Kg/h");
+            data.AppendLine($"FOB: {_fuelQuantity:F0} KG");
+
+            // Add separator before ECAM messages
+            data.AppendLine();
 
             // Collect and display left side messages
             bool hasMessages = false;
@@ -363,6 +394,99 @@ namespace FBWBA.Forms
                     return;
                 }
                 _togaThrustLimit = e.Value;
+                UpdateDisplay();
+            }
+            // Handle Engine 1 parameters
+            else if (e.VarName == "A32NX_ENGINE_N1:1")
+            {
+                if (InvokeRequired)
+                {
+                    BeginInvoke(new Action(() => OnSimVarUpdated(sender, e)));
+                    return;
+                }
+                _engine1N1 = e.Value;
+                UpdateDisplay();
+            }
+            else if (e.VarName == "A32NX_ENGINE_N2:1")
+            {
+                if (InvokeRequired)
+                {
+                    BeginInvoke(new Action(() => OnSimVarUpdated(sender, e)));
+                    return;
+                }
+                _engine1N2 = e.Value;
+                UpdateDisplay();
+            }
+            else if (e.VarName == "A32NX_ENGINE_EGT:1")
+            {
+                if (InvokeRequired)
+                {
+                    BeginInvoke(new Action(() => OnSimVarUpdated(sender, e)));
+                    return;
+                }
+                _engine1EGT = e.Value;
+                UpdateDisplay();
+            }
+            else if (e.VarName == "A32NX_ENGINE_FF:1")
+            {
+                if (InvokeRequired)
+                {
+                    BeginInvoke(new Action(() => OnSimVarUpdated(sender, e)));
+                    return;
+                }
+                _engine1FuelFlow = e.Value;
+                UpdateDisplay();
+            }
+            // Handle Engine 2 parameters
+            else if (e.VarName == "A32NX_ENGINE_N1:2")
+            {
+                if (InvokeRequired)
+                {
+                    BeginInvoke(new Action(() => OnSimVarUpdated(sender, e)));
+                    return;
+                }
+                _engine2N1 = e.Value;
+                UpdateDisplay();
+            }
+            else if (e.VarName == "A32NX_ENGINE_N2:2")
+            {
+                if (InvokeRequired)
+                {
+                    BeginInvoke(new Action(() => OnSimVarUpdated(sender, e)));
+                    return;
+                }
+                _engine2N2 = e.Value;
+                UpdateDisplay();
+            }
+            else if (e.VarName == "A32NX_ENGINE_EGT:2")
+            {
+                if (InvokeRequired)
+                {
+                    BeginInvoke(new Action(() => OnSimVarUpdated(sender, e)));
+                    return;
+                }
+                _engine2EGT = e.Value;
+                UpdateDisplay();
+            }
+            else if (e.VarName == "A32NX_ENGINE_FF:2")
+            {
+                if (InvokeRequired)
+                {
+                    BeginInvoke(new Action(() => OnSimVarUpdated(sender, e)));
+                    return;
+                }
+                _engine2FuelFlow = e.Value;
+                UpdateDisplay();
+            }
+            // Handle Fuel Quantity
+            else if (e.VarName == "FUEL_QUANTITY")
+            {
+                if (InvokeRequired)
+                {
+                    BeginInvoke(new Action(() => OnSimVarUpdated(sender, e)));
+                    return;
+                }
+                _fuelQuantity = e.Value;
                 UpdateDisplay();
             }
         }
