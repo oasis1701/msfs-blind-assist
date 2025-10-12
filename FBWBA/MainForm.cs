@@ -659,6 +659,9 @@ namespace FBWBA
                 case HotkeyAction.ShowECAM:
                     ShowECAMDialog();
                     break;
+                case HotkeyAction.ShowStatusPage:
+                    ShowStatusDialog();
+                    break;
                 case HotkeyAction.ReadWaypointInfo:
                     simConnectManager.RequestWaypointInfo();
                     break;
@@ -1091,6 +1094,15 @@ namespace FBWBA
             hotkeyManager.ExitOutputHotkeyMode();
 
             var dialog = new ECAMDisplayForm(announcer, simConnectManager);
+            dialog.Show();
+        }
+
+        private void ShowStatusDialog()
+        {
+            // Ensure output hotkey mode is deactivated before showing window
+            hotkeyManager.ExitOutputHotkeyMode();
+
+            var dialog = new StatusDisplayForm(announcer, simConnectManager);
             dialog.Show();
         }
 

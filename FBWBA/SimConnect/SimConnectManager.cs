@@ -2754,6 +2754,39 @@ namespace FBWBA.SimConnect
             }
         }
 
+        public void RequestStatusMessages()
+        {
+            if (!IsConnected || simConnect == null)
+            {
+                System.Diagnostics.Debug.WriteLine("[SimConnectManager] Cannot request STATUS messages - not connected");
+                return;
+            }
+
+            try
+            {
+                System.Diagnostics.Debug.WriteLine("[SimConnectManager] Requesting STATUS message codes via SimConnect...");
+
+                // Request all 36 STATUS variables (18 LEFT + 18 RIGHT)
+                // LEFT side
+                for (int i = 1; i <= 18; i++)
+                {
+                    RequestVariable($"A32NX_STATUS_LEFT_LINE_{i}");
+                }
+
+                // RIGHT side
+                for (int i = 1; i <= 18; i++)
+                {
+                    RequestVariable($"A32NX_STATUS_RIGHT_LINE_{i}");
+                }
+
+                System.Diagnostics.Debug.WriteLine("[SimConnectManager] All 36 STATUS code requests sent via SimConnect");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error requesting STATUS messages: {ex.Message}");
+            }
+        }
+
         /// <summary>
         /// Convert MHz frequency to BCD16 Hz format for COM_STBY_RADIO_SET event
         /// Example: 122.800 MHz → 122800000 Hz → BCD16 encoding

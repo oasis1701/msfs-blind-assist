@@ -133,6 +133,9 @@
     <Compile Include="Forms\ECAMDisplayForm.cs">
       <SubType>Form</SubType>
     </Compile>
+    <Compile Include="Forms\StatusDisplayForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
     <Compile Include="Services\GeoNamesService.cs" />
     <Compile Include="Services\VATSIMService.cs" />
     <Compile Include="Services\UpdateService.cs" />

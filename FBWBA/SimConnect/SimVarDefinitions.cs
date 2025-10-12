@@ -2106,6 +2106,263 @@ namespace FBWBA.SimConnect
                 IsAnnounced = true
             },
 
+            // ECAM STATUS PAGE VARIABLES (numeric codes for ECAM Status page - LEFT side)
+            // Display-only, not announced (used by Status Display window via hotkey)
+            ["A32NX_STATUS_LEFT_LINE_1"] = new SimVarDefinition
+            {
+                Name = "A32NX_STATUS_LEFT_LINE_1",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["A32NX_STATUS_LEFT_LINE_2"] = new SimVarDefinition
+            {
+                Name = "A32NX_STATUS_LEFT_LINE_2",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["A32NX_STATUS_LEFT_LINE_3"] = new SimVarDefinition
+            {
+                Name = "A32NX_STATUS_LEFT_LINE_3",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["A32NX_STATUS_LEFT_LINE_4"] = new SimVarDefinition
+            {
+                Name = "A32NX_STATUS_LEFT_LINE_4",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["A32NX_STATUS_LEFT_LINE_5"] = new SimVarDefinition
+            {
+                Name = "A32NX_STATUS_LEFT_LINE_5",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["A32NX_STATUS_LEFT_LINE_6"] = new SimVarDefinition
+            {
+                Name = "A32NX_STATUS_LEFT_LINE_6",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["A32NX_STATUS_LEFT_LINE_7"] = new SimVarDefinition
+            {
+                Name = "A32NX_STATUS_LEFT_LINE_7",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["A32NX_STATUS_LEFT_LINE_8"] = new SimVarDefinition
+            {
+                Name = "A32NX_STATUS_LEFT_LINE_8",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["A32NX_STATUS_LEFT_LINE_9"] = new SimVarDefinition
+            {
+                Name = "A32NX_STATUS_LEFT_LINE_9",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["A32NX_STATUS_LEFT_LINE_10"] = new SimVarDefinition
+            {
+                Name = "A32NX_STATUS_LEFT_LINE_10",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["A32NX_STATUS_LEFT_LINE_11"] = new SimVarDefinition
+            {
+                Name = "A32NX_STATUS_LEFT_LINE_11",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["A32NX_STATUS_LEFT_LINE_12"] = new SimVarDefinition
+            {
+                Name = "A32NX_STATUS_LEFT_LINE_12",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["A32NX_STATUS_LEFT_LINE_13"] = new SimVarDefinition
+            {
+                Name = "A32NX_STATUS_LEFT_LINE_13",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["A32NX_STATUS_LEFT_LINE_14"] = new SimVarDefinition
+            {
+                Name = "A32NX_STATUS_LEFT_LINE_14",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["A32NX_STATUS_LEFT_LINE_15"] = new SimVarDefinition
+            {
+                Name = "A32NX_STATUS_LEFT_LINE_15",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["A32NX_STATUS_LEFT_LINE_16"] = new SimVarDefinition
+            {
+                Name = "A32NX_STATUS_LEFT_LINE_16",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["A32NX_STATUS_LEFT_LINE_17"] = new SimVarDefinition
+            {
+                Name = "A32NX_STATUS_LEFT_LINE_17",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["A32NX_STATUS_LEFT_LINE_18"] = new SimVarDefinition
+            {
+                Name = "A32NX_STATUS_LEFT_LINE_18",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+
+            // ECAM STATUS PAGE VARIABLES (numeric codes for ECAM Status page - RIGHT side)
+            ["A32NX_STATUS_RIGHT_LINE_1"] = new SimVarDefinition
+            {
+                Name = "A32NX_STATUS_RIGHT_LINE_1",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["A32NX_STATUS_RIGHT_LINE_2"] = new SimVarDefinition
+            {
+                Name = "A32NX_STATUS_RIGHT_LINE_2",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["A32NX_STATUS_RIGHT_LINE_3"] = new SimVarDefinition
+            {
+                Name = "A32NX_STATUS_RIGHT_LINE_3",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["A32NX_STATUS_RIGHT_LINE_4"] = new SimVarDefinition
+            {
+                Name = "A32NX_STATUS_RIGHT_LINE_4",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["A32NX_STATUS_RIGHT_LINE_5"] = new SimVarDefinition
+            {
+                Name = "A32NX_STATUS_RIGHT_LINE_5",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["A32NX_STATUS_RIGHT_LINE_6"] = new SimVarDefinition
+            {
+                Name = "A32NX_STATUS_RIGHT_LINE_6",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["A32NX_STATUS_RIGHT_LINE_7"] = new SimVarDefinition
+            {
+                Name = "A32NX_STATUS_RIGHT_LINE_7",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["A32NX_STATUS_RIGHT_LINE_8"] = new SimVarDefinition
+            {
+                Name = "A32NX_STATUS_RIGHT_LINE_8",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["A32NX_STATUS_RIGHT_LINE_9"] = new SimVarDefinition
+            {
+                Name = "A32NX_STATUS_RIGHT_LINE_9",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["A32NX_STATUS_RIGHT_LINE_10"] = new SimVarDefinition
+            {
+                Name = "A32NX_STATUS_RIGHT_LINE_10",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["A32NX_STATUS_RIGHT_LINE_11"] = new SimVarDefinition
+            {
+                Name = "A32NX_STATUS_RIGHT_LINE_11",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["A32NX_STATUS_RIGHT_LINE_12"] = new SimVarDefinition
+            {
+                Name = "A32NX_STATUS_RIGHT_LINE_12",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["A32NX_STATUS_RIGHT_LINE_13"] = new SimVarDefinition
+            {
+                Name = "A32NX_STATUS_RIGHT_LINE_13",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["A32NX_STATUS_RIGHT_LINE_14"] = new SimVarDefinition
+            {
+                Name = "A32NX_STATUS_RIGHT_LINE_14",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["A32NX_STATUS_RIGHT_LINE_15"] = new SimVarDefinition
+            {
+                Name = "A32NX_STATUS_RIGHT_LINE_15",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["A32NX_STATUS_RIGHT_LINE_16"] = new SimVarDefinition
+            {
+                Name = "A32NX_STATUS_RIGHT_LINE_16",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["A32NX_STATUS_RIGHT_LINE_17"] = new SimVarDefinition
+            {
+                Name = "A32NX_STATUS_RIGHT_LINE_17",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+            ["A32NX_STATUS_RIGHT_LINE_18"] = new SimVarDefinition
+            {
+                Name = "A32NX_STATUS_RIGHT_LINE_18",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+
             ["A32NX_AUTOPILOT_AUTOLAND_WARNING"] = new SimVarDefinition
             {
                 Name = "A32NX_AUTOPILOT_AUTOLAND_WARNING",
