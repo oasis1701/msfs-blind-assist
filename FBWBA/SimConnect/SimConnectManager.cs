@@ -51,6 +51,13 @@ namespace FBWBA.SimConnect
         /// </summary>
         public bool SuppressECAMAnnouncements { get; set; } = true;
 
+        /// <summary>
+        /// Controls whether ECAM monitoring is enabled (user-controlled toggle).
+        /// When false, ECAM announcements are disabled regardless of SuppressECAMAnnouncements.
+        /// This is separate from SuppressECAMAnnouncements which is for startup grace period.
+        /// </summary>
+        public bool ECAMMonitoringEnabled { get; set; } = true;
+
         // Variable tracking for individual registrations
         private ConcurrentDictionary<string, int> variableDataDefinitions = new ConcurrentDictionary<string, int>();  // Maps variable keys to data definition IDs
         private ConcurrentDictionary<int, string> pendingRequests = new ConcurrentDictionary<int, string>();  // Track pending requests
@@ -263,6 +270,17 @@ namespace FBWBA.SimConnect
         {
             SuppressECAMAnnouncements = false;
             System.Diagnostics.Debug.WriteLine("[SimConnectManager] ECAM announcements enabled");
+        }
+
+        /// <summary>
+        /// Toggles ECAM monitoring on/off (user-controlled via hotkey).
+        /// Returns the new state (true = enabled, false = disabled).
+        /// </summary>
+        public bool ToggleECAMMonitoring()
+        {
+            ECAMMonitoringEnabled = !ECAMMonitoringEnabled;
+            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] ECAM monitoring {(ECAMMonitoringEnabled ? "enabled" : "disabled")}");
+            return ECAMMonitoringEnabled;
         }
 
         private void ReconnectTimer_Tick(object sender, EventArgs e)
@@ -1254,7 +1272,14 @@ namespace FBWBA.SimConnect
                     }
                 }
 
-                // If suppression is enabled, just update the previous set without announcing
+                // If monitoring is disabled or suppression is enabled, just update the previous set without announcing
+                if (!ECAMMonitoringEnabled)
+                {
+                    previousECAMMessages = currentMessages;
+                    System.Diagnostics.Debug.WriteLine($"[SimConnectManager] ECAM messages collected silently (monitoring disabled): {currentMessages.Count} messages");
+                    return;
+                }
+
                 if (SuppressECAMAnnouncements)
                 {
                     previousECAMMessages = currentMessages;

@@ -696,6 +696,9 @@ namespace FBWBA
                 case HotkeyAction.ToggleTakeoffAssist:
                     ToggleTakeoffAssist();
                     break;
+                case HotkeyAction.ToggleECAMMonitoring:
+                    ToggleECAMMonitoring();
+                    break;
                 case HotkeyAction.ReadWaypointInfo:
                     simConnectManager.RequestWaypointInfo();
                     break;
@@ -1244,6 +1247,19 @@ namespace FBWBA
 
             // Request current heading for takeoff assist toggle
             simConnectManager.RequestHeadingForTakeoffAssist();
+        }
+
+        private void ToggleECAMMonitoring()
+        {
+            if (!simConnectManager.IsConnected)
+            {
+                announcer.AnnounceImmediate("Not connected to simulator.");
+                return;
+            }
+
+            bool isEnabled = simConnectManager.ToggleECAMMonitoring();
+            string statusMessage = isEnabled ? "E W D monitoring enabled" : "E W D monitoring disabled";
+            announcer.AnnounceImmediate(statusMessage);
         }
 
         private void OnTakeoffAssistActiveChanged(object sender, bool isActive)

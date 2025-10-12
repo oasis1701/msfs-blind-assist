@@ -82,6 +82,7 @@ namespace FBWBA.Hotkeys
         private const int HOTKEY_ECAM_DISPLAY = 9056;
         private const int HOTKEY_STATUS_DISPLAY = 9057;
         private const int HOTKEY_TAKEOFF_ASSIST = 9058;
+        private const int HOTKEY_TOGGLE_ECAM_MONITORING = 9059;
 
         private IntPtr windowHandle;
         private bool outputHotkeyModeActive = false;
@@ -237,6 +238,9 @@ namespace FBWBA.Hotkeys
                         case HOTKEY_TAKEOFF_ASSIST:
                             TriggerHotkey(HotkeyAction.ToggleTakeoffAssist);
                             break;
+                        case HOTKEY_TOGGLE_ECAM_MONITORING:
+                            TriggerHotkey(HotkeyAction.ToggleECAMMonitoring);
+                            break;
                     }
                     DeactivateOutputHotkeyMode();
                     return true;
@@ -350,6 +354,7 @@ namespace FBWBA.Hotkeys
             RegisterHotKey(windowHandle, HOTKEY_ECAM_DISPLAY, MOD_SHIFT, 0x55);  // Shift+U (ECAM Display)
             RegisterHotKey(windowHandle, HOTKEY_STATUS_DISPLAY, MOD_SHIFT, 0x54); // Shift+T (STATUS Display)
             RegisterHotKey(windowHandle, HOTKEY_TAKEOFF_ASSIST, MOD_CONTROL, 0x54); // Ctrl+T (Takeoff Assist)
+            RegisterHotKey(windowHandle, HOTKEY_TOGGLE_ECAM_MONITORING, MOD_CONTROL, 0x45); // Ctrl+E (Toggle ECAM Monitoring)
 
             // Auto-timeout disabled - hotkey mode stays active until used or escape pressed
             
@@ -398,6 +403,7 @@ namespace FBWBA.Hotkeys
             UnregisterHotKey(windowHandle, HOTKEY_ECAM_DISPLAY);
             UnregisterHotKey(windowHandle, HOTKEY_STATUS_DISPLAY);
             UnregisterHotKey(windowHandle, HOTKEY_TAKEOFF_ASSIST);
+            UnregisterHotKey(windowHandle, HOTKEY_TOGGLE_ECAM_MONITORING);
 
             OutputHotkeyModeChanged?.Invoke(this, false);
         }
@@ -584,6 +590,7 @@ namespace FBWBA.Hotkeys
         ReadWaypointInfo,
         ShowECAM,
         ShowStatusPage,
-        ToggleTakeoffAssist
+        ToggleTakeoffAssist,
+        ToggleECAMMonitoring
     }
 }
