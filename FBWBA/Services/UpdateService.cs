@@ -178,9 +178,8 @@ namespace FBWBA.Services
                 string appDirectory = AppDomain.CurrentDomain.BaseDirectory;
 
                 // Arguments: <zipPath> <appDirectory> <appExecutablePath>
-                // Note: When UseShellExecute = true, do NOT manually quote arguments
-                // Windows shell handles escaping automatically
-                string arguments = $"{zipPath} {appDirectory} {appPath}";
+                // Quote each argument to handle paths with spaces
+                string arguments = $"\"{zipPath}\" \"{appDirectory}\" \"{appPath}\"";
 
                 ProcessStartInfo startInfo = new ProcessStartInfo
                 {
