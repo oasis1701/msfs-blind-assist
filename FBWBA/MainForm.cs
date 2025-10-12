@@ -24,6 +24,7 @@ namespace FBWBA
         private HotkeyManager hotkeyManager;
         private AirportDatabase airportDatabase;
         private ChecklistForm checklistForm;
+        private TakeoffAssistManager takeoffAssistManager;
 
         // Current state
         private string currentSection = "";
@@ -115,6 +116,10 @@ namespace FBWBA
             hotkeyManager.HotkeyTriggered += OnHotkeyTriggered;
             hotkeyManager.OutputHotkeyModeChanged += OnOutputHotkeyModeChanged;
             hotkeyManager.InputHotkeyModeChanged += OnInputHotkeyModeChanged;
+
+            // Initialize takeoff assist manager
+            takeoffAssistManager = new TakeoffAssistManager(announcer);
+            takeoffAssistManager.TakeoffAssistActiveChanged += OnTakeoffAssistActiveChanged;
 
             // Initialize airport database
             airportDatabase = new AirportDatabase();
@@ -268,6 +273,32 @@ namespace FBWBA
                 e.VarName == "FCU_ALTITUDE_WITH_STATUS" || e.VarName == "FCU_VSFPA_VALUE")
             {
                 announcer.AnnounceImmediate(e.Description);
+                return true;
+            }
+
+            // Handle takeoff assist toggle activation (receives heading from RequestHeadingForTakeoffAssist)
+            if (e.VarName == "HEADING_FOR_TAKEOFF_ASSIST")
+            {
+                // Convert radians to degrees (value is in radians)
+                double headingDegrees = e.Value * (180.0 / Math.PI);
+                takeoffAssistManager.Toggle(headingDegrees);
+                return true;
+            }
+
+            // Handle takeoff assist pitch updates
+            if (e.VarName == "PLANE_PITCH_DEGREES" && takeoffAssistManager.IsActive)
+            {
+                // Convert radians to degrees and negate (SimConnect uses body axis: negative = nose up)
+                double pitchDegrees = -(e.Value * (180.0 / Math.PI));
+                takeoffAssistManager.ProcessPitchUpdate(pitchDegrees);
+                return true;
+            }
+
+            // Handle takeoff assist heading updates
+            if (e.VarName == "PLANE_HEADING_DEGREES_MAGNETIC" && takeoffAssistManager.IsActive)
+            {
+                double headingDegrees = e.Value * (180.0 / Math.PI); // Convert radians to degrees
+                takeoffAssistManager.ProcessHeadingUpdate(headingDegrees);
                 return true;
             }
 
@@ -661,6 +692,9 @@ namespace FBWBA
                     break;
                 case HotkeyAction.ShowStatusPage:
                     ShowStatusDialog();
+                    break;
+                case HotkeyAction.ToggleTakeoffAssist:
+                    ToggleTakeoffAssist();
                     break;
                 case HotkeyAction.ReadWaypointInfo:
                     simConnectManager.RequestWaypointInfo();
@@ -1198,6 +1232,32 @@ namespace FBWBA
             }
 
             simConnectManager.ToggleVisualApproachMonitoring();
+        }
+
+        private void ToggleTakeoffAssist()
+        {
+            if (!simConnectManager.IsConnected)
+            {
+                announcer.AnnounceImmediate("Not connected to simulator.");
+                return;
+            }
+
+            // Request current heading for takeoff assist toggle
+            simConnectManager.RequestHeadingForTakeoffAssist();
+        }
+
+        private void OnTakeoffAssistActiveChanged(object sender, bool isActive)
+        {
+            if (isActive)
+            {
+                // Start monitoring pitch and heading
+                simConnectManager.StartTakeoffAssistMonitoring();
+            }
+            else
+            {
+                // Stop monitoring
+                simConnectManager.StopTakeoffAssistMonitoring();
+            }
         }
 
         private void BuildDatabaseMenuItem_Click(object sender, EventArgs e)

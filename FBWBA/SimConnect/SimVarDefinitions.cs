@@ -1730,6 +1730,26 @@ namespace FBWBA.SimConnect
                 Units = "feet"
             },
 
+            // TAKEOFF ASSIST VARIABLES (dynamically monitored when takeoff assist is active)
+            ["PLANE_PITCH_DEGREES"] = new SimVarDefinition
+            {
+                Name = "PLANE PITCH DEGREES",
+                DisplayName = "Aircraft Pitch",
+                Type = SimVarType.SimVar,
+                UpdateFrequency = UpdateFrequency.OnRequest, // Registered at startup, monitored when takeoff assist is active
+                IsAnnounced = false, // Handled by TakeoffAssistManager
+                Units = "radians" // Note: Despite name, returns radians!
+            },
+            ["PLANE_HEADING_DEGREES_MAGNETIC"] = new SimVarDefinition
+            {
+                Name = "PLANE HEADING DEGREES MAGNETIC",
+                DisplayName = "Magnetic Heading",
+                Type = SimVarType.SimVar,
+                UpdateFrequency = UpdateFrequency.OnRequest, // Registered at startup, monitored when takeoff assist is active
+                IsAnnounced = false, // Handled by TakeoffAssistManager
+                Units = "radians" // Note: Despite name, returns radians!
+            },
+
             // MONITORED VARIABLES
             ["A32NX_FCU_AFS_DISPLAY_HDG_TRK_MANAGED"] = new SimVarDefinition
             {

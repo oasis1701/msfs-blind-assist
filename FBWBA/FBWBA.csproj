@@ -139,6 +139,7 @@
     <Compile Include="Services\GeoNamesService.cs" />
     <Compile Include="Services\VATSIMService.cs" />
     <Compile Include="Services\UpdateService.cs" />
+    <Compile Include="Services\TakeoffAssistManager.cs" />
     <Compile Include="Models\LocationData.cs" />
     <Compile Include="Navigation\NavigationCalculator.cs" />
     <Compile Include="Navigation\VisualApproachMonitor.cs" />

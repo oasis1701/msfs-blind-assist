@@ -870,6 +870,37 @@ namespace FBWBA.SimConnect
                         Description = description
                     });
                     break;
+
+                case (DATA_REQUESTS)324: // Takeoff Assist - Pitch
+                    SingleValue takeoffPitchData = (SingleValue)data.dwData[0];
+                    SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                    {
+                        VarName = "PLANE_PITCH_DEGREES",
+                        Value = takeoffPitchData.value,
+                        Description = null
+                    });
+                    break;
+
+                case (DATA_REQUESTS)325: // Takeoff Assist - Heading
+                    SingleValue takeoffHeadingData = (SingleValue)data.dwData[0];
+                    SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                    {
+                        VarName = "PLANE_HEADING_DEGREES_MAGNETIC",
+                        Value = takeoffHeadingData.value,
+                        Description = null
+                    });
+                    break;
+
+                case (DATA_REQUESTS)326: // Heading for Takeoff Assist Toggle
+                    SingleValue takeoffAssistHeadingData = (SingleValue)data.dwData[0];
+                    // Return raw value in radians with unique VarName to prevent collision with H hotkey
+                    SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                    {
+                        VarName = "HEADING_FOR_TAKEOFF_ASSIST",
+                        Value = takeoffAssistHeadingData.value, // Raw radians value
+                        Description = null
+                    });
+                    break;
             }
         }
 
@@ -1899,6 +1930,29 @@ namespace FBWBA.SimConnect
             }
         }
 
+        public void RequestHeadingForTakeoffAssist()
+        {
+            if (IsConnected && simConnect != null)
+            {
+                try
+                {
+                    var tempDefId = (DATA_DEFINITIONS)326;
+                    simConnect.ClearDataDefinition(tempDefId);
+                    simConnect.AddToDataDefinition(tempDefId,
+                        "PLANE HEADING DEGREES MAGNETIC", "radians",
+                        SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+                    simConnect.RegisterDataDefineStruct<SingleValue>(tempDefId);
+                    simConnect.RequestDataOnSimObject((DATA_REQUESTS)326,
+                        tempDefId, SIMCONNECT_OBJECT_ID_USER,
+                        SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Error requesting heading for takeoff assist: {ex.Message}");
+                }
+            }
+        }
+
         public void RequestHeadingTrue()
         {
             if (IsConnected && simConnect != null)
@@ -2583,6 +2637,70 @@ namespace FBWBA.SimConnect
                 StopVisualApproachMonitoring();
             else
                 StartVisualApproachMonitoring();
+        }
+
+        // Takeoff assist monitoring
+        public void StartTakeoffAssistMonitoring()
+        {
+            if (!IsConnected || simConnect == null) return;
+
+            try
+            {
+                // Request continuous updates for pitch and heading at SIM_FRAME rate
+                simConnect.RequestDataOnSimObject((DATA_REQUESTS)324,
+                    (DATA_DEFINITIONS)GetVariableDataDefinition("PLANE_PITCH_DEGREES"),
+                    SIMCONNECT_OBJECT_ID_USER,
+                    SIMCONNECT_PERIOD.SIM_FRAME,
+                    SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+
+                simConnect.RequestDataOnSimObject((DATA_REQUESTS)325,
+                    (DATA_DEFINITIONS)GetVariableDataDefinition("PLANE_HEADING_DEGREES_MAGNETIC"),
+                    SIMCONNECT_OBJECT_ID_USER,
+                    SIMCONNECT_PERIOD.SIM_FRAME,
+                    SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+
+                System.Diagnostics.Debug.WriteLine("[SimConnectManager] Takeoff assist monitoring started");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error starting takeoff assist monitoring: {ex.Message}");
+            }
+        }
+
+        public void StopTakeoffAssistMonitoring()
+        {
+            if (!IsConnected || simConnect == null) return;
+
+            try
+            {
+                // Stop continuous updates
+                simConnect.RequestDataOnSimObject((DATA_REQUESTS)324,
+                    (DATA_DEFINITIONS)GetVariableDataDefinition("PLANE_PITCH_DEGREES"),
+                    SIMCONNECT_OBJECT_ID_USER,
+                    SIMCONNECT_PERIOD.NEVER,
+                    SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+
+                simConnect.RequestDataOnSimObject((DATA_REQUESTS)325,
+                    (DATA_DEFINITIONS)GetVariableDataDefinition("PLANE_HEADING_DEGREES_MAGNETIC"),
+                    SIMCONNECT_OBJECT_ID_USER,
+                    SIMCONNECT_PERIOD.NEVER,
+                    SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+
+                System.Diagnostics.Debug.WriteLine("[SimConnectManager] Takeoff assist monitoring stopped");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error stopping takeoff assist monitoring: {ex.Message}");
+            }
+        }
+
+        private int GetVariableDataDefinition(string varKey)
+        {
+            if (variableDataDefinitions.TryGetValue(varKey, out int defId))
+            {
+                return defId;
+            }
+            return -1;
         }
 
         // Destination runway management
