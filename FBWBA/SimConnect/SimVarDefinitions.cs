@@ -2934,8 +2934,8 @@ namespace FBWBA.SimConnect
                 Name = "A32NX_SIDESTICK_POSITION_X",
                 DisplayName = "Sidestick Roll",
                 Type = SimVarType.LVar,
-                UpdateFrequency = UpdateFrequency.Continuous,
-                IsAnnounced = true,  // Important for flight control awareness
+                UpdateFrequency = UpdateFrequency.Never,
+                IsAnnounced = false,
                 Units = "number"
             },
             ["A32NX_SIDESTICK_POSITION_Y"] = new SimVarDefinition
@@ -2943,8 +2943,8 @@ namespace FBWBA.SimConnect
                 Name = "A32NX_SIDESTICK_POSITION_Y",
                 DisplayName = "Sidestick Pitch",
                 Type = SimVarType.LVar,
-                UpdateFrequency = UpdateFrequency.Continuous,
-                IsAnnounced = true,  // Important for flight control awareness
+                UpdateFrequency = UpdateFrequency.Never,
+                IsAnnounced = false,
                 Units = "number"
             },
 
@@ -3295,9 +3295,7 @@ namespace FBWBA.SimConnect
             },
             ["Flight Controls"] = new List<string>
             {
-                "A32NX_FLAPS_HANDLE_INDEX",
-                "A32NX_SIDESTICK_POSITION_X",
-                "A32NX_SIDESTICK_POSITION_Y"
+                "A32NX_FLAPS_HANDLE_INDEX"
             },
         };
     }
