@@ -20,7 +20,7 @@ namespace FBWBA.Accessibility
         // Speech queue for sequential announcements
         private Queue<string> announcementQueue;
         private Timer queueTimer;
-        private const int QUEUE_INTERVAL_MS = 600; // 600ms delay between queued messages
+        private const int QUEUE_INTERVAL_MS = 900; // 900ms delay between queued messages (increased from 600ms to prevent NVDA buffer overflow)
 
         // Native methods for screen reader detection
         [DllImport("user32.dll")]
