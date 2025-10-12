@@ -2121,7 +2121,7 @@ namespace FBWBA.SimConnect
                 DisplayName = "ND FM Message",
                 Type = SimVarType.LVar,
                 UpdateFrequency = UpdateFrequency.Continuous,
-                IsAnnounced = false, // Changed to false - bitfield requires custom announcement logic
+                IsAnnounced = true, // Enable announcements for ND FM messages
                 Units = "number"
             },
 
@@ -2302,7 +2302,8 @@ namespace FBWBA.SimConnect
                 Name = "A32NX_EFIS_L_ND_FM_MESSAGE_FLAGS",
                 DisplayName = "ND FM Messages",
                 Type = SimVarType.LVar,
-                UpdateFrequency = UpdateFrequency.OnRequest,
+                UpdateFrequency = UpdateFrequency.Continuous,
+                IsAnnounced = true,
                 Units = "number"
             },
 
