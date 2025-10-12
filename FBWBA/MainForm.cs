@@ -140,16 +140,34 @@ namespace FBWBA
             }
 
             statusLabel.Text = status;
-            
+
             if (status.Contains("Connected to FBW"))
             {
                 announcer.Announce(status);
                 // Request all current values when connected
                 RequestAllCurrentValues();
+
+                // Start a grace period before enabling continuous variable announcements
+                // This prevents initial ECAM messages and other variables from being announced
+                // when connecting to a cold and dark aircraft
+                Timer announcementGracePeriodTimer = new Timer();
+                announcementGracePeriodTimer.Interval = 5000; // 5 second grace period
+                announcementGracePeriodTimer.Tick += (s, e) =>
+                {
+                    announcementGracePeriodTimer.Stop();
+                    announcementGracePeriodTimer.Dispose();
+                    simVarMonitor.EnableAnnouncements();
+                    simConnectManager.EnableECAMAnnouncements();
+                };
+                announcementGracePeriodTimer.Start();
             }
             else if (status.Contains("Disconnected"))
             {
                 announcer.Announce(status);
+                // Disable announcements when disconnected
+                simVarMonitor.Reset();
+                // Reset ECAM suppression flag for next connection
+                simConnectManager.SuppressECAMAnnouncements = true;
             }
         }
 

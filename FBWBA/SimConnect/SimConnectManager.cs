@@ -45,6 +45,12 @@ namespace FBWBA.SimConnect
         private Dictionary<string, string> ecamAnnouncementData = new Dictionary<string, string>();  // ECAM messages with color for announcements
         private HashSet<string> previousECAMMessages = new HashSet<string>();  // Track previous message set for change detection
 
+        /// <summary>
+        /// Controls whether ECAM message announcements are enabled.
+        /// When true, ECAM message changes are suppressed to prevent initial startup noise.
+        /// </summary>
+        public bool SuppressECAMAnnouncements { get; set; } = true;
+
         // Variable tracking for individual registrations
         private ConcurrentDictionary<string, int> variableDataDefinitions = new ConcurrentDictionary<string, int>();  // Maps variable keys to data definition IDs
         private ConcurrentDictionary<int, string> pendingRequests = new ConcurrentDictionary<int, string>();  // Track pending requests
@@ -247,6 +253,16 @@ namespace FBWBA.SimConnect
 
                 reconnectTimer.Start();
             }
+        }
+
+        /// <summary>
+        /// Enables ECAM message announcements.
+        /// Call this after initial connection to begin monitoring ECAM changes.
+        /// </summary>
+        public void EnableECAMAnnouncements()
+        {
+            SuppressECAMAnnouncements = false;
+            System.Diagnostics.Debug.WriteLine("[SimConnectManager] ECAM announcements enabled");
         }
 
         private void ReconnectTimer_Tick(object sender, EventArgs e)
@@ -1205,6 +1221,14 @@ namespace FBWBA.SimConnect
                     {
                         currentMessages.Add(kvp.Value);
                     }
+                }
+
+                // If suppression is enabled, just update the previous set without announcing
+                if (SuppressECAMAnnouncements)
+                {
+                    previousECAMMessages = currentMessages;
+                    System.Diagnostics.Debug.WriteLine($"[SimConnectManager] ECAM messages collected silently (suppression active): {currentMessages.Count} messages");
+                    return;
                 }
 
                 // Find new messages (in current but not in previous)
