@@ -56,7 +56,7 @@ namespace FBWBA.SimConnect
         /// When false, ECAM announcements are disabled regardless of SuppressECAMAnnouncements.
         /// This is separate from SuppressECAMAnnouncements which is for startup grace period.
         /// </summary>
-        public bool ECAMMonitoringEnabled { get; set; } = true;
+        public bool ECAMMonitoringEnabled { get; set; } = false;
 
         // Variable tracking for individual registrations
         private ConcurrentDictionary<string, int> variableDataDefinitions = new ConcurrentDictionary<string, int>();  // Maps variable keys to data definition IDs
