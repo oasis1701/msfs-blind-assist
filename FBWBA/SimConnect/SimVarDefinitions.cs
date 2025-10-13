@@ -99,6 +99,20 @@ namespace FBWBA.SimConnect
                 ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
             },
 
+            // ELEC Monitoring Variables (continuous monitoring with auto-announcement)
+            ["A32NX_ELEC_AC_ESS_BUS_IS_POWERED"] = new SimVarDefinition
+            {
+                Name = "A32NX_ELEC_AC_ESS_BUS_IS_POWERED",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "Electrical systems shutting down",
+                    [1] = "ND, PFD, E W D, SD display message: SELF TEST IN PROGRESS | (MAX 40 SECONDS)"
+                }
+            },
+
             // ADIRS Panel
             ["A32NX_OVHD_ADIRS_IR_1_MODE_SELECTOR_KNOB"] = new SimVarDefinition
             {
