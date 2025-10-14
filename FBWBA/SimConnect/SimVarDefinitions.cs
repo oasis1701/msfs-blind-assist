@@ -783,12 +783,12 @@ namespace FBWBA.SimConnect
             ["GEAR_HANDLE_POSITION"] = new SimVarDefinition
             {
                 Name = "GEAR HANDLE POSITION",
-                DisplayName = "Gear Handle Position",
+                DisplayName = "Gear",
                 Type = SimVarType.SimVar,
                 Units = "bool",
                 UpdateFrequency = UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Gear handle position up", [1] = "Gear handle position down" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Up", [1] = "Down" }
             },
 
             // PEDESTAL SECTION - Speed Brake Panel
@@ -830,11 +830,11 @@ namespace FBWBA.SimConnect
             ["A32NX_PARK_BRAKE_LEVER_POS"] = new SimVarDefinition
             {
                 Name = "A32NX_PARK_BRAKE_LEVER_POS",
-                DisplayName = "Parking Brake",
+                DisplayName = "Parking brake",
                 Type = SimVarType.LVar,
                 UpdateFrequency = UpdateFrequency.Continuous,
                 IsAnnounced = true,  // Critical for ground operations
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Parking Brake Released", [1] = "Parking Brake Set" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Released", [1] = "Set" }
             },
 
             // PEDESTAL SECTION - Engines Panel
@@ -2928,17 +2928,17 @@ namespace FBWBA.SimConnect
             ["A32NX_FLAPS_HANDLE_INDEX"] = new SimVarDefinition
             {
                 Name = "A32NX_FLAPS_HANDLE_INDEX",
-                DisplayName = "Flaps Position",
+                DisplayName = "Flaps",
                 Type = SimVarType.LVar,
                 UpdateFrequency = UpdateFrequency.Continuous,
                 IsAnnounced = true,  // Critical for landing/takeoff
                 ValueDescriptions = new Dictionary<double, string>
                 {
-                    [0] = "Flaps Up",
-                    [1] = "Flaps 1",
-                    [2] = "Flaps 2",
-                    [3] = "Flaps 3",
-                    [4] = "Flaps Full"
+                    [0] = "Up",
+                    [1] = "1",
+                    [2] = "2",
+                    [3] = "3",
+                    [4] = "Full"
                 }
             },
 
