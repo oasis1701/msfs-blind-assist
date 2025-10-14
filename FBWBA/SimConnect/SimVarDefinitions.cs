@@ -696,13 +696,25 @@ namespace FBWBA.SimConnect
             ["A32NX.FCU_EFIS_L_BARO_PUSH"] = new SimVarDefinition
             {
                 Name = "A32NX.FCU_EFIS_L_BARO_PUSH",
-                DisplayName = "Push Baro Knob",
+                DisplayName = "Push Left Baro Knob",
                 Type = SimVarType.Event
             },
             ["A32NX.FCU_EFIS_L_BARO_PULL"] = new SimVarDefinition
             {
                 Name = "A32NX.FCU_EFIS_L_BARO_PULL",
-                DisplayName = "Pull Baro Knob",
+                DisplayName = "Pull Left Baro Knob",
+                Type = SimVarType.Event
+            },
+            ["A32NX.FCU_EFIS_R_BARO_PUSH"] = new SimVarDefinition
+            {
+                Name = "A32NX.FCU_EFIS_R_BARO_PUSH",
+                DisplayName = "Push Right Baro Knob",
+                Type = SimVarType.Event
+            },
+            ["A32NX.FCU_EFIS_R_BARO_PULL"] = new SimVarDefinition
+            {
+                Name = "A32NX.FCU_EFIS_R_BARO_PULL",
+                DisplayName = "Pull Right Baro Knob",
                 Type = SimVarType.Event
             },
             ["A32NX.FCU_EFIS_L_CSTR_PUSH"] = new SimVarDefinition
@@ -1672,7 +1684,7 @@ namespace FBWBA.SimConnect
             ["A32NX_FCU_EFIS_L_BARO_IS_INHG"] = new SimVarDefinition
             {
                 Name = "A32NX_FCU_EFIS_L_BARO_IS_INHG",
-                DisplayName = "inHg/hPa Toggle",
+                DisplayName = "Left inHg/hPa Toggle",
                 Type = SimVarType.LVar,
                 UpdateFrequency = UpdateFrequency.OnRequest,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "hPa", [1] = "inHg" }
@@ -1680,7 +1692,7 @@ namespace FBWBA.SimConnect
             ["A32NX_FCU_EFIS_L_DISPLAY_BARO_MODE"] = new SimVarDefinition
             {
                 Name = "A32NX_FCU_EFIS_L_DISPLAY_BARO_MODE",
-                DisplayName = "Baro Mode",
+                DisplayName = "Left Baro Mode",
                 Type = SimVarType.LVar,
                 UpdateFrequency = UpdateFrequency.OnRequest,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "STD", [1] = "QNH", [2] = "QFE" }
@@ -1688,7 +1700,30 @@ namespace FBWBA.SimConnect
             ["A32NX.FCU_EFIS_L_BARO_SET"] = new SimVarDefinition
             {
                 Name = "A32NX.FCU_EFIS_L_BARO_SET",
-                DisplayName = "Set Baro Value",
+                DisplayName = "Left Baro Value",
+                Type = SimVarType.Event,
+                UpdateFrequency = UpdateFrequency.Never
+            },
+            ["A32NX_FCU_EFIS_R_BARO_IS_INHG"] = new SimVarDefinition
+            {
+                Name = "A32NX_FCU_EFIS_R_BARO_IS_INHG",
+                DisplayName = "Right inHg/hPa Toggle",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "hPa", [1] = "inHg" }
+            },
+            ["A32NX_FCU_EFIS_R_DISPLAY_BARO_MODE"] = new SimVarDefinition
+            {
+                Name = "A32NX_FCU_EFIS_R_DISPLAY_BARO_MODE",
+                DisplayName = "Right Baro Mode",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "STD", [1] = "QNH", [2] = "QFE" }
+            },
+            ["A32NX.FCU_EFIS_R_BARO_SET"] = new SimVarDefinition
+            {
+                Name = "A32NX.FCU_EFIS_R_BARO_SET",
+                DisplayName = "Right Baro Value",
                 Type = SimVarType.Event,
                 UpdateFrequency = UpdateFrequency.Never
             },
@@ -1697,7 +1732,7 @@ namespace FBWBA.SimConnect
             ["KOHLSMAN SETTING MB:1"] = new SimVarDefinition
             {
                 Name = "KOHLSMAN SETTING MB:1",
-                DisplayName = "Baro hPa",
+                DisplayName = "Left Baro hPa",
                 Type = SimVarType.SimVar,
                 UpdateFrequency = UpdateFrequency.OnRequest,
                 Units = "millibars"
@@ -1705,7 +1740,7 @@ namespace FBWBA.SimConnect
             ["KOHLSMAN SETTING HG:1"] = new SimVarDefinition
             {
                 Name = "KOHLSMAN SETTING HG:1",
-                DisplayName = "Baro inHg",
+                DisplayName = "Left Baro inHg",
                 Type = SimVarType.SimVar,
                 UpdateFrequency = UpdateFrequency.OnRequest,
                 Units = "inHg"
@@ -1713,7 +1748,31 @@ namespace FBWBA.SimConnect
             ["A32NX_FCU_EFIS_L_DISPLAY_BARO_VALUE_MODE"] = new SimVarDefinition
             {
                 Name = "A32NX_FCU_EFIS_L_DISPLAY_BARO_VALUE_MODE",
-                DisplayName = "Baro Display Mode",
+                DisplayName = "Left Baro Display Mode",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "STD", [1] = "hPa", [2] = "inHg" }
+            },
+            ["KOHLSMAN SETTING MB:2"] = new SimVarDefinition
+            {
+                Name = "KOHLSMAN SETTING MB:2",
+                DisplayName = "Right Baro hPa",
+                Type = SimVarType.SimVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                Units = "millibars"
+            },
+            ["KOHLSMAN SETTING HG:2"] = new SimVarDefinition
+            {
+                Name = "KOHLSMAN SETTING HG:2",
+                DisplayName = "Right Baro inHg",
+                Type = SimVarType.SimVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                Units = "inHg"
+            },
+            ["A32NX_FCU_EFIS_R_DISPLAY_BARO_VALUE_MODE"] = new SimVarDefinition
+            {
+                Name = "A32NX_FCU_EFIS_R_DISPLAY_BARO_VALUE_MODE",
+                DisplayName = "Right Baro Display Mode",
                 Type = SimVarType.LVar,
                 UpdateFrequency = UpdateFrequency.OnRequest,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "STD", [1] = "hPa", [2] = "inHg" }
@@ -3083,7 +3142,10 @@ namespace FBWBA.SimConnect
             {
                 "KOHLSMAN SETTING MB:1",
                 "KOHLSMAN SETTING HG:1",
-                "A32NX_FCU_EFIS_L_DISPLAY_BARO_VALUE_MODE"
+                "A32NX_FCU_EFIS_L_DISPLAY_BARO_VALUE_MODE",
+                "KOHLSMAN SETTING MB:2",
+                "KOHLSMAN SETTING HG:2",
+                "A32NX_FCU_EFIS_R_DISPLAY_BARO_VALUE_MODE"
             },
             ["Speed Brake"] = new List<string>
             {
@@ -3229,7 +3291,11 @@ namespace FBWBA.SimConnect
                 "A32NX_FCU_EFIS_L_BARO_IS_INHG",
                 "A32NX.FCU_EFIS_L_BARO_SET",
                 "A32NX.FCU_EFIS_L_BARO_PUSH",
-                "A32NX.FCU_EFIS_L_BARO_PULL"
+                "A32NX.FCU_EFIS_L_BARO_PULL",
+                "A32NX_FCU_EFIS_R_BARO_IS_INHG",
+                "A32NX.FCU_EFIS_R_BARO_SET",
+                "A32NX.FCU_EFIS_R_BARO_PUSH",
+                "A32NX.FCU_EFIS_R_BARO_PULL"
             },
             ["Warnings"] = new List<string>
             {

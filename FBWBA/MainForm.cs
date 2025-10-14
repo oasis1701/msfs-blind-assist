@@ -61,6 +61,8 @@ namespace FBWBA
             ["A32NX.FCU_EFIS_R_FD_PUSH"] = "A32NX_FCU_EFIS_R_FD_LIGHT_ON",
             ["A32NX.FCU_EFIS_L_BARO_PUSH"] = "A32NX_FCU_EFIS_L_DISPLAY_BARO_MODE",
             ["A32NX.FCU_EFIS_L_BARO_PULL"] = "A32NX_FCU_EFIS_L_DISPLAY_BARO_MODE",
+            ["A32NX.FCU_EFIS_R_BARO_PUSH"] = "A32NX_FCU_EFIS_R_DISPLAY_BARO_MODE",
+            ["A32NX.FCU_EFIS_R_BARO_PULL"] = "A32NX_FCU_EFIS_R_DISPLAY_BARO_MODE",
 
             // Autobrake buttons
             ["A32NX.AUTOBRAKE_SET_DISARM"] = "A32NX_AUTOBRAKES_ARMED_MODE",
@@ -2160,6 +2162,37 @@ namespace FBWBA
                                 if (currentSimVarValues.ContainsKey("A32NX_FCU_EFIS_L_BARO_IS_INHG"))
                                 {
                                     isInHgMode = currentSimVarValues["A32NX_FCU_EFIS_L_BARO_IS_INHG"] == 1;
+                                }
+
+                                // Convert to hPa * 16 format expected by FlyByWire
+                                uint convertedValue;
+                                string unitLabel;
+
+                                if (isInHgMode)
+                                {
+                                    // User entered inHg, convert to hPa first then multiply by 16
+                                    double hPa = value * 33.8639;
+                                    convertedValue = (uint)(hPa * 16);
+                                    unitLabel = "inHg";
+                                }
+                                else
+                                {
+                                    // User entered hPa, just multiply by 16
+                                    convertedValue = (uint)(value * 16);
+                                    unitLabel = "hPa";
+                                }
+
+                                simConnectManager.SendEvent(varKey, convertedValue);
+                                announcer.Announce($"{varDef.DisplayName} set to {value:F2} {unitLabel}");
+                            }
+                            // Special handling for A32NX right baro setting (requires conversion based on unit mode)
+                            else if (varKey == "A32NX.FCU_EFIS_R_BARO_SET")
+                            {
+                                // Check current unit mode from the combo box
+                                bool isInHgMode = false;
+                                if (currentSimVarValues.ContainsKey("A32NX_FCU_EFIS_R_BARO_IS_INHG"))
+                                {
+                                    isInHgMode = currentSimVarValues["A32NX_FCU_EFIS_R_BARO_IS_INHG"] == 1;
                                 }
 
                                 // Convert to hPa * 16 format expected by FlyByWire
