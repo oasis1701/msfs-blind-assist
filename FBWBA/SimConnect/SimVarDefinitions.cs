@@ -552,7 +552,7 @@ namespace FBWBA.SimConnect
             ["A32NX.FCU_HDG_SET"] = new SimVarDefinition
             {
                 Name = "A32NX.FCU_HDG_SET",
-                DisplayName = "Set Heading",
+                DisplayName = "Heading",
                 Type = SimVarType.Event
             },
             ["A32NX.FCU_HDG_PUSH"] = new SimVarDefinition
@@ -576,7 +576,7 @@ namespace FBWBA.SimConnect
             ["A32NX.FCU_SPD_SET"] = new SimVarDefinition
             {
                 Name = "A32NX.FCU_SPD_SET",
-                DisplayName = "Set Speed",
+                DisplayName = "Speed",
                 Type = SimVarType.Event
             },
             ["A32NX.FCU_SPD_PUSH"] = new SimVarDefinition
@@ -594,7 +594,7 @@ namespace FBWBA.SimConnect
             ["A32NX.FCU_ALT_SET"] = new SimVarDefinition
             {
                 Name = "A32NX.FCU_ALT_SET",
-                DisplayName = "Set Altitude",
+                DisplayName = "Altitude",
                 Type = SimVarType.Event
             },
             ["A32NX.FCU_ALT_PUSH"] = new SimVarDefinition
@@ -660,7 +660,7 @@ namespace FBWBA.SimConnect
             ["A32NX.FCU_VS_SET"] = new SimVarDefinition
             {
                 Name = "A32NX.FCU_VS_SET",
-                DisplayName = "Set VS/FPA",
+                DisplayName = "VS/FPA",
                 Type = SimVarType.Event
             },
             ["A32NX.FCU_VS_PUSH"] = new SimVarDefinition
