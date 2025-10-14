@@ -2277,7 +2277,7 @@ namespace FBWBA.SimConnect
             {
                 System.Diagnostics.Debug.WriteLine($"Error setting SimVar {varName}: {ex.Message}");
             }
-        }
+        }   
 
         public void SendEvent(string eventName, uint data = 0)
         {

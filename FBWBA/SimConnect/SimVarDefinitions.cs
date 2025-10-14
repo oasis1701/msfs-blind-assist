@@ -2942,6 +2942,20 @@ namespace FBWBA.SimConnect
                 }
             },
 
+            // GPWS Ground State
+            ["A32NX_GPWS_GROUND_STATE"] = new SimVarDefinition
+            {
+                Name = "A32NX_GPWS_GROUND_STATE",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.Continuous,
+                IsAnnounced = true,  // Critical for flight phase awareness
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "Airborne",
+                    [1] = "On ground"
+                }
+            },
+
             // FLIGHT CONTROLS - Sidestick
             ["A32NX_SIDESTICK_POSITION_X"] = new SimVarDefinition
             {
