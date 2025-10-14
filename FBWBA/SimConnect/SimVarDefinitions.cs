@@ -3018,6 +3018,36 @@ namespace FBWBA.SimConnect
                 }
             },
 
+            // GPWS Master Warning
+            ["A32NX_GPWS_Warning_Active"] = new SimVarDefinition
+            {
+                Name = "A32NX_GPWS_Warning_Active",
+                DisplayName = "Master GPWS Warning Light",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.Continuous,
+                IsAnnounced = true,  // Critical alert
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "Off",
+                    [1] = "On"
+                }
+            },
+
+            // GPWS Glide Slope Mode 5 Warning
+            ["A32NX_GPWS_GS_Warning_Active"] = new SimVarDefinition
+            {
+                Name = "A32NX_GPWS_GS_Warning_Active",
+                DisplayName = "Glide Slope Mode 5 warning light",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.Continuous,
+                IsAnnounced = true,  // Critical alert
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "Off",
+                    [1] = "On"
+                }
+            },
+
             // FLIGHT CONTROLS - Sidestick
             ["A32NX_SIDESTICK_POSITION_X"] = new SimVarDefinition
             {
