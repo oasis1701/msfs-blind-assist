@@ -878,33 +878,33 @@ namespace FBWBA.SimConnect
             ["A32NX_ENGINE_STATE:1"] = new SimVarDefinition
             {
                 Name = "A32NX_ENGINE_STATE:1",
-                DisplayName = "Engine 1 State",
+                DisplayName = "Engine 1",
                 Type = SimVarType.LVar,
                 Units = "number",
                 UpdateFrequency = UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
-                    [0] = "Engine 1 Off",
-                    [1] = "Engine 1 On",
-                    [2] = "Engine 1 Starting",
-                    [3] = "Engine 1 Shutting Down"
+                    [0] = "Off",
+                    [1] = "On",
+                    [2] = "Starting",
+                    [3] = "Shutting Down"
                 }
             },
             ["A32NX_ENGINE_STATE:2"] = new SimVarDefinition
             {
                 Name = "A32NX_ENGINE_STATE:2",
-                DisplayName = "Engine 2 State",
+                DisplayName = "Engine 2",
                 Type = SimVarType.LVar,
                 Units = "number",
                 UpdateFrequency = UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
-                    [0] = "Engine 2 Off",
-                    [1] = "Engine 2 On",
-                    [2] = "Engine 2 Starting",
-                    [3] = "Engine 2 Shutting Down"
+                    [0] = "Off",
+                    [1] = "On",
+                    [2] = "Starting",
+                    [3] = "Shutting Down"
                 }
             },
 
@@ -919,8 +919,8 @@ namespace FBWBA.SimConnect
                 IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
-                    [0] = "Igniter A Engine 1 Off",
-                    [1] = "Igniter A Engine 1 Active"
+                    [0] = "Off",
+                    [1] = "Active"
                 }
             },
             ["A32NX_FADEC_IGNITER_B_ACTIVE_ENG1"] = new SimVarDefinition
@@ -933,8 +933,8 @@ namespace FBWBA.SimConnect
                 IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
-                    [0] = "Igniter B Engine 1 Off",
-                    [1] = "Igniter B Engine 1 Active"
+                    [0] = "Off",
+                    [1] = "Active"
                 }
             },
             ["A32NX_FADEC_IGNITER_A_ACTIVE_ENG2"] = new SimVarDefinition
@@ -947,8 +947,8 @@ namespace FBWBA.SimConnect
                 IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
-                    [0] = "Igniter A Engine 2 Off",
-                    [1] = "Igniter A Engine 2 Active"
+                    [0] = "Off",
+                    [1] = "Active"
                 }
             },
             ["A32NX_FADEC_IGNITER_B_ACTIVE_ENG2"] = new SimVarDefinition
@@ -961,8 +961,8 @@ namespace FBWBA.SimConnect
                 IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
-                    [0] = "Igniter B Engine 2 Off",
-                    [1] = "Igniter B Engine 2 Active"
+                    [0] = "Off",
+                    [1] = "Active"
                 }
             },
 
@@ -1816,30 +1816,33 @@ namespace FBWBA.SimConnect
             ["A32NX_FCU_AP_1_LIGHT_ON"] = new SimVarDefinition
             {
                 Name = "A32NX_FCU_AP_1_LIGHT_ON",
+                DisplayName = "Autopilot 1",
                 Type = SimVarType.LVar,
                 UpdateFrequency = UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "AP1 off", [1] = "AP 1 on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
             },
             ["A32NX_FCU_AP_2_LIGHT_ON"] = new SimVarDefinition
             {
                 Name = "A32NX_FCU_AP_2_LIGHT_ON",
+                DisplayName = "Autopilot 2",
                 Type = SimVarType.LVar,
                 UpdateFrequency = UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "AP2 off", [1] = "AP2 on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
             },
             ["A32NX_AUTOTHRUST_STATUS"] = new SimVarDefinition
             {
                 Name = "A32NX_AUTOTHRUST_STATUS",
+                DisplayName = "Autothrust",
                 Type = SimVarType.LVar,
                 UpdateFrequency = UpdateFrequency.Continuous,
                 IsAnnounced = true,  // Important AP state
-                ValueDescriptions = new Dictionary<double, string> 
-                { 
-                    [0] = "AutoThrust Disengaged", 
-                    [1] = "Autothrust Armed", 
-                    [2] = "Autothrust Active" 
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "Disengaged",
+                    [1] = "Armed",
+                    [2] = "Active"
                 }
             },
             ["A32NX_FCU_ATHR_LIGHT_ON"] = new SimVarDefinition
