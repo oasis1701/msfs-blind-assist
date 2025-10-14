@@ -109,8 +109,9 @@ namespace FBWBA.Forms
             AddChecklistItem(preflightNode, "Seatbelts sign on");
             AddChecklistItem(preflightNode, "No smoking auto");
             AddChecklistItem(preflightNode, "Emergency lights, auto/armed");
+            AddChecklistItem(preflightNode, "Transponder mode auto");
             AddChecklistItem(preflightNode, "Contact ATC for clearance and set squawk");
-            AddChecklistItem(preflightNode, "Barometer knob pushed and set");
+            AddChecklistItem(preflightNode, "Left and right side Barometer knobs pushed and set");
             AddChecklistItem(preflightNode, "Initial climb set through FCU");
             AddChecklistItem(preflightNode, "MCDU Flight Plan received through AOC menu");
             AddChecklistItem(preflightNode, "MCDU flight plan requested through init");
@@ -151,6 +152,8 @@ namespace FBWBA.Forms
 
             // Before takeoff checklist
             var beforeTakeoffNode = CreateParentNode("Before Takeoff Checklist");
+            AddChecklistItem(beforeTakeoffNode, "Transponder Ident");
+            AddChecklistItem(beforeTakeoffNode, "TCAS TA/RA");
             AddChecklistItem(beforeTakeoffNode, "Landing lights on");
             AddChecklistItem(beforeTakeoffNode, "Nose Light T O");
             AddChecklistItem(beforeTakeoffNode, "Parking brakes released");
@@ -174,7 +177,7 @@ namespace FBWBA.Forms
             AddChecklistItem(climbingNode, "MCDU perf on climb mode check");
             AddChecklistItem(climbingNode, "Check MCDU FP page");
             AddChecklistItem(climbingNode, "Landing lights off at 10000");
-            AddChecklistItem(climbingNode, "Baro knob pulled to STD position at correct altitude");
+            AddChecklistItem(climbingNode, "both Baro knobs pulled to STD position at correct altitude");
             AddChecklistItem(climbingNode, "Seatbelts sign off");
 
             // Descent checklist
