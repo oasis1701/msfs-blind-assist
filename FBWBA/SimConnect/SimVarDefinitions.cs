@@ -548,6 +548,48 @@ namespace FBWBA.SimConnect
                 UpdateFrequency = UpdateFrequency.OnRequest
             },
 
+            // OVERHEAD FORWARD SECTION - GPWS Panel
+            ["A32NX_GPWS_FLAPS3"] = new SimVarDefinition
+            {
+                Name = "A32NX_GPWS_FLAPS3",
+                DisplayName = "LDG FLAP 3 button",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["A32NX_GPWS_FLAP_OFF"] = new SimVarDefinition
+            {
+                Name = "A32NX_GPWS_FLAP_OFF",
+                DisplayName = "Flaps warning disable button",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["A32NX_GPWS_GS_OFF"] = new SimVarDefinition
+            {
+                Name = "A32NX_GPWS_GS_OFF",
+                DisplayName = "Glide slope mode 5 disable button",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["A32NX_GPWS_SYS_OFF"] = new SimVarDefinition
+            {
+                Name = "A32NX_GPWS_SYS_OFF",
+                DisplayName = "GPWS SYS disable Button",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["A32NX_GPWS_TERR_OFF"] = new SimVarDefinition
+            {
+                Name = "A32NX_GPWS_TERR_OFF",
+                DisplayName = "GPWS TERR disable button",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+
             // GLARESHIELD SECTION - FCU Panel
             ["A32NX.FCU_HDG_SET"] = new SimVarDefinition
             {
@@ -3206,7 +3248,7 @@ namespace FBWBA.SimConnect
         // Panel structure definitions
         public static Dictionary<string, List<string>> PanelStructure = new Dictionary<string, List<string>>
         {
-            ["Overhead Forward"] = new List<string> { "ELEC", "ADIRS", "APU", "Oxygen", "Fuel", "Air Con", "Anti Ice", "Signs", "Exterior Lighting", "Calls" },
+            ["Overhead Forward"] = new List<string> { "ELEC", "ADIRS", "APU", "Oxygen", "Fuel", "Air Con", "Anti Ice", "Signs", "Exterior Lighting", "Calls", "GPWS" },
             ["Glareshield"] = new List<string> { "FCU", "EFIS Control Panel", "Warnings" },
             ["Instrument"] = new List<string> { "Autobrake and Gear" },
             ["Pedestal"] = new List<string> { "Speed Brake", "Parking Brake", "Engines", "ECAM", "WX", "ATC-TCAS", "RMP" }
@@ -3288,6 +3330,14 @@ namespace FBWBA.SimConnect
                 "PUSH_OVHD_CALLS_FWD",
                 "PUSH_OVHD_CALLS_AFT",
                 "A32NX_CALLS_EMER_ON"
+            },
+            ["GPWS"] = new List<string>
+            {
+                "A32NX_GPWS_FLAPS3",
+                "A32NX_GPWS_FLAP_OFF",
+                "A32NX_GPWS_GS_OFF",
+                "A32NX_GPWS_SYS_OFF",
+                "A32NX_GPWS_TERR_OFF"
             },
             ["FCU"] = new List<string>
             {
