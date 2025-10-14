@@ -83,6 +83,7 @@ namespace FBWBA.Hotkeys
         private const int HOTKEY_STATUS_DISPLAY = 9057;
         private const int HOTKEY_TAKEOFF_ASSIST = 9058;
         private const int HOTKEY_TOGGLE_ECAM_MONITORING = 9059;
+        private const int HOTKEY_MACH_SPEED = 9060;
 
         private IntPtr windowHandle;
         private bool outputHotkeyModeActive = false;
@@ -165,6 +166,9 @@ namespace FBWBA.Hotkeys
                             break;
                         case HOTKEY_GROUND_SPEED:
                             TriggerHotkey(HotkeyAction.ReadGroundSpeed);
+                            break;
+                        case HOTKEY_MACH_SPEED:
+                            TriggerHotkey(HotkeyAction.ReadMachSpeed);
                             break;
                         case HOTKEY_VERTICAL_SPEED:
                             TriggerHotkey(HotkeyAction.ReadVerticalSpeed);
@@ -328,6 +332,7 @@ namespace FBWBA.Hotkeys
             RegisterHotKey(windowHandle, HOTKEY_AIRSPEED_IND, MOD_NONE, 0x53); // S (Airspeed Indicated)
             RegisterHotKey(windowHandle, HOTKEY_AIRSPEED_TRUE, MOD_NONE, 0x54); // T (Airspeed True)
             RegisterHotKey(windowHandle, HOTKEY_GROUND_SPEED, MOD_NONE, 0x47); // G (Ground Speed)
+            RegisterHotKey(windowHandle, HOTKEY_MACH_SPEED, MOD_NONE, 0x4D); // M (Mach Speed)
             RegisterHotKey(windowHandle, HOTKEY_VERTICAL_SPEED, MOD_NONE, 0x56); // V (Vertical Speed)
             RegisterHotKey(windowHandle, HOTKEY_HEADING_MAGNETIC, MOD_NONE, 0x48); // H (Magnetic Heading)
             RegisterHotKey(windowHandle, HOTKEY_HEADING_TRUE, MOD_NONE, 0x55); // U (True Heading)
@@ -377,6 +382,7 @@ namespace FBWBA.Hotkeys
             UnregisterHotKey(windowHandle, HOTKEY_AIRSPEED_IND);
             UnregisterHotKey(windowHandle, HOTKEY_AIRSPEED_TRUE);
             UnregisterHotKey(windowHandle, HOTKEY_GROUND_SPEED);
+            UnregisterHotKey(windowHandle, HOTKEY_MACH_SPEED);
             UnregisterHotKey(windowHandle, HOTKEY_VERTICAL_SPEED);
             UnregisterHotKey(windowHandle, HOTKEY_HEADING_MAGNETIC);
             UnregisterHotKey(windowHandle, HOTKEY_HEADING_TRUE);
@@ -548,6 +554,7 @@ namespace FBWBA.Hotkeys
         ReadAirspeedIndicated,
         ReadAirspeedTrue,
         ReadGroundSpeed,
+        ReadMachSpeed,
         ReadVerticalSpeed,
         ReadHeadingMagnetic,
         ReadHeadingTrue,

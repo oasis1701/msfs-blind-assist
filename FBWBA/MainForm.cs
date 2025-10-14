@@ -306,8 +306,8 @@ namespace FBWBA
 
             // Handle aircraft variable hotkey announcements
             if (e.VarName == "ALTITUDE_AGL" || e.VarName == "ALTITUDE_MSL" || e.VarName == "AIRSPEED_INDICATED" ||
-                e.VarName == "AIRSPEED_TRUE" || e.VarName == "GROUND_SPEED" || e.VarName == "VERTICAL_SPEED" ||
-                e.VarName == "HEADING_MAGNETIC" || e.VarName == "HEADING_TRUE" ||
+                e.VarName == "AIRSPEED_TRUE" || e.VarName == "GROUND_SPEED" || e.VarName == "MACH_SPEED" ||
+                e.VarName == "VERTICAL_SPEED" || e.VarName == "HEADING_MAGNETIC" || e.VarName == "HEADING_TRUE" ||
                 e.VarName == "SPEED_GD" || e.VarName == "SPEED_S" || e.VarName == "SPEED_F" ||
                 e.VarName == "SPEED_VFE" || e.VarName == "SPEED_VLS" || e.VarName == "SPEED_VS" ||
                 e.VarName == "FUEL_QUANTITY" || e.VarName == "WAYPOINT_INFO")
@@ -643,6 +643,9 @@ namespace FBWBA
                     break;
                 case HotkeyAction.ReadGroundSpeed:
                     simConnectManager.RequestGroundSpeed();
+                    break;
+                case HotkeyAction.ReadMachSpeed:
+                    simConnectManager.RequestMachSpeed();
                     break;
                 case HotkeyAction.ReadVerticalSpeed:
                     simConnectManager.RequestVerticalSpeed();

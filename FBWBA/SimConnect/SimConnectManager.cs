@@ -789,6 +789,16 @@ namespace FBWBA.SimConnect
                     });
                     break;
 
+                case (DATA_REQUESTS)311: // Mach Speed
+                    SingleValue machData = (SingleValue)data.dwData[0];
+                    SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                    {
+                        VarName = "MACH_SPEED",
+                        Value = machData.value,
+                        Description = $"Mach {machData.value:0.00}"
+                    });
+                    break;
+
                 case (DATA_REQUESTS)314: // Fuel Quantity
                     SingleValue fuelData = (SingleValue)data.dwData[0];
                     SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
@@ -1905,6 +1915,29 @@ namespace FBWBA.SimConnect
                 catch (Exception ex)
                 {
                     System.Diagnostics.Debug.WriteLine($"Error requesting vertical speed: {ex.Message}");
+                }
+            }
+        }
+
+        public void RequestMachSpeed()
+        {
+            if (IsConnected && simConnect != null)
+            {
+                try
+                {
+                    var tempDefId = (DATA_DEFINITIONS)311;
+                    simConnect.ClearDataDefinition(tempDefId);
+                    simConnect.AddToDataDefinition(tempDefId,
+                        "AIRSPEED MACH", "number",
+                        SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+                    simConnect.RegisterDataDefineStruct<SingleValue>(tempDefId);
+                    simConnect.RequestDataOnSimObject((DATA_REQUESTS)311,
+                        tempDefId, SIMCONNECT_OBJECT_ID_USER,
+                        SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Error requesting mach speed: {ex.Message}");
                 }
             }
         }
