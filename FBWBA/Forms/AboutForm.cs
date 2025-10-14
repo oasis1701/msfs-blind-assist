@@ -39,7 +39,8 @@ namespace FBWBA.Forms
                        $"Version {versionString}\r\n\r\n" +
                        $"Accessible application to control the Fly By Wire A32nx aircraft\r\n" +
                        $"for Microsoft Flight Simulator\r\n\r\n" +
-                       $"{copyright}",
+                       $"{copyright}\r\n\r\n" +
+                       $"Hadi Rezaei",
                 Font = new Font("Segoe UI", 10),
                 Location = new Point(20, 20),
                 Size = new Size(400, 160),

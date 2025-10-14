@@ -1450,7 +1450,7 @@ namespace FBWBA.SimConnect
             ["A32NX_TRANSPONDER_MODE"] = new SimVarDefinition
             {
                 Name = "A32NX_TRANSPONDER_MODE",
-                DisplayName = "ATC Mode",
+                DisplayName = "Transponder mode",
                 Type = SimVarType.LVar,
                 UpdateFrequency = UpdateFrequency.OnRequest,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "STBY", [1] = "AUTO", [2] = "ON" }
