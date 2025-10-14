@@ -89,6 +89,7 @@ Airspeed:
   S          Read IAS (Indicated Airspeed)
   T          Read TAS (True Airspeed)
   G          Read Ground Speed
+  M Read Mach Number.
 
 Heading:
   H          Read Magnetic Heading
@@ -97,17 +98,29 @@ Heading:
 Vertical:
   V          Read Vertical Speed
 
+Weather:
+  I Wind info
+
+Flight planning:
+  W Next waypoint information
+
 Fuel:
   F          Read Total Fuel Quantity
 
-Navigation:
-  Ctrl+I     Read ILS Guidance
-  Ctrl+L     Read Location Info
-  I          Read Wind Info
-  Shift+I    Show METAR Report
-  Ctrl+V     Toggle Visual Approach
-  Ctrl+0     Read Approach Capability
+Tools:
+Takeoff Assistance: CTRL+T
+Enable Engine and warning display auto announcements: CTRL+E
 
+Displays and windows:
+  Shift+U    Engine and warning display window
+  Shift+T    SD Status window
+  Shift+N    Navigation display
+  Shift+L    Location Info
+  Shift+M    Show VATSIM METAR Report
+  Shift+D    SimBrief Briefing
+  Shift+C    Show Checklist
+  Shift+P    Show PFD Window
+  
 Speed Tape:
   Shift+1    Read O Speed (GD)
   Shift+2    Read S-Speed
@@ -116,17 +129,13 @@ Speed Tape:
   Shift+5    Read VS (Stall Speed)
   Shift+6    Read VFE Speed
 
-Other:
-  Ctrl+P     Show PFD Window
-  Shift+D    SimBrief Briefing
-  Shift+C    Show Flight Checklist
-
-
 INPUT MODE - Press [ to activate
 
 Teleport:
   Shift+R    Runway Teleport
   Shift+G    Gate Teleport
+
+Flight planning:
   Shift+D    Select Destination Runway
 
 Autopilot:

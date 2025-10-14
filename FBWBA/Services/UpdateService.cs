@@ -185,7 +185,7 @@ namespace FBWBA.Services
                 {
                     FileName = updaterPath,
                     Arguments = arguments,
-                    UseShellExecute = true
+                    UseShellExecute = false  // Changed to false to properly handle paths with spaces
                 };
 
                 Process.Start(startInfo);
