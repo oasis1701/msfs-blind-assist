@@ -788,7 +788,7 @@ namespace FBWBA.SimConnect
                 Units = "bool",
                 UpdateFrequency = UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Gear handle position down", [1] = "Gear handle position up" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Gear handle position up", [1] = "Gear handle position down" }
             },
 
             // PEDESTAL SECTION - Speed Brake Panel
