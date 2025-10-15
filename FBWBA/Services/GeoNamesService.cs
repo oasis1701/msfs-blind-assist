@@ -6,7 +6,7 @@ using System.Linq;
 using System.Net.Http;
 using System.Threading.Tasks;
 using FBWBA.Models;
-using FBWBA.Properties;
+using FBWBA.Settings;
 
 namespace FBWBA.Services
 {
@@ -27,7 +27,7 @@ namespace FBWBA.Services
 
         public GeoNamesService()
         {
-            apiUsername = Settings.Default.GeoNamesApiUsername;
+            apiUsername = SettingsManager.Current.GeoNamesApiUsername;
         }
 
         public async Task<LocationData> GetLocationInfoAsync(double latitude, double longitude)
@@ -106,12 +106,12 @@ namespace FBWBA.Services
         private async Task<List<NearbyPlace>> GetNearbyPlacesAsync(double latitude, double longitude)
         {
             var places = new List<NearbyPlace>();
-            var units = Settings.Default.DistanceUnits == "kilometers" ? "km" : "miles";
+            var units = SettingsManager.Current.DistanceUnits == "kilometers" ? "km" : "miles";
 
             try
             {
                 // Get nearby populated places
-                var radiusValue = Settings.Default.NearbyCitiesRange;
+                var radiusValue = SettingsManager.Current.NearbyCitiesRange;
                 var radiusKm = units == "kilometers" ? radiusValue : (int)Math.Round(radiusValue * 1.60934); // Convert miles to kilometers for API
 
                 // Cap radius at GeoNames free API limit (300 km)
@@ -158,9 +158,9 @@ namespace FBWBA.Services
                 }
 
                 // Limit to configured maximum nearby places
-                if (places.Count > Settings.Default.MaxNearbyPlacesToShow)
+                if (places.Count > SettingsManager.Current.MaxNearbyPlacesToShow)
                 {
-                    places = places.Take(Settings.Default.MaxNearbyPlacesToShow).ToList();
+                    places = places.Take(SettingsManager.Current.MaxNearbyPlacesToShow).ToList();
                 }
             }
             catch (Exception ex)
@@ -174,12 +174,12 @@ namespace FBWBA.Services
         private async Task<List<NearbyPlace>> GetMajorCitiesAsync(double latitude, double longitude)
         {
             var majorCities = new List<NearbyPlace>();
-            var units = Settings.Default.DistanceUnits == "kilometers" ? "km" : "miles";
+            var units = SettingsManager.Current.DistanceUnits == "kilometers" ? "km" : "miles";
 
             try
             {
                 // Get major cities using the cities filter for population-based search
-                var radiusValue = Settings.Default.MajorCitiesRange;
+                var radiusValue = SettingsManager.Current.MajorCitiesRange;
                 var radiusKm = units == "kilometers" ? radiusValue : (int)Math.Round(radiusValue * 1.60934);
 
                 // Cap radius at GeoNames free API limit (300 km)
@@ -192,14 +192,14 @@ namespace FBWBA.Services
 
                 // Use configurable cities filter based on user's population threshold
                 // Increase maxRows for higher population thresholds to improve chances of finding large cities
-                int maxRows = Settings.Default.MajorCityPopulationThreshold >= 50000 ? 300 :
-                             Settings.Default.MajorCityPopulationThreshold >= 15000 ? 200 : 100;
+                int maxRows = SettingsManager.Current.MajorCityPopulationThreshold >= 50000 ? 300 :
+                             SettingsManager.Current.MajorCityPopulationThreshold >= 15000 ? 200 : 100;
 
-                var url = $"{BASE_URL}/findNearbyPlaceNameJSON?lat={latitude.ToString(CultureInfo.InvariantCulture)}&lng={longitude.ToString(CultureInfo.InvariantCulture)}&radius={radiusKm}&maxRows={maxRows}&cities={Settings.Default.MajorCityAPIThreshold}&username={apiUsername}";
+                var url = $"{BASE_URL}/findNearbyPlaceNameJSON?lat={latitude.ToString(CultureInfo.InvariantCulture)}&lng={longitude.ToString(CultureInfo.InvariantCulture)}&radius={radiusKm}&maxRows={maxRows}&cities={SettingsManager.Current.MajorCityAPIThreshold}&username={apiUsername}";
 
                 var response = await GetCachedResponseAsync(url);
                 System.Diagnostics.Debug.WriteLine($"[GeoNamesService] Major Cities API URL: {url}");
-                System.Diagnostics.Debug.WriteLine($"[GeoNamesService] Using maxRows={maxRows} for population threshold {Settings.Default.MajorCityPopulationThreshold}");
+                System.Diagnostics.Debug.WriteLine($"[GeoNamesService] Using maxRows={maxRows} for population threshold {SettingsManager.Current.MajorCityPopulationThreshold}");
 
                 // Check for API errors
                 if (CheckForApiError(response))
@@ -208,7 +208,7 @@ namespace FBWBA.Services
                 }
 
                 var parsedData = ParseNearbyPlacesJson(response, latitude, longitude);
-                System.Diagnostics.Debug.WriteLine($"[GeoNamesService] Parsed {parsedData.Count} major cities from API (using {Settings.Default.MajorCityAPIThreshold})");
+                System.Diagnostics.Debug.WriteLine($"[GeoNamesService] Parsed {parsedData.Count} major cities from API (using {SettingsManager.Current.MajorCityAPIThreshold})");
 
                 foreach (var data in parsedData)
                 {
@@ -226,13 +226,13 @@ namespace FBWBA.Services
 
                 // Filter by user's population threshold
                 var beforeFiltering = majorCities.Count;
-                majorCities = majorCities.Where(c => c.Population >= Settings.Default.MajorCityPopulationThreshold).ToList();
-                System.Diagnostics.Debug.WriteLine($"[GeoNamesService] Population filtering (>= {Settings.Default.MajorCityPopulationThreshold}): {beforeFiltering} cities -> {majorCities.Count} cities");
+                majorCities = majorCities.Where(c => c.Population >= SettingsManager.Current.MajorCityPopulationThreshold).ToList();
+                System.Diagnostics.Debug.WriteLine($"[GeoNamesService] Population filtering (>= {SettingsManager.Current.MajorCityPopulationThreshold}): {beforeFiltering} cities -> {majorCities.Count} cities");
 
                 if (majorCities.Count == 0)
                 {
-                    System.Diagnostics.Debug.WriteLine($"[GeoNamesService] WARNING: No major cities found within {Settings.Default.MajorCitiesRange} radius with population >= {Settings.Default.MajorCityPopulationThreshold}");
-                    System.Diagnostics.Debug.WriteLine($"[GeoNamesService] API returned {beforeFiltering} cities using {Settings.Default.MajorCityAPIThreshold} filter, all filtered out by population threshold");
+                    System.Diagnostics.Debug.WriteLine($"[GeoNamesService] WARNING: No major cities found within {SettingsManager.Current.MajorCitiesRange} radius with population >= {SettingsManager.Current.MajorCityPopulationThreshold}");
+                    System.Diagnostics.Debug.WriteLine($"[GeoNamesService] API returned {beforeFiltering} cities using {SettingsManager.Current.MajorCityAPIThreshold} filter, all filtered out by population threshold");
                 }
 
                 // Sort by a combination of population and distance (prioritize larger cities that are closer)
@@ -245,9 +245,9 @@ namespace FBWBA.Services
                 });
 
                 // Limit to configured maximum major cities
-                if (majorCities.Count > Settings.Default.MaxMajorCitiesToShow)
+                if (majorCities.Count > SettingsManager.Current.MaxMajorCitiesToShow)
                 {
-                    majorCities = majorCities.Take(Settings.Default.MaxMajorCitiesToShow).ToList();
+                    majorCities = majorCities.Take(SettingsManager.Current.MaxMajorCitiesToShow).ToList();
                 }
 
                 System.Diagnostics.Debug.WriteLine($"[GeoNamesService] Returning {majorCities.Count} major cities");
@@ -335,23 +335,23 @@ namespace FBWBA.Services
             try
             {
                 // Get airports
-                var airports = await GetFeaturesByCodesAsync(latitude, longitude, Settings.Default.AirportsRange,
-                    new[] { "AIRP", "AIRF", "AIRH" }, "Airports", Settings.Default.MaxAirportsToShow);
+                var airports = await GetFeaturesByCodesAsync(latitude, longitude, SettingsManager.Current.AirportsRange,
+                    new[] { "AIRP", "AIRF", "AIRH" }, "Airports", SettingsManager.Current.MaxAirportsToShow);
                 categorizedLandmarks["Airports"] = airports;
 
                 // Get terrain features
-                var terrain = await GetFeaturesByCodesAsync(latitude, longitude, Settings.Default.TerrainRange,
-                    new[] { "MT", "MTS", "PK", "PKS", "HLL", "HLLS", "VLY" }, "Terrain", Settings.Default.MaxTerrainFeaturesToShow);
+                var terrain = await GetFeaturesByCodesAsync(latitude, longitude, SettingsManager.Current.TerrainRange,
+                    new[] { "MT", "MTS", "PK", "PKS", "HLL", "HLLS", "VLY" }, "Terrain", SettingsManager.Current.MaxTerrainFeaturesToShow);
                 categorizedLandmarks["Terrain"] = terrain;
 
                 // Get water bodies
-                var water = await GetFeaturesByCodesAsync(latitude, longitude, Settings.Default.WaterBodiesRange,
-                    new[] { "LK", "LKS", "RSV", "RSVR", "BAY", "BAYS", "STM", "STMS", "BCH", "BCHS" }, "Water Bodies", Settings.Default.MaxWaterBodiesToShow);
+                var water = await GetFeaturesByCodesAsync(latitude, longitude, SettingsManager.Current.WaterBodiesRange,
+                    new[] { "LK", "LKS", "RSV", "RSVR", "BAY", "BAYS", "STM", "STMS", "BCH", "BCHS" }, "Water Bodies", SettingsManager.Current.MaxWaterBodiesToShow);
                 categorizedLandmarks["Water Bodies"] = water;
 
                 // Get tourist landmarks
-                var tourist = await GetFeaturesByCodesAsync(latitude, longitude, Settings.Default.TouristLandmarksRange,
-                    new[] { "MNMT", "MUS", "TOWR", "LTHSE", "PRK", "PRKS", "STAD", "AMTH", "ZOO", "PIER" }, "Tourist Landmarks", Settings.Default.MaxTouristLandmarksToShow);
+                var tourist = await GetFeaturesByCodesAsync(latitude, longitude, SettingsManager.Current.TouristLandmarksRange,
+                    new[] { "MNMT", "MUS", "TOWR", "LTHSE", "PRK", "PRKS", "STAD", "AMTH", "ZOO", "PIER" }, "Tourist Landmarks", SettingsManager.Current.MaxTouristLandmarksToShow);
                 categorizedLandmarks["Tourist Landmarks"] = tourist;
 
                 System.Diagnostics.Debug.WriteLine($"[GeoNamesService] Found categorized landmarks: " +
@@ -371,7 +371,7 @@ namespace FBWBA.Services
 
             try
             {
-                var units = Settings.Default.DistanceUnits == "kilometers" ? "km" : "miles";
+                var units = SettingsManager.Current.DistanceUnits == "kilometers" ? "km" : "miles";
                 var radiusKm = units == "kilometers" ? radiusValue : (int)Math.Round(radiusValue * 1.60934);
 
                 // Cap radius at GeoNames free API limit (300 km)
@@ -459,8 +459,8 @@ namespace FBWBA.Services
         {
             try
             {
-                var radiusValue = Settings.Default.RegionalCitiesRange;
-                var units = Settings.Default.DistanceUnits == "kilometers" ? "km" : "miles";
+                var radiusValue = SettingsManager.Current.RegionalCitiesRange;
+                var units = SettingsManager.Current.DistanceUnits == "kilometers" ? "km" : "miles";
                 var radiusKm = units == "kilometers" ? radiusValue : (int)Math.Round(radiusValue * 1.60934); // Convert miles to kilometers for API
 
                 // Cap radius at GeoNames free API limit (300 km)
@@ -483,7 +483,7 @@ namespace FBWBA.Services
 
                     if (bearingDiff <= tolerance)
                     {
-                        var displayUnits = Settings.Default.DistanceUnits == "kilometers" ? "km" : "miles";
+                        var displayUnits = SettingsManager.Current.DistanceUnits == "kilometers" ? "km" : "miles";
                         var displayDistance = displayUnits == "kilometers" ? data.distance : data.distance * 0.621371;
 
                         return new Tuple<string, string>(data.name, $"{displayDistance:F0} {displayUnits}");

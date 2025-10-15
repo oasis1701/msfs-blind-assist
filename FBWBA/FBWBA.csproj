@@ -147,6 +147,8 @@
     <Compile Include="Services\VATSIMService.cs" />
     <Compile Include="Services\UpdateService.cs" />
     <Compile Include="Services\TakeoffAssistManager.cs" />
+    <Compile Include="Settings\UserSettings.cs" />
+    <Compile Include="Settings\SettingsManager.cs" />
     <Compile Include="Models\LocationData.cs" />
     <Compile Include="Navigation\NavigationCalculator.cs" />
     <Compile Include="Navigation\VisualApproachMonitor.cs" />

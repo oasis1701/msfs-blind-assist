@@ -1,6 +1,6 @@
 using System;
 using System.IO;
-using FBWBA.Properties;
+using FBWBA.Settings;
 
 namespace FBWBA.Database
 {
@@ -17,7 +17,7 @@ namespace FBWBA.Database
         /// <returns>IAirportDataProvider implementation or null if no database available</returns>
         public static IAirportDataProvider SelectProvider()
         {
-            var settings = Settings.Default;
+            var settings = SettingsManager.Current;
             string simulatorVersion = settings.SimulatorVersion ?? "FS2020";
 
             // Get the navdatareader database path for the selected simulator
@@ -51,7 +51,7 @@ namespace FBWBA.Database
 
             if (provider == null)
             {
-                var settings = Settings.Default;
+                var settings = SettingsManager.Current;
                 string simulatorVersion = settings.SimulatorVersion ?? "FS2020";
                 return (false, "None", $"No database found for {simulatorVersion}. Open File menu to build database.");
             }
@@ -71,7 +71,7 @@ namespace FBWBA.Database
                 return (false, provider.DatabaseType, $"Database error: {ex.Message}");
             }
 
-            var settings2 = Settings.Default;
+            var settings2 = SettingsManager.Current;
             string simVer = settings2.SimulatorVersion ?? "FS2020";
             string message = $"{simVer} - {airportCount:N0} airports";
             return (true, provider.DatabaseType, message);

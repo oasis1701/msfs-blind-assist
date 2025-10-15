@@ -1,6 +1,6 @@
 using System;
 using System.Windows.Forms;
-using FBWBA.Properties;
+using FBWBA.Settings;
 
 namespace FBWBA.Forms
 {
@@ -394,22 +394,22 @@ namespace FBWBA.Forms
 
         private void LoadCurrentSettings()
         {
-            apiUsernameTextBox.Text = Settings.Default.GeoNamesApiUsername;
-            nearbyCitiesTextBox.Text = Settings.Default.NearbyCitiesRange.ToString();
-            regionalCitiesTextBox.Text = Settings.Default.RegionalCitiesRange.ToString();
-            majorCitiesTextBox.Text = Settings.Default.MajorCitiesRange.ToString();
-            populationThresholdTextBox.Text = Settings.Default.MajorCityPopulationThreshold.ToString();
-            landmarksTextBox.Text = Settings.Default.LandmarksRange.ToString();
+            apiUsernameTextBox.Text = SettingsManager.Current.GeoNamesApiUsername;
+            nearbyCitiesTextBox.Text = SettingsManager.Current.NearbyCitiesRange.ToString();
+            regionalCitiesTextBox.Text = SettingsManager.Current.RegionalCitiesRange.ToString();
+            majorCitiesTextBox.Text = SettingsManager.Current.MajorCitiesRange.ToString();
+            populationThresholdTextBox.Text = SettingsManager.Current.MajorCityPopulationThreshold.ToString();
+            landmarksTextBox.Text = SettingsManager.Current.LandmarksRange.ToString();
 
             // Load maximum results settings
-            maxNearbyPlacesTextBox.Text = Settings.Default.MaxNearbyPlacesToShow.ToString();
-            maxMajorCitiesTextBox.Text = Settings.Default.MaxMajorCitiesToShow.ToString();
-            maxAirportsTextBox.Text = Settings.Default.MaxAirportsToShow.ToString();
-            maxTerrainFeaturesTextBox.Text = Settings.Default.MaxTerrainFeaturesToShow.ToString();
-            maxWaterBodiesTextBox.Text = Settings.Default.MaxWaterBodiesToShow.ToString();
-            maxTouristLandmarksTextBox.Text = Settings.Default.MaxTouristLandmarksToShow.ToString();
+            maxNearbyPlacesTextBox.Text = SettingsManager.Current.MaxNearbyPlacesToShow.ToString();
+            maxMajorCitiesTextBox.Text = SettingsManager.Current.MaxMajorCitiesToShow.ToString();
+            maxAirportsTextBox.Text = SettingsManager.Current.MaxAirportsToShow.ToString();
+            maxTerrainFeaturesTextBox.Text = SettingsManager.Current.MaxTerrainFeaturesToShow.ToString();
+            maxWaterBodiesTextBox.Text = SettingsManager.Current.MaxWaterBodiesToShow.ToString();
+            maxTouristLandmarksTextBox.Text = SettingsManager.Current.MaxTouristLandmarksToShow.ToString();
 
-            if (Settings.Default.DistanceUnits == "kilometers")
+            if (SettingsManager.Current.DistanceUnits == "kilometers")
             {
                 kilometersRadioButton.Checked = true;
             }
@@ -443,12 +443,12 @@ namespace FBWBA.Forms
             try
             {
                 // Validate and save API username
-                Settings.Default.GeoNamesApiUsername = apiUsernameTextBox.Text.Trim();
+                SettingsManager.Current.GeoNamesApiUsername = apiUsernameTextBox.Text.Trim();
 
                 // Validate and save distance ranges
                 if (int.TryParse(nearbyCitiesTextBox.Text, out int nearbyCities) && nearbyCities > 0)
                 {
-                    Settings.Default.NearbyCitiesRange = nearbyCities;
+                    SettingsManager.Current.NearbyCitiesRange = nearbyCities;
                 }
                 else
                 {
@@ -460,7 +460,7 @@ namespace FBWBA.Forms
 
                 if (int.TryParse(regionalCitiesTextBox.Text, out int regionalCities) && regionalCities > 0)
                 {
-                    Settings.Default.RegionalCitiesRange = regionalCities;
+                    SettingsManager.Current.RegionalCitiesRange = regionalCities;
                 }
                 else
                 {
@@ -489,7 +489,7 @@ namespace FBWBA.Forms
                         }
                     }
 
-                    Settings.Default.MajorCitiesRange = majorCities;
+                    SettingsManager.Current.MajorCitiesRange = majorCities;
                 }
                 else
                 {
@@ -502,7 +502,7 @@ namespace FBWBA.Forms
                 // Validate and save population threshold
                 if (int.TryParse(populationThresholdTextBox.Text, out int populationThreshold) && populationThreshold >= 500)
                 {
-                    Settings.Default.MajorCityPopulationThreshold = populationThreshold;
+                    SettingsManager.Current.MajorCityPopulationThreshold = populationThreshold;
 
                     // Determine the appropriate API threshold based on user's population threshold
                     // Use MORE restrictive API filters for HIGHER population requirements
@@ -528,7 +528,7 @@ namespace FBWBA.Forms
                         // For low thresholds, use cities1000
                         apiThreshold = "cities1000";
                     }
-                    Settings.Default.MajorCityAPIThreshold = apiThreshold;
+                    SettingsManager.Current.MajorCityAPIThreshold = apiThreshold;
                 }
                 else
                 {
@@ -540,7 +540,7 @@ namespace FBWBA.Forms
 
                 if (int.TryParse(landmarksTextBox.Text, out int landmarks) && landmarks > 0)
                 {
-                    Settings.Default.LandmarksRange = landmarks;
+                    SettingsManager.Current.LandmarksRange = landmarks;
                 }
                 else
                 {
@@ -553,7 +553,7 @@ namespace FBWBA.Forms
                 // Validate and save maximum results settings
                 if (int.TryParse(maxNearbyPlacesTextBox.Text, out int maxNearbyPlaces) && maxNearbyPlaces > 0 && maxNearbyPlaces <= 50)
                 {
-                    Settings.Default.MaxNearbyPlacesToShow = maxNearbyPlaces;
+                    SettingsManager.Current.MaxNearbyPlacesToShow = maxNearbyPlaces;
                 }
                 else
                 {
@@ -565,7 +565,7 @@ namespace FBWBA.Forms
 
                 if (int.TryParse(maxMajorCitiesTextBox.Text, out int maxMajorCities) && maxMajorCities > 0 && maxMajorCities <= 50)
                 {
-                    Settings.Default.MaxMajorCitiesToShow = maxMajorCities;
+                    SettingsManager.Current.MaxMajorCitiesToShow = maxMajorCities;
                 }
                 else
                 {
@@ -577,7 +577,7 @@ namespace FBWBA.Forms
 
                 if (int.TryParse(maxAirportsTextBox.Text, out int maxAirports) && maxAirports > 0 && maxAirports <= 50)
                 {
-                    Settings.Default.MaxAirportsToShow = maxAirports;
+                    SettingsManager.Current.MaxAirportsToShow = maxAirports;
                 }
                 else
                 {
@@ -589,7 +589,7 @@ namespace FBWBA.Forms
 
                 if (int.TryParse(maxTerrainFeaturesTextBox.Text, out int maxTerrain) && maxTerrain > 0 && maxTerrain <= 50)
                 {
-                    Settings.Default.MaxTerrainFeaturesToShow = maxTerrain;
+                    SettingsManager.Current.MaxTerrainFeaturesToShow = maxTerrain;
                 }
                 else
                 {
@@ -601,7 +601,7 @@ namespace FBWBA.Forms
 
                 if (int.TryParse(maxWaterBodiesTextBox.Text, out int maxWater) && maxWater > 0 && maxWater <= 50)
                 {
-                    Settings.Default.MaxWaterBodiesToShow = maxWater;
+                    SettingsManager.Current.MaxWaterBodiesToShow = maxWater;
                 }
                 else
                 {
@@ -613,7 +613,7 @@ namespace FBWBA.Forms
 
                 if (int.TryParse(maxTouristLandmarksTextBox.Text, out int maxTourist) && maxTourist > 0 && maxTourist <= 50)
                 {
-                    Settings.Default.MaxTouristLandmarksToShow = maxTourist;
+                    SettingsManager.Current.MaxTouristLandmarksToShow = maxTourist;
                 }
                 else
                 {
@@ -624,10 +624,10 @@ namespace FBWBA.Forms
                 }
 
                 // Save units
-                Settings.Default.DistanceUnits = kilometersRadioButton.Checked ? "kilometers" : "miles";
+                SettingsManager.Current.DistanceUnits = kilometersRadioButton.Checked ? "kilometers" : "miles";
 
                 // Save settings
-                Settings.Default.Save();
+                SettingsManager.Save();
 
                 this.DialogResult = DialogResult.OK;
                 this.Close();

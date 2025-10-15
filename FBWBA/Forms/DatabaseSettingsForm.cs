@@ -4,7 +4,7 @@ using System.IO;
 using System.Windows.Forms;
 using FBWBA.Accessibility;
 using FBWBA.Database;
-using FBWBA.Properties;
+using FBWBA.Settings;
 
 namespace FBWBA.Forms
 {
@@ -189,7 +189,7 @@ namespace FBWBA.Forms
 
         private void LoadCurrentSettings()
         {
-            var settings = Settings.Default;
+            var settings = SettingsManager.Current;
 
             // Set simulator version radio button
             string simVersion = settings.SimulatorVersion ?? "FS2020";
@@ -201,7 +201,7 @@ namespace FBWBA.Forms
 
         private void UpdateDatabaseStatus()
         {
-            var settings = Settings.Default;
+            var settings = SettingsManager.Current;
             string simulatorVersion = settings.SimulatorVersion ?? "FS2020";
             string navdataPath = NavdataReaderBuilder.GetDefaultDatabasePath(simulatorVersion);
 
@@ -248,14 +248,14 @@ namespace FBWBA.Forms
         private void OkButton_Click(object sender, EventArgs e)
         {
             // Save settings
-            var settings = Settings.Default;
+            var settings = SettingsManager.Current;
 
             if (fs2024Radio.Checked)
                 settings.SimulatorVersion = "FS2024";
             else
                 settings.SimulatorVersion = "FS2020";
 
-            settings.Save();
+            SettingsManager.Save();
 
             DialogResult = DialogResult.OK;
             Close();

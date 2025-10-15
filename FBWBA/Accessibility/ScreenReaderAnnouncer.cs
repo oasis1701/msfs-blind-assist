@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Forms;
+using FBWBA.Settings;
 
 namespace FBWBA.Accessibility
 {
@@ -106,7 +107,7 @@ namespace FBWBA.Accessibility
         {
             try
             {
-                string modeString = Properties.Settings.Default.AnnouncementMode;
+                string modeString = SettingsManager.Current.AnnouncementMode;
                 if (Enum.TryParse(modeString, out AnnouncementMode mode))
                 {
                     currentMode = mode;
@@ -127,8 +128,8 @@ namespace FBWBA.Accessibility
             currentMode = mode;
             try
             {
-                Properties.Settings.Default.AnnouncementMode = mode.ToString();
-                Properties.Settings.Default.Save();
+                SettingsManager.Current.AnnouncementMode = mode.ToString();
+                SettingsManager.Save();
             }
             catch
             {
