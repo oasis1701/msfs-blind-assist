@@ -14,10 +14,16 @@ namespace FBWBA.Database.Models
         public double Heading { get; set; }
         public double Radius { get; set; }
 
+        // Additional properties from Little Navmap database (optional, defaults for legacy databases)
+        public bool HasJetway { get; set; }
+        public string AirlineCodes { get; set; }
+
         public ParkingSpot()
         {
             AirportICAO = string.Empty;
             Name = string.Empty;
+            AirlineCodes = string.Empty;
+            HasJetway = false;
         }
 
         public string GetParkingType()
@@ -42,14 +48,22 @@ namespace FBWBA.Database.Models
 
         public override string ToString()
         {
+            string baseDescription;
+
             if (!string.IsNullOrEmpty(Name) && Number > 0)
-                return $"{Name} {Number} - {GetParkingType()}";
+                baseDescription = $"{Name} {Number} - {GetParkingType()}";
             else if (!string.IsNullOrEmpty(Name))
-                return $"{Name} - {GetParkingType()}";
+                baseDescription = $"{Name} - {GetParkingType()}";
             else if (Number > 0)
-                return $"Spot {Number} - {GetParkingType()}";
+                baseDescription = $"Spot {Number} - {GetParkingType()}";
             else
-                return $"Parking - {GetParkingType()}";
+                baseDescription = $"Parking - {GetParkingType()}";
+
+            // Add jetway indicator if available
+            if (HasJetway)
+                baseDescription += " (Jetway)";
+
+            return baseDescription;
         }
     }
 }

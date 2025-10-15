@@ -25,14 +25,14 @@ namespace FBWBA.Forms
         private Button cancelButton;
         private Label statusLabel;
 
-        private readonly AirportDatabase _database;
+        private readonly IAirportDataProvider _database;
         private readonly ScreenReaderAnnouncer _announcer;
         private readonly IntPtr previousWindow;
 
         public Runway SelectedRunway { get; private set; }
         public Airport SelectedAirport { get; private set; }
 
-        public RunwayTeleportForm(AirportDatabase database, ScreenReaderAnnouncer announcer)
+        public RunwayTeleportForm(IAirportDataProvider database, ScreenReaderAnnouncer announcer)
         {
             // Capture the current foreground window (likely the simulator)
             previousWindow = GetForegroundWindow();

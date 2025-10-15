@@ -250,5 +250,17 @@ namespace FBWBA.Properties {
                 this["MajorCityAPIThreshold"] = value;
             }
         }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("FS2020")]
+        public string SimulatorVersion {
+            get {
+                return ((string)(this["SimulatorVersion"]));
+            }
+            set {
+                this["SimulatorVersion"] = value;
+            }
+        }
     }
 }

@@ -5,7 +5,7 @@ namespace FBWBA
         private System.ComponentModel.IContainer components = null;
         private System.Windows.Forms.MenuStrip menuStrip;
         private System.Windows.Forms.ToolStripMenuItem fileMenuItem;
-        private System.Windows.Forms.ToolStripMenuItem buildDatabaseMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem databaseSettingsMenuItem;
         private System.Windows.Forms.ToolStripMenuItem announcementSettingsMenuItem;
         private System.Windows.Forms.ToolStripMenuItem geoNamesSettingsMenuItem;
         private System.Windows.Forms.ToolStripMenuItem hotkeyListMenuItem;
@@ -29,7 +29,7 @@ namespace FBWBA
         {
             this.menuStrip = new System.Windows.Forms.MenuStrip();
             this.fileMenuItem = new System.Windows.Forms.ToolStripMenuItem();
-            this.buildDatabaseMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.databaseSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.announcementSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.geoNamesSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.hotkeyListMenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -58,7 +58,7 @@ namespace FBWBA
             //
             this.fileMenuItem.AccessibleName = "File menu";
             this.fileMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
-            this.buildDatabaseMenuItem,
+            this.databaseSettingsMenuItem,
             this.announcementSettingsMenuItem,
             this.geoNamesSettingsMenuItem,
             this.hotkeyListMenuItem,
@@ -68,14 +68,14 @@ namespace FBWBA
             this.fileMenuItem.Size = new System.Drawing.Size(46, 24);
             this.fileMenuItem.Text = "&File";
             //
-            // buildDatabaseMenuItem
+            // databaseSettingsMenuItem
             //
-            this.buildDatabaseMenuItem.AccessibleName = "Build Airport Database";
-            this.buildDatabaseMenuItem.AccessibleDescription = "Build airport database from MakeRwys files";
-            this.buildDatabaseMenuItem.Name = "buildDatabaseMenuItem";
-            this.buildDatabaseMenuItem.Size = new System.Drawing.Size(220, 26);
-            this.buildDatabaseMenuItem.Text = "&Build Airport Database";
-            this.buildDatabaseMenuItem.Click += new System.EventHandler(this.BuildDatabaseMenuItem_Click);
+            this.databaseSettingsMenuItem.AccessibleName = "Database Settings";
+            this.databaseSettingsMenuItem.AccessibleDescription = "Configure database provider and paths for FS2020 and FS2024";
+            this.databaseSettingsMenuItem.Name = "databaseSettingsMenuItem";
+            this.databaseSettingsMenuItem.Size = new System.Drawing.Size(220, 26);
+            this.databaseSettingsMenuItem.Text = "&Database Settings";
+            this.databaseSettingsMenuItem.Click += new System.EventHandler(this.DatabaseSettingsMenuItem_Click);
             //
             // announcementSettingsMenuItem
             //

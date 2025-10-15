@@ -22,7 +22,7 @@ namespace FBWBA
         private SimVarMonitor simVarMonitor;
         private ScreenReaderAnnouncer announcer;
         private HotkeyManager hotkeyManager;
-        private AirportDatabase airportDatabase;
+        private IAirportDataProvider airportDataProvider;
         private ChecklistForm checklistForm;
         private TakeoffAssistManager takeoffAssistManager;
 
@@ -123,8 +123,11 @@ namespace FBWBA
             takeoffAssistManager = new TakeoffAssistManager(announcer);
             takeoffAssistManager.TakeoffAssistActiveChanged += OnTakeoffAssistActiveChanged;
 
-            // Initialize airport database
-            airportDatabase = new AirportDatabase();
+            // Initialize airport database provider
+            airportDataProvider = DatabaseSelector.SelectProvider();
+
+            // Update status bar with database info
+            UpdateDatabaseStatusDisplay();
 
             // Connect after a delay
             Timer connectTimer = new Timer();
@@ -827,15 +830,72 @@ namespace FBWBA
             }
         }
 
+        /// <summary>
+        /// Validates that the selected database matches the running simulator version
+        /// </summary>
+        /// <returns>True if validation passes or user chooses to continue anyway, false otherwise</returns>
+        private bool ValidateDatabaseSimulatorMatch()
+        {
+            string simVersion = simConnectManager.DetectedSimulatorVersion;
+            string dbType = airportDataProvider.DatabaseType;
+
+            // Unknown simulator version - allow operation
+            if (simVersion == "Unknown")
+                return true;
+
+            bool isFs2024Sim = simVersion.Contains("2024");
+            bool isFs2024Db = dbType.Contains("FS2024");
+
+            // Check for mismatch
+            if (isFs2024Sim && !isFs2024Db)
+            {
+                // FS2024 sim with FS2020 database
+                var result = DatabaseMismatchDialog.ShowMismatchWarning("FS2024", dbType);
+
+                if (result == DialogResult.Yes)
+                {
+                    // Open database settings
+                    DatabaseSettingsMenuItem_Click(null, EventArgs.Empty);
+                    return false; // Cancel teleport
+                }
+                else if (result == DialogResult.Cancel)
+                {
+                    return false; // Cancel teleport
+                }
+                // If "No", continue anyway
+            }
+            else if (!isFs2024Sim && isFs2024Db)
+            {
+                // FS2020 sim with FS2024 database
+                var result = DatabaseMismatchDialog.ShowMismatchWarning("FS2020", dbType);
+
+                if (result == DialogResult.Yes)
+                {
+                    DatabaseSettingsMenuItem_Click(null, EventArgs.Empty);
+                    return false;
+                }
+                else if (result == DialogResult.Cancel)
+                {
+                    return false;
+                }
+            }
+
+            return true; // Match is valid or user chose to continue
+        }
+
         private void ShowRunwayTeleportDialog()
         {
-            if (!airportDatabase.DatabaseExists)
+            if (airportDataProvider == null || !airportDataProvider.DatabaseExists)
             {
-                announcer.AnnounceImmediate("Airport database not found. Build database from File menu first.");
+                announcer.AnnounceImmediate("Airport database not found. Configure database from File menu first.");
                 return;
             }
 
-            var dialog = new RunwayTeleportForm(airportDatabase, announcer);
+            // Validate database matches simulator
+            if (!ValidateDatabaseSimulatorMatch())
+                return;
+
+            var dialog = new RunwayTeleportForm(airportDataProvider, announcer);
             if (dialog.ShowDialog(this) == DialogResult.OK)
             {
                 if (dialog.SelectedRunway != null && dialog.SelectedAirport != null)
@@ -847,13 +907,17 @@ namespace FBWBA
 
         private void ShowGateTeleportDialog()
         {
-            if (!airportDatabase.DatabaseExists)
+            if (airportDataProvider == null || !airportDataProvider.DatabaseExists)
             {
-                announcer.AnnounceImmediate("Airport database not found. Build database from File menu first.");
+                announcer.AnnounceImmediate("Airport database not found. Configure database from File menu first.");
                 return;
             }
 
-            var dialog = new GateTeleportForm(airportDatabase, announcer);
+            // Validate database matches simulator
+            if (!ValidateDatabaseSimulatorMatch())
+                return;
+
+            var dialog = new GateTeleportForm(airportDataProvider, announcer);
             if (dialog.ShowDialog(this) == DialogResult.OK)
             {
                 if (dialog.SelectedParkingSpot != null && dialog.SelectedAirport != null)
@@ -1071,13 +1135,17 @@ namespace FBWBA
             // Ensure output hotkey mode is deactivated before showing modal dialog
             hotkeyManager.ExitOutputHotkeyMode();
 
-            if (!airportDatabase.DatabaseExists)
+            if (airportDataProvider == null || !airportDataProvider.DatabaseExists)
             {
-                announcer.AnnounceImmediate("Airport database not found. Build database from File menu first.");
+                announcer.AnnounceImmediate("Airport database not found. Configure database from File menu first.");
                 return;
             }
 
-            var dialog = new DestinationRunwayForm(airportDatabase, announcer);
+            // Validate database matches simulator
+            if (!ValidateDatabaseSimulatorMatch())
+                return;
+
+            var dialog = new DestinationRunwayForm(airportDataProvider, announcer);
             if (dialog.ShowDialog(this) == DialogResult.OK)
             {
                 if (dialog.SelectedRunway != null && dialog.SelectedAirport != null)
@@ -1281,34 +1349,24 @@ namespace FBWBA
             }
         }
 
-        private void BuildDatabaseMenuItem_Click(object sender, EventArgs e)
+        private void DatabaseSettingsMenuItem_Click(object sender, EventArgs e)
         {
-            using (var folderBrowser = new FolderBrowserDialog())
+            using (var settingsForm = new DatabaseSettingsForm(announcer))
             {
-                folderBrowser.Description = "Select the MakeRwys folder containing airport data files";
-                folderBrowser.ShowNewFolderButton = false;
-
-                if (folderBrowser.ShowDialog(this) == DialogResult.OK)
+                if (settingsForm.ShowDialog(this) == DialogResult.OK)
                 {
-                    string makeRwysFolder = folderBrowser.SelectedPath;
+                    // Reload database provider with new settings
+                    RefreshDatabaseProvider();
 
-                    // Verify required files exist
-                    if (!File.Exists(Path.Combine(makeRwysFolder, "runways.xml")) ||
-                        !File.Exists(Path.Combine(makeRwysFolder, "g5.csv")))
+                    // Announce the change
+                    var status = DatabaseSelector.GetDatabaseStatus();
+                    if (status.hasDatabase)
                     {
-                        MessageBox.Show("Required files (runways.xml and g5.csv) not found in selected folder.",
-                                      "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                        return;
+                        announcer.AnnounceImmediate($"Database settings saved. Using {status.message}");
                     }
-
-                    // Show progress dialog
-                    var builder = new DatabaseBuilder(airportDatabase);
-                    using (var progressForm = new DatabaseProgressForm(builder, makeRwysFolder, announcer))
+                    else
                     {
-                        if (progressForm.ShowDialog(this) == DialogResult.OK)
-                        {
-                            statusLabel.Text = "Database build completed.";
-                        }
+                        announcer.AnnounceImmediate($"Database settings saved. {status.message}");
                     }
                 }
             }
@@ -1354,6 +1412,38 @@ namespace FBWBA
             {
                 hotkeyListForm.ShowDialog(this);
             }
+        }
+
+        private void UpdateDatabaseStatusDisplay()
+        {
+            if (InvokeRequired)
+            {
+                BeginInvoke(new Action(() => UpdateDatabaseStatusDisplay()));
+                return;
+            }
+
+            try
+            {
+                if (airportDataProvider == null || !airportDataProvider.DatabaseExists)
+                {
+                    // Database status will be shown in file menu or on-demand
+                    return;
+                }
+
+                // Database info is available but not shown in status bar by default
+                // It can be queried when needed (e.g., in database settings dialog)
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error updating database status: {ex.Message}");
+            }
+        }
+
+        private void RefreshDatabaseProvider()
+        {
+            // Reload database provider based on current settings
+            airportDataProvider = DatabaseSelector.SelectProvider();
+            UpdateDatabaseStatusDisplay();
         }
 
         private async void UpdateApplicationMenuItem_Click(object sender, EventArgs e)
