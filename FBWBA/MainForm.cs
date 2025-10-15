@@ -108,6 +108,7 @@ namespace FBWBA
 
             simConnectManager = new SimConnectManager(this.Handle);
             simConnectManager.ConnectionStatusChanged += OnConnectionStatusChanged;
+            simConnectManager.SimulatorVersionDetected += OnSimulatorVersionDetected;
             simConnectManager.SimVarUpdated += OnSimVarUpdated;
 
             simVarMonitor = new SimVarMonitor();
@@ -141,6 +142,18 @@ namespace FBWBA
             connectTimer.Start();
         }
 
+        private void OnSimulatorVersionDetected(object sender, string version)
+        {
+            if (InvokeRequired)
+            {
+                BeginInvoke(new Action(() => OnSimulatorVersionDetected(sender, version)));
+                return;
+            }
+
+            // Announce the detected simulator version
+            announcer.Announce(version);
+        }
+
         private void OnConnectionStatusChanged(object sender, string status)
         {
             if (InvokeRequired)
@@ -151,7 +164,7 @@ namespace FBWBA
 
             statusLabel.Text = status;
 
-            if (status.Contains("Connected to FBW"))
+            if (status.StartsWith("Connected to"))
             {
                 announcer.Announce(status);
 

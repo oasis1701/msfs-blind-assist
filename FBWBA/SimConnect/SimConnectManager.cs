@@ -19,6 +19,7 @@ namespace FBWBA.SimConnect
         
         // Events
         public event EventHandler<string> ConnectionStatusChanged;
+        public event EventHandler<string> SimulatorVersionDetected;
         public event EventHandler<SimVarUpdateEventArgs> SimVarUpdated;
         public event EventHandler<AircraftPosition> AircraftPositionReceived;
         public event EventHandler<WindData> WindReceived;
@@ -80,6 +81,10 @@ namespace FBWBA.SimConnect
         private string currentAircraftAtcId = "";
         private string currentAircraftAirline = "";
         private string currentAircraftFlightNumber = "";
+
+        // Aircraft connection announcement - wait for both aircraft info and ATC data
+        private AircraftInfo? pendingAircraftInfo = null;
+        private bool atcDataReceived = false;
 
         // Simulator version detection
         public string DetectedSimulatorVersion { get; private set; } = "Unknown";
@@ -241,6 +246,19 @@ namespace FBWBA.SimConnect
 
                 IsConnected = true;
                 reconnectTimer.Stop();
+
+                // Detect and announce simulator version
+                DetectedSimulatorVersion = Utils.SimulatorDetector.DetectRunningSimulator();
+                System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Detected simulator in Connect(): {DetectedSimulatorVersion}");
+
+                if (DetectedSimulatorVersion == "FS2020")
+                {
+                    SimulatorVersionDetected?.Invoke(this, "MSFS 2020 detected");
+                }
+                else if (DetectedSimulatorVersion == "FS2024")
+                {
+                    SimulatorVersionDetected?.Invoke(this, "MSFS 2024 detected");
+                }
 
                 // Check aircraft type
                 RequestAircraftInfo();
@@ -612,7 +630,8 @@ namespace FBWBA.SimConnect
                     
                 case DATA_REQUESTS.REQUEST_AIRCRAFT_INFO:
                     AircraftInfo aircraftInfo = (AircraftInfo)data.dwData[0];
-                    CheckAircraftType(aircraftInfo);
+                    pendingAircraftInfo = aircraftInfo;
+                    TryAnnounceConnection();
                     break;
 
                 case DATA_REQUESTS.REQUEST_ATC_ID:
@@ -624,10 +643,14 @@ namespace FBWBA.SimConnect
                         currentAircraftAirline = atcData.atcAirline?.Trim() ?? "";
                         currentAircraftFlightNumber = atcData.atcFlightNumber?.Trim() ?? "";
                         System.Diagnostics.Debug.WriteLine($"[SimConnectManager] ATC Data - ID: '{currentAircraftAtcId}', Type: '{atcData.atcType?.Trim()}', Airline: '{currentAircraftAirline}', Flight: '{currentAircraftFlightNumber}'");
+                        atcDataReceived = true;
+                        TryAnnounceConnection();
                     }
                     catch (Exception ex)
                     {
                         System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error parsing ATC data: {ex.Message}");
+                        atcDataReceived = true; // Set flag even on error so we don't block announcement
+                        TryAnnounceConnection();
                     }
                     break;
 
@@ -1418,6 +1441,19 @@ namespace FBWBA.SimConnect
             }
         }
 
+        private void TryAnnounceConnection()
+        {
+            // Only announce when we have both aircraft info AND ATC data
+            if (pendingAircraftInfo.HasValue && atcDataReceived)
+            {
+                CheckAircraftType(pendingAircraftInfo.Value);
+
+                // Reset flags for potential reconnection
+                pendingAircraftInfo = null;
+                atcDataReceived = false;
+            }
+        }
+
         private void CheckAircraftType(AircraftInfo info)
         {
             // Build smart identification string based on available ATC data
@@ -1437,17 +1473,18 @@ namespace FBWBA.SimConnect
             }
             // Priority 3: No identification available (just show aircraft type)
 
+            // Announce full aircraft title with ATC identification
+            ConnectionStatusChanged?.Invoke(this, $"Connected to {info.title}{identification}");
+            wasConnected = true; // Mark that we're now successfully connected
+
+            // Log whether this is the expected FBW A32NX aircraft
             if (info.title.Contains("A32NX") || info.title.Contains("A320"))
             {
-                ConnectionStatusChanged?.Invoke(this, $"Connected to FBW A32NX{identification}");
-                wasConnected = true; // Mark that we're now successfully connected
                 System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Successfully connected to FBW A32NX{identification}");
             }
             else
             {
-                ConnectionStatusChanged?.Invoke(this, $"Warning: Connected to {info.title}{identification} - not FBW A32NX");
-                wasConnected = true; // Still connected, just wrong aircraft
-                System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Connected to wrong aircraft: {info.title}{identification}");
+                System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Connected to {info.title}{identification} - not FBW A32NX");
             }
         }
 
