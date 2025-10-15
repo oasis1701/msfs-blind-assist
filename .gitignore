@@ -113,3 +113,9 @@ GuidesForClaude/
 # Database files (if generated during build)
 *.db-shm
 *.db-wal
+
+# Third-party binaries
+Navdatareader-win-1.2.3/
+
+# nul
+nul

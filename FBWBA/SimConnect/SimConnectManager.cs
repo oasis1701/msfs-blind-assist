@@ -81,6 +81,9 @@ namespace FBWBA.SimConnect
         private string currentAircraftAirline = "";
         private string currentAircraftFlightNumber = "";
 
+        // Simulator version detection
+        public string DetectedSimulatorVersion { get; private set; } = "Unknown";
+
         // Visual approach monitoring
         private System.Windows.Forms.Timer visualApproachTimer;
         private bool visualApproachActive = false;
@@ -494,7 +497,18 @@ namespace FBWBA.SimConnect
 
         private void SimConnect_OnRecvOpen(Microsoft.FlightSimulator.SimConnect.SimConnect sender, SIMCONNECT_RECV_OPEN data)
         {
-            // Connection established, but wait for aircraft verification before announcing
+            // Connection established, detect simulator version using shared utility
+            try
+            {
+                DetectedSimulatorVersion = Utils.SimulatorDetector.DetectRunningSimulator();
+                System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Detected simulator: {DetectedSimulatorVersion}");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error detecting simulator version: {ex.Message}");
+                DetectedSimulatorVersion = "Unknown";
+            }
+
             System.Diagnostics.Debug.WriteLine("[SimConnectManager] SimConnect connection opened, requesting aircraft info");
         }
 
@@ -2610,8 +2624,25 @@ namespace FBWBA.SimConnect
 
             if (simConnect != null)
             {
+                try
+                {
+                    // Unregister event handlers before disposal to ensure clean disconnect
+                    simConnect.OnRecvOpen -= SimConnect_OnRecvOpen;
+                    simConnect.OnRecvQuit -= SimConnect_OnRecvQuit;
+                    simConnect.OnRecvSimobjectData -= SimConnect_OnRecvSimobjectData;
+                    simConnect.OnRecvClientData -= SimConnect_OnRecvClientData;
+                    simConnect.OnRecvException -= SimConnect_OnRecvException;
+
+                    System.Diagnostics.Debug.WriteLine("[SimConnectManager] Event handlers unregistered, disposing SimConnect...");
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error unregistering event handlers: {ex.Message}");
+                }
+
                 simConnect.Dispose();
                 simConnect = null;
+                System.Diagnostics.Debug.WriteLine("[SimConnectManager] SimConnect disposed");
             }
             IsConnected = false;
 

@@ -84,20 +84,27 @@
     <Compile Include="Database\Models\Runway.cs" />
     <Compile Include="Database\Models\ParkingSpot.cs" />
     <Compile Include="Database\AirportDatabase.cs" />
-    <Compile Include="Database\DatabaseBuilder.cs" />
+    <Compile Include="Database\IAirportDataProvider.cs" />
+    <Compile Include="Database\LittleNavMapProvider.cs" />
+    <Compile Include="Database\DatabasePathResolver.cs" />
+    <Compile Include="Database\DatabaseSelector.cs" />
+    <Compile Include="Database\NavdataReaderBuilder.cs" />
+    <Compile Include="Forms\DatabaseBuildProgressForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
     <Compile Include="Forms\RunwayTeleportForm.cs">
       <SubType>Form</SubType>
     </Compile>
     <Compile Include="Forms\GateTeleportForm.cs">
       <SubType>Form</SubType>
     </Compile>
-    <Compile Include="Forms\DatabaseProgressForm.cs">
+    <Compile Include="Forms\AnnouncementSettingsForm.cs">
       <SubType>Form</SubType>
     </Compile>
-    <Compile Include="Forms\DatabaseProgressForm.Designer.cs">
-      <DependentUpon>DatabaseProgressForm.cs</DependentUpon>
+    <Compile Include="Forms\DatabaseSettingsForm.cs">
+      <SubType>Form</SubType>
     </Compile>
-    <Compile Include="Forms\AnnouncementSettingsForm.cs">
+    <Compile Include="Forms\DatabaseMismatchDialog.cs">
       <SubType>Form</SubType>
     </Compile>
     <Compile Include="Forms\DestinationRunwayForm.cs">
@@ -143,6 +150,7 @@
     <Compile Include="Models\LocationData.cs" />
     <Compile Include="Navigation\NavigationCalculator.cs" />
     <Compile Include="Navigation\VisualApproachMonitor.cs" />
+    <Compile Include="Utils\SimulatorDetector.cs" />
     <Compile Include="Forms\UpdateAvailableForm.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -183,9 +191,18 @@
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <PropertyGroup>
     <PostBuildEvent>
-      xcopy /Y "$(MSFS_SDK)\SimConnect SDK\lib\SimConnect.dll" "$(TargetDir)"
+      REM Copy both versioned SimConnect DLLs to output directory
+      xcopy /Y "$(ProjectDir)..\SimConnect_msfs_2020.dll" "$(TargetDir)"
+      xcopy /Y "$(ProjectDir)..\SimConnect_msfs_2024.dll" "$(TargetDir)"
       xcopy /Y "$(ProjectDir)Libraries\Tolk.dll" "$(TargetDir)"
       xcopy /Y "$(ProjectDir)..\nvda_controllerClient\x64\nvdaControllerClient.dll" "$(TargetDir)"
+
+      REM Copy navdatareader and all its dependencies to output directory
+      if not exist "$(TargetDir)navdatareader\" mkdir "$(TargetDir)navdatareader\"
+      xcopy /Y /E /I "$(ProjectDir)..\Navdatareader-win-1.2.3\*" "$(TargetDir)navdatareader\"
+
+      REM Copy SimConnect.cfg to navdatareader directory for FS2024 SimConnect support
+      xcopy /Y "$(ProjectDir)SimConnect.cfg" "$(TargetDir)navdatareader\"
     </PostBuildEvent>
   </PropertyGroup>
   <Import Project="..\packages\Stub.System.Data.SQLite.Core.NetFramework.1.0.119.0\build\net46\Stub.System.Data.SQLite.Core.NetFramework.targets" Condition="Exists('..\packages\Stub.System.Data.SQLite.Core.NetFramework.1.0.119.0\build\net46\Stub.System.Data.SQLite.Core.NetFramework.targets')" />

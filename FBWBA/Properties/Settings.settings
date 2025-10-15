@@ -61,5 +61,8 @@
     <Setting Name="MajorCityAPIThreshold" Type="System.String" Scope="User">
       <Value Profile="(Default)">cities15000</Value>
     </Setting>
+    <Setting Name="SimulatorVersion" Type="System.String" Scope="User">
+      <Value Profile="(Default)">FS2020</Value>
+    </Setting>
   </Settings>
 </SettingsFile>
