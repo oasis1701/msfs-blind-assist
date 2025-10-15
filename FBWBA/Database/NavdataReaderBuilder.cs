@@ -312,33 +312,75 @@ namespace FBWBA.Database
                 // Log all output for debugging
                 Debug.WriteLine($"[NavdataReader] {line}");
 
+                string detailMessage = null;
+
                 // Look for common progress indicators (case-insensitive using IndexOf)
                 if (line.IndexOf("Reading", StringComparison.OrdinalIgnoreCase) >= 0)
                 {
-                    OnProgressUpdated(25, "Reading scenery files...");
+                    // Extract more detail if available
+                    if (line.IndexOf("scenery", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        detailMessage = "Reading scenery files from disk";
+                    }
+                    else if (line.IndexOf("BGL", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        detailMessage = "Reading BGL files";
+                    }
+                    OnProgressUpdated(25, "Reading scenery files...", detailMessage);
                 }
                 else if (line.IndexOf("Processing", StringComparison.OrdinalIgnoreCase) >= 0)
                 {
-                    OnProgressUpdated(50, "Processing airport data...");
+                    detailMessage = line.Length < 100 ? line.Trim() : null;
+                    OnProgressUpdated(50, "Processing airport data...", detailMessage);
                 }
                 else if (line.IndexOf("Creating", StringComparison.OrdinalIgnoreCase) >= 0 ||
                          line.IndexOf("Writing", StringComparison.OrdinalIgnoreCase) >= 0)
                 {
-                    OnProgressUpdated(75, "Writing database...");
+                    if (line.IndexOf("database", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        detailMessage = "Writing database structure";
+                    }
+                    OnProgressUpdated(75, "Writing database...", detailMessage);
+                }
+                else if (line.IndexOf("Vacuum", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    OnProgressUpdated(85, "Optimizing database...", "Running vacuum to compact database");
+                }
+                else if (line.IndexOf("Analyz", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    OnProgressUpdated(90, "Analyzing database...", "Gathering statistics for query optimization");
+                }
+                else if (line.IndexOf("index", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                         line.IndexOf("Creating", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    OnProgressUpdated(92, "Creating indexes...", "Building database indexes for fast queries");
                 }
                 else if (line.IndexOf("Done", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                         line.IndexOf("Finished", StringComparison.OrdinalIgnoreCase) >= 0)
+                         line.IndexOf("Finished", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                         line.IndexOf("compiled", StringComparison.OrdinalIgnoreCase) >= 0)
                 {
-                    OnProgressUpdated(95, "Finalizing database...");
+                    OnProgressUpdated(95, "Finalizing database...", "Completing final operations");
                 }
                 else if (line.IndexOf("airports", StringComparison.OrdinalIgnoreCase) >= 0 &&
                          Regex.IsMatch(line, @"\d+"))
                 {
                     // Extract airport count if available
-                    var match = Regex.Match(line, @"(\d+)\s*airports?");
+                    var match = Regex.Match(line, @"(\d+)\s*airports?", RegexOptions.IgnoreCase);
                     if (match.Success)
                     {
-                        OnProgressUpdated(90, $"Processed {match.Groups[1].Value} airports");
+                        int count = int.Parse(match.Groups[1].Value);
+                        detailMessage = $"Found {count:N0} airports in scenery library";
+                        OnProgressUpdated(90, $"Processed {count:N0} airports", detailMessage);
+                    }
+                }
+                else if (line.IndexOf("loading", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                         line.IndexOf("opening", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    // Only show concise loading messages
+                    if (line.Length < 100)
+                    {
+                        detailMessage = line.Trim();
+                        OnProgressUpdated(-1, null, detailMessage); // -1 means don't update percentage
                     }
                 }
             }
@@ -351,12 +393,13 @@ namespace FBWBA.Database
         /// <summary>
         /// Fires the ProgressUpdated event
         /// </summary>
-        private void OnProgressUpdated(int percentage, string status)
+        private void OnProgressUpdated(int percentage, string status, string details = null)
         {
             ProgressUpdated?.Invoke(this, new BuildProgressEventArgs
             {
                 PercentComplete = percentage,
-                StatusMessage = status
+                StatusMessage = status,
+                DetailMessage = details
             });
         }
 
@@ -531,6 +574,7 @@ namespace FBWBA.Database
     {
         public int PercentComplete { get; set; }
         public string StatusMessage { get; set; }
+        public string DetailMessage { get; set; }
     }
 
     /// <summary>

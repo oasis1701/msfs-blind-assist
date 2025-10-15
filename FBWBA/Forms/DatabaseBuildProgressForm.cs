@@ -15,8 +15,8 @@ namespace FBWBA.Forms
     public partial class DatabaseBuildProgressForm : Form
     {
         private ProgressBar progressBar;
-        private Label statusLabel;
-        private Label detailsLabel;
+        private TextBox statusTextBox;
+        private TextBox detailsTextBox;
         private Button cancelButton;
         private Button closeButton;
 
@@ -28,7 +28,6 @@ namespace FBWBA.Forms
 
         private bool buildCompleted;
         private bool buildSucceeded;
-        private string lastAnnouncedStatus;
 
         public bool BuildSucceeded => buildSucceeded;
 
@@ -58,16 +57,20 @@ namespace FBWBA.Forms
 
             int yPos = 20;
 
-            // Status Label
-            statusLabel = new Label
+            // Status TextBox (read-only, single line, accessible)
+            statusTextBox = new TextBox
             {
                 Text = "Initializing...",
                 Location = new Point(20, yPos),
-                Size = new Size(450, 30),
+                Size = new Size(450, 25),
                 AccessibleName = "Build status",
-                Font = new Font(Font, FontStyle.Bold)
+                Font = new Font(Font, FontStyle.Bold),
+                ReadOnly = true,
+                TabStop = true,
+                BorderStyle = BorderStyle.Fixed3D,
+                BackColor = SystemColors.Control
             };
-            yPos += 40;
+            yPos += 35;
 
             // Progress Bar
             progressBar = new ProgressBar
@@ -81,7 +84,7 @@ namespace FBWBA.Forms
             };
             yPos += 40;
 
-            // Details Label - show simulator-specific requirements
+            // Details TextBox (read-only, multiline, accessible) - show simulator-specific requirements
             string detailsText = "This may take 2-5 minutes depending on your system and scenery complexity.\n\n";
             if (simulatorVersion == "FS2024")
             {
@@ -92,14 +95,20 @@ namespace FBWBA.Forms
                 detailsText += "Requirement: FS2020 should be closed (reads scenery files)";
             }
 
-            detailsLabel = new Label
+            detailsTextBox = new TextBox
             {
                 Text = detailsText,
                 Location = new Point(20, yPos),
-                Size = new Size(450, 60),
-                AccessibleName = "Build details"
+                Size = new Size(450, 70),
+                AccessibleName = "Build details",
+                ReadOnly = true,
+                TabStop = true,
+                Multiline = true,
+                BorderStyle = BorderStyle.Fixed3D,
+                BackColor = SystemColors.Control,
+                ScrollBars = ScrollBars.Vertical
             };
-            yPos += 70;
+            yPos += 80;
 
             // Cancel Button
             cancelButton = new Button
@@ -127,16 +136,16 @@ namespace FBWBA.Forms
             // Add controls
             Controls.AddRange(new Control[]
             {
-                statusLabel, progressBar, detailsLabel, cancelButton, closeButton
+                statusTextBox, progressBar, detailsTextBox, cancelButton, closeButton
             });
         }
 
         private void SetupAccessibility()
         {
             // Set tab order
-            statusLabel.TabIndex = 0;
+            statusTextBox.TabIndex = 0;
             progressBar.TabIndex = 1;
-            detailsLabel.TabIndex = 2;
+            detailsTextBox.TabIndex = 2;
             cancelButton.TabIndex = 3;
             closeButton.TabIndex = 4;
 
@@ -147,11 +156,6 @@ namespace FBWBA.Forms
                 Activate();
                 TopMost = true;
                 TopMost = false;
-
-                // Give screen reader time to announce dialog
-                await Task.Delay(500);
-
-                announcer?.AnnounceImmediate($"Building {simulatorVersion} database. This may take several minutes.");
 
                 // Start the build process
                 await StartBuildAsync();
@@ -185,7 +189,6 @@ namespace FBWBA.Forms
             catch (Exception ex)
             {
                 UpdateStatus(0, "Build failed", $"Error: {ex.Message}");
-                announcer?.AnnounceImmediate($"Database build failed: {ex.Message}");
             }
         }
 
@@ -198,24 +201,7 @@ namespace FBWBA.Forms
                 return;
             }
 
-            UpdateStatus(e.PercentComplete, e.StatusMessage, null);
-
-            // Announce significant progress milestones
-            if (e.PercentComplete >= 25 && e.PercentComplete < 50 && lastAnnouncedStatus != "25")
-            {
-                announcer?.AnnounceImmediate("Reading scenery files");
-                lastAnnouncedStatus = "25";
-            }
-            else if (e.PercentComplete >= 50 && e.PercentComplete < 75 && lastAnnouncedStatus != "50")
-            {
-                announcer?.AnnounceImmediate("Processing airport data");
-                lastAnnouncedStatus = "50";
-            }
-            else if (e.PercentComplete >= 75 && e.PercentComplete < 95 && lastAnnouncedStatus != "75")
-            {
-                announcer?.AnnounceImmediate("Writing database");
-                lastAnnouncedStatus = "75";
-            }
+            UpdateStatus(e.PercentComplete, e.StatusMessage, e.DetailMessage);
         }
 
         private void Builder_BuildCompleted(object sender, BuildCompletedEventArgs e)
@@ -233,12 +219,10 @@ namespace FBWBA.Forms
             if (e.Success)
             {
                 UpdateStatus(100, "Build completed successfully!", e.Message);
-                announcer?.AnnounceImmediate($"{simulatorVersion} database built successfully. You can now close this dialog.");
             }
             else
             {
                 UpdateStatus(0, "Build failed", e.Message);
-                announcer?.AnnounceImmediate($"Database build failed: {e.Message}");
             }
 
             // Enable close button, hide cancel button
@@ -250,12 +234,25 @@ namespace FBWBA.Forms
 
         private void UpdateStatus(int percentage, string status, string details)
         {
-            progressBar.Value = Math.Min(Math.Max(percentage, 0), 100);
-            statusLabel.Text = status;
+            // Update progress bar (percentage -1 means don't update)
+            if (percentage >= 0)
+            {
+                progressBar.Value = Math.Min(Math.Max(percentage, 0), 100);
+            }
 
+            // Update status text (if provided)
+            if (status != null)
+            {
+                statusTextBox.Text = status;
+            }
+
+            // Update details text (if provided)
             if (details != null)
             {
-                detailsLabel.Text = details;
+                detailsTextBox.Text = details;
+                // Auto-scroll to bottom for multiline updates
+                detailsTextBox.SelectionStart = detailsTextBox.Text.Length;
+                detailsTextBox.ScrollToCaret();
             }
         }
 
@@ -273,7 +270,6 @@ namespace FBWBA.Forms
                 builder.CancelBuild();
 
                 UpdateStatus(0, "Build cancelled", "The database build was cancelled by the user.");
-                announcer?.AnnounceImmediate("Database build cancelled");
 
                 cancelButton.Visible = false;
                 closeButton.Visible = true;
