@@ -15,6 +15,7 @@ https://discord.gg/7udKUYFFY7
 
 ## Authors
 Developed and  maintained by Hadi Rezaei
+
 Navdata Reader command line tool by Alexander Barthel to build the airport and navigation databases.
 
 ## usage and documentation
