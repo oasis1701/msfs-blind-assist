@@ -154,6 +154,10 @@ namespace FBWBA
             if (status.Contains("Connected to FBW"))
             {
                 announcer.Announce(status);
+
+                // Automatically switch database if simulator version doesn't match
+                CheckAndSwitchDatabase();
+
                 // Request all current values when connected
                 RequestAllCurrentValues();
 
@@ -1444,6 +1448,67 @@ namespace FBWBA
             // Reload database provider based on current settings
             airportDataProvider = DatabaseSelector.SelectProvider();
             UpdateDatabaseStatusDisplay();
+        }
+
+        /// <summary>
+        /// Automatically switches database setting if detected simulator version doesn't match
+        /// </summary>
+        private void CheckAndSwitchDatabase()
+        {
+            try
+            {
+                string detectedSim = simConnectManager.DetectedSimulatorVersion;
+
+                // Unknown simulator - no action needed
+                if (detectedSim == "Unknown")
+                {
+                    System.Diagnostics.Debug.WriteLine("[MainForm] Simulator version unknown, keeping current database setting");
+                    return;
+                }
+
+                var settings = FBWBA.Settings.SettingsManager.Current;
+                string currentDbSetting = settings.SimulatorVersion ?? "FS2020";
+
+                // Check if database setting matches detected simulator
+                bool needsSwitch = false;
+                string targetVersion = null;
+
+                if (detectedSim == "FS2024" && currentDbSetting != "FS2024")
+                {
+                    needsSwitch = true;
+                    targetVersion = "FS2024";
+                }
+                else if (detectedSim == "FS2020" && currentDbSetting != "FS2020")
+                {
+                    needsSwitch = true;
+                    targetVersion = "FS2020";
+                }
+
+                if (needsSwitch)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[MainForm] Auto-switching database from {currentDbSetting} to {targetVersion}");
+
+                    // Update settings
+                    settings.SimulatorVersion = targetVersion;
+                    FBWBA.Settings.SettingsManager.Save(settings);
+
+                    // Reload database provider
+                    RefreshDatabaseProvider();
+
+                    // Announce the change to the user
+                    string announcement = $"Database automatically switched to {targetVersion}";
+                    System.Diagnostics.Debug.WriteLine($"[MainForm] {announcement}");
+                    announcer.Announce(announcement);
+                }
+                else
+                {
+                    System.Diagnostics.Debug.WriteLine($"[MainForm] Database setting ({currentDbSetting}) already matches detected simulator ({detectedSim})");
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[MainForm] Error in CheckAndSwitchDatabase: {ex.Message}");
+            }
         }
 
         private async void UpdateApplicationMenuItem_Click(object sender, EventArgs e)

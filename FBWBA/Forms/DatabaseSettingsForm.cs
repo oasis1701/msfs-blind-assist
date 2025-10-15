@@ -10,13 +10,11 @@ namespace FBWBA.Forms
 {
     public partial class DatabaseSettingsForm : Form
     {
-        private RadioButton fs2020Radio;
-        private RadioButton fs2024Radio;
         private Label statusLabel;
-        private Button buildDatabaseButton;
-        private Button refreshButton;
-        private Button okButton;
-        private Button cancelButton;
+        private Button buildFs2020Button;
+        private Button buildFs2024Button;
+        private Button verifyButton;
+        private Button closeButton;
         private Label titleLabel;
         private Label infoLabel;
 
@@ -26,15 +24,14 @@ namespace FBWBA.Forms
         {
             this.announcer = announcer;
             InitializeComponent();
-            LoadCurrentSettings();
             SetupAccessibility();
             UpdateDatabaseStatus();
         }
 
         private void InitializeComponent()
         {
-            Text = "Database Configuration";
-            Size = new Size(600, 400);
+            Text = "Database Management";
+            Size = new Size(600, 380);
             StartPosition = FormStartPosition.CenterParent;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
@@ -46,121 +43,99 @@ namespace FBWBA.Forms
             // Title Label
             titleLabel = new Label
             {
-                Text = "Select Your Flight Simulator",
+                Text = "Database Management",
                 Location = new Point(20, yPos),
                 Size = new Size(550, 25),
-                AccessibleName = "Database Configuration Title",
+                AccessibleName = "Database Management Title",
                 Font = new Font(Font.FontFamily, 12, FontStyle.Bold)
             };
             yPos += 40;
 
-            // FS2020 Radio Button
-            fs2020Radio = new RadioButton
-            {
-                Text = "Flight Simulator 2020",
-                Location = new Point(40, yPos),
-                Size = new Size(500, 30),
-                AccessibleName = "Flight Simulator 2020",
-                AccessibleDescription = "Use navdatareader database for FS2020",
-                Font = new Font(Font.FontFamily, 10)
-            };
-            fs2020Radio.CheckedChanged += SimulatorVersionRadio_CheckedChanged;
-            yPos += 40;
-
-            // FS2024 Radio Button
-            fs2024Radio = new RadioButton
-            {
-                Text = "Flight Simulator 2024",
-                Location = new Point(40, yPos),
-                Size = new Size(500, 30),
-                AccessibleName = "Flight Simulator 2024",
-                AccessibleDescription = "Use navdatareader database for FS2024",
-                Font = new Font(Font.FontFamily, 10)
-            };
-            fs2024Radio.CheckedChanged += SimulatorVersionRadio_CheckedChanged;
-            yPos += 50;
-
             // Info Label
             infoLabel = new Label
             {
-                Text = "The application uses navdatareader to build airport databases.\nDatabases are stored in: " + Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "FBWBA", "databases"),
+                Text = "The active database is automatically selected based on the running simulator.\n" +
+                       "Use the buttons below to build or rebuild databases for each version.\n" +
+                       "Databases are stored in: " + Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "FBWBA", "databases"),
                 Location = new Point(40, yPos),
-                Size = new Size(520, 50),
+                Size = new Size(520, 70),
                 AccessibleName = "Database information",
                 ForeColor = Color.Gray,
                 Font = new Font(Font.FontFamily, 8)
             };
-            yPos += 60;
+            yPos += 80;
 
             // Status Label
             statusLabel = new Label
             {
-                Text = "Status: Checking...",
+                Text = "Active Database: Checking...",
                 Location = new Point(40, yPos),
                 Size = new Size(520, 30),
-                AccessibleName = "Database status",
-                Font = new Font(Font.FontFamily, 10),
-                ForeColor = Color.Gray
+                AccessibleName = "Active database status",
+                Font = new Font(Font.FontFamily, 10, FontStyle.Bold),
+                ForeColor = Color.DarkBlue
             };
             yPos += 45;
 
-            // Build Database Button
-            buildDatabaseButton = new Button
+            // Build FS2020 Database Button
+            buildFs2020Button = new Button
             {
-                Text = "Build Database",
+                Text = "Build FS2020 Database",
                 Location = new Point(40, yPos),
-                Size = new Size(150, 35),
-                AccessibleName = "Build database",
-                AccessibleDescription = "Build airport database using navdatareader",
+                Size = new Size(180, 35),
+                AccessibleName = "Build Flight Simulator 2020 database",
+                AccessibleDescription = "Build airport database for Flight Simulator 2020 using navdatareader",
                 Font = new Font(Font.FontFamily, 9)
             };
-            buildDatabaseButton.Click += BuildDatabaseButton_Click;
+            buildFs2020Button.Click += (s, e) => BuildDatabaseForSimulator("FS2020");
 
-            // Refresh Button
-            refreshButton = new Button
+            // Build FS2024 Database Button
+            buildFs2024Button = new Button
             {
-                Text = "Verify Database",
-                Location = new Point(200, yPos),
-                Size = new Size(130, 35),
-                AccessibleName = "Verify current selected database",
-                AccessibleDescription = "Verify the current selected and active database",
+                Text = "Build FS2024 Database",
+                Location = new Point(230, yPos),
+                Size = new Size(180, 35),
+                AccessibleName = "Build Flight Simulator 2024 database",
+                AccessibleDescription = "Build airport database for Flight Simulator 2024 using navdatareader",
                 Font = new Font(Font.FontFamily, 9)
             };
-            refreshButton.Click += RefreshButton_Click;
-            yPos += 55;
+            buildFs2024Button.Click += (s, e) => BuildDatabaseForSimulator("FS2024");
+            yPos += 50;
 
-            // OK and Cancel Buttons
-            okButton = new Button
+            // Verify Button
+            verifyButton = new Button
             {
-                Text = "OK",
-                Location = new Point(400, yPos),
-                Size = new Size(75, 30),
-                DialogResult = DialogResult.OK,
-                AccessibleName = "Save settings",
-                AccessibleDescription = "Save database configuration"
+                Text = "Verify Active Database",
+                Location = new Point(40, yPos),
+                Size = new Size(180, 35),
+                AccessibleName = "Verify active database",
+                AccessibleDescription = "Check which database is currently active and how many airports it contains",
+                Font = new Font(Font.FontFamily, 9)
             };
-            okButton.Click += OkButton_Click;
+            verifyButton.Click += VerifyButton_Click;
+            yPos += 60;
 
-            cancelButton = new Button
+            // Close Button
+            closeButton = new Button
             {
-                Text = "Cancel",
+                Text = "Close",
                 Location = new Point(480, yPos),
-                Size = new Size(75, 30),
-                DialogResult = DialogResult.Cancel,
-                AccessibleName = "Cancel",
-                AccessibleDescription = "Cancel without saving"
+                Size = new Size(80, 30),
+                DialogResult = DialogResult.OK,
+                AccessibleName = "Close window",
+                AccessibleDescription = "Close database management window"
             };
 
             // Add all controls to form
             Controls.AddRange(new Control[]
             {
-                titleLabel, fs2020Radio, fs2024Radio, infoLabel,
-                statusLabel, buildDatabaseButton, refreshButton,
-                okButton, cancelButton
+                titleLabel, infoLabel, statusLabel,
+                buildFs2020Button, buildFs2024Button,
+                verifyButton, closeButton
             });
 
-            AcceptButton = okButton;
-            CancelButton = cancelButton;
+            AcceptButton = closeButton;
+            CancelButton = closeButton;
         }
 
         private void SetupAccessibility()
@@ -168,13 +143,12 @@ namespace FBWBA.Forms
             // Set tab order
             int tabIndex = 0;
             titleLabel.TabIndex = tabIndex++;
-            fs2020Radio.TabIndex = tabIndex++;
-            fs2024Radio.TabIndex = tabIndex++;
+            infoLabel.TabIndex = tabIndex++;
             statusLabel.TabIndex = tabIndex++;
-            buildDatabaseButton.TabIndex = tabIndex++;
-            refreshButton.TabIndex = tabIndex++;
-            okButton.TabIndex = tabIndex++;
-            cancelButton.TabIndex = tabIndex++;
+            buildFs2020Button.TabIndex = tabIndex++;
+            buildFs2024Button.TabIndex = tabIndex++;
+            verifyButton.TabIndex = tabIndex++;
+            closeButton.TabIndex = tabIndex++;
 
             // Focus on load
             Load += (sender, e) =>
@@ -183,88 +157,42 @@ namespace FBWBA.Forms
                 Activate();
                 TopMost = true;
                 TopMost = false;
-                fs2020Radio.Focus();
+                buildFs2020Button.Focus();
             };
-        }
-
-        private void LoadCurrentSettings()
-        {
-            var settings = SettingsManager.Current;
-
-            // Set simulator version radio button
-            string simVersion = settings.SimulatorVersion ?? "FS2020";
-            if (simVersion.Equals("FS2024", StringComparison.OrdinalIgnoreCase))
-                fs2024Radio.Checked = true;
-            else
-                fs2020Radio.Checked = true;
         }
 
         private void UpdateDatabaseStatus()
         {
             var settings = SettingsManager.Current;
-            string simulatorVersion = settings.SimulatorVersion ?? "FS2020";
-            string navdataPath = NavdataReaderBuilder.GetDefaultDatabasePath(simulatorVersion);
+            string activeVersion = settings.SimulatorVersion ?? "FS2020";
+            string navdataPath = NavdataReaderBuilder.GetDefaultDatabasePath(activeVersion);
 
             if (!File.Exists(navdataPath))
             {
-                statusLabel.Text = $"{simulatorVersion} Status: Database not built";
+                statusLabel.Text = $"Active Database: {activeVersion} (Not Built)";
                 statusLabel.ForeColor = Color.DarkOrange;
-                buildDatabaseButton.Enabled = true;
                 return;
             }
 
             try
             {
-                var provider = new LittleNavMapProvider(navdataPath, simulatorVersion);
+                var provider = new LittleNavMapProvider(navdataPath, activeVersion);
                 int airportCount = provider.GetAirportCount();
-                statusLabel.Text = $"{simulatorVersion} Status: Ready - {airportCount:N0} airports available";
+                statusLabel.Text = $"Active Database: {activeVersion} - {airportCount:N0} airports";
                 statusLabel.ForeColor = Color.DarkGreen;
-                buildDatabaseButton.Enabled = true;
             }
             catch (Exception ex)
             {
-                statusLabel.Text = $"{simulatorVersion} Status: Error - {ex.Message}";
+                statusLabel.Text = $"Active Database: {activeVersion} (Error: {ex.Message})";
                 statusLabel.ForeColor = Color.Red;
-                buildDatabaseButton.Enabled = true;
             }
         }
 
-        private void SimulatorVersionRadio_CheckedChanged(object sender, EventArgs e)
-        {
-            // Update status when simulator version changes
-            if (((RadioButton)sender).Checked)
-            {
-                UpdateDatabaseStatus();
-            }
-        }
-
-        private void RefreshButton_Click(object sender, EventArgs e)
+        private void VerifyButton_Click(object sender, EventArgs e)
         {
             UpdateDatabaseStatus();
             // Announce the status directly without extra prefix
             announcer?.AnnounceImmediate(statusLabel.Text);
-        }
-
-        private void OkButton_Click(object sender, EventArgs e)
-        {
-            // Save settings
-            var settings = SettingsManager.Current;
-
-            if (fs2024Radio.Checked)
-                settings.SimulatorVersion = "FS2024";
-            else
-                settings.SimulatorVersion = "FS2020";
-
-            SettingsManager.Save();
-
-            DialogResult = DialogResult.OK;
-            Close();
-        }
-
-        private void BuildDatabaseButton_Click(object sender, EventArgs e)
-        {
-            string simulatorVersion = fs2024Radio.Checked ? "FS2024" : "FS2020";
-            BuildDatabaseForSimulator(simulatorVersion);
         }
 
         private void BuildDatabaseForSimulator(string simulatorVersion)
@@ -331,7 +259,7 @@ namespace FBWBA.Forms
         {
             if (keyData == Keys.Escape)
             {
-                DialogResult = DialogResult.Cancel;
+                DialogResult = DialogResult.OK;
                 Close();
                 return true;
             }
