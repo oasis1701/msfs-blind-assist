@@ -545,7 +545,9 @@ namespace FBWBA.Forms
             };
 
             // DataGridView row selection announcement
-            navigationGridView.SelectionChanged += navigationGridView_SelectionChanged;
+            // DISABLED: Custom announcements cause performance lag during keyboard navigation
+            // Screen readers (NVDA/JAWS) already read grid cells using native DataGridView accessibility
+            // navigationGridView.SelectionChanged += navigationGridView_SelectionChanged;
 
             // Load saved state when form is shown
             Load += ElectronicFlightBagForm_Load;
