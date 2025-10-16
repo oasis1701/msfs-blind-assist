@@ -143,15 +143,26 @@
     <Compile Include="Forms\StatusDisplayForm.cs">
       <SubType>Form</SubType>
     </Compile>
+    <Compile Include="Forms\ElectronicFlightBagForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Forms\SimBriefSettingsForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
     <Compile Include="Services\GeoNamesService.cs" />
     <Compile Include="Services\VATSIMService.cs" />
     <Compile Include="Services\UpdateService.cs" />
     <Compile Include="Services\TakeoffAssistManager.cs" />
+    <Compile Include="Services\SimBriefService.cs" />
     <Compile Include="Settings\UserSettings.cs" />
     <Compile Include="Settings\SettingsManager.cs" />
     <Compile Include="Models\LocationData.cs" />
     <Compile Include="Navigation\NavigationCalculator.cs" />
     <Compile Include="Navigation\VisualApproachMonitor.cs" />
+    <Compile Include="Navigation\FlightPlan.cs" />
+    <Compile Include="Navigation\FlightPlanManager.cs" />
+    <Compile Include="Database\Models\WaypointFix.cs" />
+    <Compile Include="Database\NavigationDatabaseProvider.cs" />
     <Compile Include="Utils\SimulatorDetector.cs" />
     <Compile Include="Forms\UpdateAvailableForm.cs">
       <SubType>Form</SubType>

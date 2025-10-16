@@ -39,7 +39,7 @@ namespace FBWBA.Navigation
         }
 
         /// <summary>
-        /// Calculates the bearing from point A to point B
+        /// Calculates the true bearing from point A to point B
         /// </summary>
         public static double CalculateBearing(double lat1, double lon1, double lat2, double lon2)
         {
@@ -56,6 +56,26 @@ namespace FBWBA.Navigation
 
             // Normalize to 0-360 degrees
             return (bearingDeg + 360.0) % 360.0;
+        }
+
+        /// <summary>
+        /// Calculates the magnetic bearing from point A to point B
+        /// </summary>
+        /// <param name="lat1">Starting latitude in degrees</param>
+        /// <param name="lon1">Starting longitude in degrees</param>
+        /// <param name="lat2">Destination latitude in degrees</param>
+        /// <param name="lon2">Destination longitude in degrees</param>
+        /// <param name="magneticVariation">Magnetic variation in degrees (East positive, West negative)</param>
+        /// <returns>Magnetic bearing in degrees (0-360)</returns>
+        public static double CalculateMagneticBearing(double lat1, double lon1, double lat2, double lon2, double magneticVariation)
+        {
+            double trueBearing = CalculateBearing(lat1, lon1, lat2, lon2);
+
+            // Convert true to magnetic: Magnetic = True - Variation
+            double magneticBearing = trueBearing - magneticVariation;
+
+            // Normalize to 0-360
+            return (magneticBearing + 360.0) % 360.0;
         }
 
         /// <summary>

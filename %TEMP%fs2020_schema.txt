@@ -1,0 +1,785 @@
+airport|CREATE TABLE airport
+ (
+  airport_id integer primary key,
+  file_id integer not null, 
+  ident varchar(10) not null, 
+  icao varchar(10), 
+  iata varchar(10), 
+  faa varchar(10), 
+  local varchar(10), 
+  name varchar(50) collate nocase,
+  city varchar(50) collate nocase,
+  state varchar(50) collate nocase,
+  country varchar(50) collate nocase, 
+  region varchar(4) collate nocase, 
+  flatten integer, 
+  type integer, 
+  fuel_flags integer not null, 
+  has_avgas integer not null, 
+  has_jetfuel integer not null, 
+  has_tower_object integer not null, 
+ 
+  tower_frequency integer, 
+  atis_frequency integer, 
+  awos_frequency integer, 
+  asos_frequency integer, 
+  unicom_frequency integer, 
+ 
+  is_closed integer not null, 
+  is_military integer not null, 
+  is_addon integer not null, 
+ 
+  num_com integer not null, 
+ 
+  num_parking_gate integer not null,
+  num_parking_ga_ramp integer not null,
+  num_parking_cargo integer not null,
+  num_parking_mil_cargo integer not null,
+  num_parking_mil_combat integer not null,
+ 
+  num_approach integer not null,
+  num_runway_hard integer not null,
+  num_runway_soft integer not null,
+  num_runway_water integer not null,
+  num_runway_light integer not null, 
+  num_runway_end_closed integer not null, 
+  num_runway_end_vasi integer not null, 
+  num_runway_end_als integer not null, 
+  num_runway_end_ils integer, 
+  
+  num_apron integer not null,
+  num_taxi_path integer not null,
+  num_helipad integer not null,
+  num_jetway integer not null, 
+  num_starts integer not null, 
+ 
+  longest_runway_length integer not null, 
+  longest_runway_width integer not null, 
+  longest_runway_heading double not null, 
+  longest_runway_surface varchar(15), 
+  
+  
+  num_runways integer not null,
+  largest_parking_ramp varchar(20), 
+  largest_parking_gate varchar(20), 
+ 
+  rating integer not null, 
+  
+  
+  is_3d integer not null, 
+ 
+  scenery_local_path varchar(250) collate nocase, 
+  bgl_filename varchar(300) collate nocase, 
+ 
+  left_lonx double not null, 
+  top_laty double not null, 
+  right_lonx double not null, 
+  bottom_laty double not null, 
+ 
+  mag_var double not null, 
+  tower_altitude integer, 
+  tower_lonx double,
+  tower_laty double,
+ 
+  transition_altitude double, 
+  
+  transition_level double, 
+  
+ 
+  altitude integer not null, 
+  lonx double not null, 
+  laty double not null, 
+ foreign key(file_id) references bgl_file(bgl_file_id)
+ )
+airport_file|CREATE TABLE airport_file
+ (
+  airport_file_id integer primary key,
+  file_id integer not null, 
+  ident varchar(4) not null, 
+ foreign key(file_id) references bgl_file(bgl_file_id)
+ )
+airport_msa|CREATE TABLE airport_msa
+ (
+  airport_msa_id integer primary key,
+  file_id integer not null, 
+  airport_id integer, 
+  airport_ident varchar(5), 
+  nav_id integer, 
+  nav_ident varchar(5), 
+  nav_type varchar(15), 
+  vor_type varchar(2), 
+  
+  
+  vor_dme_only integer,
+  vor_has_dme integer,
+  region varchar(2), 
+  multiple_code varchar(1), 
+  true_bearing integer, 
+  mag_var double, 
+  left_lonx double, 
+  top_laty double , 
+  right_lonx double, 
+  bottom_laty double, 
+  radius double not null, 
+  lonx double not null, 
+  laty double not null,
+  geometry blob, 
+  
+ foreign key(airport_id) references airport(airport_id)
+ )
+airway|CREATE TABLE airway
+ (
+  airway_id integer primary key,
+  airway_name varchar(5) not null, 
+  airway_type varchar(15) not null, 
+  route_type varchar(5), 
+  
+  
+  
+  
+  
+  
+  
+  airway_fragment_no integer not null, 
+  sequence_no integer not null, 
+  from_waypoint_id integer not null,
+  to_waypoint_id integer not null,
+  direction varchar(1), 
+  minimum_altitude integer,
+  maximum_altitude integer,
+  left_lonx double not null, 
+  top_laty double not null, 
+  right_lonx double not null, 
+  bottom_laty double not null, 
+  from_lonx double not null, 
+  from_laty double not null, 
+  to_lonx double not null, 
+  to_laty double not null, 
+ foreign key(from_waypoint_id) references waypoint(waypoint_id),
+ foreign key(to_waypoint_id) references waypoint(waypoint_id)
+ )
+approach|CREATE TABLE approach
+ (
+  approach_id integer primary key,
+  airport_id integer,
+  runway_end_id integer, 
+  arinc_name varchar(6), 
+  
+  
+  airport_ident varchar(4), 
+  
+  runway_name varchar(10), 
+  type varchar(25) not null, 
+  suffix varchar(1), 
+  
+  
+  has_gps_overlay integer not null, 
+  has_vertical_angle integer, 
+  has_rnp integer, 
+ 
+  fix_type varchar(25), 
+  fix_ident varchar(5), 
+  fix_region varchar(2), 
+  fix_airport_ident varchar(4), 
+ 
+  aircraft_category varchar(4), 
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+ 
+  altitude integer, 
+  heading double, 
+  missed_altitude integer, 
+ foreign key(airport_id) references airport(airport_id),
+ foreign key(runway_end_id) references runway_end(runway_end_id)
+ )
+approach_leg|CREATE TABLE approach_leg
+ (
+  approach_leg_id integer primary key,
+  approach_id integer not null,
+  is_missed integer not null, 
+  type varchar(10), 
+  arinc_descr_code varchar(25), 
+  approach_fix_type varchar(1), 
+  alt_descriptor varchar(10), 
+  
+  turn_direction varchar(10), 
+  rnp double, 
+  
+  fix_type varchar(25), 
+  fix_ident varchar(5), 
+  fix_region varchar(2), 
+  fix_airport_ident varchar(4), 
+  fix_lonx double, 
+  fix_laty double, 
+  recommended_fix_type varchar(25), 
+  recommended_fix_ident varchar(5), 
+  recommended_fix_region varchar(2), 
+  recommended_fix_lonx double, 
+  recommended_fix_laty double, 
+  is_flyover integer not null, 
+  is_true_course integer not null, 
+  course double, 
+  distance double, 
+  time double, 
+  theta double, 
+  rho double, 
+  altitude1 double, 
+  altitude2 double, 
+  speed_limit_type varchar(2), 
+  speed_limit integer, 
+  vertical_angle double, 
+ foreign key(approach_id) references approach(approach_id)
+ )
+apron|CREATE TABLE apron
+ (
+  apron_id integer primary key,
+  airport_id integer not null,
+  surface varchar(15), 
+  is_draw_surface integer not null, 
+  is_draw_detail integer not null, 
+  vertices blob, 
+  
+  vertices2 blob, 
+  triangles blob, 
+  
+  geometry blob, 
+ foreign key(airport_id) references airport(airport_id)
+ )
+bgl_file|CREATE TABLE bgl_file
+ (
+  bgl_file_id integer primary key,
+  scenery_area_id integer not null,
+  bgl_create_time integer not null, 
+  file_modification_time integer not null, 
+  filepath varchar(1000) collate nocase, 
+  filename varchar(250) collate nocase, 
+  size integer not null, 
+  comment varchar(1000), 
+ foreign key(scenery_area_id) references scenery_area(scenery_area_id)
+ )
+boundary|CREATE TABLE boundary
+ (
+  boundary_id integer primary key,
+  file_id integer not null,
+  type varchar(15), 
+  name varchar(250), 
+  description varchar(250), 
+  restrictive_designation varchar(20), 
+  restrictive_type varchar(20), 
+  multiple_code varchar(5), 
+  time_code varchar(5), 
+  
+  
+  
+  
+  com_type varchar(30), 
+  com_frequency integer, 
+  com_name varchar(50),
+  min_altitude_type varchar(15), 
+  max_altitude_type varchar(15), 
+  min_altitude integer, 
+  max_altitude integer, 
+  max_lonx double not null, 
+  max_laty double not null, 
+  min_lonx double not null, 
+  min_laty double not null, 
+  geometry blob, 
+ foreign key(file_id) references bgl_file(bgl_file_id)
+ )
+com|CREATE TABLE com
+ (
+  com_id integer primary key,
+  airport_id integer not null, 
+  type varchar(30), 
+  frequency integer not null, 
+  name varchar(50),
+ foreign key(airport_id) references airport(airport_id)
+ )
+helipad|CREATE TABLE helipad
+ (
+  helipad_id integer primary key,
+  airport_id integer not null,
+  start_id integer,
+  surface varchar(15), 
+  type varchar(10), 
+  length double not null, 
+  width double not null, 
+  heading double not null, 
+  is_transparent integer not null, 
+  is_closed integer not null, 
+  altitude integer not null, 
+  lonx double not null,
+  laty double not null,
+ foreign key(airport_id) references airport(airport_id),
+ foreign key(start_id) references start(start_id)
+ )
+holding|CREATE TABLE holding
+ (
+  holding_id integer primary key,
+  file_id integer not null, 
+  airport_id integer, 
+  airport_ident varchar(5), 
+  nav_id integer, 
+  nav_ident varchar(5), 
+  nav_type varchar(2), 
+  vor_type varchar(2), 
+  
+  
+  vor_dme_only integer,
+  vor_has_dme integer,
+  name varchar(50),
+  region varchar(2), 
+  mag_var double, 
+  course double not null, 
+  turn_direction varchar(1) not null, 
+  leg_length double, 
+  leg_time double, 
+  minimum_altitude double, 
+  maximum_altitude double, 
+  speed_limit integer, 
+  lonx double not null, 
+  laty double not null,
+ foreign key(airport_id) references airport(airport_id)
+ )
+ils|CREATE TABLE ils
+ (
+  ils_id integer primary key,
+  ident varchar(5), 
+  name varchar(50),
+  region varchar(2), 
+ 
+  type varchar(1), 
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+ 
+  perf_indicator varchar(10), 
+  provider varchar(10), 
+  
+ 
+ 
+  frequency integer, 
+  range integer, 
+  mag_var double not null, 
+  has_backcourse integer not null, 
+  dme_range integer, 
+  dme_altitude integer, 
+  dme_lonx double,
+  dme_laty double,
+  gs_range integer, 
+  gs_pitch double, 
+  gs_altitude integer, 
+  gs_lonx double,
+  gs_laty double,
+  loc_runway_end_id integer, 
+  loc_airport_ident varchar(4),
+  loc_runway_name varchar(10),
+  loc_heading double, 
+  loc_width double, 
+  end1_lonx double, 
+  end1_laty double, 
+  end_mid_lonx double, 
+  end_mid_laty double, 
+  end2_lonx double, 
+  end2_laty double, 
+  altitude integer not null, 
+  lonx double not null, 
+  laty double not null, 
+ foreign key(loc_runway_end_id) references runway_end(runway_end_id)
+ )
+magdecl|CREATE TABLE magdecl
+ (
+  magdecl_id integer primary key,
+  reference_time integer not null, 
+  mag_var blob 
+ )
+marker|CREATE TABLE marker
+ (
+  marker_id integer primary key,
+  file_id integer not null,
+  ident varchar(5), 
+  region varchar(2), 
+  type varchar(15), 
+  heading double not null, 
+  altitude integer not null, 
+  lonx double not null,
+  laty double not null,
+ foreign key(file_id) references bgl_file(bgl_file_id)
+ )
+metadata|CREATE TABLE metadata
+ (
+  db_version_major integer not null, 
+  
+  db_version_minor integer not null, 
+  last_load_timestamp varchar(100), 
+  has_sid_star integer, 
+  airac_cycle varchar(10), 
+  valid_through varchar(10), 
+  data_source varchar(10), 
+  compiler_version varchar(1000), 
+  properties varchar(2000) 
+  
+ )
+mora_grid|CREATE TABLE mora_grid
+ (
+  mora_grid_id integer primary key,
+  file_id integer not null, 
+  version integer not null,
+  lonx_columns integer not null,
+  laty_rows integer not null,
+  geometry blob not null
+ )
+nav_search|CREATE TABLE nav_search
+ (
+  nav_search_id integer primary key,
+  waypoint_id integer, 
+  waypoint_nav_id integer, 
+  vor_id integer, 
+  ndb_id integer, 
+  file_id integer not null, 
+  airport_id integer, 
+  airport_ident varchar(4), 
+  ident varchar(5), 
+  name varchar(50) collate nocase, 
+  region varchar(2), 
+  range integer, 
+ 
+  type varchar(15), 
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+ 
+  nav_type varchar(15), 
+  
+  
+  
+  
+  
+  
+  
+  
+  
+ 
+  arinc_type varchar(4), 
+ 
+  frequency integer, 
+  channel varchar(10), 
+  waypoint_num_victor_airway integer, 
+  waypoint_num_jet_airway integer, 
+  scenery_local_path varchar(250) collate nocase, 
+  bgl_filename varchar(300) collate nocase, 
+  mag_var double not null, 
+  altitude integer, 
+  lonx double not null,
+  laty double not null,
+ foreign key(waypoint_id) references waypoint(waypoint_id),
+ foreign key(vor_id) references vor(vor_id),
+ foreign key(ndb_id) references ndb(ndb_id),
+ foreign key(file_id) references bgl_file(bgl_file_id),
+ foreign key(airport_id) references airport(airport_id)
+ )
+ndb|CREATE TABLE ndb
+ (
+  ndb_id integer primary key,
+  file_id integer not null,
+  ident varchar(5), 
+  name varchar(50),
+  region varchar(2), 
+  airport_id integer, 
+  airport_ident varchar(4), 
+  type varchar(15), 
+  
+  frequency integer not null, 
+  range integer, 
+  mag_var double not null, 
+  altitude integer, 
+  lonx double not null,
+  laty double not null,
+ foreign key(file_id) references bgl_file(bgl_file_id),
+ foreign key(airport_id) references airport(airport_id)
+ )
+parking|CREATE TABLE parking
+ (
+  parking_id integer primary key,
+  airport_id integer not null,
+  type varchar(20), 
+  pushback varchar(5), 
+  name varchar(15), 
+  number integer not null, 
+  suffix varchar(5), 
+  airline_codes text, 
+  radius double, 
+  heading double, 
+  has_jetway integer not null, 
+  lonx double not null,
+  laty double not null,
+ foreign key(airport_id) references airport(airport_id)
+ )
+runway|CREATE TABLE runway
+ (
+  runway_id integer primary key,
+  airport_id integer not null,
+  primary_end_id integer not null, 
+  secondary_end_id integer not null, 
+  surface varchar(15), 
+  
+  
+  smoothness double, 
+  shoulder varchar(15), 
+  length double not null, 
+  width double not null, 
+  heading double not null, 
+  pattern_altitude integer not null, 
+  marking_flags integer not null, 
+  edge_light varchar(15), 
+  center_light varchar(15), 
+  has_center_red integer not null, 
+  primary_lonx double not null, 
+  primary_laty double not null, 
+  secondary_lonx double not null, 
+  secondary_laty double not null, 
+  altitude integer not null, 
+  lonx double not null,
+  laty double not null,
+ foreign key(airport_id) references airport(airport_id),
+ foreign key(primary_end_id) references runway_end(runway_end_id),
+ foreign key(secondary_end_id) references runway_end(runway_end_id)
+ )
+runway_end|CREATE TABLE runway_end
+ (
+  runway_end_id integer primary key,
+  name varchar(10) not null, 
+  end_type varchar(1) not null, 
+  offset_threshold double not null, 
+  blast_pad double not null, 
+  overrun double not null, 
+  left_vasi_type varchar(15), 
+  left_vasi_pitch double, 
+  right_vasi_type varchar(15), 
+  right_vasi_pitch double, 
+  has_closed_markings integer not null, 
+  has_stol_markings integer not null, 
+  is_takeoff integer not null, 
+  is_landing integer not null, 
+  is_pattern varchar(10) not null, 
+  app_light_system_type varchar(15), 
+  has_end_lights integer not null, 
+  has_reils integer not null, 
+  has_touchdown_lights integer not null, 
+  num_strobes integer, 
+  ils_ident varchar(10), 
+  heading double not null, 
+  altitude integer, 
+  lonx double not null, 
+  laty double not null 
+ )
+scenery_area|CREATE TABLE scenery_area
+ (
+  scenery_area_id integer primary key,
+  number integer not null, 
+  layer integer not null, 
+  title varchar(250) not null, 
+  remote_path varchar(250), 
+  local_path varchar(250), 
+  active integer not null, 
+  required integer not null, 
+  exclude varchar(50)
+ )
+script|CREATE TABLE script
+ (
+  script_id integer primary key,
+  statement varchar(4096) 
+ )
+sqlite_stat1|CREATE TABLE sqlite_stat1(tbl,idx,stat)
+start|CREATE TABLE start
+ (
+  start_id integer primary key,
+  airport_id integer not null,
+  runway_end_id integer,
+  runway_name varchar(10), 
+  type varchar(10), 
+  heading double not null, 
+  number integer, 
+  altitude integer not null, 
+  lonx double not null,
+  laty double not null,
+ foreign key(airport_id) references airport(airport_id),
+ foreign key(runway_end_id) references runway_end(runway_end_id)
+ )
+taxi_path|CREATE TABLE taxi_path
+ (
+  taxi_path_id integer primary key,
+  airport_id integer not null,
+  type varchar(15), 
+  surface varchar(15), 
+  width double not null, 
+  name varchar(20), 
+  is_draw_surface integer not null, 
+  is_draw_detail integer not null, 
+  start_type varchar(15), 
+  start_dir varchar(15), 
+  start_lonx double not null,
+  start_laty double not null,
+  end_type varchar(15), 
+  end_dir varchar(15), 
+  end_lonx double not null, 
+  end_laty double not null, 
+ foreign key(airport_id) references airport(airport_id)
+ )
+transition|CREATE TABLE transition
+ (
+  transition_id integer primary key,
+  approach_id integer not null,
+  type varchar(25) not null, 
+  fix_type varchar(25), 
+  fix_ident varchar(5), 
+  fix_region varchar(2), 
+  fix_airport_ident varchar(4), 
+ 
+  aircraft_category varchar(4), 
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+ 
+  altitude integer, 
+  dme_ident varchar(5), 
+  dme_region varchar(2), 
+  dme_airport_ident varchar(5),
+  dme_radial double, 
+  dme_distance integer, 
+ foreign key(approach_id) references approach(approach_id)
+ )
+transition_leg|CREATE TABLE transition_leg
+ (
+  transition_leg_id integer primary key,
+  transition_id integer not null,
+  type varchar(10) not null,
+  arinc_descr_code varchar(25), 
+  approach_fix_type varchar(1),
+  alt_descriptor varchar(10),
+  turn_direction varchar(10),
+  rnp double, 
+  fix_type varchar(25),
+  fix_ident varchar(5),
+  fix_region varchar(2),
+  fix_airport_ident varchar(4),
+  fix_lonx double, 
+  fix_laty double, 
+  recommended_fix_type varchar(25),
+  recommended_fix_ident varchar(5),
+  recommended_fix_region varchar(2),
+  recommended_fix_lonx double, 
+  recommended_fix_laty double, 
+  is_flyover integer not null,
+  is_true_course integer not null,
+  course double,
+  distance double,
+  time double,
+  theta double,
+  rho double,
+  altitude1 double,
+  altitude2 double,
+  speed_limit_type varchar(2), 
+  speed_limit integer, 
+  vertical_angle double, 
+ foreign key(transition_id) references transition(transition_id)
+ )
+translation|CREATE TABLE translation
+ (
+  translation_id integer primary key,
+  language varchar(50) not null, 
+  key varchar(250) not null, 
+  text varchar(250) not null collate nocase 
+ )
+vor|CREATE TABLE vor
+ (
+  vor_id integer primary key,
+  file_id integer not null,
+  ident varchar(5), 
+  name varchar(50),
+  region varchar(2), 
+  airport_id integer, 
+  airport_ident varchar(4), 
+  type varchar(15), 
+  
+  
+  frequency integer, 
+  channel varchar(5), 
+  range integer, 
+  mag_var double, 
+  
+  dme_only integer not null, 
+  dme_altitude integer, 
+  dme_lonx double, 
+  dme_laty double, 
+  altitude integer, 
+  lonx double not null,
+  laty double not null,
+ foreign key(file_id) references bgl_file(bgl_file_id),
+ foreign key(airport_id) references airport(airport_id)
+ )
+waypoint|CREATE TABLE waypoint
+ (
+  waypoint_id integer primary key,
+  file_id integer not null,
+  nav_id integer, 
+  ident varchar(5) not null, 
+  name varchar(50),
+  region varchar(2), 
+  airport_id integer, 
+  airport_ident varchar(4), 
+  artificial integer, 
+  
+  
+  type varchar(15), 
+  
+  
+  arinc_type varchar(4), 
+  num_victor_airway integer not null, 
+  num_jet_airway integer not null, 
+  mag_var double not null, 
+  lonx double not null,
+  laty double not null,
+ foreign key(file_id) references bgl_file(bgl_file_id),
+ foreign key(airport_id) references airport(airport_id)
+ )

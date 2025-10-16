@@ -84,6 +84,7 @@ namespace FBWBA.Hotkeys
         private const int HOTKEY_TAKEOFF_ASSIST = 9058;
         private const int HOTKEY_TOGGLE_ECAM_MONITORING = 9059;
         private const int HOTKEY_MACH_SPEED = 9060;
+        private const int HOTKEY_EFB = 9061;
 
         private IntPtr windowHandle;
         private bool outputHotkeyModeActive = false;
@@ -245,6 +246,9 @@ namespace FBWBA.Hotkeys
                         case HOTKEY_TOGGLE_ECAM_MONITORING:
                             TriggerHotkey(HotkeyAction.ToggleECAMMonitoring);
                             break;
+                        case HOTKEY_EFB:
+                            TriggerHotkey(HotkeyAction.ShowElectronicFlightBag);
+                            break;
                     }
                     DeactivateOutputHotkeyMode();
                     return true;
@@ -360,6 +364,7 @@ namespace FBWBA.Hotkeys
             RegisterHotKey(windowHandle, HOTKEY_STATUS_DISPLAY, MOD_SHIFT, 0x54); // Shift+T (STATUS Display)
             RegisterHotKey(windowHandle, HOTKEY_TAKEOFF_ASSIST, MOD_CONTROL, 0x54); // Ctrl+T (Takeoff Assist)
             RegisterHotKey(windowHandle, HOTKEY_TOGGLE_ECAM_MONITORING, MOD_CONTROL, 0x45); // Ctrl+E (Toggle ECAM Monitoring)
+            RegisterHotKey(windowHandle, HOTKEY_EFB, MOD_SHIFT, 0x45); // Shift+E (Electronic Flight Bag)
 
             // Auto-timeout disabled - hotkey mode stays active until used or escape pressed
             
@@ -410,6 +415,7 @@ namespace FBWBA.Hotkeys
             UnregisterHotKey(windowHandle, HOTKEY_STATUS_DISPLAY);
             UnregisterHotKey(windowHandle, HOTKEY_TAKEOFF_ASSIST);
             UnregisterHotKey(windowHandle, HOTKEY_TOGGLE_ECAM_MONITORING);
+            UnregisterHotKey(windowHandle, HOTKEY_EFB);
 
             OutputHotkeyModeChanged?.Invoke(this, false);
         }
@@ -598,6 +604,7 @@ namespace FBWBA.Hotkeys
         ShowECAM,
         ShowStatusPage,
         ToggleTakeoffAssist,
-        ToggleECAMMonitoring
+        ToggleECAMMonitoring,
+        ShowElectronicFlightBag
     }
 }

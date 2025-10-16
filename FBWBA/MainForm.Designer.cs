@@ -8,6 +8,7 @@ namespace FBWBA
         private System.Windows.Forms.ToolStripMenuItem databaseSettingsMenuItem;
         private System.Windows.Forms.ToolStripMenuItem announcementSettingsMenuItem;
         private System.Windows.Forms.ToolStripMenuItem geoNamesSettingsMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem simbriefSettingsMenuItem;
         private System.Windows.Forms.ToolStripMenuItem hotkeyListMenuItem;
         private System.Windows.Forms.ToolStripMenuItem updateApplicationMenuItem;
         private System.Windows.Forms.ToolStripMenuItem aboutMenuItem;
@@ -32,6 +33,7 @@ namespace FBWBA
             this.databaseSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.announcementSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.geoNamesSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.simbriefSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.hotkeyListMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.updateApplicationMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.aboutMenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -61,6 +63,7 @@ namespace FBWBA
             this.databaseSettingsMenuItem,
             this.announcementSettingsMenuItem,
             this.geoNamesSettingsMenuItem,
+            this.simbriefSettingsMenuItem,
             this.hotkeyListMenuItem,
             this.updateApplicationMenuItem,
             this.aboutMenuItem});
@@ -94,6 +97,15 @@ namespace FBWBA
             this.geoNamesSettingsMenuItem.Size = new System.Drawing.Size(220, 26);
             this.geoNamesSettingsMenuItem.Text = "Define &GeoNames API Key";
             this.geoNamesSettingsMenuItem.Click += new System.EventHandler(this.GeoNamesSettingsMenuItem_Click);
+            //
+            // simbriefSettingsMenuItem
+            //
+            this.simbriefSettingsMenuItem.AccessibleName = "SimBrief Settings";
+            this.simbriefSettingsMenuItem.AccessibleDescription = "Configure SimBrief username for flight plan integration";
+            this.simbriefSettingsMenuItem.Name = "simbriefSettingsMenuItem";
+            this.simbriefSettingsMenuItem.Size = new System.Drawing.Size(220, 26);
+            this.simbriefSettingsMenuItem.Text = "Define &SimBrief Username";
+            this.simbriefSettingsMenuItem.Click += new System.EventHandler(this.SimBriefSettingsMenuItem_Click);
             //
             // hotkeyListMenuItem
             //

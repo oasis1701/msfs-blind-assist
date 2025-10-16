@@ -17,6 +17,9 @@ namespace FBWBA.Settings
         // GeoNames API Settings
         public string GeoNamesApiUsername { get; set; } = "";
 
+        // SimBrief Settings
+        public string SimbriefUsername { get; set; } = "";
+
         // Range Settings (in selected distance units)
         public int NearbyCitiesRange { get; set; } = 25;
         public int RegionalCitiesRange { get; set; } = 50;
@@ -60,6 +63,7 @@ namespace FBWBA.Settings
                 AnnouncementMode = this.AnnouncementMode,
                 SimulatorVersion = this.SimulatorVersion,
                 GeoNamesApiUsername = this.GeoNamesApiUsername,
+                SimbriefUsername = this.SimbriefUsername,
                 NearbyCitiesRange = this.NearbyCitiesRange,
                 RegionalCitiesRange = this.RegionalCitiesRange,
                 MajorCitiesRange = this.MajorCitiesRange,

@@ -174,6 +174,7 @@ namespace FBWBA.SimConnect
             public double Longitude;
             public double Altitude;
             public double HeadingMagnetic;
+            public double MagneticVariation;
         }
 
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
@@ -361,6 +362,8 @@ namespace FBWBA.SimConnect
                 SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)2);
             simConnect.AddToDataDefinition(DATA_DEFINITIONS.AIRCRAFT_POSITION, "PLANE HEADING DEGREES MAGNETIC", "degrees",
                 SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)3);
+            simConnect.AddToDataDefinition(DATA_DEFINITIONS.AIRCRAFT_POSITION, "MAGVAR", "degrees",
+                SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)4);
             simConnect.RegisterDataDefineStruct<AircraftPosition>(DATA_DEFINITIONS.AIRCRAFT_POSITION);
 
             // Register wind data for wind information
@@ -2868,6 +2871,23 @@ namespace FBWBA.SimConnect
             {
                 System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error requesting aircraft position: {ex.Message}");
                 return null;
+            }
+        }
+
+        public void RequestAircraftPosition()
+        {
+            if (!IsConnected) return;
+
+            try
+            {
+                simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_AIRCRAFT_POSITION,
+                    DATA_DEFINITIONS.AIRCRAFT_POSITION, SIMCONNECT_OBJECT_ID_USER,
+                    SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT,
+                    0, 0, 0);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error requesting aircraft position: {ex.Message}");
             }
         }
 

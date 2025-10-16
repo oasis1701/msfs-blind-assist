@@ -25,6 +25,8 @@ namespace FBWBA
         private IAirportDataProvider airportDataProvider;
         private ChecklistForm checklistForm;
         private TakeoffAssistManager takeoffAssistManager;
+        private ElectronicFlightBagForm electronicFlightBagForm;
+        private FBWBA.Navigation.FlightPlanManager flightPlanManager;
 
         // Current state
         private string currentSection = "";
@@ -126,6 +128,11 @@ namespace FBWBA
 
             // Initialize airport database provider
             airportDataProvider = DatabaseSelector.SelectProvider();
+
+            // Initialize flight plan manager with navigation database
+            var settings = FBWBA.Settings.SettingsManager.Current;
+            string navigationDatabasePath = NavdataReaderBuilder.GetDefaultDatabasePath(settings.SimulatorVersion ?? "FS2020");
+            flightPlanManager = new FBWBA.Navigation.FlightPlanManager(navigationDatabasePath, airportDataProvider);
 
             // Update status bar with database info
             UpdateDatabaseStatusDisplay();
@@ -709,6 +716,9 @@ namespace FBWBA
                 case HotkeyAction.ShowChecklist:
                     ShowChecklistDialog();
                     break;
+                case HotkeyAction.ShowElectronicFlightBag:
+                    ShowElectronicFlightBagDialog();
+                    break;
                 case HotkeyAction.ShowNavigationDisplay:
                     ShowNavigationDisplayDialog();
                     break;
@@ -1197,6 +1207,23 @@ namespace FBWBA
             checklistForm.ShowForm();
         }
 
+        private void ShowElectronicFlightBagDialog()
+        {
+            // Ensure output hotkey mode is deactivated before showing dialog
+            hotkeyManager.ExitOutputHotkeyMode();
+
+            // Create form if it doesn't exist or has been disposed
+            if (electronicFlightBagForm == null || electronicFlightBagForm.IsDisposed)
+            {
+                var settings = FBWBA.Settings.SettingsManager.Current;
+                electronicFlightBagForm = new ElectronicFlightBagForm(flightPlanManager, simConnectManager, announcer, settings.SimbriefUsername ?? "");
+            }
+
+            // Show the form (reuses same instance to preserve flight plan data)
+            electronicFlightBagForm.Show();
+            electronicFlightBagForm.BringToFront();
+        }
+
         private void ShowPFDDialog()
         {
             // Ensure output hotkey mode is deactivated before showing window
@@ -1419,6 +1446,18 @@ namespace FBWBA
                 {
                     statusLabel.Text = "GeoNames settings saved successfully";
                     announcer.Announce("GeoNames settings saved successfully");
+                }
+            }
+        }
+
+        private void SimBriefSettingsMenuItem_Click(object sender, EventArgs e)
+        {
+            using (var settingsForm = new Forms.SimBriefSettingsForm())
+            {
+                if (settingsForm.ShowDialog(this) == DialogResult.OK)
+                {
+                    statusLabel.Text = "SimBrief settings saved successfully";
+                    announcer.Announce("SimBrief settings saved successfully");
                 }
             }
         }
