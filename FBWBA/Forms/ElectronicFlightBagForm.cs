@@ -100,11 +100,11 @@ namespace FBWBA.Forms
 
             // Create tabs
             CreateNavigationTab();
-            CreateDepartureTab();
             CreateSIDTab();
             CreateSTARTab();
-            CreateArrivalTab();
             CreateApproachTab();
+            CreateDepartureTab();
+            CreateArrivalTab();
 
             // Status label at bottom
             statusLabel = new Label

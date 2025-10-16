@@ -610,12 +610,25 @@ namespace FBWBA.Database
             if (string.IsNullOrEmpty(fixIdent))
                 return null;
 
+            string fixRegion = SafeGetString(reader, "fix_region");
+
+            // Lookup coordinates from waypoint table
+            double latitude = 0.0;
+            double longitude = 0.0;
+
+            var waypointCoords = GetWaypoint(fixIdent, fixRegion);
+            if (waypointCoords != null)
+            {
+                latitude = waypointCoords.Latitude;
+                longitude = waypointCoords.Longitude;
+            }
+
             var waypoint = new WaypointFix
             {
                 Ident = fixIdent,
-                Region = SafeGetString(reader, "fix_region"),
-                Latitude = SafeGetDouble(reader, "fix_laty"),
-                Longitude = SafeGetDouble(reader, "fix_lonx"),
+                Region = fixRegion,
+                Latitude = latitude,
+                Longitude = longitude,
                 Type = SafeGetString(reader, "type") ?? "Fix",
                 IsFlyover = SafeGetInt(reader, "is_flyover") == 1,
                 TurnDirection = SafeGetString(reader, "turn_direction"),
