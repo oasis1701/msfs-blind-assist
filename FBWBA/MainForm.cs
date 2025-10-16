@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 using FBWBA.Accessibility;
 using FBWBA.Database;
+using FBWBA.Database.Models;
 using FBWBA.Forms;
 using FBWBA.Hotkeys;
 using FBWBA.Services;
@@ -1497,8 +1498,50 @@ namespace FBWBA
 
         private void RefreshDatabaseProvider()
         {
+            // Save current flight plan state before recreating managers
+            var savedFlightPlan = flightPlanManager?.CurrentFlightPlan;
+
             // Reload database provider based on current settings
             airportDataProvider = DatabaseSelector.SelectProvider();
+
+            // Recreate flight plan manager with new navigation database path
+            var settings = FBWBA.Settings.SettingsManager.Current;
+            string navigationDatabasePath = NavdataReaderBuilder.GetDefaultDatabasePath(settings.SimulatorVersion ?? "FS2020");
+            flightPlanManager = new FBWBA.Navigation.FlightPlanManager(navigationDatabasePath, airportDataProvider);
+
+            // Restore flight plan state if one existed
+            if (savedFlightPlan != null && !savedFlightPlan.IsEmpty())
+            {
+                // Copy all flight plan data to the new manager's flight plan
+                var newFlightPlan = flightPlanManager.CurrentFlightPlan;
+
+                // Copy metadata
+                newFlightPlan.DepartureICAO = savedFlightPlan.DepartureICAO;
+                newFlightPlan.DepartureRunway = savedFlightPlan.DepartureRunway;
+                newFlightPlan.ArrivalICAO = savedFlightPlan.ArrivalICAO;
+                newFlightPlan.ArrivalRunway = savedFlightPlan.ArrivalRunway;
+                newFlightPlan.SIDName = savedFlightPlan.SIDName;
+                newFlightPlan.STARName = savedFlightPlan.STARName;
+                newFlightPlan.ApproachName = savedFlightPlan.ApproachName;
+                newFlightPlan.SimBriefUsername = savedFlightPlan.SimBriefUsername;
+                newFlightPlan.LoadedTime = savedFlightPlan.LoadedTime;
+
+                // Copy all waypoint sections
+                newFlightPlan.DepartureAirportWaypoints = new List<WaypointFix>(savedFlightPlan.DepartureAirportWaypoints);
+                newFlightPlan.SIDWaypoints = new List<WaypointFix>(savedFlightPlan.SIDWaypoints);
+                newFlightPlan.EnrouteWaypoints = new List<WaypointFix>(savedFlightPlan.EnrouteWaypoints);
+                newFlightPlan.STARWaypoints = new List<WaypointFix>(savedFlightPlan.STARWaypoints);
+                newFlightPlan.ApproachWaypoints = new List<WaypointFix>(savedFlightPlan.ApproachWaypoints);
+                newFlightPlan.ArrivalAirportWaypoints = new List<WaypointFix>(savedFlightPlan.ArrivalAirportWaypoints);
+            }
+
+            // Close EFB window if open - it will be recreated with the new manager when reopened
+            if (electronicFlightBagForm != null && !electronicFlightBagForm.IsDisposed)
+            {
+                electronicFlightBagForm.Close();
+                electronicFlightBagForm = null;
+            }
+
             UpdateDatabaseStatusDisplay();
         }
 
