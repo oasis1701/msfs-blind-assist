@@ -77,6 +77,7 @@ namespace FBWBA.Database
                 string sql = @"SELECT approach_id, type, runway_name, suffix
                               FROM approach
                               WHERE UPPER(airport_ident) = UPPER(@icao)
+                              AND (suffix IS NULL OR suffix NOT IN ('A', 'D'))
                               ORDER BY runway_name, type";
 
                 using (var command = new SQLiteCommand(sql, connection))
