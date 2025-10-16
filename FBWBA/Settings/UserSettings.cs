@@ -45,6 +45,15 @@ namespace FBWBA.Settings
         // Units
         public string DistanceUnits { get; set; } = "miles";
 
+        // Electronic Flight Bag Window State
+        public int EFBTabIndex { get; set; } = 0;
+        public int EFBNavigationRowIndex { get; set; } = -1;
+        public int EFBNavigationColumnIndex { get; set; } = 0;
+        public int EFBWindowWidth { get; set; } = 1200;
+        public int EFBWindowHeight { get; set; } = 700;
+        public int EFBWindowX { get; set; } = -1;  // -1 means center on screen
+        public int EFBWindowY { get; set; } = -1;  // -1 means center on screen
+
         /// <summary>
         /// Creates a new UserSettings instance with default values.
         /// </summary>
@@ -80,7 +89,14 @@ namespace FBWBA.Settings
                 MaxTouristLandmarksToShow = this.MaxTouristLandmarksToShow,
                 MajorCityPopulationThreshold = this.MajorCityPopulationThreshold,
                 MajorCityAPIThreshold = this.MajorCityAPIThreshold,
-                DistanceUnits = this.DistanceUnits
+                DistanceUnits = this.DistanceUnits,
+                EFBTabIndex = this.EFBTabIndex,
+                EFBNavigationRowIndex = this.EFBNavigationRowIndex,
+                EFBNavigationColumnIndex = this.EFBNavigationColumnIndex,
+                EFBWindowWidth = this.EFBWindowWidth,
+                EFBWindowHeight = this.EFBWindowHeight,
+                EFBWindowX = this.EFBWindowX,
+                EFBWindowY = this.EFBWindowY
             };
         }
     }

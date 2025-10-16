@@ -8,6 +8,7 @@ using FBWBA.Database;
 using FBWBA.Database.Models;
 using FBWBA.Navigation;
 using FBWBA.SimConnect;
+using FBWBA.Settings;
 
 namespace FBWBA.Forms
 {
@@ -21,6 +22,10 @@ namespace FBWBA.Forms
         private readonly ScreenReaderAnnouncer _announcer;
         private readonly string _simbriefUsername;
         private SimConnectManager.AircraftPosition? _lastKnownPosition;
+
+        // State persistence
+        private int _savedNavigationRowIndex = -1;
+        private int _savedNavigationColumnIndex = 0;
 
         // Navigation tab controls
         private TabControl mainTabControl;
@@ -70,10 +75,16 @@ namespace FBWBA.Forms
             // Subscribe to aircraft position updates
             _simConnectManager.AircraftPositionReceived += OnAircraftPositionReceived;
 
-            // Load SimBrief flight plan if username is provided
-            if (!string.IsNullOrEmpty(_simbriefUsername))
+            // Only auto-load SimBrief if the flight plan is empty (first time opening)
+            // This preserves user modifications (SID, STAR, approaches) across window open/close
+            if (!string.IsNullOrEmpty(_simbriefUsername) && _flightPlanManager.CurrentFlightPlan.IsEmpty())
             {
                 LoadSimBriefFlightPlan();
+            }
+            else if (!_flightPlanManager.CurrentFlightPlan.IsEmpty())
+            {
+                // Flight plan already loaded - just refresh the display
+                RefreshNavigationGrid();
             }
         }
 
@@ -172,33 +183,34 @@ namespace FBWBA.Forms
                 MultiSelect = false,
                 AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
                 RowHeadersVisible = false,
+                EditMode = DataGridViewEditMode.EditProgrammatically,  // Prevents NVDA COM accessibility crash
                 AccessibleName = "Waypoint Navigation List",
                 AccessibleDescription = "Flight plan waypoints with distance, bearing, and navigation data. Press F5 to refresh position."
             };
 
-            // Define columns
-            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Section", HeaderText = "Sect", Width = 40, FillWeight = 3 });
-            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Waypoint", HeaderText = "Waypoint", Width = 80, FillWeight = 8 });
-            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Region", HeaderText = "Region", Width = 60, FillWeight = 5 });
-            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Distance", HeaderText = "Dist (NM)", Width = 70, FillWeight = 6 });
-            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Bearing", HeaderText = "Brg (°)", Width = 70, FillWeight = 6 });
-            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Airway", HeaderText = "Airway", Width = 70, FillWeight = 6 });
-            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Type", HeaderText = "Type", Width = 60, FillWeight = 5 });
-            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "ArincType", HeaderText = "ARINC", Width = 60, FillWeight = 5 });
-            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Course", HeaderText = "Course", Width = 60, FillWeight = 5 });
-            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "TrueCourse", HeaderText = "T/M", Width = 40, FillWeight = 3 });
-            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "LegDist", HeaderText = "Leg Dist", Width = 60, FillWeight = 5 });
-            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Altitude", HeaderText = "Altitude", Width = 100, FillWeight = 8 });
-            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Speed", HeaderText = "Speed", Width = 70, FillWeight = 6 });
-            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "SpeedType", HeaderText = "Spd Type", Width = 70, FillWeight = 6 });
-            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "VertAngle", HeaderText = "Vert Angle", Width = 70, FillWeight = 6 });
-            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "RNP", HeaderText = "RNP", Width = 50, FillWeight = 4 });
-            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Time", HeaderText = "Time", Width = 50, FillWeight = 4 });
-            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Theta", HeaderText = "Theta", Width = 50, FillWeight = 4 });
-            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Rho", HeaderText = "Rho", Width = 50, FillWeight = 4 });
-            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Flyover", HeaderText = "Flyover", Width = 60, FillWeight = 5 });
-            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "TurnDir", HeaderText = "Turn", Width = 50, FillWeight = 4 });
-            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Notes", HeaderText = "Notes", Width = 100, FillWeight = 8 });
+            // Define columns with NotSortable to prevent "not sortable" announcements
+            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Section", HeaderText = "Sect", Width = 40, FillWeight = 3, SortMode = DataGridViewColumnSortMode.NotSortable });
+            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Waypoint", HeaderText = "Waypoint", Width = 80, FillWeight = 8, SortMode = DataGridViewColumnSortMode.NotSortable });
+            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Region", HeaderText = "Region", Width = 60, FillWeight = 5, SortMode = DataGridViewColumnSortMode.NotSortable });
+            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Distance", HeaderText = "Dist (NM)", Width = 70, FillWeight = 6, SortMode = DataGridViewColumnSortMode.NotSortable });
+            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Bearing", HeaderText = "Brg (°)", Width = 70, FillWeight = 6, SortMode = DataGridViewColumnSortMode.NotSortable });
+            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Airway", HeaderText = "Airway", Width = 70, FillWeight = 6, SortMode = DataGridViewColumnSortMode.NotSortable });
+            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Type", HeaderText = "Type", Width = 60, FillWeight = 5, SortMode = DataGridViewColumnSortMode.NotSortable });
+            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "ArincType", HeaderText = "ARINC", Width = 60, FillWeight = 5, SortMode = DataGridViewColumnSortMode.NotSortable });
+            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Course", HeaderText = "Course", Width = 60, FillWeight = 5, SortMode = DataGridViewColumnSortMode.NotSortable });
+            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "TrueCourse", HeaderText = "T/M", Width = 40, FillWeight = 3, SortMode = DataGridViewColumnSortMode.NotSortable });
+            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "LegDist", HeaderText = "Leg Dist", Width = 60, FillWeight = 5, SortMode = DataGridViewColumnSortMode.NotSortable });
+            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Altitude", HeaderText = "Altitude", Width = 100, FillWeight = 8, SortMode = DataGridViewColumnSortMode.NotSortable });
+            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Speed", HeaderText = "Speed", Width = 70, FillWeight = 6, SortMode = DataGridViewColumnSortMode.NotSortable });
+            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "SpeedType", HeaderText = "Spd Type", Width = 70, FillWeight = 6, SortMode = DataGridViewColumnSortMode.NotSortable });
+            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "VertAngle", HeaderText = "Vert Angle", Width = 70, FillWeight = 6, SortMode = DataGridViewColumnSortMode.NotSortable });
+            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "RNP", HeaderText = "RNP", Width = 50, FillWeight = 4, SortMode = DataGridViewColumnSortMode.NotSortable });
+            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Time", HeaderText = "Time", Width = 50, FillWeight = 4, SortMode = DataGridViewColumnSortMode.NotSortable });
+            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Theta", HeaderText = "Theta", Width = 50, FillWeight = 4, SortMode = DataGridViewColumnSortMode.NotSortable });
+            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Rho", HeaderText = "Rho", Width = 50, FillWeight = 4, SortMode = DataGridViewColumnSortMode.NotSortable });
+            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Flyover", HeaderText = "Flyover", Width = 60, FillWeight = 5, SortMode = DataGridViewColumnSortMode.NotSortable });
+            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "TurnDir", HeaderText = "Turn", Width = 50, FillWeight = 4, SortMode = DataGridViewColumnSortMode.NotSortable });
+            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Notes", HeaderText = "Notes", Width = 100, FillWeight = 8, SortMode = DataGridViewColumnSortMode.NotSortable });
 
             panel.Controls.Add(navigationGridView);
             panel.Controls.Add(buttonPanel);
@@ -533,21 +545,29 @@ namespace FBWBA.Forms
             };
 
             // DataGridView row selection announcement
-            navigationGridView.SelectionChanged += (s, e) =>
-            {
-                if (navigationGridView.SelectedRows.Count > 0)
-                {
-                    var row = navigationGridView.SelectedRows[0];
-                    var waypoint = row.Cells["Waypoint"].Value?.ToString();
-                    var distance = row.Cells["Distance"].Value?.ToString();
-                    var bearing = row.Cells["Bearing"].Value?.ToString();
+            navigationGridView.SelectionChanged += navigationGridView_SelectionChanged;
 
-                    if (!string.IsNullOrEmpty(waypoint))
-                    {
-                        _announcer.Announce($"{waypoint}, {distance}, {bearing}");
-                    }
+            // Load saved state when form is shown
+            Load += ElectronicFlightBagForm_Load;
+
+            // Save state when form is closing
+            FormClosing += ElectronicFlightBagForm_FormClosing;
+        }
+
+        private void navigationGridView_SelectionChanged(object sender, EventArgs e)
+        {
+            if (navigationGridView.SelectedRows.Count > 0)
+            {
+                var row = navigationGridView.SelectedRows[0];
+                var waypoint = row.Cells["Waypoint"].Value?.ToString();
+                var distance = row.Cells["Distance"].Value?.ToString();
+                var bearing = row.Cells["Bearing"].Value?.ToString();
+
+                if (!string.IsNullOrEmpty(waypoint))
+                {
+                    _announcer.Announce($"{waypoint}, {distance}, {bearing}");
                 }
-            };
+            }
         }
 
         private void LoadSimBriefFlightPlan()
@@ -606,6 +626,25 @@ namespace FBWBA.Forms
 
         private void RefreshNavigationGrid()
         {
+            // Safety check: Ensure columns are defined before attempting to add rows
+            if (navigationGridView.Columns.Count == 0)
+            {
+                System.Diagnostics.Debug.WriteLine("WARNING: NavigationGridView has no columns. Skipping refresh.");
+                return;
+            }
+
+            // Save current cell position (row and column) before clearing
+            int previousRowIndex = -1;
+            int previousColumnIndex = 0;
+            if (navigationGridView.CurrentCell != null)
+            {
+                previousRowIndex = navigationGridView.CurrentCell.RowIndex;
+                previousColumnIndex = navigationGridView.CurrentCell.ColumnIndex;
+            }
+
+            // Temporarily disable selection change events to prevent unwanted announcements
+            navigationGridView.SelectionChanged -= navigationGridView_SelectionChanged;
+
             navigationGridView.Rows.Clear();
 
             var waypoints = _flightPlanManager.CurrentFlightPlan.GetAllWaypoints();
@@ -660,6 +699,43 @@ namespace FBWBA.Forms
                     waypoint.Notes ?? "-"
                 );
             }
+
+            // Restore current cell position (this maintains keyboard focus)
+            if (previousRowIndex >= 0 && previousRowIndex < navigationGridView.Rows.Count &&
+                previousColumnIndex >= 0 && previousColumnIndex < navigationGridView.Columns.Count)
+            {
+                // Set CurrentCell - this is the key to maintaining keyboard focus position
+                navigationGridView.CurrentCell = navigationGridView.Rows[previousRowIndex].Cells[previousColumnIndex];
+
+                // Ensure the row is visible in the viewport
+                navigationGridView.FirstDisplayedScrollingRowIndex = previousRowIndex;
+
+                // Restore keyboard focus to the grid after all UI updates complete
+                if (IsHandleCreated)
+                {
+                    BeginInvoke(new Action(() => navigationGridView.Focus()));
+                }
+                else
+                {
+                    navigationGridView.Focus();
+                }
+            }
+            else if (navigationGridView.Rows.Count > 0)
+            {
+                // If no previous position or invalid index, set first cell as current
+                navigationGridView.CurrentCell = navigationGridView.Rows[0].Cells[0];
+                if (IsHandleCreated)
+                {
+                    BeginInvoke(new Action(() => navigationGridView.Focus()));
+                }
+                else
+                {
+                    navigationGridView.Focus();
+                }
+            }
+
+            // Re-enable selection change events
+            navigationGridView.SelectionChanged += navigationGridView_SelectionChanged;
 
             UpdateStatus($"Flight plan: {waypoints.Count} waypoints");
         }
@@ -1165,6 +1241,96 @@ namespace FBWBA.Forms
         private SimConnectManager.AircraftPosition? GetLastKnownPosition()
         {
             return _lastKnownPosition;
+        }
+
+        private void ElectronicFlightBagForm_Load(object sender, EventArgs e)
+        {
+            try
+            {
+                var settings = SettingsManager.Current;
+
+                // Restore tab index
+                if (settings.EFBTabIndex >= 0 && settings.EFBTabIndex < mainTabControl.TabPages.Count)
+                {
+                    mainTabControl.SelectedIndex = settings.EFBTabIndex;
+                }
+
+                // Restore window size
+                if (settings.EFBWindowWidth > 0 && settings.EFBWindowHeight > 0)
+                {
+                    Width = settings.EFBWindowWidth;
+                    Height = settings.EFBWindowHeight;
+                }
+
+                // Restore window position (if valid)
+                if (settings.EFBWindowX >= 0 && settings.EFBWindowY >= 0)
+                {
+                    // Verify position is within screen bounds
+                    var screen = Screen.FromPoint(new Point(settings.EFBWindowX, settings.EFBWindowY));
+                    if (screen.WorkingArea.Contains(settings.EFBWindowX, settings.EFBWindowY))
+                    {
+                        StartPosition = FormStartPosition.Manual;
+                        Location = new Point(settings.EFBWindowX, settings.EFBWindowY);
+                    }
+                }
+
+                // Restore navigation cell position (after flight plan loads)
+                _savedNavigationRowIndex = settings.EFBNavigationRowIndex;
+                _savedNavigationColumnIndex = settings.EFBNavigationColumnIndex;
+
+                // If we have a saved position and the grid has data, restore it
+                if (_savedNavigationRowIndex >= 0 && _savedNavigationRowIndex < navigationGridView.Rows.Count &&
+                    _savedNavigationColumnIndex >= 0 && _savedNavigationColumnIndex < navigationGridView.Columns.Count)
+                {
+                    navigationGridView.CurrentCell = navigationGridView.Rows[_savedNavigationRowIndex].Cells[_savedNavigationColumnIndex];
+                    navigationGridView.FirstDisplayedScrollingRowIndex = _savedNavigationRowIndex;
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error loading EFB window state: {ex.Message}");
+            }
+        }
+
+        private void ElectronicFlightBagForm_FormClosing(object sender, FormClosingEventArgs e)
+        {
+            try
+            {
+                var settings = SettingsManager.Current;
+
+                // Save current tab index
+                settings.EFBTabIndex = mainTabControl.SelectedIndex;
+
+                // Save currently active navigation cell position
+                if (navigationGridView.CurrentCell != null)
+                {
+                    settings.EFBNavigationRowIndex = navigationGridView.CurrentCell.RowIndex;
+                    settings.EFBNavigationColumnIndex = navigationGridView.CurrentCell.ColumnIndex;
+                }
+                else
+                {
+                    settings.EFBNavigationRowIndex = -1;
+                    settings.EFBNavigationColumnIndex = 0;
+                }
+
+                // Save window size
+                settings.EFBWindowWidth = Width;
+                settings.EFBWindowHeight = Height;
+
+                // Save window position (only if not maximized or minimized)
+                if (WindowState == FormWindowState.Normal)
+                {
+                    settings.EFBWindowX = Location.X;
+                    settings.EFBWindowY = Location.Y;
+                }
+
+                // Persist settings to disk
+                SettingsManager.Save();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error saving EFB window state: {ex.Message}");
+            }
         }
 
         // Helper classes for ListBox items
