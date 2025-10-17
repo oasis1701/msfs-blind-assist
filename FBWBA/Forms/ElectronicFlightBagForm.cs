@@ -1,7 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Data.SQLite;
 using System.Drawing;
+using System.IO;
 using System.Linq;
+using System.Text;
 using System.Windows.Forms;
 using FBWBA.Accessibility;
 using FBWBA.Database;
@@ -55,6 +58,13 @@ namespace FBWBA.Forms
         private ListBox approachesListBox;
         private ListBox transitionsListBox;
         private Button loadApproachButton;
+
+        // Airport Lookup tab controls
+        private TextBox airportLookupIcaoTextBox;
+        private ListBox airportLookupRunwaysListBox;
+        private Button airportLookupLoadButton;
+        private TextBox airportInfoTextBox;
+        private TextBox runwayInfoTextBox;
 
         public ElectronicFlightBagForm(FlightPlanManager flightPlanManager, SimConnectManager simConnectManager,
                                        ScreenReaderAnnouncer announcer, string simbriefUsername)
@@ -112,6 +122,7 @@ namespace FBWBA.Forms
             CreateApproachTab();
             CreateDepartureTab();
             CreateArrivalTab();
+            CreateAirportLookupTab();
 
             // Status label at bottom
             statusLabel = new Label
@@ -494,6 +505,87 @@ namespace FBWBA.Forms
             mainTabControl.TabPages.Add(appTab);
         }
 
+        private void CreateAirportLookupTab()
+        {
+            var lookupTab = new TabPage("Airport Lookup")
+            {
+                AccessibleName = "Airport Lookup",
+                AccessibleDescription = "Lookup detailed airport and runway information"
+            };
+
+            var panel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(20) };
+
+            // ICAO textbox
+            var icaoLabel = new Label { Text = "Airport ICAO:", Location = new Point(20, 20), Width = 200 };
+            airportLookupIcaoTextBox = new TextBox
+            {
+                Location = new Point(20, 45),
+                Width = 100,
+                CharacterCasing = CharacterCasing.Upper,
+                MaxLength = 4,
+                AccessibleName = "Airport Lookup ICAO",
+                AccessibleDescription = "Enter airport ICAO code for lookup"
+            };
+
+            // Runway listbox
+            var runwayLabel = new Label { Text = "Runways:", Location = new Point(20, 80), Width = 200 };
+            airportLookupRunwaysListBox = new ListBox
+            {
+                Location = new Point(20, 105),
+                Size = new Size(200, 100),
+                AccessibleName = "Airport Lookup Runways",
+                AccessibleDescription = "Select runway for detailed information"
+            };
+
+            // Load button
+            airportLookupLoadButton = new Button
+            {
+                Text = "Load",
+                Location = new Point(20, 215),
+                Size = new Size(100, 30),
+                AccessibleName = "Load Airport and Runway Info",
+                AccessibleDescription = "Load detailed airport and runway information"
+            };
+
+            // Airport info textbox (left side)
+            var airportInfoLabel = new Label { Text = "Airport Information:", Location = new Point(20, 255), Width = 250 };
+            airportInfoTextBox = new TextBox
+            {
+                Location = new Point(20, 280),
+                Size = new Size(540, 340),
+                Multiline = true,
+                ReadOnly = true,
+                ScrollBars = ScrollBars.Vertical,
+                Font = new Font("Consolas", 9),
+                AccessibleName = "Airport Information",
+                AccessibleDescription = "Detailed airport information"
+            };
+
+            // Runway info textbox (right side)
+            var runwayInfoLabel = new Label { Text = "Runway Information:", Location = new Point(580, 255), Width = 250 };
+            runwayInfoTextBox = new TextBox
+            {
+                Location = new Point(580, 280),
+                Size = new Size(540, 340),
+                Multiline = true,
+                ReadOnly = true,
+                ScrollBars = ScrollBars.Vertical,
+                Font = new Font("Consolas", 9),
+                AccessibleName = "Runway Information",
+                AccessibleDescription = "Detailed runway information"
+            };
+
+            panel.Controls.AddRange(new Control[] {
+                icaoLabel, airportLookupIcaoTextBox,
+                runwayLabel, airportLookupRunwaysListBox,
+                airportLookupLoadButton,
+                airportInfoLabel, airportInfoTextBox,
+                runwayInfoLabel, runwayInfoTextBox
+            });
+            lookupTab.Controls.Add(panel);
+            mainTabControl.TabPages.Add(lookupTab);
+        }
+
         private void SetupEventHandlers()
         {
             // Navigation tab
@@ -524,6 +616,10 @@ namespace FBWBA.Forms
             approachIcaoTextBox.TextChanged += ApproachIcaoTextBox_TextChanged;
             approachesListBox.SelectedIndexChanged += ApproachesListBox_SelectedIndexChanged;
             loadApproachButton.Click += LoadApproachButton_Click;
+
+            // Airport Lookup tab
+            airportLookupIcaoTextBox.TextChanged += AirportLookupIcaoTextBox_TextChanged;
+            airportLookupLoadButton.Click += AirportLookupLoadButton_Click;
 
             // Flight plan manager events
             _flightPlanManager.StatusChanged += (s, msg) => UpdateStatus(msg);
@@ -1220,6 +1316,480 @@ namespace FBWBA.Forms
         private SimConnectManager.AircraftPosition? GetLastKnownPosition()
         {
             return _lastKnownPosition;
+        }
+
+        // Airport Lookup tab handlers
+        private void AirportLookupIcaoTextBox_TextChanged(object sender, EventArgs e)
+        {
+            string icao = airportLookupIcaoTextBox.Text.Trim();
+            if (icao.Length == 4)
+            {
+                LoadRunwaysForAirportLookup(icao);
+            }
+            else
+            {
+                airportLookupRunwaysListBox.Items.Clear();
+                airportInfoTextBox.Clear();
+                runwayInfoTextBox.Clear();
+            }
+        }
+
+        private void LoadRunwaysForAirportLookup(string icao)
+        {
+            try
+            {
+                var runways = _flightPlanManager.GetRunways(icao);
+                airportLookupRunwaysListBox.Items.Clear();
+
+                foreach (var runway in runways)
+                {
+                    airportLookupRunwaysListBox.Items.Add(runway);
+                }
+
+                if (runways.Count > 0)
+                {
+                    airportLookupRunwaysListBox.SelectedIndex = 0;
+                }
+            }
+            catch
+            {
+                airportLookupRunwaysListBox.Items.Clear();
+            }
+        }
+
+        private void AirportLookupLoadButton_Click(object sender, EventArgs e)
+        {
+            try
+            {
+                string icao = airportLookupIcaoTextBox.Text.Trim();
+                var selectedRunway = airportLookupRunwaysListBox.SelectedItem as Runway;
+
+                if (string.IsNullOrEmpty(icao))
+                {
+                    MessageBox.Show("Please enter an airport ICAO code", "Invalid Selection",
+                                  MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                // Load airport information
+                airportInfoTextBox.Text = GetAirportDetailedInfo(icao);
+
+                // Load runway information if a runway is selected
+                if (selectedRunway != null)
+                {
+                    runwayInfoTextBox.Text = GetRunwayDetailedInfo(icao, selectedRunway.RunwayID);
+                }
+                else
+                {
+                    runwayInfoTextBox.Text = "No runway selected";
+                }
+
+                UpdateStatus($"Loaded information for {icao}");
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error loading airport information: {ex.Message}", "Error",
+                              MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private string GetAirportDetailedInfo(string icao)
+        {
+            var settings = SettingsManager.Current;
+            string simulatorVersion = settings.SimulatorVersion ?? "FS2020";
+            string dbPath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "FBWBA", "databases", $"{simulatorVersion.ToLower()}.sqlite");
+
+            if (!File.Exists(dbPath))
+            {
+                return $"Database not found: {dbPath}";
+            }
+
+            var sb = new StringBuilder();
+            string connectionString = $"Data Source={dbPath};Version=3;Read Only=True;";
+
+            using (var connection = new SQLiteConnection(connectionString))
+            {
+                connection.Open();
+
+                var sql = @"SELECT * FROM airport WHERE UPPER(icao) = UPPER(@ICAO) OR UPPER(ident) = UPPER(@ICAO) LIMIT 1";
+
+                using (var command = new SQLiteCommand(sql, connection))
+                {
+                    command.Parameters.AddWithValue("@ICAO", icao);
+
+                    using (var reader = command.ExecuteReader())
+                    {
+                        if (reader.Read())
+                        {
+                            sb.AppendLine("═══════════════════════════════════════════════════");
+                            sb.AppendLine($"  AIRPORT INFORMATION - {reader["ident"]?.ToString() ?? icao}");
+                            sb.AppendLine("═══════════════════════════════════════════════════");
+                            sb.AppendLine();
+
+                            // Basic Information
+                            sb.AppendLine("BASIC INFORMATION:");
+                            sb.AppendLine($"  ICAO:         {reader["icao"]?.ToString() ?? "N/A"}");
+                            sb.AppendLine($"  Ident:        {reader["ident"]?.ToString() ?? "N/A"}");
+                            sb.AppendLine($"  Name:         {reader["name"]?.ToString() ?? "N/A"}");
+                            sb.AppendLine($"  IATA:         {reader["iata"]?.ToString() ?? "N/A"}");
+                            sb.AppendLine($"  FAA:          {reader["faa"]?.ToString() ?? "N/A"}");
+                            sb.AppendLine($"  Local:        {reader["local"]?.ToString() ?? "N/A"}");
+                            sb.AppendLine();
+
+                            // Location
+                            sb.AppendLine("LOCATION:");
+                            sb.AppendLine($"  City:         {reader["city"]?.ToString() ?? "N/A"}");
+                            sb.AppendLine($"  State:        {reader["state"]?.ToString() ?? "N/A"}");
+                            sb.AppendLine($"  Country:      {reader["country"]?.ToString() ?? "N/A"}");
+                            sb.AppendLine($"  Region:       {reader["region"]?.ToString() ?? "N/A"}");
+                            sb.AppendLine($"  Latitude:     {reader["laty"]}");
+                            sb.AppendLine($"  Longitude:    {reader["lonx"]}");
+                            sb.AppendLine($"  Altitude:     {reader["altitude"]} ft");
+                            sb.AppendLine($"  Mag Var:      {reader["mag_var"]}°");
+                            sb.AppendLine();
+
+                            // Frequencies
+                            sb.AppendLine("FREQUENCIES:");
+                            var towerFreq = reader["tower_frequency"];
+                            sb.AppendLine($"  Tower:        {(towerFreq != DBNull.Value && Convert.ToInt32(towerFreq) > 0 ? $"{Convert.ToDouble(towerFreq) / 1000000.0:F3} MHz" : "N/A")}");
+                            var atisFreq = reader["atis_frequency"];
+                            sb.AppendLine($"  ATIS:         {(atisFreq != DBNull.Value && Convert.ToInt32(atisFreq) > 0 ? $"{Convert.ToDouble(atisFreq) / 1000000.0:F3} MHz" : "N/A")}");
+                            var awosFreq = reader["awos_frequency"];
+                            sb.AppendLine($"  AWOS:         {(awosFreq != DBNull.Value && Convert.ToInt32(awosFreq) > 0 ? $"{Convert.ToDouble(awosFreq) / 1000000.0:F3} MHz" : "N/A")}");
+                            var asosFreq = reader["asos_frequency"];
+                            sb.AppendLine($"  ASOS:         {(asosFreq != DBNull.Value && Convert.ToInt32(asosFreq) > 0 ? $"{Convert.ToDouble(asosFreq) / 1000000.0:F3} MHz" : "N/A")}");
+                            var unicomFreq = reader["unicom_frequency"];
+                            sb.AppendLine($"  UNICOM:       {(unicomFreq != DBNull.Value && Convert.ToInt32(unicomFreq) > 0 ? $"{Convert.ToDouble(unicomFreq) / 1000000.0:F3} MHz" : "N/A")}");
+                            sb.AppendLine();
+
+                            // Status
+                            sb.AppendLine("STATUS:");
+                            sb.AppendLine($"  Closed:       {(Convert.ToInt32(reader["is_closed"]) == 1 ? "Yes" : "No")}");
+                            sb.AppendLine($"  Military:     {(Convert.ToInt32(reader["is_military"]) == 1 ? "Yes" : "No")}");
+                            sb.AppendLine($"  Addon:        {(Convert.ToInt32(reader["is_addon"]) == 1 ? "Yes" : "No")}");
+                            sb.AppendLine($"  3D:           {(Convert.ToInt32(reader["is_3d"]) == 1 ? "Yes" : "No")}");
+                            sb.AppendLine($"  Rating:       {reader["rating"]}/5");
+                            sb.AppendLine();
+
+                            // Fuel
+                            sb.AppendLine("FUEL:");
+                            sb.AppendLine($"  Avgas:        {(Convert.ToInt32(reader["has_avgas"]) == 1 ? "Available" : "Not Available")}");
+                            sb.AppendLine($"  Jet Fuel:     {(Convert.ToInt32(reader["has_jetfuel"]) == 1 ? "Available" : "Not Available")}");
+                            sb.AppendLine();
+
+                            // Facilities Count
+                            sb.AppendLine("FACILITIES:");
+                            sb.AppendLine($"  COM Frequencies:        {reader["num_com"]}");
+                            sb.AppendLine($"  Parking Gates:          {reader["num_parking_gate"]}");
+                            sb.AppendLine($"  Parking GA Ramps:       {reader["num_parking_ga_ramp"]}");
+                            sb.AppendLine($"  Parking Cargo:          {reader["num_parking_cargo"]}");
+                            sb.AppendLine($"  Parking Mil Cargo:      {reader["num_parking_mil_cargo"]}");
+                            sb.AppendLine($"  Parking Mil Combat:     {reader["num_parking_mil_combat"]}");
+                            sb.AppendLine($"  Approaches:             {reader["num_approach"]}");
+                            sb.AppendLine($"  Runways (Hard):         {reader["num_runway_hard"]}");
+                            sb.AppendLine($"  Runways (Soft):         {reader["num_runway_soft"]}");
+                            sb.AppendLine($"  Runways (Water):        {reader["num_runway_water"]}");
+                            sb.AppendLine($"  Lighted Runways:        {reader["num_runway_light"]}");
+                            sb.AppendLine($"  ILS Equipped Ends:      {reader["num_runway_end_ils"] ?? "N/A"}");
+                            sb.AppendLine($"  Closed Runway Ends:     {reader["num_runway_end_closed"]}");
+                            sb.AppendLine($"  VASI Equipped Ends:     {reader["num_runway_end_vasi"]}");
+                            sb.AppendLine($"  ALS Equipped Ends:      {reader["num_runway_end_als"]}");
+                            sb.AppendLine($"  Helipads:               {reader["num_helipad"]}");
+                            sb.AppendLine($"  Jetways:                {reader["num_jetway"]}");
+                            sb.AppendLine($"  Taxi Paths:             {reader["num_taxi_path"]}");
+                            sb.AppendLine($"  Aprons:                 {reader["num_apron"]}");
+                            sb.AppendLine($"  Start Positions:        {reader["num_starts"]}");
+                            sb.AppendLine();
+
+                            // Runway Info
+                            sb.AppendLine("RUNWAY SUMMARY:");
+                            sb.AppendLine($"  Total Runways:          {reader["num_runways"]}");
+                            sb.AppendLine($"  Longest Runway Length:  {reader["longest_runway_length"]} ft");
+                            sb.AppendLine($"  Longest Runway Width:   {reader["longest_runway_width"]} ft");
+                            sb.AppendLine($"  Longest Runway Heading: {reader["longest_runway_heading"]}°");
+                            sb.AppendLine($"  Longest Runway Surface: {reader["longest_runway_surface"]?.ToString() ?? "N/A"}");
+                            sb.AppendLine();
+
+                            // Parking Info
+                            sb.AppendLine("PARKING:");
+                            sb.AppendLine($"  Largest Ramp:           {reader["largest_parking_ramp"]?.ToString() ?? "N/A"}");
+                            sb.AppendLine($"  Largest Gate:           {reader["largest_parking_gate"]?.ToString() ?? "N/A"}");
+                            sb.AppendLine();
+
+                            // Tower
+                            var towerAlt = reader["tower_altitude"];
+                            var towerLonx = reader["tower_lonx"];
+                            var towerLaty = reader["tower_laty"];
+                            if (towerAlt != DBNull.Value || towerLonx != DBNull.Value || towerLaty != DBNull.Value)
+                            {
+                                sb.AppendLine("TOWER:");
+                                sb.AppendLine($"  Altitude:     {(towerAlt != DBNull.Value ? $"{towerAlt} ft" : "N/A")}");
+                                sb.AppendLine($"  Longitude:    {(towerLonx != DBNull.Value ? towerLonx.ToString() : "N/A")}");
+                                sb.AppendLine($"  Latitude:     {(towerLaty != DBNull.Value ? towerLaty.ToString() : "N/A")}");
+                                sb.AppendLine($"  Has Tower Object: {(Convert.ToInt32(reader["has_tower_object"]) == 1 ? "Yes" : "No")}");
+                                sb.AppendLine();
+                            }
+
+                            // Transitions
+                            var transAlt = reader["transition_altitude"];
+                            var transLevel = reader["transition_level"];
+                            if (transAlt != DBNull.Value || transLevel != DBNull.Value)
+                            {
+                                sb.AppendLine("TRANSITIONS:");
+                                sb.AppendLine($"  Transition Altitude:    {(transAlt != DBNull.Value ? $"{transAlt} ft" : "N/A")}");
+                                sb.AppendLine($"  Transition Level:       {(transLevel != DBNull.Value ? $"FL{transLevel}" : "N/A")}");
+                                sb.AppendLine();
+                            }
+
+                            // Scenery
+                            sb.AppendLine("SCENERY:");
+                            sb.AppendLine($"  Local Path:   {reader["scenery_local_path"]?.ToString() ?? "N/A"}");
+                            sb.AppendLine($"  BGL File:     {reader["bgl_filename"]?.ToString() ?? "N/A"}");
+                        }
+                        else
+                        {
+                            sb.AppendLine($"Airport {icao} not found in database.");
+                        }
+                    }
+                }
+            }
+
+            return sb.ToString();
+        }
+
+        private string GetRunwayDetailedInfo(string icao, string runwayId)
+        {
+            var settings = SettingsManager.Current;
+            string simulatorVersion = settings.SimulatorVersion ?? "FS2020";
+            string dbPath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "FBWBA", "databases", $"{simulatorVersion.ToLower()}.sqlite");
+
+            if (!File.Exists(dbPath))
+            {
+                return $"Database not found: {dbPath}";
+            }
+
+            var sb = new StringBuilder();
+            string connectionString = $"Data Source={dbPath};Version=3;Read Only=True;";
+
+            using (var connection = new SQLiteConnection(connectionString))
+            {
+                connection.Open();
+
+                // Get airport_id first
+                int airportId = -1;
+                var airportSql = "SELECT airport_id FROM airport WHERE UPPER(icao) = UPPER(@ICAO) OR UPPER(ident) = UPPER(@ICAO) LIMIT 1";
+                using (var cmd = new SQLiteCommand(airportSql, connection))
+                {
+                    cmd.Parameters.AddWithValue("@ICAO", icao);
+                    var result = cmd.ExecuteScalar();
+                    if (result != null) airportId = Convert.ToInt32(result);
+                }
+
+                if (airportId == -1)
+                {
+                    return $"Airport {icao} not found.";
+                }
+
+                // Query runway with runway_end join
+                var sql = @"
+                    SELECT r.*, re.*, a.mag_var
+                    FROM runway r
+                    JOIN runway_end re ON re.runway_end_id = r.primary_end_id OR re.runway_end_id = r.secondary_end_id
+                    JOIN airport a ON r.airport_id = a.airport_id
+                    WHERE r.airport_id = @AirportId AND UPPER(re.name) = UPPER(@RunwayId)
+                    LIMIT 1";
+
+                using (var command = new SQLiteCommand(sql, connection))
+                {
+                    command.Parameters.AddWithValue("@AirportId", airportId);
+                    command.Parameters.AddWithValue("@RunwayId", runwayId);
+
+                    using (var reader = command.ExecuteReader())
+                    {
+                        if (reader.Read())
+                        {
+                            sb.AppendLine("═══════════════════════════════════════════════════");
+                            sb.AppendLine($"  RUNWAY INFORMATION - {runwayId}");
+                            sb.AppendLine("═══════════════════════════════════════════════════");
+                            sb.AppendLine();
+
+                            sb.AppendLine($"Runway ID:        {reader["name"]?.ToString() ?? runwayId}");
+                            sb.AppendLine();
+
+                            // ILS INFORMATION (placed at top as requested)
+                            var ilsIdent = reader["ils_ident"]?.ToString();
+                            if (!string.IsNullOrEmpty(ilsIdent))
+                            {
+                                sb.AppendLine("ILS INFORMATION:");
+                                sb.AppendLine($"  ILS Ident:    {ilsIdent}");
+
+                                // Query ILS table for detailed information
+                                var ilsSql = "SELECT * FROM ils WHERE ident = @IlsIdent LIMIT 1";
+                                using (var ilsCmd = new SQLiteCommand(ilsSql, connection))
+                                {
+                                    ilsCmd.Parameters.AddWithValue("@IlsIdent", ilsIdent);
+                                    using (var ilsReader = ilsCmd.ExecuteReader())
+                                    {
+                                        if (ilsReader.Read())
+                                        {
+                                            var freq = ilsReader["frequency"];
+                                            sb.AppendLine($"  ILS Frequency:        {(freq != DBNull.Value ? $"{Convert.ToDouble(freq) / 1000.0:F2} MHz" : "N/A")}");
+                                            sb.AppendLine($"  ILS Name:             {ilsReader["name"]?.ToString() ?? "N/A"}");
+                                            sb.AppendLine($"  ILS Region:           {ilsReader["region"]?.ToString() ?? "N/A"}");
+                                            sb.AppendLine($"  ILS Type:             {ilsReader["type"]?.ToString() ?? "N/A"}");
+                                            sb.AppendLine($"  Loc Heading:          {ilsReader["loc_heading"]}°");
+                                            sb.AppendLine($"  Loc Width:            {ilsReader["loc_width"]}°");
+                                            sb.AppendLine($"  Range:                {ilsReader["range"]} NM");
+                                            sb.AppendLine($"  Has Backcourse:       {(Convert.ToInt32(ilsReader["has_backcourse"] ?? 0) == 1 ? "Yes" : "No")}");
+                                            sb.AppendLine($"  Performance Indicator:{ilsReader["perf_indicator"]?.ToString() ?? "N/A"}");
+                                            sb.AppendLine($"  Provider:             {ilsReader["provider"]?.ToString() ?? "N/A"}");
+                                            sb.AppendLine($"  Mag Var:              {ilsReader["mag_var"]}°");
+
+                                            // DME Information
+                                            var dmeRange = ilsReader["dme_range"];
+                                            if (dmeRange != DBNull.Value && Convert.ToInt32(dmeRange) > 0)
+                                            {
+                                                sb.AppendLine($"  DME Range:            {dmeRange} NM");
+                                                sb.AppendLine($"  DME Altitude:         {ilsReader["dme_altitude"]} ft");
+                                                sb.AppendLine($"  DME Longitude:        {ilsReader["dme_lonx"]}");
+                                                sb.AppendLine($"  DME Latitude:         {ilsReader["dme_laty"]}");
+                                            }
+
+                                            // Glideslope Information
+                                            var gsRange = ilsReader["gs_range"];
+                                            if (gsRange != DBNull.Value && Convert.ToInt32(gsRange) > 0)
+                                            {
+                                                sb.AppendLine($"  GS Range:             {gsRange} NM");
+                                                sb.AppendLine($"  GS Pitch:             {ilsReader["gs_pitch"]}°");
+                                                sb.AppendLine($"  GS Altitude:          {ilsReader["gs_altitude"]} ft");
+                                                sb.AppendLine($"  GS Longitude:         {ilsReader["gs_lonx"]}");
+                                                sb.AppendLine($"  GS Latitude:          {ilsReader["gs_laty"]}");
+                                            }
+
+                                            // Localizer coordinates
+                                            sb.AppendLine($"  Localizer Altitude:   {ilsReader["altitude"]} ft");
+                                            sb.AppendLine($"  Localizer Longitude:  {ilsReader["lonx"]}");
+                                            sb.AppendLine($"  Localizer Latitude:   {ilsReader["laty"]}");
+                                        }
+                                    }
+                                }
+                                sb.AppendLine();
+                            }
+                            else
+                            {
+                                sb.AppendLine("ILS INFORMATION:");
+                                sb.AppendLine("  No ILS available");
+                                sb.AppendLine();
+                            }
+
+                            // DIMENSIONS
+                            sb.AppendLine("DIMENSIONS:");
+                            sb.AppendLine($"  Length:               {reader["length"]} ft");
+                            sb.AppendLine($"  Width:                {reader["width"]} ft");
+                            sb.AppendLine();
+
+                            // SURFACE
+                            sb.AppendLine("SURFACE:");
+                            sb.AppendLine($"  Surface:              {reader["surface"]?.ToString() ?? "N/A"}");
+                            var smoothness = reader["smoothness"];
+                            sb.AppendLine($"  Smoothness:           {(smoothness != DBNull.Value ? smoothness.ToString() : "N/A")}");
+                            sb.AppendLine($"  Shoulder:             {reader["shoulder"]?.ToString() ?? "N/A"}");
+                            sb.AppendLine();
+
+                            // HEADINGS
+                            var magVar = Convert.ToDouble(reader["mag_var"] ?? 0.0);
+                            var heading = Convert.ToDouble(reader["heading"] ?? 0.0);
+                            sb.AppendLine("HEADINGS:");
+                            sb.AppendLine($"  True Heading:         {heading:F1}°");
+                            sb.AppendLine($"  Magnetic Heading:     {(heading - magVar):F1}°");
+                            sb.AppendLine();
+
+                            // COORDINATES
+                            sb.AppendLine("COORDINATES:");
+                            sb.AppendLine($"  Longitude:            {reader["lonx"]}");
+                            sb.AppendLine($"  Latitude:             {reader["laty"]}");
+                            sb.AppendLine();
+
+                            // THRESHOLD DATA
+                            sb.AppendLine("THRESHOLD DATA:");
+                            sb.AppendLine($"  Offset Threshold:     {reader["offset_threshold"]} ft");
+                            sb.AppendLine($"  Blast Pad:            {reader["blast_pad"]} ft");
+                            sb.AppendLine($"  Overrun:              {reader["overrun"]} ft");
+                            sb.AppendLine();
+
+                            // PATTERN ALTITUDE
+                            sb.AppendLine("PATTERN:");
+                            sb.AppendLine($"  Pattern Altitude:     {reader["pattern_altitude"]} ft");
+                            sb.AppendLine($"  Altitude (MSL):       {reader["altitude"]} ft");
+                            sb.AppendLine();
+
+                            // LIGHTING
+                            sb.AppendLine("LIGHTING:");
+                            sb.AppendLine($"  Edge Light:           {reader["edge_light"]?.ToString() ?? "N/A"}");
+                            sb.AppendLine($"  Center Light:         {reader["center_light"]?.ToString() ?? "N/A"}");
+                            sb.AppendLine($"  Has Center Red:       {(Convert.ToInt32(reader["has_center_red"] ?? 0) == 1 ? "Yes" : "No")}");
+                            sb.AppendLine($"  Approach Light System:{reader["app_light_system_type"]?.ToString() ?? "N/A"}");
+                            sb.AppendLine($"  Has End Lights:       {(Convert.ToInt32(reader["has_end_lights"] ?? 0) == 1 ? "Yes" : "No")}");
+                            sb.AppendLine($"  Has REILS:            {(Convert.ToInt32(reader["has_reils"] ?? 0) == 1 ? "Yes" : "No")}");
+                            sb.AppendLine($"  Has Touchdown Lights: {(Convert.ToInt32(reader["has_touchdown_lights"] ?? 0) == 1 ? "Yes" : "No")}");
+                            var strobes = reader["num_strobes"];
+                            sb.AppendLine($"  Number of Strobes:    {(strobes != DBNull.Value ? strobes.ToString() : "N/A")}");
+                            sb.AppendLine();
+
+                            // MARKINGS
+                            sb.AppendLine("MARKINGS:");
+                            sb.AppendLine($"  Marking Flags:        {reader["marking_flags"]}");
+                            sb.AppendLine($"  Has Closed Markings:  {(Convert.ToInt32(reader["has_closed_markings"] ?? 0) == 1 ? "Yes" : "No")}");
+                            sb.AppendLine($"  Has STOL Markings:    {(Convert.ToInt32(reader["has_stol_markings"] ?? 0) == 1 ? "Yes" : "No")}");
+                            sb.AppendLine();
+
+                            // OPERATIONS
+                            sb.AppendLine("OPERATIONS:");
+                            sb.AppendLine($"  Is Takeoff:           {(Convert.ToInt32(reader["is_takeoff"] ?? 0) == 1 ? "Yes" : "No")}");
+                            sb.AppendLine($"  Is Landing:           {(Convert.ToInt32(reader["is_landing"] ?? 0) == 1 ? "Yes" : "No")}");
+                            sb.AppendLine($"  Is Pattern:           {reader["is_pattern"]?.ToString() ?? "N/A"}");
+                            sb.AppendLine($"  End Type:             {reader["end_type"]?.ToString() ?? "N/A"}");
+                            sb.AppendLine();
+
+                            // VASI
+                            sb.AppendLine("VASI:");
+                            var leftVasiType = reader["left_vasi_type"]?.ToString();
+                            var rightVasiType = reader["right_vasi_type"]?.ToString();
+                            if (!string.IsNullOrEmpty(leftVasiType))
+                            {
+                                sb.AppendLine($"  Left VASI Type:       {leftVasiType}");
+                                var leftPitch = reader["left_vasi_pitch"];
+                                sb.AppendLine($"  Left VASI Pitch:      {(leftPitch != DBNull.Value ? $"{leftPitch}°" : "N/A")}");
+                            }
+                            else
+                            {
+                                sb.AppendLine("  Left VASI Type:       None");
+                            }
+
+                            if (!string.IsNullOrEmpty(rightVasiType))
+                            {
+                                sb.AppendLine($"  Right VASI Type:      {rightVasiType}");
+                                var rightPitch = reader["right_vasi_pitch"];
+                                sb.AppendLine($"  Right VASI Pitch:     {(rightPitch != DBNull.Value ? $"{rightPitch}°" : "N/A")}");
+                            }
+                            else
+                            {
+                                sb.AppendLine("  Right VASI Type:      None");
+                            }
+                        }
+                        else
+                        {
+                            sb.AppendLine($"Runway {runwayId} not found at airport {icao}.");
+                        }
+                    }
+                }
+            }
+
+            return sb.ToString();
         }
 
         // Helper classes for ListBox items
