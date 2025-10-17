@@ -508,6 +508,22 @@ namespace FBWBA.Database
                     }
                 }
 
+                // For FS2024, also check LocalCache location (Store version)
+                if (simulatorVersion == "FS2024")
+                {
+                    string localCachePath = Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                        "Packages\\Microsoft.Limitless_8wekyb3d8bbwe\\LocalCache",
+                        "UserCfg.opt");
+
+                    basePath = TryParseUserCfgForBasePath(localCachePath);
+                    if (basePath != null)
+                    {
+                        Debug.WriteLine($"Found {simulatorVersion} base path from Store UserCfg.opt: {basePath}");
+                        return basePath;
+                    }
+                }
+
                 Debug.WriteLine($"Could not find base path for {simulatorVersion}");
                 return null;
             }
