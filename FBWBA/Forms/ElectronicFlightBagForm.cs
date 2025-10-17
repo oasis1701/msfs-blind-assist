@@ -556,22 +556,6 @@ namespace FBWBA.Forms
             FormClosing += ElectronicFlightBagForm_FormClosing;
         }
 
-        private void navigationGridView_SelectionChanged(object sender, EventArgs e)
-        {
-            if (navigationGridView.SelectedRows.Count > 0)
-            {
-                var row = navigationGridView.SelectedRows[0];
-                var waypoint = row.Cells["Waypoint"].Value?.ToString();
-                var distance = row.Cells["Distance"].Value?.ToString();
-                var bearing = row.Cells["Bearing"].Value?.ToString();
-
-                if (!string.IsNullOrEmpty(waypoint))
-                {
-                    _announcer.Announce($"{waypoint}, {distance}, {bearing}");
-                }
-            }
-        }
-
         private void LoadSimBriefFlightPlan()
         {
             try
@@ -643,9 +627,6 @@ namespace FBWBA.Forms
                 previousRowIndex = navigationGridView.CurrentCell.RowIndex;
                 previousColumnIndex = navigationGridView.CurrentCell.ColumnIndex;
             }
-
-            // Temporarily disable selection change events to prevent unwanted announcements
-            navigationGridView.SelectionChanged -= navigationGridView_SelectionChanged;
 
             navigationGridView.Rows.Clear();
 
@@ -735,9 +716,6 @@ namespace FBWBA.Forms
                     navigationGridView.Focus();
                 }
             }
-
-            // Re-enable selection change events
-            navigationGridView.SelectionChanged += navigationGridView_SelectionChanged;
 
             UpdateStatus($"Flight plan: {waypoints.Count} waypoints");
         }
