@@ -23,10 +23,6 @@ namespace FBWBA.Forms
         private readonly string _simbriefUsername;
         private SimConnectManager.AircraftPosition? _lastKnownPosition;
 
-        // State persistence
-        private int _savedNavigationRowIndex = -1;
-        private int _savedNavigationColumnIndex = 0;
-
         // Navigation tab controls
         private TabControl mainTabControl;
         private DataGridView navigationGridView;
@@ -551,12 +547,6 @@ namespace FBWBA.Forms
             // DISABLED: Custom announcements cause performance lag during keyboard navigation
             // Screen readers (NVDA/JAWS) already read grid cells using native DataGridView accessibility
             // navigationGridView.SelectionChanged += navigationGridView_SelectionChanged;
-
-            // Load saved state when form is shown
-            Load += ElectronicFlightBagForm_Load;
-
-            // Save state when form is closing
-            FormClosing += ElectronicFlightBagForm_FormClosing;
         }
 
         private void LoadSimBriefFlightPlan()
@@ -1230,96 +1220,6 @@ namespace FBWBA.Forms
         private SimConnectManager.AircraftPosition? GetLastKnownPosition()
         {
             return _lastKnownPosition;
-        }
-
-        private void ElectronicFlightBagForm_Load(object sender, EventArgs e)
-        {
-            try
-            {
-                var settings = SettingsManager.Current;
-
-                // Restore tab index
-                if (settings.EFBTabIndex >= 0 && settings.EFBTabIndex < mainTabControl.TabPages.Count)
-                {
-                    mainTabControl.SelectedIndex = settings.EFBTabIndex;
-                }
-
-                // Restore window size
-                if (settings.EFBWindowWidth > 0 && settings.EFBWindowHeight > 0)
-                {
-                    Width = settings.EFBWindowWidth;
-                    Height = settings.EFBWindowHeight;
-                }
-
-                // Restore window position (if valid)
-                if (settings.EFBWindowX >= 0 && settings.EFBWindowY >= 0)
-                {
-                    // Verify position is within screen bounds
-                    var screen = Screen.FromPoint(new Point(settings.EFBWindowX, settings.EFBWindowY));
-                    if (screen.WorkingArea.Contains(settings.EFBWindowX, settings.EFBWindowY))
-                    {
-                        StartPosition = FormStartPosition.Manual;
-                        Location = new Point(settings.EFBWindowX, settings.EFBWindowY);
-                    }
-                }
-
-                // Restore navigation cell position (after flight plan loads)
-                _savedNavigationRowIndex = settings.EFBNavigationRowIndex;
-                _savedNavigationColumnIndex = settings.EFBNavigationColumnIndex;
-
-                // If we have a saved position and the grid has data, restore it
-                if (_savedNavigationRowIndex >= 0 && _savedNavigationRowIndex < navigationGridView.Rows.Count &&
-                    _savedNavigationColumnIndex >= 0 && _savedNavigationColumnIndex < navigationGridView.Columns.Count)
-                {
-                    navigationGridView.CurrentCell = navigationGridView.Rows[_savedNavigationRowIndex].Cells[_savedNavigationColumnIndex];
-                    navigationGridView.FirstDisplayedScrollingRowIndex = _savedNavigationRowIndex;
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error loading EFB window state: {ex.Message}");
-            }
-        }
-
-        private void ElectronicFlightBagForm_FormClosing(object sender, FormClosingEventArgs e)
-        {
-            try
-            {
-                var settings = SettingsManager.Current;
-
-                // Save current tab index
-                settings.EFBTabIndex = mainTabControl.SelectedIndex;
-
-                // Save currently active navigation cell position
-                if (navigationGridView.CurrentCell != null)
-                {
-                    settings.EFBNavigationRowIndex = navigationGridView.CurrentCell.RowIndex;
-                    settings.EFBNavigationColumnIndex = navigationGridView.CurrentCell.ColumnIndex;
-                }
-                else
-                {
-                    settings.EFBNavigationRowIndex = -1;
-                    settings.EFBNavigationColumnIndex = 0;
-                }
-
-                // Save window size
-                settings.EFBWindowWidth = Width;
-                settings.EFBWindowHeight = Height;
-
-                // Save window position (only if not maximized or minimized)
-                if (WindowState == FormWindowState.Normal)
-                {
-                    settings.EFBWindowX = Location.X;
-                    settings.EFBWindowY = Location.Y;
-                }
-
-                // Persist settings to disk
-                SettingsManager.Save();
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error saving EFB window state: {ex.Message}");
-            }
         }
 
         // Helper classes for ListBox items
