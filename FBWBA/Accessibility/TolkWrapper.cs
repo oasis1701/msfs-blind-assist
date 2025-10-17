@@ -56,7 +56,7 @@ namespace FBWBA.Accessibility
 
                     // Tolk returns wide character strings
                     string result = Marshal.PtrToStringUni(ptr) ?? "None";
-                    System.Diagnostics.Debug.WriteLine($"[TolkWrapper] DetectScreenReader returned: '{result}'");
+                    // System.Diagnostics.Debug.WriteLine($"[TolkWrapper] DetectScreenReader returned: '{result}'");
                     return result;
                 }
                 catch (Exception ex)
@@ -73,14 +73,14 @@ namespace FBWBA.Accessibility
             {
                 if (_isLoaded) return true;
 
-                System.Diagnostics.Debug.WriteLine("[TolkWrapper] Initializing Tolk...");
+                // System.Diagnostics.Debug.WriteLine("[TolkWrapper] Initializing Tolk...");
 
                 // First load Tolk
                 Tolk_Load();
                 // System.Diagnostics.Debug.WriteLine("[TolkWrapper] Tolk_Load() called");
 
                 _isLoaded = Tolk_IsLoaded();
-                System.Diagnostics.Debug.WriteLine($"[TolkWrapper] Tolk_IsLoaded() returned: {_isLoaded}");
+                // System.Diagnostics.Debug.WriteLine($"[TolkWrapper] Tolk_IsLoaded() returned: {_isLoaded}");
 
                 // Only configure SAPI after successful load
                 if (_isLoaded)
@@ -91,7 +91,7 @@ namespace FBWBA.Accessibility
                     // Check what we have available
                     string detected = DetectedScreenReader;
                     bool hasSpeech = HasSpeech();
-                    System.Diagnostics.Debug.WriteLine($"[TolkWrapper] Detected: {detected}, HasSpeech: {hasSpeech}");
+                    // System.Diagnostics.Debug.WriteLine($"[TolkWrapper] Detected: {detected}, HasSpeech: {hasSpeech}");
                 }
 
                 return _isLoaded;
@@ -113,9 +113,9 @@ namespace FBWBA.Accessibility
 
             try
             {
-                System.Diagnostics.Debug.WriteLine($"[TolkWrapper] Calling Tolk_Output with: '{text}', interrupt: {interrupt}");
+                // System.Diagnostics.Debug.WriteLine($"[TolkWrapper] Calling Tolk_Output with: '{text}', interrupt: {interrupt}");
                 bool result = Tolk_Output(text, interrupt);
-                System.Diagnostics.Debug.WriteLine($"[TolkWrapper] Tolk_Output returned: {result}");
+                // System.Diagnostics.Debug.WriteLine($"[TolkWrapper] Tolk_Output returned: {result}");
                 return result;
             }
             catch (Exception ex)
@@ -133,7 +133,7 @@ namespace FBWBA.Accessibility
             {
                 string detected = DetectedScreenReader;
                 bool isRunning = !string.IsNullOrEmpty(detected) && detected != "None" && detected != "SAPI" && detected != "Error";
-                System.Diagnostics.Debug.WriteLine($"[TolkWrapper] IsScreenReaderRunning: {isRunning} (detected: {detected})");
+                // System.Diagnostics.Debug.WriteLine($"[TolkWrapper] IsScreenReaderRunning: {isRunning} (detected: {detected})");
                 return isRunning;
             }
             catch (Exception ex)

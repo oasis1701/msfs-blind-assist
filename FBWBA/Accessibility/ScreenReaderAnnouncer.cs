@@ -42,46 +42,46 @@ namespace FBWBA.Accessibility
 
             // Load announcement mode from settings
             LoadAnnouncementMode();
-            System.Diagnostics.Debug.WriteLine($"[ScreenReaderAnnouncer] Loaded mode from settings: {currentMode}");
+            // System.Diagnostics.Debug.WriteLine($"[ScreenReaderAnnouncer] Loaded mode from settings: {currentMode}");
 
             try
             {
                 // Initialize NVDA Controller Client first (most reliable for NVDA)
                 nvdaWrapper = new NvdaControllerWrapper();
                 bool nvdaRunning = nvdaWrapper.IsRunning;
-                System.Diagnostics.Debug.WriteLine($"[ScreenReaderAnnouncer] NVDA Controller initialized, NVDA running: {nvdaRunning}");
+                // System.Diagnostics.Debug.WriteLine($"[ScreenReaderAnnouncer] NVDA Controller initialized, NVDA running: {nvdaRunning}");
 
                 // Initialize Tolk for other screen readers (JAWS, Window-Eyes, etc.)
                 tolkWrapper = new TolkWrapper();
                 bool tolkInitialized = tolkWrapper.Initialize();
-                System.Diagnostics.Debug.WriteLine($"[ScreenReaderAnnouncer] Tolk initialized: {tolkInitialized}");
+                // System.Diagnostics.Debug.WriteLine($"[ScreenReaderAnnouncer] Tolk initialized: {tolkInitialized}");
 
                 if (tolkInitialized)
                 {
                     string detectedSR = tolkWrapper.DetectedScreenReader;
                     bool hasScreenReader = tolkWrapper.IsScreenReaderRunning();
                     bool hasSpeech = tolkWrapper.HasSpeech();
-                    System.Diagnostics.Debug.WriteLine($"[ScreenReaderAnnouncer] Tolk detected screen reader: {detectedSR}, Has SR: {hasScreenReader}, Has Speech: {hasSpeech}");
+                    // System.Diagnostics.Debug.WriteLine($"[ScreenReaderAnnouncer] Tolk detected screen reader: {detectedSR}, Has SR: {hasScreenReader}, Has Speech: {hasSpeech}");
                 }
 
                 // Report overall status
                 if (nvdaRunning)
                 {
-                    System.Diagnostics.Debug.WriteLine("[ScreenReaderAnnouncer] NVDA detected and will be used directly");
+                    // System.Diagnostics.Debug.WriteLine("[ScreenReaderAnnouncer] NVDA detected and will be used directly");
                 }
                 else if (tolkInitialized && tolkWrapper.IsScreenReaderRunning())
                 {
-                    System.Diagnostics.Debug.WriteLine($"[ScreenReaderAnnouncer] Other screen reader detected via Tolk: {tolkWrapper.DetectedScreenReader}");
+                    // System.Diagnostics.Debug.WriteLine($"[ScreenReaderAnnouncer] Other screen reader detected via Tolk: {tolkWrapper.DetectedScreenReader}");
                 }
                 else
                 {
-                    System.Diagnostics.Debug.WriteLine("[ScreenReaderAnnouncer] No screen readers detected - will use SAPI fallback");
+                    // System.Diagnostics.Debug.WriteLine("[ScreenReaderAnnouncer] No screen readers detected - will use SAPI fallback");
                 }
 
                 // Suggest ScreenReader mode if any screen reader is detected but mode is not set correctly
                 if ((nvdaRunning || (tolkInitialized && tolkWrapper.IsScreenReaderRunning())) && currentMode != AnnouncementMode.ScreenReader)
                 {
-                    System.Diagnostics.Debug.WriteLine($"[ScreenReaderAnnouncer] Screen reader detected but mode is {currentMode} - consider switching to ScreenReader mode");
+                    // System.Diagnostics.Debug.WriteLine($"[ScreenReaderAnnouncer] Screen reader detected but mode is {currentMode} - consider switching to ScreenReader mode");
                 }
 
                 // Initialize SAPI as fallback method
@@ -92,7 +92,7 @@ namespace FBWBA.Accessibility
                     // Set to async mode
                     speechSynthesizer.Volume = 100;
                     speechSynthesizer.Rate = 0;
-                    System.Diagnostics.Debug.WriteLine("[ScreenReaderAnnouncer] SAPI initialized successfully");
+                    // System.Diagnostics.Debug.WriteLine("[ScreenReaderAnnouncer] SAPI initialized successfully");
                 }
             }
             catch (Exception ex)
@@ -353,12 +353,12 @@ namespace FBWBA.Accessibility
             lock (announcementQueue)
             {
                 announcementQueue.Enqueue(message);
-                System.Diagnostics.Debug.WriteLine($"[ScreenReaderAnnouncer] Queued message: '{message}' (Queue size: {announcementQueue.Count})");
+                // System.Diagnostics.Debug.WriteLine($"[ScreenReaderAnnouncer] Queued message: '{message}' (Queue size: {announcementQueue.Count})");
 
                 // Start timer if it's not already running
                 if (!queueTimer.Enabled)
                 {
-                    System.Diagnostics.Debug.WriteLine("[ScreenReaderAnnouncer] Starting queue timer");
+                    // System.Diagnostics.Debug.WriteLine("[ScreenReaderAnnouncer] Starting queue timer");
                     queueTimer.Start();
                 }
             }
@@ -376,12 +376,12 @@ namespace FBWBA.Accessibility
                 if (announcementQueue.Count > 0)
                 {
                     messageToSpeak = announcementQueue.Dequeue();
-                    System.Diagnostics.Debug.WriteLine($"[ScreenReaderAnnouncer] Processing queued message: '{messageToSpeak}' (Remaining: {announcementQueue.Count})");
+                    // System.Diagnostics.Debug.WriteLine($"[ScreenReaderAnnouncer] Processing queued message: '{messageToSpeak}' (Remaining: {announcementQueue.Count})");
                 }
                 else
                 {
                     // Queue is empty, stop the timer
-                    System.Diagnostics.Debug.WriteLine("[ScreenReaderAnnouncer] Queue empty, stopping timer");
+                    // System.Diagnostics.Debug.WriteLine("[ScreenReaderAnnouncer] Queue empty, stopping timer");
                     queueTimer.Stop();
                 }
             }

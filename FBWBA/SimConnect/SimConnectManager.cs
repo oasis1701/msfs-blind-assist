@@ -746,23 +746,23 @@ namespace FBWBA.SimConnect
                     });
                     break;
 
-                case (DATA_REQUESTS)303: // Altitude AGL
-                    SingleValue altAglData = (SingleValue)data.dwData[0];
-                    SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
-                    {
-                        VarName = "ALTITUDE_AGL",
-                        Value = altAglData.value,
-                        Description = $"Altitude AGL {altAglData.value:0.0} feet"
-                    });
-                    break;
-
-                case (DATA_REQUESTS)304: // Altitude MSL
+                case (DATA_REQUESTS)304: // Altitude MSL (swapped)
                     SingleValue altMslData = (SingleValue)data.dwData[0];
                     SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
                     {
                         VarName = "ALTITUDE_MSL",
                         Value = altMslData.value,
-                        Description = $"Altitude {altMslData.value:0.0} feet"
+                        Description = $"MSL {altMslData.value:0.0} feet"
+                    });
+                    break;
+
+                case (DATA_REQUESTS)303: // Altitude AGL (swapped)
+                    SingleValue altAglData = (SingleValue)data.dwData[0];
+                    SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                    {
+                        VarName = "ALTITUDE_AGL",
+                        Value = altAglData.value,
+                        Description = $"AGL {altAglData.value:0.0} feet"
                     });
                     break;
 
@@ -792,7 +792,7 @@ namespace FBWBA.SimConnect
                     {
                         VarName = "GROUND_SPEED",
                         Value = gsData.value,
-                        Description = $"Ground speed {gsData.value:0.0} knots"
+                        Description = $"GS {gsData.value:0.0} knots"
                     });
                     break;
 
@@ -807,25 +807,25 @@ namespace FBWBA.SimConnect
                     });
                     break;
 
-                case (DATA_REQUESTS)309: // Heading Magnetic
-                    SingleValue hdgMagData = (SingleValue)data.dwData[0];
-                    double hdgMagInDegrees = hdgMagData.value * (180.0 / Math.PI); // Convert radians to degrees
-                    SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
-                    {
-                        VarName = "HEADING_MAGNETIC",
-                        Value = hdgMagInDegrees,
-                        Description = $"Magnetic heading {hdgMagInDegrees:000} degrees"
-                    });
-                    break;
-
-                case (DATA_REQUESTS)310: // Heading True
+                case (DATA_REQUESTS)310: // Heading True (swapped)
                     SingleValue hdgTrueData = (SingleValue)data.dwData[0];
                     double hdgTrueInDegrees = hdgTrueData.value * (180.0 / Math.PI); // Convert radians to degrees
                     SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
                     {
                         VarName = "HEADING_TRUE",
                         Value = hdgTrueInDegrees,
-                        Description = $"True heading {hdgTrueInDegrees:000} degrees"
+                        Description = $"TH {hdgTrueInDegrees:000} degrees"
+                    });
+                    break;
+
+                case (DATA_REQUESTS)309: // Heading Magnetic (swapped)
+                    SingleValue hdgMagData = (SingleValue)data.dwData[0];
+                    double hdgMagInDegrees = hdgMagData.value * (180.0 / Math.PI); // Convert radians to degrees
+                    SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                    {
+                        VarName = "HEADING_MAGNETIC",
+                        Value = hdgMagInDegrees,
+                        Description = $"MH {hdgMagInDegrees:000} degrees"
                     });
                     break;
 
