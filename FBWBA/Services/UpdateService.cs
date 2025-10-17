@@ -175,7 +175,9 @@ namespace FBWBA.Services
                 }
 
                 string appPath = Assembly.GetExecutingAssembly().Location;
-                string appDirectory = AppDomain.CurrentDomain.BaseDirectory;
+                // Trim trailing backslashes to prevent the \" escaping bug in Windows command-line parsing
+                // BaseDirectory always ends with a backslash, which would escape the closing quote
+                string appDirectory = AppDomain.CurrentDomain.BaseDirectory.TrimEnd('\\', '/');
 
                 // Arguments: <zipPath> <appDirectory> <appExecutablePath>
                 // Quote each argument to handle paths with spaces
@@ -185,7 +187,7 @@ namespace FBWBA.Services
                 {
                     FileName = updaterPath,
                     Arguments = arguments,
-                    UseShellExecute = false  // Changed to false to properly handle paths with spaces
+                    UseShellExecute = true  // Use shell execute for reliable argument passing
                 };
 
                 Process.Start(startInfo);
