@@ -28,6 +28,7 @@ namespace FBWBA
         private TakeoffAssistManager takeoffAssistManager;
         private ElectronicFlightBagForm electronicFlightBagForm;
         private FBWBA.Navigation.FlightPlanManager flightPlanManager;
+        private FBWBA.Navigation.WaypointTracker waypointTracker;
 
         // Current state
         private string currentSection = "";
@@ -134,6 +135,9 @@ namespace FBWBA
             var settings = FBWBA.Settings.SettingsManager.Current;
             string navigationDatabasePath = NavdataReaderBuilder.GetDefaultDatabasePath(settings.SimulatorVersion ?? "FS2020");
             flightPlanManager = new FBWBA.Navigation.FlightPlanManager(navigationDatabasePath, airportDataProvider);
+
+            // Initialize waypoint tracker
+            waypointTracker = new FBWBA.Navigation.WaypointTracker();
 
             // Update status bar with database info
             UpdateDatabaseStatusDisplay();
@@ -738,6 +742,21 @@ namespace FBWBA
                 case HotkeyAction.ReadWaypointInfo:
                     simConnectManager.RequestWaypointInfo();
                     break;
+                case HotkeyAction.ReadTrackSlot1:
+                    ReadTrackedWaypoint(1);
+                    break;
+                case HotkeyAction.ReadTrackSlot2:
+                    ReadTrackedWaypoint(2);
+                    break;
+                case HotkeyAction.ReadTrackSlot3:
+                    ReadTrackedWaypoint(3);
+                    break;
+                case HotkeyAction.ReadTrackSlot4:
+                    ReadTrackedWaypoint(4);
+                    break;
+                case HotkeyAction.ReadTrackSlot5:
+                    ReadTrackedWaypoint(5);
+                    break;
                 case HotkeyAction.ToggleVisualApproach:
                     ToggleVisualApproachMonitoring();
                     break;
@@ -1217,12 +1236,57 @@ namespace FBWBA
             if (electronicFlightBagForm == null || electronicFlightBagForm.IsDisposed)
             {
                 var settings = FBWBA.Settings.SettingsManager.Current;
-                electronicFlightBagForm = new ElectronicFlightBagForm(flightPlanManager, simConnectManager, announcer, settings.SimbriefUsername ?? "");
+                electronicFlightBagForm = new ElectronicFlightBagForm(flightPlanManager, simConnectManager, announcer, waypointTracker, settings.SimbriefUsername ?? "");
             }
 
             // Show the form (reuses same instance to preserve flight plan data)
             electronicFlightBagForm.Show();
             electronicFlightBagForm.BringToFront();
+        }
+
+        private void ReadTrackedWaypoint(int slotNumber)
+        {
+            if (!simConnectManager.IsConnected)
+            {
+                announcer.AnnounceImmediate("Not connected to simulator");
+                return;
+            }
+
+            // Check if slot is empty
+            if (waypointTracker.IsSlotEmpty(slotNumber))
+            {
+                announcer.AnnounceImmediate($"Track slot {slotNumber} empty");
+                return;
+            }
+
+            // Get current aircraft position
+            simConnectManager.RequestAircraftPositionAsync(position =>
+            {
+                try
+                {
+                    // Get tracked waypoint info with current distance and bearing
+                    string waypointInfo = waypointTracker.GetTrackedWaypointInfo(
+                        slotNumber,
+                        flightPlanManager.CurrentFlightPlan,
+                        position.Latitude,
+                        position.Longitude,
+                        position.MagneticVariation);
+
+                    if (waypointInfo != null)
+                    {
+                        announcer.AnnounceImmediate(waypointInfo);
+                    }
+                    else
+                    {
+                        announcer.AnnounceImmediate($"Track slot {slotNumber} waypoint not found");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Error reading tracked waypoint: {ex.Message}");
+                    announcer.AnnounceImmediate($"Error reading track slot {slotNumber}");
+                }
+            });
         }
 
         private void ShowPFDDialog()

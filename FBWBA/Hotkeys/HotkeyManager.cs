@@ -85,6 +85,11 @@ namespace FBWBA.Hotkeys
         private const int HOTKEY_TOGGLE_ECAM_MONITORING = 9059;
         private const int HOTKEY_MACH_SPEED = 9060;
         private const int HOTKEY_EFB = 9061;
+        private const int HOTKEY_TRACK_SLOT_1 = 9062;
+        private const int HOTKEY_TRACK_SLOT_2 = 9063;
+        private const int HOTKEY_TRACK_SLOT_3 = 9064;
+        private const int HOTKEY_TRACK_SLOT_4 = 9065;
+        private const int HOTKEY_TRACK_SLOT_5 = 9066;
 
         private IntPtr windowHandle;
         private bool outputHotkeyModeActive = false;
@@ -249,6 +254,21 @@ namespace FBWBA.Hotkeys
                         case HOTKEY_EFB:
                             TriggerHotkey(HotkeyAction.ShowElectronicFlightBag);
                             break;
+                        case HOTKEY_TRACK_SLOT_1:
+                            TriggerHotkey(HotkeyAction.ReadTrackSlot1);
+                            break;
+                        case HOTKEY_TRACK_SLOT_2:
+                            TriggerHotkey(HotkeyAction.ReadTrackSlot2);
+                            break;
+                        case HOTKEY_TRACK_SLOT_3:
+                            TriggerHotkey(HotkeyAction.ReadTrackSlot3);
+                            break;
+                        case HOTKEY_TRACK_SLOT_4:
+                            TriggerHotkey(HotkeyAction.ReadTrackSlot4);
+                            break;
+                        case HOTKEY_TRACK_SLOT_5:
+                            TriggerHotkey(HotkeyAction.ReadTrackSlot5);
+                            break;
                     }
                     DeactivateOutputHotkeyMode();
                     return true;
@@ -365,6 +385,11 @@ namespace FBWBA.Hotkeys
             RegisterHotKey(windowHandle, HOTKEY_TAKEOFF_ASSIST, MOD_CONTROL, 0x54); // Ctrl+T (Takeoff Assist)
             RegisterHotKey(windowHandle, HOTKEY_TOGGLE_ECAM_MONITORING, MOD_CONTROL, 0x45); // Ctrl+E (Toggle ECAM Monitoring)
             RegisterHotKey(windowHandle, HOTKEY_EFB, MOD_SHIFT, 0x45); // Shift+E (Electronic Flight Bag)
+            RegisterHotKey(windowHandle, HOTKEY_TRACK_SLOT_1, MOD_NONE, 0x31);  // 1 (Track Slot 1)
+            RegisterHotKey(windowHandle, HOTKEY_TRACK_SLOT_2, MOD_NONE, 0x32);  // 2 (Track Slot 2)
+            RegisterHotKey(windowHandle, HOTKEY_TRACK_SLOT_3, MOD_NONE, 0x33);  // 3 (Track Slot 3)
+            RegisterHotKey(windowHandle, HOTKEY_TRACK_SLOT_4, MOD_NONE, 0x34);  // 4 (Track Slot 4)
+            RegisterHotKey(windowHandle, HOTKEY_TRACK_SLOT_5, MOD_NONE, 0x35);  // 5 (Track Slot 5)
 
             // Auto-timeout disabled - hotkey mode stays active until used or escape pressed
             
@@ -416,6 +441,11 @@ namespace FBWBA.Hotkeys
             UnregisterHotKey(windowHandle, HOTKEY_TAKEOFF_ASSIST);
             UnregisterHotKey(windowHandle, HOTKEY_TOGGLE_ECAM_MONITORING);
             UnregisterHotKey(windowHandle, HOTKEY_EFB);
+            UnregisterHotKey(windowHandle, HOTKEY_TRACK_SLOT_1);
+            UnregisterHotKey(windowHandle, HOTKEY_TRACK_SLOT_2);
+            UnregisterHotKey(windowHandle, HOTKEY_TRACK_SLOT_3);
+            UnregisterHotKey(windowHandle, HOTKEY_TRACK_SLOT_4);
+            UnregisterHotKey(windowHandle, HOTKEY_TRACK_SLOT_5);
 
             OutputHotkeyModeChanged?.Invoke(this, false);
         }
@@ -605,6 +635,11 @@ namespace FBWBA.Hotkeys
         ShowStatusPage,
         ToggleTakeoffAssist,
         ToggleECAMMonitoring,
-        ShowElectronicFlightBag
+        ShowElectronicFlightBag,
+        ReadTrackSlot1,
+        ReadTrackSlot2,
+        ReadTrackSlot3,
+        ReadTrackSlot4,
+        ReadTrackSlot5
     }
 }

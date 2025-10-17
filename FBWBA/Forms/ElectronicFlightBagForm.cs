@@ -23,12 +23,14 @@ namespace FBWBA.Forms
         private readonly FlightPlanManager _flightPlanManager;
         private readonly SimConnectManager _simConnectManager;
         private readonly ScreenReaderAnnouncer _announcer;
+        private readonly WaypointTracker _waypointTracker;
         private readonly string _simbriefUsername;
         private SimConnectManager.AircraftPosition? _lastKnownPosition;
 
         // Navigation tab controls
         private TabControl mainTabControl;
         private DataGridView navigationGridView;
+        private ContextMenuStrip waypointContextMenu;
         private Label statusLabel;
         private Button loadSimbriefButton;
         private Button refreshPositionButton;
@@ -67,16 +69,18 @@ namespace FBWBA.Forms
         private TextBox runwayInfoTextBox;
 
         public ElectronicFlightBagForm(FlightPlanManager flightPlanManager, SimConnectManager simConnectManager,
-                                       ScreenReaderAnnouncer announcer, string simbriefUsername)
+                                       ScreenReaderAnnouncer announcer, WaypointTracker waypointTracker, string simbriefUsername)
         {
             _flightPlanManager = flightPlanManager;
             _simConnectManager = simConnectManager;
             _announcer = announcer;
+            _waypointTracker = waypointTracker;
             _simbriefUsername = simbriefUsername;
 
             InitializeComponent();
             SetupEventHandlers();
             SetupAccessibility();
+            SetupWaypointContextMenu();
 
             // Subscribe to aircraft position updates
             _simConnectManager.AircraftPositionReceived += OnAircraftPositionReceived;
@@ -643,6 +647,106 @@ namespace FBWBA.Forms
             // DISABLED: Custom announcements cause performance lag during keyboard navigation
             // Screen readers (NVDA/JAWS) already read grid cells using native DataGridView accessibility
             // navigationGridView.SelectionChanged += navigationGridView_SelectionChanged;
+        }
+
+        private void SetupWaypointContextMenu()
+        {
+            // Create context menu
+            waypointContextMenu = new ContextMenuStrip
+            {
+                AccessibleName = "Waypoint Tracking Menu",
+                AccessibleDescription = "Track waypoint in slots 1 through 5"
+            };
+
+            // Add menu items for each tracking slot
+            for (int i = 1; i <= 5; i++)
+            {
+                var menuItem = new ToolStripMenuItem($"Track Slot {i}")
+                {
+                    AccessibleName = $"Track in Slot {i}",
+                    Tag = i // Store slot number in Tag
+                };
+                menuItem.Click += TrackSlotMenuItem_Click;
+                waypointContextMenu.Items.Add(menuItem);
+            }
+
+            // Attach context menu to navigation grid
+            navigationGridView.ContextMenuStrip = waypointContextMenu;
+
+            // Handle keyboard events for application key (VK_APPS)
+            navigationGridView.KeyDown += NavigationGridView_KeyDown;
+
+            // Handle mouse events for right-click
+            navigationGridView.MouseDown += NavigationGridView_MouseDown;
+        }
+
+        private void NavigationGridView_KeyDown(object sender, KeyEventArgs e)
+        {
+            // Handle application key (context menu key) - typically right of spacebar
+            if (e.KeyCode == Keys.Apps)
+            {
+                ShowContextMenuForSelectedRow();
+                e.Handled = true;
+            }
+        }
+
+        private void NavigationGridView_MouseDown(object sender, MouseEventArgs e)
+        {
+            // Handle right-click
+            if (e.Button == MouseButtons.Right)
+            {
+                // Get row index at mouse position
+                var hitTest = navigationGridView.HitTest(e.X, e.Y);
+                if (hitTest.RowIndex >= 0)
+                {
+                    // Select the row that was right-clicked
+                    navigationGridView.ClearSelection();
+                    navigationGridView.Rows[hitTest.RowIndex].Selected = true;
+                    navigationGridView.CurrentCell = navigationGridView.Rows[hitTest.RowIndex].Cells[0];
+                }
+            }
+        }
+
+        private void ShowContextMenuForSelectedRow()
+        {
+            if (navigationGridView.CurrentRow != null && navigationGridView.CurrentRow.Index >= 0)
+            {
+                // Get the cell position to show the menu
+                var rect = navigationGridView.GetCellDisplayRectangle(0, navigationGridView.CurrentRow.Index, true);
+                waypointContextMenu.Show(navigationGridView, rect.Left, rect.Top + rect.Height);
+            }
+        }
+
+        private void TrackSlotMenuItem_Click(object sender, EventArgs e)
+        {
+            var menuItem = sender as ToolStripMenuItem;
+            if (menuItem == null) return;
+
+            int slotNumber = (int)menuItem.Tag;
+
+            if (navigationGridView.CurrentRow == null || navigationGridView.CurrentRow.Index < 0)
+            {
+                _announcer.Announce("No waypoint selected");
+                return;
+            }
+
+            // Get the selected waypoint from the flight plan
+            var waypoints = _flightPlanManager.CurrentFlightPlan.GetAllWaypoints();
+            int selectedIndex = navigationGridView.CurrentRow.Index;
+
+            if (selectedIndex >= waypoints.Count)
+            {
+                _announcer.Announce("Invalid waypoint selection");
+                return;
+            }
+
+            var waypoint = waypoints[selectedIndex];
+
+            // Track the waypoint
+            _waypointTracker.TrackWaypoint(slotNumber, waypoint);
+
+            // Announce to screen reader
+            _announcer.Announce($"Waypoint {waypoint.Ident} tracked in slot {slotNumber}");
         }
 
         private void LoadSimBriefFlightPlan()

@@ -161,6 +161,7 @@
     <Compile Include="Navigation\VisualApproachMonitor.cs" />
     <Compile Include="Navigation\FlightPlan.cs" />
     <Compile Include="Navigation\FlightPlanManager.cs" />
+    <Compile Include="Navigation\WaypointTracker.cs" />
     <Compile Include="Database\Models\WaypointFix.cs" />
     <Compile Include="Database\NavigationDatabaseProvider.cs" />
     <Compile Include="Utils\SimulatorDetector.cs" />
