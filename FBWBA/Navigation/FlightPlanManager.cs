@@ -24,8 +24,8 @@ namespace FBWBA.Navigation
 
         public FlightPlanManager(string navigationDatabasePath, IAirportDataProvider airportDatabase)
         {
-            _simbriefService = new SimBriefService();
             _navigationDatabase = new NavigationDatabaseProvider(navigationDatabasePath);
+            _simbriefService = new SimBriefService(_navigationDatabase);
             _airportDatabase = airportDatabase;
             CurrentFlightPlan = new FlightPlan();
         }

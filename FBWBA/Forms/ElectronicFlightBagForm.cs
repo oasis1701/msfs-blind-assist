@@ -196,21 +196,24 @@ namespace FBWBA.Forms
             navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Bearing", HeaderText = "Brg (°)", Width = 70, FillWeight = 6, SortMode = DataGridViewColumnSortMode.NotSortable });
             navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Airway", HeaderText = "Airway", Width = 70, FillWeight = 6, SortMode = DataGridViewColumnSortMode.NotSortable });
             navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Type", HeaderText = "Type", Width = 60, FillWeight = 5, SortMode = DataGridViewColumnSortMode.NotSortable });
-            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "ArincType", HeaderText = "ARINC", Width = 60, FillWeight = 5, SortMode = DataGridViewColumnSortMode.NotSortable });
-            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Course", HeaderText = "Course", Width = 60, FillWeight = 5, SortMode = DataGridViewColumnSortMode.NotSortable });
-            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "TrueCourse", HeaderText = "T/M", Width = 40, FillWeight = 3, SortMode = DataGridViewColumnSortMode.NotSortable });
+            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "FixType", HeaderText = "Fix Type", Width = 60, FillWeight = 5, SortMode = DataGridViewColumnSortMode.NotSortable });
             navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "LegDist", HeaderText = "Leg Dist", Width = 60, FillWeight = 5, SortMode = DataGridViewColumnSortMode.NotSortable });
+            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Course", HeaderText = "Course", Width = 60, FillWeight = 5, SortMode = DataGridViewColumnSortMode.NotSortable });
+            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Notes", HeaderText = "Notes", Width = 100, FillWeight = 8, SortMode = DataGridViewColumnSortMode.NotSortable });
             navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Altitude", HeaderText = "Altitude", Width = 100, FillWeight = 8, SortMode = DataGridViewColumnSortMode.NotSortable });
             navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Speed", HeaderText = "Speed", Width = 70, FillWeight = 6, SortMode = DataGridViewColumnSortMode.NotSortable });
             navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "SpeedType", HeaderText = "Spd Type", Width = 70, FillWeight = 6, SortMode = DataGridViewColumnSortMode.NotSortable });
+            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "ArincType", HeaderText = "ARINC", Width = 60, FillWeight = 5, SortMode = DataGridViewColumnSortMode.NotSortable });
+            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Missed", HeaderText = "Missed", Width = 60, FillWeight = 5, SortMode = DataGridViewColumnSortMode.NotSortable });
+            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "TrueCourse", HeaderText = "T/M", Width = 40, FillWeight = 3, SortMode = DataGridViewColumnSortMode.NotSortable });
             navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "VertAngle", HeaderText = "Vert Angle", Width = 70, FillWeight = 6, SortMode = DataGridViewColumnSortMode.NotSortable });
-            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "RNP", HeaderText = "RNP", Width = 50, FillWeight = 4, SortMode = DataGridViewColumnSortMode.NotSortable });
             navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Time", HeaderText = "Time", Width = 50, FillWeight = 4, SortMode = DataGridViewColumnSortMode.NotSortable });
+            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "TurnDir", HeaderText = "Turn", Width = 50, FillWeight = 4, SortMode = DataGridViewColumnSortMode.NotSortable });
+            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "RNP", HeaderText = "RNP", Width = 50, FillWeight = 4, SortMode = DataGridViewColumnSortMode.NotSortable });
             navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Theta", HeaderText = "Theta", Width = 50, FillWeight = 4, SortMode = DataGridViewColumnSortMode.NotSortable });
             navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Rho", HeaderText = "Rho", Width = 50, FillWeight = 4, SortMode = DataGridViewColumnSortMode.NotSortable });
             navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Flyover", HeaderText = "Flyover", Width = 60, FillWeight = 5, SortMode = DataGridViewColumnSortMode.NotSortable });
-            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "TurnDir", HeaderText = "Turn", Width = 50, FillWeight = 4, SortMode = DataGridViewColumnSortMode.NotSortable });
-            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Notes", HeaderText = "Notes", Width = 100, FillWeight = 8, SortMode = DataGridViewColumnSortMode.NotSortable });
+            navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "AltFix", HeaderText = "Alt Fix", Width = 60, FillWeight = 5, SortMode = DataGridViewColumnSortMode.NotSortable });
 
             panel.Controls.Add(navigationGridView);
             panel.Controls.Add(buttonPanel);
@@ -656,6 +659,9 @@ namespace FBWBA.Forms
                 string rhoText = waypoint.Rho.HasValue ? $"{waypoint.Rho.Value:F1}" : "-";
                 string flyoverText = waypoint.IsFlyover ? "Y" : "-";
                 string turnDirText = waypoint.TurnDirection ?? "-";
+                string missedText = waypoint.IsMissedApproach ? "MISS" : "-";
+                string fixTypeText = waypoint.FixType ?? "-";
+                string altFixText = waypoint.RecommendedFixIdent ?? "-";
 
                 navigationGridView.Rows.Add(
                     sectionLabel,
@@ -665,21 +671,24 @@ namespace FBWBA.Forms
                     bearingText,
                     waypoint.InboundAirway ?? "-",
                     waypoint.Type ?? "-",
-                    waypoint.ArincDescCode ?? "-",
-                    courseText,
-                    trueCourseText,
+                    fixTypeText,
                     legDistText,
+                    courseText,
+                    waypoint.Notes ?? "-",
                     altitudeText,
                     speedText,
                     speedTypeText,
+                    waypoint.ArincDescCode ?? "-",
+                    missedText,
+                    trueCourseText,
                     vertAngleText,
-                    rnpText,
                     timeText,
+                    turnDirText,
+                    rnpText,
                     thetaText,
                     rhoText,
                     flyoverText,
-                    turnDirText,
-                    waypoint.Notes ?? "-"
+                    altFixText
                 );
             }
 

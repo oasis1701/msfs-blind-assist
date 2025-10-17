@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Xml;
+using FBWBA.Database;
 using FBWBA.Database.Models;
 using FBWBA.Navigation;
 
@@ -15,6 +16,13 @@ namespace FBWBA.Services
     {
         private const string SIMBRIEF_API_URL = "https://www.simbrief.com/api/xml.fetcher.php";
         private const int TIMEOUT_SECONDS = 30;
+
+        private readonly NavigationDatabaseProvider _navigationDatabase;
+
+        public SimBriefService(NavigationDatabaseProvider navigationDatabase)
+        {
+            _navigationDatabase = navigationDatabase;
+        }
 
         /// <summary>
         /// Fetches the latest flight plan for a given SimBrief username
@@ -230,6 +238,20 @@ namespace FBWBA.Services
                 Latitude = ParseDouble(GetNodeValue(fixNode, "pos_lat")),
                 Longitude = ParseDouble(GetNodeValue(fixNode, "pos_long")),
             };
+
+            // Enrich with database data if available (for Region and more accurate coordinates)
+            if (_navigationDatabase != null)
+            {
+                var dbWaypoint = _navigationDatabase.GetWaypoint(ident);
+                if (dbWaypoint != null)
+                {
+                    waypoint.Region = dbWaypoint.Region;
+                    // Use database coordinates as they're more accurate than SimBrief
+                    waypoint.Latitude = dbWaypoint.Latitude;
+                    waypoint.Longitude = dbWaypoint.Longitude;
+                    // Keep SimBrief's Type as it may be more descriptive than database
+                }
+            }
 
             // Parse airway information
             string viaAirway = GetNodeValue(fixNode, "via_airway");

@@ -45,6 +45,10 @@ namespace FBWBA.Database.Models
         public bool IsTrueCourse { get; set; } // Whether course is true or magnetic
         public string ArincDescCode { get; set; } // ARINC leg type descriptor code
         public string ApproachFixType { get; set; } // Approach fix type
+        public bool IsMissedApproach { get; set; } // Whether this leg is part of the missed approach
+        public string FixType { get; set; } // Fix type (W=Waypoint, V=VOR, N=NDB, R=Runway, A=Airport)
+        public string FixAirportIdent { get; set; } // Associated airport identifier for the fix
+        public string RecommendedFixIdent { get; set; } // Alternate/recommended fix identifier for conditional legs
 
         // Section identifier for flight plan organization
         public FlightPlanSection Section { get; set; }

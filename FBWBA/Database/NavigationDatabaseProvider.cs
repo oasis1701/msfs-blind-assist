@@ -453,7 +453,8 @@ namespace FBWBA.Database
                 string sql = @"SELECT fix_ident, fix_region, fix_lonx, fix_laty, type,
                                      altitude1, altitude2, alt_descriptor, speed_limit, speed_limit_type,
                                      course, distance, is_flyover, turn_direction, rnp, vertical_angle,
-                                     time, theta, rho, is_true_course, arinc_descr_code, approach_fix_type
+                                     time, theta, rho, is_true_course, arinc_descr_code, approach_fix_type,
+                                     is_missed, fix_type, fix_airport_ident, recommended_fix_ident
                               FROM approach_leg
                               WHERE approach_id = @approachId
                               ORDER BY approach_leg_id";
@@ -494,7 +495,8 @@ namespace FBWBA.Database
                 string sql = @"SELECT fix_ident, fix_region, fix_lonx, fix_laty, type,
                                      altitude1, altitude2, alt_descriptor, speed_limit, speed_limit_type,
                                      course, distance, is_flyover, turn_direction, rnp, vertical_angle,
-                                     time, theta, rho, is_true_course, arinc_descr_code, approach_fix_type
+                                     time, theta, rho, is_true_course, arinc_descr_code, approach_fix_type,
+                                     is_missed, fix_type, fix_airport_ident, recommended_fix_ident
                               FROM approach_leg
                               WHERE approach_id = @sidId
                               ORDER BY approach_leg_id";
@@ -536,7 +538,8 @@ namespace FBWBA.Database
                 string sql = @"SELECT fix_ident, fix_region, fix_lonx, fix_laty, type,
                                      altitude1, altitude2, alt_descriptor, speed_limit, speed_limit_type,
                                      course, distance, is_flyover, turn_direction, rnp, vertical_angle,
-                                     time, theta, rho, is_true_course, arinc_descr_code, approach_fix_type
+                                     time, theta, rho, is_true_course, arinc_descr_code, approach_fix_type,
+                                     is_missed, fix_type, fix_airport_ident, recommended_fix_ident
                               FROM approach_leg
                               WHERE approach_id = @starId
                               ORDER BY approach_leg_id";
@@ -578,7 +581,8 @@ namespace FBWBA.Database
                 string sql = @"SELECT fix_ident, fix_region, fix_lonx, fix_laty, type,
                                      altitude1, altitude2, alt_descriptor, speed_limit, speed_limit_type,
                                      course, distance, is_flyover, turn_direction, rnp, vertical_angle,
-                                     time, theta, rho, is_true_course, arinc_descr_code, approach_fix_type
+                                     time, theta, rho, is_true_course, arinc_descr_code, approach_fix_type,
+                                     fix_type, fix_airport_ident, recommended_fix_ident
                               FROM transition_leg
                               WHERE transition_id = @transitionId
                               ORDER BY transition_leg_id";
@@ -591,7 +595,7 @@ namespace FBWBA.Database
                     {
                         while (reader.Read())
                         {
-                            var waypoint = ParseLegToWaypoint(reader);
+                            var waypoint = ParseLegToWaypoint(reader, isApproachLeg: false);  // transition_leg doesn't have is_missed
                             if (waypoint != null)
                                 waypoints.Add(waypoint);
                         }
@@ -605,7 +609,9 @@ namespace FBWBA.Database
         /// <summary>
         /// Parses a leg record into a WaypointFix
         /// </summary>
-        private WaypointFix ParseLegToWaypoint(SQLiteDataReader reader)
+        /// <param name="reader">Database reader positioned at a leg record</param>
+        /// <param name="isApproachLeg">True if reading from approach_leg (has is_missed field), false if from transition_leg</param>
+        private WaypointFix ParseLegToWaypoint(SQLiteDataReader reader, bool isApproachLeg = true)
         {
             string fixIdent = SafeGetString(reader, "fix_ident");
             if (string.IsNullOrEmpty(fixIdent))
@@ -641,9 +647,13 @@ namespace FBWBA.Database
                 Theta = SafeGetNullableDouble(reader, "theta"),
                 Rho = SafeGetNullableDouble(reader, "rho"),
                 IsTrueCourse = SafeGetInt(reader, "is_true_course") == 1,
-                ArincDescCode = SafeGetString(reader, "arinc_descr_code"),
+                ArincDescCode = SafeGetString(reader, "approach_fix_type"),  // Use clean single-letter codes
                 ApproachFixType = SafeGetString(reader, "approach_fix_type"),
-                SpeedLimitType = SafeGetString(reader, "speed_limit_type")
+                SpeedLimitType = SafeGetString(reader, "speed_limit_type"),
+                IsMissedApproach = isApproachLeg && SafeGetInt(reader, "is_missed") == 1,  // Only in approach_leg
+                FixType = SafeGetString(reader, "fix_type"),
+                FixAirportIdent = SafeGetString(reader, "fix_airport_ident"),
+                RecommendedFixIdent = SafeGetString(reader, "recommended_fix_ident")
             };
 
             // Parse altitude restrictions
