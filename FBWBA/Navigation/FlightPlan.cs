@@ -104,6 +104,9 @@ namespace FBWBA.Navigation
                     ArrivalAirportWaypoints = waypoints;
                     break;
             }
+
+            // Recalculate leg distances for entire flight plan after section update
+            CalculateLegDistances();
         }
 
         /// <summary>
@@ -163,6 +166,38 @@ namespace FBWBA.Navigation
             summary += $" ({GetTotalWaypointCount()} waypoints)";
 
             return summary;
+        }
+
+        /// <summary>
+        /// Calculates leg distances for all waypoints in the flight plan.
+        /// Leg distance = distance from each waypoint to its previous waypoint in the flight plan sequence.
+        /// This is called automatically when sections are updated, so leg distances stay current.
+        /// </summary>
+        public void CalculateLegDistances()
+        {
+            var allWaypoints = GetAllWaypoints();
+
+            // First waypoint has no previous waypoint, so leg distance is null
+            if (allWaypoints.Count > 0)
+            {
+                allWaypoints[0].Distance = null;
+            }
+
+            // Calculate leg distance for each subsequent waypoint
+            for (int i = 1; i < allWaypoints.Count; i++)
+            {
+                var previousWaypoint = allWaypoints[i - 1];
+                var currentWaypoint = allWaypoints[i];
+
+                // Calculate distance from previous waypoint to current waypoint
+                double legDistance = NavigationCalculator.CalculateDistance(
+                    previousWaypoint.Latitude,
+                    previousWaypoint.Longitude,
+                    currentWaypoint.Latitude,
+                    currentWaypoint.Longitude);
+
+                currentWaypoint.Distance = legDistance;
+            }
         }
     }
 }

@@ -41,6 +41,9 @@ namespace FBWBA.Navigation
 
                 CurrentFlightPlan = _simbriefService.FetchFlightPlan(username);
 
+                // Calculate leg distances for all waypoints after loading
+                CurrentFlightPlan.CalculateLegDistances();
+
                 StatusChanged?.Invoke(this, $"Loaded flight plan: {CurrentFlightPlan.GetSummary()}");
                 FlightPlanUpdated?.Invoke(this, CurrentFlightPlan);
             }
