@@ -676,27 +676,34 @@ namespace FBWBA.Forms
                 return;
             }
 
-            // Request current aircraft position
-            _simConnectManager.RequestAircraftPosition();
-
-            // The position will be received asynchronously, but we can use SimConnect's magnetic variation
-            // For now, use a default variation of 0 if we don't have current position
-            var lastPosition = GetLastKnownPosition();
-            if (lastPosition.HasValue)
+            // Request current aircraft position with async callback to avoid race condition
+            _simConnectManager.RequestAircraftPositionAsync(position =>
             {
-                _flightPlanManager.UpdateAircraftPosition(
-                    lastPosition.Value.Latitude,
-                    lastPosition.Value.Longitude,
-                    lastPosition.Value.MagneticVariation);
+                // Marshal to UI thread if needed
+                if (InvokeRequired)
+                {
+                    Invoke(new Action(() =>
+                    {
+                        _flightPlanManager.UpdateAircraftPosition(
+                            position.Latitude,
+                            position.Longitude,
+                            position.MagneticVariation);
 
-                _announcer.Announce("Position updated");
-                UpdateStatus("Aircraft position updated");
-            }
-            else
-            {
-                _announcer.Announce("Aircraft position not available");
-                UpdateStatus("Aircraft position not available");
-            }
+                        _announcer.Announce("Position updated");
+                        UpdateStatus("Aircraft position updated");
+                    }));
+                }
+                else
+                {
+                    _flightPlanManager.UpdateAircraftPosition(
+                        position.Latitude,
+                        position.Longitude,
+                        position.MagneticVariation);
+
+                    _announcer.Announce("Position updated");
+                    UpdateStatus("Aircraft position updated");
+                }
+            });
         }
 
         private void RefreshNavigationGrid()
