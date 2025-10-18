@@ -43,7 +43,7 @@ namespace FBWBA.Forms
             announcer = screenReaderAnnouncer;
             geoNamesService = new GeoNamesService();
             InitializeComponent();
-            LoadLocationInfoAsync();
+            // LoadLocationInfoAsync() moved to Shown event to ensure handle is created
         }
 
         private void InitializeComponent()
@@ -122,6 +122,9 @@ namespace FBWBA.Forms
                 TopMost = true;
                 TopMost = false; // Flash to bring to front
                 majorCitiesTextBox.Focus();
+
+                // Start loading location data after handle is created
+                LoadLocationInfoAsync();
             };
 
             this.ResumeLayout(false);
@@ -154,6 +157,37 @@ namespace FBWBA.Forms
             }
         }
 
+        /// <summary>
+        /// Safely invokes an action on the UI thread, checking for handle creation and thread requirements
+        /// </summary>
+        private void SafeInvoke(Action action)
+        {
+            if (!IsHandleCreated || IsDisposed)
+            {
+                // Form not ready or already disposed, skip the action
+                return;
+            }
+
+            if (InvokeRequired)
+            {
+                try
+                {
+                    Invoke(action);
+                }
+                catch (ObjectDisposedException)
+                {
+                    // Form was disposed while trying to invoke, ignore
+                }
+                catch (InvalidOperationException)
+                {
+                    // Handle was destroyed, ignore
+                }
+            }
+            else
+            {
+                action();
+            }
+        }
 
         private async void LoadLocationInfoAsync()
         {
@@ -161,17 +195,17 @@ namespace FBWBA.Forms
             {
                 var locationData = await geoNamesService.GetLocationInfoAsync(latitude, longitude);
 
-                // Populate each category textbox
-                PopulateCategoryTextBoxes(locationData);
-
-                // Announce summary to screen reader
-                AnnounceSummary(locationData);
-
-                // Ensure focus is set after data is loaded
-                this.BeginInvoke(new Action(() =>
+                // Populate each category textbox - using SafeInvoke for thread safety
+                SafeInvoke(() =>
                 {
+                    PopulateCategoryTextBoxes(locationData);
+
+                    // Announce summary to screen reader
+                    AnnounceSummary(locationData);
+
+                    // Ensure focus is set after data is loaded
                     majorCitiesTextBox.Focus();
-                }));
+                });
             }
             catch (Exception ex)
             {
@@ -193,21 +227,22 @@ namespace FBWBA.Forms
                     errorMessage += "• API rate limit exceeded";
                 }
 
-                // Show error in the first textbox
-                majorCitiesTextBox.Text = errorMessage;
-                // Clear other textboxes
-                touristLandmarksTextBox.Text = "";
-                terrainTextBox.Text = "";
-                nearbyPlacesTextBox.Text = "";
-                cardinalDirectionsTextBox.Text = "";
-                airportsTextBox.Text = "";
-                waterBodiesTextBox.Text = "";
-
-                // Ensure focus is set even on error
-                this.BeginInvoke(new Action(() =>
+                // Show error in textboxes - using SafeInvoke for thread safety
+                SafeInvoke(() =>
                 {
+                    // Show error in the first textbox
+                    majorCitiesTextBox.Text = errorMessage;
+                    // Clear other textboxes
+                    touristLandmarksTextBox.Text = "";
+                    terrainTextBox.Text = "";
+                    nearbyPlacesTextBox.Text = "";
+                    cardinalDirectionsTextBox.Text = "";
+                    airportsTextBox.Text = "";
+                    waterBodiesTextBox.Text = "";
+
+                    // Ensure focus is set even on error
                     majorCitiesTextBox.Focus();
-                }));
+                });
             }
         }
 
