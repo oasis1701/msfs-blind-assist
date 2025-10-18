@@ -78,22 +78,35 @@ namespace FBWBA.Forms
             mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
 
             // Create category text boxes
-            nearbyPlacesTextBox = CreateCategoryTextBox("Nearby Places");
             majorCitiesTextBox = CreateCategoryTextBox("Major Cities");
-            cardinalDirectionsTextBox = CreateCategoryTextBox("Cardinal Directions");
-            airportsTextBox = CreateCategoryTextBox("Airports");
-            terrainTextBox = CreateCategoryTextBox("Terrain");
-            waterBodiesTextBox = CreateCategoryTextBox("Water Bodies");
+            majorCitiesTextBox.TabIndex = 0;
+
             touristLandmarksTextBox = CreateCategoryTextBox("Tourist Landmarks");
+            touristLandmarksTextBox.TabIndex = 1;
+
+            terrainTextBox = CreateCategoryTextBox("Terrain");
+            terrainTextBox.TabIndex = 2;
+
+            nearbyPlacesTextBox = CreateCategoryTextBox("Nearby Places");
+            nearbyPlacesTextBox.TabIndex = 3;
+
+            cardinalDirectionsTextBox = CreateCategoryTextBox("Cardinal Directions");
+            cardinalDirectionsTextBox.TabIndex = 4;
+
+            airportsTextBox = CreateCategoryTextBox("Airports");
+            airportsTextBox.TabIndex = 5;
+
+            waterBodiesTextBox = CreateCategoryTextBox("Water Bodies");
+            waterBodiesTextBox.TabIndex = 6;
 
             // Add controls to layout
-            mainLayout.Controls.Add(nearbyPlacesTextBox, 0, 0);
-            mainLayout.Controls.Add(majorCitiesTextBox, 0, 1);
-            mainLayout.Controls.Add(cardinalDirectionsTextBox, 0, 2);
-            mainLayout.Controls.Add(airportsTextBox, 0, 3);
-            mainLayout.Controls.Add(terrainTextBox, 0, 4);
-            mainLayout.Controls.Add(waterBodiesTextBox, 0, 5);
-            mainLayout.Controls.Add(touristLandmarksTextBox, 0, 6);
+            mainLayout.Controls.Add(majorCitiesTextBox, 0, 0);
+            mainLayout.Controls.Add(touristLandmarksTextBox, 0, 1);
+            mainLayout.Controls.Add(terrainTextBox, 0, 2);
+            mainLayout.Controls.Add(nearbyPlacesTextBox, 0, 3);
+            mainLayout.Controls.Add(cardinalDirectionsTextBox, 0, 4);
+            mainLayout.Controls.Add(airportsTextBox, 0, 5);
+            mainLayout.Controls.Add(waterBodiesTextBox, 0, 6);
 
             this.Controls.Add(mainLayout);
 
@@ -102,13 +115,13 @@ namespace FBWBA.Forms
             this.KeyDown += LocationInfoForm_KeyDown;
 
             // Focus and bring window to front when opened
-            this.Load += (sender, e) =>
+            this.Shown += (sender, e) =>
             {
                 BringToFront();
                 Activate();
                 TopMost = true;
                 TopMost = false; // Flash to bring to front
-                nearbyPlacesTextBox.Focus();
+                majorCitiesTextBox.Focus();
             };
 
             this.ResumeLayout(false);
@@ -153,6 +166,12 @@ namespace FBWBA.Forms
 
                 // Announce summary to screen reader
                 AnnounceSummary(locationData);
+
+                // Ensure focus is set after data is loaded
+                this.BeginInvoke(new Action(() =>
+                {
+                    majorCitiesTextBox.Focus();
+                }));
             }
             catch (Exception ex)
             {
@@ -175,14 +194,20 @@ namespace FBWBA.Forms
                 }
 
                 // Show error in the first textbox
-                nearbyPlacesTextBox.Text = errorMessage;
+                majorCitiesTextBox.Text = errorMessage;
                 // Clear other textboxes
-                majorCitiesTextBox.Text = "";
+                touristLandmarksTextBox.Text = "";
+                terrainTextBox.Text = "";
+                nearbyPlacesTextBox.Text = "";
                 cardinalDirectionsTextBox.Text = "";
                 airportsTextBox.Text = "";
-                terrainTextBox.Text = "";
                 waterBodiesTextBox.Text = "";
-                touristLandmarksTextBox.Text = "";
+
+                // Ensure focus is set even on error
+                this.BeginInvoke(new Action(() =>
+                {
+                    majorCitiesTextBox.Focus();
+                }));
             }
         }
 
