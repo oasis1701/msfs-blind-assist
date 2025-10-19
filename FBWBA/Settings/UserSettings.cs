@@ -1,13 +1,11 @@
-using System;
+namespace FBWBA.Settings;
 
-namespace FBWBA.Settings
+/// <summary>
+/// User settings for FBWBA application.
+/// Stores all user preferences in a version-independent location.
+/// </summary>
+public class UserSettings
 {
-    /// <summary>
-    /// User settings for FBWBA application.
-    /// Stores all user preferences in a version-independent location.
-    /// </summary>
-    public class UserSettings
-    {
         // Accessibility Settings
         public string AnnouncementMode { get; set; } = "ScreenReader";
 
@@ -53,35 +51,34 @@ namespace FBWBA.Settings
             // All defaults are set via property initializers above
         }
 
-        /// <summary>
-        /// Creates a copy of this settings instance.
-        /// </summary>
-        public UserSettings Clone()
+    /// <summary>
+    /// Creates a copy of this settings instance.
+    /// </summary>
+    public UserSettings Clone()
+    {
+        return new UserSettings
         {
-            return new UserSettings
-            {
-                AnnouncementMode = this.AnnouncementMode,
-                SimulatorVersion = this.SimulatorVersion,
-                GeoNamesApiUsername = this.GeoNamesApiUsername,
-                SimbriefUsername = this.SimbriefUsername,
-                NearbyCitiesRange = this.NearbyCitiesRange,
-                RegionalCitiesRange = this.RegionalCitiesRange,
-                MajorCitiesRange = this.MajorCitiesRange,
-                LandmarksRange = this.LandmarksRange,
-                AirportsRange = this.AirportsRange,
-                TerrainRange = this.TerrainRange,
-                WaterBodiesRange = this.WaterBodiesRange,
-                TouristLandmarksRange = this.TouristLandmarksRange,
-                MaxNearbyPlacesToShow = this.MaxNearbyPlacesToShow,
-                MaxMajorCitiesToShow = this.MaxMajorCitiesToShow,
-                MaxAirportsToShow = this.MaxAirportsToShow,
-                MaxTerrainFeaturesToShow = this.MaxTerrainFeaturesToShow,
-                MaxWaterBodiesToShow = this.MaxWaterBodiesToShow,
-                MaxTouristLandmarksToShow = this.MaxTouristLandmarksToShow,
-                MajorCityPopulationThreshold = this.MajorCityPopulationThreshold,
-                MajorCityAPIThreshold = this.MajorCityAPIThreshold,
-                DistanceUnits = this.DistanceUnits
-            };
-        }
+            AnnouncementMode = AnnouncementMode,
+            SimulatorVersion = SimulatorVersion,
+            GeoNamesApiUsername = GeoNamesApiUsername,
+            SimbriefUsername = SimbriefUsername,
+            NearbyCitiesRange = NearbyCitiesRange,
+            RegionalCitiesRange = RegionalCitiesRange,
+            MajorCitiesRange = MajorCitiesRange,
+            LandmarksRange = LandmarksRange,
+            AirportsRange = AirportsRange,
+            TerrainRange = TerrainRange,
+            WaterBodiesRange = WaterBodiesRange,
+            TouristLandmarksRange = TouristLandmarksRange,
+            MaxNearbyPlacesToShow = MaxNearbyPlacesToShow,
+            MaxMajorCitiesToShow = MaxMajorCitiesToShow,
+            MaxAirportsToShow = MaxAirportsToShow,
+            MaxTerrainFeaturesToShow = MaxTerrainFeaturesToShow,
+            MaxWaterBodiesToShow = MaxWaterBodiesToShow,
+            MaxTouristLandmarksToShow = MaxTouristLandmarksToShow,
+            MajorCityPopulationThreshold = MajorCityPopulationThreshold,
+            MajorCityAPIThreshold = MajorCityAPIThreshold,
+            DistanceUnits = DistanceUnits
+        };
     }
 }

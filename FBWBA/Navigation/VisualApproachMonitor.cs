@@ -1,10 +1,9 @@
-using System;
 using FBWBA.Database.Models;
 using FBWBA.SimConnect;
 
-namespace FBWBA.Navigation
-{
-    public class VisualApproachMonitor
+namespace FBWBA.Navigation;
+
+public class VisualApproachMonitor
     {
         // Constants for guidance thresholds
         private const double LATERAL_TOLERANCE_NM = 0.15;       // ±0.15nm (900ft) for "Aligned"
@@ -372,13 +371,13 @@ namespace FBWBA.Navigation
         public double DistanceToThreshold { get; set; }       // Nautical miles
         public double AGL { get; set; }                       // Feet above ground level
         public bool ShouldContinue { get; set; }              // Continue monitoring?
-        public string StopReason { get; set; }                // Reason for stopping
+        public string StopReason { get; set; } = "";          // Reason for stopping
         public int UpdateIntervalMs { get; set; }             // Update frequency in milliseconds
         public bool IsAligned { get; set; }                   // Aligned with runway heading
         public double HeadingDifference { get; set; }         // Degrees from runway heading
         public double InterceptHeading { get; set; }          // Recommended intercept heading
         public double DistanceToIntercept { get; set; }       // Miles to intercept point
-        public string TurnDirection { get; set; }             // "left" or "right"
+        public string TurnDirection { get; set; } = "";       // "left" or "right"
         public bool IsBehindRunway { get; set; }              // Is aircraft behind the threshold
     }
 
@@ -403,4 +402,3 @@ namespace FBWBA.Navigation
         Down,      // Climb to correct
         OnSlope    // On glideslope
     }
-}

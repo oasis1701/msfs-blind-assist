@@ -10,10 +10,10 @@ namespace FBWBAUpdater
 {
     public class UpdaterForm : Form
     {
-        private TextBox logTextBox;
-        private ProgressBar progressBar;
-        private Button restartButton;
-        private Button closeButton;
+        private TextBox logTextBox = null!;
+        private ProgressBar progressBar = null!;
+        private Button restartButton = null!;
+        private Button closeButton = null!;
 
         private string zipPath;
         private string appDirectory;
@@ -110,7 +110,7 @@ namespace FBWBAUpdater
             this.CancelButton = closeButton;
         }
 
-        private async void UpdaterForm_Load(object sender, EventArgs e)
+        private async void UpdaterForm_Load(object? sender, EventArgs e)
         {
             // Give the form a moment to render before starting
             await Task.Delay(100);
@@ -260,8 +260,8 @@ namespace FBWBAUpdater
                         string destinationPath = Path.Combine(destinationDir, entry.FullName);
 
                         // Create directory if needed
-                        string directoryPath = Path.GetDirectoryName(destinationPath);
-                        if (!Directory.Exists(directoryPath))
+                        string? directoryPath = Path.GetDirectoryName(destinationPath);
+                        if (!string.IsNullOrEmpty(directoryPath) && !Directory.Exists(directoryPath))
                         {
                             Directory.CreateDirectory(directoryPath);
                         }
@@ -286,7 +286,7 @@ namespace FBWBAUpdater
             }
         }
 
-        private void RestartButton_Click(object sender, EventArgs e)
+        private void RestartButton_Click(object? sender, EventArgs e)
         {
             if (updateSuccessful)
             {
@@ -307,7 +307,7 @@ namespace FBWBAUpdater
             }
         }
 
-        private void CloseButton_Click(object sender, EventArgs e)
+        private void CloseButton_Click(object? sender, EventArgs e)
         {
             Application.Exit();
         }

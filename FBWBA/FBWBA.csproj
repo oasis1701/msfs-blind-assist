@@ -1,229 +1,103 @@
-<?xml version="1.0" encoding="utf-8"?>
-<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+<Project Sdk="Microsoft.NET.Sdk">
+
   <PropertyGroup>
-    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
-    <Platform Condition=" '$(Platform)' == '' ">x64</Platform>
-    <ProjectGuid>{A1B2C3D4-E5F6-4321-8765-432109876543}</ProjectGuid>
+    <!-- Target Framework & Platform -->
+    <TargetFramework>net9.0-windows</TargetFramework>
     <OutputType>WinExe</OutputType>
-    <RootNamespace>FBWBA</RootNamespace>
-    <AssemblyName>FBWBA</AssemblyName>
-    <TargetFrameworkVersion>v4.8.1</TargetFrameworkVersion>
-    <FileAlignment>512</FileAlignment>
-    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
-    <Deterministic>true</Deterministic>
-    <NuGetPackageImportStamp>
-    </NuGetPackageImportStamp>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|x64' ">
+    <Platforms>x64</Platforms>
     <PlatformTarget>x64</PlatformTarget>
+    <UseWindowsForms>true</UseWindowsForms>
+
+    <!-- Assembly Information -->
+    <AssemblyName>FBWBA</AssemblyName>
+    <RootNamespace>FBWBA</RootNamespace>
+    <AssemblyTitle>FBWBA</AssemblyTitle>
+    <Product>FBWBA</Product>
+    <Description>FlyByWire Blind Access - Accessible A320 Control Application</Description>
+    <Copyright>Copyright © 2025</Copyright>
+    <Version>0.3.2.0</Version>
+    <FileVersion>0.3.2.0</FileVersion>
+    <Guid>a1b2c3d4-e5f6-4321-8765-432109876543</Guid>
+
+    <!-- Modern C# Features -->
+    <LangVersion>13</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+
+    <!-- Code Quality & Analysis -->
+    <AnalysisLevel>latest</AnalysisLevel>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+
+    <!-- Build Settings -->
+    <Deterministic>true</Deterministic>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
+    <!-- COM Interop -->
+    <EnableComHosting>true</EnableComHosting>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
     <DebugSymbols>true</DebugSymbols>
     <DebugType>full</DebugType>
     <Optimize>false</Optimize>
-    <OutputPath>bin\x64\Debug\</OutputPath>
     <DefineConstants>DEBUG;TRACE</DefineConstants>
-    <ErrorReport>prompt</ErrorReport>
-    <WarningLevel>4</WarningLevel>
   </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|x64' ">
-    <PlatformTarget>x64</PlatformTarget>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
     <DebugType>pdbonly</DebugType>
     <Optimize>true</Optimize>
-    <OutputPath>bin\x64\Release\</OutputPath>
     <DefineConstants>TRACE</DefineConstants>
-    <ErrorReport>prompt</ErrorReport>
-    <WarningLevel>4</WarningLevel>
   </PropertyGroup>
+
   <ItemGroup>
+    <!-- External SDK Reference -->
     <Reference Include="Microsoft.FlightSimulator.SimConnect">
       <HintPath>$(MSFS_SDK)\SimConnect SDK\lib\managed\Microsoft.FlightSimulator.SimConnect.dll</HintPath>
       <Private>True</Private>
     </Reference>
-    <Reference Include="Newtonsoft.Json, Version=13.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
-      <HintPath>..\packages\Newtonsoft.Json.13.0.3\lib\net45\Newtonsoft.Json.dll</HintPath>
-      <Private>True</Private>
-    </Reference>
-    <Reference Include="System" />
-    <Reference Include="System.Core" />
-    <Reference Include="System.Data.SQLite, Version=1.0.119.0, Culture=neutral, PublicKeyToken=db937bc2d44ff139, processorArchitecture=MSIL">
-      <HintPath>..\packages\Stub.System.Data.SQLite.Core.NetFramework.1.0.119.0\lib\net46\System.Data.SQLite.dll</HintPath>
-      <Private>True</Private>
-    </Reference>
-    <Reference Include="System.Xml.Linq" />
-    <Reference Include="System.Data.DataSetExtensions" />
-    <Reference Include="Microsoft.CSharp" />
-    <Reference Include="System.Data" />
-    <Reference Include="System.Deployment" />
-    <Reference Include="System.Drawing" />
-    <Reference Include="System.Net.Http" />
-    <Reference Include="System.Windows.Forms" />
-    <Reference Include="System.Xml" />
   </ItemGroup>
+
   <ItemGroup>
-    <Compile Include="MainForm.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="MainForm.Designer.cs">
-      <DependentUpon>MainForm.cs</DependentUpon>
-    </Compile>
-    <Compile Include="Program.cs" />
-    <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="SimConnect\SimConnectManager.cs" />
-    <Compile Include="SimConnect\SimVarDefinitions.cs" />
-    <Compile Include="SimConnect\SimVarMonitor.cs" />
-    <Compile Include="SimConnect\MobiFlightWasmModule.cs" />
-    <Compile Include="SimConnect\EWDMessageLookup.cs" />
-    <Compile Include="Controls\AccessiblePanel.cs">
-      <SubType>Component</SubType>
-    </Compile>
-    <Compile Include="Accessibility\ScreenReaderAnnouncer.cs" />
-    <Compile Include="Accessibility\TolkWrapper.cs" />
-    <Compile Include="Accessibility\NvdaControllerWrapper.cs" />
-    <Compile Include="Hotkeys\HotkeyManager.cs" />
-    <Compile Include="Database\Models\Airport.cs" />
-    <Compile Include="Database\Models\Runway.cs" />
-    <Compile Include="Database\Models\ParkingSpot.cs" />
-    <Compile Include="Database\AirportDatabase.cs" />
-    <Compile Include="Database\IAirportDataProvider.cs" />
-    <Compile Include="Database\LittleNavMapProvider.cs" />
-    <Compile Include="Database\DatabasePathResolver.cs" />
-    <Compile Include="Database\DatabaseSelector.cs" />
-    <Compile Include="Database\NavdataReaderBuilder.cs" />
-    <Compile Include="Forms\DatabaseBuildProgressForm.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="Forms\RunwayTeleportForm.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="Forms\GateTeleportForm.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="Forms\AnnouncementSettingsForm.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="Forms\DatabaseSettingsForm.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="Forms\DatabaseMismatchDialog.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="Forms\DestinationRunwayForm.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="Forms\METARReportForm.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="Forms\PFDForm.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="Forms\GeoNamesApiKeyForm.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="Forms\LocationInfoForm.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="Forms\FCUInputForm.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="Forms\HotkeyListForm.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="Forms\AboutForm.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="Forms\ChecklistForm.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="Forms\NavigationDisplayForm.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="Forms\ECAMDisplayForm.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="Forms\StatusDisplayForm.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="Forms\ElectronicFlightBagForm.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="Forms\SimBriefSettingsForm.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="Services\GeoNamesService.cs" />
-    <Compile Include="Services\VATSIMService.cs" />
-    <Compile Include="Services\UpdateService.cs" />
-    <Compile Include="Services\TakeoffAssistManager.cs" />
-    <Compile Include="Services\SimBriefService.cs" />
-    <Compile Include="Settings\UserSettings.cs" />
-    <Compile Include="Settings\SettingsManager.cs" />
-    <Compile Include="Models\LocationData.cs" />
-    <Compile Include="Navigation\NavigationCalculator.cs" />
-    <Compile Include="Navigation\VisualApproachMonitor.cs" />
-    <Compile Include="Navigation\FlightPlan.cs" />
-    <Compile Include="Navigation\FlightPlanManager.cs" />
-    <Compile Include="Navigation\WaypointTracker.cs" />
-    <Compile Include="Database\Models\WaypointFix.cs" />
-    <Compile Include="Database\NavigationDatabaseProvider.cs" />
-    <Compile Include="Utils\SimulatorDetector.cs" />
-    <Compile Include="Forms\UpdateAvailableForm.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <EmbeddedResource Include="MainForm.resx">
+    <!-- NuGet Packages -->
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.0" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="System.Speech" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="9.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Content Files -->
+    <None Update="SimConnect.cfg">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="Libraries\Tolk.dll">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="appsettings.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Embedded Resources (Forms) -->
+    <EmbeddedResource Update="MainForm.resx">
       <DependentUpon>MainForm.cs</DependentUpon>
     </EmbeddedResource>
-    <EmbeddedResource Include="Properties\Resources.resx">
+    <EmbeddedResource Update="Properties\Resources.resx">
       <Generator>ResXFileCodeGenerator</Generator>
       <LastGenOutput>Resources.Designer.cs</LastGenOutput>
-      <SubType>Designer</SubType>
     </EmbeddedResource>
-    <Compile Include="Properties\Resources.Designer.cs">
+    <Compile Update="Properties\Resources.Designer.cs">
       <AutoGen>True</AutoGen>
       <DependentUpon>Resources.resx</DependentUpon>
     </Compile>
-    <None Include="packages.config" />
-    <None Include="Properties\Settings.settings">
-      <Generator>SettingsSingleFileGenerator</Generator>
-      <LastGenOutput>Settings.Designer.cs</LastGenOutput>
-    </None>
-    <Compile Include="Properties\Settings.Designer.cs">
-      <AutoGen>True</AutoGen>
-      <DependentUpon>Settings.settings</DependentUpon>
-      <DesignTimeSharedInput>True</DesignTimeSharedInput>
-    </Compile>
   </ItemGroup>
-  <ItemGroup>
-    <None Include="App.config" />
-  </ItemGroup>
-  <ItemGroup>
-    <Content Include="SimConnect.cfg">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </Content>
-    <Content Include="Libraries\Tolk.dll">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </Content>
-  </ItemGroup>
-  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
-  <PropertyGroup>
-    <PostBuildEvent>
-      REM Copy both versioned SimConnect DLLs to output directory
-      xcopy /Y "$(ProjectDir)..\SimConnect_msfs_2020.dll" "$(TargetDir)"
-      xcopy /Y "$(ProjectDir)..\SimConnect_msfs_2024.dll" "$(TargetDir)"
-      xcopy /Y "$(ProjectDir)Libraries\Tolk.dll" "$(TargetDir)"
-      xcopy /Y "$(ProjectDir)..\nvda_controllerClient\x64\nvdaControllerClient.dll" "$(TargetDir)"
 
-      REM Copy navdatareader and all its dependencies to output directory
-      if not exist "$(TargetDir)navdatareader\" mkdir "$(TargetDir)navdatareader\"
-      xcopy /Y /E /I "$(ProjectDir)..\Navdatareader-win-1.2.3\*" "$(TargetDir)navdatareader\"
-
-      REM Copy SimConnect.cfg to navdatareader directory for FS2024 SimConnect support
-      xcopy /Y "$(ProjectDir)SimConnect.cfg" "$(TargetDir)navdatareader\"
-    </PostBuildEvent>
-  </PropertyGroup>
-  <Import Project="..\packages\Stub.System.Data.SQLite.Core.NetFramework.1.0.119.0\build\net46\Stub.System.Data.SQLite.Core.NetFramework.targets" Condition="Exists('..\packages\Stub.System.Data.SQLite.Core.NetFramework.1.0.119.0\build\net46\Stub.System.Data.SQLite.Core.NetFramework.targets')" />
-  <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">
-    <PropertyGroup>
-      <ErrorText>This project references NuGet package(s) that are missing on this computer. Use NuGet Package Restore to download them.  For more information, see http://go.microsoft.com/fwlink/?LinkID=322105. The missing file is {0}.</ErrorText>
-    </PropertyGroup>
-    <Error Condition="!Exists('..\packages\Stub.System.Data.SQLite.Core.NetFramework.1.0.119.0\build\net46\Stub.System.Data.SQLite.Core.NetFramework.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\Stub.System.Data.SQLite.Core.NetFramework.1.0.119.0\build\net46\Stub.System.Data.SQLite.Core.NetFramework.targets'))" />
+  <Target Name="PostBuild" AfterTargets="PostBuildEvent">
+    <Exec Command="REM Copy both versioned SimConnect DLLs to output directory&#xD;&#xA;xcopy /Y &quot;$(ProjectDir)..\SimConnect_msfs_2020.dll&quot; &quot;$(TargetDir)&quot;&#xD;&#xA;xcopy /Y &quot;$(ProjectDir)..\SimConnect_msfs_2024.dll&quot; &quot;$(TargetDir)&quot;&#xD;&#xA;xcopy /Y &quot;$(ProjectDir)Libraries\Tolk.dll&quot; &quot;$(TargetDir)&quot;&#xD;&#xA;xcopy /Y &quot;$(ProjectDir)..\nvda_controllerClient\x64\nvdaControllerClient.dll&quot; &quot;$(TargetDir)&quot;&#xD;&#xA;&#xD;&#xA;REM Copy navdatareader and all its dependencies to output directory&#xD;&#xA;if not exist &quot;$(TargetDir)navdatareader\&quot; mkdir &quot;$(TargetDir)navdatareader\&quot;&#xD;&#xA;xcopy /Y /E /I &quot;$(ProjectDir)..\Navdatareader-win-1.2.3\*&quot; &quot;$(TargetDir)navdatareader\&quot;&#xD;&#xA;&#xD;&#xA;REM Copy SimConnect.cfg to navdatareader directory for FS2024 SimConnect support&#xD;&#xA;xcopy /Y &quot;$(ProjectDir)SimConnect.cfg&quot; &quot;$(TargetDir)navdatareader\&quot;" />
   </Target>
+
 </Project>

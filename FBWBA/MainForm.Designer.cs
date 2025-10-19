@@ -3,19 +3,19 @@ namespace FBWBA
     partial class MainForm
     {
         private System.ComponentModel.IContainer components = null;
-        private System.Windows.Forms.MenuStrip menuStrip;
-        private System.Windows.Forms.ToolStripMenuItem fileMenuItem;
-        private System.Windows.Forms.ToolStripMenuItem databaseSettingsMenuItem;
-        private System.Windows.Forms.ToolStripMenuItem announcementSettingsMenuItem;
-        private System.Windows.Forms.ToolStripMenuItem geoNamesSettingsMenuItem;
-        private System.Windows.Forms.ToolStripMenuItem simbriefSettingsMenuItem;
-        private System.Windows.Forms.ToolStripMenuItem hotkeyListMenuItem;
-        private System.Windows.Forms.ToolStripMenuItem updateApplicationMenuItem;
-        private System.Windows.Forms.ToolStripMenuItem aboutMenuItem;
-        private System.Windows.Forms.ListBox sectionsListBox;
-        private System.Windows.Forms.ListBox panelsListBox;
-        private System.Windows.Forms.Panel controlsContainer;
-        private System.Windows.Forms.Label statusLabel;
+        private System.Windows.Forms.MenuStrip menuStrip = null!;
+        private System.Windows.Forms.ToolStripMenuItem fileMenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem databaseSettingsMenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem announcementSettingsMenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem geoNamesSettingsMenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem simbriefSettingsMenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem hotkeyListMenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem updateApplicationMenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem aboutMenuItem = null!;
+        private System.Windows.Forms.ListBox sectionsListBox = null!;
+        private System.Windows.Forms.ListBox panelsListBox = null!;
+        private System.Windows.Forms.Panel controlsContainer = null!;
+        private System.Windows.Forms.Label statusLabel = null!;
 
         protected override void Dispose(bool disposing)
         {

@@ -1,18 +1,15 @@
-using System;
-using System.Drawing;
-using System.Windows.Forms;
 using FBWBA.Accessibility;
 
-namespace FBWBA.Forms
-{
-    public partial class AnnouncementSettingsForm : Form
+namespace FBWBA.Forms;
+
+public partial class AnnouncementSettingsForm : Form
     {
-        private RadioButton screenReaderRadio;
-        private RadioButton sapiRadio;
-        private Button okButton;
-        private Button cancelButton;
-        private Label statusLabel;
-        private Label titleLabel;
+        private RadioButton screenReaderRadio = null!;
+        private RadioButton sapiRadio = null!;
+        private Button okButton = null!;
+        private Button cancelButton = null!;
+        private Label statusLabel = null!;
+        private Label titleLabel = null!;
 
         public AnnouncementMode SelectedMode { get; private set; }
 
@@ -164,7 +161,7 @@ namespace FBWBA.Forms
             }
         }
 
-        private void RadioButton_CheckedChanged(object sender, EventArgs e)
+        private void RadioButton_CheckedChanged(object? sender, EventArgs e)
         {
             if (screenReaderRadio.Checked)
             {
@@ -176,7 +173,7 @@ namespace FBWBA.Forms
             }
         }
 
-        private void OkButton_Click(object sender, EventArgs e)
+        private void OkButton_Click(object? sender, EventArgs e)
         {
             DialogResult = DialogResult.OK;
             Close();
@@ -194,5 +191,4 @@ namespace FBWBA.Forms
 
             return base.ProcessDialogKey(keyData);
         }
-    }
 }

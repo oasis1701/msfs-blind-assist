@@ -1,27 +1,24 @@
-using System;
-using System.Drawing;
-using System.Windows.Forms;
 using FBWBA.Services;
 
-namespace FBWBA.Forms
-{
-    public class UpdateAvailableForm : Form
+namespace FBWBA.Forms;
+
+public class UpdateAvailableForm : Form
     {
-        private Label titleLabel;
-        private Label currentVersionLabel;
-        private Label latestVersionLabel;
-        private TextBox releaseNotesTextBox;
-        private ProgressBar downloadProgressBar;
-        private Label statusLabel;
-        private Button updateButton;
-        private Button cancelButton;
+        private Label titleLabel = null!;
+        private Label currentVersionLabel = null!;
+        private Label latestVersionLabel = null!;
+        private TextBox releaseNotesTextBox = null!;
+        private ProgressBar downloadProgressBar = null!;
+        private Label statusLabel = null!;
+        private Button updateButton = null!;
+        private Button cancelButton = null!;
 
         private UpdateCheckResult updateInfo;
         private UpdateService updateService;
         private bool isDownloading = false;
 
         public bool ShouldUpdate { get; private set; }
-        public string DownloadedZipPath { get; private set; }
+        public string DownloadedZipPath { get; private set; } = null!;
 
         public UpdateAvailableForm(UpdateCheckResult updateInfo, UpdateService updateService)
         {
@@ -161,7 +158,7 @@ namespace FBWBA.Forms
             releaseNotesTextBox.Text = updateInfo.ReleaseNotes ?? "No release notes available.";
         }
 
-        private async void UpdateButton_Click(object sender, EventArgs e)
+        private async void UpdateButton_Click(object? sender, EventArgs e)
         {
             if (isDownloading)
                 return;
@@ -177,7 +174,14 @@ namespace FBWBA.Forms
                 statusLabel.Text = "Starting download...";
 
                 // Download the update
-                DownloadedZipPath = await updateService.DownloadUpdateAsync(updateInfo.DownloadUrl);
+                if (updateInfo.DownloadUrl != null)
+                {
+                    DownloadedZipPath = await updateService.DownloadUpdateAsync(updateInfo.DownloadUrl);
+                }
+                else
+                {
+                    throw new InvalidOperationException("Download URL is not available");
+                }
 
                 statusLabel.Text = "Download complete. Ready to install.";
                 ShouldUpdate = true;
@@ -204,14 +208,14 @@ namespace FBWBA.Forms
             }
         }
 
-        private void CancelButton_Click(object sender, EventArgs e)
+        private void CancelButton_Click(object? sender, EventArgs e)
         {
             ShouldUpdate = false;
             this.DialogResult = DialogResult.Cancel;
             this.Close();
         }
 
-        private void UpdateService_ProgressChanged(object sender, UpdateProgressEventArgs e)
+        private void UpdateService_ProgressChanged(object? sender, UpdateProgressEventArgs e)
         {
             if (this.InvokeRequired)
             {
@@ -223,7 +227,7 @@ namespace FBWBA.Forms
             statusLabel.Text = $"Downloading: {e.PercentComplete}% ({e.BytesDownloaded / 1024 / 1024:F1} MB / {e.TotalBytes / 1024 / 1024:F1} MB)";
         }
 
-        private void UpdateService_StatusChanged(object sender, string status)
+        private void UpdateService_StatusChanged(object? sender, string status)
         {
             if (this.InvokeRequired)
             {
@@ -247,5 +251,4 @@ namespace FBWBA.Forms
             }
             base.Dispose(disposing);
         }
-    }
 }

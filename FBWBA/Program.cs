@@ -1,14 +1,8 @@
-using System;
-using System.Diagnostics;
-using System.IO;
-using System.Linq;
-using System.Runtime.InteropServices;
-using System.Windows.Forms;
 using FBWBA.Utils;
 
-namespace FBWBA
-{
-    static class Program
+namespace FBWBA;
+
+static class Program
     {
         [DllImport("kernel32.dll", SetLastError = true)]
         static extern bool AllocConsole();
@@ -51,8 +45,9 @@ namespace FBWBA
 
             Console.WriteLine("FlyByWire Blind Access starting...");
 
-            Application.EnableVisualStyles();
-            Application.SetCompatibleTextRenderingDefault(false);
+            // Modern .NET 9 Windows Forms initialization
+            Application.SetHighDpiMode(HighDpiMode.SystemAware);
+            ApplicationConfiguration.Initialize();
             Application.Run(new MainForm());
         }
 
@@ -130,5 +125,4 @@ namespace FBWBA
                 return false;
             }
         }
-    }
 }

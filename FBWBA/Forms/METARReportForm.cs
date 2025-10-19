@@ -1,14 +1,9 @@
-using System;
-using System.Drawing;
-using System.Runtime.InteropServices;
-using System.Threading.Tasks;
-using System.Windows.Forms;
 using FBWBA.Accessibility;
 using FBWBA.Services;
 
-namespace FBWBA.Forms
-{
-    public partial class METARReportForm : Form
+namespace FBWBA.Forms;
+
+public partial class METARReportForm : Form
     {
         // Windows API declarations for focus management
         [DllImport("user32.dll")]
@@ -17,12 +12,12 @@ namespace FBWBA.Forms
         [DllImport("user32.dll")]
         private static extern bool SetForegroundWindow(IntPtr hWnd);
 
-        private TextBox icaoTextBox;
-        private TextBox metarTextBox;
-        private Button closeButton;
-        private Label icaoLabel;
-        private Label metarLabel;
-        private Label statusLabel;
+        private TextBox icaoTextBox = null!;
+        private TextBox metarTextBox = null!;
+        private Button closeButton = null!;
+        private Label icaoLabel = null!;
+        private Label metarLabel = null!;
+        private Label statusLabel = null!;
 
         private readonly ScreenReaderAnnouncer _announcer;
         private readonly IntPtr previousWindow;
@@ -140,7 +135,7 @@ namespace FBWBA.Forms
             };
         }
 
-        private async void IcaoTextBox_KeyDown(object sender, KeyEventArgs e)
+        private async void IcaoTextBox_KeyDown(object? sender, KeyEventArgs e)
         {
             if (e.KeyCode == Keys.Enter)
             {
@@ -207,7 +202,7 @@ namespace FBWBA.Forms
             }
         }
 
-        private void CloseButton_Click(object sender, EventArgs e)
+        private void CloseButton_Click(object? sender, EventArgs e)
         {
             Close();
 
@@ -240,5 +235,4 @@ namespace FBWBA.Forms
                 SetForegroundWindow(previousWindow);
             }
         }
-    }
 }

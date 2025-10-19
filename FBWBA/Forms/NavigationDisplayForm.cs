@@ -1,15 +1,10 @@
-using System;
-using System.Collections.Generic;
-using System.Drawing;
-using System.Runtime.InteropServices;
-using System.Windows.Forms;
 using FBWBA.Accessibility;
 using FBWBA.SimConnect;
 
-namespace FBWBA.Forms
+namespace FBWBA.Forms;
+
+public partial class NavigationDisplayForm : Form
 {
-    public partial class NavigationDisplayForm : Form
-    {
         // Windows API declarations for focus management
         [DllImport("user32.dll")]
         private static extern IntPtr GetForegroundWindow();
@@ -17,26 +12,26 @@ namespace FBWBA.Forms
         [DllImport("user32.dll")]
         private static extern bool SetForegroundWindow(IntPtr hWnd);
 
-        private TextBox navigationTextBox;
-        private Button refreshButton;
-        private Button closeButton;
-        private Label titleLabel;
-        private GroupBox controlsGroupBox;
-        private RadioButton roseIlsButton;
-        private RadioButton roseVorButton;
-        private RadioButton roseNavButton;
-        private RadioButton arcButton;
-        private RadioButton planButton;
-        private ComboBox rangeComboBox;
-        private Label rangeLabel;
-        private Button cstrButton;
-        private Button wptButton;
-        private Button vordButton;
-        private Button ndbButton;
-        private Button arptButton;
+        private TextBox navigationTextBox = null!;
+        private Button refreshButton = null!;
+        private Button closeButton = null!;
+        private Label titleLabel = null!;
+        private GroupBox controlsGroupBox = null!;
+        private RadioButton roseIlsButton = null!;
+        private RadioButton roseVorButton = null!;
+        private RadioButton roseNavButton = null!;
+        private RadioButton arcButton = null!;
+        private RadioButton planButton = null!;
+        private ComboBox rangeComboBox = null!;
+        private Label rangeLabel = null!;
+        private Button cstrButton = null!;
+        private Button wptButton = null!;
+        private Button vordButton = null!;
+        private Button ndbButton = null!;
+        private Button arptButton = null!;
 
         private readonly ScreenReaderAnnouncer _announcer;
-        private readonly SimConnectManager _simConnectManager;
+        private readonly SimConnectManager _simConnectManager = null!;
         private Dictionary<string, double> _variableValues = new Dictionary<string, double>();
         private readonly IntPtr previousWindow;
 
@@ -298,9 +293,9 @@ namespace FBWBA.Forms
             };
         }
 
-        private void ModeButton_CheckedChanged(object sender, EventArgs e)
+        private void ModeButton_CheckedChanged(object? sender, EventArgs e)
         {
-            RadioButton button = sender as RadioButton;
+            RadioButton? button = sender as RadioButton;
             if (button == null || !button.Checked) return;
 
             // Determine mode value
@@ -319,7 +314,7 @@ namespace FBWBA.Forms
             }
         }
 
-        private void RangeComboBox_SelectedIndexChanged(object sender, EventArgs e)
+        private void RangeComboBox_SelectedIndexChanged(object? sender, EventArgs e)
         {
             if (rangeComboBox.SelectedIndex >= 0)
             {
@@ -329,42 +324,42 @@ namespace FBWBA.Forms
             }
         }
 
-        private void RefreshButton_Click(object sender, EventArgs e)
+        private void RefreshButton_Click(object? sender, EventArgs e)
         {
             RefreshNavigationData();
             _announcer?.Announce("Navigation data refreshed");
         }
 
-        private void CloseButton_Click(object sender, EventArgs e)
+        private void CloseButton_Click(object? sender, EventArgs e)
         {
             Close();
         }
 
-        private void CstrButton_Click(object sender, EventArgs e)
+        private void CstrButton_Click(object? sender, EventArgs e)
         {
             _simConnectManager?.SendEvent("A32NX.FCU_EFIS_L_CSTR_PUSH");
             _announcer?.Announce("CSTR toggled");
         }
 
-        private void WptButton_Click(object sender, EventArgs e)
+        private void WptButton_Click(object? sender, EventArgs e)
         {
             _simConnectManager?.SendEvent("A32NX.FCU_EFIS_L_WPT_PUSH");
             _announcer?.Announce("WPT toggled");
         }
 
-        private void VordButton_Click(object sender, EventArgs e)
+        private void VordButton_Click(object? sender, EventArgs e)
         {
             _simConnectManager?.SendEvent("A32NX.FCU_EFIS_L_VORD_PUSH");
             _announcer?.Announce("VOR D toggled");
         }
 
-        private void NdbButton_Click(object sender, EventArgs e)
+        private void NdbButton_Click(object? sender, EventArgs e)
         {
             _simConnectManager?.SendEvent("A32NX.FCU_EFIS_L_NDB_PUSH");
             _announcer?.Announce("NDB toggled");
         }
 
-        private void ArptButton_Click(object sender, EventArgs e)
+        private void ArptButton_Click(object? sender, EventArgs e)
         {
             _simConnectManager?.SendEvent("A32NX.FCU_EFIS_L_ARPT_PUSH");
             _announcer?.Announce("ARPT toggled");
@@ -769,7 +764,7 @@ namespace FBWBA.Forms
             return base.ProcessDialogKey(keyData);
         }
 
-        private void OnSimVarUpdated(object sender, SimVarUpdateEventArgs e)
+        private void OnSimVarUpdated(object? sender, SimVarUpdateEventArgs e)
         {
             // Update our local variable values dictionary
             if (!string.IsNullOrEmpty(e.VarName))
@@ -835,5 +830,4 @@ namespace FBWBA.Forms
                 SetForegroundWindow(previousWindow);
             }
         }
-    }
 }

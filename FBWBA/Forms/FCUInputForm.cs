@@ -1,12 +1,8 @@
-using System;
-using System.Drawing;
-using System.Runtime.InteropServices;
-using System.Windows.Forms;
 using FBWBA.Accessibility;
 
-namespace FBWBA.Forms
-{
-    public partial class FCUInputForm : Form
+namespace FBWBA.Forms;
+
+public partial class FCUInputForm : Form
     {
         // Windows API declarations for focus management
         [DllImport("user32.dll")]
@@ -15,13 +11,13 @@ namespace FBWBA.Forms
         [DllImport("user32.dll")]
         private static extern bool SetForegroundWindow(IntPtr hWnd);
 
-        private TextBox valueTextBox;
-        private Label titleLabel;
-        private Label rangeLabel;
-        private Button okButton;
-        private Button cancelButton;
+        private TextBox valueTextBox = null!;
+        private Label titleLabel = null!;
+        private Label rangeLabel = null!;
+        private Button okButton = null!;
+        private Button cancelButton = null!;
 
-        public string InputValue { get; private set; }
+        public string InputValue { get; private set; } = null!;
         public bool IsValidInput { get; private set; }
 
         private readonly ScreenReaderAnnouncer announcer;
@@ -132,7 +128,7 @@ namespace FBWBA.Forms
             };
         }
 
-        private void ValueTextBox_KeyDown(object sender, KeyEventArgs e)
+        private void ValueTextBox_KeyDown(object? sender, KeyEventArgs e)
         {
             if (e.KeyCode == Keys.Enter)
             {
@@ -153,7 +149,7 @@ namespace FBWBA.Forms
             }
         }
 
-        private void OkButton_Click(object sender, EventArgs e)
+        private void OkButton_Click(object? sender, EventArgs e)
         {
             SetValue();
         }
@@ -191,5 +187,4 @@ namespace FBWBA.Forms
                 valueTextBox.SelectAll();
             }
         }
-    }
 }

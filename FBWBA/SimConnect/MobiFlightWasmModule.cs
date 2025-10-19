@@ -1,15 +1,10 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Runtime.InteropServices;
-using System.Text;
 using System.Timers;
 using Microsoft.FlightSimulator.SimConnect;
 using static Microsoft.FlightSimulator.SimConnect.SimConnect;
 
-namespace FBWBA.SimConnect
-{
-    public class MobiFlightWasmModule
+namespace FBWBA.SimConnect;
+
+public class MobiFlightWasmModule
     {
         private Microsoft.FlightSimulator.SimConnect.SimConnect simConnect;
         private const string CLIENT_NAME = "FBWBA";
@@ -68,11 +63,11 @@ namespace FBWBA.SimConnect
         }
 
         // Events
-        public event EventHandler<string> ConnectionStatusChanged;
-        public event EventHandler<MobiFlightLVarUpdateEventArgs> LVarUpdated;
-        public event EventHandler<string> ResponseReceived;
-        public event EventHandler<MobiFlightLedValueEventArgs> LedValueReceived;
-        public event EventHandler<MobiFlightStringLVarEventArgs> StringLVarReceived;
+        public event EventHandler<string>? ConnectionStatusChanged;
+        public event EventHandler<MobiFlightLVarUpdateEventArgs>? LVarUpdated;
+        public event EventHandler<string>? ResponseReceived;
+        public event EventHandler<MobiFlightLedValueEventArgs>? LedValueReceived;
+        public event EventHandler<MobiFlightStringLVarEventArgs>? StringLVarReceived;
 
         // Variable tracking
         private Dictionary<string, int> registeredLVars = new Dictionary<string, int>();
@@ -115,21 +110,21 @@ namespace FBWBA.SimConnect
 
         public class MobiFlightLVarUpdateEventArgs : EventArgs
         {
-            public string VariableName { get; set; }
+            public string VariableName { get; set; } = "";
             public float Value { get; set; }
             public int Index { get; set; }
         }
 
         public class MobiFlightLedValueEventArgs : EventArgs
         {
-            public string LedVariable { get; set; }
+            public string LedVariable { get; set; } = "";
             public float Value { get; set; }
         }
 
         public class MobiFlightStringLVarEventArgs : EventArgs
         {
-            public string VariableName { get; set; }
-            public string Value { get; set; }
+            public string VariableName { get; set; } = "";
+            public string Value { get; set; } = "";
         }
 
         public MobiFlightWasmModule(Microsoft.FlightSimulator.SimConnect.SimConnect simConnect)
@@ -340,7 +335,7 @@ namespace FBWBA.SimConnect
                 if (response.dwRequestID == (uint)DATA_REQUEST_ID.MF_RESPONSE_REQUEST)
                 {
                     ResponseData responseData = (ResponseData)response.dwData[0];
-                    string responseText = responseData.response?.Trim();
+                    string? responseText = responseData.response?.Trim();
 
                     if (!string.IsNullOrEmpty(responseText))
                     {
@@ -357,7 +352,7 @@ namespace FBWBA.SimConnect
                 else if (response.dwRequestID == (uint)DATA_REQUEST_ID.FBWBA_RESPONSE_REQUEST)
                 {
                     ResponseData responseData = (ResponseData)response.dwData[0];
-                    string responseText = responseData.response?.Trim();
+                    string? responseText = responseData.response?.Trim();
 
                     if (!string.IsNullOrEmpty(responseText))
                     {
@@ -630,7 +625,7 @@ namespace FBWBA.SimConnect
             System.Diagnostics.Debug.WriteLine("[MobiFlight] Cleared all LVars");
         }
 
-        private void HeartbeatTimer_Elapsed(object sender, ElapsedEventArgs e)
+        private void HeartbeatTimer_Elapsed(object? sender, ElapsedEventArgs e)
         {
             if (IsConnected && IsRegistered)
             {
@@ -638,7 +633,7 @@ namespace FBWBA.SimConnect
             }
         }
 
-        private void RegistrationTimer_Elapsed(object sender, ElapsedEventArgs e)
+        private void RegistrationTimer_Elapsed(object? sender, ElapsedEventArgs e)
         {
             registrationTimeoutOccurred = true;
             System.Diagnostics.Debug.WriteLine("[MobiFlight] Registration timeout - will allow H-variables through default channel");
@@ -674,5 +669,4 @@ namespace FBWBA.SimConnect
             heartbeatTimer?.Dispose();
             registrationTimer?.Dispose();
         }
-    }
 }

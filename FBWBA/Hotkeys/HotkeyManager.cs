@@ -1,11 +1,7 @@
-using System;
-using System.Collections.Generic;
-using System.Runtime.InteropServices;
-using System.Windows.Forms;
 
-namespace FBWBA.Hotkeys
-{
-    public class HotkeyManager : IDisposable
+namespace FBWBA.Hotkeys;
+
+public class HotkeyManager : IDisposable
     {
         // Windows API for registering global hotkeys
         [DllImport("user32.dll")]
@@ -95,10 +91,10 @@ namespace FBWBA.Hotkeys
         private bool outputHotkeyModeActive = false;
         private bool inputHotkeyModeActive = false;
         private bool disposed = false;
-        
-        public event EventHandler<HotkeyEventArgs> HotkeyTriggered;
-        public event EventHandler<bool> OutputHotkeyModeChanged;
-        public event EventHandler<bool> InputHotkeyModeChanged;
+
+        public event EventHandler<HotkeyEventArgs>? HotkeyTriggered;
+        public event EventHandler<bool>? OutputHotkeyModeChanged;
+        public event EventHandler<bool>? InputHotkeyModeChanged;
 
         public bool IsOutputHotkeyModeActive => outputHotkeyModeActive;
         public bool IsInputHotkeyModeActive => inputHotkeyModeActive;
@@ -642,4 +638,3 @@ namespace FBWBA.Hotkeys
         ReadTrackSlot4,
         ReadTrackSlot5
     }
-}

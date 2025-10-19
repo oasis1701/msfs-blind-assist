@@ -1,18 +1,16 @@
-using System;
-using System.Collections.Generic;
 
-namespace FBWBA.Models
-{
-    public class LocationData
+namespace FBWBA.Models;
+
+public class LocationData
     {
-        public string LocalTime { get; set; }
+        public string LocalTime { get; set; } = "";
         public List<NearbyPlace> NearbyPlaces { get; set; }
         public List<NearbyPlace> MajorCities { get; set; }
         public RegionalContext Regional { get; set; }
         public CardinalDirections Directions { get; set; }
         public List<Landmark> Landmarks { get; set; }
         public Dictionary<string, List<Landmark>> CategorizedLandmarks { get; set; }
-        public WeatherInfo Weather { get; set; }
+        public WeatherInfo Weather { get; set; } = new WeatherInfo();
 
         public LocationData()
         {
@@ -27,13 +25,13 @@ namespace FBWBA.Models
 
     public class NearbyPlace
     {
-        public string Name { get; set; }
-        public string State { get; set; }
-        public string Country { get; set; }
+        public string Name { get; set; } = "";
+        public string State { get; set; } = "";
+        public string Country { get; set; } = "";
         public int Population { get; set; }
         public double Distance { get; set; }
-        public string Direction { get; set; }
-        public string Type { get; set; } // "city", "town", "airport", etc.
+        public string Direction { get; set; } = "";
+        public string Type { get; set; } = ""; // "city", "town", "airport", etc.
 
         public override string ToString()
         {
@@ -56,12 +54,12 @@ namespace FBWBA.Models
 
     public class RegionalContext
     {
-        public string State { get; set; }
-        public string Country { get; set; }
-        public string County { get; set; }
-        public string MajorCity { get; set; }
+        public string State { get; set; } = "";
+        public string Country { get; set; } = "";
+        public string County { get; set; } = "";
+        public string MajorCity { get; set; } = "";
         public double MajorCityDistance { get; set; }
-        public string MajorCityDirection { get; set; }
+        public string MajorCityDirection { get; set; } = "";
 
         public override string ToString()
         {
@@ -80,14 +78,14 @@ namespace FBWBA.Models
 
     public class CardinalDirections
     {
-        public string North { get; set; }
-        public string NorthDistance { get; set; }
-        public string East { get; set; }
-        public string EastDistance { get; set; }
-        public string South { get; set; }
-        public string SouthDistance { get; set; }
-        public string West { get; set; }
-        public string WestDistance { get; set; }
+        public string North { get; set; } = "";
+        public string NorthDistance { get; set; } = "";
+        public string East { get; set; } = "";
+        public string EastDistance { get; set; } = "";
+        public string South { get; set; } = "";
+        public string SouthDistance { get; set; } = "";
+        public string West { get; set; } = "";
+        public string WestDistance { get; set; } = "";
 
         public override string ToString()
         {
@@ -106,12 +104,12 @@ namespace FBWBA.Models
 
     public class Landmark
     {
-        public string Name { get; set; }
-        public string State { get; set; }
-        public string Country { get; set; }
+        public string Name { get; set; } = "";
+        public string State { get; set; } = "";
+        public string Country { get; set; } = "";
         public double Distance { get; set; }
-        public string Direction { get; set; }
-        public string Type { get; set; } // "tower", "stadium", "mall", "park", etc.
+        public string Direction { get; set; } = "";
+        public string Type { get; set; } = ""; // "tower", "stadium", "mall", "park", etc.
 
         public override string ToString()
         {
@@ -131,9 +129,9 @@ namespace FBWBA.Models
     public class WeatherInfo
     {
         public double? Temperature { get; set; }
-        public string Conditions { get; set; }
-        public string WindSpeed { get; set; }
-        public string WindDirection { get; set; }
+        public string Conditions { get; set; } = "";
+        public string WindSpeed { get; set; } = "";
+        public string WindDirection { get; set; } = "";
         public bool IsAvailable { get; set; }
 
         public override string ToString()
@@ -150,5 +148,4 @@ namespace FBWBA.Models
 
             return result.TrimEnd('\n');
         }
-    }
 }

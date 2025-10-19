@@ -1,10 +1,8 @@
-using System;
 using System.ComponentModel;
-using System.Runtime.InteropServices;
 
-namespace FBWBA.Accessibility
-{
-    public class NvdaControllerWrapper : IDisposable
+namespace FBWBA.Accessibility;
+
+public class NvdaControllerWrapper : IDisposable
     {
         private bool _disposed = false;
 
@@ -34,7 +32,7 @@ namespace FBWBA.Accessibility
                     bool isRunning = result == 0;
                     return isRunning;
                 }
-                catch (Exception ex)
+                catch (Exception)
                 {
                     return false;
                 }
@@ -58,7 +56,7 @@ namespace FBWBA.Accessibility
                         return null;
                     }
                 }
-                catch (Exception ex)
+                catch (Exception)
                 {
                     return null;
                 }
@@ -94,7 +92,7 @@ namespace FBWBA.Accessibility
 
                 return success;
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 return false;
             }
@@ -121,7 +119,7 @@ namespace FBWBA.Accessibility
 
                 return success;
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 return false;
             }
@@ -143,7 +141,7 @@ namespace FBWBA.Accessibility
 
                 return success;
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 return false;
             }
@@ -156,5 +154,4 @@ namespace FBWBA.Accessibility
                 _disposed = true;
             }
         }
-    }
 }

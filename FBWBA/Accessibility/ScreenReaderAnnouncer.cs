@@ -1,27 +1,23 @@
-using System;
-using System.Collections.Generic;
-using System.Runtime.InteropServices;
-using System.Text;
-using System.Windows.Forms;
+using System.Speech.Synthesis;
 using FBWBA.Settings;
 
-namespace FBWBA.Accessibility
+namespace FBWBA.Accessibility;
+
+public class ScreenReaderAnnouncer : IDisposable
 {
-    public class ScreenReaderAnnouncer : IDisposable
-    {
-        // SAPI for fallback TTS
-        private dynamic speechSynthesizer;
-        private bool disposed = false;
+    // System.Speech for fallback TTS (modern .NET alternative to COM SAPI)
+    private SpeechSynthesizer? speechSynthesizer;
+    private bool disposed = false;
 
-        // Screen reader integration components
-        private TolkWrapper tolkWrapper;
-        private NvdaControllerWrapper nvdaWrapper;
-        private AnnouncementMode currentMode;
+    // Screen reader integration components
+    private TolkWrapper? tolkWrapper;
+    private NvdaControllerWrapper? nvdaWrapper;
+    private AnnouncementMode currentMode;
 
-        // Speech queue for sequential announcements
-        private Queue<string> announcementQueue;
-        private Timer queueTimer;
-        private const int QUEUE_INTERVAL_MS = 900; // 900ms delay between queued messages (increased from 600ms to prevent NVDA buffer overflow)
+    // Speech queue for sequential announcements
+    private Queue<string> announcementQueue;
+    private System.Windows.Forms.Timer queueTimer;
+    private const int QUEUE_INTERVAL_MS = 900; // 900ms delay between queued messages (increased from 600ms to prevent NVDA buffer overflow)
 
         // Native methods for screen reader detection
         [DllImport("user32.dll")]
@@ -36,7 +32,7 @@ namespace FBWBA.Accessibility
         {
             // Initialize speech queue and timer
             announcementQueue = new Queue<string>();
-            queueTimer = new Timer();
+            queueTimer = new System.Windows.Forms.Timer();
             queueTimer.Interval = QUEUE_INTERVAL_MS;
             queueTimer.Tick += QueueTimer_Tick;
 
@@ -84,16 +80,11 @@ namespace FBWBA.Accessibility
                     // System.Diagnostics.Debug.WriteLine($"[ScreenReaderAnnouncer] Screen reader detected but mode is {currentMode} - consider switching to ScreenReader mode");
                 }
 
-                // Initialize SAPI as fallback method
-                Type spVoiceType = Type.GetTypeFromProgID("SAPI.SpVoice");
-                if (spVoiceType != null)
-                {
-                    speechSynthesizer = Activator.CreateInstance(spVoiceType);
-                    // Set to async mode
-                    speechSynthesizer.Volume = 100;
-                    speechSynthesizer.Rate = 0;
-                    // System.Diagnostics.Debug.WriteLine("[ScreenReaderAnnouncer] SAPI initialized successfully");
-                }
+                // Initialize System.Speech as fallback method (modern .NET alternative)
+                speechSynthesizer = new SpeechSynthesizer();
+                speechSynthesizer.Volume = 100;  // 0-100
+                speechSynthesizer.Rate = 0;      // -10 to 10, 0 is normal
+                // Debug.WriteLine("[ScreenReaderAnnouncer] System.Speech initialized successfully");
             }
             catch (Exception ex)
             {
@@ -255,13 +246,12 @@ namespace FBWBA.Accessibility
                     }
                 }
 
-                // If screen reader failed or SAPI mode selected, use SAPI
+                // If screen reader failed or SAPI mode selected, use System.Speech
                 if (!success && speechSynthesizer != null)
                 {
-                    // System.Diagnostics.Debug.WriteLine("[ScreenReaderAnnouncer] Using SAPI speech");
-                    // Flag 1 = async, 2 = purge before speak (for queued speech)
-                    speechSynthesizer.Speak(message, 1);
-                    success = true; // Mark as successful since SAPI doesn't return status
+                    // Debug.WriteLine("[ScreenReaderAnnouncer] Using System.Speech TTS");
+                    speechSynthesizer.SpeakAsync(message);
+                    success = true;
                 }
 
                 // Always output to console as fallback - some screen readers pick this up
@@ -311,12 +301,12 @@ namespace FBWBA.Accessibility
                     }
                 }
 
-                // If screen reader failed or SAPI mode selected, use SAPI with interrupt
+                // If screen reader failed or SAPI mode selected, use System.Speech with interrupt
                 if (!success && speechSynthesizer != null)
                 {
-                    // System.Diagnostics.Debug.WriteLine("[ScreenReaderAnnouncer] Using immediate SAPI speech with interrupt");
-                    // 2 = purge before speak (interrupt), 1 = async
-                    speechSynthesizer.Speak(message, 3);
+                    // Debug.WriteLine("[ScreenReaderAnnouncer] Using immediate System.Speech with interrupt");
+                    speechSynthesizer.SpeakAsyncCancelAll(); // Cancel current speech
+                    speechSynthesizer.SpeakAsync(message);     // Speak new message
                     success = true;
                 }
 
@@ -367,9 +357,9 @@ namespace FBWBA.Accessibility
         /// <summary>
         /// Timer tick handler that processes one message from the queue at a time.
         /// </summary>
-        private void QueueTimer_Tick(object sender, EventArgs e)
+        private void QueueTimer_Tick(object? sender, EventArgs e)
         {
-            string messageToSpeak = null;
+            string? messageToSpeak = null;
 
             lock (announcementQueue)
             {
@@ -411,7 +401,7 @@ namespace FBWBA.Accessibility
                         queueTimer.Dispose();
                     }
                     catch { }
-                    queueTimer = null;
+                    queueTimer = null!;
                 }
 
                 // Clear any pending announcements
@@ -427,7 +417,7 @@ namespace FBWBA.Accessibility
                 {
                     try
                     {
-                        Marshal.ReleaseComObject(speechSynthesizer);
+                        speechSynthesizer.Dispose();
                     }
                     catch { }
                     speechSynthesizer = null;
@@ -457,4 +447,3 @@ namespace FBWBA.Accessibility
             }
         }
     }
-}

@@ -1,14 +1,9 @@
-using System;
-using System.Collections.Generic;
-using System.Drawing;
-using System.Runtime.InteropServices;
-using System.Windows.Forms;
 using FBWBA.Accessibility;
 using FBWBA.SimConnect;
 
-namespace FBWBA.Forms
-{
-    public partial class PFDForm : Form
+namespace FBWBA.Forms;
+
+public partial class PFDForm : Form
     {
         // Windows API declarations for focus management
         [DllImport("user32.dll")]
@@ -17,13 +12,13 @@ namespace FBWBA.Forms
         [DllImport("user32.dll")]
         private static extern bool SetForegroundWindow(IntPtr hWnd);
 
-        private TextBox pfdTextBox;
-        private Button refreshButton;
-        private Button closeButton;
-        private Label titleLabel;
+        private TextBox pfdTextBox = null!;
+        private Button refreshButton = null!;
+        private Button closeButton = null!;
+        private Label titleLabel = null!;
 
         private readonly ScreenReaderAnnouncer _announcer;
-        private readonly SimConnectManager _simConnectManager;
+        private readonly SimConnectManager _simConnectManager = null!;
         private Dictionary<string, double> _variableValues = new Dictionary<string, double>();
         private readonly IntPtr previousWindow;
 
@@ -130,13 +125,13 @@ namespace FBWBA.Forms
             };
         }
 
-        private void RefreshButton_Click(object sender, EventArgs e)
+        private void RefreshButton_Click(object? sender, EventArgs e)
         {
             RefreshPFDData();
             _announcer?.Announce("PFD data refreshed");
         }
 
-        private void CloseButton_Click(object sender, EventArgs e)
+        private void CloseButton_Click(object? sender, EventArgs e)
         {
             Close();
         }
@@ -363,7 +358,7 @@ namespace FBWBA.Forms
             return base.ProcessDialogKey(keyData);
         }
 
-        private void OnSimVarUpdated(object sender, SimVarUpdateEventArgs e)
+        private void OnSimVarUpdated(object? sender, SimVarUpdateEventArgs e)
         {
             // Update our local variable values dictionary
             if (!string.IsNullOrEmpty(e.VarName))
@@ -396,5 +391,4 @@ namespace FBWBA.Forms
                 SetForegroundWindow(previousWindow);
             }
         }
-    }
 }

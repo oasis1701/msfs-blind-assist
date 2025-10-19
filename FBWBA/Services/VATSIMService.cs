@@ -1,12 +1,9 @@
-using System;
-using System.Collections.Generic;
 using System.Net.Http;
 using System.Text.RegularExpressions;
-using System.Threading.Tasks;
 
-namespace FBWBA.Services
-{
-    public static class VATSIMService
+namespace FBWBA.Services;
+
+public static class VATSIMService
     {
         private static readonly HttpClient httpClient = new HttpClient();
         private const string METAR_API_URL = "https://metar.vatsim.net/metar.php?id={0}";
@@ -17,7 +14,7 @@ namespace FBWBA.Services
 
         private class CacheEntry
         {
-            public string METAR { get; set; }
+            public string METAR { get; set; } = string.Empty;
             public DateTime Timestamp { get; set; }
         }
 
@@ -81,7 +78,7 @@ namespace FBWBA.Services
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[VATSIMService] Error fetching METAR for {icao}: {ex.Message}");
-                return null;
+                return string.Empty;
             }
         }
 
@@ -159,5 +156,4 @@ namespace FBWBA.Services
             public int Direction { get; set; }
             public int Speed { get; set; }
         }
-    }
 }

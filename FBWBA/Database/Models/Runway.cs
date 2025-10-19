@@ -1,9 +1,8 @@
-using System;
 
-namespace FBWBA.Database.Models
+namespace FBWBA.Database.Models;
+
+public class Runway
 {
-    public class Runway
-    {
         public int Id { get; set; }
         public string AirportICAO { get; set; }
         public string RunwayID { get; set; }
@@ -64,5 +63,4 @@ namespace FBWBA.Database.Models
 
             return baseInfo;
         }
-    }
 }
