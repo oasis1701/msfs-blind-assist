@@ -1907,8 +1907,7 @@ public partial class MainForm : Form
                     combo.Size = new Size(240, 25);
                     combo.Name = varKey;
                     combo.AccessibleName = varDef.DisplayName;
-                    combo.AccessibleDescription = "Press Alt+Down to open, arrows to navigate";
-                    
+
                     // Add items
                     combo.Items.Add("CRANK");
                     combo.Items.Add("NORM");
@@ -1924,35 +1923,7 @@ public partial class MainForm : Form
                     {
                         combo.SelectedIndex = 1; // Default to NORM
                     }
-                    
-                    // Auto-open dropdown on first arrow key press
-                    bool firstArrowPress = true;
-                    combo.PreviewKeyDown += (s2, e2) =>
-                    {
-                        ComboBox? cb = s2 as ComboBox;
-                        if ((e2.KeyCode == Keys.Up || e2.KeyCode == Keys.Down))
-                        {
-                            if (cb != null && !cb.DroppedDown && firstArrowPress)
-                            {
-                                firstArrowPress = false;
-                                cb.DroppedDown = true;
-                                e2.IsInputKey = true;
-                            }
-                        }
-                        else if (e2.KeyCode == Keys.Tab)
-                        {
-                            firstArrowPress = true;
-                        }
-                    };
-                    
-                    combo.Leave += (s2, e2) =>
-                    {
-                        firstArrowPress = true;
-                        ComboBox? cb = s2 as ComboBox;
-                        if (cb?.DroppedDown == true)
-                            cb.DroppedDown = false;
-                    };
-                    
+
                     // Handle selection change - set both engines
                     combo.SelectedIndexChanged += (s2, e2) =>
                     {
@@ -1980,7 +1951,6 @@ public partial class MainForm : Form
                     combo.Size = new Size(240, 25);
                     combo.Name = varKey;
                     combo.AccessibleName = varDef.DisplayName;
-                    combo.AccessibleDescription = "Press Alt+Down to open, arrows to navigate";
 
                     // Add items in order
                     var sortedValues = varDef.ValueDescriptions.OrderBy(x => x.Key).ToList();
@@ -2030,37 +2000,6 @@ public partial class MainForm : Form
                             System.Diagnostics.Debug.WriteLine($"[DEBUG] {varKey} not found in currentSimVarValues, defaulting to index 0");
                         }
                     }
-
-                    // Auto-open dropdown on first arrow key press for better NVDA support
-                    bool firstArrowPress = true;
-                    combo.PreviewKeyDown += (s2, e2) =>
-                    {
-                        ComboBox? cb = s2 as ComboBox;
-
-                        // If arrow key pressed and dropdown not open, open it
-                        if ((e2.KeyCode == Keys.Up || e2.KeyCode == Keys.Down))
-                        {
-                            if (cb != null && !cb.DroppedDown && firstArrowPress)
-                            {
-                                firstArrowPress = false;
-                                cb.DroppedDown = true;
-                                e2.IsInputKey = true; // Process this key
-                            }
-                        }
-                        else if (e2.KeyCode == Keys.Tab)
-                        {
-                            firstArrowPress = true; // Reset when leaving
-                        }
-                    };
-
-                    // Reset flag when focus leaves
-                    combo.Leave += (s2, e2) =>
-                    {
-                        firstArrowPress = true;
-                        ComboBox? cb = s2 as ComboBox;
-                        if (cb?.DroppedDown == true)
-                            cb.DroppedDown = false;
-                    };
 
                     // Handle selection change - send multiple events
                     // Capture varKey to avoid nullable reference warnings in closure
@@ -2230,8 +2169,7 @@ public partial class MainForm : Form
                     combo.Size = new Size(240, 25);
                     combo.Name = varKey;
                     combo.AccessibleName = varDef.DisplayName;
-                    combo.AccessibleDescription = $"Press Alt+Down to open, arrows to navigate";
-                    
+
                     // Add items in order
                     var sortedValues = varDef.ValueDescriptions.OrderBy(x => x.Key).ToList();
                     foreach (var kvp in sortedValues)
@@ -2258,37 +2196,6 @@ public partial class MainForm : Form
                         combo.SelectedIndex = 0; // Default to first item
                     }
 
-                    // Auto-open dropdown on first arrow key press for better NVDA support
-                    bool firstArrowPress = true;
-                    combo.PreviewKeyDown += (s2, e2) =>
-                    {
-                        ComboBox? cb = s2 as ComboBox;
-
-                        // If arrow key pressed and dropdown not open, open it
-                        if ((e2.KeyCode == Keys.Up || e2.KeyCode == Keys.Down))
-                        {
-                            if (cb != null && !cb.DroppedDown && firstArrowPress)
-                            {
-                                firstArrowPress = false;
-                                cb.DroppedDown = true;
-                                e2.IsInputKey = true; // Process this key
-                            }
-                        }
-                        else if (e2.KeyCode == Keys.Tab)
-                        {
-                            firstArrowPress = true; // Reset when leaving
-                        }
-                    };
-
-                    // Reset flag when focus leaves
-                    combo.Leave += (s2, e2) =>
-                    {
-                        firstArrowPress = true;
-                        ComboBox? cb = s2 as ComboBox;
-                        if (cb?.DroppedDown == true)
-                            cb.DroppedDown = false;
-                    };
-                    
                     // Handle selection change
                     combo.SelectedIndexChanged += (s2, e2) =>
                     {

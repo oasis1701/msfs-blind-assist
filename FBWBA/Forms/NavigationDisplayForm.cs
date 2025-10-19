@@ -163,8 +163,7 @@ public partial class NavigationDisplayForm : Form
                 Location = new Point(120, modeButtonY + 37),
                 Size = new Size(150, 25),
                 DropDownStyle = ComboBoxStyle.DropDownList,
-                AccessibleName = "ND Range",
-                AccessibleDescription = "Select navigation display range"
+                AccessibleName = "ND Range"
             };
             rangeComboBox.Items.AddRange(new object[] { "10 NM", "20 NM", "40 NM", "80 NM", "160 NM", "320 NM" });
             rangeComboBox.SelectedIndexChanged += RangeComboBox_SelectedIndexChanged;
