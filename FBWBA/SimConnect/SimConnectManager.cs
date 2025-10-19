@@ -910,6 +910,42 @@ public class SimConnectManager
                 });
                 break;
 
+            // Fuel and Payload Data Requests (340-363)
+            case (DATA_REQUESTS)340: // Fuel Weight Per Gallon
+            case (DATA_REQUESTS)341: // Fuel Left Aux
+            case (DATA_REQUESTS)342: // Fuel Left Main
+            case (DATA_REQUESTS)343: // Fuel Center
+            case (DATA_REQUESTS)344: // Fuel Right Main
+            case (DATA_REQUESTS)345: // Fuel Right Aux
+            case (DATA_REQUESTS)346: // Pax A
+            case (DATA_REQUESTS)347: // Pax B
+            case (DATA_REQUESTS)348: // Pax C
+            case (DATA_REQUESTS)349: // Pax D
+            case (DATA_REQUESTS)350: // Pax Weight
+            case (DATA_REQUESTS)351: // Bag Weight
+            case (DATA_REQUESTS)352: // Cargo Fwd
+            case (DATA_REQUESTS)353: // Cargo Aft Container
+            case (DATA_REQUESTS)354: // Cargo Aft Baggage
+            case (DATA_REQUESTS)355: // Cargo Aft Bulk
+            case (DATA_REQUESTS)356: // Empty Weight
+            case (DATA_REQUESTS)357: // ZFW
+            case (DATA_REQUESTS)358: // GW
+            case (DATA_REQUESTS)359: // CG MAC
+            case (DATA_REQUESTS)360: // GW CG
+            case (DATA_REQUESTS)361: // FMS Pax
+            case (DATA_REQUESTS)362: // FMS ZFW
+            case (DATA_REQUESTS)363: // FMS GW
+            case (DATA_REQUESTS)364: // FMS CG
+                SingleValue fuelPayloadData = (SingleValue)data.dwData[0];
+                string varName = GetFuelPayloadVarName((int)data.dwRequestID);
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = varName,
+                    Value = fuelPayloadData.value,
+                    Description = $"{varName}: {fuelPayloadData.value}"
+                });
+                break;
+
             case (DATA_REQUESTS)315: // Waypoint Info
                 WaypointInfo waypointData = (WaypointInfo)data.dwData[0];
 
@@ -2264,6 +2300,112 @@ public class SimConnectManager
                 System.Diagnostics.Debug.WriteLine($"Error requesting waypoint info: {ex.Message}");
             }
         }
+    }
+
+    public void RequestFuelAndPayloadData()
+    {
+        if (IsConnected && simConnect != null)
+        {
+            try
+            {
+                // Request fuel data
+                RequestSingleValue(340, "FUEL WEIGHT PER GALLON", "kilograms", "FUEL_WEIGHT_PER_GALLON");
+                RequestSingleValue(341, "FUEL TANK LEFT AUX QUANTITY", "gallons", "FUEL_LEFT_AUX");
+                RequestSingleValue(342, "FUEL TANK LEFT MAIN QUANTITY", "gallons", "FUEL_LEFT_MAIN");
+                RequestSingleValue(343, "FUEL TANK CENTER QUANTITY", "gallons", "FUEL_CENTER");
+                RequestSingleValue(344, "FUEL TANK RIGHT MAIN QUANTITY", "gallons", "FUEL_RIGHT_MAIN");
+                RequestSingleValue(345, "FUEL TANK RIGHT AUX QUANTITY", "gallons", "FUEL_RIGHT_AUX");
+
+                // Request passenger data
+                RequestSingleValue(346, "L:A32NX_PAX_A", "number", "PAX_A");
+                RequestSingleValue(347, "L:A32NX_PAX_B", "number", "PAX_B");
+                RequestSingleValue(348, "L:A32NX_PAX_C", "number", "PAX_C");
+                RequestSingleValue(349, "L:A32NX_PAX_D", "number", "PAX_D");
+                RequestSingleValue(350, "L:A32NX_WB_PER_PAX_WEIGHT", "kilograms", "PAX_WEIGHT");
+                RequestSingleValue(351, "L:A32NX_WB_PER_BAG_WEIGHT", "kilograms", "BAG_WEIGHT");
+
+                // Request cargo data
+                RequestSingleValue(352, "PAYLOAD STATION WEIGHT:5", "kilograms", "CARGO_FWD");
+                RequestSingleValue(353, "PAYLOAD STATION WEIGHT:6", "kilograms", "CARGO_AFT_CONT");
+                RequestSingleValue(354, "PAYLOAD STATION WEIGHT:7", "kilograms", "CARGO_AFT_BAG");
+                RequestSingleValue(355, "PAYLOAD STATION WEIGHT:8", "kilograms", "CARGO_AFT_BULK");
+
+                // Request weights
+                RequestSingleValue(356, "EMPTY WEIGHT", "kilograms", "EMPTY_WEIGHT");
+                RequestSingleValue(357, "L:A32NX_AIRFRAME_ZFW", "number", "ZFW");
+                RequestSingleValue(358, "L:A32NX_AIRFRAME_GW", "number", "GW");
+                RequestSingleValue(359, "L:A32NX_AIRFRAME_ZFW_CG_PERCENT_MAC", "number", "ZFW_CG_MAC");
+                RequestSingleValue(360, "L:A32NX_AIRFRAME_GW_CG_PERCENT_MAC", "number", "GW_CG_MAC");
+
+                // Request FMS values (entered by pilot in MCDU)
+                RequestSingleValue(361, "L:A32NX_FMS_PAX_NUMBER", "number", "FMS_PAX");
+                RequestSingleValue(362, "L:A32NX_FM1_ZERO_FUEL_WEIGHT", "number", "FMS_ZFW");
+                RequestSingleValue(363, "L:A32NX_FM_GROSS_WEIGHT", "number", "FMS_GW");
+                RequestSingleValue(364, "L:A32NX_FM1_ZERO_FUEL_WEIGHT_CG", "number", "FMS_CG");
+
+                System.Diagnostics.Debug.WriteLine("[SimConnectManager] Fuel and payload data requested");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error requesting fuel and payload data: {ex.Message}");
+            }
+        }
+    }
+
+    private void RequestSingleValue(int id, string simVarName, string units, string varName)
+    {
+        if (IsConnected && simConnect != null)
+        {
+            try
+            {
+                var tempDefId = (DATA_DEFINITIONS)id;
+                simConnect.ClearDataDefinition(tempDefId);
+                simConnect.AddToDataDefinition(tempDefId,
+                    simVarName, units,
+                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+                simConnect.RegisterDataDefineStruct<SingleValue>(tempDefId);
+                simConnect.RequestDataOnSimObject((DATA_REQUESTS)id,
+                    tempDefId, SIMCONNECT_OBJECT_ID_USER,
+                    SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error requesting {varName}: {ex.Message}");
+            }
+        }
+    }
+
+    private string GetFuelPayloadVarName(int requestId)
+    {
+        return requestId switch
+        {
+            340 => "FUEL_WEIGHT_PER_GALLON",
+            341 => "FUEL_LEFT_AUX",
+            342 => "FUEL_LEFT_MAIN",
+            343 => "FUEL_CENTER",
+            344 => "FUEL_RIGHT_MAIN",
+            345 => "FUEL_RIGHT_AUX",
+            346 => "PAX_A",
+            347 => "PAX_B",
+            348 => "PAX_C",
+            349 => "PAX_D",
+            350 => "PAX_WEIGHT",
+            351 => "BAG_WEIGHT",
+            352 => "CARGO_FWD",
+            353 => "CARGO_AFT_CONT",
+            354 => "CARGO_AFT_BAG",
+            355 => "CARGO_AFT_BULK",
+            356 => "EMPTY_WEIGHT",
+            357 => "ZFW",
+            358 => "GW",
+            359 => "ZFW_CG_MAC",
+            360 => "GW_CG_MAC",
+            361 => "FMS_PAX",
+            362 => "FMS_ZFW",
+            363 => "FMS_GW",
+            364 => "FMS_CG",
+            _ => "UNKNOWN"
+        };
     }
 
     public void RequestLVarValue(string varName)

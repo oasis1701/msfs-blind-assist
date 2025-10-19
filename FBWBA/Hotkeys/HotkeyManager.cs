@@ -86,6 +86,7 @@ public class HotkeyManager : IDisposable
         private const int HOTKEY_TRACK_SLOT_3 = 9064;
         private const int HOTKEY_TRACK_SLOT_4 = 9065;
         private const int HOTKEY_TRACK_SLOT_5 = 9066;
+        private const int HOTKEY_FUEL_PAYLOAD = 9068;
 
         private IntPtr windowHandle;
         private bool outputHotkeyModeActive = false;
@@ -265,6 +266,9 @@ public class HotkeyManager : IDisposable
                         case HOTKEY_TRACK_SLOT_5:
                             TriggerHotkey(HotkeyAction.ReadTrackSlot5);
                             break;
+                        case HOTKEY_FUEL_PAYLOAD:
+                            TriggerHotkey(HotkeyAction.ShowFuelPayloadWindow);
+                            break;
                     }
                     DeactivateOutputHotkeyMode();
                     return true;
@@ -386,9 +390,10 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_TRACK_SLOT_3, MOD_NONE, 0x33);  // 3 (Track Slot 3)
             RegisterHotKey(windowHandle, HOTKEY_TRACK_SLOT_4, MOD_NONE, 0x34);  // 4 (Track Slot 4)
             RegisterHotKey(windowHandle, HOTKEY_TRACK_SLOT_5, MOD_NONE, 0x35);  // 5 (Track Slot 5)
+            RegisterHotKey(windowHandle, HOTKEY_FUEL_PAYLOAD, MOD_SHIFT, 0x46); // Shift+F (Fuel & Payload)
 
             // Auto-timeout disabled - hotkey mode stays active until used or escape pressed
-            
+
             OutputHotkeyModeChanged?.Invoke(this, true);
         }
 
@@ -442,6 +447,7 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_TRACK_SLOT_3);
             UnregisterHotKey(windowHandle, HOTKEY_TRACK_SLOT_4);
             UnregisterHotKey(windowHandle, HOTKEY_TRACK_SLOT_5);
+            UnregisterHotKey(windowHandle, HOTKEY_FUEL_PAYLOAD);
 
             OutputHotkeyModeChanged?.Invoke(this, false);
         }
@@ -636,5 +642,6 @@ public class HotkeyManager : IDisposable
         ReadTrackSlot2,
         ReadTrackSlot3,
         ReadTrackSlot4,
-        ReadTrackSlot5
+        ReadTrackSlot5,
+        ShowFuelPayloadWindow
     }

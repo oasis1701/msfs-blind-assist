@@ -748,6 +748,9 @@ public partial class MainForm : Form
             case HotkeyAction.ReadTrackSlot5:
                 ReadTrackedWaypoint(5);
                 break;
+            case HotkeyAction.ShowFuelPayloadWindow:
+                ShowFuelPayloadDialog();
+                break;
             case HotkeyAction.ToggleVisualApproach:
                 ToggleVisualApproachMonitoring();
                 break;
@@ -1304,6 +1307,15 @@ public partial class MainForm : Form
         hotkeyManager.ExitOutputHotkeyMode();
 
         var dialog = new ECAMDisplayForm(announcer, simConnectManager);
+        dialog.Show();
+    }
+
+    private void ShowFuelPayloadDialog()
+    {
+        // Ensure output hotkey mode is deactivated before showing window
+        hotkeyManager.ExitOutputHotkeyMode();
+
+        var dialog = new FuelPayloadDisplayForm(announcer, simConnectManager);
         dialog.Show();
     }
 
