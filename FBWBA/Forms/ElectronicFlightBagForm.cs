@@ -21,7 +21,7 @@ public partial class ElectronicFlightBagForm : Form
     private SimConnectManager.AircraftPosition? _lastKnownPosition;
 
     // Navigation tab controls
-    private TabControl mainTabControl = null!;
+    private AccessibleTabControl mainTabControl = null!;
     private NavigableListView navigationListView = null!;
     private ContextMenuStrip waypointContextMenu = null!;
     private Label statusLabel = null!;
@@ -105,7 +105,7 @@ public partial class ElectronicFlightBagForm : Form
         MinimumSize = new Size(800, 500);
 
         // Main tab control
-        mainTabControl = new TabControl
+        mainTabControl = new AccessibleTabControl
         {
             Dock = DockStyle.Fill,
             AccessibleName = ""
