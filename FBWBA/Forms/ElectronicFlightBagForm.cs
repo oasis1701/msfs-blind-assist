@@ -1,5 +1,6 @@
 using Microsoft.Data.Sqlite;
 using FBWBA.Accessibility;
+using FBWBA.Controls;
 using FBWBA.Database;
 using FBWBA.Database.Models;
 using FBWBA.Navigation;
@@ -21,7 +22,7 @@ public partial class ElectronicFlightBagForm : Form
 
     // Navigation tab controls
     private TabControl mainTabControl = null!;
-    private DataGridView navigationGridView = null!;
+    private NavigableListView navigationListView = null!;
     private ContextMenuStrip waypointContextMenu = null!;
     private Label statusLabel = null!;
     private Button loadSimbriefButton = null!;
@@ -106,9 +107,7 @@ public partial class ElectronicFlightBagForm : Form
         // Main tab control
         mainTabControl = new TabControl
         {
-            Dock = DockStyle.Fill,
-            AccessibleName = "Flight Bag Tabs",
-            AccessibleDescription = "Navigate between flight planning tabs"
+            Dock = DockStyle.Fill
         };
 
         // Create tabs
@@ -137,9 +136,9 @@ public partial class ElectronicFlightBagForm : Form
 
     private void CreateNavigationTab()
     {
-        var navTab = new TabPage("Navigation")
+        var navTab = new TabPage("Route Viewer")
         {
-            AccessibleName = "Navigation",
+            AccessibleName = "Route Viewer",
             AccessibleDescription = "Flight plan waypoints with distance and bearing"
         };
 
@@ -175,50 +174,22 @@ public partial class ElectronicFlightBagForm : Form
         buttonPanel.Controls.Add(loadSimbriefButton);
         buttonPanel.Controls.Add(refreshPositionButton);
 
-        // Navigation grid
-        navigationGridView = new DataGridView
+        // Navigation list view with grid-like navigation
+        navigationListView = new NavigableListView(_announcer)
         {
             Dock = DockStyle.Fill,
-            AllowUserToAddRows = false,
-            AllowUserToDeleteRows = false,
-            ReadOnly = true,
-            SelectionMode = DataGridViewSelectionMode.FullRowSelect,
+            View = View.Details,
+            FullRowSelect = true,
+            GridLines = true,
             MultiSelect = false,
-            AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
-            RowHeadersVisible = false,
-            EditMode = DataGridViewEditMode.EditProgrammatically,  // Prevents NVDA COM accessibility crash
+            HideSelection = false,
             AccessibleName = "Waypoint Navigation List",
-            AccessibleDescription = "Flight plan waypoints with distance, bearing, and navigation data. Press F5 to refresh position."
+            AccessibleDescription = "Flight plan waypoints with distance, bearing, and navigation data. Use arrow keys to navigate. Press F5 to refresh position."
         };
 
-        // Define columns with NotSortable to prevent "not sortable" announcements
-        navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Section", HeaderText = "Sect", Width = 40, FillWeight = 3, SortMode = DataGridViewColumnSortMode.NotSortable });
-        navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Waypoint", HeaderText = "Waypoint", Width = 80, FillWeight = 8, SortMode = DataGridViewColumnSortMode.NotSortable });
-        navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Region", HeaderText = "Region", Width = 60, FillWeight = 5, SortMode = DataGridViewColumnSortMode.NotSortable });
-        navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Distance", HeaderText = "Dist (NM)", Width = 70, FillWeight = 6, SortMode = DataGridViewColumnSortMode.NotSortable });
-        navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Bearing", HeaderText = "Brg (°)", Width = 70, FillWeight = 6, SortMode = DataGridViewColumnSortMode.NotSortable });
-        navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Airway", HeaderText = "Airway", Width = 70, FillWeight = 6, SortMode = DataGridViewColumnSortMode.NotSortable });
-        navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Type", HeaderText = "Type", Width = 60, FillWeight = 5, SortMode = DataGridViewColumnSortMode.NotSortable });
-        navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "FixType", HeaderText = "Fix Type", Width = 60, FillWeight = 5, SortMode = DataGridViewColumnSortMode.NotSortable });
-        navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "LegDist", HeaderText = "Leg Dist", Width = 60, FillWeight = 5, SortMode = DataGridViewColumnSortMode.NotSortable });
-        navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Course", HeaderText = "Course", Width = 60, FillWeight = 5, SortMode = DataGridViewColumnSortMode.NotSortable });
-        navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Notes", HeaderText = "Notes", Width = 100, FillWeight = 8, SortMode = DataGridViewColumnSortMode.NotSortable });
-        navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Altitude", HeaderText = "Altitude", Width = 100, FillWeight = 8, SortMode = DataGridViewColumnSortMode.NotSortable });
-        navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Speed", HeaderText = "Speed", Width = 70, FillWeight = 6, SortMode = DataGridViewColumnSortMode.NotSortable });
-        navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "SpeedType", HeaderText = "Spd Type", Width = 70, FillWeight = 6, SortMode = DataGridViewColumnSortMode.NotSortable });
-        navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "ArincType", HeaderText = "ARINC", Width = 60, FillWeight = 5, SortMode = DataGridViewColumnSortMode.NotSortable });
-        navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Missed", HeaderText = "Missed", Width = 60, FillWeight = 5, SortMode = DataGridViewColumnSortMode.NotSortable });
-        navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "TrueCourse", HeaderText = "T/M", Width = 40, FillWeight = 3, SortMode = DataGridViewColumnSortMode.NotSortable });
-        navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "VertAngle", HeaderText = "Vert Angle", Width = 70, FillWeight = 6, SortMode = DataGridViewColumnSortMode.NotSortable });
-        navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Time", HeaderText = "Time", Width = 50, FillWeight = 4, SortMode = DataGridViewColumnSortMode.NotSortable });
-        navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "TurnDir", HeaderText = "Turn", Width = 50, FillWeight = 4, SortMode = DataGridViewColumnSortMode.NotSortable });
-        navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "RNP", HeaderText = "RNP", Width = 50, FillWeight = 4, SortMode = DataGridViewColumnSortMode.NotSortable });
-        navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Theta", HeaderText = "Theta", Width = 50, FillWeight = 4, SortMode = DataGridViewColumnSortMode.NotSortable });
-        navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Rho", HeaderText = "Rho", Width = 50, FillWeight = 4, SortMode = DataGridViewColumnSortMode.NotSortable });
-        navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "Flyover", HeaderText = "Flyover", Width = 60, FillWeight = 5, SortMode = DataGridViewColumnSortMode.NotSortable });
-        navigationGridView.Columns.Add(new DataGridViewTextBoxColumn { Name = "AltFix", HeaderText = "Alt Fix", Width = 60, FillWeight = 5, SortMode = DataGridViewColumnSortMode.NotSortable });
+        // Columns will be created dynamically in RefreshNavigationGrid based on available data
 
-        panel.Controls.Add(navigationGridView);
+        panel.Controls.Add(navigationListView);
         panel.Controls.Add(buttonPanel);
 
         navTab.Controls.Add(panel);
@@ -662,17 +633,17 @@ public partial class ElectronicFlightBagForm : Form
             waypointContextMenu.Items.Add(menuItem);
         }
 
-        // Attach context menu to navigation grid
-        navigationGridView.ContextMenuStrip = waypointContextMenu;
+        // Attach context menu to navigation list
+        navigationListView.ContextMenuStrip = waypointContextMenu;
 
         // Handle keyboard events for application key (VK_APPS)
-        navigationGridView.KeyDown += NavigationGridView_KeyDown;
+        navigationListView.KeyDown += NavigationListView_KeyDown;
 
         // Handle mouse events for right-click
-        navigationGridView.MouseDown += NavigationGridView_MouseDown;
+        navigationListView.MouseDown += NavigationListView_MouseDown;
     }
 
-    private void NavigationGridView_KeyDown(object? sender, KeyEventArgs e)
+    private void NavigationListView_KeyDown(object? sender, KeyEventArgs e)
     {
         // Handle application key (context menu key) - typically right of spacebar
         if (e.KeyCode == Keys.Apps)
@@ -682,30 +653,30 @@ public partial class ElectronicFlightBagForm : Form
         }
     }
 
-    private void NavigationGridView_MouseDown(object? sender, MouseEventArgs e)
+    private void NavigationListView_MouseDown(object? sender, MouseEventArgs e)
     {
         // Handle right-click
         if (e.Button == MouseButtons.Right)
         {
-            // Get row index at mouse position
-            var hitTest = navigationGridView.HitTest(e.X, e.Y);
-            if (hitTest.RowIndex >= 0)
+            // Get item at mouse position
+            var hitTest = navigationListView.HitTest(e.Location);
+            if (hitTest.Item != null)
             {
-                // Select the row that was right-clicked
-                navigationGridView.ClearSelection();
-                navigationGridView.Rows[hitTest.RowIndex].Selected = true;
-                navigationGridView.CurrentCell = navigationGridView.Rows[hitTest.RowIndex].Cells[0];
+                // Select the item that was right-clicked
+                navigationListView.SelectedItems.Clear();
+                hitTest.Item.Selected = true;
+                hitTest.Item.Focused = true;
             }
         }
     }
 
     private void ShowContextMenuForSelectedRow()
     {
-        if (navigationGridView.CurrentRow != null && navigationGridView.CurrentRow.Index >= 0)
+        if (navigationListView.SelectedItems.Count > 0)
         {
-            // Get the cell position to show the menu
-            var rect = navigationGridView.GetCellDisplayRectangle(0, navigationGridView.CurrentRow.Index, true);
-            waypointContextMenu.Show(navigationGridView, rect.Left, rect.Top + rect.Height);
+            var selectedItem = navigationListView.SelectedItems[0];
+            var rect = selectedItem.Bounds;
+            waypointContextMenu.Show(navigationListView, rect.Left, rect.Top + rect.Height);
         }
     }
 
@@ -716,7 +687,7 @@ public partial class ElectronicFlightBagForm : Form
 
         int slotNumber = (int)menuItem.Tag;
 
-        if (navigationGridView.CurrentRow == null || navigationGridView.CurrentRow.Index < 0)
+        if (navigationListView.SelectedItems.Count == 0)
         {
             _announcer.Announce("No waypoint selected");
             return;
@@ -724,7 +695,7 @@ public partial class ElectronicFlightBagForm : Form
 
         // Get the selected waypoint from the flight plan
         var waypoints = _flightPlanManager.CurrentFlightPlan.GetAllWaypoints();
-        int selectedIndex = navigationGridView.CurrentRow.Index;
+        int selectedIndex = navigationListView.SelectedItems[0].Index;
 
         if (selectedIndex >= waypoints.Count)
         {
@@ -804,119 +775,214 @@ public partial class ElectronicFlightBagForm : Form
 
     private void RefreshNavigationGrid()
     {
-        // Safety check: Ensure columns are defined before attempting to add rows
-        if (navigationGridView.Columns.Count == 0)
-        {
-            System.Diagnostics.Debug.WriteLine("WARNING: NavigationGridView has no columns. Skipping refresh.");
-            return;
-        }
-
-        // Save current cell position (row and column) before clearing
+        // Save current selection before clearing
         int previousRowIndex = -1;
         int previousColumnIndex = 0;
-        if (navigationGridView.CurrentCell != null)
+        if (navigationListView.SelectedItems.Count > 0)
         {
-            previousRowIndex = navigationGridView.CurrentCell.RowIndex;
-            previousColumnIndex = navigationGridView.CurrentCell.ColumnIndex;
+            previousRowIndex = navigationListView.SelectedItems[0].Index;
+            previousColumnIndex = navigationListView.CurrentColumn;
         }
 
-        navigationGridView.Rows.Clear();
+        // Clear existing data
+        navigationListView.Items.Clear();
+        navigationListView.Columns.Clear();
 
         var waypoints = _flightPlanManager.CurrentFlightPlan.GetAllWaypoints();
 
-        foreach (var waypoint in waypoints)
+        // Determine which columns have data and create them dynamically
+        var columnDefinitions = DetermineVisibleColumns(waypoints);
+        foreach (var columnDef in columnDefinitions)
         {
-            string sectionLabel = GetSectionLabel(waypoint.Section);
-
-            // Distance and Bearing (calculated, not from database)
-            string distanceText = waypoint.DistanceFromAircraft.HasValue ?
-                $"{waypoint.DistanceFromAircraft.Value:F1}" : "-";
-            string bearingText = waypoint.BearingFromAircraft.HasValue ?
-                $"{waypoint.BearingFromAircraft.Value:000}" : "-";
-
-            // Raw database values
-            string courseText = waypoint.Course.HasValue ? $"{waypoint.Course.Value:F0}" : "-";
-            string trueCourseText = waypoint.IsTrueCourse ? "T" : "M";
-            string legDistText = waypoint.Distance.HasValue ? $"{waypoint.Distance.Value:F1}" : "-";
-            string altitudeText = waypoint.AltitudeRestriction ?? "-";
-            string speedText = waypoint.SpeedLimit.HasValue ? $"{waypoint.SpeedLimit}" : "-";
-            string speedTypeText = waypoint.SpeedLimitType ?? "-";
-            string vertAngleText = waypoint.VerticalAngle.HasValue ? $"{waypoint.VerticalAngle.Value:F0}" : "-";
-            string rnpText = waypoint.RNP.HasValue ? $"{waypoint.RNP.Value:F2}" : "-";
-            string timeText = waypoint.Time.HasValue ? $"{waypoint.Time.Value:F1}" : "-";
-            string thetaText = waypoint.Theta.HasValue ? $"{waypoint.Theta.Value:F1}" : "-";
-            string rhoText = waypoint.Rho.HasValue ? $"{waypoint.Rho.Value:F1}" : "-";
-            string flyoverText = waypoint.IsFlyover ? "Y" : "-";
-            string turnDirText = waypoint.TurnDirection ?? "-";
-            string missedText = waypoint.IsMissedApproach ? "MISS" : "-";
-            string fixTypeText = waypoint.FixType ?? "-";
-            string altFixText = waypoint.RecommendedFixIdent ?? "-";
-
-            navigationGridView.Rows.Add(
-                sectionLabel,
-                waypoint.Ident ?? "-",
-                waypoint.Region ?? "-",
-                distanceText,
-                bearingText,
-                waypoint.InboundAirway ?? "-",
-                waypoint.Type ?? "-",
-                fixTypeText,
-                legDistText,
-                courseText,
-                waypoint.Notes ?? "-",
-                altitudeText,
-                speedText,
-                speedTypeText,
-                waypoint.ArincDescCode ?? "-",
-                missedText,
-                trueCourseText,
-                vertAngleText,
-                timeText,
-                turnDirText,
-                rnpText,
-                thetaText,
-                rhoText,
-                flyoverText,
-                altFixText
-            );
+            navigationListView.Columns.Add(columnDef.Name, columnDef.HeaderText, columnDef.Width);
         }
 
-        // Restore current cell position (this maintains keyboard focus)
-        if (previousRowIndex >= 0 && previousRowIndex < navigationGridView.Rows.Count &&
-            previousColumnIndex >= 0 && previousColumnIndex < navigationGridView.Columns.Count)
+        // Populate rows
+        navigationListView.BeginUpdate();
+        try
         {
-            // Set CurrentCell - this is the key to maintaining keyboard focus position
-            navigationGridView.CurrentCell = navigationGridView.Rows[previousRowIndex].Cells[previousColumnIndex];
-
-            // Ensure the row is visible in the viewport
-            navigationGridView.FirstDisplayedScrollingRowIndex = previousRowIndex;
-
-            // Restore keyboard focus to the grid after all UI updates complete
-            if (IsHandleCreated)
+            foreach (var waypoint in waypoints)
             {
-                BeginInvoke(new Action(() => navigationGridView.Focus()));
-            }
-            else
-            {
-                navigationGridView.Focus();
+                var item = new ListViewItem(GetColumnValue(waypoint, columnDefinitions[0].PropertyName));
+
+                // Add subitems for remaining columns
+                for (int i = 1; i < columnDefinitions.Count; i++)
+                {
+                    item.SubItems.Add(GetColumnValue(waypoint, columnDefinitions[i].PropertyName));
+                }
+
+                navigationListView.Items.Add(item);
             }
         }
-        else if (navigationGridView.Rows.Count > 0)
+        finally
         {
-            // If no previous position or invalid index, set first cell as current
-            navigationGridView.CurrentCell = navigationGridView.Rows[0].Cells[0];
-            if (IsHandleCreated)
+            navigationListView.EndUpdate();
+        }
+
+        // Restore selection and position
+        if (previousRowIndex >= 0 && previousRowIndex < navigationListView.Items.Count)
+        {
+            navigationListView.Items[previousRowIndex].Selected = true;
+            navigationListView.Items[previousRowIndex].Focused = true;
+            navigationListView.Items[previousRowIndex].EnsureVisible();
+
+            // Restore column position if valid
+            if (previousColumnIndex >= 0 && previousColumnIndex < navigationListView.Columns.Count)
             {
-                BeginInvoke(new Action(() => navigationGridView.Focus()));
+                navigationListView.SelectCell(previousRowIndex, previousColumnIndex);
             }
-            else
-            {
-                navigationGridView.Focus();
-            }
+        }
+        else if (navigationListView.Items.Count > 0)
+        {
+            // Select first item if no previous selection
+            navigationListView.Items[0].Selected = true;
+            navigationListView.Items[0].Focused = true;
+
+            // Only reset column position when there's no previous position to restore
+            navigationListView.ResetColumnPosition();
+        }
+
+        // Focus the list view
+        if (IsHandleCreated)
+        {
+            BeginInvoke(new Action(() => navigationListView.Focus()));
+        }
+        else
+        {
+            navigationListView.Focus();
         }
 
         UpdateStatus($"Flight plan: {waypoints.Count} waypoints");
     }
+
+    /// <summary>
+    /// Determines which columns should be visible based on available data in waypoints
+    /// Uses C# 13 collection expressions for modern syntax
+    /// </summary>
+    private List<ColumnDefinition> DetermineVisibleColumns(List<WaypointFix> waypoints)
+    {
+        // Core columns that are always visible
+        List<ColumnDefinition> columns =
+        [
+            new("Waypoint", "Waypoint", "Waypoint", 100),
+            new("Region", "Region", "Region", 80)
+        ];
+
+        // Distance and Bearing - show if we have aircraft position
+        if (waypoints.Any(w => w.DistanceFromAircraft.HasValue))
+        {
+            columns.Add(new("Distance", "Dist (NM)", "Distance", 90));
+        }
+
+        if (waypoints.Any(w => w.BearingFromAircraft.HasValue))
+        {
+            columns.Add(new("Bearing", "Brg (°)", "Bearing", 80));
+        }
+
+        // Optional columns - only add if data exists
+        if (waypoints.Any(w => !string.IsNullOrEmpty(w.InboundAirway)))
+            columns.Add(new("Airway", "Airway", "Airway", 80));
+
+        if (waypoints.Any(w => !string.IsNullOrEmpty(w.Type)))
+            columns.Add(new("Type", "Type", "Type", 80));
+
+        if (waypoints.Any(w => !string.IsNullOrEmpty(w.FixType)))
+            columns.Add(new("FixType", "Fix Type", "FixType", 80));
+
+        if (waypoints.Any(w => w.Distance.HasValue))
+            columns.Add(new("LegDist", "Leg Dist", "LegDist", 80));
+
+        if (waypoints.Any(w => w.Course.HasValue))
+            columns.Add(new("Course", "Course", "Course", 70));
+
+        if (waypoints.Any(w => !string.IsNullOrEmpty(w.Notes)))
+            columns.Add(new("Notes", "Notes", "Notes", 150));
+
+        if (waypoints.Any(w => !string.IsNullOrEmpty(w.AltitudeRestriction)))
+            columns.Add(new("Altitude", "Altitude", "Altitude", 120));
+
+        if (waypoints.Any(w => w.SpeedLimit.HasValue))
+            columns.Add(new("Speed", "Speed", "Speed", 70));
+
+        if (waypoints.Any(w => !string.IsNullOrEmpty(w.SpeedLimitType)))
+            columns.Add(new("SpeedType", "Spd Type", "SpeedType", 80));
+
+        if (waypoints.Any(w => !string.IsNullOrEmpty(w.ArincDescCode)))
+            columns.Add(new("ArincType", "ARINC", "ArincType", 70));
+
+        if (waypoints.Any(w => w.IsMissedApproach))
+            columns.Add(new("Missed", "Missed", "Missed", 70));
+
+        if (waypoints.Any(w => w.Course.HasValue))
+            columns.Add(new("TrueCourse", "T/M", "TrueCourse", 50));
+
+        if (waypoints.Any(w => w.VerticalAngle.HasValue))
+            columns.Add(new("VertAngle", "Vert Angle", "VertAngle", 90));
+
+        if (waypoints.Any(w => w.Time.HasValue))
+            columns.Add(new("Time", "Time", "Time", 60));
+
+        if (waypoints.Any(w => !string.IsNullOrEmpty(w.TurnDirection)))
+            columns.Add(new("TurnDir", "Turn", "TurnDir", 60));
+
+        if (waypoints.Any(w => w.RNP.HasValue))
+            columns.Add(new("RNP", "RNP", "RNP", 60));
+
+        if (waypoints.Any(w => w.Theta.HasValue))
+            columns.Add(new("Theta", "Theta", "Theta", 60));
+
+        if (waypoints.Any(w => w.Rho.HasValue))
+            columns.Add(new("Rho", "Rho", "Rho", 60));
+
+        if (waypoints.Any(w => w.IsFlyover))
+            columns.Add(new("Flyover", "Flyover", "Flyover", 70));
+
+        if (waypoints.Any(w => !string.IsNullOrEmpty(w.RecommendedFixIdent)))
+            columns.Add(new("AltFix", "Alt Fix", "AltFix", 80));
+
+        return columns;
+    }
+
+    /// <summary>
+    /// Gets the display value for a specific column property from a waypoint
+    /// </summary>
+    private string GetColumnValue(WaypointFix waypoint, string propertyName)
+    {
+        return propertyName switch
+        {
+            "Section" => GetSectionLabel(waypoint.Section),
+            "Waypoint" => waypoint.Ident ?? "-",
+            "Region" => waypoint.Region ?? "-",
+            "Distance" => waypoint.DistanceFromAircraft.HasValue ? $"{waypoint.DistanceFromAircraft.Value:F1}" : "-",
+            "Bearing" => waypoint.BearingFromAircraft.HasValue ? $"{waypoint.BearingFromAircraft.Value:000}" : "-",
+            "Airway" => waypoint.InboundAirway ?? "-",
+            "Type" => waypoint.Type ?? "-",
+            "FixType" => waypoint.FixType ?? "-",
+            "LegDist" => waypoint.Distance.HasValue ? $"{waypoint.Distance.Value:F1}" : "-",
+            "Course" => waypoint.Course.HasValue ? $"{waypoint.Course.Value:F0}" : "-",
+            "Notes" => waypoint.Notes ?? "-",
+            "Altitude" => waypoint.AltitudeRestriction ?? "-",
+            "Speed" => waypoint.SpeedLimit.HasValue ? $"{waypoint.SpeedLimit}" : "-",
+            "SpeedType" => waypoint.SpeedLimitType ?? "-",
+            "ArincType" => waypoint.ArincDescCode ?? "-",
+            "Missed" => waypoint.IsMissedApproach ? "MISS" : "-",
+            "TrueCourse" => waypoint.IsTrueCourse ? "T" : "M",
+            "VertAngle" => waypoint.VerticalAngle.HasValue ? $"{waypoint.VerticalAngle.Value:F0}" : "-",
+            "Time" => waypoint.Time.HasValue ? $"{waypoint.Time.Value:F1}" : "-",
+            "TurnDir" => waypoint.TurnDirection ?? "-",
+            "RNP" => waypoint.RNP.HasValue ? $"{waypoint.RNP.Value:F2}" : "-",
+            "Theta" => waypoint.Theta.HasValue ? $"{waypoint.Theta.Value:F1}" : "-",
+            "Rho" => waypoint.Rho.HasValue ? $"{waypoint.Rho.Value:F1}" : "-",
+            "Flyover" => waypoint.IsFlyover ? "Y" : "-",
+            "AltFix" => waypoint.RecommendedFixIdent ?? "-",
+            _ => "-"
+        };
+    }
+
+    /// <summary>
+    /// Column definition for dynamic column creation
+    /// </summary>
+    private record ColumnDefinition(string Name, string HeaderText, string PropertyName, int Width);
 
     private string GetSectionLabel(FlightPlanSection section)
     {
