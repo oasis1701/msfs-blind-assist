@@ -107,7 +107,8 @@ public partial class ElectronicFlightBagForm : Form
         // Main tab control
         mainTabControl = new TabControl
         {
-            Dock = DockStyle.Fill
+            Dock = DockStyle.Fill,
+            AccessibleName = ""
         };
 
         // Create tabs
@@ -1152,9 +1153,18 @@ public partial class ElectronicFlightBagForm : Form
             var transitions = _flightPlanManager.GetTransitions(approachId);
             sidTransitionsListBox.Items.Clear();
 
+            // Add "None" option as first item
+            sidTransitionsListBox.Items.Add(new TransitionItem { Name = "None", Id = -1 });
+
             foreach (var transition in transitions)
             {
                 sidTransitionsListBox.Items.Add(new TransitionItem { Name = transition.name, Id = transition.id });
+            }
+
+            // Auto-select "None" by default
+            if (sidTransitionsListBox.Items.Count > 0)
+            {
+                sidTransitionsListBox.SelectedIndex = 0;
             }
         }
         catch
@@ -1178,8 +1188,11 @@ public partial class ElectronicFlightBagForm : Form
                 return;
             }
 
+            // Check if "None" transition is selected (Id = -1), pass null if so
+            int? transitionId = (selectedTransition != null && selectedTransition.Id != -1) ? selectedTransition.Id : null;
+
             string sidName = $"{selectedSID.Name} RWY {selectedRunway}";
-            _flightPlanManager.LoadSID(selectedSID.ApproachId, selectedTransition?.Id, sidName);
+            _flightPlanManager.LoadSID(selectedSID.ApproachId, transitionId, sidName);
             _announcer.Announce($"Loaded {sidName}");
         }
         catch (Exception ex)
@@ -1282,9 +1295,18 @@ public partial class ElectronicFlightBagForm : Form
             var transitions = _flightPlanManager.GetTransitions(approachId);
             starTransitionsListBox.Items.Clear();
 
+            // Add "None" option as first item
+            starTransitionsListBox.Items.Add(new TransitionItem { Name = "None", Id = -1 });
+
             foreach (var transition in transitions)
             {
                 starTransitionsListBox.Items.Add(new TransitionItem { Name = transition.name, Id = transition.id });
+            }
+
+            // Auto-select "None" by default
+            if (starTransitionsListBox.Items.Count > 0)
+            {
+                starTransitionsListBox.SelectedIndex = 0;
             }
         }
         catch
@@ -1308,8 +1330,11 @@ public partial class ElectronicFlightBagForm : Form
                 return;
             }
 
+            // Check if "None" transition is selected (Id = -1), pass null if so
+            int? transitionId = (selectedTransition != null && selectedTransition.Id != -1) ? selectedTransition.Id : null;
+
             string starName = $"{selectedSTAR.Name} RWY {selectedRunway}";
-            _flightPlanManager.LoadSTAR(selectedSTAR.ApproachId, selectedTransition?.Id, starName);
+            _flightPlanManager.LoadSTAR(selectedSTAR.ApproachId, transitionId, starName);
             _announcer.Announce($"Loaded {starName}");
         }
         catch (Exception ex)
@@ -1436,9 +1461,18 @@ public partial class ElectronicFlightBagForm : Form
             var transitions = _flightPlanManager.GetTransitions(approachId);
             transitionsListBox.Items.Clear();
 
+            // Add "None" option as first item
+            transitionsListBox.Items.Add(new TransitionItem { Name = "None", Id = -1 });
+
             foreach (var transition in transitions)
             {
                 transitionsListBox.Items.Add(new TransitionItem { Name = transition.name, Id = transition.id });
+            }
+
+            // Auto-select "None" by default
+            if (transitionsListBox.Items.Count > 0)
+            {
+                transitionsListBox.SelectedIndex = 0;
             }
         }
         catch
@@ -1461,7 +1495,10 @@ public partial class ElectronicFlightBagForm : Form
                 return;
             }
 
-            _flightPlanManager.LoadApproach(selectedApproach.Id, selectedTransition?.Id, selectedApproach.Name);
+            // Check if "None" transition is selected (Id = -1), pass null if so
+            int? transitionId = (selectedTransition != null && selectedTransition.Id != -1) ? selectedTransition.Id : null;
+
+            _flightPlanManager.LoadApproach(selectedApproach.Id, transitionId, selectedApproach.Name);
             _announcer.Announce($"Loaded approach {selectedApproach.Name}");
         }
         catch (Exception ex)
