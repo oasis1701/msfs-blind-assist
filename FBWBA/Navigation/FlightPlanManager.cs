@@ -11,14 +11,14 @@ public class FlightPlanManager
 {
     private readonly SimBriefService _simbriefService;
     private readonly NavigationDatabaseProvider _navigationDatabase;
-    private readonly IAirportDataProvider _airportDatabase;
+    private readonly IAirportDataProvider? _airportDatabase;
 
     public FlightPlan CurrentFlightPlan { get; private set; }
 
     public event EventHandler<string>? StatusChanged;
     public event EventHandler<FlightPlan>? FlightPlanUpdated;
 
-    public FlightPlanManager(string navigationDatabasePath, IAirportDataProvider airportDatabase)
+    public FlightPlanManager(string navigationDatabasePath, IAirportDataProvider? airportDatabase)
     {
         _navigationDatabase = new NavigationDatabaseProvider(navigationDatabasePath);
         _simbriefService = new SimBriefService(_navigationDatabase);
@@ -57,6 +57,9 @@ public class FlightPlanManager
     {
         try
         {
+            if (_airportDatabase == null)
+                throw new Exception("Airport database not available. Please build the database from File menu.");
+
             var airport = _airportDatabase.GetAirport(icao);
             if (airport == null)
                 throw new Exception($"Airport {icao} not found");
@@ -113,6 +116,9 @@ public class FlightPlanManager
     {
         try
         {
+            if (_airportDatabase == null)
+                throw new Exception("Airport database not available. Please build the database from File menu.");
+
             var airport = _airportDatabase.GetAirport(icao);
             if (airport == null)
                 throw new Exception($"Airport {icao} not found");
@@ -384,6 +390,9 @@ public class FlightPlanManager
     /// </summary>
     public List<Runway> GetRunways(string icao)
     {
+        if (_airportDatabase == null)
+            return new List<Runway>();
+
         return _airportDatabase.GetRunways(icao);
     }
 
@@ -392,6 +401,9 @@ public class FlightPlanManager
     /// </summary>
     public Airport? GetAirport(string icao)
     {
+        if (_airportDatabase == null)
+            return null;
+
         return _airportDatabase.GetAirport(icao);
     }
 }

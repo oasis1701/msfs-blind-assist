@@ -14,7 +14,7 @@ public partial class MainForm : Form
     private SimVarMonitor simVarMonitor = null!;
     private ScreenReaderAnnouncer announcer = null!;
     private HotkeyManager hotkeyManager = null!;
-    private IAirportDataProvider airportDataProvider = null!;
+    private IAirportDataProvider? airportDataProvider;
     private ChecklistForm? checklistForm;
     private TakeoffAssistManager takeoffAssistManager = null!;
     private ElectronicFlightBagForm? electronicFlightBagForm;
@@ -119,8 +119,8 @@ public partial class MainForm : Form
         takeoffAssistManager = new TakeoffAssistManager(announcer);
         takeoffAssistManager.TakeoffAssistActiveChanged += OnTakeoffAssistActiveChanged;
 
-        // Initialize airport database provider
-        airportDataProvider = DatabaseSelector.SelectProvider() ?? throw new InvalidOperationException("Airport database provider could not be initialized");
+        // Initialize airport database provider (optional - can be null if database not built yet)
+        airportDataProvider = DatabaseSelector.SelectProvider();
 
         // Initialize flight plan manager with navigation database
         var settings = FBWBA.Settings.SettingsManager.Current;
@@ -877,6 +877,10 @@ public partial class MainForm : Form
     /// <returns>True if validation passes or user chooses to continue anyway, false otherwise</returns>
     private bool ValidateDatabaseSimulatorMatch()
     {
+        // If no database provider, skip validation
+        if (airportDataProvider == null)
+            return true;
+
         string simVersion = simConnectManager.DetectedSimulatorVersion;
         string dbType = airportDataProvider.DatabaseType;
 
@@ -1568,8 +1572,8 @@ public partial class MainForm : Form
         // Save current flight plan state before recreating managers
         var savedFlightPlan = flightPlanManager?.CurrentFlightPlan;
 
-        // Reload database provider based on current settings
-        airportDataProvider = DatabaseSelector.SelectProvider() ?? throw new InvalidOperationException("Airport database provider could not be initialized");
+        // Reload database provider based on current settings (can be null if not built yet)
+        airportDataProvider = DatabaseSelector.SelectProvider();
 
         // Recreate flight plan manager with new navigation database path
         var settings = FBWBA.Settings.SettingsManager.Current;

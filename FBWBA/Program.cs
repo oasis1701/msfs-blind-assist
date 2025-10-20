@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Runtime.InteropServices;
 using FBWBA.Utils;
 
 namespace FBWBA;
@@ -21,34 +23,105 @@ static class Program
         [STAThread]
         static void Main()
         {
-            // CRITICAL: Select and copy the correct SimConnect.dll BEFORE any SimConnect types are loaded
-            if (!EnsureCorrectSimConnectDll())
+            try
             {
+                // Initialize startup logging
+                StartupLogger.Log("========================================");
+                StartupLogger.Log("FBWBA (FlyByWire Blind Access) Starting");
+                StartupLogger.Log("========================================");
+                StartupLogger.LogSystemInfo();
+
+                // Allocate a console for NVDA to monitor (do this early for logging)
+                StartupLogger.Log("Allocating console window...");
+                AllocConsole();
+
+                // Hide the console window but keep it active for NVDA
+                IntPtr consoleWindow = GetConsoleWindow();
+                if (consoleWindow != IntPtr.Zero)
+                {
+                    ShowWindow(consoleWindow, SW_HIDE);
+                    StartupLogger.Log("Console window allocated and hidden");
+                }
+                else
+                {
+                    StartupLogger.Log("WARNING: Console window handle is null");
+                }
+
+                Console.WriteLine("FlyByWire Blind Access starting...");
+
+                // Phase 1: Perform runtime requirements check
+                StartupLogger.Log("Starting runtime requirements check...");
+                var runtimeCheck = RuntimeChecker.PerformRuntimeCheck();
+
+                if (!runtimeCheck.Success)
+                {
+                    StartupLogger.Log("Runtime check FAILED - showing error dialog");
+                    string errorMessage = RuntimeChecker.GetUserFriendlyErrorMessage(runtimeCheck);
+
+                    MessageBox.Show(
+                        errorMessage,
+                        "FBWBA - Missing Requirements",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
+
+                    StartupLogger.Log("Application terminated due to failed runtime check");
+                    return;
+                }
+
+                StartupLogger.Log("Runtime check PASSED - all requirements met");
+
+                // Phase 2: Select and copy the correct SimConnect.dll
+                StartupLogger.Log("Checking SimConnect.dll...");
+                if (!EnsureCorrectSimConnectDll())
+                {
+                    StartupLogger.Log("SimConnect.dll check FAILED");
+                    MessageBox.Show(
+                        "Failed to load the correct SimConnect.dll version.\n\n" +
+                        "Please ensure SimConnect_msfs_2020.dll and SimConnect_msfs_2024.dll are present in the application directory.\n\n" +
+                        $"Log file: {StartupLogger.GetLogFilePath()}",
+                        "SimConnect DLL Error",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
+                    return;
+                }
+
+                StartupLogger.Log("SimConnect.dll check PASSED");
+
+                // Phase 3: Initialize Windows Forms
+                StartupLogger.Log("Initializing Windows Forms application...");
+                Application.SetHighDpiMode(HighDpiMode.SystemAware);
+                StartupLogger.Log("High DPI mode set to SystemAware");
+
+                ApplicationConfiguration.Initialize();
+                StartupLogger.Log("ApplicationConfiguration initialized");
+
+                StartupLogger.Log("Creating main form...");
+                var mainForm = new MainForm();
+                StartupLogger.Log("Main form created successfully");
+
+                StartupLogger.Log("Starting application message loop...");
+                Application.Run(mainForm);
+
+                StartupLogger.Log("Application closed normally");
+            }
+            catch (Exception ex)
+            {
+                // Catch any unhandled exceptions during startup
+                StartupLogger.LogError("FATAL ERROR during application startup", ex);
+
+                string errorMessage = $"FBWBA failed to start due to an unexpected error:\n\n" +
+                                    $"Error: {ex.GetType().Name}\n" +
+                                    $"Message: {ex.Message}\n\n" +
+                                    $"A detailed log file has been saved to:\n" +
+                                    $"{StartupLogger.GetLogFilePath()}\n\n" +
+                                    $"Please send this log file when reporting the issue.";
+
                 MessageBox.Show(
-                    "Failed to load the correct SimConnect.dll version.\n\n" +
-                    "Please ensure SimConnect_msfs_2020.dll and SimConnect_msfs_2024.dll are present in the application directory.",
-                    "SimConnect DLL Error",
+                    errorMessage,
+                    "FBWBA - Startup Error",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
-                return;
             }
-
-            // Allocate a console for NVDA to monitor
-            AllocConsole();
-
-            // Hide the console window but keep it active for NVDA
-            IntPtr consoleWindow = GetConsoleWindow();
-            if (consoleWindow != IntPtr.Zero)
-            {
-                ShowWindow(consoleWindow, SW_HIDE);
-            }
-
-            Console.WriteLine("FlyByWire Blind Access starting...");
-
-            // Modern .NET 9 Windows Forms initialization
-            Application.SetHighDpiMode(HighDpiMode.SystemAware);
-            ApplicationConfiguration.Initialize();
-            Application.Run(new MainForm());
         }
 
         /// <summary>
