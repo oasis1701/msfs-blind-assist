@@ -1467,7 +1467,7 @@ public partial class MainForm : Form
 
     private void DatabaseSettingsMenuItem_Click(object? sender, EventArgs e)
     {
-        using (var settingsForm = new DatabaseSettingsForm(announcer))
+        using (var settingsForm = new DatabaseSettingsForm(announcer, this))
         {
             if (settingsForm.ShowDialog(this) == DialogResult.OK)
             {
@@ -1614,6 +1614,58 @@ public partial class MainForm : Form
         }
 
         UpdateDatabaseStatusDisplay();
+    }
+
+    /// <summary>
+    /// Closes all database connections to allow file operations (like rebuilding databases).
+    /// Saves the current flight plan state to restore after reconnection.
+    /// </summary>
+    public void CloseDatabaseConnections()
+    {
+        try
+        {
+            System.Diagnostics.Debug.WriteLine("[MainForm] Closing database connections...");
+
+            // Close EFB window if open - it holds database connections
+            if (electronicFlightBagForm != null && !electronicFlightBagForm.IsDisposed)
+            {
+                electronicFlightBagForm.Close();
+                electronicFlightBagForm = null;
+            }
+
+            // Set providers to null to release connections
+            airportDataProvider = null;
+            flightPlanManager = null!;
+
+            // Force garbage collection to ensure connections are fully released
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+
+            System.Diagnostics.Debug.WriteLine("[MainForm] Database connections closed");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[MainForm] Error closing database connections: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Reopens database connections after file operations complete.
+    /// Uses RefreshDatabaseProvider() to restore connections and flight plan state.
+    /// </summary>
+    public void ReopenDatabaseConnections()
+    {
+        try
+        {
+            System.Diagnostics.Debug.WriteLine("[MainForm] Reopening database connections...");
+            RefreshDatabaseProvider();
+            System.Diagnostics.Debug.WriteLine("[MainForm] Database connections reopened");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[MainForm] Error reopening database connections: {ex.Message}");
+        }
     }
 
     /// <summary>

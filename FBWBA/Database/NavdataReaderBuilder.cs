@@ -82,7 +82,30 @@ public class NavdataReaderBuilder
             // Delete existing database file if it exists
             if (File.Exists(outputPath))
             {
-                File.Delete(outputPath);
+                try
+                {
+                    File.Delete(outputPath);
+                    Debug.WriteLine($"[NavdataReaderBuilder] Deleted existing database: {outputPath}");
+                }
+                catch (IOException ioEx)
+                {
+                    // File is locked - likely because FBWBA has connections open
+                    OnBuildCompleted(false,
+                        $"Cannot delete existing database file - it is currently in use.\n\n" +
+                        $"Error: {ioEx.Message}\n\n" +
+                        $"This usually means FBWBA or another application has the database file open.\n" +
+                        $"Please try closing and reopening FBWBA, or close any other applications that might be accessing the database.");
+                    return false;
+                }
+                catch (UnauthorizedAccessException uaEx)
+                {
+                    // Permission denied
+                    OnBuildCompleted(false,
+                        $"Cannot delete existing database file - permission denied.\n\n" +
+                        $"Error: {uaEx.Message}\n\n" +
+                        $"Please check file permissions or run as administrator.");
+                    return false;
+                }
             }
 
             OnProgressUpdated(0, $"Starting {simulatorVersion} database build...");

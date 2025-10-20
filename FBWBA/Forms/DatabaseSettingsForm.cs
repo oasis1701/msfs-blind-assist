@@ -14,10 +14,12 @@ public partial class DatabaseSettingsForm : Form
     private Label infoLabel = null!;
 
     private readonly ScreenReaderAnnouncer announcer;
+    private readonly MainForm? mainForm;
 
-    public DatabaseSettingsForm(ScreenReaderAnnouncer announcer)
+    public DatabaseSettingsForm(ScreenReaderAnnouncer announcer, MainForm? mainForm = null)
     {
         this.announcer = announcer;
+        this.mainForm = mainForm;
         InitializeComponent();
         SetupAccessibility();
         UpdateDatabaseStatus();
@@ -220,33 +222,44 @@ public partial class DatabaseSettingsForm : Form
         if (result != DialogResult.Yes)
             return;
 
-        // Show progress dialog
-        using (var progressForm = new DatabaseBuildProgressForm(simulatorVersion, announcer))
+        // Close database connections before building to avoid file locking
+        mainForm?.CloseDatabaseConnections();
+
+        try
         {
-            var dialogResult = progressForm.ShowDialog(this);
-
-            if (dialogResult == DialogResult.OK)
+            // Show progress dialog
+            using (var progressForm = new DatabaseBuildProgressForm(simulatorVersion, announcer))
             {
-                // Build succeeded
-                announcer?.AnnounceImmediate($"{simulatorVersion} database built successfully");
-                MessageBox.Show(
-                    $"{simulatorVersion} database has been built successfully!",
-                    "Build Complete",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Information);
-            }
-            else
-            {
-                // Build failed or was cancelled
-                MessageBox.Show(
-                    $"Database build was cancelled or failed.\n\nCheck the error message for details.",
-                    "Build Not Completed",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Warning);
-            }
+                var dialogResult = progressForm.ShowDialog(this);
 
-            // Refresh status
-            UpdateDatabaseStatus();
+                if (dialogResult == DialogResult.OK)
+                {
+                    // Build succeeded
+                    announcer?.AnnounceImmediate($"{simulatorVersion} database built successfully");
+                    MessageBox.Show(
+                        $"{simulatorVersion} database has been built successfully!",
+                        "Build Complete",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information);
+                }
+                else
+                {
+                    // Build failed or was cancelled
+                    MessageBox.Show(
+                        $"Database build was cancelled or failed.\n\nCheck the error message for details.",
+                        "Build Not Completed",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning);
+                }
+
+                // Refresh status
+                UpdateDatabaseStatus();
+            }
+        }
+        finally
+        {
+            // Reopen database connections after build completes (success or failure)
+            mainForm?.ReopenDatabaseConnections();
         }
     }
 
