@@ -104,18 +104,20 @@ Fuel:
   F          Read Total Fuel Quantity
 
 Tools:
-Takeoff Assistance: CTRL+T
-Enable Engine and warning display auto announcements: CTRL+E
+CTRL+T, Takeoff Assistance
+ CTRL+E, Enable Engine and warning display auto announcements
 
 Displays and windows:
-  Shift+U    Engine and warning display window
-  Shift+T    SD Status window
-  Shift+N    Navigation display
-  Shift+L    Location Info
-  Shift+M    Show VATSIM METAR Report
-  Shift+D    SimBrief Briefing
-  Shift+C    Show Checklist
-  Shift+P    Show PFD Window
+  Shift+E, Electronic Flight Bag window
+  Shift+F, Fuel and payload window
+  Shift+U,    Engine and warning display window
+  Shift+T,    SD Status window
+  Shift+N,    Navigation display
+  Shift+L,    Location Info
+  Shift+M,    Show VATSIM METAR Report
+  Shift+D,    SimBrief Briefing
+  Shift+C,    Show Checklist
+  Shift+P,    Show PFD Window
   
 Speed Tape:
   Shift+1    Read O Speed (GD)
