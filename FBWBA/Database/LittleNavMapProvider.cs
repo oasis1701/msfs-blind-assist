@@ -311,6 +311,54 @@ public class LittleNavMapProvider : IAirportDataProvider
         return icaos;
     }
 
+    public DatabaseMetadata? GetMetadata()
+    {
+        if (!DatabaseExists)
+            return null;
+
+        using (var connection = new SqliteConnection(_connectionString))
+        {
+            connection.Open();
+
+            var sql = @"SELECT
+                db_version_major,
+                db_version_minor,
+                last_load_timestamp,
+                has_sid_star,
+                airac_cycle,
+                valid_through,
+                data_source,
+                compiler_version,
+                properties
+            FROM metadata LIMIT 1";
+
+            using (var command = new SqliteCommand(sql, connection))
+            using (var reader = command.ExecuteReader())
+            {
+                if (reader.Read())
+                {
+                    return new DatabaseMetadata
+                    {
+                        DbVersionMajor = reader["db_version_major"] != DBNull.Value
+                            ? Convert.ToInt32(reader["db_version_major"]) : 0,
+                        DbVersionMinor = reader["db_version_minor"] != DBNull.Value
+                            ? Convert.ToInt32(reader["db_version_minor"]) : 0,
+                        LastLoadTimestamp = reader["last_load_timestamp"]?.ToString() ?? string.Empty,
+                        HasSidStar = reader["has_sid_star"] != DBNull.Value
+                            && Convert.ToInt32(reader["has_sid_star"]) == 1,
+                        AiracCycle = reader["airac_cycle"]?.ToString() ?? string.Empty,
+                        ValidThrough = reader["valid_through"]?.ToString() ?? string.Empty,
+                        DataSource = reader["data_source"]?.ToString() ?? string.Empty,
+                        CompilerVersion = reader["compiler_version"]?.ToString() ?? string.Empty,
+                        Properties = reader["properties"]?.ToString() ?? string.Empty
+                    };
+                }
+            }
+        }
+
+        return null;
+    }
+
     #region Helper Methods
 
     private int GetAirportId(SqliteConnection connection, string icao)

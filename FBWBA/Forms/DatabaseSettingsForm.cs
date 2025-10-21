@@ -175,7 +175,18 @@ public partial class DatabaseSettingsForm : Form
         {
             var provider = new LittleNavMapProvider(navdataPath, activeVersion);
             int airportCount = provider.GetAirportCount();
-            statusLabel.Text = $"Active Database: {activeVersion} - {airportCount:N0} airports";
+            var metadata = provider.GetMetadata();
+
+            // Build status message with NAVDATA information
+            string statusMessage = $"Active Database: {activeVersion} - {airportCount:N0} airports";
+
+            if (metadata != null)
+            {
+                string navdataInfo = metadata.GetAiracDisplayString();
+                statusMessage += $" - {navdataInfo}";
+            }
+
+            statusLabel.Text = statusMessage;
             statusLabel.ForeColor = Color.DarkGreen;
         }
         catch (Exception ex)
