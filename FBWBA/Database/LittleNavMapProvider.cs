@@ -23,7 +23,9 @@ public class LittleNavMapProvider : IAirportDataProvider
         DatabasePath = databasePath;
         _simulatorVersion = simulatorVersion ?? "FS2020";
         DatabaseExists = File.Exists(databasePath);
-        _connectionString = $"Data Source={databasePath};Mode=ReadOnly;";
+        // Disable connection pooling to ensure database is not locked after app closes
+        // This allows the updater to replace database files and restart the application
+        _connectionString = $"Data Source={databasePath};Mode=ReadOnly;Pooling=false;";
     }
 
     public Airport? GetAirport(string icao)

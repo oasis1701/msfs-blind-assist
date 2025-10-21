@@ -169,7 +169,9 @@ public class UpdateService
                 throw new FileNotFoundException("Updater executable not found", updaterPath);
             }
 
-            string appPath = Assembly.GetExecutingAssembly().Location;
+            // Use Environment.ProcessPath to get the actual executable path (not DLL path)
+            // In .NET 9, Assembly.Location returns the DLL path, which cannot be launched
+            string appPath = Environment.ProcessPath ?? throw new InvalidOperationException("Could not determine application executable path");
             // Trim trailing backslashes to prevent the \" escaping bug in Windows command-line parsing
             // BaseDirectory always ends with a backslash, which would escape the closing quote
             string appDirectory = AppDomain.CurrentDomain.BaseDirectory.TrimEnd('\\', '/');

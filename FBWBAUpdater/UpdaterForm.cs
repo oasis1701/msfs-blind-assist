@@ -292,13 +292,37 @@ namespace FBWBAUpdater
             {
                 try
                 {
-                    System.Diagnostics.Process.Start(appExecutablePath);
+                    LogMessage($"Attempting to restart application: {appExecutablePath}");
+
+                    // Verify the executable exists before attempting to start it
+                    if (!File.Exists(appExecutablePath))
+                    {
+                        LogMessage($"ERROR: Executable not found at: {appExecutablePath}");
+                        MessageBox.Show(
+                            $"Failed to restart FBWBA: Executable not found\n\nPath: {appExecutablePath}\n\nPlease start FBWBA manually.",
+                            "Restart Failed",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Error
+                        );
+                        return;
+                    }
+
+                    var startInfo = new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = appExecutablePath,
+                        UseShellExecute = true,
+                        WorkingDirectory = Path.GetDirectoryName(appExecutablePath)
+                    };
+
+                    System.Diagnostics.Process.Start(startInfo);
+                    LogMessage("Application restart initiated successfully");
                     Application.Exit();
                 }
                 catch (Exception ex)
                 {
+                    LogMessage($"ERROR: Failed to restart application: {ex.Message}");
                     MessageBox.Show(
-                        $"Failed to restart FBWBA: {ex.Message}\n\nPlease start FBWBA manually.",
+                        $"Failed to restart FBWBA: {ex.Message}\n\nPath attempted: {appExecutablePath}\n\nPlease start FBWBA manually.",
                         "Restart Failed",
                         MessageBoxButtons.OK,
                         MessageBoxIcon.Error
