@@ -1613,7 +1613,8 @@ public partial class ElectronicFlightBagForm : Form
         }
 
         var sb = new StringBuilder();
-        string connectionString = $"Data Source={dbPath};Mode=ReadOnly;";
+        // Disable connection pooling to ensure database is not locked after app closes
+        string connectionString = $"Data Source={dbPath};Mode=ReadOnly;Pooling=false;";
 
         using (var connection = new SqliteConnection(connectionString))
         {
@@ -1779,7 +1780,8 @@ public partial class ElectronicFlightBagForm : Form
         }
 
         var sb = new StringBuilder();
-        string connectionString = $"Data Source={dbPath};Mode=ReadOnly;";
+        // Disable connection pooling to ensure database is not locked after app closes
+        string connectionString = $"Data Source={dbPath};Mode=ReadOnly;Pooling=false;";
 
         using (var connection = new SqliteConnection(connectionString))
         {

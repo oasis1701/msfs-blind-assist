@@ -12,7 +12,9 @@ public class NavigationDatabaseProvider
 
     public NavigationDatabaseProvider(string databasePath)
     {
-        _connectionString = $"Data Source={databasePath};Mode=ReadOnly;";
+        // Disable connection pooling to ensure database is not locked after app closes
+        // This allows the updater to replace database files and restart the application
+        _connectionString = $"Data Source={databasePath};Mode=ReadOnly;Pooling=false;";
     }
 
     /// <summary>

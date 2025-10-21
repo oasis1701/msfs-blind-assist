@@ -11,7 +11,9 @@ public class AirportDatabase
     public AirportDatabase(string? databasePath = null)
     {
         _databasePath = databasePath ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "airports.db");
-        _connectionString = $"Data Source={_databasePath};";
+        // Disable connection pooling to ensure database is not locked after app closes
+        // This allows the updater to replace database files and restart the application
+        _connectionString = $"Data Source={_databasePath};Pooling=false;";
     }
 
         public bool DatabaseExists => File.Exists(_databasePath);
