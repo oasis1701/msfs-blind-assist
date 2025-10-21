@@ -61,16 +61,18 @@ public class UpdateService
             string? downloadUrl = null;
             if (isUpdateAvailable)
             {
-                downloadUrl = releaseData["assets"]?[0]?["browser_download_url"]?.ToString();
-
-                if (string.IsNullOrEmpty(downloadUrl))
+                // Safely find the ZIP asset in the release
+                var assetResult = FindZipAsset(releaseData);
+                if (!assetResult.Success)
                 {
                     return new UpdateCheckResult
                     {
                         IsUpdateAvailable = false,
-                        ErrorMessage = $"Update {remoteVersion} is available, but no download file is attached to the GitHub release. Please contact the developer."
+                        ErrorMessage = assetResult.ErrorMessage
                     };
                 }
+
+                downloadUrl = assetResult.DownloadUrl;
             }
 
             return new UpdateCheckResult
@@ -196,6 +198,79 @@ public class UpdateService
     }
 
     /// <summary>
+    /// Safely finds and validates the ZIP file asset in a GitHub release
+    /// </summary>
+    private AssetSearchResult FindZipAsset(JObject releaseData)
+    {
+        try
+        {
+            // Check if assets property exists
+            var assetsToken = releaseData["assets"];
+            if (assetsToken == null)
+            {
+                return new AssetSearchResult
+                {
+                    Success = false,
+                    ErrorMessage = "Release data does not contain an 'assets' field. Please contact the developer."
+                };
+            }
+
+            // Check if assets is a valid array
+            if (assetsToken is not JArray assetsArray)
+            {
+                return new AssetSearchResult
+                {
+                    Success = false,
+                    ErrorMessage = "Release assets data is malformed. Please contact the developer."
+                };
+            }
+
+            // Check if assets array is empty
+            if (assetsArray.Count == 0)
+            {
+                return new AssetSearchResult
+                {
+                    Success = false,
+                    ErrorMessage = "Update is available, but no download file is attached to the GitHub release. Please contact the developer."
+                };
+            }
+
+            // Search for ZIP file in assets
+            foreach (var asset in assetsArray)
+            {
+                string? fileName = asset["name"]?.ToString();
+                string? downloadUrl = asset["browser_download_url"]?.ToString();
+
+                if (!string.IsNullOrEmpty(fileName) &&
+                    !string.IsNullOrEmpty(downloadUrl) &&
+                    fileName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+                {
+                    return new AssetSearchResult
+                    {
+                        Success = true,
+                        DownloadUrl = downloadUrl
+                    };
+                }
+            }
+
+            // No ZIP file found in assets
+            return new AssetSearchResult
+            {
+                Success = false,
+                ErrorMessage = "Update is available, but no ZIP file was found in the release assets. Please contact the developer."
+            };
+        }
+        catch (Exception ex)
+        {
+            return new AssetSearchResult
+            {
+                Success = false,
+                ErrorMessage = $"Error parsing release assets: {ex.Message}"
+            };
+        }
+    }
+
+    /// <summary>
     /// Parses version from GitHub tag (handles v0.2.2-alpha, 0.2.2, etc.)
     /// </summary>
     private Version ParseVersion(string? tagName)
@@ -241,4 +316,14 @@ public class UpdateProgressEventArgs : EventArgs
     public int PercentComplete { get; set; }
     public long BytesDownloaded { get; set; }
     public long TotalBytes { get; set; }
+}
+
+/// <summary>
+/// Result of searching for a ZIP asset in a GitHub release
+/// </summary>
+internal class AssetSearchResult
+{
+    public bool Success { get; set; }
+    public string? DownloadUrl { get; set; }
+    public string? ErrorMessage { get; set; }
 }
