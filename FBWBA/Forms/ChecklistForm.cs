@@ -11,7 +11,7 @@ public partial class ChecklistForm : Form
     private static extern bool SetForegroundWindow(IntPtr hWnd);
 
     private Panel scrollPanel = null!;
-    private List<ListView> checklistViews = new List<ListView>();
+    private List<CheckedListBox> checklistViews = new List<CheckedListBox>();
     private readonly ScreenReaderAnnouncer _announcer;
     private IntPtr previousWindow;
 
@@ -25,15 +25,15 @@ public partial class ChecklistForm : Form
     // Checklist category names
     private readonly List<string> checklistCategories = new List<string>
     {
-        "Preflight Checklist",
-        "Before Start Checklist",
-        "After Start Checklist",
-        "Taxi Checklist",
-        "Before Takeoff Checklist",
+        "Preflight Check",
+        "Before Start Check",
+        "After Start Check",
+        "Taxi Check",
+        "Before Takeoff Check",
         "Takeoff Procedure",
         "Climbing Checks",
-        "Descent Checklist",
-        "Approach and Landing Checklist",
+        "Descent Check",
+        "Approach and Landing Check",
         "On Ground",
         "Shutdown and Secure Aircraft"
     };
@@ -60,17 +60,15 @@ public partial class ChecklistForm : Form
         if (checklistViews.Count > 0)
         {
             int viewIndex = Math.Min(lastFocusedListViewIndex, checklistViews.Count - 1);
-            var targetListView = checklistViews[viewIndex];
+            var targetControl = checklistViews[viewIndex];
 
-            if (targetListView.Items.Count > 0)
+            if (targetControl.Items.Count > 0)
             {
-                int itemIndex = Math.Min(lastSelectedItemIndex, targetListView.Items.Count - 1);
-                targetListView.Items[itemIndex].Selected = true;
-                targetListView.Items[itemIndex].Focused = true;
-                targetListView.EnsureVisible(itemIndex);
+                int itemIndex = Math.Min(lastSelectedItemIndex, targetControl.Items.Count - 1);
+                targetControl.SelectedIndex = itemIndex;
             }
 
-            targetListView.Focus();
+            targetControl.Focus();
         }
     }
 
@@ -111,32 +109,25 @@ public partial class ChecklistForm : Form
             scrollPanel.Controls.Add(label);
             yPosition += 25;
 
-            // Create ListView for this category
-            var listView = new ListView
+            // Create CheckedListBox for this category
+            var checkedListBox = new CheckedListBox
             {
                 Location = new Point(10, yPosition),
                 Size = new Size(520, 150),
-                View = View.Details,
-                CheckBoxes = true,
-                FullRowSelect = true,
-                GridLines = false,
-                HeaderStyle = ColumnHeaderStyle.None,
                 TabIndex = tabIndex++,
                 AccessibleName = category,
-                Tag = category // Store category name for checkbox persistence
+                Tag = category, // Store category name for checkbox persistence
+                CheckOnClick = true // Toggle checkbox on single click
             };
 
-            // Add a single column that takes up the full width
-            listView.Columns.Add("Item", 495);
-
             // Event handlers
-            listView.ItemChecked += ListView_ItemChecked;
-            listView.KeyDown += ListView_KeyDown;
-            listView.Enter += ListView_Enter;
-            listView.SelectedIndexChanged += ListView_SelectedIndexChanged;
+            checkedListBox.ItemCheck += CheckedListBox_ItemCheck;
+            checkedListBox.KeyDown += CheckedListBox_KeyDown;
+            checkedListBox.Enter += CheckedListBox_Enter;
+            checkedListBox.SelectedIndexChanged += CheckedListBox_SelectedIndexChanged;
 
-            scrollPanel.Controls.Add(listView);
-            checklistViews.Add(listView);
+            scrollPanel.Controls.Add(checkedListBox);
+            checklistViews.Add(checkedListBox);
 
             yPosition += 160;
         }
@@ -166,7 +157,7 @@ public partial class ChecklistForm : Form
         // Define checklist items for each category
         var checklistItems = new Dictionary<string, List<string>>
         {
-            ["Preflight Checklist"] = new List<string>
+            ["Preflight Check"] = new List<string>
             {
                 "Batteries on",
                 "APU on",
@@ -193,7 +184,7 @@ public partial class ChecklistForm : Form
                 "MCDU Init fuel pred page completed",
                 "MCDU perf takeoff page completed, v1, 140, vr, 145, v2, 155, flaps as required"
             },
-            ["Before Start Checklist"] = new List<string>
+            ["Before Start Check"] = new List<string>
             {
                 "Beacon light on",
                 "Strobes auto",
@@ -203,7 +194,7 @@ public partial class ChecklistForm : Form
                 "Eng1 master on",
                 "Set eng mode selector normal"
             },
-            ["After Start Checklist"] = new List<string>
+            ["After Start Check"] = new List<string>
             {
                 "Flaps set",
                 "Spoilers armed",
@@ -216,13 +207,13 @@ public partial class ChecklistForm : Form
                 "Autobrakes set",
                 "Check and set FCU controls, hdg, speed, altitude"
             },
-            ["Taxi Checklist"] = new List<string>
+            ["Taxi Check"] = new List<string>
             {
                 "Contact ATC, ask for teleport if flying online",
                 "Use input mode > shift+r to position aircraft on runway",
                 "Confirm aligned on runway by checking heading output mode > H"
             },
-            ["Before Takeoff Checklist"] = new List<string>
+            ["Before Takeoff Check"] = new List<string>
             {
                 "Transponder Ident",
                 "TCAS TA/RA",
@@ -252,7 +243,7 @@ public partial class ChecklistForm : Form
                 "both Baro knobs pulled to STD position at correct altitude",
                 "Seatbelts sign off"
             },
-            ["Descent Checklist"] = new List<string>
+            ["Descent Check"] = new List<string>
             {
                 "FCU alt set, knob pushed or pulled as required",
                 "MCDU set arrival runway and star per ATC instructions if not set before",
@@ -264,7 +255,7 @@ public partial class ChecklistForm : Form
                 "Landing lights on at 10000",
                 "Seatbelts signs on"
             },
-            ["Approach and Landing Checklist"] = new List<string>
+            ["Approach and Landing Check"] = new List<string>
             {
                 "Check Speed, FCU should manage, adjust if approach phase not properly engaged or ATC requests",
                 "Flaps 1",
@@ -294,28 +285,26 @@ public partial class ChecklistForm : Form
             }
         };
 
-        // Populate each ListView with its items
-        foreach (var listView in checklistViews)
+        // Populate each CheckedListBox with its items
+        foreach (var checkedListBox in checklistViews)
         {
-            if (listView.Tag is string category && checklistItems.ContainsKey(category))
+            if (checkedListBox.Tag is string category && checklistItems.ContainsKey(category))
             {
-                listView.BeginUpdate();
+                checkedListBox.BeginUpdate();
 
                 foreach (var itemText in checklistItems[category])
                 {
-                    var listItem = new ListViewItem(itemText);
+                    int index = checkedListBox.Items.Add(itemText);
 
                     // Restore checkbox state if it exists
                     string key = GetItemKey(category, itemText);
                     if (checkboxStates.ContainsKey(key))
                     {
-                        listItem.Checked = checkboxStates[key];
+                        checkedListBox.SetItemChecked(index, checkboxStates[key]);
                     }
-
-                    listView.Items.Add(listItem);
                 }
 
-                listView.EndUpdate();
+                checkedListBox.EndUpdate();
             }
         }
     }
@@ -325,16 +314,17 @@ public partial class ChecklistForm : Form
         return $"{category}|{itemText}";
     }
 
-    private void ListView_ItemChecked(object? sender, ItemCheckedEventArgs e)
+    private void CheckedListBox_ItemCheck(object? sender, ItemCheckEventArgs e)
     {
-        if (sender is ListView listView && listView.Tag is string category)
+        if (sender is CheckedListBox checkedListBox && checkedListBox.Tag is string category)
         {
-            string key = GetItemKey(category, e.Item.Text);
-            checkboxStates[key] = e.Item.Checked;
+            string itemText = checkedListBox.Items[e.Index].ToString() ?? "";
+            string key = GetItemKey(category, itemText);
+            checkboxStates[key] = (e.NewValue == CheckState.Checked);
         }
     }
 
-    private void ListView_KeyDown(object? sender, KeyEventArgs e)
+    private void CheckedListBox_KeyDown(object? sender, KeyEventArgs e)
     {
         if (e.KeyCode == Keys.Escape)
         {
@@ -343,19 +333,19 @@ public partial class ChecklistForm : Form
         }
     }
 
-    private void ListView_Enter(object? sender, EventArgs e)
+    private void CheckedListBox_Enter(object? sender, EventArgs e)
     {
-        if (sender is ListView listView)
+        if (sender is CheckedListBox checkedListBox)
         {
-            lastFocusedListViewIndex = checklistViews.IndexOf(listView);
+            lastFocusedListViewIndex = checklistViews.IndexOf(checkedListBox);
         }
     }
 
-    private void ListView_SelectedIndexChanged(object? sender, EventArgs e)
+    private void CheckedListBox_SelectedIndexChanged(object? sender, EventArgs e)
     {
-        if (sender is ListView listView && listView.SelectedIndices.Count > 0)
+        if (sender is CheckedListBox checkedListBox && checkedListBox.SelectedIndex >= 0)
         {
-            lastSelectedItemIndex = listView.SelectedIndices[0];
+            lastSelectedItemIndex = checkedListBox.SelectedIndex;
         }
     }
 
