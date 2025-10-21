@@ -54,8 +54,8 @@ public partial class ChecklistForm : Form
             Size = new Size(465, 540),
             Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
             CheckBoxes = true,
-            AccessibleName = "Flight Checklist",
-            AccessibleDescription = "Use arrow keys to navigate, spacebar to check/uncheck items, Enter to expand/collapse categories, Escape to close"
+            AccessibleName = "Checklist",
+            AccessibleDescription = ""
         };
 
         checklistTreeView.AfterCheck += ChecklistTreeView_AfterCheck;
