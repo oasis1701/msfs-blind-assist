@@ -139,8 +139,7 @@ public class FlyByWireA320Definition : IAircraftDefinition
             Type = SimConnect.SimVarType.SimVar,
             Units = "bool",
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            ReverseDisplayOrder = true,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "On", [1] = "Off" }
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         },
         ["XMLVAR_SWITCH_OVHD_INTLT_NOSMOKING_POSITION"] = new SimConnect.SimVarDefinition
         {
