@@ -739,52 +739,8 @@ public class SimConnectManager
                 });
                 break;
 
-            case (DATA_REQUESTS)320: // Heading with status
-                FCUValueWithStatus headingWithStatus = (FCUValueWithStatus)data.dwData[0];
-                string headingStatus = headingWithStatus.managedStatus > 0 ? "managed" : "selected";
-                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
-                {
-                    VarName = "FCU_HEADING_WITH_STATUS",
-                    Value = headingWithStatus.value,
-                    Description = $"FCU heading {headingWithStatus.value:000} degrees, {headingStatus}"
-                });
-                break;
-
-            case (DATA_REQUESTS)321: // Speed with status
-                FCUValueWithStatus speedWithStatus = (FCUValueWithStatus)data.dwData[0];
-                string speedStatus = speedWithStatus.managedStatus > 0 ? "managed" : "selected";
-                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
-                {
-                    VarName = "FCU_SPEED_WITH_STATUS",
-                    Value = speedWithStatus.value,
-                    Description = $"FCU speed {speedWithStatus.value:000} knots, {speedStatus}"
-                });
-                break;
-
-            case (DATA_REQUESTS)322: // Altitude with status
-                FCUValueWithStatus altitudeWithStatus = (FCUValueWithStatus)data.dwData[0];
-                string altitudeStatus = altitudeWithStatus.managedStatus > 0 ? "managed" : "selected";
-                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
-                {
-                    VarName = "FCU_ALTITUDE_WITH_STATUS",
-                    Value = altitudeWithStatus.value,
-                    Description = $"FCU altitude {altitudeWithStatus.value:00000} feet, {altitudeStatus}"
-                });
-                break;
-
-            case (DATA_REQUESTS)323: // VS/FPA value
-                FCUValueWithStatus vsfpaWithMode = (FCUValueWithStatus)data.dwData[0];
-                bool isFpaMode = vsfpaWithMode.managedStatus > 0; // Using managedStatus to store FPA mode
-                string modeText = isFpaMode ? "FPA" : "VS";
-                string units = isFpaMode ? "degrees" : "feet per minute";
-                string valueText = isFpaMode ? $"{vsfpaWithMode.value:+0.0;-0.0;0.0}" : $"{vsfpaWithMode.value:+0;-0;0}";
-                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
-                {
-                    VarName = "FCU_VSFPA_VALUE",
-                    Value = vsfpaWithMode.value,
-                    Description = $"FCU {modeText} {valueText} {units}"
-                });
-                break;
+            // NOTE: FCU data requests (320-323) removed - now handled by aircraft definitions
+            // using existing variable registrations instead of duplicate temp definitions
 
             case (DATA_REQUESTS)304: // Altitude MSL (swapped)
                 SingleValue altMslData = (SingleValue)data.dwData[0];
@@ -1012,6 +968,35 @@ public class SimConnectManager
                     VarName = "WAYPOINT_INFO",
                     Value = waypointData.distance,
                     Description = description
+                });
+                break;
+
+            case (DATA_REQUESTS)370: // Waypoint Info (new ID to avoid collision with fuel/payload range)
+                WaypointInfo waypointData370 = (WaypointInfo)data.dwData[0];
+
+                // Unpack waypoint name from encoded doubles
+                string waypointName370 = UnpackWaypointName(waypointData370.ident0, waypointData370.ident1);
+
+                string description370;
+                if (string.IsNullOrWhiteSpace(waypointName370))
+                {
+                    description370 = "No active waypoint";
+                }
+                else
+                {
+                    // Convert bearing from radians to degrees
+                    double bearingDegrees370 = waypointData370.bearing * (180.0 / Math.PI);
+                    // Normalize to 0-360 range
+                    if (bearingDegrees370 < 0) bearingDegrees370 += 360;
+
+                    description370 = $"{waypointName370}, {waypointData370.distance:0.0} NM, {bearingDegrees370:0} degrees";
+                }
+
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "WAYPOINT_INFO",
+                    Value = waypointData370.distance,
+                    Description = description370
                 });
                 break;
 

@@ -9,6 +9,23 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     ISupportsNavigationDisplay,
     ISupportsPFDDisplay
 {
+    // FCU request tracking - stores pending value and status for each parameter
+    private double? pendingHeadingValue = null;
+    private double? pendingHeadingStatus = null;
+    private double? pendingSpeedValue = null;
+    private double? pendingSpeedStatus = null;
+    private double? pendingAltitudeValue = null;
+    private double? pendingAltitudeStatus = null;
+    private double? pendingVSFPAValue = null;
+    private double? pendingVSFPAMode = null;
+    private Accessibility.ScreenReaderAnnouncer? lastAnnouncer = null;
+
+    // Boolean flags to track active FCU readout requests
+    private bool isRequestingHeading = false;
+    private bool isRequestingSpeed = false;
+    private bool isRequestingAltitude = false;
+    private bool isRequestingVSFPA = false;
+
     public override string AircraftName => "FlyByWire Airbus A320neo";
     public override string AircraftCode => "A320";
 
@@ -2092,7 +2109,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Name = "A32NX_FCU_AFS_DISPLAY_VS_FPA_VALUE",
             DisplayName = "FCU VS/FPA Value",
             Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.Never
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
         },
         ["A32NX_MASTER_CAUTION"] = new SimConnect.SimVarDefinition
         {
@@ -2911,14 +2928,14 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Name = "A32NX_FCU_AFS_DISPLAY_HDG_TRK_VALUE",
             Type = SimConnect.SimVarType.LVar,
             DisplayName = "FCU Heading",
-            UpdateFrequency = SimConnect.UpdateFrequency.Never
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
         },
         ["A32NX_FCU_AFS_DISPLAY_SPD_MACH_VALUE"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_FCU_AFS_DISPLAY_SPD_MACH_VALUE",
             Type = SimConnect.SimVarType.LVar,
             DisplayName = "FCU Speed",
-            UpdateFrequency = SimConnect.UpdateFrequency.Never
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
         },
         ["A32NX_FCU_AFS_DISPLAY_ALT_VALUE"] = new SimConnect.SimVarDefinition
         {
@@ -3874,111 +3891,234 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     // These methods request A320-specific data from the simulator
     // ==================================================================================
 
+    /// <summary>
+    /// Processes incoming FCU variable updates and combines value+status when both are received.
+    /// Called from MainForm when SimConnect reports an FCU variable update.
+    /// Returns true if the variable was processed (part of an active FCU readout), false otherwise.
+    /// </summary>
+    public bool ProcessFCUVariableUpdate(string varName, double value, Accessibility.ScreenReaderAnnouncer announcer)
+    {
+        lastAnnouncer = announcer; // Store for when we announce
+
+        // Heading
+        if (varName == "A32NX_FCU_AFS_DISPLAY_HDG_TRK_VALUE")
+        {
+            // Only intercept if we're actively requesting heading
+            if (!isRequestingHeading)
+                return false; // Not part of a readout request, let normal processing continue
+
+            pendingHeadingValue = value;
+            if (pendingHeadingStatus.HasValue)
+            {
+                string status = pendingHeadingStatus.Value > 0 ? "managed" : "selected";
+                announcer.AnnounceImmediate($"FCU heading {pendingHeadingValue.Value:000} degrees, {status}");
+                pendingHeadingValue = null;
+                pendingHeadingStatus = null;
+                isRequestingHeading = false; // Clear flag after announcement
+            }
+            return true; // Processed as part of FCU readout
+        }
+        else if (varName == "A32NX_FCU_AFS_DISPLAY_HDG_TRK_MANAGED")
+        {
+            // Only intercept if we're actively requesting heading
+            if (!isRequestingHeading)
+                return false; // Not part of a readout request
+
+            pendingHeadingStatus = value;
+            if (pendingHeadingValue.HasValue)
+            {
+                string status = value > 0 ? "managed" : "selected";
+                announcer.AnnounceImmediate($"FCU heading {pendingHeadingValue.Value:000} degrees, {status}");
+                pendingHeadingValue = null;
+                pendingHeadingStatus = null;
+                isRequestingHeading = false; // Clear flag after announcement
+            }
+            return true; // Processed as part of FCU readout
+        }
+        // Speed
+        else if (varName == "A32NX_FCU_AFS_DISPLAY_SPD_MACH_VALUE")
+        {
+            // Only intercept if we're actively requesting speed
+            if (!isRequestingSpeed)
+                return false;
+
+            pendingSpeedValue = value;
+            if (pendingSpeedStatus.HasValue)
+            {
+                string status = pendingSpeedStatus.Value > 0 ? "managed" : "selected";
+                announcer.AnnounceImmediate($"FCU speed {pendingSpeedValue.Value:000} knots, {status}");
+                pendingSpeedValue = null;
+                pendingSpeedStatus = null;
+                isRequestingSpeed = false; // Clear flag after announcement
+            }
+            return true;
+        }
+        else if (varName == "A32NX_FCU_AFS_DISPLAY_SPD_MACH_MANAGED")
+        {
+            // Only intercept if we're actively requesting speed
+            if (!isRequestingSpeed)
+                return false;
+
+            pendingSpeedStatus = value;
+            if (pendingSpeedValue.HasValue)
+            {
+                string status = value > 0 ? "managed" : "selected";
+                announcer.AnnounceImmediate($"FCU speed {pendingSpeedValue.Value:000} knots, {status}");
+                pendingSpeedValue = null;
+                pendingSpeedStatus = null;
+                isRequestingSpeed = false; // Clear flag after announcement
+            }
+            return true;
+        }
+        // Altitude
+        else if (varName == "A32NX_FCU_AFS_DISPLAY_ALT_VALUE")
+        {
+            // Only intercept if we're actively requesting altitude
+            if (!isRequestingAltitude)
+                return false;
+
+            pendingAltitudeValue = value;
+            if (pendingAltitudeStatus.HasValue)
+            {
+                string status = pendingAltitudeStatus.Value > 0 ? "managed" : "selected";
+                announcer.AnnounceImmediate($"FCU altitude {pendingAltitudeValue.Value:00000} feet, {status}");
+                pendingAltitudeValue = null;
+                pendingAltitudeStatus = null;
+                isRequestingAltitude = false; // Clear flag after announcement
+            }
+            return true;
+        }
+        else if (varName == "A32NX_FCU_AFS_DISPLAY_LVL_CH_MANAGED")
+        {
+            // Only intercept if we're actively requesting altitude
+            if (!isRequestingAltitude)
+                return false;
+
+            pendingAltitudeStatus = value;
+            if (pendingAltitudeValue.HasValue)
+            {
+                string status = value > 0 ? "managed" : "selected";
+                announcer.AnnounceImmediate($"FCU altitude {pendingAltitudeValue.Value:00000} feet, {status}");
+                pendingAltitudeValue = null;
+                pendingAltitudeStatus = null;
+                isRequestingAltitude = false; // Clear flag after announcement
+            }
+            return true;
+        }
+        // VS/FPA
+        else if (varName == "A32NX_FCU_AFS_DISPLAY_VS_FPA_VALUE")
+        {
+            // Only intercept if we're actively requesting VS/FPA
+            if (!isRequestingVSFPA)
+                return false;
+
+            pendingVSFPAValue = value;
+            if (pendingVSFPAMode.HasValue)
+            {
+                bool isFpaMode = pendingVSFPAMode.Value > 0;
+                string modeText = isFpaMode ? "FPA" : "VS";
+                string units = isFpaMode ? "degrees" : "feet per minute";
+                string valueText = isFpaMode ? $"{value:+0.0;-0.0;0.0}" : $"{value:+0;-0;0}";
+                announcer.AnnounceImmediate($"FCU {modeText} {valueText} {units}");
+                pendingVSFPAValue = null;
+                pendingVSFPAMode = null;
+                isRequestingVSFPA = false; // Clear flag after announcement
+            }
+            return true;
+        }
+        else if (varName == "A32NX_TRK_FPA_MODE_ACTIVE")
+        {
+            // Only intercept if we're actively requesting VS/FPA
+            if (!isRequestingVSFPA)
+                return false;
+
+            pendingVSFPAMode = value;
+            if (pendingVSFPAValue.HasValue)
+            {
+                bool isFpaMode = value > 0;
+                string modeText = isFpaMode ? "FPA" : "VS";
+                string units = isFpaMode ? "degrees" : "feet per minute";
+                string valueText = isFpaMode ? $"{pendingVSFPAValue.Value:+0.0;-0.0;0.0}" : $"{pendingVSFPAValue.Value:+0;-0;0}";
+                announcer.AnnounceImmediate($"FCU {modeText} {valueText} {units}");
+                pendingVSFPAValue = null;
+                pendingVSFPAMode = null;
+                isRequestingVSFPA = false; // Clear flag after announcement
+            }
+            return true;
+        }
+
+        return false; // Not an FCU variable we track
+    }
+
     private void RequestFCUHeadingWithStatus(SimConnect.SimConnectManager simConnectMgr)
     {
-        var simConnect = simConnectMgr.SimConnectInstance;
-        if (simConnectMgr.IsConnected && simConnect != null)
+        if (simConnectMgr.IsConnected)
         {
-            try
-            {
-                var tempDefId = (SimConnect.SimConnectManager.DATA_DEFINITIONS)320;
-                simConnect.AddToDataDefinition(tempDefId,
-                    "L:A32NX_FCU_AFS_DISPLAY_HDG_TRK_VALUE", "number",
-                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
-                simConnect.AddToDataDefinition(tempDefId,
-                    "L:A32NX_FCU_AFS_DISPLAY_HDG_TRK_MANAGED", "number",
-                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
-                simConnect.RegisterDataDefineStruct<SimConnect.SimConnectManager.FCUValueWithStatus>(tempDefId);
-                simConnect.RequestDataOnSimObject((SimConnect.SimConnectManager.DATA_REQUESTS)320,
-                    tempDefId, Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_OBJECT_ID_USER,
-                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_PERIOD.ONCE,
-                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error requesting heading with status: {ex.Message}");
-            }
+            // Set flag to indicate we're actively requesting heading
+            isRequestingHeading = true;
+
+            // Reset pending values
+            pendingHeadingValue = null;
+            pendingHeadingStatus = null;
+
+            // Request both variables using existing registrations
+            // ProcessFCUVariableUpdate will combine them when both arrive
+            simConnectMgr.RequestVariable("A32NX_FCU_AFS_DISPLAY_HDG_TRK_VALUE");
+            simConnectMgr.RequestVariable("A32NX_FCU_AFS_DISPLAY_HDG_TRK_MANAGED");
         }
     }
 
     private void RequestFCUSpeedWithStatus(SimConnect.SimConnectManager simConnectMgr)
     {
-        var simConnect = simConnectMgr.SimConnectInstance;
-        if (simConnectMgr.IsConnected && simConnect != null)
+        if (simConnectMgr.IsConnected)
         {
-            try
-            {
-                var tempDefId = (SimConnect.SimConnectManager.DATA_DEFINITIONS)321;
-                simConnect.AddToDataDefinition(tempDefId,
-                    "L:A32NX_FCU_AFS_DISPLAY_SPD_MACH_VALUE", "number",
-                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
-                simConnect.AddToDataDefinition(tempDefId,
-                    "L:A32NX_FCU_AFS_DISPLAY_SPD_MACH_MANAGED", "number",
-                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
-                simConnect.RegisterDataDefineStruct<SimConnect.SimConnectManager.FCUValueWithStatus>(tempDefId);
-                simConnect.RequestDataOnSimObject((SimConnect.SimConnectManager.DATA_REQUESTS)321,
-                    tempDefId, Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_OBJECT_ID_USER,
-                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_PERIOD.ONCE,
-                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error requesting speed with status: {ex.Message}");
-            }
+            // Set flag to indicate we're actively requesting speed
+            isRequestingSpeed = true;
+
+            // Reset pending values
+            pendingSpeedValue = null;
+            pendingSpeedStatus = null;
+
+            // Request both variables using existing registrations
+            // ProcessFCUVariableUpdate will combine them when both arrive
+            simConnectMgr.RequestVariable("A32NX_FCU_AFS_DISPLAY_SPD_MACH_VALUE");
+            simConnectMgr.RequestVariable("A32NX_FCU_AFS_DISPLAY_SPD_MACH_MANAGED");
         }
     }
 
     private void RequestFCUAltitudeWithStatus(SimConnect.SimConnectManager simConnectMgr)
     {
-        var simConnect = simConnectMgr.SimConnectInstance;
-        if (simConnectMgr.IsConnected && simConnect != null)
+        if (simConnectMgr.IsConnected)
         {
-            try
-            {
-                var tempDefId = (SimConnect.SimConnectManager.DATA_DEFINITIONS)322;
-                simConnect.AddToDataDefinition(tempDefId,
-                    "L:A32NX_FCU_AFS_DISPLAY_ALT_VALUE", "number",
-                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
-                simConnect.AddToDataDefinition(tempDefId,
-                    "L:A32NX_FCU_AFS_DISPLAY_LVL_CH_MANAGED", "number",
-                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
-                simConnect.RegisterDataDefineStruct<SimConnect.SimConnectManager.FCUValueWithStatus>(tempDefId);
-                simConnect.RequestDataOnSimObject((SimConnect.SimConnectManager.DATA_REQUESTS)322,
-                    tempDefId, Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_OBJECT_ID_USER,
-                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_PERIOD.ONCE,
-                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error requesting altitude with status: {ex.Message}");
-            }
+            // Set flag to indicate we're actively requesting altitude
+            isRequestingAltitude = true;
+
+            // Reset pending values
+            pendingAltitudeValue = null;
+            pendingAltitudeStatus = null;
+
+            // Request both variables using existing registrations
+            // ProcessFCUVariableUpdate will combine them when both arrive
+            simConnectMgr.RequestVariable("A32NX_FCU_AFS_DISPLAY_ALT_VALUE");
+            simConnectMgr.RequestVariable("A32NX_FCU_AFS_DISPLAY_LVL_CH_MANAGED");
         }
     }
 
     private void RequestFCUVerticalSpeedFPA(SimConnect.SimConnectManager simConnectMgr)
     {
-        var simConnect = simConnectMgr.SimConnectInstance;
-        if (simConnectMgr.IsConnected && simConnect != null)
+        if (simConnectMgr.IsConnected)
         {
-            try
-            {
-                var tempDefId = (SimConnect.SimConnectManager.DATA_DEFINITIONS)323;
-                simConnect.AddToDataDefinition(tempDefId,
-                    "L:A32NX_FCU_AFS_DISPLAY_VS_FPA_VALUE", "number",
-                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
-                simConnect.AddToDataDefinition(tempDefId,
-                    "L:A32NX_TRK_FPA_MODE_ACTIVE", "number",
-                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
-                simConnect.RegisterDataDefineStruct<SimConnect.SimConnectManager.FCUValueWithStatus>(tempDefId);
-                simConnect.RequestDataOnSimObject((SimConnect.SimConnectManager.DATA_REQUESTS)323,
-                    tempDefId, Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_OBJECT_ID_USER,
-                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_PERIOD.ONCE,
-                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error requesting VS/FPA: {ex.Message}");
-            }
+            // Set flag to indicate we're actively requesting VS/FPA
+            isRequestingVSFPA = true;
+
+            // Reset pending values
+            pendingVSFPAValue = null;
+            pendingVSFPAMode = null;
+
+            // Request both variables using existing registrations
+            // ProcessFCUVariableUpdate will combine them when both arrive
+            simConnectMgr.RequestVariable("A32NX_FCU_AFS_DISPLAY_VS_FPA_VALUE");
+            simConnectMgr.RequestVariable("A32NX_TRK_FPA_MODE_ACTIVE");
         }
     }
 
@@ -4164,7 +4304,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             try
             {
-                var tempDefId = (SimConnect.SimConnectManager.DATA_DEFINITIONS)346;
+                var tempDefId = (SimConnect.SimConnectManager.DATA_DEFINITIONS)370;
                 simConnect.ClearDataDefinition(tempDefId);
                 simConnect.AddToDataDefinition(tempDefId,
                     "L:A32NX_EFIS_L_TO_WPT_IDENT_0", "number",
@@ -4179,7 +4319,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
                     "L:A32NX_EFIS_L_TO_WPT_BEARING", "radians",
                     Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
                 simConnect.RegisterDataDefineStruct<SimConnect.SimConnectManager.WaypointInfo>(tempDefId);
-                simConnect.RequestDataOnSimObject((SimConnect.SimConnectManager.DATA_REQUESTS)346,
+                simConnect.RequestDataOnSimObject((SimConnect.SimConnectManager.DATA_REQUESTS)370,
                     tempDefId, Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_OBJECT_ID_USER,
                     Microsoft.FlightSimulator.SimConnect.SIMCONNECT_PERIOD.ONCE,
                     Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
