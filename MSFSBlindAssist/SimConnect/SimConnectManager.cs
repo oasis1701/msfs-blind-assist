@@ -609,9 +609,10 @@ public class SimConnectManager
             // Look up which variable this was
             if (pendingRequests.TryRemove((int)data.dwRequestID, out string? varKey))
             {
-                // NOTE: These are FlyByWire A32NX-specific ECAM variables
-                // Other A320 variants (Fenix, PMDG, etc.) will have different variable names
-                // and should handle their ECAM in their own ProcessSimVarUpdate() method
+                // FlyByWire A32NX ECAM variable tracking for display window
+                // These hardcoded checks are safe - other aircraft (Fenix, PMDG) use different variable names
+                // so these conditions won't trigger. Each aircraft's warning/caution announcements work via
+                // the continuous monitoring system (UpdateFrequency.Continuous + IsAnnounced in their definition).
                 if (varKey == "A32NX_MASTER_WARNING")
                 {
                     ecamMasterWarning = specificValue.value;
@@ -1084,9 +1085,10 @@ public class SimConnectManager
 
             double currentValue = data.value;
 
-            // NOTE: FlyByWire A32NX-specific ECAM message processing
-            // Other A320 variants (Fenix, PMDG, etc.) would implement their own ECAM handling
-            // in their ProcessSimVarUpdate() method with their own variable names
+            // FlyByWire A32NX ECAM message processing for the ECAM Display window
+            // This processes A32NX-specific variable names (A32NX_Ewd_LOWER_*).
+            // Other aircraft variants (Fenix, PMDG) use different variable names, so this
+            // block won't execute for them. Safe to keep aircraft-specific.
             if (varKey.StartsWith("A32NX_Ewd_LOWER_"))
             {
                 // Convert numeric code to text message via EWDMessageLookup
@@ -1968,6 +1970,10 @@ public class SimConnectManager
     /// A32NX-SPECIFIC: Requests fuel and payload data for FlyByWire Airbus A320neo.
     /// Uses both standard SimVars and A32NX-specific L-variables for weight/balance calculations.
     /// Called by Forms/A32NX/FuelPayloadDisplayForm.cs only.
+    ///
+    /// NOTE: This method is safe for multi-aircraft - it's only called when the A32NX Fuel/Payload window
+    /// is opened (via hotkey or menu). Other aircraft (Fenix, PMDG, etc.) would have their own methods
+    /// with their own variable names if they implement this feature.
     /// </summary>
     public void RequestFuelAndPayloadData()
     {
