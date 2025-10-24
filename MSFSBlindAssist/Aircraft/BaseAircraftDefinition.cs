@@ -99,4 +99,58 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
 
         return false;
     }
+
+    // FCU/MCP Request Methods - Default implementations (do nothing)
+    // Aircraft with FCU/MCP should override these methods
+
+    /// <summary>
+    /// Default implementation does nothing. Aircraft with FCU should override.
+    /// </summary>
+    public virtual void RequestFCUHeading(SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
+    {
+        // Default: do nothing (aircraft has no FCU)
+    }
+
+    /// <summary>
+    /// Default implementation does nothing. Aircraft with FCU should override.
+    /// </summary>
+    public virtual void RequestFCUSpeed(SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
+    {
+        // Default: do nothing (aircraft has no FCU)
+    }
+
+    /// <summary>
+    /// Default implementation does nothing. Aircraft with FCU should override.
+    /// </summary>
+    public virtual void RequestFCUAltitude(SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
+    {
+        // Default: do nothing (aircraft has no FCU)
+    }
+
+    /// <summary>
+    /// Default implementation does nothing. Aircraft with FCU should override.
+    /// </summary>
+    public virtual void RequestFCUVerticalSpeed(SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
+    {
+        // Default: do nothing (aircraft has no FCU)
+    }
+
+    // Display Monitoring Methods - Default implementations (do nothing)
+    // Aircraft with ECAM/EICAS/etc. should override these methods
+
+    /// <summary>
+    /// Default implementation does nothing. Aircraft with display systems (ECAM/EICAS) should override.
+    /// </summary>
+    public virtual void StartDisplayMonitoring(SimConnect.SimConnectManager simConnect)
+    {
+        // Default: do nothing (aircraft has no display system)
+    }
+
+    /// <summary>
+    /// Default implementation does nothing. Aircraft with display systems (ECAM/EICAS) should override.
+    /// </summary>
+    public virtual void StopDisplayMonitoring(SimConnect.SimConnectManager simConnect)
+    {
+        // Default: do nothing (aircraft has no display system)
+    }
 }

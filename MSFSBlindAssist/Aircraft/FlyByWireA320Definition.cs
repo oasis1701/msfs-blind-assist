@@ -4274,4 +4274,90 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             }
         }
     }
+
+    // ========================================
+    // FCU Request Methods (Aircraft-Specific)
+    // ========================================
+    // These methods request and announce A320-specific FCU values
+    // Called by hotkey handlers in MainForm
+
+    /// <summary>
+    /// Requests the current FCU heading value and announces it via screen reader.
+    /// Uses A320-specific variable: L:A32NX_FCU_AFS_DISPLAY_HDG_TRK_VALUE
+    /// </summary>
+    public override void RequestFCUHeading(SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer announcer)
+    {
+        if (simConnect.IsConnected)
+        {
+            try
+            {
+                // Request A320 FCU heading display value
+                simConnect.RequestSingleValue(300, "L:A32NX_FCU_AFS_DISPLAY_HDG_TRK_VALUE", "number", "FCU_HEADING");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[A320] Error requesting FCU heading: {ex.Message}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Requests the current FCU speed value and announces it via screen reader.
+    /// Uses A320-specific variable: L:A32NX_FCU_AFS_DISPLAY_SPD_MACH_VALUE
+    /// </summary>
+    public override void RequestFCUSpeed(SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer announcer)
+    {
+        if (simConnect.IsConnected)
+        {
+            try
+            {
+                // Request A320 FCU speed display value
+                simConnect.RequestSingleValue(301, "L:A32NX_FCU_AFS_DISPLAY_SPD_MACH_VALUE", "number", "FCU_SPEED");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[A320] Error requesting FCU speed: {ex.Message}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Requests the current FCU altitude value and announces it via screen reader.
+    /// Uses A320-specific variable: L:A32NX_FCU_AFS_DISPLAY_ALT_VALUE
+    /// </summary>
+    public override void RequestFCUAltitude(SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer announcer)
+    {
+        if (simConnect.IsConnected)
+        {
+            try
+            {
+                // Request A320 FCU altitude display value
+                simConnect.RequestSingleValue(302, "L:A32NX_FCU_AFS_DISPLAY_ALT_VALUE", "number", "FCU_ALTITUDE");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[A320] Error requesting FCU altitude: {ex.Message}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Requests the current FCU vertical speed value and announces it via screen reader.
+    /// Uses A320-specific variable: VERTICAL SPEED (standard SimVar)
+    /// </summary>
+    public override void RequestFCUVerticalSpeed(SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer announcer)
+    {
+        if (simConnect.IsConnected)
+        {
+            try
+            {
+                // Request vertical speed (standard SimVar, not A320-specific)
+                simConnect.RequestSingleValue(308, "VERTICAL SPEED", "feet per second", "VERTICAL_SPEED");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[A320] Error requesting FCU vertical speed: {ex.Message}");
+            }
+        }
+    }
 }

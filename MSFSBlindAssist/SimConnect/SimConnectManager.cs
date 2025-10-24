@@ -328,15 +328,8 @@ public class SimConnectManager
         // Start continuous monitoring for announced variables
         StartContinuousMonitoring();
 
-        // Register FCU values for hotkey readouts
-        sc.AddToDataDefinition(DATA_DEFINITIONS.FCU_VALUES,
-            "L:A32NX_FCU_AFS_DISPLAY_HDG_TRK_VALUE", "number", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)0);
-        sc.AddToDataDefinition(DATA_DEFINITIONS.FCU_VALUES,
-            "L:A32NX_FCU_AFS_DISPLAY_SPD_MACH_VALUE", "number", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)1);
-        sc.AddToDataDefinition(DATA_DEFINITIONS.FCU_VALUES,
-            "L:A32NX_FCU_AFS_DISPLAY_ALT_VALUE", "number", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)2);
-
-        sc.RegisterDataDefineStruct<FCUValues>(DATA_DEFINITIONS.FCU_VALUES);
+        // NOTE: FCU values are now handled by aircraft-specific implementations
+        // Each aircraft definition (e.g., FlyByWireA320Definition) handles its own FCU variables
 
         // Register aircraft info
         sc.AddToDataDefinition(DATA_DEFINITIONS.AIRCRAFT_INFO, "TITLE", null,
@@ -1745,84 +1738,10 @@ public class SimConnectManager
         return snapshot;
     }
 
-    public void RequestFCUHeading()
-    {
-        if (IsConnected && simConnect != null)
-        {
-            try
-            {
-                // Create a specific request for just heading
-                var tempDefId = (DATA_DEFINITIONS)300;
-                // Don't clear if it doesn't exist - just define it
-                simConnect.AddToDataDefinition(tempDefId, 
-                    "L:A32NX_FCU_AFS_DISPLAY_HDG_TRK_VALUE", "number", 
-                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
-                simConnect.RegisterDataDefineStruct<SingleValue>(tempDefId);
-                simConnect.RequestDataOnSimObject((DATA_REQUESTS)300,
-                    tempDefId, SIMCONNECT_OBJECT_ID_USER,
-                    SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error requesting heading: {ex.Message}");
-            }
-        }
-    }
-    
-    public void RequestFCUSpeed()
-    {
-        if (IsConnected && simConnect != null)
-        {
-            try
-            {
-                var tempDefId = (DATA_DEFINITIONS)301;
-                simConnect.AddToDataDefinition(tempDefId, 
-                    "L:A32NX_FCU_AFS_DISPLAY_SPD_MACH_VALUE", "number", 
-                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
-                simConnect.RegisterDataDefineStruct<SingleValue>(tempDefId);
-                simConnect.RequestDataOnSimObject((DATA_REQUESTS)301,
-                    tempDefId, SIMCONNECT_OBJECT_ID_USER,
-                    SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error requesting speed: {ex.Message}");
-            }
-        }
-    }
-    
-    public void RequestFCUAltitude()
-    {
-        if (IsConnected && simConnect != null)
-        {
-            try
-            {
-                var tempDefId = (DATA_DEFINITIONS)302;
-                simConnect.AddToDataDefinition(tempDefId, 
-                    "L:A32NX_FCU_AFS_DISPLAY_ALT_VALUE", "number", 
-                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
-                simConnect.RegisterDataDefineStruct<SingleValue>(tempDefId);
-                simConnect.RequestDataOnSimObject((DATA_REQUESTS)302,
-                    tempDefId, SIMCONNECT_OBJECT_ID_USER,
-                    SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error requesting altitude: {ex.Message}");
-            }
-        }
-    }
-
-
-    public void RequestFCUValues()
-    {
-        if (IsConnected && simConnect != null)
-        {
-            simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_FCU_VALUES,
-                DATA_DEFINITIONS.FCU_VALUES, SIMCONNECT_OBJECT_ID_USER,
-                SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
-        }
-    }
+    // NOTE: FCU request methods (RequestFCUHeading, RequestFCUSpeed, RequestFCUAltitude, RequestFCUVerticalSpeed)
+    // have been moved to aircraft-specific implementations.
+    // See FlyByWireA320Definition.cs for A320 FCU implementation.
+    // Other aircraft will have their own FCU/MCP implementations.
 
     public void RequestAltitudeAGL()
     {
@@ -2134,7 +2053,7 @@ public class SimConnectManager
         }
     }
 
-    internal void RequestSingleValue(int id, string simVarName, string units, string varName)
+    public void RequestSingleValue(int id, string simVarName, string units, string varName)
     {
         if (IsConnected && simConnect != null)
         {

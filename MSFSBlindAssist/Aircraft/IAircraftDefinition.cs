@@ -104,4 +104,48 @@ public interface IAircraftDefinition
         Accessibility.ScreenReaderAnnouncer announcer,
         System.Windows.Forms.Form parentForm,
         Hotkeys.HotkeyManager hotkeyManager);
+
+    // FCU/MCP Request Methods (Flight Control Unit / Mode Control Panel)
+    // Aircraft without FCU can use default (do-nothing) implementations
+
+    /// <summary>
+    /// Requests and announces the current FCU/MCP heading value.
+    /// Aircraft without FCU should use the default implementation (does nothing).
+    /// </summary>
+    void RequestFCUHeading(SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer announcer);
+
+    /// <summary>
+    /// Requests and announces the current FCU/MCP speed value.
+    /// Aircraft without FCU should use the default implementation (does nothing).
+    /// </summary>
+    void RequestFCUSpeed(SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer announcer);
+
+    /// <summary>
+    /// Requests and announces the current FCU/MCP altitude value.
+    /// Aircraft without FCU should use the default implementation (does nothing).
+    /// </summary>
+    void RequestFCUAltitude(SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer announcer);
+
+    /// <summary>
+    /// Requests and announces the current FCU/MCP vertical speed value.
+    /// Aircraft without FCU should use the default implementation (does nothing).
+    /// </summary>
+    void RequestFCUVerticalSpeed(SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer announcer);
+
+    // Display System Monitoring (ECAM for Airbus, EICAS for Boeing, etc.)
+    // Aircraft without these systems should use the default implementation (does nothing)
+
+    /// <summary>
+    /// Starts monitoring the aircraft's display system (ECAM, EICAS, etc.).
+    /// This is called when the user enables display monitoring.
+    /// Aircraft without display systems should use the default implementation (does nothing).
+    /// </summary>
+    void StartDisplayMonitoring(SimConnect.SimConnectManager simConnect);
+
+    /// <summary>
+    /// Stops monitoring the aircraft's display system (ECAM, EICAS, etc.).
+    /// This is called when the user disables display monitoring.
+    /// Aircraft without display systems should use the default implementation (does nothing).
+    /// </summary>
+    void StopDisplayMonitoring(SimConnect.SimConnectManager simConnect);
 }
