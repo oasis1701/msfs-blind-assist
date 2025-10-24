@@ -135,6 +135,18 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
         // Default: do nothing (aircraft has no FCU)
     }
 
+    // Variable Update Processing
+
+    /// <summary>
+    /// Default implementation returns false (no special processing).
+    /// Aircraft with complex variable processing logic (e.g., combining multiple variables) should override.
+    /// </summary>
+    public virtual bool ProcessSimVarUpdate(string varName, double value, ScreenReaderAnnouncer announcer)
+    {
+        // Default: no special processing - let MainForm handle generically
+        return false;
+    }
+
     // Display Monitoring Methods - Default implementations (do nothing)
     // Aircraft with ECAM/EICAS/etc. should override these methods
 

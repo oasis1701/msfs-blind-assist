@@ -1960,8 +1960,11 @@ public class SimConnectManager
         }
     }
 
-
-
+    /// <summary>
+    /// A32NX-SPECIFIC: Requests fuel and payload data for FlyByWire Airbus A320neo.
+    /// Uses both standard SimVars and A32NX-specific L-variables for weight/balance calculations.
+    /// Called by Forms/A32NX/FuelPayloadDisplayForm.cs only.
+    /// </summary>
     public void RequestFuelAndPayloadData()
     {
         if (IsConnected && simConnect != null)
@@ -2013,7 +2016,9 @@ public class SimConnectManager
     }
 
     /// <summary>
-    /// A32NX-specific method used by ECAM Display Form
+    /// A32NX-SPECIFIC: Requests total fuel quantity for FlyByWire Airbus A320neo.
+    /// Uses L:A32NX_TOTAL_FUEL_QUANTITY variable specific to FlyByWire implementation.
+    /// Called by Forms/A32NX/ECAMDisplayForm.cs and FlyByWireA320Definition.cs.
     /// </summary>
     public void RequestFuelQuantity()
     {
@@ -2805,6 +2810,11 @@ public class SimConnectManager
         }
     }
 
+    /// <summary>
+    /// A32NX-SPECIFIC: Requests ECAM (Engine Warning and Advisory Display) message codes for FlyByWire Airbus A320neo.
+    /// Retrieves 14 numeric L-variables (A32NX_Ewd_LOWER_LEFT_LINE_*, A32NX_Ewd_LOWER_RIGHT_LINE_*) that map to ECAM messages.
+    /// Also requests master warning/caution/stall indicators. Called by Forms/A32NX/ECAMDisplayForm.cs only.
+    /// </summary>
     public void RequestECAMMessages()
     {
         if (!IsConnected || simConnect == null)
@@ -2852,6 +2862,11 @@ public class SimConnectManager
         }
     }
 
+    /// <summary>
+    /// A32NX-SPECIFIC: Requests ECAM STATUS page message codes for FlyByWire Airbus A320neo.
+    /// Retrieves 36 numeric L-variables (A32NX_STATUS_LEFT_LINE_1-18, A32NX_STATUS_RIGHT_LINE_1-18) for STATUS display.
+    /// Called by Forms/A32NX/StatusDisplayForm.cs only.
+    /// </summary>
     public void RequestStatusMessages()
     {
         if (!IsConnected || simConnect == null)

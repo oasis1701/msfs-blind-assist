@@ -132,6 +132,20 @@ public interface IAircraftDefinition
     /// </summary>
     void RequestFCUVerticalSpeed(SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer announcer);
 
+    // Variable Update Processing
+
+    /// <summary>
+    /// Processes aircraft-specific variable updates.
+    /// Called for each variable update before generic processing in MainForm.
+    /// Allows aircraft to implement custom logic for combining or interpreting multiple variables.
+    /// Examples: A320 FCU display combining (value + managed mode), VS/FPA mode handling.
+    /// </summary>
+    /// <param name="varName">The variable name that was updated</param>
+    /// <param name="value">The new value of the variable</param>
+    /// <param name="announcer">Screen reader announcer for user feedback</param>
+    /// <returns>True if the update was fully processed and no further generic processing needed, false otherwise</returns>
+    bool ProcessSimVarUpdate(string varName, double value, Accessibility.ScreenReaderAnnouncer announcer);
+
     // Display System Monitoring (ECAM for Airbus, EICAS for Boeing, etc.)
     // Aircraft without these systems should use the default implementation (does nothing)
 

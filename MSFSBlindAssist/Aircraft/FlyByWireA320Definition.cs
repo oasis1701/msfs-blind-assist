@@ -3892,11 +3892,11 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     // ==================================================================================
 
     /// <summary>
-    /// Processes incoming FCU variable updates and combines value+status when both are received.
-    /// Called from MainForm when SimConnect reports an FCU variable update.
-    /// Returns true if the variable was processed (part of an active FCU readout), false otherwise.
+    /// Processes incoming A32NX variable updates, including FCU display variables that need combining.
+    /// Called from MainForm.OnSimVarUpdated for every variable update to allow aircraft-specific processing.
+    /// Returns true if the variable was fully processed and no further generic processing is needed.
     /// </summary>
-    public bool ProcessFCUVariableUpdate(string varName, double value, Accessibility.ScreenReaderAnnouncer announcer)
+    public override bool ProcessSimVarUpdate(string varName, double value, Accessibility.ScreenReaderAnnouncer announcer)
     {
         lastAnnouncer = announcer; // Store for when we announce
 
@@ -4062,7 +4062,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             pendingHeadingStatus = null;
 
             // Request both variables using existing registrations
-            // ProcessFCUVariableUpdate will combine them when both arrive
+            // ProcessSimVarUpdate will combine them when both arrive
             simConnectMgr.RequestVariable("A32NX_FCU_AFS_DISPLAY_HDG_TRK_VALUE");
             simConnectMgr.RequestVariable("A32NX_FCU_AFS_DISPLAY_HDG_TRK_MANAGED");
         }
@@ -4080,7 +4080,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             pendingSpeedStatus = null;
 
             // Request both variables using existing registrations
-            // ProcessFCUVariableUpdate will combine them when both arrive
+            // ProcessSimVarUpdate will combine them when both arrive
             simConnectMgr.RequestVariable("A32NX_FCU_AFS_DISPLAY_SPD_MACH_VALUE");
             simConnectMgr.RequestVariable("A32NX_FCU_AFS_DISPLAY_SPD_MACH_MANAGED");
         }
@@ -4098,7 +4098,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             pendingAltitudeStatus = null;
 
             // Request both variables using existing registrations
-            // ProcessFCUVariableUpdate will combine them when both arrive
+            // ProcessSimVarUpdate will combine them when both arrive
             simConnectMgr.RequestVariable("A32NX_FCU_AFS_DISPLAY_ALT_VALUE");
             simConnectMgr.RequestVariable("A32NX_FCU_AFS_DISPLAY_LVL_CH_MANAGED");
         }
@@ -4116,7 +4116,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             pendingVSFPAMode = null;
 
             // Request both variables using existing registrations
-            // ProcessFCUVariableUpdate will combine them when both arrive
+            // ProcessSimVarUpdate will combine them when both arrive
             simConnectMgr.RequestVariable("A32NX_FCU_AFS_DISPLAY_VS_FPA_VALUE");
             simConnectMgr.RequestVariable("A32NX_TRK_FPA_MODE_ACTIVE");
         }

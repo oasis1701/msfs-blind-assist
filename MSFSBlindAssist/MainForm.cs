@@ -201,26 +201,12 @@ public partial class MainForm : Form
             return; // These are terminal - no further processing needed
         }
 
-        // Step 2.5: Handle FCU variable updates for FlyByWire A320
-        if (currentAircraft is Aircraft.FlyByWireA320Definition a320)
+        // Step 2.5: Allow aircraft-specific variable processing (e.g., FCU display combining)
+        // This lets each aircraft handle complex variables before generic processing
+        bool wasProcessedByAircraft = currentAircraft.ProcessSimVarUpdate(e.VarName, e.Value, announcer);
+        if (wasProcessedByAircraft)
         {
-            // Check if this is one of the FCU variables that need combining
-            if (e.VarName == "A32NX_FCU_AFS_DISPLAY_HDG_TRK_VALUE" ||
-                e.VarName == "A32NX_FCU_AFS_DISPLAY_HDG_TRK_MANAGED" ||
-                e.VarName == "A32NX_FCU_AFS_DISPLAY_SPD_MACH_VALUE" ||
-                e.VarName == "A32NX_FCU_AFS_DISPLAY_SPD_MACH_MANAGED" ||
-                e.VarName == "A32NX_FCU_AFS_DISPLAY_ALT_VALUE" ||
-                e.VarName == "A32NX_FCU_AFS_DISPLAY_LVL_CH_MANAGED" ||
-                e.VarName == "A32NX_FCU_AFS_DISPLAY_VS_FPA_VALUE" ||
-                e.VarName == "A32NX_TRK_FPA_MODE_ACTIVE")
-            {
-                // Try to process as FCU readout. Only return if it was actually processed.
-                // If not processed (e.g., button state announcement), continue normal flow.
-                bool wasProcessed = a320.ProcessFCUVariableUpdate(e.VarName, e.Value, announcer);
-                if (wasProcessed)
-                    return; // FCU processing handled it
-                // Otherwise, fall through to normal processing (button states, etc.)
-            }
+            return; // Aircraft handled it completely, no further processing needed
         }
 
         // Step 3: Update display values (if this variable is used in any panel display)
