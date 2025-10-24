@@ -4,6 +4,7 @@ using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.Database;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Forms;
+using MSFSBlindAssist.Forms.A32NX;
 using MSFSBlindAssist.Hotkeys;
 using MSFSBlindAssist.Services;
 using MSFSBlindAssist.SimConnect;
@@ -1320,6 +1321,22 @@ public partial class MainForm : Form
         var settings = MSFSBlindAssist.Settings.SettingsManager.Current;
         settings.LastAircraft = currentAircraft.AircraftCode;
         MSFSBlindAssist.Settings.SettingsManager.Save();
+
+        // Update aircraft-specific menu items visibility
+        UpdateAircraftSpecificMenuItems();
+    }
+
+    private void UpdateAircraftSpecificMenuItems()
+    {
+        // TODO: Once menu items are identified/reorganized, update their visibility based on aircraft capabilities
+        // For now, all A320 forms remain visible by default since we only have one aircraft
+
+        // Example of what this will do:
+        // navigationDisplayMenuItem.Visible = currentAircraft is ISupportsNavigationDisplay;
+        // pfdMenuItem.Visible = currentAircraft is ISupportsPFDDisplay;
+        // ecamDisplayMenuItem.Visible = currentAircraft is ISupportsECAM;
+        // statusDisplayMenuItem.Visible = currentAircraft is ISupportsECAM;
+        // fuelPayloadMenuItem.Visible = currentAircraft is ISupportsECAM;
     }
 
     private void UpdateDatabaseStatusDisplay()

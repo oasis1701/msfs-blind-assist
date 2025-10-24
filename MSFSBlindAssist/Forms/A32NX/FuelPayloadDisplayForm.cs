@@ -2,7 +2,7 @@ using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Controls;
 using MSFSBlindAssist.SimConnect;
 
-namespace MSFSBlindAssist.Forms;
+namespace MSFSBlindAssist.Forms.A32NX;
 public partial class FuelPayloadDisplayForm : Form
 {
     // Windows API declarations for focus management

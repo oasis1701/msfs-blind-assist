@@ -1,9 +1,13 @@
 using MSFSBlindAssist.Hotkeys;
 using MSFSBlindAssist.Accessibility;
+using MSFSBlindAssist.Forms.A32NX;
 
 namespace MSFSBlindAssist.Aircraft;
 
-public class FlyByWireA320Definition : BaseAircraftDefinition
+public class FlyByWireA320Definition : BaseAircraftDefinition,
+    ISupportsECAM,
+    ISupportsNavigationDisplay,
+    ISupportsPFDDisplay
 {
     public override string AircraftName => "FlyByWire Airbus A320neo";
     public override string AircraftCode => "A320";
@@ -3823,32 +3827,32 @@ public class FlyByWireA320Definition : BaseAircraftDefinition
 
     private void ShowA320PFDWindow(SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
     {
-        var dialog = new Forms.PFDForm(announcer, simConnect);
+        var dialog = new PFDForm(announcer, simConnect);
         dialog.CurrentAircraft = this;
         dialog.Show();
     }
 
     private void ShowA320NavigationDisplay(SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
     {
-        var dialog = new Forms.NavigationDisplayForm(announcer, simConnect);
+        var dialog = new NavigationDisplayForm(announcer, simConnect);
         dialog.Show();
     }
 
     private void ShowA320FuelPayloadWindow(SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
     {
-        var dialog = new Forms.FuelPayloadDisplayForm(announcer, simConnect);
+        var dialog = new FuelPayloadDisplayForm(announcer, simConnect);
         dialog.Show();
     }
 
     private void ShowA320ECAMDisplay(SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
     {
-        var dialog = new Forms.ECAMDisplayForm(announcer, simConnect);
+        var dialog = new ECAMDisplayForm(announcer, simConnect);
         dialog.Show();
     }
 
     private void ShowA320StatusDisplay(SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
     {
-        var dialog = new Forms.StatusDisplayForm(announcer, simConnect);
+        var dialog = new StatusDisplayForm(announcer, simConnect);
         dialog.Show();
     }
 

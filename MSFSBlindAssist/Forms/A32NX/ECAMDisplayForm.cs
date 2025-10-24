@@ -2,7 +2,7 @@ using System.Text.RegularExpressions;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.SimConnect;
 
-namespace MSFSBlindAssist.Forms;
+namespace MSFSBlindAssist.Forms.A32NX;
 public partial class ECAMDisplayForm : Form
 {
     // Windows API declarations for focus management

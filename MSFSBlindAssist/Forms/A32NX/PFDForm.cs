@@ -2,7 +2,7 @@ using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.SimConnect;
 using MSFSBlindAssist.Aircraft;
 
-namespace MSFSBlindAssist.Forms;
+namespace MSFSBlindAssist.Forms.A32NX;
 
 public partial class PFDForm : Form
     {
