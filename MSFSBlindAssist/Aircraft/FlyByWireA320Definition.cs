@@ -1,16 +1,19 @@
+using MSFSBlindAssist.Hotkeys;
+using MSFSBlindAssist.Accessibility;
+
 namespace MSFSBlindAssist.Aircraft;
 
-public class FlyByWireA320Definition : IAircraftDefinition
+public class FlyByWireA320Definition : BaseAircraftDefinition
 {
-    public string AircraftName => "FlyByWire Airbus A320neo";
-    public string AircraftCode => "A320";
+    public override string AircraftName => "FlyByWire Airbus A320neo";
+    public override string AircraftCode => "A320";
 
-    public FCUControlType GetAltitudeControlType() => FCUControlType.SetValue;
-    public FCUControlType GetHeadingControlType() => FCUControlType.SetValue;
-    public FCUControlType GetSpeedControlType() => FCUControlType.SetValue;
-    public FCUControlType GetVerticalSpeedControlType() => FCUControlType.SetValue;
+    public override FCUControlType GetAltitudeControlType() => FCUControlType.SetValue;
+    public override FCUControlType GetHeadingControlType() => FCUControlType.SetValue;
+    public override FCUControlType GetSpeedControlType() => FCUControlType.SetValue;
+    public override FCUControlType GetVerticalSpeedControlType() => FCUControlType.SetValue;
 
-    public Dictionary<string, SimConnect.SimVarDefinition> GetVariables()
+    public override Dictionary<string, SimConnect.SimVarDefinition> GetVariables()
     {
         return new Dictionary<string, SimConnect.SimVarDefinition>
         {
@@ -3158,7 +3161,7 @@ public class FlyByWireA320Definition : IAircraftDefinition
         };
     }
 
-    public Dictionary<string, List<string>> GetPanelDisplayVariables()
+    public override Dictionary<string, List<string>> GetPanelDisplayVariables()
     {
         return new Dictionary<string, List<string>>
         {
@@ -3209,7 +3212,7 @@ public class FlyByWireA320Definition : IAircraftDefinition
         };
     }
 
-    public Dictionary<string, List<string>> GetPanelStructure()
+    public override Dictionary<string, List<string>> GetPanelStructure()
     {
         return new Dictionary<string, List<string>>
         {
@@ -3220,7 +3223,7 @@ public class FlyByWireA320Definition : IAircraftDefinition
         };
     }
 
-    public Dictionary<string, List<string>> GetPanelControls()
+    public override Dictionary<string, List<string>> GetPanelControls()
     {
         return new Dictionary<string, List<string>>
         {
@@ -3444,7 +3447,7 @@ public class FlyByWireA320Definition : IAircraftDefinition
         };
     }
 
-    public Dictionary<string, string> GetButtonStateMapping()
+    public override Dictionary<string, string> GetButtonStateMapping()
     {
         return new Dictionary<string, string>
         {
@@ -3500,5 +3503,348 @@ public class FlyByWireA320Definition : IAircraftDefinition
         ["ECAM_CLR_1"] = "A32NX_ECP_LIGHT_CLR_1",
         ["ECAM_CLR_2"] = "A32NX_ECP_LIGHT_CLR_2",
         };
+    }
+
+    /// <summary>
+    /// Maps hotkey actions to A32NX SimConnect event names for simple button actions.
+    /// </summary>
+    protected override Dictionary<HotkeyAction, string> GetHotkeyVariableMap()
+    {
+        return new Dictionary<HotkeyAction, string>
+        {
+            // FCU push/pull buttons
+            [HotkeyAction.FCUHeadingPush] = "A32NX.FCU_HDG_PUSH",
+            [HotkeyAction.FCUHeadingPull] = "A32NX.FCU_HDG_PULL",
+            [HotkeyAction.FCUAltitudePush] = "A32NX.FCU_ALT_PUSH",
+            [HotkeyAction.FCUAltitudePull] = "A32NX.FCU_ALT_PULL",
+            [HotkeyAction.FCUSpeedPush] = "A32NX.FCU_SPD_PUSH",
+            [HotkeyAction.FCUSpeedPull] = "A32NX.FCU_SPD_PULL",
+            [HotkeyAction.FCUVSPush] = "A32NX.FCU_VS_PUSH",
+            [HotkeyAction.FCUVSPull] = "A32NX.FCU_VS_PULL",
+
+            // Autopilot buttons
+            [HotkeyAction.ToggleAutopilot1] = "A32NX.FCU_AP_1_PUSH",
+            [HotkeyAction.ToggleAutopilot2] = "A32NX.FCU_AP_2_PUSH",
+            [HotkeyAction.ToggleApproachMode] = "A32NX.FCU_APPR_PUSH",
+        };
+    }
+
+    /// <summary>
+    /// Handles complex hotkey actions that require custom dialogs or logic.
+    /// </summary>
+    public override bool HandleHotkeyAction(
+        HotkeyAction action,
+        SimConnect.SimConnectManager simConnect,
+        ScreenReaderAnnouncer announcer,
+        Form parentForm,
+        HotkeyManager hotkeyManager)
+    {
+        // Handle aircraft-specific actions
+        switch (action)
+        {
+            // FCU set value dialogs (these need custom logic)
+            case HotkeyAction.FCUSetHeading:
+                return ShowA320HeadingInputDialog(simConnect, announcer, parentForm);
+
+            case HotkeyAction.FCUSetSpeed:
+                return ShowA320SpeedInputDialog(simConnect, announcer, parentForm);
+
+            case HotkeyAction.FCUSetAltitude:
+                return ShowA320AltitudeInputDialog(simConnect, announcer, parentForm);
+
+            case HotkeyAction.FCUSetVS:
+                return ShowA320VSInputDialog(simConnect, announcer, parentForm);
+
+            // A32NX-specific data readouts
+            case HotkeyAction.ReadFuelQuantity:
+                simConnect.RequestFuelQuantity();
+                return true;
+
+            case HotkeyAction.ReadWaypointInfo:
+                simConnect.RequestWaypointInfo();
+                return true;
+
+            case HotkeyAction.ReadApproachCapability:
+                HandleReadApproachCapability(simConnect, announcer);
+                return true;
+
+            // A32NX-specific speed tape readouts
+            case HotkeyAction.ReadSpeedGD:
+                simConnect.RequestSpeedGD();
+                return true;
+
+            case HotkeyAction.ReadSpeedS:
+                simConnect.RequestSpeedS();
+                return true;
+
+            case HotkeyAction.ReadSpeedF:
+                simConnect.RequestSpeedF();
+                return true;
+
+            case HotkeyAction.ReadSpeedVLS:
+                simConnect.RequestSpeedVLS();
+                return true;
+
+            case HotkeyAction.ReadSpeedVS:
+                simConnect.RequestSpeedVS();
+                return true;
+
+            case HotkeyAction.ReadSpeedVFE:
+                simConnect.RequestSpeedVFE();
+                return true;
+
+            // A32NX-specific windows
+            case HotkeyAction.ShowPFD:
+                hotkeyManager.ExitOutputHotkeyMode();
+                ShowA320PFDWindow(simConnect, announcer);
+                return true;
+
+            case HotkeyAction.ShowNavigationDisplay:
+                hotkeyManager.ExitOutputHotkeyMode();
+                ShowA320NavigationDisplay(simConnect, announcer);
+                return true;
+
+            case HotkeyAction.ShowFuelPayloadWindow:
+                hotkeyManager.ExitOutputHotkeyMode();
+                ShowA320FuelPayloadWindow(simConnect, announcer);
+                return true;
+
+            case HotkeyAction.ShowECAM:
+                hotkeyManager.ExitOutputHotkeyMode();
+                ShowA320ECAMDisplay(simConnect, announcer);
+                return true;
+
+            case HotkeyAction.ShowStatusPage:
+                hotkeyManager.ExitOutputHotkeyMode();
+                ShowA320StatusDisplay(simConnect, announcer);
+                return true;
+
+            case HotkeyAction.ToggleECAMMonitoring:
+                ToggleA320ECAMMonitoring(simConnect, announcer);
+                return true;
+        }
+
+        // Fall back to base class for simple variable mappings
+        return base.HandleHotkeyAction(action, simConnect, announcer, parentForm, hotkeyManager);
+    }
+
+    // A320-specific FCU input dialog methods
+    private bool ShowA320HeadingInputDialog(
+        SimConnect.SimConnectManager simConnect,
+        ScreenReaderAnnouncer announcer,
+        Form parentForm)
+    {
+        var validator = new Func<string, (bool isValid, string message)>((input) =>
+        {
+            if (double.TryParse(input, out double value))
+            {
+                if (value >= 0 && value <= 360)
+                    return (true, "");
+                else
+                    return (false, "Heading must be between 0 and 360 degrees");
+            }
+            return (false, "Invalid number format");
+        });
+
+        return ShowFCUInputDialog(
+            "Set Heading",
+            "Heading",
+            "0-360 degrees",
+            "A32NX.FCU_HDG_SET",
+            simConnect,
+            announcer,
+            parentForm,
+            validator);
+    }
+
+    private bool ShowA320SpeedInputDialog(
+        SimConnect.SimConnectManager simConnect,
+        ScreenReaderAnnouncer announcer,
+        Form parentForm)
+    {
+        var validator = new Func<string, (bool isValid, string message)>((input) =>
+        {
+            if (double.TryParse(input, out double value))
+            {
+                // Check if it's a Mach number (0.10-0.99) or knots (100-399)
+                if ((value >= 0.10 && value <= 0.99) || (value >= 100 && value <= 399))
+                    return (true, "");
+                else
+                    return (false, "Speed must be 100-399 knots or 0.10-0.99 Mach");
+            }
+            return (false, "Invalid number format");
+        });
+
+        // Mach numbers need to be multiplied by 100, knots are sent as-is
+        Func<double, uint> converter = (value) => value < 1.0 ? (uint)(value * 100) : (uint)value;
+
+        return ShowFCUInputDialog(
+            "Set Speed",
+            "Speed",
+            "100-399 knots or 0.10-0.99 Mach",
+            "A32NX.FCU_SPD_SET",
+            simConnect,
+            announcer,
+            parentForm,
+            validator,
+            converter);
+    }
+
+    private bool ShowA320AltitudeInputDialog(
+        SimConnect.SimConnectManager simConnect,
+        ScreenReaderAnnouncer announcer,
+        Form parentForm)
+    {
+        if (!simConnect.IsConnected)
+        {
+            announcer.AnnounceImmediate("Not connected to simulator.");
+            return false;
+        }
+
+        var validator = new Func<string, (bool isValid, string message)>((input) =>
+        {
+            if (double.TryParse(input, out double value))
+            {
+                if (value >= 100 && value <= 49000)
+                    return (true, "");
+                else
+                    return (false, "Altitude must be between 100 and 49000 feet");
+            }
+            return (false, "Invalid number format");
+        });
+
+        var dialog = new Forms.FCUInputForm("Set Altitude", "Altitude", "100-49000 feet", announcer, validator);
+        if (dialog.ShowDialog(parentForm) == DialogResult.OK && dialog.IsValidInput)
+        {
+            if (double.TryParse(dialog.InputValue, out double value))
+            {
+                // FCU_ALT_SET requires values to be multiples of 100 feet
+                uint roundedValue = (uint)(Math.Round(value / 100) * 100);
+
+                // Set FCU altitude increment mode to 100ft before setting altitude
+                simConnect.SendEvent("A32NX.FCU_ALT_INCREMENT_SET", 100);
+                System.Threading.Thread.Sleep(50); // Brief delay for mode to activate
+
+                simConnect.SendEvent("A32NX.FCU_ALT_SET", roundedValue);
+                announcer.AnnounceImmediate($"Altitude set to {roundedValue}");
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool ShowA320VSInputDialog(
+        SimConnect.SimConnectManager simConnect,
+        ScreenReaderAnnouncer announcer,
+        Form parentForm)
+    {
+        if (!simConnect.IsConnected)
+        {
+            announcer.AnnounceImmediate("Not connected to simulator.");
+            return false;
+        }
+
+        // For A320, we need to check TRK/FPA mode but we don't have access to currentSimVarValues here
+        // Simplify by accepting both FPA and VS ranges
+        string rangeText = "-6000 to 6000 ft/min or -9.9 to 9.9 degrees FPA";
+
+        var validator = new Func<string, (bool isValid, string message)>((input) =>
+        {
+            if (double.TryParse(input, out double value))
+            {
+                // Accept both VS range (-6000 to 6000) and FPA range (-9.9 to 9.9)
+                if ((value >= -6000 && value <= 6000) || (value >= -9.9 && value <= 9.9))
+                    return (true, "");
+                else
+                    return (false, "Value must be -6000 to 6000 ft/min or -9.9 to 9.9 degrees FPA");
+            }
+            return (false, "Invalid number format");
+        });
+
+        var dialog = new Forms.FCUInputForm("Set Vertical Speed / FPA", "VS/FPA", rangeText, announcer, validator);
+        if (dialog.ShowDialog(parentForm) == DialogResult.OK && dialog.IsValidInput)
+        {
+            if (double.TryParse(dialog.InputValue, out double value))
+            {
+                // If value is small (< 100), assume it's FPA and multiply by 100
+                // Otherwise assume it's vertical speed feet per minute
+                uint valueToSend = Math.Abs(value) < 100 ? (uint)(value * 100) : (uint)value;
+
+                simConnect.SendEvent("A32NX.FCU_VS_SET", valueToSend);
+                announcer.AnnounceImmediate($"Vertical speed set to {value}");
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // Helper methods for A32NX-specific hotkey actions
+    private void HandleReadApproachCapability(SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
+    {
+        // Get cached value immediately
+        var cachedValue = simConnect.GetCachedVariableValue("A32NX_APPROACH_CAPABILITY");
+        if (cachedValue.HasValue)
+        {
+            string capabilityText = cachedValue.Value switch
+            {
+                0 => "RNP APCH",
+                1 => "CAT 1",
+                2 => "CAT 2",
+                3 => "CAT 3 Single",
+                4 => "CAT 3 Dual",
+                _ => $"Unknown ({cachedValue.Value})"
+            };
+            announcer.AnnounceImmediate($"Approach capability: {capabilityText}");
+        }
+        else
+        {
+            announcer.AnnounceImmediate("Approach capability not available");
+        }
+    }
+
+    private void ShowA320PFDWindow(SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
+    {
+        var dialog = new Forms.PFDForm(announcer, simConnect);
+        dialog.CurrentAircraft = this;
+        dialog.Show();
+    }
+
+    private void ShowA320NavigationDisplay(SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
+    {
+        var dialog = new Forms.NavigationDisplayForm(announcer, simConnect);
+        dialog.Show();
+    }
+
+    private void ShowA320FuelPayloadWindow(SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
+    {
+        var dialog = new Forms.FuelPayloadDisplayForm(announcer, simConnect);
+        dialog.Show();
+    }
+
+    private void ShowA320ECAMDisplay(SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
+    {
+        var dialog = new Forms.ECAMDisplayForm(announcer, simConnect);
+        dialog.Show();
+    }
+
+    private void ShowA320StatusDisplay(SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
+    {
+        var dialog = new Forms.StatusDisplayForm(announcer, simConnect);
+        dialog.Show();
+    }
+
+    private void ToggleA320ECAMMonitoring(SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
+    {
+        if (!simConnect.IsConnected)
+        {
+            announcer.AnnounceImmediate("Not connected to simulator.");
+            return;
+        }
+
+        bool isEnabled = simConnect.ToggleECAMMonitoring();
+        string statusMessage = isEnabled ? "E W D monitoring enabled" : "E W D monitoring disabled";
+        announcer.AnnounceImmediate(statusMessage);
     }
 }

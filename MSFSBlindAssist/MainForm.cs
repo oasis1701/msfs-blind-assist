@@ -620,6 +620,30 @@ public partial class MainForm : Form
 
     private void OnHotkeyTriggered(object? sender, HotkeyEventArgs e)
     {
+        // Try aircraft-specific handler first
+        bool handledByAircraft = currentAircraft.HandleHotkeyAction(e.Action, simConnectManager, announcer, this, hotkeyManager);
+
+        // If aircraft handled it and it's a button action, check for state announcement
+        if (handledByAircraft)
+        {
+            // Get the variable mapping to see if this needs state announcement
+            var buttonStateMap = currentAircraft.GetButtonStateMapping();
+            var variableMap = (currentAircraft as Aircraft.BaseAircraftDefinition)?.GetType()
+                .GetMethod("GetHotkeyVariableMap", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                ?.Invoke(currentAircraft, null) as Dictionary<HotkeyAction, string>;
+
+            if (variableMap != null && variableMap.TryGetValue(e.Action, out string? eventName))
+            {
+                // Check if this button has a state announcement
+                if (!string.IsNullOrEmpty(eventName))
+                {
+                    HandleButtonStateAnnouncement(eventName);
+                }
+            }
+            return; // Action was handled by aircraft
+        }
+
+        // Fall through to universal actions
         switch (e.Action)
         {
             case HotkeyAction.ReadHeading:
@@ -655,9 +679,6 @@ public partial class MainForm : Form
             case HotkeyAction.ReadVerticalSpeed:
                 simConnectManager.RequestVerticalSpeed();
                 break;
-            case HotkeyAction.ReadFuelQuantity:
-                simConnectManager.RequestFuelQuantity();
-                break;
             case HotkeyAction.ReadHeadingMagnetic:
                 simConnectManager.RequestHeadingMagnetic();
                 break;
@@ -688,32 +709,14 @@ public partial class MainForm : Form
             case HotkeyAction.ShowMETARReport:
                 ShowMETARReportDialog();
                 break;
-            case HotkeyAction.ShowPFD:
-                ShowPFDDialog();
-                break;
             case HotkeyAction.ShowChecklist:
                 ShowChecklistDialog();
                 break;
             case HotkeyAction.ShowElectronicFlightBag:
                 ShowElectronicFlightBagDialog();
                 break;
-            case HotkeyAction.ShowNavigationDisplay:
-                ShowNavigationDisplayDialog();
-                break;
-            case HotkeyAction.ShowECAM:
-                ShowECAMDialog();
-                break;
-            case HotkeyAction.ShowStatusPage:
-                ShowStatusDialog();
-                break;
             case HotkeyAction.ToggleTakeoffAssist:
                 ToggleTakeoffAssist();
-                break;
-            case HotkeyAction.ToggleECAMMonitoring:
-                ToggleECAMMonitoring();
-                break;
-            case HotkeyAction.ReadWaypointInfo:
-                simConnectManager.RequestWaypointInfo();
                 break;
             case HotkeyAction.ReadTrackSlot1:
                 ReadTrackedWaypoint(1);
@@ -730,109 +733,11 @@ public partial class MainForm : Form
             case HotkeyAction.ReadTrackSlot5:
                 ReadTrackedWaypoint(5);
                 break;
-            case HotkeyAction.ShowFuelPayloadWindow:
-                ShowFuelPayloadDialog();
-                break;
             case HotkeyAction.ToggleVisualApproach:
                 ToggleVisualApproachMonitoring();
                 break;
-            case HotkeyAction.ToggleAutopilot1:
-                simConnectManager.SendEvent("A32NX.FCU_AP_1_PUSH");
-                break;
-            case HotkeyAction.ToggleApproachMode:
-                simConnectManager.SendEvent("A32NX.FCU_APPR_PUSH");
-                break;
-            case HotkeyAction.ReadApproachCapability:
-                RequestApproachCapability();
-                break;
-            case HotkeyAction.FCUHeadingPush:
-                simConnectManager.SendEvent("A32NX.FCU_HDG_PUSH");
-                HandleButtonStateAnnouncement("A32NX.FCU_HDG_PUSH");
-                break;
-            case HotkeyAction.FCUHeadingPull:
-                simConnectManager.SendEvent("A32NX.FCU_HDG_PULL");
-                HandleButtonStateAnnouncement("A32NX.FCU_HDG_PULL");
-                break;
-            case HotkeyAction.FCUAltitudePush:
-                simConnectManager.SendEvent("A32NX.FCU_ALT_PUSH");
-                HandleButtonStateAnnouncement("A32NX.FCU_ALT_PUSH");
-                break;
-            case HotkeyAction.FCUAltitudePull:
-                simConnectManager.SendEvent("A32NX.FCU_ALT_PULL");
-                HandleButtonStateAnnouncement("A32NX.FCU_ALT_PULL");
-                break;
-            case HotkeyAction.FCUSpeedPush:
-                simConnectManager.SendEvent("A32NX.FCU_SPD_PUSH");
-                HandleButtonStateAnnouncement("A32NX.FCU_SPD_PUSH");
-                break;
-            case HotkeyAction.FCUSpeedPull:
-                simConnectManager.SendEvent("A32NX.FCU_SPD_PULL");
-                HandleButtonStateAnnouncement("A32NX.FCU_SPD_PULL");
-                break;
-            case HotkeyAction.FCUVSPush:
-                simConnectManager.SendEvent("A32NX.FCU_VS_PUSH");
-                HandleButtonStateAnnouncement("A32NX.FCU_VS_PUSH");
-                break;
-            case HotkeyAction.FCUVSPull:
-                simConnectManager.SendEvent("A32NX.FCU_VS_PULL");
-                HandleButtonStateAnnouncement("A32NX.FCU_VS_PULL");
-                break;
-            case HotkeyAction.FCUSetHeading:
-                ShowFCUHeadingInputDialog();
-                break;
-            case HotkeyAction.FCUSetSpeed:
-                ShowFCUSpeedInputDialog();
-                break;
-            case HotkeyAction.FCUSetAltitude:
-                ShowFCUAltitudeInputDialog();
-                break;
-            case HotkeyAction.FCUSetVS:
-                ShowFCUVSInputDialog();
-                break;
-            case HotkeyAction.ToggleAutopilot2:
-                simConnectManager.SendEvent("A32NX.FCU_AP_2_PUSH");
-                break;
-            case HotkeyAction.ReadSpeedGD:
-                simConnectManager.RequestSpeedGD();
-                break;
-            case HotkeyAction.ReadSpeedS:
-                simConnectManager.RequestSpeedS();
-                break;
-            case HotkeyAction.ReadSpeedF:
-                simConnectManager.RequestSpeedF();
-                break;
-            case HotkeyAction.ReadSpeedVFE:
-                simConnectManager.RequestSpeedVFE();
-                break;
-            case HotkeyAction.ReadSpeedVLS:
-                simConnectManager.RequestSpeedVLS();
-                break;
-            case HotkeyAction.ReadSpeedVS:
-                simConnectManager.RequestSpeedVS();
-                break;
-        }
-    }
-
-    private void RequestApproachCapability()
-    {
-        if (simConnectManager != null)
-        {
-            // Get cached value immediately
-            var cachedValue = simConnectManager.GetCachedVariableValue("A32NX_APPROACH_CAPABILITY");
-            if (cachedValue.HasValue)
-            {
-                var varDef = currentAircraft.GetVariables()["A32NX_APPROACH_CAPABILITY"];
-                string capability = varDef.ValueDescriptions.ContainsKey(cachedValue.Value)
-                    ? varDef.ValueDescriptions[cachedValue.Value]
-                    : cachedValue.Value.ToString();
-                announcer.AnnounceImmediate($"Approach Capability: {capability}");
-            }
-            else
-            {
-                // Request fresh value if not cached
-                simConnectManager.RequestVariable("A32NX_APPROACH_CAPABILITY");
-                announcer.AnnounceImmediate("Approach capability not available");
-            }
+            // Note: FCU push/pull, autopilot toggles, FCU set value dialogs, and A32NX-specific hotkeys
+            // are now handled by the aircraft definition via HandleHotkeyAction()
         }
     }
 

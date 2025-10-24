@@ -87,4 +87,21 @@ public interface IAircraftDefinition
     /// Gets the control type for vertical speed input in the FCU.
     /// </summary>
     FCUControlType GetVerticalSpeedControlType();
+
+    /// <summary>
+    /// Handles aircraft-specific hotkey actions.
+    /// Allows aircraft to define custom behavior for hotkey inputs.
+    /// </summary>
+    /// <param name="action">The hotkey action to handle</param>
+    /// <param name="simConnect">SimConnect manager for sending events and requesting data</param>
+    /// <param name="announcer">Screen reader announcer for user feedback</param>
+    /// <param name="parentForm">Parent form for showing dialogs</param>
+    /// <param name="hotkeyManager">Hotkey manager for controlling hotkey modes</param>
+    /// <returns>True if the action was handled, false if not supported by this aircraft</returns>
+    bool HandleHotkeyAction(
+        Hotkeys.HotkeyAction action,
+        SimConnect.SimConnectManager simConnect,
+        Accessibility.ScreenReaderAnnouncer announcer,
+        System.Windows.Forms.Form parentForm,
+        Hotkeys.HotkeyManager hotkeyManager);
 }
