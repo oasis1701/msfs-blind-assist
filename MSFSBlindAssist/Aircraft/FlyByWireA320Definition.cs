@@ -3483,6 +3483,23 @@ public class FlyByWireA320Definition : IAircraftDefinition
         ["SPOILERS_ARM_TOGGLE"] = "A32NX_SPOILERS_ARMED",
         ["SPOILERS_ON"] = "A32NX_SPOILERS_HANDLE_POSITION",
         ["SPOILERS_OFF"] = "A32NX_SPOILERS_HANDLE_POSITION",
+
+        // ECAM panel buttons
+        ["ECAM_ENG"] = "A32NX_ECP_LIGHT_ENG",
+        ["ECAM_APU"] = "A32NX_ECP_LIGHT_APU",
+        ["ECAM_BLEED"] = "A32NX_ECP_LIGHT_BLEED",
+        ["ECAM_COND"] = "A32NX_ECP_LIGHT_COND",
+        ["ECAM_ELEC"] = "A32NX_ECP_LIGHT_ELEC",
+        ["ECAM_HYD"] = "A32NX_ECP_LIGHT_HYD",
+        ["ECAM_FUEL"] = "A32NX_ECP_LIGHT_FUEL",
+        ["ECAM_PRESS"] = "A32NX_ECP_LIGHT_PRESS",
+        ["ECAM_DOOR"] = "A32NX_ECP_LIGHT_DOOR",
+        ["ECAM_BRAKES"] = "A32NX_ECP_LIGHT_BRAKES",
+        ["ECAM_FLT_CTL"] = "A32NX_ECP_LIGHT_FLT_CTL",
+        ["ECAM_ALL"] = "A32NX_ECP_LIGHT_ALL",
+        ["ECAM_STS"] = "A32NX_ECP_LIGHT_STS",
+        ["ECAM_CLR_1"] = "A32NX_ECP_LIGHT_CLR_1",
+        ["ECAM_CLR_2"] = "A32NX_ECP_LIGHT_CLR_2",
         };
     }
 }
