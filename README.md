@@ -3,7 +3,7 @@
 [![.NET 9](https://img.shields.io/badge/.NET-9-512BD4.svg)](https://dotnet.microsoft.com/download/dotnet/9.0)
 ![GitHub Downloads](https://img.shields.io/github/downloads/oasis1701/msfs-blind-assist/total.svg)
 
-> A screen reader accessible Windows application allowing totally blind flight simulation enthusiasts to control multiple aircraft in Microsoft Flight Simulator with a keyboard and their choice of peripherals.
+> A screen reader accessible Windows application allowing totally blind flight simulation enthusiasts to control aircrafts in Microsoft Flight Simulator with a keyboard and their choice of peripherals.
 
 ## About
 

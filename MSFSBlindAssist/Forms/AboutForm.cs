@@ -33,7 +33,7 @@ public partial class AboutForm : Form
         {
             Text = $"MSFS Blind Assist\r\n\r\n" +
                    $"Version {versionString}\r\n\r\n" +
-                   $"Accessible multi-aircraft application\r\n" +
+                   $"Accessible aircraft control application\r\n" +
                    $"for Microsoft Flight Simulator\r\n\r\n" +
                    $"Hadi Rezaei\r\n" +
                    $"{copyright}",
