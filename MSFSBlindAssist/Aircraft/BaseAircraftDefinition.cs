@@ -12,6 +12,13 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     // Abstract members from IAircraftDefinition that must be implemented
     public abstract string AircraftName { get; }
     public abstract string AircraftCode { get; }
+
+    /// <summary>
+    /// Default implementation returns null (no flight phase tracking).
+    /// Aircraft that track flight phases (e.g., A320) should override this property.
+    /// </summary>
+    public virtual string? CurrentFlightPhase => null;
+
     public abstract Dictionary<string, SimConnect.SimVarDefinition> GetVariables();
     public abstract Dictionary<string, List<string>> GetPanelStructure();
     public abstract Dictionary<string, List<string>> GetPanelControls();

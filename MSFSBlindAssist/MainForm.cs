@@ -206,6 +206,11 @@ public partial class MainForm : Form
         bool wasProcessedByAircraft = currentAircraft.ProcessSimVarUpdate(e.VarName, e.Value, announcer);
         if (wasProcessedByAircraft)
         {
+            // Update window title if flight phase changed (for aircraft that track flight phases)
+            if (!string.IsNullOrEmpty(currentAircraft.CurrentFlightPhase))
+            {
+                this.Text = $"MSFS BA - {currentAircraft.CurrentFlightPhase} phase active";
+            }
             return; // Aircraft handled it completely, no further processing needed
         }
 
@@ -262,20 +267,8 @@ public partial class MainForm : Form
     /// </summary>
     private bool HandleSpecialAnnouncements(SimVarUpdateEventArgs e)
     {
-        // Flight phase and ECAM LED announcements are now handled by aircraft-specific ProcessSimVarUpdate()
-        // Check if the aircraft handled this update
-        if (currentAircraft.ProcessSimVarUpdate(e.VarName, e.Value, announcer))
-        {
-            // Aircraft handled the announcement - update window title if flight phase changed
-            if (currentAircraft is Aircraft.FlyByWireA320Definition fbwA320)
-            {
-                if (!string.IsNullOrEmpty(fbwA320.CurrentFlightPhase))
-                {
-                    this.Text = $"MSFS BA - {fbwA320.CurrentFlightPhase} phase active";
-                }
-            }
-            return true; // Processed by aircraft
-        }
+        // NOTE: Aircraft-specific ProcessSimVarUpdate() is now called in the main flow (line 206)
+        // to avoid duplicate calls. Flight phase window title updates happen there.
 
         // Handle FCU hotkey value announcements
         if (e.VarName == "FCU_HEADING" || e.VarName == "FCU_SPEED" || e.VarName == "FCU_ALTITUDE" ||
@@ -1317,15 +1310,8 @@ public partial class MainForm : Form
 
     private void UpdateAircraftSpecificMenuItems()
     {
-        // TODO: Once menu items are identified/reorganized, update their visibility based on aircraft capabilities
-        // For now, all A320 forms remain visible by default since we only have one aircraft
-
-        // Example of what this will do:
-        // navigationDisplayMenuItem.Visible = currentAircraft is ISupportsNavigationDisplay;
-        // pfdMenuItem.Visible = currentAircraft is ISupportsPFDDisplay;
-        // ecamDisplayMenuItem.Visible = currentAircraft is ISupportsECAM;
-        // statusDisplayMenuItem.Visible = currentAircraft is ISupportsECAM;
-        // fuelPayloadMenuItem.Visible = currentAircraft is ISupportsECAM;
+        // Reserved for future menu-based aircraft-specific window launching
+        // Currently all display windows are launched via hotkeys handled by aircraft definitions
     }
 
     private void UpdateDatabaseStatusDisplay()

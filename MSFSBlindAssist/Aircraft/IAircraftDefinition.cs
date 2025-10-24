@@ -35,6 +35,13 @@ public interface IAircraftDefinition
     string AircraftCode { get; }
 
     /// <summary>
+    /// Gets the current flight phase for window title display.
+    /// Returns null or empty string if aircraft doesn't track flight phases.
+    /// Example: "TAKEOFF", "CLIMB", "CRUISE", "DESCENT", "APPROACH", "LANDING"
+    /// </summary>
+    string? CurrentFlightPhase { get; }
+
+    /// <summary>
     /// Gets all simulator variables and controls for this aircraft.
     /// Maps variable keys to their definitions.
     /// </summary>

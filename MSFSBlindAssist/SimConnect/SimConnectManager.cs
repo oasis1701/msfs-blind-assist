@@ -609,7 +609,9 @@ public class SimConnectManager
             // Look up which variable this was
             if (pendingRequests.TryRemove((int)data.dwRequestID, out string? varKey))
             {
-                // Check if this is an ECAM status variable
+                // NOTE: These are FlyByWire A32NX-specific ECAM variables
+                // Other A320 variants (Fenix, PMDG, etc.) will have different variable names
+                // and should handle their ECAM in their own ProcessSimVarUpdate() method
                 if (varKey == "A32NX_MASTER_WARNING")
                 {
                     ecamMasterWarning = specificValue.value;
@@ -1082,7 +1084,9 @@ public class SimConnectManager
 
             double currentValue = data.value;
 
-            // Check if this is an ECAM message line variable (numeric code)
+            // NOTE: FlyByWire A32NX-specific ECAM message processing
+            // Other A320 variants (Fenix, PMDG, etc.) would implement their own ECAM handling
+            // in their ProcessSimVarUpdate() method with their own variable names
             if (varKey.StartsWith("A32NX_Ewd_LOWER_"))
             {
                 // Convert numeric code to text message via EWDMessageLookup
