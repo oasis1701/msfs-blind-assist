@@ -147,6 +147,20 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
         return false;
     }
 
+    // UI Variable Setting Methods - Default implementations (generic handling)
+    // Aircraft with special UI value setting logic should override
+
+    /// <summary>
+    /// Default implementation returns false (use generic handling).
+    /// Aircraft with special variable setting logic (validation, conversion, multi-step) should override.
+    /// </summary>
+    public virtual bool HandleUIVariableSet(string varKey, double value, SimConnect.SimVarDefinition varDef,
+        SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
+    {
+        // Default: not handled - let MainForm use generic logic
+        return false;
+    }
+
     // Display Monitoring Methods - Default implementations (do nothing)
     // Aircraft with ECAM/EICAS/etc. should override these methods
 

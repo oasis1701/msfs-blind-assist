@@ -28,6 +28,10 @@ public class SimVarDefinition
     public uint EventParam { get; set; }  // Parameter for events (like pump index)
     public bool IsMomentary { get; set; }  // True for momentary buttons that need auto-reset
 
+    // UI customization properties (aircraft-specific)
+    public bool RenderAsButton { get; set; }  // True to render as button instead of combo box (e.g., APU Start)
+    public bool PreventTextInput { get; set; }  // True to prevent text input UI for _SET variables (e.g., autobrake)
+
     // MobiFlight WASM support properties
     public bool UseMobiFlight { get; set; }  // Flag to route through MobiFlight WASM
     public string PressEvent { get; set; } = string.Empty;   // H-variable for button press

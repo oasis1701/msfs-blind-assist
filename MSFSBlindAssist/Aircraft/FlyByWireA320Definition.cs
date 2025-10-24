@@ -26,6 +26,10 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     private bool isRequestingAltitude = false;
     private bool isRequestingVSFPA = false;
 
+    // Flight phase tracking
+    private string currentFlightPhase = "";
+    public string CurrentFlightPhase => currentFlightPhase;
+
     public override string AircraftName => "FlyByWire Airbus A320neo";
     public override string AircraftCode => "A320";
 
@@ -197,7 +201,8 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             DisplayName = "APU Start",
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" },
+            RenderAsButton = true  // Render as button instead of combo box
         },
 
         // Exterior Lighting Panel
@@ -792,25 +797,29 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             Name = "A32NX.AUTOBRAKE_SET_DISARM",
             DisplayName = "Autobrake Disarm Button",
-            Type = SimConnect.SimVarType.Event
+            Type = SimConnect.SimVarType.Event,
+            PreventTextInput = true  // Don't show text input UI for this event
         },
         ["A32NX.AUTOBRAKE_BUTTON_LO"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX.AUTOBRAKE_BUTTON_LO",
             DisplayName = "Autobrake LO Button",
-            Type = SimConnect.SimVarType.Event
+            Type = SimConnect.SimVarType.Event,
+            PreventTextInput = true
         },
         ["A32NX.AUTOBRAKE_BUTTON_MED"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX.AUTOBRAKE_BUTTON_MED",
             DisplayName = "Autobrake MED Button",
-            Type = SimConnect.SimVarType.Event
+            Type = SimConnect.SimVarType.Event,
+            PreventTextInput = true
         },
         ["A32NX.AUTOBRAKE_BUTTON_MAX"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX.AUTOBRAKE_BUTTON_MAX",
             DisplayName = "Autobrake MAX Button",
-            Type = SimConnect.SimVarType.Event
+            Type = SimConnect.SimVarType.Event,
+            PreventTextInput = true
         },
         ["A32NX_BRAKE_FAN_BTN_PRESSED"] = new SimConnect.SimVarDefinition
         {
@@ -3900,6 +3909,36 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     {
         lastAnnouncer = announcer; // Store for when we announce
 
+        // Flight phase tracking (A32NX-specific)
+        if (varName == "A32NX_FMGC_FLIGHT_PHASE")
+        {
+            var variables = GetVariables();
+            if (variables.ContainsKey(varName) && variables[varName].ValueDescriptions.TryGetValue(value, out string? phaseName))
+            {
+                // Only announce if phase has actually changed
+                if (currentFlightPhase != phaseName)
+                {
+                    currentFlightPhase = phaseName;
+                    announcer.Announce($"Entering {phaseName} phase");
+                    // Note: Window title update happens in MainForm by checking CurrentFlightPhase property
+                }
+            }
+            return true; // Processed
+        }
+
+        // ECAM Control Panel LED state announcements (A32NX-specific)
+        if (varName?.StartsWith("A32NX_ECP_LIGHT_") == true)
+        {
+            var variables = GetVariables();
+            if (variables.ContainsKey(varName))
+            {
+                var varDef = variables[varName];
+                string state = value > 0 ? "On" : "Off";
+                announcer.AnnounceImmediate($"{varDef.DisplayName} {state}");
+            }
+            return true; // Processed
+        }
+
         // Heading
         if (varName == "A32NX_FCU_AFS_DISPLAY_HDG_TRK_VALUE")
         {
@@ -4048,6 +4087,88 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         }
 
         return false; // Not an FCU variable we track
+    }
+
+    /// <summary>
+    /// Handles A32NX-specific variable setting from UI controls.
+    /// Implements special validation, conversion, and multi-step logic for certain variables.
+    /// </summary>
+    public override bool HandleUIVariableSet(string varKey, double value, SimConnect.SimVarDefinition varDef,
+        SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer announcer)
+    {
+        // Special handling for autobrake mode - sends to multiple locations
+        if (varKey == "AUTOBRAKE_MODE")
+        {
+            // Try the write LVar first (most likely to work)
+            simConnect.SetLVar("A32NX_AUTOBRAKES_ARMED_MODE_SET", (uint)value);
+
+            // Also try the event as backup
+            simConnect.SendEvent("A32NX.AUTOBRAKE_SET", (uint)value);
+
+            announcer.Announce($"{varDef.DisplayName} set to {varDef.ValueDescriptions[value]}");
+            return true; // Handled
+        }
+
+        // Special handling for VS/FPA set - validate based on current mode
+        if (varKey == "A32NX.FCU_VS_SET")
+        {
+            // Get variables dictionary to check TRK/FPA mode
+            var variables = GetVariables();
+            bool isFpaMode = false;
+
+            // Try to get current FPA mode state from variables (would need to be in currentSimVarValues in MainForm)
+            // For now, validate both ranges
+            // NOTE: MainForm will need to pass currentSimVarValues or we need a different approach
+
+            // Check if value is valid for either mode
+            bool isValidVS = value >= -6000 && value <= 6000;  // VS mode range
+            bool isValidFPA = value >= -9.9 && value <= 9.9;     // FPA mode range
+
+            if (isValidVS || isValidFPA)
+            {
+                // Determine which mode based on value range
+                isFpaMode = Math.Abs(value) <= 9.9;
+                string modeText = isFpaMode ? "FPA" : "VS";
+
+                uint valueToSend = isFpaMode ? (uint)(value * 10) : (uint)value;
+                simConnect.SendEvent(varKey, valueToSend);
+                announcer.Announce($"Vertical speed set to {value:F1} {modeText}");
+                return true; // Handled
+            }
+            else
+            {
+                announcer.AnnounceImmediate("Invalid value. VS: -6000 to 6000, FPA: -9.9 to 9.9");
+                return true; // Handled (rejected)
+            }
+        }
+
+        // Special handling for Left baro setting - requires unit conversion
+        if (varKey == "A32NX.FCU_EFIS_L_BARO_SET")
+        {
+            // Check if we're in inHg or hPa mode (would need currentSimVarValues from MainForm)
+            // For now, assume hPa mode and apply FlyByWire's * 16 conversion
+            // A better implementation would check A32NX_FCU_EFIS_L_BARO_IS_INHG
+
+            // Assume hPa mode (common default)
+            uint convertedValue = (uint)(value * 16);  // FlyByWire expects hPa * 16
+
+            simConnect.SendEvent(varKey, convertedValue);
+            announcer.Announce($"Left baro set to {value:F2} hPa");
+            return true; // Handled
+        }
+
+        // Special handling for Right baro setting - requires unit conversion
+        if (varKey == "A32NX.FCU_EFIS_R_BARO_SET")
+        {
+            // Same as left baro
+            uint convertedValue = (uint)(value * 16);  // FlyByWire expects hPa * 16
+
+            simConnect.SendEvent(varKey, convertedValue);
+            announcer.Announce($"Right baro set to {value:F2} hPa");
+            return true; // Handled
+        }
+
+        return false; // Not handled - use generic logic
     }
 
     private void RequestFCUHeadingWithStatus(SimConnect.SimConnectManager simConnectMgr)

@@ -262,29 +262,19 @@ public partial class MainForm : Form
     /// </summary>
     private bool HandleSpecialAnnouncements(SimVarUpdateEventArgs e)
     {
-        // Handle flight phase updates (A32NX-specific, with safety check for multi-aircraft support)
-        if (e.VarName == "A32NX_FMGC_FLIGHT_PHASE")
+        // Flight phase and ECAM LED announcements are now handled by aircraft-specific ProcessSimVarUpdate()
+        // Check if the aircraft handled this update
+        if (currentAircraft.ProcessSimVarUpdate(e.VarName, e.Value, announcer))
         {
-            // Only process if current aircraft has this variable
-            if (currentAircraft.GetVariables().ContainsKey(e.VarName))
+            // Aircraft handled the announcement - update window title if flight phase changed
+            if (currentAircraft is Aircraft.FlyByWireA320Definition fbwA320)
             {
-                var varDefinition = currentAircraft.GetVariables()[e.VarName];
-                if (varDefinition.ValueDescriptions.TryGetValue(e.Value, out string? phaseName))
+                if (!string.IsNullOrEmpty(fbwA320.CurrentFlightPhase))
                 {
-                    // Only update if the phase has actually changed
-                    if (currentFlightPhase != phaseName)
-                    {
-                        currentFlightPhase = phaseName;
-
-                        // Update window title
-                        this.Text = $"MSFS BA - {phaseName} phase active";
-
-                        // Announce the phase change
-                        announcer.Announce($"Entering {phaseName} phase");
-                    }
+                    this.Text = $"MSFS BA - {fbwA320.CurrentFlightPhase} phase active";
                 }
             }
-            return true;
+            return true; // Processed by aircraft
         }
 
         // Handle FCU hotkey value announcements
@@ -350,16 +340,7 @@ public partial class MainForm : Form
             return true;
         }
 
-        // Handle LED state announcements (A32NX ECAM Control Panel - with safety check for multi-aircraft support)
-        if (e.VarName?.StartsWith("A32NX_ECP_LIGHT_") == true)
-        {
-            // Only process if current aircraft has this variable
-            if (currentAircraft.GetVariables().ContainsKey(e.VarName))
-            {
-                announcer.AnnounceImmediate(e.Description);
-            }
-            return true;
-        }
+        // ECAM LED announcements are now handled by aircraft-specific ProcessSimVarUpdate()
 
         // Handle special display updates
         if (e.VarName == "DISPLAY_UPDATE")
@@ -1748,8 +1729,8 @@ public partial class MainForm : Form
             // Create control based on type
             if (varDef.ValueDescriptions != null && varDef.ValueDescriptions.Count > 1)
             {
-                // Special handling for APU Start - create as button instead of combo box
-                if (varKey == "A32NX_OVHD_APU_START_PB_IS_ON")
+                // Check if variable should be rendered as button instead of combo box (aircraft-specific)
+                if (varDef.RenderAsButton)
                 {
                     Button apuButton = new Button();
                     apuButton.Text = "APU Start";
@@ -2080,27 +2061,16 @@ public partial class MainForm : Form
                         {
                             var selectedValue = sortedValues[combo.SelectedIndex].Key;
 
-                            // Special handling for autobrakes - try multiple approaches
-                            // NOTE: Autobrakes may only be settable under specific flight conditions:
-                            // - Aircraft on ground
-                            // - Engines running
-                            // - During approach/landing phase
-                            // - Not during taxi or with parking brake set
-                            // TODO: Test this during different flight phases to determine exact requirements
-                            if (varKey == "AUTOBRAKE_MODE")
+                            // Let aircraft handle special cases first (validation, conversion, multi-step logic)
+                            if (currentAircraft.HandleUIVariableSet(varKey, selectedValue, varDef, simConnectManager, announcer))
                             {
-                                // Try the write LVar first (most likely to work)
-                                simConnectManager?.SetLVar("A32NX_AUTOBRAKES_ARMED_MODE_SET", selectedValue);
-
-                                // Also try the event as backup
-                                simConnectManager?.SendEvent("A32NX.AUTOBRAKE_SET", (uint)selectedValue);
-
                                 currentSimVarValues[varKey] = selectedValue;
-
-                                // Request related variables to refresh states efficiently
                                 RequestRelatedVariables(varKey, $"User changed {varDef.DisplayName}");
+                                return; // Aircraft handled it
                             }
-                            else if (varKey == "CABIN SEATBELTS ALERT SWITCH") // Seat Belts Signs
+
+                            // Generic handling follows if aircraft didn't handle it
+                            if (varKey == "CABIN SEATBELTS ALERT SWITCH") // Seat Belts Signs
                             {
                                 // Send the toggle event to change the state
                                 simConnectManager?.SendEvent("CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE", 0);
@@ -2132,9 +2102,9 @@ public partial class MainForm : Form
                     }
                 }
             }
-            else if (varKey.Contains("_SET") && !varKey.StartsWith("A32NX.AUTOBRAKE_"))
+            else if (varKey.Contains("_SET") && !varDef.PreventTextInput)
             {
-                // Panel for TextBox and Button
+                // Panel for TextBox and Button (unless aircraft prevents text input)
                 Panel inputPanel = new Panel();
                 inputPanel.Size = new Size(240, 25);
                 
@@ -2176,42 +2146,14 @@ public partial class MainForm : Form
                     }
                     else if (double.TryParse(textBox.Text, out double value))
                     {
-                        // Special handling for VS/FPA set
-                        if (varKey == "A32NX.FCU_VS_SET")
+                        // Let aircraft handle special cases first (validation, conversion, multi-step logic)
+                        if (currentAircraft.HandleUIVariableSet(varKey, value, varDef, simConnectManager, announcer))
                         {
-                            // Check current TRK/FPA mode to validate input range
-                            bool isFpaMode = currentSimVarValues.ContainsKey("A32NX_TRK_FPA_MODE_ACTIVE") &&
-                                           currentSimVarValues["A32NX_TRK_FPA_MODE_ACTIVE"] == 1;
-
-                            bool isValidValue = false;
-                            string modeText = "";
-
-                            if (isFpaMode)
-                            {
-                                // FPA mode: -9.9 to 9.9 degrees
-                                isValidValue = value >= -9.9 && value <= 9.9;
-                                modeText = "FPA";
-                            }
-                            else
-                            {
-                                // VS mode: -6000 to 6000 ft/min
-                                isValidValue = value >= -6000 && value <= 6000;
-                                modeText = "VS";
-                            }
-
-                            if (isValidValue)
-                            {
-                                simConnectManager?.SendEvent(varKey, (uint)(value * (isFpaMode ? 10 : 1)));
-                                announcer.Announce($"{modeText} set to {value}");
-                            }
-                            else
-                            {
-                                string rangeText = isFpaMode ? "-9.9 to 9.9" : "-6000 to 6000";
-                                announcer.Announce($"Invalid {modeText} value. Range: {rangeText}");
-                            }
+                            return; // Aircraft handled it
                         }
-                        // Special handling for COM frequency set (uses Hz events)
-                        else if (varKey.StartsWith("COM_") && varKey.Contains("FREQUENCY_SET"))
+
+                        // Generic handling follows - COM frequencies, transponder, etc.
+                        if (varKey.StartsWith("COM_") && varKey.Contains("FREQUENCY_SET"))
                         {
                             // Validate COM frequency range (118.000 - 136.975 MHz)
                             if (value >= 118.0 && value <= 136.975)
@@ -2248,68 +2190,7 @@ public partial class MainForm : Form
                                 announcer.Announce($"Invalid COM frequency. Range: 118.000 to 136.975 MHz");
                             }
                         }
-                        // Special handling for A32NX baro setting (requires conversion based on unit mode)
-                        else if (varKey == "A32NX.FCU_EFIS_L_BARO_SET")
-                        {
-                            // Check current unit mode from the combo box
-                            bool isInHgMode = false;
-                            if (currentSimVarValues.ContainsKey("A32NX_FCU_EFIS_L_BARO_IS_INHG"))
-                            {
-                                isInHgMode = currentSimVarValues["A32NX_FCU_EFIS_L_BARO_IS_INHG"] == 1;
-                            }
-
-                            // Convert to hPa * 16 format expected by FlyByWire
-                            uint convertedValue;
-                            string unitLabel;
-
-                            if (isInHgMode)
-                            {
-                                // User entered inHg, convert to hPa first then multiply by 16
-                                double hPa = value * 33.8639;
-                                convertedValue = (uint)(hPa * 16);
-                                unitLabel = "inHg";
-                            }
-                            else
-                            {
-                                // User entered hPa, just multiply by 16
-                                convertedValue = (uint)(value * 16);
-                                unitLabel = "hPa";
-                            }
-
-                            simConnectManager?.SendEvent(varKey, convertedValue);
-                            announcer.Announce($"{varDef.DisplayName} set to {value:F2} {unitLabel}");
-                        }
-                        // Special handling for A32NX right baro setting (requires conversion based on unit mode)
-                        else if (varKey == "A32NX.FCU_EFIS_R_BARO_SET")
-                        {
-                            // Check current unit mode from the combo box
-                            bool isInHgMode = false;
-                            if (currentSimVarValues.ContainsKey("A32NX_FCU_EFIS_R_BARO_IS_INHG"))
-                            {
-                                isInHgMode = currentSimVarValues["A32NX_FCU_EFIS_R_BARO_IS_INHG"] == 1;
-                            }
-
-                            // Convert to hPa * 16 format expected by FlyByWire
-                            uint convertedValue;
-                            string unitLabel;
-
-                            if (isInHgMode)
-                            {
-                                // User entered inHg, convert to hPa first then multiply by 16
-                                double hPa = value * 33.8639;
-                                convertedValue = (uint)(hPa * 16);
-                                unitLabel = "inHg";
-                            }
-                            else
-                            {
-                                // User entered hPa, just multiply by 16
-                                convertedValue = (uint)(value * 16);
-                                unitLabel = "hPa";
-                            }
-
-                            simConnectManager?.SendEvent(varKey, convertedValue);
-                            announcer.Announce($"{varDef.DisplayName} set to {value:F2} {unitLabel}");
-                        }
+                        // All A32NX-specific handling (VS/FPA, baro) now done by HandleUIVariableSet
                         else
                         {
                             simConnectManager?.SendEvent(varKey, (uint)value);

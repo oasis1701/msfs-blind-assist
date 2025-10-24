@@ -146,6 +146,23 @@ public interface IAircraftDefinition
     /// <returns>True if the update was fully processed and no further generic processing needed, false otherwise</returns>
     bool ProcessSimVarUpdate(string varName, double value, Accessibility.ScreenReaderAnnouncer announcer);
 
+    // UI Variable Setting (Panel Controls)
+
+    /// <summary>
+    /// Handles aircraft-specific variable setting from UI panel controls.
+    /// Called when user changes a value in a panel control (ComboBox, TextBox+Button) before generic handling.
+    /// Allows aircraft to implement custom validation, conversion, or multi-step logic for setting variables.
+    /// Examples: A320 autobrake multi-event sending, baro conversion with unit detection, VS/FPA mode validation.
+    /// </summary>
+    /// <param name="varKey">The variable key being set</param>
+    /// <param name="value">The value to set</param>
+    /// <param name="varDef">The variable definition</param>
+    /// <param name="simConnect">SimConnect manager for sending events and setting values</param>
+    /// <param name="announcer">Screen reader announcer for user feedback</param>
+    /// <returns>True if aircraft handled the set operation, false to continue with generic handling</returns>
+    bool HandleUIVariableSet(string varKey, double value, SimConnect.SimVarDefinition varDef,
+        SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer announcer);
+
     // Display System Monitoring (ECAM for Airbus, EICAS for Boeing, etc.)
     // Aircraft without these systems should use the default implementation (does nothing)
 
