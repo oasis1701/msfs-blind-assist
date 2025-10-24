@@ -139,7 +139,8 @@ public class FlyByWireA320Definition : IAircraftDefinition
             Type = SimConnect.SimVarType.SimVar,
             Units = "bool",
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            ReverseDisplayOrder = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "On", [1] = "Off" }
         },
         ["XMLVAR_SWITCH_OVHD_INTLT_NOSMOKING_POSITION"] = new SimConnect.SimVarDefinition
         {
@@ -207,6 +208,7 @@ public class FlyByWireA320Definition : IAircraftDefinition
             DisplayName = "Strobe Lights",
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ReverseDisplayOrder = true,
             ValueDescriptions = new Dictionary<double, string> { [2] = "Off", [0] = "On", [1] = "Auto" }
         },
 
@@ -354,7 +356,8 @@ public class FlyByWireA320Definition : IAircraftDefinition
             Name = "PUSH_OVHD_OXYGEN_CREW",
             DisplayName = "Crew Supply",
             Type = SimConnect.SimVarType.LVar,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            ReverseDisplayOrder = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "On", [1] = "Off" }
         },
         ["A32NX_OXYGEN_MASKS_DEPLOYED"] = new SimConnect.SimVarDefinition
         {

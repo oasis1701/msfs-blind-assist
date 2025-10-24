@@ -2053,8 +2053,10 @@ public partial class MainForm : Form
                     combo.Name = varKey;
                     combo.AccessibleName = varDef.DisplayName;
 
-                    // Add items in order
-                    var sortedValues = varDef.ValueDescriptions.OrderBy(x => x.Key).ToList();
+                    // Add items in order (reverse if ReverseDisplayOrder is set)
+                    var sortedValues = varDef.ReverseDisplayOrder
+                        ? varDef.ValueDescriptions.OrderByDescending(x => x.Key).ToList()
+                        : varDef.ValueDescriptions.OrderBy(x => x.Key).ToList();
                     foreach (var kvp in sortedValues)
                     {
                         combo.Items.Add(kvp.Value);
@@ -2271,8 +2273,10 @@ public partial class MainForm : Form
                     combo.Name = varKey;
                     combo.AccessibleName = varDef.DisplayName;
 
-                    // Add items in order
-                    var sortedValues = varDef.ValueDescriptions.OrderBy(x => x.Key).ToList();
+                    // Add items in order (reverse if ReverseDisplayOrder is set)
+                    var sortedValues = varDef.ReverseDisplayOrder
+                        ? varDef.ValueDescriptions.OrderByDescending(x => x.Key).ToList()
+                        : varDef.ValueDescriptions.OrderBy(x => x.Key).ToList();
                     foreach (var kvp in sortedValues)
                     {
                         combo.Items.Add(kvp.Value);
