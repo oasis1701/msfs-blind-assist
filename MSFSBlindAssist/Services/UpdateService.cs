@@ -6,7 +6,7 @@ using Newtonsoft.Json.Linq;
 namespace MSFSBlindAssist.Services;
 public class UpdateService
 {
-    private const string GITHUB_API_URL = "https://api.github.com/repos/oasis1701/FlyByWire-Blind-Access/releases/latest";
+    private const string GITHUB_API_URL = "https://api.github.com/repos/oasis1701/msfs-blind-assist/releases/latest";
     private readonly HttpClient httpClient;
 
     public event EventHandler<UpdateProgressEventArgs>? ProgressChanged;

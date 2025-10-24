@@ -47,7 +47,7 @@ public class UpdateAvailableForm : Form
             // Title
             titleLabel = new Label
             {
-                Text = "A new version of FBWBA is available!",
+                Text = "A new version of MSFS Blind Assist is available!",
                 Location = new Point(20, yPos),
                 Size = new Size(540, 30),
                 Font = new Font(Font.FontFamily, 12, FontStyle.Bold),
