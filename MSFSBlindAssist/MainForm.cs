@@ -253,22 +253,26 @@ public partial class MainForm : Form
     /// </summary>
     private bool HandleSpecialAnnouncements(SimVarUpdateEventArgs e)
     {
-        // Handle flight phase updates
+        // Handle flight phase updates (A32NX-specific, with safety check for multi-aircraft support)
         if (e.VarName == "A32NX_FMGC_FLIGHT_PHASE")
         {
-            var varDefinition = currentAircraft.GetVariables()[e.VarName];
-            if (varDefinition.ValueDescriptions.TryGetValue(e.Value, out string? phaseName))
+            // Only process if current aircraft has this variable
+            if (currentAircraft.GetVariables().ContainsKey(e.VarName))
             {
-                // Only update if the phase has actually changed
-                if (currentFlightPhase != phaseName)
+                var varDefinition = currentAircraft.GetVariables()[e.VarName];
+                if (varDefinition.ValueDescriptions.TryGetValue(e.Value, out string? phaseName))
                 {
-                    currentFlightPhase = phaseName;
+                    // Only update if the phase has actually changed
+                    if (currentFlightPhase != phaseName)
+                    {
+                        currentFlightPhase = phaseName;
 
-                    // Update window title
-                    this.Text = $"MSFS BA - {phaseName} phase active";
+                        // Update window title
+                        this.Text = $"MSFS BA - {phaseName} phase active";
 
-                    // Announce the phase change
-                    announcer.Announce($"Entering {phaseName} phase");
+                        // Announce the phase change
+                        announcer.Announce($"Entering {phaseName} phase");
+                    }
                 }
             }
             return true;
@@ -337,10 +341,14 @@ public partial class MainForm : Form
             return true;
         }
 
-        // Handle LED state announcements (from MobiFlight WASM)
+        // Handle LED state announcements (A32NX ECAM Control Panel - with safety check for multi-aircraft support)
         if (e.VarName?.StartsWith("A32NX_ECP_LIGHT_") == true)
         {
-            announcer.AnnounceImmediate(e.Description);
+            // Only process if current aircraft has this variable
+            if (currentAircraft.GetVariables().ContainsKey(e.VarName))
+            {
+                announcer.AnnounceImmediate(e.Description);
+            }
             return true;
         }
 
@@ -643,21 +651,9 @@ public partial class MainForm : Form
             return; // Action was handled by aircraft
         }
 
-        // Fall through to universal actions
+        // Fall through to universal actions (truly universal, not aircraft-specific)
         switch (e.Action)
         {
-            case HotkeyAction.ReadHeading:
-                simConnectManager.RequestFCUHeadingWithStatus();
-                break;
-            case HotkeyAction.ReadSpeed:
-                simConnectManager.RequestFCUSpeedWithStatus();
-                break;
-            case HotkeyAction.ReadAltitude:
-                simConnectManager.RequestFCUAltitudeWithStatus();
-                break;
-            case HotkeyAction.ReadFCUVerticalSpeedFPA:
-                simConnectManager.RequestFCUVerticalSpeedFPA();
-                break;
             case HotkeyAction.ReadAltitudeAGL:
                 simConnectManager.RequestAltitudeAGL();
                 break;
@@ -855,160 +851,6 @@ public partial class MainForm : Form
             if (dialog.SelectedParkingSpot != null && dialog.SelectedAirport != null)
             {
                 simConnectManager.TeleportToParkingSpot(dialog.SelectedParkingSpot, dialog.SelectedAirport);
-            }
-        }
-    }
-
-    private void ShowFCUHeadingInputDialog()
-    {
-        if (!simConnectManager.IsConnected)
-        {
-            announcer.AnnounceImmediate("Not connected to simulator.");
-            return;
-        }
-
-        var validator = new Func<string, (bool isValid, string message)>((input) =>
-        {
-            if (double.TryParse(input, out double value))
-            {
-                if (value >= 0 && value <= 360)
-                    return (true, "");
-                else
-                    return (false, "Heading must be between 0 and 360 degrees");
-            }
-            return (false, "Invalid number format");
-        });
-
-        var dialog = new FCUInputForm("Set Heading", "Heading", "0-360 degrees", announcer, validator);
-        if (dialog.ShowDialog(this) == DialogResult.OK && dialog.IsValidInput)
-        {
-            if (double.TryParse(dialog.InputValue, out double value))
-            {
-                simConnectManager.SendEvent("A32NX.FCU_HDG_SET", (uint)value);
-                announcer.AnnounceImmediate($"Heading set to {value}");
-            }
-        }
-    }
-
-    private void ShowFCUSpeedInputDialog()
-    {
-        if (!simConnectManager.IsConnected)
-        {
-            announcer.AnnounceImmediate("Not connected to simulator.");
-            return;
-        }
-
-        var validator = new Func<string, (bool isValid, string message)>((input) =>
-        {
-            if (double.TryParse(input, out double value))
-            {
-                // Check if it's a Mach number (0.10-0.99) or knots (100-399)
-                if ((value >= 0.10 && value <= 0.99) || (value >= 100 && value <= 399))
-                    return (true, "");
-                else
-                    return (false, "Speed must be 100-399 knots or 0.10-0.99 Mach");
-            }
-            return (false, "Invalid number format");
-        });
-
-        var dialog = new FCUInputForm("Set Speed", "Speed", "100-399 knots or 0.10-0.99 Mach", announcer, validator);
-        if (dialog.ShowDialog(this) == DialogResult.OK && dialog.IsValidInput)
-        {
-            if (double.TryParse(dialog.InputValue, out double value))
-            {
-                // Determine if Mach (< 1.0) or knots (>= 100)
-                // Mach numbers need to be multiplied by 100, knots are sent as-is
-                uint valueToSend = value < 1.0 ? (uint)(value * 100) : (uint)value;
-                simConnectManager.SendEvent("A32NX.FCU_SPD_SET", valueToSend);
-                announcer.AnnounceImmediate($"Speed set to {value}");
-            }
-        }
-    }
-
-    private void ShowFCUAltitudeInputDialog()
-    {
-        if (!simConnectManager.IsConnected)
-        {
-            announcer.AnnounceImmediate("Not connected to simulator.");
-            return;
-        }
-
-        var validator = new Func<string, (bool isValid, string message)>((input) =>
-        {
-            if (double.TryParse(input, out double value))
-            {
-                if (value >= 100 && value <= 49000)
-                    return (true, "");
-                else
-                    return (false, "Altitude must be between 100 and 49000 feet");
-            }
-            return (false, "Invalid number format");
-        });
-
-        var dialog = new FCUInputForm("Set Altitude", "Altitude", "100-49000 feet", announcer, validator);
-        if (dialog.ShowDialog(this) == DialogResult.OK && dialog.IsValidInput)
-        {
-            if (double.TryParse(dialog.InputValue, out double value))
-            {
-                // FCU_ALT_SET requires values to be multiples of 100 feet
-                // Round to nearest 100 to ensure compatibility
-                uint roundedValue = (uint)(Math.Round(value / 100) * 100);
-
-                // Set FCU altitude increment mode to 100ft before setting altitude
-                // This ensures intermediate values like 2500, 3500, 31500 work correctly
-                simConnectManager.SendEvent("A32NX.FCU_ALT_INCREMENT_SET", 100);
-                System.Threading.Thread.Sleep(50); // Brief delay for mode to activate
-
-                simConnectManager.SendEvent("A32NX.FCU_ALT_SET", roundedValue);
-                announcer.AnnounceImmediate($"Altitude set to {roundedValue}");
-            }
-        }
-    }
-
-    private void ShowFCUVSInputDialog()
-    {
-        if (!simConnectManager.IsConnected)
-        {
-            announcer.AnnounceImmediate("Not connected to simulator.");
-            return;
-        }
-
-        // Check current TRK/FPA mode to validate input range
-        bool isFpaMode = currentSimVarValues.ContainsKey("A32NX_TRK_FPA_MODE_ACTIVE") &&
-                       currentSimVarValues["A32NX_TRK_FPA_MODE_ACTIVE"] == 1;
-
-        string rangeText = isFpaMode ? "-9.9 to 9.9 degrees" : "-6000 to 6000 ft/min";
-        string paramType = isFpaMode ? "FPA" : "Vertical Speed";
-
-        var validator = new Func<string, (bool isValid, string message)>((input) =>
-        {
-            if (double.TryParse(input, out double value))
-            {
-                if (isFpaMode)
-                {
-                    if (value >= -9.9 && value <= 9.9)
-                        return (true, "");
-                    else
-                        return (false, "FPA must be between -9.9 and 9.9 degrees");
-                }
-                else
-                {
-                    if (value >= -6000 && value <= 6000)
-                        return (true, "");
-                    else
-                        return (false, "Vertical Speed must be between -6000 and 6000 ft/min");
-                }
-            }
-            return (false, "Invalid number format");
-        });
-
-        var dialog = new FCUInputForm($"Set {paramType}", paramType, rangeText, announcer, validator);
-        if (dialog.ShowDialog(this) == DialogResult.OK && dialog.IsValidInput)
-        {
-            if (double.TryParse(dialog.InputValue, out double value))
-            {
-                simConnectManager.SendEvent("A32NX.FCU_VS_SET", (uint)(value * (isFpaMode ? 10 : 1)));
-                announcer.AnnounceImmediate($"{paramType} set to {value}");
             }
         }
     }

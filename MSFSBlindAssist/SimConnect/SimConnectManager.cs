@@ -9,6 +9,12 @@ namespace MSFSBlindAssist.SimConnect;
 public class SimConnectManager
 {
     private Microsoft.FlightSimulator.SimConnect.SimConnect? simConnect;
+
+    /// <summary>
+    /// Internal access to SimConnect instance for aircraft-specific implementations.
+    /// </summary>
+    internal Microsoft.FlightSimulator.SimConnect.SimConnect? SimConnectInstance => simConnect;
+
     private IntPtr windowHandle;
     private const int WM_USER_SIMCONNECT = 0x0402;
 
@@ -94,7 +100,7 @@ public class SimConnectManager
     private string lastVisualApproachAnnouncement = "";
 
     // Data requests for specific functions
-    private enum DATA_REQUESTS
+    internal enum DATA_REQUESTS
     {
         REQUEST_FCU_VALUES = 2,
         REQUEST_AIRCRAFT_INFO = 3,
@@ -106,7 +112,7 @@ public class SimConnectManager
         INDIVIDUAL_VARIABLE_BASE = 1000
     }
 
-    private enum DATA_DEFINITIONS
+    internal enum DATA_DEFINITIONS
     {
         FCU_VALUES = 2,
         AIRCRAFT_INFO = 3,
@@ -1807,105 +1813,6 @@ public class SimConnectManager
         }
     }
 
-    public void RequestFCUHeadingWithStatus()
-    {
-        if (IsConnected && simConnect != null)
-        {
-            try
-            {
-                var tempDefId = (DATA_DEFINITIONS)320;
-                simConnect.AddToDataDefinition(tempDefId,
-                    "L:A32NX_FCU_AFS_DISPLAY_HDG_TRK_VALUE", "number",
-                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
-                simConnect.AddToDataDefinition(tempDefId,
-                    "L:A32NX_FCU_AFS_DISPLAY_HDG_TRK_MANAGED", "number",
-                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
-                simConnect.RegisterDataDefineStruct<FCUValueWithStatus>(tempDefId);
-                simConnect.RequestDataOnSimObject((DATA_REQUESTS)320,
-                    tempDefId, SIMCONNECT_OBJECT_ID_USER,
-                    SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error requesting heading with status: {ex.Message}");
-            }
-        }
-    }
-
-    public void RequestFCUSpeedWithStatus()
-    {
-        if (IsConnected && simConnect != null)
-        {
-            try
-            {
-                var tempDefId = (DATA_DEFINITIONS)321;
-                simConnect.AddToDataDefinition(tempDefId,
-                    "L:A32NX_FCU_AFS_DISPLAY_SPD_MACH_VALUE", "number",
-                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
-                simConnect.AddToDataDefinition(tempDefId,
-                    "L:A32NX_FCU_AFS_DISPLAY_SPD_MACH_MANAGED", "number",
-                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
-                simConnect.RegisterDataDefineStruct<FCUValueWithStatus>(tempDefId);
-                simConnect.RequestDataOnSimObject((DATA_REQUESTS)321,
-                    tempDefId, SIMCONNECT_OBJECT_ID_USER,
-                    SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error requesting speed with status: {ex.Message}");
-            }
-        }
-    }
-
-    public void RequestFCUAltitudeWithStatus()
-    {
-        if (IsConnected && simConnect != null)
-        {
-            try
-            {
-                var tempDefId = (DATA_DEFINITIONS)322;
-                simConnect.AddToDataDefinition(tempDefId,
-                    "L:A32NX_FCU_AFS_DISPLAY_ALT_VALUE", "number",
-                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
-                simConnect.AddToDataDefinition(tempDefId,
-                    "L:A32NX_FCU_AFS_DISPLAY_LVL_CH_MANAGED", "number",
-                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
-                simConnect.RegisterDataDefineStruct<FCUValueWithStatus>(tempDefId);
-                simConnect.RequestDataOnSimObject((DATA_REQUESTS)322,
-                    tempDefId, SIMCONNECT_OBJECT_ID_USER,
-                    SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error requesting altitude with status: {ex.Message}");
-            }
-        }
-    }
-
-    public void RequestFCUVerticalSpeedFPA()
-    {
-        if (IsConnected && simConnect != null)
-        {
-            try
-            {
-                var tempDefId = (DATA_DEFINITIONS)323;
-                simConnect.AddToDataDefinition(tempDefId,
-                    "L:A32NX_FCU_AFS_DISPLAY_VS_FPA_VALUE", "number",
-                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
-                simConnect.AddToDataDefinition(tempDefId,
-                    "L:A32NX_TRK_FPA_MODE_ACTIVE", "number",
-                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
-                simConnect.RegisterDataDefineStruct<FCUValueWithStatus>(tempDefId);
-                simConnect.RequestDataOnSimObject((DATA_REQUESTS)323,
-                    tempDefId, SIMCONNECT_OBJECT_ID_USER,
-                    SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error requesting VS/FPA: {ex.Message}");
-            }
-        }
-    }
 
     public void RequestFCUValues()
     {
@@ -2079,28 +1986,6 @@ public class SimConnectManager
         }
     }
 
-    public void RequestFuelQuantity()
-    {
-        if (IsConnected && simConnect != null)
-        {
-            try
-            {
-                var tempDefId = (DATA_DEFINITIONS)314;
-                simConnect.ClearDataDefinition(tempDefId);
-                simConnect.AddToDataDefinition(tempDefId,
-                    "L:A32NX_TOTAL_FUEL_QUANTITY", "kilograms",
-                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
-                simConnect.RegisterDataDefineStruct<SingleValue>(tempDefId);
-                simConnect.RequestDataOnSimObject((DATA_REQUESTS)314,
-                    tempDefId, SIMCONNECT_OBJECT_ID_USER,
-                    SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error requesting fuel quantity: {ex.Message}");
-            }
-        }
-    }
 
     public void RequestHeadingMagnetic()
     {
@@ -2171,179 +2056,7 @@ public class SimConnectManager
         }
     }
 
-    // Speed tape value request methods
-    public void RequestSpeedGD()
-    {
-        if (IsConnected && simConnect != null)
-        {
-            try
-            {
-                var tempDefId = (DATA_DEFINITIONS)330;
-                simConnect.ClearDataDefinition(tempDefId);
-                simConnect.AddToDataDefinition(tempDefId,
-                    "L:A32NX_SPEEDS_GD", "number",
-                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
-                simConnect.RegisterDataDefineStruct<SingleValue>(tempDefId);
-                simConnect.RequestDataOnSimObject((DATA_REQUESTS)330,
-                    tempDefId, SIMCONNECT_OBJECT_ID_USER,
-                    SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error requesting Speed GD: {ex.Message}");
-            }
-        }
-    }
 
-    public void RequestSpeedS()
-    {
-        if (IsConnected && simConnect != null)
-        {
-            try
-            {
-                var tempDefId = (DATA_DEFINITIONS)331;
-                simConnect.ClearDataDefinition(tempDefId);
-                simConnect.AddToDataDefinition(tempDefId,
-                    "L:A32NX_SPEEDS_S", "number",
-                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
-                simConnect.RegisterDataDefineStruct<SingleValue>(tempDefId);
-                simConnect.RequestDataOnSimObject((DATA_REQUESTS)331,
-                    tempDefId, SIMCONNECT_OBJECT_ID_USER,
-                    SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error requesting Speed S: {ex.Message}");
-            }
-        }
-    }
-
-    public void RequestSpeedF()
-    {
-        if (IsConnected && simConnect != null)
-        {
-            try
-            {
-                var tempDefId = (DATA_DEFINITIONS)332;
-                simConnect.ClearDataDefinition(tempDefId);
-                simConnect.AddToDataDefinition(tempDefId,
-                    "L:A32NX_SPEEDS_F", "number",
-                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
-                simConnect.RegisterDataDefineStruct<SingleValue>(tempDefId);
-                simConnect.RequestDataOnSimObject((DATA_REQUESTS)332,
-                    tempDefId, SIMCONNECT_OBJECT_ID_USER,
-                    SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error requesting Speed F: {ex.Message}");
-            }
-        }
-    }
-
-    public void RequestSpeedVFE()
-    {
-        if (IsConnected && simConnect != null)
-        {
-            try
-            {
-                var tempDefId = (DATA_DEFINITIONS)335;
-                simConnect.ClearDataDefinition(tempDefId);
-                simConnect.AddToDataDefinition(tempDefId,
-                    "L:A32NX_FAC_1_V_FE_NEXT.value", "number",
-                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
-                simConnect.RegisterDataDefineStruct<SingleValue>(tempDefId);
-                simConnect.RequestDataOnSimObject((DATA_REQUESTS)335,
-                    tempDefId, SIMCONNECT_OBJECT_ID_USER,
-                    SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error requesting Speed VFE: {ex.Message}");
-            }
-        }
-    }
-
-    public void RequestSpeedVLS()
-    {
-        if (IsConnected && simConnect != null)
-        {
-            try
-            {
-                var tempDefId = (DATA_DEFINITIONS)336;
-                simConnect.ClearDataDefinition(tempDefId);
-                simConnect.AddToDataDefinition(tempDefId,
-                    "L:A32NX_SPEEDS_VLS", "number",
-                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
-                simConnect.RegisterDataDefineStruct<SingleValue>(tempDefId);
-                simConnect.RequestDataOnSimObject((DATA_REQUESTS)336,
-                    tempDefId, SIMCONNECT_OBJECT_ID_USER,
-                    SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error requesting Speed VLS: {ex.Message}");
-            }
-        }
-    }
-
-    public void RequestSpeedVS()
-    {
-        if (IsConnected && simConnect != null)
-        {
-            try
-            {
-                var tempDefId = (DATA_DEFINITIONS)337;
-                simConnect.ClearDataDefinition(tempDefId);
-                simConnect.AddToDataDefinition(tempDefId,
-                    "L:A32NX_SPEEDS_VS", "number",
-                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
-                simConnect.RegisterDataDefineStruct<SingleValue>(tempDefId);
-                simConnect.RequestDataOnSimObject((DATA_REQUESTS)337,
-                    tempDefId, SIMCONNECT_OBJECT_ID_USER,
-                    SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error requesting Speed VS: {ex.Message}");
-            }
-        }
-    }
-
-    public void RequestWaypointInfo()
-    {
-        if (IsConnected && simConnect != null)
-        {
-            try
-            {
-                var tempDefId = (DATA_DEFINITIONS)315;
-                simConnect.ClearDataDefinition(tempDefId);
-
-                // Add all waypoint variables to definition
-                simConnect.AddToDataDefinition(tempDefId,
-                    "L:A32NX_EFIS_L_TO_WPT_IDENT_0", "number",
-                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
-                simConnect.AddToDataDefinition(tempDefId,
-                    "L:A32NX_EFIS_L_TO_WPT_IDENT_1", "number",
-                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
-                simConnect.AddToDataDefinition(tempDefId,
-                    "L:A32NX_EFIS_L_TO_WPT_DISTANCE", "number",
-                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
-                simConnect.AddToDataDefinition(tempDefId,
-                    "L:A32NX_EFIS_L_TO_WPT_BEARING", "radians",
-                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
-
-                simConnect.RegisterDataDefineStruct<WaypointInfo>(tempDefId);
-                simConnect.RequestDataOnSimObject((DATA_REQUESTS)315,
-                    tempDefId, SIMCONNECT_OBJECT_ID_USER,
-                    SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error requesting waypoint info: {ex.Message}");
-            }
-        }
-    }
 
     public void RequestFuelAndPayloadData()
     {
@@ -2395,7 +2108,33 @@ public class SimConnectManager
         }
     }
 
-    private void RequestSingleValue(int id, string simVarName, string units, string varName)
+    /// <summary>
+    /// A32NX-specific method used by ECAM Display Form
+    /// </summary>
+    public void RequestFuelQuantity()
+    {
+        if (IsConnected && simConnect != null)
+        {
+            try
+            {
+                var tempDefId = (DATA_DEFINITIONS)314;
+                simConnect.ClearDataDefinition(tempDefId);
+                simConnect.AddToDataDefinition(tempDefId,
+                    "L:A32NX_TOTAL_FUEL_QUANTITY", "kilograms",
+                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+                simConnect.RegisterDataDefineStruct<SingleValue>(tempDefId);
+                simConnect.RequestDataOnSimObject((DATA_REQUESTS)314,
+                    tempDefId, SIMCONNECT_OBJECT_ID_USER,
+                    SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error requesting fuel quantity: {ex.Message}");
+            }
+        }
+    }
+
+    internal void RequestSingleValue(int id, string simVarName, string units, string varName)
     {
         if (IsConnected && simConnect != null)
         {

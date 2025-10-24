@@ -3555,13 +3555,30 @@ public class FlyByWireA320Definition : BaseAircraftDefinition
             case HotkeyAction.FCUSetVS:
                 return ShowA320VSInputDialog(simConnect, announcer, parentForm);
 
+            // A32NX FCU value readouts
+            case HotkeyAction.ReadHeading:
+                RequestFCUHeadingWithStatus(simConnect);
+                return true;
+
+            case HotkeyAction.ReadSpeed:
+                RequestFCUSpeedWithStatus(simConnect);
+                return true;
+
+            case HotkeyAction.ReadAltitude:
+                RequestFCUAltitudeWithStatus(simConnect);
+                return true;
+
+            case HotkeyAction.ReadFCUVerticalSpeedFPA:
+                RequestFCUVerticalSpeedFPA(simConnect);
+                return true;
+
             // A32NX-specific data readouts
             case HotkeyAction.ReadFuelQuantity:
-                simConnect.RequestFuelQuantity();
+                RequestFuelQuantity(simConnect);
                 return true;
 
             case HotkeyAction.ReadWaypointInfo:
-                simConnect.RequestWaypointInfo();
+                RequestWaypointInfo(simConnect);
                 return true;
 
             case HotkeyAction.ReadApproachCapability:
@@ -3570,27 +3587,27 @@ public class FlyByWireA320Definition : BaseAircraftDefinition
 
             // A32NX-specific speed tape readouts
             case HotkeyAction.ReadSpeedGD:
-                simConnect.RequestSpeedGD();
+                RequestSpeedGD(simConnect);
                 return true;
 
             case HotkeyAction.ReadSpeedS:
-                simConnect.RequestSpeedS();
+                RequestSpeedS(simConnect);
                 return true;
 
             case HotkeyAction.ReadSpeedF:
-                simConnect.RequestSpeedF();
+                RequestSpeedF(simConnect);
                 return true;
 
             case HotkeyAction.ReadSpeedVLS:
-                simConnect.RequestSpeedVLS();
+                RequestSpeedVLS(simConnect);
                 return true;
 
             case HotkeyAction.ReadSpeedVS:
-                simConnect.RequestSpeedVS();
+                RequestSpeedVS(simConnect);
                 return true;
 
             case HotkeyAction.ReadSpeedVFE:
-                simConnect.RequestSpeedVFE();
+                RequestSpeedVFE(simConnect);
                 return true;
 
             // A32NX-specific windows
@@ -3846,5 +3863,411 @@ public class FlyByWireA320Definition : BaseAircraftDefinition
         bool isEnabled = simConnect.ToggleECAMMonitoring();
         string statusMessage = isEnabled ? "E W D monitoring enabled" : "E W D monitoring disabled";
         announcer.AnnounceImmediate(statusMessage);
+    }
+
+    // ==================================================================================
+    // A32NX-Specific Data Request Methods
+    // These methods request A320-specific data from the simulator
+    // ==================================================================================
+
+    private void RequestFCUHeadingWithStatus(SimConnect.SimConnectManager simConnectMgr)
+    {
+        var simConnect = simConnectMgr.SimConnectInstance;
+        if (simConnectMgr.IsConnected && simConnect != null)
+        {
+            try
+            {
+                var tempDefId = (SimConnect.SimConnectManager.DATA_DEFINITIONS)320;
+                simConnect.AddToDataDefinition(tempDefId,
+                    "L:A32NX_FCU_AFS_DISPLAY_HDG_TRK_VALUE", "number",
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
+                simConnect.AddToDataDefinition(tempDefId,
+                    "L:A32NX_FCU_AFS_DISPLAY_HDG_TRK_MANAGED", "number",
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
+                simConnect.RegisterDataDefineStruct<SimConnect.SimConnectManager.FCUValueWithStatus>(tempDefId);
+                simConnect.RequestDataOnSimObject((SimConnect.SimConnectManager.DATA_REQUESTS)320,
+                    tempDefId, Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_OBJECT_ID_USER,
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_PERIOD.ONCE,
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error requesting heading with status: {ex.Message}");
+            }
+        }
+    }
+
+    private void RequestFCUSpeedWithStatus(SimConnect.SimConnectManager simConnectMgr)
+    {
+        var simConnect = simConnectMgr.SimConnectInstance;
+        if (simConnectMgr.IsConnected && simConnect != null)
+        {
+            try
+            {
+                var tempDefId = (SimConnect.SimConnectManager.DATA_DEFINITIONS)321;
+                simConnect.AddToDataDefinition(tempDefId,
+                    "L:A32NX_FCU_AFS_DISPLAY_SPD_MACH_VALUE", "number",
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
+                simConnect.AddToDataDefinition(tempDefId,
+                    "L:A32NX_FCU_AFS_DISPLAY_SPD_MACH_MANAGED", "number",
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
+                simConnect.RegisterDataDefineStruct<SimConnect.SimConnectManager.FCUValueWithStatus>(tempDefId);
+                simConnect.RequestDataOnSimObject((SimConnect.SimConnectManager.DATA_REQUESTS)321,
+                    tempDefId, Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_OBJECT_ID_USER,
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_PERIOD.ONCE,
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error requesting speed with status: {ex.Message}");
+            }
+        }
+    }
+
+    private void RequestFCUAltitudeWithStatus(SimConnect.SimConnectManager simConnectMgr)
+    {
+        var simConnect = simConnectMgr.SimConnectInstance;
+        if (simConnectMgr.IsConnected && simConnect != null)
+        {
+            try
+            {
+                var tempDefId = (SimConnect.SimConnectManager.DATA_DEFINITIONS)322;
+                simConnect.AddToDataDefinition(tempDefId,
+                    "L:A32NX_FCU_AFS_DISPLAY_ALT_VALUE", "number",
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
+                simConnect.AddToDataDefinition(tempDefId,
+                    "L:A32NX_FCU_AFS_DISPLAY_LVL_CH_MANAGED", "number",
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
+                simConnect.RegisterDataDefineStruct<SimConnect.SimConnectManager.FCUValueWithStatus>(tempDefId);
+                simConnect.RequestDataOnSimObject((SimConnect.SimConnectManager.DATA_REQUESTS)322,
+                    tempDefId, Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_OBJECT_ID_USER,
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_PERIOD.ONCE,
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error requesting altitude with status: {ex.Message}");
+            }
+        }
+    }
+
+    private void RequestFCUVerticalSpeedFPA(SimConnect.SimConnectManager simConnectMgr)
+    {
+        var simConnect = simConnectMgr.SimConnectInstance;
+        if (simConnectMgr.IsConnected && simConnect != null)
+        {
+            try
+            {
+                var tempDefId = (SimConnect.SimConnectManager.DATA_DEFINITIONS)323;
+                simConnect.AddToDataDefinition(tempDefId,
+                    "L:A32NX_FCU_AFS_DISPLAY_VS_FPA_VALUE", "number",
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
+                simConnect.AddToDataDefinition(tempDefId,
+                    "L:A32NX_TRK_FPA_MODE_ACTIVE", "number",
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
+                simConnect.RegisterDataDefineStruct<SimConnect.SimConnectManager.FCUValueWithStatus>(tempDefId);
+                simConnect.RequestDataOnSimObject((SimConnect.SimConnectManager.DATA_REQUESTS)323,
+                    tempDefId, Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_OBJECT_ID_USER,
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_PERIOD.ONCE,
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error requesting VS/FPA: {ex.Message}");
+            }
+        }
+    }
+
+    private void RequestFuelQuantity(SimConnect.SimConnectManager simConnectMgr)
+    {
+        var simConnect = simConnectMgr.SimConnectInstance;
+        if (simConnectMgr.IsConnected && simConnect != null)
+        {
+            try
+            {
+                var tempDefId = (SimConnect.SimConnectManager.DATA_DEFINITIONS)314;
+                simConnect.ClearDataDefinition(tempDefId);
+                simConnect.AddToDataDefinition(tempDefId,
+                    "L:A32NX_TOTAL_FUEL_QUANTITY", "kilograms",
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
+                simConnect.RegisterDataDefineStruct<SimConnect.SimConnectManager.SingleValue>(tempDefId);
+                simConnect.RequestDataOnSimObject((SimConnect.SimConnectManager.DATA_REQUESTS)314,
+                    tempDefId, Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_OBJECT_ID_USER,
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_PERIOD.ONCE,
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error requesting fuel quantity: {ex.Message}");
+            }
+        }
+    }
+
+    private void RequestSpeedGD(SimConnect.SimConnectManager simConnectMgr)
+    {
+        var simConnect = simConnectMgr.SimConnectInstance;
+        if (simConnectMgr.IsConnected && simConnect != null)
+        {
+            try
+            {
+                var tempDefId = (SimConnect.SimConnectManager.DATA_DEFINITIONS)340;
+                simConnect.ClearDataDefinition(tempDefId);
+                simConnect.AddToDataDefinition(tempDefId,
+                    "L:A32NX_SPEEDS_GD", "number",
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
+                simConnect.RegisterDataDefineStruct<SimConnect.SimConnectManager.SingleValue>(tempDefId);
+                simConnect.RequestDataOnSimObject((SimConnect.SimConnectManager.DATA_REQUESTS)340,
+                    tempDefId, Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_OBJECT_ID_USER,
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_PERIOD.ONCE,
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error requesting GD speed: {ex.Message}");
+            }
+        }
+    }
+
+    private void RequestSpeedS(SimConnect.SimConnectManager simConnectMgr)
+    {
+        var simConnect = simConnectMgr.SimConnectInstance;
+        if (simConnectMgr.IsConnected && simConnect != null)
+        {
+            try
+            {
+                var tempDefId = (SimConnect.SimConnectManager.DATA_DEFINITIONS)341;
+                simConnect.ClearDataDefinition(tempDefId);
+                simConnect.AddToDataDefinition(tempDefId,
+                    "L:A32NX_SPEEDS_S", "number",
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
+                simConnect.RegisterDataDefineStruct<SimConnect.SimConnectManager.SingleValue>(tempDefId);
+                simConnect.RequestDataOnSimObject((SimConnect.SimConnectManager.DATA_REQUESTS)341,
+                    tempDefId, Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_OBJECT_ID_USER,
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_PERIOD.ONCE,
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error requesting S speed: {ex.Message}");
+            }
+        }
+    }
+
+    private void RequestSpeedF(SimConnect.SimConnectManager simConnectMgr)
+    {
+        var simConnect = simConnectMgr.SimConnectInstance;
+        if (simConnectMgr.IsConnected && simConnect != null)
+        {
+            try
+            {
+                var tempDefId = (SimConnect.SimConnectManager.DATA_DEFINITIONS)342;
+                simConnect.ClearDataDefinition(tempDefId);
+                simConnect.AddToDataDefinition(tempDefId,
+                    "L:A32NX_SPEEDS_F", "number",
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
+                simConnect.RegisterDataDefineStruct<SimConnect.SimConnectManager.SingleValue>(tempDefId);
+                simConnect.RequestDataOnSimObject((SimConnect.SimConnectManager.DATA_REQUESTS)342,
+                    tempDefId, Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_OBJECT_ID_USER,
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_PERIOD.ONCE,
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error requesting F speed: {ex.Message}");
+            }
+        }
+    }
+
+    private void RequestSpeedVFE(SimConnect.SimConnectManager simConnectMgr)
+    {
+        var simConnect = simConnectMgr.SimConnectInstance;
+        if (simConnectMgr.IsConnected && simConnect != null)
+        {
+            try
+            {
+                var tempDefId = (SimConnect.SimConnectManager.DATA_DEFINITIONS)343;
+                simConnect.ClearDataDefinition(tempDefId);
+                simConnect.AddToDataDefinition(tempDefId,
+                    "L:A32NX_FAC_1_V_FE_NEXT.value", "number",
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
+                simConnect.RegisterDataDefineStruct<SimConnect.SimConnectManager.SingleValue>(tempDefId);
+                simConnect.RequestDataOnSimObject((SimConnect.SimConnectManager.DATA_REQUESTS)343,
+                    tempDefId, Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_OBJECT_ID_USER,
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_PERIOD.ONCE,
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error requesting VFE speed: {ex.Message}");
+            }
+        }
+    }
+
+    private void RequestSpeedVLS(SimConnect.SimConnectManager simConnectMgr)
+    {
+        var simConnect = simConnectMgr.SimConnectInstance;
+        if (simConnectMgr.IsConnected && simConnect != null)
+        {
+            try
+            {
+                var tempDefId = (SimConnect.SimConnectManager.DATA_DEFINITIONS)344;
+                simConnect.ClearDataDefinition(tempDefId);
+                simConnect.AddToDataDefinition(tempDefId,
+                    "L:A32NX_SPEEDS_VLS", "number",
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
+                simConnect.RegisterDataDefineStruct<SimConnect.SimConnectManager.SingleValue>(tempDefId);
+                simConnect.RequestDataOnSimObject((SimConnect.SimConnectManager.DATA_REQUESTS)344,
+                    tempDefId, Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_OBJECT_ID_USER,
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_PERIOD.ONCE,
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error requesting VLS speed: {ex.Message}");
+            }
+        }
+    }
+
+    private void RequestSpeedVS(SimConnect.SimConnectManager simConnectMgr)
+    {
+        var simConnect = simConnectMgr.SimConnectInstance;
+        if (simConnectMgr.IsConnected && simConnect != null)
+        {
+            try
+            {
+                var tempDefId = (SimConnect.SimConnectManager.DATA_DEFINITIONS)345;
+                simConnect.ClearDataDefinition(tempDefId);
+                simConnect.AddToDataDefinition(tempDefId,
+                    "L:A32NX_SPEEDS_VS", "number",
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
+                simConnect.RegisterDataDefineStruct<SimConnect.SimConnectManager.SingleValue>(tempDefId);
+                simConnect.RequestDataOnSimObject((SimConnect.SimConnectManager.DATA_REQUESTS)345,
+                    tempDefId, Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_OBJECT_ID_USER,
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_PERIOD.ONCE,
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error requesting VS speed: {ex.Message}");
+            }
+        }
+    }
+
+    private void RequestWaypointInfo(SimConnect.SimConnectManager simConnectMgr)
+    {
+        var simConnect = simConnectMgr.SimConnectInstance;
+        if (simConnectMgr.IsConnected && simConnect != null)
+        {
+            try
+            {
+                var tempDefId = (SimConnect.SimConnectManager.DATA_DEFINITIONS)346;
+                simConnect.ClearDataDefinition(tempDefId);
+                simConnect.AddToDataDefinition(tempDefId,
+                    "L:A32NX_EFIS_L_TO_WPT_IDENT_0", "number",
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
+                simConnect.AddToDataDefinition(tempDefId,
+                    "L:A32NX_EFIS_L_TO_WPT_IDENT_1", "number",
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
+                simConnect.AddToDataDefinition(tempDefId,
+                    "L:A32NX_EFIS_L_TO_WPT_DISTANCE", "number",
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
+                simConnect.AddToDataDefinition(tempDefId,
+                    "L:A32NX_EFIS_L_TO_WPT_BEARING", "radians",
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
+                simConnect.RegisterDataDefineStruct<SimConnect.SimConnectManager.WaypointInfo>(tempDefId);
+                simConnect.RequestDataOnSimObject((SimConnect.SimConnectManager.DATA_REQUESTS)346,
+                    tempDefId, Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_OBJECT_ID_USER,
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_PERIOD.ONCE,
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error requesting waypoint info: {ex.Message}");
+            }
+        }
+    }
+
+    private void RequestFuelAndPayloadData(SimConnect.SimConnectManager simConnectMgr)
+    {
+        var simConnect = simConnectMgr.SimConnectInstance;
+        if (simConnectMgr.IsConnected && simConnect != null)
+        {
+            try
+            {
+                simConnectMgr.RequestSingleValue(346, "L:A32NX_PAX_A", "number", "PAX_A");
+                simConnectMgr.RequestSingleValue(347, "L:A32NX_PAX_B", "number", "PAX_B");
+                simConnectMgr.RequestSingleValue(348, "L:A32NX_PAX_C", "number", "PAX_C");
+                simConnectMgr.RequestSingleValue(349, "L:A32NX_PAX_D", "number", "PAX_D");
+                simConnectMgr.RequestSingleValue(350, "L:A32NX_WB_PER_PAX_WEIGHT", "kilograms", "PAX_WEIGHT");
+                simConnectMgr.RequestSingleValue(351, "L:A32NX_WB_PER_BAG_WEIGHT", "kilograms", "BAG_WEIGHT");
+                simConnectMgr.RequestSingleValue(357, "L:A32NX_AIRFRAME_ZFW", "number", "ZFW");
+                simConnectMgr.RequestSingleValue(358, "L:A32NX_AIRFRAME_GW", "number", "GW");
+                simConnectMgr.RequestSingleValue(359, "L:A32NX_AIRFRAME_ZFW_CG_PERCENT_MAC", "number", "ZFW_CG_MAC");
+                simConnectMgr.RequestSingleValue(360, "L:A32NX_AIRFRAME_GW_CG_PERCENT_MAC", "number", "GW_CG_MAC");
+                simConnectMgr.RequestSingleValue(361, "L:A32NX_FMS_PAX_NUMBER", "number", "FMS_PAX");
+                simConnectMgr.RequestSingleValue(362, "L:A32NX_FM1_ZERO_FUEL_WEIGHT", "number", "FMS_ZFW");
+                simConnectMgr.RequestSingleValue(363, "L:A32NX_FM_GROSS_WEIGHT", "number", "FMS_GW");
+                simConnectMgr.RequestSingleValue(364, "L:A32NX_FM1_ZERO_FUEL_WEIGHT_CG", "number", "FMS_CG");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error requesting fuel and payload data: {ex.Message}");
+            }
+        }
+    }
+
+    private void RequestECAMMessages(SimConnect.SimConnectManager simConnectMgr)
+    {
+        var simConnect = simConnectMgr.SimConnectInstance;
+        if (simConnectMgr.IsConnected && simConnect != null)
+        {
+            try
+            {
+                simConnectMgr.RequestVariable("A32NX_Ewd_LOWER_LEFT_LINE_1");
+                simConnectMgr.RequestVariable("A32NX_Ewd_LOWER_LEFT_LINE_2");
+                simConnectMgr.RequestVariable("A32NX_Ewd_LOWER_LEFT_LINE_3");
+                simConnectMgr.RequestVariable("A32NX_Ewd_LOWER_LEFT_LINE_4");
+                simConnectMgr.RequestVariable("A32NX_Ewd_LOWER_LEFT_LINE_5");
+                simConnectMgr.RequestVariable("A32NX_Ewd_LOWER_LEFT_LINE_6");
+                simConnectMgr.RequestVariable("A32NX_Ewd_LOWER_LEFT_LINE_7");
+                simConnectMgr.RequestVariable("A32NX_Ewd_LOWER_RIGHT_LINE_1");
+                simConnectMgr.RequestVariable("A32NX_Ewd_LOWER_RIGHT_LINE_2");
+                simConnectMgr.RequestVariable("A32NX_Ewd_LOWER_RIGHT_LINE_3");
+                simConnectMgr.RequestVariable("A32NX_Ewd_LOWER_RIGHT_LINE_4");
+                simConnectMgr.RequestVariable("A32NX_Ewd_LOWER_RIGHT_LINE_5");
+                simConnectMgr.RequestVariable("A32NX_Ewd_LOWER_RIGHT_LINE_6");
+                simConnectMgr.RequestVariable("A32NX_Ewd_LOWER_RIGHT_LINE_7");
+                simConnectMgr.RequestVariable("A32NX_MASTER_WARNING");
+                simConnectMgr.RequestVariable("A32NX_MASTER_CAUTION");
+                simConnectMgr.RequestVariable("A32NX_STALL_WARNING");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error requesting ECAM messages: {ex.Message}");
+            }
+        }
+    }
+
+    private void RequestStatusMessages(SimConnect.SimConnectManager simConnectMgr)
+    {
+        var simConnect = simConnectMgr.SimConnectInstance;
+        if (simConnectMgr.IsConnected && simConnect != null)
+        {
+            try
+            {
+                for (int i = 1; i <= 8; i++)
+                {
+                    simConnectMgr.RequestVariable($"A32NX_STATUS_LEFT_LINE_{i}");
+                }
+                for (int i = 1; i <= 8; i++)
+                {
+                    simConnectMgr.RequestVariable($"A32NX_STATUS_RIGHT_LINE_{i}");
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error requesting status messages: {ex.Message}");
+            }
+        }
     }
 }
