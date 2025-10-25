@@ -1274,11 +1274,31 @@ public partial class MainForm : Form
         // Update SimConnectManager
         simConnectManager.CurrentAircraft = currentAircraft;
 
+        // Reset monitor to clear cache and disable announcements during transition
+        // This prevents flooding TTS with hundreds of "initial" values when switching aircraft
+        simVarMonitor.Reset();
+        simConnectManager.SuppressECAMAnnouncements = true;
+
         // Re-register variables and restart continuous monitoring for new aircraft
         if (simConnectManager.IsConnected)
         {
             simConnectManager.ReregisterAllVariables();
             simConnectManager.RestartContinuousMonitoring();
+
+            // Start grace period for new aircraft variables to populate
+            // This prevents announcement flood when hundreds of continuous variables send initial values
+            System.Windows.Forms.Timer gracePeriodTimer = new System.Windows.Forms.Timer();
+            gracePeriodTimer.Interval = 5000; // 5 second grace period (same as initial connection)
+            gracePeriodTimer.Tick += (s, e) =>
+            {
+                gracePeriodTimer.Stop();
+                gracePeriodTimer.Dispose();
+                simVarMonitor.EnableAnnouncements();
+                simConnectManager.EnableECAMAnnouncements();
+                System.Diagnostics.Debug.WriteLine("[MainForm] Aircraft switch grace period ended - announcements enabled");
+            };
+            gracePeriodTimer.Start();
+            System.Diagnostics.Debug.WriteLine("[MainForm] Aircraft switch grace period started (5 seconds)");
         }
 
         // Update window title
