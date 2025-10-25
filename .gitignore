@@ -97,6 +97,7 @@ $RECYCLE.BIN/
 *.sln.iml
 
 # Claude Code specific files (allow others to use different tools)
+docs
 .claude/
 CLAUDE.md
 GuidesForClaude/

@@ -33,7 +33,6 @@ public class SimConnectManager
     public bool IsConnected { get; private set; }
     private bool wasConnected = false; // Track if we've already announced connection state
     private System.Windows.Forms.Timer reconnectTimer = null!;
-    private System.Windows.Forms.Timer? continuousMonitoringTimer; // Timer for continuous variable monitoring
 
     // MobiFlight WASM integration
     private MobiFlightWasmModule? mobiFlightWasm;
@@ -70,7 +69,11 @@ public class SimConnectManager
     private HashSet<string> forceUpdateVariables = new HashSet<string>();  // Track variables that should always fire updates
     private ConcurrentDictionary<string, double> lastVariableValues = new ConcurrentDictionary<string, double>();  // Cache last values for change detection
     private int nextDataDefinitionId = 1000;  // Start IDs from 1000 to avoid conflicts
-    
+
+    // Batched continuous variable monitoring
+    private Dictionary<string, int> continuousVariableIndexMap = new Dictionary<string, int>();  // Maps variable keys to struct field indices (V0-V999)
+    private System.Reflection.FieldInfo[] batchFields = Array.Empty<System.Reflection.FieldInfo>();  // Pre-cached field accessors for fast batch processing
+
     // Event handling
     private Dictionary<string, uint> eventIds = new Dictionary<string, uint>();
     private uint nextEventId = 1000;
@@ -107,6 +110,7 @@ public class SimConnectManager
         REQUEST_AIRCRAFT_POSITION = 4,
         REQUEST_WIND_DATA = 5,
         REQUEST_ATC_ID = 6,
+        REQUEST_CONTINUOUS_BATCH = 8,
         REQUEST_ECAM_MESSAGES = 350,
         // Individual variable requests start from 1000
         INDIVIDUAL_VARIABLE_BASE = 1000
@@ -120,6 +124,7 @@ public class SimConnectManager
         AIRCRAFT_POSITION = 5,
         WIND_DATA = 6,
         ATC_ID_INFO = 7,
+        CONTINUOUS_BATCH = 8,
         ECAM_MESSAGES = 350,
         // Individual variable definitions start from 1000
         INDIVIDUAL_VARIABLE_BASE = 1000
@@ -243,15 +248,15 @@ public class SimConnectManager
         try
         {
             simConnect = new Microsoft.FlightSimulator.SimConnect.SimConnect("FBWBA", windowHandle, WM_USER_SIMCONNECT, null, 0);
+            IsConnected = true;  // Set IMMEDIATELY so StartContinuousMonitoring() can run
+            reconnectTimer.Stop();
+
             SetupDataDefinitions();
             SetupEvents();
             RegisterClientEvents();
 
             // Initialize MobiFlight WASM module
             InitializeMobiFlight();
-
-            IsConnected = true;
-            reconnectTimer.Stop();
 
             // Detect and announce simulator version
             DetectedSimulatorVersion = Utils.SimulatorDetector.DetectRunningSimulator();
@@ -426,37 +431,122 @@ public class SimConnectManager
     }
 
     /// <summary>
-    /// Start continuous monitoring for variables marked as announced
+    /// Start continuous monitoring for variables marked as announced.
+    /// Uses batched SimConnect requests following experienced developer's pattern:
+    /// - All continuous variables added to ONE data definition
+    /// - SimConnect automatically sends updates at SIMCONNECT_PERIOD.SECOND
+    /// - Dramatically reduces network overhead (1 batch vs N individual requests)
     /// </summary>
     private void StartContinuousMonitoring()
     {
-        // Stop and dispose existing timer if it exists
-        continuousMonitoringTimer?.Stop();
-        continuousMonitoringTimer?.Dispose();
-        continuousMonitoringTimer = null;
+        if (!IsConnected || simConnect == null)
+        {
+            System.Diagnostics.Debug.WriteLine("[SimConnectManager] Cannot start continuous monitoring - not connected");
+            return;
+        }
 
-        var continuousVariables = new List<string>();
+        var sc = simConnect; // Local reference for null-safety
+
+        // Clear previous batch setup
+        continuousVariableIndexMap.Clear();
+
+        // Get all continuous variables from current aircraft
         var variables = CurrentAircraft?.GetVariables() ?? new Dictionary<string, SimVarDefinition>();
+        var continuousVariables = new List<KeyValuePair<string, SimVarDefinition>>();
 
         foreach (var kvp in variables)
         {
             if (kvp.Value.UpdateFrequency == UpdateFrequency.Continuous &&
-                kvp.Value.IsAnnounced &&
-                variableDataDefinitions.ContainsKey(kvp.Key))
+                kvp.Value.IsAnnounced)
             {
-                continuousVariables.Add(kvp.Key);
+                continuousVariables.Add(kvp);
             }
         }
 
-        System.Diagnostics.Debug.WriteLine($"Starting continuous monitoring for {continuousVariables.Count} announced variables");
+        System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Starting batched continuous monitoring for {continuousVariables.Count} variables");
 
-        // Request all continuous variables every second
-        if (continuousVariables.Count > 0)
+        if (continuousVariables.Count == 0)
         {
-            continuousMonitoringTimer = new System.Windows.Forms.Timer();
-            continuousMonitoringTimer.Interval = 1000; // 1 second
-            continuousMonitoringTimer.Tick += (sender, e) => RequestContinuousVariables(continuousVariables);
-            continuousMonitoringTimer.Start();
+            System.Diagnostics.Debug.WriteLine("[SimConnectManager] No continuous variables to monitor");
+            return;
+        }
+
+        if (continuousVariables.Count > 1000)
+        {
+            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] WARNING: {continuousVariables.Count} continuous variables exceeds GenericBatch capacity of 1000!");
+            return;
+        }
+
+        try
+        {
+            // Clear the batch data definition
+            sc.ClearDataDefinition(DATA_DEFINITIONS.CONTINUOUS_BATCH);
+
+            // Add all continuous variables to ONE data definition
+            // Following forum post pattern: each variable gets a field index in the struct
+            int index = 0;
+            foreach (var kvp in continuousVariables)
+            {
+                var varDef = kvp.Value;
+                string varName = varDef.Name;
+
+                // Build SimConnect variable name with L: prefix for LVars
+                string simVarName = varDef.Type == SimVarType.LVar ? $"L:{varName}" : varName;
+                string units = varDef.Units ?? "number";
+
+                // Add to the SAME data definition - SimConnect auto-populates struct fields in order
+                sc.AddToDataDefinition(
+                    DATA_DEFINITIONS.CONTINUOUS_BATCH,
+                    simVarName,
+                    units,
+                    SIMCONNECT_DATATYPE.FLOAT64,
+                    0.0f,
+                    SIMCONNECT_UNUSED  // SimConnect automatically maps to V0, V1, V2, ... in order added
+                );
+
+                // Store mapping: variable key -> struct field index
+                continuousVariableIndexMap[kvp.Key] = index;
+
+                System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Added {kvp.Key} ({simVarName}) to batch at index {index}");
+                index++;
+            }
+
+            // Register the struct (following forum post pattern)
+            sc.RegisterDataDefineStruct<GenericBatch>(DATA_DEFINITIONS.CONTINUOUS_BATCH);
+
+            // Pre-cache all field info for fast access (avoid reflection overhead on every update)
+            batchFields = new System.Reflection.FieldInfo[1000];
+            var batchType = typeof(GenericBatch);
+            for (int i = 0; i < 1000; i++)
+            {
+                batchFields[i] = batchType.GetField($"V{i}")!;
+            }
+            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Pre-cached {batchFields.Length} field accessors for batch processing");
+
+            // Request data with SIMCONNECT_PERIOD.SECOND (NOT ONCE!)
+            // SimConnect will automatically send updates every second
+            // This is the key difference from individual requests!
+            sc.RequestDataOnSimObject(
+                DATA_REQUESTS.REQUEST_CONTINUOUS_BATCH,
+                DATA_DEFINITIONS.CONTINUOUS_BATCH,
+                SIMCONNECT_OBJECT_ID_USER,
+                SIMCONNECT_PERIOD.SECOND,  // ← Automatic updates every second!
+                SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT,
+                0, 0, 0
+            );
+
+            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Batched continuous monitoring started:");
+            System.Diagnostics.Debug.WriteLine($"  - Variables in batch: {index}");
+            System.Diagnostics.Debug.WriteLine($"  - Variables registered individually: {variableDataDefinitions.Count}");
+            System.Diagnostics.Debug.WriteLine($"  - Continuous variables list:");
+            foreach (var kvp in continuousVariableIndexMap)
+            {
+                System.Diagnostics.Debug.WriteLine($"    [{kvp.Value}] {kvp.Key}");
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error setting up batched continuous monitoring: {ex.Message}");
         }
     }
 
@@ -485,33 +575,6 @@ public class SimConnectManager
 
         // Re-register all variables for new aircraft
         RegisterAllVariables();
-    }
-
-    /// <summary>
-    /// Request updates for continuously monitored variables
-    /// </summary>
-    private void RequestContinuousVariables(List<string> variableKeys)
-    {
-        if (!IsConnected || simConnect == null) return;
-        var sc = simConnect; // Guaranteed non-null after the check above
-
-        foreach (string varKey in variableKeys)
-        {
-            if (variableDataDefinitions.ContainsKey(varKey))
-            {
-                try
-                {
-                    int dataDefId = variableDataDefinitions[varKey];
-                    sc.RequestDataOnSimObject((DATA_REQUESTS)dataDefId,
-                        (DATA_DEFINITIONS)dataDefId, SIMCONNECT_OBJECT_ID_USER,
-                        SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"Error requesting continuous variable {varKey}: {ex.Message}");
-                }
-            }
-        }
     }
 
     private void SetupEvents()
@@ -698,6 +761,12 @@ public class SimConnectManager
                     atcDataReceived = true; // Set flag even on error so we don't block announcement
                     TryAnnounceConnection();
                 }
+                break;
+
+            case DATA_REQUESTS.REQUEST_CONTINUOUS_BATCH:
+                // Batched continuous variable updates (following forum post pattern)
+                GenericBatch batchData = (GenericBatch)data.dwData[0];
+                ProcessContinuousBatch(batchData);
                 break;
 
             case DATA_REQUESTS.REQUEST_AIRCRAFT_POSITION:
@@ -1308,6 +1377,141 @@ public class SimConnectManager
         if ((bitmask & (1 << 14)) != 0) return "ND Message: Backup Nav";
 
         return "ND Message: None";
+    }
+
+    /// <summary>
+    /// Process batched continuous variable updates.
+    /// Extracts values from GenericBatch struct and routes to existing variable processing pipeline.
+    /// </summary>
+    private void ProcessContinuousBatch(GenericBatch batch)
+    {
+        try
+        {
+            var variables = CurrentAircraft?.GetVariables() ?? new Dictionary<string, SimVarDefinition>();
+            int processedCount = 0;
+            int skippedCount = 0;
+
+            // Process each continuous variable using pre-cached field accessors
+            foreach (var kvp in continuousVariableIndexMap)
+            {
+                string varKey = kvp.Key;
+                int index = kvp.Value;
+
+                // Fast field access using pre-cached FieldInfo (no reflection overhead!)
+                if (index < batchFields.Length && batchFields[index] != null)
+                {
+                    double value = (double)batchFields[index].GetValue(batch)!;
+
+                    // Get variable definition
+                    if (!variables.TryGetValue(varKey, out var varDef))
+                    {
+                        skippedCount++;
+                        System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] WARNING: Variable {varKey} not found in aircraft definition!");
+                        continue;
+                    }
+
+                    // Special handling for ECAM variables (convert numeric codes to readable text)
+                    if (varKey.StartsWith("A32NX_Ewd_LOWER_"))
+                    {
+                        // Convert numeric code to readable message via EWDMessageLookup
+                        long numericCode = (long)value;
+                        string rawMessage = EWDMessageLookup.GetRawMessage(numericCode);
+                        string priority = EWDMessageLookup.GetMessagePriority(rawMessage);
+                        string cleanText = EWDMessageLookup.CleanANSICodes(rawMessage);
+
+                        // Store RAW message for ECAM Display window
+                        ecamStringData[varKey] = rawMessage;
+
+                        // Create announcement text WITH color appended for screen readers
+                        string announcementText = cleanText;
+                        if (!string.IsNullOrEmpty(priority) && !string.IsNullOrWhiteSpace(cleanText))
+                        {
+                            announcementText = $"{cleanText}, {priority}";
+                        }
+                        ecamAnnouncementData[varKey] = announcementText;
+
+                        ecamStringsReceived++;
+
+                        // Check if all 14 ECAM lines have been received
+                        if (ecamStringsReceived % ecamTotalStringsExpected == 0)
+                        {
+                            // Fire the ECAM data received event with all collected data
+                            ECAMDataReceived?.Invoke(this, new ECAMDataEventArgs
+                            {
+                                LeftLine1 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_1") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_1"] : "",
+                                LeftLine2 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_2") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_2"] : "",
+                                LeftLine3 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_3") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_3"] : "",
+                                LeftLine4 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_4") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_4"] : "",
+                                LeftLine5 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_5") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_5"] : "",
+                                LeftLine6 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_6") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_6"] : "",
+                                LeftLine7 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_7") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_7"] : "",
+                                RightLine1 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_1") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_1"] : "",
+                                RightLine2 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_2") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_2"] : "",
+                                RightLine3 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_3") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_3"] : "",
+                                RightLine4 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_4") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_4"] : "",
+                                RightLine5 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_5") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_5"] : "",
+                                RightLine6 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_6") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_6"] : "",
+                                RightLine7 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_7") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_7"] : "",
+                                MasterWarning = ecamMasterWarning > 0.5,
+                                MasterCaution = ecamMasterCaution > 0.5,
+                                StallWarning = ecamStallWarning > 0.5
+                            });
+
+                            System.Diagnostics.Debug.WriteLine("[ProcessContinuousBatch] All ECAM data collected and event fired");
+
+                            // Announce new ECAM messages (batch processing after all 14 lines collected)
+                            AnnounceECAMChanges();
+                        }
+
+                        processedCount++;
+                        continue; // Skip normal processing for ECAM variables
+                    }
+
+                    // Check for value changes (skip unchanged values to reduce announcement spam)
+                    bool hasChanged = true;
+                    if (lastVariableValues.TryGetValue(varKey, out double lastValue))
+                    {
+                        hasChanged = Math.Abs(lastValue - value) > 0.001; // Small tolerance for floating point
+                    }
+
+                    // Update cache
+                    lastVariableValues[varKey] = value;
+
+                    // Only fire event if value changed (or it's the first time we're seeing it)
+                    if (hasChanged || !lastVariableValues.ContainsKey(varKey))
+                    {
+                        string description = FormatVariableValue(varKey, varDef, value);
+
+                        // Fire SimVarUpdated event directly (no routing through ProcessIndividualVariableResponse)
+                        // This is the same event the old timer-based system used
+                        SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                        {
+                            VarName = varKey,
+                            Value = value,
+                            Description = description
+                        });
+
+                        processedCount++;
+                    }
+                }
+                else
+                {
+                    System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] ERROR: Invalid index {index} for variable {varKey}");
+                    skippedCount++;
+                }
+            }
+
+            // Diagnostic output (only log if there were changes or errors)
+            if (processedCount > 0 || skippedCount > 0)
+            {
+                System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] Processed {processedCount} changes, skipped {skippedCount} missing variables");
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error processing continuous batch: {ex.Message}");
+            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Stack trace: {ex.StackTrace}");
+        }
     }
 
     private void ProcessFCUValues(FCUValues data)
