@@ -14,6 +14,7 @@ namespace MSFSBlindAssist
         private System.Windows.Forms.ToolStripMenuItem aboutMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem aircraftMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem flyByWireA320MenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem fenixA320MenuItem = null!;
         private System.Windows.Forms.ListBox sectionsListBox = null!;
         private System.Windows.Forms.ListBox panelsListBox = null!;
         private System.Windows.Forms.Panel controlsContainer = null!;
@@ -41,6 +42,7 @@ namespace MSFSBlindAssist
             this.aboutMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.aircraftMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.flyByWireA320MenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.fenixA320MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.sectionsListBox = new System.Windows.Forms.ListBox();
             this.panelsListBox = new System.Windows.Forms.ListBox();
             this.controlsContainer = new System.Windows.Forms.Panel();
@@ -144,7 +146,8 @@ namespace MSFSBlindAssist
             this.aircraftMenuItem.AccessibleName = "Aircraft menu";
             this.aircraftMenuItem.AccessibleDescription = "Select aircraft model";
             this.aircraftMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
-            this.flyByWireA320MenuItem});
+            this.flyByWireA320MenuItem,
+            this.fenixA320MenuItem});
             this.aircraftMenuItem.Name = "aircraftMenuItem";
             this.aircraftMenuItem.Size = new System.Drawing.Size(75, 24);
             this.aircraftMenuItem.Text = "&Aircraft";
@@ -158,6 +161,16 @@ namespace MSFSBlindAssist
             this.flyByWireA320MenuItem.Text = "FlyByWire Airbus &A320neo";
             this.flyByWireA320MenuItem.Checked = true;
             this.flyByWireA320MenuItem.Click += new System.EventHandler(this.FlyByWireA320MenuItem_Click);
+            //
+            // fenixA320MenuItem
+            //
+            this.fenixA320MenuItem.AccessibleName = "Fenix A320 CEO";
+            this.fenixA320MenuItem.AccessibleDescription = "Switch to Fenix A320 CEO";
+            this.fenixA320MenuItem.Name = "fenixA320MenuItem";
+            this.fenixA320MenuItem.Size = new System.Drawing.Size(240, 26);
+            this.fenixA320MenuItem.Text = "Fenix A320 &CEO";
+            this.fenixA320MenuItem.Checked = false;
+            this.fenixA320MenuItem.Click += new System.EventHandler(this.FenixA320MenuItem_Click);
             //
             // sectionsListBox
             // 

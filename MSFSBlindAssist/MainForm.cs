@@ -53,6 +53,7 @@ public partial class MainForm : Form
         return aircraftCode switch
         {
             "A320" => new FlyByWireA320Definition(),
+            "FENIX_A320CEO" => new FenixA320Definition(),
             // Future aircraft will be added here
             _ => new FlyByWireA320Definition() // Default to A320
         };
@@ -1258,6 +1259,11 @@ public partial class MainForm : Form
     private void FlyByWireA320MenuItem_Click(object? sender, EventArgs e)
     {
         SwitchAircraft(new FlyByWireA320Definition());
+    }
+
+    private void FenixA320MenuItem_Click(object? sender, EventArgs e)
+    {
+        SwitchAircraft(new FenixA320Definition());
     }
 
     private void SwitchAircraft(IAircraftDefinition newAircraft)
