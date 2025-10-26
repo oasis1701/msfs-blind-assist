@@ -70,9 +70,8 @@ public class SimConnectManager
     private ConcurrentDictionary<string, double> lastVariableValues = new ConcurrentDictionary<string, double>();  // Cache last values for change detection
     private int nextDataDefinitionId = 1000;  // Start IDs from 1000 to avoid conflicts
 
-    // Batched continuous variable monitoring
+    // Batched continuous variable monitoring (using unsafe pointers instead of reflection)
     private Dictionary<string, int> continuousVariableIndexMap = new Dictionary<string, int>();  // Maps variable keys to struct field indices (V0-V999)
-    private System.Reflection.FieldInfo[] batchFields = Array.Empty<System.Reflection.FieldInfo>();  // Pre-cached field accessors for fast batch processing
 
     // Event handling
     private Dictionary<string, uint> eventIds = new Dictionary<string, uint>();
@@ -437,18 +436,27 @@ public class SimConnectManager
     /// - SimConnect automatically sends updates at SIMCONNECT_PERIOD.SECOND
     /// - Dramatically reduces network overhead (1 batch vs N individual requests)
     /// </summary>
+    private static int batchSetupCounter = 0;  // Track how many times this is called
+
     private void StartContinuousMonitoring()
     {
+        batchSetupCounter++;
+        string timestamp = DateTime.Now.ToString("HH:mm:ss.fff");
+        System.Diagnostics.Debug.WriteLine($"[StartContinuousMonitoring] ===== CALL #{batchSetupCounter} at {timestamp} =====");
+
         if (!IsConnected || simConnect == null)
         {
-            System.Diagnostics.Debug.WriteLine("[SimConnectManager] Cannot start continuous monitoring - not connected");
+            System.Diagnostics.Debug.WriteLine("[StartContinuousMonitoring] Cannot start continuous monitoring - not connected");
             return;
         }
 
         var sc = simConnect; // Local reference for null-safety
 
-        // Clear previous batch setup
+        // Clear previous batch setup (important when switching aircraft or adding/removing variables)
+        int previousMapSize = continuousVariableIndexMap.Count;
         continuousVariableIndexMap.Clear();
+        firstBatchLogged = false;  // Reset so first batch gets logged and analyzed
+        System.Diagnostics.Debug.WriteLine($"[StartContinuousMonitoring] Cleared previous map (had {previousMapSize} entries)");
 
         // Get all continuous variables from current aircraft
         var variables = CurrentAircraft?.GetVariables() ?? new Dictionary<string, SimVarDefinition>();
@@ -463,7 +471,15 @@ public class SimConnectManager
             }
         }
 
-        System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Starting batched continuous monitoring for {continuousVariables.Count} variables");
+        // CRITICAL: Sort variables alphabetically by Name to match SimConnect's internal ordering
+        // SimConnect sorts L-variables alphabetically when returning batch data, but dictionary iteration
+        // order is unpredictable. Without this sort, our index map will be wrong and variables will be
+        // announced with incorrect names (e.g., flaps changes announced as "APU Master Fault").
+        // Verified by batch dump analysis showing SimConnect returns data in alphabetical order by variable name.
+        continuousVariables.Sort((a, b) => string.CompareOrdinal(a.Value.Name, b.Value.Name));
+
+        System.Diagnostics.Debug.WriteLine($"[StartContinuousMonitoring] Aircraft: {CurrentAircraft?.AircraftName ?? "null"}");
+        System.Diagnostics.Debug.WriteLine($"[StartContinuousMonitoring] Found {continuousVariables.Count} continuous+announced variables (out of {variables.Count} total)");
 
         if (continuousVariables.Count == 0)
         {
@@ -494,34 +510,31 @@ public class SimConnectManager
                 string simVarName = varDef.Type == SimVarType.LVar ? $"L:{varName}" : varName;
                 string units = varDef.Units ?? "number";
 
-                // Add to the SAME data definition - SimConnect auto-populates struct fields in order
+                // Add to the SAME data definition
+                // NOTE: SimConnect populates struct fields in the EXACT order we call AddToDataDefinition
+                // regardless of the datum index parameter.
                 sc.AddToDataDefinition(
                     DATA_DEFINITIONS.CONTINUOUS_BATCH,
                     simVarName,
                     units,
                     SIMCONNECT_DATATYPE.FLOAT64,
                     0.0f,
-                    SIMCONNECT_UNUSED  // SimConnect automatically maps to V0, V1, V2, ... in order added
+                    SIMCONNECT_UNUSED  // Let SimConnect auto-assign - it uses order of AddToDataDefinition calls
                 );
 
                 // Store mapping: variable key -> struct field index
                 continuousVariableIndexMap[kvp.Key] = index;
 
-                System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Added {kvp.Key} ({simVarName}) to batch at index {index}");
+                // COMPREHENSIVE REGISTRATION LOGGING - Shows exact order SimConnect receives variables
+                System.Diagnostics.Debug.WriteLine($"[REGISTRATION] Index={index:D3}, VarKey='{kvp.Key}', SimConnectName='{simVarName}', Units='{units}'");
                 index++;
             }
 
             // Register the struct (following forum post pattern)
             sc.RegisterDataDefineStruct<GenericBatch>(DATA_DEFINITIONS.CONTINUOUS_BATCH);
 
-            // Pre-cache all field info for fast access (avoid reflection overhead on every update)
-            batchFields = new System.Reflection.FieldInfo[1000];
-            var batchType = typeof(GenericBatch);
-            for (int i = 0; i < 1000; i++)
-            {
-                batchFields[i] = batchType.GetField($"V{i}")!;
-            }
-            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Pre-cached {batchFields.Length} field accessors for batch processing");
+            // NOTE: No longer using reflection-based field caching - we use unsafe pointers instead!
+            // This eliminates ExecutionEngineException and is much faster.
 
             // Request data with SIMCONNECT_PERIOD.SECOND (NOT ONCE!)
             // SimConnect will automatically send updates every second
@@ -535,13 +548,41 @@ public class SimConnectManager
                 0, 0, 0
             );
 
-            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Batched continuous monitoring started:");
-            System.Diagnostics.Debug.WriteLine($"  - Variables in batch: {index}");
+            System.Diagnostics.Debug.WriteLine($"[StartContinuousMonitoring] ===== BATCH REGISTRATION COMPLETE =====");
+            System.Diagnostics.Debug.WriteLine($"  - Total variables in batch: {index}");
+            System.Diagnostics.Debug.WriteLine($"  - Map size: {continuousVariableIndexMap.Count}");
             System.Diagnostics.Debug.WriteLine($"  - Variables registered individually: {variableDataDefinitions.Count}");
-            System.Diagnostics.Debug.WriteLine($"  - Continuous variables list:");
+            System.Diagnostics.Debug.WriteLine($"  - First 20 variables in alphabetical order (matches SimConnect):");
+
+            int logCount = 0;
             foreach (var kvp in continuousVariableIndexMap)
             {
                 System.Diagnostics.Debug.WriteLine($"    [{kvp.Value}] {kvp.Key}");
+                if (++logCount >= 20) break;
+            }
+
+            if (continuousVariableIndexMap.Count > 20)
+            {
+                System.Diagnostics.Debug.WriteLine($"    ... and {continuousVariableIndexMap.Count - 20} more variables");
+            }
+
+            // Validate: Ensure map indices are sequential from 0 to count-1
+            bool indicesValid = true;
+            for (int i = 0; i < continuousVariableIndexMap.Count; i++)
+            {
+                if (!continuousVariableIndexMap.Values.Contains(i))
+                {
+                    System.Diagnostics.Debug.WriteLine($"[StartContinuousMonitoring] WARNING: Missing index {i} in map!");
+                    indicesValid = false;
+                }
+            }
+            if (indicesValid)
+            {
+                System.Diagnostics.Debug.WriteLine($"[StartContinuousMonitoring] Index validation: PASS (all indices 0-{continuousVariableIndexMap.Count - 1} present)");
+            }
+            else
+            {
+                System.Diagnostics.Debug.WriteLine($"[StartContinuousMonitoring] Index validation: FAIL (gaps or duplicates detected)");
             }
         }
         catch (Exception ex)
@@ -1286,23 +1327,23 @@ public class SimConnectManager
         }
         else if (varDef.Units == "volts")
         {
-            return $"{value:F1}V";
+            return $"{varDef.DisplayName}: {value:F1}V";
         }
         else if (varDef.Units == "feet")
         {
-            return $"{value:F0} feet";
+            return $"{varDef.DisplayName}: {value:F0} feet";
         }
         else if (varDef.Units == "degrees")
         {
-            return $"{value:F0} degrees";
+            return $"{varDef.DisplayName}: {value:F0} degrees";
         }
         else if (varDef.Units == "knots")
         {
-            return $"{value:F0} knots";
+            return $"{varDef.DisplayName}: {value:F0} knots";
         }
 
         // Default formatting
-        return $"{value:F1}";
+        return $"{varDef.DisplayName}: {value:F1}";
     }
 
     /// <summary>
@@ -1379,132 +1420,281 @@ public class SimConnectManager
         return "ND Message: None";
     }
 
+    private static bool firstBatchLogged = false;  // Track if we've logged the first batch for diagnostics
+
     /// <summary>
     /// Process batched continuous variable updates.
     /// Extracts values from GenericBatch struct and routes to existing variable processing pipeline.
     /// </summary>
     private void ProcessContinuousBatch(GenericBatch batch)
     {
+        // Get variables dictionary once at the start
+        var variables = CurrentAircraft?.GetVariables() ?? new Dictionary<string, SimVarDefinition>();
+
         try
         {
-            var variables = CurrentAircraft?.GetVariables() ?? new Dictionary<string, SimVarDefinition>();
-            int processedCount = 0;
-            int skippedCount = 0;
-
-            // Process each continuous variable using pre-cached field accessors
-            foreach (var kvp in continuousVariableIndexMap)
+            // DIAGNOSTIC: Log first batch received to verify data integrity
+            if (!firstBatchLogged && continuousVariableIndexMap.Count > 0)
             {
-                string varKey = kvp.Key;
-                int index = kvp.Value;
+                firstBatchLogged = true;
+                System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] ===== FIRST BATCH RECEIVED - VALIDATING INDEX MAPPING =====");
+                System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] Map has {continuousVariableIndexMap.Count} entries");
 
-                // Fast field access using pre-cached FieldInfo (no reflection overhead!)
-                if (index < batchFields.Length && batchFields[index] != null)
+                unsafe
                 {
-                    double value = (double)batchFields[index].GetValue(batch)!;
+                    GenericBatch* batchPtr = &batch;
+                    double* values = (double*)batchPtr;
 
-                    // Get variable definition
-                    if (!variables.TryGetValue(varKey, out var varDef))
+                    System.Diagnostics.Debug.WriteLine($"[FIRST_BATCH] ===== COMPLETE BATCH DUMP - ALL {continuousVariableIndexMap.Count} VARIABLES =====");
+
+                    // Build complete dump for both debug output AND file
+                    var dumpLines = new System.Text.StringBuilder();
+                    dumpLines.AppendLine("========== SIMCONNECT BATCH DUMP ==========");
+                    dumpLines.AppendLine($"Timestamp: {DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}");
+                    dumpLines.AppendLine($"Total Variables: {continuousVariableIndexMap.Count}");
+                    dumpLines.AppendLine();
+                    dumpLines.AppendLine("Index | Value      | Expected VarKey");
+                    dumpLines.AppendLine("------|------------|----------------");
+
+                    // Dump ALL values in order (0 to count-1)
+                    for (int actualIndex = 0; actualIndex < continuousVariableIndexMap.Count; actualIndex++)
                     {
-                        skippedCount++;
-                        System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] WARNING: Variable {varKey} not found in aircraft definition!");
-                        continue;
+                        double actualValue = values[actualIndex];
+                        string expectedVarKey = continuousVariableIndexMap.FirstOrDefault(x => x.Value == actualIndex).Key ?? "UNKNOWN";
+
+                        string line = $"{actualIndex:D3}   | {actualValue:F3}      | {expectedVarKey}";
+                        dumpLines.AppendLine(line);
+
+                        // Also log to debug output
+                        System.Diagnostics.Debug.WriteLine($"[FIRST_BATCH] {line}");
                     }
 
-                    // Special handling for ECAM variables (convert numeric codes to readable text)
-                    if (varKey.StartsWith("A32NX_Ewd_LOWER_"))
+                    // Add key variable checks at the end
+                    dumpLines.AppendLine();
+                    dumpLines.AppendLine("========== KEY VARIABLE CHECKS ==========");
+
+                    var keyVars = new[] { "S_FC_FLAPS", "S_FCU_EFIS2_BARO_MODE", "S_FCU_EFIS1_BARO_MODE", "S_OH_ELEC_BAT_1_PB", "S_OH_ELEC_BAT_2_PB" };
+                    foreach (var varKey in keyVars)
                     {
-                        // Convert numeric code to readable message via EWDMessageLookup
-                        long numericCode = (long)value;
-                        string rawMessage = EWDMessageLookup.GetRawMessage(numericCode);
-                        string priority = EWDMessageLookup.GetMessagePriority(rawMessage);
-                        string cleanText = EWDMessageLookup.CleanANSICodes(rawMessage);
-
-                        // Store RAW message for ECAM Display window
-                        ecamStringData[varKey] = rawMessage;
-
-                        // Create announcement text WITH color appended for screen readers
-                        string announcementText = cleanText;
-                        if (!string.IsNullOrEmpty(priority) && !string.IsNullOrWhiteSpace(cleanText))
+                        if (continuousVariableIndexMap.ContainsKey(varKey))
                         {
-                            announcementText = $"{cleanText}, {priority}";
+                            int idx = continuousVariableIndexMap[varKey];
+                            double val = values[idx];
+                            string checkLine = $"{varKey}: index={idx}, value={val:F3}";
+                            dumpLines.AppendLine(checkLine);
+                            System.Diagnostics.Debug.WriteLine($"[FIRST_BATCH] KEY: {checkLine}");
                         }
-                        ecamAnnouncementData[varKey] = announcementText;
-
-                        ecamStringsReceived++;
-
-                        // Check if all 14 ECAM lines have been received
-                        if (ecamStringsReceived % ecamTotalStringsExpected == 0)
-                        {
-                            // Fire the ECAM data received event with all collected data
-                            ECAMDataReceived?.Invoke(this, new ECAMDataEventArgs
-                            {
-                                LeftLine1 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_1") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_1"] : "",
-                                LeftLine2 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_2") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_2"] : "",
-                                LeftLine3 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_3") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_3"] : "",
-                                LeftLine4 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_4") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_4"] : "",
-                                LeftLine5 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_5") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_5"] : "",
-                                LeftLine6 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_6") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_6"] : "",
-                                LeftLine7 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_7") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_7"] : "",
-                                RightLine1 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_1") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_1"] : "",
-                                RightLine2 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_2") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_2"] : "",
-                                RightLine3 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_3") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_3"] : "",
-                                RightLine4 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_4") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_4"] : "",
-                                RightLine5 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_5") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_5"] : "",
-                                RightLine6 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_6") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_6"] : "",
-                                RightLine7 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_7") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_7"] : "",
-                                MasterWarning = ecamMasterWarning > 0.5,
-                                MasterCaution = ecamMasterCaution > 0.5,
-                                StallWarning = ecamStallWarning > 0.5
-                            });
-
-                            System.Diagnostics.Debug.WriteLine("[ProcessContinuousBatch] All ECAM data collected and event fired");
-
-                            // Announce new ECAM messages (batch processing after all 14 lines collected)
-                            AnnounceECAMChanges();
-                        }
-
-                        processedCount++;
-                        continue; // Skip normal processing for ECAM variables
                     }
 
-                    // Check for value changes (skip unchanged values to reduce announcement spam)
-                    bool hasChanged = true;
-                    if (lastVariableValues.TryGetValue(varKey, out double lastValue))
+                    // Write to file for offline analysis
+                    try
                     {
-                        hasChanged = Math.Abs(lastValue - value) > 0.001; // Small tolerance for floating point
+                        string filePath = Path.Combine(Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location) ?? ".", "simconnect_batch_dump.txt");
+                        File.WriteAllText(filePath, dumpLines.ToString());
+                        System.Diagnostics.Debug.WriteLine($"[FIRST_BATCH] Batch dump written to: {filePath}");
                     }
-
-                    // Update cache
-                    lastVariableValues[varKey] = value;
-
-                    // Only fire event if value changed (or it's the first time we're seeing it)
-                    if (hasChanged || !lastVariableValues.ContainsKey(varKey))
+                    catch (Exception fileEx)
                     {
-                        string description = FormatVariableValue(varKey, varDef, value);
-
-                        // Fire SimVarUpdated event directly (no routing through ProcessIndividualVariableResponse)
-                        // This is the same event the old timer-based system used
-                        SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
-                        {
-                            VarName = varKey,
-                            Value = value,
-                            Description = description
-                        });
-
-                        processedCount++;
+                        System.Diagnostics.Debug.WriteLine($"[FIRST_BATCH] WARNING: Failed to write batch dump file: {fileEx.Message}");
                     }
-                }
-                else
-                {
-                    System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] ERROR: Invalid index {index} for variable {varKey}");
-                    skippedCount++;
+
+                    System.Diagnostics.Debug.WriteLine($"[FIRST_BATCH] ===== END COMPLETE BATCH DUMP =====");
                 }
             }
 
-            // Diagnostic output (only log if there were changes or errors)
-            if (processedCount > 0 || skippedCount > 0)
+            int processedCount = 0;
+            int skippedCount = 0;
+            int invalidIndexCount = 0;
+            int exceptionCount = 0;
+
+            // SAFETY: Check if map is empty (possible race condition)
+            if (continuousVariableIndexMap.Count == 0)
             {
-                System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] Processed {processedCount} changes, skipped {skippedCount} missing variables");
+                System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] WARNING: Map is empty! Possible race condition with StartContinuousMonitoring");
+                return;
+            }
+
+            // Use unsafe pointer access instead of reflection for performance and stability
+            // GenericBatch is sequential struct of 1000 doubles, so we can access directly
+            try
+            {
+                unsafe
+                {
+                    // batch is a struct parameter, take its address directly (no fixed needed)
+                    GenericBatch* batchPtr = &batch;
+                    double* values = (double*)batchPtr;  // Treat struct as array of doubles
+
+                    // Process each continuous variable using direct memory access (no reflection!)
+                    foreach (var varKey in continuousVariableIndexMap.Keys)
+                    {
+                        int index = continuousVariableIndexMap[varKey];
+
+                        // SAFETY: Validate index is within bounds
+                        // Check both GenericBatch capacity (1000) and actual variable count
+                        if (index < 0 || index >= 1000 || index >= continuousVariableIndexMap.Count)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] ERROR: Index {index} out of bounds [0-{continuousVariableIndexMap.Count - 1}] for variable '{varKey}'");
+                            invalidIndexCount++;
+                            continue;
+                        }
+
+                    // SAFETY: Wrap value access to catch any memory exceptions
+                    double value;
+                    try
+                    {
+                        // Direct memory access - blazing fast, no reflection overhead!
+                        value = values[index];
+
+                        // DIAGNOSTIC: Log every value read to trace the mismatch
+                        if (varKey == "S_FC_FLAPS" || varKey == "S_FCU_EFIS2_BARO_MODE")
+                        {
+                            System.Diagnostics.Debug.WriteLine($"[DIAGNOSTIC] VarKey='{varKey}', Index={index}, Value={value:F3}");
+                        }
+
+                        // Get variable definition
+                        if (!variables.TryGetValue(varKey, out var varDef))
+                        {
+                            skippedCount++;
+                            System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] WARNING: Variable {varKey} not found in aircraft definition!");
+                            continue;
+                        }
+
+                        // Special handling for ECAM variables (convert numeric codes to readable text)
+                        if (varKey.StartsWith("A32NX_Ewd_LOWER_"))
+                        {
+                            // Convert numeric code to readable message via EWDMessageLookup
+                            long numericCode = (long)value;
+                            string rawMessage = EWDMessageLookup.GetRawMessage(numericCode);
+                            string priority = EWDMessageLookup.GetMessagePriority(rawMessage);
+                            string cleanText = EWDMessageLookup.CleanANSICodes(rawMessage);
+
+                            // Store RAW message for ECAM Display window
+                            ecamStringData[varKey] = rawMessage;
+
+                            // Create announcement text WITH color appended for screen readers
+                            string announcementText = cleanText;
+                            if (!string.IsNullOrEmpty(priority) && !string.IsNullOrWhiteSpace(cleanText))
+                            {
+                                announcementText = $"{cleanText}, {priority}";
+                            }
+                            ecamAnnouncementData[varKey] = announcementText;
+
+                            ecamStringsReceived++;
+
+                            // Check if all 14 ECAM lines have been received
+                            if (ecamStringsReceived % ecamTotalStringsExpected == 0)
+                            {
+                                // Fire the ECAM data received event with all collected data
+                                ECAMDataReceived?.Invoke(this, new ECAMDataEventArgs
+                                {
+                                    LeftLine1 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_1") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_1"] : "",
+                                    LeftLine2 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_2") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_2"] : "",
+                                    LeftLine3 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_3") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_3"] : "",
+                                    LeftLine4 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_4") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_4"] : "",
+                                    LeftLine5 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_5") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_5"] : "",
+                                    LeftLine6 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_6") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_6"] : "",
+                                    LeftLine7 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_LEFT_LINE_7") ? ecamStringData["A32NX_Ewd_LOWER_LEFT_LINE_7"] : "",
+                                    RightLine1 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_1") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_1"] : "",
+                                    RightLine2 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_2") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_2"] : "",
+                                    RightLine3 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_3") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_3"] : "",
+                                    RightLine4 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_4") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_4"] : "",
+                                    RightLine5 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_5") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_5"] : "",
+                                    RightLine6 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_6") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_6"] : "",
+                                    RightLine7 = ecamStringData.ContainsKey("A32NX_Ewd_LOWER_RIGHT_LINE_7") ? ecamStringData["A32NX_Ewd_LOWER_RIGHT_LINE_7"] : "",
+                                    MasterWarning = ecamMasterWarning > 0.5,
+                                    MasterCaution = ecamMasterCaution > 0.5,
+                                    StallWarning = ecamStallWarning > 0.5
+                                });
+
+                                System.Diagnostics.Debug.WriteLine("[ProcessContinuousBatch] All ECAM data collected and event fired");
+
+                                // Announce new ECAM messages (batch processing after all 14 lines collected)
+                                AnnounceECAMChanges();
+                            }
+
+                            processedCount++;
+                            continue; // Skip normal processing for ECAM variables
+                        }
+
+                        // Check for value changes (skip unchanged values to reduce announcement spam)
+                        bool hasChanged = true;
+                        if (lastVariableValues.TryGetValue(varKey, out double lastValue))
+                        {
+                            hasChanged = Math.Abs(lastValue - value) > 0.001; // Small tolerance for floating point
+                        }
+
+                        // Update cache
+                        lastVariableValues[varKey] = value;
+
+                        // Only fire event if value changed (or it's the first time we're seeing it)
+                        if (hasChanged || !lastVariableValues.ContainsKey(varKey))
+                        {
+                            string description = FormatVariableValue(varKey, varDef, value);
+
+                            // DIAGNOSTIC: Detailed logging for specific variables
+                            if (varKey == "S_FC_FLAPS" || varKey == "S_FCU_EFIS2_BARO_MODE")
+                            {
+                                double oldVal = lastVariableValues.ContainsKey(varKey) ? lastVariableValues[varKey] : -999;
+                                System.Diagnostics.Debug.WriteLine($"[DIAGNOSTIC_CHANGE] VarKey='{varKey}', Index={index}, OldValue={oldVal:F3}, NewValue={value:F3}, Description='{description}'");
+                            }
+
+                            // DIAGNOSTIC: Log exactly what we're announcing
+                            System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] CHANGE DETECTED: varKey='{varKey}', index={index}, value={value:F3}, description='{description}'");
+
+                            // Fire SimVarUpdated event directly (no routing through ProcessIndividualVariableResponse)
+                            // This is the same event the old timer-based system used
+                            SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                            {
+                                VarName = varKey,
+                                Value = value,
+                                Description = description
+                            });
+
+                            processedCount++;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] EXCEPTION: Error accessing value for variable '{varKey}' at index {index}: {ex.GetType().Name}: {ex.Message}");
+                        exceptionCount++;
+                    }
+                }  // end foreach
+                }  // end unsafe
+            }
+            catch (ExecutionEngineException ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] CRITICAL: ExecutionEngineException caught! This is a serious CLR error.");
+                System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch]   Message: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch]   Variable count: {continuousVariableIndexMap.Count}");
+                System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] Skipping this batch to prevent crash. Please report this issue.");
+                return;  // Abort processing this batch to prevent crash
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] UNEXPECTED EXCEPTION in unsafe block: {ex.GetType().Name}");
+                System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch]   Message: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch]   Stack trace: {ex.StackTrace}");
+                return;  // Abort processing to prevent crash
+            }
+
+            // Diagnostic output (always log on first batch, or if there were changes/errors)
+            bool hasErrors = invalidIndexCount > 0 || exceptionCount > 0 || skippedCount > 0;
+            if (processedCount > 0 || hasErrors)
+            {
+                System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] Stats: {processedCount} processed, {skippedCount} missing vars, {invalidIndexCount} invalid indices, {exceptionCount} exceptions");
+
+                // Log detailed map state if there are errors
+                if (hasErrors && continuousVariableIndexMap.Count > 0)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] Map has {continuousVariableIndexMap.Count} entries");
+                    System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] First 10 mappings:");
+                    int logCount = 0;
+                    foreach (var kvp in continuousVariableIndexMap.OrderBy(k => k.Key, StringComparer.Ordinal))
+                    {
+                        System.Diagnostics.Debug.WriteLine($"  [{kvp.Value}] {kvp.Key}");
+                        if (++logCount >= 10) break;
+                    }
+                }
             }
         }
         catch (Exception ex)
