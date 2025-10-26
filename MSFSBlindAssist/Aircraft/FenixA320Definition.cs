@@ -1247,33 +1247,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
             },
-            ["KOHLSMAN_SETTING_HG"] = new SimConnect.SimVarDefinition
-            {
-                Name = "KOHLSMAN SETTING HG",
-                DisplayName = "Barometer Setting",
-                Type = SimConnect.SimVarType.SimVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                Units = "inHg"
-            },
-            ["KOHLSMAN_SETTING_HPA"] = new SimConnect.SimVarDefinition
-            {
-                Name = "KOHLSMAN SETTING hPa",
-                DisplayName = "Barometer Setting hPa",
-                Type = SimConnect.SimVarType.SimVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                Units = "hPa"
-            },
-            ["KOHLSMAN_SETTING_QNH"] = new SimConnect.SimVarDefinition
-            {
-                Name = "KOHLSMAN SETTING QNH",
-                DisplayName = "QNH Setting",
-                Type = SimConnect.SimVarType.SimVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                Units = "hPa"
-            },
+            // Note: KOHLSMAN SimVars removed - Fenix uses N_FCU_EFIS1/2_BARO_HPA/INCH instead
 
             // ========== ELECTRICAL (36 variables) ==========
             ["I_OH_ELEC_IDG2_U"] = new SimConnect.SimVarDefinition
@@ -2455,9 +2429,9 @@ public class FenixA320Definition : BaseAircraftDefinition
                 IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
             },
-            ["L:N_MISC_PERF_TO_V1"] = new SimConnect.SimVarDefinition
+            ["N_MISC_PERF_TO_V1"] = new SimConnect.SimVarDefinition
             {
-                Name = "L:N_MISC_PERF_TO_V1",
+                Name = "N_MISC_PERF_TO_V1",
                 DisplayName = "MCDU V1 Speed",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,

@@ -455,7 +455,6 @@ public class SimConnectManager
         // Clear previous batch setup (important when switching aircraft or adding/removing variables)
         int previousMapSize = continuousVariableIndexMap.Count;
         continuousVariableIndexMap.Clear();
-        firstBatchLogged = false;  // Reset so first batch gets logged and analyzed
         System.Diagnostics.Debug.WriteLine($"[StartContinuousMonitoring] Cleared previous map (had {previousMapSize} entries)");
 
         // Get all continuous variables from current aircraft
@@ -472,11 +471,15 @@ public class SimConnectManager
         }
 
         // CRITICAL: Sort variables alphabetically by Name to match SimConnect's internal ordering
-        // SimConnect sorts L-variables alphabetically when returning batch data, but dictionary iteration
-        // order is unpredictable. Without this sort, our index map will be wrong and variables will be
-        // announced with incorrect names (e.g., flaps changes announced as "APU Master Fault").
-        // Verified by batch dump analysis showing SimConnect returns data in alphabetical order by variable name.
+        //
+        // WHY THIS IS NECESSARY:
+        // SimConnect internally sorts L-variables alphabetically when returning batch data,
+        // regardless of the order we call AddToDataDefinition. Dictionary iteration order
+        // is hash-based and unpredictable. Without this alphabetical sort, our index map
+        // will be wrong and variables will be announced with incorrect names.
         continuousVariables.Sort((a, b) => string.CompareOrdinal(a.Value.Name, b.Value.Name));
+
+        System.Diagnostics.Debug.WriteLine($"[StartContinuousMonitoring] Sorted {continuousVariables.Count} variables alphabetically to match SimConnect's internal order");
 
         System.Diagnostics.Debug.WriteLine($"[StartContinuousMonitoring] Aircraft: {CurrentAircraft?.AircraftName ?? "null"}");
         System.Diagnostics.Debug.WriteLine($"[StartContinuousMonitoring] Found {continuousVariables.Count} continuous+announced variables (out of {variables.Count} total)");
@@ -511,22 +514,20 @@ public class SimConnectManager
                 string units = varDef.Units ?? "number";
 
                 // Add to the SAME data definition
-                // NOTE: SimConnect populates struct fields in the EXACT order we call AddToDataDefinition
-                // regardless of the datum index parameter.
+                // NOTE: SimConnect sorts batch data alphabetically by variable name internally.
+                // We've pre-sorted continuousVariables alphabetically to match this ordering.
+                // The first batch dump will verify our sorting matches SimConnect's order.
                 sc.AddToDataDefinition(
                     DATA_DEFINITIONS.CONTINUOUS_BATCH,
                     simVarName,
                     units,
                     SIMCONNECT_DATATYPE.FLOAT64,
                     0.0f,
-                    SIMCONNECT_UNUSED  // Let SimConnect auto-assign - it uses order of AddToDataDefinition calls
+                    SIMCONNECT_UNUSED  // Datum ID not needed for sequential struct layout
                 );
 
                 // Store mapping: variable key -> struct field index
                 continuousVariableIndexMap[kvp.Key] = index;
-
-                // COMPREHENSIVE REGISTRATION LOGGING - Shows exact order SimConnect receives variables
-                System.Diagnostics.Debug.WriteLine($"[REGISTRATION] Index={index:D3}, VarKey='{kvp.Key}', SimConnectName='{simVarName}', Units='{units}'");
                 index++;
             }
 
@@ -548,42 +549,7 @@ public class SimConnectManager
                 0, 0, 0
             );
 
-            System.Diagnostics.Debug.WriteLine($"[StartContinuousMonitoring] ===== BATCH REGISTRATION COMPLETE =====");
-            System.Diagnostics.Debug.WriteLine($"  - Total variables in batch: {index}");
-            System.Diagnostics.Debug.WriteLine($"  - Map size: {continuousVariableIndexMap.Count}");
-            System.Diagnostics.Debug.WriteLine($"  - Variables registered individually: {variableDataDefinitions.Count}");
-            System.Diagnostics.Debug.WriteLine($"  - First 20 variables in alphabetical order (matches SimConnect):");
-
-            int logCount = 0;
-            foreach (var kvp in continuousVariableIndexMap)
-            {
-                System.Diagnostics.Debug.WriteLine($"    [{kvp.Value}] {kvp.Key}");
-                if (++logCount >= 20) break;
-            }
-
-            if (continuousVariableIndexMap.Count > 20)
-            {
-                System.Diagnostics.Debug.WriteLine($"    ... and {continuousVariableIndexMap.Count - 20} more variables");
-            }
-
-            // Validate: Ensure map indices are sequential from 0 to count-1
-            bool indicesValid = true;
-            for (int i = 0; i < continuousVariableIndexMap.Count; i++)
-            {
-                if (!continuousVariableIndexMap.Values.Contains(i))
-                {
-                    System.Diagnostics.Debug.WriteLine($"[StartContinuousMonitoring] WARNING: Missing index {i} in map!");
-                    indicesValid = false;
-                }
-            }
-            if (indicesValid)
-            {
-                System.Diagnostics.Debug.WriteLine($"[StartContinuousMonitoring] Index validation: PASS (all indices 0-{continuousVariableIndexMap.Count - 1} present)");
-            }
-            else
-            {
-                System.Diagnostics.Debug.WriteLine($"[StartContinuousMonitoring] Index validation: FAIL (gaps or duplicates detected)");
-            }
+            System.Diagnostics.Debug.WriteLine($"[StartContinuousMonitoring] Batch monitoring started for {index} variables");
         }
         catch (Exception ex)
         {
@@ -1420,8 +1386,6 @@ public class SimConnectManager
         return "ND Message: None";
     }
 
-    private static bool firstBatchLogged = false;  // Track if we've logged the first batch for diagnostics
-
     /// <summary>
     /// Process batched continuous variable updates.
     /// Extracts values from GenericBatch struct and routes to existing variable processing pipeline.
@@ -1431,112 +1395,41 @@ public class SimConnectManager
         // Get variables dictionary once at the start
         var variables = CurrentAircraft?.GetVariables() ?? new Dictionary<string, SimVarDefinition>();
 
+        int processedCount = 0;
+        int skippedCount = 0;
+        int invalidIndexCount = 0;
+        int exceptionCount = 0;
+
+        // SAFETY: Check if map is empty (possible race condition)
+        if (continuousVariableIndexMap.Count == 0)
+        {
+            System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] WARNING: Map is empty! Possible race condition with StartContinuousMonitoring");
+            return;
+        }
+
+        // Use unsafe pointer access instead of reflection for performance and stability
+        // GenericBatch is sequential struct of 1000 doubles, so we can access directly
         try
         {
-            // DIAGNOSTIC: Log first batch received to verify data integrity
-            if (!firstBatchLogged && continuousVariableIndexMap.Count > 0)
+            unsafe
             {
-                firstBatchLogged = true;
-                System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] ===== FIRST BATCH RECEIVED - VALIDATING INDEX MAPPING =====");
-                System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] Map has {continuousVariableIndexMap.Count} entries");
+                // batch is a struct parameter, take its address directly (no fixed needed)
+                GenericBatch* batchPtr = &batch;
+                double* values = (double*)batchPtr;  // Treat struct as array of doubles
 
-                unsafe
+                // Process each continuous variable using direct memory access (no reflection!)
+                foreach (var varKey in continuousVariableIndexMap.Keys)
                 {
-                    GenericBatch* batchPtr = &batch;
-                    double* values = (double*)batchPtr;
+                    int index = continuousVariableIndexMap[varKey];
 
-                    System.Diagnostics.Debug.WriteLine($"[FIRST_BATCH] ===== COMPLETE BATCH DUMP - ALL {continuousVariableIndexMap.Count} VARIABLES =====");
-
-                    // Build complete dump for both debug output AND file
-                    var dumpLines = new System.Text.StringBuilder();
-                    dumpLines.AppendLine("========== SIMCONNECT BATCH DUMP ==========");
-                    dumpLines.AppendLine($"Timestamp: {DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}");
-                    dumpLines.AppendLine($"Total Variables: {continuousVariableIndexMap.Count}");
-                    dumpLines.AppendLine();
-                    dumpLines.AppendLine("Index | Value      | Expected VarKey");
-                    dumpLines.AppendLine("------|------------|----------------");
-
-                    // Dump ALL values in order (0 to count-1)
-                    for (int actualIndex = 0; actualIndex < continuousVariableIndexMap.Count; actualIndex++)
+                    // SAFETY: Validate index is within bounds
+                    // Check both GenericBatch capacity (1000) and actual variable count
+                    if (index < 0 || index >= 1000 || index >= continuousVariableIndexMap.Count)
                     {
-                        double actualValue = values[actualIndex];
-                        string expectedVarKey = continuousVariableIndexMap.FirstOrDefault(x => x.Value == actualIndex).Key ?? "UNKNOWN";
-
-                        string line = $"{actualIndex:D3}   | {actualValue:F3}      | {expectedVarKey}";
-                        dumpLines.AppendLine(line);
-
-                        // Also log to debug output
-                        System.Diagnostics.Debug.WriteLine($"[FIRST_BATCH] {line}");
+                        System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] ERROR: Index {index} out of bounds [0-{continuousVariableIndexMap.Count - 1}] for variable '{varKey}'");
+                        invalidIndexCount++;
+                        continue;
                     }
-
-                    // Add key variable checks at the end
-                    dumpLines.AppendLine();
-                    dumpLines.AppendLine("========== KEY VARIABLE CHECKS ==========");
-
-                    var keyVars = new[] { "S_FC_FLAPS", "S_FCU_EFIS2_BARO_MODE", "S_FCU_EFIS1_BARO_MODE", "S_OH_ELEC_BAT_1_PB", "S_OH_ELEC_BAT_2_PB" };
-                    foreach (var varKey in keyVars)
-                    {
-                        if (continuousVariableIndexMap.ContainsKey(varKey))
-                        {
-                            int idx = continuousVariableIndexMap[varKey];
-                            double val = values[idx];
-                            string checkLine = $"{varKey}: index={idx}, value={val:F3}";
-                            dumpLines.AppendLine(checkLine);
-                            System.Diagnostics.Debug.WriteLine($"[FIRST_BATCH] KEY: {checkLine}");
-                        }
-                    }
-
-                    // Write to file for offline analysis
-                    try
-                    {
-                        string filePath = Path.Combine(Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location) ?? ".", "simconnect_batch_dump.txt");
-                        File.WriteAllText(filePath, dumpLines.ToString());
-                        System.Diagnostics.Debug.WriteLine($"[FIRST_BATCH] Batch dump written to: {filePath}");
-                    }
-                    catch (Exception fileEx)
-                    {
-                        System.Diagnostics.Debug.WriteLine($"[FIRST_BATCH] WARNING: Failed to write batch dump file: {fileEx.Message}");
-                    }
-
-                    System.Diagnostics.Debug.WriteLine($"[FIRST_BATCH] ===== END COMPLETE BATCH DUMP =====");
-                }
-            }
-
-            int processedCount = 0;
-            int skippedCount = 0;
-            int invalidIndexCount = 0;
-            int exceptionCount = 0;
-
-            // SAFETY: Check if map is empty (possible race condition)
-            if (continuousVariableIndexMap.Count == 0)
-            {
-                System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] WARNING: Map is empty! Possible race condition with StartContinuousMonitoring");
-                return;
-            }
-
-            // Use unsafe pointer access instead of reflection for performance and stability
-            // GenericBatch is sequential struct of 1000 doubles, so we can access directly
-            try
-            {
-                unsafe
-                {
-                    // batch is a struct parameter, take its address directly (no fixed needed)
-                    GenericBatch* batchPtr = &batch;
-                    double* values = (double*)batchPtr;  // Treat struct as array of doubles
-
-                    // Process each continuous variable using direct memory access (no reflection!)
-                    foreach (var varKey in continuousVariableIndexMap.Keys)
-                    {
-                        int index = continuousVariableIndexMap[varKey];
-
-                        // SAFETY: Validate index is within bounds
-                        // Check both GenericBatch capacity (1000) and actual variable count
-                        if (index < 0 || index >= 1000 || index >= continuousVariableIndexMap.Count)
-                        {
-                            System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] ERROR: Index {index} out of bounds [0-{continuousVariableIndexMap.Count - 1}] for variable '{varKey}'");
-                            invalidIndexCount++;
-                            continue;
-                        }
 
                     // SAFETY: Wrap value access to catch any memory exceptions
                     double value;
@@ -1544,12 +1437,6 @@ public class SimConnectManager
                     {
                         // Direct memory access - blazing fast, no reflection overhead!
                         value = values[index];
-
-                        // DIAGNOSTIC: Log every value read to trace the mismatch
-                        if (varKey == "S_FC_FLAPS" || varKey == "S_FCU_EFIS2_BARO_MODE")
-                        {
-                            System.Diagnostics.Debug.WriteLine($"[DIAGNOSTIC] VarKey='{varKey}', Index={index}, Value={value:F3}");
-                        }
 
                         // Get variable definition
                         if (!variables.TryGetValue(varKey, out var varDef))
@@ -1631,18 +1518,7 @@ public class SimConnectManager
                         {
                             string description = FormatVariableValue(varKey, varDef, value);
 
-                            // DIAGNOSTIC: Detailed logging for specific variables
-                            if (varKey == "S_FC_FLAPS" || varKey == "S_FCU_EFIS2_BARO_MODE")
-                            {
-                                double oldVal = lastVariableValues.ContainsKey(varKey) ? lastVariableValues[varKey] : -999;
-                                System.Diagnostics.Debug.WriteLine($"[DIAGNOSTIC_CHANGE] VarKey='{varKey}', Index={index}, OldValue={oldVal:F3}, NewValue={value:F3}, Description='{description}'");
-                            }
-
-                            // DIAGNOSTIC: Log exactly what we're announcing
-                            System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] CHANGE DETECTED: varKey='{varKey}', index={index}, value={value:F3}, description='{description}'");
-
                             // Fire SimVarUpdated event directly (no routing through ProcessIndividualVariableResponse)
-                            // This is the same event the old timer-based system used
                             SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
                             {
                                 VarName = varKey,
@@ -1659,48 +1535,42 @@ public class SimConnectManager
                         exceptionCount++;
                     }
                 }  // end foreach
-                }  // end unsafe
-            }
-            catch (ExecutionEngineException ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] CRITICAL: ExecutionEngineException caught! This is a serious CLR error.");
-                System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch]   Message: {ex.Message}");
-                System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch]   Variable count: {continuousVariableIndexMap.Count}");
-                System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] Skipping this batch to prevent crash. Please report this issue.");
-                return;  // Abort processing this batch to prevent crash
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] UNEXPECTED EXCEPTION in unsafe block: {ex.GetType().Name}");
-                System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch]   Message: {ex.Message}");
-                System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch]   Stack trace: {ex.StackTrace}");
-                return;  // Abort processing to prevent crash
-            }
-
-            // Diagnostic output (always log on first batch, or if there were changes/errors)
-            bool hasErrors = invalidIndexCount > 0 || exceptionCount > 0 || skippedCount > 0;
-            if (processedCount > 0 || hasErrors)
-            {
-                System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] Stats: {processedCount} processed, {skippedCount} missing vars, {invalidIndexCount} invalid indices, {exceptionCount} exceptions");
-
-                // Log detailed map state if there are errors
-                if (hasErrors && continuousVariableIndexMap.Count > 0)
-                {
-                    System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] Map has {continuousVariableIndexMap.Count} entries");
-                    System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] First 10 mappings:");
-                    int logCount = 0;
-                    foreach (var kvp in continuousVariableIndexMap.OrderBy(k => k.Key, StringComparer.Ordinal))
-                    {
-                        System.Diagnostics.Debug.WriteLine($"  [{kvp.Value}] {kvp.Key}");
-                        if (++logCount >= 10) break;
-                    }
-                }
-            }
+            }  // end unsafe
+        }
+        catch (ExecutionEngineException ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] CRITICAL: ExecutionEngineException caught! This is a serious CLR error.");
+            System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch]   Message: {ex.Message}");
+            System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch]   Variable count: {continuousVariableIndexMap.Count}");
+            System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] Skipping this batch to prevent crash. Please report this issue.");
+            return;  // Abort processing this batch to prevent crash
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error processing continuous batch: {ex.Message}");
-            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Stack trace: {ex.StackTrace}");
+            System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] UNEXPECTED EXCEPTION in unsafe block: {ex.GetType().Name}");
+            System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch]   Message: {ex.Message}");
+            System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch]   Stack trace: {ex.StackTrace}");
+            return;  // Abort processing to prevent crash
+        }
+
+        // Log statistics if there were any changes or errors
+        bool hasErrors = invalidIndexCount > 0 || exceptionCount > 0 || skippedCount > 0;
+        if (processedCount > 0 || hasErrors)
+        {
+            System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] Stats: {processedCount} processed, {skippedCount} missing vars, {invalidIndexCount} invalid indices, {exceptionCount} exceptions");
+
+            // Log detailed map state if there are errors
+            if (hasErrors && continuousVariableIndexMap.Count > 0)
+            {
+                System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] Map has {continuousVariableIndexMap.Count} entries");
+                System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] First 10 mappings:");
+                int logCount = 0;
+                foreach (var kvp in continuousVariableIndexMap.OrderBy(k => k.Key, StringComparer.Ordinal))
+                {
+                    System.Diagnostics.Debug.WriteLine($"  [{kvp.Value}] {kvp.Key}");
+                    if (++logCount >= 10) break;
+                }
+            }
         }
     }
 
