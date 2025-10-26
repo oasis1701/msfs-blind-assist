@@ -4261,6 +4261,26 @@ public class FenixA320Definition : BaseAircraftDefinition
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
             },
 
+            // TAKEOFF ASSIST VARIABLES (dynamically monitored when takeoff assist is active)
+            ["PLANE_PITCH_DEGREES"] = new SimConnect.SimVarDefinition
+            {
+                Name = "PLANE PITCH DEGREES",
+                DisplayName = "Aircraft Pitch",
+                Type = SimConnect.SimVarType.SimVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, // Registered at startup, monitored when takeoff assist is active
+                IsAnnounced = false, // Handled by TakeoffAssistManager
+                Units = "radians" // Note: Despite name, returns radians!
+            },
+            ["PLANE_HEADING_DEGREES_MAGNETIC"] = new SimConnect.SimVarDefinition
+            {
+                Name = "PLANE HEADING DEGREES MAGNETIC",
+                DisplayName = "Magnetic Heading",
+                Type = SimConnect.SimVarType.SimVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, // Registered at startup, monitored when takeoff assist is active
+                IsAnnounced = false, // Handled by TakeoffAssistManager
+                Units = "radians" // Note: Despite name, returns radians!
+            },
+
             // Unused Variables - Available for future use
             // Comment out variables here when they're not needed for active monitoring
             // Uncomment and move back up when needed
