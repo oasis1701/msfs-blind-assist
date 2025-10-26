@@ -470,14 +470,29 @@ public class SimConnectManager
             }
         }
 
-        // CRITICAL: Sort variables alphabetically by Name to match SimConnect's internal ordering
+        // CRITICAL: Sort variables alphabetically by FULL NAME (with prefix) to match SimConnect's internal ordering
         //
         // WHY THIS IS NECESSARY:
-        // SimConnect internally sorts L-variables alphabetically when returning batch data,
+        // SimConnect internally sorts variables alphabetically when returning batch data,
         // regardless of the order we call AddToDataDefinition. Dictionary iteration order
         // is hash-based and unpredictable. Without this alphabetical sort, our index map
         // will be wrong and variables will be announced with incorrect names.
-        continuousVariables.Sort((a, b) => string.CompareOrdinal(a.Value.Name, b.Value.Name));
+        //
+        // IMPORTANT: We must sort by the EXACT variable name that SimConnect receives,
+        // which includes the "L:" prefix for LVars. If we sort by raw name only, and there's
+        // a mix of LVars and SimVars, the sort order will not match SimConnect's order.
+        // Example:
+        //   Sorting by raw name: "ALTITUDE", "CUSTOM_VAR", "HEADING"
+        //   SimConnect receives: "ALTITUDE", "L:CUSTOM_VAR", "HEADING"
+        //   SimConnect's sort:   "ALTITUDE", "HEADING", "L:CUSTOM_VAR" (L comes after H)
+        // This mismatch causes wrong index mapping → accessing wrong memory → ExecutionEngineException!
+        continuousVariables.Sort((a, b) =>
+        {
+            // Build the EXACT variable name that SimConnect will receive
+            string aFullName = a.Value.Type == SimVarType.LVar ? $"L:{a.Value.Name}" : a.Value.Name;
+            string bFullName = b.Value.Type == SimVarType.LVar ? $"L:{b.Value.Name}" : b.Value.Name;
+            return string.CompareOrdinal(aFullName, bFullName);
+        });
 
         System.Diagnostics.Debug.WriteLine($"[StartContinuousMonitoring] Sorted {continuousVariables.Count} variables alphabetically to match SimConnect's internal order");
 
@@ -772,8 +787,9 @@ public class SimConnectManager
 
             case DATA_REQUESTS.REQUEST_CONTINUOUS_BATCH:
                 // Batched continuous variable updates (following forum post pattern)
+                // NOTE: Cast creates one copy (unavoidable), but passing by 'in' avoids second copy
                 GenericBatch batchData = (GenericBatch)data.dwData[0];
-                ProcessContinuousBatch(batchData);
+                ProcessContinuousBatch(in batchData);  // Pass by readonly reference (no copy!)
                 break;
 
             case DATA_REQUESTS.REQUEST_AIRCRAFT_POSITION:
@@ -1389,8 +1405,9 @@ public class SimConnectManager
     /// <summary>
     /// Process batched continuous variable updates.
     /// Extracts values from GenericBatch struct and routes to existing variable processing pipeline.
+    /// NOTE: Accepts batch by readonly reference ('in') to avoid copying 8KB struct (1000 doubles).
     /// </summary>
-    private void ProcessContinuousBatch(GenericBatch batch)
+    private void ProcessContinuousBatch(in GenericBatch batch)
     {
         // Get variables dictionary once at the start
         var variables = CurrentAircraft?.GetVariables() ?? new Dictionary<string, SimVarDefinition>();
@@ -1413,38 +1430,40 @@ public class SimConnectManager
         {
             unsafe
             {
-                // batch is a struct parameter, take its address directly (no fixed needed)
-                GenericBatch* batchPtr = &batch;
-                double* values = (double*)batchPtr;  // Treat struct as array of doubles
-
-                // Process each continuous variable using direct memory access (no reflection!)
-                foreach (var varKey in continuousVariableIndexMap.Keys)
+                // batch is an 'in' parameter (readonly reference)
+                // Use 'fixed' to get a pointer to the readonly reference
+                fixed (GenericBatch* batchPtr = &batch)
                 {
-                    int index = continuousVariableIndexMap[varKey];
+                    double* values = (double*)batchPtr;  // Treat struct as array of doubles
 
-                    // SAFETY: Validate index is within bounds
-                    // Check both GenericBatch capacity (1000) and actual variable count
-                    if (index < 0 || index >= 1000 || index >= continuousVariableIndexMap.Count)
+                    // Process each continuous variable using direct memory access (no reflection!)
+                    foreach (var varKey in continuousVariableIndexMap.Keys)
                     {
-                        System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] ERROR: Index {index} out of bounds [0-{continuousVariableIndexMap.Count - 1}] for variable '{varKey}'");
-                        invalidIndexCount++;
-                        continue;
-                    }
+                        int index = continuousVariableIndexMap[varKey];
 
-                    // SAFETY: Wrap value access to catch any memory exceptions
-                    double value;
-                    try
-                    {
-                        // Direct memory access - blazing fast, no reflection overhead!
-                        value = values[index];
-
-                        // Get variable definition
-                        if (!variables.TryGetValue(varKey, out var varDef))
+                        // SAFETY: Validate index is within bounds
+                        // Check both GenericBatch capacity (1000) and actual variable count
+                        if (index < 0 || index >= 1000 || index >= continuousVariableIndexMap.Count)
                         {
-                            skippedCount++;
-                            System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] WARNING: Variable {varKey} not found in aircraft definition!");
+                            System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] ERROR: Index {index} out of bounds [0-{continuousVariableIndexMap.Count - 1}] for variable '{varKey}'");
+                            invalidIndexCount++;
                             continue;
                         }
+
+                        // SAFETY: Wrap value access to catch any memory exceptions
+                        double value;
+                        try
+                        {
+                            // Direct memory access - blazing fast, no reflection overhead!
+                            value = values[index];
+
+                            // Get variable definition
+                            if (!variables.TryGetValue(varKey, out var varDef))
+                            {
+                                skippedCount++;
+                                System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] WARNING: Variable {varKey} not found in aircraft definition!");
+                                continue;
+                            }
 
                         // Special handling for ECAM variables (convert numeric codes to readable text)
                         if (varKey.StartsWith("A32NX_Ewd_LOWER_"))
@@ -1535,6 +1554,7 @@ public class SimConnectManager
                         exceptionCount++;
                     }
                 }  // end foreach
+                }  // end fixed
             }  // end unsafe
         }
         catch (ExecutionEngineException ex)
