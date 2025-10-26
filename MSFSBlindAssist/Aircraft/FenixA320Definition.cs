@@ -865,15 +865,6 @@ public class FenixA320Definition : BaseAircraftDefinition
                 IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Displayed", [1] = "Dashed"}
             },
-            ["A_FC_ELEVATOR_TRIM"] = new SimConnect.SimVarDefinition
-            {
-                Name = "A_FC_ELEVATOR_TRIM",
-                DisplayName = "ELEVATOR TRIM POSITION",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-            },
-
             // ========== ECAM (16 variables) ==========
             ["I_ECAM_WHEEL"] = new SimConnect.SimVarDefinition
             {
@@ -1643,23 +1634,6 @@ public class FenixA320Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
             },
-            ["A320_FC_L_FLAPS"] = new SimConnect.SimVarDefinition
-            {
-                Name = "A320_FC_L_FLAPS",
-                DisplayName = "FC FLAPS EFFECTIVE LEFT POSITION",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-            },
-            ["A320_FC_R_FLAPS"] = new SimConnect.SimVarDefinition
-            {
-                Name = "A320_FC_R_FLAPS",
-                DisplayName = "FC FLAPS EFFECTIVE RIGHT POSITION",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-            },
-
             // ========== FLIGHT INSTRUMENTATION (20 variables) ==========
             ["FNX2PLD_speedV1"] = new SimConnect.SimVarDefinition
             {
@@ -4292,6 +4266,30 @@ public class FenixA320Definition : BaseAircraftDefinition
             // Uncomment and move back up when needed
 
             /*
+            ["A_FC_ELEVATOR_TRIM"] = new SimConnect.SimVarDefinition
+            {
+                Name = "A_FC_ELEVATOR_TRIM",
+                DisplayName = "ELEVATOR TRIM POSITION",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+            },
+            ["A320_FC_L_FLAPS"] = new SimConnect.SimVarDefinition
+            {
+                Name = "A320_FC_L_FLAPS",
+                DisplayName = "FC FLAPS EFFECTIVE LEFT POSITION",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+            },
+            ["A320_FC_R_FLAPS"] = new SimConnect.SimVarDefinition
+            {
+                Name = "A320_FC_R_FLAPS",
+                DisplayName = "FC FLAPS EFFECTIVE RIGHT POSITION",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+            },
             ["N_MIP_CLOCK_UTC"] = new SimConnect.SimVarDefinition
             {
                 Name = "N_MIP_CLOCK_UTC",
