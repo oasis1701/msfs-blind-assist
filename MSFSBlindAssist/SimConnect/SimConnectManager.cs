@@ -513,6 +513,29 @@ public class SimConnectManager
 
         try
         {
+            // CRITICAL: Stop any existing recurring request BEFORE clearing the definition
+            // When switching aircraft, the old RequestDataOnSimObject (SIMCONNECT_PERIOD.SECOND)
+            // is still active and will continue sending data for the OLD variable count.
+            // If we don't cancel it, we'll have TWO active requests with different variable counts,
+            // causing memory corruption when we try to process data from the old request.
+            // This is similar to the pattern used in StopTakeoffAssistMonitoring (line 2939).
+            try
+            {
+                sc.RequestDataOnSimObject(
+                    DATA_REQUESTS.REQUEST_CONTINUOUS_BATCH,
+                    DATA_DEFINITIONS.CONTINUOUS_BATCH,
+                    SIMCONNECT_OBJECT_ID_USER,
+                    SIMCONNECT_PERIOD.NEVER,  // ← Cancels the recurring request
+                    SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT,
+                    0, 0, 0
+                );
+                System.Diagnostics.Debug.WriteLine("[StartContinuousMonitoring] Cancelled previous recurring batch request");
+            }
+            catch (Exception)
+            {
+                // Ignore errors - this is expected on first setup when no request exists yet
+            }
+
             // Clear the batch data definition
             sc.ClearDataDefinition(DATA_DEFINITIONS.CONTINUOUS_BATCH);
 
