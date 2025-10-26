@@ -10,8 +10,12 @@ namespace MSFSBlindAssist.SimConnect;
 /// - SimConnect automatically sends updates at the requested period (SECOND)
 /// - Reduces network overhead from N requests to 1 batch request
 /// - Dramatically improves performance for large variable counts
+///
+/// IMPORTANT: Pack = 8 ensures proper 8-byte alignment for doubles, preventing
+/// ExecutionEngineException when accessing fields via unsafe pointers.
+/// DO NOT change to Pack = 1, as it causes misalignment and crashes!
 /// </summary>
-[StructLayout(LayoutKind.Sequential, Pack = 1)]
+[StructLayout(LayoutKind.Sequential, Pack = 8)]
 public struct GenericBatch
 {
     public double V0;
