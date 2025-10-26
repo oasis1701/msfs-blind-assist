@@ -2702,14 +2702,6 @@ public class FenixA320Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
             },
-            ["N_MIP_CLOCK_UTC"] = new SimConnect.SimVarDefinition
-            {
-                Name = "N_MIP_CLOCK_UTC",
-                DisplayName = "CLOCK UTC",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-            },
             ["N_MIP_CLOCK_MODE"] = new SimConnect.SimVarDefinition
             {
                 Name = "N_MIP_CLOCK_MODE",
@@ -4294,6 +4286,21 @@ public class FenixA320Definition : BaseAircraftDefinition
                 IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
             },
+
+            // Unused Variables - Available for future use
+            // Comment out variables here when they're not needed for active monitoring
+            // Uncomment and move back up when needed
+
+            /*
+            ["N_MIP_CLOCK_UTC"] = new SimConnect.SimVarDefinition
+            {
+                Name = "N_MIP_CLOCK_UTC",
+                DisplayName = "CLOCK UTC",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+            },
+            */
         };
     }
 
