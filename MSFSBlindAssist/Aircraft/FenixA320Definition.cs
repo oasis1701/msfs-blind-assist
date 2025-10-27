@@ -995,15 +995,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_ECAM_EMER_CANCEL"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ECAM_EMER_CANCEL",
-                DisplayName = "ECAM EMER CANC Button On",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-            },
-            ["I_ECAM_EMER_CANCEL"] = new SimConnect.SimVarDefinition
-            {
-                Name = "I_ECAM_EMER_CANCEL",
-                DisplayName = "ECAM EMER CANC Button Off",
+                DisplayName = "ECAM EMER CANC Button",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -1544,22 +1536,6 @@ public class FenixA320Definition : BaseAircraftDefinition
             {
                 Name = "N_ELEC_VOLT_BAT_2",
                 DisplayName = "Battery 2 Voltage Display",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-            },
-            ["N_ELEC_VOLT_BAT_1"] = new SimConnect.SimVarDefinition
-            {
-                Name = "N_ELEC_VOLT_BAT_1",
-                DisplayName = "OVHD BAT 1 Volt Display",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-            },
-            ["N_ELEC_VOLT_BAT_2"] = new SimConnect.SimVarDefinition
-            {
-                Name = "N_ELEC_VOLT_BAT_2",
-                DisplayName = "OVHD BAT 2 Volt Display",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -2822,71 +2798,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
             },
-            ["I_OH_NAV_ADIRS_ON_BAT"] = new SimConnect.SimVarDefinition
-            {
-                Name = "I_OH_NAV_ADIRS_ON_BAT",
-                DisplayName = "ADIRS On Bat",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
-            },
-
             // ========== RADIO (119 variables) ==========
-            ["I_OH_NAV_ADR3_U"] = new SimConnect.SimVarDefinition
-            {
-                Name = "I_OH_NAV_ADR3_U",
-                DisplayName = "ADIRS ADR 3 Fault",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
-            },
-            ["I_OH_NAV_ADR3_L"] = new SimConnect.SimVarDefinition
-            {
-                Name = "I_OH_NAV_ADR3_L",
-                DisplayName = "ADIRS ADR 3 Available",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
-            },
-            ["I_OH_NAV_ADR2_U"] = new SimConnect.SimVarDefinition
-            {
-                Name = "I_OH_NAV_ADR2_U",
-                DisplayName = "ADIRS ADR 2 Fault",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
-            },
-            ["I_OH_NAV_ADR2_L"] = new SimConnect.SimVarDefinition
-            {
-                Name = "I_OH_NAV_ADR2_L",
-                DisplayName = "ADIRS ADR 2 Available",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
-            },
-            ["I_OH_NAV_ADR1_U"] = new SimConnect.SimVarDefinition
-            {
-                Name = "I_OH_NAV_ADR1_U",
-                DisplayName = "ADIRS ADR 1 Fault",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
-            },
-            ["I_OH_NAV_ADR1_L"] = new SimConnect.SimVarDefinition
-            {
-                Name = "I_OH_NAV_ADR1_L",
-                DisplayName = "ADIRS ADR 1 Available",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
-            },
             ["I_ASP3_VOICE"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP3_VOICE",
@@ -3251,15 +3163,6 @@ public class FenixA320Definition : BaseAircraftDefinition
             {
                 Name = "I_ASP_INT_CALL",
                 DisplayName = "ACP1 INT Send Available",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
-            },
-            ["I_ASP_HF_1_SEND"] = new SimConnect.SimVarDefinition
-            {
-                Name = "I_ASP_HF_1_SEND",
-                DisplayName = "ACP1 HF 2 Send Fault",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,

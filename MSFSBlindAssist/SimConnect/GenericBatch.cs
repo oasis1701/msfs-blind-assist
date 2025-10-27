@@ -1019,3 +1019,201 @@ public struct GenericBatch
     public double V998;
     public double V999;
 }
+
+/// <summary>
+/// Batch 1 structure for continuous variable monitoring (variables 0-99).
+/// Part of multi-batch system to reduce SimConnect load per request.
+/// Contains 100 double fields (V0-V99) for batched SimConnect data requests.
+///
+/// IMPORTANT: Pack = 8 ensures proper 8-byte alignment for doubles, preventing
+/// ExecutionEngineException when accessing fields via unsafe pointers.
+/// </summary>
+[StructLayout(LayoutKind.Sequential, Pack = 8)]
+public struct GenericBatch1
+{
+    public double V0; public double V1; public double V2; public double V3; public double V4;
+    public double V5; public double V6; public double V7; public double V8; public double V9;
+    public double V10; public double V11; public double V12; public double V13; public double V14;
+    public double V15; public double V16; public double V17; public double V18; public double V19;
+    public double V20; public double V21; public double V22; public double V23; public double V24;
+    public double V25; public double V26; public double V27; public double V28; public double V29;
+    public double V30; public double V31; public double V32; public double V33; public double V34;
+    public double V35; public double V36; public double V37; public double V38; public double V39;
+    public double V40; public double V41; public double V42; public double V43; public double V44;
+    public double V45; public double V46; public double V47; public double V48; public double V49;
+    public double V50; public double V51; public double V52; public double V53; public double V54;
+    public double V55; public double V56; public double V57; public double V58; public double V59;
+    public double V60; public double V61; public double V62; public double V63; public double V64;
+    public double V65; public double V66; public double V67; public double V68; public double V69;
+    public double V70; public double V71; public double V72; public double V73; public double V74;
+    public double V75; public double V76; public double V77; public double V78; public double V79;
+    public double V80; public double V81; public double V82; public double V83; public double V84;
+    public double V85; public double V86; public double V87; public double V88; public double V89;
+    public double V90; public double V91; public double V92; public double V93; public double V94;
+    public double V95; public double V96; public double V97; public double V98; public double V99;
+}
+
+/// <summary>
+/// Batch 2 structure for continuous variable monitoring (variables 100-199).
+/// Part of multi-batch system to reduce SimConnect load per request.
+/// Contains 100 double fields (V0-V99) for batched SimConnect data requests.
+///
+/// IMPORTANT: Pack = 8 ensures proper 8-byte alignment for doubles, preventing
+/// ExecutionEngineException when accessing fields via unsafe pointers.
+/// </summary>
+[StructLayout(LayoutKind.Sequential, Pack = 8)]
+public struct GenericBatch2
+{
+    public double V0; public double V1; public double V2; public double V3; public double V4;
+    public double V5; public double V6; public double V7; public double V8; public double V9;
+    public double V10; public double V11; public double V12; public double V13; public double V14;
+    public double V15; public double V16; public double V17; public double V18; public double V19;
+    public double V20; public double V21; public double V22; public double V23; public double V24;
+    public double V25; public double V26; public double V27; public double V28; public double V29;
+    public double V30; public double V31; public double V32; public double V33; public double V34;
+    public double V35; public double V36; public double V37; public double V38; public double V39;
+    public double V40; public double V41; public double V42; public double V43; public double V44;
+    public double V45; public double V46; public double V47; public double V48; public double V49;
+    public double V50; public double V51; public double V52; public double V53; public double V54;
+    public double V55; public double V56; public double V57; public double V58; public double V59;
+    public double V60; public double V61; public double V62; public double V63; public double V64;
+    public double V65; public double V66; public double V67; public double V68; public double V69;
+    public double V70; public double V71; public double V72; public double V73; public double V74;
+    public double V75; public double V76; public double V77; public double V78; public double V79;
+    public double V80; public double V81; public double V82; public double V83; public double V84;
+    public double V85; public double V86; public double V87; public double V88; public double V89;
+    public double V90; public double V91; public double V92; public double V93; public double V94;
+    public double V95; public double V96; public double V97; public double V98; public double V99;
+}
+
+/// <summary>
+/// Batch 3 structure for continuous variable monitoring (variables 200-299).
+/// Part of multi-batch system to reduce SimConnect load per request.
+/// Contains 100 double fields (V0-V99) for batched SimConnect data requests.
+///
+/// IMPORTANT: Pack = 8 ensures proper 8-byte alignment for doubles, preventing
+/// ExecutionEngineException when accessing fields via unsafe pointers.
+/// </summary>
+[StructLayout(LayoutKind.Sequential, Pack = 8)]
+public struct GenericBatch3
+{
+    public double V0; public double V1; public double V2; public double V3; public double V4;
+    public double V5; public double V6; public double V7; public double V8; public double V9;
+    public double V10; public double V11; public double V12; public double V13; public double V14;
+    public double V15; public double V16; public double V17; public double V18; public double V19;
+    public double V20; public double V21; public double V22; public double V23; public double V24;
+    public double V25; public double V26; public double V27; public double V28; public double V29;
+    public double V30; public double V31; public double V32; public double V33; public double V34;
+    public double V35; public double V36; public double V37; public double V38; public double V39;
+    public double V40; public double V41; public double V42; public double V43; public double V44;
+    public double V45; public double V46; public double V47; public double V48; public double V49;
+    public double V50; public double V51; public double V52; public double V53; public double V54;
+    public double V55; public double V56; public double V57; public double V58; public double V59;
+    public double V60; public double V61; public double V62; public double V63; public double V64;
+    public double V65; public double V66; public double V67; public double V68; public double V69;
+    public double V70; public double V71; public double V72; public double V73; public double V74;
+    public double V75; public double V76; public double V77; public double V78; public double V79;
+    public double V80; public double V81; public double V82; public double V83; public double V84;
+    public double V85; public double V86; public double V87; public double V88; public double V89;
+    public double V90; public double V91; public double V92; public double V93; public double V94;
+    public double V95; public double V96; public double V97; public double V98; public double V99;
+}
+
+/// <summary>
+/// Batch 4 structure for continuous variable monitoring (variables 300-399).
+/// Part of multi-batch system to reduce SimConnect load per request.
+/// Contains 100 double fields (V0-V99) for batched SimConnect data requests.
+///
+/// IMPORTANT: Pack = 8 ensures proper 8-byte alignment for doubles, preventing
+/// ExecutionEngineException when accessing fields via unsafe pointers.
+/// </summary>
+[StructLayout(LayoutKind.Sequential, Pack = 8)]
+public struct GenericBatch4
+{
+    public double V0; public double V1; public double V2; public double V3; public double V4;
+    public double V5; public double V6; public double V7; public double V8; public double V9;
+    public double V10; public double V11; public double V12; public double V13; public double V14;
+    public double V15; public double V16; public double V17; public double V18; public double V19;
+    public double V20; public double V21; public double V22; public double V23; public double V24;
+    public double V25; public double V26; public double V27; public double V28; public double V29;
+    public double V30; public double V31; public double V32; public double V33; public double V34;
+    public double V35; public double V36; public double V37; public double V38; public double V39;
+    public double V40; public double V41; public double V42; public double V43; public double V44;
+    public double V45; public double V46; public double V47; public double V48; public double V49;
+    public double V50; public double V51; public double V52; public double V53; public double V54;
+    public double V55; public double V56; public double V57; public double V58; public double V59;
+    public double V60; public double V61; public double V62; public double V63; public double V64;
+    public double V65; public double V66; public double V67; public double V68; public double V69;
+    public double V70; public double V71; public double V72; public double V73; public double V74;
+    public double V75; public double V76; public double V77; public double V78; public double V79;
+    public double V80; public double V81; public double V82; public double V83; public double V84;
+    public double V85; public double V86; public double V87; public double V88; public double V89;
+    public double V90; public double V91; public double V92; public double V93; public double V94;
+    public double V95; public double V96; public double V97; public double V98; public double V99;
+}
+
+/// <summary>
+/// Batch 5 structure for continuous variable monitoring (variables 400-499).
+/// Part of multi-batch system to reduce SimConnect load per request.
+/// Contains 100 double fields (V0-V99) for batched SimConnect data requests.
+///
+/// IMPORTANT: Pack = 8 ensures proper 8-byte alignment for doubles, preventing
+/// ExecutionEngineException when accessing fields via unsafe pointers.
+/// </summary>
+[StructLayout(LayoutKind.Sequential, Pack = 8)]
+public struct GenericBatch5
+{
+    public double V0; public double V1; public double V2; public double V3; public double V4;
+    public double V5; public double V6; public double V7; public double V8; public double V9;
+    public double V10; public double V11; public double V12; public double V13; public double V14;
+    public double V15; public double V16; public double V17; public double V18; public double V19;
+    public double V20; public double V21; public double V22; public double V23; public double V24;
+    public double V25; public double V26; public double V27; public double V28; public double V29;
+    public double V30; public double V31; public double V32; public double V33; public double V34;
+    public double V35; public double V36; public double V37; public double V38; public double V39;
+    public double V40; public double V41; public double V42; public double V43; public double V44;
+    public double V45; public double V46; public double V47; public double V48; public double V49;
+    public double V50; public double V51; public double V52; public double V53; public double V54;
+    public double V55; public double V56; public double V57; public double V58; public double V59;
+    public double V60; public double V61; public double V62; public double V63; public double V64;
+    public double V65; public double V66; public double V67; public double V68; public double V69;
+    public double V70; public double V71; public double V72; public double V73; public double V74;
+    public double V75; public double V76; public double V77; public double V78; public double V79;
+    public double V80; public double V81; public double V82; public double V83; public double V84;
+    public double V85; public double V86; public double V87; public double V88; public double V89;
+    public double V90; public double V91; public double V92; public double V93; public double V94;
+    public double V95; public double V96; public double V97; public double V98; public double V99;
+}
+
+/// <summary>
+/// Panel batch structure for OnRequest panel variable monitoring.
+/// Contains 100 double fields (V0-V99) for batched panel variable requests.
+/// Used when opening panels to request all panel variables in a single SimConnect call.
+///
+/// IMPORTANT: Pack = 8 ensures proper 8-byte alignment for doubles, preventing
+/// ExecutionEngineException when accessing fields via unsafe pointers.
+/// </summary>
+[StructLayout(LayoutKind.Sequential, Pack = 8)]
+public struct PanelBatch
+{
+    public double V0; public double V1; public double V2; public double V3; public double V4;
+    public double V5; public double V6; public double V7; public double V8; public double V9;
+    public double V10; public double V11; public double V12; public double V13; public double V14;
+    public double V15; public double V16; public double V17; public double V18; public double V19;
+    public double V20; public double V21; public double V22; public double V23; public double V24;
+    public double V25; public double V26; public double V27; public double V28; public double V29;
+    public double V30; public double V31; public double V32; public double V33; public double V34;
+    public double V35; public double V36; public double V37; public double V38; public double V39;
+    public double V40; public double V41; public double V42; public double V43; public double V44;
+    public double V45; public double V46; public double V47; public double V48; public double V49;
+    public double V50; public double V51; public double V52; public double V53; public double V54;
+    public double V55; public double V56; public double V57; public double V58; public double V59;
+    public double V60; public double V61; public double V62; public double V63; public double V64;
+    public double V65; public double V66; public double V67; public double V68; public double V69;
+    public double V70; public double V71; public double V72; public double V73; public double V74;
+    public double V75; public double V76; public double V77; public double V78; public double V79;
+    public double V80; public double V81; public double V82; public double V83; public double V84;
+    public double V85; public double V86; public double V87; public double V88; public double V89;
+    public double V90; public double V91; public double V92; public double V93; public double V94;
+    public double V95; public double V96; public double V97; public double V98; public double V99;
+}

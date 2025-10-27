@@ -72,7 +72,12 @@ public class SimConnectManager
     private static int nextTempDefId = 50000;  // Counter for temporary definition IDs (SetLVar/SetSimVar)
 
     // Batched continuous variable monitoring (using unsafe pointers instead of reflection)
-    private Dictionary<string, int> continuousVariableIndexMap = new Dictionary<string, int>();  // Maps variable keys to struct field indices (V0-V999)
+    // Multi-batch system: Maps variable key -> (batchNumber, indexWithinBatch)
+    // batchNumber: 1-5, indexWithinBatch: 0-99
+    private Dictionary<string, (int batchNum, int index)> continuousVariableIndexMap = new Dictionary<string, (int batchNum, int index)>();
+
+    // Panel batch tracking for OnRequest variables
+    private Dictionary<string, int> panelVariableIndexMap = new Dictionary<string, int>();  // Maps panel variable keys to batch field indices
 
     // Event handling
     private Dictionary<string, uint> eventIds = new Dictionary<string, uint>();
@@ -110,7 +115,14 @@ public class SimConnectManager
         REQUEST_AIRCRAFT_POSITION = 4,
         REQUEST_WIND_DATA = 5,
         REQUEST_ATC_ID = 6,
-        REQUEST_CONTINUOUS_BATCH = 8,
+        // Multi-batch continuous monitoring (5 batches of ~100 variables each)
+        REQUEST_CONTINUOUS_BATCH_1 = 8,
+        REQUEST_CONTINUOUS_BATCH_2 = 9,
+        REQUEST_CONTINUOUS_BATCH_3 = 10,
+        REQUEST_CONTINUOUS_BATCH_4 = 11,
+        REQUEST_CONTINUOUS_BATCH_5 = 12,
+        // Panel batch for OnRequest variables
+        REQUEST_PANEL_BATCH = 13,
         REQUEST_ECAM_MESSAGES = 350,
         // Individual variable requests start from 1000
         INDIVIDUAL_VARIABLE_BASE = 1000
@@ -124,7 +136,14 @@ public class SimConnectManager
         AIRCRAFT_POSITION = 5,
         WIND_DATA = 6,
         ATC_ID_INFO = 7,
-        CONTINUOUS_BATCH = 8,
+        // Multi-batch continuous monitoring (5 batches of ~100 variables each)
+        CONTINUOUS_BATCH_1 = 8,
+        CONTINUOUS_BATCH_2 = 9,
+        CONTINUOUS_BATCH_3 = 10,
+        CONTINUOUS_BATCH_4 = 11,
+        CONTINUOUS_BATCH_5 = 12,
+        // Panel batch for OnRequest variables
+        PANEL_REQUEST_BATCH = 13,
         ECAM_MESSAGES = 350,
         // Individual variable definitions start from 1000
         INDIVIDUAL_VARIABLE_BASE = 1000
@@ -432,10 +451,11 @@ public class SimConnectManager
 
     /// <summary>
     /// Start continuous monitoring for variables marked as announced.
-    /// Uses batched SimConnect requests following experienced developer's pattern:
-    /// - All continuous variables added to ONE data definition
-    /// - SimConnect automatically sends updates at SIMCONNECT_PERIOD.SECOND
-    /// - Dramatically reduces network overhead (1 batch vs N individual requests)
+    /// Uses multi-batch SimConnect requests for better performance and scalability:
+    /// - Splits continuous variables into 5 batches of ~100 variables each
+    /// - Each batch requests updates at SIMCONNECT_PERIOD.SECOND
+    /// - Reduces SimConnect load per request while maintaining simultaneous updates
+    /// - Scales to 500+ variables across all batches
     /// </summary>
     private static int batchSetupCounter = 0;  // Track how many times this is called
 
@@ -472,30 +492,12 @@ public class SimConnectManager
         }
 
         // CRITICAL: Sort variables alphabetically by FULL NAME (with prefix) to match SimConnect's internal ordering
-        //
-        // WHY THIS IS NECESSARY:
-        // SimConnect internally sorts variables alphabetically when returning batch data,
-        // regardless of the order we call AddToDataDefinition. Dictionary iteration order
-        // is hash-based and unpredictable. Without this alphabetical sort, our index map
-        // will be wrong and variables will be announced with incorrect names.
-        //
-        // IMPORTANT: We must sort by the EXACT variable name that SimConnect receives,
-        // which includes the "L:" prefix for LVars. If we sort by raw name only, and there's
-        // a mix of LVars and SimVars, the sort order will not match SimConnect's order.
-        // Example:
-        //   Sorting by raw name: "ALTITUDE", "CUSTOM_VAR", "HEADING"
-        //   SimConnect receives: "ALTITUDE", "L:CUSTOM_VAR", "HEADING"
-        //   SimConnect's sort:   "ALTITUDE", "HEADING", "L:CUSTOM_VAR" (L comes after H)
-        // This mismatch causes wrong index mapping → accessing wrong memory → ExecutionEngineException!
         continuousVariables.Sort((a, b) =>
         {
-            // Build the EXACT variable name that SimConnect will receive
             string aFullName = a.Value.Type == SimVarType.LVar ? $"L:{a.Value.Name}" : a.Value.Name;
             string bFullName = b.Value.Type == SimVarType.LVar ? $"L:{b.Value.Name}" : b.Value.Name;
             return string.CompareOrdinal(aFullName, bFullName);
         });
-
-        System.Diagnostics.Debug.WriteLine($"[StartContinuousMonitoring] Sorted {continuousVariables.Count} variables alphabetically to match SimConnect's internal order");
 
         System.Diagnostics.Debug.WriteLine($"[StartContinuousMonitoring] Aircraft: {CurrentAircraft?.AircraftName ?? "null"}");
         System.Diagnostics.Debug.WriteLine($"[StartContinuousMonitoring] Found {continuousVariables.Count} continuous+announced variables (out of {variables.Count} total)");
@@ -506,93 +508,116 @@ public class SimConnectManager
             return;
         }
 
-        if (continuousVariables.Count > 1000)
+        if (continuousVariables.Count > 500)
         {
-            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] WARNING: {continuousVariables.Count} continuous variables exceeds GenericBatch capacity of 1000!");
-            return;
+            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] WARNING: {continuousVariables.Count} continuous variables exceeds multi-batch capacity of 500 (5 batches × 100)!");
+            // Continue anyway - we'll use as many batches as needed
         }
 
         try
         {
-            // CRITICAL: Stop any existing recurring request BEFORE clearing the definition
-            // When switching aircraft, the old RequestDataOnSimObject (SIMCONNECT_PERIOD.SECOND)
-            // is still active and will continue sending data for the OLD variable count.
-            // If we don't cancel it, we'll have TWO active requests with different variable counts,
-            // causing memory corruption when we try to process data from the old request.
-            // This is similar to the pattern used in StopTakeoffAssistMonitoring (line 2939).
-            try
+            // Split variables into 5 batches (up to 100 variables per batch)
+            const int BATCH_SIZE = 100;
+            const int NUM_BATCHES = 5;
+
+            // Batch configuration: (batchNum, dataDefinition, dataRequest, structType)
+            var batchConfigs = new[]
             {
+                (1, DATA_DEFINITIONS.CONTINUOUS_BATCH_1, DATA_REQUESTS.REQUEST_CONTINUOUS_BATCH_1, typeof(GenericBatch1)),
+                (2, DATA_DEFINITIONS.CONTINUOUS_BATCH_2, DATA_REQUESTS.REQUEST_CONTINUOUS_BATCH_2, typeof(GenericBatch2)),
+                (3, DATA_DEFINITIONS.CONTINUOUS_BATCH_3, DATA_REQUESTS.REQUEST_CONTINUOUS_BATCH_3, typeof(GenericBatch3)),
+                (4, DATA_DEFINITIONS.CONTINUOUS_BATCH_4, DATA_REQUESTS.REQUEST_CONTINUOUS_BATCH_4, typeof(GenericBatch4)),
+                (5, DATA_DEFINITIONS.CONTINUOUS_BATCH_5, DATA_REQUESTS.REQUEST_CONTINUOUS_BATCH_5, typeof(GenericBatch5))
+            };
+
+            int totalVariablesAdded = 0;
+
+            // Process each batch
+            for (int batchNum = 1; batchNum <= NUM_BATCHES; batchNum++)
+            {
+                // Calculate variable range for this batch
+                int startIdx = (batchNum - 1) * BATCH_SIZE;
+                int endIdx = Math.Min(startIdx + BATCH_SIZE, continuousVariables.Count);
+                int batchVarCount = endIdx - startIdx;
+
+                if (batchVarCount <= 0) break; // No more variables
+
+                var config = batchConfigs[batchNum - 1];
+                System.Diagnostics.Debug.WriteLine($"[StartContinuousMonitoring] Setting up Batch {batchNum}: variables {startIdx}-{endIdx - 1} ({batchVarCount} vars)");
+
+                // Clear previous batch definition
+                SafelyClearDataDefinition(
+                    config.Item2, // DATA_DEFINITIONS
+                    config.Item3, // DATA_REQUESTS
+                    delayMs: 300  // 300ms for batch cleanup
+                );
+
+                // Add variables to this batch
+                int indexWithinBatch = 0;
+                for (int i = startIdx; i < endIdx; i++)
+                {
+                    var kvp = continuousVariables[i];
+                    var varDef = kvp.Value;
+
+                    // Build SimConnect variable name with L: prefix for LVars
+                    string simVarName = varDef.Type == SimVarType.LVar ? $"L:{varDef.Name}" : varDef.Name;
+                    string units = varDef.Units ?? "number";
+
+                    // Add to batch data definition
+                    sc.AddToDataDefinition(
+                        config.Item2, // DATA_DEFINITIONS
+                        simVarName,
+                        units,
+                        SIMCONNECT_DATATYPE.FLOAT64,
+                        0.0f,
+                        SIMCONNECT_UNUSED
+                    );
+
+                    // Store mapping: variable key -> (batchNum, indexWithinBatch)
+                    continuousVariableIndexMap[kvp.Key] = (batchNum, indexWithinBatch);
+                    indexWithinBatch++;
+                    totalVariablesAdded++;
+
+                    // THROTTLE: Give SimConnect time to process every 50 variables
+                    if (totalVariablesAdded % 50 == 0)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[StartContinuousMonitoring] Throttling after {totalVariablesAdded} total variables");
+                        Thread.Sleep(5);
+                    }
+                }
+
+                // Register the batch struct using reflection (C# doesn't support dynamic generic types easily)
+                var registerMethod = typeof(Microsoft.FlightSimulator.SimConnect.SimConnect)
+                    .GetMethod("RegisterDataDefineStruct")
+                    ?.MakeGenericMethod(config.Item4); // GenericBatch1-5
+                registerMethod?.Invoke(sc, new object[] { config.Item2 });
+
+                // Request data with SIMCONNECT_PERIOD.SECOND
+                // All batches update simultaneously every second
                 sc.RequestDataOnSimObject(
-                    DATA_REQUESTS.REQUEST_CONTINUOUS_BATCH,
-                    DATA_DEFINITIONS.CONTINUOUS_BATCH,
+                    config.Item3, // DATA_REQUESTS
+                    config.Item2, // DATA_DEFINITIONS
                     SIMCONNECT_OBJECT_ID_USER,
-                    SIMCONNECT_PERIOD.NEVER,  // ← Cancels the recurring request
+                    SIMCONNECT_PERIOD.SECOND,
                     SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT,
                     0, 0, 0
                 );
-                System.Diagnostics.Debug.WriteLine("[StartContinuousMonitoring] Cancelled previous recurring batch request");
-            }
-            catch (Exception)
-            {
-                // Ignore errors - this is expected on first setup when no request exists yet
+
+                System.Diagnostics.Debug.WriteLine($"[StartContinuousMonitoring] Batch {batchNum} monitoring started for {batchVarCount} variables");
             }
 
-            // Clear the batch data definition
-            sc.ClearDataDefinition(DATA_DEFINITIONS.CONTINUOUS_BATCH);
-
-            // Add all continuous variables to ONE data definition
-            // Following forum post pattern: each variable gets a field index in the struct
-            int index = 0;
-            foreach (var kvp in continuousVariables)
-            {
-                var varDef = kvp.Value;
-                string varName = varDef.Name;
-
-                // Build SimConnect variable name with L: prefix for LVars
-                string simVarName = varDef.Type == SimVarType.LVar ? $"L:{varName}" : varName;
-                string units = varDef.Units ?? "number";
-
-                // Add to the SAME data definition
-                // NOTE: SimConnect sorts batch data alphabetically by variable name internally.
-                // We've pre-sorted continuousVariables alphabetically to match this ordering.
-                // The first batch dump will verify our sorting matches SimConnect's order.
-                sc.AddToDataDefinition(
-                    DATA_DEFINITIONS.CONTINUOUS_BATCH,
-                    simVarName,
-                    units,
-                    SIMCONNECT_DATATYPE.FLOAT64,
-                    0.0f,
-                    SIMCONNECT_UNUSED  // Datum ID not needed for sequential struct layout
-                );
-
-                // Store mapping: variable key -> struct field index
-                continuousVariableIndexMap[kvp.Key] = index;
-                index++;
-            }
-
-            // Register the struct (following forum post pattern)
-            sc.RegisterDataDefineStruct<GenericBatch>(DATA_DEFINITIONS.CONTINUOUS_BATCH);
-
-            // NOTE: No longer using reflection-based field caching - we use unsafe pointers instead!
-            // This eliminates ExecutionEngineException and is much faster.
-
-            // Request data with SIMCONNECT_PERIOD.SECOND (NOT ONCE!)
-            // SimConnect will automatically send updates every second
-            // This is the key difference from individual requests!
-            sc.RequestDataOnSimObject(
-                DATA_REQUESTS.REQUEST_CONTINUOUS_BATCH,
-                DATA_DEFINITIONS.CONTINUOUS_BATCH,
-                SIMCONNECT_OBJECT_ID_USER,
-                SIMCONNECT_PERIOD.SECOND,  // ← Automatic updates every second!
-                SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT,
-                0, 0, 0
-            );
-
-            System.Diagnostics.Debug.WriteLine($"[StartContinuousMonitoring] Batch monitoring started for {index} variables");
+            System.Diagnostics.Debug.WriteLine($"[StartContinuousMonitoring] Multi-batch monitoring started for {totalVariablesAdded} variables across {Math.Min(NUM_BATCHES, (continuousVariables.Count + BATCH_SIZE - 1) / BATCH_SIZE)} batches");
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error setting up batched continuous monitoring: {ex.Message}");
+            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] CRITICAL ERROR setting up batched continuous monitoring!");
+            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Exception Type: {ex.GetType().Name}");
+            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Message: {ex.Message}");
+            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Stack Trace: {ex.StackTrace}");
+            if (ex.InnerException != null)
+            {
+                System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Inner Exception: {ex.InnerException.Message}");
+            }
         }
     }
 
@@ -604,6 +629,65 @@ public class SimConnectManager
     {
         System.Diagnostics.Debug.WriteLine("[SimConnectManager] Restarting continuous monitoring for new aircraft");
         StartContinuousMonitoring();
+    }
+
+    /// <summary>
+    /// Safely clears a data definition by first ensuring no active requests exist.
+    /// CRITICAL: Calling ClearDataDefinition() while a request is active causes intermittent crashes.
+    /// Per FSDeveloper forums: "SimConnect may crash when removing/changing data requests while still active."
+    /// This method implements the recommended pattern: Cancel request → Wait → Clear definition.
+    /// </summary>
+    /// <param name="defId">The data definition ID to clear</param>
+    /// <param name="requestId">Optional: The request ID to cancel before clearing (if actively monitoring)</param>
+    /// <param name="delayMs">Delay in milliseconds after cancelling request (default 200ms, use 500ms for large datasets)</param>
+    private void SafelyClearDataDefinition(DATA_DEFINITIONS defId, DATA_REQUESTS? requestId = null, int delayMs = 200)
+    {
+        if (simConnect == null) return;
+
+        try
+        {
+            // If this is an active recurring request, cancel it first
+            if (requestId != null)
+            {
+                try
+                {
+                    simConnect.RequestDataOnSimObject(
+                        requestId.Value,
+                        defId,
+                        SIMCONNECT_OBJECT_ID_USER,
+                        SIMCONNECT_PERIOD.NEVER,  // Cancel the recurring request
+                        SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT,
+                        0, 0, 0
+                    );
+                    System.Diagnostics.Debug.WriteLine($"[SafelyClearDataDefinition] Cancelled recurring request {requestId.Value} for definition {defId}");
+                }
+                catch (Exception ex)
+                {
+                    // Ignore errors - request might not exist yet (first setup)
+                    System.Diagnostics.Debug.WriteLine($"[SafelyClearDataDefinition] Error cancelling request (expected on first setup): {ex.Message}");
+                }
+
+                // CRITICAL: Wait for SimConnect to process the cancellation using message pumping
+                // With Fenix A320's 477 continuous variables, we need time for in-flight data to clear
+                // Thread.Sleep() BLOCKS the UI thread, preventing SimConnect from processing messages!
+                // We MUST use Application.DoEvents() to pump messages while waiting.
+                var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+                while (stopwatch.ElapsedMilliseconds < delayMs)
+                {
+                    System.Windows.Forms.Application.DoEvents(); // CRITICAL: Pump SimConnect messages!
+                    Thread.Sleep(10); // Small sleep to prevent CPU spinning
+                }
+                System.Diagnostics.Debug.WriteLine($"[SafelyClearDataDefinition] Waited {delayMs}ms with message pumping for cancellation to process");
+            }
+
+            // Now it's safe to clear the data definition
+            simConnect.ClearDataDefinition(defId);
+            System.Diagnostics.Debug.WriteLine($"[SafelyClearDataDefinition] Successfully cleared data definition {defId}");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[SafelyClearDataDefinition] Error clearing data definition {defId}: {ex.Message}");
+        }
     }
 
     /// <summary>
@@ -809,11 +893,30 @@ public class SimConnectManager
                 }
                 break;
 
-            case DATA_REQUESTS.REQUEST_CONTINUOUS_BATCH:
-                // Batched continuous variable updates (following forum post pattern)
-                // NOTE: Cast creates one copy (unavoidable), but passing by 'in' avoids second copy
-                GenericBatch batchData = (GenericBatch)data.dwData[0];
-                ProcessContinuousBatch(in batchData);  // Pass by readonly reference (no copy!)
+            // Multi-batch continuous variable monitoring (5 batches of ~100 variables each)
+            case DATA_REQUESTS.REQUEST_CONTINUOUS_BATCH_1:
+                GenericBatch1 batch1Data = (GenericBatch1)data.dwData[0];
+                ProcessContinuousBatch(1, in batch1Data);
+                break;
+
+            case DATA_REQUESTS.REQUEST_CONTINUOUS_BATCH_2:
+                GenericBatch2 batch2Data = (GenericBatch2)data.dwData[0];
+                ProcessContinuousBatch(2, in batch2Data);
+                break;
+
+            case DATA_REQUESTS.REQUEST_CONTINUOUS_BATCH_3:
+                GenericBatch3 batch3Data = (GenericBatch3)data.dwData[0];
+                ProcessContinuousBatch(3, in batch3Data);
+                break;
+
+            case DATA_REQUESTS.REQUEST_CONTINUOUS_BATCH_4:
+                GenericBatch4 batch4Data = (GenericBatch4)data.dwData[0];
+                ProcessContinuousBatch(4, in batch4Data);
+                break;
+
+            case DATA_REQUESTS.REQUEST_CONTINUOUS_BATCH_5:
+                GenericBatch5 batch5Data = (GenericBatch5)data.dwData[0];
+                ProcessContinuousBatch(5, in batch5Data);
                 break;
 
             case DATA_REQUESTS.REQUEST_AIRCRAFT_POSITION:
@@ -1427,11 +1530,36 @@ public class SimConnectManager
     }
 
     /// <summary>
-    /// Process batched continuous variable updates.
-    /// Extracts values from GenericBatch struct and routes to existing variable processing pipeline.
-    /// NOTE: Accepts batch by readonly reference ('in') to avoid copying 8KB struct (1000 doubles).
+    /// Process batched continuous variable updates for Batch 1.
+    /// Extracts values from GenericBatch1 struct and routes to existing variable processing pipeline.
     /// </summary>
-    private void ProcessContinuousBatch(in GenericBatch batch)
+    private void ProcessContinuousBatch(int batchNum, in GenericBatch1 batch) => ProcessContinuousBatchImpl(batchNum, in batch);
+
+    /// <summary>
+    /// Process batched continuous variable updates for Batch 2.
+    /// </summary>
+    private void ProcessContinuousBatch(int batchNum, in GenericBatch2 batch) => ProcessContinuousBatchImpl(batchNum, in batch);
+
+    /// <summary>
+    /// Process batched continuous variable updates for Batch 3.
+    /// </summary>
+    private void ProcessContinuousBatch(int batchNum, in GenericBatch3 batch) => ProcessContinuousBatchImpl(batchNum, in batch);
+
+    /// <summary>
+    /// Process batched continuous variable updates for Batch 4.
+    /// </summary>
+    private void ProcessContinuousBatch(int batchNum, in GenericBatch4 batch) => ProcessContinuousBatchImpl(batchNum, in batch);
+
+    /// <summary>
+    /// Process batched continuous variable updates for Batch 5.
+    /// </summary>
+    private void ProcessContinuousBatch(int batchNum, in GenericBatch5 batch) => ProcessContinuousBatchImpl(batchNum, in batch);
+
+    /// <summary>
+    /// Generic implementation for processing batch data.
+    /// Uses unsafe pointer access for efficient memory access across all batch types.
+    /// </summary>
+    private void ProcessContinuousBatchImpl<T>(int batchNum, in T batch) where T : unmanaged
     {
         // Get variables dictionary once at the start
         var variables = CurrentAircraft?.GetVariables() ?? new Dictionary<string, SimVarDefinition>();
@@ -1449,27 +1577,32 @@ public class SimConnectManager
         }
 
         // Use unsafe pointer access instead of reflection for performance and stability
-        // GenericBatch is sequential struct of 1000 doubles, so we can access directly
+        // Each batch struct is a sequential struct of 100 doubles, so we can access directly
         try
         {
             unsafe
             {
                 // batch is an 'in' parameter (readonly reference)
                 // Use 'fixed' to get a pointer to the readonly reference
-                fixed (GenericBatch* batchPtr = &batch)
+                fixed (T* batchPtr = &batch)
                 {
                     double* values = (double*)batchPtr;  // Treat struct as array of doubles
 
                     // Process each continuous variable using direct memory access (no reflection!)
-                    foreach (var varKey in continuousVariableIndexMap.Keys)
+                    // Filter to only process variables belonging to this batch
+                    foreach (var kvp in continuousVariableIndexMap)
                     {
-                        int index = continuousVariableIndexMap[varKey];
+                        string varKey = kvp.Key;
+                        (int varBatchNum, int index) = kvp.Value;
+
+                        // Skip variables that don't belong to this batch
+                        if (varBatchNum != batchNum) continue;
 
                         // SAFETY: Validate index is within bounds
-                        // Check both GenericBatch capacity (1000) and actual variable count
-                        if (index < 0 || index >= 1000 || index >= continuousVariableIndexMap.Count)
+                        // Each batch struct has 100 doubles (V0-V99)
+                        if (index < 0 || index >= 100)
                         {
-                            System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] ERROR: Index {index} out of bounds [0-{continuousVariableIndexMap.Count - 1}] for variable '{varKey}'");
+                            System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] ERROR: Batch {batchNum} index {index} out of bounds [0-99] for variable '{varKey}'");
                             invalidIndexCount++;
                             continue;
                         }
@@ -1601,17 +1734,18 @@ public class SimConnectManager
         bool hasErrors = invalidIndexCount > 0 || exceptionCount > 0 || skippedCount > 0;
         if (processedCount > 0 || hasErrors)
         {
-            System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] Stats: {processedCount} processed, {skippedCount} missing vars, {invalidIndexCount} invalid indices, {exceptionCount} exceptions");
+            System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] Batch {batchNum} Stats: {processedCount} processed, {skippedCount} missing vars, {invalidIndexCount} invalid indices, {exceptionCount} exceptions");
 
             // Log detailed map state if there are errors
             if (hasErrors && continuousVariableIndexMap.Count > 0)
             {
-                System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] Map has {continuousVariableIndexMap.Count} entries");
-                System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] First 10 mappings:");
+                var batchVars = continuousVariableIndexMap.Where(kvp => kvp.Value.batchNum == batchNum).ToList();
+                System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] Batch {batchNum} has {batchVars.Count} variables");
+                System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] First 10 mappings for batch {batchNum}:");
                 int logCount = 0;
-                foreach (var kvp in continuousVariableIndexMap.OrderBy(k => k.Key, StringComparer.Ordinal))
+                foreach (var kvp in batchVars.OrderBy(k => k.Key, StringComparer.Ordinal))
                 {
-                    System.Diagnostics.Debug.WriteLine($"  [{kvp.Value}] {kvp.Key}");
+                    System.Diagnostics.Debug.WriteLine($"  [{kvp.Value.index}] {kvp.Key}");
                     if (++logCount >= 10) break;
                 }
             }
@@ -2065,7 +2199,7 @@ public class SimConnectManager
             try
             {
                 var tempDefId = (DATA_DEFINITIONS)303;
-                simConnect.ClearDataDefinition(tempDefId);
+                SafelyClearDataDefinition(tempDefId, requestId: null, delayMs: 50);
                 simConnect.AddToDataDefinition(tempDefId,
                     "PLANE ALT ABOVE GROUND", "feet",
                     SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
@@ -2088,7 +2222,7 @@ public class SimConnectManager
             try
             {
                 var tempDefId = (DATA_DEFINITIONS)304;
-                simConnect.ClearDataDefinition(tempDefId);
+                SafelyClearDataDefinition(tempDefId, requestId: null, delayMs: 50);
                 simConnect.AddToDataDefinition(tempDefId,
                     "PLANE ALTITUDE", "feet",
                     SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
@@ -2111,7 +2245,7 @@ public class SimConnectManager
             try
             {
                 var tempDefId = (DATA_DEFINITIONS)305;
-                simConnect.ClearDataDefinition(tempDefId);
+                SafelyClearDataDefinition(tempDefId, requestId: null, delayMs: 50);
                 simConnect.AddToDataDefinition(tempDefId,
                     "AIRSPEED INDICATED", "knots",
                     SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
@@ -2134,7 +2268,7 @@ public class SimConnectManager
             try
             {
                 var tempDefId = (DATA_DEFINITIONS)306;
-                simConnect.ClearDataDefinition(tempDefId);
+                SafelyClearDataDefinition(tempDefId, requestId: null, delayMs: 50);
                 simConnect.AddToDataDefinition(tempDefId,
                     "AIRSPEED TRUE", "knots",
                     SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
@@ -2157,7 +2291,7 @@ public class SimConnectManager
             try
             {
                 var tempDefId = (DATA_DEFINITIONS)307;
-                simConnect.ClearDataDefinition(tempDefId);
+                SafelyClearDataDefinition(tempDefId, requestId: null, delayMs: 50);
                 simConnect.AddToDataDefinition(tempDefId,
                     "GROUND VELOCITY", "knots",
                     SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
@@ -2180,7 +2314,7 @@ public class SimConnectManager
             try
             {
                 var tempDefId = (DATA_DEFINITIONS)308;
-                simConnect.ClearDataDefinition(tempDefId);
+                SafelyClearDataDefinition(tempDefId, requestId: null, delayMs: 50);
                 simConnect.AddToDataDefinition(tempDefId,
                     "VERTICAL SPEED", "feet per second",
                     SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
@@ -2203,7 +2337,7 @@ public class SimConnectManager
             try
             {
                 var tempDefId = (DATA_DEFINITIONS)311;
-                simConnect.ClearDataDefinition(tempDefId);
+                SafelyClearDataDefinition(tempDefId, requestId: null, delayMs: 50);
                 simConnect.AddToDataDefinition(tempDefId,
                     "AIRSPEED MACH", "number",
                     SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
@@ -2227,7 +2361,7 @@ public class SimConnectManager
             try
             {
                 var tempDefId = (DATA_DEFINITIONS)309;
-                simConnect.ClearDataDefinition(tempDefId);
+                SafelyClearDataDefinition(tempDefId, requestId: null, delayMs: 50);
                 simConnect.AddToDataDefinition(tempDefId,
                     "PLANE HEADING DEGREES MAGNETIC", "radians",
                     SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
@@ -2250,7 +2384,7 @@ public class SimConnectManager
             try
             {
                 var tempDefId = (DATA_DEFINITIONS)326;
-                simConnect.ClearDataDefinition(tempDefId);
+                SafelyClearDataDefinition(tempDefId, requestId: null, delayMs: 50);
                 simConnect.AddToDataDefinition(tempDefId,
                     "PLANE HEADING DEGREES MAGNETIC", "radians",
                     SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
@@ -2273,7 +2407,7 @@ public class SimConnectManager
             try
             {
                 var tempDefId = (DATA_DEFINITIONS)310;
-                simConnect.ClearDataDefinition(tempDefId);
+                SafelyClearDataDefinition(tempDefId, requestId: null, delayMs: 50);
                 simConnect.AddToDataDefinition(tempDefId,
                     "PLANE HEADING DEGREES TRUE", "radians",
                     SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
@@ -2360,7 +2494,7 @@ public class SimConnectManager
             try
             {
                 var tempDefId = (DATA_DEFINITIONS)314;
-                simConnect.ClearDataDefinition(tempDefId);
+                SafelyClearDataDefinition(tempDefId, requestId: null, delayMs: 50);
                 simConnect.AddToDataDefinition(tempDefId,
                     "L:A32NX_TOTAL_FUEL_QUANTITY", "kilograms",
                     SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
@@ -2383,7 +2517,7 @@ public class SimConnectManager
             try
             {
                 var tempDefId = (DATA_DEFINITIONS)id;
-                simConnect.ClearDataDefinition(tempDefId);
+                SafelyClearDataDefinition(tempDefId, requestId: null, delayMs: 50);
                 simConnect.AddToDataDefinition(tempDefId,
                     simVarName, units,
                     SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
@@ -2463,7 +2597,7 @@ public class SimConnectManager
             pendingRequests[requestId] = varKey;
 
             // Clear any existing definition
-            try { simConnect.ClearDataDefinition(tempDefId); } catch { }
+            SafelyClearDataDefinition(tempDefId, requestId: null, delayMs: 50);
 
             // Add the LVar to the definition
             simConnect.AddToDataDefinition(tempDefId,
@@ -2501,7 +2635,7 @@ public class SimConnectManager
                 SIMCONNECT_OBJECT_ID_USER,
                 SIMCONNECT_DATA_SET_FLAG.DEFAULT, value);
 
-            simConnect.ClearDataDefinition(tempDefId);
+            SafelyClearDataDefinition(tempDefId, requestId: null, delayMs: 50);
         }
         catch (Exception ex)
         {
@@ -2528,7 +2662,7 @@ public class SimConnectManager
                 SIMCONNECT_OBJECT_ID_USER,
                 SIMCONNECT_DATA_SET_FLAG.DEFAULT, value);
 
-            simConnect.ClearDataDefinition(tempDefId);
+            SafelyClearDataDefinition(tempDefId, requestId: null, delayMs: 50);
 
             System.Diagnostics.Debug.WriteLine($"Successfully set SimVar {varName} to {value}");
         }
@@ -2858,6 +2992,85 @@ public class SimConnectManager
         {
             try
             {
+                // ===== CRITICAL: Clean up SimConnect resources BEFORE disposing =====
+                // Without this, data definitions and requests remain registered server-side,
+                // causing crashes when restarting the app quickly (< 5-10 seconds).
+                // This was the root cause of Fenix A320's intermittent crashes on restart.
+                System.Diagnostics.Debug.WriteLine("[SimConnectManager] Cleaning up SimConnect resources before disconnect...");
+
+                // 1. Cancel all 5 continuous batch requests
+                var batchConfigs = new[]
+                {
+                    (DATA_REQUESTS.REQUEST_CONTINUOUS_BATCH_1, DATA_DEFINITIONS.CONTINUOUS_BATCH_1, "Batch 1"),
+                    (DATA_REQUESTS.REQUEST_CONTINUOUS_BATCH_2, DATA_DEFINITIONS.CONTINUOUS_BATCH_2, "Batch 2"),
+                    (DATA_REQUESTS.REQUEST_CONTINUOUS_BATCH_3, DATA_DEFINITIONS.CONTINUOUS_BATCH_3, "Batch 3"),
+                    (DATA_REQUESTS.REQUEST_CONTINUOUS_BATCH_4, DATA_DEFINITIONS.CONTINUOUS_BATCH_4, "Batch 4"),
+                    (DATA_REQUESTS.REQUEST_CONTINUOUS_BATCH_5, DATA_DEFINITIONS.CONTINUOUS_BATCH_5, "Batch 5")
+                };
+
+                foreach (var (request, definition, name) in batchConfigs)
+                {
+                    try
+                    {
+                        simConnect.RequestDataOnSimObject(
+                            request,
+                            definition,
+                            SIMCONNECT_OBJECT_ID_USER,
+                            SIMCONNECT_PERIOD.NEVER,  // Cancel recurring updates
+                            SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT,
+                            0, 0, 0
+                        );
+                        System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Cancelled {name} request");
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error cancelling {name} request (may not exist): {ex.Message}");
+                    }
+                }
+
+                // 2. Wait with message pumping for cancellation to process
+                // CRITICAL: Must pump messages so SimConnect can process the cancellation
+                var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+                while (stopwatch.ElapsedMilliseconds < 500)
+                {
+                    System.Windows.Forms.Application.DoEvents();  // Pump SimConnect messages
+                    Thread.Sleep(10);
+                }
+                System.Diagnostics.Debug.WriteLine("[SimConnectManager] Waited 500ms for batch request cancellations to process");
+
+                // 3. Clear all 5 batch data definitions
+                foreach (var (request, definition, name) in batchConfigs)
+                {
+                    try
+                    {
+                        simConnect.ClearDataDefinition(definition);
+                        System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Cleared {name} definition");
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error clearing {name} definition (may not exist): {ex.Message}");
+                    }
+                }
+
+                // 4. Clear all individual variable data definitions
+                int clearedCount = 0;
+                foreach (var kvp in variableDataDefinitions)
+                {
+                    try
+                    {
+                        simConnect.ClearDataDefinition((DATA_DEFINITIONS)kvp.Value);
+                        clearedCount++;
+                    }
+                    catch
+                    {
+                        // Ignore failures - definition may already be cleared
+                    }
+                }
+                System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Cleared {clearedCount}/{variableDataDefinitions.Count} individual data definitions");
+
+                System.Diagnostics.Debug.WriteLine("[SimConnectManager] SimConnect resource cleanup complete!");
+                // ===== END OF CLEANUP SECTION =====
+
                 // Unregister event handlers before disposal to ensure clean disconnect
                 simConnect.OnRecvOpen -= SimConnect_OnRecvOpen;
                 simConnect.OnRecvQuit -= SimConnect_OnRecvQuit;
