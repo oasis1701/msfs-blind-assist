@@ -2754,6 +2754,24 @@ public class SimConnectManager
         }
     }
 
+    public void ExecuteCalculatorCodeWithRelease(string pressCode, string releaseCode, int delayMs = 150)
+    {
+        // Execute press code
+        ExecuteCalculatorCode(pressCode);
+
+        // Set up timer for release code
+        var releaseTimer = new System.Windows.Forms.Timer();
+        releaseTimer.Interval = delayMs;
+        releaseTimer.Tick += (sender, e) =>
+        {
+            releaseTimer.Stop();
+            releaseTimer.Dispose();
+            ExecuteCalculatorCode(releaseCode);
+            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Button press/release completed");
+        };
+        releaseTimer.Start();
+    }
+
     public void SendButtonPressRelease(string pressEvent, string releaseEvent, int delayMs = 200)
     {
         if (string.IsNullOrEmpty(pressEvent) || string.IsNullOrEmpty(releaseEvent))

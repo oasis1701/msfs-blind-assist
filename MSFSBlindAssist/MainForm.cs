@@ -1841,26 +1841,33 @@ public partial class MainForm : Form
                 // Check if variable should be rendered as button instead of combo box (aircraft-specific)
                 if (varDef.RenderAsButton)
                 {
-                    Button apuButton = new Button();
-                    apuButton.Text = "APU Start";
-                    apuButton.Size = new Size(240, 25);
-                    apuButton.Name = varKey;
-                    apuButton.AccessibleName = "APU Start";
-                    apuButton.AccessibleDescription = "Press to start APU";
+                    Button controlButton = new Button();
+                    controlButton.Text = varDef.DisplayName;
+                    controlButton.Size = new Size(240, 25);
+                    controlButton.Name = varKey;
+                    controlButton.AccessibleName = varDef.DisplayName;
+                    controlButton.AccessibleDescription = $"Press {varDef.DisplayName}";
 
-                    // Handle button click - send value 1 to start APU
-                    apuButton.Click += (s2, e2) =>
+                    // Handle button click - send value 1 which triggers HandleUIVariableSet
+                    controlButton.Click += (s2, e2) =>
                     {
+                        // Let aircraft handle special cases first (custom button logic, transitions, etc.)
+                        if (currentAircraft.HandleUIVariableSet(varKey, 1, varDef, simConnectManager, announcer))
+                        {
+                            currentSimVarValues[varKey] = 1;
+                            RequestRelatedVariables(varKey, $"User pressed {varDef.DisplayName}");
+                            return; // Aircraft handled it
+                        }
+
+                        // Generic handling if aircraft didn't handle it
                         simConnectManager?.SetLVar(varDef.Name, 1);
                         currentSimVarValues[varKey] = 1;
-                        announcer.Announce("APU Start pressed");
-
-                        // Request related variables to refresh states efficiently
-                        RequestRelatedVariables(varKey, "User pressed APU Start");
+                        announcer.Announce($"{varDef.DisplayName} pressed");
+                        RequestRelatedVariables(varKey, $"User pressed {varDef.DisplayName}");
                     };
 
-                    layout.Controls.Add(apuButton, 1, rowIndex);
-                    currentControls[varKey] = apuButton;
+                    layout.Controls.Add(controlButton, 1, rowIndex);
+                    currentControls[varKey] = controlButton;
                 }
                 // Special handling for ENGINE_MODE_SELECTOR
                 else if (varKey == "ENGINE_MODE_SELECTOR")

@@ -1240,7 +1240,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             },
             // Note: KOHLSMAN SimVars removed - Fenix uses N_FCU_EFIS1/2_BARO_HPA/INCH instead
 
-            // ========== ELECTRICAL (36 variables) ==========
+            // ========== ELECTRICAL (48 variables) ==========
             ["I_OH_ELEC_IDG2_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_ELEC_IDG2_U",
@@ -1430,6 +1430,108 @@ public class FenixA320Definition : BaseAircraftDefinition
                 IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
             },
+
+            // Switch Position Variables (combo boxes - read/write state)
+            ["S_OH_ELEC_BAT1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_ELEC_BAT1",
+                DisplayName = "Battery 1 Switch",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_OH_ELEC_BAT2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_ELEC_BAT2",
+                DisplayName = "Battery 2 Switch",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+
+            // Button Controls (write-only - execute RPN operations)
+            ["S_OH_ELEC_GEN1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_ELEC_GEN1_LINE",  // Note: Uses GEN1_LINE internally
+                DisplayName = "Generator 1",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_OH_ELEC_GEN2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_ELEC_GEN2",
+                DisplayName = "Generator 2",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_OH_ELEC_EXT_PWR"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_ELEC_EXT_PWR",
+                DisplayName = "External Power",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_OH_ELEC_APU_GEN"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_ELEC_APU_GENERATOR",
+                DisplayName = "APU Generator",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_OH_ELEC_BUS_TIE"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_ELEC_BUSTIE",
+                DisplayName = "Bus Tie",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_OH_ELEC_AC_ESS_FEED"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_ELEC_AC_ESS_FEED",
+                DisplayName = "AC ESS Feed",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_OH_ELEC_IDG1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_ELEC_IDG1",
+                DisplayName = "IDG 1",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_OH_ELEC_IDG2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_ELEC_IDG2",
+                DisplayName = "IDG 2",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_OH_ELEC_GALY"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_ELEC_GALY",
+                DisplayName = "Galley",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_OH_ELEC_COMMERCIAL"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_ELEC_COMMERCIAL",
+                DisplayName = "Commercial",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+
             ["N_ELEC_VOLT_BAT_1"] = new SimConnect.SimVarDefinition
             {
                 Name = "N_ELEC_VOLT_BAT_1",
@@ -4340,7 +4442,27 @@ public class FenixA320Definition : BaseAircraftDefinition
         {
             ["Electrical"] = new List<string>
             {
-                // Electrical panel variables will be added here
+                // Battery Switches (Combo boxes - 2 controls)
+                "S_OH_ELEC_BAT1",
+                "S_OH_ELEC_BAT2",
+
+                // Generator Buttons (4 controls)
+                "S_OH_ELEC_GEN1",
+                "S_OH_ELEC_GEN2",
+                "S_OH_ELEC_APU_GEN",
+                "S_OH_ELEC_EXT_PWR",
+
+                // Bus Controls (2 controls)
+                "S_OH_ELEC_BUS_TIE",
+                "S_OH_ELEC_AC_ESS_FEED",
+
+                // IDG Buttons (2 controls)
+                "S_OH_ELEC_IDG1",
+                "S_OH_ELEC_IDG2",
+
+                // Galley Buttons (2 controls)
+                "S_OH_ELEC_GALY",
+                "S_OH_ELEC_COMMERCIAL"
             }
         };
     }
@@ -4359,5 +4481,141 @@ public class FenixA320Definition : BaseAircraftDefinition
         {
             // Button-to-state mappings will be added here
         };
+    }
+
+    /// <summary>
+    /// Handle UI variable setting for Fenix A320 electrical panel controls.
+    /// - Batteries: Use SetLVar (direct SimConnect)
+    /// - Buttons: Use ExecuteCalculatorCode (RPN operations via MobiFlight)
+    /// </summary>
+    public override bool HandleUIVariableSet(string varKey, double value, SimConnect.SimVarDefinition varDef,
+        SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer announcer)
+    {
+        // ========== BATTERY SWITCHES (Combo Boxes - use SetLVar) ==========
+        if (varKey == "S_OH_ELEC_BAT1")
+        {
+            simConnect.SetLVar("S_OH_ELEC_BAT1", value);
+            announcer.Announce($"Battery 1 {(value == 1 ? "On" : "Off")}");
+            return true;
+        }
+
+        if (varKey == "S_OH_ELEC_BAT2")
+        {
+            simConnect.SetLVar("S_OH_ELEC_BAT2", value);
+            announcer.Announce($"Battery 2 {(value == 1 ? "On" : "Off")}");
+            return true;
+        }
+
+        // ========== ELECTRICAL PANEL CONTROLS ==========
+        // These work like batteries - combo boxes with Off (0) / On (1) states
+        // External Power is the only button (uses ExecuteButtonTransition)
+
+        if (varKey == "S_OH_ELEC_GEN1")
+        {
+            simConnect.SetLVar("S_OH_ELEC_GEN1_LINE", value);
+            announcer.Announce($"Generator 1 {(value == 1 ? "On" : "Off")}");
+            return true;
+        }
+
+        if (varKey == "S_OH_ELEC_GEN2")
+        {
+            simConnect.SetLVar("S_OH_ELEC_GEN2", value);
+            announcer.Announce($"Generator 2 {(value == 1 ? "On" : "Off")}");
+            return true;
+        }
+
+        if (varKey == "S_OH_ELEC_EXT_PWR" && value == 1)
+        {
+            ExecuteButtonTransition("S_OH_ELEC_EXT_PWR", "External Power", simConnect, announcer);
+            return true;
+        }
+
+        if (varKey == "S_OH_ELEC_APU_GEN")
+        {
+            simConnect.SetLVar("S_OH_ELEC_APU_GENERATOR", value);
+            announcer.Announce($"APU Generator {(value == 1 ? "On" : "Off")}");
+            return true;
+        }
+
+        if (varKey == "S_OH_ELEC_BUS_TIE")
+        {
+            simConnect.SetLVar("S_OH_ELEC_BUSTIE", value);
+            announcer.Announce($"Bus Tie {(value == 1 ? "On" : "Off")}");
+            return true;
+        }
+
+        if (varKey == "S_OH_ELEC_AC_ESS_FEED")
+        {
+            simConnect.SetLVar("S_OH_ELEC_AC_ESS_FEED", value);
+            announcer.Announce($"AC Essential Feed {(value == 1 ? "On" : "Off")}");
+            return true;
+        }
+
+        if (varKey == "S_OH_ELEC_IDG1")
+        {
+            simConnect.SetLVar("S_OH_ELEC_IDG1", value);
+            announcer.Announce($"IDG 1 {(value == 1 ? "On" : "Off")}");
+            return true;
+        }
+
+        if (varKey == "S_OH_ELEC_IDG2")
+        {
+            simConnect.SetLVar("S_OH_ELEC_IDG2", value);
+            announcer.Announce($"IDG 2 {(value == 1 ? "On" : "Off")}");
+            return true;
+        }
+
+        if (varKey == "S_OH_ELEC_GALY")
+        {
+            simConnect.SetLVar("S_OH_ELEC_GALY", value);
+            announcer.Announce($"Galley {(value == 1 ? "On" : "Off")}");
+            return true;
+        }
+
+        if (varKey == "S_OH_ELEC_COMMERCIAL")
+        {
+            simConnect.SetLVar("S_OH_ELEC_COMMERCIAL", value);
+            announcer.Announce($"Commercial {(value == 1 ? "On" : "Off")}");
+            return true;
+        }
+
+        // Not handled - use default behavior
+        return false;
+    }
+
+    /// <summary>
+    /// Helper method to execute Fenix button transition (0→1 pattern).
+    /// Fenix buttons are transition-activated: they trigger when the variable goes from 0 to 1.
+    /// This method sets the variable to 0, waits, then sets it to 1 to create the transition.
+    /// </summary>
+    private void ExecuteButtonTransition(string varName, string displayName,
+        SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer announcer)
+    {
+        // Reset to 0
+        simConnect.SetLVar(varName, 0);
+
+        // Set up timer to transition to 1 after delay
+        var transitionTimer = new System.Windows.Forms.Timer();
+        transitionTimer.Interval = 500;
+        transitionTimer.Tick += (sender, e) =>
+        {
+            transitionTimer.Stop();
+            transitionTimer.Dispose();
+
+            try
+            {
+                if (simConnect != null && simConnect.IsConnected)
+                {
+                    simConnect.SetLVar(varName, 1);
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[FenixA320] Error in {displayName} transition: {ex.Message}");
+            }
+        };
+        transitionTimer.Start();
+
+        announcer.Announce($"{displayName} pressed");
     }
 }
