@@ -69,6 +69,7 @@ public class SimConnectManager
     private HashSet<string> forceUpdateVariables = new HashSet<string>();  // Track variables that should always fire updates
     private ConcurrentDictionary<string, double> lastVariableValues = new ConcurrentDictionary<string, double>();  // Cache last values for change detection
     private int nextDataDefinitionId = 1000;  // Start IDs from 1000 to avoid conflicts
+    private static int nextTempDefId = 50000;  // Counter for temporary definition IDs (SetLVar/SetSimVar)
 
     // Batched continuous variable monitoring (using unsafe pointers instead of reflection)
     private Dictionary<string, int> continuousVariableIndexMap = new Dictionary<string, int>();  // Maps variable keys to struct field indices (V0-V999)
@@ -1950,15 +1951,30 @@ public class SimConnectManager
     {
         if (!IsConnected || simConnect == null) return;
 
-        var panelControls = CurrentAircraft?.GetPanelControls() ?? new Dictionary<string, List<string>>();
-        if (!panelControls.ContainsKey(panelName)) return;
-
-        var panelVariables = panelControls[panelName];
-        System.Diagnostics.Debug.WriteLine($"Requesting {panelVariables.Count} variables for panel '{panelName}' after: {relatedAction}");
-
-        foreach (string varKey in panelVariables)
+        try
         {
-            RequestVariable(varKey);
+            var panelControls = CurrentAircraft?.GetPanelControls() ?? new Dictionary<string, List<string>>();
+            if (!panelControls.ContainsKey(panelName)) return;
+
+            var panelVariables = panelControls[panelName];
+            System.Diagnostics.Debug.WriteLine($"Requesting {panelVariables.Count} variables for panel '{panelName}' after: {relatedAction}");
+
+            foreach (string varKey in panelVariables)
+            {
+                try
+                {
+                    RequestVariable(varKey);
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[RequestPanelVariables] Error requesting variable {varKey}: {ex.Message}");
+                    // Continue with other variables even if one fails
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[RequestPanelVariables] Error requesting panel '{panelName}': {ex.Message}");
         }
     }
 
@@ -2473,7 +2489,8 @@ public class SimConnectManager
 
         // For setting LVars, we'll need to use a workaround
         // Create a temporary data definition for this specific LVar
-        var tempDefId = (DATA_DEFINITIONS)(100 + variableDataDefinitions.Count);
+        // Use thread-safe counter to generate unique IDs (fixes crash from ID collision)
+        var tempDefId = (DATA_DEFINITIONS)System.Threading.Interlocked.Increment(ref nextTempDefId);
 
         try
         {
@@ -2499,7 +2516,8 @@ public class SimConnectManager
         System.Diagnostics.Debug.WriteLine($"Setting SimVar: {varName} = {value} ({units})");
 
         // Create a temporary data definition for this specific SimVar
-        var tempDefId = (DATA_DEFINITIONS)(200 + variableDataDefinitions.Count);
+        // Use thread-safe counter to generate unique IDs (fixes crash from ID collision)
+        var tempDefId = (DATA_DEFINITIONS)System.Threading.Interlocked.Increment(ref nextTempDefId);
 
         try
         {

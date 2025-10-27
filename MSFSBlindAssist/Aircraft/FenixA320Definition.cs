@@ -4491,91 +4491,102 @@ public class FenixA320Definition : BaseAircraftDefinition
     public override bool HandleUIVariableSet(string varKey, double value, SimConnect.SimVarDefinition varDef,
         SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer announcer)
     {
-        // ========== BATTERY SWITCHES (Combo Boxes - use SetLVar) ==========
-        if (varKey == "S_OH_ELEC_BAT1")
+        try
         {
-            simConnect.SetLVar("S_OH_ELEC_BAT1", value);
-            announcer.Announce($"Battery 1 {(value == 1 ? "On" : "Off")}");
-            return true;
+            // ========== BATTERY SWITCHES (Combo Boxes - use SetLVar) ==========
+            if (varKey == "S_OH_ELEC_BAT1")
+            {
+                simConnect.SetLVar("S_OH_ELEC_BAT1", value);
+                announcer.Announce($"Battery 1 {(value == 1 ? "On" : "Off")}");
+                return true;
+            }
+
+            if (varKey == "S_OH_ELEC_BAT2")
+            {
+                simConnect.SetLVar("S_OH_ELEC_BAT2", value);
+                announcer.Announce($"Battery 2 {(value == 1 ? "On" : "Off")}");
+                return true;
+            }
+
+            // ========== ELECTRICAL PANEL CONTROLS ==========
+            // These work like batteries - combo boxes with Off (0) / On (1) states
+            // External Power is the only button (uses ExecuteButtonTransition)
+
+            if (varKey == "S_OH_ELEC_GEN1")
+            {
+                simConnect.SetLVar("S_OH_ELEC_GEN1_LINE", value);
+                announcer.Announce($"Generator 1 {(value == 1 ? "On" : "Off")}");
+                return true;
+            }
+
+            if (varKey == "S_OH_ELEC_GEN2")
+            {
+                simConnect.SetLVar("S_OH_ELEC_GEN2", value);
+                announcer.Announce($"Generator 2 {(value == 1 ? "On" : "Off")}");
+                return true;
+            }
+
+            if (varKey == "S_OH_ELEC_EXT_PWR" && value == 1)
+            {
+                ExecuteButtonTransition("S_OH_ELEC_EXT_PWR", "External Power", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_OH_ELEC_APU_GEN")
+            {
+                simConnect.SetLVar("S_OH_ELEC_APU_GENERATOR", value);
+                announcer.Announce($"APU Generator {(value == 1 ? "On" : "Off")}");
+                return true;
+            }
+
+            if (varKey == "S_OH_ELEC_BUS_TIE")
+            {
+                simConnect.SetLVar("S_OH_ELEC_BUSTIE", value);
+                announcer.Announce($"Bus Tie {(value == 1 ? "On" : "Off")}");
+                return true;
+            }
+
+            if (varKey == "S_OH_ELEC_AC_ESS_FEED")
+            {
+                simConnect.SetLVar("S_OH_ELEC_AC_ESS_FEED", value);
+                announcer.Announce($"AC Essential Feed {(value == 1 ? "On" : "Off")}");
+                return true;
+            }
+
+            if (varKey == "S_OH_ELEC_IDG1")
+            {
+                simConnect.SetLVar("S_OH_ELEC_IDG1", value);
+                announcer.Announce($"IDG 1 {(value == 1 ? "On" : "Off")}");
+                return true;
+            }
+
+            if (varKey == "S_OH_ELEC_IDG2")
+            {
+                simConnect.SetLVar("S_OH_ELEC_IDG2", value);
+                announcer.Announce($"IDG 2 {(value == 1 ? "On" : "Off")}");
+                return true;
+            }
+
+            if (varKey == "S_OH_ELEC_GALY")
+            {
+                simConnect.SetLVar("S_OH_ELEC_GALY", value);
+                announcer.Announce($"Galley {(value == 1 ? "On" : "Off")}");
+                return true;
+            }
+
+            if (varKey == "S_OH_ELEC_COMMERCIAL")
+            {
+                simConnect.SetLVar("S_OH_ELEC_COMMERCIAL", value);
+                announcer.Announce($"Commercial {(value == 1 ? "On" : "Off")}");
+                return true;
+            }
         }
-
-        if (varKey == "S_OH_ELEC_BAT2")
+        catch (Exception ex)
         {
-            simConnect.SetLVar("S_OH_ELEC_BAT2", value);
-            announcer.Announce($"Battery 2 {(value == 1 ? "On" : "Off")}");
-            return true;
-        }
-
-        // ========== ELECTRICAL PANEL CONTROLS ==========
-        // These work like batteries - combo boxes with Off (0) / On (1) states
-        // External Power is the only button (uses ExecuteButtonTransition)
-
-        if (varKey == "S_OH_ELEC_GEN1")
-        {
-            simConnect.SetLVar("S_OH_ELEC_GEN1_LINE", value);
-            announcer.Announce($"Generator 1 {(value == 1 ? "On" : "Off")}");
-            return true;
-        }
-
-        if (varKey == "S_OH_ELEC_GEN2")
-        {
-            simConnect.SetLVar("S_OH_ELEC_GEN2", value);
-            announcer.Announce($"Generator 2 {(value == 1 ? "On" : "Off")}");
-            return true;
-        }
-
-        if (varKey == "S_OH_ELEC_EXT_PWR" && value == 1)
-        {
-            ExecuteButtonTransition("S_OH_ELEC_EXT_PWR", "External Power", simConnect, announcer);
-            return true;
-        }
-
-        if (varKey == "S_OH_ELEC_APU_GEN")
-        {
-            simConnect.SetLVar("S_OH_ELEC_APU_GENERATOR", value);
-            announcer.Announce($"APU Generator {(value == 1 ? "On" : "Off")}");
-            return true;
-        }
-
-        if (varKey == "S_OH_ELEC_BUS_TIE")
-        {
-            simConnect.SetLVar("S_OH_ELEC_BUSTIE", value);
-            announcer.Announce($"Bus Tie {(value == 1 ? "On" : "Off")}");
-            return true;
-        }
-
-        if (varKey == "S_OH_ELEC_AC_ESS_FEED")
-        {
-            simConnect.SetLVar("S_OH_ELEC_AC_ESS_FEED", value);
-            announcer.Announce($"AC Essential Feed {(value == 1 ? "On" : "Off")}");
-            return true;
-        }
-
-        if (varKey == "S_OH_ELEC_IDG1")
-        {
-            simConnect.SetLVar("S_OH_ELEC_IDG1", value);
-            announcer.Announce($"IDG 1 {(value == 1 ? "On" : "Off")}");
-            return true;
-        }
-
-        if (varKey == "S_OH_ELEC_IDG2")
-        {
-            simConnect.SetLVar("S_OH_ELEC_IDG2", value);
-            announcer.Announce($"IDG 2 {(value == 1 ? "On" : "Off")}");
-            return true;
-        }
-
-        if (varKey == "S_OH_ELEC_GALY")
-        {
-            simConnect.SetLVar("S_OH_ELEC_GALY", value);
-            announcer.Announce($"Galley {(value == 1 ? "On" : "Off")}");
-            return true;
-        }
-
-        if (varKey == "S_OH_ELEC_COMMERCIAL")
-        {
-            simConnect.SetLVar("S_OH_ELEC_COMMERCIAL", value);
-            announcer.Announce($"Commercial {(value == 1 ? "On" : "Off")}");
+            System.Diagnostics.Debug.WriteLine($"[FenixA320] Error setting {varKey} to {value}: {ex.Message}");
+            announcer.Announce($"Error setting {varDef.DisplayName}");
+            // Return true to indicate we handled it (even though it failed)
+            // This prevents the generic handler from also failing
             return true;
         }
 
@@ -4591,31 +4602,42 @@ public class FenixA320Definition : BaseAircraftDefinition
     private void ExecuteButtonTransition(string varName, string displayName,
         SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer announcer)
     {
-        // Reset to 0
-        simConnect.SetLVar(varName, 0);
-
-        // Set up timer to transition to 1 after delay
-        var transitionTimer = new System.Windows.Forms.Timer();
-        transitionTimer.Interval = 500;
-        transitionTimer.Tick += (sender, e) =>
+        try
         {
-            transitionTimer.Stop();
-            transitionTimer.Dispose();
-
-            try
+            // Reset to 0
+            if (simConnect != null && simConnect.IsConnected)
             {
-                if (simConnect != null && simConnect.IsConnected)
+                simConnect.SetLVar(varName, 0);
+            }
+
+            // Set up timer to transition to 1 after delay
+            var transitionTimer = new System.Windows.Forms.Timer();
+            transitionTimer.Interval = 500;
+            transitionTimer.Tick += (sender, e) =>
+            {
+                transitionTimer.Stop();
+                transitionTimer.Dispose();
+
+                try
                 {
-                    simConnect.SetLVar(varName, 1);
+                    if (simConnect != null && simConnect.IsConnected)
+                    {
+                        simConnect.SetLVar(varName, 1);
+                    }
                 }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"[FenixA320] Error in {displayName} transition: {ex.Message}");
-            }
-        };
-        transitionTimer.Start();
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[FenixA320] Error in {displayName} transition (second phase): {ex.Message}");
+                }
+            };
+            transitionTimer.Start();
 
-        announcer.Announce($"{displayName} pressed");
+            announcer.Announce($"{displayName} pressed");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[FenixA320] Error in {displayName} transition (first phase): {ex.Message}");
+            announcer.Announce($"Error pressing {displayName}");
+        }
     }
 }
