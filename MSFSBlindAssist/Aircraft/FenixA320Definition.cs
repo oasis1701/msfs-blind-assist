@@ -4400,14 +4400,12 @@ public class FenixA320Definition : BaseAircraftDefinition
             if (varKey == "S_OH_ELEC_BAT1")
             {
                 simConnect.SetLVar("S_OH_ELEC_BAT1", value);
-                announcer.Announce($"Battery 1 {(value == 1 ? "On" : "Off")}");
                 return true;
             }
 
             if (varKey == "S_OH_ELEC_BAT2")
             {
                 simConnect.SetLVar("S_OH_ELEC_BAT2", value);
-                announcer.Announce($"Battery 2 {(value == 1 ? "On" : "Off")}");
                 return true;
             }
 
@@ -4418,14 +4416,12 @@ public class FenixA320Definition : BaseAircraftDefinition
             if (varKey == "S_OH_ELEC_GEN1")
             {
                 simConnect.SetLVar("S_OH_ELEC_GEN1_LINE", value);
-                announcer.Announce($"Generator 1 {(value == 1 ? "On" : "Off")}");
                 return true;
             }
 
             if (varKey == "S_OH_ELEC_GEN2")
             {
                 simConnect.SetLVar("S_OH_ELEC_GEN2", value);
-                announcer.Announce($"Generator 2 {(value == 1 ? "On" : "Off")}");
                 return true;
             }
 
@@ -4438,49 +4434,42 @@ public class FenixA320Definition : BaseAircraftDefinition
             if (varKey == "S_OH_ELEC_APU_GEN")
             {
                 simConnect.SetLVar("S_OH_ELEC_APU_GENERATOR", value);
-                announcer.Announce($"APU Generator {(value == 1 ? "On" : "Off")}");
                 return true;
             }
 
             if (varKey == "S_OH_ELEC_BUS_TIE")
             {
                 simConnect.SetLVar("S_OH_ELEC_BUSTIE", value);
-                announcer.Announce($"Bus Tie {(value == 1 ? "On" : "Off")}");
                 return true;
             }
 
             if (varKey == "S_OH_ELEC_AC_ESS_FEED")
             {
                 simConnect.SetLVar("S_OH_ELEC_AC_ESS_FEED", value);
-                announcer.Announce($"AC Essential Feed {(value == 1 ? "On" : "Off")}");
                 return true;
             }
 
             if (varKey == "S_OH_ELEC_IDG1")
             {
                 simConnect.SetLVar("S_OH_ELEC_IDG1", value);
-                announcer.Announce($"IDG 1 {(value == 1 ? "On" : "Off")}");
                 return true;
             }
 
             if (varKey == "S_OH_ELEC_IDG2")
             {
                 simConnect.SetLVar("S_OH_ELEC_IDG2", value);
-                announcer.Announce($"IDG 2 {(value == 1 ? "On" : "Off")}");
                 return true;
             }
 
             if (varKey == "S_OH_ELEC_GALY")
             {
                 simConnect.SetLVar("S_OH_ELEC_GALY", value);
-                announcer.Announce($"Galley {(value == 1 ? "On" : "Off")}");
                 return true;
             }
 
             if (varKey == "S_OH_ELEC_COMMERCIAL")
             {
                 simConnect.SetLVar("S_OH_ELEC_COMMERCIAL", value);
-                announcer.Announce($"Commercial {(value == 1 ? "On" : "Off")}");
                 return true;
             }
         }
@@ -4534,8 +4523,6 @@ public class FenixA320Definition : BaseAircraftDefinition
                 }
             };
             transitionTimer.Start();
-
-            announcer.Announce($"{displayName} pressed");
         }
         catch (Exception ex)
         {
