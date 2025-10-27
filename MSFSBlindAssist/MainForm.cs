@@ -1779,25 +1779,23 @@ public partial class MainForm : Form
 
         currentPanel = newPanel;
 
-        // Force refresh OnDemand variables for Exterior Lighting panel
-        if (newPanel == "Exterior Lighting" && simConnectManager != null && simConnectManager.IsConnected)
+        // IMPORTANT: Request all panel variables when opening ANY panel
+        // This ensures controls display current simulator state when the panel opens.
+        //
+        // WHY: Most panel controls are independent switches - when you flip one switch,
+        // it doesn't affect other switches. So we DON'T need to refresh after each change.
+        // We ONLY need fresh data when the user opens/switches to a panel.
+        //
+        // WHEN ADDING NEW PANELS: You do NOT need to add hardcoded checks here.
+        // This generic call handles ALL panels automatically (Electrical, Lights, FCU, etc.)
+        //
+        // EXCEPTION: If you have cross-dependent controls (rare), where changing one control
+        // affects others on the same panel, consider aircraft-specific handling via
+        // HandleUIVariableSet or a dedicated refresh mechanism.
+        if (simConnectManager != null && simConnectManager.IsConnected)
         {
-            System.Diagnostics.Debug.WriteLine("[DEBUG] Refreshing OnDemand variables for Exterior Lighting panel");
-            simConnectManager.RequestPanelVariables("Exterior Lighting", "Exterior Lighting panel opened");
-        }
-
-        // Force refresh OnDemand variables for Signs panel
-        if (newPanel == "Signs" && simConnectManager != null && simConnectManager.IsConnected)
-        {
-            System.Diagnostics.Debug.WriteLine("[DEBUG] Refreshing OnDemand variables for Signs panel");
-            simConnectManager.RequestPanelVariables("Signs", "Signs panel opened");
-        }
-
-        // Force refresh OnDemand variables for FCU panel
-        if (newPanel == "FCU" && simConnectManager != null && simConnectManager.IsConnected)
-        {
-            System.Diagnostics.Debug.WriteLine("[DEBUG] Refreshing OnDemand variables for FCU panel");
-            simConnectManager.RequestPanelVariables("FCU", "FCU panel opened");
+            System.Diagnostics.Debug.WriteLine($"[Panel Open] Requesting variables for '{newPanel}' panel");
+            simConnectManager.RequestPanelVariables(newPanel, $"{newPanel} panel opened");
         }
 
         // Clear and reload controls
@@ -1855,7 +1853,10 @@ public partial class MainForm : Form
                         if (currentAircraft.HandleUIVariableSet(varKey, 1, varDef, simConnectManager, announcer))
                         {
                             currentSimVarValues[varKey] = 1;
-                            RequestRelatedVariables(varKey, $"User pressed {varDef.DisplayName}");
+                            // NOTE: We do NOT call RequestRelatedVariables here because:
+                            // - Most buttons are independent (pressing one doesn't affect others)
+                            // - Variables are refreshed when the panel opens (see PanelsListBox_SelectedIndexChanged)
+                            // - Requesting all panel variables after each button press is wasteful
                             return; // Aircraft handled it
                         }
 
@@ -1863,7 +1864,7 @@ public partial class MainForm : Form
                         simConnectManager?.SetLVar(varDef.Name, 1);
                         currentSimVarValues[varKey] = 1;
                         announcer.Announce($"{varDef.DisplayName} pressed");
-                        RequestRelatedVariables(varKey, $"User pressed {varDef.DisplayName}");
+                        // NOTE: No RequestRelatedVariables - see comment above
                     };
 
                     layout.Controls.Add(controlButton, 1, rowIndex);
@@ -2181,7 +2182,10 @@ public partial class MainForm : Form
                             if (currentAircraft.HandleUIVariableSet(varKey, selectedValue, varDef, simConnectManager, announcer))
                             {
                                 currentSimVarValues[varKey] = selectedValue;
-                                RequestRelatedVariables(varKey, $"User changed {varDef.DisplayName}");
+                                // NOTE: We do NOT call RequestRelatedVariables here because:
+                                // - Most combo boxes are independent switches (changing one doesn't affect others)
+                                // - Variables are refreshed when the panel opens (see PanelsListBox_SelectedIndexChanged)
+                                // - Requesting all panel variables after each combo change is wasteful
                                 return; // Aircraft handled it
                             }
 
@@ -2193,17 +2197,13 @@ public partial class MainForm : Form
 
                                 // Update our stored value to match the selection
                                 currentSimVarValues[varKey] = selectedValue;
-
-                                // Request related variables to refresh after the toggle
-                                RequestRelatedVariables(varKey, $"User changed {varDef.DisplayName}");
+                                // NOTE: No RequestRelatedVariables - see comment above
                             }
                             else if (varDef.Type == SimVarType.LVar)
                             {
                                 simConnectManager?.SetLVar(varDef.Name, selectedValue);
                                 currentSimVarValues[varKey] = selectedValue;
-
-                                // Request related variables to refresh states efficiently
-                                RequestRelatedVariables(varKey, $"User changed {varDef.DisplayName}");
+                                // NOTE: No RequestRelatedVariables - see comment above
                             }
                         }
                     };
