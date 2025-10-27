@@ -52,7 +52,7 @@ https://abilitynet.org.uk/factsheets/introduction-screen-readers
 
 ###  What's the point of using a flight simulation software to fly if user can't see the screen properly?
 
-This is a common question and a curiosity within the aviation community and other industries that are less accessible and exposed to people with disabilities. While I can't speak for every individual, it is important to say that not only is it important to make sure users with disabilities have access to fundamental and important services and infrastructure, but supporting them in hobbies they would enjoy is also important, so that they can be involved with the topics that they're interested in and communicate and socialize in that same atmosphere.
+This is a common question and a curiosity within the aviation community and other industries that are less accessible and exposed to people with disabilities. While I can't speak for every individual, it's worth noting that users with disabilities should not only have access to essential services and infrastructure, but also be supported in hobbies they enjoy, enabling them to engage with topics they're interested in and socialize within those communities.
 In our case, a person who is totally blind or lacks the vision to interact with a simulated aircraft might enjoy a lot of the aspects of the simulation, such as:
 - Executing real-life procedures to their capability
 - Learning all the theories and studying documentation and subjects regarding aviation
