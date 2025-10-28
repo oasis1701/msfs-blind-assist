@@ -2068,7 +2068,8 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Yellow Electric Pump",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
             },
 
             // PTU and RAT
@@ -2084,6 +2085,79 @@ public class FenixA320Definition : BaseAircraftDefinition
             {
                 Name = "S_OH_HYD_RAT_MAN_ON",
                 DisplayName = "RAT Manual On",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+
+            // ========== FUEL PANEL ==========
+            // Left Wing Tank Pumps
+            ["S_OH_FUEL_LEFT_1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_FUEL_LEFT_1",
+                DisplayName = "Left Tank Pump 1",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_OH_FUEL_LEFT_2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_FUEL_LEFT_2",
+                DisplayName = "Left Tank Pump 2",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+
+            // Center Tank Pumps
+            ["S_OH_FUEL_CENTER_1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_FUEL_CENTER_1",
+                DisplayName = "Center Tank Pump 1",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_OH_FUEL_CENTER_2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_FUEL_CENTER_2",
+                DisplayName = "Center Tank Pump 2",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+
+            // Right Wing Tank Pumps
+            ["S_OH_FUEL_RIGHT_1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_FUEL_RIGHT_1",
+                DisplayName = "Right Tank Pump 1",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_OH_FUEL_RIGHT_2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_FUEL_RIGHT_2",
+                DisplayName = "Right Tank Pump 2",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+
+            // Crossfeed and Mode
+            ["S_OH_FUEL_XFEED"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_FUEL_XFEED",
+                DisplayName = "Crossfeed Valve",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Closed", [1] = "Open"}
+            },
+            ["S_OH_FUEL_MODE_SEL"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_FUEL_MODE_SEL",
+                DisplayName = "Mode Selector",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
@@ -4902,7 +4976,8 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "ADIRS",
                 "Air Conditioning and Pressurization",
                 "Fire",
-                "Hydraulic"
+                "Hydraulic",
+                "Fuel"
                 // Additional panels will be added here as features are implemented
             }
         };
@@ -5050,6 +5125,25 @@ public class FenixA320Definition : BaseAircraftDefinition
                 // PTU and RAT (2 controls)
                 "S_OH_HYD_PTU",
                 "S_OH_HYD_RAT_MAN_ON"
+            },
+
+            ["Fuel"] = new List<string>
+            {
+                // Left Wing Tank Pumps (2 controls)
+                "S_OH_FUEL_LEFT_1",
+                "S_OH_FUEL_LEFT_2",
+
+                // Center Tank Pumps (2 controls)
+                "S_OH_FUEL_CENTER_1",
+                "S_OH_FUEL_CENTER_2",
+
+                // Right Wing Tank Pumps (2 controls)
+                "S_OH_FUEL_RIGHT_1",
+                "S_OH_FUEL_RIGHT_2",
+
+                // Crossfeed and Mode (2 controls)
+                "S_OH_FUEL_XFEED",
+                "S_OH_FUEL_MODE_SEL"
             }
         };
     }
@@ -5540,9 +5634,9 @@ public class FenixA320Definition : BaseAircraftDefinition
                 return true;
             }
 
-            if (varKey == "S_OH_HYD_YELLOW_ELEC_PUMP")
+            if (varKey == "S_OH_HYD_YELLOW_ELEC_PUMP" && value == 1)
             {
-                simConnect.SetLVar("S_OH_HYD_YELLOW_ELEC_PUMP", value);
+                ExecuteButtonTransition("S_OH_HYD_YELLOW_ELEC_PUMP", "Yellow Electric Pump", simConnect, announcer);
                 return true;
             }
 
@@ -5556,6 +5650,59 @@ public class FenixA320Definition : BaseAircraftDefinition
             if (varKey == "S_OH_HYD_RAT_MAN_ON")
             {
                 simConnect.SetLVar("S_OH_HYD_RAT_MAN_ON", value);
+                return true;
+            }
+
+            // ========== FUEL PANEL CONTROLS (Combo Boxes - use SetLVar) ==========
+            // Left Wing Tank Pumps
+            if (varKey == "S_OH_FUEL_LEFT_1")
+            {
+                simConnect.SetLVar("S_OH_FUEL_LEFT_1", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_FUEL_LEFT_2")
+            {
+                simConnect.SetLVar("S_OH_FUEL_LEFT_2", value);
+                return true;
+            }
+
+            // Center Tank Pumps
+            if (varKey == "S_OH_FUEL_CENTER_1")
+            {
+                simConnect.SetLVar("S_OH_FUEL_CENTER_1", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_FUEL_CENTER_2")
+            {
+                simConnect.SetLVar("S_OH_FUEL_CENTER_2", value);
+                return true;
+            }
+
+            // Right Wing Tank Pumps
+            if (varKey == "S_OH_FUEL_RIGHT_1")
+            {
+                simConnect.SetLVar("S_OH_FUEL_RIGHT_1", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_FUEL_RIGHT_2")
+            {
+                simConnect.SetLVar("S_OH_FUEL_RIGHT_2", value);
+                return true;
+            }
+
+            // Crossfeed and Mode
+            if (varKey == "S_OH_FUEL_XFEED")
+            {
+                simConnect.SetLVar("S_OH_FUEL_XFEED", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_FUEL_MODE_SEL")
+            {
+                simConnect.SetLVar("S_OH_FUEL_MODE_SEL", value);
                 return true;
             }
         }
