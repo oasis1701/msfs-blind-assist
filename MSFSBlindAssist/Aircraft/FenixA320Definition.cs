@@ -2478,6 +2478,17 @@ public class FenixA320Definition : BaseAircraftDefinition
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
             },
 
+            // ========== COCKPIT DOOR PANEL ==========
+            // VIDEO
+            ["S_OH_COCKPIT_DOOR_VIDEO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_COCKPIT_DOOR_VIDEO",
+                DisplayName = "VIDEO",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+
             ["N_ELEC_VOLT_BAT_1"] = new SimConnect.SimVarDefinition
             {
                 Name = "N_ELEC_VOLT_BAT_1",
@@ -5286,11 +5297,12 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "Hydraulic",
                 "Fuel",
                 "Anti-Ice",
+                "Signs",
                 "External Lights",
                 "Interior Lights",
                 "Flight Controls",
                 "Voice Recorder",
-                "Signs"
+                "Cockpit Door"
                 // Additional panels will be added here as features are implemented
             }
         };
@@ -5514,6 +5526,12 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "S_OH_RCRD_GND_CTL",
                 "S_OH_RCRD_ERASE",
                 "S_OH_RCRD_TEST"
+            },
+
+            ["Cockpit Door"] = new List<string>
+            {
+                // Cockpit Door Controls (1 control)
+                "S_OH_COCKPIT_DOOR_VIDEO"
             },
 
             ["Signs"] = new List<string>
@@ -6285,6 +6303,14 @@ public class FenixA320Definition : BaseAircraftDefinition
             if (varKey == "S_OH_RCRD_TEST")
             {
                 simConnect.SetLVar("S_OH_RCRD_TEST", value);
+                return true;
+            }
+
+            // ========== COCKPIT DOOR PANEL CONTROLS ==========
+            // VIDEO
+            if (varKey == "S_OH_COCKPIT_DOOR_VIDEO")
+            {
+                simConnect.SetLVar("S_OH_COCKPIT_DOOR_VIDEO", value);
                 return true;
             }
 
