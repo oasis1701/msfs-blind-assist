@@ -2034,6 +2034,61 @@ public class FenixA320Definition : BaseAircraftDefinition
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Normal", [1] = "Discharge"}
             },
 
+            // ========== HYDRAULIC PANEL ==========
+            // Engine Pumps
+            ["S_OH_HYD_ENG_1_PUMP"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_HYD_ENG_1_PUMP",
+                DisplayName = "Engine 1 Pump (Green)",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_OH_HYD_ENG_2_PUMP"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_HYD_ENG_2_PUMP",
+                DisplayName = "Engine 2 Pump (Yellow)",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+
+            // Electric Pumps
+            ["S_OH_HYD_BLUE_ELEC_PUMP"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_HYD_BLUE_ELEC_PUMP",
+                DisplayName = "Blue Electric Pump",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_OH_HYD_YELLOW_ELEC_PUMP"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_HYD_YELLOW_ELEC_PUMP",
+                DisplayName = "Yellow Electric Pump",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+
+            // PTU and RAT
+            ["S_OH_HYD_PTU"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_HYD_PTU",
+                DisplayName = "Power Transfer Unit (PTU)",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_OH_HYD_RAT_MAN_ON"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_HYD_RAT_MAN_ON",
+                DisplayName = "RAT Manual On",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+
             ["N_ELEC_VOLT_BAT_1"] = new SimConnect.SimVarDefinition
             {
                 Name = "N_ELEC_VOLT_BAT_1",
@@ -4846,7 +4901,8 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "Electrical",
                 "ADIRS",
                 "Air Conditioning and Pressurization",
-                "Fire"
+                "Fire",
+                "Hydraulic"
                 // Additional panels will be added here as features are implemented
             }
         };
@@ -4979,6 +5035,21 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "S_OH_FIRE_ENG2_AGENT1",
                 "S_OH_FIRE_ENG2_AGENT2",
                 "S_OH_FIRE_APU_AGENT"
+            },
+
+            ["Hydraulic"] = new List<string>
+            {
+                // Engine Pumps (2 controls)
+                "S_OH_HYD_ENG_1_PUMP",
+                "S_OH_HYD_ENG_2_PUMP",
+
+                // Electric Pumps (2 controls)
+                "S_OH_HYD_BLUE_ELEC_PUMP",
+                "S_OH_HYD_YELLOW_ELEC_PUMP",
+
+                // PTU and RAT (2 controls)
+                "S_OH_HYD_PTU",
+                "S_OH_HYD_RAT_MAN_ON"
             }
         };
     }
@@ -5445,6 +5516,46 @@ public class FenixA320Definition : BaseAircraftDefinition
             if (varKey == "S_OH_FIRE_APU_AGENT")
             {
                 simConnect.SetLVar("S_OH_FIRE_APU_AGENT", value);
+                return true;
+            }
+
+            // ========== HYDRAULIC PANEL CONTROLS (Combo Boxes - use SetLVar) ==========
+            // Engine Pumps
+            if (varKey == "S_OH_HYD_ENG_1_PUMP")
+            {
+                simConnect.SetLVar("S_OH_HYD_ENG_1_PUMP", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_HYD_ENG_2_PUMP")
+            {
+                simConnect.SetLVar("S_OH_HYD_ENG_2_PUMP", value);
+                return true;
+            }
+
+            // Electric Pumps
+            if (varKey == "S_OH_HYD_BLUE_ELEC_PUMP")
+            {
+                simConnect.SetLVar("S_OH_HYD_BLUE_ELEC_PUMP", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_HYD_YELLOW_ELEC_PUMP")
+            {
+                simConnect.SetLVar("S_OH_HYD_YELLOW_ELEC_PUMP", value);
+                return true;
+            }
+
+            // PTU and RAT
+            if (varKey == "S_OH_HYD_PTU")
+            {
+                simConnect.SetLVar("S_OH_HYD_PTU", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_HYD_RAT_MAN_ON")
+            {
+                simConnect.SetLVar("S_OH_HYD_RAT_MAN_ON", value);
                 return true;
             }
         }
