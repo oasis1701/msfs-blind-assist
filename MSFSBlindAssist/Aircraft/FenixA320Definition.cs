@@ -2446,6 +2446,38 @@ public class FenixA320Definition : BaseAircraftDefinition
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
             },
 
+            // ========== VOICE RECORDER PANEL ==========
+            // GND CTL
+            ["S_OH_RCRD_GND_CTL"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_RCRD_GND_CTL",
+                DisplayName = "GND CTL",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+
+            // CVR ERASE
+            ["S_OH_RCRD_ERASE"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_RCRD_ERASE",
+                DisplayName = "CVR Erase",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+
+            // CVR TEST
+            ["S_OH_RCRD_TEST"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_RCRD_TEST",
+                DisplayName = "CVR Test",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+
             ["N_ELEC_VOLT_BAT_1"] = new SimConnect.SimVarDefinition
             {
                 Name = "N_ELEC_VOLT_BAT_1",
@@ -5257,6 +5289,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "External Lights",
                 "Interior Lights",
                 "Flight Controls",
+                "Voice Recorder",
                 "Signs"
                 // Additional panels will be added here as features are implemented
             }
@@ -5473,6 +5506,14 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "S_OH_FLT_CTL_SEC_3",
                 "S_OH_FLT_CTL_FAC_1",
                 "S_OH_FLT_CTL_FAC_2"
+            },
+
+            ["Voice Recorder"] = new List<string>
+            {
+                // Voice Recorder Controls (3 controls)
+                "S_OH_RCRD_GND_CTL",
+                "S_OH_RCRD_ERASE",
+                "S_OH_RCRD_TEST"
             },
 
             ["Signs"] = new List<string>
@@ -6222,6 +6263,28 @@ public class FenixA320Definition : BaseAircraftDefinition
             if (varKey == "S_OH_FLT_CTL_FAC_2")
             {
                 simConnect.SetLVar("S_OH_FLT_CTL_FAC_2", value);
+                return true;
+            }
+
+            // ========== VOICE RECORDER PANEL CONTROLS ==========
+            // GND CTL (Button - uses ExecuteButtonTransition)
+            if (varKey == "S_OH_RCRD_GND_CTL" && value == 1)
+            {
+                ExecuteButtonTransition("S_OH_RCRD_GND_CTL", "GND CTL", simConnect, announcer);
+                return true;
+            }
+
+            // CVR ERASE
+            if (varKey == "S_OH_RCRD_ERASE")
+            {
+                simConnect.SetLVar("S_OH_RCRD_ERASE", value);
+                return true;
+            }
+
+            // CVR TEST
+            if (varKey == "S_OH_RCRD_TEST")
+            {
+                simConnect.SetLVar("S_OH_RCRD_TEST", value);
                 return true;
             }
 
