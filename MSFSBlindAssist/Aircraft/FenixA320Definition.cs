@@ -1523,6 +1523,151 @@ public class FenixA320Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
             },
+            ["S_OH_ELEC_APU_MASTER"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_ELEC_APU_MASTER",
+                DisplayName = "APU Master",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_OH_ELEC_APU_START"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_ELEC_APU_START",
+                DisplayName = "APU Start",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_OH_ELEC_GEN1_LINE"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_ELEC_GEN1_LINE",
+                DisplayName = "Emergency Gen 1 Line",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_OH_ELEC_EMER_GEN_TEST"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_ELEC_EMER_GEN_TEST",
+                DisplayName = "Emergency Gen Test",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_OH_ELEC_EMER_GEN_MAN_ON"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_ELEC_EMER_GEN_MAN_ON",
+                DisplayName = "Emergency Gen Manual On",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+
+            // ========== ADIRS (11 variables) ==========
+            // Note: Numeric keypad (0-9, CLR, ENT) will be added later
+
+            // IR Mode Knobs
+            ["S_OH_NAV_IR1_MODE"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_NAV_IR1_MODE",
+                DisplayName = "IR 1 Mode",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Nav", [2] = "Att"}
+            },
+            ["S_OH_NAV_IR2_MODE"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_NAV_IR2_MODE",
+                DisplayName = "IR 2 Mode",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Nav", [2] = "Att"}
+            },
+            ["S_OH_NAV_IR3_MODE"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_NAV_IR3_MODE",
+                DisplayName = "IR 3 Mode",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Nav", [2] = "Att"}
+            },
+
+            // ADR Buttons
+            ["S_OH_NAV_ADR1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_NAV_ADR1",
+                DisplayName = "ADR 1",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_OH_NAV_ADR2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_NAV_ADR2",
+                DisplayName = "ADR 2",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_OH_NAV_ADR3"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_NAV_ADR3",
+                DisplayName = "ADR 3",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+
+            // IR Push Buttons
+            ["S_OH_NAV_IR1_SWITCH"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_NAV_IR1_SWITCH",
+                DisplayName = "IR 1 Push",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_OH_NAV_IR2_SWITCH"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_NAV_IR2_SWITCH",
+                DisplayName = "IR 2 Push",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_OH_NAV_IR3_SWITCH"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_NAV_IR3_SWITCH",
+                DisplayName = "IR 3 Push",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+
+            // Display Selectors
+            ["S_OH_NAV_DATA_DISP"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_NAV_DATA_DISP",
+                DisplayName = "Data Display",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Wind", [1] = "PPOS", [2] = "HDG", [3] = "STS", [4] = "TK/GS", [5] = "TEST"}
+            },
+            ["S_OH_NAV_SYS_DISP"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_NAV_SYS_DISP",
+                DisplayName = "System Display",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "IR 1", [1] = "IR 2", [2] = "IR 3", [3] = "ADR 1", [4] = "ADR 2", [5] = "ADR 3"}
+            },
 
             ["N_ELEC_VOLT_BAT_1"] = new SimConnect.SimVarDefinition
             {
@@ -4333,7 +4478,8 @@ public class FenixA320Definition : BaseAircraftDefinition
         {
             ["Overhead"] = new List<string>
             {
-                "Electrical"
+                "Electrical",
+                "ADIRS"
                 // Additional panels will be added here as features are implemented
             }
         };
@@ -4355,6 +4501,10 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "S_OH_ELEC_APU_GEN",
                 "S_OH_ELEC_EXT_PWR",
 
+                // APU Controls (2 controls)
+                "S_OH_ELEC_APU_MASTER",
+                "S_OH_ELEC_APU_START",
+
                 // Bus Controls (2 controls)
                 "S_OH_ELEC_BUS_TIE",
                 "S_OH_ELEC_AC_ESS_FEED",
@@ -4365,7 +4515,35 @@ public class FenixA320Definition : BaseAircraftDefinition
 
                 // Galley Buttons (2 controls)
                 "S_OH_ELEC_GALY",
-                "S_OH_ELEC_COMMERCIAL"
+                "S_OH_ELEC_COMMERCIAL",
+
+                // Emergency Electrical (3 controls)
+                "S_OH_ELEC_GEN1_LINE",
+                "S_OH_ELEC_EMER_GEN_TEST",
+                "S_OH_ELEC_EMER_GEN_MAN_ON"
+            },
+
+            ["ADIRS"] = new List<string>
+            {
+                // IR Mode Knobs (3 controls)
+                "S_OH_NAV_IR1_MODE",
+                "S_OH_NAV_IR2_MODE",
+                "S_OH_NAV_IR3_MODE",
+
+                // ADR Buttons (3 controls)
+                "S_OH_NAV_ADR1",
+                "S_OH_NAV_ADR2",
+                "S_OH_NAV_ADR3",
+
+                // IR Push Buttons (3 controls)
+                "S_OH_NAV_IR1_SWITCH",
+                "S_OH_NAV_IR2_SWITCH",
+                "S_OH_NAV_IR3_SWITCH",
+
+                // Display Selectors (2 controls)
+                "S_OH_NAV_DATA_DISP",
+                "S_OH_NAV_SYS_DISP"
+                // Note: Numeric keypad (0-9, CLR, ENT) will be added later
             }
         };
     }
@@ -4470,6 +4648,108 @@ public class FenixA320Definition : BaseAircraftDefinition
             if (varKey == "S_OH_ELEC_COMMERCIAL")
             {
                 simConnect.SetLVar("S_OH_ELEC_COMMERCIAL", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_ELEC_APU_MASTER")
+            {
+                simConnect.SetLVar("S_OH_ELEC_APU_MASTER", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_ELEC_APU_START")
+            {
+                simConnect.SetLVar("S_OH_ELEC_APU_START", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_ELEC_GEN1_LINE")
+            {
+                simConnect.SetLVar("S_OH_ELEC_GEN1_LINE", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_ELEC_EMER_GEN_TEST")
+            {
+                simConnect.SetLVar("S_OH_ELEC_EMER_GEN_TEST", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_ELEC_EMER_GEN_MAN_ON")
+            {
+                simConnect.SetLVar("S_OH_ELEC_EMER_GEN_MAN_ON", value);
+                return true;
+            }
+
+            // ========== ADIRS PANEL CONTROLS ==========
+
+            // IR Mode Knobs
+            if (varKey == "S_OH_NAV_IR1_MODE")
+            {
+                simConnect.SetLVar("S_OH_NAV_IR1_MODE", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_NAV_IR2_MODE")
+            {
+                simConnect.SetLVar("S_OH_NAV_IR2_MODE", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_NAV_IR3_MODE")
+            {
+                simConnect.SetLVar("S_OH_NAV_IR3_MODE", value);
+                return true;
+            }
+
+            // ADR Buttons
+            if (varKey == "S_OH_NAV_ADR1" && value == 1)
+            {
+                ExecuteButtonTransition("S_OH_NAV_ADR1", "ADR 1", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_OH_NAV_ADR2" && value == 1)
+            {
+                ExecuteButtonTransition("S_OH_NAV_ADR2", "ADR 2", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_OH_NAV_ADR3" && value == 1)
+            {
+                ExecuteButtonTransition("S_OH_NAV_ADR3", "ADR 3", simConnect, announcer);
+                return true;
+            }
+
+            // IR Push Buttons
+            if (varKey == "S_OH_NAV_IR1_SWITCH" && value == 1)
+            {
+                ExecuteButtonTransition("S_OH_NAV_IR1_SWITCH", "IR 1 Push", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_OH_NAV_IR2_SWITCH" && value == 1)
+            {
+                ExecuteButtonTransition("S_OH_NAV_IR2_SWITCH", "IR 2 Push", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_OH_NAV_IR3_SWITCH" && value == 1)
+            {
+                ExecuteButtonTransition("S_OH_NAV_IR3_SWITCH", "IR 3 Push", simConnect, announcer);
+                return true;
+            }
+
+            // Display Selectors
+            if (varKey == "S_OH_NAV_DATA_DISP")
+            {
+                simConnect.SetLVar("S_OH_NAV_DATA_DISP", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_NAV_SYS_DISP")
+            {
+                simConnect.SetLVar("S_OH_NAV_SYS_DISP", value);
                 return true;
             }
         }
