@@ -2314,6 +2314,138 @@ public class FenixA320Definition : BaseAircraftDefinition
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Taxi", [2] = "TO"}
             },
 
+            // ========== INTERIOR LIGHTS PANEL ==========
+            // DOME
+            ["S_OH_INT_LT_DOME"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_INT_LT_DOME",
+                DisplayName = "Dome",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Dim", [2] = "Bright"}
+            },
+
+            // ANNUNCIATOR
+            ["S_OH_IN_LT_ANN_LT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_IN_LT_ANN_LT",
+                DisplayName = "Annunciator",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Dim", [1] = "Bright", [2] = "Test"}
+            },
+
+            // ICE STANDBY
+            ["S_OH_IN_LT_ICE"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_IN_LT_ICE",
+                DisplayName = "Ice Standby",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+
+            // CAPTAIN READING (0.1 steps)
+            ["A_OH_LIGHTING_READING_CAPT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "A_OH_LIGHTING_READING_CAPT",
+                DisplayName = "Captain Reading",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0.0] = "0.0", [0.1] = "0.1", [0.2] = "0.2", [0.3] = "0.3", [0.4] = "0.4", [0.5] = "0.5", [0.6] = "0.6", [0.7] = "0.7", [0.8] = "0.8", [0.9] = "0.9", [1.0] = "1.0"}
+            },
+
+            // FO READING (0.1 steps)
+            ["A_OH_LIGHTING_READING_FO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "A_OH_LIGHTING_READING_FO",
+                DisplayName = "FO Reading",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0.0] = "0.0", [0.1] = "0.1", [0.2] = "0.2", [0.3] = "0.3", [0.4] = "0.4", [0.5] = "0.5", [0.6] = "0.6", [0.7] = "0.7", [0.8] = "0.8", [0.9] = "0.9", [1.0] = "1.0"}
+            },
+
+            // OVERHEAD INTEGRAL (0.05 steps)
+            ["A_OH_LIGHTING_OVD"] = new SimConnect.SimVarDefinition
+            {
+                Name = "A_OH_LIGHTING_OVD",
+                DisplayName = "Overhead Integral",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0.0] = "0.00", [0.05] = "0.05", [0.1] = "0.10", [0.15] = "0.15", [0.2] = "0.20", [0.25] = "0.25", [0.3] = "0.30", [0.35] = "0.35", [0.4] = "0.40", [0.45] = "0.45", [0.5] = "0.50", [0.55] = "0.55", [0.6] = "0.60", [0.65] = "0.65", [0.7] = "0.70", [0.75] = "0.75", [0.8] = "0.80", [0.85] = "0.85", [0.9] = "0.90", [0.95] = "0.95", [1.0] = "1.00"}
+            },
+
+            // ========== FLIGHT CONTROLS PANEL ==========
+            // ELAC 1
+            ["S_OH_FLT_CTL_ELAC_1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_FLT_CTL_ELAC_1",
+                DisplayName = "ELAC 1",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+
+            // ELAC 2
+            ["S_OH_FLT_CTL_ELAC_2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_FLT_CTL_ELAC_2",
+                DisplayName = "ELAC 2",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+
+            // SEC 1
+            ["S_OH_FLT_CTL_SEC_1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_FLT_CTL_SEC_1",
+                DisplayName = "SEC 1",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+
+            // SEC 2
+            ["S_OH_FLT_CTL_SEC_2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_FLT_CTL_SEC_2",
+                DisplayName = "SEC 2",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+
+            // SEC 3
+            ["S_OH_FLT_CTL_SEC_3"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_FLT_CTL_SEC_3",
+                DisplayName = "SEC 3",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+
+            // FAC 1
+            ["S_OH_FLT_CTL_FAC_1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_FLT_CTL_FAC_1",
+                DisplayName = "FAC 1",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+
+            // FAC 2
+            ["S_OH_FLT_CTL_FAC_2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_FLT_CTL_FAC_2",
+                DisplayName = "FAC 2",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+
             ["N_ELEC_VOLT_BAT_1"] = new SimConnect.SimVarDefinition
             {
                 Name = "N_ELEC_VOLT_BAT_1",
@@ -3070,16 +3202,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 IsAnnounced = true,
             },
 
-            // ========== LIGHTS (6 variables) ==========
-            ["A_OH_LIGHTING_OVD"] = new SimConnect.SimVarDefinition
-            {
-                Name = "A_OH_LIGHTING_OVD",
-                DisplayName = "OVHD INTEG LIGHT KNOB POSITION",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
-            },
+            // ========== LIGHTS (5 variables) ==========
             ["A_PED_LIGHTING_PEDESTAL"] = new SimConnect.SimVarDefinition
             {
                 Name = "A_PED_LIGHTING_PEDESTAL",
@@ -5132,6 +5255,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "Fuel",
                 "Anti-Ice",
                 "External Lights",
+                "Interior Lights",
                 "Signs"
                 // Additional panels will be added here as features are implemented
             }
@@ -5325,6 +5449,17 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "S_OH_EXT_LT_LANDING_R",
                 "S_OH_EXT_LT_RWY_TURNOFF",
                 "S_OH_EXT_LT_NOSE"
+            },
+
+            ["Interior Lights"] = new List<string>
+            {
+                // Interior Lights (6 controls)
+                "S_OH_INT_LT_DOME",
+                "S_OH_IN_LT_ANN_LT",
+                "S_OH_IN_LT_ICE",
+                "A_OH_LIGHTING_READING_CAPT",
+                "A_OH_LIGHTING_READING_FO",
+                "A_OH_LIGHTING_OVD"
             },
 
             ["Signs"] = new List<string>
@@ -5981,6 +6116,49 @@ public class FenixA320Definition : BaseAircraftDefinition
             if (varKey == "S_OH_EXT_LT_NOSE")
             {
                 simConnect.SetLVar("S_OH_EXT_LT_NOSE", value);
+                return true;
+            }
+
+            // ========== INTERIOR LIGHTS PANEL CONTROLS (Combo Boxes - use SetLVar) ==========
+            // DOME
+            if (varKey == "S_OH_INT_LT_DOME")
+            {
+                simConnect.SetLVar("S_OH_INT_LT_DOME", value);
+                return true;
+            }
+
+            // ANNUNCIATOR
+            if (varKey == "S_OH_IN_LT_ANN_LT")
+            {
+                simConnect.SetLVar("S_OH_IN_LT_ANN_LT", value);
+                return true;
+            }
+
+            // ICE STANDBY
+            if (varKey == "S_OH_IN_LT_ICE")
+            {
+                simConnect.SetLVar("S_OH_IN_LT_ICE", value);
+                return true;
+            }
+
+            // CAPTAIN READING
+            if (varKey == "A_OH_LIGHTING_READING_CAPT")
+            {
+                simConnect.SetLVar("A_OH_LIGHTING_READING_CAPT", value);
+                return true;
+            }
+
+            // FO READING
+            if (varKey == "A_OH_LIGHTING_READING_FO")
+            {
+                simConnect.SetLVar("A_OH_LIGHTING_READING_FO", value);
+                return true;
+            }
+
+            // OVERHEAD INTEGRAL
+            if (varKey == "A_OH_LIGHTING_OVD")
+            {
+                simConnect.SetLVar("A_OH_LIGHTING_OVD", value);
                 return true;
             }
 
