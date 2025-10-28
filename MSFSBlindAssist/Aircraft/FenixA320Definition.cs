@@ -2799,6 +2799,148 @@ public class FenixA320Definition : BaseAircraftDefinition
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
             },
 
+            // ========== PEDESTAL - FLIGHT CONTROLS PANEL (5 variables) ==========
+            ["S_MIP_PARKING_BRAKE"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_MIP_PARKING_BRAKE",
+                DisplayName = "Parking Brake",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["A_FC_SPEEDBRAKE"] = new SimConnect.SimVarDefinition
+            {
+                Name = "A_FC_SPEEDBRAKE",
+                DisplayName = "Speedbrake/Spoilers",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Armed", [1] = "Disarmed/Stowed", [2] = "Half Extended", [3] = "Fully Extended"}
+            },
+            ["S_FC_RUDDER_TRIM_LEFT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FC_RUDDER_TRIM",
+                DisplayName = "Rudder Trim Left",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_FC_RUDDER_TRIM_RIGHT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FC_RUDDER_TRIM",
+                DisplayName = "Rudder Trim Right",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_FC_RUDDER_TRIM_RESET"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FC_RUDDER_TRIM_RESET",
+                DisplayName = "Rudder Trim Reset",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["A_FC_ELEVATOR_TRIM"] = new SimConnect.SimVarDefinition
+            {
+                Name = "A_FC_ELEVATOR_TRIM",
+                DisplayName = "Elevator Trim",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [-4000] = "Full Nose Down (-4000)",
+                    [-3000] = "-3000",
+                    [-2000] = "-2000",
+                    [-1000] = "-1000",
+                    [0] = "Neutral (0)",
+                    [1000] = "+1000",
+                    [2000] = "+2000",
+                    [3000] = "+3000",
+                    [4000] = "+4000",
+                    [5000] = "+5000",
+                    [6000] = "+6000",
+                    [7000] = "+7000",
+                    [8000] = "+8000",
+                    [9000] = "+9000",
+                    [10000] = "+10000",
+                    [11000] = "+11000",
+                    [12000] = "+12000",
+                    [13000] = "+13000",
+                    [13500] = "Full Nose Up (+13500)"
+                }
+            },
+            ["S_FC_FLAPS_LEVER"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FC_FLAPS",
+                DisplayName = "Flaps Lever",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "0 (Retracted)", [1] = "1 (Config 1)", [2] = "2 (Config 2)", [3] = "3 (Config 3)", [4] = "4 (Full)"}
+            },
+            ["A_FC_THROTTLE_LEFT_INPUT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "A_FC_THROTTLE_LEFT_INPUT",
+                DisplayName = "Left Thrust Lever",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[1] = "Reverse", [2] = "Idle", [3] = "CLB", [4] = "FLX/MCT", [5] = "TOGA"}
+            },
+            ["A_FC_THROTTLE_RIGHT_INPUT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "A_FC_THROTTLE_RIGHT_INPUT",
+                DisplayName = "Right Thrust Lever",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[1] = "Reverse", [2] = "Idle", [3] = "CLB", [4] = "FLX/MCT", [5] = "TOGA"}
+            },
+            ["A_FC_THROTTLE_BOTH_INPUT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "A_FC_THROTTLE_BOTH_INPUT",
+                DisplayName = "Both Thrust Levers",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[1] = "Reverse", [2] = "Idle", [3] = "CLB", [4] = "FLX/MCT", [5] = "TOGA"}
+            },
+            ["S_FC_THR_INST_DISCONNECT1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FC_THR_INST_DISCONNECT1",
+                DisplayName = "A/THR Disconnect Left",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_FC_THR_INST_DISCONNECT2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FC_THR_INST_DISCONNECT2",
+                DisplayName = "A/THR Disconnect Right",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_FC_CAPT_INST_DISCONNECT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FC_CAPT_INST_DISCONNECT",
+                DisplayName = "AP Disconnect Captain",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_FC_FO_INST_DISCONNECT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FC_FO_INST_DISCONNECT",
+                DisplayName = "AP Disconnect First Officer",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+
             // ========== SIGNS PANEL ==========
             // Seat Belt Signs
             ["S_OH_SIGNS"] = new SimConnect.SimVarDefinition
@@ -5923,7 +6065,8 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["Pedestal"] = new List<string>
             {
                 "Engines",
-                "ECAM"
+                "ECAM",
+                "Flight Controls"
             }
         };
     }
@@ -6291,6 +6434,24 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "S_ECAM_RCL",
                 "S_ECAM_TO",
                 "S_ECAM_EMER_CANCEL"
+            },
+
+            ["Flight Controls"] = new List<string>
+            {
+                "S_MIP_PARKING_BRAKE",
+                "A_FC_SPEEDBRAKE",
+                "S_FC_RUDDER_TRIM_LEFT",
+                "S_FC_RUDDER_TRIM_RIGHT",
+                "S_FC_RUDDER_TRIM_RESET",
+                "A_FC_ELEVATOR_TRIM",
+                "S_FC_FLAPS_LEVER",
+                "A_FC_THROTTLE_LEFT_INPUT",
+                "A_FC_THROTTLE_RIGHT_INPUT",
+                "A_FC_THROTTLE_BOTH_INPUT",
+                "S_FC_THR_INST_DISCONNECT1",
+                "S_FC_THR_INST_DISCONNECT2",
+                "S_FC_CAPT_INST_DISCONNECT",
+                "S_FC_FO_INST_DISCONNECT"
             }
         };
     }
@@ -7517,6 +7678,106 @@ public class FenixA320Definition : BaseAircraftDefinition
                 ExecuteButtonTransition("S_ECAM_EMER_CANCEL", "ECAM EMER CANC", simConnect, announcer);
                 return true;
             }
+
+            // ========== FLIGHT CONTROLS PANEL (Pedestal) ==========
+            // Parking Brake - Simple SetLVar
+            if (varKey == "S_MIP_PARKING_BRAKE")
+            {
+                simConnect.SetLVar("S_MIP_PARKING_BRAKE", value);
+                return true;
+            }
+
+            // Speedbrake/Spoilers - Simple SetLVar
+            if (varKey == "A_FC_SPEEDBRAKE")
+            {
+                simConnect.SetLVar("A_FC_SPEEDBRAKE", value);
+                return true;
+            }
+
+            // Rudder Trim Left - Momentary button (0 then back to 1)
+            if (varKey == "S_FC_RUDDER_TRIM_LEFT" && value == 1)
+            {
+                ExecuteRudderTrimTransition(0, "Rudder Trim Left", simConnect, announcer);
+                return true;
+            }
+
+            // Rudder Trim Right - Momentary button (2 then back to 1)
+            if (varKey == "S_FC_RUDDER_TRIM_RIGHT" && value == 1)
+            {
+                ExecuteRudderTrimTransition(2, "Rudder Trim Right", simConnect, announcer);
+                return true;
+            }
+
+            // Rudder Trim Reset - Press button (1 then 0)
+            if (varKey == "S_FC_RUDDER_TRIM_RESET" && value == 1)
+            {
+                ExecuteButtonTransition("S_FC_RUDDER_TRIM_RESET", "Rudder Trim Reset", simConnect, announcer);
+                return true;
+            }
+
+            // Elevator Trim - Simple SetLVar
+            if (varKey == "A_FC_ELEVATOR_TRIM")
+            {
+                simConnect.SetLVar("A_FC_ELEVATOR_TRIM", value);
+                return true;
+            }
+
+            // Flaps Lever - Simple SetLVar
+            if (varKey == "S_FC_FLAPS_LEVER")
+            {
+                simConnect.SetLVar("S_FC_FLAPS", value);
+                return true;
+            }
+
+            // Left Thrust Lever - Simple SetLVar
+            if (varKey == "A_FC_THROTTLE_LEFT_INPUT")
+            {
+                simConnect.SetLVar("A_FC_THROTTLE_LEFT_INPUT", value);
+                return true;
+            }
+
+            // Right Thrust Lever - Simple SetLVar
+            if (varKey == "A_FC_THROTTLE_RIGHT_INPUT")
+            {
+                simConnect.SetLVar("A_FC_THROTTLE_RIGHT_INPUT", value);
+                return true;
+            }
+
+            // Both Thrust Levers - Special handling (sets both left and right)
+            if (varKey == "A_FC_THROTTLE_BOTH_INPUT")
+            {
+                simConnect.SetLVar("A_FC_THROTTLE_LEFT_INPUT", value);
+                simConnect.SetLVar("A_FC_THROTTLE_RIGHT_INPUT", value);
+                return true;
+            }
+
+            // Autothrottle Disconnect Left - Button
+            if (varKey == "S_FC_THR_INST_DISCONNECT1" && value == 1)
+            {
+                ExecuteButtonTransition("S_FC_THR_INST_DISCONNECT1", "A/THR Disconnect Left", simConnect, announcer);
+                return true;
+            }
+
+            // Autothrottle Disconnect Right - Button
+            if (varKey == "S_FC_THR_INST_DISCONNECT2" && value == 1)
+            {
+                ExecuteButtonTransition("S_FC_THR_INST_DISCONNECT2", "A/THR Disconnect Right", simConnect, announcer);
+                return true;
+            }
+
+            // Autopilot Disconnect Captain - Button
+            if (varKey == "S_FC_CAPT_INST_DISCONNECT" && value == 1)
+            {
+                ExecuteButtonTransition("S_FC_CAPT_INST_DISCONNECT", "AP Disconnect Captain", simConnect, announcer);
+                return true;
+            }
+
+            // Autopilot Disconnect First Officer - Button
+            if (varKey == "S_FC_FO_INST_DISCONNECT" && value == 1)
+            {
+                ExecuteButtonTransition("S_FC_FO_INST_DISCONNECT", "AP Disconnect F/O", simConnect, announcer);
+                return true;
+            }
         }
         catch (Exception ex)
         {
@@ -7573,6 +7834,52 @@ public class FenixA320Definition : BaseAircraftDefinition
         {
             System.Diagnostics.Debug.WriteLine($"[FenixA320] Error in {displayName} transition (first phase): {ex.Message}");
             announcer.Announce($"Error pressing {displayName}");
+        }
+    }
+
+    /// <summary>
+    /// Helper method for rudder trim momentary buttons.
+    /// Sends the trim direction value, waits, then returns to center (1).
+    /// </summary>
+    /// <param name="trimValue">The trim direction: 0 = left, 2 = right</param>
+    private void ExecuteRudderTrimTransition(int trimValue, string displayName,
+        SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer announcer)
+    {
+        try
+        {
+            // Set trim direction (0 = left, 2 = right)
+            if (simConnect != null && simConnect.IsConnected)
+            {
+                simConnect.SetLVar("S_FC_RUDDER_TRIM", trimValue);
+            }
+
+            // Set up timer to return to center (1) after delay
+            var transitionTimer = new System.Windows.Forms.Timer();
+            transitionTimer.Interval = 500;
+            transitionTimer.Tick += (sender, e) =>
+            {
+                transitionTimer.Stop();
+                transitionTimer.Dispose();
+
+                try
+                {
+                    // Return to center position
+                    if (simConnect != null && simConnect.IsConnected)
+                    {
+                        simConnect.SetLVar("S_FC_RUDDER_TRIM", 1);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[FenixA320] Error in {displayName} transition (second phase): {ex.Message}");
+                }
+            };
+            transitionTimer.Start();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[FenixA320] Error in {displayName} transition (first phase): {ex.Message}");
+            announcer.Announce($"Error executing {displayName}");
         }
     }
 }
