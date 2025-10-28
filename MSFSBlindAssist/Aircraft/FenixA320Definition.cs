@@ -1939,6 +1939,101 @@ public class FenixA320Definition : BaseAircraftDefinition
                 ValueDescriptions = new Dictionary<double, string> {[0.0] = "0.0", [0.1] = "0.1", [0.2] = "0.2", [0.3] = "0.3", [0.4] = "0.4", [0.5] = "0.5", [0.6] = "0.6", [0.7] = "0.7", [0.8] = "0.8", [0.9] = "0.9", [1.0] = "1.0"}
             },
 
+            // ========== FIRE PANEL ==========
+            // Main Fire Push Buttons
+            ["S_OH_FIRE_ENG1_BUTTON"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_FIRE_ENG1_BUTTON",
+                DisplayName = "Engine 1 Fire Push Button",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Normal", [1] = "Pressed"}
+            },
+            ["S_OH_FIRE_ENG2_BUTTON"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_FIRE_ENG2_BUTTON",
+                DisplayName = "Engine 2 Fire Push Button",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Normal", [1] = "Pressed"}
+            },
+            ["S_OH_FIRE_APU_BUTTON"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_FIRE_APU_BUTTON",
+                DisplayName = "APU Fire Push Button",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Normal", [1] = "Pressed"}
+            },
+
+            // Fire Test Buttons
+            ["S_OH_FIRE_ENG1_TEST"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_FIRE_ENG1_TEST",
+                DisplayName = "Engine 1 Fire Test",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Normal", [1] = "Test"}
+            },
+            ["S_OH_FIRE_ENG2_TEST"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_FIRE_ENG2_TEST",
+                DisplayName = "Engine 2 Fire Test",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Normal", [1] = "Test"}
+            },
+            ["S_OH_FIRE_APU_TEST"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_FIRE_APU_TEST",
+                DisplayName = "APU Fire Test",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Normal", [1] = "Test"}
+            },
+
+            // Agent Discharge Buttons
+            ["S_OH_FIRE_ENG1_AGENT1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_FIRE_ENG1_AGENT1",
+                DisplayName = "Engine 1 Agent 1 Discharge",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Normal", [1] = "Discharge"}
+            },
+            ["S_OH_FIRE_ENG1_AGENT2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_FIRE_ENG1_AGENT2",
+                DisplayName = "Engine 1 Agent 2 Discharge",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Normal", [1] = "Discharge"}
+            },
+            ["S_OH_FIRE_ENG2_AGENT1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_FIRE_ENG2_AGENT1",
+                DisplayName = "Engine 2 Agent 1 Discharge",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Normal", [1] = "Discharge"}
+            },
+            ["S_OH_FIRE_ENG2_AGENT2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_FIRE_ENG2_AGENT2",
+                DisplayName = "Engine 2 Agent 2 Discharge",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Normal", [1] = "Discharge"}
+            },
+            ["S_OH_FIRE_APU_AGENT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_FIRE_APU_AGENT",
+                DisplayName = "APU Agent Discharge",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Normal", [1] = "Discharge"}
+            },
+
             ["N_ELEC_VOLT_BAT_1"] = new SimConnect.SimVarDefinition
             {
                 Name = "N_ELEC_VOLT_BAT_1",
@@ -4750,7 +4845,8 @@ public class FenixA320Definition : BaseAircraftDefinition
             {
                 "Electrical",
                 "ADIRS",
-                "Air Conditioning and Pressurization"
+                "Air Conditioning and Pressurization",
+                "Fire"
                 // Additional panels will be added here as features are implemented
             }
         };
@@ -4863,6 +4959,26 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "A_OH_PNEUMATIC_COCKPIT_TEMP",
                 "A_OH_PNEUMATIC_FWD_TEMP",
                 "A_OH_PNEUMATIC_AFT_TEMP"
+            },
+
+            ["Fire"] = new List<string>
+            {
+                // Main Fire Push Buttons (3 controls)
+                "S_OH_FIRE_ENG1_BUTTON",
+                "S_OH_FIRE_ENG2_BUTTON",
+                "S_OH_FIRE_APU_BUTTON",
+
+                // Test Buttons (3 controls)
+                "S_OH_FIRE_ENG1_TEST",
+                "S_OH_FIRE_ENG2_TEST",
+                "S_OH_FIRE_APU_TEST",
+
+                // Agent Discharge Buttons (5 controls)
+                "S_OH_FIRE_ENG1_AGENT1",
+                "S_OH_FIRE_ENG1_AGENT2",
+                "S_OH_FIRE_ENG2_AGENT1",
+                "S_OH_FIRE_ENG2_AGENT2",
+                "S_OH_FIRE_APU_AGENT"
             }
         };
     }
@@ -5259,6 +5375,76 @@ public class FenixA320Definition : BaseAircraftDefinition
             if (varKey == "A_OH_PNEUMATIC_AFT_TEMP")
             {
                 simConnect.SetLVar("A_OH_PNEUMATIC_AFT_TEMP", value);
+                return true;
+            }
+
+            // ========== FIRE PANEL CONTROLS (Combo Boxes - use SetLVar) ==========
+            // Main Fire Push Buttons
+            if (varKey == "S_OH_FIRE_ENG1_BUTTON")
+            {
+                simConnect.SetLVar("S_OH_FIRE_ENG1_BUTTON", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_FIRE_ENG2_BUTTON")
+            {
+                simConnect.SetLVar("S_OH_FIRE_ENG2_BUTTON", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_FIRE_APU_BUTTON")
+            {
+                simConnect.SetLVar("S_OH_FIRE_APU_BUTTON", value);
+                return true;
+            }
+
+            // Fire Test Buttons
+            if (varKey == "S_OH_FIRE_ENG1_TEST")
+            {
+                simConnect.SetLVar("S_OH_FIRE_ENG1_TEST", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_FIRE_ENG2_TEST")
+            {
+                simConnect.SetLVar("S_OH_FIRE_ENG2_TEST", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_FIRE_APU_TEST")
+            {
+                simConnect.SetLVar("S_OH_FIRE_APU_TEST", value);
+                return true;
+            }
+
+            // Agent Discharge Buttons
+            if (varKey == "S_OH_FIRE_ENG1_AGENT1")
+            {
+                simConnect.SetLVar("S_OH_FIRE_ENG1_AGENT1", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_FIRE_ENG1_AGENT2")
+            {
+                simConnect.SetLVar("S_OH_FIRE_ENG1_AGENT2", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_FIRE_ENG2_AGENT1")
+            {
+                simConnect.SetLVar("S_OH_FIRE_ENG2_AGENT1", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_FIRE_ENG2_AGENT2")
+            {
+                simConnect.SetLVar("S_OH_FIRE_ENG2_AGENT2", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_FIRE_APU_AGENT")
+            {
+                simConnect.SetLVar("S_OH_FIRE_APU_AGENT", value);
                 return true;
             }
         }
