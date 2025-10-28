@@ -2590,6 +2590,32 @@ public class FenixA320Definition : BaseAircraftDefinition
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
             },
 
+            // ========== PEDESTAL - ENGINES PANEL (3 variables) ==========
+            ["S_ENG_MODE"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_ENG_MODE",
+                DisplayName = "Engine Mode",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Crank", [1] = "Norm", [2] = "Ign/Start"}
+            },
+            ["S_ENG_MASTER_1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_ENG_MASTER_1",
+                DisplayName = "Engine 1 Master",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_ENG_MASTER_2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_ENG_MASTER_2",
+                DisplayName = "Engine 2 Master",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+
             // ========== SIGNS PANEL ==========
             // Seat Belt Signs
             ["S_OH_SIGNS"] = new SimConnect.SimVarDefinition
@@ -5709,6 +5735,11 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "GPWS",
                 "Engine",
                 "Maintenance"
+            },
+
+            ["Pedestal"] = new List<string>
+            {
+                "Engines"
             }
         };
     }
@@ -6040,6 +6071,15 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "S_OH_APU_AUTOEXTING_TEST",
                 "S_OH_SVCE_INT_OVRD",
                 "S_OH_LIGHTING_AVIONICS_COMPT"
+            },
+
+            // ========== PEDESTAL PANELS ==========
+            ["Engines"] = new List<string>
+            {
+                // Engine Controls (3 controls)
+                "S_ENG_MODE",
+                "S_ENG_MASTER_1",
+                "S_ENG_MASTER_2"
             }
         };
     }
@@ -7122,6 +7162,25 @@ public class FenixA320Definition : BaseAircraftDefinition
             if (varKey == "S_OH_LIGHTING_AVIONICS_COMPT")
             {
                 simConnect.SetLVar("S_OH_LIGHTING_AVIONICS_COMPT", value);
+                return true;
+            }
+
+            // ========== PEDESTAL - ENGINES PANEL CONTROLS (Combo Boxes - use SetLVar) ==========
+            if (varKey == "S_ENG_MODE")
+            {
+                simConnect.SetLVar("S_ENG_MODE", value);
+                return true;
+            }
+
+            if (varKey == "S_ENG_MASTER_1")
+            {
+                simConnect.SetLVar("S_ENG_MASTER_1", value);
+                return true;
+            }
+
+            if (varKey == "S_ENG_MASTER_2")
+            {
+                simConnect.SetLVar("S_ENG_MASTER_2", value);
                 return true;
             }
         }
