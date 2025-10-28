@@ -1779,6 +1779,166 @@ public class FenixA320Definition : BaseAircraftDefinition
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
             },
 
+            // ========== AIR CONDITIONING AND PRESSURIZATION (18 variables) ==========
+
+            // Bleed Buttons
+            ["S_OH_PNEUMATIC_APU_BLEED"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_PNEUMATIC_APU_BLEED",
+                DisplayName = "APU Bleed",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_OH_PNEUMATIC_ENG1_BLEED"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_PNEUMATIC_ENG1_BLEED",
+                DisplayName = "Engine 1 Bleed",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_OH_PNEUMATIC_ENG2_BLEED"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_PNEUMATIC_ENG2_BLEED",
+                DisplayName = "Engine 2 Bleed",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+
+            // Pack Buttons
+            ["S_OH_PNEUMATIC_PACK_1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_PNEUMATIC_PACK_1",
+                DisplayName = "Pack 1",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_OH_PNEUMATIC_PACK_2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_PNEUMATIC_PACK_2",
+                DisplayName = "Pack 2",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+
+            // Air Buttons
+            ["S_OH_PNEUMATIC_HOT_AIR"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_PNEUMATIC_HOT_AIR",
+                DisplayName = "Hot Air",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_OH_PNEUMATIC_RAM_AIR"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_PNEUMATIC_RAM_AIR",
+                DisplayName = "Ram Air",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+
+            // Pressurization
+            ["S_OH_PNEUMATIC_DITCHING"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_PNEUMATIC_DITCHING",
+                DisplayName = "Ditching",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_OH_PNEUMATIC_PRESS_MODE"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_PNEUMATIC_PRESS_MODE",
+                DisplayName = "Pressurization Mode",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_OH_PNEUMATIC_PRESS_MAN"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_PNEUMATIC_PRESS_MAN",
+                DisplayName = "Manual Vertical Speed",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Up", [1] = "Mid", [2] = "Down"}
+            },
+
+            // Ventilation Buttons
+            ["S_OH_PNEUMATIC_BLOWER"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_PNEUMATIC_BLOWER",
+                DisplayName = "Blower",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_OH_PNEUMATIC_EXTRACT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_PNEUMATIC_EXTRACT",
+                DisplayName = "Extract",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_OH_PNEUMATIC_CAB_FANS"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_PNEUMATIC_CAB_FANS",
+                DisplayName = "Cabin Fans",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+
+            // Selectors
+            ["S_OH_PNEUMATIC_XBLEED_SELECTOR"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_PNEUMATIC_XBLEED_SELECTOR",
+                DisplayName = "Cross Bleed",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Shut", [1] = "Auto", [2] = "Open"}
+            },
+            ["S_OH_PNEUMATIC_PACK_FLOW"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_PNEUMATIC_PACK_FLOW",
+                DisplayName = "Pack Flow",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Low", [1] = "Normal", [2] = "High"}
+            },
+
+            // Temperature Controls
+            ["A_OH_PNEUMATIC_COCKPIT_TEMP"] = new SimConnect.SimVarDefinition
+            {
+                Name = "A_OH_PNEUMATIC_COCKPIT_TEMP",
+                DisplayName = "Cockpit Temperature",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0.0] = "0.0", [0.1] = "0.1", [0.2] = "0.2", [0.3] = "0.3", [0.4] = "0.4", [0.5] = "0.5", [0.6] = "0.6", [0.7] = "0.7", [0.8] = "0.8", [0.9] = "0.9", [1.0] = "1.0"}
+            },
+            ["A_OH_PNEUMATIC_FWD_TEMP"] = new SimConnect.SimVarDefinition
+            {
+                Name = "A_OH_PNEUMATIC_FWD_TEMP",
+                DisplayName = "Forward Cabin Temperature",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0.0] = "0.0", [0.1] = "0.1", [0.2] = "0.2", [0.3] = "0.3", [0.4] = "0.4", [0.5] = "0.5", [0.6] = "0.6", [0.7] = "0.7", [0.8] = "0.8", [0.9] = "0.9", [1.0] = "1.0"}
+            },
+            ["A_OH_PNEUMATIC_AFT_TEMP"] = new SimConnect.SimVarDefinition
+            {
+                Name = "A_OH_PNEUMATIC_AFT_TEMP",
+                DisplayName = "Aft Cabin Temperature",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0.0] = "0.0", [0.1] = "0.1", [0.2] = "0.2", [0.3] = "0.3", [0.4] = "0.4", [0.5] = "0.5", [0.6] = "0.6", [0.7] = "0.7", [0.8] = "0.8", [0.9] = "0.9", [1.0] = "1.0"}
+            },
+
             ["N_ELEC_VOLT_BAT_1"] = new SimConnect.SimVarDefinition
             {
                 Name = "N_ELEC_VOLT_BAT_1",
@@ -4589,7 +4749,8 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["Overhead"] = new List<string>
             {
                 "Electrical",
-                "ADIRS"
+                "ADIRS",
+                "Air Conditioning and Pressurization"
                 // Additional panels will be added here as features are implemented
             }
         };
@@ -4667,6 +4828,41 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "S_OH_ADIRS_KEY_9",
                 "S_OH_ADIRS_KEY_CLR",
                 "S_OH_ADIRS_KEY_ENT"
+            },
+
+            ["Air Conditioning and Pressurization"] = new List<string>
+            {
+                // Bleed Buttons (3 controls)
+                "S_OH_PNEUMATIC_APU_BLEED",
+                "S_OH_PNEUMATIC_ENG1_BLEED",
+                "S_OH_PNEUMATIC_ENG2_BLEED",
+
+                // Pack Buttons (2 controls)
+                "S_OH_PNEUMATIC_PACK_1",
+                "S_OH_PNEUMATIC_PACK_2",
+
+                // Air Buttons (2 controls)
+                "S_OH_PNEUMATIC_HOT_AIR",
+                "S_OH_PNEUMATIC_RAM_AIR",
+
+                // Pressurization (3 controls)
+                "S_OH_PNEUMATIC_DITCHING",
+                "S_OH_PNEUMATIC_PRESS_MODE",
+                "S_OH_PNEUMATIC_PRESS_MAN",
+
+                // Ventilation Buttons (3 controls)
+                "S_OH_PNEUMATIC_BLOWER",
+                "S_OH_PNEUMATIC_EXTRACT",
+                "S_OH_PNEUMATIC_CAB_FANS",
+
+                // Selectors (2 controls)
+                "S_OH_PNEUMATIC_XBLEED_SELECTOR",
+                "S_OH_PNEUMATIC_PACK_FLOW",
+
+                // Temperature Controls (3 controls)
+                "A_OH_PNEUMATIC_COCKPIT_TEMP",
+                "A_OH_PNEUMATIC_FWD_TEMP",
+                "A_OH_PNEUMATIC_AFT_TEMP"
             }
         };
     }
@@ -4946,6 +5142,123 @@ public class FenixA320Definition : BaseAircraftDefinition
             if (varKey == "S_OH_ADIRS_KEY_ENT" && value == 1)
             {
                 ExecuteButtonTransition("S_OH_ADIRS_KEY_ENT", "Key Enter", simConnect, announcer);
+                return true;
+            }
+
+            // ========== AIR CONDITIONING AND PRESSURIZATION PANEL CONTROLS ==========
+
+            // Bleed Buttons
+            if (varKey == "S_OH_PNEUMATIC_APU_BLEED")
+            {
+                simConnect.SetLVar("S_OH_PNEUMATIC_APU_BLEED", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_PNEUMATIC_ENG1_BLEED")
+            {
+                simConnect.SetLVar("S_OH_PNEUMATIC_ENG1_BLEED", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_PNEUMATIC_ENG2_BLEED")
+            {
+                simConnect.SetLVar("S_OH_PNEUMATIC_ENG2_BLEED", value);
+                return true;
+            }
+
+            // Pack Buttons
+            if (varKey == "S_OH_PNEUMATIC_PACK_1")
+            {
+                simConnect.SetLVar("S_OH_PNEUMATIC_PACK_1", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_PNEUMATIC_PACK_2")
+            {
+                simConnect.SetLVar("S_OH_PNEUMATIC_PACK_2", value);
+                return true;
+            }
+
+            // Air Buttons
+            if (varKey == "S_OH_PNEUMATIC_HOT_AIR")
+            {
+                simConnect.SetLVar("S_OH_PNEUMATIC_HOT_AIR", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_PNEUMATIC_RAM_AIR")
+            {
+                simConnect.SetLVar("S_OH_PNEUMATIC_RAM_AIR", value);
+                return true;
+            }
+
+            // Pressurization
+            if (varKey == "S_OH_PNEUMATIC_DITCHING")
+            {
+                simConnect.SetLVar("S_OH_PNEUMATIC_DITCHING", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_PNEUMATIC_PRESS_MODE")
+            {
+                simConnect.SetLVar("S_OH_PNEUMATIC_PRESS_MODE", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_PNEUMATIC_PRESS_MAN")
+            {
+                simConnect.SetLVar("S_OH_PNEUMATIC_PRESS_MAN", value);
+                return true;
+            }
+
+            // Ventilation Buttons
+            if (varKey == "S_OH_PNEUMATIC_BLOWER")
+            {
+                simConnect.SetLVar("S_OH_PNEUMATIC_BLOWER", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_PNEUMATIC_EXTRACT")
+            {
+                simConnect.SetLVar("S_OH_PNEUMATIC_EXTRACT", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_PNEUMATIC_CAB_FANS")
+            {
+                simConnect.SetLVar("S_OH_PNEUMATIC_CAB_FANS", value);
+                return true;
+            }
+
+            // Selectors
+            if (varKey == "S_OH_PNEUMATIC_XBLEED_SELECTOR")
+            {
+                simConnect.SetLVar("S_OH_PNEUMATIC_XBLEED_SELECTOR", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_PNEUMATIC_PACK_FLOW")
+            {
+                simConnect.SetLVar("S_OH_PNEUMATIC_PACK_FLOW", value);
+                return true;
+            }
+
+            // Temperature Controls
+            if (varKey == "A_OH_PNEUMATIC_COCKPIT_TEMP")
+            {
+                simConnect.SetLVar("A_OH_PNEUMATIC_COCKPIT_TEMP", value);
+                return true;
+            }
+
+            if (varKey == "A_OH_PNEUMATIC_FWD_TEMP")
+            {
+                simConnect.SetLVar("A_OH_PNEUMATIC_FWD_TEMP", value);
+                return true;
+            }
+
+            if (varKey == "A_OH_PNEUMATIC_AFT_TEMP")
+            {
+                simConnect.SetLVar("A_OH_PNEUMATIC_AFT_TEMP", value);
                 return true;
             }
         }
