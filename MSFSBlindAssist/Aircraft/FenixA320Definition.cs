@@ -1669,6 +1669,116 @@ public class FenixA320Definition : BaseAircraftDefinition
                 ValueDescriptions = new Dictionary<double, string> {[0] = "IR 1", [1] = "IR 2", [2] = "IR 3", [3] = "ADR 1", [4] = "ADR 2", [5] = "ADR 3"}
             },
 
+            // Keypad Buttons
+            ["S_OH_ADIRS_KEY_0"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_ADIRS_KEY_0",
+                DisplayName = "Key 0",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_OH_ADIRS_KEY_1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_ADIRS_KEY_1",
+                DisplayName = "Key 1",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_OH_ADIRS_KEY_2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_ADIRS_KEY_2",
+                DisplayName = "Key 2",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_OH_ADIRS_KEY_3"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_ADIRS_KEY_3",
+                DisplayName = "Key 3",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_OH_ADIRS_KEY_4"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_ADIRS_KEY_4",
+                DisplayName = "Key 4",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_OH_ADIRS_KEY_5"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_ADIRS_KEY_5",
+                DisplayName = "Key 5",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_OH_ADIRS_KEY_6"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_ADIRS_KEY_6",
+                DisplayName = "Key 6",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_OH_ADIRS_KEY_7"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_ADIRS_KEY_7",
+                DisplayName = "Key 7",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_OH_ADIRS_KEY_8"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_ADIRS_KEY_8",
+                DisplayName = "Key 8",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_OH_ADIRS_KEY_9"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_ADIRS_KEY_9",
+                DisplayName = "Key 9",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_OH_ADIRS_KEY_CLR"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_ADIRS_KEY_CLR",
+                DisplayName = "Key Clear",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_OH_ADIRS_KEY_ENT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_ADIRS_KEY_ENT",
+                DisplayName = "Key Enter",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+
             ["N_ELEC_VOLT_BAT_1"] = new SimConnect.SimVarDefinition
             {
                 Name = "N_ELEC_VOLT_BAT_1",
@@ -4542,8 +4652,21 @@ public class FenixA320Definition : BaseAircraftDefinition
 
                 // Display Selectors (2 controls)
                 "S_OH_NAV_DATA_DISP",
-                "S_OH_NAV_SYS_DISP"
-                // Note: Numeric keypad (0-9, CLR, ENT) will be added later
+                "S_OH_NAV_SYS_DISP",
+
+                // Keypad Buttons (12 controls)
+                "S_OH_ADIRS_KEY_0",
+                "S_OH_ADIRS_KEY_1",
+                "S_OH_ADIRS_KEY_2",
+                "S_OH_ADIRS_KEY_3",
+                "S_OH_ADIRS_KEY_4",
+                "S_OH_ADIRS_KEY_5",
+                "S_OH_ADIRS_KEY_6",
+                "S_OH_ADIRS_KEY_7",
+                "S_OH_ADIRS_KEY_8",
+                "S_OH_ADIRS_KEY_9",
+                "S_OH_ADIRS_KEY_CLR",
+                "S_OH_ADIRS_KEY_ENT"
             }
         };
     }
@@ -4750,6 +4873,79 @@ public class FenixA320Definition : BaseAircraftDefinition
             if (varKey == "S_OH_NAV_SYS_DISP")
             {
                 simConnect.SetLVar("S_OH_NAV_SYS_DISP", value);
+                return true;
+            }
+
+            // Keypad Buttons
+            if (varKey == "S_OH_ADIRS_KEY_0" && value == 1)
+            {
+                ExecuteButtonTransition("S_OH_ADIRS_KEY_0", "Key 0", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_OH_ADIRS_KEY_1" && value == 1)
+            {
+                ExecuteButtonTransition("S_OH_ADIRS_KEY_1", "Key 1", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_OH_ADIRS_KEY_2" && value == 1)
+            {
+                ExecuteButtonTransition("S_OH_ADIRS_KEY_2", "Key 2", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_OH_ADIRS_KEY_3" && value == 1)
+            {
+                ExecuteButtonTransition("S_OH_ADIRS_KEY_3", "Key 3", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_OH_ADIRS_KEY_4" && value == 1)
+            {
+                ExecuteButtonTransition("S_OH_ADIRS_KEY_4", "Key 4", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_OH_ADIRS_KEY_5" && value == 1)
+            {
+                ExecuteButtonTransition("S_OH_ADIRS_KEY_5", "Key 5", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_OH_ADIRS_KEY_6" && value == 1)
+            {
+                ExecuteButtonTransition("S_OH_ADIRS_KEY_6", "Key 6", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_OH_ADIRS_KEY_7" && value == 1)
+            {
+                ExecuteButtonTransition("S_OH_ADIRS_KEY_7", "Key 7", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_OH_ADIRS_KEY_8" && value == 1)
+            {
+                ExecuteButtonTransition("S_OH_ADIRS_KEY_8", "Key 8", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_OH_ADIRS_KEY_9" && value == 1)
+            {
+                ExecuteButtonTransition("S_OH_ADIRS_KEY_9", "Key 9", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_OH_ADIRS_KEY_CLR" && value == 1)
+            {
+                ExecuteButtonTransition("S_OH_ADIRS_KEY_CLR", "Key Clear", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_OH_ADIRS_KEY_ENT" && value == 1)
+            {
+                ExecuteButtonTransition("S_OH_ADIRS_KEY_ENT", "Key Enter", simConnect, announcer);
                 return true;
             }
         }
