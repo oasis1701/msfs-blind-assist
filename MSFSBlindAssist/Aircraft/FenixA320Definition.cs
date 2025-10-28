@@ -2202,6 +2202,37 @@ public class FenixA320Definition : BaseAircraftDefinition
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
             },
 
+            // ========== SIGNS PANEL ==========
+            // Seat Belt Signs
+            ["S_OH_SIGNS"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_SIGNS",
+                DisplayName = "Seat Belt Signs",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+
+            // No Smoking Signs
+            ["S_OH_SIGNS_SMOKING"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_SIGNS_SMOKING",
+                DisplayName = "No Smoking Signs",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Auto", [2] = "On"}
+            },
+
+            // Emergency Exit Lights
+            ["S_OH_INT_LT_EMER"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_INT_LT_EMER",
+                DisplayName = "Emergency Exit Lights",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Arm", [2] = "On"}
+            },
+
             ["N_ELEC_VOLT_BAT_1"] = new SimConnect.SimVarDefinition
             {
                 Name = "N_ELEC_VOLT_BAT_1",
@@ -4654,13 +4685,14 @@ public class FenixA320Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
             },
-            ["S_OH_SIGNS_SMOKING"] = new SimConnect.SimVarDefinition
+            ["S_OH_SIGNS_SMOKING_STATE"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_OH_SIGNS_SMOKING",
-                DisplayName = "OVHD NO SMOKING SIGN ON",
+                DisplayName = "No Smoking Sign State",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Auto", [2] = "On"}
             },
 
             // ========== WARNING (31 variables) ==========
@@ -5017,7 +5049,8 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "Fire",
                 "Hydraulic",
                 "Fuel",
-                "Anti-Ice"
+                "Anti-Ice",
+                "Signs"
                 // Additional panels will be added here as features are implemented
             }
         };
@@ -5197,6 +5230,18 @@ public class FenixA320Definition : BaseAircraftDefinition
 
                 // Probe Heat (1 control)
                 "S_OH_PROBE_HEAT"
+            },
+
+            ["Signs"] = new List<string>
+            {
+                // Seat Belt Signs (1 control)
+                "S_OH_SIGNS",
+
+                // No Smoking Signs (1 control)
+                "S_OH_SIGNS_SMOKING",
+
+                // Emergency Exit Lights (1 control)
+                "S_OH_INT_LT_EMER"
             }
         };
     }
@@ -5784,6 +5829,28 @@ public class FenixA320Definition : BaseAircraftDefinition
             if (varKey == "S_OH_PROBE_HEAT")
             {
                 simConnect.SetLVar("S_OH_PROBE_HEAT", value);
+                return true;
+            }
+
+            // ========== SIGNS PANEL CONTROLS (Combo Boxes - use SetLVar) ==========
+            // Seat Belt Signs
+            if (varKey == "S_OH_SIGNS")
+            {
+                simConnect.SetLVar("S_OH_SIGNS", value);
+                return true;
+            }
+
+            // No Smoking Signs
+            if (varKey == "S_OH_SIGNS_SMOKING")
+            {
+                simConnect.SetLVar("S_OH_SIGNS_SMOKING", value);
+                return true;
+            }
+
+            // Emergency Exit Lights
+            if (varKey == "S_OH_INT_LT_EMER")
+            {
+                simConnect.SetLVar("S_OH_INT_LT_EMER", value);
                 return true;
             }
         }
