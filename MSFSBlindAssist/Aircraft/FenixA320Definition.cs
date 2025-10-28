@@ -2233,6 +2233,87 @@ public class FenixA320Definition : BaseAircraftDefinition
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Arm", [2] = "On"}
             },
 
+            // ========== EXTERNAL LIGHTS PANEL ==========
+            // NAV & LOGO
+            ["S_OH_EXT_LT_NAV_LOGO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_EXT_LT_NAV_LOGO",
+                DisplayName = "NAV & LOGO",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "NAV", [2] = "LOGO"}
+            },
+
+            // STROBE
+            ["S_OH_EXT_LT_STROBE"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_EXT_LT_STROBE",
+                DisplayName = "Strobe",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Auto", [2] = "On"}
+            },
+
+            // BEACON
+            ["S_OH_EXT_LT_BEACON"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_EXT_LT_BEACON",
+                DisplayName = "Beacon",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+
+            // WING
+            ["S_OH_EXT_LT_WING"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_EXT_LT_WING",
+                DisplayName = "Wing",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+
+            // LANDING LEFT
+            ["S_OH_EXT_LT_LANDING_L"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_EXT_LT_LANDING_L",
+                DisplayName = "Landing Left",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Retract", [1] = "Off", [2] = "On"}
+            },
+
+            // LANDING RIGHT
+            ["S_OH_EXT_LT_LANDING_R"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_EXT_LT_LANDING_R",
+                DisplayName = "Landing Right",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Retract", [1] = "Off", [2] = "On"}
+            },
+
+            // RWY TURN OFF
+            ["S_OH_EXT_LT_RWY_TURNOFF"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_EXT_LT_RWY_TURNOFF",
+                DisplayName = "Runway Turn Off",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+
+            // NOSE
+            ["S_OH_EXT_LT_NOSE"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_EXT_LT_NOSE",
+                DisplayName = "Nose",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Taxi", [2] = "TO"}
+            },
+
             ["N_ELEC_VOLT_BAT_1"] = new SimConnect.SimVarDefinition
             {
                 Name = "N_ELEC_VOLT_BAT_1",
@@ -5050,6 +5131,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "Hydraulic",
                 "Fuel",
                 "Anti-Ice",
+                "External Lights",
                 "Signs"
                 // Additional panels will be added here as features are implemented
             }
@@ -5230,6 +5312,19 @@ public class FenixA320Definition : BaseAircraftDefinition
 
                 // Probe Heat (1 control)
                 "S_OH_PROBE_HEAT"
+            },
+
+            ["External Lights"] = new List<string>
+            {
+                // External Lights (8 controls)
+                "S_OH_EXT_LT_NAV_LOGO",
+                "S_OH_EXT_LT_STROBE",
+                "S_OH_EXT_LT_BEACON",
+                "S_OH_EXT_LT_WING",
+                "S_OH_EXT_LT_LANDING_L",
+                "S_OH_EXT_LT_LANDING_R",
+                "S_OH_EXT_LT_RWY_TURNOFF",
+                "S_OH_EXT_LT_NOSE"
             },
 
             ["Signs"] = new List<string>
@@ -5829,6 +5924,63 @@ public class FenixA320Definition : BaseAircraftDefinition
             if (varKey == "S_OH_PROBE_HEAT")
             {
                 simConnect.SetLVar("S_OH_PROBE_HEAT", value);
+                return true;
+            }
+
+            // ========== EXTERNAL LIGHTS PANEL CONTROLS (Combo Boxes - use SetLVar) ==========
+            // NAV & LOGO
+            if (varKey == "S_OH_EXT_LT_NAV_LOGO")
+            {
+                simConnect.SetLVar("S_OH_EXT_LT_NAV_LOGO", value);
+                return true;
+            }
+
+            // STROBE
+            if (varKey == "S_OH_EXT_LT_STROBE")
+            {
+                simConnect.SetLVar("S_OH_EXT_LT_STROBE", value);
+                return true;
+            }
+
+            // BEACON
+            if (varKey == "S_OH_EXT_LT_BEACON")
+            {
+                simConnect.SetLVar("S_OH_EXT_LT_BEACON", value);
+                return true;
+            }
+
+            // WING
+            if (varKey == "S_OH_EXT_LT_WING")
+            {
+                simConnect.SetLVar("S_OH_EXT_LT_WING", value);
+                return true;
+            }
+
+            // LANDING LEFT
+            if (varKey == "S_OH_EXT_LT_LANDING_L")
+            {
+                simConnect.SetLVar("S_OH_EXT_LT_LANDING_L", value);
+                return true;
+            }
+
+            // LANDING RIGHT
+            if (varKey == "S_OH_EXT_LT_LANDING_R")
+            {
+                simConnect.SetLVar("S_OH_EXT_LT_LANDING_R", value);
+                return true;
+            }
+
+            // RWY TURN OFF
+            if (varKey == "S_OH_EXT_LT_RWY_TURNOFF")
+            {
+                simConnect.SetLVar("S_OH_EXT_LT_RWY_TURNOFF", value);
+                return true;
+            }
+
+            // NOSE
+            if (varKey == "S_OH_EXT_LT_NOSE")
+            {
+                simConnect.SetLVar("S_OH_EXT_LT_NOSE", value);
                 return true;
             }
 
