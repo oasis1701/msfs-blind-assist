@@ -1874,7 +1874,15 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Pressurization Mode",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Select", [1] = "Auto"}
+            },
+            ["A_OH_PNEUMATIC_LDG_ELEV"] = new SimConnect.SimVarDefinition
+            {
+                Name = "A_OH_PNEUMATIC_LDG_ELEV",
+                DisplayName = "Landing Elevation",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[-3.00] = "-3.00", [-2.75] = "-2.75", [-2.50] = "-2.50", [-2.25] = "-2.25", [-2.00] = "-2.00", [-1.75] = "-1.75", [-1.50] = "-1.50", [-1.25] = "-1.25", [-1.00] = "-1.00", [-0.75] = "-0.75", [-0.50] = "-0.50", [-0.25] = "-0.25", [0.00] = "0.00", [0.25] = "0.25", [0.50] = "0.50", [0.75] = "0.75", [1.00] = "1.00", [1.25] = "1.25", [1.50] = "1.50", [1.75] = "1.75", [2.00] = "2.00", [2.25] = "2.25", [2.50] = "2.50", [2.75] = "2.75", [3.00] = "3.00", [3.25] = "3.25", [3.50] = "3.50", [3.75] = "3.75", [4.00] = "4.00", [4.25] = "4.25", [4.50] = "4.50", [4.75] = "4.75", [5.00] = "5.00", [5.25] = "5.25", [5.50] = "5.50", [5.75] = "5.75", [6.00] = "6.00", [6.25] = "6.25", [6.50] = "6.50", [6.75] = "6.75", [7.00] = "7.00", [7.25] = "7.25", [7.50] = "7.50", [7.75] = "7.75", [8.00] = "8.00", [8.25] = "8.25", [8.50] = "8.50", [8.75] = "8.75", [9.00] = "9.00", [9.25] = "9.25", [9.50] = "9.50", [9.75] = "9.75", [10.00] = "10.00", [10.25] = "10.25", [10.50] = "10.50", [10.75] = "10.75", [11.00] = "11.00", [11.25] = "11.25", [11.50] = "11.50", [11.75] = "11.75", [12.00] = "12.00", [12.25] = "12.25", [12.50] = "12.50", [12.75] = "12.75", [13.00] = "13.00", [13.25] = "13.25", [13.50] = "13.50", [13.75] = "13.75", [14.00] = "14.00"}
             },
             ["S_OH_PNEUMATIC_PRESS_MAN"] = new SimConnect.SimVarDefinition
             {
@@ -2270,6 +2278,318 @@ public class FenixA320Definition : BaseAircraftDefinition
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
             },
 
+            // ========== OXYGEN PANEL ==========
+            ["S_OH_OXYGEN_CREW_OXYGEN"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_OXYGEN_CREW_OXYGEN",
+                DisplayName = "Crew Oxygen",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_OH_OXYGEN_HIGH_ALT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_OXYGEN_HIGH_ALT",
+                DisplayName = "High Altitude Landing",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_OH_OXYGEN_MASK_MAN_ON"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_OXYGEN_MASK_MAN_ON",
+                DisplayName = "Mask Manual On",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_OH_OXYGEN_TMR_RESET"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_OXYGEN_TMR_RESET",
+                DisplayName = "Oxygen Timer Reset",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+
+            // ========== EVACUATION PANEL ==========
+            ["S_OH_EVAC_CAPT_PURSER"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_EVAC_CAPT_PURSER",
+                DisplayName = "Evac Capt/Purser Switch",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_OH_EVAC_COMMAND"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_EVAC_COMMAND",
+                DisplayName = "Evac Command",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_OH_EVAC_HORN_SHUTOFF"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_EVAC_HORN_SHUTOFF",
+                DisplayName = "Evac Horn Shutoff",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+
+            // ========== CALLS PANEL ==========
+            ["S_OH_CALLS_MECH"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_CALLS_MECH",
+                DisplayName = "Calls Mechanic",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_OH_CALLS_ALL"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_CALLS_ALL",
+                DisplayName = "Calls All",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_OH_CALLS_FWD"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_CALLS_FWD",
+                DisplayName = "Calls Forward",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_OH_CALLS_AFT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_CALLS_AFT",
+                DisplayName = "Calls Aft",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_OH_CALLS_EMER"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_CALLS_EMER",
+                DisplayName = "Calls Emergency",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_OH_CALLS_EMER_Cover"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_CALLS_EMER_Cover",
+                DisplayName = "Calls Emergency Cover",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Closed", [1] = "Open"}
+            },
+
+            // ========== WIPERS PANEL ==========
+            ["S_MISC_WIPER_CAPT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_MISC_WIPER_CAPT",
+                DisplayName = "Captain Wiper",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Slow", [2] = "Fast"}
+            },
+            ["S_MISC_WIPER_FO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_MISC_WIPER_FO",
+                DisplayName = "First Officer Wiper",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Slow", [2] = "Fast"}
+            },
+            ["S_MISC_WIPER_REPELLENT_CAPT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_MISC_WIPER_REPELLENT_CAPT",
+                DisplayName = "Captain Rain Repellent",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_MISC_WIPER_REPELLENT_FO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_MISC_WIPER_REPELLENT_FO",
+                DisplayName = "First Officer Rain Repellent",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+
+            // ========== CARGO SMOKE PANEL ==========
+            ["S_OH_CARGO_SMOKE_TEST"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_CARGO_SMOKE_TEST",
+                DisplayName = "Cargo Smoke Test",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_OH_CARGO_DISC_1_OLD_LAYOUT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_CARGO_DISC_1_OLD_LAYOUT",
+                DisplayName = "Cargo Discharge 1",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_OH_CARGO_DISC_2_OLD_LAYOUT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_CARGO_DISC_2_OLD_LAYOUT",
+                DisplayName = "Cargo Discharge 2",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+
+            // ========== GPWS PANEL ==========
+            ["S_OH_GPWS_TERR"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_GPWS_TERR",
+                DisplayName = "GPWS Terrain",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_OH_GPWS_SYS"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_GPWS_SYS",
+                DisplayName = "GPWS System",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_OH_GPWS_LDG_FLAP3"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_GPWS_LDG_FLAP3",
+                DisplayName = "GPWS Landing Flap 3",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_OH_GPWS_GS_MODE"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_GPWS_GS_MODE",
+                DisplayName = "GPWS Glideslope Mode",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_OH_GPWS_FLAP_MODE"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_GPWS_FLAP_MODE",
+                DisplayName = "GPWS Flap Mode",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+
+            // ========== ENGINE PANEL ==========
+            ["S_OH_ENG_MANSTART_1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_ENG_MANSTART_1",
+                DisplayName = "Engine 1 Manual Start",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_OH_ENG_MANSTART_2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_ENG_MANSTART_2",
+                DisplayName = "Engine 2 Manual Start",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_OH_ENG_N1_MODE_1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_ENG_N1_MODE_1",
+                DisplayName = "Engine 1 N1 Mode",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_OH_ENG_N1_MODE_2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_ENG_N1_MODE_2",
+                DisplayName = "Engine 2 N1 Mode",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+
+            // ========== MAINTENANCE PANEL ==========
+            ["S_OH_AFT_FADEC_GND_1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_AFT_FADEC_GND_1",
+                DisplayName = "FADEC Ground 1",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_OH_AFT_FADEC_GND_2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_AFT_FADEC_GND_2",
+                DisplayName = "FADEC Ground 2",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_OH_ELT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_ELT",
+                DisplayName = "Emergency Locator Transmitter",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_OH_ELT_TEST"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_ELT_TEST",
+                DisplayName = "ELT Test",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_OH_APU_AUTOEXTING_RESET"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_APU_AUTOEXTING_RESET",
+                DisplayName = "APU Auto Extinguishing Reset",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_OH_APU_AUTOEXTING_TEST"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_APU_AUTOEXTING_TEST",
+                DisplayName = "APU Auto Extinguishing Test",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_OH_SVCE_INT_OVRD"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_SVCE_INT_OVRD",
+                DisplayName = "Service Interphone Override",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_OH_LIGHTING_AVIONICS_COMPT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_LIGHTING_AVIONICS_COMPT",
+                DisplayName = "Avionics Compartment Light",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+
             // ========== SIGNS PANEL ==========
             // Seat Belt Signs
             ["S_OH_SIGNS"] = new SimConnect.SimVarDefinition
@@ -2357,6 +2677,16 @@ public class FenixA320Definition : BaseAircraftDefinition
             {
                 Name = "S_OH_EXT_LT_LANDING_R",
                 DisplayName = "Landing Right",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Retract", [1] = "Off", [2] = "On"}
+            },
+
+            // LANDING BOTH
+            ["S_OH_EXT_LT_LANDING_BOTH"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_EXT_LT_LANDING_BOTH",
+                DisplayName = "Landing Both",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Retract", [1] = "Off", [2] = "On"}
@@ -5370,8 +5700,15 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "Interior Lights",
                 "Flight Controls",
                 "Voice Recorder",
-                "Cockpit Door"
-                // Additional panels will be added here as features are implemented
+                "Cockpit Door",
+                "Oxygen",
+                "Evacuation",
+                "Calls",
+                "Wipers",
+                "Cargo Smoke",
+                "GPWS",
+                "Engine",
+                "Maintenance"
             }
         };
     }
@@ -5467,9 +5804,10 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "S_OH_PNEUMATIC_HOT_AIR",
                 "S_OH_PNEUMATIC_RAM_AIR",
 
-                // Pressurization (3 controls)
+                // Pressurization (4 controls)
                 "S_OH_PNEUMATIC_DITCHING",
                 "S_OH_PNEUMATIC_PRESS_MODE",
+                "A_OH_PNEUMATIC_LDG_ELEV",
                 "S_OH_PNEUMATIC_PRESS_MAN",
 
                 // Ventilation Buttons (3 controls)
@@ -5566,7 +5904,7 @@ public class FenixA320Definition : BaseAircraftDefinition
 
             ["External Lights"] = new List<string>
             {
-                // External Lights (8 controls)
+                // External Lights (9 controls)
                 "S_OH_EXT_LT_NAV_LOGO",
                 "S_OH_EXT_LT_STROBE",
                 "S_OH_EXT_LT_BEACON",
@@ -5574,7 +5912,8 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "S_OH_EXT_LT_LANDING_L",
                 "S_OH_EXT_LT_LANDING_R",
                 "S_OH_EXT_LT_RWY_TURNOFF",
-                "S_OH_EXT_LT_NOSE"
+                "S_OH_EXT_LT_NOSE",
+                "S_OH_EXT_LT_LANDING_BOTH"
             },
 
             ["Interior Lights"] = new List<string>
@@ -5624,6 +5963,83 @@ public class FenixA320Definition : BaseAircraftDefinition
 
                 // Emergency Exit Lights (1 control)
                 "S_OH_INT_LT_EMER"
+            },
+
+            ["Oxygen"] = new List<string>
+            {
+                // Oxygen Controls (4 controls)
+                "S_OH_OXYGEN_CREW_OXYGEN",
+                "S_OH_OXYGEN_HIGH_ALT",
+                "S_OH_OXYGEN_MASK_MAN_ON",
+                "S_OH_OXYGEN_TMR_RESET"
+            },
+
+            ["Evacuation"] = new List<string>
+            {
+                // Evacuation Controls (3 controls)
+                "S_OH_EVAC_CAPT_PURSER",
+                "S_OH_EVAC_COMMAND",
+                "S_OH_EVAC_HORN_SHUTOFF"
+            },
+
+            ["Calls"] = new List<string>
+            {
+                // Call Controls (6 controls)
+                "S_OH_CALLS_MECH",
+                "S_OH_CALLS_ALL",
+                "S_OH_CALLS_FWD",
+                "S_OH_CALLS_AFT",
+                "S_OH_CALLS_EMER",
+                "S_OH_CALLS_EMER_Cover"
+            },
+
+            ["Wipers"] = new List<string>
+            {
+                // Wiper Controls (4 controls)
+                "S_MISC_WIPER_CAPT",
+                "S_MISC_WIPER_FO",
+                "S_MISC_WIPER_REPELLENT_CAPT",
+                "S_MISC_WIPER_REPELLENT_FO"
+            },
+
+            ["Cargo Smoke"] = new List<string>
+            {
+                // Cargo Smoke Controls (3 controls)
+                "S_OH_CARGO_SMOKE_TEST",
+                "S_OH_CARGO_DISC_1_OLD_LAYOUT",
+                "S_OH_CARGO_DISC_2_OLD_LAYOUT"
+            },
+
+            ["GPWS"] = new List<string>
+            {
+                // GPWS Controls (5 controls)
+                "S_OH_GPWS_TERR",
+                "S_OH_GPWS_SYS",
+                "S_OH_GPWS_LDG_FLAP3",
+                "S_OH_GPWS_GS_MODE",
+                "S_OH_GPWS_FLAP_MODE"
+            },
+
+            ["Engine"] = new List<string>
+            {
+                // Engine Controls (4 controls)
+                "S_OH_ENG_MANSTART_1",
+                "S_OH_ENG_MANSTART_2",
+                "S_OH_ENG_N1_MODE_1",
+                "S_OH_ENG_N1_MODE_2"
+            },
+
+            ["Maintenance"] = new List<string>
+            {
+                // Maintenance Controls (8 controls)
+                "S_OH_AFT_FADEC_GND_1",
+                "S_OH_AFT_FADEC_GND_2",
+                "S_OH_ELT",
+                "S_OH_ELT_TEST",
+                "S_OH_APU_AUTOEXTING_RESET",
+                "S_OH_APU_AUTOEXTING_TEST",
+                "S_OH_SVCE_INT_OVRD",
+                "S_OH_LIGHTING_AVIONICS_COMPT"
             }
         };
     }
@@ -5978,6 +6394,12 @@ public class FenixA320Definition : BaseAircraftDefinition
                 return true;
             }
 
+            if (varKey == "A_OH_PNEUMATIC_LDG_ELEV")
+            {
+                simConnect.SetLVar("A_OH_PNEUMATIC_LDG_ELEV", value);
+                return true;
+            }
+
             if (varKey == "S_OH_PNEUMATIC_PRESS_MAN")
             {
                 simConnect.SetLVar("S_OH_PNEUMATIC_PRESS_MAN", value);
@@ -6307,6 +6729,13 @@ public class FenixA320Definition : BaseAircraftDefinition
                 return true;
             }
 
+            // LANDING BOTH
+            if (varKey == "S_OH_EXT_LT_LANDING_BOTH")
+            {
+                simConnect.SetLVar("S_OH_EXT_LT_LANDING_BOTH", value);
+                return true;
+            }
+
             // RWY TURN OFF
             if (varKey == "S_OH_EXT_LT_RWY_TURNOFF")
             {
@@ -6463,6 +6892,236 @@ public class FenixA320Definition : BaseAircraftDefinition
             if (varKey == "S_OH_INT_LT_EMER")
             {
                 simConnect.SetLVar("S_OH_INT_LT_EMER", value);
+                return true;
+            }
+
+            // ========== OXYGEN PANEL CONTROLS (Combo Boxes - use SetLVar) ==========
+            if (varKey == "S_OH_OXYGEN_CREW_OXYGEN")
+            {
+                simConnect.SetLVar("S_OH_OXYGEN_CREW_OXYGEN", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_OXYGEN_HIGH_ALT")
+            {
+                simConnect.SetLVar("S_OH_OXYGEN_HIGH_ALT", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_OXYGEN_MASK_MAN_ON")
+            {
+                simConnect.SetLVar("S_OH_OXYGEN_MASK_MAN_ON", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_OXYGEN_TMR_RESET")
+            {
+                simConnect.SetLVar("S_OH_OXYGEN_TMR_RESET", value);
+                return true;
+            }
+
+            // ========== EVACUATION PANEL CONTROLS (Combo Boxes - use SetLVar) ==========
+            if (varKey == "S_OH_EVAC_CAPT_PURSER")
+            {
+                simConnect.SetLVar("S_OH_EVAC_CAPT_PURSER", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_EVAC_COMMAND")
+            {
+                simConnect.SetLVar("S_OH_EVAC_COMMAND", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_EVAC_HORN_SHUTOFF")
+            {
+                simConnect.SetLVar("S_OH_EVAC_HORN_SHUTOFF", value);
+                return true;
+            }
+
+            // ========== CALLS PANEL CONTROLS (Combo Boxes - use SetLVar) ==========
+            if (varKey == "S_OH_CALLS_MECH")
+            {
+                simConnect.SetLVar("S_OH_CALLS_MECH", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_CALLS_ALL")
+            {
+                simConnect.SetLVar("S_OH_CALLS_ALL", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_CALLS_FWD")
+            {
+                simConnect.SetLVar("S_OH_CALLS_FWD", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_CALLS_AFT")
+            {
+                simConnect.SetLVar("S_OH_CALLS_AFT", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_CALLS_EMER")
+            {
+                simConnect.SetLVar("S_OH_CALLS_EMER", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_CALLS_EMER_Cover")
+            {
+                simConnect.SetLVar("S_OH_CALLS_EMER_Cover", value);
+                return true;
+            }
+
+            // ========== WIPERS PANEL CONTROLS (Combo Boxes - use SetLVar) ==========
+            if (varKey == "S_MISC_WIPER_CAPT")
+            {
+                simConnect.SetLVar("S_MISC_WIPER_CAPT", value);
+                return true;
+            }
+
+            if (varKey == "S_MISC_WIPER_FO")
+            {
+                simConnect.SetLVar("S_MISC_WIPER_FO", value);
+                return true;
+            }
+
+            if (varKey == "S_MISC_WIPER_REPELLENT_CAPT")
+            {
+                simConnect.SetLVar("S_MISC_WIPER_REPELLENT_CAPT", value);
+                return true;
+            }
+
+            if (varKey == "S_MISC_WIPER_REPELLENT_FO")
+            {
+                simConnect.SetLVar("S_MISC_WIPER_REPELLENT_FO", value);
+                return true;
+            }
+
+            // ========== CARGO SMOKE PANEL CONTROLS (Combo Boxes - use SetLVar) ==========
+            if (varKey == "S_OH_CARGO_SMOKE_TEST")
+            {
+                simConnect.SetLVar("S_OH_CARGO_SMOKE_TEST", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_CARGO_DISC_1_OLD_LAYOUT")
+            {
+                simConnect.SetLVar("S_OH_CARGO_DISC_1_OLD_LAYOUT", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_CARGO_DISC_2_OLD_LAYOUT")
+            {
+                simConnect.SetLVar("S_OH_CARGO_DISC_2_OLD_LAYOUT", value);
+                return true;
+            }
+
+            // ========== GPWS PANEL CONTROLS (Combo Boxes - use SetLVar) ==========
+            if (varKey == "S_OH_GPWS_TERR")
+            {
+                simConnect.SetLVar("S_OH_GPWS_TERR", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_GPWS_SYS")
+            {
+                simConnect.SetLVar("S_OH_GPWS_SYS", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_GPWS_LDG_FLAP3")
+            {
+                simConnect.SetLVar("S_OH_GPWS_LDG_FLAP3", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_GPWS_GS_MODE")
+            {
+                simConnect.SetLVar("S_OH_GPWS_GS_MODE", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_GPWS_FLAP_MODE")
+            {
+                simConnect.SetLVar("S_OH_GPWS_FLAP_MODE", value);
+                return true;
+            }
+
+            // ========== ENGINE PANEL CONTROLS (Combo Boxes - use SetLVar) ==========
+            if (varKey == "S_OH_ENG_MANSTART_1")
+            {
+                simConnect.SetLVar("S_OH_ENG_MANSTART_1", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_ENG_MANSTART_2")
+            {
+                simConnect.SetLVar("S_OH_ENG_MANSTART_2", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_ENG_N1_MODE_1")
+            {
+                simConnect.SetLVar("S_OH_ENG_N1_MODE_1", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_ENG_N1_MODE_2")
+            {
+                simConnect.SetLVar("S_OH_ENG_N1_MODE_2", value);
+                return true;
+            }
+
+            // ========== MAINTENANCE PANEL CONTROLS (Combo Boxes - use SetLVar) ==========
+            if (varKey == "S_OH_AFT_FADEC_GND_1")
+            {
+                simConnect.SetLVar("S_OH_AFT_FADEC_GND_1", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_AFT_FADEC_GND_2")
+            {
+                simConnect.SetLVar("S_OH_AFT_FADEC_GND_2", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_ELT")
+            {
+                simConnect.SetLVar("S_OH_ELT", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_ELT_TEST")
+            {
+                simConnect.SetLVar("S_OH_ELT_TEST", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_APU_AUTOEXTING_RESET")
+            {
+                simConnect.SetLVar("S_OH_APU_AUTOEXTING_RESET", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_APU_AUTOEXTING_TEST")
+            {
+                simConnect.SetLVar("S_OH_APU_AUTOEXTING_TEST", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_SVCE_INT_OVRD")
+            {
+                simConnect.SetLVar("S_OH_SVCE_INT_OVRD", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_LIGHTING_AVIONICS_COMPT")
+            {
+                simConnect.SetLVar("S_OH_LIGHTING_AVIONICS_COMPT", value);
                 return true;
             }
         }
