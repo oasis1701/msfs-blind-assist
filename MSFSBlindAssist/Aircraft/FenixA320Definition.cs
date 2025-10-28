@@ -2163,6 +2163,45 @@ public class FenixA320Definition : BaseAircraftDefinition
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
             },
 
+            // ========== ANTI-ICE PANEL ==========
+            // Engine Anti-Ice
+            ["S_OH_PNEUMATIC_ENG1_ANTI_ICE"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_PNEUMATIC_ENG1_ANTI_ICE",
+                DisplayName = "Engine 1 Anti-Ice",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_OH_PNEUMATIC_ENG2_ANTI_ICE"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_PNEUMATIC_ENG2_ANTI_ICE",
+                DisplayName = "Engine 2 Anti-Ice",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+
+            // Wing Anti-Ice
+            ["S_OH_PNEUMATIC_WING_ANTI_ICE"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_PNEUMATIC_WING_ANTI_ICE",
+                DisplayName = "Wing Anti-Ice",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+
+            // Probe Heat
+            ["S_OH_PROBE_HEAT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_PROBE_HEAT",
+                DisplayName = "Probe Heat",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+
             ["N_ELEC_VOLT_BAT_1"] = new SimConnect.SimVarDefinition
             {
                 Name = "N_ELEC_VOLT_BAT_1",
@@ -4977,7 +5016,8 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "Air Conditioning and Pressurization",
                 "Fire",
                 "Hydraulic",
-                "Fuel"
+                "Fuel",
+                "Anti-Ice"
                 // Additional panels will be added here as features are implemented
             }
         };
@@ -5144,6 +5184,19 @@ public class FenixA320Definition : BaseAircraftDefinition
                 // Crossfeed and Mode (2 controls)
                 "S_OH_FUEL_XFEED",
                 "S_OH_FUEL_MODE_SEL"
+            },
+
+            ["Anti-Ice"] = new List<string>
+            {
+                // Engine Anti-Ice (2 controls)
+                "S_OH_PNEUMATIC_ENG1_ANTI_ICE",
+                "S_OH_PNEUMATIC_ENG2_ANTI_ICE",
+
+                // Wing Anti-Ice (1 control)
+                "S_OH_PNEUMATIC_WING_ANTI_ICE",
+
+                // Probe Heat (1 control)
+                "S_OH_PROBE_HEAT"
             }
         };
     }
@@ -5703,6 +5756,34 @@ public class FenixA320Definition : BaseAircraftDefinition
             if (varKey == "S_OH_FUEL_MODE_SEL")
             {
                 simConnect.SetLVar("S_OH_FUEL_MODE_SEL", value);
+                return true;
+            }
+
+            // ========== ANTI-ICE PANEL CONTROLS (Combo Boxes - use SetLVar) ==========
+            // Engine Anti-Ice
+            if (varKey == "S_OH_PNEUMATIC_ENG1_ANTI_ICE")
+            {
+                simConnect.SetLVar("S_OH_PNEUMATIC_ENG1_ANTI_ICE", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_PNEUMATIC_ENG2_ANTI_ICE")
+            {
+                simConnect.SetLVar("S_OH_PNEUMATIC_ENG2_ANTI_ICE", value);
+                return true;
+            }
+
+            // Wing Anti-Ice
+            if (varKey == "S_OH_PNEUMATIC_WING_ANTI_ICE")
+            {
+                simConnect.SetLVar("S_OH_PNEUMATIC_WING_ANTI_ICE", value);
+                return true;
+            }
+
+            // Probe Heat
+            if (varKey == "S_OH_PROBE_HEAT")
+            {
+                simConnect.SetLVar("S_OH_PROBE_HEAT", value);
                 return true;
             }
         }
