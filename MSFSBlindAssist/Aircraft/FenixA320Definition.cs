@@ -1563,6 +1563,22 @@ public class FenixA320Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
             },
+            ["S_OH_ELEC_EMER_GEN_MAN_ON_Cover"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_ELEC_EMER_GEN_MAN_ON_Cover",
+                DisplayName = "Emergency Gen Manual On Cover",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Closed", [1] = "Open"}
+            },
+            ["S_OH_ELEC_EMER_GEN_TEST_Cover"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_ELEC_EMER_GEN_TEST_Cover",
+                DisplayName = "Emergency Gen Test Cover",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Closed", [1] = "Open"}
+            },
 
             // ========== ADIRS (11 variables) ==========
             // Note: Numeric keypad (0-9, CLR, ENT) will be added later
@@ -1939,6 +1955,24 @@ public class FenixA320Definition : BaseAircraftDefinition
                 ValueDescriptions = new Dictionary<double, string> {[0.0] = "0.0", [0.1] = "0.1", [0.2] = "0.2", [0.3] = "0.3", [0.4] = "0.4", [0.5] = "0.5", [0.6] = "0.6", [0.7] = "0.7", [0.8] = "0.8", [0.9] = "0.9", [1.0] = "1.0"}
             },
 
+            // Cargo Controls
+            ["S_OH_PNEUMATIC_HOT_AIR_AFT_CARGO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_PNEUMATIC_HOT_AIR_AFT_CARGO",
+                DisplayName = "Aft Cargo Hot Air",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_OH_PNEUMATIC_CARGO_AFT_ISOL_VALVE"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_PNEUMATIC_CARGO_AFT_ISOL_VALVE",
+                DisplayName = "Cargo Aft Isolation Valve",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+
             // ========== FIRE PANEL ==========
             // Main Fire Push Buttons
             ["S_OH_FIRE_ENG1_BUTTON"] = new SimConnect.SimVarDefinition
@@ -2085,6 +2119,40 @@ public class FenixA320Definition : BaseAircraftDefinition
             {
                 Name = "S_OH_HYD_RAT_MAN_ON",
                 DisplayName = "RAT Manual On",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+
+            // Low Mechanical Valves
+            ["S_OH_HYD_LMV_YELLOW"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_HYD_LMV_YELLOW",
+                DisplayName = "LMV Yellow",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_OH_HYD_LMV_GREEN"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_HYD_LMV_GREEN",
+                DisplayName = "LMV Green",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_OH_HYD_LMV_BLUE"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_HYD_LMV_BLUE",
+                DisplayName = "LMV Blue",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_OH_HYD_BLUE_PUMP_OVERRIDE"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OH_HYD_BLUE_PUMP_OVERRIDE",
+                DisplayName = "Blue Pump Override",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
@@ -5340,10 +5408,12 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "S_OH_ELEC_GALY",
                 "S_OH_ELEC_COMMERCIAL",
 
-                // Emergency Electrical (3 controls)
+                // Emergency Electrical (5 controls)
                 "S_OH_ELEC_GEN1_LINE",
                 "S_OH_ELEC_EMER_GEN_TEST",
-                "S_OH_ELEC_EMER_GEN_MAN_ON"
+                "S_OH_ELEC_EMER_GEN_MAN_ON",
+                "S_OH_ELEC_EMER_GEN_MAN_ON_Cover",
+                "S_OH_ELEC_EMER_GEN_TEST_Cover"
             },
 
             ["ADIRS"] = new List<string>
@@ -5414,7 +5484,11 @@ public class FenixA320Definition : BaseAircraftDefinition
                 // Temperature Controls (3 controls)
                 "A_OH_PNEUMATIC_COCKPIT_TEMP",
                 "A_OH_PNEUMATIC_FWD_TEMP",
-                "A_OH_PNEUMATIC_AFT_TEMP"
+                "A_OH_PNEUMATIC_AFT_TEMP",
+
+                // Cargo Controls (2 controls)
+                "S_OH_PNEUMATIC_HOT_AIR_AFT_CARGO",
+                "S_OH_PNEUMATIC_CARGO_AFT_ISOL_VALVE"
             },
 
             ["Fire"] = new List<string>
@@ -5449,7 +5523,13 @@ public class FenixA320Definition : BaseAircraftDefinition
 
                 // PTU and RAT (2 controls)
                 "S_OH_HYD_PTU",
-                "S_OH_HYD_RAT_MAN_ON"
+                "S_OH_HYD_RAT_MAN_ON",
+
+                // Low Mechanical Valves (4 controls)
+                "S_OH_HYD_LMV_YELLOW",
+                "S_OH_HYD_LMV_GREEN",
+                "S_OH_HYD_LMV_BLUE",
+                "S_OH_HYD_BLUE_PUMP_OVERRIDE"
             },
 
             ["Fuel"] = new List<string>
@@ -5678,6 +5758,18 @@ public class FenixA320Definition : BaseAircraftDefinition
             if (varKey == "S_OH_ELEC_EMER_GEN_MAN_ON")
             {
                 simConnect.SetLVar("S_OH_ELEC_EMER_GEN_MAN_ON", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_ELEC_EMER_GEN_MAN_ON_Cover")
+            {
+                simConnect.SetLVar("S_OH_ELEC_EMER_GEN_MAN_ON_Cover", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_ELEC_EMER_GEN_TEST_Cover")
+            {
+                simConnect.SetLVar("S_OH_ELEC_EMER_GEN_TEST_Cover", value);
                 return true;
             }
 
@@ -5943,6 +6035,19 @@ public class FenixA320Definition : BaseAircraftDefinition
                 return true;
             }
 
+            // Cargo Controls
+            if (varKey == "S_OH_PNEUMATIC_HOT_AIR_AFT_CARGO")
+            {
+                simConnect.SetLVar("S_OH_PNEUMATIC_HOT_AIR_AFT_CARGO", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_PNEUMATIC_CARGO_AFT_ISOL_VALVE")
+            {
+                simConnect.SetLVar("S_OH_PNEUMATIC_CARGO_AFT_ISOL_VALVE", value);
+                return true;
+            }
+
             // ========== FIRE PANEL CONTROLS (Combo Boxes - use SetLVar) ==========
             // Main Fire Push Buttons
             if (varKey == "S_OH_FIRE_ENG1_BUTTON")
@@ -6050,6 +6155,31 @@ public class FenixA320Definition : BaseAircraftDefinition
             if (varKey == "S_OH_HYD_RAT_MAN_ON")
             {
                 simConnect.SetLVar("S_OH_HYD_RAT_MAN_ON", value);
+                return true;
+            }
+
+            // Low Mechanical Valves
+            if (varKey == "S_OH_HYD_LMV_YELLOW")
+            {
+                simConnect.SetLVar("S_OH_HYD_LMV_YELLOW", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_HYD_LMV_GREEN")
+            {
+                simConnect.SetLVar("S_OH_HYD_LMV_GREEN", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_HYD_LMV_BLUE")
+            {
+                simConnect.SetLVar("S_OH_HYD_LMV_BLUE", value);
+                return true;
+            }
+
+            if (varKey == "S_OH_HYD_BLUE_PUMP_OVERRIDE")
+            {
+                simConnect.SetLVar("S_OH_HYD_BLUE_PUMP_OVERRIDE", value);
                 return true;
             }
 
