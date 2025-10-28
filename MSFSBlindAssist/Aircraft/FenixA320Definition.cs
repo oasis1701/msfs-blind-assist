@@ -2616,6 +2616,189 @@ public class FenixA320Definition : BaseAircraftDefinition
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
             },
 
+            // ========== PEDESTAL - ECAM PANEL (20 variables) ==========
+            // Brightness Knobs (2 step-based combo boxes)
+            ["A_DISPLAY_BRIGHTNESS_ECAM_U"] = new SimConnect.SimVarDefinition
+            {
+                Name = "A_DISPLAY_BRIGHTNESS_ECAM_U",
+                DisplayName = "Upper ECAM Brightness",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0.00] = "0%", [0.05] = "5%", [0.10] = "10%", [0.15] = "15%", [0.20] = "20%", [0.25] = "25%", [0.30] = "30%", [0.35] = "35%", [0.40] = "40%", [0.45] = "45%", [0.50] = "50%", [0.55] = "55%", [0.60] = "60%", [0.65] = "65%", [0.70] = "70%", [0.75] = "75%", [0.80] = "80%", [0.85] = "85%", [0.90] = "90%", [0.95] = "95%", [1.00] = "100%"}
+            },
+            ["A_DISPLAY_BRIGHTNESS_ECAM_L"] = new SimConnect.SimVarDefinition
+            {
+                Name = "A_DISPLAY_BRIGHTNESS_ECAM_L",
+                DisplayName = "Lower ECAM Brightness",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0.00] = "0%", [0.05] = "5%", [0.10] = "10%", [0.15] = "15%", [0.20] = "20%", [0.25] = "25%", [0.30] = "30%", [0.35] = "35%", [0.40] = "40%", [0.45] = "45%", [0.50] = "50%", [0.55] = "55%", [0.60] = "60%", [0.65] = "65%", [0.70] = "70%", [0.75] = "75%", [0.80] = "80%", [0.85] = "85%", [0.90] = "90%", [0.95] = "95%", [1.00] = "100%"}
+            },
+
+            // ECAM System Page Buttons (18 buttons)
+            ["S_ECAM_ENGINE"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_ECAM_ENGINE",
+                DisplayName = "ECAM ENG",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_ECAM_BLEED"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_ECAM_BLEED",
+                DisplayName = "ECAM BLEED",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_ECAM_CAB_PRESS"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_ECAM_CAB_PRESS",
+                DisplayName = "ECAM PRESS",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_ECAM_ELEC"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_ECAM_ELEC",
+                DisplayName = "ECAM ELEC",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_ECAM_HYD"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_ECAM_HYD",
+                DisplayName = "ECAM HYD",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_ECAM_FUEL"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_ECAM_FUEL",
+                DisplayName = "ECAM FUEL",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_ECAM_APU"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_ECAM_APU",
+                DisplayName = "ECAM APU",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_ECAM_COND"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_ECAM_COND",
+                DisplayName = "ECAM COND",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_ECAM_DOOR"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_ECAM_DOOR",
+                DisplayName = "ECAM DOOR",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_ECAM_WHEEL"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_ECAM_WHEEL",
+                DisplayName = "ECAM WHEEL",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_ECAM_FCTL"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_ECAM_FCTL",
+                DisplayName = "ECAM F/CTL",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_ECAM_ALL"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_ECAM_ALL",
+                DisplayName = "ECAM ALL",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_ECAM_STATUS"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_ECAM_STATUS",
+                DisplayName = "ECAM STS",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_ECAM_CLR_LEFT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_ECAM_CLR_LEFT",
+                DisplayName = "ECAM CLR Left",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_ECAM_CLR_RIGHT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_ECAM_CLR_RIGHT",
+                DisplayName = "ECAM CLR Right",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_ECAM_RCL"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_ECAM_RCL",
+                DisplayName = "ECAM RCL",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_ECAM_TO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_ECAM_TO",
+                DisplayName = "ECAM TO CONFIG",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_ECAM_EMER_CANCEL"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_ECAM_EMER_CANCEL",
+                DisplayName = "ECAM EMER CANC",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+
             // ========== SIGNS PANEL ==========
             // Seat Belt Signs
             ["S_OH_SIGNS"] = new SimConnect.SimVarDefinition
@@ -5739,7 +5922,8 @@ public class FenixA320Definition : BaseAircraftDefinition
 
             ["Pedestal"] = new List<string>
             {
-                "Engines"
+                "Engines",
+                "ECAM"
             }
         };
     }
@@ -6080,6 +6264,33 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "S_ENG_MODE",
                 "S_ENG_MASTER_1",
                 "S_ENG_MASTER_2"
+            },
+
+            ["ECAM"] = new List<string>
+            {
+                // Brightness Knobs (2 step-based combo boxes)
+                "A_DISPLAY_BRIGHTNESS_ECAM_U",
+                "A_DISPLAY_BRIGHTNESS_ECAM_L",
+
+                // ECAM System Page Buttons (18 buttons)
+                "S_ECAM_ENGINE",
+                "S_ECAM_BLEED",
+                "S_ECAM_CAB_PRESS",
+                "S_ECAM_ELEC",
+                "S_ECAM_HYD",
+                "S_ECAM_FUEL",
+                "S_ECAM_APU",
+                "S_ECAM_COND",
+                "S_ECAM_DOOR",
+                "S_ECAM_WHEEL",
+                "S_ECAM_FCTL",
+                "S_ECAM_ALL",
+                "S_ECAM_STATUS",
+                "S_ECAM_CLR_LEFT",
+                "S_ECAM_CLR_RIGHT",
+                "S_ECAM_RCL",
+                "S_ECAM_TO",
+                "S_ECAM_EMER_CANCEL"
             }
         };
     }
@@ -7181,6 +7392,129 @@ public class FenixA320Definition : BaseAircraftDefinition
             if (varKey == "S_ENG_MASTER_2")
             {
                 simConnect.SetLVar("S_ENG_MASTER_2", value);
+                return true;
+            }
+
+            // ========== PEDESTAL - ECAM PANEL CONTROLS ==========
+            // Brightness Knobs (Combo Boxes - use SetLVar)
+            if (varKey == "A_DISPLAY_BRIGHTNESS_ECAM_U")
+            {
+                simConnect.SetLVar("A_DISPLAY_BRIGHTNESS_ECAM_U", value);
+                return true;
+            }
+
+            if (varKey == "A_DISPLAY_BRIGHTNESS_ECAM_L")
+            {
+                simConnect.SetLVar("A_DISPLAY_BRIGHTNESS_ECAM_L", value);
+                return true;
+            }
+
+            // ECAM System Page Buttons (use ExecuteButtonTransition)
+            if (varKey == "S_ECAM_ENGINE" && value == 1)
+            {
+                ExecuteButtonTransition("S_ECAM_ENGINE", "ECAM ENG", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_ECAM_BLEED" && value == 1)
+            {
+                ExecuteButtonTransition("S_ECAM_BLEED", "ECAM BLEED", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_ECAM_CAB_PRESS" && value == 1)
+            {
+                ExecuteButtonTransition("S_ECAM_CAB_PRESS", "ECAM PRESS", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_ECAM_ELEC" && value == 1)
+            {
+                ExecuteButtonTransition("S_ECAM_ELEC", "ECAM ELEC", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_ECAM_HYD" && value == 1)
+            {
+                ExecuteButtonTransition("S_ECAM_HYD", "ECAM HYD", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_ECAM_FUEL" && value == 1)
+            {
+                ExecuteButtonTransition("S_ECAM_FUEL", "ECAM FUEL", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_ECAM_APU" && value == 1)
+            {
+                ExecuteButtonTransition("S_ECAM_APU", "ECAM APU", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_ECAM_COND" && value == 1)
+            {
+                ExecuteButtonTransition("S_ECAM_COND", "ECAM COND", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_ECAM_DOOR" && value == 1)
+            {
+                ExecuteButtonTransition("S_ECAM_DOOR", "ECAM DOOR", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_ECAM_WHEEL" && value == 1)
+            {
+                ExecuteButtonTransition("S_ECAM_WHEEL", "ECAM WHEEL", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_ECAM_FCTL" && value == 1)
+            {
+                ExecuteButtonTransition("S_ECAM_FCTL", "ECAM F/CTL", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_ECAM_ALL" && value == 1)
+            {
+                ExecuteButtonTransition("S_ECAM_ALL", "ECAM ALL", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_ECAM_STATUS" && value == 1)
+            {
+                ExecuteButtonTransition("S_ECAM_STATUS", "ECAM STS", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_ECAM_CLR_LEFT" && value == 1)
+            {
+                ExecuteButtonTransition("S_ECAM_CLR_LEFT", "ECAM CLR Left", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_ECAM_CLR_RIGHT" && value == 1)
+            {
+                ExecuteButtonTransition("S_ECAM_CLR_RIGHT", "ECAM CLR Right", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_ECAM_RCL" && value == 1)
+            {
+                ExecuteButtonTransition("S_ECAM_RCL", "ECAM RCL", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_ECAM_TO" && value == 1)
+            {
+                ExecuteButtonTransition("S_ECAM_TO", "ECAM TO CONFIG", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_ECAM_EMER_CANCEL" && value == 1)
+            {
+                ExecuteButtonTransition("S_ECAM_EMER_CANCEL", "ECAM EMER CANC", simConnect, announcer);
                 return true;
             }
         }
