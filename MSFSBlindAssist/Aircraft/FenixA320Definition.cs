@@ -5256,6 +5256,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "Anti-Ice",
                 "External Lights",
                 "Interior Lights",
+                "Flight Controls",
                 "Signs"
                 // Additional panels will be added here as features are implemented
             }
@@ -5460,6 +5461,18 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "A_OH_LIGHTING_READING_CAPT",
                 "A_OH_LIGHTING_READING_FO",
                 "A_OH_LIGHTING_OVD"
+            },
+
+            ["Flight Controls"] = new List<string>
+            {
+                // Flight Control Computers (7 controls)
+                "S_OH_FLT_CTL_ELAC_1",
+                "S_OH_FLT_CTL_ELAC_2",
+                "S_OH_FLT_CTL_SEC_1",
+                "S_OH_FLT_CTL_SEC_2",
+                "S_OH_FLT_CTL_SEC_3",
+                "S_OH_FLT_CTL_FAC_1",
+                "S_OH_FLT_CTL_FAC_2"
             },
 
             ["Signs"] = new List<string>
@@ -6159,6 +6172,56 @@ public class FenixA320Definition : BaseAircraftDefinition
             if (varKey == "A_OH_LIGHTING_OVD")
             {
                 simConnect.SetLVar("A_OH_LIGHTING_OVD", value);
+                return true;
+            }
+
+            // ========== FLIGHT CONTROLS PANEL CONTROLS (Combo Boxes - use SetLVar) ==========
+            // ELAC 1
+            if (varKey == "S_OH_FLT_CTL_ELAC_1")
+            {
+                simConnect.SetLVar("S_OH_FLT_CTL_ELAC_1", value);
+                return true;
+            }
+
+            // ELAC 2
+            if (varKey == "S_OH_FLT_CTL_ELAC_2")
+            {
+                simConnect.SetLVar("S_OH_FLT_CTL_ELAC_2", value);
+                return true;
+            }
+
+            // SEC 1
+            if (varKey == "S_OH_FLT_CTL_SEC_1")
+            {
+                simConnect.SetLVar("S_OH_FLT_CTL_SEC_1", value);
+                return true;
+            }
+
+            // SEC 2
+            if (varKey == "S_OH_FLT_CTL_SEC_2")
+            {
+                simConnect.SetLVar("S_OH_FLT_CTL_SEC_2", value);
+                return true;
+            }
+
+            // SEC 3
+            if (varKey == "S_OH_FLT_CTL_SEC_3")
+            {
+                simConnect.SetLVar("S_OH_FLT_CTL_SEC_3", value);
+                return true;
+            }
+
+            // FAC 1
+            if (varKey == "S_OH_FLT_CTL_FAC_1")
+            {
+                simConnect.SetLVar("S_OH_FLT_CTL_FAC_1", value);
+                return true;
+            }
+
+            // FAC 2
+            if (varKey == "S_OH_FLT_CTL_FAC_2")
+            {
+                simConnect.SetLVar("S_OH_FLT_CTL_FAC_2", value);
                 return true;
             }
 
