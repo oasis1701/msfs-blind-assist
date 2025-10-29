@@ -3012,6 +3012,93 @@ public class FenixA320Definition : BaseAircraftDefinition
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
             },
 
+            // ========== PEDESTAL - WEATHER RADAR PANEL (7 variables) ==========
+            // PWS Switch (Combo box)
+            ["S_WR_PRED_WS"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_WR_PRED_WS",
+                DisplayName = "PWS (Predictive Wind Shear)",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Auto"}
+            },
+
+            // System Switch (Combo box with 3 positions)
+            ["S_WR_SYS"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_WR_SYS",
+                DisplayName = "System",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "1", [1] = "Off", [2] = "2"}
+            },
+
+            // GCS Switch (Combo box)
+            ["S_WR_GCS"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_WR_GCS",
+                DisplayName = "GCS (Ground Clutter Suppression)",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+
+            // Multiscan Switch (Combo box)
+            ["S_WR_MULTISCAN"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_WR_MULTISCAN",
+                DisplayName = "Multiscan",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+
+            // Tilt Knob (Combo box with 31 positions: -15 to +15)
+            ["A_WR_TILT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "A_WR_TILT",
+                DisplayName = "Tilt",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [-15] = "-15°", [-14] = "-14°", [-13] = "-13°", [-12] = "-12°", [-11] = "-11°",
+                    [-10] = "-10°", [-9] = "-9°", [-8] = "-8°", [-7] = "-7°", [-6] = "-6°",
+                    [-5] = "-5°", [-4] = "-4°", [-3] = "-3°", [-2] = "-2°", [-1] = "-1°",
+                    [0] = "0°", [1] = "+1°", [2] = "+2°", [3] = "+3°", [4] = "+4°",
+                    [5] = "+5°", [6] = "+6°", [7] = "+7°", [8] = "+8°", [9] = "+9°",
+                    [10] = "+10°", [11] = "+11°", [12] = "+12°", [13] = "+13°", [14] = "+14°", [15] = "+15°"
+                }
+            },
+
+            // Gain Knob (Combo box with 10 positions: -5 to +4)
+            ["A_WR_GAIN"] = new SimConnect.SimVarDefinition
+            {
+                Name = "A_WR_GAIN",
+                DisplayName = "Gain",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [-5] = "-5", [-4] = "-4", [-3] = "-3", [-2] = "-2", [-1] = "-1",
+                    [0] = "0", [1] = "+1", [2] = "+2", [3] = "+3", [4] = "+4"
+                }
+            },
+
+            // Image Selector Knob (Combo box with 11 positions: 0.0 to 1.0)
+            ["S_WR_MODE"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_WR_MODE",
+                DisplayName = "Image Selector",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0.0] = "0", [0.1] = "1", [0.2] = "2", [0.3] = "3", [0.4] = "4",
+                    [0.5] = "5", [0.6] = "6", [0.7] = "7", [0.8] = "8", [0.9] = "9", [1.0] = "10"
+                }
+            },
+
             // ========== PEDESTAL - ECAM PANEL (20 variables) ==========
             // Brightness Knobs (2 step-based combo boxes)
             ["A_DISPLAY_BRIGHTNESS_ECAM_U"] = new SimConnect.SimVarDefinition
@@ -6461,6 +6548,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["Pedestal"] = new List<string>
             {
                 "Engines",
+                "Weather Radar",
                 "ECAM",
                 "Flight Controls"
             },
@@ -6816,6 +6904,18 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "S_ENG_MODE",
                 "S_ENG_MASTER_1",
                 "S_ENG_MASTER_2"
+            },
+
+            ["Weather Radar"] = new List<string>
+            {
+                // Weather Radar Controls (7 controls)
+                "S_WR_PRED_WS",        // PWS Switch (Combo box)
+                "S_WR_SYS",            // System Switch (Combo box)
+                "S_WR_GCS",            // GCS Button
+                "S_WR_MULTISCAN",      // Multiscan Button
+                "A_WR_TILT",           // Tilt Knob
+                "A_WR_GAIN",           // Gain Knob
+                "S_WR_MODE"            // Image Selector
             },
 
             ["ECAM"] = new List<string>
@@ -8249,6 +8349,56 @@ public class FenixA320Definition : BaseAircraftDefinition
             if (varKey == "S_ENG_MASTER_2")
             {
                 simConnect.SetLVar("S_ENG_MASTER_2", value);
+                return true;
+            }
+
+            // ========== PEDESTAL - WEATHER RADAR PANEL CONTROLS ==========
+            // PWS Switch (Combo Box - use SetLVar)
+            if (varKey == "S_WR_PRED_WS")
+            {
+                simConnect.SetLVar("S_WR_PRED_WS", value);
+                return true;
+            }
+
+            // System Switch (Combo Box - use SetLVar)
+            if (varKey == "S_WR_SYS")
+            {
+                simConnect.SetLVar("S_WR_SYS", value);
+                return true;
+            }
+
+            // GCS Switch (Combo Box - use SetLVar)
+            if (varKey == "S_WR_GCS")
+            {
+                simConnect.SetLVar("S_WR_GCS", value);
+                return true;
+            }
+
+            // Multiscan Switch (Combo Box - use SetLVar)
+            if (varKey == "S_WR_MULTISCAN")
+            {
+                simConnect.SetLVar("S_WR_MULTISCAN", value);
+                return true;
+            }
+
+            // Tilt Knob (Combo Box - use SetLVar)
+            if (varKey == "A_WR_TILT")
+            {
+                simConnect.SetLVar("A_WR_TILT", value);
+                return true;
+            }
+
+            // Gain Knob (Combo Box - use SetLVar)
+            if (varKey == "A_WR_GAIN")
+            {
+                simConnect.SetLVar("A_WR_GAIN", value);
+                return true;
+            }
+
+            // Image Selector (Combo Box - use SetLVar)
+            if (varKey == "S_WR_MODE")
+            {
+                simConnect.SetLVar("S_WR_MODE", value);
                 return true;
             }
 
