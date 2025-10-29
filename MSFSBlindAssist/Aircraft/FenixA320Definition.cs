@@ -2278,6 +2278,130 @@ public class FenixA320Definition : BaseAircraftDefinition
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
             },
 
+            // ========== MAIN INSTRUMENT PANEL ==========
+            // Auto Brakes - 3 momentary push buttons
+            ["S_MIP_AUTOBRAKE_LO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_MIP_AUTOBRAKE_LO",
+                DisplayName = "Autobrake Low",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_MIP_AUTOBRAKE_MED"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_MIP_AUTOBRAKE_MED",
+                DisplayName = "Autobrake Medium",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_MIP_AUTOBRAKE_MAX"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_MIP_AUTOBRAKE_MAX",
+                DisplayName = "Autobrake Max",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+
+            // Landing Gear - Lever control
+            ["S_MIP_GEAR"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_MIP_GEAR",
+                DisplayName = "Landing Gear",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Up", [1] = "Down"}
+            },
+
+            // Brake Fan
+            ["S_MIP_BRAKE_FAN"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_MIP_BRAKE_FAN",
+                DisplayName = "Brake Fan",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+
+            // Console Floor Lights
+            ["S_MIP_LIGHT_CONSOLEFLOOR_CAPT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_MIP_LIGHT_CONSOLEFLOOR_CAPT",
+                DisplayName = "Console Floor Light Captain",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Dim", [2] = "Bright"}
+            },
+            ["S_MIP_LIGHT_CONSOLEFLOOR_FO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_MIP_LIGHT_CONSOLEFLOOR_FO",
+                DisplayName = "Console Floor Light First Officer",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Dim", [2] = "Bright"}
+            },
+
+            // ISIS (Standby Instrument) - 6 momentary buttons
+            ["S_MIP_ISFD_BUGS"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_MIP_ISFD_BUGS",
+                DisplayName = "ISIS Bugs",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_MIP_ISFD_LS"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_MIP_ISFD_LS",
+                DisplayName = "ISIS Localizer",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_MIP_ISFD_PLUS"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_MIP_ISFD_PLUS",
+                DisplayName = "ISIS Plus",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_MIP_ISFD_MINUS"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_MIP_ISFD_MINUS",
+                DisplayName = "ISIS Minus",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_MIP_ISFD_RST"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_MIP_ISFD_RST",
+                DisplayName = "ISIS Reset",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_MIP_ISFD_BARO_BUTTON"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_MIP_ISFD_BARO_BUTTON",
+                DisplayName = "ISIS Barometric Pressure",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+
             // ========== OXYGEN PANEL ==========
             ["S_OH_OXYGEN_CREW_OXYGEN"] = new SimConnect.SimVarDefinition
             {
@@ -6067,6 +6191,14 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "Engines",
                 "ECAM",
                 "Flight Controls"
+            },
+
+            ["Main Instrument Panel"] = new List<string>
+            {
+                "Auto Brakes",
+                "Landing Gear",
+                "Console Floor Lights",
+                "ISIS"
             }
         };
     }
@@ -6452,6 +6584,36 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "S_FC_THR_INST_DISCONNECT2",
                 "S_FC_CAPT_INST_DISCONNECT",
                 "S_FC_FO_INST_DISCONNECT"
+            },
+
+            // ========== MAIN INSTRUMENT PANEL ==========
+            ["Auto Brakes"] = new List<string>
+            {
+                "S_MIP_AUTOBRAKE_LO",
+                "S_MIP_AUTOBRAKE_MED",
+                "S_MIP_AUTOBRAKE_MAX",
+                "S_MIP_BRAKE_FAN"
+            },
+
+            ["Landing Gear"] = new List<string>
+            {
+                "S_MIP_GEAR"
+            },
+
+            ["Console Floor Lights"] = new List<string>
+            {
+                "S_MIP_LIGHT_CONSOLEFLOOR_CAPT",
+                "S_MIP_LIGHT_CONSOLEFLOOR_FO"
+            },
+
+            ["ISIS"] = new List<string>
+            {
+                "S_MIP_ISFD_BUGS",
+                "S_MIP_ISFD_LS",
+                "S_MIP_ISFD_PLUS",
+                "S_MIP_ISFD_MINUS",
+                "S_MIP_ISFD_RST",
+                "S_MIP_ISFD_BARO_BUTTON"
             }
         };
     }
@@ -7095,6 +7257,90 @@ public class FenixA320Definition : BaseAircraftDefinition
             if (varKey == "S_OH_PROBE_HEAT")
             {
                 simConnect.SetLVar("S_OH_PROBE_HEAT", value);
+                return true;
+            }
+
+            // ========== MAIN INSTRUMENT PANEL CONTROLS ==========
+            // Auto Brakes - 3 momentary push buttons (use ExecuteButtonTransition)
+            if (varKey == "S_MIP_AUTOBRAKE_LO" && value == 1)
+            {
+                ExecuteButtonTransition("S_MIP_AUTOBRAKE_LO", "Autobrake Low", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_MIP_AUTOBRAKE_MED" && value == 1)
+            {
+                ExecuteButtonTransition("S_MIP_AUTOBRAKE_MED", "Autobrake Medium", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_MIP_AUTOBRAKE_MAX" && value == 1)
+            {
+                ExecuteButtonTransition("S_MIP_AUTOBRAKE_MAX", "Autobrake Max", simConnect, announcer);
+                return true;
+            }
+
+            // Landing Gear - Lever control (combo box, use SetLVar)
+            if (varKey == "S_MIP_GEAR")
+            {
+                simConnect.SetLVar("S_MIP_GEAR", value);
+                return true;
+            }
+
+            // Brake Fan - Combo box control
+            if (varKey == "S_MIP_BRAKE_FAN")
+            {
+                simConnect.SetLVar("S_MIP_BRAKE_FAN", value);
+                return true;
+            }
+
+            // Console Floor Lights - Combo box controls
+            if (varKey == "S_MIP_LIGHT_CONSOLEFLOOR_CAPT")
+            {
+                simConnect.SetLVar("S_MIP_LIGHT_CONSOLEFLOOR_CAPT", value);
+                return true;
+            }
+
+            if (varKey == "S_MIP_LIGHT_CONSOLEFLOOR_FO")
+            {
+                simConnect.SetLVar("S_MIP_LIGHT_CONSOLEFLOOR_FO", value);
+                return true;
+            }
+
+            // ISIS (Standby Instrument) - 6 momentary push buttons
+            if (varKey == "S_MIP_ISFD_BUGS" && value == 1)
+            {
+                ExecuteButtonTransition("S_MIP_ISFD_BUGS", "ISIS Bugs", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_MIP_ISFD_LS" && value == 1)
+            {
+                ExecuteButtonTransition("S_MIP_ISFD_LS", "ISIS Localizer", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_MIP_ISFD_PLUS" && value == 1)
+            {
+                ExecuteButtonTransition("S_MIP_ISFD_PLUS", "ISIS Plus", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_MIP_ISFD_MINUS" && value == 1)
+            {
+                ExecuteButtonTransition("S_MIP_ISFD_MINUS", "ISIS Minus", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_MIP_ISFD_RST" && value == 1)
+            {
+                ExecuteButtonTransition("S_MIP_ISFD_RST", "ISIS Reset", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_MIP_ISFD_BARO_BUTTON" && value == 1)
+            {
+                ExecuteButtonTransition("S_MIP_ISFD_BARO_BUTTON", "ISIS Barometric Pressure", simConnect, announcer);
                 return true;
             }
 
