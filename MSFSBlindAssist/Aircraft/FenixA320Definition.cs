@@ -3424,7 +3424,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
             },
 
-            // ========== PEDESTAL - ATC TCAS PANEL (15 variables) ==========
+            // ========== PEDESTAL - ATC TCAS PANEL (9 variables) ==========
 
             // Transponder Mode Knob
             ["S_XPDR_MODE"] = new SimConnect.SimVarDefinition
@@ -3498,78 +3498,13 @@ public class FenixA320Definition : BaseAircraftDefinition
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
             },
 
-            // Numeric Keypad Buttons (0-7)
-            ["S_PED_ATC_0"] = new SimConnect.SimVarDefinition
+            // Transponder Code Set (Standard MSFS Event)
+            ["TRANSPONDER_CODE_SET"] = new SimConnect.SimVarDefinition
             {
-                Name = "S_PED_ATC_0",
-                DisplayName = "Key 0",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
-            },
-            ["S_PED_ATC_1"] = new SimConnect.SimVarDefinition
-            {
-                Name = "S_PED_ATC_1",
-                DisplayName = "Key 1",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
-            },
-            ["S_PED_ATC_2"] = new SimConnect.SimVarDefinition
-            {
-                Name = "S_PED_ATC_2",
-                DisplayName = "Key 2",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
-            },
-            ["S_PED_ATC_3"] = new SimConnect.SimVarDefinition
-            {
-                Name = "S_PED_ATC_3",
-                DisplayName = "Key 3",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
-            },
-            ["S_PED_ATC_4"] = new SimConnect.SimVarDefinition
-            {
-                Name = "S_PED_ATC_4",
-                DisplayName = "Key 4",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
-            },
-            ["S_PED_ATC_5"] = new SimConnect.SimVarDefinition
-            {
-                Name = "S_PED_ATC_5",
-                DisplayName = "Key 5",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
-            },
-            ["S_PED_ATC_6"] = new SimConnect.SimVarDefinition
-            {
-                Name = "S_PED_ATC_6",
-                DisplayName = "Key 6",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
-            },
-            ["S_PED_ATC_7"] = new SimConnect.SimVarDefinition
-            {
-                Name = "S_PED_ATC_7",
-                DisplayName = "Key 7",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                Name = "XPNDR_SET",
+                DisplayName = "SQUAWK",
+                Type = SimConnect.SimVarType.Event,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
             },
 
             // ========== SIGNS PANEL ==========
@@ -7114,7 +7049,7 @@ public class FenixA320Definition : BaseAircraftDefinition
 
             ["ATC TCAS"] = new List<string>
             {
-                // Transponder Controls (15 controls)
+                // Transponder Controls (8 controls)
                 "S_XPDR_MODE",             // Mode Knob (STBY/TA/TA-RA)
                 "S_XPDR_OPERATION",        // Operation Knob (STBY/AUTO/ON)
                 "S_XPDR_ATC",              // ATC Switch (ATC 1/ATC 2)
@@ -7122,14 +7057,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "S_TCAS_RANGE",            // TCAS Traffic (THRT/ALL/ABV/BLW)
                 "S_XPDR_IDENT",            // IDENT Button
                 "S_PED_ATC_CLR",           // CLR Button
-                "S_PED_ATC_0",             // Keypad: 0
-                "S_PED_ATC_1",             // Keypad: 1
-                "S_PED_ATC_2",             // Keypad: 2
-                "S_PED_ATC_3",             // Keypad: 3
-                "S_PED_ATC_4",             // Keypad: 4
-                "S_PED_ATC_5",             // Keypad: 5
-                "S_PED_ATC_6",             // Keypad: 6
-                "S_PED_ATC_7"              // Keypad: 7
+                "TRANSPONDER_CODE_SET"     // Set Transponder Code (replaces keypad 0-7)
             },
 
             // ========== MAIN INSTRUMENT PANEL ==========
@@ -8745,54 +8673,9 @@ public class FenixA320Definition : BaseAircraftDefinition
                 return true;
             }
 
-            // Numeric Keypad Buttons (use ExecuteButtonTransition like CLR button)
-            if (varKey == "S_PED_ATC_0" && value == 1)
-            {
-                ExecuteButtonTransition("S_PED_ATC_0", "Key 0", simConnect, announcer);
-                return true;
-            }
-
-            if (varKey == "S_PED_ATC_1" && value == 1)
-            {
-                ExecuteButtonTransition("S_PED_ATC_1", "Key 1", simConnect, announcer);
-                return true;
-            }
-
-            if (varKey == "S_PED_ATC_2" && value == 1)
-            {
-                ExecuteButtonTransition("S_PED_ATC_2", "Key 2", simConnect, announcer);
-                return true;
-            }
-
-            if (varKey == "S_PED_ATC_3" && value == 1)
-            {
-                ExecuteButtonTransition("S_PED_ATC_3", "Key 3", simConnect, announcer);
-                return true;
-            }
-
-            if (varKey == "S_PED_ATC_4" && value == 1)
-            {
-                ExecuteButtonTransition("S_PED_ATC_4", "Key 4", simConnect, announcer);
-                return true;
-            }
-
-            if (varKey == "S_PED_ATC_5" && value == 1)
-            {
-                ExecuteButtonTransition("S_PED_ATC_5", "Key 5", simConnect, announcer);
-                return true;
-            }
-
-            if (varKey == "S_PED_ATC_6" && value == 1)
-            {
-                ExecuteButtonTransition("S_PED_ATC_6", "Key 6", simConnect, announcer);
-                return true;
-            }
-
-            if (varKey == "S_PED_ATC_7" && value == 1)
-            {
-                ExecuteButtonTransition("S_PED_ATC_7", "Key 7", simConnect, announcer);
-                return true;
-            }
+            // Transponder Code Set (Standard MSFS Event - handled by MainForm)
+            // Uses XPNDR_SET event with user-entered 4-digit code
+            // MainForm will display text box and set button automatically
 
             // ========== FLIGHT CONTROLS PANEL (Pedestal) ==========
             // Parking Brake - Simple SetLVar
@@ -8917,9 +8800,12 @@ public class FenixA320Definition : BaseAircraftDefinition
     {
         try
         {
+            System.Diagnostics.Debug.WriteLine($"[FenixA320] ExecuteButtonTransition START: {displayName} ({varName})");
+
             // Reset to 0
             if (simConnect != null && simConnect.IsConnected)
             {
+                System.Diagnostics.Debug.WriteLine($"[FenixA320] Setting {varName} = 0 (Release)");
                 simConnect.SetLVar(varName, 0);
             }
 
@@ -8935,7 +8821,9 @@ public class FenixA320Definition : BaseAircraftDefinition
                 {
                     if (simConnect != null && simConnect.IsConnected)
                     {
+                        System.Diagnostics.Debug.WriteLine($"[FenixA320] Setting {varName} = 1 (Press)");
                         simConnect.SetLVar(varName, 1);
+                        System.Diagnostics.Debug.WriteLine($"[FenixA320] ExecuteButtonTransition COMPLETE: {displayName}");
                     }
                 }
                 catch (Exception ex)

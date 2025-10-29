@@ -2306,6 +2306,46 @@ public partial class MainForm : Form
                                 announcer.Announce($"Invalid COM frequency. Range: 118.000 to 136.975 MHz");
                             }
                         }
+                        else if (varKey == "TRANSPONDER_CODE_SET")
+                        {
+                            // Validate transponder code (0000-7777 in octal)
+                            int code = (int)value;
+                            if (code >= 0 && code <= 7777)
+                            {
+                                // Verify each digit is 0-7 (octal)
+                                string codeStr = code.ToString("D4");
+                                bool valid = true;
+                                foreach (char c in codeStr)
+                                {
+                                    if (c < '0' || c > '7')
+                                    {
+                                        valid = false;
+                                        break;
+                                    }
+                                }
+
+                                if (valid)
+                                {
+                                    // Convert to BCD16 format expected by XPNDR_SET
+                                    uint bcd = (uint)(
+                                        ((code / 1000) << 12) |
+                                        (((code / 100) % 10) << 8) |
+                                        (((code / 10) % 10) << 4) |
+                                        (code % 10)
+                                    );
+                                    simConnectManager?.SendEvent("XPNDR_SET", bcd);
+                                    announcer.AnnounceImmediate($"Transponder code set to {codeStr}");
+                                }
+                                else
+                                {
+                                    announcer.Announce("Invalid transponder code. Each digit must be 0-7.");
+                                }
+                            }
+                            else
+                            {
+                                announcer.Announce("Invalid transponder code. Range: 0000 to 7777.");
+                            }
+                        }
                         // All A32NX-specific handling (VS/FPA, baro) now done by HandleUIVariableSet
                         else
                         {
