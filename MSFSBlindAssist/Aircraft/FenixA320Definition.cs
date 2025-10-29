@@ -2328,6 +2328,16 @@ public class FenixA320Definition : BaseAircraftDefinition
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
             },
 
+            // Anti-Skid
+            ["S_FC_MIP_ANTI_SKID"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FC_MIP_ANTI_SKID",
+                DisplayName = "Anti-Skid",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+
             // Console Floor Lights
             ["S_MIP_LIGHT_CONSOLEFLOOR_CAPT"] = new SimConnect.SimVarDefinition
             {
@@ -2400,6 +2410,268 @@ public class FenixA320Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+
+            // GPWS/Terrain Buttons
+            ["S_MIP_GPWS_VISUAL_ALERT_CAPT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_MIP_GPWS_VISUAL_ALERT_CAPT",
+                DisplayName = "GPWS GS Captain",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_MIP_GPWS_VISUAL_ALERT_FO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_MIP_GPWS_VISUAL_ALERT_FO",
+                DisplayName = "GPWS GS First Officer",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_MIP_GPWS_TERRAIN_ON_ND_CAPT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_MIP_GPWS_TERRAIN_ON_ND_CAPT",
+                DisplayName = "Terrain on ND Captain",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_MIP_GPWS_TERRAIN_ON_ND_FO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_MIP_GPWS_TERRAIN_ON_ND_FO",
+                DisplayName = "Terrain on ND First Officer",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+
+            // Warning/Message Buttons
+            ["S_MIP_MASTER_WARNING_CAPT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_MIP_MASTER_WARNING_CAPT",
+                DisplayName = "Master Warning Captain",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_MIP_MASTER_WARNING_FO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_MIP_MASTER_WARNING_FO",
+                DisplayName = "Master Warning First Officer",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_MIP_MASTER_CAUTION_CAPT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_MIP_MASTER_CAUTION_CAPT",
+                DisplayName = "Master Caution Captain",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_MIP_MASTER_CAUTION_FO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_MIP_MASTER_CAUTION_FO",
+                DisplayName = "Master Caution First Officer",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_MIP_ATC_MSG_CAPT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_MIP_ATC_MSG_CAPT",
+                DisplayName = "ATC Message Captain",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_MIP_ATC_MSG_FO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_MIP_ATC_MSG_FO",
+                DisplayName = "ATC Message First Officer",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_MIP_CHRONO_CAPT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_MIP_CHRONO_CAPT",
+                DisplayName = "Chronometer Captain",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_MIP_CHRONO_FO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_MIP_CHRONO_FO",
+                DisplayName = "Chronometer First Officer",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+
+            // Autoland Buttons
+            ["S_MIP_AUTOLAND_CAPT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_MIP_AUTOLAND_CAPT",
+                DisplayName = "Autoland Captain",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_MIP_AUTOLAND_FO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_MIP_AUTOLAND_FO",
+                DisplayName = "Autoland First Officer",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+
+            // Main Instrument Panel Lights
+            ["A_MIP_LIGHTING_MAP_L"] = new SimConnect.SimVarDefinition
+            {
+                Name = "A_MIP_LIGHTING_MAP_L",
+                DisplayName = "Map Light Left",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0.0] = "Off",
+                    [0.1] = "10%",
+                    [0.2] = "20%",
+                    [0.3] = "30%",
+                    [0.4] = "40%",
+                    [0.5] = "50%",
+                    [0.6] = "60%",
+                    [0.7] = "70%",
+                    [0.8] = "80%",
+                    [0.9] = "90%",
+                    [1.0] = "100%"
+                }
+            },
+            ["A_MIP_LIGHTING_MAP_R"] = new SimConnect.SimVarDefinition
+            {
+                Name = "A_MIP_LIGHTING_MAP_R",
+                DisplayName = "Map Light Right",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0.0] = "Off",
+                    [0.1] = "10%",
+                    [0.2] = "20%",
+                    [0.3] = "30%",
+                    [0.4] = "40%",
+                    [0.5] = "50%",
+                    [0.6] = "60%",
+                    [0.7] = "70%",
+                    [0.8] = "80%",
+                    [0.9] = "90%",
+                    [1.0] = "100%"
+                }
+            },
+            ["A_MIP_LIGHTING_FLOOD_MAIN"] = new SimConnect.SimVarDefinition
+            {
+                Name = "A_MIP_LIGHTING_FLOOD_MAIN",
+                DisplayName = "Main Panel Flood Light",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0.0] = "Off",
+                    [0.1] = "10%",
+                    [0.2] = "20%",
+                    [0.3] = "30%",
+                    [0.4] = "40%",
+                    [0.5] = "50%",
+                    [0.6] = "60%",
+                    [0.7] = "70%",
+                    [0.8] = "80%",
+                    [0.9] = "90%",
+                    [1.0] = "100%"
+                }
+            },
+            ["A_MIP_LIGHTING_FLOOD_PEDESTAL"] = new SimConnect.SimVarDefinition
+            {
+                Name = "A_MIP_LIGHTING_FLOOD_PEDESTAL",
+                DisplayName = "Pedestal Flood Light",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0.0] = "Off",
+                    [0.1] = "10%",
+                    [0.2] = "20%",
+                    [0.3] = "30%",
+                    [0.4] = "40%",
+                    [0.5] = "50%",
+                    [0.6] = "60%",
+                    [0.7] = "70%",
+                    [0.8] = "80%",
+                    [0.9] = "90%",
+                    [1.0] = "100%"
+                }
+            },
+
+            // Audio - Loudspeaker Volume Controls
+            ["A_MIP_LOUDSPEAKER_CAPT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "A_MIP_LOUDSPEAKER_CAPT",
+                DisplayName = "Loudspeaker Volume Captain",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0.0] = "0%",
+                    [0.1] = "10%",
+                    [0.2] = "20%",
+                    [0.3] = "30%",
+                    [0.4] = "40%",
+                    [0.5] = "50%",
+                    [0.6] = "60%",
+                    [0.7] = "70%",
+                    [0.8] = "80%",
+                    [0.9] = "90%",
+                    [1.0] = "100%"
+                }
+            },
+            ["A_MIP_LOUDSPEAKER_FO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "A_MIP_LOUDSPEAKER_FO",
+                DisplayName = "Loudspeaker Volume First Officer",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0.0] = "0%",
+                    [0.1] = "10%",
+                    [0.2] = "20%",
+                    [0.3] = "30%",
+                    [0.4] = "40%",
+                    [0.5] = "50%",
+                    [0.6] = "60%",
+                    [0.7] = "70%",
+                    [0.8] = "80%",
+                    [0.9] = "90%",
+                    [1.0] = "100%"
+                }
             },
 
             // ========== OXYGEN PANEL ==========
@@ -6198,7 +6470,12 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "Auto Brakes",
                 "Landing Gear",
                 "Console Floor Lights",
-                "ISIS"
+                "ISIS",
+                "GPWS/Terrain",
+                "Warnings/Messages",
+                "Autoland",
+                "Main Instrument Lights",
+                "Audio"
             }
         };
     }
@@ -6597,7 +6874,8 @@ public class FenixA320Definition : BaseAircraftDefinition
 
             ["Landing Gear"] = new List<string>
             {
-                "S_MIP_GEAR"
+                "S_MIP_GEAR",
+                "S_FC_MIP_ANTI_SKID"
             },
 
             ["Console Floor Lights"] = new List<string>
@@ -6614,6 +6892,46 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "S_MIP_ISFD_MINUS",
                 "S_MIP_ISFD_RST",
                 "S_MIP_ISFD_BARO_BUTTON"
+            },
+
+            ["GPWS/Terrain"] = new List<string>
+            {
+                "S_MIP_GPWS_VISUAL_ALERT_CAPT",
+                "S_MIP_GPWS_VISUAL_ALERT_FO",
+                "S_MIP_GPWS_TERRAIN_ON_ND_CAPT",
+                "S_MIP_GPWS_TERRAIN_ON_ND_FO"
+            },
+
+            ["Warnings/Messages"] = new List<string>
+            {
+                "S_MIP_MASTER_WARNING_CAPT",
+                "S_MIP_MASTER_WARNING_FO",
+                "S_MIP_MASTER_CAUTION_CAPT",
+                "S_MIP_MASTER_CAUTION_FO",
+                "S_MIP_ATC_MSG_CAPT",
+                "S_MIP_ATC_MSG_FO",
+                "S_MIP_CHRONO_CAPT",
+                "S_MIP_CHRONO_FO"
+            },
+
+            ["Autoland"] = new List<string>
+            {
+                "S_MIP_AUTOLAND_CAPT",
+                "S_MIP_AUTOLAND_FO"
+            },
+
+            ["Main Instrument Lights"] = new List<string>
+            {
+                "A_MIP_LIGHTING_MAP_L",
+                "A_MIP_LIGHTING_MAP_R",
+                "A_MIP_LIGHTING_FLOOD_MAIN",
+                "A_MIP_LIGHTING_FLOOD_PEDESTAL"
+            },
+
+            ["Audio"] = new List<string>
+            {
+                "A_MIP_LOUDSPEAKER_CAPT",
+                "A_MIP_LOUDSPEAKER_FO"
             }
         };
     }
@@ -7294,6 +7612,13 @@ public class FenixA320Definition : BaseAircraftDefinition
                 return true;
             }
 
+            // Anti-Skid - Combo box control
+            if (varKey == "S_FC_MIP_ANTI_SKID")
+            {
+                simConnect.SetLVar("S_FC_MIP_ANTI_SKID", value);
+                return true;
+            }
+
             // Console Floor Lights - Combo box controls
             if (varKey == "S_MIP_LIGHT_CONSOLEFLOOR_CAPT")
             {
@@ -7341,6 +7666,131 @@ public class FenixA320Definition : BaseAircraftDefinition
             if (varKey == "S_MIP_ISFD_BARO_BUTTON" && value == 1)
             {
                 ExecuteButtonTransition("S_MIP_ISFD_BARO_BUTTON", "ISIS Barometric Pressure", simConnect, announcer);
+                return true;
+            }
+
+            // ========== GPWS/TERRAIN PANEL CONTROLS ==========
+            if (varKey == "S_MIP_GPWS_VISUAL_ALERT_CAPT" && value == 1)
+            {
+                ExecuteButtonTransition("S_MIP_GPWS_VISUAL_ALERT_CAPT", "GPWS GS Captain", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_MIP_GPWS_VISUAL_ALERT_FO" && value == 1)
+            {
+                ExecuteButtonTransition("S_MIP_GPWS_VISUAL_ALERT_FO", "GPWS GS First Officer", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_MIP_GPWS_TERRAIN_ON_ND_CAPT" && value == 1)
+            {
+                ExecuteButtonTransition("S_MIP_GPWS_TERRAIN_ON_ND_CAPT", "Terrain on ND Captain", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_MIP_GPWS_TERRAIN_ON_ND_FO" && value == 1)
+            {
+                ExecuteButtonTransition("S_MIP_GPWS_TERRAIN_ON_ND_FO", "Terrain on ND First Officer", simConnect, announcer);
+                return true;
+            }
+
+            // ========== WARNINGS/MESSAGES PANEL CONTROLS ==========
+            if (varKey == "S_MIP_MASTER_WARNING_CAPT" && value == 1)
+            {
+                ExecuteButtonTransition("S_MIP_MASTER_WARNING_CAPT", "Master Warning Captain", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_MIP_MASTER_WARNING_FO" && value == 1)
+            {
+                ExecuteButtonTransition("S_MIP_MASTER_WARNING_FO", "Master Warning First Officer", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_MIP_MASTER_CAUTION_CAPT" && value == 1)
+            {
+                ExecuteButtonTransition("S_MIP_MASTER_CAUTION_CAPT", "Master Caution Captain", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_MIP_MASTER_CAUTION_FO" && value == 1)
+            {
+                ExecuteButtonTransition("S_MIP_MASTER_CAUTION_FO", "Master Caution First Officer", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_MIP_ATC_MSG_CAPT" && value == 1)
+            {
+                ExecuteButtonTransition("S_MIP_ATC_MSG_CAPT", "ATC Message Captain", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_MIP_ATC_MSG_FO" && value == 1)
+            {
+                ExecuteButtonTransition("S_MIP_ATC_MSG_FO", "ATC Message First Officer", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_MIP_CHRONO_CAPT" && value == 1)
+            {
+                ExecuteButtonTransition("S_MIP_CHRONO_CAPT", "Chronometer Captain", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_MIP_CHRONO_FO" && value == 1)
+            {
+                ExecuteButtonTransition("S_MIP_CHRONO_FO", "Chronometer First Officer", simConnect, announcer);
+                return true;
+            }
+
+            // ========== AUTOLAND PANEL CONTROLS ==========
+            if (varKey == "S_MIP_AUTOLAND_CAPT" && value == 1)
+            {
+                ExecuteButtonTransition("S_MIP_AUTOLAND_CAPT", "Autoland Captain", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_MIP_AUTOLAND_FO" && value == 1)
+            {
+                ExecuteButtonTransition("S_MIP_AUTOLAND_FO", "Autoland First Officer", simConnect, announcer);
+                return true;
+            }
+
+            // ========== MAIN INSTRUMENT LIGHTS PANEL CONTROLS ==========
+            if (varKey == "A_MIP_LIGHTING_MAP_L")
+            {
+                simConnect.SetLVar("A_MIP_LIGHTING_MAP_L", value);
+                return true;
+            }
+
+            if (varKey == "A_MIP_LIGHTING_MAP_R")
+            {
+                simConnect.SetLVar("A_MIP_LIGHTING_MAP_R", value);
+                return true;
+            }
+
+            if (varKey == "A_MIP_LIGHTING_FLOOD_MAIN")
+            {
+                simConnect.SetLVar("A_MIP_LIGHTING_FLOOD_MAIN", value);
+                return true;
+            }
+
+            if (varKey == "A_MIP_LIGHTING_FLOOD_PEDESTAL")
+            {
+                simConnect.SetLVar("A_MIP_LIGHTING_FLOOD_PEDESTAL", value);
+                return true;
+            }
+
+            // ========== AUDIO PANEL CONTROLS ==========
+            if (varKey == "A_MIP_LOUDSPEAKER_CAPT")
+            {
+                simConnect.SetLVar("A_MIP_LOUDSPEAKER_CAPT", value);
+                return true;
+            }
+
+            if (varKey == "A_MIP_LOUDSPEAKER_FO")
+            {
+                simConnect.SetLVar("A_MIP_LOUDSPEAKER_FO", value);
                 return true;
             }
 
@@ -8056,7 +8506,7 @@ public class FenixA320Definition : BaseAircraftDefinition
 
             // Set up timer to transition to 1 after delay
             var transitionTimer = new System.Windows.Forms.Timer();
-            transitionTimer.Interval = 500;
+            transitionTimer.Interval = 200;
             transitionTimer.Tick += (sender, e) =>
             {
                 transitionTimer.Stop();
@@ -8101,7 +8551,7 @@ public class FenixA320Definition : BaseAircraftDefinition
 
             // Set up timer to return to center (1) after delay
             var transitionTimer = new System.Windows.Forms.Timer();
-            transitionTimer.Interval = 500;
+            transitionTimer.Interval = 200;
             transitionTimer.Tick += (sender, e) =>
             {
                 transitionTimer.Stop();
