@@ -3900,6 +3900,302 @@ public class FenixA320Definition : BaseAircraftDefinition
                 }
             },
 
+            // Display Brightness Controls (PFD, ND, ND WX)
+            ["A_DISPLAY_BRIGHTNESS_CO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "A_DISPLAY_BRIGHTNESS_CO",
+                DisplayName = "Captain PFD Brightness",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0.0] = "Off",
+                    [0.05] = "5%",
+                    [0.1] = "10%",
+                    [0.15] = "15%",
+                    [0.2] = "20%",
+                    [0.25] = "25%",
+                    [0.3] = "30%",
+                    [0.35] = "35%",
+                    [0.4] = "40%",
+                    [0.45] = "45%",
+                    [0.5] = "50%",
+                    [0.55] = "55%",
+                    [0.6] = "60%",
+                    [0.65] = "65%",
+                    [0.7] = "70%",
+                    [0.75] = "75%",
+                    [0.8] = "80%",
+                    [0.85] = "85%",
+                    [0.9] = "90%",
+                    [0.95] = "95%",
+                    [1.0] = "100%"
+                }
+            },
+            ["A_DISPLAY_BRIGHTNESS_FO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "A_DISPLAY_BRIGHTNESS_FO",
+                DisplayName = "First Officer PFD Brightness",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0.0] = "Off",
+                    [0.05] = "5%",
+                    [0.1] = "10%",
+                    [0.15] = "15%",
+                    [0.2] = "20%",
+                    [0.25] = "25%",
+                    [0.3] = "30%",
+                    [0.35] = "35%",
+                    [0.4] = "40%",
+                    [0.45] = "45%",
+                    [0.5] = "50%",
+                    [0.55] = "55%",
+                    [0.6] = "60%",
+                    [0.65] = "65%",
+                    [0.7] = "70%",
+                    [0.75] = "75%",
+                    [0.8] = "80%",
+                    [0.85] = "85%",
+                    [0.9] = "90%",
+                    [0.95] = "95%",
+                    [1.0] = "100%"
+                }
+            },
+            ["A_DISPLAY_BRIGHTNESS_CI"] = new SimConnect.SimVarDefinition
+            {
+                Name = "A_DISPLAY_BRIGHTNESS_CI",
+                DisplayName = "Captain ND Brightness",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0.0] = "Off",
+                    [0.05] = "5%",
+                    [0.1] = "10%",
+                    [0.15] = "15%",
+                    [0.2] = "20%",
+                    [0.25] = "25%",
+                    [0.3] = "30%",
+                    [0.35] = "35%",
+                    [0.4] = "40%",
+                    [0.45] = "45%",
+                    [0.5] = "50%",
+                    [0.55] = "55%",
+                    [0.6] = "60%",
+                    [0.65] = "65%",
+                    [0.7] = "70%",
+                    [0.75] = "75%",
+                    [0.8] = "80%",
+                    [0.85] = "85%",
+                    [0.9] = "90%",
+                    [0.95] = "95%",
+                    [1.0] = "100%"
+                }
+            },
+            ["A_DISPLAY_BRIGHTNESS_FI"] = new SimConnect.SimVarDefinition
+            {
+                Name = "A_DISPLAY_BRIGHTNESS_FI",
+                DisplayName = "First Officer ND Brightness",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0.0] = "Off",
+                    [0.05] = "5%",
+                    [0.1] = "10%",
+                    [0.15] = "15%",
+                    [0.2] = "20%",
+                    [0.25] = "25%",
+                    [0.3] = "30%",
+                    [0.35] = "35%",
+                    [0.4] = "40%",
+                    [0.45] = "45%",
+                    [0.5] = "50%",
+                    [0.55] = "55%",
+                    [0.6] = "60%",
+                    [0.65] = "65%",
+                    [0.7] = "70%",
+                    [0.75] = "75%",
+                    [0.8] = "80%",
+                    [0.85] = "85%",
+                    [0.9] = "90%",
+                    [0.95] = "95%",
+                    [1.0] = "100%"
+                }
+            },
+            ["A_DISPLAY_BRIGHTNESS_CI_OUTER"] = new SimConnect.SimVarDefinition
+            {
+                Name = "A_DISPLAY_BRIGHTNESS_CI_OUTER",
+                DisplayName = "Captain ND WX Brightness",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0.0] = "Off",
+                    [0.05] = "5%",
+                    [0.1] = "10%",
+                    [0.15] = "15%",
+                    [0.2] = "20%",
+                    [0.25] = "25%",
+                    [0.3] = "30%",
+                    [0.35] = "35%",
+                    [0.4] = "40%",
+                    [0.45] = "45%",
+                    [0.5] = "50%",
+                    [0.55] = "55%",
+                    [0.6] = "60%",
+                    [0.65] = "65%",
+                    [0.7] = "70%",
+                    [0.75] = "75%",
+                    [0.8] = "80%",
+                    [0.85] = "85%",
+                    [0.9] = "90%",
+                    [0.95] = "95%",
+                    [1.0] = "100%"
+                }
+            },
+            ["A_DISPLAY_BRIGHTNESS_FI_OUTER"] = new SimConnect.SimVarDefinition
+            {
+                Name = "A_DISPLAY_BRIGHTNESS_FI_OUTER",
+                DisplayName = "First Officer ND WX Brightness",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0.0] = "Off",
+                    [0.05] = "5%",
+                    [0.1] = "10%",
+                    [0.15] = "15%",
+                    [0.2] = "20%",
+                    [0.25] = "25%",
+                    [0.3] = "30%",
+                    [0.35] = "35%",
+                    [0.4] = "40%",
+                    [0.45] = "45%",
+                    [0.5] = "50%",
+                    [0.55] = "55%",
+                    [0.6] = "60%",
+                    [0.65] = "65%",
+                    [0.7] = "70%",
+                    [0.75] = "75%",
+                    [0.8] = "80%",
+                    [0.85] = "85%",
+                    [0.9] = "90%",
+                    [0.95] = "95%",
+                    [1.0] = "100%"
+                }
+            },
+
+            // Chart Light Controls
+            ["A_CHART_LIGHT_TEMP_CAPT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "A_CHART_LIGHT_TEMP_CAPT",
+                DisplayName = "Captain Chart Light",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0.0] = "Off",
+                    [0.1] = "10%",
+                    [0.2] = "20%",
+                    [0.3] = "30%",
+                    [0.4] = "40%",
+                    [0.5] = "50%",
+                    [0.6] = "60%",
+                    [0.7] = "70%",
+                    [0.8] = "80%",
+                    [0.9] = "90%",
+                    [1.0] = "100%"
+                }
+            },
+            ["A_CHART_LIGHT_TEMP_FO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "A_CHART_LIGHT_TEMP_FO",
+                DisplayName = "First Officer Chart Light",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0.0] = "Off",
+                    [0.1] = "10%",
+                    [0.2] = "20%",
+                    [0.3] = "30%",
+                    [0.4] = "40%",
+                    [0.5] = "50%",
+                    [0.6] = "60%",
+                    [0.7] = "70%",
+                    [0.8] = "80%",
+                    [0.9] = "90%",
+                    [1.0] = "100%"
+                }
+            },
+
+            // FCU and Pedestal Lighting Controls
+            ["A_FCU_LIGHTING_TEXT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "A_FCU_LIGHTING_TEXT",
+                DisplayName = "FCU Display Brightness",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0.0] = "Off",
+                    [0.05] = "5%",
+                    [0.1] = "10%",
+                    [0.15] = "15%",
+                    [0.2] = "20%",
+                    [0.25] = "25%",
+                    [0.3] = "30%",
+                    [0.35] = "35%",
+                    [0.4] = "40%",
+                    [0.45] = "45%",
+                    [0.5] = "50%",
+                    [0.55] = "55%",
+                    [0.6] = "60%",
+                    [0.65] = "65%",
+                    [0.7] = "70%",
+                    [0.75] = "75%",
+                    [0.8] = "80%",
+                    [0.85] = "85%",
+                    [0.9] = "90%",
+                    [0.95] = "95%",
+                    [1.0] = "100%"
+                }
+            },
+            ["A_PED_LIGHTING_PEDESTAL"] = new SimConnect.SimVarDefinition
+            {
+                Name = "A_PED_LIGHTING_PEDESTAL",
+                DisplayName = "Pedestal Integral Lighting",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0.0] = "Off",
+                    [0.05] = "5%",
+                    [0.1] = "10%",
+                    [0.15] = "15%",
+                    [0.2] = "20%",
+                    [0.25] = "25%",
+                    [0.3] = "30%",
+                    [0.35] = "35%",
+                    [0.4] = "40%",
+                    [0.45] = "45%",
+                    [0.5] = "50%",
+                    [0.55] = "55%",
+                    [0.6] = "60%",
+                    [0.65] = "65%",
+                    [0.7] = "70%",
+                    [0.75] = "75%",
+                    [0.8] = "80%",
+                    [0.85] = "85%",
+                    [0.9] = "90%",
+                    [0.95] = "95%",
+                    [1.0] = "100%"
+                }
+            },
+
             // Audio - Loudspeaker Volume Controls
             ["A_MIP_LOUDSPEAKER_CAPT"] = new SimConnect.SimVarDefinition
             {
@@ -5830,28 +6126,11 @@ public class FenixA320Definition : BaseAircraftDefinition
                 IsAnnounced = true,
             },
 
-            // ========== LIGHTS (5 variables) ==========
-            ["A_PED_LIGHTING_PEDESTAL"] = new SimConnect.SimVarDefinition
-            {
-                Name = "A_PED_LIGHTING_PEDESTAL",
-                DisplayName = "FNX32 INTEG Light Knob Position",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
-            },
+            // ========== LIGHTS (3 variables) ==========
             ["A_FCU_LIGHTING"] = new SimConnect.SimVarDefinition
             {
                 Name = "A_FCU_LIGHTING",
                 DisplayName = "FCU INTEG BRIGHTNESS VALUE",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-            },
-            ["A_FCU_LIGHTING_TEXT"] = new SimConnect.SimVarDefinition
-            {
-                Name = "A_FCU_LIGHTING_TEXT",
-                DisplayName = "FCU BRIGHTNESS VALUE",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -8586,7 +8865,19 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "A_MIP_LIGHTING_MAP_L",
                 "A_MIP_LIGHTING_MAP_R",
                 "A_MIP_LIGHTING_FLOOD_MAIN",
-                "A_MIP_LIGHTING_FLOOD_PEDESTAL"
+                "A_MIP_LIGHTING_FLOOD_PEDESTAL",
+                "A_DISPLAY_BRIGHTNESS_CO",
+                "A_DISPLAY_BRIGHTNESS_FO",
+                "A_DISPLAY_BRIGHTNESS_CI",
+                "A_DISPLAY_BRIGHTNESS_FI",
+                "A_DISPLAY_BRIGHTNESS_CI_OUTER",
+                "A_DISPLAY_BRIGHTNESS_FI_OUTER",
+                "A_DISPLAY_BRIGHTNESS_ECAM_U",
+                "A_DISPLAY_BRIGHTNESS_ECAM_L",
+                "A_CHART_LIGHT_TEMP_CAPT",
+                "A_CHART_LIGHT_TEMP_FO",
+                "A_FCU_LIGHTING_TEXT",
+                "A_PED_LIGHTING_PEDESTAL"
             },
 
             ["Audio"] = new List<string>
@@ -9446,6 +9737,66 @@ public class FenixA320Definition : BaseAircraftDefinition
             if (varKey == "A_MIP_LIGHTING_FLOOD_PEDESTAL")
             {
                 simConnect.SetLVar("A_MIP_LIGHTING_FLOOD_PEDESTAL", value);
+                return true;
+            }
+
+            if (varKey == "A_DISPLAY_BRIGHTNESS_CO")
+            {
+                simConnect.SetLVar("A_DISPLAY_BRIGHTNESS_CO", value);
+                return true;
+            }
+
+            if (varKey == "A_DISPLAY_BRIGHTNESS_FO")
+            {
+                simConnect.SetLVar("A_DISPLAY_BRIGHTNESS_FO", value);
+                return true;
+            }
+
+            if (varKey == "A_DISPLAY_BRIGHTNESS_CI")
+            {
+                simConnect.SetLVar("A_DISPLAY_BRIGHTNESS_CI", value);
+                return true;
+            }
+
+            if (varKey == "A_DISPLAY_BRIGHTNESS_FI")
+            {
+                simConnect.SetLVar("A_DISPLAY_BRIGHTNESS_FI", value);
+                return true;
+            }
+
+            if (varKey == "A_DISPLAY_BRIGHTNESS_CI_OUTER")
+            {
+                simConnect.SetLVar("A_DISPLAY_BRIGHTNESS_CI_OUTER", value);
+                return true;
+            }
+
+            if (varKey == "A_DISPLAY_BRIGHTNESS_FI_OUTER")
+            {
+                simConnect.SetLVar("A_DISPLAY_BRIGHTNESS_FI_OUTER", value);
+                return true;
+            }
+
+            if (varKey == "A_CHART_LIGHT_TEMP_CAPT")
+            {
+                simConnect.SetLVar("A_CHART_LIGHT_TEMP_CAPT", value);
+                return true;
+            }
+
+            if (varKey == "A_CHART_LIGHT_TEMP_FO")
+            {
+                simConnect.SetLVar("A_CHART_LIGHT_TEMP_FO", value);
+                return true;
+            }
+
+            if (varKey == "A_FCU_LIGHTING_TEXT")
+            {
+                simConnect.SetLVar("A_FCU_LIGHTING_TEXT", value);
+                return true;
+            }
+
+            if (varKey == "A_PED_LIGHTING_PEDESTAL")
+            {
+                simConnect.SetLVar("A_PED_LIGHTING_PEDESTAL", value);
                 return true;
             }
 
