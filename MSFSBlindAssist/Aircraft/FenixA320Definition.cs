@@ -2302,7 +2302,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
             },
 
-            // ========== AUDIO CONTROL PANEL (ACP) (30 variables) ==========
+            // ========== AUDIO CONTROL PANEL (ACP) (36 variables) ==========
 
             // Volume Controls (15 knobs)
             ["A_ASP_VHF_1_VOLUME"] = new SimConnect.SimVarDefinition
@@ -2663,6 +2663,54 @@ public class FenixA320Definition : BaseAircraftDefinition
             {
                 Name = "S_ASP_PA_REC_LATCH",
                 DisplayName = "ACP PA Receive",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_ASP_ILS_REC_LATCH"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_ASP_ILS_REC_LATCH",
+                DisplayName = "ACP ILS Receive",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_ASP_VOR_1_REC_LATCH"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_ASP_VOR_1_REC_LATCH",
+                DisplayName = "ACP VOR 1 Receive",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_ASP_VOR_2_REC_LATCH"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_ASP_VOR_2_REC_LATCH",
+                DisplayName = "ACP VOR 2 Receive",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_ASP_MARKER_REC_LATCH"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_ASP_MARKER_REC_LATCH",
+                DisplayName = "ACP MARKER Receive",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_ASP_ADF_1_REC_LATCH"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_ASP_ADF_1_REC_LATCH",
+                DisplayName = "ACP ADF 1 Receive",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_ASP_ADF_2_REC_LATCH"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_ASP_ADF_2_REC_LATCH",
+                DisplayName = "ACP ADF 2 Receive",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
@@ -8915,11 +8963,17 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "S_ASP_RESET",
                 "S_ASP_VOICE",
 
-                // Receive Toggle Controls (4 combo boxes)
+                // Receive Toggle Controls (10 combo boxes)
                 "S_ASP_VHF_1_REC_LATCH",
                 "S_ASP_HF_1_REC_LATCH",
                 "S_ASP_CAB_REC_LATCH",
-                "S_ASP_PA_REC_LATCH"
+                "S_ASP_PA_REC_LATCH",
+                "S_ASP_ILS_REC_LATCH",
+                "S_ASP_VOR_1_REC_LATCH",
+                "S_ASP_VOR_2_REC_LATCH",
+                "S_ASP_MARKER_REC_LATCH",
+                "S_ASP_ADF_1_REC_LATCH",
+                "S_ASP_ADF_2_REC_LATCH"
             },
 
             // ========== GLARESHIELD ==========
@@ -11248,7 +11302,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 return true;
             }
 
-            // Receive Toggle Controls (4 combo boxes - use SetLVar)
+            // Receive Toggle Controls (10 combo boxes - use SetLVar)
             if (varKey == "S_ASP_VHF_1_REC_LATCH")
             {
                 simConnect.SetLVar("S_ASP_VHF_1_REC_LATCH", value);
@@ -11270,6 +11324,42 @@ public class FenixA320Definition : BaseAircraftDefinition
             if (varKey == "S_ASP_PA_REC_LATCH")
             {
                 simConnect.SetLVar("S_ASP_PA_REC_LATCH", value);
+                return true;
+            }
+
+            if (varKey == "S_ASP_ILS_REC_LATCH")
+            {
+                simConnect.SetLVar("S_ASP_ILS_REC_LATCH", value);
+                return true;
+            }
+
+            if (varKey == "S_ASP_VOR_1_REC_LATCH")
+            {
+                simConnect.SetLVar("S_ASP_VOR_1_REC_LATCH", value);
+                return true;
+            }
+
+            if (varKey == "S_ASP_VOR_2_REC_LATCH")
+            {
+                simConnect.SetLVar("S_ASP_VOR_2_REC_LATCH", value);
+                return true;
+            }
+
+            if (varKey == "S_ASP_MARKER_REC_LATCH")
+            {
+                simConnect.SetLVar("S_ASP_MARKER_REC_LATCH", value);
+                return true;
+            }
+
+            if (varKey == "S_ASP_ADF_1_REC_LATCH")
+            {
+                simConnect.SetLVar("S_ASP_ADF_1_REC_LATCH", value);
+                return true;
+            }
+
+            if (varKey == "S_ASP_ADF_2_REC_LATCH")
+            {
+                simConnect.SetLVar("S_ASP_ADF_2_REC_LATCH", value);
                 return true;
             }
 
