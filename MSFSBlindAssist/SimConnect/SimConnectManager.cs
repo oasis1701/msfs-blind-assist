@@ -1428,6 +1428,12 @@ public class SimConnectManager
         {
             return FormatNDFMMessage((int)value);
         }
+        // Special formatting for Fenix A320 barometric pressure (needs 2 decimal places for precision)
+        else if (varKey == "N_FCU_EFIS1_BARO_HPA" || varKey == "N_FCU_EFIS2_BARO_HPA" ||
+                 varKey == "N_FCU_EFIS1_BARO_INCH" || varKey == "N_FCU_EFIS2_BARO_INCH")
+        {
+            return $"{varDef.DisplayName}: {value:F2}";
+        }
         // Special formatting for different types of variables
         else if (varKey.StartsWith("A32NX_ECP_LIGHT_"))
         {
