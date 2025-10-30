@@ -2649,7 +2649,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "ACP HF 1 Receive",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Release", [1] = "Press"}
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
             },
             ["S_ASP_CAB_REC_LATCH"] = new SimConnect.SimVarDefinition
             {
