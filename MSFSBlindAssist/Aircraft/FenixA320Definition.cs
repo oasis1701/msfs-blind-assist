@@ -7950,7 +7950,7 @@ public class FenixA320Definition : BaseAircraftDefinition
     /// <summary>
     /// Handle UI variable setting for Fenix A320 electrical panel controls.
     /// - Batteries: Use SetLVar (direct SimConnect)
-    /// - Buttons: Use ExecuteCalculatorCode (RPN operations via MobiFlight)
+    /// - Buttons: Use ExecuteButtonTransition (0→1 transition via SetLVar)
     /// </summary>
     public override bool HandleUIVariableSet(string varKey, double value, SimConnect.SimVarDefinition varDef,
         SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer announcer)

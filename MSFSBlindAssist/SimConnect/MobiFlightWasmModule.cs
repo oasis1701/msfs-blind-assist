@@ -566,20 +566,6 @@ public class MobiFlightWasmModule
             }
         }
 
-        public void ExecuteCalculatorCode(string calculatorCode)
-        {
-            if (!IsRegistered)
-            {
-                System.Diagnostics.Debug.WriteLine($"[MobiFlight] Cannot execute calculator code - not registered: {calculatorCode}");
-                return;
-            }
-
-            string command = $"MF.SimVars.Set.{calculatorCode}";
-            SendFBWBACommand(command);
-
-            System.Diagnostics.Debug.WriteLine($"[MobiFlight] Sent calculator code: {command}");
-        }
-
         public void AddLVar(string lvarName)
         {
             if (!IsRegistered)
