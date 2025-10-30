@@ -4263,7 +4263,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Mask Manual On",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Auto", [1] = "On"}
             },
             ["S_OH_OXYGEN_TMR_RESET"] = new SimConnect.SimVarDefinition
             {
@@ -4271,7 +4271,44 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Oxygen Timer Reset",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_OXYGEN_MASK_1_TEST_CAPT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OXYGEN_MASK_1_TEST_CAPT",
+                DisplayName = "Oxygen Mask 1 Test Captain",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_OXYGEN_MASK_1_TEST_FO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OXYGEN_MASK_1_TEST_FO",
+                DisplayName = "Oxygen Mask 1 Test First Officer",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_OXYGEN_MASK_2_TEST_CAPT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OXYGEN_MASK_2_TEST_CAPT",
+                DisplayName = "Oxygen Mask 2 Test Captain",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_OXYGEN_MASK_2_TEST_FO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_OXYGEN_MASK_2_TEST_FO",
+                DisplayName = "Oxygen Mask 2 Test First Officer",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
             },
 
             // ========== EVACUATION PANEL ==========
@@ -8464,11 +8501,15 @@ public class FenixA320Definition : BaseAircraftDefinition
 
             ["Oxygen"] = new List<string>
             {
-                // Oxygen Controls (4 controls)
+                // Oxygen Controls (8 controls)
                 "S_OH_OXYGEN_CREW_OXYGEN",
                 "S_OH_OXYGEN_HIGH_ALT",
                 "S_OH_OXYGEN_MASK_MAN_ON",
-                "S_OH_OXYGEN_TMR_RESET"
+                "S_OH_OXYGEN_TMR_RESET",
+                "S_OXYGEN_MASK_1_TEST_CAPT",
+                "S_OXYGEN_MASK_1_TEST_FO",
+                "S_OXYGEN_MASK_2_TEST_CAPT",
+                "S_OXYGEN_MASK_2_TEST_FO"
             },
 
             ["Evacuation"] = new List<string>
@@ -10041,9 +10082,33 @@ public class FenixA320Definition : BaseAircraftDefinition
                 return true;
             }
 
-            if (varKey == "S_OH_OXYGEN_TMR_RESET")
+            if (varKey == "S_OH_OXYGEN_TMR_RESET" && value == 1)
             {
-                simConnect.SetLVar("S_OH_OXYGEN_TMR_RESET", value);
+                ExecuteButtonTransition("S_OH_OXYGEN_TMR_RESET", "Oxygen Timer Reset", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_OXYGEN_MASK_1_TEST_CAPT" && value == 1)
+            {
+                ExecuteButtonTransition("S_OXYGEN_MASK_1_TEST_CAPT", "Oxygen Mask 1 Test Captain", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_OXYGEN_MASK_1_TEST_FO" && value == 1)
+            {
+                ExecuteButtonTransition("S_OXYGEN_MASK_1_TEST_FO", "Oxygen Mask 1 Test First Officer", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_OXYGEN_MASK_2_TEST_CAPT" && value == 1)
+            {
+                ExecuteButtonTransition("S_OXYGEN_MASK_2_TEST_CAPT", "Oxygen Mask 2 Test Captain", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_OXYGEN_MASK_2_TEST_FO" && value == 1)
+            {
+                ExecuteButtonTransition("S_OXYGEN_MASK_2_TEST_FO", "Oxygen Mask 2 Test First Officer", simConnect, announcer);
                 return true;
             }
 
