@@ -2805,6 +2805,255 @@ public class FenixA320Definition : BaseAircraftDefinition
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
             },
 
+            // ========== FCU (23 variables) ==========
+
+            // Autopilot Buttons
+            ["S_FCU_AP1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FCU_AP1",
+                DisplayName = "FCU AP1",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_FCU_AP2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FCU_AP2",
+                DisplayName = "FCU AP2",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_FCU_ATHR"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FCU_ATHR",
+                DisplayName = "FCU ATHR",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+
+            // Mode Buttons
+            ["S_FCU_LOC"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FCU_LOC",
+                DisplayName = "FCU LOC",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_FCU_APPR"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FCU_APPR",
+                DisplayName = "FCU APPR",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_FCU_EXPED"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FCU_EXPED",
+                DisplayName = "FCU EXPED",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_FCU_HDGVS_TRKFPA"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FCU_HDGVS_TRKFPA",
+                DisplayName = "FCU HDG/VS TRK/FPA",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+
+            // Display Mode Buttons
+            ["S_FCU_SPD_MACH"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FCU_SPD_MACH",
+                DisplayName = "FCU SPD/MACH",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_FCU_METRIC_ALT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FCU_METRIC_ALT",
+                DisplayName = "FCU Metric Alt",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+
+            // Altitude Controls
+            ["E_FCU_ALTITUDE_INC"] = new SimConnect.SimVarDefinition
+            {
+                Name = "E_FCU_ALTITUDE",
+                DisplayName = "FCU Altitude Inc",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Inc"}
+            },
+            ["E_FCU_ALTITUDE_DEC"] = new SimConnect.SimVarDefinition
+            {
+                Name = "E_FCU_ALTITUDE",
+                DisplayName = "FCU Altitude Dec",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Dec"}
+            },
+            ["S_FCU_ALTITUDE_PUSH"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FCU_ALTITUDE",
+                DisplayName = "FCU Altitude Push",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Push"}
+            },
+            ["S_FCU_ALTITUDE_PULL"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FCU_ALTITUDE",
+                DisplayName = "FCU Altitude Pull",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Pull"}
+            },
+            ["S_FCU_ALTITUDE_SCALE"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FCU_ALTITUDE_SCALE",
+                DisplayName = "FCU Altitude Scale",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "100", [1] = "1000"}
+            },
+
+            // Heading Controls
+            ["E_FCU_HEADING_INC"] = new SimConnect.SimVarDefinition
+            {
+                Name = "E_FCU_HEADING",
+                DisplayName = "FCU Heading Inc",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Inc"}
+            },
+            ["E_FCU_HEADING_DEC"] = new SimConnect.SimVarDefinition
+            {
+                Name = "E_FCU_HEADING",
+                DisplayName = "FCU Heading Dec",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Dec"}
+            },
+            ["S_FCU_HEADING_PUSH"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FCU_HEADING",
+                DisplayName = "FCU Heading Push",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Push"}
+            },
+            ["S_FCU_HEADING_PULL"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FCU_HEADING",
+                DisplayName = "FCU Heading Pull",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Pull"}
+            },
+
+            // Speed Controls
+            ["E_FCU_SPEED_INC"] = new SimConnect.SimVarDefinition
+            {
+                Name = "E_FCU_SPEED",
+                DisplayName = "FCU Speed Inc",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Inc"}
+            },
+            ["E_FCU_SPEED_DEC"] = new SimConnect.SimVarDefinition
+            {
+                Name = "E_FCU_SPEED",
+                DisplayName = "FCU Speed Dec",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Dec"}
+            },
+            ["S_FCU_SPEED_PUSH"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FCU_SPEED",
+                DisplayName = "FCU Speed Push",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Push"}
+            },
+            ["S_FCU_SPEED_PULL"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FCU_SPEED",
+                DisplayName = "FCU Speed Pull",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Pull"}
+            },
+
+            // Vertical Speed Controls
+            ["E_FCU_VS_INC"] = new SimConnect.SimVarDefinition
+            {
+                Name = "E_FCU_VS",
+                DisplayName = "FCU V/S Inc",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Inc"}
+            },
+            ["E_FCU_VS_DEC"] = new SimConnect.SimVarDefinition
+            {
+                Name = "E_FCU_VS",
+                DisplayName = "FCU V/S Dec",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Dec"}
+            },
+            ["S_FCU_VERTICAL_SPEED_PUSH"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FCU_VERTICAL_SPEED",
+                DisplayName = "FCU V/S Push",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Push"}
+            },
+            ["S_FCU_VERTICAL_SPEED_PULL"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FCU_VERTICAL_SPEED",
+                DisplayName = "FCU V/S Pull",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Pull"}
+            },
+
             // ========== AIR CONDITIONING AND PRESSURIZATION (18 variables) ==========
 
             // Bleed Buttons
@@ -3412,10 +3661,21 @@ public class FenixA320Definition : BaseAircraftDefinition
                 RenderAsButton = true,
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
             },
-            ["S_MIP_ISFD_BARO_BUTTON"] = new SimConnect.SimVarDefinition
+
+            // ISIS Baro Knob Inc/Dec (Counter pattern)
+            ["E_MIP_ISFD_BARO_INC"] = new SimConnect.SimVarDefinition
             {
-                Name = "S_MIP_ISFD_BARO_BUTTON",
-                DisplayName = "ISIS Barometric Pressure",
+                Name = "E_MIP_ISFD_BARO_INC",
+                DisplayName = "ISIS Baro Inc",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["E_MIP_ISFD_BARO_DEC"] = new SimConnect.SimVarDefinition
+            {
+                Name = "E_MIP_ISFD_BARO_DEC",
+                DisplayName = "ISIS Baro Dec",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
@@ -7665,7 +7925,8 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["Glareshield"] = new List<string>
             {
                 "EFIS Left",
-                "EFIS Right"
+                "EFIS Right",
+                "FCU"
             }
         };
     }
@@ -8219,6 +8480,49 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "S_FCU_EFIS2_LS_PRESS"
             },
 
+            ["FCU"] = new List<string>
+            {
+                // Autopilot Engagement
+                "S_FCU_AP1",
+                "S_FCU_AP2",
+                "S_FCU_ATHR",
+
+                // Navigation Modes
+                "S_FCU_LOC",
+                "S_FCU_APPR",
+                "S_FCU_EXPED",
+
+                // Display Modes
+                "S_FCU_HDGVS_TRKFPA",
+                "S_FCU_SPD_MACH",
+                "S_FCU_METRIC_ALT",
+
+                // Altitude Controls
+                "E_FCU_ALTITUDE_DEC",
+                "E_FCU_ALTITUDE_INC",
+                "S_FCU_ALTITUDE_PUSH",
+                "S_FCU_ALTITUDE_PULL",
+                "S_FCU_ALTITUDE_SCALE",
+
+                // Heading Controls
+                "E_FCU_HEADING_DEC",
+                "E_FCU_HEADING_INC",
+                "S_FCU_HEADING_PUSH",
+                "S_FCU_HEADING_PULL",
+
+                // Speed Controls
+                "E_FCU_SPEED_DEC",
+                "E_FCU_SPEED_INC",
+                "S_FCU_SPEED_PUSH",
+                "S_FCU_SPEED_PULL",
+
+                // Vertical Speed Controls
+                "E_FCU_VS_DEC",
+                "E_FCU_VS_INC",
+                "S_FCU_VERTICAL_SPEED_PUSH",
+                "S_FCU_VERTICAL_SPEED_PULL"
+            },
+
             // ========== MAIN INSTRUMENT PANEL ==========
             ["Auto Brakes"] = new List<string>
             {
@@ -8247,7 +8551,8 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "S_MIP_ISFD_PLUS",
                 "S_MIP_ISFD_MINUS",
                 "S_MIP_ISFD_RST",
-                "S_MIP_ISFD_BARO_BUTTON"
+                "E_MIP_ISFD_BARO_INC",
+                "E_MIP_ISFD_BARO_DEC"
             },
 
             ["GPWS/Terrain"] = new List<string>
@@ -9019,9 +9324,16 @@ public class FenixA320Definition : BaseAircraftDefinition
                 return true;
             }
 
-            if (varKey == "S_MIP_ISFD_BARO_BUTTON" && value == 1)
+            // ISIS Baro Knob Inc/Dec (Counter pattern)
+            if (varKey == "E_MIP_ISFD_BARO_INC" && value == 1)
             {
-                ExecuteButtonTransition("S_MIP_ISFD_BARO_BUTTON", "ISIS Barometric Pressure", simConnect, announcer);
+                IncrementCounter("E_MIP_ISFD_BARO", simConnect);
+                return true;
+            }
+
+            if (varKey == "E_MIP_ISFD_BARO_DEC" && value == 1)
+            {
+                DecrementCounter("E_MIP_ISFD_BARO", simConnect);
                 return true;
             }
 
@@ -10462,6 +10774,171 @@ public class FenixA320Definition : BaseAircraftDefinition
             if (varKey == "S_FCU_EFIS2_LS_PRESS" && value == 1)
             {
                 ExecuteButtonTransition("S_FCU_EFIS2_LS", "EFIS Right LS", simConnect, announcer);
+                return true;
+            }
+
+            // ========== FCU ==========
+
+            // Autopilot Engagement Buttons
+            if (varKey == "S_FCU_AP1" && value == 1)
+            {
+                ExecuteButtonTransition("S_FCU_AP1", "FCU AP1", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_FCU_AP2" && value == 1)
+            {
+                ExecuteButtonTransition("S_FCU_AP2", "FCU AP2", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_FCU_ATHR" && value == 1)
+            {
+                ExecuteButtonTransition("S_FCU_ATHR", "FCU ATHR", simConnect, announcer);
+                return true;
+            }
+
+            // Navigation Mode Buttons
+            if (varKey == "S_FCU_LOC" && value == 1)
+            {
+                ExecuteButtonTransition("S_FCU_LOC", "FCU LOC", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_FCU_APPR" && value == 1)
+            {
+                ExecuteButtonTransition("S_FCU_APPR", "FCU APPR", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_FCU_EXPED" && value == 1)
+            {
+                ExecuteButtonTransition("S_FCU_EXPED", "FCU EXPED", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_FCU_HDGVS_TRKFPA" && value == 1)
+            {
+                ExecuteButtonTransition("S_FCU_HDGVS_TRKFPA", "FCU HDG/VS TRK/FPA", simConnect, announcer);
+                return true;
+            }
+
+            // Display Mode Buttons
+            if (varKey == "S_FCU_SPD_MACH" && value == 1)
+            {
+                ExecuteButtonTransition("S_FCU_SPD_MACH", "FCU SPD/MACH", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_FCU_METRIC_ALT" && value == 1)
+            {
+                ExecuteButtonTransition("S_FCU_METRIC_ALT", "FCU Metric Alt", simConnect, announcer);
+                return true;
+            }
+
+            // Altitude Controls
+            if (varKey == "E_FCU_ALTITUDE_INC" && value == 1)
+            {
+                IncrementCounter("E_FCU_ALTITUDE", simConnect);
+                return true;
+            }
+
+            if (varKey == "E_FCU_ALTITUDE_DEC" && value == 1)
+            {
+                DecrementCounter("E_FCU_ALTITUDE", simConnect);
+                return true;
+            }
+
+            if (varKey == "S_FCU_ALTITUDE_PUSH" && value == 1)
+            {
+                ExecuteButtonTransition("S_FCU_ALTITUDE", "FCU Altitude Push", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_FCU_ALTITUDE_PULL" && value == 1)
+            {
+                ExecuteButtonTransition("S_FCU_ALTITUDE", "FCU Altitude Pull", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_FCU_ALTITUDE_SCALE")
+            {
+                simConnect.SetLVar("S_FCU_ALTITUDE_SCALE", value);
+                return true;
+            }
+
+            // Heading Controls
+            if (varKey == "E_FCU_HEADING_INC" && value == 1)
+            {
+                IncrementCounter("E_FCU_HEADING", simConnect);
+                return true;
+            }
+
+            if (varKey == "E_FCU_HEADING_DEC" && value == 1)
+            {
+                DecrementCounter("E_FCU_HEADING", simConnect);
+                return true;
+            }
+
+            if (varKey == "S_FCU_HEADING_PUSH" && value == 1)
+            {
+                ExecuteButtonTransition("S_FCU_HEADING", "FCU Heading Push", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_FCU_HEADING_PULL" && value == 1)
+            {
+                ExecuteButtonTransition("S_FCU_HEADING", "FCU Heading Pull", simConnect, announcer);
+                return true;
+            }
+
+            // Speed Controls
+            if (varKey == "E_FCU_SPEED_INC" && value == 1)
+            {
+                IncrementCounter("E_FCU_SPEED", simConnect);
+                return true;
+            }
+
+            if (varKey == "E_FCU_SPEED_DEC" && value == 1)
+            {
+                DecrementCounter("E_FCU_SPEED", simConnect);
+                return true;
+            }
+
+            if (varKey == "S_FCU_SPEED_PUSH" && value == 1)
+            {
+                ExecuteButtonTransition("S_FCU_SPEED", "FCU Speed Push", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_FCU_SPEED_PULL" && value == 1)
+            {
+                ExecuteButtonTransition("S_FCU_SPEED", "FCU Speed Pull", simConnect, announcer);
+                return true;
+            }
+
+            // Vertical Speed Controls
+            if (varKey == "E_FCU_VS_INC" && value == 1)
+            {
+                IncrementCounter("E_FCU_VS", simConnect);
+                return true;
+            }
+
+            if (varKey == "E_FCU_VS_DEC" && value == 1)
+            {
+                DecrementCounter("E_FCU_VS", simConnect);
+                return true;
+            }
+
+            if (varKey == "S_FCU_VERTICAL_SPEED_PUSH" && value == 1)
+            {
+                ExecuteButtonTransition("S_FCU_VERTICAL_SPEED", "FCU V/S Push", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_FCU_VERTICAL_SPEED_PULL" && value == 1)
+            {
+                ExecuteButtonTransition("S_FCU_VERTICAL_SPEED", "FCU V/S Pull", simConnect, announcer);
                 return true;
             }
 
