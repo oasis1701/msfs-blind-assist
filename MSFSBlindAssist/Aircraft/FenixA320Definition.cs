@@ -8199,7 +8199,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "Fuel",
                 "Anti-Ice",
                 "Signs",
-                "External Lights",
+                "Exterior Lights",
                 "Interior Lights",
                 "Flight Controls",
                 "Voice Recorder",
@@ -8436,9 +8436,9 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "S_OH_PROBE_HEAT"
             },
 
-            ["External Lights"] = new List<string>
+            ["Exterior Lights"] = new List<string>
             {
-                // External Lights (9 controls)
+                // Exterior Lights (9 controls)
                 "S_OH_EXT_LT_NAV_LOGO",
                 "S_OH_EXT_LT_STROBE",
                 "S_OH_EXT_LT_BEACON",
