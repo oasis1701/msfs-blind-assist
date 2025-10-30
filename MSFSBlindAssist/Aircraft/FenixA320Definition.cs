@@ -1169,7 +1169,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "QNH", [1] = "STD"}
+                ValueDescriptions = new Dictionary<double, string> {[0] = "STD", [1] = "QNH"}
             },
             ["S_FCU_EFIS2_BARO_MODE"] = new SimConnect.SimVarDefinition
             {
@@ -1178,7 +1178,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "QNH", [1] = "STD"}
+                ValueDescriptions = new Dictionary<double, string> {[0] = "STD", [1] = "QNH"}
             },
             ["I_FCU_EFIS1_QNH"] = new SimConnect.SimVarDefinition
             {
@@ -1187,7 +1187,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "QNH", [1] = "STD"}
+                ValueDescriptions = new Dictionary<double, string> {[0] = "STD", [1] = "QNH"}
             },
             ["I_FCU_EFIS2_QNH"] = new SimConnect.SimVarDefinition
             {
@@ -1196,7 +1196,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "QNH", [1] = "STD"}
+                ValueDescriptions = new Dictionary<double, string> {[0] = "STD", [1] = "QNH"}
             },
             ["N_FCU_EFIS1_BARO_INCH"] = new SimConnect.SimVarDefinition
             {
@@ -1205,6 +1205,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
+                Units = "inHg"
             },
             ["N_FCU_EFIS1_BARO_HPA"] = new SimConnect.SimVarDefinition
             {
@@ -1213,6 +1214,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
+                Units = "millibars"
             },
             ["N_FCU_EFIS2_BARO_HPA"] = new SimConnect.SimVarDefinition
             {
@@ -1221,6 +1223,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
+                Units = "millibars"
             },
             ["N_FCU_EFIS2_BARO_INCH"] = new SimConnect.SimVarDefinition
             {
@@ -1229,6 +1232,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
+                Units = "inHg"
             },
             // Note: KOHLSMAN SimVars removed - Fenix uses N_FCU_EFIS1/2_BARO_HPA/INCH instead
 

@@ -1428,12 +1428,6 @@ public class SimConnectManager
         {
             return FormatNDFMMessage((int)value);
         }
-        // Special formatting for Fenix A320 barometric pressure (needs 2 decimal places for precision)
-        else if (varKey == "N_FCU_EFIS1_BARO_HPA" || varKey == "N_FCU_EFIS2_BARO_HPA" ||
-                 varKey == "N_FCU_EFIS1_BARO_INCH" || varKey == "N_FCU_EFIS2_BARO_INCH")
-        {
-            return $"{varDef.DisplayName}: {value:F2}";
-        }
         // Special formatting for different types of variables
         else if (varKey.StartsWith("A32NX_ECP_LIGHT_"))
         {
@@ -1455,6 +1449,14 @@ public class SimConnectManager
         else if (varDef.Units == "knots")
         {
             return $"{varDef.DisplayName}: {value:F0} knots";
+        }
+        else if (varDef.Units == "millibars" || varDef.Units == "millibar")
+        {
+            return $"{varDef.DisplayName}: {value:F2}";
+        }
+        else if (varDef.Units == "inHg" || varDef.Units == "inhg")
+        {
+            return $"{varDef.DisplayName}: {value:F2}";
         }
 
         // Default formatting
