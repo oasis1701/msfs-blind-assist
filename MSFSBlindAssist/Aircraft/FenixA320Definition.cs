@@ -9557,28 +9557,29 @@ public class FenixA320Definition : BaseAircraftDefinition
                 return true;
             }
 
-            // RMP1 Frequency Buttons (Inc/Dec - use ExecuteButtonTransition)
+            // RMP1 Frequency Buttons (Inc/Dec - use counter approach)
+            // These variables are counters: incrementing increases frequency, decrementing decreases it
             if (varKey == "E_PED_RMP1_INNER_INC" && value == 1)
             {
-                ExecuteButtonTransition("E_PED_RMP1_INNER", "RMP1 Inner Inc", simConnect, announcer);
+                IncrementCounter("E_PED_RMP1_INNER", simConnect);
                 return true;
             }
 
             if (varKey == "E_PED_RMP1_INNER_DEC" && value == 1)
             {
-                ExecuteButtonTransition("E_PED_RMP1_INNER", "RMP1 Inner Dec", simConnect, announcer);
+                DecrementCounter("E_PED_RMP1_INNER", simConnect);
                 return true;
             }
 
             if (varKey == "E_PED_RMP1_OUTER_INC" && value == 1)
             {
-                ExecuteButtonTransition("E_PED_RMP1_OUTER", "RMP1 Outer Inc", simConnect, announcer);
+                IncrementCounter("E_PED_RMP1_OUTER", simConnect);
                 return true;
             }
 
             if (varKey == "E_PED_RMP1_OUTER_DEC" && value == 1)
             {
-                ExecuteButtonTransition("E_PED_RMP1_OUTER", "RMP1 Outer Dec", simConnect, announcer);
+                DecrementCounter("E_PED_RMP1_OUTER", simConnect);
                 return true;
             }
 
@@ -9669,28 +9670,29 @@ public class FenixA320Definition : BaseAircraftDefinition
                 return true;
             }
 
-            // RMP2 Frequency Buttons (Inc/Dec - use ExecuteButtonTransition)
+            // RMP2 Frequency Buttons (Inc/Dec - use counter approach)
+            // These variables are counters: incrementing increases frequency, decrementing decreases it
             if (varKey == "E_PED_RMP2_INNER_INC" && value == 1)
             {
-                ExecuteButtonTransition("E_PED_RMP2_INNER", "RMP2 Inner Inc", simConnect, announcer);
+                IncrementCounter("E_PED_RMP2_INNER", simConnect);
                 return true;
             }
 
             if (varKey == "E_PED_RMP2_INNER_DEC" && value == 1)
             {
-                ExecuteButtonTransition("E_PED_RMP2_INNER", "RMP2 Inner Dec", simConnect, announcer);
+                DecrementCounter("E_PED_RMP2_INNER", simConnect);
                 return true;
             }
 
             if (varKey == "E_PED_RMP2_OUTER_INC" && value == 1)
             {
-                ExecuteButtonTransition("E_PED_RMP2_OUTER", "RMP2 Outer Inc", simConnect, announcer);
+                IncrementCounter("E_PED_RMP2_OUTER", simConnect);
                 return true;
             }
 
             if (varKey == "E_PED_RMP2_OUTER_DEC" && value == 1)
             {
-                ExecuteButtonTransition("E_PED_RMP2_OUTER", "RMP2 Outer Dec", simConnect, announcer);
+                DecrementCounter("E_PED_RMP2_OUTER", simConnect);
                 return true;
             }
 
@@ -9781,28 +9783,29 @@ public class FenixA320Definition : BaseAircraftDefinition
                 return true;
             }
 
-            // RMP3 Frequency Buttons (Inc/Dec - use ExecuteButtonTransition)
+            // RMP3 Frequency Buttons (Inc/Dec - use counter approach)
+            // These variables are counters: incrementing increases frequency, decrementing decreases it
             if (varKey == "E_PED_RMP3_INNER_INC" && value == 1)
             {
-                ExecuteButtonTransition("E_PED_RMP3_INNER", "RMP3 Inner Inc", simConnect, announcer);
+                IncrementCounter("E_PED_RMP3_INNER", simConnect);
                 return true;
             }
 
             if (varKey == "E_PED_RMP3_INNER_DEC" && value == 1)
             {
-                ExecuteButtonTransition("E_PED_RMP3_INNER", "RMP3 Inner Dec", simConnect, announcer);
+                DecrementCounter("E_PED_RMP3_INNER", simConnect);
                 return true;
             }
 
             if (varKey == "E_PED_RMP3_OUTER_INC" && value == 1)
             {
-                ExecuteButtonTransition("E_PED_RMP3_OUTER", "RMP3 Outer Inc", simConnect, announcer);
+                IncrementCounter("E_PED_RMP3_OUTER", simConnect);
                 return true;
             }
 
             if (varKey == "E_PED_RMP3_OUTER_DEC" && value == 1)
             {
-                ExecuteButtonTransition("E_PED_RMP3_OUTER", "RMP3 Outer Dec", simConnect, announcer);
+                DecrementCounter("E_PED_RMP3_OUTER", simConnect);
                 return true;
             }
 
@@ -10061,6 +10064,73 @@ public class FenixA320Definition : BaseAircraftDefinition
         {
             System.Diagnostics.Debug.WriteLine($"[FenixA320] Error in {displayName} transition (first phase): {ex.Message}");
             announcer.Announce($"Error pressing {displayName}");
+        }
+    }
+
+    // Counter tracking for RMP frequency knobs
+    private Dictionary<string, int> rmpCounters = new Dictionary<string, int>();
+
+    /// <summary>
+    /// Increments a counter variable for RMP frequency controls.
+    /// These variables act as counters - incrementing the value increases frequency.
+    /// </summary>
+    private void IncrementCounter(string varName, SimConnect.SimConnectManager simConnect)
+    {
+        try
+        {
+            // Get or initialize counter for this variable
+            if (!rmpCounters.ContainsKey(varName))
+            {
+                rmpCounters[varName] = 0;
+            }
+
+            // Increment counter
+            rmpCounters[varName]++;
+            int newValue = rmpCounters[varName];
+
+            System.Diagnostics.Debug.WriteLine($"[FenixA320] IncrementCounter: {varName} -> {newValue}");
+
+            // Set the LVar to the new counter value
+            if (simConnect != null && simConnect.IsConnected)
+            {
+                simConnect.SetLVar(varName, newValue);
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[FenixA320] Error incrementing counter {varName}: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Decrements a counter variable for RMP frequency controls.
+    /// These variables act as counters - decrementing the value decreases frequency.
+    /// </summary>
+    private void DecrementCounter(string varName, SimConnect.SimConnectManager simConnect)
+    {
+        try
+        {
+            // Get or initialize counter for this variable
+            if (!rmpCounters.ContainsKey(varName))
+            {
+                rmpCounters[varName] = 0;
+            }
+
+            // Decrement counter
+            rmpCounters[varName]--;
+            int newValue = rmpCounters[varName];
+
+            System.Diagnostics.Debug.WriteLine($"[FenixA320] DecrementCounter: {varName} -> {newValue}");
+
+            // Set the LVar to the new counter value
+            if (simConnect != null && simConnect.IsConnected)
+            {
+                simConnect.SetLVar(varName, newValue);
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[FenixA320] Error decrementing counter {varName}: {ex.Message}");
         }
     }
 
