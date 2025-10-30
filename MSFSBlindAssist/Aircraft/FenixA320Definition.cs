@@ -7790,10 +7790,10 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "S_PED_RMP1_ADF",
                 "S_PED_RMP1_BFO",
                 "S_PED_RMP1_AM",
-                "E_PED_RMP1_INNER_INC",
                 "E_PED_RMP1_INNER_DEC",
-                "E_PED_RMP1_OUTER_INC",
+                "E_PED_RMP1_INNER_INC",
                 "E_PED_RMP1_OUTER_DEC",
+                "E_PED_RMP1_OUTER_INC",
                 "S_PED_RMP1_XFER",
 
                 // RMP2 Controls (19 controls)
@@ -7810,10 +7810,10 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "S_PED_RMP2_ADF",
                 "S_PED_RMP2_BFO",
                 "S_PED_RMP2_AM",
-                "E_PED_RMP2_INNER_INC",
                 "E_PED_RMP2_INNER_DEC",
-                "E_PED_RMP2_OUTER_INC",
+                "E_PED_RMP2_INNER_INC",
                 "E_PED_RMP2_OUTER_DEC",
+                "E_PED_RMP2_OUTER_INC",
                 "S_PED_RMP2_XFER",
 
                 // RMP3 Controls (19 controls)
@@ -7830,10 +7830,10 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "S_PED_RMP3_ADF",
                 "S_PED_RMP3_BFO",
                 "S_PED_RMP3_AM",
-                "E_PED_RMP3_INNER_INC",
                 "E_PED_RMP3_INNER_DEC",
-                "E_PED_RMP3_OUTER_INC",
+                "E_PED_RMP3_INNER_INC",
                 "E_PED_RMP3_OUTER_DEC",
+                "E_PED_RMP3_OUTER_INC",
                 "S_PED_RMP3_XFER"
             },
 
