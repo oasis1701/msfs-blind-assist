@@ -2507,6 +2507,300 @@ public class FenixA320Definition : BaseAircraftDefinition
                 ValueDescriptions = new Dictionary<double, string> {[0] = "INT", [1] = "OFF", [2] = "RAD"}
             },
 
+            // ========== EFIS LEFT (16 variables) ==========
+
+            // ND Mode Selector
+            ["S_FCU_EFIS1_ND_MODE"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FCU_EFIS1_ND_MODE",
+                DisplayName = "EFIS Left ND Mode",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "LS", [1] = "VOR", [2] = "NAV", [3] = "ARC", [4] = "PLAN"}
+            },
+
+            // ND Range Selector
+            ["S_FCU_EFIS1_ND_ZOOM"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FCU_EFIS1_ND_ZOOM",
+                DisplayName = "EFIS Left ND Range",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "10", [1] = "20", [2] = "40", [3] = "80", [4] = "160", [5] = "320"}
+            },
+
+            // Baro STD Button
+            ["S_FCU_EFIS1_BARO_STD"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FCU_EFIS1_BARO_STD",
+                DisplayName = "EFIS Left Baro STD",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+
+            // Baro Mode (inHg/hPa)
+            ["S_FCU_EFIS1_BARO_MODE"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FCU_EFIS1_BARO_MODE",
+                DisplayName = "EFIS Left Baro Mode",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "inHg", [1] = "hPa"}
+            },
+
+            // Baro Knob Inc/Dec (Counter pattern)
+            ["E_FCU_EFIS1_BARO_INC"] = new SimConnect.SimVarDefinition
+            {
+                Name = "E_FCU_EFIS1_BARO_INC",
+                DisplayName = "EFIS Left Baro Inc",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["E_FCU_EFIS1_BARO_DEC"] = new SimConnect.SimVarDefinition
+            {
+                Name = "E_FCU_EFIS1_BARO_DEC",
+                DisplayName = "EFIS Left Baro Dec",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+
+            // NAV Source Selectors
+            ["S_FCU_EFIS1_NAV1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FCU_EFIS1_NAV1",
+                DisplayName = "EFIS Left NAV 1",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "ADF", [1] = "OFF", [2] = "VOR"}
+            },
+            ["S_FCU_EFIS1_NAV2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FCU_EFIS1_NAV2",
+                DisplayName = "EFIS Left NAV 2",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "ADF", [1] = "OFF", [2] = "VOR"}
+            },
+
+            // Navigation Filter Buttons
+            ["S_FCU_EFIS1_ARPT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FCU_EFIS1_ARPT",
+                DisplayName = "EFIS Left ARPT",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_FCU_EFIS1_CSTR"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FCU_EFIS1_CSTR",
+                DisplayName = "EFIS Left CSTR",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_FCU_EFIS1_WPT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FCU_EFIS1_WPT",
+                DisplayName = "EFIS Left WPT",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_FCU_EFIS1_VORD"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FCU_EFIS1_VORD",
+                DisplayName = "EFIS Left VOR-D",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_FCU_EFIS1_NDB"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FCU_EFIS1_NDB",
+                DisplayName = "EFIS Left NDB",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+
+            // Flight Director & ILS Buttons
+            ["S_FCU_EFIS1_FD_PRESS"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FCU_EFIS1_FD_PRESS",
+                DisplayName = "EFIS Left FD",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_FCU_EFIS1_LS_PRESS"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FCU_EFIS1_LS_PRESS",
+                DisplayName = "EFIS Left LS",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+
+            // ========== EFIS RIGHT (16 variables) ==========
+
+            // ND Mode Selector
+            ["S_FCU_EFIS2_ND_MODE"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FCU_EFIS2_ND_MODE",
+                DisplayName = "EFIS Right ND Mode",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "LS", [1] = "VOR", [2] = "NAV", [3] = "ARC", [4] = "PLAN"}
+            },
+
+            // ND Range Selector
+            ["S_FCU_EFIS2_ND_ZOOM"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FCU_EFIS2_ND_ZOOM",
+                DisplayName = "EFIS Right ND Range",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "10", [1] = "20", [2] = "40", [3] = "80", [4] = "160", [5] = "320"}
+            },
+
+            // Baro STD Button
+            ["S_FCU_EFIS2_BARO_STD"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FCU_EFIS2_BARO_STD",
+                DisplayName = "EFIS Right Baro STD",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+
+            // Baro Mode (inHg/hPa)
+            ["S_FCU_EFIS2_BARO_MODE"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FCU_EFIS2_BARO_MODE",
+                DisplayName = "EFIS Right Baro Mode",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "inHg", [1] = "hPa"}
+            },
+
+            // Baro Knob Inc/Dec (Counter pattern)
+            ["E_FCU_EFIS2_BARO_INC"] = new SimConnect.SimVarDefinition
+            {
+                Name = "E_FCU_EFIS2_BARO_INC",
+                DisplayName = "EFIS Right Baro Inc",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["E_FCU_EFIS2_BARO_DEC"] = new SimConnect.SimVarDefinition
+            {
+                Name = "E_FCU_EFIS2_BARO_DEC",
+                DisplayName = "EFIS Right Baro Dec",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+
+            // NAV Source Selectors
+            ["S_FCU_EFIS2_NAV1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FCU_EFIS2_NAV1",
+                DisplayName = "EFIS Right NAV 1",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "ADF", [1] = "OFF", [2] = "VOR"}
+            },
+            ["S_FCU_EFIS2_NAV2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FCU_EFIS2_NAV2",
+                DisplayName = "EFIS Right NAV 2",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "ADF", [1] = "OFF", [2] = "VOR"}
+            },
+
+            // Navigation Filter Buttons
+            ["S_FCU_EFIS2_ARPT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FCU_EFIS2_ARPT",
+                DisplayName = "EFIS Right ARPT",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_FCU_EFIS2_CSTR"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FCU_EFIS2_CSTR",
+                DisplayName = "EFIS Right CSTR",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_FCU_EFIS2_WPT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FCU_EFIS2_WPT",
+                DisplayName = "EFIS Right WPT",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_FCU_EFIS2_VORD"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FCU_EFIS2_VORD",
+                DisplayName = "EFIS Right VOR-D",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_FCU_EFIS2_NDB"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FCU_EFIS2_NDB",
+                DisplayName = "EFIS Right NDB",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+
+            // Flight Director & ILS Buttons
+            ["S_FCU_EFIS2_FD_PRESS"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FCU_EFIS2_FD_PRESS",
+                DisplayName = "EFIS Right FD",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_FCU_EFIS2_LS_PRESS"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FCU_EFIS2_LS_PRESS",
+                DisplayName = "EFIS Right LS",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+
             // ========== AIR CONDITIONING AND PRESSURIZATION (18 variables) ==========
 
             // Bleed Buttons
@@ -7362,6 +7656,12 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "Autoland",
                 "Main Instrument Lights",
                 "Audio"
+            },
+
+            ["Glareshield"] = new List<string>
+            {
+                "EFIS Left",
+                "EFIS Right"
             }
         };
     }
@@ -7856,6 +8156,63 @@ public class FenixA320Definition : BaseAircraftDefinition
 
                 // INTRAD Switch
                 "S_ASP_INTRAD"
+            },
+
+            // ========== GLARESHIELD ==========
+            ["EFIS Left"] = new List<string>
+            {
+                // ND Mode and Range
+                "S_FCU_EFIS1_ND_MODE",
+                "S_FCU_EFIS1_ND_ZOOM",
+
+                // Barometric Reference
+                "S_FCU_EFIS1_BARO_STD",
+                "S_FCU_EFIS1_BARO_MODE",
+                "E_FCU_EFIS1_BARO_INC",
+                "E_FCU_EFIS1_BARO_DEC",
+
+                // NAV Source Selectors
+                "S_FCU_EFIS1_NAV1",
+                "S_FCU_EFIS1_NAV2",
+
+                // Navigation Filter Buttons
+                "S_FCU_EFIS1_ARPT",
+                "S_FCU_EFIS1_CSTR",
+                "S_FCU_EFIS1_WPT",
+                "S_FCU_EFIS1_VORD",
+                "S_FCU_EFIS1_NDB",
+
+                // Flight Director & ILS
+                "S_FCU_EFIS1_FD_PRESS",
+                "S_FCU_EFIS1_LS_PRESS"
+            },
+
+            ["EFIS Right"] = new List<string>
+            {
+                // ND Mode and Range
+                "S_FCU_EFIS2_ND_MODE",
+                "S_FCU_EFIS2_ND_ZOOM",
+
+                // Barometric Reference
+                "S_FCU_EFIS2_BARO_STD",
+                "S_FCU_EFIS2_BARO_MODE",
+                "E_FCU_EFIS2_BARO_INC",
+                "E_FCU_EFIS2_BARO_DEC",
+
+                // NAV Source Selectors
+                "S_FCU_EFIS2_NAV1",
+                "S_FCU_EFIS2_NAV2",
+
+                // Navigation Filter Buttons
+                "S_FCU_EFIS2_ARPT",
+                "S_FCU_EFIS2_CSTR",
+                "S_FCU_EFIS2_WPT",
+                "S_FCU_EFIS2_VORD",
+                "S_FCU_EFIS2_NDB",
+
+                // Flight Director & ILS
+                "S_FCU_EFIS2_FD_PRESS",
+                "S_FCU_EFIS2_LS_PRESS"
             },
 
             // ========== MAIN INSTRUMENT PANEL ==========
@@ -9901,6 +10258,206 @@ public class FenixA320Definition : BaseAircraftDefinition
             if (varKey == "S_ASP_INTRAD")
             {
                 simConnect.SetLVar("S_ASP_INTRAD", value);
+                return true;
+            }
+
+            // ========== EFIS LEFT ==========
+
+            // ND Mode Selector (Combo Box - use SetLVar)
+            if (varKey == "S_FCU_EFIS1_ND_MODE")
+            {
+                simConnect.SetLVar("S_FCU_EFIS1_ND_MODE", value);
+                return true;
+            }
+
+            // ND Range Selector (Combo Box - use SetLVar)
+            if (varKey == "S_FCU_EFIS1_ND_ZOOM")
+            {
+                simConnect.SetLVar("S_FCU_EFIS1_ND_ZOOM", value);
+                return true;
+            }
+
+            // Baro STD (Combo Box - use SetLVar)
+            if (varKey == "S_FCU_EFIS1_BARO_STD")
+            {
+                simConnect.SetLVar("S_FCU_EFIS1_BARO_STD", value);
+                return true;
+            }
+
+            // Baro Mode (Combo Box - use SetLVar)
+            if (varKey == "S_FCU_EFIS1_BARO_MODE")
+            {
+                simConnect.SetLVar("S_FCU_EFIS1_BARO_MODE", value);
+                return true;
+            }
+
+            // Baro Knob Inc/Dec (Counter pattern)
+            if (varKey == "E_FCU_EFIS1_BARO_INC" && value == 1)
+            {
+                IncrementCounter("E_FCU_EFIS1_BARO", simConnect);
+                return true;
+            }
+
+            if (varKey == "E_FCU_EFIS1_BARO_DEC" && value == 1)
+            {
+                DecrementCounter("E_FCU_EFIS1_BARO", simConnect);
+                return true;
+            }
+
+            // NAV Source Selectors (Combo Boxes - use SetLVar)
+            if (varKey == "S_FCU_EFIS1_NAV1")
+            {
+                simConnect.SetLVar("S_FCU_EFIS1_NAV1", value);
+                return true;
+            }
+
+            if (varKey == "S_FCU_EFIS1_NAV2")
+            {
+                simConnect.SetLVar("S_FCU_EFIS1_NAV2", value);
+                return true;
+            }
+
+            // Navigation Filter Buttons (ExecuteButtonTransition)
+            if (varKey == "S_FCU_EFIS1_ARPT" && value == 1)
+            {
+                ExecuteButtonTransition("S_FCU_EFIS1_ARPT", "EFIS Left ARPT", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_FCU_EFIS1_CSTR" && value == 1)
+            {
+                ExecuteButtonTransition("S_FCU_EFIS1_CSTR", "EFIS Left CSTR", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_FCU_EFIS1_WPT" && value == 1)
+            {
+                ExecuteButtonTransition("S_FCU_EFIS1_WPT", "EFIS Left WPT", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_FCU_EFIS1_VORD" && value == 1)
+            {
+                ExecuteButtonTransition("S_FCU_EFIS1_VORD", "EFIS Left VOR-D", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_FCU_EFIS1_NDB" && value == 1)
+            {
+                ExecuteButtonTransition("S_FCU_EFIS1_NDB", "EFIS Left NDB", simConnect, announcer);
+                return true;
+            }
+
+            // Flight Director & ILS Buttons (ExecuteButtonTransition)
+            if (varKey == "S_FCU_EFIS1_FD_PRESS" && value == 1)
+            {
+                ExecuteButtonTransition("S_FCU_EFIS1_FD", "EFIS Left FD", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_FCU_EFIS1_LS_PRESS" && value == 1)
+            {
+                ExecuteButtonTransition("S_FCU_EFIS1_LS", "EFIS Left LS", simConnect, announcer);
+                return true;
+            }
+
+            // ========== EFIS RIGHT ==========
+
+            // ND Mode Selector (Combo Box - use SetLVar)
+            if (varKey == "S_FCU_EFIS2_ND_MODE")
+            {
+                simConnect.SetLVar("S_FCU_EFIS2_ND_MODE", value);
+                return true;
+            }
+
+            // ND Range Selector (Combo Box - use SetLVar)
+            if (varKey == "S_FCU_EFIS2_ND_ZOOM")
+            {
+                simConnect.SetLVar("S_FCU_EFIS2_ND_ZOOM", value);
+                return true;
+            }
+
+            // Baro STD (Combo Box - use SetLVar)
+            if (varKey == "S_FCU_EFIS2_BARO_STD")
+            {
+                simConnect.SetLVar("S_FCU_EFIS2_BARO_STD", value);
+                return true;
+            }
+
+            // Baro Mode (Combo Box - use SetLVar)
+            if (varKey == "S_FCU_EFIS2_BARO_MODE")
+            {
+                simConnect.SetLVar("S_FCU_EFIS2_BARO_MODE", value);
+                return true;
+            }
+
+            // Baro Knob Inc/Dec (Counter pattern)
+            if (varKey == "E_FCU_EFIS2_BARO_INC" && value == 1)
+            {
+                IncrementCounter("E_FCU_EFIS2_BARO", simConnect);
+                return true;
+            }
+
+            if (varKey == "E_FCU_EFIS2_BARO_DEC" && value == 1)
+            {
+                DecrementCounter("E_FCU_EFIS2_BARO", simConnect);
+                return true;
+            }
+
+            // NAV Source Selectors (Combo Boxes - use SetLVar)
+            if (varKey == "S_FCU_EFIS2_NAV1")
+            {
+                simConnect.SetLVar("S_FCU_EFIS2_NAV1", value);
+                return true;
+            }
+
+            if (varKey == "S_FCU_EFIS2_NAV2")
+            {
+                simConnect.SetLVar("S_FCU_EFIS2_NAV2", value);
+                return true;
+            }
+
+            // Navigation Filter Buttons (ExecuteButtonTransition)
+            if (varKey == "S_FCU_EFIS2_ARPT" && value == 1)
+            {
+                ExecuteButtonTransition("S_FCU_EFIS2_ARPT", "EFIS Right ARPT", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_FCU_EFIS2_CSTR" && value == 1)
+            {
+                ExecuteButtonTransition("S_FCU_EFIS2_CSTR", "EFIS Right CSTR", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_FCU_EFIS2_WPT" && value == 1)
+            {
+                ExecuteButtonTransition("S_FCU_EFIS2_WPT", "EFIS Right WPT", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_FCU_EFIS2_VORD" && value == 1)
+            {
+                ExecuteButtonTransition("S_FCU_EFIS2_VORD", "EFIS Right VOR-D", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_FCU_EFIS2_NDB" && value == 1)
+            {
+                ExecuteButtonTransition("S_FCU_EFIS2_NDB", "EFIS Right NDB", simConnect, announcer);
+                return true;
+            }
+
+            // Flight Director & ILS Buttons (ExecuteButtonTransition)
+            if (varKey == "S_FCU_EFIS2_FD_PRESS" && value == 1)
+            {
+                ExecuteButtonTransition("S_FCU_EFIS2_FD", "EFIS Right FD", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_FCU_EFIS2_LS_PRESS" && value == 1)
+            {
+                ExecuteButtonTransition("S_FCU_EFIS2_LS", "EFIS Right LS", simConnect, announcer);
                 return true;
             }
 
