@@ -12003,4 +12003,108 @@ public class FenixA320Definition : BaseAircraftDefinition
             announcer.Announce($"Error executing {displayName}");
         }
     }
+
+    /// <summary>
+    /// Handle hotkey actions for Fenix A320 (including AI display reading).
+    /// </summary>
+    public override bool HandleHotkeyAction(HotkeyAction action,
+                                           SimConnect.SimConnectManager simConnect,
+                                           ScreenReaderAnnouncer announcer,
+                                           System.Windows.Forms.Form parentForm,
+                                           HotkeyManager hotkeyManager)
+    {
+        // Handle display reading actions
+        switch (action)
+        {
+            case HotkeyAction.ReadDisplayPFD:
+                ReadDisplay(Services.GeminiService.DisplayType.PFD, "PFD", announcer, parentForm);
+                return true;
+
+            case HotkeyAction.ReadDisplayLowerECAM:
+                ReadDisplay(Services.GeminiService.DisplayType.LowerECAM, "Lower ECAM", announcer, parentForm);
+                return true;
+
+            case HotkeyAction.ReadDisplayUpperECAM:
+                ReadDisplay(Services.GeminiService.DisplayType.UpperECAM, "Upper ECAM", announcer, parentForm);
+                return true;
+
+            case HotkeyAction.ReadDisplayND:
+                ReadDisplay(Services.GeminiService.DisplayType.ND, "ND", announcer, parentForm);
+                return true;
+
+            case HotkeyAction.ReadDisplayISIS:
+                ReadDisplay(Services.GeminiService.DisplayType.ISIS, "ISIS", announcer, parentForm);
+                return true;
+
+            default:
+                // Let base class handle other actions
+                return base.HandleHotkeyAction(action, simConnect, announcer, parentForm, hotkeyManager);
+        }
+    }
+
+    /// <summary>
+    /// Captures screenshot and analyzes cockpit display using Gemini AI.
+    /// </summary>
+    private async void ReadDisplay(Services.GeminiService.DisplayType displayType,
+                                    string displayName,
+                                    ScreenReaderAnnouncer announcer,
+                                    System.Windows.Forms.Form parentForm)
+    {
+        try
+        {
+            announcer.Announce($"Capturing {displayName}...");
+
+            var screenshotService = new Services.ScreenshotService();
+            var geminiService = new Services.GeminiService();
+
+            // Check if MSFS window is available
+            if (!screenshotService.IsMsfsWindowAvailable())
+            {
+                announcer.Announce("Microsoft Flight Simulator window not found. Make sure the simulator is running.");
+                return;
+            }
+
+            // Capture screenshot
+            byte[]? screenshot = await screenshotService.CaptureAsync();
+            if (screenshot == null || screenshot.Length == 0)
+            {
+                announcer.Announce($"Failed to capture {displayName} screenshot.");
+                return;
+            }
+
+            announcer.Announce($"Analyzing {displayName} with Gemini AI...");
+
+            // Analyze with Gemini
+            string analysis = await geminiService.AnalyzeDisplayAsync(screenshot, displayType);
+
+            // Show result in window
+            var resultForm = new Forms.DisplayReadingResultForm(displayName, analysis);
+            resultForm.Show();
+
+            announcer.Announce($"{displayName} analysis ready.");
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("API key"))
+        {
+            announcer.Announce("Gemini API key not configured. Please go to File menu, Gemini API Key Settings.");
+            System.Windows.Forms.MessageBox.Show(
+                parentForm,
+                "Gemini API key is not configured.\n\n" +
+                "Please configure your API key in:\n" +
+                "File > Gemini API Key Settings\n\n" +
+                "Get a free API key at: https://aistudio.google.com/apikey",
+                "API Key Required",
+                System.Windows.Forms.MessageBoxButtons.OK,
+                System.Windows.Forms.MessageBoxIcon.Warning);
+        }
+        catch (Exception ex)
+        {
+            announcer.Announce($"Error analyzing {displayName}: {ex.Message}");
+            System.Windows.Forms.MessageBox.Show(
+                parentForm,
+                $"Error analyzing {displayName}:\n\n{ex.Message}",
+                "Error",
+                System.Windows.Forms.MessageBoxButtons.OK,
+                System.Windows.Forms.MessageBoxIcon.Error);
+        }
+    }
 }

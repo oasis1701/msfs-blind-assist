@@ -21,6 +21,9 @@ public class UserSettings
         // SimBrief Settings
         public string SimbriefUsername { get; set; } = "";
 
+        // Gemini AI Settings
+        public string GeminiApiKey { get; set; } = "";
+
         // Range Settings (in selected distance units)
         public int NearbyCitiesRange { get; set; } = 25;
         public int RegionalCitiesRange { get; set; } = 50;
@@ -66,6 +69,7 @@ public class UserSettings
             LastAircraft = LastAircraft,
             GeoNamesApiUsername = GeoNamesApiUsername,
             SimbriefUsername = SimbriefUsername,
+            GeminiApiKey = GeminiApiKey,
             NearbyCitiesRange = NearbyCitiesRange,
             RegionalCitiesRange = RegionalCitiesRange,
             MajorCitiesRange = MajorCitiesRange,

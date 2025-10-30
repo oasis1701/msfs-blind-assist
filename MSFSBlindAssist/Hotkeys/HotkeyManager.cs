@@ -88,6 +88,13 @@ public class HotkeyManager : IDisposable
         private const int HOTKEY_TRACK_SLOT_5 = 9066;
         private const int HOTKEY_FUEL_PAYLOAD = 9068;
 
+        // Display reading hotkey IDs (Input mode - plain number keys 1-5)
+        private const int HOTKEY_READ_DISPLAY_PFD = 9069;
+        private const int HOTKEY_READ_DISPLAY_LOWER_ECAM = 9070;
+        private const int HOTKEY_READ_DISPLAY_UPPER_ECAM = 9071;
+        private const int HOTKEY_READ_DISPLAY_ND = 9072;
+        private const int HOTKEY_READ_DISPLAY_ISIS = 9073;
+
         private IntPtr windowHandle;
         private bool outputHotkeyModeActive = false;
         private bool inputHotkeyModeActive = false;
@@ -331,6 +338,21 @@ public class HotkeyManager : IDisposable
                         case HOTKEY_TOGGLE_AP2:
                             TriggerHotkey(HotkeyAction.ToggleAutopilot2);
                             break;
+                        case HOTKEY_READ_DISPLAY_PFD:
+                            TriggerHotkey(HotkeyAction.ReadDisplayPFD);
+                            break;
+                        case HOTKEY_READ_DISPLAY_LOWER_ECAM:
+                            TriggerHotkey(HotkeyAction.ReadDisplayLowerECAM);
+                            break;
+                        case HOTKEY_READ_DISPLAY_UPPER_ECAM:
+                            TriggerHotkey(HotkeyAction.ReadDisplayUpperECAM);
+                            break;
+                        case HOTKEY_READ_DISPLAY_ND:
+                            TriggerHotkey(HotkeyAction.ReadDisplayND);
+                            break;
+                        case HOTKEY_READ_DISPLAY_ISIS:
+                            TriggerHotkey(HotkeyAction.ReadDisplayISIS);
+                            break;
                     }
                     DeactivateInputHotkeyMode();
                     return true;
@@ -480,6 +502,13 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_FCU_SET_VS, MOD_CONTROL, 0x56);      // Ctrl+V (Set VS)
             RegisterHotKey(windowHandle, HOTKEY_TOGGLE_AP2, MOD_CONTROL, 0x4F);      // Ctrl+O (Toggle Autopilot 2)
 
+            // Register display reading hotkeys (plain number keys 1-5)
+            RegisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_PFD, 0, 0x31);         // 1 (Read PFD)
+            RegisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_LOWER_ECAM, 0, 0x32);  // 2 (Read Lower ECAM)
+            RegisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_UPPER_ECAM, 0, 0x33);  // 3 (Read Upper ECAM/EWD)
+            RegisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_ND, 0, 0x34);          // 4 (Read ND)
+            RegisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_ISIS, 0, 0x35);        // 5 (Read ISIS)
+
             InputHotkeyModeChanged?.Invoke(this, true);
         }
 
@@ -512,6 +541,13 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_FCU_SET_ALTITUDE);
             UnregisterHotKey(windowHandle, HOTKEY_FCU_SET_VS);
             UnregisterHotKey(windowHandle, HOTKEY_TOGGLE_AP2);
+
+            // Unregister display reading hotkeys
+            UnregisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_PFD);
+            UnregisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_LOWER_ECAM);
+            UnregisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_UPPER_ECAM);
+            UnregisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_ND);
+            UnregisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_ISIS);
 
             InputHotkeyModeChanged?.Invoke(this, false);
         }
@@ -643,5 +679,10 @@ public class HotkeyManager : IDisposable
         ReadTrackSlot3,
         ReadTrackSlot4,
         ReadTrackSlot5,
-        ShowFuelPayloadWindow
+        ShowFuelPayloadWindow,
+        ReadDisplayPFD,
+        ReadDisplayLowerECAM,
+        ReadDisplayUpperECAM,
+        ReadDisplayND,
+        ReadDisplayISIS
     }

@@ -1345,6 +1345,18 @@ public partial class MainForm : Form
         }
     }
 
+    private void GeminiApiKeySettingsMenuItem_Click(object? sender, EventArgs e)
+    {
+        using (var settingsForm = new Forms.GeminiApiKeySettingsForm())
+        {
+            if (settingsForm.ShowDialog(this) == DialogResult.OK)
+            {
+                statusLabel.Text = "Gemini API key saved successfully";
+                announcer.Announce("Gemini API key saved successfully");
+            }
+        }
+    }
+
     private void HotkeyListMenuItem_Click(object? sender, EventArgs e)
     {
         using (var hotkeyListForm = new HotkeyListForm())
