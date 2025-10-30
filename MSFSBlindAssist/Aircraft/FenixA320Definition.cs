@@ -1795,6 +1795,718 @@ public class FenixA320Definition : BaseAircraftDefinition
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
             },
 
+            // ========== RADIO MANAGEMENT PANEL (RMP) (42 variables) ==========
+
+            // RMP1 Power Switch
+            ["S_PED_RMP1_POWER"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_PED_RMP1_POWER",
+                DisplayName = "RMP1 Power",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+
+            // RMP1 Mode Selection Buttons (Momentary)
+            ["S_PED_RMP1_VHF1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_PED_RMP1_VHF1",
+                DisplayName = "RMP1 VHF 1",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_PED_RMP1_VHF2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_PED_RMP1_VHF2",
+                DisplayName = "RMP1 VHF 2",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_PED_RMP1_VHF3"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_PED_RMP1_VHF3",
+                DisplayName = "RMP1 VHF 3",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_PED_RMP1_HF1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_PED_RMP1_HF1",
+                DisplayName = "RMP1 HF 1",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_PED_RMP1_HF2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_PED_RMP1_HF2",
+                DisplayName = "RMP1 HF 2",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_PED_RMP1_NAV"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_PED_RMP1_NAV",
+                DisplayName = "RMP1 NAV",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_PED_RMP1_VOR"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_PED_RMP1_VOR",
+                DisplayName = "RMP1 VOR",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_PED_RMP1_ILS"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_PED_RMP1_ILS",
+                DisplayName = "RMP1 ILS",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_PED_RMP1_MLS"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_PED_RMP1_MLS",
+                DisplayName = "RMP1 GLS",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_PED_RMP1_ADF"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_PED_RMP1_ADF",
+                DisplayName = "RMP1 ADF",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_PED_RMP1_BFO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_PED_RMP1_BFO",
+                DisplayName = "RMP1 BFO",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_PED_RMP1_AM"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_PED_RMP1_AM",
+                DisplayName = "RMP1 AM",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+
+            // RMP2 Power Switch
+            ["S_PED_RMP2_POWER"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_PED_RMP2_POWER",
+                DisplayName = "RMP2 Power",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+
+            // RMP2 Mode Selection Buttons (Momentary)
+            ["S_PED_RMP2_VHF1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_PED_RMP2_VHF1",
+                DisplayName = "RMP2 VHF 1",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_PED_RMP2_VHF2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_PED_RMP2_VHF2",
+                DisplayName = "RMP2 VHF 2",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_PED_RMP2_VHF3"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_PED_RMP2_VHF3",
+                DisplayName = "RMP2 VHF 3",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_PED_RMP2_HF1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_PED_RMP2_HF1",
+                DisplayName = "RMP2 HF 1",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_PED_RMP2_HF2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_PED_RMP2_HF2",
+                DisplayName = "RMP2 HF 2",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_PED_RMP2_NAV"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_PED_RMP2_NAV",
+                DisplayName = "RMP2 NAV",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_PED_RMP2_VOR"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_PED_RMP2_VOR",
+                DisplayName = "RMP2 VOR",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_PED_RMP2_ILS"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_PED_RMP2_ILS",
+                DisplayName = "RMP2 ILS",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_PED_RMP2_MLS"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_PED_RMP2_MLS",
+                DisplayName = "RMP2 GLS",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_PED_RMP2_ADF"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_PED_RMP2_ADF",
+                DisplayName = "RMP2 ADF",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_PED_RMP2_BFO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_PED_RMP2_BFO",
+                DisplayName = "RMP2 BFO",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_PED_RMP2_AM"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_PED_RMP2_AM",
+                DisplayName = "RMP2 AM",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+
+            // RMP3 Power Switch
+            ["S_PED_RMP3_POWER"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_PED_RMP3_POWER",
+                DisplayName = "RMP3 Power",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+
+            // RMP3 Mode Selection Buttons (Momentary)
+            ["S_PED_RMP3_VHF1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_PED_RMP3_VHF1",
+                DisplayName = "RMP3 VHF 1",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_PED_RMP3_VHF2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_PED_RMP3_VHF2",
+                DisplayName = "RMP3 VHF 2",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_PED_RMP3_VHF3"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_PED_RMP3_VHF3",
+                DisplayName = "RMP3 VHF 3",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_PED_RMP3_HF1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_PED_RMP3_HF1",
+                DisplayName = "RMP3 HF 1",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_PED_RMP3_HF2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_PED_RMP3_HF2",
+                DisplayName = "RMP3 HF 2",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_PED_RMP3_NAV"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_PED_RMP3_NAV",
+                DisplayName = "RMP3 NAV",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_PED_RMP3_VOR"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_PED_RMP3_VOR",
+                DisplayName = "RMP3 VOR",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_PED_RMP3_ILS"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_PED_RMP3_ILS",
+                DisplayName = "RMP3 ILS",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_PED_RMP3_MLS"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_PED_RMP3_MLS",
+                DisplayName = "RMP3 GLS",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_PED_RMP3_ADF"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_PED_RMP3_ADF",
+                DisplayName = "RMP3 ADF",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_PED_RMP3_BFO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_PED_RMP3_BFO",
+                DisplayName = "RMP3 BFO",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_PED_RMP3_AM"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_PED_RMP3_AM",
+                DisplayName = "RMP3 AM",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+
+            // RMP1 Frequency Buttons and Transfer
+            ["E_PED_RMP1_INNER_INC"] = new SimConnect.SimVarDefinition
+            {
+                Name = "E_PED_RMP1_INNER_INC",
+                DisplayName = "RMP1 Inner Inc",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["E_PED_RMP1_INNER_DEC"] = new SimConnect.SimVarDefinition
+            {
+                Name = "E_PED_RMP1_INNER_DEC",
+                DisplayName = "RMP1 Inner Dec",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["E_PED_RMP1_OUTER_INC"] = new SimConnect.SimVarDefinition
+            {
+                Name = "E_PED_RMP1_OUTER_INC",
+                DisplayName = "RMP1 Outer Inc",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["E_PED_RMP1_OUTER_DEC"] = new SimConnect.SimVarDefinition
+            {
+                Name = "E_PED_RMP1_OUTER_DEC",
+                DisplayName = "RMP1 Outer Dec",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_PED_RMP1_XFER"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_PED_RMP1_XFER",
+                DisplayName = "RMP1 Transfer",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+
+            // RMP2 Frequency Buttons and Transfer
+            ["E_PED_RMP2_INNER_INC"] = new SimConnect.SimVarDefinition
+            {
+                Name = "E_PED_RMP2_INNER_INC",
+                DisplayName = "RMP2 Inner Inc",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["E_PED_RMP2_INNER_DEC"] = new SimConnect.SimVarDefinition
+            {
+                Name = "E_PED_RMP2_INNER_DEC",
+                DisplayName = "RMP2 Inner Dec",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["E_PED_RMP2_OUTER_INC"] = new SimConnect.SimVarDefinition
+            {
+                Name = "E_PED_RMP2_OUTER_INC",
+                DisplayName = "RMP2 Outer Inc",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["E_PED_RMP2_OUTER_DEC"] = new SimConnect.SimVarDefinition
+            {
+                Name = "E_PED_RMP2_OUTER_DEC",
+                DisplayName = "RMP2 Outer Dec",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_PED_RMP2_XFER"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_PED_RMP2_XFER",
+                DisplayName = "RMP2 Transfer",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+
+            // RMP3 Frequency Buttons and Transfer
+            ["E_PED_RMP3_INNER_INC"] = new SimConnect.SimVarDefinition
+            {
+                Name = "E_PED_RMP3_INNER_INC",
+                DisplayName = "RMP3 Inner Inc",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["E_PED_RMP3_INNER_DEC"] = new SimConnect.SimVarDefinition
+            {
+                Name = "E_PED_RMP3_INNER_DEC",
+                DisplayName = "RMP3 Inner Dec",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["E_PED_RMP3_OUTER_INC"] = new SimConnect.SimVarDefinition
+            {
+                Name = "E_PED_RMP3_OUTER_INC",
+                DisplayName = "RMP3 Outer Inc",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["E_PED_RMP3_OUTER_DEC"] = new SimConnect.SimVarDefinition
+            {
+                Name = "E_PED_RMP3_OUTER_DEC",
+                DisplayName = "RMP3 Outer Dec",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_PED_RMP3_XFER"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_PED_RMP3_XFER",
+                DisplayName = "RMP3 Transfer",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+
+            // ========== AUDIO CONTROL PANEL (ACP) (14 variables) ==========
+
+            // Volume Controls (13 knobs)
+            ["A_ASP_VHF_1_VOLUME"] = new SimConnect.SimVarDefinition
+            {
+                Name = "A_ASP_VHF_1_VOLUME",
+                DisplayName = "ACP VHF 1 Volume",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0.00] = "0%", [0.05] = "5%", [0.10] = "10%", [0.15] = "15%", [0.20] = "20%",
+                    [0.25] = "25%", [0.30] = "30%", [0.35] = "35%", [0.40] = "40%", [0.45] = "45%",
+                    [0.50] = "50%", [0.55] = "55%", [0.60] = "60%", [0.65] = "65%", [0.70] = "70%",
+                    [0.75] = "75%", [0.80] = "80%", [0.85] = "85%", [0.90] = "90%", [0.95] = "95%",
+                    [1.00] = "100%"
+                }
+            },
+            ["A_ASP_VHF_2_VOLUME"] = new SimConnect.SimVarDefinition
+            {
+                Name = "A_ASP_VHF_2_VOLUME",
+                DisplayName = "ACP VHF 2 Volume",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0.00] = "0%", [0.05] = "5%", [0.10] = "10%", [0.15] = "15%", [0.20] = "20%",
+                    [0.25] = "25%", [0.30] = "30%", [0.35] = "35%", [0.40] = "40%", [0.45] = "45%",
+                    [0.50] = "50%", [0.55] = "55%", [0.60] = "60%", [0.65] = "65%", [0.70] = "70%",
+                    [0.75] = "75%", [0.80] = "80%", [0.85] = "85%", [0.90] = "90%", [0.95] = "95%",
+                    [1.00] = "100%"
+                }
+            },
+            ["A_ASP_VHF_3_VOLUME"] = new SimConnect.SimVarDefinition
+            {
+                Name = "A_ASP_VHF_3_VOLUME",
+                DisplayName = "ACP VHF 3 Volume",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0.00] = "0%", [0.05] = "5%", [0.10] = "10%", [0.15] = "15%", [0.20] = "20%",
+                    [0.25] = "25%", [0.30] = "30%", [0.35] = "35%", [0.40] = "40%", [0.45] = "45%",
+                    [0.50] = "50%", [0.55] = "55%", [0.60] = "60%", [0.65] = "65%", [0.70] = "70%",
+                    [0.75] = "75%", [0.80] = "80%", [0.85] = "85%", [0.90] = "90%", [0.95] = "95%",
+                    [1.00] = "100%"
+                }
+            },
+            ["A_ASP_HF_1_VOLUME"] = new SimConnect.SimVarDefinition
+            {
+                Name = "A_ASP_HF_1_VOLUME",
+                DisplayName = "ACP HF 1 Volume",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0.00] = "0%", [0.05] = "5%", [0.10] = "10%", [0.15] = "15%", [0.20] = "20%",
+                    [0.25] = "25%", [0.30] = "30%", [0.35] = "35%", [0.40] = "40%", [0.45] = "45%",
+                    [0.50] = "50%", [0.55] = "55%", [0.60] = "60%", [0.65] = "65%", [0.70] = "70%",
+                    [0.75] = "75%", [0.80] = "80%", [0.85] = "85%", [0.90] = "90%", [0.95] = "95%",
+                    [1.00] = "100%"
+                }
+            },
+            ["A_ASP_HF_2_VOLUME"] = new SimConnect.SimVarDefinition
+            {
+                Name = "A_ASP_HF_2_VOLUME",
+                DisplayName = "ACP HF 2 Volume",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0.00] = "0%", [0.05] = "5%", [0.10] = "10%", [0.15] = "15%", [0.20] = "20%",
+                    [0.25] = "25%", [0.30] = "30%", [0.35] = "35%", [0.40] = "40%", [0.45] = "45%",
+                    [0.50] = "50%", [0.55] = "55%", [0.60] = "60%", [0.65] = "65%", [0.70] = "70%",
+                    [0.75] = "75%", [0.80] = "80%", [0.85] = "85%", [0.90] = "90%", [0.95] = "95%",
+                    [1.00] = "100%"
+                }
+            },
+            ["A_ASP_CAB_VOLUME"] = new SimConnect.SimVarDefinition
+            {
+                Name = "A_ASP_CAB_VOLUME",
+                DisplayName = "ACP CAB Volume",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0.00] = "0%", [0.05] = "5%", [0.10] = "10%", [0.15] = "15%", [0.20] = "20%",
+                    [0.25] = "25%", [0.30] = "30%", [0.35] = "35%", [0.40] = "40%", [0.45] = "45%",
+                    [0.50] = "50%", [0.55] = "55%", [0.60] = "60%", [0.65] = "65%", [0.70] = "70%",
+                    [0.75] = "75%", [0.80] = "80%", [0.85] = "85%", [0.90] = "90%", [0.95] = "95%",
+                    [1.00] = "100%"
+                }
+            },
+            ["A_ASP_PA_VOLUME"] = new SimConnect.SimVarDefinition
+            {
+                Name = "A_ASP_PA_VOLUME",
+                DisplayName = "ACP PA Volume",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0.00] = "0%", [0.05] = "5%", [0.10] = "10%", [0.15] = "15%", [0.20] = "20%",
+                    [0.25] = "25%", [0.30] = "30%", [0.35] = "35%", [0.40] = "40%", [0.45] = "45%",
+                    [0.50] = "50%", [0.55] = "55%", [0.60] = "60%", [0.65] = "65%", [0.70] = "70%",
+                    [0.75] = "75%", [0.80] = "80%", [0.85] = "85%", [0.90] = "90%", [0.95] = "95%",
+                    [1.00] = "100%"
+                }
+            },
+            ["A_ASP_INT_VOLUME"] = new SimConnect.SimVarDefinition
+            {
+                Name = "A_ASP_INT_VOLUME",
+                DisplayName = "ACP INT Volume",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0.00] = "0%", [0.05] = "5%", [0.10] = "10%", [0.15] = "15%", [0.20] = "20%",
+                    [0.25] = "25%", [0.30] = "30%", [0.35] = "35%", [0.40] = "40%", [0.45] = "45%",
+                    [0.50] = "50%", [0.55] = "55%", [0.60] = "60%", [0.65] = "65%", [0.70] = "70%",
+                    [0.75] = "75%", [0.80] = "80%", [0.85] = "85%", [0.90] = "90%", [0.95] = "95%",
+                    [1.00] = "100%"
+                }
+            },
+            ["A_ASP_ILS_VOLUME"] = new SimConnect.SimVarDefinition
+            {
+                Name = "A_ASP_ILS_VOLUME",
+                DisplayName = "ACP ILS Volume",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0.00] = "0%", [0.05] = "5%", [0.10] = "10%", [0.15] = "15%", [0.20] = "20%",
+                    [0.25] = "25%", [0.30] = "30%", [0.35] = "35%", [0.40] = "40%", [0.45] = "45%",
+                    [0.50] = "50%", [0.55] = "55%", [0.60] = "60%", [0.65] = "65%", [0.70] = "70%",
+                    [0.75] = "75%", [0.80] = "80%", [0.85] = "85%", [0.90] = "90%", [0.95] = "95%",
+                    [1.00] = "100%"
+                }
+            },
+            ["A_ASP_MLS_VOLUME"] = new SimConnect.SimVarDefinition
+            {
+                Name = "A_ASP_MLS_VOLUME",
+                DisplayName = "ACP MLS Volume",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0.00] = "0%", [0.05] = "5%", [0.10] = "10%", [0.15] = "15%", [0.20] = "20%",
+                    [0.25] = "25%", [0.30] = "30%", [0.35] = "35%", [0.40] = "40%", [0.45] = "45%",
+                    [0.50] = "50%", [0.55] = "55%", [0.60] = "60%", [0.65] = "65%", [0.70] = "70%",
+                    [0.75] = "75%", [0.80] = "80%", [0.85] = "85%", [0.90] = "90%", [0.95] = "95%",
+                    [1.00] = "100%"
+                }
+            },
+            ["A_ASP_ADF_1_VOLUME"] = new SimConnect.SimVarDefinition
+            {
+                Name = "A_ASP_ADF_1_VOLUME",
+                DisplayName = "ACP ADF 1 Volume",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0.00] = "0%", [0.05] = "5%", [0.10] = "10%", [0.15] = "15%", [0.20] = "20%",
+                    [0.25] = "25%", [0.30] = "30%", [0.35] = "35%", [0.40] = "40%", [0.45] = "45%",
+                    [0.50] = "50%", [0.55] = "55%", [0.60] = "60%", [0.65] = "65%", [0.70] = "70%",
+                    [0.75] = "75%", [0.80] = "80%", [0.85] = "85%", [0.90] = "90%", [0.95] = "95%",
+                    [1.00] = "100%"
+                }
+            },
+            ["A_ASP_ADF_2_VOLUME"] = new SimConnect.SimVarDefinition
+            {
+                Name = "A_ASP_ADF_2_VOLUME",
+                DisplayName = "ACP ADF 2 Volume",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0.00] = "0%", [0.05] = "5%", [0.10] = "10%", [0.15] = "15%", [0.20] = "20%",
+                    [0.25] = "25%", [0.30] = "30%", [0.35] = "35%", [0.40] = "40%", [0.45] = "45%",
+                    [0.50] = "50%", [0.55] = "55%", [0.60] = "60%", [0.65] = "65%", [0.70] = "70%",
+                    [0.75] = "75%", [0.80] = "80%", [0.85] = "85%", [0.90] = "90%", [0.95] = "95%",
+                    [1.00] = "100%"
+                }
+            },
+            ["A_ASP_MARKER_VOLUME"] = new SimConnect.SimVarDefinition
+            {
+                Name = "A_ASP_MARKER_VOLUME",
+                DisplayName = "ACP MARKER Volume",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0.00] = "0%", [0.05] = "5%", [0.10] = "10%", [0.15] = "15%", [0.20] = "20%",
+                    [0.25] = "25%", [0.30] = "30%", [0.35] = "35%", [0.40] = "40%", [0.45] = "45%",
+                    [0.50] = "50%", [0.55] = "55%", [0.60] = "60%", [0.65] = "65%", [0.70] = "70%",
+                    [0.75] = "75%", [0.80] = "80%", [0.85] = "85%", [0.90] = "90%", [0.95] = "95%",
+                    [1.00] = "100%"
+                }
+            },
+
+            // INTRAD Switch
+            ["S_ASP_INTRAD"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_ASP_INTRAD",
+                DisplayName = "ACP INTRAD Switch",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "INT", [1] = "OFF", [2] = "RAD"}
+            },
+
             // ========== AIR CONDITIONING AND PRESSURIZATION (18 variables) ==========
 
             // Bleed Buttons
@@ -6634,7 +7346,9 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "Weather Radar",
                 "ECAM",
                 "Flight Controls",
-                "ATC TCAS"
+                "ATC TCAS",
+                "Radio Management Panel (RMP)",
+                "Audio Control Panel (ACP)"
             },
 
             ["Main Instrument Panel"] = new List<string>
@@ -7058,6 +7772,90 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "S_XPDR_IDENT",            // IDENT Button
                 "S_PED_ATC_CLR",           // CLR Button
                 "TRANSPONDER_CODE_SET"     // Set Transponder Code (replaces keypad 0-7)
+            },
+
+            ["Radio Management Panel (RMP)"] = new List<string>
+            {
+                // RMP1 Controls (19 controls)
+                "S_PED_RMP1_POWER",
+                "S_PED_RMP1_VHF1",
+                "S_PED_RMP1_VHF2",
+                "S_PED_RMP1_VHF3",
+                "S_PED_RMP1_HF1",
+                "S_PED_RMP1_HF2",
+                "S_PED_RMP1_NAV",
+                "S_PED_RMP1_VOR",
+                "S_PED_RMP1_ILS",
+                "S_PED_RMP1_MLS",
+                "S_PED_RMP1_ADF",
+                "S_PED_RMP1_BFO",
+                "S_PED_RMP1_AM",
+                "E_PED_RMP1_INNER_INC",
+                "E_PED_RMP1_INNER_DEC",
+                "E_PED_RMP1_OUTER_INC",
+                "E_PED_RMP1_OUTER_DEC",
+                "S_PED_RMP1_XFER",
+
+                // RMP2 Controls (19 controls)
+                "S_PED_RMP2_POWER",
+                "S_PED_RMP2_VHF1",
+                "S_PED_RMP2_VHF2",
+                "S_PED_RMP2_VHF3",
+                "S_PED_RMP2_HF1",
+                "S_PED_RMP2_HF2",
+                "S_PED_RMP2_NAV",
+                "S_PED_RMP2_VOR",
+                "S_PED_RMP2_ILS",
+                "S_PED_RMP2_MLS",
+                "S_PED_RMP2_ADF",
+                "S_PED_RMP2_BFO",
+                "S_PED_RMP2_AM",
+                "E_PED_RMP2_INNER_INC",
+                "E_PED_RMP2_INNER_DEC",
+                "E_PED_RMP2_OUTER_INC",
+                "E_PED_RMP2_OUTER_DEC",
+                "S_PED_RMP2_XFER",
+
+                // RMP3 Controls (19 controls)
+                "S_PED_RMP3_POWER",
+                "S_PED_RMP3_VHF1",
+                "S_PED_RMP3_VHF2",
+                "S_PED_RMP3_VHF3",
+                "S_PED_RMP3_HF1",
+                "S_PED_RMP3_HF2",
+                "S_PED_RMP3_NAV",
+                "S_PED_RMP3_VOR",
+                "S_PED_RMP3_ILS",
+                "S_PED_RMP3_MLS",
+                "S_PED_RMP3_ADF",
+                "S_PED_RMP3_BFO",
+                "S_PED_RMP3_AM",
+                "E_PED_RMP3_INNER_INC",
+                "E_PED_RMP3_INNER_DEC",
+                "E_PED_RMP3_OUTER_INC",
+                "E_PED_RMP3_OUTER_DEC",
+                "S_PED_RMP3_XFER"
+            },
+
+            ["Audio Control Panel (ACP)"] = new List<string>
+            {
+                // Volume Controls (13 knobs)
+                "A_ASP_VHF_1_VOLUME",
+                "A_ASP_VHF_2_VOLUME",
+                "A_ASP_VHF_3_VOLUME",
+                "A_ASP_HF_1_VOLUME",
+                "A_ASP_HF_2_VOLUME",
+                "A_ASP_CAB_VOLUME",
+                "A_ASP_PA_VOLUME",
+                "A_ASP_INT_VOLUME",
+                "A_ASP_ILS_VOLUME",
+                "A_ASP_MLS_VOLUME",
+                "A_ASP_ADF_1_VOLUME",
+                "A_ASP_ADF_2_VOLUME",
+                "A_ASP_MARKER_VOLUME",
+
+                // INTRAD Switch
+                "S_ASP_INTRAD"
             },
 
             // ========== MAIN INSTRUMENT PANEL ==========
@@ -8676,6 +9474,432 @@ public class FenixA320Definition : BaseAircraftDefinition
             // Transponder Code Set (Standard MSFS Event - handled by MainForm)
             // Uses XPNDR_SET event with user-entered 4-digit code
             // MainForm will display text box and set button automatically
+
+            // ========== RADIO MANAGEMENT PANEL (RMP) ==========
+
+            // RMP1 Power Switch (Combo Box - use SetLVar)
+            if (varKey == "S_PED_RMP1_POWER")
+            {
+                simConnect.SetLVar("S_PED_RMP1_POWER", value);
+                return true;
+            }
+
+            // RMP1 Mode Buttons (Momentary - use ExecuteButtonTransition)
+            if (varKey == "S_PED_RMP1_VHF1" && value == 1)
+            {
+                ExecuteButtonTransition("S_PED_RMP1_VHF1", "RMP1 VHF 1", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_PED_RMP1_VHF2" && value == 1)
+            {
+                ExecuteButtonTransition("S_PED_RMP1_VHF2", "RMP1 VHF 2", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_PED_RMP1_VHF3" && value == 1)
+            {
+                ExecuteButtonTransition("S_PED_RMP1_VHF3", "RMP1 VHF 3", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_PED_RMP1_HF1" && value == 1)
+            {
+                ExecuteButtonTransition("S_PED_RMP1_HF1", "RMP1 HF 1", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_PED_RMP1_HF2" && value == 1)
+            {
+                ExecuteButtonTransition("S_PED_RMP1_HF2", "RMP1 HF 2", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_PED_RMP1_NAV" && value == 1)
+            {
+                ExecuteButtonTransition("S_PED_RMP1_NAV", "RMP1 NAV", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_PED_RMP1_VOR" && value == 1)
+            {
+                ExecuteButtonTransition("S_PED_RMP1_VOR", "RMP1 VOR", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_PED_RMP1_ILS" && value == 1)
+            {
+                ExecuteButtonTransition("S_PED_RMP1_ILS", "RMP1 ILS", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_PED_RMP1_MLS" && value == 1)
+            {
+                ExecuteButtonTransition("S_PED_RMP1_MLS", "RMP1 GLS", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_PED_RMP1_ADF" && value == 1)
+            {
+                ExecuteButtonTransition("S_PED_RMP1_ADF", "RMP1 ADF", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_PED_RMP1_BFO" && value == 1)
+            {
+                ExecuteButtonTransition("S_PED_RMP1_BFO", "RMP1 BFO", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_PED_RMP1_AM" && value == 1)
+            {
+                ExecuteButtonTransition("S_PED_RMP1_AM", "RMP1 AM", simConnect, announcer);
+                return true;
+            }
+
+            // RMP1 Frequency Buttons (Inc/Dec - use ExecuteButtonTransition)
+            if (varKey == "E_PED_RMP1_INNER_INC" && value == 1)
+            {
+                ExecuteButtonTransition("E_PED_RMP1_INNER", "RMP1 Inner Inc", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "E_PED_RMP1_INNER_DEC" && value == 1)
+            {
+                ExecuteButtonTransition("E_PED_RMP1_INNER", "RMP1 Inner Dec", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "E_PED_RMP1_OUTER_INC" && value == 1)
+            {
+                ExecuteButtonTransition("E_PED_RMP1_OUTER", "RMP1 Outer Inc", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "E_PED_RMP1_OUTER_DEC" && value == 1)
+            {
+                ExecuteButtonTransition("E_PED_RMP1_OUTER", "RMP1 Outer Dec", simConnect, announcer);
+                return true;
+            }
+
+            // RMP1 Transfer Button (Momentary - use ExecuteButtonTransition)
+            if (varKey == "S_PED_RMP1_XFER" && value == 1)
+            {
+                ExecuteButtonTransition("S_PED_RMP1_XFER", "RMP1 Transfer", simConnect, announcer);
+                return true;
+            }
+
+            // RMP2 Power Switch
+            if (varKey == "S_PED_RMP2_POWER")
+            {
+                simConnect.SetLVar("S_PED_RMP2_POWER", value);
+                return true;
+            }
+
+            // RMP2 Mode Buttons
+            if (varKey == "S_PED_RMP2_VHF1" && value == 1)
+            {
+                ExecuteButtonTransition("S_PED_RMP2_VHF1", "RMP2 VHF 1", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_PED_RMP2_VHF2" && value == 1)
+            {
+                ExecuteButtonTransition("S_PED_RMP2_VHF2", "RMP2 VHF 2", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_PED_RMP2_VHF3" && value == 1)
+            {
+                ExecuteButtonTransition("S_PED_RMP2_VHF3", "RMP2 VHF 3", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_PED_RMP2_HF1" && value == 1)
+            {
+                ExecuteButtonTransition("S_PED_RMP2_HF1", "RMP2 HF 1", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_PED_RMP2_HF2" && value == 1)
+            {
+                ExecuteButtonTransition("S_PED_RMP2_HF2", "RMP2 HF 2", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_PED_RMP2_NAV" && value == 1)
+            {
+                ExecuteButtonTransition("S_PED_RMP2_NAV", "RMP2 NAV", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_PED_RMP2_VOR" && value == 1)
+            {
+                ExecuteButtonTransition("S_PED_RMP2_VOR", "RMP2 VOR", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_PED_RMP2_ILS" && value == 1)
+            {
+                ExecuteButtonTransition("S_PED_RMP2_ILS", "RMP2 ILS", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_PED_RMP2_MLS" && value == 1)
+            {
+                ExecuteButtonTransition("S_PED_RMP2_MLS", "RMP2 GLS", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_PED_RMP2_ADF" && value == 1)
+            {
+                ExecuteButtonTransition("S_PED_RMP2_ADF", "RMP2 ADF", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_PED_RMP2_BFO" && value == 1)
+            {
+                ExecuteButtonTransition("S_PED_RMP2_BFO", "RMP2 BFO", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_PED_RMP2_AM" && value == 1)
+            {
+                ExecuteButtonTransition("S_PED_RMP2_AM", "RMP2 AM", simConnect, announcer);
+                return true;
+            }
+
+            // RMP2 Frequency Buttons (Inc/Dec - use ExecuteButtonTransition)
+            if (varKey == "E_PED_RMP2_INNER_INC" && value == 1)
+            {
+                ExecuteButtonTransition("E_PED_RMP2_INNER", "RMP2 Inner Inc", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "E_PED_RMP2_INNER_DEC" && value == 1)
+            {
+                ExecuteButtonTransition("E_PED_RMP2_INNER", "RMP2 Inner Dec", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "E_PED_RMP2_OUTER_INC" && value == 1)
+            {
+                ExecuteButtonTransition("E_PED_RMP2_OUTER", "RMP2 Outer Inc", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "E_PED_RMP2_OUTER_DEC" && value == 1)
+            {
+                ExecuteButtonTransition("E_PED_RMP2_OUTER", "RMP2 Outer Dec", simConnect, announcer);
+                return true;
+            }
+
+            // RMP2 Transfer Button (Momentary - use ExecuteButtonTransition)
+            if (varKey == "S_PED_RMP2_XFER" && value == 1)
+            {
+                ExecuteButtonTransition("S_PED_RMP2_XFER", "RMP2 Transfer", simConnect, announcer);
+                return true;
+            }
+
+            // RMP3 Power Switch
+            if (varKey == "S_PED_RMP3_POWER")
+            {
+                simConnect.SetLVar("S_PED_RMP3_POWER", value);
+                return true;
+            }
+
+            // RMP3 Mode Buttons
+            if (varKey == "S_PED_RMP3_VHF1" && value == 1)
+            {
+                ExecuteButtonTransition("S_PED_RMP3_VHF1", "RMP3 VHF 1", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_PED_RMP3_VHF2" && value == 1)
+            {
+                ExecuteButtonTransition("S_PED_RMP3_VHF2", "RMP3 VHF 2", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_PED_RMP3_VHF3" && value == 1)
+            {
+                ExecuteButtonTransition("S_PED_RMP3_VHF3", "RMP3 VHF 3", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_PED_RMP3_HF1" && value == 1)
+            {
+                ExecuteButtonTransition("S_PED_RMP3_HF1", "RMP3 HF 1", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_PED_RMP3_HF2" && value == 1)
+            {
+                ExecuteButtonTransition("S_PED_RMP3_HF2", "RMP3 HF 2", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_PED_RMP3_NAV" && value == 1)
+            {
+                ExecuteButtonTransition("S_PED_RMP3_NAV", "RMP3 NAV", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_PED_RMP3_VOR" && value == 1)
+            {
+                ExecuteButtonTransition("S_PED_RMP3_VOR", "RMP3 VOR", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_PED_RMP3_ILS" && value == 1)
+            {
+                ExecuteButtonTransition("S_PED_RMP3_ILS", "RMP3 ILS", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_PED_RMP3_MLS" && value == 1)
+            {
+                ExecuteButtonTransition("S_PED_RMP3_MLS", "RMP3 GLS", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_PED_RMP3_ADF" && value == 1)
+            {
+                ExecuteButtonTransition("S_PED_RMP3_ADF", "RMP3 ADF", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_PED_RMP3_BFO" && value == 1)
+            {
+                ExecuteButtonTransition("S_PED_RMP3_BFO", "RMP3 BFO", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_PED_RMP3_AM" && value == 1)
+            {
+                ExecuteButtonTransition("S_PED_RMP3_AM", "RMP3 AM", simConnect, announcer);
+                return true;
+            }
+
+            // RMP3 Frequency Buttons (Inc/Dec - use ExecuteButtonTransition)
+            if (varKey == "E_PED_RMP3_INNER_INC" && value == 1)
+            {
+                ExecuteButtonTransition("E_PED_RMP3_INNER", "RMP3 Inner Inc", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "E_PED_RMP3_INNER_DEC" && value == 1)
+            {
+                ExecuteButtonTransition("E_PED_RMP3_INNER", "RMP3 Inner Dec", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "E_PED_RMP3_OUTER_INC" && value == 1)
+            {
+                ExecuteButtonTransition("E_PED_RMP3_OUTER", "RMP3 Outer Inc", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "E_PED_RMP3_OUTER_DEC" && value == 1)
+            {
+                ExecuteButtonTransition("E_PED_RMP3_OUTER", "RMP3 Outer Dec", simConnect, announcer);
+                return true;
+            }
+
+            // RMP3 Transfer Button (Momentary - use ExecuteButtonTransition)
+            if (varKey == "S_PED_RMP3_XFER" && value == 1)
+            {
+                ExecuteButtonTransition("S_PED_RMP3_XFER", "RMP3 Transfer", simConnect, announcer);
+                return true;
+            }
+
+            // ========== AUDIO CONTROL PANEL (ACP) ==========
+
+            // Volume Controls (Combo Boxes - use SetLVar)
+            if (varKey == "A_ASP_VHF_1_VOLUME")
+            {
+                simConnect.SetLVar("A_ASP_VHF_1_VOLUME", value);
+                return true;
+            }
+
+            if (varKey == "A_ASP_VHF_2_VOLUME")
+            {
+                simConnect.SetLVar("A_ASP_VHF_2_VOLUME", value);
+                return true;
+            }
+
+            if (varKey == "A_ASP_VHF_3_VOLUME")
+            {
+                simConnect.SetLVar("A_ASP_VHF_3_VOLUME", value);
+                return true;
+            }
+
+            if (varKey == "A_ASP_HF_1_VOLUME")
+            {
+                simConnect.SetLVar("A_ASP_HF_1_VOLUME", value);
+                return true;
+            }
+
+            if (varKey == "A_ASP_HF_2_VOLUME")
+            {
+                simConnect.SetLVar("A_ASP_HF_2_VOLUME", value);
+                return true;
+            }
+
+            if (varKey == "A_ASP_CAB_VOLUME")
+            {
+                simConnect.SetLVar("A_ASP_CAB_VOLUME", value);
+                return true;
+            }
+
+            if (varKey == "A_ASP_PA_VOLUME")
+            {
+                simConnect.SetLVar("A_ASP_PA_VOLUME", value);
+                return true;
+            }
+
+            if (varKey == "A_ASP_INT_VOLUME")
+            {
+                simConnect.SetLVar("A_ASP_INT_VOLUME", value);
+                return true;
+            }
+
+            if (varKey == "A_ASP_ILS_VOLUME")
+            {
+                simConnect.SetLVar("A_ASP_ILS_VOLUME", value);
+                return true;
+            }
+
+            if (varKey == "A_ASP_MLS_VOLUME")
+            {
+                simConnect.SetLVar("A_ASP_MLS_VOLUME", value);
+                return true;
+            }
+
+            if (varKey == "A_ASP_ADF_1_VOLUME")
+            {
+                simConnect.SetLVar("A_ASP_ADF_1_VOLUME", value);
+                return true;
+            }
+
+            if (varKey == "A_ASP_ADF_2_VOLUME")
+            {
+                simConnect.SetLVar("A_ASP_ADF_2_VOLUME", value);
+                return true;
+            }
+
+            if (varKey == "A_ASP_MARKER_VOLUME")
+            {
+                simConnect.SetLVar("A_ASP_MARKER_VOLUME", value);
+                return true;
+            }
+
+            // INTRAD Switch (Combo Box - use SetLVar)
+            if (varKey == "S_ASP_INTRAD")
+            {
+                simConnect.SetLVar("S_ASP_INTRAD", value);
+                return true;
+            }
 
             // ========== FLIGHT CONTROLS PANEL (Pedestal) ==========
             // Parking Brake - Simple SetLVar
