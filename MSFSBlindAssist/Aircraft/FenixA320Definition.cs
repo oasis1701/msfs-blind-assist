@@ -2302,9 +2302,9 @@ public class FenixA320Definition : BaseAircraftDefinition
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
             },
 
-            // ========== AUDIO CONTROL PANEL (ACP) (14 variables) ==========
+            // ========== AUDIO CONTROL PANEL (ACP) (30 variables) ==========
 
-            // Volume Controls (13 knobs)
+            // Volume Controls (15 knobs)
             ["A_ASP_VHF_1_VOLUME"] = new SimConnect.SimVarDefinition
             {
                 Name = "A_ASP_VHF_1_VOLUME",
@@ -2500,6 +2500,36 @@ public class FenixA320Definition : BaseAircraftDefinition
                     [1.00] = "100%"
                 }
             },
+            ["A_ASP_VOR_1_VOLUME"] = new SimConnect.SimVarDefinition
+            {
+                Name = "A_ASP_VOR_1_VOLUME",
+                DisplayName = "ACP VOR 1 Volume",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0.00] = "0%", [0.05] = "5%", [0.10] = "10%", [0.15] = "15%", [0.20] = "20%",
+                    [0.25] = "25%", [0.30] = "30%", [0.35] = "35%", [0.40] = "40%", [0.45] = "45%",
+                    [0.50] = "50%", [0.55] = "55%", [0.60] = "60%", [0.65] = "65%", [0.70] = "70%",
+                    [0.75] = "75%", [0.80] = "80%", [0.85] = "85%", [0.90] = "90%", [0.95] = "95%",
+                    [1.00] = "100%"
+                }
+            },
+            ["A_ASP_VOR_2_VOLUME"] = new SimConnect.SimVarDefinition
+            {
+                Name = "A_ASP_VOR_2_VOLUME",
+                DisplayName = "ACP VOR 2 Volume",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0.00] = "0%", [0.05] = "5%", [0.10] = "10%", [0.15] = "15%", [0.20] = "20%",
+                    [0.25] = "25%", [0.30] = "30%", [0.35] = "35%", [0.40] = "40%", [0.45] = "45%",
+                    [0.50] = "50%", [0.55] = "55%", [0.60] = "60%", [0.65] = "65%", [0.70] = "70%",
+                    [0.75] = "75%", [0.80] = "80%", [0.85] = "85%", [0.90] = "90%", [0.95] = "95%",
+                    [1.00] = "100%"
+                }
+            },
 
             // INTRAD Switch
             ["S_ASP_INTRAD"] = new SimConnect.SimVarDefinition
@@ -2509,6 +2539,133 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 ValueDescriptions = new Dictionary<double, string> {[0] = "INT", [1] = "OFF", [2] = "RAD"}
+            },
+
+            // Transmit Buttons (8 buttons - 7 momentary buttons + 1 combo box)
+            ["S_ASP_VHF_1_SEND"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_ASP_VHF_1_SEND",
+                DisplayName = "ACP VHF 1 Transmit",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_ASP_VHF_2_SEND"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_ASP_VHF_2_SEND",
+                DisplayName = "ACP VHF 2 Transmit",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_ASP_VHF_3_SEND"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_ASP_VHF_3_SEND",
+                DisplayName = "ACP VHF 3 Transmit",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_ASP_HF_1_SEND"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_ASP_HF_1_SEND",
+                DisplayName = "ACP HF 1 Transmit",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_ASP_HF_2_SEND"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_ASP_HF_2_SEND",
+                DisplayName = "ACP HF 2 Transmit",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_ASP_CAB_SEND"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_ASP_CAB_SEND",
+                DisplayName = "ACP CAB Transmit",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_ASP_INT_SEND"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_ASP_INT_SEND",
+                DisplayName = "ACP INT Transmit",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_ASP_PA_SEND"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_ASP_PA_SEND",
+                DisplayName = "ACP PA Transmit",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Release", [1] = "Push"}
+            },
+
+            // Additional Buttons (2 buttons)
+            ["S_ASP_RESET"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_ASP_RESET",
+                DisplayName = "ACP RESET",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_ASP_VOICE"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_ASP_VOICE",
+                DisplayName = "ACP VOICE",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+
+            // Receive Toggle Controls (4 combo boxes)
+            ["S_ASP_VHF_1_REC_LATCH"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_ASP_VHF_1_REC_LATCH",
+                DisplayName = "ACP VHF 1 Receive",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_ASP_HF_1_REC_LATCH"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_ASP_HF_1_REC_LATCH",
+                DisplayName = "ACP HF 1 Receive",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Release", [1] = "Press"}
+            },
+            ["S_ASP_CAB_REC_LATCH"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_ASP_CAB_REC_LATCH",
+                DisplayName = "ACP CAB Receive",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_ASP_PA_REC_LATCH"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_ASP_PA_REC_LATCH",
+                DisplayName = "ACP PA Receive",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
             },
 
             // ========== EFIS LEFT (16 variables) ==========
@@ -8724,7 +8881,7 @@ public class FenixA320Definition : BaseAircraftDefinition
 
             ["Audio Control Panel (ACP)"] = new List<string>
             {
-                // Volume Controls (13 knobs)
+                // Volume Controls (15 knobs)
                 "A_ASP_VHF_1_VOLUME",
                 "A_ASP_VHF_2_VOLUME",
                 "A_ASP_VHF_3_VOLUME",
@@ -8738,9 +8895,31 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "A_ASP_ADF_1_VOLUME",
                 "A_ASP_ADF_2_VOLUME",
                 "A_ASP_MARKER_VOLUME",
+                "A_ASP_VOR_1_VOLUME",
+                "A_ASP_VOR_2_VOLUME",
 
                 // INTRAD Switch
-                "S_ASP_INTRAD"
+                "S_ASP_INTRAD",
+
+                // Transmit Buttons (8 buttons)
+                "S_ASP_VHF_1_SEND",
+                "S_ASP_VHF_2_SEND",
+                "S_ASP_VHF_3_SEND",
+                "S_ASP_HF_1_SEND",
+                "S_ASP_HF_2_SEND",
+                "S_ASP_CAB_SEND",
+                "S_ASP_INT_SEND",
+                "S_ASP_PA_SEND",
+
+                // Additional Buttons (2 buttons)
+                "S_ASP_RESET",
+                "S_ASP_VOICE",
+
+                // Receive Toggle Controls (4 combo boxes)
+                "S_ASP_VHF_1_REC_LATCH",
+                "S_ASP_HF_1_REC_LATCH",
+                "S_ASP_CAB_REC_LATCH",
+                "S_ASP_PA_REC_LATCH"
             },
 
             // ========== GLARESHIELD ==========
@@ -10986,10 +11165,111 @@ public class FenixA320Definition : BaseAircraftDefinition
                 return true;
             }
 
+            if (varKey == "A_ASP_VOR_1_VOLUME")
+            {
+                simConnect.SetLVar("A_ASP_VOR_1_VOLUME", value);
+                return true;
+            }
+
+            if (varKey == "A_ASP_VOR_2_VOLUME")
+            {
+                simConnect.SetLVar("A_ASP_VOR_2_VOLUME", value);
+                return true;
+            }
+
             // INTRAD Switch (Combo Box - use SetLVar)
             if (varKey == "S_ASP_INTRAD")
             {
                 simConnect.SetLVar("S_ASP_INTRAD", value);
+                return true;
+            }
+
+            // Transmit Buttons (7 momentary buttons + 1 combo box)
+            // Momentary Buttons (use ExecuteButtonTransition)
+            if (varKey == "S_ASP_VHF_1_SEND" && value == 1)
+            {
+                ExecuteButtonTransition("S_ASP_VHF_1_SEND", "VHF 1 Transmit", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_ASP_VHF_2_SEND" && value == 1)
+            {
+                ExecuteButtonTransition("S_ASP_VHF_2_SEND", "VHF 2 Transmit", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_ASP_VHF_3_SEND" && value == 1)
+            {
+                ExecuteButtonTransition("S_ASP_VHF_3_SEND", "VHF 3 Transmit", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_ASP_HF_1_SEND" && value == 1)
+            {
+                ExecuteButtonTransition("S_ASP_HF_1_SEND", "HF 1 Transmit", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_ASP_HF_2_SEND" && value == 1)
+            {
+                ExecuteButtonTransition("S_ASP_HF_2_SEND", "HF 2 Transmit", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_ASP_CAB_SEND" && value == 1)
+            {
+                ExecuteButtonTransition("S_ASP_CAB_SEND", "CAB Transmit", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_ASP_INT_SEND" && value == 1)
+            {
+                ExecuteButtonTransition("S_ASP_INT_SEND", "INT Transmit", simConnect, announcer);
+                return true;
+            }
+
+            // PA Transmit (Combo Box - use SetLVar)
+            if (varKey == "S_ASP_PA_SEND")
+            {
+                simConnect.SetLVar("S_ASP_PA_SEND", value);
+                return true;
+            }
+
+            // Additional Buttons (use ExecuteButtonTransition)
+            if (varKey == "S_ASP_RESET" && value == 1)
+            {
+                ExecuteButtonTransition("S_ASP_RESET", "RESET", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_ASP_VOICE" && value == 1)
+            {
+                ExecuteButtonTransition("S_ASP_VOICE", "VOICE", simConnect, announcer);
+                return true;
+            }
+
+            // Receive Toggle Controls (4 combo boxes - use SetLVar)
+            if (varKey == "S_ASP_VHF_1_REC_LATCH")
+            {
+                simConnect.SetLVar("S_ASP_VHF_1_REC_LATCH", value);
+                return true;
+            }
+
+            if (varKey == "S_ASP_HF_1_REC_LATCH")
+            {
+                simConnect.SetLVar("S_ASP_HF_1_REC_LATCH", value);
+                return true;
+            }
+
+            if (varKey == "S_ASP_CAB_REC_LATCH")
+            {
+                simConnect.SetLVar("S_ASP_CAB_REC_LATCH", value);
+                return true;
+            }
+
+            if (varKey == "S_ASP_PA_REC_LATCH")
+            {
+                simConnect.SetLVar("S_ASP_PA_REC_LATCH", value);
                 return true;
             }
 
