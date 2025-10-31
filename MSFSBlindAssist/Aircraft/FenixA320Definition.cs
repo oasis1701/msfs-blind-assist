@@ -419,56 +419,56 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_FCU_EXPED"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_FCU_EXPED",
-                DisplayName = "FCU EXPED Fault",
+                DisplayName = "FCU EXPED mode",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Activated"}
             },
             ["I_FCU_ATHR"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_FCU_ATHR",
-                DisplayName = "FCU ATHR Fault",
+                DisplayName = "FCU ATHR",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Activated"}
             },
             ["I_FCU_APPR"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_FCU_APPR",
-                DisplayName = "FCU APPR Fault",
+                DisplayName = "FCU APPR mode",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Activated"}
             },
             ["I_FCU_AP2"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_FCU_AP2",
-                DisplayName = "FCU AP2 Fault",
+                DisplayName = "FCU AUTOPILOT 2",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Activated"}
             },
             ["I_FCU_AP1"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_FCU_AP1",
-                DisplayName = "FCU AP1 Fault",
+                DisplayName = "FCU AUTOPILOT 1",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Activated"}
             },
             ["I_FCU_LOC"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_FCU_LOC",
-                DisplayName = "FCU LOC Fault",
+                DisplayName = "FCU LOC MODE",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Activated"}
             },
             ["I_FCU_SPEED_MANAGED"] = new SimConnect.SimVarDefinition
             {
@@ -491,7 +491,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_FCU_ALTITUDE_MANAGED"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_FCU_ALTITUDE_MANAGED",
-                DisplayName = "FCU ALTITUDE Mode",
+                DisplayName = "FCU ALTITUDE MODE",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -500,7 +500,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_FCU_TRACK_FPA_MODE"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_FCU_TRACK_FPA_MODE",
-                DisplayName = "FCU HDG TRK MODE SELECT",
+                DisplayName = "FCU HDG TRK MODE",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -509,7 +509,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_FCU_MACH_MODE"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_FCU_MACH_MODE",
-                DisplayName = "FCU SPD MACH MODE SELECT",
+                DisplayName = "FCU SPD MACH MODE",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -550,29 +550,29 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["B_FCU_SPEED_DASHED"] = new SimConnect.SimVarDefinition
             {
                 Name = "B_FCU_SPEED_DASHED",
-                DisplayName = "FCU SPEED Dashed",
+                DisplayName = "FCU SPEED DISPLAY",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Displayed", [1] = "Dashed"}
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Shown", [1] = "Dashed"}
             },
             ["B_FCU_HEADING_DASHED"] = new SimConnect.SimVarDefinition
             {
                 Name = "B_FCU_HEADING_DASHED",
-                DisplayName = "FCU HEADING Dashed",
+                DisplayName = "FCU HEADING DISPLAY",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Displayed", [1] = "Dashed"}
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Shown", [1] = "Dashed"}
             },
             ["B_FCU_VERTICALSPEED_DASHED"] = new SimConnect.SimVarDefinition
             {
                 Name = "B_FCU_VERTICALSPEED_DASHED",
-                DisplayName = "FCU VERTICAL SPEED Dashed",
+                DisplayName = "FCU VERTICAL SPEED DISPLAY",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Displayed", [1] = "Dashed"}
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Shown", [1] = "Dashed"}
             },
             ["B_FCU_POWER"] = new SimConnect.SimVarDefinition
             {
@@ -586,7 +586,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["B_FCU_SPEED_MACH"] = new SimConnect.SimVarDefinition
             {
                 Name = "B_FCU_SPEED_MACH",
-                DisplayName = "FCU SPEED MACH",
+                DisplayName = "FCU SPEED MACH MODE",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -615,7 +615,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_MIP_GPWS_TERRAIN_ON_ND_FO_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_MIP_GPWS_TERRAIN_ON_ND_FO_L",
-                DisplayName = "MainPanel Terrain On ND FO",
+                DisplayName = "MainPanel Terrain On ND FO LOWER",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -624,7 +624,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_MIP_GPWS_TERRAIN_ON_ND_CAPT_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_MIP_GPWS_TERRAIN_ON_ND_CAPT_L",
-                DisplayName = "MainPanel Terrain On ND Captain",
+                DisplayName = "MainPanel Terrain On ND Captain LOWER",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -633,7 +633,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_MIP_ATC_MSG_FO_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_MIP_ATC_MSG_FO_L",
-                DisplayName = "Glareshield MSG FO",
+                DisplayName = "Glareshield MSG FO LOWER",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -642,7 +642,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_MIP_ATC_MSG_FO_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_MIP_ATC_MSG_FO_U",
-                DisplayName = "Glareshield ATC FO",
+                DisplayName = "Glareshield ATC FO UPPER",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -651,7 +651,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_MIP_ATC_MSG_CAPT_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_MIP_ATC_MSG_CAPT_L",
-                DisplayName = "Glareshield MSG Captain",
+                DisplayName = "Glareshield MSG Captain LOWER",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -660,7 +660,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_MIP_ATC_MSG_CAPT_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_MIP_ATC_MSG_CAPT_U",
-                DisplayName = "Glareshield ATC Captain",
+                DisplayName = "Glareshield ATC Captain UPPER",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -860,7 +860,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["B_FC_RUDDER_TRIM_DASHED"] = new SimConnect.SimVarDefinition
             {
                 Name = "B_FC_RUDDER_TRIM_DASHED",
-                DisplayName = "RUDDER TRIM Dashed",
+                DisplayName = "RUDDER TRIM  DISPLAY",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
