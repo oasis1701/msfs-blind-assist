@@ -26,7 +26,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_NAV_IR3_SWITCH_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_NAV_IR3_SWITCH_L",
-                DisplayName = "ADIRS IR 3 Available",
+                DisplayName = "ADIRS IR 3 Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -35,7 +35,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_NAV_IR3_SWITCH_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_NAV_IR3_SWITCH_U",
-                DisplayName = "ADIRS IR 3 Fault",
+                DisplayName = "ADIRS IR 3 Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -44,7 +44,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_NAV_IR2_SWITCH_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_NAV_IR2_SWITCH_L",
-                DisplayName = "ADIRS IR 2 Available",
+                DisplayName = "ADIRS IR 2 Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -53,7 +53,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_NAV_IR2_SWITCH_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_NAV_IR2_SWITCH_U",
-                DisplayName = "ADIRS IR 2 Fault",
+                DisplayName = "ADIRS IR 2 Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -62,7 +62,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_NAV_IR1_SWITCH_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_NAV_IR1_SWITCH_L",
-                DisplayName = "ADIRS IR 1 Available",
+                DisplayName = "ADIRS IR 1 Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -71,7 +71,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_NAV_IR1_SWITCH_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_NAV_IR1_SWITCH_U",
-                DisplayName = "ADIRS IR 1 Fault",
+                DisplayName = "ADIRS IR 1 Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -80,7 +80,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_NAV_ADR1_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_NAV_ADR1_L",
-                DisplayName = "OH ADIRS ADR1 Available",
+                DisplayName = "OH ADIRS ADR1 Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -89,7 +89,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_NAV_ADR1_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_NAV_ADR1_U",
-                DisplayName = "OH ADIRS ADR1 Fault",
+                DisplayName = "OH ADIRS ADR1 Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -98,7 +98,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_NAV_ADR2_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_NAV_ADR2_L",
-                DisplayName = "OH ADIRS ADR2 Available",
+                DisplayName = "OH ADIRS ADR2 Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -107,7 +107,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_NAV_ADR2_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_NAV_ADR2_U",
-                DisplayName = "OH ADIRS ADR2 Fault",
+                DisplayName = "OH ADIRS ADR2 Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -116,7 +116,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_NAV_ADR3_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_NAV_ADR3_L",
-                DisplayName = "OH ADIRS ADR3 Available",
+                DisplayName = "OH ADIRS ADR3 Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -125,7 +125,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_NAV_ADR3_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_NAV_ADR3_U",
-                DisplayName = "OH ADIRS ADR3 Fault",
+                DisplayName = "OH ADIRS ADR3 Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -145,7 +145,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_PNEUMATIC_EXTRACT_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_PNEUMATIC_EXTRACT_U",
-                DisplayName = "Ventilation Extract Fault",
+                DisplayName = "Ventilation Extract Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -154,7 +154,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_PNEUMATIC_EXTRACT_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_PNEUMATIC_EXTRACT_L",
-                DisplayName = "Ventilation Extract Available",
+                DisplayName = "Ventilation Extract Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -163,7 +163,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_PNEUMATIC_CAB_FANS_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_PNEUMATIC_CAB_FANS_U",
-                DisplayName = "Ventilation Cabin Fans Fault",
+                DisplayName = "Ventilation Cabin Fans Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -172,7 +172,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_PNEUMATIC_CAB_FANS_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_PNEUMATIC_CAB_FANS_L",
-                DisplayName = "Ventilation Cabin Fans Available",
+                DisplayName = "Ventilation Cabin Fans Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -181,7 +181,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_PNEUMATIC_BLOWER_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_PNEUMATIC_BLOWER_U",
-                DisplayName = "Ventilation Blower Fault",
+                DisplayName = "Ventilation Blower Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -190,7 +190,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_PNEUMATIC_BLOWER_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_PNEUMATIC_BLOWER_L",
-                DisplayName = "Ventilation Blower Available",
+                DisplayName = "Ventilation Blower Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -199,7 +199,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_PNEUMATIC_PRESS_MODE_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_PNEUMATIC_PRESS_MODE_U",
-                DisplayName = "Pressurization Mode Select Fault",
+                DisplayName = "Pressurization Mode Select Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -208,7 +208,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_PNEUMATIC_PRESS_MODE_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_PNEUMATIC_PRESS_MODE_L",
-                DisplayName = "Pressurization Mode Select Available",
+                DisplayName = "Pressurization Mode Select Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -235,7 +235,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_PNEUMATIC_PACK_2_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_PNEUMATIC_PACK_2_U",
-                DisplayName = "Pneumatic Pack 2 Fault",
+                DisplayName = "Pneumatic Pack 2 Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -244,7 +244,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_PNEUMATIC_PACK_2_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_PNEUMATIC_PACK_2_L",
-                DisplayName = "Pneumatic Pack 2 Available",
+                DisplayName = "Pneumatic Pack 2 Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -253,7 +253,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_PNEUMATIC_PACK_1_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_PNEUMATIC_PACK_1_U",
-                DisplayName = "Pneumatic Pack 1 Fault",
+                DisplayName = "Pneumatic Pack 1 Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -262,7 +262,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_PNEUMATIC_PACK_1_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_PNEUMATIC_PACK_1_L",
-                DisplayName = "Pneumatic Pack 1 Available",
+                DisplayName = "Pneumatic Pack 1 Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -271,7 +271,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_PNEUMATIC_HOT_AIR_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_PNEUMATIC_HOT_AIR_U",
-                DisplayName = "Pneumatic Hot Air Fault",
+                DisplayName = "Pneumatic Hot Air Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -280,7 +280,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_PNEUMATIC_HOT_AIR_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_PNEUMATIC_HOT_AIR_L",
-                DisplayName = "Pneumatic Hot Air Available",
+                DisplayName = "Pneumatic Hot Air Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -289,7 +289,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_PNEUMATIC_ENG2_BLEED_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_PNEUMATIC_ENG2_BLEED_U",
-                DisplayName = "Pneumatic Engine Bleed 2 Fault",
+                DisplayName = "Pneumatic Engine Bleed 2 Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -298,7 +298,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_PNEUMATIC_ENG2_BLEED_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_PNEUMATIC_ENG2_BLEED_L",
-                DisplayName = "Pneumatic Engine Bleed 2 Available",
+                DisplayName = "Pneumatic Engine Bleed 2 Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -307,7 +307,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_PNEUMATIC_ENG1_BLEED_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_PNEUMATIC_ENG1_BLEED_U",
-                DisplayName = "Pneumatic Engine Bleed 1 Fault",
+                DisplayName = "Pneumatic Engine Bleed 1 Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -316,7 +316,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_PNEUMATIC_ENG1_BLEED_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_PNEUMATIC_ENG1_BLEED_L",
-                DisplayName = "Pneumatic Engine Bleed 1 Available",
+                DisplayName = "Pneumatic Engine Bleed 1 Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -325,7 +325,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_PNEUMATIC_APU_BLEED_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_PNEUMATIC_APU_BLEED_U",
-                DisplayName = "Pneumatic APU Bleed Fault",
+                DisplayName = "Pneumatic APU Bleed Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -334,7 +334,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_PNEUMATIC_APU_BLEED_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_PNEUMATIC_APU_BLEED_L",
-                DisplayName = "Pneumatic APU Bleed Available",
+                DisplayName = "Pneumatic APU Bleed Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -345,7 +345,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_PNEUMATIC_WING_ANTI_ICE_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_PNEUMATIC_WING_ANTI_ICE_U",
-                DisplayName = "Icing Wing Fault",
+                DisplayName = "Icing Wing Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -354,7 +354,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_PNEUMATIC_WING_ANTI_ICE_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_PNEUMATIC_WING_ANTI_ICE_L",
-                DisplayName = "Icing Wing Available",
+                DisplayName = "Icing Wing Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -363,7 +363,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_PROBE_HEAT_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_PROBE_HEAT_U",
-                DisplayName = "Icing Probe Heat Fault",
+                DisplayName = "Icing Probe Heat Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -372,7 +372,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_PROBE_HEAT_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_PROBE_HEAT_L",
-                DisplayName = "Icing Probe Heat Available",
+                DisplayName = "Icing Probe Heat Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -381,7 +381,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_PNEUMATIC_ENG2_ANTI_ICE_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_PNEUMATIC_ENG2_ANTI_ICE_U",
-                DisplayName = "Icing Engine 2 Fault",
+                DisplayName = "Icing Engine 2 Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -390,7 +390,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_PNEUMATIC_ENG2_ANTI_ICE_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_PNEUMATIC_ENG2_ANTI_ICE_L",
-                DisplayName = "Icing Engine 2 Available",
+                DisplayName = "Icing Engine 2 Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -399,7 +399,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_PNEUMATIC_ENG1_ANTI_ICE_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_PNEUMATIC_ENG1_ANTI_ICE_U",
-                DisplayName = "Icing Engine 1 Fault",
+                DisplayName = "Icing Engine 1 Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -408,7 +408,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_PNEUMATIC_ENG1_ANTI_ICE_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_PNEUMATIC_ENG1_ANTI_ICE_L",
-                DisplayName = "Icing Engine 1 Available",
+                DisplayName = "Icing Engine 1 Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -581,6 +581,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Unpowered", [1] = "Powered"}
             },
             ["B_FCU_SPEED_MACH"] = new SimConnect.SimVarDefinition
             {
@@ -724,7 +725,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_FLT_CTL_SEC_3_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_FLT_CTL_SEC_3_U",
-                DisplayName = "FlightControl SEC 3 Fault",
+                DisplayName = "FlightControl SEC 3 Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -733,7 +734,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_FLT_CTL_SEC_3_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_FLT_CTL_SEC_3_L",
-                DisplayName = "FlightControl SEC 3 Available",
+                DisplayName = "FlightControl SEC 3 Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -742,7 +743,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_FLT_CTL_SEC_2_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_FLT_CTL_SEC_2_U",
-                DisplayName = "FlightControl SEC 2 Fault",
+                DisplayName = "FlightControl SEC 2 Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -751,7 +752,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_FLT_CTL_SEC_2_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_FLT_CTL_SEC_2_L",
-                DisplayName = "FlightControl SEC 2 Available",
+                DisplayName = "FlightControl SEC 2 Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -760,7 +761,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_FLT_CTL_SEC_1_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_FLT_CTL_SEC_1_U",
-                DisplayName = "FlightControl SEC 1 Fault",
+                DisplayName = "FlightControl SEC 1 Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -769,7 +770,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_FLT_CTL_SEC_1_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_FLT_CTL_SEC_1_L",
-                DisplayName = "FlightControl SEC 1 Available",
+                DisplayName = "FlightControl SEC 1 Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -778,7 +779,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_FLT_CTL_FAC_2_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_FLT_CTL_FAC_2_U",
-                DisplayName = "FlightControl FAC 2 Fault",
+                DisplayName = "FlightControl FAC 2 Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -787,7 +788,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_FLT_CTL_FAC_2_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_FLT_CTL_FAC_2_L",
-                DisplayName = "FlightControl FAC 2 Available",
+                DisplayName = "FlightControl FAC 2 Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -796,7 +797,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_FLT_CTL_FAC_1_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_FLT_CTL_FAC_1_U",
-                DisplayName = "FlightControl FAC 1 Fault",
+                DisplayName = "FlightControl FAC 1 Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -805,7 +806,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_FLT_CTL_FAC_1_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_FLT_CTL_FAC_1_L",
-                DisplayName = "FlightControl FAC 1 Available",
+                DisplayName = "FlightControl FAC 1 Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -814,7 +815,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_FLT_CTL_ELAC_2_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_FLT_CTL_ELAC_2_U",
-                DisplayName = "FlightControl ELAC 2 Fault",
+                DisplayName = "FlightControl ELAC 2 Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -823,7 +824,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_FLT_CTL_ELAC_2_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_FLT_CTL_ELAC_2_L",
-                DisplayName = "FlightControl ELAC 2 Available",
+                DisplayName = "FlightControl ELAC 2 Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -832,7 +833,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_FLT_CTL_ELAC_1_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_FLT_CTL_ELAC_1_U",
-                DisplayName = "FlightControl ELAC 1 Fault",
+                DisplayName = "FlightControl ELAC 1 Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -841,7 +842,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_FLT_CTL_ELAC_1_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_FLT_CTL_ELAC_1_L",
-                DisplayName = "FlightControl ELAC 1 Available",
+                DisplayName = "FlightControl ELAC 1 Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -999,6 +1000,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
             },
 
             // ========== EFB (4 variables) ==========
@@ -1009,6 +1011,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Hidden", [1] = "Visible"}
             },
             ["S_EFB_VISIBLE_FO"] = new SimConnect.SimVarDefinition
             {
@@ -1017,6 +1020,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Hidden", [1] = "Visible"}
             },
             ["S_EFB_CHARGING_CABLE_FO"] = new SimConnect.SimVarDefinition
             {
@@ -1025,6 +1029,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Disconnected", [1] = "Connected"}
             },
             ["S_EFB_CHARGING_CABLE_CAPT"] = new SimConnect.SimVarDefinition
             {
@@ -1033,6 +1038,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Disconnected", [1] = "Connected"}
             },
 
             // ========== EFIS (28 variables) ==========
@@ -1258,7 +1264,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_ELEC_GEN2_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_ELEC_GEN2_U",
-                DisplayName = "Electrical Generator 2 Fault",
+                DisplayName = "Electrical Generator 2 Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -1267,7 +1273,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_ELEC_GEN2_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_ELEC_GEN2_L",
-                DisplayName = "Electrical Generator 2 Available",
+                DisplayName = "Electrical Generator 2 Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -1276,7 +1282,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_ELEC_GEN1_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_ELEC_GEN1_U",
-                DisplayName = "Electrical Generator 1 Fault",
+                DisplayName = "Electrical Generator 1 Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -1285,7 +1291,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_ELEC_GEN1_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_ELEC_GEN1_L",
-                DisplayName = "Electrical Generator 1 Available",
+                DisplayName = "Electrical Generator 1 Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -1294,7 +1300,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_ELEC_GALY_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_ELEC_GALY_U",
-                DisplayName = "Electrical Galley Cabin Fault",
+                DisplayName = "Electrical Galley Cabin Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -1303,7 +1309,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_ELEC_GALY_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_ELEC_GALY_L",
-                DisplayName = "Electrical Galley Cabin Available",
+                DisplayName = "Electrical Galley Cabin Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -1312,7 +1318,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_ELEC_EXT_PWR_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_ELEC_EXT_PWR_U",
-                DisplayName = "Electrical External Power Fault",
+                DisplayName = "Electrical External Power Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -1321,7 +1327,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_ELEC_EXT_PWR_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_ELEC_EXT_PWR_L",
-                DisplayName = "Electrical External Power Available",
+                DisplayName = "Electrical External Power Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -1330,7 +1336,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_ELEC_COMMERCIAL_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_ELEC_COMMERCIAL_U",
-                DisplayName = "Electrical Commercial Fault",
+                DisplayName = "Electrical Commercial Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -1339,7 +1345,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_ELEC_COMMERCIAL_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_ELEC_COMMERCIAL_L",
-                DisplayName = "Electrical Commercial Available",
+                DisplayName = "Electrical Commercial Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -1357,7 +1363,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_ELEC_BAT2_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_ELEC_BAT2_U",
-                DisplayName = "Electrical Battery 2 Fault",
+                DisplayName = "Electrical Battery 2 Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -1366,7 +1372,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_ELEC_BAT2_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_ELEC_BAT2_L",
-                DisplayName = "Electrical Battery 2 Available",
+                DisplayName = "Electrical Battery 2 Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -1375,7 +1381,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_ELEC_BAT1_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_ELEC_BAT1_U",
-                DisplayName = "Electrical Battery 1 Fault",
+                DisplayName = "Electrical Battery 1 Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -1384,7 +1390,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_ELEC_BAT1_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_ELEC_BAT1_L",
-                DisplayName = "Electrical Battery 1 Available",
+                DisplayName = "Electrical Battery 1 Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -1393,7 +1399,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_ELEC_APU_GENERATOR_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_ELEC_APU_GENERATOR_U",
-                DisplayName = "Electrical APU Generator Fault",
+                DisplayName = "Electrical APU Generator Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -1402,7 +1408,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_ELEC_APU_GENERATOR_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_ELEC_APU_GENERATOR_L",
-                DisplayName = "Electrical APU Generator Available",
+                DisplayName = "Electrical APU Generator Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -1411,7 +1417,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_ELEC_AC_ESS_FEED_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_ELEC_AC_ESS_FEED_U",
-                DisplayName = "Electrical AC Essential Feed Fault",
+                DisplayName = "Electrical AC Essential Feed Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -1420,7 +1426,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_ELEC_AC_ESS_FEED_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_ELEC_AC_ESS_FEED_L",
-                DisplayName = "Electrical AC Essential Feed Available",
+                DisplayName = "Electrical AC Essential Feed Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -1541,7 +1547,8 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "APU Start",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
             },
             ["S_OH_ELEC_GEN1_LINE"] = new SimConnect.SimVarDefinition
             {
@@ -5635,6 +5642,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Unpowered", [1] = "Powered"}
             },
             ["B_ELEC_BUS_POWER_AC_ESS"] = new SimConnect.SimVarDefinition
             {
@@ -5643,6 +5651,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Unpowered", [1] = "Powered"}
             },
             ["B_ELEC_BUS_POWER_AC_1"] = new SimConnect.SimVarDefinition
             {
@@ -5651,6 +5660,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Unpowered", [1] = "Powered"}
             },
             ["B_ELEC_BUS_POWER_AC_2"] = new SimConnect.SimVarDefinition
             {
@@ -5659,6 +5669,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Unpowered", [1] = "Powered"}
             },
             ["B_ELEC_BUS_POWER_AC_ESS_SHED"] = new SimConnect.SimVarDefinition
             {
@@ -5667,6 +5678,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Unpowered", [1] = "Powered"}
             },
             ["B_ELEC_BUS_POWER_DC_ESS"] = new SimConnect.SimVarDefinition
             {
@@ -5675,6 +5687,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Unpowered", [1] = "Powered"}
             },
             ["B_ELEC_BUS_POWER_DC_SERIVICE"] = new SimConnect.SimVarDefinition
             {
@@ -5683,6 +5696,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Unpowered", [1] = "Powered"}
             },
             ["B_ELEC_BUS_POWER_DC_BAT"] = new SimConnect.SimVarDefinition
             {
@@ -5691,6 +5705,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Unpowered", [1] = "Powered"}
             },
             ["B_ELEC_BUS_POWER_DC_ESS_SHED"] = new SimConnect.SimVarDefinition
             {
@@ -5699,6 +5714,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Unpowered", [1] = "Powered"}
             },
             ["B_ELEC_BUS_POWER_DC_1"] = new SimConnect.SimVarDefinition
             {
@@ -5707,6 +5723,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Unpowered", [1] = "Powered"}
             },
             ["B_ELEC_BUS_POWER_DC_2"] = new SimConnect.SimVarDefinition
             {
@@ -5715,6 +5732,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Unpowered", [1] = "Powered"}
             },
 
             // ========== ENGINES (8 variables) ==========
@@ -5757,7 +5775,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_ELEC_APU_START_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_ELEC_APU_START_U",
-                DisplayName = "APU Start Fault",
+                DisplayName = "APU Start Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -5766,7 +5784,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_ELEC_APU_START_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_ELEC_APU_START_L",
-                DisplayName = "APU Start Available",
+                DisplayName = "APU Start Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -5775,7 +5793,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_ELEC_APU_MASTER_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_ELEC_APU_MASTER_U",
-                DisplayName = "APU Master Fault",
+                DisplayName = "APU Master Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -5784,7 +5802,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_ELEC_APU_MASTER_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_ELEC_APU_MASTER_L",
-                DisplayName = "APU Master Available",
+                DisplayName = "APU Master Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -5795,10 +5813,11 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["S_FC_FLAPS"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_FC_FLAPS",
-                DisplayName = "FC FLAPS LEVER POSITION INDEX",
+                DisplayName = "Flaps",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Up", [1] = "1", [2] = "2", [3] = "3", [4] = "Full"}
             },
             // ========== FLIGHT INSTRUMENTATION (20 variables) ==========
             ["FNX2PLD_speedV1"] = new SimConnect.SimVarDefinition
@@ -5945,7 +5964,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_FUEL_RIGHT_2_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_FUEL_RIGHT_2_U",
-                DisplayName = "Fuel Wing Tank Pump Right 2 Fault",
+                DisplayName = "Fuel Wing Tank Pump Right 2 Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -5954,7 +5973,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_FUEL_RIGHT_2_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_FUEL_RIGHT_2_L",
-                DisplayName = "Fuel Wing Tank Pump Right 2 Available",
+                DisplayName = "Fuel Wing Tank Pump Right 2 Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -5963,7 +5982,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_FUEL_RIGHT_1_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_FUEL_RIGHT_1_U",
-                DisplayName = "Fuel Wing Tank Pump Right 1 Fault",
+                DisplayName = "Fuel Wing Tank Pump Right 1 Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -5972,7 +5991,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_FUEL_RIGHT_1_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_FUEL_RIGHT_1_L",
-                DisplayName = "Fuel Wing Tank Pump Right 1 Available",
+                DisplayName = "Fuel Wing Tank Pump Right 1 Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -5981,7 +6000,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_FUEL_LEFT_2_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_FUEL_LEFT_2_U",
-                DisplayName = "Fuel Wing Tank Pump Left 2 Fault",
+                DisplayName = "Fuel Wing Tank Pump Left 2 Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -5990,7 +6009,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_FUEL_LEFT_2_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_FUEL_LEFT_2_L",
-                DisplayName = "Fuel Wing Tank Pump Left 2 Available",
+                DisplayName = "Fuel Wing Tank Pump Left 2 Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -5999,7 +6018,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_FUEL_LEFT_1_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_FUEL_LEFT_1_U",
-                DisplayName = "Fuel Wing Tank Pump Left 1 Fault",
+                DisplayName = "Fuel Wing Tank Pump Left 1 Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -6008,7 +6027,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_FUEL_LEFT_1_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_FUEL_LEFT_1_L",
-                DisplayName = "Fuel Wing Tank Pump Left 1 Available",
+                DisplayName = "Fuel Wing Tank Pump Left 1 Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -6017,7 +6036,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_FUEL_MODE_SEL_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_FUEL_MODE_SEL_U",
-                DisplayName = "Fuel Mode Select Fault",
+                DisplayName = "Fuel Mode Select Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -6026,7 +6045,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_FUEL_MODE_SEL_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_FUEL_MODE_SEL_L",
-                DisplayName = "Fuel Mode Select Available",
+                DisplayName = "Fuel Mode Select Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -6035,7 +6054,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_FUEL_XFEED_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_FUEL_XFEED_U",
-                DisplayName = "Fuel Crossfeed Fault",
+                DisplayName = "Fuel Crossfeed Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -6044,7 +6063,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_FUEL_XFEED_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_FUEL_XFEED_L",
-                DisplayName = "Fuel Crossfeed Available",
+                DisplayName = "Fuel Crossfeed Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -6053,7 +6072,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_FUEL_CENTER_2_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_FUEL_CENTER_2_U",
-                DisplayName = "Fuel Center Tank Pump 2 Fault",
+                DisplayName = "Fuel Center Tank Pump 2 Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -6062,7 +6081,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_FUEL_CENTER_2_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_FUEL_CENTER_2_L",
-                DisplayName = "Fuel Center Tank Pump 2 Available",
+                DisplayName = "Fuel Center Tank Pump 2 Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -6071,7 +6090,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_FUEL_CENTER_1_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_FUEL_CENTER_1_U",
-                DisplayName = "Fuel Center Tank Pump 1 Fault",
+                DisplayName = "Fuel Center Tank Pump 1 Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -6080,7 +6099,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_FUEL_CENTER_1_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_FUEL_CENTER_1_L",
-                DisplayName = "Fuel Center Tank Pump 1 Available",
+                DisplayName = "Fuel Center Tank Pump 1 Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -6100,7 +6119,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_MIP_GEAR_3_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_MIP_GEAR_3_U",
-                DisplayName = "MainPanel Landing Gear 3 Fault",
+                DisplayName = "MainPanel Landing Gear 3 Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -6109,7 +6128,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_MIP_GEAR_3_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_MIP_GEAR_3_L",
-                DisplayName = "MainPanel Landing Gear 3 Available",
+                DisplayName = "MainPanel Landing Gear 3 Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -6118,7 +6137,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_MIP_GEAR_2_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_MIP_GEAR_2_U",
-                DisplayName = "MainPanel Landing Gear 2 Fault",
+                DisplayName = "MainPanel Landing Gear 2 Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -6127,7 +6146,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_MIP_GEAR_2_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_MIP_GEAR_2_L",
-                DisplayName = "MainPanel Landing Gear 2 Available",
+                DisplayName = "MainPanel Landing Gear 2 Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -6136,7 +6155,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_MIP_GEAR_1_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_MIP_GEAR_1_U",
-                DisplayName = "MainPanel Landing Gear 1 Fault",
+                DisplayName = "MainPanel Landing Gear 1 Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -6145,7 +6164,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_MIP_GEAR_1_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_MIP_GEAR_1_L",
-                DisplayName = "MainPanel Landing Gear 1 Available",
+                DisplayName = "MainPanel Landing Gear 1 Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -6154,7 +6173,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_MIP_BRAKE_FAN_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_MIP_BRAKE_FAN_U",
-                DisplayName = "MainPanel Brake Fan Fault",
+                DisplayName = "MainPanel Brake Fan Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -6163,7 +6182,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_MIP_BRAKE_FAN_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_MIP_BRAKE_FAN_L",
-                DisplayName = "MainPanel Brake Fan Available",
+                DisplayName = "MainPanel Brake Fan Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -6172,7 +6191,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_MIP_AUTOBRAKE_MED_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_MIP_AUTOBRAKE_MED_U",
-                DisplayName = "MainPanel Autobrake Medium Fault",
+                DisplayName = "MainPanel Autobrake Medium Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -6181,7 +6200,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_MIP_AUTOBRAKE_MED_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_MIP_AUTOBRAKE_MED_L",
-                DisplayName = "MainPanel Autobrake Medium Available",
+                DisplayName = "MainPanel Autobrake Medium Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -6190,7 +6209,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_MIP_AUTOBRAKE_MAX_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_MIP_AUTOBRAKE_MAX_U",
-                DisplayName = "MainPanel Autobrake Max Fault",
+                DisplayName = "MainPanel Autobrake Max Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -6199,7 +6218,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_MIP_AUTOBRAKE_MAX_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_MIP_AUTOBRAKE_MAX_L",
-                DisplayName = "MainPanel Autobrake Max Available",
+                DisplayName = "MainPanel Autobrake Max Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -6208,7 +6227,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_MIP_AUTOBRAKE_LO_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_MIP_AUTOBRAKE_LO_U",
-                DisplayName = "MainPanel Autobrake Low Fault",
+                DisplayName = "MainPanel Autobrake Low Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -6217,7 +6236,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_MIP_AUTOBRAKE_LO_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_MIP_AUTOBRAKE_LO_L",
-                DisplayName = "MainPanel Autobrake Low Available",
+                DisplayName = "MainPanel Autobrake Low Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -6246,7 +6265,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_HYD_PTU_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_HYD_PTU_U",
-                DisplayName = "Hydraulic PTU Fault",
+                DisplayName = "Hydraulic PTU Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -6255,7 +6274,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_HYD_PTU_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_HYD_PTU_L",
-                DisplayName = "Hydraulic PTU Available",
+                DisplayName = "Hydraulic PTU Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -6264,7 +6283,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_HYD_ENG_2_PUMP_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_HYD_ENG_2_PUMP_U",
-                DisplayName = "Hydraulic Engine 2 Pump Fault",
+                DisplayName = "Hydraulic Engine 2 Pump Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -6273,7 +6292,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_HYD_ENG_2_PUMP_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_HYD_ENG_2_PUMP_L",
-                DisplayName = "Hydraulic Engine 2 Pump Available",
+                DisplayName = "Hydraulic Engine 2 Pump Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -6282,7 +6301,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_HYD_ENG_1_PUMP_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_HYD_ENG_1_PUMP_U",
-                DisplayName = "Hydraulic Engine 1 Pump Fault",
+                DisplayName = "Hydraulic Engine 1 Pump Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -6291,7 +6310,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_HYD_ENG_1_PUMP_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_HYD_ENG_1_PUMP_L",
-                DisplayName = "Hydraulic Engine 1 Pump Available",
+                DisplayName = "Hydraulic Engine 1 Pump Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -6300,7 +6319,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_HYD_YELLOW_ELEC_PUMP_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_HYD_YELLOW_ELEC_PUMP_U",
-                DisplayName = "Hydraulic Electrical Pump Yellow Fault",
+                DisplayName = "Hydraulic Electrical Pump Yellow Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -6309,7 +6328,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_HYD_YELLOW_ELEC_PUMP_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_HYD_YELLOW_ELEC_PUMP_L",
-                DisplayName = "Hydraulic Electrical Pump Yellow Available",
+                DisplayName = "Hydraulic Electrical Pump Yellow Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -6318,7 +6337,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_HYD_BLUE_ELEC_PUMP_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_HYD_BLUE_ELEC_PUMP_U",
-                DisplayName = "Hydraulic Electrical Pump Blue Fault",
+                DisplayName = "Hydraulic Electrical Pump Blue Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -6327,7 +6346,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_HYD_BLUE_ELEC_PUMP_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_HYD_BLUE_ELEC_PUMP_L",
-                DisplayName = "Hydraulic Electrical Pump Blue Available",
+                DisplayName = "Hydraulic Electrical Pump Blue Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -6598,7 +6617,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_PNEUMATIC_HOT_AIR_AFT_CARGO_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_PNEUMATIC_HOT_AIR_AFT_CARGO_U",
-                DisplayName = "CargoHeat Hot Air Fault",
+                DisplayName = "CargoHeat Hot Air Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -6607,7 +6626,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_PNEUMATIC_HOT_AIR_AFT_CARGO_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_PNEUMATIC_HOT_AIR_AFT_CARGO_L",
-                DisplayName = "CargoHeat Hot Air Available",
+                DisplayName = "CargoHeat Hot Air Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -6616,7 +6635,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_PNEUMATIC_CARGO_AFT_ISOL_VALVE_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_PNEUMATIC_CARGO_AFT_ISOL_VALVE_U",
-                DisplayName = "CargoHeat Aft Isolation Fault",
+                DisplayName = "CargoHeat Aft Isolation Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -6625,7 +6644,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_PNEUMATIC_CARGO_AFT_ISOL_VALVE_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_PNEUMATIC_CARGO_AFT_ISOL_VALVE_L",
-                DisplayName = "CargoHeat Aft Isolation Available",
+                DisplayName = "CargoHeat Aft Isolation Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -6652,7 +6671,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_OXYGEN_TMR_RESET_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_OXYGEN_TMR_RESET_U",
-                DisplayName = "OverheadMisc Oxygen TMR Reset Fault",
+                DisplayName = "OverheadMisc Oxygen TMR Reset Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -6661,7 +6680,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_OXYGEN_TMR_RESET_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_OXYGEN_TMR_RESET_L",
-                DisplayName = "OverheadMisc Oxygen TMR Reset Available",
+                DisplayName = "OverheadMisc Oxygen TMR Reset Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -6742,7 +6761,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_APU_AUTOEXTING_TEST_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_APU_AUTOEXTING_TEST_U",
-                DisplayName = "OverheadMisc APU Auto Exiting Test Fault",
+                DisplayName = "OverheadMisc APU Auto Exiting Test Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -6751,7 +6770,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_APU_AUTOEXTING_TEST_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_APU_AUTOEXTING_TEST_L",
-                DisplayName = "OverheadMisc APU Auto Exiting Test Available",
+                DisplayName = "OverheadMisc APU Auto Exiting Test Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -6760,7 +6779,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_DOOR_CTL_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_DOOR_CTL_U",
-                DisplayName = "OverheadMisc Cockpit Door CTL Fault",
+                DisplayName = "OverheadMisc Cockpit Door CTL Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -6769,7 +6788,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_DOOR_CTL_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_DOOR_CTL_L",
-                DisplayName = "OverheadMisc Cockpit Door CTL Available",
+                DisplayName = "OverheadMisc Cockpit Door CTL Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -6791,6 +6810,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Stowed", [1] = "Deployed"}
             },
             ["S_TRAY_TABLE_FO"] = new SimConnect.SimVarDefinition
             {
@@ -6799,6 +6819,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Stowed", [1] = "Deployed"}
             },
             ["N_MIP_CLOCK_CHRONO"] = new SimConnect.SimVarDefinition
             {
@@ -6851,6 +6872,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
             },
             ["I_OH_NAV_ADIRS_QUEUE_ENT"] = new SimConnect.SimVarDefinition
             {
@@ -6859,6 +6881,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
             },
             // ========== RADIO (119 variables) ==========
             ["I_ASP3_VOICE"] = new SimConnect.SimVarDefinition
@@ -6873,7 +6896,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_ASP3_VHF_3_SEND"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP3_VHF_3_SEND",
-                DisplayName = "ACP3 VHF 3 Send Fault",
+                DisplayName = "ACP3 VHF 3 Send",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -6882,7 +6905,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_ASP3_VHF_3_CALL"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP3_VHF_3_CALL",
-                DisplayName = "ACP3 VHF 3 Send Available",
+                DisplayName = "ACP3 VHF 3 Call",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -6891,7 +6914,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_ASP3_VHF_2_SEND"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP3_VHF_2_SEND",
-                DisplayName = "ACP3 VHF 2 Send Fault",
+                DisplayName = "ACP3 VHF 2 Send",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -6900,7 +6923,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_ASP3_VHF_2_CALL"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP3_VHF_2_CALL",
-                DisplayName = "ACP3 VHF 2 Send Available",
+                DisplayName = "ACP3 VHF 2 Call",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -6909,7 +6932,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_ASP3_VHF_1_SEND"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP3_VHF_1_SEND",
-                DisplayName = "ACP3 VHF 1 Send Fault",
+                DisplayName = "ACP3 VHF 1 Send",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -6918,7 +6941,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_ASP3_VHF_1_CALL"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP3_VHF_1_CALL",
-                DisplayName = "ACP3 VHF 1 Send Available",
+                DisplayName = "ACP3 VHF 1 Call",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -6927,7 +6950,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_ASP3_INT_SEND"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP3_INT_SEND",
-                DisplayName = "ACP3 INT Send Fault",
+                DisplayName = "ACP3 INT Send",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -6936,7 +6959,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_ASP3_INT_CALL"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP3_INT_CALL",
-                DisplayName = "ACP3 INT Send Available",
+                DisplayName = "ACP3 INT Call",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -6945,7 +6968,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_ASP3_HF_2_SEND"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP3_HF_2_SEND",
-                DisplayName = "ACP3 HF 2 Send Fault",
+                DisplayName = "ACP3 HF 2 Send",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -6954,7 +6977,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_ASP3_HF_2_CALL"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP3_HF_2_CALL",
-                DisplayName = "ACP3 HF 2 Send Available",
+                DisplayName = "ACP3 HF 2 Call",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -6963,7 +6986,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_ASP3_HF_1_SEND"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP3_HF_1_SEND",
-                DisplayName = "ACP3 HF 1 Send Fault",
+                DisplayName = "ACP3 HF 1 Send",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -6972,7 +6995,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_ASP3_HF_1_CALL"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP3_HF_1_CALL",
-                DisplayName = "ACP3 HF 1 Send Available",
+                DisplayName = "ACP3 HF 1 Call",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -6981,7 +7004,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_ASP3_CAB_SEND"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP3_CAB_SEND",
-                DisplayName = "ACP3 CAB Send Fault",
+                DisplayName = "ACP3 CAB Send",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -6990,7 +7013,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_ASP3_CAB_CALL"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP3_CAB_CALL",
-                DisplayName = "ACP3 CAB Send Available",
+                DisplayName = "ACP3 CAB Call",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7008,7 +7031,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_ASP2_VHF_3_SEND"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP2_VHF_3_SEND",
-                DisplayName = "ACP2 VHF 3 Send Fault",
+                DisplayName = "ACP2 VHF 3 Send",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7017,7 +7040,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_ASP2_VHF_3_CALL"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP2_VHF_3_CALL",
-                DisplayName = "ACP2 VHF 3 Send Available",
+                DisplayName = "ACP2 VHF 3 Call",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7026,7 +7049,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_ASP2_VHF_2_SEND"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP2_VHF_2_SEND",
-                DisplayName = "ACP2 VHF 2 Send Fault",
+                DisplayName = "ACP2 VHF 2 Send",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7035,7 +7058,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_ASP2_VHF_2_CALL"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP2_VHF_2_CALL",
-                DisplayName = "ACP2 VHF 2 Send Available",
+                DisplayName = "ACP2 VHF 2 Call",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7044,7 +7067,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_ASP2_VHF_1_SEND"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP2_VHF_1_SEND",
-                DisplayName = "ACP2 VHF 1 Send Fault",
+                DisplayName = "ACP2 VHF 1 Send",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7053,7 +7076,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_ASP2_VHF_1_CALL"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP2_VHF_1_CALL",
-                DisplayName = "ACP2 VHF 1 Send Available",
+                DisplayName = "ACP2 VHF 1 Call",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7071,7 +7094,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_ASP2_INT_SEND"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP2_INT_SEND",
-                DisplayName = "ACP2 INT Send Fault",
+                DisplayName = "ACP2 INT Send",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7080,7 +7103,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_ASP2_INT_CALL"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP2_INT_CALL",
-                DisplayName = "ACP2 INT Send Available",
+                DisplayName = "ACP2 INT Call",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7089,7 +7112,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_ASP2_HF_2_SEND"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP2_HF_2_SEND",
-                DisplayName = "ACP2 HF 2 Send Fault",
+                DisplayName = "ACP2 HF 2 Send",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7098,7 +7121,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_ASP2_HF_2_CALL"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP2_HF_2_CALL",
-                DisplayName = "ACP2 HF 2 Send Available",
+                DisplayName = "ACP2 HF 2 Call",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7107,7 +7130,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_ASP2_HF_1_SEND"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP2_HF_1_SEND",
-                DisplayName = "ACP2 HF 1 Send Fault",
+                DisplayName = "ACP2 HF 1 Send",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7116,7 +7139,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_ASP2_HF_1_CALL"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP2_HF_1_CALL",
-                DisplayName = "ACP2 HF 1 Send Available",
+                DisplayName = "ACP2 HF 1 Call",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7125,7 +7148,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_ASP2_CAB_SEND"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP2_CAB_SEND",
-                DisplayName = "ACP2 CAB Send Fault",
+                DisplayName = "ACP2 CAB Send",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7134,7 +7157,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_ASP2_CAB_CALL"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP2_CAB_CALL",
-                DisplayName = "ACP2 CAB Send Available",
+                DisplayName = "ACP2 CAB Call",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7152,7 +7175,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_ASP_VHF_3_SEND"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP_VHF_3_SEND",
-                DisplayName = "ACP1 VHF 3 Send Fault",
+                DisplayName = "ACP1 VHF 3 Send",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7161,7 +7184,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_ASP_VHF_3_CALL"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP_VHF_3_CALL",
-                DisplayName = "ACP1 VHF 3 Send Available",
+                DisplayName = "ACP1 VHF 3 Call",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7170,7 +7193,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_ASP_VHF_2_SEND"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP_VHF_2_SEND",
-                DisplayName = "ACP1 VHF 2 Send Fault",
+                DisplayName = "ACP1 VHF 2 Send",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7179,7 +7202,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_ASP_VHF_2_CALL"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP_VHF_2_CALL",
-                DisplayName = "ACP1 VHF 2 Send Available",
+                DisplayName = "ACP1 VHF 2 Call",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7188,7 +7211,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_ASP_VHF_1_SEND"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP_VHF_1_SEND",
-                DisplayName = "ACP1 VHF 1 Send Fault",
+                DisplayName = "ACP1 VHF 1 Send",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7197,7 +7220,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_ASP_VHF_1_CALL"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP_VHF_1_CALL",
-                DisplayName = "ACP1 VHF 1 Send Available",
+                DisplayName = "ACP1 VHF 1 Call",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7215,7 +7238,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_ASP_INT_SEND"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP_INT_SEND",
-                DisplayName = "ACP1 INT Send Fault",
+                DisplayName = "ACP1 INT Send",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7224,7 +7247,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_ASP_INT_CALL"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP_INT_CALL",
-                DisplayName = "ACP1 INT Send Available",
+                DisplayName = "ACP1 INT Call",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7233,7 +7256,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_ASP_HF_2_CALL"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP_HF_2_CALL",
-                DisplayName = "ACP1 HF 2 Send Available",
+                DisplayName = "ACP1 HF 2 Call",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7242,7 +7265,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_ASP_HF_1_SEND"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP_HF_1_SEND",
-                DisplayName = "ACP1 HF 1 Send Fault",
+                DisplayName = "ACP1 HF 1 Send",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7251,7 +7274,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_ASP_HF_1_CALL"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP_HF_1_CALL",
-                DisplayName = "ACP1 HF 1 Send Available",
+                DisplayName = "ACP1 HF 1 Call",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7260,7 +7283,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_ASP_CAB_SEND"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP_CAB_SEND",
-                DisplayName = "ACP1 CAB Send Fault",
+                DisplayName = "ACP1 CAB Send",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7629,7 +7652,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_ASP_CAB_CALL"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP_CAB_CALL",
-                DisplayName = "ACP1 CAB Send Available",
+                DisplayName = "ACP1 CAB Call",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7916,7 +7939,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_FIRE_ENG2_AGENT2_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_FIRE_ENG2_AGENT2_U",
-                DisplayName = "Fire Engine 2 Agent 2 Fault",
+                DisplayName = "Fire Engine 2 Agent 2 Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7925,7 +7948,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_FIRE_ENG2_AGENT2_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_FIRE_ENG2_AGENT2_L",
-                DisplayName = "Fire Engine 2 Agent 2 Available",
+                DisplayName = "Fire Engine 2 Agent 2 Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7934,7 +7957,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_FIRE_ENG2_AGENT1_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_FIRE_ENG2_AGENT1_U",
-                DisplayName = "Fire Engine 2 Agent 1 Fault",
+                DisplayName = "Fire Engine 2 Agent 1 Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7943,7 +7966,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_FIRE_ENG2_AGENT1_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_FIRE_ENG2_AGENT1_L",
-                DisplayName = "Fire Engine 2 Agent 1 Available",
+                DisplayName = "Fire Engine 2 Agent 1 Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7952,7 +7975,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_FIRE_ENG1_AGENT2_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_FIRE_ENG1_AGENT2_U",
-                DisplayName = "Fire Engine 1 Agent 2 Fault",
+                DisplayName = "Fire Engine 1 Agent 2 Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7961,7 +7984,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_FIRE_ENG1_AGENT2_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_FIRE_ENG1_AGENT2_L",
-                DisplayName = "Fire Engine 1 Agent 2 Available",
+                DisplayName = "Fire Engine 1 Agent 2 Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7970,7 +7993,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_FIRE_ENG1_AGENT1_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_FIRE_ENG1_AGENT1_U",
-                DisplayName = "Fire Engine 1 Agent 1 Fault",
+                DisplayName = "Fire Engine 1 Agent 1 Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7979,7 +8002,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_FIRE_ENG1_AGENT1_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_FIRE_ENG1_AGENT1_L",
-                DisplayName = "Fire Engine 1 Agent 1 Available",
+                DisplayName = "Fire Engine 1 Agent 1 Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7988,7 +8011,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_FIRE_APU_AGENT_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_FIRE_APU_AGENT_U",
-                DisplayName = "Fire APU Agent Fault",
+                DisplayName = "Fire APU Agent Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7997,7 +8020,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_FIRE_APU_AGENT_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_FIRE_APU_AGENT_L",
-                DisplayName = "Fire APU Agent Available",
+                DisplayName = "Fire APU Agent Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -8037,6 +8060,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
             },
             ["S_OH_SIGNS_SMOKING_STATE"] = new SimConnect.SimVarDefinition
             {
@@ -8052,7 +8076,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_EVAC_COMMAND_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_EVAC_COMMAND_U",
-                DisplayName = "Evacuation Command Fault",
+                DisplayName = "Evacuation Command Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -8061,7 +8085,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_EVAC_COMMAND_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_EVAC_COMMAND_L",
-                DisplayName = "Evacuation Command Available",
+                DisplayName = "Evacuation Command Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -8079,7 +8103,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_ELEC_GEN1_LINE_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_ELEC_GEN1_LINE_U",
-                DisplayName = "EmergencyElectrical Generator 1 Line Fault",
+                DisplayName = "EmergencyElectrical Generator 1 Line Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -8088,7 +8112,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_ELEC_GEN1_LINE_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_ELEC_GEN1_LINE_L",
-                DisplayName = "EmergencyElectrical Generator 1 Line Available",
+                DisplayName = "EmergencyElectrical Generator 1 Line Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -8097,7 +8121,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_CALLS_EMER_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_CALLS_EMER_U",
-                DisplayName = "Call Emergency Fault",
+                DisplayName = "Call Emergency Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -8106,7 +8130,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_CALLS_EMER_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_CALLS_EMER_L",
-                DisplayName = "Call Emergency Available",
+                DisplayName = "Call Emergency Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -8169,7 +8193,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_MIP_GPWS_VISUAL_ALERT_FO_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_MIP_GPWS_VISUAL_ALERT_FO_L",
-                DisplayName = "MainPanel GPWS GS FO Available",
+                DisplayName = "MainPanel GPWS GS FO Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -8178,7 +8202,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_MIP_GPWS_VISUAL_ALERT_CAPT_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_MIP_GPWS_VISUAL_ALERT_CAPT_U",
-                DisplayName = "MainPanel GPWS GS Captain Fault",
+                DisplayName = "MainPanel GPWS GS Captain Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -8187,7 +8211,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_MIP_GPWS_VISUAL_ALERT_CAPT_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_MIP_GPWS_VISUAL_ALERT_CAPT_L",
-                DisplayName = "MainPanel GPWS GS Captain Available",
+                DisplayName = "MainPanel GPWS GS Captain Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -8196,7 +8220,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_GPWS_TERR_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_GPWS_TERR_U",
-                DisplayName = "GPWS Terrain Fault",
+                DisplayName = "GPWS Terrain Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -8205,7 +8229,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_GPWS_TERR_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_GPWS_TERR_L",
-                DisplayName = "GPWS Terrain Available",
+                DisplayName = "GPWS Terrain Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -8214,7 +8238,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_GPWS_SYS_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_GPWS_SYS_U",
-                DisplayName = "GPWS System Fault",
+                DisplayName = "GPWS System Upper",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -8223,7 +8247,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_GPWS_SYS_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_GPWS_SYS_L",
-                DisplayName = "GPWS System Available",
+                DisplayName = "GPWS System Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -8259,7 +8283,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_MIP_MASTER_WARNING_FO_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_MIP_MASTER_WARNING_FO_L",
-                DisplayName = "Glareshield Master Warning FO Available",
+                DisplayName = "Glareshield Master Warning FO Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -8277,7 +8301,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_MIP_MASTER_WARNING_CAPT_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_MIP_MASTER_WARNING_CAPT_L",
-                DisplayName = "Glareshield Master Warning Captain Available",
+                DisplayName = "Glareshield Master Warning Captain Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -8295,7 +8319,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_MIP_MASTER_CAUTION_FO_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_MIP_MASTER_CAUTION_FO_L",
-                DisplayName = "Glareshield Master Caution FO Available",
+                DisplayName = "Glareshield Master Caution FO Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -8313,7 +8337,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_MIP_MASTER_CAUTION_CAPT_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_MIP_MASTER_CAUTION_CAPT_L",
-                DisplayName = "Glareshield Master Caution Captain Available",
+                DisplayName = "Glareshield Master Caution Captain Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -9271,9 +9295,9 @@ public class FenixA320Definition : BaseAircraftDefinition
                 return true;
             }
 
-            if (varKey == "S_OH_ELEC_APU_START")
+            if (varKey == "S_OH_ELEC_APU_START" && value == 1)
             {
-                simConnect.SetLVar("S_OH_ELEC_APU_START", value);
+                ExecuteButtonTransition("S_OH_ELEC_APU_START", "APU Start", simConnect, announcer);
                 return true;
             }
 
