@@ -9,6 +9,9 @@ namespace MSFSBlindAssist.Aircraft;
 /// </summary>
 public abstract class BaseAircraftDefinition : IAircraftDefinition
 {
+    // Cached dictionaries for performance (avoid recreating large dictionaries on every call)
+    private Dictionary<string, List<string>>? _cachedPanelControls;
+
     // Abstract members from IAircraftDefinition that must be implemented
     public abstract string AircraftName { get; }
     public abstract string AircraftCode { get; }
@@ -21,7 +24,26 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
 
     public abstract Dictionary<string, SimConnect.SimVarDefinition> GetVariables();
     public abstract Dictionary<string, List<string>> GetPanelStructure();
-    public abstract Dictionary<string, List<string>> GetPanelControls();
+
+    /// <summary>
+    /// Returns panel controls with caching for performance.
+    /// Subclasses implement BuildPanelControls() to define the actual structure.
+    /// </summary>
+    public Dictionary<string, List<string>> GetPanelControls()
+    {
+        if (_cachedPanelControls == null)
+        {
+            _cachedPanelControls = BuildPanelControls();
+        }
+        return _cachedPanelControls;
+    }
+
+    /// <summary>
+    /// Builds the panel controls dictionary. Override this in aircraft implementations.
+    /// Called once and cached by GetPanelControls() for performance.
+    /// </summary>
+    protected abstract Dictionary<string, List<string>> BuildPanelControls();
+
     public abstract Dictionary<string, List<string>> GetPanelDisplayVariables();
     public abstract Dictionary<string, string> GetButtonStateMapping();
     public abstract FCUControlType GetAltitudeControlType();

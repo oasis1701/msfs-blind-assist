@@ -8452,7 +8452,7 @@ public class FenixA320Definition : BaseAircraftDefinition
         };
     }
 
-    public override Dictionary<string, List<string>> GetPanelControls()
+    protected override Dictionary<string, List<string>> BuildPanelControls()
     {
         return new Dictionary<string, List<string>>
         {

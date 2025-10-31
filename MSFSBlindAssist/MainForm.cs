@@ -37,6 +37,10 @@ public partial class MainForm : Form
     private int droppedEventCount = 0;  // Diagnostic: count dropped events due to queue overflow
     private int processedBatchCount = 0;  // Diagnostic: count processed batches
 
+    // Panel loading debounce timer (prevents NVDA overload during rapid arrow navigation)
+    private System.Windows.Forms.Timer? _panelLoadTimer;
+    private string? _pendingPanelLoad = null;  // Track which panel to load when timer fires
+
     // Current state
     private string currentSection = "";
     private string currentPanel = "";
@@ -133,6 +137,12 @@ public partial class MainForm : Form
         eventBatchTimer.Tick += ProcessEventBatch;
         // Timer starts when SimConnect connects (see OnConnectionStatusChanged)
         System.Diagnostics.Debug.WriteLine($"[MainForm] Event batching initialized: {EVENT_BATCH_INTERVAL_MS}ms interval, max {MAX_BATCH_SIZE} events/batch");
+
+        // Initialize panel loading debounce timer (prevents NVDA overload during rapid arrow navigation)
+        _panelLoadTimer = new System.Windows.Forms.Timer();
+        _panelLoadTimer.Interval = 150; // 150ms delay - allows rapid navigation while preventing event queue buildup
+        _panelLoadTimer.Tick += PanelLoadTimer_Tick;
+        System.Diagnostics.Debug.WriteLine("[MainForm] Panel load debouncing initialized: 150ms delay");
 
         // Update status bar with database info
         UpdateDatabaseStatusDisplay();
@@ -1789,33 +1799,68 @@ public partial class MainForm : Form
         string? newPanel = panelsListBox.SelectedItem.ToString();
         if (newPanel == null || newPanel == currentPanel) return;
 
+        // Update currentPanel IMMEDIATELY so screen reader sees it
+        // This allows NVDA to announce the panel name instantly
         currentPanel = newPanel;
 
-        // IMPORTANT: Request all panel variables when opening ANY panel
-        // This ensures controls display current simulator state when the panel opens.
+        // DEBOUNCE MECHANISM: Don't load panel immediately during rapid arrow navigation
         //
-        // WHY: Most panel controls are independent switches - when you flip one switch,
-        // it doesn't affect other switches. So we DON'T need to refresh after each change.
-        // We ONLY need fresh data when the user opens/switches to a panel.
+        // PROBLEM: When user rapidly arrows through panels, each SelectedIndexChanged
+        // would queue expensive operations (variable requests, control creation), causing:
+        // - NVDA to get overwhelmed and announce "panel list view list"
+        // - Operation queue buildup leading to lag/silence
         //
-        // WHEN ADDING NEW PANELS: You do NOT need to add hardcoded checks here.
-        // This generic call handles ALL panels automatically (Electrical, Lights, FCU, etc.)
+        // SOLUTION: Use timer-based debouncing:
+        // - Stop any pending timer (cancel previous panel load)
+        // - Store which panel to load
+        // - Start fresh timer (150ms)
+        // - Only load panel when timer fires (user stopped arrowing)
         //
-        // EXCEPTION: If you have cross-dependent controls (rare), where changing one control
-        // affects others on the same panel, consider aircraft-specific handling via
-        // HandleUIVariableSet or a dedicated refresh mechanism.
-        if (simConnectManager != null && simConnectManager.IsConnected)
+        // RESULT: User can rapidly arrow through 20 panels hearing each name instantly,
+        // then only the FINAL selection loads its controls.
+
+        if (_panelLoadTimer != null)
         {
-            System.Diagnostics.Debug.WriteLine($"[Panel Open] Requesting variables for '{newPanel}' panel");
-            simConnectManager.RequestPanelVariables(newPanel, $"{newPanel} panel opened");
+            _panelLoadTimer.Stop(); // Cancel any pending load
+            _pendingPanelLoad = newPanel; // Remember which panel to load
+            _panelLoadTimer.Start(); // Start fresh timer
+            System.Diagnostics.Debug.WriteLine($"[Panel Nav] Debouncing load for '{newPanel}' panel");
+        }
+    }
+
+    /// <summary>
+    /// Timer callback: Load panel controls after debounce delay.
+    /// Only called when user stops arrowing through panels.
+    /// </summary>
+    private void PanelLoadTimer_Tick(object? sender, EventArgs e)
+    {
+        if (_panelLoadTimer != null)
+        {
+            _panelLoadTimer.Stop(); // Stop timer
         }
 
-        // Clear and reload controls
-        controlsContainer.Controls.Clear();
-        currentControls.Clear();
+        string? panelToLoad = _pendingPanelLoad;
+        if (panelToLoad == null) return;
 
-        if (!currentAircraft.GetPanelControls().ContainsKey(currentPanel))
-            return;
+        _pendingPanelLoad = null;
+
+        // Now do the actual heavy work (deferred to UI thread to avoid blocking)
+        BeginInvoke(new Action(() =>
+        {
+            System.Diagnostics.Debug.WriteLine($"[Panel Load] Loading controls and requesting variables for '{panelToLoad}' panel");
+
+            // Request variables first
+            if (simConnectManager != null && simConnectManager.IsConnected)
+            {
+                simConnectManager.RequestPanelVariables(panelToLoad, $"{panelToLoad} panel opened");
+            }
+
+            // Clear and reload controls
+            controlsContainer.Controls.Clear();
+            currentControls.Clear();
+
+            if (!currentAircraft.GetPanelControls().ContainsKey(currentPanel))
+                return;
 
         // Create a TableLayoutPanel for better layout
         TableLayoutPanel layout = new TableLayoutPanel();
@@ -2551,8 +2596,9 @@ public partial class MainForm : Form
             currentControls["_DISPLAY_"] = displayTextBox;
         }
 
-        controlsContainer.Controls.Add(layout);
-    }
+            controlsContainer.Controls.Add(layout);
+        })); // End BeginInvoke - deferred control creation
+    } // End PanelLoadTimer_Tick
 
     protected override void OnFormClosing(FormClosingEventArgs e)
     {
