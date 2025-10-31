@@ -11679,13 +11679,13 @@ public class FenixA320Definition : BaseAircraftDefinition
 
             if (varKey == "S_FCU_ALTITUDE_PUSH" && value == 1)
             {
-                ExecuteButtonTransition("S_FCU_ALTITUDE", "FCU Altitude Push", simConnect, announcer);
+                DecrementCounter("S_FCU_ALTITUDE", simConnect);
                 return true;
             }
 
             if (varKey == "S_FCU_ALTITUDE_PULL" && value == 1)
             {
-                ExecuteButtonTransition("S_FCU_ALTITUDE", "FCU Altitude Pull", simConnect, announcer);
+                IncrementCounter("S_FCU_ALTITUDE", simConnect);
                 return true;
             }
 
@@ -11710,13 +11710,13 @@ public class FenixA320Definition : BaseAircraftDefinition
 
             if (varKey == "S_FCU_HEADING_PUSH" && value == 1)
             {
-                ExecuteButtonTransition("S_FCU_HEADING", "FCU Heading Push", simConnect, announcer);
+                DecrementCounter("S_FCU_HEADING", simConnect);
                 return true;
             }
 
             if (varKey == "S_FCU_HEADING_PULL" && value == 1)
             {
-                ExecuteButtonTransition("S_FCU_HEADING", "FCU Heading Pull", simConnect, announcer);
+                IncrementCounter("S_FCU_HEADING", simConnect);
                 return true;
             }
 
@@ -11735,13 +11735,13 @@ public class FenixA320Definition : BaseAircraftDefinition
 
             if (varKey == "S_FCU_SPEED_PUSH" && value == 1)
             {
-                ExecuteButtonTransition("S_FCU_SPEED", "FCU Speed Push", simConnect, announcer);
+                DecrementCounter("S_FCU_SPEED", simConnect);
                 return true;
             }
 
             if (varKey == "S_FCU_SPEED_PULL" && value == 1)
             {
-                ExecuteButtonTransition("S_FCU_SPEED", "FCU Speed Pull", simConnect, announcer);
+                IncrementCounter("S_FCU_SPEED", simConnect);
                 return true;
             }
 
@@ -11760,13 +11760,13 @@ public class FenixA320Definition : BaseAircraftDefinition
 
             if (varKey == "S_FCU_VERTICAL_SPEED_PUSH" && value == 1)
             {
-                ExecuteButtonTransition("S_FCU_VERTICAL_SPEED", "FCU V/S Push", simConnect, announcer);
+                DecrementCounter("S_FCU_VERTICAL_SPEED", simConnect);
                 return true;
             }
 
             if (varKey == "S_FCU_VERTICAL_SPEED_PULL" && value == 1)
             {
-                ExecuteButtonTransition("S_FCU_VERTICAL_SPEED", "FCU V/S Pull", simConnect, announcer);
+                IncrementCounter("S_FCU_VERTICAL_SPEED", simConnect);
                 return true;
             }
 
@@ -12334,37 +12334,37 @@ public class FenixA320Definition : BaseAircraftDefinition
                 ReadDisplay(Services.GeminiService.DisplayType.ISIS, "ISIS", announcer, parentForm);
                 return true;
 
-            // FCU knob push/pull actions
+            // FCU knob push/pull actions (use increment/decrement, not button transitions)
             case HotkeyAction.FCUHeadingPush:
-                ExecuteButtonTransition("S_FCU_HEADING", "FCU Heading Push", simConnect, announcer);
+                DecrementCounter("S_FCU_HEADING", simConnect);
                 return true;
 
             case HotkeyAction.FCUHeadingPull:
-                ExecuteButtonTransition("S_FCU_HEADING", "FCU Heading Pull", simConnect, announcer);
+                IncrementCounter("S_FCU_HEADING", simConnect);
                 return true;
 
             case HotkeyAction.FCUAltitudePush:
-                ExecuteButtonTransition("S_FCU_ALTITUDE", "FCU Altitude Push", simConnect, announcer);
+                DecrementCounter("S_FCU_ALTITUDE", simConnect);
                 return true;
 
             case HotkeyAction.FCUAltitudePull:
-                ExecuteButtonTransition("S_FCU_ALTITUDE", "FCU Altitude Pull", simConnect, announcer);
+                IncrementCounter("S_FCU_ALTITUDE", simConnect);
                 return true;
 
             case HotkeyAction.FCUSpeedPush:
-                ExecuteButtonTransition("S_FCU_SPEED", "FCU Speed Push", simConnect, announcer);
+                DecrementCounter("S_FCU_SPEED", simConnect);
                 return true;
 
             case HotkeyAction.FCUSpeedPull:
-                ExecuteButtonTransition("S_FCU_SPEED", "FCU Speed Pull", simConnect, announcer);
+                IncrementCounter("S_FCU_SPEED", simConnect);
                 return true;
 
             case HotkeyAction.FCUVSPush:
-                ExecuteButtonTransition("S_FCU_VERTICAL_SPEED", "FCU V/S Push", simConnect, announcer);
+                DecrementCounter("S_FCU_VERTICAL_SPEED", simConnect);
                 return true;
 
             case HotkeyAction.FCUVSPull:
-                ExecuteButtonTransition("S_FCU_VERTICAL_SPEED", "FCU V/S Pull", simConnect, announcer);
+                IncrementCounter("S_FCU_VERTICAL_SPEED", simConnect);
                 return true;
 
             // FCU value readouts (Shift+H, Shift+S, Shift+A, Shift+V in output mode)
