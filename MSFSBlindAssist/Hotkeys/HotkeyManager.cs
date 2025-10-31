@@ -88,7 +88,7 @@ public class HotkeyManager : IDisposable
         private const int HOTKEY_TRACK_SLOT_5 = 9066;
         private const int HOTKEY_FUEL_PAYLOAD = 9068;
 
-        // Display reading hotkey IDs (Input mode - plain number keys 1-5)
+        // Display reading hotkey IDs (Output mode - Alt+1-5, Fenix A320 only)
         private const int HOTKEY_READ_DISPLAY_PFD = 9069;
         private const int HOTKEY_READ_DISPLAY_LOWER_ECAM = 9070;
         private const int HOTKEY_READ_DISPLAY_UPPER_ECAM = 9071;
@@ -276,6 +276,21 @@ public class HotkeyManager : IDisposable
                         case HOTKEY_FUEL_PAYLOAD:
                             TriggerHotkey(HotkeyAction.ShowFuelPayloadWindow);
                             break;
+                        case HOTKEY_READ_DISPLAY_UPPER_ECAM:
+                            TriggerHotkey(HotkeyAction.ReadDisplayUpperECAM);
+                            break;
+                        case HOTKEY_READ_DISPLAY_LOWER_ECAM:
+                            TriggerHotkey(HotkeyAction.ReadDisplayLowerECAM);
+                            break;
+                        case HOTKEY_READ_DISPLAY_ND:
+                            TriggerHotkey(HotkeyAction.ReadDisplayND);
+                            break;
+                        case HOTKEY_READ_DISPLAY_PFD:
+                            TriggerHotkey(HotkeyAction.ReadDisplayPFD);
+                            break;
+                        case HOTKEY_READ_DISPLAY_ISIS:
+                            TriggerHotkey(HotkeyAction.ReadDisplayISIS);
+                            break;
                     }
                     DeactivateOutputHotkeyMode();
                     return true;
@@ -338,21 +353,6 @@ public class HotkeyManager : IDisposable
                         case HOTKEY_TOGGLE_AP2:
                             TriggerHotkey(HotkeyAction.ToggleAutopilot2);
                             break;
-                        case HOTKEY_READ_DISPLAY_PFD:
-                            TriggerHotkey(HotkeyAction.ReadDisplayPFD);
-                            break;
-                        case HOTKEY_READ_DISPLAY_LOWER_ECAM:
-                            TriggerHotkey(HotkeyAction.ReadDisplayLowerECAM);
-                            break;
-                        case HOTKEY_READ_DISPLAY_UPPER_ECAM:
-                            TriggerHotkey(HotkeyAction.ReadDisplayUpperECAM);
-                            break;
-                        case HOTKEY_READ_DISPLAY_ND:
-                            TriggerHotkey(HotkeyAction.ReadDisplayND);
-                            break;
-                        case HOTKEY_READ_DISPLAY_ISIS:
-                            TriggerHotkey(HotkeyAction.ReadDisplayISIS);
-                            break;
                     }
                     DeactivateInputHotkeyMode();
                     return true;
@@ -414,6 +414,13 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_TRACK_SLOT_5, MOD_NONE, 0x35);  // 5 (Track Slot 5)
             RegisterHotKey(windowHandle, HOTKEY_FUEL_PAYLOAD, MOD_SHIFT, 0x46); // Shift+F (Fuel & Payload)
 
+            // Register display reading hotkeys (Alt+1-5 for Fenix A320)
+            RegisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_UPPER_ECAM, MOD_ALT, 0x31);  // Alt+1 (Read Upper ECAM/EWD)
+            RegisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_LOWER_ECAM, MOD_ALT, 0x32);  // Alt+2 (Read Lower ECAM)
+            RegisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_ND, MOD_ALT, 0x33);          // Alt+3 (Read ND)
+            RegisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_PFD, MOD_ALT, 0x34);         // Alt+4 (Read PFD)
+            RegisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_ISIS, MOD_ALT, 0x35);        // Alt+5 (Read ISIS)
+
             // Auto-timeout disabled - hotkey mode stays active until used or escape pressed
 
             OutputHotkeyModeChanged?.Invoke(this, true);
@@ -471,6 +478,13 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_TRACK_SLOT_5);
             UnregisterHotKey(windowHandle, HOTKEY_FUEL_PAYLOAD);
 
+            // Unregister display reading hotkeys
+            UnregisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_UPPER_ECAM);
+            UnregisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_LOWER_ECAM);
+            UnregisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_ND);
+            UnregisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_PFD);
+            UnregisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_ISIS);
+
             OutputHotkeyModeChanged?.Invoke(this, false);
         }
 
@@ -501,13 +515,6 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_FCU_SET_ALTITUDE, MOD_CONTROL, 0x41); // Ctrl+A (Set Altitude)
             RegisterHotKey(windowHandle, HOTKEY_FCU_SET_VS, MOD_CONTROL, 0x56);      // Ctrl+V (Set VS)
             RegisterHotKey(windowHandle, HOTKEY_TOGGLE_AP2, MOD_CONTROL, 0x4F);      // Ctrl+O (Toggle Autopilot 2)
-
-            // Register display reading hotkeys (plain number keys 1-5)
-            RegisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_PFD, 0, 0x31);         // 1 (Read PFD)
-            RegisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_LOWER_ECAM, 0, 0x32);  // 2 (Read Lower ECAM)
-            RegisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_UPPER_ECAM, 0, 0x33);  // 3 (Read Upper ECAM/EWD)
-            RegisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_ND, 0, 0x34);          // 4 (Read ND)
-            RegisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_ISIS, 0, 0x35);        // 5 (Read ISIS)
 
             InputHotkeyModeChanged?.Invoke(this, true);
         }
@@ -541,13 +548,6 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_FCU_SET_ALTITUDE);
             UnregisterHotKey(windowHandle, HOTKEY_FCU_SET_VS);
             UnregisterHotKey(windowHandle, HOTKEY_TOGGLE_AP2);
-
-            // Unregister display reading hotkeys
-            UnregisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_PFD);
-            UnregisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_LOWER_ECAM);
-            UnregisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_UPPER_ECAM);
-            UnregisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_ND);
-            UnregisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_ISIS);
 
             InputHotkeyModeChanged?.Invoke(this, false);
         }

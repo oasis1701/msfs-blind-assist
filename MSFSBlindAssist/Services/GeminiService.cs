@@ -119,28 +119,43 @@ public class GeminiService
         {
             DisplayType.PFD => @"You are reading the Primary Flight Display for a screen reader user.
 The image may contain multiple displays. ONLY describe the Primary Flight Display (PFD). Ignore any other displays.
-Report all values, indicators, and messages you see in plain text.
-Do not use markdown formatting. Do not explain what things mean. Just state the data and any message colors.",
+Be extremely concise and direct. Skip descriptions of tape layouts, scales, and visual positioning. Only report actual values, modes, states, and deviations.
+Skip normal colors (green, white, yellow) - only mention warning/alert colors (amber, red).
+Report: airspeed value, altitude value, vertical speed value, pitch/roll if significant, flight director status if active, lateral/vertical deviation if not centered, QNH, flight mode annunciators, any warnings.
+Use line breaks to separate major values. Put airspeed, altitude, vertical speed, deviations, QNH, and flight mode annunciators each on their own line.
+Do not use markdown formatting. Do not explain what things mean. Just state the essential data.",
 
             DisplayType.LowerECAM => @"You are reading the Lower ECAM display for a screen reader user.
 The image may contain multiple displays. ONLY describe the Lower ECAM (bottom center display). Ignore any other displays.
-Report the current page and all values shown in plain text.
-Do not use markdown formatting. Do not explain what things mean. Just state the data and any message colors.",
+Be extremely concise and direct. Skip descriptions of layouts, visual positioning, and diagram explanations. Only report actual values, quantities, states, and modes.
+Skip normal colors (green, white) - only mention warning/alert colors (amber, red).
+Report: page name, all displayed values with units, system states (ON/OFF, OPEN/CLOSED, etc.), any warnings or cautions.
+Use line breaks to separate parameters. Put the page name on the first line, then each parameter or system state on its own line.
+Do not use markdown formatting. Do not explain what things mean. Just state the essential data.",
 
             DisplayType.UpperECAM => @"You are reading the Upper ECAM display for a screen reader user.
 The image may contain multiple displays. ONLY describe the Upper ECAM/EWD (top center display with engine parameters). Ignore any other displays.
-Report everything you see on that display in plain text format.
-Do not use markdown formatting. Do not explain what things mean. Just state what is displayed and the colors of any messages.",
+Be extremely concise and direct. Skip descriptions of layouts, visual positioning, and gauge explanations. Only report actual values and states.
+Skip normal colors (green, white) - only mention warning/alert colors (amber, red).
+Report: engine parameters (N1, N2, EGT, fuel flow for each engine), flap position, slat position, any warnings or cautions with their colors.
+Use line breaks to separate parameters. Put each engine on its own line, then each system state or configuration item on its own line.
+Do not use markdown formatting. Do not explain what things mean. Just state the essential data.",
 
             DisplayType.ND => @"You are reading the Navigation Display for a screen reader user.
 The image may contain multiple displays. ONLY describe the Navigation Display (ND - the map display). Ignore any other displays.
-Report the mode, range, waypoints, and everything visible in plain text.
-Do not use markdown formatting. Do not explain what things mean. Just state the data.",
+Be extremely concise and direct. Skip descriptions of map layouts, visual positioning, and symbology explanations. Only report actual values, modes, and navigation data.
+Skip normal colors (green, white, magenta) - only mention warning/alert colors (amber, red).
+Report: display mode (ROSE NAV, ARC, PLAN), range setting, aircraft heading/track, active waypoints in sequence, distance/time to next waypoint, course deviation if present, weather radar returns if shown, TCAS traffic if present.
+Use line breaks to separate information. Put mode and range on the first line, heading/track on the next line, then each waypoint on its own line.
+Do not use markdown formatting. Do not explain what things mean. Just state the essential data.",
 
             DisplayType.ISIS => @"You are reading the ISIS backup display for a screen reader user.
 The image may contain multiple displays. ONLY describe the ISIS (center backup instrument). Ignore any other displays.
-Report all values shown in plain text.
-Do not use markdown formatting. Do not explain what things mean. Just state the data.",
+Be extremely concise and direct. Skip descriptions of instrument layout and visual positioning. Only report actual values.
+Skip normal colors - only mention warning/alert colors (amber, red).
+Report: airspeed value, altitude value, pitch/roll if significant, any warnings.
+Use line breaks to separate values. Put airspeed, altitude, and attitude each on their own line.
+Do not use markdown formatting. Do not explain what things mean. Just state the essential data.",
 
             _ => "Report what you see on this display in plain text. No markdown formatting. No explanations. Just the data."
         };
