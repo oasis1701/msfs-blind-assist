@@ -37,6 +37,80 @@ public class GeminiService
     }
 
     /// <summary>
+    /// Analyzes the flight simulator scene using Gemini AI.
+    /// Focuses on the visual experience - lighting, weather, terrain, and environment.
+    /// </summary>
+    /// <param name="imageBytes">Screenshot as PNG byte array</param>
+    /// <returns>Text description of the scene</returns>
+    public async Task<string> AnalyzeSceneAsync(byte[] imageBytes)
+    {
+        if (string.IsNullOrEmpty(apiKey))
+        {
+            throw new InvalidOperationException("Gemini API key is not configured. Please configure it in File > Gemini API Key Settings.");
+        }
+
+        if (imageBytes == null || imageBytes.Length == 0)
+        {
+            throw new ArgumentException("Image data is empty or null.", nameof(imageBytes));
+        }
+
+        // Generate scene-focused prompt
+        string prompt = GetScenePrompt();
+
+        // Prepare the request
+        var requestBody = new
+        {
+            contents = new[]
+            {
+                new
+                {
+                    parts = new object[]
+                    {
+                        new { text = prompt },
+                        new
+                        {
+                            inline_data = new
+                            {
+                                mime_type = "image/png",
+                                data = Convert.ToBase64String(imageBytes)
+                            }
+                        }
+                    }
+                }
+            }
+        };
+
+        string jsonRequest = JsonConvert.SerializeObject(requestBody);
+        var content = new StringContent(jsonRequest, Encoding.UTF8, "application/json");
+
+        // Send request to Gemini API
+        string url = $"{API_BASE_URL}?key={apiKey}";
+        HttpResponseMessage response = await httpClient.PostAsync(url, content);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            string errorContent = await response.Content.ReadAsStringAsync();
+            throw new HttpRequestException($"Gemini API request failed with status {response.StatusCode}: {errorContent}");
+        }
+
+        // Parse response
+        string responseJson = await response.Content.ReadAsStringAsync();
+        var result = JsonConvert.DeserializeObject<GeminiResponse>(responseJson);
+
+        if (result?.Candidates == null || result.Candidates.Length == 0)
+        {
+            throw new InvalidOperationException("Gemini API returned no candidates in response.");
+        }
+
+        if (result.Candidates[0].Content?.Parts == null || result.Candidates[0].Content.Parts.Length == 0)
+        {
+            throw new InvalidOperationException("Gemini API returned no content in response.");
+        }
+
+        return result.Candidates[0].Content.Parts[0].Text ?? "No description available.";
+    }
+
+    /// <summary>
     /// Analyzes a cockpit display screenshot using Gemini AI.
     /// </summary>
     /// <param name="imageBytes">Screenshot as PNG byte array</param>
@@ -108,6 +182,56 @@ public class GeminiService
         }
 
         return result.Candidates[0].Content.Parts[0].Text ?? "No description available.";
+    }
+
+    /// <summary>
+    /// Generates a prompt for scene description focused on the visual experience.
+    /// </summary>
+    private string GetScenePrompt()
+    {
+        return @"You are describing the visual flight simulator scene for a blind pilot.
+
+Your goal is to help them experience what a sighted pilot would see when sitting back and enjoying the view.
+
+Focus on these aspects in order of priority:
+
+1. TIME OF DAY & LIGHTING:
+   - Time of day (sunrise, golden hour, midday, sunset, dusk, night)
+   - Quality and direction of light (harsh shadows, soft diffused light, dramatic lighting)
+   - Sun position and appearance
+   - Reflections on aircraft surfaces or water
+   - Sky colors and gradients
+
+2. WEATHER & ATMOSPHERE:
+   - Cloud coverage (clear, scattered, overcast) and cloud types
+   - Precipitation (rain, snow, fog) if visible
+   - Visibility and atmospheric conditions
+   - Weather mood (crisp clear day, moody overcast, dramatic storm)
+
+3. TERRAIN & LANDSCAPE:
+   - What's visible below and around (ocean, mountains, plains, urban, rural)
+   - Notable landmarks or geographic features
+   - Terrain textures and colors
+   - Horizon line and how terrain meets sky
+   - Other aircraft if visible
+
+4. AIRPORT ENVIRONMENT (if at an airport):
+   - Runway and taxiway layout
+   - Terminal buildings and airport structures
+   - Ground vehicles and activity
+   - Airport lighting (if applicable)
+   - Position on ground or in pattern
+
+IMPORTANT GUIDELINES:
+- De-emphasize instruments and cockpit displays (you may briefly mention them if they're prominent in the view, but they are NOT the focus)
+- Focus on the OUTSIDE scene and what makes it visually interesting
+- Paint a picture of what it feels like to be there
+- Use descriptive, evocative language for lighting and atmosphere
+- Use line breaks to separate major scene elements for screen reader clarity
+- Do not use markdown formatting
+- Be vivid but concise - aim for a rich description in 150-300 words
+
+Describe the scene as if you're helping someone visualize the experience of flight.";
     }
 
     /// <summary>

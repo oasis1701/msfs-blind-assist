@@ -22,17 +22,22 @@ public partial class DisplayReadingResultForm : Form
     private readonly IntPtr previousWindow;
 
     public DisplayReadingResultForm(string displayName, string analysisResult)
+        : this(displayName, analysisResult, "Analysis")
+    {
+    }
+
+    public DisplayReadingResultForm(string displayName, string analysisResult, string analysisType)
     {
         // Capture the current foreground window (likely the simulator)
         previousWindow = GetForegroundWindow();
 
-        InitializeComponent(displayName, analysisResult);
+        InitializeComponent(displayName, analysisResult, analysisType);
         SetupAccessibility();
     }
 
-    private void InitializeComponent(string displayName, string analysisResult)
+    private void InitializeComponent(string displayName, string analysisResult, string analysisType)
     {
-        Text = $"{displayName} Analysis - Gemini AI";
+        Text = $"{displayName} {analysisType} - Gemini AI";
         Size = new Size(800, 600);
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.Sizable;  // Allow resizing for long text
@@ -42,11 +47,11 @@ public partial class DisplayReadingResultForm : Form
         // Title Label
         titleLabel = new Label
         {
-            Text = $"{displayName} - AI Analysis",
+            Text = $"{displayName} - AI {analysisType}",
             Location = new Point(20, 20),
             Size = new Size(740, 25),
             Font = new Font("Microsoft Sans Serif", 12, FontStyle.Bold),
-            AccessibleName = $"{displayName} Analysis Title"
+            AccessibleName = $"{displayName} {analysisType} Title"
         };
 
         // Result RichTextBox (read-only, better accessibility for screen readers)
@@ -56,8 +61,8 @@ public partial class DisplayReadingResultForm : Form
             Size = new Size(740, 450),
             ReadOnly = true,
             ScrollBars = RichTextBoxScrollBars.Vertical,
-            AccessibleName = $"{displayName} Analysis Result",
-            AccessibleDescription = $"Gemini AI analysis of {displayName}",
+            AccessibleName = $"{displayName} {analysisType} Result",
+            AccessibleDescription = $"Gemini AI {analysisType.ToLower()} of {displayName}",
             Font = new Font("Segoe UI", 10, FontStyle.Regular),
             Text = analysisResult,
             WordWrap = true

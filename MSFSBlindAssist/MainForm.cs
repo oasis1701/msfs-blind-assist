@@ -823,6 +823,9 @@ public partial class MainForm : Form
             case HotkeyAction.ToggleVisualApproach:
                 ToggleVisualApproachMonitoring();
                 break;
+            case HotkeyAction.DescribeScene:
+                DescribeSceneAsync();
+                break;
             // Note: FCU push/pull, autopilot toggles, FCU set value dialogs, and A32NX-specific hotkeys
             // are now handled by the aircraft definition via HandleHotkeyAction()
         }
@@ -1257,6 +1260,53 @@ public partial class MainForm : Form
 
         // Request current heading for takeoff assist toggle
         simConnectManager.RequestHeadingForTakeoffAssist();
+    }
+
+    private async void DescribeSceneAsync()
+    {
+        try
+        {
+            announcer.AnnounceImmediate("Capturing scene...");
+
+            // Create screenshot and Gemini services
+            var screenshotService = new ScreenshotService();
+            var geminiService = new GeminiService();
+
+            // Check if MSFS window is available
+            if (!screenshotService.IsMsfsWindowAvailable())
+            {
+                announcer.AnnounceImmediate("Microsoft Flight Simulator window not found.");
+                return;
+            }
+
+            // Capture screenshot
+            byte[]? screenshot = await screenshotService.CaptureAsync();
+            if (screenshot == null || screenshot.Length == 0)
+            {
+                announcer.AnnounceImmediate("Failed to capture scene screenshot.");
+                return;
+            }
+
+            announcer.AnnounceImmediate("Analyzing scene with Gemini AI...");
+
+            // Analyze scene with Gemini
+            string analysis = await geminiService.AnalyzeSceneAsync(screenshot);
+
+            // Show result in form
+            var resultForm = new DisplayReadingResultForm("Scene", analysis, "Description");
+            resultForm.ShowDialog(this);
+
+            announcer.AnnounceImmediate("Scene description ready");
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("API key"))
+        {
+            announcer.AnnounceImmediate("Gemini API key not configured. Please configure it in File menu, Gemini API Key Settings.");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[MainForm] Error in DescribeSceneAsync: {ex.Message}");
+            announcer.AnnounceImmediate($"Error describing scene: {ex.Message}");
+        }
     }
 
     private void ToggleECAMMonitoring()
