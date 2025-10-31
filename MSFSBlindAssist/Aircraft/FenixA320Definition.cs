@@ -18,6 +18,24 @@ public class FenixA320Definition : BaseAircraftDefinition
     public override FCUControlType GetSpeedControlType() => FCUControlType.IncrementDecrement;
     public override FCUControlType GetVerticalSpeedControlType() => FCUControlType.IncrementDecrement;
 
+    // Private fields for FCU readout tracking
+    private double? pendingHeadingValue = null;
+    private double? pendingHeadingStatus = null;
+    private double? pendingSpeedValue = null;
+    private double? pendingSpeedStatus = null;
+    private double? pendingAltitudeValue = null;
+    private double? pendingAltitudeStatus = null;
+    private double? pendingVSValue = null;
+    private double? pendingVSStatus = null;
+
+    // Boolean flags to track active FCU readout requests
+    private bool isRequestingHeading = false;
+    private bool isRequestingSpeed = false;
+    private bool isRequestingAltitude = false;
+    private bool isRequestingVS = false;
+
+    private Accessibility.ScreenReaderAnnouncer? lastAnnouncer = null;
+
     public override Dictionary<string, SimConnect.SimVarDefinition> GetVariables()
     {
         return new Dictionary<string, SimConnect.SimVarDefinition>
@@ -11866,6 +11884,262 @@ public class FenixA320Definition : BaseAircraftDefinition
     }
 
     /// <summary>
+    /// Processes SimConnect variable updates, combining FCU value and status variables for hotkey readouts.
+    /// </summary>
+    public override bool ProcessSimVarUpdate(string varName, double value, ScreenReaderAnnouncer announcer)
+    {
+        // Only process if we have the announcer saved
+        if (lastAnnouncer == null)
+            lastAnnouncer = announcer;
+
+        // ========== FCU Heading Readout ==========
+        if (varName == "N_FCU_HEADING")
+        {
+            if (!isRequestingHeading)
+                return false; // Not part of a readout request
+
+            pendingHeadingValue = value;
+            if (pendingHeadingStatus.HasValue)
+            {
+                if (pendingHeadingStatus.Value == 1)
+                {
+                    lastAnnouncer.AnnounceImmediate("Heading is managed");
+                }
+                else
+                {
+                    lastAnnouncer.AnnounceImmediate($"FCU heading {pendingHeadingValue.Value:000}, selected");
+                }
+                pendingHeadingValue = null;
+                pendingHeadingStatus = null;
+                isRequestingHeading = false;
+            }
+            return true;
+        }
+        else if (varName == "I_FCU_HEADING_MANAGED")
+        {
+            if (!isRequestingHeading)
+                return false;
+
+            pendingHeadingStatus = value;
+            if (pendingHeadingValue.HasValue)
+            {
+                if (value == 1)
+                {
+                    lastAnnouncer.AnnounceImmediate("Heading is managed");
+                }
+                else
+                {
+                    lastAnnouncer.AnnounceImmediate($"FCU heading {pendingHeadingValue.Value:000}, selected");
+                }
+                pendingHeadingValue = null;
+                pendingHeadingStatus = null;
+                isRequestingHeading = false;
+            }
+            return true;
+        }
+
+        // ========== FCU Speed Readout ==========
+        else if (varName == "N_FCU_SPEED")
+        {
+            if (!isRequestingSpeed)
+                return false;
+
+            pendingSpeedValue = value;
+            if (pendingSpeedStatus.HasValue)
+            {
+                if (pendingSpeedStatus.Value == 1)
+                {
+                    lastAnnouncer.AnnounceImmediate("Speed is managed");
+                }
+                else
+                {
+                    lastAnnouncer.AnnounceImmediate($"FCU speed {pendingSpeedValue.Value:000}, selected");
+                }
+                pendingSpeedValue = null;
+                pendingSpeedStatus = null;
+                isRequestingSpeed = false;
+            }
+            return true;
+        }
+        else if (varName == "I_FCU_SPEED_MANAGED")
+        {
+            if (!isRequestingSpeed)
+                return false;
+
+            pendingSpeedStatus = value;
+            if (pendingSpeedValue.HasValue)
+            {
+                if (value == 1)
+                {
+                    lastAnnouncer.AnnounceImmediate("Speed is managed");
+                }
+                else
+                {
+                    lastAnnouncer.AnnounceImmediate($"FCU speed {pendingSpeedValue.Value:000}, selected");
+                }
+                pendingSpeedValue = null;
+                pendingSpeedStatus = null;
+                isRequestingSpeed = false;
+            }
+            return true;
+        }
+
+        // ========== FCU Altitude Readout ==========
+        else if (varName == "N_FCU_ALTITUDE")
+        {
+            if (!isRequestingAltitude)
+                return false;
+
+            pendingAltitudeValue = value;
+            if (pendingAltitudeStatus.HasValue)
+            {
+                string status = pendingAltitudeStatus.Value == 1 ? "managed" : "selected";
+                lastAnnouncer.AnnounceImmediate($"FCU altitude {pendingAltitudeValue.Value:00000}, {status}");
+                pendingAltitudeValue = null;
+                pendingAltitudeStatus = null;
+                isRequestingAltitude = false;
+            }
+            return true;
+        }
+        else if (varName == "I_FCU_ALTITUDE_MANAGED")
+        {
+            if (!isRequestingAltitude)
+                return false;
+
+            pendingAltitudeStatus = value;
+            if (pendingAltitudeValue.HasValue)
+            {
+                string status = value == 1 ? "managed" : "selected";
+                lastAnnouncer.AnnounceImmediate($"FCU altitude {pendingAltitudeValue.Value:00000}, {status}");
+                pendingAltitudeValue = null;
+                pendingAltitudeStatus = null;
+                isRequestingAltitude = false;
+            }
+            return true;
+        }
+
+        // ========== FCU Vertical Speed Readout ==========
+        else if (varName == "N_FCU_VS")
+        {
+            if (!isRequestingVS)
+                return false;
+
+            pendingVSValue = value;
+            if (pendingVSStatus.HasValue)
+            {
+                if (pendingVSStatus.Value == 1) // Dashed = managed
+                {
+                    lastAnnouncer.AnnounceImmediate("VS is managed");
+                }
+                else
+                {
+                    lastAnnouncer.AnnounceImmediate($"FCU vertical speed {pendingVSValue.Value:0000}, selected");
+                }
+                pendingVSValue = null;
+                pendingVSStatus = null;
+                isRequestingVS = false;
+            }
+            return true;
+        }
+        else if (varName == "B_FCU_VERTICALSPEED_DASHED")
+        {
+            if (!isRequestingVS)
+                return false;
+
+            pendingVSStatus = value;
+            if (pendingVSValue.HasValue)
+            {
+                if (value == 1) // Dashed = managed
+                {
+                    lastAnnouncer.AnnounceImmediate("VS is managed");
+                }
+                else
+                {
+                    lastAnnouncer.AnnounceImmediate($"FCU vertical speed {pendingVSValue.Value:0000}, selected");
+                }
+                pendingVSValue = null;
+                pendingVSStatus = null;
+                isRequestingVS = false;
+            }
+            return true;
+        }
+
+        // Not handled by FCU readout logic
+        return false;
+    }
+
+    // ========== FCU Readout Request Methods ==========
+
+    /// <summary>
+    /// Requests FCU heading value with managed status for hotkey readout.
+    /// </summary>
+    private void RequestFCUHeadingWithStatus(SimConnect.SimConnectManager simConnectMgr, Accessibility.ScreenReaderAnnouncer announcer)
+    {
+        if (simConnectMgr.IsConnected)
+        {
+            lastAnnouncer = announcer;
+            isRequestingHeading = true;
+            pendingHeadingValue = null;
+            pendingHeadingStatus = null;
+
+            simConnectMgr.RequestVariable("N_FCU_HEADING");
+            simConnectMgr.RequestVariable("I_FCU_HEADING_MANAGED");
+        }
+    }
+
+    /// <summary>
+    /// Requests FCU speed value with managed status for hotkey readout.
+    /// </summary>
+    private void RequestFCUSpeedWithStatus(SimConnect.SimConnectManager simConnectMgr, Accessibility.ScreenReaderAnnouncer announcer)
+    {
+        if (simConnectMgr.IsConnected)
+        {
+            lastAnnouncer = announcer;
+            isRequestingSpeed = true;
+            pendingSpeedValue = null;
+            pendingSpeedStatus = null;
+
+            simConnectMgr.RequestVariable("N_FCU_SPEED");
+            simConnectMgr.RequestVariable("I_FCU_SPEED_MANAGED");
+        }
+    }
+
+    /// <summary>
+    /// Requests FCU altitude value with managed status for hotkey readout.
+    /// </summary>
+    private void RequestFCUAltitudeWithStatus(SimConnect.SimConnectManager simConnectMgr, Accessibility.ScreenReaderAnnouncer announcer)
+    {
+        if (simConnectMgr.IsConnected)
+        {
+            lastAnnouncer = announcer;
+            isRequestingAltitude = true;
+            pendingAltitudeValue = null;
+            pendingAltitudeStatus = null;
+
+            simConnectMgr.RequestVariable("N_FCU_ALTITUDE");
+            simConnectMgr.RequestVariable("I_FCU_ALTITUDE_MANAGED");
+        }
+    }
+
+    /// <summary>
+    /// Requests FCU vertical speed value with managed status for hotkey readout.
+    /// Note: VS uses B_FCU_VERTICALSPEED_DASHED instead of I_FCU_VS_MANAGED.
+    /// </summary>
+    private void RequestFCUVerticalSpeedWithStatus(SimConnect.SimConnectManager simConnectMgr, Accessibility.ScreenReaderAnnouncer announcer)
+    {
+        if (simConnectMgr.IsConnected)
+        {
+            lastAnnouncer = announcer;
+            isRequestingVS = true;
+            pendingVSValue = null;
+            pendingVSStatus = null;
+
+            simConnectMgr.RequestVariable("N_FCU_VS");
+            simConnectMgr.RequestVariable("B_FCU_VERTICALSPEED_DASHED");
+        }
+    }
+
+    /// <summary>
     /// Helper method to execute Fenix button transition (0→1 pattern).
     /// Fenix buttons are transition-activated: they trigger when the variable goes from 0 to 1.
     /// This method sets the variable to 0, waits, then sets it to 1 to create the transition.
@@ -12058,6 +12332,56 @@ public class FenixA320Definition : BaseAircraftDefinition
 
             case HotkeyAction.ReadDisplayISIS:
                 ReadDisplay(Services.GeminiService.DisplayType.ISIS, "ISIS", announcer, parentForm);
+                return true;
+
+            // FCU knob push/pull actions
+            case HotkeyAction.FCUHeadingPush:
+                ExecuteButtonTransition("S_FCU_HEADING", "FCU Heading Push", simConnect, announcer);
+                return true;
+
+            case HotkeyAction.FCUHeadingPull:
+                ExecuteButtonTransition("S_FCU_HEADING", "FCU Heading Pull", simConnect, announcer);
+                return true;
+
+            case HotkeyAction.FCUAltitudePush:
+                ExecuteButtonTransition("S_FCU_ALTITUDE", "FCU Altitude Push", simConnect, announcer);
+                return true;
+
+            case HotkeyAction.FCUAltitudePull:
+                ExecuteButtonTransition("S_FCU_ALTITUDE", "FCU Altitude Pull", simConnect, announcer);
+                return true;
+
+            case HotkeyAction.FCUSpeedPush:
+                ExecuteButtonTransition("S_FCU_SPEED", "FCU Speed Push", simConnect, announcer);
+                return true;
+
+            case HotkeyAction.FCUSpeedPull:
+                ExecuteButtonTransition("S_FCU_SPEED", "FCU Speed Pull", simConnect, announcer);
+                return true;
+
+            case HotkeyAction.FCUVSPush:
+                ExecuteButtonTransition("S_FCU_VERTICAL_SPEED", "FCU V/S Push", simConnect, announcer);
+                return true;
+
+            case HotkeyAction.FCUVSPull:
+                ExecuteButtonTransition("S_FCU_VERTICAL_SPEED", "FCU V/S Pull", simConnect, announcer);
+                return true;
+
+            // FCU value readouts (Shift+H, Shift+S, Shift+A, Shift+V in output mode)
+            case HotkeyAction.ReadHeading:
+                RequestFCUHeadingWithStatus(simConnect, announcer);
+                return true;
+
+            case HotkeyAction.ReadSpeed:
+                RequestFCUSpeedWithStatus(simConnect, announcer);
+                return true;
+
+            case HotkeyAction.ReadAltitude:
+                RequestFCUAltitudeWithStatus(simConnect, announcer);
+                return true;
+
+            case HotkeyAction.ReadFCUVerticalSpeedFPA:
+                RequestFCUVerticalSpeedWithStatus(simConnect, announcer);
                 return true;
 
             default:

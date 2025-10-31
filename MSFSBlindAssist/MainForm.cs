@@ -1419,7 +1419,7 @@ public partial class MainForm : Form
 
     private void HotkeyListMenuItem_Click(object? sender, EventArgs e)
     {
-        using (var hotkeyListForm = new HotkeyListForm())
+        using (var hotkeyListForm = new HotkeyListForm(currentAircraft.AircraftCode))
         {
             hotkeyListForm.ShowDialog(this);
         }

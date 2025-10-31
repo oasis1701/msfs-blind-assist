@@ -1,0 +1,83 @@
+Fenix A320 HOTKEY REFERENCE
+
+Application Navigation:
+  Ctrl+1     Focus Sections List
+  Ctrl+2     Focus Panels List
+
+
+OUTPUT MODE - Press right bracket to activate
+
+AI Features:
+Alt+d  describe scene
+alt+1 Read Upper ECAM/Engine and warning display, Needs default camera view 8
+alt+2 Read lower ECAM/SD display, Needs default camera view 8
+alt+3 Read Navigation display, Needs default camera view 8
+alt+4 read PFD display, needs default camera view 9
+alt+5 read ISIS display, needs default camera view 9
+
+FCU Controls:
+  Shift+H    Read FCU Heading
+  Shift+S    Read FCU Speed
+  Shift+A    Read FCU Altitude
+  Shift+V    Read FCU VS/FPA
+
+Altitude:
+  Q          Read Altitude AGL
+  A          Read Altitude MSL
+
+Airspeed:
+  S          Read IAS (Indicated Airspeed)
+  T          Read TAS (True Airspeed)
+  G          Read Ground Speed
+  M Read Mach Number.
+
+Heading:
+  H          Read Magnetic Heading
+  U          Read True Heading
+
+Vertical:
+  V          Read Vertical Speed
+
+Weather:
+  I Wind info
+
+Tools:
+CTRL+T, Takeoff Assistance
+
+Displays and windows:
+  Shift+E, Electronic Flight Bag window
+  Shift+L,    Location Info
+  Shift+M,    Show VATSIM METAR Report
+  Shift+D,    SimBrief Briefing
+  Shift+C,    Show Checklist
+
+
+INPUT MODE - Press [ to activate
+
+Teleport:
+  Shift+R    Runway Teleport
+  Shift+G    Gate Teleport
+
+Flight planning:
+  Shift+D    Select Destination Runway
+
+
+FCU Push/Pull:
+  Shift+1    Push Heading Knob
+  Ctrl+1     Pull Heading Knob
+  Shift+2    Push Altitude Knob
+  Ctrl+2     Pull Altitude Knob
+  Shift+3    Push Speed Knob
+  Ctrl+3     Pull Speed Knob
+  Shift+4    Push VS Knob
+  Ctrl+4     Pull VS Knob
+
+FCU Set Values:
+  Ctrl+H     Set Heading Value
+  Ctrl+S     Set Speed Value
+  Ctrl+A     Set Altitude Value
+  Ctrl+V     Set VS Value
+
+
+General:
+  Escape     Exit active hotkey mode

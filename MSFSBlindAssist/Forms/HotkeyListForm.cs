@@ -4,9 +4,11 @@ public partial class HotkeyListForm : Form
 {
     private TextBox hotkeyTextBox = null!;
     private Button okButton = null!;
+    private readonly string aircraftCode;
 
-    public HotkeyListForm()
+    public HotkeyListForm(string aircraftCode)
     {
+        this.aircraftCode = aircraftCode;
         InitializeComponent();
         SetupAccessibility();
     }
@@ -62,104 +64,37 @@ public partial class HotkeyListForm : Form
 
     private string GetHotkeyListText()
     {
-        return @"FBWBA HOTKEY REFERENCE
+        // Map aircraft codes to hotkey guide filenames
+        var filenameMap = new Dictionary<string, string>
+        {
+            { "A320", "FBW_A320_Hotkeys.txt" },
+            { "FENIX_A320CEO", "Fenix_A320_Hotkeys.txt" }
+        };
 
-Application Navigation:
-  Ctrl+1     Focus Sections List
-  Ctrl+2     Focus Panels List
+        // Determine which file to load
+        string filename = filenameMap.ContainsKey(aircraftCode)
+            ? filenameMap[aircraftCode]
+            : "FBW_A320_Hotkeys.txt"; // Default fallback
 
+        // Construct file path
+        string appPath = AppDomain.CurrentDomain.BaseDirectory;
+        string filePath = Path.Combine(appPath, "HotkeyGuides", filename);
 
-OUTPUT MODE - Press ] to activate
-
-FCU Controls:
-  Shift+H    Read FCU Heading
-  Shift+S    Read FCU Speed
-  Shift+A    Read FCU Altitude
-  Shift+V    Read FCU VS/FPA
-
-Altitude:
-  Q          Read Altitude AGL
-  A          Read Altitude MSL
-
-Airspeed:
-  S          Read IAS (Indicated Airspeed)
-  T          Read TAS (True Airspeed)
-  G          Read Ground Speed
-  M Read Mach Number.
-
-Heading:
-  H          Read Magnetic Heading
-  U          Read True Heading
-
-Vertical:
-  V          Read Vertical Speed
-
-Weather:
-  I Wind info
-
-Flight planning:
-  W Next waypoint information
-
-Fuel:
-  F          Read Total Fuel Quantity
-
-Tools:
-CTRL+T, Takeoff Assistance
- CTRL+E, Enable Engine and warning display auto announcements
-
-Displays and windows:
-  Shift+E, Electronic Flight Bag window
-  Shift+F, Fuel and payload window
-  Shift+U,    Engine and warning display window
-  Shift+T,    SD Status window
-  Shift+N,    Navigation display
-  Shift+L,    Location Info
-  Shift+M,    Show VATSIM METAR Report
-  Shift+D,    SimBrief Briefing
-  Shift+C,    Show Checklist
-  Shift+P,    Show PFD Window
-  
-Speed Tape:
-  Shift+1    Read O Speed (GD)
-  Shift+2    Read S-Speed
-  Shift+3    Read F-Speed
-  Shift+4    Read VLS (Minimum Selectable Speed)
-  Shift+5    Read VS (Stall Speed)
-  Shift+6    Read VFE Speed
-
-INPUT MODE - Press [ to activate
-
-Teleport:
-  Shift+R    Runway Teleport
-  Shift+G    Gate Teleport
-
-Flight planning:
-  Shift+D    Select Destination Runway
-
-Autopilot:
-  Shift+A    Toggle Autopilot 1
-  Ctrl+O     Toggle Autopilot 2
-  Shift+P    Toggle Approach Mode
-
-FCU Push/Pull:
-  Shift+1    Push Heading Knob
-  Ctrl+1     Pull Heading Knob
-  Shift+2    Push Altitude Knob
-  Ctrl+2     Pull Altitude Knob
-  Shift+3    Push Speed Knob
-  Ctrl+3     Pull Speed Knob
-  Shift+4    Push VS Knob
-  Ctrl+4     Pull VS Knob
-
-FCU Set Values:
-  Ctrl+H     Set Heading Value
-  Ctrl+S     Set Speed Value
-  Ctrl+A     Set Altitude Value
-  Ctrl+V     Set VS Value
-
-
-General:
-  Escape     Exit active hotkey mode";
+        try
+        {
+            if (File.Exists(filePath))
+            {
+                return File.ReadAllText(filePath);
+            }
+            else
+            {
+                return $"Error: Hotkey guide file not found.\n\nExpected file: {filePath}\n\nPlease ensure hotkey guide files are included in the application directory.";
+            }
+        }
+        catch (Exception ex)
+        {
+            return $"Error loading hotkey guide:\n\n{ex.Message}\n\nFile: {filePath}";
+        }
     }
 
     private void SetupAccessibility()
