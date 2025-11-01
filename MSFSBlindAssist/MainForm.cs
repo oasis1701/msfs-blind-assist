@@ -989,7 +989,11 @@ public partial class MainForm : Form
         try
         {
             announcer.AnnounceImmediate("Opening your SimBrief briefing");
-            Process.Start("https://dispatch.simbrief.com/briefing/latest");
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "https://dispatch.simbrief.com/briefing/latest",
+                UseShellExecute = true
+            });
         }
         catch (Exception ex)
         {
