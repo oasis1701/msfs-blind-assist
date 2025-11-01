@@ -1045,7 +1045,7 @@ public partial class MainForm : Form
         // Create form if it doesn't exist or has been disposed
         if (checklistForm == null || checklistForm.IsDisposed)
         {
-            checklistForm = new ChecklistForm(announcer);
+            checklistForm = new ChecklistForm(announcer, currentAircraft.AircraftCode);
         }
 
         // Show the form (reuses same instance to preserve checkbox states)
@@ -1481,6 +1481,13 @@ public partial class MainForm : Form
         sectionsListBox.Items.Clear();
         panelsListBox.Items.Clear();
         controlsContainer.Controls.Clear();
+
+        // Dispose checklistForm so it reloads for new aircraft
+        if (checklistForm != null && !checklistForm.IsDisposed)
+        {
+            checklistForm.Dispose();
+            checklistForm = null;
+        }
 
         // Rebuild sections from new aircraft structure
         foreach (var section in currentAircraft.GetPanelStructure().Keys)

@@ -87,6 +87,13 @@
     <None Update="HotkeyGuides\Fenix_A320_Hotkeys.txt">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <!-- Checklist Files -->
+    <None Update="Checklists\FBW_A320_Checklist.txt">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="Checklists\Fenix_A320_Checklist.txt">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
   <ItemGroup>

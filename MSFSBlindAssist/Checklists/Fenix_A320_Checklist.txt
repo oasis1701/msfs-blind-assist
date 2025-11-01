@@ -1,0 +1,3 @@
+[Preflight Check]
+Battery 1 on
+Battery 2 on
