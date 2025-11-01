@@ -12319,11 +12319,11 @@ public class FenixA320Definition : BaseAircraftDefinition
                 return true;
 
             case HotkeyAction.ReadDisplayLowerECAM:
-                ReadDisplay(Services.GeminiService.DisplayType.LowerECAM, "Lower ECAM", announcer, parentForm);
+                ReadDisplay(Services.GeminiService.DisplayType.LowerECAM, "SD", announcer, parentForm);
                 return true;
 
             case HotkeyAction.ReadDisplayUpperECAM:
-                ReadDisplay(Services.GeminiService.DisplayType.UpperECAM, "Upper ECAM", announcer, parentForm);
+                ReadDisplay(Services.GeminiService.DisplayType.UpperECAM, "E/WD", announcer, parentForm);
                 return true;
 
             case HotkeyAction.ReadDisplayND:

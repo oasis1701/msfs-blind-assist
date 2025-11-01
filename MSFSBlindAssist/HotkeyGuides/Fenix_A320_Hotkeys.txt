@@ -9,11 +9,11 @@ OUTPUT MODE - Press right bracket to activate
 
 AI Features:
 Alt+d  describe scene
-alt+1 Read Upper ECAM/Engine and warning display, Needs default camera view 8
-alt+2 Read lower ECAM/SD display, Needs default camera view 8
-alt+3 Read Navigation display, Needs default camera view 8
-alt+4 read PFD display, needs default camera view 9
-alt+5 read ISIS display, needs default camera view 9
+alt+e Read E/WD (Engine and Warning Display), Needs default camera view 8
+alt+s Read SD (System Display), Needs default camera view 8
+alt+n Read Navigation display, Needs default camera view 8
+alt+p read PFD display, needs default camera view 9
+alt+i read ISIS display, needs default camera view 9
 
 FCU Controls:
   Shift+H    Read FCU Heading
@@ -81,3 +81,67 @@ FCU Set Values:
 
 General:
   Escape     Exit active hotkey mode
+
+Fenix A320 web MCDU accessibility extension hotkeys:
+                                                                                                                                                                                                                
+  Line Select Keys                                                                                                                                                                                               
+                                                                                                                                                                                                                 
+  Left Side (Ctrl + number):                                                                                                                                                                                     
+  - Ctrl+1: LSK1L (Line Select Key 1 Left)                                                                                                                                                                       
+  - Ctrl+2: LSK2L (Line Select Key 2 Left)                                                                                                                                                                       
+  - Ctrl+3: LSK3L (Line Select Key 3 Left)                                                                                                                                                                       
+  - Ctrl+4: LSK4L (Line Select Key 4 Left)                                                                                                                                                                       
+  - Ctrl+5: LSK5L (Line Select Key 5 Left)                                                                                                                                                                       
+  - Ctrl+6: LSK6L (Line Select Key 6 Left)                                                                                                                                                                       
+                                                                                                                                                                                                                 
+  Right Side (Alt + number):                                                                                                                                                                                     
+  - Alt+1: LSK1R (Line Select Key 1 Right)                                                                                                                                                                       
+  - Alt+2: LSK2R (Line Select Key 2 Right)                                                                                                                                                                       
+  - Alt+3: LSK3R (Line Select Key 3 Right)                                                                                                                                                                       
+  - Alt+4: LSK4R (Line Select Key 4 Right)                                                                                                                                                                       
+  - Alt+5: LSK5R (Line Select Key 5 Right)                                                                                                                                                                       
+  - Alt+6: LSK6R (Line Select Key 6 Right)                                                                                                                                                                       
+                                                                                                                                                                                                                 
+  Alphanumeric Keys                                                                                                                                                                                              
+                                                                                                                                                                                                                 
+  Letters: A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z                                                                                                                          
+                                                                                                                                                                                                                 
+  Numbers: 0, 1, 2, 3, 4, 5, 6, 7, 8, 9                                                                                                                                                                          
+                                                                                                                                                                                                                 
+  Special Characters                                                                                                                                                                                             
+                                                                                                                                                                                                                 
+  - Space: SPACE                                                                                                                                                                                                 
+  - /: SLASH                                                                                                                                                                                                     
+  - .: DOT                                                                                                                                                                                                       
+  - -: MINUS                                                                                                                                                                                                     
+  - Backspace: CLR (Clear)                                                                                                                                                                                       
+                                                                                                                                                                                                                 
+  Arrow Keys                                                                                                                                                                                                     
+                                                                                                                                                                                                                 
+  - ArrowUp: UP                                                                                                                                                                                                  
+  - ArrowDown: DOWN                                                                                                                                                                                              
+  - ArrowLeft: LEFT                                                                                                                                                                                              
+  - ArrowRight: RIGHT                                                                                                                                                                                            
+                                                                                                                                                                                                                 
+  Function Buttons (Ctrl + letter)                                                                                                                                                                               
+                                                                                                                                                                                                                 
+  - Ctrl+I: INIT                                                                                                                                                                                                 
+  - Ctrl+M: MENU                                                                                                                                                                                                 
+  - Ctrl+D: DIR                                                                                                                                                                                                  
+  - Ctrl+P: PROG                                                                                                                                                                                                 
+  - Ctrl+F: FPLN (Flight Plan)                                                                                                                                                                                   
+  - Ctrl+R: RAD_NAV (Radio Navigation)                                                                                                                                                                           
+  - Ctrl+E: PERF (Performance)                                                                                                                                                                                   
+  - Ctrl+S: SEC_FPLN (Secondary Flight Plan)                                                                                                                                                                     
+  - Ctrl+C: ATC_COM (ATC Communication)                                                                                                                                                                          
+  - Ctrl+O: OVFY (Overflight)                                                                                                                                                                                    
+  - Ctrl+U: FUEL_PRED (Fuel Prediction)                                                                                                                                                                          
+  - Ctrl+A: AIRPORT                                                                                                                                                                                              
+  - Ctrl+T: DATA                                                                                                                                                                                                 
+  - Ctrl+ArrowUp: BRT (Brightness Up)                                                                                                                                                                            
+  - Ctrl+ArrowDown: DIM (Brightness Down)                                                                                                                                                                        
+                                                                                                                                                                                                                 
+  Interface Control                                                                                                                                                                                              
+                                                                                                                                                                                                                 
+  - Alt+M: Toggle interface visibility (minimize/show)                                                                                                                                                           
+ 

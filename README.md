@@ -21,9 +21,9 @@ This application uses Windows standard controls, screen reader announcements and
 - Airport and runway lookup
 - Much more
 
-### Supported Aircraft
+## Supported Aircraft
 
-#### FlyByWire Airbus A320neo
+### FlyByWire Airbus A320neo
 
 - Important! The EFB (Electronic Flight Bag) is not accessible. You need mouse coordinates to be able to load your flight, payload and fuel. We hope the FBW team exposes their EFB to SimBridge, like the MCDU.
 - Panels fully supported, with some non-critical switches missing.
@@ -34,9 +34,37 @@ This application uses Windows standard controls, screen reader announcements and
 - Fuel, payload, weight and balance details fully supported
 - MCDU accessible through FBW SimBridge
 
-#### Fenix A320 CEO
+### Fenix A320 CEO
 
-In development! I am currently working to make it possible for blind and visually impaired users to fly this magnificent aircraft.
+MSFS Blind Assist now supports the Fenix A320. It allows totally blind individuals to hear and control this magnificent aircraft
+- The application allows control of over 300+ switches and knobs across the overhead, main instrument, pedestal and glareshield sections.
+- Global hotkey support for FCU operations, pulling and pushing knobs, adjusting FCU values, toggling Autopilot controls, etc.
+- Monitoring over 470+ light annunciators, gauges, electrical buses and aircraft switch states for automatic announcement to screen reader software as they change.
+- Using the power of Google Gemini to read Fenix displays, such as ECAM, ISIS, PFD and Navigation displays, Requires users own free AIStudio API key.
+- All our previous features are already integrated to this aircraft as well, including the route viewer, gate/runway teleport, metar report, our full-featured location info and text-based map and many more.
+- Comes with a hotkey list guide that shows all the global hotkeys that are currently supported through the input and output modes.
+- Work in progress checklist viewer, easily editable and readable by screen readers.
+
+#### Fenix A320 web MCDU accessibility browser extension
+
+The Fenix A320 comes with a web remote MCDU, but it is totally unreadable by screen readers. I've made an extension for chromium based browsers that completely transforms the interface for screen reader users, allowing to fully read the display of the MCDU and to control it with hotkeys.
+Please follow the instructions below to install the extension
+1. In your browser, go to about://extensions or  from the menu,  go to Extensions > Manage extensions
+2. Toggle developer mode on
+3. Press enter on "Load unpacked"
+4. When it asks you for a folder, select the "Fenix MCDU" folder inside your MSFS Blind Assist directory
+5. Enjoy! Now go to localhost:8083 when the aircraft is running, and through the tablet, access MCDU then left, to start using it!
+6. To know what hotkeys to use, read the hotkey guide either inside MSFS Blind Assist file menu > Hotkey List Guide, or see the text file inside the "hotkey guides" folder in your MSFS Blind Assist directory.
+
+#### How to read Fenix's displays with our AI-powered describer
+Please switch to the 8th instrument camera view by pressing Ctrl+8 on MSFS2020 or Shift+8 on MSFS2024, then:
+- Output mode > Alt+E to read the engine and warning display (upper ECAM)
+- Output mode > Alt+S to read the system display (lower ECAM)
+- Output mode > Alt+N to read the navigation display
+
+Switch to the 9th instrument camera view and then:
+- Output mode > Alt+P to read PFD
+- Output mode > Alt+I to read the ISIS display
 
 ## Discord
 Please join us on discord for support or to hang out with us:

@@ -422,12 +422,12 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_TRACK_SLOT_5, MOD_NONE, 0x35);  // 5 (Track Slot 5)
             RegisterHotKey(windowHandle, HOTKEY_FUEL_PAYLOAD, MOD_SHIFT, 0x46); // Shift+F (Fuel & Payload)
 
-            // Register display reading hotkeys (Alt+1-5 for Fenix A320)
-            RegisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_UPPER_ECAM, MOD_ALT, 0x31);  // Alt+1 (Read Upper ECAM/EWD)
-            RegisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_LOWER_ECAM, MOD_ALT, 0x32);  // Alt+2 (Read Lower ECAM)
-            RegisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_ND, MOD_ALT, 0x33);          // Alt+3 (Read ND)
-            RegisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_PFD, MOD_ALT, 0x34);         // Alt+4 (Read PFD)
-            RegisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_ISIS, MOD_ALT, 0x35);        // Alt+5 (Read ISIS)
+            // Register display reading hotkeys for Fenix A320
+            RegisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_UPPER_ECAM, MOD_ALT, 0x45);  // Alt+E (Read E/WD)
+            RegisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_LOWER_ECAM, MOD_ALT, 0x53);  // Alt+S (Read SD)
+            RegisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_ND, MOD_ALT, 0x4E);          // Alt+N (Read ND)
+            RegisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_PFD, MOD_ALT, 0x50);         // Alt+P (Read PFD)
+            RegisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_ISIS, MOD_ALT, 0x49);        // Alt+I (Read ISIS)
             RegisterHotKey(windowHandle, HOTKEY_DESCRIBE_SCENE, MOD_ALT, 0x44);           // Alt+D (Describe Scene)
 
             // Auto-timeout disabled - hotkey mode stays active until used or escape pressed
