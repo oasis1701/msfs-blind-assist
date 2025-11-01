@@ -12384,6 +12384,27 @@ public class FenixA320Definition : BaseAircraftDefinition
                 RequestFCUVerticalSpeedWithStatus(simConnect, announcer);
                 return true;
 
+            // FCU set windows (Ctrl+H, Ctrl+S, Ctrl+A, Ctrl+V, Ctrl+P in input mode)
+            case HotkeyAction.FCUSetHeading:
+                ShowFenixHeadingWindow(simConnect, announcer, parentForm);
+                return true;
+
+            case HotkeyAction.FCUSetSpeed:
+                ShowFenixSpeedWindow(simConnect, announcer, parentForm);
+                return true;
+
+            case HotkeyAction.FCUSetAltitude:
+                ShowFenixAltitudeWindow(simConnect, announcer, parentForm);
+                return true;
+
+            case HotkeyAction.FCUSetVS:
+                ShowFenixVSWindow(simConnect, announcer, parentForm);
+                return true;
+
+            case HotkeyAction.FCUSetAutopilot:
+                ShowFenixAutopilotWindow(simConnect, announcer, parentForm);
+                return true;
+
             default:
                 // Let base class handle other actions
                 return base.HandleHotkeyAction(action, simConnect, announcer, parentForm, hotkeyManager);
@@ -12454,5 +12475,105 @@ public class FenixA320Definition : BaseAircraftDefinition
                 System.Windows.Forms.MessageBoxButtons.OK,
                 System.Windows.Forms.MessageBoxIcon.Error);
         }
+    }
+
+    /// <summary>
+    /// Public wrapper for HandleUIVariableSet to be called from Fenix FCU windows.
+    /// </summary>
+    public bool SetFCUVariable(string varKey, double value,
+        SimConnect.SimConnectManager simConnect,
+        ScreenReaderAnnouncer announcer)
+    {
+        return HandleUIVariableSet(varKey, value, null!, simConnect, announcer);
+    }
+
+    /// <summary>
+    /// Shows the Fenix A320 Altitude window with altitude controls.
+    /// </summary>
+    private void ShowFenixAltitudeWindow(
+        SimConnect.SimConnectManager simConnect,
+        ScreenReaderAnnouncer announcer,
+        System.Windows.Forms.Form parentForm)
+    {
+        if (!simConnect.IsConnected)
+        {
+            announcer.AnnounceImmediate("Not connected to simulator.");
+            return;
+        }
+
+        var window = new Forms.FenixA320.FenixAltitudeWindow(this, simConnect, announcer);
+        window.ShowDialog(parentForm);
+    }
+
+    /// <summary>
+    /// Shows the Fenix A320 Heading window with heading controls.
+    /// </summary>
+    private void ShowFenixHeadingWindow(
+        SimConnect.SimConnectManager simConnect,
+        ScreenReaderAnnouncer announcer,
+        System.Windows.Forms.Form parentForm)
+    {
+        if (!simConnect.IsConnected)
+        {
+            announcer.AnnounceImmediate("Not connected to simulator.");
+            return;
+        }
+
+        var window = new Forms.FenixA320.FenixHeadingWindow(this, simConnect, announcer);
+        window.ShowDialog(parentForm);
+    }
+
+    /// <summary>
+    /// Shows the Fenix A320 Speed window with speed controls.
+    /// </summary>
+    private void ShowFenixSpeedWindow(
+        SimConnect.SimConnectManager simConnect,
+        ScreenReaderAnnouncer announcer,
+        System.Windows.Forms.Form parentForm)
+    {
+        if (!simConnect.IsConnected)
+        {
+            announcer.AnnounceImmediate("Not connected to simulator.");
+            return;
+        }
+
+        var window = new Forms.FenixA320.FenixSpeedWindow(this, simConnect, announcer);
+        window.ShowDialog(parentForm);
+    }
+
+    /// <summary>
+    /// Shows the Fenix A320 Vertical Speed window with V/S controls.
+    /// </summary>
+    private void ShowFenixVSWindow(
+        SimConnect.SimConnectManager simConnect,
+        ScreenReaderAnnouncer announcer,
+        System.Windows.Forms.Form parentForm)
+    {
+        if (!simConnect.IsConnected)
+        {
+            announcer.AnnounceImmediate("Not connected to simulator.");
+            return;
+        }
+
+        var window = new Forms.FenixA320.FenixVSWindow(this, simConnect, announcer);
+        window.ShowDialog(parentForm);
+    }
+
+    /// <summary>
+    /// Shows the Fenix A320 Autopilot window with autopilot controls.
+    /// </summary>
+    private void ShowFenixAutopilotWindow(
+        SimConnect.SimConnectManager simConnect,
+        ScreenReaderAnnouncer announcer,
+        System.Windows.Forms.Form parentForm)
+    {
+        if (!simConnect.IsConnected)
+        {
+            announcer.AnnounceImmediate("Not connected to simulator.");
+            return;
+        }
+
+        var window = new Forms.FenixA320.FenixAutopilotWindow(this, simConnect, announcer);
+        window.ShowDialog(parentForm);
     }
 }

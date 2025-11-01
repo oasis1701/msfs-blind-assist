@@ -64,6 +64,7 @@ public class HotkeyManager : IDisposable
         private const int HOTKEY_FCU_SET_SPEED = 9040;
         private const int HOTKEY_FCU_SET_ALTITUDE = 9041;
         private const int HOTKEY_FCU_SET_VS = 9042;
+        private const int HOTKEY_FCU_SET_AUTOPILOT = 9075;
         private const int HOTKEY_TOGGLE_AP2 = 9043;
         private const int HOTKEY_SPEED_GD = 9044;
         private const int HOTKEY_SPEED_S = 9045;
@@ -354,6 +355,9 @@ public class HotkeyManager : IDisposable
                         case HOTKEY_FCU_SET_VS:
                             TriggerHotkey(HotkeyAction.FCUSetVS);
                             break;
+                        case HOTKEY_FCU_SET_AUTOPILOT:
+                            TriggerHotkey(HotkeyAction.FCUSetAutopilot);
+                            break;
                         case HOTKEY_TOGGLE_AP2:
                             TriggerHotkey(HotkeyAction.ToggleAutopilot2);
                             break;
@@ -520,6 +524,7 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_FCU_SET_SPEED, MOD_CONTROL, 0x53);   // Ctrl+S (Set Speed)
             RegisterHotKey(windowHandle, HOTKEY_FCU_SET_ALTITUDE, MOD_CONTROL, 0x41); // Ctrl+A (Set Altitude)
             RegisterHotKey(windowHandle, HOTKEY_FCU_SET_VS, MOD_CONTROL, 0x56);      // Ctrl+V (Set VS)
+            RegisterHotKey(windowHandle, HOTKEY_FCU_SET_AUTOPILOT, MOD_CONTROL, 0x50); // Ctrl+P (Set Autopilot)
             RegisterHotKey(windowHandle, HOTKEY_TOGGLE_AP2, MOD_CONTROL, 0x4F);      // Ctrl+O (Toggle Autopilot 2)
 
             InputHotkeyModeChanged?.Invoke(this, true);
@@ -553,6 +558,7 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_FCU_SET_SPEED);
             UnregisterHotKey(windowHandle, HOTKEY_FCU_SET_ALTITUDE);
             UnregisterHotKey(windowHandle, HOTKEY_FCU_SET_VS);
+            UnregisterHotKey(windowHandle, HOTKEY_FCU_SET_AUTOPILOT);
             UnregisterHotKey(windowHandle, HOTKEY_TOGGLE_AP2);
 
             InputHotkeyModeChanged?.Invoke(this, false);
@@ -664,6 +670,7 @@ public class HotkeyManager : IDisposable
         FCUSetSpeed,
         FCUSetAltitude,
         FCUSetVS,
+        FCUSetAutopilot,
         ToggleAutopilot2,
         ReadSpeedGD,
         ReadSpeedS,
