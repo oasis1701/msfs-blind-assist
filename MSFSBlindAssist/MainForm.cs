@@ -88,6 +88,9 @@ public partial class MainForm : Form
             sectionsListBox.Items.Add(section);
         }
 
+        // Sync menu items with the loaded aircraft (fixes first-launch menu mismatch)
+        UpdateAircraftMenuItems();
+
         // Don't set focus - let default tab order handle it for proper menu accessibility
     }
 
@@ -188,6 +191,7 @@ public partial class MainForm : Form
             System.Diagnostics.Debug.WriteLine("[MainForm] Event batching timer started");
 
             announcer.Announce(status);
+            announcer.Announce($"{currentAircraft.AircraftName} Profile and panels active");
 
             // Automatically switch database if simulator version doesn't match
             CheckAndSwitchDatabase();
@@ -1496,11 +1500,7 @@ public partial class MainForm : Form
         }
 
         // Update all aircraft menu items' checked state
-        foreach (ToolStripMenuItem item in aircraftMenuItem.DropDownItems)
-        {
-            item.Checked = (item.Tag as IAircraftDefinition) == newAircraft ||
-                          (item == flyByWireA320MenuItem && newAircraft is FlyByWireA320Definition);
-        }
+        UpdateAircraftMenuItems();
 
         // Announce the switch
         announcer.AnnounceImmediate($"Switched to {currentAircraft.AircraftName}");
@@ -1518,6 +1518,26 @@ public partial class MainForm : Form
     {
         // Reserved for future menu-based aircraft-specific window launching
         // Currently all display windows are launched via hotkeys handled by aircraft definitions
+    }
+
+    /// <summary>
+    /// Updates aircraft menu item check states to match the current aircraft.
+    /// </summary>
+    private void UpdateAircraftMenuItems()
+    {
+        // Clear all menu item checks first
+        flyByWireA320MenuItem.Checked = false;
+        fenixA320MenuItem.Checked = false;
+
+        // Set the check on the current aircraft's menu item
+        if (currentAircraft is FlyByWireA320Definition)
+        {
+            flyByWireA320MenuItem.Checked = true;
+        }
+        else if (currentAircraft is FenixA320Definition)
+        {
+            fenixA320MenuItem.Checked = true;
+        }
     }
 
     private void UpdateDatabaseStatusDisplay()

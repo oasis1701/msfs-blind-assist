@@ -698,10 +698,31 @@ public class SimConnectManager
     {
         System.Diagnostics.Debug.WriteLine("[SimConnectManager] Re-registering all variables for new aircraft");
 
+        // Clear old data definitions from SimConnect before losing track of their IDs
+        if (simConnect != null)
+        {
+            foreach (var kvp in variableDataDefinitions)
+            {
+                try
+                {
+                    simConnect.ClearDataDefinition((DATA_DEFINITIONS)kvp.Value);
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error clearing data definition {kvp.Value} for {kvp.Key}: {ex.Message}");
+                }
+            }
+            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Cleared {variableDataDefinitions.Count} old data definitions from SimConnect");
+        }
+
         // Clear existing registrations
         variableDataDefinitions.Clear();
         lastVariableValues.Clear();
         forceUpdateVariables.Clear();
+
+        // Reset ID counter to avoid accumulating stale ID ranges over multiple switches
+        nextDataDefinitionId = 1000;
+        System.Diagnostics.Debug.WriteLine("[SimConnectManager] Reset nextDataDefinitionId to 1000");
 
         // Re-register all variables for new aircraft
         RegisterAllVariables();
