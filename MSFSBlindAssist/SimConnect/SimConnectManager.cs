@@ -1037,7 +1037,7 @@ public class SimConnectManager
 
             case (DATA_REQUESTS)308: // Vertical Speed
                 SingleValue vsData = (SingleValue)data.dwData[0];
-                double vsInFpm = vsData.value * 60; // Convert feet per second to feet per minute
+                double vsInFpm = vsData.value; // Already in feet per minute
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
                 {
                     VarName = "VERTICAL_SPEED",
@@ -2253,7 +2253,7 @@ public class SimConnectManager
                 var tempDefId = (DATA_DEFINITIONS)304;
                 SafelyClearDataDefinition(tempDefId, requestId: null, delayMs: 50);
                 simConnect.AddToDataDefinition(tempDefId,
-                    "PLANE ALTITUDE", "feet",
+                    "INDICATED ALTITUDE", "feet",
                     SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
                 simConnect.RegisterDataDefineStruct<SingleValue>(tempDefId);
                 simConnect.RequestDataOnSimObject((DATA_REQUESTS)304,
@@ -2345,7 +2345,7 @@ public class SimConnectManager
                 var tempDefId = (DATA_DEFINITIONS)308;
                 SafelyClearDataDefinition(tempDefId, requestId: null, delayMs: 50);
                 simConnect.AddToDataDefinition(tempDefId,
-                    "VERTICAL SPEED", "feet per second",
+                    "VERTICAL SPEED", "feet per minute",
                     SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
                 simConnect.RegisterDataDefineStruct<SingleValue>(tempDefId);
                 simConnect.RequestDataOnSimObject((DATA_REQUESTS)308,
