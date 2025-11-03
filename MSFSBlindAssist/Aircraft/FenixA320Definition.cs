@@ -12269,6 +12269,237 @@ public class FenixA320Definition : BaseAircraftDefinition
     }
 
     /// <summary>
+    /// Calculates the shortest heading delta accounting for wraparound (0-359 degrees).
+    /// Example: From 340 to 20 = +40 (not -320)
+    /// </summary>
+    private int CalculateHeadingDelta(int currentHeading, int targetHeading)
+    {
+        int delta = targetHeading - currentHeading;
+
+        // Normalize to shortest path (-180 to +180)
+        if (delta > 180)
+            delta -= 360;
+        else if (delta < -180)
+            delta += 360;
+
+        return delta;
+    }
+
+    /// <summary>
+    /// Sets FCU heading value by calculating delta and sending counter increments.
+    /// Uses shortest path with wraparound logic (340° → 20° = 40 increments).
+    /// </summary>
+    public async System.Threading.Tasks.Task SetFCUHeading(
+        int targetHeading,
+        SimConnect.SimConnectManager simConnect,
+        Accessibility.ScreenReaderAnnouncer announcer)
+    {
+        if (!simConnect.IsConnected)
+        {
+            announcer.AnnounceImmediate("Not connected to simulator");
+            return;
+        }
+
+        // Read current heading from cached continuous monitoring
+        double? currentValue = simConnect.GetCachedVariableValue("N_FCU_HEADING");
+        if (currentValue == null)
+        {
+            announcer.AnnounceImmediate("Unable to read current heading");
+            return;
+        }
+
+        int currentHeading = (int)currentValue.Value;
+        int delta = CalculateHeadingDelta(currentHeading, targetHeading);
+
+        if (delta == 0)
+        {
+            announcer.AnnounceImmediate($"Already at heading {targetHeading}");
+            return;
+        }
+
+        announcer.Announce($"Setting heading from {currentHeading} to {targetHeading}");
+
+        // Send counter increments/decrements
+        for (int i = 0; i < Math.Abs(delta); i++)
+        {
+            if (delta > 0)
+                IncrementCounter("E_FCU_HEADING", simConnect);
+            else
+                DecrementCounter("E_FCU_HEADING", simConnect);
+
+            await System.Threading.Tasks.Task.Delay(15);  // Increased from 10ms to 15ms for reliability
+        }
+
+        // Wait for FCU to update
+        await System.Threading.Tasks.Task.Delay(200);
+    }
+
+    /// <summary>
+    /// Sets FCU altitude value using 100ft mode only for reliability.
+    /// Always forces 100ft mode to avoid rounding issues with 1000ft mode.
+    /// </summary>
+    public async System.Threading.Tasks.Task SetFCUAltitude(
+        int targetAltitude,
+        SimConnect.SimConnectManager simConnect,
+        Accessibility.ScreenReaderAnnouncer announcer,
+        int userPreferredScaleMode)
+    {
+        if (!simConnect.IsConnected)
+        {
+            announcer.AnnounceImmediate("Not connected to simulator");
+            return;
+        }
+
+        // Validate altitude is in 100ft increments
+        if (targetAltitude % 100 != 0)
+        {
+            targetAltitude = (targetAltitude / 100) * 100;
+            announcer.Announce($"Rounding to {targetAltitude} feet");
+        }
+
+        // Read current altitude from cached continuous monitoring
+        double? currentValue = simConnect.GetCachedVariableValue("N_FCU_ALTITUDE");
+        if (currentValue == null)
+        {
+            announcer.AnnounceImmediate("Unable to read current altitude");
+            return;
+        }
+
+        int currentAltitude = (int)currentValue.Value;
+        int totalDelta = targetAltitude - currentAltitude;
+
+        if (totalDelta == 0)
+        {
+            announcer.AnnounceImmediate($"Already at altitude {targetAltitude}");
+            return;
+        }
+
+        announcer.Announce($"Setting altitude from {currentAltitude} to {targetAltitude}");
+
+        // ALWAYS use 100ft mode to avoid rounding issues with 1000ft mode
+        // (In 1000ft mode, increments round to nearest thousand instead of adding 1000)
+        simConnect.SetLVar("S_FCU_ALTITUDE_SCALE", 0);  // Force 100ft mode
+        await System.Threading.Tasks.Task.Delay(100);  // Wait for mode to activate
+
+        // Calculate steps (each increment = 100ft)
+        int steps = totalDelta / 100;
+
+        // Send all increments in 100ft mode
+        for (int i = 0; i < Math.Abs(steps); i++)
+        {
+            if (steps > 0)
+                IncrementCounter("E_FCU_ALTITUDE", simConnect);
+            else
+                DecrementCounter("E_FCU_ALTITUDE", simConnect);
+
+            await System.Threading.Tasks.Task.Delay(15);  // Increased from 10ms to 15ms for reliability
+        }
+
+        // Wait for final adjustment
+        await System.Threading.Tasks.Task.Delay(200);
+
+        // Restore user's preferred mode
+        simConnect.SetLVar("S_FCU_ALTITUDE_SCALE", userPreferredScaleMode);
+    }
+
+    /// <summary>
+    /// Sets FCU speed value by calculating delta and sending counter increments.
+    /// </summary>
+    public async System.Threading.Tasks.Task SetFCUSpeed(
+        int targetSpeed,
+        SimConnect.SimConnectManager simConnect,
+        Accessibility.ScreenReaderAnnouncer announcer)
+    {
+        if (!simConnect.IsConnected)
+        {
+            announcer.AnnounceImmediate("Not connected to simulator");
+            return;
+        }
+
+        // Read current speed from cached continuous monitoring
+        double? currentValue = simConnect.GetCachedVariableValue("N_FCU_SPEED");
+        if (currentValue == null)
+        {
+            announcer.AnnounceImmediate("Unable to read current speed");
+            return;
+        }
+
+        int currentSpeed = (int)currentValue.Value;
+        int delta = targetSpeed - currentSpeed;
+
+        if (delta == 0)
+        {
+            announcer.AnnounceImmediate($"Already at speed {targetSpeed}");
+            return;
+        }
+
+        announcer.Announce($"Setting speed from {currentSpeed} to {targetSpeed}");
+
+        // Send counter increments/decrements
+        for (int i = 0; i < Math.Abs(delta); i++)
+        {
+            if (delta > 0)
+                IncrementCounter("E_FCU_SPEED", simConnect);
+            else
+                DecrementCounter("E_FCU_SPEED", simConnect);
+
+            await System.Threading.Tasks.Task.Delay(15);  // Increased from 10ms to 15ms for reliability
+        }
+
+        // Wait for FCU to update
+        await System.Threading.Tasks.Task.Delay(200);
+    }
+
+    /// <summary>
+    /// Sets FCU vertical speed value by calculating delta and sending counter increments.
+    /// </summary>
+    public async System.Threading.Tasks.Task SetFCUVS(
+        int targetVS,
+        SimConnect.SimConnectManager simConnect,
+        Accessibility.ScreenReaderAnnouncer announcer)
+    {
+        if (!simConnect.IsConnected)
+        {
+            announcer.AnnounceImmediate("Not connected to simulator");
+            return;
+        }
+
+        // Read current VS from cached continuous monitoring
+        double? currentValue = simConnect.GetCachedVariableValue("N_FCU_VS");
+        if (currentValue == null)
+        {
+            announcer.AnnounceImmediate("Unable to read current vertical speed");
+            return;
+        }
+
+        int currentVS = (int)currentValue.Value;
+        int delta = targetVS - currentVS;
+
+        if (delta == 0)
+        {
+            announcer.AnnounceImmediate($"Already at vertical speed {targetVS}");
+            return;
+        }
+
+        announcer.Announce($"Setting vertical speed from {currentVS} to {targetVS}");
+
+        // Send counter increments/decrements (each increment is 100 fpm)
+        int steps = delta / 100;
+        for (int i = 0; i < Math.Abs(steps); i++)
+        {
+            if (steps > 0)
+                IncrementCounter("E_FCU_VS", simConnect);
+            else
+                DecrementCounter("E_FCU_VS", simConnect);
+
+            await System.Threading.Tasks.Task.Delay(15);  // Increased from 10ms to 15ms for reliability
+        }
+
+        // Wait for FCU to update
+        await System.Threading.Tasks.Task.Delay(200);
+    }
+
+    /// <summary>
     /// Helper method for rudder trim momentary buttons.
     /// Sends the trim direction value, waits, then returns to center (1).
     /// </summary>

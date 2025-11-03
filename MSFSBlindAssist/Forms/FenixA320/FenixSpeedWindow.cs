@@ -13,8 +13,9 @@ public partial class FenixSpeedWindow : Form
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr hWnd);
 
-    private Button spdDecButton = null!;
-    private Button spdIncButton = null!;
+    private Label speedLabel = null!;
+    private TextBox speedTextBox = null!;
+    private Button setButton = null!;
     private Button spdPushButton = null!;
     private Button spdPullButton = null!;
     private Button spdMachButton = null!;
@@ -52,35 +53,43 @@ public partial class FenixSpeedWindow : Form
         MinimizeBox = false;
         ShowInTaskbar = false;
 
-        // Speed Decrease Button
-        spdDecButton = new Button
+        // Speed Label
+        speedLabel = new Label
         {
-            Text = "Speed Decrease",
-            Location = new Point(20, 20),
-            Size = new Size(160, 35),
-            AccessibleName = "Speed Decrease",
-            AccessibleDescription = "Decrease FCU speed",
+            Text = "Speed (100-399 / 0.1-0.99):",
+            Location = new Point(20, 25),
+            Size = new Size(160, 20),
+            AccessibleName = "Speed Label"
+        };
+
+        // Speed TextBox
+        speedTextBox = new TextBox
+        {
+            Location = new Point(190, 22),
+            Size = new Size(80, 25),
+            AccessibleName = "Speed value",
+            AccessibleDescription = "Enter speed value: 100-399 knots or 0.10-0.99 Mach",
             TabIndex = 0
         };
-        spdDecButton.Click += (s, e) => HandleButtonClick("E_FCU_SPEED_DEC");
+        speedTextBox.KeyDown += SpeedTextBox_KeyDown;
 
-        // Speed Increase Button
-        spdIncButton = new Button
+        // Set Button
+        setButton = new Button
         {
-            Text = "Speed Increase",
-            Location = new Point(200, 20),
-            Size = new Size(160, 35),
-            AccessibleName = "Speed Increase",
-            AccessibleDescription = "Increase FCU speed",
+            Text = "Set",
+            Location = new Point(280, 20),
+            Size = new Size(80, 30),
+            AccessibleName = "Set Speed",
+            AccessibleDescription = "Set the entered speed value",
             TabIndex = 1
         };
-        spdIncButton.Click += (s, e) => HandleButtonClick("E_FCU_SPEED_INC");
+        setButton.Click += async (s, e) => await HandleSetClick();
 
         // Speed Push Button
         spdPushButton = new Button
         {
             Text = "Speed Push",
-            Location = new Point(20, 70),
+            Location = new Point(20, 65),
             Size = new Size(160, 35),
             AccessibleName = "Speed Push",
             AccessibleDescription = "Push FCU speed knob",
@@ -92,7 +101,7 @@ public partial class FenixSpeedWindow : Form
         spdPullButton = new Button
         {
             Text = "Speed Pull",
-            Location = new Point(200, 70),
+            Location = new Point(200, 65),
             Size = new Size(160, 35),
             AccessibleName = "Speed Pull",
             AccessibleDescription = "Pull FCU speed knob",
@@ -104,7 +113,7 @@ public partial class FenixSpeedWindow : Form
         spdMachButton = new Button
         {
             Text = "SPD/MACH",
-            Location = new Point(20, 120),
+            Location = new Point(20, 115),
             Size = new Size(340, 35),
             AccessibleName = "SPD/MACH",
             AccessibleDescription = "Toggle speed and mach mode",
@@ -116,7 +125,7 @@ public partial class FenixSpeedWindow : Form
         closeButton = new Button
         {
             Text = "Close",
-            Location = new Point(130, 230),
+            Location = new Point(130, 220),
             Size = new Size(140, 35),
             DialogResult = DialogResult.OK,
             AccessibleName = "Close",
@@ -128,7 +137,7 @@ public partial class FenixSpeedWindow : Form
         // Add controls to form
         Controls.AddRange(new Control[]
         {
-            spdDecButton, spdIncButton, spdPushButton, spdPullButton,
+            speedLabel, speedTextBox, setButton, spdPushButton, spdPullButton,
             spdMachButton, closeButton
         });
 
@@ -144,7 +153,7 @@ public partial class FenixSpeedWindow : Form
             Activate();
             TopMost = true;
             TopMost = false; // Flash to bring to front
-            spdDecButton.Focus();
+            speedTextBox.Focus();
         };
 
         // Handle escape key and form closing
@@ -166,6 +175,48 @@ public partial class FenixSpeedWindow : Form
                 SetForegroundWindow(previousWindow);
             }
         };
+    }
+
+    private void SpeedTextBox_KeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.KeyCode == Keys.Enter)
+        {
+            e.Handled = true;
+            _ = HandleSetClick();  // Fire and forget async call
+        }
+    }
+
+    private async System.Threading.Tasks.Task HandleSetClick()
+    {
+        string input = speedTextBox.Text.Trim();
+
+        if (string.IsNullOrEmpty(input))
+        {
+            announcer.AnnounceImmediate("Please enter a speed value");
+            speedTextBox.Focus();
+            return;
+        }
+
+        if (!double.TryParse(input, out double value))
+        {
+            announcer.AnnounceImmediate("Invalid number format");
+            speedTextBox.Focus();
+            speedTextBox.SelectAll();
+            return;
+        }
+
+        // Accept knots (100-399) or Mach (0.10-0.99)
+        if (!((value >= 100 && value <= 399) || (value >= 0.10 && value <= 0.99)))
+        {
+            announcer.AnnounceImmediate("Speed must be 100-399 knots or 0.10-0.99 Mach");
+            speedTextBox.Focus();
+            speedTextBox.SelectAll();
+            return;
+        }
+
+        // Convert Mach to internal representation (multiply by 100)
+        int targetSpeed = value < 1.0 ? (int)(value * 100) : (int)Math.Round(value);
+        await aircraft.SetFCUSpeed(targetSpeed, simConnect, announcer);
     }
 
     private void HandleButtonClick(string varKey)

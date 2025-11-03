@@ -13,8 +13,9 @@ public partial class FenixHeadingWindow : Form
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr hWnd);
 
-    private Button hdgDecButton = null!;
-    private Button hdgIncButton = null!;
+    private Label headingLabel = null!;
+    private TextBox headingTextBox = null!;
+    private Button setButton = null!;
     private Button hdgPushButton = null!;
     private Button hdgPullButton = null!;
     private Button hdgVsTrkFpaButton = null!;
@@ -52,35 +53,43 @@ public partial class FenixHeadingWindow : Form
         MinimizeBox = false;
         ShowInTaskbar = false;
 
-        // Heading Decrease Button
-        hdgDecButton = new Button
+        // Heading Label
+        headingLabel = new Label
         {
-            Text = "Heading Decrease",
-            Location = new Point(20, 20),
-            Size = new Size(160, 35),
-            AccessibleName = "Heading Decrease",
-            AccessibleDescription = "Decrease FCU heading",
+            Text = "Heading (0-360):",
+            Location = new Point(20, 25),
+            Size = new Size(120, 20),
+            AccessibleName = "Heading Label"
+        };
+
+        // Heading TextBox
+        headingTextBox = new TextBox
+        {
+            Location = new Point(150, 22),
+            Size = new Size(100, 25),
+            AccessibleName = "Heading value",
+            AccessibleDescription = "Enter heading value between 0 and 360 degrees",
             TabIndex = 0
         };
-        hdgDecButton.Click += (s, e) => HandleButtonClick("E_FCU_HEADING_DEC");
+        headingTextBox.KeyDown += HeadingTextBox_KeyDown;
 
-        // Heading Increase Button
-        hdgIncButton = new Button
+        // Set Button
+        setButton = new Button
         {
-            Text = "Heading Increase",
-            Location = new Point(200, 20),
-            Size = new Size(160, 35),
-            AccessibleName = "Heading Increase",
-            AccessibleDescription = "Increase FCU heading",
+            Text = "Set",
+            Location = new Point(260, 20),
+            Size = new Size(100, 30),
+            AccessibleName = "Set Heading",
+            AccessibleDescription = "Set the entered heading value",
             TabIndex = 1
         };
-        hdgIncButton.Click += (s, e) => HandleButtonClick("E_FCU_HEADING_INC");
+        setButton.Click += async (s, e) => await HandleSetClick();
 
         // Heading Push Button
         hdgPushButton = new Button
         {
             Text = "Heading Push",
-            Location = new Point(20, 70),
+            Location = new Point(20, 65),
             Size = new Size(160, 35),
             AccessibleName = "Heading Push",
             AccessibleDescription = "Push FCU heading knob",
@@ -92,7 +101,7 @@ public partial class FenixHeadingWindow : Form
         hdgPullButton = new Button
         {
             Text = "Heading Pull",
-            Location = new Point(200, 70),
+            Location = new Point(200, 65),
             Size = new Size(160, 35),
             AccessibleName = "Heading Pull",
             AccessibleDescription = "Pull FCU heading knob",
@@ -104,7 +113,7 @@ public partial class FenixHeadingWindow : Form
         hdgVsTrkFpaButton = new Button
         {
             Text = "HDG/VS TRK/FPA",
-            Location = new Point(20, 120),
+            Location = new Point(20, 115),
             Size = new Size(340, 35),
             AccessibleName = "HDG/VS TRK/FPA",
             AccessibleDescription = "Toggle HDG/VS and TRK/FPA mode",
@@ -116,7 +125,7 @@ public partial class FenixHeadingWindow : Form
         closeButton = new Button
         {
             Text = "Close",
-            Location = new Point(130, 230),
+            Location = new Point(130, 220),
             Size = new Size(140, 35),
             DialogResult = DialogResult.OK,
             AccessibleName = "Close",
@@ -128,7 +137,7 @@ public partial class FenixHeadingWindow : Form
         // Add controls to form
         Controls.AddRange(new Control[]
         {
-            hdgDecButton, hdgIncButton, hdgPushButton, hdgPullButton,
+            headingLabel, headingTextBox, setButton, hdgPushButton, hdgPullButton,
             hdgVsTrkFpaButton, closeButton
         });
 
@@ -144,7 +153,7 @@ public partial class FenixHeadingWindow : Form
             Activate();
             TopMost = true;
             TopMost = false; // Flash to bring to front
-            hdgDecButton.Focus();
+            headingTextBox.Focus();
         };
 
         // Handle escape key and form closing
@@ -166,6 +175,46 @@ public partial class FenixHeadingWindow : Form
                 SetForegroundWindow(previousWindow);
             }
         };
+    }
+
+    private void HeadingTextBox_KeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.KeyCode == Keys.Enter)
+        {
+            e.Handled = true;
+            _ = HandleSetClick();  // Fire and forget async call
+        }
+    }
+
+    private async System.Threading.Tasks.Task HandleSetClick()
+    {
+        string input = headingTextBox.Text.Trim();
+
+        if (string.IsNullOrEmpty(input))
+        {
+            announcer.AnnounceImmediate("Please enter a heading value");
+            headingTextBox.Focus();
+            return;
+        }
+
+        if (!double.TryParse(input, out double value))
+        {
+            announcer.AnnounceImmediate("Invalid number format");
+            headingTextBox.Focus();
+            headingTextBox.SelectAll();
+            return;
+        }
+
+        if (value < 0 || value > 360)
+        {
+            announcer.AnnounceImmediate("Heading must be between 0 and 360 degrees");
+            headingTextBox.Focus();
+            headingTextBox.SelectAll();
+            return;
+        }
+
+        int targetHeading = (int)Math.Round(value);
+        await aircraft.SetFCUHeading(targetHeading, simConnect, announcer);
     }
 
     private void HandleButtonClick(string varKey)

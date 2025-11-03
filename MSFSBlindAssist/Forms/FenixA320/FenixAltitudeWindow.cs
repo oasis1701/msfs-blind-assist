@@ -13,11 +13,11 @@ public partial class FenixAltitudeWindow : Form
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr hWnd);
 
-    private Button altDecButton = null!;
-    private Button altIncButton = null!;
+    private Label altitudeLabel = null!;
+    private TextBox altitudeTextBox = null!;
+    private Button setButton = null!;
     private Button altPushButton = null!;
     private Button altPullButton = null!;
-    private ComboBox altScaleComboBox = null!;
     private Button closeButton = null!;
 
     private readonly FenixA320Definition aircraft;
@@ -45,42 +45,50 @@ public partial class FenixAltitudeWindow : Form
     {
         // Form properties
         Text = "Fenix A320 - Altitude Controls";
-        Size = new Size(400, 300);
+        Size = new Size(400, 250);
         StartPosition = FormStartPosition.CenterScreen;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
         ShowInTaskbar = false;
 
-        // Altitude Decrease Button
-        altDecButton = new Button
+        // Altitude Label
+        altitudeLabel = new Label
         {
-            Text = "Altitude Decrease",
-            Location = new Point(20, 20),
-            Size = new Size(160, 35),
-            AccessibleName = "Altitude Decrease",
-            AccessibleDescription = "Decrease FCU altitude",
+            Text = "Altitude (100-49000):",
+            Location = new Point(20, 25),
+            Size = new Size(130, 20),
+            AccessibleName = "Altitude Label"
+        };
+
+        // Altitude TextBox
+        altitudeTextBox = new TextBox
+        {
+            Location = new Point(160, 22),
+            Size = new Size(100, 25),
+            AccessibleName = "Altitude value",
+            AccessibleDescription = "Enter altitude value between 100 and 49000 feet",
             TabIndex = 0
         };
-        altDecButton.Click += (s, e) => HandleButtonClick("E_FCU_ALTITUDE_DEC");
+        altitudeTextBox.KeyDown += AltitudeTextBox_KeyDown;
 
-        // Altitude Increase Button
-        altIncButton = new Button
+        // Set Button
+        setButton = new Button
         {
-            Text = "Altitude Increase",
-            Location = new Point(200, 20),
-            Size = new Size(160, 35),
-            AccessibleName = "Altitude Increase",
-            AccessibleDescription = "Increase FCU altitude",
+            Text = "Set",
+            Location = new Point(270, 20),
+            Size = new Size(90, 30),
+            AccessibleName = "Set Altitude",
+            AccessibleDescription = "Set the entered altitude value",
             TabIndex = 1
         };
-        altIncButton.Click += (s, e) => HandleButtonClick("E_FCU_ALTITUDE_INC");
+        setButton.Click += async (s, e) => await HandleSetClick();
 
         // Altitude Push Button
         altPushButton = new Button
         {
             Text = "Altitude Push",
-            Location = new Point(20, 70),
+            Location = new Point(20, 65),
             Size = new Size(160, 35),
             AccessibleName = "Altitude Push",
             AccessibleDescription = "Push FCU altitude knob",
@@ -92,7 +100,7 @@ public partial class FenixAltitudeWindow : Form
         altPullButton = new Button
         {
             Text = "Altitude Pull",
-            Location = new Point(200, 70),
+            Location = new Point(200, 65),
             Size = new Size(160, 35),
             AccessibleName = "Altitude Pull",
             AccessibleDescription = "Pull FCU altitude knob",
@@ -100,46 +108,24 @@ public partial class FenixAltitudeWindow : Form
         };
         altPullButton.Click += (s, e) => HandleButtonClick("S_FCU_ALTITUDE_PULL");
 
-        // Altitude Scale ComboBox
-        var scaleLabel = new Label
-        {
-            Text = "Altitude Scale:",
-            Location = new Point(20, 125),
-            Size = new Size(100, 20),
-            AccessibleName = "Altitude Scale Label"
-        };
-
-        altScaleComboBox = new ComboBox
-        {
-            Location = new Point(130, 122),
-            Size = new Size(230, 25),
-            DropDownStyle = ComboBoxStyle.DropDownList,
-            AccessibleName = "Altitude Scale",
-            AccessibleDescription = "Select altitude increment scale",
-            TabIndex = 4
-        };
-        altScaleComboBox.Items.AddRange(new object[] { "100 feet", "1000 feet" });
-        altScaleComboBox.SelectedIndex = 0;
-        altScaleComboBox.SelectedIndexChanged += AltScaleComboBox_SelectedIndexChanged;
-
         // Close Button
         closeButton = new Button
         {
             Text = "Close",
-            Location = new Point(130, 220),
+            Location = new Point(130, 160),
             Size = new Size(140, 35),
             DialogResult = DialogResult.OK,
             AccessibleName = "Close",
             AccessibleDescription = "Close window",
-            TabIndex = 5
+            TabIndex = 4
         };
         closeButton.Click += (s, e) => Close();
 
         // Add controls to form
         Controls.AddRange(new Control[]
         {
-            altDecButton, altIncButton, altPushButton, altPullButton,
-            scaleLabel, altScaleComboBox, closeButton
+            altitudeLabel, altitudeTextBox, setButton, altPushButton, altPullButton,
+            closeButton
         });
 
         CancelButton = closeButton;
@@ -154,7 +140,7 @@ public partial class FenixAltitudeWindow : Form
             Activate();
             TopMost = true;
             TopMost = false; // Flash to bring to front
-            altDecButton.Focus();
+            altitudeTextBox.Focus();
         };
 
         // Handle escape key and form closing
@@ -178,15 +164,50 @@ public partial class FenixAltitudeWindow : Form
         };
     }
 
+    private void AltitudeTextBox_KeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.KeyCode == Keys.Enter)
+        {
+            e.Handled = true;
+            _ = HandleSetClick();  // Fire and forget async call
+        }
+    }
+
+    private async System.Threading.Tasks.Task HandleSetClick()
+    {
+        string input = altitudeTextBox.Text.Trim();
+
+        if (string.IsNullOrEmpty(input))
+        {
+            announcer.AnnounceImmediate("Please enter an altitude value");
+            altitudeTextBox.Focus();
+            return;
+        }
+
+        if (!double.TryParse(input, out double value))
+        {
+            announcer.AnnounceImmediate("Invalid number format");
+            altitudeTextBox.Focus();
+            altitudeTextBox.SelectAll();
+            return;
+        }
+
+        if (value < 100 || value > 49000)
+        {
+            announcer.AnnounceImmediate("Altitude must be between 100 and 49000 feet");
+            altitudeTextBox.Focus();
+            altitudeTextBox.SelectAll();
+            return;
+        }
+
+        int targetAltitude = (int)Math.Round(value);
+        // Always use 100ft mode (userPreferredMode = 0), altitude scale is now in panels only
+        await aircraft.SetFCUAltitude(targetAltitude, simConnect, announcer, 0);
+    }
+
     private void HandleButtonClick(string varKey)
     {
         // Call the aircraft's FCU variable setter with value 1 (button press)
         aircraft.SetFCUVariable(varKey, 1, simConnect, announcer);
-    }
-
-    private void AltScaleComboBox_SelectedIndexChanged(object? sender, EventArgs e)
-    {
-        // ComboBox: 0 = 100ft, 1 = 1000ft
-        aircraft.SetFCUVariable("S_FCU_ALTITUDE_SCALE", altScaleComboBox.SelectedIndex, simConnect, announcer);
     }
 }

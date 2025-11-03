@@ -13,8 +13,9 @@ public partial class FenixVSWindow : Form
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr hWnd);
 
-    private Button vsDecButton = null!;
-    private Button vsIncButton = null!;
+    private Label vsLabel = null!;
+    private TextBox vsTextBox = null!;
+    private Button setButton = null!;
     private Button vsPushButton = null!;
     private Button vsPullButton = null!;
     private Button closeButton = null!;
@@ -51,35 +52,43 @@ public partial class FenixVSWindow : Form
         MinimizeBox = false;
         ShowInTaskbar = false;
 
-        // V/S Decrease Button
-        vsDecButton = new Button
+        // V/S Label
+        vsLabel = new Label
         {
-            Text = "V/S Decrease",
-            Location = new Point(20, 20),
-            Size = new Size(160, 35),
-            AccessibleName = "V/S Decrease",
-            AccessibleDescription = "Decrease FCU vertical speed",
+            Text = "V/S (-6000 to 6000):",
+            Location = new Point(20, 25),
+            Size = new Size(140, 20),
+            AccessibleName = "Vertical Speed Label"
+        };
+
+        // V/S TextBox
+        vsTextBox = new TextBox
+        {
+            Location = new Point(170, 22),
+            Size = new Size(90, 25),
+            AccessibleName = "Vertical speed value",
+            AccessibleDescription = "Enter vertical speed value between -6000 and 6000 feet per minute",
             TabIndex = 0
         };
-        vsDecButton.Click += (s, e) => HandleButtonClick("E_FCU_VS_DEC");
+        vsTextBox.KeyDown += VsTextBox_KeyDown;
 
-        // V/S Increase Button
-        vsIncButton = new Button
+        // Set Button
+        setButton = new Button
         {
-            Text = "V/S Increase",
-            Location = new Point(200, 20),
-            Size = new Size(160, 35),
-            AccessibleName = "V/S Increase",
-            AccessibleDescription = "Increase FCU vertical speed",
+            Text = "Set",
+            Location = new Point(270, 20),
+            Size = new Size(90, 30),
+            AccessibleName = "Set Vertical Speed",
+            AccessibleDescription = "Set the entered vertical speed value",
             TabIndex = 1
         };
-        vsIncButton.Click += (s, e) => HandleButtonClick("E_FCU_VS_INC");
+        setButton.Click += async (s, e) => await HandleSetClick();
 
         // V/S Push Button
         vsPushButton = new Button
         {
             Text = "V/S Push",
-            Location = new Point(20, 70),
+            Location = new Point(20, 65),
             Size = new Size(160, 35),
             AccessibleName = "V/S Push",
             AccessibleDescription = "Push FCU vertical speed knob",
@@ -91,7 +100,7 @@ public partial class FenixVSWindow : Form
         vsPullButton = new Button
         {
             Text = "V/S Pull",
-            Location = new Point(200, 70),
+            Location = new Point(200, 65),
             Size = new Size(160, 35),
             AccessibleName = "V/S Pull",
             AccessibleDescription = "Pull FCU vertical speed knob",
@@ -103,7 +112,7 @@ public partial class FenixVSWindow : Form
         closeButton = new Button
         {
             Text = "Close",
-            Location = new Point(130, 170),
+            Location = new Point(130, 160),
             Size = new Size(140, 35),
             DialogResult = DialogResult.OK,
             AccessibleName = "Close",
@@ -115,7 +124,7 @@ public partial class FenixVSWindow : Form
         // Add controls to form
         Controls.AddRange(new Control[]
         {
-            vsDecButton, vsIncButton, vsPushButton, vsPullButton, closeButton
+            vsLabel, vsTextBox, setButton, vsPushButton, vsPullButton, closeButton
         });
 
         CancelButton = closeButton;
@@ -130,7 +139,7 @@ public partial class FenixVSWindow : Form
             Activate();
             TopMost = true;
             TopMost = false; // Flash to bring to front
-            vsDecButton.Focus();
+            vsTextBox.Focus();
         };
 
         // Handle escape key and form closing
@@ -152,6 +161,46 @@ public partial class FenixVSWindow : Form
                 SetForegroundWindow(previousWindow);
             }
         };
+    }
+
+    private void VsTextBox_KeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.KeyCode == Keys.Enter)
+        {
+            e.Handled = true;
+            _ = HandleSetClick();  // Fire and forget async call
+        }
+    }
+
+    private async System.Threading.Tasks.Task HandleSetClick()
+    {
+        string input = vsTextBox.Text.Trim();
+
+        if (string.IsNullOrEmpty(input))
+        {
+            announcer.AnnounceImmediate("Please enter a vertical speed value");
+            vsTextBox.Focus();
+            return;
+        }
+
+        if (!double.TryParse(input, out double value))
+        {
+            announcer.AnnounceImmediate("Invalid number format");
+            vsTextBox.Focus();
+            vsTextBox.SelectAll();
+            return;
+        }
+
+        if (value < -6000 || value > 6000)
+        {
+            announcer.AnnounceImmediate("Vertical speed must be between -6000 and 6000 feet per minute");
+            vsTextBox.Focus();
+            vsTextBox.SelectAll();
+            return;
+        }
+
+        int targetVS = (int)Math.Round(value);
+        await aircraft.SetFCUVS(targetVS, simConnect, announcer);
     }
 
     private void HandleButtonClick(string varKey)
