@@ -8093,6 +8093,33 @@ public class FenixA320Definition : BaseAircraftDefinition
                 IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Auto", [2] = "On"}
             },
+            ["A_FC_THROTTLE_LEFT_INPUT_STATE"] = new SimConnect.SimVarDefinition
+            {
+                Name = "A_FC_THROTTLE_LEFT_INPUT",
+                DisplayName = "Left Thrust Lever",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> {[1] = "Reverse", [2] = "Idle", [3] = "CLB", [4] = "FLX/MCT", [5] = "TOGA"}
+            },
+            ["A_FC_THROTTLE_RIGHT_INPUT_STATE"] = new SimConnect.SimVarDefinition
+            {
+                Name = "A_FC_THROTTLE_RIGHT_INPUT",
+                DisplayName = "Right Thrust Lever",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> {[1] = "Reverse", [2] = "Idle", [3] = "CLB", [4] = "FLX/MCT", [5] = "TOGA"}
+            },
+            ["A_FC_SPEEDBRAKE_STATE"] = new SimConnect.SimVarDefinition
+            {
+                Name = "A_FC_SPEEDBRAKE",
+                DisplayName = "Spoilers",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Armed", [1] = "Disarmed/Stowed", [2] = "Half Extended", [3] = "Fully Extended"}
+            },
 
             // ========== WARNING (31 variables) ==========
             ["I_OH_EVAC_COMMAND_U"] = new SimConnect.SimVarDefinition
