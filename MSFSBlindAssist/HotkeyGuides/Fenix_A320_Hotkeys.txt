@@ -43,6 +43,7 @@ Weather:
 
 Tools:
 CTRL+T, Takeoff Assistance
+CTRL+I, ILS Guidance, experimental
 
 Displays and windows:
   Shift+E, Electronic Flight Bag window
