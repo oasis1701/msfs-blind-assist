@@ -1445,12 +1445,6 @@ public partial class MainForm : Form
 
     private void SwitchAircraft(IAircraftDefinition newAircraft)
     {
-        // Save counters from previous aircraft if it's Fenix
-        if (currentAircraft is Aircraft.FenixA320Definition fenix)
-        {
-            fenix.SaveCounters();
-        }
-
         // Update the aircraft instance
         currentAircraft = newAircraft;
 
@@ -2689,12 +2683,6 @@ public partial class MainForm : Form
 
     protected override void OnFormClosing(FormClosingEventArgs e)
     {
-        // Save Fenix counters if currently using Fenix aircraft
-        if (currentAircraft is Aircraft.FenixA320Definition fenix)
-        {
-            fenix.SaveCounters();
-        }
-
         hotkeyManager?.Cleanup();
         simConnectManager?.Disconnect();
         announcer?.Cleanup();

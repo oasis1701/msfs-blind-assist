@@ -18,14 +18,6 @@ public class FenixA320Definition : BaseAircraftDefinition
     public override FCUControlType GetSpeedControlType() => FCUControlType.IncrementDecrement;
     public override FCUControlType GetVerticalSpeedControlType() => FCUControlType.IncrementDecrement;
 
-    /// <summary>
-    /// Constructor: Load persisted counter values to maintain synchronization with Fenix.
-    /// </summary>
-    public FenixA320Definition()
-    {
-        LoadCounters();
-    }
-
     // Private fields for FCU readout tracking
     private double? pendingHeadingValue = null;
     private double? pendingHeadingStatus = null;
@@ -12213,66 +12205,6 @@ public class FenixA320Definition : BaseAircraftDefinition
     private Dictionary<string, int> rmpCounters = new Dictionary<string, int>();
 
     /// <summary>
-    /// Saves counter values to disk to persist across app restarts.
-    /// The Fenix retains counter values, so we must maintain synchronization.
-    /// </summary>
-    public void SaveCounters()
-    {
-        try
-        {
-            string path = System.IO.Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "FBWBA", "fenix_counters.json");
-
-            string directory = System.IO.Path.GetDirectoryName(path);
-            if (!System.IO.Directory.Exists(directory))
-            {
-                System.IO.Directory.CreateDirectory(directory);
-            }
-
-            string json = System.Text.Json.JsonSerializer.Serialize(rmpCounters);
-            System.IO.File.WriteAllText(path, json);
-
-            System.Diagnostics.Debug.WriteLine($"[FenixA320] SaveCounters: Saved {rmpCounters.Count} counter values to {path}");
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"[FenixA320] SaveCounters error: {ex.Message}");
-        }
-    }
-
-    /// <summary>
-    /// Loads counter values from disk to restore synchronization with Fenix.
-    /// </summary>
-    public void LoadCounters()
-    {
-        try
-        {
-            string path = System.IO.Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "FBWBA", "fenix_counters.json");
-
-            if (System.IO.File.Exists(path))
-            {
-                string json = System.IO.File.ReadAllText(path);
-                rmpCounters = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, int>>(json)
-                              ?? new Dictionary<string, int>();
-
-                System.Diagnostics.Debug.WriteLine($"[FenixA320] LoadCounters: Loaded {rmpCounters.Count} counter values from {path}");
-            }
-            else
-            {
-                System.Diagnostics.Debug.WriteLine($"[FenixA320] LoadCounters: No saved counters found at {path}");
-            }
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"[FenixA320] LoadCounters error: {ex.Message}");
-            rmpCounters = new Dictionary<string, int>();
-        }
-    }
-
-    /// <summary>
     /// Increments a counter variable for RMP frequency controls.
     /// These variables act as counters - incrementing the value increases frequency.
     /// </summary>
@@ -12425,11 +12357,6 @@ public class FenixA320Definition : BaseAircraftDefinition
             announcer.Announce($"Rounding to {targetAltitude} feet");
         }
 
-        // ALWAYS use 100ft mode to avoid rounding issues with 1000ft mode
-        // (In 1000ft mode, increments round to nearest thousand instead of adding 1000)
-        simConnect.SetLVar("S_FCU_ALTITUDE_SCALE", 0);  // Force 100ft mode
-        await System.Threading.Tasks.Task.Delay(100);  // Wait for mode to activate
-
         // Read current altitude from cached continuous monitoring
         double? currentValue = simConnect.GetCachedVariableValue("N_FCU_ALTITUDE");
         if (currentValue == null)
@@ -12448,6 +12375,11 @@ public class FenixA320Definition : BaseAircraftDefinition
         }
 
         announcer.Announce($"Setting altitude from {currentAltitude} to {targetAltitude}");
+
+        // ALWAYS use 100ft mode to avoid rounding issues with 1000ft mode
+        // (In 1000ft mode, increments round to nearest thousand instead of adding 1000)
+        simConnect.SetLVar("S_FCU_ALTITUDE_SCALE", 0);  // Force 100ft mode
+        await System.Threading.Tasks.Task.Delay(100);  // Wait for mode to activate
 
         // Calculate steps (each increment = 100ft)
         int steps = totalDelta / 100;
