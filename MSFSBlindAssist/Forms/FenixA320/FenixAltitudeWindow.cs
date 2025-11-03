@@ -129,6 +129,7 @@ public partial class FenixAltitudeWindow : Form
         });
 
         CancelButton = closeButton;
+        AcceptButton = setButton;
     }
 
     private void SetupAccessibility()
@@ -169,6 +170,7 @@ public partial class FenixAltitudeWindow : Form
         if (e.KeyCode == Keys.Enter)
         {
             e.Handled = true;
+            e.SuppressKeyPress = true;
             _ = HandleSetClick();  // Fire and forget async call
         }
     }
@@ -202,7 +204,8 @@ public partial class FenixAltitudeWindow : Form
 
         int targetAltitude = (int)Math.Round(value);
         // Always use 100ft mode (userPreferredMode = 0), altitude scale is now in panels only
-        await aircraft.SetFCUAltitude(targetAltitude, simConnect, announcer, 0);
+        Close();
+        _ = aircraft.SetFCUAltitude(targetAltitude, simConnect, announcer, 0);
     }
 
     private void HandleButtonClick(string varKey)

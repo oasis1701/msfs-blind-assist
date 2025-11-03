@@ -128,6 +128,7 @@ public partial class FenixVSWindow : Form
         });
 
         CancelButton = closeButton;
+        AcceptButton = setButton;
     }
 
     private void SetupAccessibility()
@@ -168,6 +169,7 @@ public partial class FenixVSWindow : Form
         if (e.KeyCode == Keys.Enter)
         {
             e.Handled = true;
+            e.SuppressKeyPress = true;
             _ = HandleSetClick();  // Fire and forget async call
         }
     }
@@ -200,7 +202,8 @@ public partial class FenixVSWindow : Form
         }
 
         int targetVS = (int)Math.Round(value);
-        await aircraft.SetFCUVS(targetVS, simConnect, announcer);
+        Close();
+        _ = aircraft.SetFCUVS(targetVS, simConnect, announcer);
     }
 
     private void HandleButtonClick(string varKey)

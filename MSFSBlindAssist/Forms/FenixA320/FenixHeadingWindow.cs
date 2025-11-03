@@ -142,6 +142,7 @@ public partial class FenixHeadingWindow : Form
         });
 
         CancelButton = closeButton;
+        AcceptButton = setButton;
     }
 
     private void SetupAccessibility()
@@ -182,6 +183,7 @@ public partial class FenixHeadingWindow : Form
         if (e.KeyCode == Keys.Enter)
         {
             e.Handled = true;
+            e.SuppressKeyPress = true;
             _ = HandleSetClick();  // Fire and forget async call
         }
     }
@@ -214,7 +216,8 @@ public partial class FenixHeadingWindow : Form
         }
 
         int targetHeading = (int)Math.Round(value);
-        await aircraft.SetFCUHeading(targetHeading, simConnect, announcer);
+        Close();
+        _ = aircraft.SetFCUHeading(targetHeading, simConnect, announcer);
     }
 
     private void HandleButtonClick(string varKey)

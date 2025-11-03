@@ -142,6 +142,7 @@ public partial class FenixSpeedWindow : Form
         });
 
         CancelButton = closeButton;
+        AcceptButton = setButton;
     }
 
     private void SetupAccessibility()
@@ -182,6 +183,7 @@ public partial class FenixSpeedWindow : Form
         if (e.KeyCode == Keys.Enter)
         {
             e.Handled = true;
+            e.SuppressKeyPress = true;
             _ = HandleSetClick();  // Fire and forget async call
         }
     }
@@ -216,7 +218,8 @@ public partial class FenixSpeedWindow : Form
 
         // Convert Mach to internal representation (multiply by 100)
         int targetSpeed = value < 1.0 ? (int)(value * 100) : (int)Math.Round(value);
-        await aircraft.SetFCUSpeed(targetSpeed, simConnect, announcer);
+        Close();
+        _ = aircraft.SetFCUSpeed(targetSpeed, simConnect, announcer);
     }
 
     private void HandleButtonClick(string varKey)
