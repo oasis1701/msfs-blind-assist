@@ -12,6 +12,9 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     // Cached dictionaries for performance (avoid recreating large dictionaries on every call)
     private Dictionary<string, List<string>>? _cachedPanelControls;
 
+    // Altitude tracking for thousand-foot crossing announcements
+    private double? _previousAltitude = null;
+
     // Abstract members from IAircraftDefinition that must be implemented
     public abstract string AircraftName { get; }
     public abstract string AircraftCode { get; }
@@ -49,6 +52,17 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
                     [0] = "Airborne",
                     [1] = "On ground"
                 }
+            },
+
+            // Altitude MSL - universal SimConnect variable for thousand-foot crossing announcements
+            ["INDICATED_ALTITUDE"] = new SimConnect.SimVarDefinition
+            {
+                Name = "INDICATED ALTITUDE",
+                DisplayName = "Altitude",  // Not used for announcements (custom logic in ProcessSimVarUpdate)
+                Type = SimConnect.SimVarType.SimVar,
+                Units = "feet",
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true  // Required for batched continuous monitoring (custom logic handles actual announcements)
             }
         };
     }
@@ -195,11 +209,46 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     // Variable Update Processing
 
     /// <summary>
-    /// Default implementation returns false (no special processing).
-    /// Aircraft with complex variable processing logic (e.g., combining multiple variables) should override.
+    /// Processes variable updates with custom logic.
+    /// Handles altitude thousand-foot crossing announcements for all aircraft.
+    /// Aircraft with additional complex variable processing logic should override and call base.ProcessSimVarUpdate() first.
     /// </summary>
     public virtual bool ProcessSimVarUpdate(string varName, double value, ScreenReaderAnnouncer announcer)
     {
+        // Handle altitude thousand-foot crossing announcements
+        if (varName == "INDICATED_ALTITUDE")
+        {
+            if (_previousAltitude.HasValue)
+            {
+                int oldThousands = (int)(_previousAltitude.Value / 1000);
+                int newThousands = (int)(value / 1000);
+
+                if (newThousands > oldThousands)
+                {
+                    // Climbing: announce each thousand-foot level crossed
+                    for (int i = oldThousands + 1; i <= newThousands; i++)
+                    {
+                        announcer.Announce($"{i * 1000}");
+                    }
+                }
+                else if (newThousands < oldThousands)
+                {
+                    // Descending: announce each thousand-foot level crossed
+                    for (int i = oldThousands; i > newThousands; i--)
+                    {
+                        announcer.Announce($"{i * 1000}");
+                    }
+                }
+                // If oldThousands == newThousands, no crossing occurred (no announcement)
+            }
+
+            // Update tracked altitude
+            _previousAltitude = value;
+
+            // Return true to suppress default announcement (we handle it custom)
+            return true;
+        }
+
         // Default: no special processing - let MainForm handle generically
         return false;
     }

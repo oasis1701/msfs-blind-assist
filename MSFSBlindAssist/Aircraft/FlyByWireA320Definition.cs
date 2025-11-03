@@ -4084,7 +4084,8 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             return true;
         }
 
-        return false; // Not an FCU variable we track
+        // Call base implementation to handle common variables (e.g., altitude thousand-foot crossings)
+        return base.ProcessSimVarUpdate(varName, value, announcer);
     }
 
     /// <summary>

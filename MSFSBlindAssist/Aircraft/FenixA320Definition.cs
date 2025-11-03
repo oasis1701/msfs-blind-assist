@@ -12102,8 +12102,8 @@ public class FenixA320Definition : BaseAircraftDefinition
             return true;
         }
 
-        // Not handled by FCU readout logic
-        return false;
+        // Call base implementation to handle common variables (e.g., altitude thousand-foot crossings)
+        return base.ProcessSimVarUpdate(varName, value, announcer);
     }
 
     // ========== FCU Readout Request Methods ==========
