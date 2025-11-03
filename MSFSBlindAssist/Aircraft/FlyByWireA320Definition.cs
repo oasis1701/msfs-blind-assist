@@ -40,7 +40,11 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
 
     public override Dictionary<string, SimConnect.SimVarDefinition> GetVariables()
     {
-        return new Dictionary<string, SimConnect.SimVarDefinition>
+        // Start with common base variables (e.g., SIM ON GROUND)
+        var variables = GetBaseVariables();
+
+        // Add aircraft-specific variables
+        var aircraftVariables = new Dictionary<string, SimConnect.SimVarDefinition>
         {
 // ELEC Panel Display Variables
         ["A32NX_ELEC_BAT_1_POTENTIAL"] = new SimConnect.SimVarDefinition
@@ -3041,20 +3045,6 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             }
         },
 
-        // GPWS Ground State
-        ["A32NX_GPWS_GROUND_STATE"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_GPWS_GROUND_STATE",
-            Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-            IsAnnounced = true,  // Critical for flight phase awareness
-            ValueDescriptions = new Dictionary<double, string>
-            {
-                [0] = "Airborne",
-                [1] = "On ground"
-            }
-        },
-
         // GPWS Master Warning
         ["A32NX_GPWS_Warning_Active"] = new SimConnect.SimVarDefinition
         {
@@ -3189,6 +3179,14 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Units = "number"
         },
         };
+
+        // Merge aircraft-specific variables into base variables
+        foreach (var kvp in aircraftVariables)
+        {
+            variables[kvp.Key] = kvp.Value;
+        }
+
+        return variables;
     }
 
     public override Dictionary<string, List<string>> GetPanelDisplayVariables()

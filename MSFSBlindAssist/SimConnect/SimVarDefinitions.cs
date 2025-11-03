@@ -23,6 +23,7 @@ public class SimVarDefinition
     public string Units { get; set; } = "number";
     public UpdateFrequency UpdateFrequency { get; set; } = UpdateFrequency.OnRequest;
     public bool IsAnnounced { get; set; }  // True if changes should be announced to screen reader
+    public bool AnnounceValueOnly { get; set; }  // True to announce only value (e.g., "On ground") instead of "DisplayName: value" (e.g., "Ground State: On ground")
     public bool ReverseDisplayOrder { get; set; }  // True to display combo box items in reverse order
     public Dictionary<double, string> ValueDescriptions { get; set; } = new Dictionary<double, string>();
     public uint EventParam { get; set; }  // Parameter for events (like pump index)

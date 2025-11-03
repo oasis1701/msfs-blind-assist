@@ -26,6 +26,34 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     public abstract Dictionary<string, List<string>> GetPanelStructure();
 
     /// <summary>
+    /// Returns common variables shared by all aircraft.
+    /// Override to add additional base variables if needed.
+    /// Aircraft implementations should call this and merge with their aircraft-specific variables.
+    /// </summary>
+    protected virtual Dictionary<string, SimConnect.SimVarDefinition> GetBaseVariables()
+    {
+        return new Dictionary<string, SimConnect.SimVarDefinition>
+        {
+            // Ground state - universal SimConnect variable that works with all aircraft
+            ["SIM_ON_GROUND"] = new SimConnect.SimVarDefinition
+            {
+                Name = "SIM ON GROUND",
+                DisplayName = "Ground State",
+                Type = SimConnect.SimVarType.SimVar,
+                Units = "Bool",
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,  // Critical for flight phase awareness
+                AnnounceValueOnly = true,  // Announce just "On ground" or "Airborne" (not "Ground State: On ground")
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "Airborne",
+                    [1] = "On ground"
+                }
+            }
+        };
+    }
+
+    /// <summary>
     /// Returns panel controls with caching for performance.
     /// Subclasses implement BuildPanelControls() to define the actual structure.
     /// </summary>

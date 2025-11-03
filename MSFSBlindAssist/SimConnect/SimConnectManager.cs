@@ -1433,6 +1433,12 @@ public class SimConnectManager
         // Check for custom value descriptions
         if (varDef.ValueDescriptions != null && varDef.ValueDescriptions.ContainsKey(value))
         {
+            // If AnnounceValueOnly is true, return just the value (e.g., "On ground")
+            // Otherwise return "DisplayName: value" (e.g., "Parking brake: Set")
+            if (varDef.AnnounceValueOnly)
+            {
+                return varDef.ValueDescriptions[value];
+            }
             return $"{varDef.DisplayName}: {varDef.ValueDescriptions[value]}";
         }
 

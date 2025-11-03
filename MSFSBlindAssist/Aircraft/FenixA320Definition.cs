@@ -38,7 +38,11 @@ public class FenixA320Definition : BaseAircraftDefinition
 
     public override Dictionary<string, SimConnect.SimVarDefinition> GetVariables()
     {
-        return new Dictionary<string, SimConnect.SimVarDefinition>
+        // Start with common base variables (e.g., SIM ON GROUND)
+        var variables = GetBaseVariables();
+
+        // Add aircraft-specific variables
+        var aircraftVariables = new Dictionary<string, SimConnect.SimVarDefinition>
         {
             // ========== ADIRS (13 variables) ==========
             ["I_OH_NAV_IR3_SWITCH_L"] = new SimConnect.SimVarDefinition
@@ -8430,6 +8434,14 @@ public class FenixA320Definition : BaseAircraftDefinition
             },
             */
         };
+
+        // Merge aircraft-specific variables into base variables
+        foreach (var kvp in aircraftVariables)
+        {
+            variables[kvp.Key] = kvp.Value;
+        }
+
+        return variables;
     }
 
     public override Dictionary<string, List<string>> GetPanelStructure()
