@@ -8487,7 +8487,6 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "Signs",
                 "Exterior Lights",
                 "Interior Lights",
-                "Flight Controls",
                 "Voice Recorder",
                 "Cockpit Door",
                 "Oxygen",
