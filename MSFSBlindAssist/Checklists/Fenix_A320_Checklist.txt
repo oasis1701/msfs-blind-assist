@@ -1,3 +1,112 @@
-[Preflight Check]
+[Preflight]
 Battery 1 on
 Battery 2 on
+External power on, optional
+APU Master on
+APU start toggle
+APU bleed on
+IRS 1, 2, 3 to nav
+fuel pumps on
+Oxygen Crew Supply on
+No smoking auto
+Emergency lights armed
+Nav and logo lights to position 1 or 2
+Tablet simbrief Flight imported
+Tablet passenger and fuel loaded
+Tablet GPU off, CHOCKS & CONES off.
+MCDU flight plan requested and init A ready
+MCDU init wind request done.
+MCDU flight plan page completed
+tablet departure perf calculated and sent to MCDU
+Tablet MASS AND BALANCE sent to MCDU
+MCDU perf takeoff check
+MCDU init B page check
+Altimeter/Baro Ref set
+FCU speed managed check
+FCU heading managed, or selected if flying runway heading with ATC
+FCU altitude, set to initial altitude
+Transponder operation Auto
+
+[Start and pushback]
+Seatbelt signs on
+beacon on
+Eng mode ign/start
+eng1 master on
+eng2 master on
+Monitor engines and confirm running via ecam
+eng mode normal
+
+After start
+APU bleed off
+APU master off
+Engine and wing anti ice as required
+autobrakes max
+flaps set
+spoilers armed
+Strobes auto
+nose lights, taxi or T O
+RWY Turn Off Lights, on at night
+
+[before teleport]
+nose lights T O
+Landing lights on
+Pred Windshear auto
+weather system 1 or 2
+TCAS transponder TA/RA
+strobes on
+initiate teleport to runway
+
+[takeoff]
+ECAM T O Config test
+Parking brakes released
+Apply thrust, push stick forward, slowly back to neutral at 80 nots, rotate at v1.
+Gear up
+Auto pilot 1 on, keep toggling until it connects.
+Thrust levers CLB
+flaps up
+
+[After takeoff]
+Spoilers disarm
+Check ND, PFD
+Check MCDU perf and FPLN page
+Landing lights off at 10000
+nose light off
+Altimeter STD at Transition altitude
+Seat belts signs off or as required
+
+[cruise]
+PFD check
+FPLN check
+Pressurization check
+Flight plan monitor
+Top Of Descent cross checked
+
+[descend]
+Tablet Arrival perf calculated
+Complete MCDU approach page before top of descent reached
+Check radnav page for ils frequency
+Auto brakes set as required
+seatbelt signs as required
+FCU Altitude set per ATC, or 3000 above runway if flying without
+FCU altitude push, to initiate managed descent
+If too high to catch profile, extend spoiler to half or full until computer is satisfied then retract.
+Altimeter set at transition altitude
+Landing lights on at 10000
+nose lights T O
+ACP ILS volume 100% optional
+ACP1 ILS receive on, optional to hear ILS frequency
+
+[Approach]
+Spoilers armed
+Approach mode active when ready to capture ILS
+flaps 1 before turning to  align
+Manage flaps per approach speed requirements
+Landing gear down 6 miles out
+auto brakes checked
+
+[landing]
+apply reverse until 80 KTS
+disengage AP after ROLLOUT
+flaps up
+parking brakes set.
+teleport to gate

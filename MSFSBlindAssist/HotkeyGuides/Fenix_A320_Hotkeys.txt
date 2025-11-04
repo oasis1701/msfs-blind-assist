@@ -45,6 +45,13 @@ Tools:
 CTRL+T, Takeoff Assistance
 CTRL+I, ILS Guidance, experimental
 
+EFB Flight tracking
+1. track slot 1
+2. track slot 2
+3. track slot 3
+4. track slot 4
+5. track slot 5
+
 Displays and windows:
   Shift+E, Electronic Flight Bag window
   Shift+L,    Location Info

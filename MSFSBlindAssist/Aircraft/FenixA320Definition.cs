@@ -5383,7 +5383,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "NAV & LOGO",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "NAV", [2] = "LOGO"}
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Position one", [2] = "Position two"}
             },
 
             // STROBE
