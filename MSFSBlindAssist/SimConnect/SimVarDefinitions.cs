@@ -26,6 +26,7 @@ public class SimVarDefinition
     public bool AnnounceValueOnly { get; set; }  // True to announce only value (e.g., "On ground") instead of "DisplayName: value" (e.g., "Ground State: On ground")
     public bool ReverseDisplayOrder { get; set; }  // True to display combo box items in reverse order
     public Dictionary<double, string> ValueDescriptions { get; set; } = new Dictionary<double, string>();
+    public bool OnlyAnnounceValueDescriptionMatches { get; set; }  // True to only announce when value matches a ValueDescriptions key (within tolerance), skip intermediate values
     public uint EventParam { get; set; }  // Parameter for events (like pump index)
     public bool IsMomentary { get; set; }  // True for momentary buttons that need auto-reset
 

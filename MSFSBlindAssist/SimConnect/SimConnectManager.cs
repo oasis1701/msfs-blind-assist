@@ -1727,6 +1727,23 @@ public class SimConnectManager
                         // Only fire event if value changed (or it's the first time we're seeing it)
                         if (hasChanged || !lastVariableValues.ContainsKey(varKey))
                         {
+                            // Check if we should only announce matches to ValueDescriptions (e.g., thrust lever detents)
+                            if (varDef.OnlyAnnounceValueDescriptionMatches &&
+                                varDef.ValueDescriptions != null &&
+                                varDef.ValueDescriptions.Count > 0)
+                            {
+                                // Check if value matches any defined detent (within tolerance)
+                                const double DETENT_TOLERANCE = 0.1;
+                                bool matchesDetent = varDef.ValueDescriptions.Keys.Any(key =>
+                                    Math.Abs(value - key) < DETENT_TOLERANCE);
+
+                                if (!matchesDetent)
+                                {
+                                    // Skip announcement for intermediate values (e.g., "4.3" while moving between detents)
+                                    continue;
+                                }
+                            }
+
                             string description = FormatVariableValue(varKey, varDef, value);
 
                             // Fire SimVarUpdated event directly (no routing through ProcessIndividualVariableResponse)

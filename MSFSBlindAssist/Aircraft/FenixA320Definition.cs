@@ -8049,6 +8049,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
                 ValueDescriptions = new Dictionary<double, string> {[1] = "Reverse", [2] = "Idle", [3] = "CLB", [4] = "FLX/MCT", [5] = "TOGA"}
             },
             ["A_FC_THROTTLE_RIGHT_INPUT_STATE"] = new SimConnect.SimVarDefinition
@@ -8058,6 +8059,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
                 ValueDescriptions = new Dictionary<double, string> {[1] = "Reverse", [2] = "Idle", [3] = "CLB", [4] = "FLX/MCT", [5] = "TOGA"}
             },
             ["A_FC_SPEEDBRAKE_STATE"] = new SimConnect.SimVarDefinition
