@@ -202,8 +202,8 @@ public partial class FenixVSWindow : Form
         }
 
         int targetVS = (int)Math.Round(value);
-        Close();
         _ = aircraft.SetFCUVS(targetVS, simConnect, announcer);
+        vsTextBox.SelectAll();
     }
 
     private void HandleButtonClick(string varKey)

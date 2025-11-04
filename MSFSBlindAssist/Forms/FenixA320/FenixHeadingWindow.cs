@@ -216,8 +216,8 @@ public partial class FenixHeadingWindow : Form
         }
 
         int targetHeading = (int)Math.Round(value);
-        Close();
         _ = aircraft.SetFCUHeading(targetHeading, simConnect, announcer);
+        headingTextBox.SelectAll();
     }
 
     private void HandleButtonClick(string varKey)

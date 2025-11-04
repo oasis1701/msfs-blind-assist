@@ -204,8 +204,8 @@ public partial class FenixAltitudeWindow : Form
 
         int targetAltitude = (int)Math.Round(value);
         // Always use 100ft mode (userPreferredMode = 0), altitude scale is now in panels only
-        Close();
         _ = aircraft.SetFCUAltitude(targetAltitude, simConnect, announcer, 0);
+        altitudeTextBox.SelectAll();
     }
 
     private void HandleButtonClick(string varKey)
