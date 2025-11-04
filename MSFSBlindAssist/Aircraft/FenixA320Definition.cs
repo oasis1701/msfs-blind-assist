@@ -870,15 +870,6 @@ public class FenixA320Definition : BaseAircraftDefinition
                 IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
             },
-            ["N_FC_RUDDER_TRIM_DECIMAL"] = new SimConnect.SimVarDefinition
-            {
-                Name = "N_FC_RUDDER_TRIM_DECIMAL",
-                DisplayName = "RUDDER TRIM",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                Units = "number",
-            },
             ["B_FC_RUDDER_TRIM_DASHED"] = new SimConnect.SimVarDefinition
             {
                 Name = "B_FC_RUDDER_TRIM_DASHED",
@@ -8460,6 +8451,15 @@ public class FenixA320Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["N_FC_RUDDER_TRIM_DECIMAL"] = new SimConnect.SimVarDefinition
+            {
+                Name = "N_FC_RUDDER_TRIM_DECIMAL",
+                DisplayName = "RUDDER TRIM",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                Units = "number",
             },
             */
         };
