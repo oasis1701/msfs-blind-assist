@@ -19,6 +19,10 @@ public partial class FenixAutopilotWindow : Form
     private Button apprButton = null!;
     private Button locButton = null!;
     private Button expedButton = null!;
+    private Button athrDisconnectLeftButton = null!;
+    private Button athrDisconnectRightButton = null!;
+    private Button apDisconnectCaptButton = null!;
+    private Button apDisconnectFoButton = null!;
     private Button closeButton = null!;
 
     private readonly FenixA320Definition aircraft;
@@ -46,7 +50,7 @@ public partial class FenixAutopilotWindow : Form
     {
         // Form properties
         Text = "Fenix A320 - Autopilot Controls";
-        Size = new Size(400, 340);
+        Size = new Size(400, 400);
         StartPosition = FormStartPosition.CenterScreen;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -125,23 +129,73 @@ public partial class FenixAutopilotWindow : Form
         };
         expedButton.Click += (s, e) => HandleButtonClick("S_FCU_EXPED");
 
+        // A/THR Disconnect Left Button
+        athrDisconnectLeftButton = new Button
+        {
+            Text = "A/THR Disc Left",
+            Location = new Point(20, 170),
+            Size = new Size(160, 35),
+            AccessibleName = "A/THR Disconnect Left",
+            AccessibleDescription = "Autothrottle Disconnect Left",
+            TabIndex = 6
+        };
+        athrDisconnectLeftButton.Click += (s, e) => HandleButtonClick("S_FC_THR_INST_DISCONNECT1");
+
+        // A/THR Disconnect Right Button
+        athrDisconnectRightButton = new Button
+        {
+            Text = "A/THR Disc Right",
+            Location = new Point(200, 170),
+            Size = new Size(160, 35),
+            AccessibleName = "A/THR Disconnect Right",
+            AccessibleDescription = "Autothrottle Disconnect Right",
+            TabIndex = 7
+        };
+        athrDisconnectRightButton.Click += (s, e) => HandleButtonClick("S_FC_THR_INST_DISCONNECT2");
+
+        // AP Disconnect Captain Button
+        apDisconnectCaptButton = new Button
+        {
+            Text = "AP Disc Capt",
+            Location = new Point(20, 220),
+            Size = new Size(160, 35),
+            AccessibleName = "AP Disconnect Captain",
+            AccessibleDescription = "Autopilot Disconnect Captain",
+            TabIndex = 8
+        };
+        apDisconnectCaptButton.Click += (s, e) => HandleButtonClick("S_FC_CAPT_INST_DISCONNECT");
+
+        // AP Disconnect First Officer Button
+        apDisconnectFoButton = new Button
+        {
+            Text = "AP Disc F/O",
+            Location = new Point(200, 220),
+            Size = new Size(160, 35),
+            AccessibleName = "AP Disconnect F/O",
+            AccessibleDescription = "Autopilot Disconnect First Officer",
+            TabIndex = 9
+        };
+        apDisconnectFoButton.Click += (s, e) => HandleButtonClick("S_FC_FO_INST_DISCONNECT");
+
         // Close Button
         closeButton = new Button
         {
             Text = "Close",
-            Location = new Point(130, 260),
+            Location = new Point(130, 320),
             Size = new Size(140, 35),
             DialogResult = DialogResult.OK,
             AccessibleName = "Close",
             AccessibleDescription = "Close window",
-            TabIndex = 6
+            TabIndex = 10
         };
         closeButton.Click += (s, e) => Close();
 
         // Add controls to form
         Controls.AddRange(new Control[]
         {
-            ap1Button, ap2Button, athrButton, apprButton, locButton, expedButton, closeButton
+            ap1Button, ap2Button, athrButton, apprButton, locButton, expedButton,
+            athrDisconnectLeftButton, athrDisconnectRightButton, apDisconnectCaptButton, apDisconnectFoButton,
+            closeButton
         });
 
         CancelButton = closeButton;
