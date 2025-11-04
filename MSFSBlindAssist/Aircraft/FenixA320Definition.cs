@@ -6374,30 +6374,6 @@ public class FenixA320Definition : BaseAircraftDefinition
                 IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
             },
-            ["N_HYD_PRESSURE_BRAKE_LEFT"] = new SimConnect.SimVarDefinition
-            {
-                Name = "N_HYD_PRESSURE_BRAKE_LEFT",
-                DisplayName = "BRAKE HYD PRESSURE LEFT NEEDLE",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-            },
-            ["N_HYD_PRESSURE_BRAKE_RIGHT"] = new SimConnect.SimVarDefinition
-            {
-                Name = "N_HYD_PRESSURE_BRAKE_RIGHT",
-                DisplayName = "BRAKE HYD PRESSURE RIGHT NEEDLE",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-            },
-            ["N_HYD_PRESSURE_BRAKE_ACCU"] = new SimConnect.SimVarDefinition
-            {
-                Name = "N_HYD_PRESSURE_BRAKE_ACCU",
-                DisplayName = "BRAKE HYD ACCU PRESSURE NEEDLE",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-            },
 
             // ========== ISIS (1 variables) ==========
             ["FNX2PLD_isisBaro"] = new SimConnect.SimVarDefinition
@@ -7032,15 +7008,6 @@ public class FenixA320Definition : BaseAircraftDefinition
                 IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
             },
-            ["I_ASP3_CAB_CALL"] = new SimConnect.SimVarDefinition
-            {
-                Name = "I_ASP3_CAB_CALL",
-                DisplayName = "ACP3 CAB Call",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
-            },
             ["I_ASP2_VOICE"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP2_VOICE",
@@ -7171,15 +7138,6 @@ public class FenixA320Definition : BaseAircraftDefinition
             {
                 Name = "I_ASP2_CAB_SEND",
                 DisplayName = "ACP2 CAB Send",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
-            },
-            ["I_ASP2_CAB_CALL"] = new SimConnect.SimVarDefinition
-            {
-                Name = "I_ASP2_CAB_CALL",
-                DisplayName = "ACP2 CAB Call",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7666,15 +7624,6 @@ public class FenixA320Definition : BaseAircraftDefinition
             {
                 Name = "I_ASP3_PA_SEND",
                 DisplayName = "ACP3 PA SEND",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
-            },
-            ["I_ASP_CAB_CALL"] = new SimConnect.SimVarDefinition
-            {
-                Name = "I_ASP_CAB_CALL",
-                DisplayName = "ACP1 CAB Call",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -8458,6 +8407,57 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
+            },
+            ["N_HYD_PRESSURE_BRAKE_LEFT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "N_HYD_PRESSURE_BRAKE_LEFT",
+                DisplayName = "BRAKE HYD PRESSURE LEFT NEEDLE",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+            },
+            ["N_HYD_PRESSURE_BRAKE_RIGHT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "N_HYD_PRESSURE_BRAKE_RIGHT",
+                DisplayName = "BRAKE HYD PRESSURE RIGHT NEEDLE",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+            },
+            ["N_HYD_PRESSURE_BRAKE_ACCU"] = new SimConnect.SimVarDefinition
+            {
+                Name = "N_HYD_PRESSURE_BRAKE_ACCU",
+                DisplayName = "BRAKE HYD ACCU PRESSURE NEEDLE",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+            },
+            ["I_ASP_CAB_CALL"] = new SimConnect.SimVarDefinition
+            {
+                Name = "I_ASP_CAB_CALL",
+                DisplayName = "ACP1 CAB Call",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["I_ASP2_CAB_CALL"] = new SimConnect.SimVarDefinition
+            {
+                Name = "I_ASP2_CAB_CALL",
+                DisplayName = "ACP2 CAB Call",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["I_ASP3_CAB_CALL"] = new SimConnect.SimVarDefinition
+            {
+                Name = "I_ASP3_CAB_CALL",
+                DisplayName = "ACP3 CAB Call",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
             },
             */
         };
