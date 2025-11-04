@@ -14,6 +14,8 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
 
     // Altitude tracking for thousand-foot crossing announcements
     private double? _previousAltitude = null;
+    private int? _lastAnnouncedAltitudeThousands = null;
+    private double? _lastAnnouncedRawAltitude = null;
 
     // Abstract members from IAircraftDefinition that must be implemented
     public abstract string AircraftName { get; }
@@ -218,6 +220,13 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
         // Handle altitude thousand-foot crossing announcements
         if (varName == "INDICATED_ALTITUDE")
         {
+            // Reset hysteresis if aircraft has moved 300+ feet away from last announced altitude
+            if (_lastAnnouncedRawAltitude.HasValue &&
+                Math.Abs(value - _lastAnnouncedRawAltitude.Value) >= 300)
+            {
+                _lastAnnouncedAltitudeThousands = null;
+            }
+
             if (_previousAltitude.HasValue)
             {
                 int oldThousands = (int)(_previousAltitude.Value / 1000);
@@ -225,18 +234,30 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
 
                 if (newThousands > oldThousands)
                 {
-                    // Climbing: announce each thousand-foot level crossed
+                    // Climbing: announce each thousand-foot level crossed (with hysteresis)
                     for (int i = oldThousands + 1; i <= newThousands; i++)
                     {
-                        announcer.Announce($"{i * 1000}");
+                        // Only announce if different from last announced altitude
+                        if (!_lastAnnouncedAltitudeThousands.HasValue || i != _lastAnnouncedAltitudeThousands.Value)
+                        {
+                            announcer.Announce($"{i * 1000}");
+                            _lastAnnouncedAltitudeThousands = i;
+                            _lastAnnouncedRawAltitude = value;
+                        }
                     }
                 }
                 else if (newThousands < oldThousands)
                 {
-                    // Descending: announce each thousand-foot level crossed
+                    // Descending: announce each thousand-foot level crossed (with hysteresis)
                     for (int i = oldThousands; i > newThousands; i--)
                     {
-                        announcer.Announce($"{i * 1000}");
+                        // Only announce if different from last announced altitude
+                        if (!_lastAnnouncedAltitudeThousands.HasValue || i != _lastAnnouncedAltitudeThousands.Value)
+                        {
+                            announcer.Announce($"{i * 1000}");
+                            _lastAnnouncedAltitudeThousands = i;
+                            _lastAnnouncedRawAltitude = value;
+                        }
                     }
                 }
                 // If oldThousands == newThousands, no crossing occurred (no announcement)
