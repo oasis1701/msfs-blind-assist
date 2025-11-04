@@ -5267,7 +5267,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["S_XPDR_MODE"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_XPDR_MODE",
-                DisplayName = "Transponder Mode",
+                DisplayName = "TCAS Mode",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 ValueDescriptions = new Dictionary<double, string> {[0] = "STBY", [1] = "TA", [2] = "TA/RA"}
@@ -5277,7 +5277,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["S_XPDR_OPERATION"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_XPDR_OPERATION",
-                DisplayName = "Transponder Operation",
+                DisplayName = "Transponder Mode",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 ValueDescriptions = new Dictionary<double, string> {[0] = "STBY", [1] = "AUTO", [2] = "ON"}

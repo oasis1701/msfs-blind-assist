@@ -25,7 +25,7 @@ Altimeter/Baro Ref set
 FCU speed managed check
 FCU heading managed, or selected if flying runway heading with ATC
 FCU altitude, set to initial altitude
-Transponder operation Auto
+Transponder mode Auto
 
 [Start and pushback]
 Seatbelt signs on
@@ -52,7 +52,7 @@ nose lights T O
 Landing lights on
 Pred Windshear auto
 weather system 1 or 2
-TCAS transponder TA/RA
+TCAS mode TA/RA
 strobes on
 initiate teleport to runway
 
