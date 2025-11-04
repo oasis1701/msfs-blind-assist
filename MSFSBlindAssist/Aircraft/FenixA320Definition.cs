@@ -3768,7 +3768,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Probe Heat",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Auto", [1] = "On"}
             },
 
             // ========== MAIN INSTRUMENT PANEL ==========
