@@ -1016,6 +1016,97 @@ public class FenixA320Definition : BaseAircraftDefinition
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
             },
 
+            // ========== DCDU (10 variables) ==========
+            ["S_DCDU1_DIM_BRT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_DCDU1_DIM_BRT",
+                DisplayName = "DCDU Brightness",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "DIM", [1] = "Mid", [2] = "BRT"}
+            },
+            ["S_DCDU1_LSK1L"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_DCDU1_LSK1L",
+                DisplayName = "LSK 1 Left",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_DCDU1_LSK1R"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_DCDU1_LSK1R",
+                DisplayName = "LSK 1 Right",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_DCDU1_LSK2L"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_DCDU1_LSK2L",
+                DisplayName = "LSK 2 Left",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_DCDU1_LSK2R"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_DCDU1_LSK2R",
+                DisplayName = "LSK 2 Right",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_DCDU1_MSGUP"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_DCDU1_MSGUP",
+                DisplayName = "Message Plus",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_DCDU1_MSGDWN"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_DCDU1_MSGDWN",
+                DisplayName = "Message Minus",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_DCDU1_PGUP"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_DCDU1_PGUP",
+                DisplayName = "Page Minus",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_DCDU1_PGDN"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_DCDU1_PGDN",
+                DisplayName = "Page Plus",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            ["S_DCDU1_PRINT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_DCDU1_PRINT",
+                DisplayName = "Print",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+
             // ========== EFB (4 variables) ==========
             ["S_EFB_VISIBLE_CAPT"] = new SimConnect.SimVarDefinition
             {
@@ -8506,6 +8597,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "Engines",
                 "Weather Radar",
                 "ECAM",
+                "DCDU Left",
                 "Flight Controls",
                 "ATC TCAS",
                 "Radio Management Panel (RMP)",
@@ -8913,6 +9005,29 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "S_ECAM_RCL",
                 "S_ECAM_TO",
                 "S_ECAM_EMER_CANCEL"
+            },
+
+            ["DCDU Left"] = new List<string>
+            {
+                // Brightness Control (3-position switch)
+                "S_DCDU1_DIM_BRT",
+
+                // Line Select Keys (4 buttons)
+                "S_DCDU1_LSK1L",
+                "S_DCDU1_LSK1R",
+                "S_DCDU1_LSK2L",
+                "S_DCDU1_LSK2R",
+
+                // Message Navigation (2 buttons)
+                "S_DCDU1_MSGUP",
+                "S_DCDU1_MSGDWN",
+
+                // Page Navigation (2 buttons)
+                "S_DCDU1_PGUP",
+                "S_DCDU1_PGDN",
+
+                // Print (1 button)
+                "S_DCDU1_PRINT"
             },
 
             ["Flight Controls"] = new List<string>
@@ -10821,6 +10936,63 @@ public class FenixA320Definition : BaseAircraftDefinition
             if (varKey == "S_ECAM_EMER_CANCEL" && value == 1)
             {
                 ExecuteButtonTransition("S_ECAM_EMER_CANCEL", "ECAM EMER CANC", simConnect, announcer);
+                return true;
+            }
+
+            // ========== PEDESTAL - DCDU LEFT PANEL CONTROLS ==========
+
+            // DCDU Left Buttons (use ExecuteButtonTransition)
+            if (varKey == "S_DCDU1_LSK1L" && value == 1)
+            {
+                ExecuteButtonTransition("S_DCDU1_LSK1L", "DCDU LSK 1 Left", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_DCDU1_LSK1R" && value == 1)
+            {
+                ExecuteButtonTransition("S_DCDU1_LSK1R", "DCDU LSK 1 Right", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_DCDU1_LSK2L" && value == 1)
+            {
+                ExecuteButtonTransition("S_DCDU1_LSK2L", "DCDU LSK 2 Left", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_DCDU1_LSK2R" && value == 1)
+            {
+                ExecuteButtonTransition("S_DCDU1_LSK2R", "DCDU LSK 2 Right", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_DCDU1_MSGUP" && value == 1)
+            {
+                ExecuteButtonTransition("S_DCDU1_MSGUP", "DCDU Message Plus", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_DCDU1_MSGDWN" && value == 1)
+            {
+                ExecuteButtonTransition("S_DCDU1_MSGDWN", "DCDU Message Minus", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_DCDU1_PGUP" && value == 1)
+            {
+                ExecuteButtonTransition("S_DCDU1_PGUP", "DCDU Page Minus", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_DCDU1_PGDN" && value == 1)
+            {
+                ExecuteButtonTransition("S_DCDU1_PGDN", "DCDU Page Plus", simConnect, announcer);
+                return true;
+            }
+
+            if (varKey == "S_DCDU1_PRINT" && value == 1)
+            {
+                ExecuteButtonTransition("S_DCDU1_PRINT", "DCDU Print", simConnect, announcer);
                 return true;
             }
 
