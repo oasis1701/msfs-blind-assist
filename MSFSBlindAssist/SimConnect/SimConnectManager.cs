@@ -83,7 +83,7 @@ public class SimConnectManager
     private Dictionary<string, uint> eventIds = new Dictionary<string, uint>();
     private uint nextEventId = 1000;
 
-    // Destination runway for ILS guidance
+    // Destination runway for distance calculations
     private Runway? destinationRunway;
     private Airport? destinationAirport;
 
@@ -101,11 +101,6 @@ public class SimConnectManager
 
     // Simulator version detection
     public string DetectedSimulatorVersion { get; private set; } = "Unknown";
-
-    // Visual approach monitoring
-    private System.Windows.Forms.Timer visualApproachTimer;
-    private bool visualApproachActive = false;
-    private string lastVisualApproachAnnouncement = "";
 
     // Data requests for specific functions
     internal enum DATA_REQUESTS
@@ -256,10 +251,6 @@ public class SimConnectManager
         reconnectTimer = new System.Windows.Forms.Timer();
         reconnectTimer.Interval = 5000;
         reconnectTimer.Tick += ReconnectTimer_Tick;
-
-        visualApproachTimer = new System.Windows.Forms.Timer();
-        visualApproachTimer.Interval = 3000; // Default 3 seconds
-        visualApproachTimer.Tick += VisualApproachTimer_Tick;
     }
 
     public void Connect()
@@ -377,7 +368,7 @@ public class SimConnectManager
             SIMCONNECT_DATATYPE.INITPOSITION, 0.0f, SIMCONNECT_UNUSED);
         sc.RegisterDataDefineStruct<InitPosition>(DATA_DEFINITIONS.INIT_POSITION);
 
-        // Register aircraft position for ILS guidance
+        // Register aircraft position for distance calculations
         sc.AddToDataDefinition(DATA_DEFINITIONS.AIRCRAFT_POSITION, "PLANE LATITUDE", "degrees",
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)0);
         sc.AddToDataDefinition(DATA_DEFINITIONS.AIRCRAFT_POSITION, "PLANE LONGITUDE", "degrees",
@@ -1822,27 +1813,28 @@ public class SimConnectManager
             lastKnownPosition = data;
             AircraftPositionReceived?.Invoke(this, data);
 
-            // Handle ILS/visual approach calculations only if destination runway is set
+            // Calculate distance and bearing to destination runway if set
             if (HasDestinationRunway() && destinationRunway != null && destinationAirport != null)
             {
-                // Handle visual approach monitoring if active
-                if (visualApproachActive)
-                {
-                    ProcessVisualApproachGuidance(data);
-                }
-                else
-                {
-                    // Handle one-time ILS guidance request
-                    var guidance = NavigationCalculator.CalculateILSGuidance(data, destinationRunway, destinationAirport);
-                    string announcement = FormatILSGuidanceAnnouncement(guidance);
+                // Calculate distance to runway threshold
+                double distance = NavigationCalculator.CalculateDistance(
+                    data.Latitude, data.Longitude,
+                    destinationRunway.StartLat, destinationRunway.StartLon);
 
-                    SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
-                    {
-                        VarName = "ILS_GUIDANCE",
-                        Value = 0,
-                        Description = announcement
-                    });
-                }
+                // Calculate bearing to runway
+                double bearing = NavigationCalculator.CalculateBearing(
+                    data.Latitude, data.Longitude,
+                    destinationRunway.StartLat, destinationRunway.StartLon);
+
+                // Format announcement with runway identifier
+                string announcement = $"{distance:F1} miles to runway {destinationRunway.RunwayID} at {destinationAirport.ICAO}, bearing {bearing:000} degrees";
+
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "DISTANCE_TO_RUNWAY",
+                    Value = 0,
+                    Description = announcement
+                });
             }
         }
         catch (Exception ex)
@@ -1930,85 +1922,6 @@ public class SimConnectManager
         }
     }
 
-    private void ProcessVisualApproachGuidance(AircraftPosition data)
-    {
-        try
-        {
-            // These should be non-null when this method is called (verified by caller)
-            if (destinationRunway == null || destinationAirport == null)
-                return;
-
-            // Calculate visual approach guidance
-            var visualGuidance = Navigation.VisualApproachMonitor.CalculateGuidance(data, destinationRunway, destinationAirport);
-
-            // Check if monitoring should continue
-            if (!visualGuidance.ShouldContinue)
-            {
-                // Announce why monitoring is stopping
-                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
-                {
-                    VarName = "VISUAL_APPROACH_STATUS",
-                    Value = 0,
-                    Description = $"Visual approach monitoring stopped: {visualGuidance.StopReason}"
-                });
-
-                StopVisualApproachMonitoring();
-                return;
-            }
-
-            // Update timer interval if needed
-            if (visualApproachTimer.Interval != visualGuidance.UpdateIntervalMs)
-            {
-                visualApproachTimer.Interval = visualGuidance.UpdateIntervalMs;
-            }
-
-            // Format and announce guidance
-            string announcement = Navigation.VisualApproachMonitor.FormatGuidanceAnnouncement(visualGuidance);
-
-            // Only announce if the message has changed (prevents spam)
-            if (announcement != lastVisualApproachAnnouncement)
-            {
-                lastVisualApproachAnnouncement = announcement;
-                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
-                {
-                    VarName = "VISUAL_APPROACH_GUIDANCE",
-                    Value = 0,
-                    Description = announcement
-                });
-            }
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error processing visual approach guidance: {ex.Message}");
-        }
-    }
-
-    private string FormatILSGuidanceAnnouncement(ILSGuidance guidance)
-    {
-        // Simplified format: one announcement with direct heading to centerline
-        string gsText = guidance.GlideSlopeDeviation > 0
-            ? $"{Math.Abs(guidance.GlideSlopeDeviation):0} feet above glideslope"
-            : $"{Math.Abs(guidance.GlideSlopeDeviation):0} feet below glideslope";
-
-        switch (guidance.State)
-        {
-            case ILSGuidanceState.Established:
-                // Established on localizer
-                return $"Established on localizer, heading {guidance.CurrentHeading:000}, " +
-                       $"{guidance.DistanceToThreshold:F1} miles to threshold, {gsText}";
-
-            case ILSGuidanceState.TooFar:
-                // Beyond 100nm - warning only
-                return $"Caution: {guidance.DistanceToThreshold:F1} miles from runway. " +
-                       $"Guidance available within 100 miles. Turn {guidance.TurnDirection} to heading {guidance.CurrentHeading:000} toward destination.";
-
-            default:
-                // Simplified: Direct-to centerline (VectoringToSetup state)
-                return $"Turn {guidance.TurnDirection} to heading {guidance.InterceptHeading:000}, " +
-                       $"{guidance.DistanceToSetupPoint:F1} miles to centerline point, " +
-                       $"{guidance.DistanceToThreshold:F1} miles to threshold, {gsText}";
-        }
-    }
 
     private void TryAnnounceConnection()
     {
@@ -3127,72 +3040,6 @@ public class SimConnectManager
         reconnectTimer.Start();
     }
 
-    // Visual approach monitoring
-    private void VisualApproachTimer_Tick(object? sender, EventArgs e)
-    {
-        if (!IsConnected || !HasDestinationRunway() || !visualApproachActive) return;
-
-        try
-        {
-            // Request aircraft position for visual approach guidance
-            simConnect!.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_AIRCRAFT_POSITION,
-                DATA_DEFINITIONS.AIRCRAFT_POSITION, SIMCONNECT_OBJECT_ID_USER,
-                SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT,
-                0, 0, 0);
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error requesting visual approach data: {ex.Message}");
-        }
-    }
-
-    public void StartVisualApproachMonitoring()
-    {
-        if (!HasDestinationRunway())
-        {
-            SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
-            {
-                VarName = "VISUAL_APPROACH_ERROR",
-                Value = 0,
-                Description = "No destination runway selected. Press bracket Ctrl+D to select a destination runway first."
-            });
-            return;
-        }
-
-        visualApproachActive = true;
-        visualApproachTimer.Start();
-        System.Diagnostics.Debug.WriteLine("[SimConnectManager] Visual approach monitoring started");
-
-        SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
-        {
-            VarName = "VISUAL_APPROACH_STATUS",
-            Value = 0,
-            Description = "Visual approach monitoring started"
-        });
-    }
-
-    public void StopVisualApproachMonitoring()
-    {
-        visualApproachActive = false;
-        visualApproachTimer.Stop();
-        lastVisualApproachAnnouncement = ""; // Reset for next session
-        System.Diagnostics.Debug.WriteLine("[SimConnectManager] Visual approach monitoring stopped");
-
-        SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
-        {
-            VarName = "VISUAL_APPROACH_STATUS",
-            Value = 0,
-            Description = "Visual approach monitoring stopped"
-        });
-    }
-
-    public void ToggleVisualApproachMonitoring()
-    {
-        if (visualApproachActive)
-            StopVisualApproachMonitoring();
-        else
-            StartVisualApproachMonitoring();
-    }
 
     // Takeoff assist monitoring
     public void StartTakeoffAssistMonitoring()
@@ -3379,13 +3226,13 @@ public class SimConnectManager
         }
     }
 
-    public void RequestILSGuidance()
+    public void RequestDestinationRunwayDistance()
     {
         if (!IsConnected || !HasDestinationRunway()) return;
 
         try
         {
-            // Request aircraft position for ILS guidance calculation
+            // Request aircraft position for distance and bearing to destination runway
             simConnect!.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_AIRCRAFT_POSITION,
                 DATA_DEFINITIONS.AIRCRAFT_POSITION, SIMCONNECT_OBJECT_ID_USER,
                 SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT,
@@ -3393,7 +3240,7 @@ public class SimConnectManager
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error requesting ILS guidance: {ex.Message}");
+            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error requesting destination runway distance: {ex.Message}");
         }
     }
 

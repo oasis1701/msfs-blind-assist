@@ -35,10 +35,9 @@ public class HotkeyManager : IDisposable
         private const int HOTKEY_HEADING_MAGNETIC = 9011;
         private const int HOTKEY_HEADING_TRUE = 9012;
         private const int HOTKEY_DESTINATION_RUNWAY = 9013;
-        private const int HOTKEY_ILS_GUIDANCE = 9014;
+        private const int HOTKEY_DESTINATION_RUNWAY_DISTANCE = 9014;
         private const int HOTKEY_WIND_INFO = 9016;
         private const int HOTKEY_METAR_REPORT = 9017;
-        private const int HOTKEY_VISUAL_APPROACH = 9015;
         private const int HOTKEY_RUNWAY_TELEPORT = 9021;
         private const int HOTKEY_GATE_TELEPORT = 9022;
         private const int HOTKEY_LOCATION_INFO = 9023;
@@ -191,17 +190,14 @@ public class HotkeyManager : IDisposable
                         case HOTKEY_HEADING_TRUE:
                             TriggerHotkey(HotkeyAction.ReadHeadingTrue);
                             break;
-                        case HOTKEY_ILS_GUIDANCE:
-                            TriggerHotkey(HotkeyAction.ReadILSGuidance);
+                        case HOTKEY_DESTINATION_RUNWAY_DISTANCE:
+                            TriggerHotkey(HotkeyAction.ReadDestinationRunwayDistance);
                             break;
                         case HOTKEY_WIND_INFO:
                             TriggerHotkey(HotkeyAction.ReadWindInfo);
                             break;
                         case HOTKEY_METAR_REPORT:
                             TriggerHotkey(HotkeyAction.ShowMETARReport);
-                            break;
-                        case HOTKEY_VISUAL_APPROACH:
-                            TriggerHotkey(HotkeyAction.ToggleVisualApproach);
                             break;
                         case HOTKEY_PFD:
                             TriggerHotkey(HotkeyAction.ShowPFD);
@@ -390,11 +386,10 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_VERTICAL_SPEED, MOD_NONE, 0x56); // V (Vertical Speed)
             RegisterHotKey(windowHandle, HOTKEY_HEADING_MAGNETIC, MOD_NONE, 0x48); // H (Magnetic Heading)
             RegisterHotKey(windowHandle, HOTKEY_HEADING_TRUE, MOD_NONE, 0x55); // U (True Heading)
-            RegisterHotKey(windowHandle, HOTKEY_ILS_GUIDANCE, MOD_CONTROL, 0x49); // Ctrl+I (ILS Guidance)
+            RegisterHotKey(windowHandle, HOTKEY_DESTINATION_RUNWAY_DISTANCE, MOD_CONTROL, 0x49); // Ctrl+I (Distance to Destination Runway)
             RegisterHotKey(windowHandle, HOTKEY_LOCATION_INFO, MOD_SHIFT, 0x4C);   // Shift+L (Location Info)
             RegisterHotKey(windowHandle, HOTKEY_WIND_INFO, MOD_NONE, 0x49); // I (Wind Info)
             RegisterHotKey(windowHandle, HOTKEY_METAR_REPORT, MOD_SHIFT, 0x4D); // Shift+M (METAR Report)
-            RegisterHotKey(windowHandle, HOTKEY_VISUAL_APPROACH, MOD_CONTROL, 0x56); // Ctrl+V (Visual Approach)
             RegisterHotKey(windowHandle, HOTKEY_PFD, MOD_SHIFT, 0x50); // Shift+P (PFD Window)
             RegisterHotKey(windowHandle, HOTKEY_SIMBRIEF_BRIEFING, MOD_SHIFT, 0x44); // Shift+D (SimBrief Briefing)
             RegisterHotKey(windowHandle, HOTKEY_APPROACH_CAPABILITY, MOD_CONTROL, 0x30); // Ctrl+0 (Approach Capability)
@@ -455,11 +450,10 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_VERTICAL_SPEED);
             UnregisterHotKey(windowHandle, HOTKEY_HEADING_MAGNETIC);
             UnregisterHotKey(windowHandle, HOTKEY_HEADING_TRUE);
-            UnregisterHotKey(windowHandle, HOTKEY_ILS_GUIDANCE);
+            UnregisterHotKey(windowHandle, HOTKEY_DESTINATION_RUNWAY_DISTANCE);
             UnregisterHotKey(windowHandle, HOTKEY_LOCATION_INFO);
             UnregisterHotKey(windowHandle, HOTKEY_WIND_INFO);
             UnregisterHotKey(windowHandle, HOTKEY_METAR_REPORT);
-            UnregisterHotKey(windowHandle, HOTKEY_VISUAL_APPROACH);
             UnregisterHotKey(windowHandle, HOTKEY_PFD);
             UnregisterHotKey(windowHandle, HOTKEY_SIMBRIEF_BRIEFING);
             UnregisterHotKey(windowHandle, HOTKEY_APPROACH_CAPABILITY);
@@ -645,10 +639,9 @@ public class HotkeyManager : IDisposable
         ReadHeadingMagnetic,
         ReadHeadingTrue,
         SelectDestinationRunway,
-        ReadILSGuidance,
+        ReadDestinationRunwayDistance,
         ReadWindInfo,
         ShowMETARReport,
-        ToggleVisualApproach,
         RunwayTeleport,
         GateTeleport,
         LocationInfo,

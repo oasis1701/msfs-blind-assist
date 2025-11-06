@@ -43,7 +43,7 @@ Weather:
 
 Tools:
 CTRL+T, Takeoff Assistance
-CTRL+I, ILS Guidance, experimental
+CTRL+I, Distance to Selected Runway
 
 EFB Flight tracking
 1. track slot 1

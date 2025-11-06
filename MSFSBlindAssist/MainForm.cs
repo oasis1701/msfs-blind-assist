@@ -429,17 +429,8 @@ public partial class MainForm : Form
             return true;
         }
 
-        // Handle ILS guidance announcements
-        if (e.VarName == "ILS_GUIDANCE")
-        {
-            announcer.AnnounceImmediate(e.Description);
-            return true;
-        }
-
-        // Handle visual approach announcements
-        if (e.VarName == "VISUAL_APPROACH_STATUS" ||
-            e.VarName == "VISUAL_APPROACH_ERROR" ||
-            e.VarName == "VISUAL_APPROACH_GUIDANCE")
+        // Handle destination runway distance announcements
+        if (e.VarName == "DISTANCE_TO_RUNWAY")
         {
             announcer.AnnounceImmediate(e.Description);
             return true;
@@ -791,8 +782,8 @@ public partial class MainForm : Form
             case HotkeyAction.SelectDestinationRunway:
                 ShowDestinationRunwayDialog();
                 break;
-            case HotkeyAction.ReadILSGuidance:
-                RequestILSGuidance();
+            case HotkeyAction.ReadDestinationRunwayDistance:
+                RequestDestinationRunwayDistance();
                 break;
             case HotkeyAction.ReadWindInfo:
                 RequestWindInfo();
@@ -823,9 +814,6 @@ public partial class MainForm : Form
                 break;
             case HotkeyAction.ReadTrackSlot5:
                 ReadTrackedWaypoint(5);
-                break;
-            case HotkeyAction.ToggleVisualApproach:
-                ToggleVisualApproachMonitoring();
                 break;
             case HotkeyAction.DescribeScene:
                 DescribeSceneAsync();
@@ -1164,7 +1152,7 @@ public partial class MainForm : Form
         dialog.Show();
     }
 
-    private void RequestILSGuidance()
+    private void RequestDestinationRunwayDistance()
     {
         if (!simConnectManager.HasDestinationRunway())
         {
@@ -1178,9 +1166,9 @@ public partial class MainForm : Form
             return;
         }
 
-        // Request current aircraft position and calculate ILS guidance
+        // Request current aircraft position to calculate distance and bearing to destination runway
         // This will be handled asynchronously through the SimConnect event system
-        simConnectManager.RequestILSGuidance();
+        simConnectManager.RequestDestinationRunwayDistance();
     }
 
     private async void RequestWindInfo()
@@ -1247,16 +1235,6 @@ public partial class MainForm : Form
         return $"{direction:000} at {speed}";
     }
 
-    private void ToggleVisualApproachMonitoring()
-    {
-        if (!simConnectManager.IsConnected)
-        {
-            announcer.AnnounceImmediate("Not connected to simulator.");
-            return;
-        }
-
-        simConnectManager.ToggleVisualApproachMonitoring();
-    }
 
     private void ToggleTakeoffAssist()
     {
