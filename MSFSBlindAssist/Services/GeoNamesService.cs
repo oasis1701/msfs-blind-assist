@@ -376,16 +376,27 @@ public class GeoNamesService
                 radiusKm = MAX_RADIUS_KM;
             }
 
-            foreach (var featureCode in featureCodes)
+            // Create all tasks for parallel execution
+            var tasks = featureCodes.Select(async featureCode =>
             {
                 var url = $"{BASE_URL}/findNearbyJSON?lat={latitude.ToString(CultureInfo.InvariantCulture)}&lng={longitude.ToString(CultureInfo.InvariantCulture)}&featureCode={featureCode}&radius={radiusKm}&maxRows=10&username={apiUsername}";
 
                 var response = await GetCachedResponseAsync(url);
-                if (CheckForApiError(response)) continue;
+                if (CheckForApiError(response))
+                    return (featureCode, new List<(string name, string state, string country, double distance, double bearing)>());
 
                 var parsedData = ParseNearbyFeaturesJson(response, latitude, longitude);
                 System.Diagnostics.Debug.WriteLine($"[GeoNamesService] Found {parsedData.Count} {featureCode} features in {categoryName}");
 
+                return (featureCode, parsedData);
+            }).ToList();
+
+            // Wait for all tasks to complete
+            var results = await Task.WhenAll(tasks);
+
+            // Process all results
+            foreach (var (featureCode, parsedData) in results)
+            {
                 foreach (var data in parsedData)
                 {
                     var displayUnits = units == "kilometers" ? "km" : "miles";
@@ -426,11 +437,18 @@ public class GeoNamesService
 
         try
         {
-            // Find significant features in each cardinal direction
-            var north = await FindFeatureInDirectionAsync(latitude, longitude, 0, 45); // 315-45 degrees
-            var east = await FindFeatureInDirectionAsync(latitude, longitude, 90, 45); // 45-135 degrees
-            var south = await FindFeatureInDirectionAsync(latitude, longitude, 180, 45); // 135-225 degrees
-            var west = await FindFeatureInDirectionAsync(latitude, longitude, 270, 45); // 225-315 degrees
+            // Find significant features in each cardinal direction (parallel execution)
+            var northTask = FindFeatureInDirectionAsync(latitude, longitude, 0, 45); // 315-45 degrees
+            var eastTask = FindFeatureInDirectionAsync(latitude, longitude, 90, 45); // 45-135 degrees
+            var southTask = FindFeatureInDirectionAsync(latitude, longitude, 180, 45); // 135-225 degrees
+            var westTask = FindFeatureInDirectionAsync(latitude, longitude, 270, 45); // 225-315 degrees
+
+            await Task.WhenAll(northTask, eastTask, southTask, westTask);
+
+            var north = await northTask;
+            var east = await eastTask;
+            var south = await southTask;
+            var west = await westTask;
 
             directions.North = north?.Item1 ?? string.Empty;
             directions.NorthDistance = north?.Item2 ?? string.Empty;
