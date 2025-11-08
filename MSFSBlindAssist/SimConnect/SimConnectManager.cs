@@ -1275,6 +1275,26 @@ public class SimConnectManager
                     Description = ""
                 });
                 break;
+
+            case (DATA_REQUESTS)327: // Hand Fly Mode - Pitch
+                SingleValue handFlyPitchData = (SingleValue)data.dwData[0];
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "PLANE_PITCH_DEGREES",
+                    Value = handFlyPitchData.value,
+                    Description = ""
+                });
+                break;
+
+            case (DATA_REQUESTS)328: // Hand Fly Mode - Bank
+                SingleValue handFlyBankData = (SingleValue)data.dwData[0];
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "PLANE_BANK_DEGREES",
+                    Value = handFlyBankData.value,
+                    Description = ""
+                });
+                break;
         }
     }
 
@@ -3288,6 +3308,61 @@ public class SimConnectManager
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error stopping takeoff assist monitoring: {ex.Message}");
+        }
+    }
+
+    // Hand fly mode monitoring
+    public void StartHandFlyMonitoring()
+    {
+        if (!IsConnected || simConnect == null) return;
+
+        try
+        {
+            // Request continuous updates for pitch and bank at SIM_FRAME rate
+            simConnect.RequestDataOnSimObject((DATA_REQUESTS)327,
+                (DATA_DEFINITIONS)GetVariableDataDefinition("PLANE_PITCH_DEGREES"),
+                SIMCONNECT_OBJECT_ID_USER,
+                SIMCONNECT_PERIOD.SIM_FRAME,
+                SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+
+            simConnect.RequestDataOnSimObject((DATA_REQUESTS)328,
+                (DATA_DEFINITIONS)GetVariableDataDefinition("PLANE_BANK_DEGREES"),
+                SIMCONNECT_OBJECT_ID_USER,
+                SIMCONNECT_PERIOD.SIM_FRAME,
+                SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+
+            System.Diagnostics.Debug.WriteLine("[SimConnectManager] Hand fly mode monitoring started");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error starting hand fly mode monitoring: {ex.Message}");
+        }
+    }
+
+    public void StopHandFlyMonitoring()
+    {
+        if (!IsConnected || simConnect == null) return;
+
+        try
+        {
+            // Stop continuous updates
+            simConnect.RequestDataOnSimObject((DATA_REQUESTS)327,
+                (DATA_DEFINITIONS)GetVariableDataDefinition("PLANE_PITCH_DEGREES"),
+                SIMCONNECT_OBJECT_ID_USER,
+                SIMCONNECT_PERIOD.NEVER,
+                SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+
+            simConnect.RequestDataOnSimObject((DATA_REQUESTS)328,
+                (DATA_DEFINITIONS)GetVariableDataDefinition("PLANE_BANK_DEGREES"),
+                SIMCONNECT_OBJECT_ID_USER,
+                SIMCONNECT_PERIOD.NEVER,
+                SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+
+            System.Diagnostics.Debug.WriteLine("[SimConnectManager] Hand fly mode monitoring stopped");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error stopping hand fly mode monitoring: {ex.Message}");
         }
     }
 

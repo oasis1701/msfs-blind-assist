@@ -25,6 +25,7 @@ public partial class MainForm : Form
     private IAirportDataProvider? airportDataProvider;
     private ChecklistForm? checklistForm;
     private TakeoffAssistManager takeoffAssistManager = null!;
+    private HandFlyManager handFlyManager = null!;
     private ElectronicFlightBagForm? electronicFlightBagForm;
     private MSFSBlindAssist.Navigation.FlightPlanManager flightPlanManager = null!;
     private MSFSBlindAssist.Navigation.WaypointTracker waypointTracker = null!;
@@ -121,6 +122,10 @@ public partial class MainForm : Form
         // Initialize takeoff assist manager
         takeoffAssistManager = new TakeoffAssistManager(announcer);
         takeoffAssistManager.TakeoffAssistActiveChanged += OnTakeoffAssistActiveChanged;
+
+        // Initialize hand fly manager
+        handFlyManager = new HandFlyManager(announcer);
+        handFlyManager.HandFlyModeActiveChanged += OnHandFlyModeActiveChanged;
 
         // Initialize airport database provider (optional - can be null if database not built yet)
         airportDataProvider = DatabaseSelector.SelectProvider();
@@ -414,6 +419,24 @@ public partial class MainForm : Form
         {
             double headingDegrees = e.Value * (180.0 / Math.PI); // Convert radians to degrees
             takeoffAssistManager.ProcessHeadingUpdate(headingDegrees);
+            return true;
+        }
+
+        // Handle hand fly mode pitch updates
+        if (e.VarName == "PLANE_PITCH_DEGREES" && handFlyManager.IsActive)
+        {
+            // Convert radians to degrees and negate (SimConnect uses body axis: negative = nose up)
+            double pitchDegrees = -(e.Value * (180.0 / Math.PI));
+            handFlyManager.ProcessPitchUpdate(pitchDegrees);
+            return true;
+        }
+
+        // Handle hand fly mode bank updates
+        if (e.VarName == "PLANE_BANK_DEGREES" && handFlyManager.IsActive)
+        {
+            // Convert radians to degrees (positive = right bank, negative = left bank)
+            double bankDegrees = e.Value * (180.0 / Math.PI);
+            handFlyManager.ProcessBankUpdate(bankDegrees);
             return true;
         }
 
@@ -802,6 +825,9 @@ public partial class MainForm : Form
                 break;
             case HotkeyAction.ToggleTakeoffAssist:
                 ToggleTakeoffAssist();
+                break;
+            case HotkeyAction.ToggleHandFlyMode:
+                ToggleHandFlyMode();
                 break;
             case HotkeyAction.ReadTrackSlot1:
                 ReadTrackedWaypoint(1);
@@ -1369,6 +1395,31 @@ public partial class MainForm : Form
         {
             // Stop monitoring
             simConnectManager.StopTakeoffAssistMonitoring();
+        }
+    }
+
+    private void ToggleHandFlyMode()
+    {
+        if (!simConnectManager.IsConnected)
+        {
+            announcer.AnnounceImmediate("Not connected to simulator.");
+            return;
+        }
+
+        handFlyManager.Toggle();
+    }
+
+    private void OnHandFlyModeActiveChanged(object? sender, bool isActive)
+    {
+        if (isActive)
+        {
+            // Start monitoring pitch and bank
+            simConnectManager.StartHandFlyMonitoring();
+        }
+        else
+        {
+            // Stop monitoring
+            simConnectManager.StopHandFlyMonitoring();
         }
     }
 

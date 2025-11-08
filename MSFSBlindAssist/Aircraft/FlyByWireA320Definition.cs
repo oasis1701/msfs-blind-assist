@@ -1845,15 +1845,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         },
 
         // TAKEOFF ASSIST VARIABLES (dynamically monitored when takeoff assist is active)
-        ["PLANE_PITCH_DEGREES"] = new SimConnect.SimVarDefinition
-        {
-            Name = "PLANE PITCH DEGREES",
-            DisplayName = "Aircraft Pitch",
-            Type = SimConnect.SimVarType.SimVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, // Registered at startup, monitored when takeoff assist is active
-            IsAnnounced = false, // Handled by TakeoffAssistManager
-            Units = "radians" // Note: Despite name, returns radians!
-        },
+        // PLANE_PITCH_DEGREES and PLANE_BANK_DEGREES now in BaseAircraftDefinition.cs
         ["PLANE_HEADING_DEGREES_MAGNETIC"] = new SimConnect.SimVarDefinition
         {
             Name = "PLANE HEADING DEGREES MAGNETIC",

@@ -65,6 +65,26 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
                 Units = "feet",
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true  // Required for batched continuous monitoring (custom logic handles actual announcements)
+            },
+
+            // HAND FLY MODE VARIABLES (dynamically monitored when hand fly mode is active)
+            ["PLANE_PITCH_DEGREES"] = new SimConnect.SimVarDefinition
+            {
+                Name = "PLANE PITCH DEGREES",
+                DisplayName = "Aircraft Pitch",
+                Type = SimConnect.SimVarType.SimVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, // Registered at startup, monitored when hand fly mode is active
+                IsAnnounced = false, // Handled by HandFlyManager
+                Units = "radians" // Note: Despite name, returns radians!
+            },
+            ["PLANE_BANK_DEGREES"] = new SimConnect.SimVarDefinition
+            {
+                Name = "PLANE BANK DEGREES",
+                DisplayName = "Bank Angle",
+                Type = SimConnect.SimVarType.SimVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, // Registered at startup, monitored when hand fly mode is active
+                IsAnnounced = false, // Handled by HandFlyManager
+                Units = "radians" // Note: Despite name, returns radians!
             }
         };
     }
