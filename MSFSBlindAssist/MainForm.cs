@@ -785,6 +785,9 @@ public partial class MainForm : Form
             case HotkeyAction.ReadDestinationRunwayDistance:
                 RequestDestinationRunwayDistance();
                 break;
+            case HotkeyAction.ReadILSGuidance:
+                RequestILSGuidance();
+                break;
             case HotkeyAction.ReadWindInfo:
                 RequestWindInfo();
                 break;
@@ -1169,6 +1172,53 @@ public partial class MainForm : Form
         // Request current aircraft position to calculate distance and bearing to destination runway
         // This will be handled asynchronously through the SimConnect event system
         simConnectManager.RequestDestinationRunwayDistance();
+    }
+
+    private void RequestILSGuidance()
+    {
+        // Check if destination runway is selected
+        if (!simConnectManager.HasDestinationRunway())
+        {
+            announcer.AnnounceImmediate("No destination runway selected. Press left bracket then shift+d to select a destination runway first.");
+            return;
+        }
+
+        // Check if connected to simulator
+        if (!simConnectManager.IsConnected)
+        {
+            announcer.AnnounceImmediate("Not connected to simulator.");
+            return;
+        }
+
+        // Check if airport database is available
+        if (airportDataProvider == null || !airportDataProvider.DatabaseExists)
+        {
+            announcer.AnnounceImmediate("Airport database not found. ILS guidance requires database.");
+            return;
+        }
+
+        // Get destination runway and airport
+        var runway = simConnectManager.GetDestinationRunway();
+        var airport = simConnectManager.GetDestinationAirport();
+
+        if (runway == null || airport == null)
+        {
+            announcer.AnnounceImmediate("No destination runway selected.");
+            return;
+        }
+
+        // Query ILS data from database
+        var ilsData = airportDataProvider.GetILSForRunway(airport.ICAO, runway.RunwayID);
+
+        if (ilsData == null)
+        {
+            announcer.AnnounceImmediate($"No ILS available for runway {runway.RunwayID} at {airport.ICAO}.");
+            return;
+        }
+
+        // Request ILS guidance calculation
+        // This will be handled asynchronously through the SimConnect event system
+        simConnectManager.RequestILSGuidance(ilsData, runway, airport);
     }
 
     private async void RequestWindInfo()

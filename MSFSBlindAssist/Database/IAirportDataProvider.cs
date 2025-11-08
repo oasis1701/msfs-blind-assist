@@ -37,6 +37,14 @@ public interface IAirportDataProvider
     List<Runway> GetRunways(string icao);
 
     /// <summary>
+    /// Gets ILS (Instrument Landing System) data for a specific runway
+    /// </summary>
+    /// <param name="icao">ICAO code of the airport</param>
+    /// <param name="runwayName">Runway identifier (e.g., "04L", "22R")</param>
+    /// <returns>ILS data object or null if no ILS available for this runway</returns>
+    ILSData? GetILSForRunway(string icao, string runwayName);
+
+    /// <summary>
     /// Gets all parking spots (gates/ramps) for a specific airport
     /// </summary>
     /// <param name="icao">ICAO code of the airport</param>

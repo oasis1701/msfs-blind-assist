@@ -140,6 +140,55 @@ public class LittleNavMapProvider : IAirportDataProvider
         return runways;
     }
 
+    public ILSData? GetILSForRunway(string icao, string runwayName)
+    {
+        if (!DatabaseExists)
+            return null;
+
+        using (var connection = new SqliteConnection(_connectionString))
+        {
+            connection.Open();
+
+            var sql = @"SELECT ident, frequency, range, gs_range, gs_pitch, loc_heading, loc_width,
+                              lonx, laty, altitude, gs_lonx, gs_laty, gs_altitude
+                       FROM ils
+                       WHERE UPPER(loc_airport_ident) = UPPER(@ICAO)
+                         AND UPPER(loc_runway_name) = UPPER(@RunwayName)
+                       LIMIT 1";
+
+            using (var command = new SqliteCommand(sql, connection))
+            {
+                command.Parameters.AddWithValue("@ICAO", icao);
+                command.Parameters.AddWithValue("@RunwayName", runwayName);
+
+                using (var reader = command.ExecuteReader())
+                {
+                    if (reader.Read())
+                    {
+                        return new ILSData
+                        {
+                            Ident = reader["ident"]?.ToString() ?? "",
+                            Frequency = Convert.ToDouble(reader["frequency"] ?? 0.0) / 1000.0, // Convert kHz to MHz
+                            Range = Convert.ToInt32(reader["range"] ?? 0),
+                            GlideslopeRange = Convert.ToInt32(reader["gs_range"] ?? 0),
+                            GlideslopePitch = Convert.ToDouble(reader["gs_pitch"] ?? 3.0),
+                            LocalizerHeading = Convert.ToDouble(reader["loc_heading"] ?? 0.0),
+                            LocalizerWidth = Convert.ToDouble(reader["loc_width"] ?? 0.0),
+                            AntennaLatitude = Convert.ToDouble(reader["laty"] ?? 0.0),
+                            AntennaLongitude = Convert.ToDouble(reader["lonx"] ?? 0.0),
+                            AntennaAltitude = Convert.ToInt32(reader["altitude"] ?? 0),
+                            GlideslopeLatitude = reader["gs_laty"] != DBNull.Value ? Convert.ToDouble(reader["gs_laty"]) : null,
+                            GlideslopeLongitude = reader["gs_lonx"] != DBNull.Value ? Convert.ToDouble(reader["gs_lonx"]) : null,
+                            GlideslopeAltitude = reader["gs_altitude"] != DBNull.Value ? Convert.ToInt32(reader["gs_altitude"]) : null
+                        };
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
+
     public List<ParkingSpot> GetParkingSpots(string icao)
     {
         var parkingSpots = new List<ParkingSpot>();

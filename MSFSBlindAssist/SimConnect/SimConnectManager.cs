@@ -87,6 +87,11 @@ public class SimConnectManager
     private Runway? destinationRunway;
     private Airport? destinationAirport;
 
+    // ILS guidance request data
+    private ILSData? currentILSRequest;
+    private Runway? ilsRunway;
+    private Airport? ilsAirport;
+
     // Last known aircraft position
     private AircraftPosition? lastKnownPosition;
 
@@ -110,6 +115,7 @@ public class SimConnectManager
         REQUEST_AIRCRAFT_POSITION = 4,
         REQUEST_WIND_DATA = 5,
         REQUEST_ATC_ID = 6,
+        REQUEST_ILS_GUIDANCE = 7,
         // Multi-batch continuous monitoring (5 batches of ~100 variables each)
         REQUEST_CONTINUOUS_BATCH_1 = 8,
         REQUEST_CONTINUOUS_BATCH_2 = 9,
@@ -934,6 +940,11 @@ public class SimConnectManager
             case DATA_REQUESTS.REQUEST_AIRCRAFT_POSITION:
                 AircraftPosition positionData = (AircraftPosition)data.dwData[0];
                 ProcessAircraftPosition(positionData);
+                break;
+
+            case DATA_REQUESTS.REQUEST_ILS_GUIDANCE:
+                AircraftPosition ilsPositionData = (AircraftPosition)data.dwData[0];
+                ProcessILSGuidance(ilsPositionData);
                 break;
 
             case DATA_REQUESTS.REQUEST_WIND_DATA:
@@ -1840,6 +1851,142 @@ public class SimConnectManager
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error processing aircraft position: {ex.Message}");
+        }
+    }
+
+    private void ProcessILSGuidance(AircraftPosition data)
+    {
+        try
+        {
+            // Validate we have all required data
+            if (currentILSRequest == null || ilsRunway == null || ilsAirport == null)
+            {
+                System.Diagnostics.Debug.WriteLine("[SimConnectManager] ILS guidance request incomplete - missing data");
+                return;
+            }
+
+            var ilsData = currentILSRequest;
+            var runway = ilsRunway;
+            var airport = ilsAirport;
+
+            // Calculate distance from aircraft to runway threshold
+            double distanceToThreshold = NavigationCalculator.CalculateDistance(
+                data.Latitude, data.Longitude,
+                runway.StartLat, runway.StartLon);
+
+            // Check if approaching from behind (wrong direction)
+            bool fromBehind = NavigationCalculator.IsApproachingFromBehind(
+                data.Latitude, data.Longitude,
+                data.HeadingMagnetic, // Already magnetic from SimConnect
+                runway.StartLat, runway.StartLon,
+                runway.EndLat, runway.EndLon,
+                ilsData.LocalizerHeading,
+                data.MagneticVariation);
+
+            if (fromBehind)
+            {
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "ILS_GUIDANCE",
+                    Value = 0,
+                    Description = "Approaching from opposite direction"
+                });
+                return;
+            }
+
+            // Check if within ILS localizer range
+            if (!NavigationCalculator.IsWithinILSRange(distanceToThreshold, ilsData.Range))
+            {
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "ILS_GUIDANCE",
+                    Value = 0,
+                    Description = $"Outside ILS range, {distanceToThreshold:F1} nautical miles from runway threshold"
+                });
+                return;
+            }
+
+            // Calculate cross-track error (degrees off centerline)
+            double crossTrackError = NavigationCalculator.CalculateCrossTrackError(
+                data.Latitude, data.Longitude,
+                runway.StartLat, runway.StartLon,
+                ilsData.LocalizerHeading);
+
+            // Calculate perpendicular distance to localizer centerline
+            double distanceToLocalizer = NavigationCalculator.CalculateDistanceToLocalizer(
+                data.Latitude, data.Longitude,
+                runway.StartLat, runway.StartLon,
+                ilsData.LocalizerHeading);
+
+            // Check if on localizer
+            bool onLocalizer = NavigationCalculator.IsOnLocalizer(crossTrackError);
+
+            // Build lateral guidance string
+            string lateralGuidance;
+            if (onLocalizer)
+            {
+                lateralGuidance = "On localizer";
+            }
+            else
+            {
+                // Calculate intercept heading
+                double interceptHeading = NavigationCalculator.CalculateInterceptHeading(
+                    data.Latitude, data.Longitude,
+                    runway.StartLat, runway.StartLon,
+                    ilsData.LocalizerHeading,
+                    crossTrackError,
+                    data.MagneticVariation);
+
+                string direction = crossTrackError < 0 ? "left" : "right";
+                lateralGuidance = $"{Math.Abs(crossTrackError):F0} degrees {direction} of centerline, " +
+                                  $"{distanceToLocalizer:F1} nautical miles from centerline, " +
+                                  $"intercept heading {interceptHeading:000}";
+            }
+
+            // Check if within glideslope range
+            bool withinGSRange = NavigationCalculator.IsWithinGlideslopeRange(distanceToThreshold, ilsData.GlideslopeRange);
+
+            string verticalGuidance;
+            if (withinGSRange)
+            {
+                // Calculate glideslope deviation
+                double gsDeviation = NavigationCalculator.CalculateGlideslopeDeviation(
+                    data.Altitude,
+                    distanceToThreshold,
+                    ilsData.GlideslopePitch,
+                    ilsData.AntennaAltitude, // ILS antenna altitude as threshold reference
+                    ilsData.GlideslopeLatitude,
+                    ilsData.GlideslopeLongitude,
+                    ilsData.GlideslopeAltitude,
+                    data.Latitude,
+                    data.Longitude);
+
+                string gsDirection = gsDeviation > 0 ? "above" : "below";
+                verticalGuidance = $"{Math.Abs(gsDeviation):F0} feet {gsDirection} glideslope";
+            }
+            else
+            {
+                verticalGuidance = "outside glideslope range";
+            }
+
+            // Add distance from threshold if on localizer
+            string distanceInfo = onLocalizer ? $", {distanceToThreshold:F1} nautical miles from threshold" : "";
+
+            // Combine lateral and vertical guidance
+            string announcement = $"{lateralGuidance}, {verticalGuidance}{distanceInfo}";
+
+            SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+            {
+                VarName = "ILS_GUIDANCE",
+                Value = 0,
+                Description = announcement
+            });
+
+            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] ILS Guidance: {announcement}");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error processing ILS guidance: {ex.Message}");
         }
     }
 
@@ -3289,6 +3436,36 @@ public class SimConnectManager
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error requesting destination runway distance: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Requests ILS (Instrument Landing System) guidance information for the currently selected destination runway.
+    /// Calculates localizer and glideslope deviation, intercept heading, and distance from threshold.
+    /// </summary>
+    /// <param name="ilsData">ILS data for the runway (from database)</param>
+    /// <param name="runway">The destination runway</param>
+    /// <param name="airport">The destination airport</param>
+    public void RequestILSGuidance(ILSData ilsData, Runway runway, Airport airport)
+    {
+        if (!IsConnected) return;
+
+        try
+        {
+            // Store ILS request data for processing when position is received
+            currentILSRequest = ilsData;
+            ilsRunway = runway;
+            ilsAirport = airport;
+
+            // Request aircraft position for ILS guidance calculations
+            simConnect!.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_ILS_GUIDANCE,
+                DATA_DEFINITIONS.AIRCRAFT_POSITION, SIMCONNECT_OBJECT_ID_USER,
+                SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT,
+                0, 0, 0);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error requesting ILS guidance: {ex.Message}");
         }
     }
 

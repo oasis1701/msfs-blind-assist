@@ -6,8 +6,10 @@ public class NavigationCalculator
 {
     // Aviation constants
     private const double EARTH_RADIUS_NM = 3440.065; // Earth radius in nautical miles
+    private const double EARTH_RADIUS_FEET = 20902231.0; // Earth radius in feet
     private const double DEGREES_TO_RADIANS = Math.PI / 180.0;
     private const double RADIANS_TO_DEGREES = 180.0 / Math.PI;
+    private const double LOCALIZER_TOLERANCE_DEGREES = 2.0; // ILS on-centerline tolerance
 
     /// <summary>
     /// Calculates the true bearing from point A to point B
@@ -66,5 +68,292 @@ public class NavigationCalculator
         double c = 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
 
         return EARTH_RADIUS_NM * c;
+    }
+
+    /// <summary>
+    /// Calculates cross-track error (degrees left or right of ILS centerline)
+    /// </summary>
+    /// <param name="aircraftLat">Aircraft latitude in degrees</param>
+    /// <param name="aircraftLon">Aircraft longitude in degrees</param>
+    /// <param name="runwayThresholdLat">Runway threshold latitude in degrees</param>
+    /// <param name="runwayThresholdLon">Runway threshold longitude in degrees</param>
+    /// <param name="localizerHeading">Localizer true heading in degrees</param>
+    /// <returns>Degrees off centerline (negative = left, positive = right)</returns>
+    public static double CalculateCrossTrackError(double aircraftLat, double aircraftLon,
+                                                   double runwayThresholdLat, double runwayThresholdLon,
+                                                   double localizerHeading)
+    {
+        // Calculate bearing from threshold to aircraft
+        double bearingToAircraft = CalculateBearing(runwayThresholdLat, runwayThresholdLon,
+                                                     aircraftLat, aircraftLon);
+
+        // Calculate angle difference from localizer centerline
+        double deviation = bearingToAircraft - localizerHeading;
+
+        // Normalize to -180 to +180 range
+        while (deviation > 180) deviation -= 360;
+        while (deviation < -180) deviation += 360;
+
+        return deviation;
+    }
+
+    /// <summary>
+    /// Calculates geometric intercept heading to join ILS centerline.
+    /// Uses actual position to calculate the true bearing to the nearest point on the centerline.
+    /// </summary>
+    /// <param name="aircraftLat">Aircraft latitude in degrees</param>
+    /// <param name="aircraftLon">Aircraft longitude in degrees</param>
+    /// <param name="runwayThresholdLat">Runway threshold latitude in degrees</param>
+    /// <param name="runwayThresholdLon">Runway threshold longitude in degrees</param>
+    /// <param name="localizerHeading">Localizer true heading in degrees</param>
+    /// <param name="crossTrackError">Cross-track error in degrees (from CalculateCrossTrackError) - not used in geometric calculation but kept for API compatibility</param>
+    /// <param name="magneticVariation">Magnetic variation in degrees</param>
+    /// <returns>Magnetic intercept heading in degrees (0-360)</returns>
+    public static double CalculateInterceptHeading(double aircraftLat, double aircraftLon,
+                                                    double runwayThresholdLat, double runwayThresholdLon,
+                                                    double localizerHeading, double crossTrackError,
+                                                    double magneticVariation)
+    {
+        // Calculate the perpendicular intercept point on the localizer centerline
+        // This is the point on the extended centerline closest to the aircraft
+        var (interceptLat, interceptLon) = CalculatePerpendicularInterceptPoint(
+            aircraftLat, aircraftLon,
+            runwayThresholdLat, runwayThresholdLon,
+            localizerHeading);
+
+        // Calculate true bearing from aircraft to the intercept point
+        // This gives us a heading that geometrically points TO the centerline
+        double trueBearing = CalculateBearing(
+            aircraftLat, aircraftLon,
+            interceptLat, interceptLon);
+
+        // Convert true bearing to magnetic heading
+        double magneticInterceptHeading = trueBearing - magneticVariation;
+
+        // Normalize to 0-360
+        return (magneticInterceptHeading + 360.0) % 360.0;
+    }
+
+    /// <summary>
+    /// Calculates glideslope deviation in feet (above or below glideslope)
+    /// Uses proper 3D geometry and accounts for Earth's curvature for accuracy at 10-15 NM intercept range.
+    /// </summary>
+    /// <param name="aircraftAltitudeMSL">Aircraft altitude in feet MSL</param>
+    /// <param name="distanceFromThresholdNM">Distance from runway threshold in nautical miles</param>
+    /// <param name="glideslopePitch">Glideslope angle in degrees (typically 3.0)</param>
+    /// <param name="thresholdElevationMSL">Runway threshold elevation in feet MSL</param>
+    /// <param name="glideslopeAntennaLat">Optional glideslope antenna latitude</param>
+    /// <param name="glideslopeAntennaLon">Optional glideslope antenna longitude</param>
+    /// <param name="glideslopeAntennaAltMSL">Optional glideslope antenna altitude MSL</param>
+    /// <param name="aircraftLat">Aircraft latitude (required if using antenna position)</param>
+    /// <param name="aircraftLon">Aircraft longitude (required if using antenna position)</param>
+    /// <returns>Feet above (+) or below (-) glideslope</returns>
+    public static double CalculateGlideslopeDeviation(double aircraftAltitudeMSL,
+                                                       double distanceFromThresholdNM,
+                                                       double glideslopePitch,
+                                                       double thresholdElevationMSL,
+                                                       double? glideslopeAntennaLat = null,
+                                                       double? glideslopeAntennaLon = null,
+                                                       int? glideslopeAntennaAltMSL = null,
+                                                       double? aircraftLat = null,
+                                                       double? aircraftLon = null)
+    {
+        double expectedAltitudeMSL;
+
+        // Hybrid approach: use antenna position if available, otherwise use threshold
+        if (glideslopeAntennaLat.HasValue && glideslopeAntennaLon.HasValue &&
+            glideslopeAntennaAltMSL.HasValue && aircraftLat.HasValue && aircraftLon.HasValue)
+        {
+            // Calculate horizontal distance using great circle (accounts for Earth's curvature)
+            double horizontalDistanceNM = CalculateDistance(aircraftLat.Value, aircraftLon.Value,
+                                                             glideslopeAntennaLat.Value, glideslopeAntennaLon.Value);
+            double horizontalDistanceFeet = horizontalDistanceNM * 6076.12; // NM to feet
+
+            // Calculate Earth curvature correction at this distance
+            // At longer distances, the Earth curves away, making the glideslope appear higher
+            double curvatureCorrectionFeet = (horizontalDistanceFeet * horizontalDistanceFeet) / (2.0 * EARTH_RADIUS_FEET);
+
+            // Calculate expected altitude along the glideslope with curvature compensation
+            // The glideslope follows the Earth's curve, so we add the curvature correction
+            double glideslopeRise = horizontalDistanceFeet * Math.Tan(glideslopePitch * DEGREES_TO_RADIANS);
+
+            expectedAltitudeMSL = glideslopeAntennaAltMSL.Value + glideslopeRise + curvatureCorrectionFeet;
+        }
+        else
+        {
+            // Calculate from threshold using standard slope with curvature compensation
+            double horizontalDistanceFeet = distanceFromThresholdNM * 6076.12; // Convert NM to feet
+
+            // Calculate Earth curvature correction
+            double curvatureCorrectionFeet = (horizontalDistanceFeet * horizontalDistanceFeet) / (2.0 * EARTH_RADIUS_FEET);
+
+            // Calculate expected altitude along the curved glideslope path
+            double glideslopeRise = horizontalDistanceFeet * Math.Tan(glideslopePitch * DEGREES_TO_RADIANS);
+
+            expectedAltitudeMSL = thresholdElevationMSL + glideslopeRise + curvatureCorrectionFeet;
+        }
+
+        // Return deviation (positive = above glideslope, negative = below)
+        return aircraftAltitudeMSL - expectedAltitudeMSL;
+    }
+
+    /// <summary>
+    /// Checks if aircraft is within ILS localizer range
+    /// </summary>
+    /// <param name="distanceFromThresholdNM">Distance from runway threshold in nautical miles</param>
+    /// <param name="ilsRangeNM">ILS range from database in nautical miles</param>
+    /// <returns>True if within range, false otherwise</returns>
+    public static bool IsWithinILSRange(double distanceFromThresholdNM, int ilsRangeNM)
+    {
+        return distanceFromThresholdNM <= ilsRangeNM;
+    }
+
+    /// <summary>
+    /// Checks if aircraft is within glideslope range
+    /// </summary>
+    /// <param name="distanceFromThresholdNM">Distance from runway threshold in nautical miles</param>
+    /// <param name="glideslopeRangeNM">Glideslope range from database in nautical miles</param>
+    /// <returns>True if within range, false otherwise</returns>
+    public static bool IsWithinGlideslopeRange(double distanceFromThresholdNM, int glideslopeRangeNM)
+    {
+        return distanceFromThresholdNM <= glideslopeRangeNM;
+    }
+
+    /// <summary>
+    /// Checks if aircraft is approaching runway from behind (wrong direction)
+    /// Uses both heading and position checks
+    /// </summary>
+    /// <param name="aircraftLat">Aircraft latitude in degrees</param>
+    /// <param name="aircraftLon">Aircraft longitude in degrees</param>
+    /// <param name="aircraftMagneticHeading">Aircraft magnetic heading in degrees</param>
+    /// <param name="runwayThresholdLat">Runway threshold latitude in degrees</param>
+    /// <param name="runwayThresholdLon">Runway threshold longitude in degrees</param>
+    /// <param name="runwayEndLat">Runway end latitude in degrees</param>
+    /// <param name="runwayEndLon">Runway end longitude in degrees</param>
+    /// <param name="localizerTrueHeading">Localizer true heading in degrees</param>
+    /// <param name="magneticVariation">Magnetic variation in degrees</param>
+    /// <returns>True if approaching from behind, false otherwise</returns>
+    public static bool IsApproachingFromBehind(double aircraftLat, double aircraftLon,
+                                                double aircraftMagneticHeading,
+                                                double runwayThresholdLat, double runwayThresholdLon,
+                                                double runwayEndLat, double runwayEndLon,
+                                                double localizerTrueHeading,
+                                                double magneticVariation)
+    {
+        // Check 1: Is aircraft heading within ±90° of runway reciprocal heading?
+        double runwayMagneticHeading = localizerTrueHeading - magneticVariation;
+        runwayMagneticHeading = (runwayMagneticHeading + 360.0) % 360.0;
+
+        double reciprocalHeading = (runwayMagneticHeading + 180.0) % 360.0;
+        double headingDifference = Math.Abs(aircraftMagneticHeading - reciprocalHeading);
+
+        // Normalize to 0-180 range
+        if (headingDifference > 180) headingDifference = 360 - headingDifference;
+
+        bool headingCheck = headingDifference <= 90.0;
+
+        // Check 2: Is aircraft behind the runway start threshold?
+        // Calculate bearing from aircraft to threshold
+        double bearingToThreshold = CalculateBearing(aircraftLat, aircraftLon,
+                                                     runwayThresholdLat, runwayThresholdLon);
+
+        // If bearing to threshold is roughly aligned with localizer heading (within ±90°),
+        // then aircraft is in front. If opposite, aircraft is behind.
+        double bearingDifference = Math.Abs(bearingToThreshold - localizerTrueHeading);
+        if (bearingDifference > 180) bearingDifference = 360 - bearingDifference;
+
+        bool positionCheck = bearingDifference > 90.0;
+
+        // Both checks must be true for "approaching from behind"
+        return headingCheck && positionCheck;
+    }
+
+    /// <summary>
+    /// Checks if aircraft is on ILS localizer centerline (within tolerance)
+    /// </summary>
+    /// <param name="crossTrackError">Cross-track error in degrees (from CalculateCrossTrackError)</param>
+    /// <returns>True if on centerline (within ±2°), false otherwise</returns>
+    public static bool IsOnLocalizer(double crossTrackError)
+    {
+        return Math.Abs(crossTrackError) <= LOCALIZER_TOLERANCE_DEGREES;
+    }
+
+    /// <summary>
+    /// Calculates perpendicular distance from aircraft to the ILS localizer centerline.
+    /// This is the shortest distance from the aircraft's current position to the extended centerline.
+    /// </summary>
+    /// <param name="aircraftLat">Aircraft latitude in degrees</param>
+    /// <param name="aircraftLon">Aircraft longitude in degrees</param>
+    /// <param name="runwayThresholdLat">Runway threshold latitude in degrees</param>
+    /// <param name="runwayThresholdLon">Runway threshold longitude in degrees</param>
+    /// <param name="localizerHeading">Localizer true heading in degrees</param>
+    /// <returns>Perpendicular distance to centerline in nautical miles</returns>
+    public static double CalculateDistanceToLocalizer(double aircraftLat, double aircraftLon,
+                                                       double runwayThresholdLat, double runwayThresholdLon,
+                                                       double localizerHeading)
+    {
+        // Calculate the perpendicular intercept point on the centerline
+        // This is the point on the extended centerline closest to the aircraft
+        var (interceptLat, interceptLon) = CalculatePerpendicularInterceptPoint(
+            aircraftLat, aircraftLon,
+            runwayThresholdLat, runwayThresholdLon,
+            localizerHeading);
+
+        // Calculate distance from aircraft to that perpendicular point
+        // This gives us the shortest distance to the localizer centerline
+        return CalculateDistance(aircraftLat, aircraftLon, interceptLat, interceptLon);
+    }
+
+    /// <summary>
+    /// Calculates the perpendicular intercept point on the localizer centerline.
+    /// This is the point on the extended centerline that is closest to the aircraft's current position.
+    /// </summary>
+    /// <param name="aircraftLat">Aircraft latitude in degrees</param>
+    /// <param name="aircraftLon">Aircraft longitude in degrees</param>
+    /// <param name="thresholdLat">Runway threshold latitude in degrees</param>
+    /// <param name="thresholdLon">Runway threshold longitude in degrees</param>
+    /// <param name="localizerHeading">Localizer true heading in degrees</param>
+    /// <returns>Tuple of (latitude, longitude) for the intercept point on the centerline</returns>
+    private static (double, double) CalculatePerpendicularInterceptPoint(
+        double aircraftLat, double aircraftLon,
+        double thresholdLat, double thresholdLon,
+        double localizerHeading)
+    {
+        // Convert to radians
+        double lat1 = thresholdLat * DEGREES_TO_RADIANS;
+        double lon1 = thresholdLon * DEGREES_TO_RADIANS;
+        double lat2 = aircraftLat * DEGREES_TO_RADIANS;
+        double lon2 = aircraftLon * DEGREES_TO_RADIANS;
+        double locHeadingRad = localizerHeading * DEGREES_TO_RADIANS;
+
+        // Calculate distance from threshold to aircraft (angular distance)
+        double deltaLat = lat2 - lat1;
+        double deltaLon = lon2 - lon1;
+        double a = Math.Sin(deltaLat / 2) * Math.Sin(deltaLat / 2) +
+                   Math.Cos(lat1) * Math.Cos(lat2) *
+                   Math.Sin(deltaLon / 2) * Math.Sin(deltaLon / 2);
+        double angularDistance = 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
+
+        // Calculate bearing from threshold to aircraft
+        double y = Math.Sin(deltaLon) * Math.Cos(lat2);
+        double x = Math.Cos(lat1) * Math.Sin(lat2) -
+                   Math.Sin(lat1) * Math.Cos(lat2) * Math.Cos(deltaLon);
+        double bearingToAircraft = Math.Atan2(y, x);
+
+        // Calculate along-track distance (ATD) - distance along the localizer from threshold
+        // to the perpendicular point
+        double alongTrackDistance = Math.Asin(Math.Sin(angularDistance) *
+                                               Math.Sin(bearingToAircraft - locHeadingRad));
+
+        // Project the along-track distance from threshold along the localizer heading
+        // to find the intercept point coordinates
+        double interceptLat = Math.Asin(Math.Sin(lat1) * Math.Cos(alongTrackDistance) +
+                                         Math.Cos(lat1) * Math.Sin(alongTrackDistance) * Math.Cos(locHeadingRad));
+
+        double interceptLon = lon1 + Math.Atan2(Math.Sin(locHeadingRad) * Math.Sin(alongTrackDistance) * Math.Cos(lat1),
+                                                 Math.Cos(alongTrackDistance) - Math.Sin(lat1) * Math.Sin(interceptLat));
+
+        // Convert back to degrees
+        return (interceptLat * RADIANS_TO_DEGREES, interceptLon * RADIANS_TO_DEGREES);
     }
 }
