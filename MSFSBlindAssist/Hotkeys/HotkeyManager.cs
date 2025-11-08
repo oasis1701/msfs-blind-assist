@@ -386,7 +386,7 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_VERTICAL_SPEED, MOD_NONE, 0x56); // V (Vertical Speed)
             RegisterHotKey(windowHandle, HOTKEY_HEADING_MAGNETIC, MOD_NONE, 0x48); // H (Magnetic Heading)
             RegisterHotKey(windowHandle, HOTKEY_HEADING_TRUE, MOD_NONE, 0x55); // U (True Heading)
-            RegisterHotKey(windowHandle, HOTKEY_DESTINATION_RUNWAY_DISTANCE, MOD_CONTROL, 0x49); // Ctrl+I (Distance to Destination Runway)
+            RegisterHotKey(windowHandle, HOTKEY_DESTINATION_RUNWAY_DISTANCE, MOD_CONTROL, 0x44); // Ctrl+D (Distance to Destination Runway)
             RegisterHotKey(windowHandle, HOTKEY_LOCATION_INFO, MOD_SHIFT, 0x4C);   // Shift+L (Location Info)
             RegisterHotKey(windowHandle, HOTKEY_WIND_INFO, MOD_NONE, 0x49); // I (Wind Info)
             RegisterHotKey(windowHandle, HOTKEY_METAR_REPORT, MOD_SHIFT, 0x4D); // Shift+M (METAR Report)

@@ -44,7 +44,8 @@ Fuel:
 
 Tools:
 CTRL+T, Takeoff Assistance
- CTRL+E, Enable Engine and warning display auto announcements
+CTRL+D, Distance to Selected Runway
+CTRL+E, Enable Engine and warning display auto announcements
 
 Displays and windows:
   Shift+E, Electronic Flight Bag window

@@ -82,7 +82,7 @@ FCU alt set, knob pushed or pulled as required
 MCDU set arrival runway and star per ATC instructions if not set before
 MCDU RadNav page check for ILS freq and course, most times automatically set by airbus
 Select destination runway through input mode > shift+d
-Optional, check runway threshold distance through output mode > control+I
+Optional, check runway threshold distance through output mode > control+D
 Follow ATC instructions or FMC managed path down into approach
 Activate approach phase in MCDU perf page when 40 miles out
 Landing lights on at 10000

@@ -1156,7 +1156,7 @@ public partial class MainForm : Form
     {
         if (!simConnectManager.HasDestinationRunway())
         {
-            announcer.AnnounceImmediate("No destination runway selected. Press bracket T to select a destination runway first.");
+            announcer.AnnounceImmediate("No destination runway selected. Press left bracket then shift+d to select a destination runway first.");
             return;
         }
 
