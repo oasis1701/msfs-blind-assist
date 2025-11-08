@@ -2662,7 +2662,25 @@ public class SimConnectManager
     {
         if (m.Msg == WM_USER_SIMCONNECT && simConnect != null)
         {
-            simConnect.ReceiveMessage();
+            try
+            {
+                simConnect.ReceiveMessage();
+            }
+            catch (COMException ex)
+            {
+                // SimConnect disposed or MSFS closed - log and ignore
+                System.Diagnostics.Debug.WriteLine($"SimConnect ReceiveMessage COM exception (expected during disconnect): {ex.Message}");
+            }
+            catch (NullReferenceException ex)
+            {
+                // SimConnect became null between check and call - log and ignore
+                System.Diagnostics.Debug.WriteLine($"SimConnect ReceiveMessage null reference (expected during disconnect): {ex.Message}");
+            }
+            catch (Exception ex)
+            {
+                // Unexpected exception - log but don't crash
+                System.Diagnostics.Debug.WriteLine($"Unexpected exception in ProcessWindowMessage: {ex}");
+            }
         }
     }
 
@@ -2913,6 +2931,10 @@ public class SimConnectManager
 
     public void Disconnect()
     {
+        // Stop reconnect timer first to prevent it from firing during cleanup
+        reconnectTimer.Stop();
+        System.Diagnostics.Debug.WriteLine("[SimConnectManager] Reconnect timer stopped");
+
         // Disconnect MobiFlight WASM module
         if (mobiFlightWasm != null)
         {
@@ -2967,8 +2989,17 @@ public class SimConnectManager
                 var stopwatch = System.Diagnostics.Stopwatch.StartNew();
                 while (stopwatch.ElapsedMilliseconds < 500)
                 {
-                    System.Windows.Forms.Application.DoEvents();  // Pump SimConnect messages
-                    Thread.Sleep(10);
+                    try
+                    {
+                        System.Windows.Forms.Application.DoEvents();  // Pump SimConnect messages
+                        Thread.Sleep(10);
+                    }
+                    catch (Exception ex)
+                    {
+                        // If MSFS closes during cleanup, DoEvents may throw - log and break
+                        System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Message pump exception during disconnect (expected if MSFS closed): {ex.Message}");
+                        break;
+                    }
                 }
                 System.Diagnostics.Debug.WriteLine("[SimConnectManager] Waited 500ms for batch request cancellations to process");
 
@@ -3023,6 +3054,20 @@ public class SimConnectManager
             simConnect = null;
             System.Diagnostics.Debug.WriteLine("[SimConnectManager] SimConnect disposed");
         }
+
+        // Clear all internal state dictionaries to ensure clean reconnection
+        variableDataDefinitions.Clear();
+        pendingRequests.Clear();
+        lastVariableValues.Clear();
+        continuousVariableIndexMap.Clear();
+        panelVariableIndexMap.Clear();
+        eventIds.Clear();
+        forceUpdateVariables.Clear();
+        ecamStringData.Clear();
+        ecamAnnouncementData.Clear();
+        previousECAMMessages.Clear();
+        System.Diagnostics.Debug.WriteLine("[SimConnectManager] All internal state dictionaries cleared");
+
         IsConnected = false;
 
         // Only announce disconnection if we were previously connected
@@ -3037,7 +3082,10 @@ public class SimConnectManager
             System.Diagnostics.Debug.WriteLine("[SimConnectManager] Disconnect called but was not previously connected");
         }
 
+        // Restart reconnect timer AFTER cleanup is complete (we stopped it at the beginning)
+        // This prevents race conditions during cleanup while still enabling auto-reconnect
         reconnectTimer.Start();
+        System.Diagnostics.Debug.WriteLine("[SimConnectManager] Disconnect complete - reconnect timer restarted");
     }
 
 
