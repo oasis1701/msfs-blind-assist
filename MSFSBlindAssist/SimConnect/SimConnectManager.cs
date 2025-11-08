@@ -1882,6 +1882,12 @@ public class SimConnectManager
             if (currentILSRequest == null || ilsRunway == null || ilsAirport == null)
             {
                 System.Diagnostics.Debug.WriteLine("[SimConnectManager] ILS guidance request incomplete - missing data");
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "ILS_GUIDANCE",
+                    Value = 0,
+                    Description = "ILS guidance request incomplete - missing data"
+                });
                 return;
             }
 
@@ -2007,6 +2013,12 @@ public class SimConnectManager
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error processing ILS guidance: {ex.Message}");
+            SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+            {
+                VarName = "ILS_GUIDANCE",
+                Value = 0,
+                Description = $"Error processing ILS guidance: {ex.Message}"
+            });
         }
     }
 
@@ -3541,6 +3553,12 @@ public class SimConnectManager
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error requesting ILS guidance: {ex.Message}");
+            SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+            {
+                VarName = "ILS_GUIDANCE",
+                Value = 0,
+                Description = $"Error requesting ILS guidance: {ex.Message}"
+            });
         }
     }
 

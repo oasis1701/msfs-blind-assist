@@ -52,7 +52,9 @@ public class LittleNavMapProvider : IAirportDataProvider
                     {
                         return new Airport
                         {
-                            ICAO = reader["icao"]?.ToString() ?? reader["ident"]?.ToString() ?? icao,
+                            ICAO = string.IsNullOrWhiteSpace(reader["icao"]?.ToString())
+                                ? (reader["ident"]?.ToString() ?? icao)
+                                : reader["icao"].ToString()!,
                             Name = reader["name"]?.ToString() ?? "",
                             City = reader["city"]?.ToString() ?? "",
                             Country = reader["country"]?.ToString() ?? "",

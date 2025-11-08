@@ -459,6 +459,13 @@ public partial class MainForm : Form
             return true;
         }
 
+        // Handle ILS guidance announcements
+        if (e.VarName == "ILS_GUIDANCE")
+        {
+            announcer.AnnounceImmediate(e.Description);
+            return true;
+        }
+
         // ECAM LED announcements are now handled by aircraft-specific ProcessSimVarUpdate()
 
         // Handle special display updates
