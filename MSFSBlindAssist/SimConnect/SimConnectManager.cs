@@ -1933,13 +1933,13 @@ public class SimConnectManager
             // Calculate cross-track error (degrees off centerline)
             double crossTrackError = NavigationCalculator.CalculateCrossTrackError(
                 data.Latitude, data.Longitude,
-                ilsData.AntennaLatitude, ilsData.AntennaLongitude,
+                runway.StartLat, runway.StartLon,
                 ilsData.LocalizerHeading);
 
             // Calculate perpendicular distance to localizer centerline
             double distanceToLocalizer = NavigationCalculator.CalculateDistanceToLocalizer(
                 data.Latitude, data.Longitude,
-                ilsData.AntennaLatitude, ilsData.AntennaLongitude,
+                runway.StartLat, runway.StartLon,
                 ilsData.LocalizerHeading);
 
             // Check if on localizer
@@ -1957,7 +1957,7 @@ public class SimConnectManager
                     string lateralGuidance = $"On localizer. {distanceToThreshold:F1} nautical miles from threshold";
 
                     // Check if within glideslope range
-                    bool withinGSRange = NavigationCalculator.IsWithinGlideslopeRange(distanceToThreshold, ilsData.GlideslopeRange);
+                    bool withinGSRange = NavigationCalculator.IsWithinGlideslopeRange(distanceToThreshold, 25);
 
                     if (withinGSRange)
                     {
@@ -2006,7 +2006,7 @@ public class SimConnectManager
                     // Calculate intercept heading
                     double interceptHeading = NavigationCalculator.CalculateInterceptHeading(
                         data.Latitude, data.Longitude,
-                        ilsData.AntennaLatitude, ilsData.AntennaLongitude,
+                        runway.StartLat, runway.StartLon,
                         ilsData.LocalizerHeading,
                         crossTrackError,
                         data.MagneticVariation);
@@ -2018,7 +2018,7 @@ public class SimConnectManager
                 }
 
                 // Check if within glideslope range
-                bool withinGSRange = NavigationCalculator.IsWithinGlideslopeRange(distanceToThreshold, ilsData.GlideslopeRange);
+                bool withinGSRange = NavigationCalculator.IsWithinGlideslopeRange(distanceToThreshold, 25);
 
                 string verticalGuidance;
                 if (withinGSRange)
@@ -2054,7 +2054,7 @@ public class SimConnectManager
                 // ZONE 3: >17 NM - Targeted intercept at 12 NM
                 double targetedInterceptHeading = NavigationCalculator.CalculateTargetedInterceptHeading(
                     data.Latitude, data.Longitude,
-                    ilsData.AntennaLatitude, ilsData.AntennaLongitude,
+                    runway.StartLat, runway.StartLon,
                     ilsData.LocalizerHeading,
                     ZONE_3_TARGET_INTERCEPT,
                     data.MagneticVariation);
