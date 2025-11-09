@@ -279,6 +279,88 @@ public class NavigationCalculator
     }
 
     /// <summary>
+    /// Calculates extension heading for repositioning when too close to threshold.
+    /// Returns the reciprocal of the runway heading to fly away from the runway.
+    /// </summary>
+    /// <param name="localizerTrueHeading">Localizer true heading in degrees</param>
+    /// <param name="magneticVariation">Magnetic variation in degrees</param>
+    /// <returns>Magnetic heading to fly for extension (reciprocal of runway heading)</returns>
+    public static double CalculateExtensionHeading(double localizerTrueHeading, double magneticVariation)
+    {
+        // Convert localizer true heading to magnetic
+        double runwayMagneticHeading = localizerTrueHeading - magneticVariation;
+        runwayMagneticHeading = (runwayMagneticHeading + 360.0) % 360.0;
+
+        // Calculate reciprocal (opposite direction)
+        double extensionHeading = (runwayMagneticHeading + 180.0) % 360.0;
+
+        return extensionHeading;
+    }
+
+    /// <summary>
+    /// Calculates intercept heading to join the localizer at a specific target distance from threshold.
+    /// Used for aircraft far from the runway (Zone 3) to optimize approach positioning.
+    /// Creates a shallow intercept angle (~30°) by aiming for a point closer to threshold.
+    /// </summary>
+    /// <param name="aircraftLat">Aircraft latitude in degrees</param>
+    /// <param name="aircraftLon">Aircraft longitude in degrees</param>
+    /// <param name="runwayThresholdLat">Runway threshold latitude in degrees</param>
+    /// <param name="runwayThresholdLon">Runway threshold longitude in degrees</param>
+    /// <param name="localizerTrueHeading">Localizer true heading in degrees</param>
+    /// <param name="targetInterceptDistanceNM">Target distance from threshold to intercept (e.g., 12 NM)</param>
+    /// <param name="magneticVariation">Magnetic variation in degrees</param>
+    /// <returns>Magnetic heading to fly to intercept at target distance</returns>
+    public static double CalculateTargetedInterceptHeading(double aircraftLat, double aircraftLon,
+                                                            double runwayThresholdLat, double runwayThresholdLon,
+                                                            double localizerTrueHeading,
+                                                            double targetInterceptDistanceNM,
+                                                            double magneticVariation)
+    {
+        // Strategy: To create a shallow intercept angle (~30°), aim for a point on the centerline
+        // that's closer to the threshold than the target distance. This naturally creates
+        // an intercept angle as the aircraft approaches the target intercept point.
+
+        // Calculate aim point distance (closer to threshold to create intercept angle)
+        // Use 2/3 of target distance as aim point to create ~30° approach
+        double aimPointDistanceNM = targetInterceptDistanceNM * 0.67;
+
+        // Convert the aim point distance to angular distance
+        double aimDistanceRad = aimPointDistanceNM / EARTH_RADIUS_NM;
+
+        // Convert threshold position and localizer heading to radians
+        double thresholdLatRad = runwayThresholdLat * DEGREES_TO_RADIANS;
+        double thresholdLonRad = runwayThresholdLon * DEGREES_TO_RADIANS;
+        double locHeadingRad = localizerTrueHeading * DEGREES_TO_RADIANS;
+
+        // Calculate the aim point on the centerline using destination point formula
+        // Project along the localizer heading from threshold
+        double aimLat = Math.Asin(
+            Math.Sin(thresholdLatRad) * Math.Cos(aimDistanceRad) +
+            Math.Cos(thresholdLatRad) * Math.Sin(aimDistanceRad) * Math.Cos(locHeadingRad)
+        );
+
+        double aimLon = thresholdLonRad + Math.Atan2(
+            Math.Sin(locHeadingRad) * Math.Sin(aimDistanceRad) * Math.Cos(thresholdLatRad),
+            Math.Cos(aimDistanceRad) - Math.Sin(thresholdLatRad) * Math.Sin(aimLat)
+        );
+
+        // Convert back to degrees
+        double aimLatDeg = aimLat * RADIANS_TO_DEGREES;
+        double aimLonDeg = aimLon * RADIANS_TO_DEGREES;
+
+        // Calculate magnetic bearing from aircraft to aim point
+        // By aiming for a point closer than the target (8 NM vs 12 NM), we create
+        // a heading that will intercept the localizer at a shallow angle near the target distance
+        double magneticHeading = CalculateMagneticBearing(
+            aircraftLat, aircraftLon,
+            aimLatDeg, aimLonDeg,
+            magneticVariation
+        );
+
+        return magneticHeading;
+    }
+
+    /// <summary>
     /// Calculates perpendicular distance from aircraft to the ILS localizer centerline.
     /// This is the shortest distance from the aircraft's current position to the extended centerline.
     /// </summary>
