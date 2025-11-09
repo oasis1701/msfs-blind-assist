@@ -1933,13 +1933,13 @@ public class SimConnectManager
             // Calculate cross-track error (degrees off centerline)
             double crossTrackError = NavigationCalculator.CalculateCrossTrackError(
                 data.Latitude, data.Longitude,
-                runway.StartLat, runway.StartLon,
+                ilsData.AntennaLatitude, ilsData.AntennaLongitude,
                 ilsData.LocalizerHeading);
 
             // Calculate perpendicular distance to localizer centerline
             double distanceToLocalizer = NavigationCalculator.CalculateDistanceToLocalizer(
                 data.Latitude, data.Longitude,
-                runway.StartLat, runway.StartLon,
+                ilsData.AntennaLatitude, ilsData.AntennaLongitude,
                 ilsData.LocalizerHeading);
 
             // Check if on localizer
@@ -2006,7 +2006,7 @@ public class SimConnectManager
                     // Calculate intercept heading
                     double interceptHeading = NavigationCalculator.CalculateInterceptHeading(
                         data.Latitude, data.Longitude,
-                        runway.StartLat, runway.StartLon,
+                        ilsData.AntennaLatitude, ilsData.AntennaLongitude,
                         ilsData.LocalizerHeading,
                         crossTrackError,
                         data.MagneticVariation);
@@ -2054,7 +2054,7 @@ public class SimConnectManager
                 // ZONE 3: >17 NM - Targeted intercept at 12 NM
                 double targetedInterceptHeading = NavigationCalculator.CalculateTargetedInterceptHeading(
                     data.Latitude, data.Longitude,
-                    runway.StartLat, runway.StartLon,
+                    ilsData.AntennaLatitude, ilsData.AntennaLongitude,
                     ilsData.LocalizerHeading,
                     ZONE_3_TARGET_INTERCEPT,
                     data.MagneticVariation);
