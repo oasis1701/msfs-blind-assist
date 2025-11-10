@@ -49,7 +49,7 @@ public partial class DisplayReadingResultForm : Form
 
     private void InitializeComponent(string displayName, string analysisResult, string analysisType)
     {
-        Text = $"{displayName} {analysisType} - Gemini AI";
+        Text = $"{displayName} {analysisType}";
         Size = new Size(800, 600);
         StartPosition = FormStartPosition.CenterScreen;
         FormBorderStyle = FormBorderStyle.Sizable;  // Allow resizing for long text

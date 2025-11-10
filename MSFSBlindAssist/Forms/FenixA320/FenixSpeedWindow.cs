@@ -57,7 +57,7 @@ public partial class FenixSpeedWindow : Form
     private void InitializeComponent()
     {
         // Form properties
-        Text = "Fenix A320 - Speed Controls";
+        Text = "Set FCU Speed";
         Size = new Size(400, 310);
         StartPosition = FormStartPosition.CenterScreen;
         FormBorderStyle = FormBorderStyle.FixedDialog;

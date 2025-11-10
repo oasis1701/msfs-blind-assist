@@ -61,7 +61,7 @@ public partial class FenixAutopilotWindow : Form
     private void InitializeComponent()
     {
         // Form properties
-        Text = "Fenix A320 - Autopilot Controls";
+        Text = "Autopilot window";
         Size = new Size(400, 400);
         StartPosition = FormStartPosition.CenterScreen;
         FormBorderStyle = FormBorderStyle.FixedDialog;

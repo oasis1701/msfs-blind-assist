@@ -57,7 +57,7 @@ public partial class FenixHeadingWindow : Form
     private void InitializeComponent()
     {
         // Form properties
-        Text = "Fenix A320 - Heading Controls";
+        Text = "Set FCU heading";
         Size = new Size(400, 310);
         StartPosition = FormStartPosition.CenterScreen;
         FormBorderStyle = FormBorderStyle.FixedDialog;

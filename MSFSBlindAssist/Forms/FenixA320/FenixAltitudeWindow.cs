@@ -56,7 +56,7 @@ public partial class FenixAltitudeWindow : Form
     private void InitializeComponent()
     {
         // Form properties
-        Text = "Fenix A320 - Altitude Controls";
+        Text = "Set FCU altitude";
         Size = new Size(400, 250);
         StartPosition = FormStartPosition.CenterScreen;
         FormBorderStyle = FormBorderStyle.FixedDialog;
