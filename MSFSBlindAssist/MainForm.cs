@@ -2852,6 +2852,13 @@ public partial class MainForm : Form
     {
         try
         {
+            // Guard clause: Check if SimConnect is connected
+            if (!simConnectManager.IsConnected)
+            {
+                System.Diagnostics.Debug.WriteLine("[MainForm] Nearest city announcement skipped: Not connected to simulator");
+                return;
+            }
+
             // Check if GeoNames API is configured
             var settings = MSFSBlindAssist.Settings.SettingsManager.Current;
             if (string.IsNullOrWhiteSpace(settings.GeoNamesApiUsername))
@@ -2904,6 +2911,17 @@ public partial class MainForm : Form
 
     protected override void OnFormClosing(FormClosingEventArgs e)
     {
+        // Stop and dispose all timers to prevent them firing during/after shutdown
+        eventBatchTimer?.Stop();
+        eventBatchTimer?.Dispose();
+
+        _panelLoadTimer?.Stop();
+        _panelLoadTimer?.Dispose();
+
+        nearestCityAnnouncementTimer?.Stop();
+        nearestCityAnnouncementTimer?.Dispose();
+
+        // Clean up managers and resources
         hotkeyManager?.Cleanup();
         simConnectManager?.Disconnect();
         announcer?.Cleanup();
