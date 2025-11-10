@@ -17,6 +17,7 @@ public partial class GeoNamesApiKeyForm : Form
     private TextBox maxTouristLandmarksTextBox = null!;
     private RadioButton milesRadioButton = null!;
     private RadioButton kilometersRadioButton = null!;
+    private ComboBox nearestCityAnnouncementComboBox = null!;
     private Button saveButton = null!;
     private Button cancelButton = null!;
     private Button resetDefaultsButton = null!;
@@ -226,6 +227,38 @@ public partial class GeoNamesApiKeyForm : Form
         };
         this.Controls.Add(kilometersRadioButton);
 
+        yPos += spacing;
+
+        // Nearest City Announcement section
+        var nearestCityAnnouncementLabel = new Label
+        {
+            Text = "Announce nearest city automatically:",
+            Location = new System.Drawing.Point(20, yPos),
+            Size = new System.Drawing.Size(250, labelHeight),
+            AccessibleName = "Announce nearest city automatically label"
+        };
+        this.Controls.Add(nearestCityAnnouncementLabel);
+
+        nearestCityAnnouncementComboBox = new ComboBox
+        {
+            Location = new System.Drawing.Point(280, yPos),
+            Size = new System.Drawing.Size(150, textBoxHeight),
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            AccessibleName = "Announce nearest city automatically",
+            AccessibleDescription = "Choose how often to automatically announce the nearest city"
+        };
+        nearestCityAnnouncementComboBox.Items.AddRange(new object[]
+        {
+            "Off",
+            "Every 1 minute",
+            "Every 2 minutes",
+            "Every 5 minutes",
+            "Every 10 minutes",
+            "Every 15 minutes",
+            "Every 20 minutes"
+        });
+        this.Controls.Add(nearestCityAnnouncementComboBox);
+
         yPos += spacing + 20;
 
         // Maximum Results section
@@ -414,6 +447,41 @@ public partial class GeoNamesApiKeyForm : Form
         {
             milesRadioButton.Checked = true;
         }
+
+        // Load nearest city announcement interval
+        int interval = SettingsManager.Current.NearestCityAnnouncementInterval;
+        if (interval == 0)
+        {
+            nearestCityAnnouncementComboBox.SelectedIndex = 0; // Off
+        }
+        else if (interval == 60)
+        {
+            nearestCityAnnouncementComboBox.SelectedIndex = 1; // Every 1 minute
+        }
+        else if (interval == 120)
+        {
+            nearestCityAnnouncementComboBox.SelectedIndex = 2; // Every 2 minutes
+        }
+        else if (interval == 300)
+        {
+            nearestCityAnnouncementComboBox.SelectedIndex = 3; // Every 5 minutes
+        }
+        else if (interval == 600)
+        {
+            nearestCityAnnouncementComboBox.SelectedIndex = 4; // Every 10 minutes
+        }
+        else if (interval == 900)
+        {
+            nearestCityAnnouncementComboBox.SelectedIndex = 5; // Every 15 minutes
+        }
+        else if (interval == 1200)
+        {
+            nearestCityAnnouncementComboBox.SelectedIndex = 6; // Every 20 minutes
+        }
+        else
+        {
+            nearestCityAnnouncementComboBox.SelectedIndex = 0; // Default to Off if unrecognized
+        }
     }
 
     private void ResetDefaultsButton_Click(object? sender, EventArgs e)
@@ -433,6 +501,7 @@ public partial class GeoNamesApiKeyForm : Form
         maxTouristLandmarksTextBox.Text = "8";
 
         milesRadioButton.Checked = true;
+        nearestCityAnnouncementComboBox.SelectedIndex = 0; // Off
     }
 
     private void SaveButton_Click(object? sender, EventArgs e)
@@ -619,6 +688,20 @@ public partial class GeoNamesApiKeyForm : Form
                 maxTouristLandmarksTextBox.Focus();
                 return;
             }
+
+            // Save nearest city announcement interval
+            int selectedInterval = nearestCityAnnouncementComboBox.SelectedIndex switch
+            {
+                0 => 0,      // Off
+                1 => 60,     // Every 1 minute
+                2 => 120,    // Every 2 minutes
+                3 => 300,    // Every 5 minutes
+                4 => 600,    // Every 10 minutes
+                5 => 900,    // Every 15 minutes
+                6 => 1200,   // Every 20 minutes
+                _ => 0       // Default to Off
+            };
+            SettingsManager.Current.NearestCityAnnouncementInterval = selectedInterval;
 
             // Save units
             SettingsManager.Current.DistanceUnits = kilometersRadioButton.Checked ? "kilometers" : "miles";

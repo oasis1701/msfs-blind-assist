@@ -17,6 +17,7 @@ public class UserSettings
 
         // GeoNames API Settings
         public string GeoNamesApiUsername { get; set; } = "";
+        public int NearestCityAnnouncementInterval { get; set; } = 0; // 0 = Off, otherwise seconds
 
         // SimBrief Settings
         public string SimbriefUsername { get; set; } = "";
@@ -68,6 +69,7 @@ public class UserSettings
             SimulatorVersion = SimulatorVersion,
             LastAircraft = LastAircraft,
             GeoNamesApiUsername = GeoNamesApiUsername,
+            NearestCityAnnouncementInterval = NearestCityAnnouncementInterval,
             SimbriefUsername = SimbriefUsername,
             GeminiApiKey = GeminiApiKey,
             NearbyCitiesRange = NearbyCitiesRange,

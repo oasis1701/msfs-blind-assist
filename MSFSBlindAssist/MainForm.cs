@@ -43,6 +43,9 @@ public partial class MainForm : Form
     private System.Windows.Forms.Timer? _panelLoadTimer;
     private string? _pendingPanelLoad = null;  // Track which panel to load when timer fires
 
+    // Nearest city announcement timer (periodic automatic announcements)
+    private System.Windows.Forms.Timer? nearestCityAnnouncementTimer;
+
     // Current state
     private string currentSection = "";
     private string currentPanel = "";
@@ -153,6 +156,11 @@ public partial class MainForm : Form
         _panelLoadTimer.Tick += PanelLoadTimer_Tick;
         System.Diagnostics.Debug.WriteLine("[MainForm] Panel load debouncing initialized: 150ms delay");
 
+        // Initialize nearest city announcement timer (periodic automatic announcements)
+        nearestCityAnnouncementTimer = new System.Windows.Forms.Timer();
+        nearestCityAnnouncementTimer.Tick += NearestCityAnnouncementTimer_Tick;
+        // Timer interval and start/stop handled by settings and connection status
+
         // Update status bar with database info
         UpdateDatabaseStatusDisplay();
 
@@ -218,11 +226,17 @@ public partial class MainForm : Form
                 simConnectManager.EnableECAMAnnouncements();
             };
             announcementGracePeriodTimer.Start();
+
+            // Start nearest city announcement timer if enabled in settings
+            StartNearestCityAnnouncementTimer();
         }
         else if (status.Contains("Disconnected"))
         {
             // Stop event batching timer and clear queue
             eventBatchTimer?.Stop();
+
+            // Stop nearest city announcement timer
+            nearestCityAnnouncementTimer?.Stop();
 
             // Clear event queue and reset counters
             while (eventQueue.TryDequeue(out _)) { }
@@ -1500,6 +1514,9 @@ public partial class MainForm : Form
         {
             if (settingsForm.ShowDialog(this) == DialogResult.OK)
             {
+                // Restart timer with new settings (handles enable/disable/interval changes)
+                RestartNearestCityAnnouncementTimer();
+
                 statusLabel.Text = "GeoNames settings saved successfully";
                 announcer.Announce("GeoNames settings saved successfully");
             }
@@ -2785,6 +2802,105 @@ public partial class MainForm : Form
             controlsContainer.Controls.Add(layout);
         })); // End BeginInvoke - deferred control creation
     } // End PanelLoadTimer_Tick
+
+    /// <summary>
+    /// Starts the nearest city announcement timer if enabled in settings.
+    /// Checks the current setting value and configures the timer accordingly.
+    /// Called when SimConnect initially connects.
+    /// </summary>
+    private void StartNearestCityAnnouncementTimer()
+    {
+        // Delegate to restart method for consistent behavior
+        RestartNearestCityAnnouncementTimer();
+    }
+
+    /// <summary>
+    /// Restarts the nearest city announcement timer with current settings.
+    /// Stops timer if disabled (interval = 0), or updates interval and restarts if enabled.
+    /// Should be called whenever GeoNames settings are saved.
+    /// </summary>
+    private void RestartNearestCityAnnouncementTimer()
+    {
+        if (nearestCityAnnouncementTimer == null)
+            return;
+
+        // Always stop first to ensure clean state
+        nearestCityAnnouncementTimer.Stop();
+
+        // Read current setting
+        var settings = MSFSBlindAssist.Settings.SettingsManager.Current;
+        int intervalSeconds = settings.NearestCityAnnouncementInterval;
+
+        // Start with new interval if enabled
+        if (intervalSeconds > 0)
+        {
+            nearestCityAnnouncementTimer.Interval = intervalSeconds * 1000; // Convert to milliseconds
+            nearestCityAnnouncementTimer.Start();
+            System.Diagnostics.Debug.WriteLine($"[MainForm] Nearest city announcement timer restarted: {intervalSeconds} seconds interval");
+        }
+        else
+        {
+            System.Diagnostics.Debug.WriteLine("[MainForm] Nearest city announcement timer stopped (disabled in settings)");
+        }
+    }
+
+    /// <summary>
+    /// Timer tick handler for nearest city announcements.
+    /// Requests current aircraft position and announces the nearest city.
+    /// </summary>
+    private void NearestCityAnnouncementTimer_Tick(object? sender, EventArgs e)
+    {
+        try
+        {
+            // Check if GeoNames API is configured
+            var settings = MSFSBlindAssist.Settings.SettingsManager.Current;
+            if (string.IsNullOrWhiteSpace(settings.GeoNamesApiUsername))
+            {
+                System.Diagnostics.Debug.WriteLine("[MainForm] Nearest city announcement skipped: GeoNames API not configured");
+                return;
+            }
+
+            // Request current aircraft position with callback
+            simConnectManager.RequestAircraftPositionAsync(async (position) =>
+            {
+                try
+                {
+                    // Get location data from GeoNames service
+                    var geoNamesService = new GeoNamesService();
+                    var locationData = await geoNamesService.GetLocationInfoAsync(position.Latitude, position.Longitude);
+
+                    if (locationData?.NearbyPlaces != null && locationData.NearbyPlaces.Count > 0)
+                    {
+                        var nearestCity = locationData.NearbyPlaces[0];
+
+                        // Format announcement (same format as LocationInfoForm)
+                        string announcement = $"Near {nearestCity.Name}";
+                        if (!string.IsNullOrEmpty(nearestCity.State))
+                        {
+                            announcement += $", {nearestCity.State}";
+                        }
+                        announcement += $", {nearestCity.Distance:F1} {settings.DistanceUnits} {nearestCity.Direction}";
+
+                        announcer.Announce(announcement);
+                        System.Diagnostics.Debug.WriteLine($"[MainForm] Nearest city announced: {announcement}");
+                    }
+                    else
+                    {
+                        System.Diagnostics.Debug.WriteLine("[MainForm] Nearest city announcement skipped: No nearby cities found");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[MainForm] Error in nearest city announcement callback: {ex.Message}");
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[MainForm] Error during nearest city announcement: {ex.Message}");
+            // Don't announce errors to avoid interrupting the user
+        }
+    }
 
     protected override void OnFormClosing(FormClosingEventArgs e)
     {
