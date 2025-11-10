@@ -89,6 +89,7 @@ public class HotkeyManager : IDisposable
         private const int HOTKEY_TRACK_SLOT_4 = 9065;
         private const int HOTKEY_TRACK_SLOT_5 = 9066;
         private const int HOTKEY_FUEL_PAYLOAD = 9068;
+        private const int HOTKEY_TRACK_FIX = 9076;
 
         // Display reading hotkey IDs (Output mode - Alt+1-5, Fenix A320 only)
         private const int HOTKEY_READ_DISPLAY_PFD = 9069;
@@ -365,6 +366,9 @@ public class HotkeyManager : IDisposable
                         case HOTKEY_TOGGLE_AP2:
                             TriggerHotkey(HotkeyAction.ToggleAutopilot2);
                             break;
+                        case HOTKEY_TRACK_FIX:
+                            TriggerHotkey(HotkeyAction.ShowTrackFixWindow);
+                            break;
                     }
                     DeactivateInputHotkeyMode();
                     return true;
@@ -532,6 +536,7 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_FCU_SET_VS, MOD_CONTROL, 0x56);      // Ctrl+V (Set VS)
             RegisterHotKey(windowHandle, HOTKEY_FCU_SET_AUTOPILOT, MOD_CONTROL, 0x50); // Ctrl+P (Set Autopilot)
             RegisterHotKey(windowHandle, HOTKEY_TOGGLE_AP2, MOD_CONTROL, 0x4F);      // Ctrl+O (Toggle Autopilot 2)
+            RegisterHotKey(windowHandle, HOTKEY_TRACK_FIX, MOD_SHIFT, 0x46);         // Shift+F (Track Fix Window)
 
             InputHotkeyModeChanged?.Invoke(this, true);
         }
@@ -566,6 +571,7 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_FCU_SET_VS);
             UnregisterHotKey(windowHandle, HOTKEY_FCU_SET_AUTOPILOT);
             UnregisterHotKey(windowHandle, HOTKEY_TOGGLE_AP2);
+            UnregisterHotKey(windowHandle, HOTKEY_TRACK_FIX);
 
             InputHotkeyModeChanged?.Invoke(this, false);
         }
@@ -705,5 +711,6 @@ public class HotkeyManager : IDisposable
         ReadDisplayUpperECAM,
         ReadDisplayND,
         ReadDisplayISIS,
-        DescribeScene
+        DescribeScene,
+        ShowTrackFixWindow
     }

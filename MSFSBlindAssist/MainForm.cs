@@ -27,6 +27,7 @@ public partial class MainForm : Form
     private TakeoffAssistManager takeoffAssistManager = null!;
     private HandFlyManager handFlyManager = null!;
     private ElectronicFlightBagForm? electronicFlightBagForm;
+    private TrackFixForm? trackFixForm;
     private MSFSBlindAssist.Navigation.FlightPlanManager flightPlanManager = null!;
     private MSFSBlindAssist.Navigation.WaypointTracker waypointTracker = null!;
 
@@ -830,6 +831,9 @@ public partial class MainForm : Form
             case HotkeyAction.ShowElectronicFlightBag:
                 ShowElectronicFlightBagDialog();
                 break;
+            case HotkeyAction.ShowTrackFixWindow:
+                ShowTrackFixDialog();
+                break;
             case HotkeyAction.ToggleTakeoffAssist:
                 ToggleTakeoffAssist();
                 break;
@@ -1097,6 +1101,24 @@ public partial class MainForm : Form
         electronicFlightBagForm.BringToFront();
     }
 
+    private void ShowTrackFixDialog()
+    {
+        // Ensure input and output hotkey modes are deactivated before showing dialog
+        hotkeyManager.ExitInputHotkeyMode();
+        hotkeyManager.ExitOutputHotkeyMode();
+
+        // Create form if it doesn't exist or has been disposed
+        if (trackFixForm == null || trackFixForm.IsDisposed)
+        {
+            var settings = MSFSBlindAssist.Settings.SettingsManager.Current;
+            string navigationDatabasePath = NavdataReaderBuilder.GetDefaultDatabasePath(settings.SimulatorVersion ?? "FS2020");
+            trackFixForm = new TrackFixForm(waypointTracker, simConnectManager, announcer, navigationDatabasePath);
+        }
+
+        // Show the form
+        trackFixForm.ShowForm();
+    }
+
     private void ReadTrackedWaypoint(int slotNumber)
     {
         if (!simConnectManager.IsConnected)
@@ -1120,7 +1142,6 @@ public partial class MainForm : Form
                 // Get tracked waypoint info with current distance and bearing
                 string? waypointInfo = waypointTracker.GetTrackedWaypointInfo(
                     slotNumber,
-                    flightPlanManager.CurrentFlightPlan,
                     position.Latitude,
                     position.Longitude,
                     position.MagneticVariation);

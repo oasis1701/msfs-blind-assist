@@ -64,6 +64,48 @@ public class NavigationDatabaseProvider
     }
 
     /// <summary>
+    /// Gets all waypoints matching the given ident (for duplicate resolution)
+    /// </summary>
+    public List<WaypointFix> GetWaypointsByIdent(string ident)
+    {
+        var waypoints = new List<WaypointFix>();
+
+        using (var connection = new SqliteConnection(_connectionString))
+        {
+            connection.Open();
+
+            string sql = @"SELECT ident, name, region, type, arinc_type, lonx, laty
+                          FROM waypoint
+                          WHERE UPPER(ident) = UPPER(@ident)
+                          ORDER BY region";
+
+            using (var command = new SqliteCommand(sql, connection))
+            {
+                command.Parameters.AddWithValue("@ident", ident);
+
+                using (var reader = command.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        waypoints.Add(new WaypointFix
+                        {
+                            Ident = SafeGetString(reader, "ident") ?? "",
+                            Name = SafeGetString(reader, "name") ?? "",
+                            Region = SafeGetString(reader, "region") ?? "",
+                            Type = SafeGetString(reader, "type") ?? "Waypoint",
+                            ArincType = SafeGetString(reader, "arinc_type") ?? "",
+                            Longitude = SafeGetDouble(reader, "lonx"),
+                            Latitude = SafeGetDouble(reader, "laty")
+                        });
+                    }
+                }
+            }
+        }
+
+        return waypoints;
+    }
+
+    /// <summary>
     /// Gets all approaches for an airport
     /// </summary>
     public List<(string approachName, string? suffix, int approachId)> GetApproaches(string icao)
