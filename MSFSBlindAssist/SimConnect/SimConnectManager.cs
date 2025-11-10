@@ -31,6 +31,7 @@ public class SimConnectManager
 
     // Connection state
     public bool IsConnected { get; private set; }
+    public bool IsFullyConnected { get; private set; } // Set to true after aircraft detection completes
     private bool wasConnected = false; // Track if we've already announced connection state
     private System.Windows.Forms.Timer reconnectTimer = null!;
 
@@ -2137,6 +2138,7 @@ public class SimConnectManager
         // Announce full aircraft title with ATC identification
         ConnectionStatusChanged?.Invoke(this, $"Connected to {info.title}{identification}");
         wasConnected = true; // Mark that we're now successfully connected
+        IsFullyConnected = true; // Aircraft detection complete, hotkeys are now safe to use
 
         // Log whether this is the expected FBW A32NX aircraft
         if (info.title.Contains("A32NX") || info.title.Contains("A320"))
@@ -3248,6 +3250,7 @@ public class SimConnectManager
         System.Diagnostics.Debug.WriteLine("[SimConnectManager] All internal state dictionaries cleared");
 
         IsConnected = false;
+        IsFullyConnected = false;
 
         // Only announce disconnection if we were previously connected
         if (wasConnected)

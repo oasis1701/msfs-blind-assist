@@ -171,6 +171,7 @@ public partial class MainForm : Form
         {
             connectTimer.Stop();
             connectTimer.Dispose();
+            announcer.Announce("Initializing, please wait");
             simConnectManager.Connect();
         };
         connectTimer.Start();
@@ -759,6 +760,22 @@ public partial class MainForm : Form
 
     private void OnHotkeyTriggered(object? sender, HotkeyEventArgs e)
     {
+        // Actions that don't require SimConnect connection (can be used offline)
+        var offlineActions = new HashSet<HotkeyAction>
+        {
+            HotkeyAction.ShowChecklist,
+            HotkeyAction.ShowMETARReport,
+            HotkeyAction.SimBriefBriefing,
+            HotkeyAction.ShowElectronicFlightBag
+        };
+
+        // Guard clause: Block SimConnect-dependent actions if not fully connected
+        if (!offlineActions.Contains(e.Action) && !simConnectManager.IsFullyConnected)
+        {
+            announcer.Announce("Not connected to simulator, please wait");
+            return;
+        }
+
         // Try aircraft-specific handler first
         bool handledByAircraft = currentAircraft.HandleHotkeyAction(e.Action, simConnectManager, announcer, this, hotkeyManager);
 
