@@ -12876,8 +12876,6 @@ public class FenixA320Definition : BaseAircraftDefinition
                 return;
             }
 
-            announcer.Announce($"Analyzing {displayName} with Gemini AI...");
-
             // Analyze with Gemini
             string analysis = await geminiService.AnalyzeDisplayAsync(screenshot, displayType);
 

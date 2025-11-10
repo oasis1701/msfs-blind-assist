@@ -1356,8 +1356,6 @@ public partial class MainForm : Form
                 return;
             }
 
-            announcer.AnnounceImmediate("Analyzing scene with Gemini AI...");
-
             // Analyze scene with Gemini
             string analysis = await geminiService.AnalyzeSceneAsync(screenshot);
 
