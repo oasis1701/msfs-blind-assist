@@ -12881,9 +12881,9 @@ public class FenixA320Definition : BaseAircraftDefinition
             // Analyze with Gemini
             string analysis = await geminiService.AnalyzeDisplayAsync(screenshot, displayType);
 
-            // Show result in window
+            // Show result in window (independent window with synchronous focus)
             var resultForm = new Forms.DisplayReadingResultForm(displayName, analysis);
-            resultForm.Show();
+            resultForm.ShowForm();
 
             announcer.Announce($"{displayName} analysis ready.");
         }
@@ -12937,7 +12937,7 @@ public class FenixA320Definition : BaseAircraftDefinition
         }
 
         var window = new Forms.FenixA320.FenixAltitudeWindow(this, simConnect, announcer);
-        window.ShowDialog(parentForm);
+        window.ShowForm();
     }
 
     /// <summary>
@@ -12955,7 +12955,7 @@ public class FenixA320Definition : BaseAircraftDefinition
         }
 
         var window = new Forms.FenixA320.FenixHeadingWindow(this, simConnect, announcer);
-        window.ShowDialog(parentForm);
+        window.ShowForm();
     }
 
     /// <summary>
@@ -12973,7 +12973,7 @@ public class FenixA320Definition : BaseAircraftDefinition
         }
 
         var window = new Forms.FenixA320.FenixSpeedWindow(this, simConnect, announcer);
-        window.ShowDialog(parentForm);
+        window.ShowForm();
     }
 
     /// <summary>
@@ -12991,7 +12991,7 @@ public class FenixA320Definition : BaseAircraftDefinition
         }
 
         var window = new Forms.FenixA320.FenixVSWindow(this, simConnect, announcer);
-        window.ShowDialog(parentForm);
+        window.ShowForm();
     }
 
     /// <summary>
@@ -13009,6 +13009,6 @@ public class FenixA320Definition : BaseAircraftDefinition
         }
 
         var window = new Forms.FenixA320.FenixAutopilotWindow(this, simConnect, announcer);
-        window.ShowDialog(parentForm);
+        window.ShowForm();
     }
 }

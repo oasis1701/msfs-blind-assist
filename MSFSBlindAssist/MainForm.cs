@@ -1361,9 +1361,9 @@ public partial class MainForm : Form
             // Analyze scene with Gemini
             string analysis = await geminiService.AnalyzeSceneAsync(screenshot);
 
-            // Show result in form
+            // Show result in form (independent window with synchronous focus)
             var resultForm = new DisplayReadingResultForm("Scene", analysis, "Description");
-            resultForm.ShowDialog(this);
+            resultForm.ShowForm();
 
             announcer.AnnounceImmediate("Scene description ready");
         }

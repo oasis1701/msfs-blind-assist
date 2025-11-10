@@ -17,9 +17,8 @@ public partial class DisplayReadingResultForm : Form
 
     private RichTextBox resultTextBox = null!;
     private Button closeButton = null!;
-    private Label titleLabel = null!;
 
-    private readonly IntPtr previousWindow;
+    private IntPtr previousWindow;
 
     public DisplayReadingResultForm(string displayName, string analysisResult)
         : this(displayName, analysisResult, "Analysis")
@@ -28,37 +27,40 @@ public partial class DisplayReadingResultForm : Form
 
     public DisplayReadingResultForm(string displayName, string analysisResult, string analysisType)
     {
-        // Capture the current foreground window (likely the simulator)
-        previousWindow = GetForegroundWindow();
-
         InitializeComponent(displayName, analysisResult, analysisType);
         SetupAccessibility();
+    }
+
+    /// <summary>
+    /// Shows the form and ensures it gets focus (like ChecklistForm pattern).
+    /// </summary>
+    public void ShowForm()
+    {
+        // Capture the current foreground window before showing
+        previousWindow = GetForegroundWindow();
+        Show();
+        BringToFront();
+        Activate();
+        TopMost = true;
+        TopMost = false; // Flash to bring to front
+        resultTextBox.Focus();
+        resultTextBox.SelectionStart = 0; // Start at beginning of text
     }
 
     private void InitializeComponent(string displayName, string analysisResult, string analysisType)
     {
         Text = $"{displayName} {analysisType} - Gemini AI";
         Size = new Size(800, 600);
-        StartPosition = FormStartPosition.CenterParent;
+        StartPosition = FormStartPosition.CenterScreen;
         FormBorderStyle = FormBorderStyle.Sizable;  // Allow resizing for long text
         MinimumSize = new Size(600, 400);
-        ShowInTaskbar = false;
-
-        // Title Label
-        titleLabel = new Label
-        {
-            Text = $"{displayName} - AI {analysisType}",
-            Location = new Point(20, 20),
-            Size = new Size(740, 25),
-            Font = new Font("Microsoft Sans Serif", 12, FontStyle.Bold),
-            AccessibleName = $"{displayName} {analysisType} Title"
-        };
+        ShowInTaskbar = true;
 
         // Result RichTextBox (read-only, better accessibility for screen readers)
         resultTextBox = new RichTextBox
         {
-            Location = new Point(20, 55),
-            Size = new Size(740, 450),
+            Location = new Point(20, 20),
+            Size = new Size(740, 490),
             ReadOnly = true,
             ScrollBars = RichTextBoxScrollBars.Vertical,
             AccessibleName = $"{displayName} {analysisType} Result",
@@ -83,7 +85,7 @@ public partial class DisplayReadingResultForm : Form
         // Add controls to form
         Controls.AddRange(new Control[]
         {
-            titleLabel, resultTextBox, closeButton
+            resultTextBox, closeButton
         });
 
         CancelButton = closeButton;
@@ -95,9 +97,8 @@ public partial class DisplayReadingResultForm : Form
             int width = ClientSize.Width;
             int height = ClientSize.Height;
 
-            titleLabel.Width = width - 40;
             resultTextBox.Width = width - 40;
-            resultTextBox.Height = height - 125;
+            resultTextBox.Height = height - 90;
             closeButton.Location = new Point(width - 95, height - 50);
         };
     }
@@ -107,17 +108,6 @@ public partial class DisplayReadingResultForm : Form
         // Set tab order for logical navigation
         resultTextBox.TabIndex = 0;
         closeButton.TabIndex = 1;
-
-        // Focus and bring window to front when opened
-        Load += (sender, e) =>
-        {
-            BringToFront();
-            Activate();
-            TopMost = true;
-            TopMost = false; // Flash to bring to front
-            resultTextBox.Focus();
-            resultTextBox.SelectionStart = 0;  // Start at beginning of text
-        };
     }
 
     private void CloseButton_Click(object? sender, EventArgs e)

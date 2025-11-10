@@ -28,22 +28,34 @@ public partial class FenixAutopilotWindow : Form
     private readonly FenixA320Definition aircraft;
     private readonly SimConnect.SimConnectManager simConnect;
     private readonly ScreenReaderAnnouncer announcer;
-    private readonly IntPtr previousWindow;
+    private IntPtr previousWindow;
 
     public FenixAutopilotWindow(
         FenixA320Definition aircraft,
         SimConnect.SimConnectManager simConnect,
         ScreenReaderAnnouncer announcer)
     {
-        // Capture the current foreground window (likely the simulator)
-        previousWindow = GetForegroundWindow();
-
         this.aircraft = aircraft;
         this.simConnect = simConnect;
         this.announcer = announcer;
 
         InitializeComponent();
         SetupAccessibility();
+    }
+
+    /// <summary>
+    /// Shows the form and ensures it gets focus (like ChecklistForm pattern).
+    /// </summary>
+    public void ShowForm()
+    {
+        // Capture the current foreground window before showing
+        previousWindow = GetForegroundWindow();
+        Show();
+        BringToFront();
+        Activate();
+        TopMost = true;
+        TopMost = false; // Flash to bring to front
+        ap1Button.Focus();
     }
 
     private void InitializeComponent()
@@ -55,7 +67,7 @@ public partial class FenixAutopilotWindow : Form
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
-        ShowInTaskbar = false;
+        ShowInTaskbar = true;
 
         // AP1 Button
         ap1Button = new Button
@@ -203,15 +215,6 @@ public partial class FenixAutopilotWindow : Form
 
     private void SetupAccessibility()
     {
-        // Focus and bring window to front when opened
-        Load += (sender, e) =>
-        {
-            BringToFront();
-            Activate();
-            TopMost = true;
-            TopMost = false; // Flash to bring to front
-            ap1Button.Focus();
-        };
 
         // Handle escape key and form closing
         KeyPreview = true;

@@ -24,22 +24,34 @@ public partial class FenixSpeedWindow : Form
     private readonly FenixA320Definition aircraft;
     private readonly SimConnect.SimConnectManager simConnect;
     private readonly ScreenReaderAnnouncer announcer;
-    private readonly IntPtr previousWindow;
+    private IntPtr previousWindow;
 
     public FenixSpeedWindow(
         FenixA320Definition aircraft,
         SimConnect.SimConnectManager simConnect,
         ScreenReaderAnnouncer announcer)
     {
-        // Capture the current foreground window (likely the simulator)
-        previousWindow = GetForegroundWindow();
-
         this.aircraft = aircraft;
         this.simConnect = simConnect;
         this.announcer = announcer;
 
         InitializeComponent();
         SetupAccessibility();
+    }
+
+    /// <summary>
+    /// Shows the form and ensures it gets focus (like ChecklistForm pattern).
+    /// </summary>
+    public void ShowForm()
+    {
+        // Capture the current foreground window before showing
+        previousWindow = GetForegroundWindow();
+        Show();
+        BringToFront();
+        Activate();
+        TopMost = true;
+        TopMost = false; // Flash to bring to front
+        speedTextBox.Focus();
     }
 
     private void InitializeComponent()
@@ -51,7 +63,7 @@ public partial class FenixSpeedWindow : Form
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
-        ShowInTaskbar = false;
+        ShowInTaskbar = true;
 
         // Speed Label
         speedLabel = new Label
@@ -147,15 +159,6 @@ public partial class FenixSpeedWindow : Form
 
     private void SetupAccessibility()
     {
-        // Focus and bring window to front when opened
-        Load += (sender, e) =>
-        {
-            BringToFront();
-            Activate();
-            TopMost = true;
-            TopMost = false; // Flash to bring to front
-            speedTextBox.Focus();
-        };
 
         // Handle escape key and form closing
         KeyPreview = true;
