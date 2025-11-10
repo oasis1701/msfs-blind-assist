@@ -70,7 +70,21 @@ static class Program
 
                 StartupLogger.Log("Runtime check PASSED - all requirements met");
 
-                // Phase 2: Select and copy the correct SimConnect.dll
+                // Phase 2: Single-instance check
+                StartupLogger.Log("Checking for existing application instance...");
+                if (!SingleInstanceManager.AcquireSingleInstanceLock())
+                {
+                    StartupLogger.Log("Another instance is already running - exiting");
+                    MessageBox.Show(
+                        "MSFS Blind Assist is already running.\n\nOnly one instance can run at a time.",
+                        "MSFS Blind Assist - Already Running",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information);
+                    return;
+                }
+                StartupLogger.Log("Single-instance check PASSED - this is the first instance");
+
+                // Phase 3: Select and copy the correct SimConnect.dll
                 StartupLogger.Log("Checking SimConnect.dll...");
                 if (!EnsureCorrectSimConnectDll())
                 {
@@ -87,7 +101,7 @@ static class Program
 
                 StartupLogger.Log("SimConnect.dll check PASSED");
 
-                // Phase 3: Initialize Windows Forms
+                // Phase 4: Initialize Windows Forms
                 StartupLogger.Log("Initializing Windows Forms application...");
                 Application.SetHighDpiMode(HighDpiMode.SystemAware);
                 StartupLogger.Log("High DPI mode set to SystemAware");
@@ -103,6 +117,10 @@ static class Program
                 Application.Run(mainForm);
 
                 StartupLogger.Log("Application closed normally");
+
+                // Release the single-instance lock
+                SingleInstanceManager.ReleaseSingleInstanceLock();
+                StartupLogger.Log("Single-instance lock released");
             }
             catch (Exception ex)
             {
@@ -121,6 +139,9 @@ static class Program
                     "MSFS Blind Assist - Startup Error",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
+
+                // Release the single-instance lock even on error
+                SingleInstanceManager.ReleaseSingleInstanceLock();
             }
         }
 
