@@ -1093,11 +1093,11 @@ public partial class MainForm : Form
 
     private void ShowMETARReportDialog()
     {
-        // Ensure output hotkey mode is deactivated before showing modal dialog
+        // Ensure output hotkey mode is deactivated before showing window
         hotkeyManager.ExitOutputHotkeyMode();
 
         var dialog = new METARReportForm(announcer);
-        dialog.ShowDialog(this);
+        dialog.ShowForm();
     }
 
     private void ShowChecklistDialog()
@@ -1128,8 +1128,7 @@ public partial class MainForm : Form
         }
 
         // Show the form (reuses same instance to preserve flight plan data)
-        electronicFlightBagForm.Show();
-        electronicFlightBagForm.BringToFront();
+        electronicFlightBagForm.ShowForm();
     }
 
     private void ShowTrackFixDialog()

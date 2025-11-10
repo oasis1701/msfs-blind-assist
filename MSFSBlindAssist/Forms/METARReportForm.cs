@@ -32,15 +32,21 @@ public partial class METARReportForm : Form
             SetupAccessibility();
         }
 
+        public void ShowForm()
+        {
+            // Show as modeless window (Load event handler will bring to front and set focus)
+            Show();
+        }
+
         private void InitializeComponent()
         {
             Text = "METAR Report";
             Size = new Size(500, 400);
-            StartPosition = FormStartPosition.CenterParent;
+            StartPosition = FormStartPosition.CenterScreen;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
             MinimizeBox = false;
-            ShowInTaskbar = false;
+            ShowInTaskbar = true;
 
             // ICAO Label
             icaoLabel = new Label

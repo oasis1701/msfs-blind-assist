@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using Microsoft.Data.Sqlite;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Controls;
@@ -13,12 +14,19 @@ namespace MSFSBlindAssist.Forms;
 /// </summary>
 public partial class ElectronicFlightBagForm : Form
 {
+    // Windows API declarations for focus management
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
     private readonly FlightPlanManager _flightPlanManager;
     private readonly SimConnectManager _simConnectManager;
     private readonly ScreenReaderAnnouncer _announcer;
     private readonly WaypointTracker _waypointTracker;
     private readonly string _simbriefUsername;
     private SimConnectManager.AircraftPosition? _lastKnownPosition;
+    private IntPtr previousWindow;
 
     // Navigation tab controls
     private AccessibleTabControl mainTabControl = null!;
@@ -94,6 +102,28 @@ public partial class ElectronicFlightBagForm : Form
     private void OnAircraftPositionReceived(object? sender, SimConnectManager.AircraftPosition position)
     {
         _lastKnownPosition = position;
+    }
+
+    public void ShowForm()
+    {
+        // Capture the current foreground window before showing
+        previousWindow = GetForegroundWindow();
+        Show();
+        BringToFront();
+        Activate();
+        TopMost = true;
+        TopMost = false; // Flash to bring to front
+
+        // Focus on the navigation list view (primary control)
+        if (navigationListView != null && navigationListView.Items.Count > 0)
+        {
+            navigationListView.Focus();
+            // Select first item if nothing is selected
+            if (navigationListView.SelectedItems.Count == 0)
+            {
+                navigationListView.Items[0].Selected = true;
+            }
+        }
     }
 
     private void InitializeComponent()
@@ -596,6 +626,16 @@ public partial class ElectronicFlightBagForm : Form
 
     private void SetupAccessibility()
     {
+        // Handle form closing to restore focus to previous window
+        FormClosing += (sender, e) =>
+        {
+            // Restore focus to the previous window (likely the simulator)
+            if (previousWindow != IntPtr.Zero)
+            {
+                SetForegroundWindow(previousWindow);
+            }
+        };
+
         // Allow F5 key for refresh
         KeyPreview = true;
         KeyDown += (s, e) =>
