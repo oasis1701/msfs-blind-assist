@@ -1895,10 +1895,8 @@ public class SimConnectManager
             var runway = ilsRunway;
             var airport = ilsAirport;
 
-            // Zone thresholds
-            const double ZONE_1_MAX = 6.0; // NM - Too close zone
-            const double ZONE_2_MAX = 17.0; // NM - Normal intercept zone
-            const double ZONE_3_TARGET_INTERCEPT = 12.0; // NM - Target intercept distance for far positions
+            // Guidance thresholds
+            const double CENTERLINE_THRESHOLD = 0.1; // NM - Distance considered "on centerline" (~600 feet)
 
             // Calculate distance from aircraft to runway threshold
             double distanceToThreshold = NavigationCalculator.CalculateDistance(
@@ -1942,128 +1940,65 @@ public class SimConnectManager
                 runway.StartLat, runway.StartLon,
                 ilsData.LocalizerHeading);
 
-            // Check if on localizer
-            bool onLocalizer = NavigationCalculator.IsOnLocalizer(crossTrackError);
+            // Check if on centerline
+            bool onCenterline = distanceToLocalizer < CENTERLINE_THRESHOLD;
 
             string announcement;
 
-            // ZONE DETECTION AND GUIDANCE
-            if (distanceToThreshold < ZONE_1_MAX)
+            // Check if beyond ILS signal range
+            string rangeWarning = "";
+            if (ilsData.Range > 0 && distanceToThreshold > ilsData.Range)
             {
-                // ZONE 1: <6 NM from threshold
-                if (onLocalizer)
-                {
-                    // Zone 1A: On localizer - provide confirmation + glideslope
-                    string lateralGuidance = $"On localizer. {distanceToThreshold:F1} nautical miles from threshold";
-
-                    // Check if within glideslope range
-                    bool withinGSRange = NavigationCalculator.IsWithinGlideslopeRange(distanceToThreshold, 25);
-
-                    if (withinGSRange)
-                    {
-                        // Calculate glideslope deviation
-                        double gsDeviation = NavigationCalculator.CalculateGlideslopeDeviation(
-                            data.Altitude,
-                            distanceToThreshold,
-                            ilsData.GlideslopePitch,
-                            ilsData.AntennaAltitude,
-                            ilsData.GlideslopeLatitude,
-                            ilsData.GlideslopeLongitude,
-                            ilsData.GlideslopeAltitude,
-                            data.Latitude,
-                            data.Longitude);
-
-                        string gsDirection = gsDeviation > 0 ? "above" : "below";
-                        announcement = $"{lateralGuidance}. Glideslope: {Math.Abs(gsDeviation):F0} feet {gsDirection}";
-                    }
-                    else
-                    {
-                        announcement = $"{lateralGuidance}. Outside glideslope range";
-                    }
-                }
-                else
-                {
-                    // Zone 1B: Off localizer - too close to intercept safely
-                    double extensionHeading = NavigationCalculator.CalculateExtensionHeading(
-                        ilsData.LocalizerHeading,
-                        data.MagneticVariation);
-
-                    announcement = $"Too close for safe intercept. {distanceToThreshold:F1} nautical miles from threshold, " +
-                                  $"{distanceToLocalizer:F1} nautical miles off centerline. " +
-                                  $"Fly heading {extensionHeading:000} to extend outbound";
-                }
+                rangeWarning = $"Warning: ILS signal range is {ilsData.Range} nautical miles. ";
             }
-            else if (distanceToThreshold <= ZONE_2_MAX)
+
+            // Calculate glideslope deviation (always, regardless of zone or lateral position)
+            bool withinGSRange = NavigationCalculator.IsWithinGlideslopeRange(distanceToThreshold, 25);
+            string glideslopeInfo = "";
+
+            if (withinGSRange)
             {
-                // ZONE 2: 6-17 NM - Normal intercept zone (existing behavior)
-                string lateralGuidance;
-                if (onLocalizer)
-                {
-                    lateralGuidance = "On localizer";
-                }
-                else
-                {
-                    // Calculate intercept heading
-                    double interceptHeading = NavigationCalculator.CalculateInterceptHeading(
-                        data.Latitude, data.Longitude,
-                        runway.StartLat, runway.StartLon,
-                        ilsData.LocalizerHeading,
-                        crossTrackError,
-                        data.MagneticVariation);
+                double gsDeviation = NavigationCalculator.CalculateGlideslopeDeviation(
+                    data.Altitude,
+                    distanceToThreshold,
+                    ilsData.GlideslopePitch,
+                    ilsData.AntennaAltitude,
+                    ilsData.GlideslopeLatitude,
+                    ilsData.GlideslopeLongitude,
+                    ilsData.GlideslopeAltitude,
+                    data.Latitude,
+                    data.Longitude);
 
-                    string direction = crossTrackError < 0 ? "left" : "right";
-                    lateralGuidance = $"{Math.Abs(crossTrackError):F0} degrees {direction} of centerline, " +
-                                      $"{distanceToLocalizer:F1} nautical miles from centerline, " +
-                                      $"intercept heading {interceptHeading:000}";
-                }
+                string gsDirection = gsDeviation > 0 ? "above" : "below";
+                glideslopeInfo = $" {Math.Abs(gsDeviation):F0} feet {gsDirection} glideslope.";
+            }
 
-                // Check if within glideslope range
-                bool withinGSRange = NavigationCalculator.IsWithinGlideslopeRange(distanceToThreshold, 25);
-
-                string verticalGuidance;
-                if (withinGSRange)
-                {
-                    // Calculate glideslope deviation
-                    double gsDeviation = NavigationCalculator.CalculateGlideslopeDeviation(
-                        data.Altitude,
-                        distanceToThreshold,
-                        ilsData.GlideslopePitch,
-                        ilsData.AntennaAltitude,
-                        ilsData.GlideslopeLatitude,
-                        ilsData.GlideslopeLongitude,
-                        ilsData.GlideslopeAltitude,
-                        data.Latitude,
-                        data.Longitude);
-
-                    string gsDirection = gsDeviation > 0 ? "above" : "below";
-                    verticalGuidance = $"{Math.Abs(gsDeviation):F0} feet {gsDirection} glideslope";
-                }
-                else
-                {
-                    verticalGuidance = "outside glideslope range";
-                }
-
-                // Add distance from threshold if on localizer
-                string distanceInfo = onLocalizer ? $", {distanceToThreshold:F1} nautical miles from threshold" : "";
-
-                // Combine lateral and vertical guidance
-                announcement = $"{lateralGuidance}, {verticalGuidance}{distanceInfo}";
+            // LOCALIZER GUIDANCE (all distances)
+            if (onCenterline)
+            {
+                // On centerline - just track it
+                double localizerMagneticHeading = (ilsData.LocalizerHeading - data.MagneticVariation + 360) % 360;
+                announcement = $"{rangeWarning}{distanceToThreshold:F1} nautical miles from threshold, on centerline. " +
+                              $"Fly runway heading {localizerMagneticHeading:000} to track the localizer.{glideslopeInfo}";
             }
             else
             {
-                // ZONE 3: >17 NM - Targeted intercept at 12 NM
-                double targetedInterceptHeading = NavigationCalculator.CalculateTargetedInterceptHeading(
-                    data.Latitude, data.Longitude,
-                    runway.StartLat, runway.StartLon,
-                    ilsData.LocalizerHeading,
-                    ZONE_3_TARGET_INTERCEPT,
-                    data.MagneticVariation);
+                // Off centerline - provide three intercept headings
+                var (directHeading, mediumHeading, shallowHeading) =
+                    NavigationCalculator.CalculateThreeInterceptHeadings(
+                        data.Latitude, data.Longitude,
+                        runway.StartLat, runway.StartLon,
+                        ilsData.LocalizerHeading,
+                        data.MagneticVariation);
 
                 string direction = crossTrackError < 0 ? "left" : "right";
-                announcement = $"{distanceToThreshold:F1} nautical miles from threshold, " +
-                              $"{Math.Abs(crossTrackError):F0} degrees {direction} of centerline, " +
-                              $"{distanceToLocalizer:F1} nautical miles from centerline. " +
-                              $"Fly heading {targetedInterceptHeading:000} to intercept at {ZONE_3_TARGET_INTERCEPT:F0} nautical miles from threshold";
+
+                announcement = $"{rangeWarning}{distanceToThreshold:F1} nautical miles from threshold, " +
+                              $"{distanceToLocalizer:F1} nautical miles {direction} of centerline, " +
+                              $"{Math.Abs(crossTrackError):F0} degrees {direction} of centerline. " +
+                              $"You can join with heading {directHeading:000} for direct intercept, " +
+                              $"{mediumHeading:000} for medium intercept, " +
+                              $"or {shallowHeading:000} for shallow intercept.{glideslopeInfo}";
             }
 
             SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
