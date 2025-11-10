@@ -44,8 +44,9 @@ Weather:
 Tools:
 CTRL+T, Takeoff Assistance
 CTRL+D, Distance to Selected Runway
+CTRL+I, ILS guidance system
 
-EFB Flight tracking
+Waypoint tracking, use Fix track window or Electronic flight bag route viewer window to add:
 1. track slot 1
 2. track slot 2
 3. track slot 3
@@ -53,7 +54,7 @@ EFB Flight tracking
 5. track slot 5
 
 Displays and windows:
-  Shift+E, Electronic Flight Bag window
+  Shift+E, Route viewer, procedure planner and airport lookup
   Shift+L,    Location Info
   Shift+M,    Show VATSIM METAR Report
   Shift+D,    SimBrief Briefing
@@ -67,6 +68,7 @@ Teleport:
   Shift+G    Gate Teleport
 
 Flight planning:
+Shift+F Fix/waypoint tracking window
   Shift+D    Select Destination Runway
 
 
