@@ -8974,11 +8974,10 @@ public class FenixA320Definition : BaseAircraftDefinition
 
             ["ECAM"] = new List<string>
             {
-                // Brightness Knobs (2 step-based combo boxes)
-                "A_DISPLAY_BRIGHTNESS_ECAM_U",
-                "A_DISPLAY_BRIGHTNESS_ECAM_L",
+                // T/O Config Test Button (first in tab order)
+                "S_ECAM_TO",
 
-                // ECAM System Page Buttons (18 buttons)
+                // ECAM System Page Buttons (17 buttons)
                 "S_ECAM_ENGINE",
                 "S_ECAM_BLEED",
                 "S_ECAM_CAB_PRESS",
@@ -8995,8 +8994,11 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "S_ECAM_CLR_LEFT",
                 "S_ECAM_CLR_RIGHT",
                 "S_ECAM_RCL",
-                "S_ECAM_TO",
-                "S_ECAM_EMER_CANCEL"
+                "S_ECAM_EMER_CANCEL",
+
+                // Brightness Knobs (last in tab order - 2 step-based combo boxes)
+                "A_DISPLAY_BRIGHTNESS_ECAM_U",
+                "A_DISPLAY_BRIGHTNESS_ECAM_L"
             },
 
             ["DCDU Left"] = new List<string>
