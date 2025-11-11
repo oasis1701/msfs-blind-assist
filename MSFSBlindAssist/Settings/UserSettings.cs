@@ -39,7 +39,7 @@ public class UserSettings
 
         // Hand Fly Settings
         public HandFlyFeedbackMode HandFlyFeedbackMode { get; set; } = HandFlyFeedbackMode.AnnouncementsOnly;
-        public double HandFlyToneVolume { get; set; } = 0.5; // 0.0 to 1.0
+        public double HandFlyToneVolume { get; set; } = 0.1; // 0.0 to 1.0 (default 10%)
         public HandFlyWaveType HandFlyWaveType { get; set; } = HandFlyWaveType.Sine;
 
         // Simulator Settings

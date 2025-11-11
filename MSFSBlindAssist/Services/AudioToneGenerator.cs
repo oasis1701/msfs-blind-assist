@@ -7,14 +7,15 @@ namespace MSFSBlindAssist.Services;
 /// <summary>
 /// Generates continuous audio tones for hand fly mode feedback.
 /// Provides real-time frequency and stereo panning control for pitch/bank indication.
+/// Uses phase-continuous oscillator to eliminate clicks/pops during frequency changes.
 /// </summary>
 public class AudioToneGenerator : IDisposable
 {
     private WaveOutEvent? waveOut;
-    private SignalGenerator? toneGenerator;
+    private PhaseContinuousOscillator? oscillator;
     private PanningSampleProvider? panningSampleProvider;
-    private bool isPlaying;
-    private readonly object lockObject = new();
+    private volatile bool isPlaying;
+    private readonly object startStopLock = new(); // Only for Start/Stop, not audio updates
 
     // Frequency range for pitch indication
     private const float MIN_FREQUENCY = 200f;  // Dive (negative pitch)
@@ -31,32 +32,42 @@ public class AudioToneGenerator : IDisposable
     /// <param name="volume">Volume level (0.0 to 1.0).</param>
     public void Start(HandFlyWaveType waveType = HandFlyWaveType.Sine, double volume = 0.5)
     {
-        lock (lockObject)
+        lock (startStopLock)
         {
             if (isPlaying)
                 return;
 
             try
             {
-                // Create tone generator with center frequency
-                toneGenerator = new SignalGenerator(44100, 1) // 44.1kHz, mono (channel 1)
+                // Create phase-continuous oscillator (eliminates clicks/pops)
+                oscillator = new PhaseContinuousOscillator(44100, waveType, CENTER_FREQUENCY, volume);
+
+                // Apply low-pass filter for square and sawtooth waves to remove harsh harmonics
+                ISampleProvider audioSource = oscillator;
+                if (waveType == HandFlyWaveType.Square)
                 {
-                    Frequency = CENTER_FREQUENCY,
-                    Type = ConvertWaveType(waveType),
-                    Gain = Math.Clamp(volume, 0.0, 1.0)
-                };
+                    // Filter cutoff at 1600 Hz removes harsh 5th+ harmonics
+                    // Q=0.707 gives smooth Butterworth response (no resonance)
+                    audioSource = new LowPassFilterProvider(oscillator, 1600f, 0.707f);
+                }
+                else if (waveType == HandFlyWaveType.Sawtooth)
+                {
+                    // Sawtooth needs lower cutoff (1200 Hz) due to richer harmonic content
+                    // Preserves character (fundamental + 2nd harmonic) while removing harshness
+                    audioSource = new LowPassFilterProvider(oscillator, 1200f, 0.707f);
+                }
 
                 // Wrap in panning provider for stereo control
-                panningSampleProvider = new PanningSampleProvider(toneGenerator)
+                panningSampleProvider = new PanningSampleProvider(audioSource)
                 {
                     Pan = 0f // Center
                 };
 
-                // Initialize playback device
+                // Initialize playback device with increased latency to prevent buffer underruns
                 waveOut = new WaveOutEvent
                 {
                     NumberOfBuffers = 2,
-                    DesiredLatency = 100 // Low latency for responsive feedback
+                    DesiredLatency = 150 // Increased from 100ms to prevent crackling
                 };
 
                 waveOut.Init(panningSampleProvider);
@@ -77,7 +88,7 @@ public class AudioToneGenerator : IDisposable
     /// </summary>
     public void Stop()
     {
-        lock (lockObject)
+        lock (startStopLock)
         {
             if (!isPlaying)
                 return;
@@ -89,98 +100,76 @@ public class AudioToneGenerator : IDisposable
 
     /// <summary>
     /// Updates the tone frequency based on pitch angle.
+    /// Lock-free for smooth real-time updates.
     /// </summary>
     /// <param name="pitchDegrees">Aircraft pitch in degrees (negative = nose down, positive = nose up).</param>
     public void UpdatePitch(double pitchDegrees)
     {
-        lock (lockObject)
-        {
-            if (toneGenerator == null || !isPlaying)
-                return;
+        if (oscillator == null || !isPlaying)
+            return;
 
-            // Map pitch to frequency
-            // -10° to +10° maps to 200-800 Hz (500 Hz center)
-            // Clamp to reasonable pitch range
-            double clampedPitch = Math.Clamp(pitchDegrees, -10.0, 10.0);
+        // Map pitch to frequency
+        // -10° to +10° maps to 200-800 Hz (500 Hz center)
+        // Clamp to reasonable pitch range
+        double clampedPitch = Math.Clamp(pitchDegrees, -10.0, 10.0);
 
-            // Linear mapping: pitch -> frequency
-            // Formula: frequency = center + (pitch * range/20)
-            double frequencyRange = (MAX_FREQUENCY - MIN_FREQUENCY) / 2.0; // 300 Hz
-            float targetFrequency = (float)(CENTER_FREQUENCY + (clampedPitch * (frequencyRange / 10.0)));
+        // Linear mapping: pitch -> frequency
+        // Formula: frequency = center + (pitch * range/20)
+        double frequencyRange = (MAX_FREQUENCY - MIN_FREQUENCY) / 2.0; // 300 Hz
+        double targetFrequency = CENTER_FREQUENCY + (clampedPitch * (frequencyRange / 10.0));
 
-            toneGenerator.Frequency = targetFrequency;
-        }
+        // Phase-continuous oscillator smoothly transitions to new frequency (no clicks/pops)
+        oscillator.SetFrequency(targetFrequency);
     }
 
     /// <summary>
     /// Updates stereo panning based on bank angle.
+    /// Lock-free for smooth real-time updates.
     /// </summary>
     /// <param name="bankDegrees">Aircraft bank in degrees (negative = left, positive = right).</param>
     public void UpdateBank(double bankDegrees)
     {
-        lock (lockObject)
-        {
-            if (panningSampleProvider == null || !isPlaying)
-                return;
+        if (panningSampleProvider == null || !isPlaying)
+            return;
 
-            // Map bank angle to stereo pan
-            // -45° to +45° maps to -1.0 (full left) to +1.0 (full right)
-            double clampedBank = Math.Clamp(bankDegrees, -BANK_FULL_RANGE, BANK_FULL_RANGE);
-            float pan = (float)(clampedBank / BANK_FULL_RANGE);
+        // Map bank angle to stereo pan
+        // -45° to +45° maps to -1.0 (full left) to +1.0 (full right)
+        double clampedBank = Math.Clamp(bankDegrees, -BANK_FULL_RANGE, BANK_FULL_RANGE);
+        float pan = (float)(clampedBank / BANK_FULL_RANGE);
 
-            panningSampleProvider.Pan = pan;
-        }
+        panningSampleProvider.Pan = pan;
     }
 
     /// <summary>
     /// Updates volume level.
+    /// Lock-free for smooth real-time updates.
     /// </summary>
     /// <param name="volume">Volume level (0.0 to 1.0).</param>
     public void UpdateVolume(double volume)
     {
-        lock (lockObject)
-        {
-            if (toneGenerator == null)
-                return;
+        if (oscillator == null)
+            return;
 
-            toneGenerator.Gain = Math.Clamp(volume, 0.0, 1.0);
-        }
+        oscillator.SetGain(volume);
     }
 
     /// <summary>
     /// Updates wave type.
+    /// Lock-free for smooth real-time updates.
     /// </summary>
     /// <param name="waveType">New wave type.</param>
     public void UpdateWaveType(HandFlyWaveType waveType)
     {
-        lock (lockObject)
-        {
-            if (toneGenerator == null)
-                return;
+        if (oscillator == null)
+            return;
 
-            toneGenerator.Type = ConvertWaveType(waveType);
-        }
+        oscillator.SetWaveType(waveType);
     }
 
     /// <summary>
     /// Gets whether tone is currently playing.
     /// </summary>
     public bool IsPlaying => isPlaying;
-
-    /// <summary>
-    /// Converts HandFlyWaveType to NAudio SignalGeneratorType.
-    /// </summary>
-    private static SignalGeneratorType ConvertWaveType(HandFlyWaveType waveType)
-    {
-        return waveType switch
-        {
-            HandFlyWaveType.Sine => SignalGeneratorType.Sin,
-            HandFlyWaveType.Triangle => SignalGeneratorType.Triangle,
-            HandFlyWaveType.Sawtooth => SignalGeneratorType.SawTooth,
-            HandFlyWaveType.Square => SignalGeneratorType.Square,
-            _ => SignalGeneratorType.Sin
-        };
-    }
 
     /// <summary>
     /// Cleans up audio resources.
@@ -192,7 +181,7 @@ public class AudioToneGenerator : IDisposable
             waveOut?.Stop();
             waveOut?.Dispose();
             waveOut = null;
-            toneGenerator = null;
+            oscillator = null;
             panningSampleProvider = null;
         }
         catch
