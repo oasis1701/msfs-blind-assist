@@ -12,18 +12,32 @@ public class HandFlyManager : IDisposable
     private DateTime lastPitchAnnouncement = DateTime.MinValue;
     private DateTime lastBankAnnouncement = DateTime.MinValue;
 
+    // Heading and VS tracking
+    private double? lastAnnouncedHeading = null;
+    private double? lastAnnouncedVS = null;
+    private DateTime lastHeadingAnnouncement = DateTime.MinValue;
+    private DateTime lastVSAnnouncement = DateTime.MinValue;
+
     // Audio tone generator
     private AudioToneGenerator? audioGenerator;
     private HandFlyFeedbackMode feedbackMode;
     private HandFlyWaveType waveType;
     private double volume;
 
+    // Heading and VS monitoring settings
+    private bool monitorHeading;
+    private bool monitorVerticalSpeed;
+    private int announcementIntervalMs;
+
     // Configuration constants
     private const int ANNOUNCEMENT_INTERVAL_MS = 500; // 500ms between announcements
     private const double PITCH_THRESHOLD = 0.1; // Announce if pitch changes by >0.1 degree
     private const double BANK_THRESHOLD = 1.0; // Announce if bank changes by >1 degree
+    private const double HEADING_THRESHOLD = 1.0; // Announce if heading changes by >1 degree
 
     public bool IsActive => isActive;
+    public bool MonitorHeading => monitorHeading;
+    public bool MonitorVerticalSpeed => monitorVerticalSpeed;
 
     public event EventHandler<bool>? HandFlyModeActiveChanged;
 
@@ -36,6 +50,9 @@ public class HandFlyManager : IDisposable
         feedbackMode = settings.HandFlyFeedbackMode;
         waveType = settings.HandFlyWaveType;
         volume = settings.HandFlyToneVolume;
+        monitorHeading = settings.HandFlyMonitorHeading;
+        monitorVerticalSpeed = settings.HandFlyMonitorVerticalSpeed;
+        announcementIntervalMs = settings.HandFlyAnnouncementIntervalMs;
     }
 
     /// <summary>
@@ -52,6 +69,10 @@ public class HandFlyManager : IDisposable
             lastAnnouncedBank = 0;
             lastPitchAnnouncement = DateTime.MinValue;
             lastBankAnnouncement = DateTime.MinValue;
+            lastAnnouncedHeading = null;
+            lastAnnouncedVS = null;
+            lastHeadingAnnouncement = DateTime.MinValue;
+            lastVSAnnouncement = DateTime.MinValue;
 
             // Start audio if tones are enabled
             if (feedbackMode == HandFlyFeedbackMode.TonesOnly ||
@@ -157,6 +178,90 @@ public class HandFlyManager : IDisposable
     }
 
     /// <summary>
+    /// Process heading update during hand fly mode
+    /// </summary>
+    /// <param name="currentHeading">Current magnetic heading in degrees (0-360)</param>
+    public void ProcessHeadingUpdate(double currentHeading)
+    {
+        if (!isActive || !monitorHeading) return;
+
+        // Check if we should announce
+        bool shouldAnnounce = false;
+        TimeSpan timeSinceLastAnnouncement = DateTime.Now - lastHeadingAnnouncement;
+
+        if (lastAnnouncedHeading == null)
+        {
+            // First announcement - always announce
+            shouldAnnounce = true;
+        }
+        else if (timeSinceLastAnnouncement.TotalMilliseconds >= announcementIntervalMs)
+        {
+            // Check if heading changed by threshold
+            double headingChange = Math.Abs(currentHeading - lastAnnouncedHeading.Value);
+
+            // Handle wraparound (359° to 1° should be 2° change, not 358°)
+            if (headingChange > 180)
+            {
+                headingChange = 360 - headingChange;
+            }
+
+            if (headingChange >= HEADING_THRESHOLD)
+            {
+                shouldAnnounce = true;
+            }
+        }
+
+        if (shouldAnnounce)
+        {
+            string announcement = FormatHeadingAnnouncement(currentHeading);
+            announcer.AnnounceImmediate(announcement);
+
+            lastAnnouncedHeading = currentHeading;
+            lastHeadingAnnouncement = DateTime.Now;
+
+            System.Diagnostics.Debug.WriteLine($"[HandFlyManager] Heading: {currentHeading:F0}° → {announcement}");
+        }
+    }
+
+    /// <summary>
+    /// Process vertical speed update during hand fly mode
+    /// </summary>
+    /// <param name="currentVS">Current vertical speed in feet per minute</param>
+    public void ProcessVerticalSpeedUpdate(double currentVS)
+    {
+        if (!isActive || !monitorVerticalSpeed) return;
+
+        // Check if we should announce
+        bool shouldAnnounce = false;
+        TimeSpan timeSinceLastAnnouncement = DateTime.Now - lastVSAnnouncement;
+
+        if (lastAnnouncedVS == null)
+        {
+            // First announcement - always announce
+            shouldAnnounce = true;
+        }
+        else if (timeSinceLastAnnouncement.TotalMilliseconds >= announcementIntervalMs)
+        {
+            // Announce if VS changed (any change threshold)
+            if (Math.Abs(currentVS - lastAnnouncedVS.Value) > 0.1) // Small threshold to avoid floating point noise
+            {
+                shouldAnnounce = true;
+            }
+        }
+
+        if (shouldAnnounce)
+        {
+            string announcement = FormatVSAnnouncement(currentVS);
+            announcer.AnnounceImmediate(announcement);
+
+            lastAnnouncedVS = currentVS;
+            lastVSAnnouncement = DateTime.Now;
+
+            System.Diagnostics.Debug.WriteLine($"[HandFlyManager] VS: {currentVS:F0} fpm → {announcement}");
+        }
+    }
+
+    /// <summary>
     /// Formats pitch announcement with decimal precision - always shows value
     /// </summary>
     private string FormatPitchAnnouncement(double pitch)
@@ -185,6 +290,40 @@ public class HandFlyManager : IDisposable
     }
 
     /// <summary>
+    /// Formats heading announcement
+    /// </summary>
+    private string FormatHeadingAnnouncement(double heading)
+    {
+        // Round to nearest whole degree
+        int roundedHeading = (int)Math.Round(heading);
+
+        // Ensure heading is in 0-360 range
+        if (roundedHeading < 0) roundedHeading += 360;
+        if (roundedHeading >= 360) roundedHeading -= 360;
+
+        return $"{roundedHeading}";
+    }
+
+    /// <summary>
+    /// Formats vertical speed announcement
+    /// </summary>
+    private string FormatVSAnnouncement(double vs)
+    {
+        // Round to nearest whole number for exact VS reporting
+        int vsValue = (int)Math.Round(vs);
+
+        // Format as +/- number (e.g., "+2347", "-487", "+0")
+        if (vsValue >= 0)
+        {
+            return $"+{vsValue}";
+        }
+        else
+        {
+            return $"{vsValue}";
+        }
+    }
+
+    /// <summary>
     /// Resets the hand fly manager state
     /// </summary>
     public void Reset()
@@ -201,11 +340,14 @@ public class HandFlyManager : IDisposable
     /// <summary>
     /// Updates hand fly settings while active (can be called from settings form)
     /// </summary>
-    public void UpdateSettings(HandFlyFeedbackMode newFeedbackMode, HandFlyWaveType newWaveType, double newVolume)
+    public void UpdateSettings(HandFlyFeedbackMode newFeedbackMode, HandFlyWaveType newWaveType, double newVolume,
+        bool newMonitorHeading, bool newMonitorVerticalSpeed)
     {
         feedbackMode = newFeedbackMode;
         waveType = newWaveType;
         volume = newVolume;
+        monitorHeading = newMonitorHeading;
+        monitorVerticalSpeed = newMonitorVerticalSpeed;
 
         // If active, update or restart audio based on new settings
         if (isActive)

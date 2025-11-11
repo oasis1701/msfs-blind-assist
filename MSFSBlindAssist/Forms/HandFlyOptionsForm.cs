@@ -19,6 +19,10 @@ public partial class HandFlyOptionsForm : Form
     private Label volumeValueLabel = null!;
 
     private Button testToneButton = null!;
+
+    private CheckBox monitorHeadingCheckBox = null!;
+    private CheckBox monitorVSCheckBox = null!;
+
     private Button okButton = null!;
     private Button cancelButton = null!;
 
@@ -27,12 +31,17 @@ public partial class HandFlyOptionsForm : Form
     public HandFlyFeedbackMode SelectedFeedbackMode { get; private set; }
     public HandFlyWaveType SelectedWaveType { get; private set; }
     public double SelectedVolume { get; private set; }
+    public bool MonitorHeading { get; private set; }
+    public bool MonitorVerticalSpeed { get; private set; }
 
-    public HandFlyOptionsForm(HandFlyFeedbackMode currentMode, HandFlyWaveType currentWaveType, double currentVolume)
+    public HandFlyOptionsForm(HandFlyFeedbackMode currentMode, HandFlyWaveType currentWaveType, double currentVolume,
+        bool monitorHeading, bool monitorVerticalSpeed)
     {
         SelectedFeedbackMode = currentMode;
         SelectedWaveType = currentWaveType;
         SelectedVolume = currentVolume;
+        MonitorHeading = monitorHeading;
+        MonitorVerticalSpeed = monitorVerticalSpeed;
         InitializeComponent();
         SetupAccessibility();
     }
@@ -40,7 +49,7 @@ public partial class HandFlyOptionsForm : Form
     private void InitializeComponent()
     {
         Text = "Hand Fly Options";
-        Size = new Size(500, 450);
+        Size = new Size(500, 500);
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -172,11 +181,35 @@ public partial class HandFlyOptionsForm : Form
         };
         testToneButton.Click += TestToneButton_Click;
 
+        // Monitor Heading Checkbox
+        monitorHeadingCheckBox = new CheckBox
+        {
+            Text = "Monitor Heading (announce heading changes at 1-second intervals)",
+            Location = new Point(20, 330),
+            Size = new Size(450, 25),
+            Checked = MonitorHeading,
+            AccessibleName = "Monitor Heading",
+            AccessibleDescription = "Enable heading announcements during hand fly mode"
+        };
+        monitorHeadingCheckBox.CheckedChanged += MonitorHeadingCheckBox_CheckedChanged;
+
+        // Monitor Vertical Speed Checkbox
+        monitorVSCheckBox = new CheckBox
+        {
+            Text = "Monitor Vertical Speed (announce VS changes at 1-second intervals)",
+            Location = new Point(20, 365),
+            Size = new Size(450, 25),
+            Checked = MonitorVerticalSpeed,
+            AccessibleName = "Monitor Vertical Speed",
+            AccessibleDescription = "Enable vertical speed announcements during hand fly mode"
+        };
+        monitorVSCheckBox.CheckedChanged += MonitorVSCheckBox_CheckedChanged;
+
         // OK Button
         okButton = new Button
         {
             Text = "OK",
-            Location = new Point(310, 370),
+            Location = new Point(310, 420),
             Size = new Size(75, 30),
             DialogResult = DialogResult.OK,
             AccessibleName = "Apply Settings",
@@ -188,7 +221,7 @@ public partial class HandFlyOptionsForm : Form
         cancelButton = new Button
         {
             Text = "Cancel",
-            Location = new Point(395, 370),
+            Location = new Point(395, 420),
             Size = new Size(75, 30),
             DialogResult = DialogResult.Cancel,
             AccessibleName = "Cancel",
@@ -200,7 +233,8 @@ public partial class HandFlyOptionsForm : Form
         {
             titleLabel, feedbackModeGroup, waveTypeLabel, waveTypeCombo,
             volumeLabel, volumeTrackBar, volumeValueLabel,
-            testToneButton, okButton, cancelButton
+            testToneButton, monitorHeadingCheckBox, monitorVSCheckBox,
+            okButton, cancelButton
         });
 
         AcceptButton = okButton;
@@ -223,8 +257,10 @@ public partial class HandFlyOptionsForm : Form
         volumeLabel.TabIndex = 7;
         volumeTrackBar.TabIndex = 8;
         testToneButton.TabIndex = 9;
-        okButton.TabIndex = 10;
-        cancelButton.TabIndex = 11;
+        monitorHeadingCheckBox.TabIndex = 10;
+        monitorVSCheckBox.TabIndex = 11;
+        okButton.TabIndex = 12;
+        cancelButton.TabIndex = 13;
 
         // Focus and bring window to front when opened
         Load += (sender, e) =>
@@ -278,6 +314,16 @@ public partial class HandFlyOptionsForm : Form
     {
         SelectedVolume = volumeTrackBar.Value / 100.0;
         volumeValueLabel.Text = $"{volumeTrackBar.Value}%";
+    }
+
+    private void MonitorHeadingCheckBox_CheckedChanged(object? sender, EventArgs e)
+    {
+        MonitorHeading = monitorHeadingCheckBox.Checked;
+    }
+
+    private void MonitorVSCheckBox_CheckedChanged(object? sender, EventArgs e)
+    {
+        MonitorVerticalSpeed = monitorVSCheckBox.Checked;
     }
 
     private void TestToneButton_Click(object? sender, EventArgs e)

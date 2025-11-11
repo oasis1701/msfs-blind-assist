@@ -457,6 +457,23 @@ public partial class MainForm : Form
             return true;
         }
 
+        // Handle hand fly mode heading updates
+        if (e.VarName == "PLANE_HEADING_DEGREES_MAGNETIC" && handFlyManager.IsActive)
+        {
+            // Convert radians to degrees
+            double headingDegrees = e.Value * (180.0 / Math.PI);
+            handFlyManager.ProcessHeadingUpdate(headingDegrees);
+            return true;
+        }
+
+        // Handle hand fly mode vertical speed updates
+        if (e.VarName == "VERTICAL_SPEED" && handFlyManager.IsActive)
+        {
+            // Already in feet per minute
+            handFlyManager.ProcessVerticalSpeedUpdate(e.Value);
+            return true;
+        }
+
         // Handle aircraft variable hotkey announcements
         if (e.VarName == "ALTITUDE_AGL" || e.VarName == "ALTITUDE_MSL" || e.VarName == "AIRSPEED_INDICATED" ||
             e.VarName == "AIRSPEED_TRUE" || e.VarName == "GROUND_SPEED" || e.VarName == "MACH_SPEED" ||
@@ -1470,8 +1487,8 @@ public partial class MainForm : Form
     {
         if (isActive)
         {
-            // Start monitoring pitch and bank
-            simConnectManager.StartHandFlyMonitoring();
+            // Start monitoring pitch, bank, and optionally heading/VS
+            simConnectManager.StartHandFlyMonitoring(handFlyManager.MonitorHeading, handFlyManager.MonitorVerticalSpeed);
         }
         else
         {
@@ -1570,7 +1587,9 @@ public partial class MainForm : Form
         using (var settingsForm = new Forms.HandFlyOptionsForm(
             currentSettings.HandFlyFeedbackMode,
             currentSettings.HandFlyWaveType,
-            currentSettings.HandFlyToneVolume))
+            currentSettings.HandFlyToneVolume,
+            currentSettings.HandFlyMonitorHeading,
+            currentSettings.HandFlyMonitorVerticalSpeed))
         {
             if (settingsForm.ShowDialog(this) == DialogResult.OK)
             {
@@ -1578,13 +1597,17 @@ public partial class MainForm : Form
                 currentSettings.HandFlyFeedbackMode = settingsForm.SelectedFeedbackMode;
                 currentSettings.HandFlyWaveType = settingsForm.SelectedWaveType;
                 currentSettings.HandFlyToneVolume = settingsForm.SelectedVolume;
+                currentSettings.HandFlyMonitorHeading = settingsForm.MonitorHeading;
+                currentSettings.HandFlyMonitorVerticalSpeed = settingsForm.MonitorVerticalSpeed;
                 SettingsManager.Save();
 
                 // Update HandFlyManager if it's active
                 handFlyManager?.UpdateSettings(
                     settingsForm.SelectedFeedbackMode,
                     settingsForm.SelectedWaveType,
-                    settingsForm.SelectedVolume);
+                    settingsForm.SelectedVolume,
+                    settingsForm.MonitorHeading,
+                    settingsForm.MonitorVerticalSpeed);
 
                 statusLabel.Text = "Hand fly options saved successfully";
                 announcer.Announce("Hand fly options saved successfully");

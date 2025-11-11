@@ -38,9 +38,12 @@ public class UserSettings
         public string AnnouncementMode { get; set; } = "ScreenReader";
 
         // Hand Fly Settings
-        public HandFlyFeedbackMode HandFlyFeedbackMode { get; set; } = HandFlyFeedbackMode.AnnouncementsOnly;
-        public double HandFlyToneVolume { get; set; } = 0.1; // 0.0 to 1.0 (default 10%)
+        public HandFlyFeedbackMode HandFlyFeedbackMode { get; set; } = HandFlyFeedbackMode.TonesOnly;
+        public double HandFlyToneVolume { get; set; } = 0.05; // 0.0 to 1.0 (default 5%)
         public HandFlyWaveType HandFlyWaveType { get; set; } = HandFlyWaveType.Sine;
+        public bool HandFlyMonitorHeading { get; set; } = true;
+        public bool HandFlyMonitorVerticalSpeed { get; set; } = true;
+        public int HandFlyAnnouncementIntervalMs { get; set; } = 1000; // Configurable interval for heading/VS announcements
 
         // Simulator Settings
         public string SimulatorVersion { get; set; } = "FS2020";
@@ -102,6 +105,9 @@ public class UserSettings
             HandFlyFeedbackMode = HandFlyFeedbackMode,
             HandFlyToneVolume = HandFlyToneVolume,
             HandFlyWaveType = HandFlyWaveType,
+            HandFlyMonitorHeading = HandFlyMonitorHeading,
+            HandFlyMonitorVerticalSpeed = HandFlyMonitorVerticalSpeed,
+            HandFlyAnnouncementIntervalMs = HandFlyAnnouncementIntervalMs,
             SimulatorVersion = SimulatorVersion,
             LastAircraft = LastAircraft,
             GeoNamesApiUsername = GeoNamesApiUsername,

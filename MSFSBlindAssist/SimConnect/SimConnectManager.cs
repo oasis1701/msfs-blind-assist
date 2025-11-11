@@ -1296,6 +1296,26 @@ public class SimConnectManager
                     Description = ""
                 });
                 break;
+
+            case (DATA_REQUESTS)371: // Hand Fly Mode - Heading
+                SingleValue handFlyHeadingData = (SingleValue)data.dwData[0];
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "PLANE_HEADING_DEGREES_MAGNETIC",
+                    Value = handFlyHeadingData.value, // Radians - will be converted to degrees in handler
+                    Description = ""
+                });
+                break;
+
+            case (DATA_REQUESTS)372: // Hand Fly Mode - Vertical Speed
+                SingleValue handFlyVSData = (SingleValue)data.dwData[0];
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "VERTICAL_SPEED",
+                    Value = handFlyVSData.value, // Feet per minute
+                    Description = ""
+                });
+                break;
         }
     }
 
@@ -3327,7 +3347,7 @@ public class SimConnectManager
     }
 
     // Hand fly mode monitoring
-    public void StartHandFlyMonitoring()
+    public void StartHandFlyMonitoring(bool monitorHeading, bool monitorVerticalSpeed)
     {
         if (!IsConnected || simConnect == null) return;
 
@@ -3346,7 +3366,39 @@ public class SimConnectManager
                 SIMCONNECT_PERIOD.SIM_FRAME,
                 SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
 
-            System.Diagnostics.Debug.WriteLine("[SimConnectManager] Hand fly mode monitoring started");
+            // Request heading monitoring if enabled
+            if (monitorHeading)
+            {
+                var headingDefId = (DATA_DEFINITIONS)371;
+                SafelyClearDataDefinition(headingDefId, requestId: null, delayMs: 50);
+                simConnect.AddToDataDefinition(headingDefId,
+                    "PLANE HEADING DEGREES MAGNETIC", "radians",
+                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+                simConnect.RegisterDataDefineStruct<SingleValue>(headingDefId);
+                simConnect.RequestDataOnSimObject((DATA_REQUESTS)371,
+                    headingDefId,
+                    SIMCONNECT_OBJECT_ID_USER,
+                    SIMCONNECT_PERIOD.SIM_FRAME,
+                    SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+            }
+
+            // Request vertical speed monitoring if enabled
+            if (monitorVerticalSpeed)
+            {
+                var vsDefId = (DATA_DEFINITIONS)372;
+                SafelyClearDataDefinition(vsDefId, requestId: null, delayMs: 50);
+                simConnect.AddToDataDefinition(vsDefId,
+                    "VERTICAL SPEED", "feet per minute",
+                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+                simConnect.RegisterDataDefineStruct<SingleValue>(vsDefId);
+                simConnect.RequestDataOnSimObject((DATA_REQUESTS)372,
+                    vsDefId,
+                    SIMCONNECT_OBJECT_ID_USER,
+                    SIMCONNECT_PERIOD.SIM_FRAME,
+                    SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+            }
+
+            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Hand fly mode monitoring started (Heading: {monitorHeading}, VS: {monitorVerticalSpeed})");
         }
         catch (Exception ex)
         {
@@ -3360,7 +3412,7 @@ public class SimConnectManager
 
         try
         {
-            // Stop continuous updates
+            // Stop continuous updates for pitch and bank
             simConnect.RequestDataOnSimObject((DATA_REQUESTS)327,
                 (DATA_DEFINITIONS)GetVariableDataDefinition("PLANE_PITCH_DEGREES"),
                 SIMCONNECT_OBJECT_ID_USER,
@@ -3369,6 +3421,20 @@ public class SimConnectManager
 
             simConnect.RequestDataOnSimObject((DATA_REQUESTS)328,
                 (DATA_DEFINITIONS)GetVariableDataDefinition("PLANE_BANK_DEGREES"),
+                SIMCONNECT_OBJECT_ID_USER,
+                SIMCONNECT_PERIOD.NEVER,
+                SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+
+            // Stop heading monitoring (371)
+            simConnect.RequestDataOnSimObject((DATA_REQUESTS)371,
+                (DATA_DEFINITIONS)371,
+                SIMCONNECT_OBJECT_ID_USER,
+                SIMCONNECT_PERIOD.NEVER,
+                SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+
+            // Stop vertical speed monitoring (372)
+            simConnect.RequestDataOnSimObject((DATA_REQUESTS)372,
+                (DATA_DEFINITIONS)372,
                 SIMCONNECT_OBJECT_ID_USER,
                 SIMCONNECT_PERIOD.NEVER,
                 SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
