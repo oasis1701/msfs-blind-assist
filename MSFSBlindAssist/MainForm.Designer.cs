@@ -10,6 +10,7 @@ namespace MSFSBlindAssist
         private System.Windows.Forms.ToolStripMenuItem geoNamesSettingsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem simbriefSettingsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem geminiApiKeySettingsMenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem handFlyOptionsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem hotkeyListMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem updateApplicationMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem aboutMenuItem = null!;
@@ -39,6 +40,7 @@ namespace MSFSBlindAssist
             this.geoNamesSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.simbriefSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.geminiApiKeySettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.handFlyOptionsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.hotkeyListMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.updateApplicationMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.aboutMenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -74,6 +76,7 @@ namespace MSFSBlindAssist
             this.geoNamesSettingsMenuItem,
             this.simbriefSettingsMenuItem,
             this.geminiApiKeySettingsMenuItem,
+            this.handFlyOptionsMenuItem,
             this.hotkeyListMenuItem,
             this.updateApplicationMenuItem,
             this.aboutMenuItem});
@@ -125,6 +128,15 @@ namespace MSFSBlindAssist
             this.geminiApiKeySettingsMenuItem.Size = new System.Drawing.Size(280, 26);
             this.geminiApiKeySettingsMenuItem.Text = "Ge&mini API Key Settings";
             this.geminiApiKeySettingsMenuItem.Click += new System.EventHandler(this.GeminiApiKeySettingsMenuItem_Click);
+            //
+            // handFlyOptionsMenuItem
+            //
+            this.handFlyOptionsMenuItem.AccessibleName = "Hand Fly Options";
+            this.handFlyOptionsMenuItem.AccessibleDescription = "Configure hand fly mode audio tones and announcement settings";
+            this.handFlyOptionsMenuItem.Name = "handFlyOptionsMenuItem";
+            this.handFlyOptionsMenuItem.Size = new System.Drawing.Size(280, 26);
+            this.handFlyOptionsMenuItem.Text = "&Hand Fly Options";
+            this.handFlyOptionsMenuItem.Click += new System.EventHandler(this.HandFlyOptionsMenuItem_Click);
             //
             // hotkeyListMenuItem
             //

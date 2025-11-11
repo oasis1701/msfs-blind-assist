@@ -1,8 +1,9 @@
 using MSFSBlindAssist.Accessibility;
+using MSFSBlindAssist.Settings;
 
 namespace MSFSBlindAssist.Services;
 
-public class HandFlyManager
+public class HandFlyManager : IDisposable
 {
     private readonly ScreenReaderAnnouncer announcer;
     private bool isActive = false;
@@ -10,6 +11,12 @@ public class HandFlyManager
     private double lastAnnouncedBank = 0;
     private DateTime lastPitchAnnouncement = DateTime.MinValue;
     private DateTime lastBankAnnouncement = DateTime.MinValue;
+
+    // Audio tone generator
+    private AudioToneGenerator? audioGenerator;
+    private HandFlyFeedbackMode feedbackMode;
+    private HandFlyWaveType waveType;
+    private double volume;
 
     // Configuration constants
     private const int ANNOUNCEMENT_INTERVAL_MS = 500; // 500ms between announcements
@@ -23,6 +30,12 @@ public class HandFlyManager
     public HandFlyManager(ScreenReaderAnnouncer screenReaderAnnouncer)
     {
         announcer = screenReaderAnnouncer;
+
+        // Load settings from SettingsManager
+        var settings = SettingsManager.Current;
+        feedbackMode = settings.HandFlyFeedbackMode;
+        waveType = settings.HandFlyWaveType;
+        volume = settings.HandFlyToneVolume;
     }
 
     /// <summary>
@@ -40,12 +53,32 @@ public class HandFlyManager
             lastPitchAnnouncement = DateTime.MinValue;
             lastBankAnnouncement = DateTime.MinValue;
 
+            // Start audio if tones are enabled
+            if (feedbackMode == HandFlyFeedbackMode.TonesOnly ||
+                feedbackMode == HandFlyFeedbackMode.Both)
+            {
+                try
+                {
+                    audioGenerator = new AudioToneGenerator();
+                    audioGenerator.Start(waveType, volume);
+                    System.Diagnostics.Debug.WriteLine("[HandFlyManager] Audio tone started");
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[HandFlyManager] Failed to start audio: {ex.Message}");
+                    audioGenerator?.Dispose();
+                    audioGenerator = null;
+                }
+            }
+
             announcer.AnnounceImmediate("Hand fly mode active");
             System.Diagnostics.Debug.WriteLine("[HandFlyManager] Activated");
         }
         else
         {
-            // Deactivating
+            // Deactivating - stop audio
+            StopAudio();
+
             announcer.AnnounceImmediate("Hand fly mode off");
             System.Diagnostics.Debug.WriteLine("[HandFlyManager] Deactivated");
         }
@@ -61,20 +94,30 @@ public class HandFlyManager
     {
         if (!isActive) return;
 
-        double pitchChange = Math.Abs(currentPitch - lastAnnouncedPitch);
-        TimeSpan timeSinceLastAnnouncement = DateTime.Now - lastPitchAnnouncement;
+        // Update audio tone frequency in real-time
+        audioGenerator?.UpdatePitch(currentPitch);
 
-        // Check if we should announce
-        if (pitchChange >= PITCH_THRESHOLD &&
-            timeSinceLastAnnouncement.TotalMilliseconds >= ANNOUNCEMENT_INTERVAL_MS)
+        // Handle announcements based on feedback mode
+        bool shouldAnnounce = feedbackMode == HandFlyFeedbackMode.AnnouncementsOnly ||
+                             feedbackMode == HandFlyFeedbackMode.Both;
+
+        if (shouldAnnounce)
         {
-            string announcement = FormatPitchAnnouncement(currentPitch);
-            announcer.AnnounceImmediate(announcement);
+            double pitchChange = Math.Abs(currentPitch - lastAnnouncedPitch);
+            TimeSpan timeSinceLastAnnouncement = DateTime.Now - lastPitchAnnouncement;
 
-            lastAnnouncedPitch = currentPitch;
-            lastPitchAnnouncement = DateTime.Now;
+            // Check if we should announce
+            if (pitchChange >= PITCH_THRESHOLD &&
+                timeSinceLastAnnouncement.TotalMilliseconds >= ANNOUNCEMENT_INTERVAL_MS)
+            {
+                string announcement = FormatPitchAnnouncement(currentPitch);
+                announcer.AnnounceImmediate(announcement);
 
-            System.Diagnostics.Debug.WriteLine($"[HandFlyManager] Pitch: {currentPitch:F1}° → {announcement}");
+                lastAnnouncedPitch = currentPitch;
+                lastPitchAnnouncement = DateTime.Now;
+
+                System.Diagnostics.Debug.WriteLine($"[HandFlyManager] Pitch: {currentPitch:F1}° → {announcement}");
+            }
         }
     }
 
@@ -86,20 +129,30 @@ public class HandFlyManager
     {
         if (!isActive) return;
 
-        double bankChange = Math.Abs(currentBank - lastAnnouncedBank);
-        TimeSpan timeSinceLastAnnouncement = DateTime.Now - lastBankAnnouncement;
+        // Update audio stereo panning in real-time
+        audioGenerator?.UpdateBank(currentBank);
 
-        // Check if we should announce
-        if (bankChange >= BANK_THRESHOLD &&
-            timeSinceLastAnnouncement.TotalMilliseconds >= ANNOUNCEMENT_INTERVAL_MS)
+        // Handle announcements based on feedback mode
+        bool shouldAnnounce = feedbackMode == HandFlyFeedbackMode.AnnouncementsOnly ||
+                             feedbackMode == HandFlyFeedbackMode.Both;
+
+        if (shouldAnnounce)
         {
-            string announcement = FormatBankAnnouncement(currentBank);
-            announcer.AnnounceImmediate(announcement);
+            double bankChange = Math.Abs(currentBank - lastAnnouncedBank);
+            TimeSpan timeSinceLastAnnouncement = DateTime.Now - lastBankAnnouncement;
 
-            lastAnnouncedBank = currentBank;
-            lastBankAnnouncement = DateTime.Now;
+            // Check if we should announce
+            if (bankChange >= BANK_THRESHOLD &&
+                timeSinceLastAnnouncement.TotalMilliseconds >= ANNOUNCEMENT_INTERVAL_MS)
+            {
+                string announcement = FormatBankAnnouncement(currentBank);
+                announcer.AnnounceImmediate(announcement);
 
-            System.Diagnostics.Debug.WriteLine($"[HandFlyManager] Bank: {currentBank:F1}° → {announcement}");
+                lastAnnouncedBank = currentBank;
+                lastBankAnnouncement = DateTime.Now;
+
+                System.Diagnostics.Debug.WriteLine($"[HandFlyManager] Bank: {currentBank:F1}° → {announcement}");
+            }
         }
     }
 
@@ -138,8 +191,80 @@ public class HandFlyManager
         if (isActive)
         {
             isActive = false;
+            StopAudio();
             HandFlyModeActiveChanged?.Invoke(this, false);
             System.Diagnostics.Debug.WriteLine("[HandFlyManager] Reset");
         }
+    }
+
+    /// <summary>
+    /// Updates hand fly settings while active (can be called from settings form)
+    /// </summary>
+    public void UpdateSettings(HandFlyFeedbackMode newFeedbackMode, HandFlyWaveType newWaveType, double newVolume)
+    {
+        feedbackMode = newFeedbackMode;
+        waveType = newWaveType;
+        volume = newVolume;
+
+        // If active, update or restart audio based on new settings
+        if (isActive)
+        {
+            bool needsAudio = feedbackMode == HandFlyFeedbackMode.TonesOnly ||
+                            feedbackMode == HandFlyFeedbackMode.Both;
+
+            if (needsAudio)
+            {
+                // Update existing audio or start if not running
+                if (audioGenerator != null)
+                {
+                    audioGenerator.UpdateWaveType(waveType);
+                    audioGenerator.UpdateVolume(volume);
+                }
+                else
+                {
+                    // Start audio if it wasn't running before
+                    try
+                    {
+                        audioGenerator = new AudioToneGenerator();
+                        audioGenerator.Start(waveType, volume);
+                        System.Diagnostics.Debug.WriteLine("[HandFlyManager] Audio tone started via settings update");
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[HandFlyManager] Failed to start audio: {ex.Message}");
+                    }
+                }
+            }
+            else
+            {
+                // Stop audio if no longer needed
+                StopAudio();
+            }
+        }
+
+        System.Diagnostics.Debug.WriteLine($"[HandFlyManager] Settings updated: Mode={feedbackMode}, Wave={waveType}, Volume={volume:F2}");
+    }
+
+    /// <summary>
+    /// Stops and disposes audio generator
+    /// </summary>
+    private void StopAudio()
+    {
+        if (audioGenerator != null)
+        {
+            audioGenerator.Stop();
+            audioGenerator.Dispose();
+            audioGenerator = null;
+            System.Diagnostics.Debug.WriteLine("[HandFlyManager] Audio tone stopped");
+        }
+    }
+
+    /// <summary>
+    /// Disposes resources
+    /// </summary>
+    public void Dispose()
+    {
+        StopAudio();
+        GC.SuppressFinalize(this);
     }
 }

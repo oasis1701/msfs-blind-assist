@@ -1,6 +1,34 @@
 namespace MSFSBlindAssist.Settings;
 
 /// <summary>
+/// Hand fly feedback mode options.
+/// </summary>
+public enum HandFlyFeedbackMode
+{
+    /// <summary>Audio tones only (no screen reader announcements).</summary>
+    TonesOnly,
+    /// <summary>Screen reader announcements only (no audio tones).</summary>
+    AnnouncementsOnly,
+    /// <summary>Both audio tones and screen reader announcements.</summary>
+    Both
+}
+
+/// <summary>
+/// Wave type for audio tone generation.
+/// </summary>
+public enum HandFlyWaveType
+{
+    /// <summary>Sine wave (smoothest, most pleasing).</summary>
+    Sine,
+    /// <summary>Triangle wave (smooth but with slight harmonic content).</summary>
+    Triangle,
+    /// <summary>Sawtooth wave (brighter, more harmonics).</summary>
+    Sawtooth,
+    /// <summary>Square wave (harsh, very harmonic).</summary>
+    Square
+}
+
+/// <summary>
 /// User settings for FBWBA application.
 /// Stores all user preferences in a version-independent location.
 /// </summary>
@@ -8,6 +36,11 @@ public class UserSettings
 {
         // Accessibility Settings
         public string AnnouncementMode { get; set; } = "ScreenReader";
+
+        // Hand Fly Settings
+        public HandFlyFeedbackMode HandFlyFeedbackMode { get; set; } = HandFlyFeedbackMode.AnnouncementsOnly;
+        public double HandFlyToneVolume { get; set; } = 0.5; // 0.0 to 1.0
+        public HandFlyWaveType HandFlyWaveType { get; set; } = HandFlyWaveType.Sine;
 
         // Simulator Settings
         public string SimulatorVersion { get; set; } = "FS2020";
@@ -66,6 +99,9 @@ public class UserSettings
         return new UserSettings
         {
             AnnouncementMode = AnnouncementMode,
+            HandFlyFeedbackMode = HandFlyFeedbackMode,
+            HandFlyToneVolume = HandFlyToneVolume,
+            HandFlyWaveType = HandFlyWaveType,
             SimulatorVersion = SimulatorVersion,
             LastAircraft = LastAircraft,
             GeoNamesApiUsername = GeoNamesApiUsername,

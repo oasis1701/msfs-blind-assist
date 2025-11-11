@@ -7,6 +7,7 @@ using MSFSBlindAssist.Forms;
 using MSFSBlindAssist.Forms.A32NX;
 using MSFSBlindAssist.Hotkeys;
 using MSFSBlindAssist.Services;
+using MSFSBlindAssist.Settings;
 using MSFSBlindAssist.SimConnect;
 
 namespace MSFSBlindAssist;
@@ -1559,6 +1560,34 @@ public partial class MainForm : Form
             {
                 statusLabel.Text = "Gemini API key saved successfully";
                 announcer.Announce("Gemini API key saved successfully");
+            }
+        }
+    }
+
+    private void HandFlyOptionsMenuItem_Click(object? sender, EventArgs e)
+    {
+        var currentSettings = SettingsManager.Current;
+        using (var settingsForm = new Forms.HandFlyOptionsForm(
+            currentSettings.HandFlyFeedbackMode,
+            currentSettings.HandFlyWaveType,
+            currentSettings.HandFlyToneVolume))
+        {
+            if (settingsForm.ShowDialog(this) == DialogResult.OK)
+            {
+                // Update settings
+                currentSettings.HandFlyFeedbackMode = settingsForm.SelectedFeedbackMode;
+                currentSettings.HandFlyWaveType = settingsForm.SelectedWaveType;
+                currentSettings.HandFlyToneVolume = settingsForm.SelectedVolume;
+                SettingsManager.Save();
+
+                // Update HandFlyManager if it's active
+                handFlyManager?.UpdateSettings(
+                    settingsForm.SelectedFeedbackMode,
+                    settingsForm.SelectedWaveType,
+                    settingsForm.SelectedVolume);
+
+                statusLabel.Text = "Hand fly options saved successfully";
+                announcer.Announce("Hand fly options saved successfully");
             }
         }
     }
