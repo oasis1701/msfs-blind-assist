@@ -177,8 +177,9 @@ public class HandFlyManager : IDisposable
     private string FormatBankAnnouncement(double bank)
     {
         // Determine direction and magnitude (show decimal precision)
+        // Note: SimConnect convention is positive = left, negative = right
         double bankDegrees = Math.Abs(bank);
-        string direction = bank >= 0 ? "right" : "left";
+        string direction = bank >= 0 ? "left" : "right";
 
         return $"{direction} {bankDegrees:F1}";
     }

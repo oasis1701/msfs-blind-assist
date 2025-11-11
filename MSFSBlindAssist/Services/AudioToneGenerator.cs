@@ -23,7 +23,7 @@ public class AudioToneGenerator : IDisposable
     private const float CENTER_FREQUENCY = 500f; // Level flight
 
     // Bank angle range for full stereo panning
-    private const double BANK_FULL_RANGE = 45.0; // ±45 degrees
+    private const double BANK_FULL_RANGE = 20.0; // ±20 degrees
 
     /// <summary>
     /// Starts continuous tone playback with initial frequency and panning.
@@ -133,9 +133,9 @@ public class AudioToneGenerator : IDisposable
             return;
 
         // Map bank angle to stereo pan
-        // -45° to +45° maps to -1.0 (full left) to +1.0 (full right)
+        // -20° to +20° maps to -1.0 (full left) to +1.0 (full right)
         double clampedBank = Math.Clamp(bankDegrees, -BANK_FULL_RANGE, BANK_FULL_RANGE);
-        float pan = (float)(clampedBank / BANK_FULL_RANGE);
+        float pan = -(float)(clampedBank / BANK_FULL_RANGE); // Negate to fix inverted panning
 
         panningSampleProvider.Pan = pan;
     }
