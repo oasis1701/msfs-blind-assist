@@ -467,7 +467,7 @@ public partial class MainForm : Form
         }
 
         // Handle hand fly mode vertical speed updates
-        if (e.VarName == "VERTICAL_SPEED" && handFlyManager.IsActive)
+        if (e.VarName == "HAND_FLY_VERTICAL_SPEED" && handFlyManager.IsActive)
         {
             // Already in feet per minute
             handFlyManager.ProcessVerticalSpeedUpdate(e.Value);
@@ -1489,11 +1489,22 @@ public partial class MainForm : Form
         {
             // Start monitoring pitch, bank, and optionally heading/VS
             simConnectManager.StartHandFlyMonitoring(handFlyManager.MonitorHeading, handFlyManager.MonitorVerticalSpeed);
+
+            // Register global H, V, Q hotkeys for quick access during hand fly mode
+            bool hotkeysRegistered = hotkeyManager.RegisterHandFlyHotkeys();
+            if (!hotkeysRegistered)
+            {
+                // Registration failed - likely another application is using H, V, or Q keys
+                announcer.Announce("Hand fly mode active. Quick access keys unavailable. Use output mode for H, V, Q.");
+            }
         }
         else
         {
             // Stop monitoring
             simConnectManager.StopHandFlyMonitoring();
+
+            // Unregister global H, V, Q hotkeys
+            hotkeyManager.UnregisterHandFlyHotkeys();
         }
     }
 

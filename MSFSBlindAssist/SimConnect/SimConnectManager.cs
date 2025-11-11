@@ -1311,7 +1311,7 @@ public class SimConnectManager
                 SingleValue handFlyVSData = (SingleValue)data.dwData[0];
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
                 {
-                    VarName = "VERTICAL_SPEED",
+                    VarName = "HAND_FLY_VERTICAL_SPEED",  // Use distinct name to avoid conflict with hotkey VS requests
                     Value = handFlyVSData.value, // Feet per minute
                     Description = ""
                 });

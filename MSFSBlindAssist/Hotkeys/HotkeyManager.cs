@@ -99,9 +99,15 @@ public class HotkeyManager : IDisposable
         private const int HOTKEY_READ_DISPLAY_ISIS = 9073;
         private const int HOTKEY_DESCRIBE_SCENE = 9074;
 
+        // Hand fly mode global hotkey IDs (separate from output mode)
+        private const int HOTKEY_HANDFLY_HEADING = 9077;
+        private const int HOTKEY_HANDFLY_VERTICAL_SPEED = 9078;
+        private const int HOTKEY_HANDFLY_ALTITUDE_AGL = 9079;
+
         private IntPtr windowHandle;
         private bool outputHotkeyModeActive = false;
         private bool inputHotkeyModeActive = false;
+        private bool handFlyHotkeysActive = false;
         private bool disposed = false;
 
         public event EventHandler<HotkeyEventArgs>? HotkeyTriggered;
@@ -260,8 +266,11 @@ public class HotkeyManager : IDisposable
                             TriggerHotkey(HotkeyAction.ToggleECAMMonitoring);
                             break;
                         case HOTKEY_HAND_FLY_MODE:
+                            // Deactivate output mode BEFORE triggering hand fly mode to avoid race condition
+                            // Hand fly mode needs to register its own hotkeys, which fails if output mode is still active
+                            DeactivateOutputHotkeyMode();
                             TriggerHotkey(HotkeyAction.ToggleHandFlyMode);
-                            break;
+                            return true;  // Return immediately, mode already deactivated
                         case HOTKEY_EFB:
                             TriggerHotkey(HotkeyAction.ShowElectronicFlightBag);
                             break;
@@ -373,6 +382,32 @@ public class HotkeyManager : IDisposable
                     DeactivateInputHotkeyMode();
                     return true;
                 }
+                else if (handFlyHotkeysActive)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Hand fly hotkeys: Received WM_HOTKEY with ID {hotkeyId}");
+
+                    // Handle hand fly mode hotkeys (H, V, Q)
+                    switch (hotkeyId)
+                    {
+                        case HOTKEY_HANDFLY_HEADING:
+                            System.Diagnostics.Debug.WriteLine("Hand fly hotkeys: Triggering ReadHeadingMagnetic");
+                            TriggerHotkey(HotkeyAction.ReadHeadingMagnetic);
+                            break;
+                        case HOTKEY_HANDFLY_VERTICAL_SPEED:
+                            System.Diagnostics.Debug.WriteLine("Hand fly hotkeys: Triggering ReadVerticalSpeed");
+                            TriggerHotkey(HotkeyAction.ReadVerticalSpeed);
+                            break;
+                        case HOTKEY_HANDFLY_ALTITUDE_AGL:
+                            System.Diagnostics.Debug.WriteLine("Hand fly hotkeys: Triggering ReadAltitudeAGL");
+                            TriggerHotkey(HotkeyAction.ReadAltitudeAGL);
+                            break;
+                        default:
+                            System.Diagnostics.Debug.WriteLine($"Hand fly hotkeys: Unknown hotkey ID {hotkeyId}");
+                            break;
+                    }
+                    // Don't deactivate - these stay active until hand fly mode is disabled
+                    return true;
+                }
             }
 
             return false;
@@ -389,14 +424,18 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_FCU_VSFPA, MOD_SHIFT, 0x56); // Shift+V (FCU VS/FPA)
 
             // Register new hotkeys without modifiers
-            RegisterHotKey(windowHandle, HOTKEY_ALTITUDE_AGL, MOD_NONE, 0x51); // Q (Altitude AGL)
+            // Skip H, V, Q if hand fly hotkeys are active (to prevent conflicts)
+            if (!handFlyHotkeysActive)
+            {
+                RegisterHotKey(windowHandle, HOTKEY_ALTITUDE_AGL, MOD_NONE, 0x51); // Q (Altitude AGL)
+                RegisterHotKey(windowHandle, HOTKEY_VERTICAL_SPEED, MOD_NONE, 0x56); // V (Vertical Speed)
+                RegisterHotKey(windowHandle, HOTKEY_HEADING_MAGNETIC, MOD_NONE, 0x48); // H (Magnetic Heading)
+            }
             RegisterHotKey(windowHandle, HOTKEY_ALTITUDE_MSL, MOD_NONE, 0x41); // A (Altitude MSL)
             RegisterHotKey(windowHandle, HOTKEY_AIRSPEED_IND, MOD_NONE, 0x53); // S (Airspeed Indicated)
             RegisterHotKey(windowHandle, HOTKEY_AIRSPEED_TRUE, MOD_NONE, 0x54); // T (Airspeed True)
             RegisterHotKey(windowHandle, HOTKEY_GROUND_SPEED, MOD_NONE, 0x47); // G (Ground Speed)
             RegisterHotKey(windowHandle, HOTKEY_MACH_SPEED, MOD_NONE, 0x4D); // M (Mach Speed)
-            RegisterHotKey(windowHandle, HOTKEY_VERTICAL_SPEED, MOD_NONE, 0x56); // V (Vertical Speed)
-            RegisterHotKey(windowHandle, HOTKEY_HEADING_MAGNETIC, MOD_NONE, 0x48); // H (Magnetic Heading)
             RegisterHotKey(windowHandle, HOTKEY_HEADING_TRUE, MOD_NONE, 0x55); // U (True Heading)
             RegisterHotKey(windowHandle, HOTKEY_DESTINATION_RUNWAY_DISTANCE, MOD_CONTROL, 0x44); // Ctrl+D (Distance to Destination Runway)
             RegisterHotKey(windowHandle, HOTKEY_ILS_GUIDANCE, MOD_CONTROL, 0x49); // Ctrl+I (ILS Guidance)
@@ -455,14 +494,18 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_SPEED);
             UnregisterHotKey(windowHandle, HOTKEY_ALTITUDE);
             UnregisterHotKey(windowHandle, HOTKEY_FCU_VSFPA);
-            UnregisterHotKey(windowHandle, HOTKEY_ALTITUDE_AGL);
+            // Only unregister H, V, Q if hand fly hotkeys aren't active
+            if (!handFlyHotkeysActive)
+            {
+                UnregisterHotKey(windowHandle, HOTKEY_ALTITUDE_AGL);
+                UnregisterHotKey(windowHandle, HOTKEY_VERTICAL_SPEED);
+                UnregisterHotKey(windowHandle, HOTKEY_HEADING_MAGNETIC);
+            }
             UnregisterHotKey(windowHandle, HOTKEY_ALTITUDE_MSL);
             UnregisterHotKey(windowHandle, HOTKEY_AIRSPEED_IND);
             UnregisterHotKey(windowHandle, HOTKEY_AIRSPEED_TRUE);
             UnregisterHotKey(windowHandle, HOTKEY_GROUND_SPEED);
             UnregisterHotKey(windowHandle, HOTKEY_MACH_SPEED);
-            UnregisterHotKey(windowHandle, HOTKEY_VERTICAL_SPEED);
-            UnregisterHotKey(windowHandle, HOTKEY_HEADING_MAGNETIC);
             UnregisterHotKey(windowHandle, HOTKEY_HEADING_TRUE);
             UnregisterHotKey(windowHandle, HOTKEY_DESTINATION_RUNWAY_DISTANCE);
             UnregisterHotKey(windowHandle, HOTKEY_ILS_GUIDANCE);
@@ -606,6 +649,61 @@ public class HotkeyManager : IDisposable
             DeactivateInputHotkeyMode();
         }
 
+        public bool RegisterHandFlyHotkeys()
+        {
+            // Don't register if output mode is active (to prevent conflicts)
+            if (outputHotkeyModeActive || handFlyHotkeysActive)
+            {
+                System.Diagnostics.Debug.WriteLine("Hand fly hotkeys: Skipped registration (mode conflict or already active)");
+                return false;
+            }
+
+            System.Diagnostics.Debug.WriteLine("Hand fly hotkeys: Attempting registration...");
+
+            // Register H, V, Q without modifiers for global access
+            bool hRegistered = RegisterHotKey(windowHandle, HOTKEY_HANDFLY_HEADING, MOD_NONE, 0x48);         // H (Heading)
+            bool vRegistered = RegisterHotKey(windowHandle, HOTKEY_HANDFLY_VERTICAL_SPEED, MOD_NONE, 0x56); // V (Vertical Speed)
+            bool qRegistered = RegisterHotKey(windowHandle, HOTKEY_HANDFLY_ALTITUDE_AGL, MOD_NONE, 0x51);   // Q (Altitude AGL)
+
+            System.Diagnostics.Debug.WriteLine($"Hand fly hotkeys: H={hRegistered}, V={vRegistered}, Q={qRegistered}");
+
+            // Only mark as active if ALL registrations succeeded
+            if (hRegistered && vRegistered && qRegistered)
+            {
+                handFlyHotkeysActive = true;
+                System.Diagnostics.Debug.WriteLine("Hand fly hotkeys: All registered successfully");
+                return true;
+            }
+            else
+            {
+                // Partial failure - clean up any successful registrations
+                System.Diagnostics.Debug.WriteLine("Hand fly hotkeys: Registration failed, cleaning up...");
+                if (hRegistered) UnregisterHotKey(windowHandle, HOTKEY_HANDFLY_HEADING);
+                if (vRegistered) UnregisterHotKey(windowHandle, HOTKEY_HANDFLY_VERTICAL_SPEED);
+                if (qRegistered) UnregisterHotKey(windowHandle, HOTKEY_HANDFLY_ALTITUDE_AGL);
+                return false;
+            }
+        }
+
+        public void UnregisterHandFlyHotkeys()
+        {
+            if (!handFlyHotkeysActive)
+            {
+                System.Diagnostics.Debug.WriteLine("Hand fly hotkeys: Unregister skipped (not active)");
+                return;
+            }
+
+            System.Diagnostics.Debug.WriteLine("Hand fly hotkeys: Unregistering...");
+            handFlyHotkeysActive = false;
+
+            // Unregister the hand fly hotkeys
+            UnregisterHotKey(windowHandle, HOTKEY_HANDFLY_HEADING);
+            UnregisterHotKey(windowHandle, HOTKEY_HANDFLY_VERTICAL_SPEED);
+            UnregisterHotKey(windowHandle, HOTKEY_HANDFLY_ALTITUDE_AGL);
+
+            System.Diagnostics.Debug.WriteLine("Hand fly hotkeys: Unregistered successfully");
+        }
+
         public void Cleanup()
         {
             Dispose();
@@ -623,6 +721,11 @@ public class HotkeyManager : IDisposable
                 if (inputHotkeyModeActive)
                 {
                     DeactivateInputHotkeyMode();
+                }
+
+                if (handFlyHotkeysActive)
+                {
+                    UnregisterHandFlyHotkeys();
                 }
 
                 // Unregister main hotkeys
