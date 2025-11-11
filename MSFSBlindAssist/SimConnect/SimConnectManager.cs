@@ -994,7 +994,7 @@ public class SimConnectManager
                 {
                     VarName = "ALTITUDE_MSL",
                     Value = altMslData.value,
-                    Description = $"MSL {altMslData.value:0.0} feet"
+                    Description = $"{altMslData.value:0}"
                 });
                 break;
 
@@ -1004,7 +1004,7 @@ public class SimConnectManager
                 {
                     VarName = "ALTITUDE_AGL",
                     Value = altAglData.value,
-                    Description = $"AGL {altAglData.value:0.0} feet"
+                    Description = $"{altAglData.value:0}"
                 });
                 break;
 
@@ -1014,7 +1014,7 @@ public class SimConnectManager
                 {
                     VarName = "AIRSPEED_INDICATED",
                     Value = iasData.value,
-                    Description = $"IAS {iasData.value:0.0} knots"
+                    Description = $"{iasData.value:0}"
                 });
                 break;
 
@@ -1024,7 +1024,7 @@ public class SimConnectManager
                 {
                     VarName = "AIRSPEED_TRUE",
                     Value = tasData.value,
-                    Description = $"TAS {tasData.value:0.0} knots"
+                    Description = $"{tasData.value:0}"
                 });
                 break;
 
@@ -1034,7 +1034,7 @@ public class SimConnectManager
                 {
                     VarName = "GROUND_SPEED",
                     Value = gsData.value,
-                    Description = $"GS {gsData.value:0.0} knots"
+                    Description = $"{gsData.value:0}"
                 });
                 break;
 
@@ -1045,7 +1045,7 @@ public class SimConnectManager
                 {
                     VarName = "VERTICAL_SPEED",
                     Value = vsInFpm,
-                    Description = $"Vertical speed {vsInFpm:0.0} feet per minute"
+                    Description = $"{vsInFpm:0}"
                 });
                 break;
 
@@ -1056,7 +1056,7 @@ public class SimConnectManager
                 {
                     VarName = "HEADING_TRUE",
                     Value = hdgTrueInDegrees,
-                    Description = $"TH {hdgTrueInDegrees:000} degrees"
+                    Description = $"{hdgTrueInDegrees:000}"
                 });
                 break;
 
@@ -1067,7 +1067,7 @@ public class SimConnectManager
                 {
                     VarName = "HEADING_MAGNETIC",
                     Value = hdgMagInDegrees,
-                    Description = $"MH {hdgMagInDegrees:000} degrees"
+                    Description = $"{hdgMagInDegrees:000}"
                 });
                 break;
 
@@ -1077,7 +1077,7 @@ public class SimConnectManager
                 {
                     VarName = "MACH_SPEED",
                     Value = machData.value,
-                    Description = $"Mach {machData.value:0.00}"
+                    Description = $"{machData.value:0.00}"
                 });
                 break;
 
