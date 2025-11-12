@@ -21,6 +21,8 @@ public class VisualGuidanceManager : IDisposable
     private InterceptAngle interceptAngle = InterceptAngle.Medium45;
     private double magneticVariation = 0.0;
     private double thresholdElevationMSL = 0.0;
+    private double touchdownAimPointLat = 0.0;  // Calculated aim point for glideslope
+    private double touchdownAimPointLon = 0.0;
 
     // Audio generators
     private AudioToneGenerator? desiredAttitudeTone;  // Guidance tone
@@ -41,6 +43,7 @@ public class VisualGuidanceManager : IDisposable
     private DateTime lastDistanceAnnouncement = DateTime.MinValue;
     private double lastAnnouncedDistance = double.MaxValue;
     private DateTime lastExtendingProgressAnnouncement = DateTime.MinValue;
+    private int? lastAnnouncedBankDegrees = null;  // Track last announced bank angle
     private const int ANNOUNCEMENT_INTERVAL_MS = 1000;
     private const int EXTENDING_PROGRESS_INTERVAL_MS = 10000;  // 10 seconds
 
@@ -55,6 +58,8 @@ public class VisualGuidanceManager : IDisposable
     private const double FLARE_ALTITUDE_FT = 50.0;       // Start flare at 50 ft AGL
     private const double TOUCHDOWN_ALTITUDE_FT = 5.0;    // Consider touchdown below 5 ft AGL
     private const double GLIDESLOPE_ANGLE_DEG = 3.0;     // Standard 3-degree glideslope
+    private const double TOUCHDOWN_AIM_POINT_FT = 1500.0;  // Aim point distance from threshold
+    private const double TOUCHDOWN_AIM_POINT_RATIO = 0.2;  // Use 20% of runway length for short runways
 
     // Lateral guidance gains
     private const double LATERAL_GAIN_INTERCEPT = 1.0;   // Heading error to bank for intercept
@@ -114,12 +119,22 @@ public class VisualGuidanceManager : IDisposable
         magneticVariation = destinationAirport.MagVar;
         thresholdElevationMSL = destinationAirport.Altitude;
 
+        // Calculate touchdown aim point (offset from threshold for safe touchdown zone)
+        double runwayLengthFeet = destinationRunway.Length * 3.28084;  // Convert meters to feet
+        double touchdownDistanceFeet = Math.Min(TOUCHDOWN_AIM_POINT_FT, runwayLengthFeet * TOUCHDOWN_AIM_POINT_RATIO);
+        (touchdownAimPointLat, touchdownAimPointLon) = NavigationCalculator.CalculateTouchdownAimPoint(
+            destinationRunway.StartLat,
+            destinationRunway.StartLon,
+            destinationRunway.Heading,
+            touchdownDistanceFeet);
+
         // Reset state
         currentPhase = GuidancePhase.NotStarted;
         lastPhaseAnnouncement = DateTime.MinValue;
         lastDistanceAnnouncement = DateTime.MinValue;
         lastAnnouncedDistance = double.MaxValue;
         lastExtendingProgressAnnouncement = DateTime.MinValue;
+        lastAnnouncedBankDegrees = null;
         cachedLatitude = null;
         cachedLongitude = null;
         cachedAGL = null;
@@ -224,6 +239,9 @@ public class VisualGuidanceManager : IDisposable
             // Update guidance tone
             desiredAttitudeTone.UpdatePitch(desiredPitch);
             desiredAttitudeTone.UpdateBank(desiredBank);
+
+            // Announce commanded bank angle
+            AnnounceBankGuidance(desiredBank);
 
             // Distance callouts
             HandleDistanceCallouts(lat, lon);
@@ -330,8 +348,8 @@ public class VisualGuidanceManager : IDisposable
             distance,                                     // Distance from threshold in NM
             GLIDESLOPE_ANGLE_DEG,                        // 3-degree glideslope
             thresholdElevationMSL,                       // Threshold elevation MSL
-            runway.StartLat,                              // Glideslope antenna lat (use threshold)
-            runway.StartLon,                              // Glideslope antenna lon (use threshold)
+            touchdownAimPointLat,                        // Glideslope aim point lat (offset from threshold)
+            touchdownAimPointLon,                        // Glideslope aim point lon (offset from threshold)
             (int?)0,                                      // Glideslope antenna altitude (sea level)
             lat,                                          // Aircraft lat
             lon);                                         // Aircraft lon
@@ -433,8 +451,8 @@ public class VisualGuidanceManager : IDisposable
                 distanceFromThreshold,                       // Distance from threshold in NM
                 GLIDESLOPE_ANGLE_DEG,                        // 3-degree glideslope
                 thresholdElevationMSL,                       // Threshold elevation MSL
-                runway.StartLat,                              // Glideslope antenna lat (use threshold)
-                runway.StartLon,                              // Glideslope antenna lon (use threshold)
+                touchdownAimPointLat,                        // Glideslope aim point lat (offset from threshold)
+                touchdownAimPointLon,                        // Glideslope aim point lon (offset from threshold)
                 (int?)0,                                      // Glideslope antenna altitude (sea level)
                 lat,                                          // Aircraft lat
                 lon);                                         // Aircraft lon
@@ -598,6 +616,38 @@ public class VisualGuidanceManager : IDisposable
             announcer.Announce("Approaching threshold");
             lastExtendingProgressAnnouncement = now;
         }
+    }
+
+    /// <summary>
+    /// Announces commanded bank angle for verbal guidance feedback
+    /// </summary>
+    private void AnnounceBankGuidance(double desiredBankDegrees)
+    {
+        // Round to nearest degree
+        int roundedBank = (int)Math.Round(desiredBankDegrees);
+
+        // Only announce if changed from last announcement
+        if (lastAnnouncedBankDegrees.HasValue && roundedBank == lastAnnouncedBankDegrees.Value)
+            return;
+
+        // Format announcement
+        string announcement;
+        if (roundedBank == 0)
+        {
+            announcement = "centered";
+        }
+        else if (roundedBank < 0)
+        {
+            announcement = $"{Math.Abs(roundedBank)} left";
+        }
+        else
+        {
+            announcement = $"{roundedBank} right";
+        }
+
+        // Announce immediately
+        announcer.AnnounceImmediate(announcement);
+        lastAnnouncedBankDegrees = roundedBank;
     }
 
     public void Dispose()

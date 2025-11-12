@@ -71,6 +71,45 @@ public class NavigationCalculator
     }
 
     /// <summary>
+    /// Calculates touchdown aim point coordinates by projecting a distance from threshold along runway heading.
+    /// Used for glideslope calculations to ensure safe touchdown zone (not at threshold).
+    /// </summary>
+    /// <param name="thresholdLat">Runway threshold latitude in degrees</param>
+    /// <param name="thresholdLon">Runway threshold longitude in degrees</param>
+    /// <param name="runwayTrueHeading">Runway true heading in degrees</param>
+    /// <param name="touchdownDistanceFeet">Distance from threshold to aim point in feet</param>
+    /// <returns>Tuple of (latitude, longitude) for touchdown aim point</returns>
+    public static (double lat, double lon) CalculateTouchdownAimPoint(
+        double thresholdLat,
+        double thresholdLon,
+        double runwayTrueHeading,
+        double touchdownDistanceFeet)
+    {
+        // Convert feet to nautical miles
+        double distanceNM = touchdownDistanceFeet / 6076.12;
+
+        // Convert to radians
+        double distanceRad = distanceNM / EARTH_RADIUS_NM;
+        double thresholdLatRad = thresholdLat * DEGREES_TO_RADIANS;
+        double thresholdLonRad = thresholdLon * DEGREES_TO_RADIANS;
+        double headingRad = runwayTrueHeading * DEGREES_TO_RADIANS;
+
+        // Project point along runway heading using destination point formula
+        double aimLatRad = Math.Asin(
+            Math.Sin(thresholdLatRad) * Math.Cos(distanceRad) +
+            Math.Cos(thresholdLatRad) * Math.Sin(distanceRad) * Math.Cos(headingRad)
+        );
+
+        double aimLonRad = thresholdLonRad + Math.Atan2(
+            Math.Sin(headingRad) * Math.Sin(distanceRad) * Math.Cos(thresholdLatRad),
+            Math.Cos(distanceRad) - Math.Sin(thresholdLatRad) * Math.Sin(aimLatRad)
+        );
+
+        // Convert back to degrees
+        return (aimLatRad * RADIANS_TO_DEGREES, aimLonRad * RADIANS_TO_DEGREES);
+    }
+
+    /// <summary>
     /// Calculates cross-track error (degrees left or right of ILS centerline)
     /// </summary>
     /// <param name="aircraftLat">Aircraft latitude in degrees</param>
