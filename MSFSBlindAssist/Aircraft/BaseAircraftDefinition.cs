@@ -85,6 +85,53 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, // Registered at startup, monitored when hand fly mode is active
                 IsAnnounced = false, // Handled by HandFlyManager
                 Units = "radians" // Note: Despite name, returns radians!
+            },
+
+            // VISUAL GUIDANCE MODE VARIABLES (dynamically monitored when visual guidance is active)
+            ["VISUAL_GUIDANCE_LATITUDE"] = new SimConnect.SimVarDefinition
+            {
+                Name = "PLANE LATITUDE",
+                DisplayName = "Aircraft Latitude",
+                Type = SimConnect.SimVarType.SimVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, // Dynamic monitoring when visual guidance active
+                IsAnnounced = false, // Handled by VisualGuidanceManager
+                Units = "degrees"
+            },
+            ["VISUAL_GUIDANCE_LONGITUDE"] = new SimConnect.SimVarDefinition
+            {
+                Name = "PLANE LONGITUDE",
+                DisplayName = "Aircraft Longitude",
+                Type = SimConnect.SimVarType.SimVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false, // Handled by VisualGuidanceManager
+                Units = "degrees"
+            },
+            ["VISUAL_GUIDANCE_AGL"] = new SimConnect.SimVarDefinition
+            {
+                Name = "PLANE ALT ABOVE GROUND",
+                DisplayName = "Height AGL",
+                Type = SimConnect.SimVarType.SimVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false, // Handled by VisualGuidanceManager
+                Units = "feet"
+            },
+            ["VISUAL_GUIDANCE_ALT_MSL"] = new SimConnect.SimVarDefinition
+            {
+                Name = "INDICATED ALTITUDE",
+                DisplayName = "Altitude MSL",
+                Type = SimConnect.SimVarType.SimVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false, // Handled by VisualGuidanceManager
+                Units = "feet"
+            },
+            ["VISUAL_GUIDANCE_HEADING"] = new SimConnect.SimVarDefinition
+            {
+                Name = "PLANE HEADING DEGREES MAGNETIC",
+                DisplayName = "Magnetic Heading",
+                Type = SimConnect.SimVarType.SimVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false, // Handled by VisualGuidanceManager
+                Units = "degrees"
             }
         };
     }

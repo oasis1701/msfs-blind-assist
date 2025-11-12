@@ -126,16 +126,18 @@ public class AudioToneGenerator : IDisposable
     /// Updates stereo panning based on bank angle.
     /// Lock-free for smooth real-time updates.
     /// </summary>
-    /// <param name="bankDegrees">Aircraft bank in degrees (negative = left, positive = right).</param>
+    /// <param name="bankDegrees">Aircraft bank in degrees using standard convention (negative = left, positive = right).</param>
     public void UpdateBank(double bankDegrees)
     {
         if (panningSampleProvider == null || !isPlaying)
             return;
 
-        // Map bank angle to stereo pan
+        // Map bank angle to stereo pan using standard convention
         // -20° to +20° maps to -1.0 (full left) to +1.0 (full right)
+        // Positive bank (right) → positive pan (right speaker)
+        // NOTE: SimConnect data must be negated before calling this method
         double clampedBank = Math.Clamp(bankDegrees, -BANK_FULL_RANGE, BANK_FULL_RANGE);
-        float pan = -(float)(clampedBank / BANK_FULL_RANGE); // Negate to fix inverted panning
+        float pan = (float)(clampedBank / BANK_FULL_RANGE);
 
         panningSampleProvider.Pan = pan;
     }

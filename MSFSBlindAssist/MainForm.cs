@@ -27,6 +27,7 @@ public partial class MainForm : Form
     private ChecklistForm? checklistForm;
     private TakeoffAssistManager takeoffAssistManager = null!;
     private HandFlyManager handFlyManager = null!;
+    private VisualGuidanceManager visualGuidanceManager = null!;
     private ElectronicFlightBagForm? electronicFlightBagForm;
     private TrackFixForm? trackFixForm;
     private MSFSBlindAssist.Navigation.FlightPlanManager flightPlanManager = null!;
@@ -131,6 +132,10 @@ public partial class MainForm : Form
         // Initialize hand fly manager
         handFlyManager = new HandFlyManager(announcer);
         handFlyManager.HandFlyModeActiveChanged += OnHandFlyModeActiveChanged;
+
+        // Initialize visual guidance manager
+        visualGuidanceManager = new VisualGuidanceManager(announcer);
+        visualGuidanceManager.VisualGuidanceActiveChanged += OnVisualGuidanceActiveChanged;
 
         // Initialize airport database provider (optional - can be null if database not built yet)
         airportDataProvider = DatabaseSelector.SelectProvider();
@@ -472,6 +477,54 @@ public partial class MainForm : Form
             // Already in feet per minute
             handFlyManager.ProcessVerticalSpeedUpdate(e.Value);
             return true;
+        }
+
+        // Handle visual guidance position updates
+        // Handle visual guidance position updates (AIRCRAFT_POSITION struct)
+        if (e.VarName == "VISUAL_GUIDANCE_POSITION" && visualGuidanceManager.IsActive && e.PositionData != null)
+        {
+            var pos = e.PositionData.Value;
+
+            // Update position data from AIRCRAFT_POSITION struct
+            visualGuidanceManager.UpdateLatitude(pos.Latitude);
+            visualGuidanceManager.UpdateLongitude(pos.Longitude);
+            visualGuidanceManager.UpdateAltitudeMSL(pos.Altitude);
+            visualGuidanceManager.UpdateHeading(pos.HeadingMagnetic);
+
+            // Note: AGL is updated separately via VISUAL_GUIDANCE_AGL handler
+            // ProcessUpdate() is called when AGL arrives to ensure all data is complete
+
+            return true;
+        }
+
+        // Handle visual guidance AGL updates (requested separately)
+        if (e.VarName == "VISUAL_GUIDANCE_AGL" && visualGuidanceManager.IsActive)
+        {
+            visualGuidanceManager.UpdateAGL(e.Value);
+
+            // Process the update now that all position data should be available
+            visualGuidanceManager.ProcessUpdate();
+            return true;
+        }
+
+        // Share pitch/bank/heading with visual guidance when both modes active
+        if (visualGuidanceManager.IsActive)
+        {
+            if (e.VarName == "PLANE_PITCH_DEGREES")
+            {
+                double pitchDegrees = -(e.Value * (180.0 / Math.PI));
+                visualGuidanceManager.UpdatePitch(pitchDegrees);
+            }
+            else if (e.VarName == "PLANE_BANK_DEGREES")
+            {
+                double bankDegrees = e.Value * (180.0 / Math.PI);
+                visualGuidanceManager.UpdateBank(bankDegrees);
+            }
+            else if (e.VarName == "PLANE_HEADING_DEGREES_MAGNETIC")
+            {
+                double headingDegrees = e.Value * (180.0 / Math.PI);
+                visualGuidanceManager.UpdateHeading(headingDegrees);
+            }
         }
 
         // Handle aircraft variable hotkey announcements
@@ -888,6 +941,9 @@ public partial class MainForm : Form
                 break;
             case HotkeyAction.ToggleHandFlyMode:
                 ToggleHandFlyMode();
+                break;
+            case HotkeyAction.ToggleVisualGuidance:
+                ToggleVisualGuidance();
                 break;
             case HotkeyAction.ReadTrackSlot1:
                 ReadTrackedWaypoint(1);
@@ -1505,6 +1561,63 @@ public partial class MainForm : Form
 
             // Unregister global H, V, Q hotkeys
             hotkeyManager.UnregisterHandFlyHotkeys();
+
+            // Stop visual guidance if active (requires hand fly mode)
+            if (visualGuidanceManager.IsActive)
+            {
+                visualGuidanceManager.Stop();
+            }
+        }
+    }
+
+    private void ToggleVisualGuidance()
+    {
+        if (!simConnectManager.IsConnected)
+        {
+            announcer.AnnounceImmediate("Not connected to simulator");
+            return;
+        }
+
+        visualGuidanceManager.Toggle();
+    }
+
+    private void OnVisualGuidanceActiveChanged(object? sender, bool isActive)
+    {
+        if (isActive)
+        {
+            // Validation checks
+            if (!handFlyManager.IsActive)
+            {
+                announcer.Announce("Hand fly mode must be active first");
+                visualGuidanceManager.Stop();
+                return;
+            }
+
+            var runway = simConnectManager.GetDestinationRunway();
+            var airport = simConnectManager.GetDestinationAirport();
+            if (runway == null)
+            {
+                announcer.Announce("No destination runway selected");
+                visualGuidanceManager.Stop();
+                return;
+            }
+
+            // Get user preferences from settings
+            var settings = MSFSBlindAssist.Settings.SettingsManager.Current;
+            var interceptAngle = settings.VisualGuidanceInterceptAngle;
+            var guidanceToneWaveform = settings.VisualGuidanceToneWaveform;
+            var guidanceVolume = settings.VisualGuidanceToneVolume;
+
+            // Initialize visual guidance with runway and preferences
+            visualGuidanceManager.Initialize(runway, airport, interceptAngle, guidanceToneWaveform, guidanceVolume);
+
+            // Start monitoring position variables at 1 Hz
+            simConnectManager.StartVisualGuidanceMonitoring();
+        }
+        else
+        {
+            // Stop monitoring
+            simConnectManager.StopVisualGuidanceMonitoring();
         }
     }
 
@@ -1600,7 +1713,10 @@ public partial class MainForm : Form
             currentSettings.HandFlyWaveType,
             currentSettings.HandFlyToneVolume,
             currentSettings.HandFlyMonitorHeading,
-            currentSettings.HandFlyMonitorVerticalSpeed))
+            currentSettings.HandFlyMonitorVerticalSpeed,
+            currentSettings.VisualGuidanceInterceptAngle,
+            currentSettings.VisualGuidanceToneWaveform,
+            currentSettings.VisualGuidanceToneVolume))
         {
             if (settingsForm.ShowDialog(this) == DialogResult.OK)
             {
@@ -1610,6 +1726,9 @@ public partial class MainForm : Form
                 currentSettings.HandFlyToneVolume = settingsForm.SelectedVolume;
                 currentSettings.HandFlyMonitorHeading = settingsForm.MonitorHeading;
                 currentSettings.HandFlyMonitorVerticalSpeed = settingsForm.MonitorVerticalSpeed;
+                currentSettings.VisualGuidanceInterceptAngle = settingsForm.InterceptAngle;
+                currentSettings.VisualGuidanceToneWaveform = settingsForm.GuidanceToneWaveform;
+                currentSettings.VisualGuidanceToneVolume = settingsForm.SelectedGuidanceVolume;
                 SettingsManager.Save();
 
                 // Update HandFlyManager if it's active

@@ -1,3 +1,5 @@
+using MSFSBlindAssist.Services;
+
 namespace MSFSBlindAssist.Settings;
 
 /// <summary>
@@ -44,6 +46,11 @@ public class UserSettings
         public bool HandFlyMonitorHeading { get; set; } = true;
         public bool HandFlyMonitorVerticalSpeed { get; set; } = true;
         public int HandFlyAnnouncementIntervalMs { get; set; } = 1000; // Configurable interval for heading/VS announcements
+
+        // Visual Guidance Settings
+        public InterceptAngle VisualGuidanceInterceptAngle { get; set; } = InterceptAngle.Medium45;
+        public HandFlyWaveType VisualGuidanceToneWaveform { get; set; } = HandFlyWaveType.Triangle;
+        public double VisualGuidanceToneVolume { get; set; } = 0.05; // 0.0 to 1.0 (default 5%)
 
         // Simulator Settings
         public string SimulatorVersion { get; set; } = "FS2020";
@@ -108,6 +115,9 @@ public class UserSettings
             HandFlyMonitorHeading = HandFlyMonitorHeading,
             HandFlyMonitorVerticalSpeed = HandFlyMonitorVerticalSpeed,
             HandFlyAnnouncementIntervalMs = HandFlyAnnouncementIntervalMs,
+            VisualGuidanceInterceptAngle = VisualGuidanceInterceptAngle,
+            VisualGuidanceToneWaveform = VisualGuidanceToneWaveform,
+            VisualGuidanceToneVolume = VisualGuidanceToneVolume,
             SimulatorVersion = SimulatorVersion,
             LastAircraft = LastAircraft,
             GeoNamesApiUsername = GeoNamesApiUsername,

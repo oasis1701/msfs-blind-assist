@@ -145,13 +145,14 @@ public class HandFlyManager : IDisposable
     /// <summary>
     /// Process bank angle update during hand fly mode
     /// </summary>
-    /// <param name="currentBank">Current bank angle in degrees (positive = right, negative = left)</param>
+    /// <param name="currentBank">Current bank angle in degrees (SimConnect convention: positive = left, negative = right)</param>
     public void ProcessBankUpdate(double currentBank)
     {
         if (!isActive) return;
 
         // Update audio stereo panning in real-time
-        audioGenerator?.UpdateBank(currentBank);
+        // Negate to convert SimConnect convention (positive=left, negative=right) to standard convention (positive=right, negative=left)
+        audioGenerator?.UpdateBank(-currentBank);
 
         // Handle announcements based on feedback mode
         bool shouldAnnounce = feedbackMode == HandFlyFeedbackMode.AnnouncementsOnly ||

@@ -436,6 +436,12 @@ public class SimConnectManager
                 // Only add to dictionary if registration was successful
                 variableDataDefinitions.TryAdd(kvp.Key, dataDefId);
                 registeredCount++;
+
+                // Log visual guidance variables specifically
+                if (kvp.Key.StartsWith("VISUAL_GUIDANCE"))
+                {
+                    System.Diagnostics.Debug.WriteLine($"[RegisterAllVariables] Registered {kvp.Key} -> ID {dataDefId}");
+                }
             }
             catch (Exception ex)
             {
@@ -1316,6 +1322,35 @@ public class SimConnectManager
                     Description = ""
                 });
                 break;
+
+            case (DATA_REQUESTS)505: // Visual Guidance - AIRCRAFT_POSITION
+                System.Diagnostics.Debug.WriteLine("[SimConnect] Case 505 triggered - Visual guidance position data received");
+                AircraftPosition vgPosData = (AircraftPosition)data.dwData[0];
+                System.Diagnostics.Debug.WriteLine($"[SimConnect] Position: Lat={vgPosData.Latitude}, Lon={vgPosData.Longitude}, Alt={vgPosData.Altitude}, Hdg={vgPosData.HeadingMagnetic}");
+
+                // Trigger event with special marker for visual guidance position update
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "VISUAL_GUIDANCE_POSITION",
+                    Value = 0, // Not used, position data passed via event args extension
+                    Description = "",
+                    PositionData = vgPosData  // Pass full position struct
+                });
+                System.Diagnostics.Debug.WriteLine("[SimConnect] SimVarUpdated invoked for VISUAL_GUIDANCE_POSITION");
+                break;
+
+            case (DATA_REQUESTS)506: // Visual Guidance - AGL
+                System.Diagnostics.Debug.WriteLine("[SimConnect] Case 506 triggered - Visual guidance AGL data received");
+                SingleValue vgAGLData = (SingleValue)data.dwData[0];
+                System.Diagnostics.Debug.WriteLine($"[SimConnect] AGL value: {vgAGLData.value}");
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "VISUAL_GUIDANCE_AGL",
+                    Value = vgAGLData.value,
+                    Description = ""
+                });
+                System.Diagnostics.Debug.WriteLine("[SimConnect] SimVarUpdated invoked for VISUAL_GUIDANCE_AGL");
+                break;
         }
     }
 
@@ -1864,30 +1899,6 @@ public class SimConnectManager
             // Always store the last known position and fire the event
             lastKnownPosition = data;
             AircraftPositionReceived?.Invoke(this, data);
-
-            // Calculate distance and bearing to destination runway if set
-            if (HasDestinationRunway() && destinationRunway != null && destinationAirport != null)
-            {
-                // Calculate distance to runway threshold
-                double distance = NavigationCalculator.CalculateDistance(
-                    data.Latitude, data.Longitude,
-                    destinationRunway.StartLat, destinationRunway.StartLon);
-
-                // Calculate bearing to runway
-                double bearing = NavigationCalculator.CalculateBearing(
-                    data.Latitude, data.Longitude,
-                    destinationRunway.StartLat, destinationRunway.StartLon);
-
-                // Format announcement with runway identifier
-                string announcement = $"{distance:F1} miles to runway {destinationRunway.RunwayID} at {destinationAirport.ICAO}, bearing {bearing:000} degrees";
-
-                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
-                {
-                    VarName = "DISTANCE_TO_RUNWAY",
-                    Value = 0,
-                    Description = announcement
-                });
-            }
         }
         catch (Exception ex)
         {
@@ -1925,6 +1936,7 @@ public class SimConnectManager
                 runway.StartLat, runway.StartLon);
 
             // Check if approaching from behind (wrong direction)
+            // Provide extension guidance regardless of distance - always correct to turn around when on wrong side
             bool fromBehind = NavigationCalculator.IsApproachingFromBehind(
                 data.Latitude, data.Longitude,
                 data.HeadingMagnetic, // Already magnetic from SimConnect
@@ -3447,6 +3459,72 @@ public class SimConnectManager
         }
     }
 
+    // Visual guidance monitoring
+    public void StartVisualGuidanceMonitoring()
+    {
+        if (!IsConnected || simConnect == null) return;
+
+        try
+        {
+            // Request aircraft position data at 1 Hz using AIRCRAFT_POSITION struct (same as ILS guidance)
+            // This includes: lat, lon, altitude MSL, heading, and magnetic variation
+            simConnect.RequestDataOnSimObject((DATA_REQUESTS)505,
+                DATA_DEFINITIONS.AIRCRAFT_POSITION,
+                SIMCONNECT_OBJECT_ID_USER,
+                SIMCONNECT_PERIOD.SECOND,  // 1 Hz updates
+                SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+
+            // Request AGL separately (not included in AIRCRAFT_POSITION struct)
+            int aglDefId = GetVariableDataDefinition("VISUAL_GUIDANCE_AGL");
+            if (aglDefId != -1)
+            {
+                simConnect.RequestDataOnSimObject((DATA_REQUESTS)506,
+                    (DATA_DEFINITIONS)aglDefId,
+                    SIMCONNECT_OBJECT_ID_USER,
+                    SIMCONNECT_PERIOD.SECOND,
+                    SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+            }
+
+            System.Diagnostics.Debug.WriteLine("[SimConnectManager] Visual guidance monitoring started (using AIRCRAFT_POSITION + AGL)");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error starting visual guidance monitoring: {ex.Message}");
+        }
+    }
+
+    public void StopVisualGuidanceMonitoring()
+    {
+        if (!IsConnected || simConnect == null) return;
+
+        try
+        {
+            // Stop aircraft position request
+            simConnect.RequestDataOnSimObject((DATA_REQUESTS)505,
+                DATA_DEFINITIONS.AIRCRAFT_POSITION,
+                SIMCONNECT_OBJECT_ID_USER,
+                SIMCONNECT_PERIOD.NEVER,  // Stop updates
+                SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+
+            // Stop AGL request
+            int aglDefId = GetVariableDataDefinition("VISUAL_GUIDANCE_AGL");
+            if (aglDefId != -1)
+            {
+                simConnect.RequestDataOnSimObject((DATA_REQUESTS)506,
+                    (DATA_DEFINITIONS)aglDefId,
+                    SIMCONNECT_OBJECT_ID_USER,
+                    SIMCONNECT_PERIOD.NEVER,
+                    SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+            }
+
+            System.Diagnostics.Debug.WriteLine("[SimConnectManager] Visual guidance monitoring stopped");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error stopping visual guidance monitoring: {ex.Message}");
+        }
+    }
+
     private int GetVariableDataDefinition(string varKey)
     {
         if (variableDataDefinitions.TryGetValue(varKey, out int defId))
@@ -3580,14 +3658,40 @@ public class SimConnectManager
     public void RequestDestinationRunwayDistance()
     {
         if (!IsConnected || !HasDestinationRunway()) return;
+        if (destinationRunway == null || destinationAirport == null) return;
 
         try
         {
-            // Request aircraft position for distance and bearing to destination runway
-            simConnect!.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_AIRCRAFT_POSITION,
-                DATA_DEFINITIONS.AIRCRAFT_POSITION, SIMCONNECT_OBJECT_ID_USER,
-                SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT,
-                0, 0, 0);
+            // Use callback pattern to calculate and announce distance only for this specific request
+            RequestAircraftPositionAsync(position =>
+            {
+                try
+                {
+                    // Calculate distance to runway threshold
+                    double distance = NavigationCalculator.CalculateDistance(
+                        position.Latitude, position.Longitude,
+                        destinationRunway.StartLat, destinationRunway.StartLon);
+
+                    // Calculate bearing to runway
+                    double bearing = NavigationCalculator.CalculateBearing(
+                        position.Latitude, position.Longitude,
+                        destinationRunway.StartLat, destinationRunway.StartLon);
+
+                    // Format announcement with runway identifier
+                    string announcement = $"{distance:F1} miles to runway {destinationRunway.RunwayID} at {destinationAirport.ICAO}, bearing {bearing:000} degrees";
+
+                    SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                    {
+                        VarName = "DISTANCE_TO_RUNWAY",
+                        Value = 0,
+                        Description = announcement
+                    });
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error calculating destination runway distance: {ex.Message}");
+                }
+            });
         }
         catch (Exception ex)
         {
@@ -3768,6 +3872,7 @@ public class SimVarUpdateEventArgs : EventArgs
     public string VarName { get; set; } = string.Empty;
     public double Value { get; set; }
     public string Description { get; set; } = string.Empty;
+    public SimConnectManager.AircraftPosition? PositionData { get; set; }  // For visual guidance position updates
 }
 
 public class ECAMDataEventArgs : EventArgs

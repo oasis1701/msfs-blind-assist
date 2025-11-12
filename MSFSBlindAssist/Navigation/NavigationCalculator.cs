@@ -240,32 +240,28 @@ public class NavigationCalculator
                                                 double localizerTrueHeading,
                                                 double magneticVariation)
     {
-        // Check 1: Is aircraft heading within ±90° of runway reciprocal heading?
-        double runwayMagneticHeading = localizerTrueHeading - magneticVariation;
-        runwayMagneticHeading = (runwayMagneticHeading + 360.0) % 360.0;
+        // Safety check: Don't make determination if too close (bearing becomes unstable)
+        const double MINIMUM_DISTANCE_NM = 0.1; // ~600 feet
+        double distanceToThreshold = CalculateDistance(aircraftLat, aircraftLon,
+                                                        runwayThresholdLat, runwayThresholdLon);
 
-        double reciprocalHeading = (runwayMagneticHeading + 180.0) % 360.0;
-        double headingDifference = Math.Abs(aircraftMagneticHeading - reciprocalHeading);
+        if (distanceToThreshold < MINIMUM_DISTANCE_NM)
+        {
+            return false; // Too close to make reliable bearing determination
+        }
 
-        // Normalize to 0-180 range
-        if (headingDifference > 180) headingDifference = 360 - headingDifference;
-
-        bool headingCheck = headingDifference <= 90.0;
-
-        // Check 2: Is aircraft behind the runway start threshold?
+        // Check if aircraft is behind the runway start threshold (position only, heading doesn't matter)
         // Calculate bearing from aircraft to threshold
         double bearingToThreshold = CalculateBearing(aircraftLat, aircraftLon,
                                                      runwayThresholdLat, runwayThresholdLon);
 
-        // If bearing to threshold is roughly aligned with localizer heading (within ±90°),
-        // then aircraft is in front. If opposite, aircraft is behind.
+        // If bearing to threshold is opposite to localizer heading (difference > 90°),
+        // then aircraft is behind threshold (on the departure/wrong side for landing)
         double bearingDifference = Math.Abs(bearingToThreshold - localizerTrueHeading);
         if (bearingDifference > 180) bearingDifference = 360 - bearingDifference;
 
-        bool positionCheck = bearingDifference > 90.0;
-
-        // Both checks must be true for "approaching from behind"
-        return headingCheck && positionCheck;
+        // Return true if aircraft position is behind threshold
+        return bearingDifference > 90.0;
     }
 
     /// <summary>
