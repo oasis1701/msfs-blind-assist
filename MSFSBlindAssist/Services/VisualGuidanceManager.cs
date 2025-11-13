@@ -43,10 +43,15 @@ public class VisualGuidanceManager : IDisposable
     private double currentVerticalSpeedFPM = 0.0;
     private double currentPitch = 0.0;
 
-    // State tracking for derivative term and rate limiting
+    // State tracking for derivative term and rate limiting (lateral)
     private double? previousCrossTrackError = null;
     private DateTime? previousCrossTrackTimestamp = null;
     private double previousDesiredBank = 0.0;
+
+    // State tracking for derivative term and rate limiting (vertical)
+    private double? previousGlideslopeDeviation = null;
+    private DateTime? previousGlideslopeTimestamp = null;
+    private double previousDesiredPitch = 0.0;
 
     // Announcement tracking
     private DateTime lastPhaseAnnouncement = DateTime.MinValue;
@@ -87,7 +92,10 @@ public class VisualGuidanceManager : IDisposable
 
     // Vertical guidance gains
     private const double VERTICAL_GAIN = 0.5;            // Glideslope deviation (per 200 ft) to pitch correction
-    private const double FPM_PER_DEGREE_PITCH = 175.0;   // Typical vertical speed change per degree of pitch at approach speeds
+    private const double VERTICAL_RATE_DAMPING = 0.15;   // Glideslope rate (ft/sec) to pitch damping
+    private const double TYPICAL_APPROACH_AOA = 6.0;     // Typical angle of attack for A320 approach configuration
+    private const double MAX_PITCH_RATE_DEG_PER_SEC = 2.5;  // Maximum pitch command change rate
+    private const double FPM_PER_DEGREE_PITCH = 175.0;   // Typical vertical speed change per degree of pitch at approach speeds (legacy, may remove)
 
     public bool IsActive => isActive;
     public event EventHandler<bool>? VisualGuidanceActiveChanged;
@@ -164,10 +172,15 @@ public class VisualGuidanceManager : IDisposable
         cachedBank = null;
         cachedHeading = null;
 
-        // Reset derivative term tracking
+        // Reset derivative term tracking (lateral)
         previousCrossTrackError = null;
         previousCrossTrackTimestamp = null;
         previousDesiredBank = 0.0;
+
+        // Reset derivative term tracking (vertical)
+        previousGlideslopeDeviation = null;
+        previousGlideslopeTimestamp = null;
+        previousDesiredPitch = 0.0;
 
         // Start desired attitude tone
         try
@@ -528,47 +541,66 @@ public class VisualGuidanceManager : IDisposable
         }
         else if (currentPhase != GuidancePhase.NotStarted && currentPhase != GuidancePhase.Touchdown)
         {
+            // Enhanced PD controller with absolute pitch commands (no feedback coupling)
+
             // Calculate distance from threshold
             double distanceFromThreshold = NavigationCalculator.CalculateDistance(
                 lat, lon, runway.StartLat, runway.StartLon);
 
-            // Calculate glideslope deviation
+            // Calculate glideslope deviation (positive = above glideslope)
             double glideslopeDeviation = NavigationCalculator.CalculateGlideslopeDeviation(
                 altMSL,                                      // Aircraft altitude MSL
                 distanceFromThreshold,                       // Distance from threshold in NM
                 GLIDESLOPE_ANGLE_DEG,                        // 3-degree glideslope
                 thresholdElevationMSL);                      // Threshold elevation MSL
 
-            // Dynamic pitch calculation based on actual aircraft performance
-            // Calculate required descent rate for glideslope
-            double requiredFPM = -currentGroundSpeedKnots * 101.27 * Math.Sin(GLIDESLOPE_ANGLE_DEG * Math.PI / 180.0);
-
-            // Calculate VS error (positive = need to descend faster)
-            double vsFPM_Error = requiredFPM - currentVerticalSpeedFPM;
-
-            // Convert VS error to pitch adjustment
-            double pitchAdjustment = vsFPM_Error / FPM_PER_DEGREE_PITCH;
-
-            // Calculate desired pitch dynamically from current pitch
-            double desiredPitch = currentPitch + pitchAdjustment;
-
-            // Apply glideslope deviation correction (positive deviation = above glideslope → need more descent)
-            double pitchCorrection = (glideslopeDeviation / 200.0) * VERTICAL_GAIN;
-            desiredPitch -= pitchCorrection;
-
-            // Validate groundspeed (below 50 knots, calculation unreliable)
-            if (currentGroundSpeedKnots < 50.0)
+            // Calculate glideslope deviation rate (derivative term) for damping
+            double glideslopeRate = 0.0;
+            if (previousGlideslopeDeviation.HasValue && previousGlideslopeTimestamp.HasValue)
             {
-                // Fall back to simple glideslope-only correction with less aggressive baseline
-                desiredPitch = -1.5 - pitchCorrection;
-                System.Diagnostics.Debug.WriteLine($"[VisualGuidance] Fallback Pitch (GS<50): GS={currentGroundSpeedKnots:F1}kt, VS={currentVerticalSpeedFPM:F0}fpm, using static -1.5° baseline, DesPitch={desiredPitch:F2}°");
-            }
-            else
-            {
-                System.Diagnostics.Debug.WriteLine($"[VisualGuidance] Dynamic Pitch: GS={currentGroundSpeedKnots:F1}kt, VS={currentVerticalSpeedFPM:F0}fpm, ReqFPM={requiredFPM:F0}, VSErr={vsFPM_Error:F0}, PitchAdj={pitchAdjustment:F2}°, CurPitch={currentPitch:F2}°, DesPitch={desiredPitch:F2}°");
+                double deltaTime = (DateTime.Now - previousGlideslopeTimestamp.Value).TotalSeconds;
+                if (deltaTime > 0.01)  // Avoid division by zero
+                {
+                    glideslopeRate = (glideslopeDeviation - previousGlideslopeDeviation.Value) / deltaTime;
+                }
             }
 
-            return Math.Clamp(desiredPitch, -6.0, 3.0);
+            // Update tracking state for next iteration
+            previousGlideslopeDeviation = glideslopeDeviation;
+            previousGlideslopeTimestamp = DateTime.Now;
+
+            // Calculate nominal pitch for glideslope (INDEPENDENT of current pitch)
+            // Flight path angle = -3.14°, typical A320 approach AOA = 6°
+            // Therefore: pitch = flight_path_angle + AOA
+            double nominalPitch = -GLIDESLOPE_ANGLE_DEG + TYPICAL_APPROACH_AOA;  // ≈ +3°
+
+            // PD controller for glideslope tracking:
+            // Proportional: Correct based on altitude error
+            // Derivative: Dampen based on rate of altitude error change
+            double proportionalTerm = -(glideslopeDeviation / 200.0) * VERTICAL_GAIN;
+            double derivativeTerm = -glideslopeRate * VERTICAL_RATE_DAMPING;
+
+            double rawDesiredPitch = nominalPitch + proportionalTerm + derivativeTerm;
+
+            // Pitch rate limiting - prevent sudden tone frequency jumps
+            double maxPitchChange = MAX_PITCH_RATE_DEG_PER_SEC * 1.0;  // 1 second update rate
+            double pitchChange = rawDesiredPitch - previousDesiredPitch;
+            if (Math.Abs(pitchChange) > maxPitchChange)
+            {
+                rawDesiredPitch = previousDesiredPitch + Math.Sign(pitchChange) * maxPitchChange;
+            }
+
+            // Clamp final command
+            double desiredPitch = Math.Clamp(rawDesiredPitch, -6.0, 3.0);
+
+            // Update for next iteration
+            previousDesiredPitch = desiredPitch;
+
+            System.Diagnostics.Debug.WriteLine(
+                $"[VisualGuidance] Vertical PD: GSDev={glideslopeDeviation:F0}ft, Rate={glideslopeRate:F1}ft/s, " +
+                $"Nominal={nominalPitch:F2}°, P={proportionalTerm:F2}° D={derivativeTerm:F2}° → Pitch={desiredPitch:F1}°");
+
+            return desiredPitch;
         }
         else
         {
