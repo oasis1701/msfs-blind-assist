@@ -157,10 +157,14 @@ public class PhaseContinuousOscillator : ISampleProvider
 
     private void GenerateSquareWave()
     {
+        // Generate "warm sine" - fundamental sine + second harmonic for richness
+        // This creates a smooth, warm tone distinct from pure sine
         for (int i = 0; i < wavetableSize; i++)
         {
-            double t = (double)i / wavetableSize;
-            wavetable[i] = t < 0.5 ? 1.0f : -1.0f;
+            double angle = 2.0 * Math.PI * i / wavetableSize;
+            double fundamental = Math.Sin(angle);                    // Pure sine
+            double secondHarmonic = Math.Sin(2.0 * angle) * 0.25;   // 2x frequency at 25% amplitude
+            wavetable[i] = (float)(fundamental + secondHarmonic);
         }
     }
 }

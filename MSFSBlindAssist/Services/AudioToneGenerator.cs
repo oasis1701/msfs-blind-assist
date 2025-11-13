@@ -42,17 +42,11 @@ public class AudioToneGenerator : IDisposable
                 // Create phase-continuous oscillator (eliminates clicks/pops)
                 oscillator = new PhaseContinuousOscillator(44100, waveType, CENTER_FREQUENCY, volume);
 
-                // Apply low-pass filter for square and sawtooth waves to remove harsh harmonics
+                // Apply low-pass filter for sawtooth wave to remove harsh harmonics
                 ISampleProvider audioSource = oscillator;
-                if (waveType == HandFlyWaveType.Square)
+                if (waveType == HandFlyWaveType.Sawtooth)
                 {
-                    // Filter cutoff at 1600 Hz removes harsh 5th+ harmonics
-                    // Q=0.707 gives smooth Butterworth response (no resonance)
-                    audioSource = new LowPassFilterProvider(oscillator, 1600f, 0.707f);
-                }
-                else if (waveType == HandFlyWaveType.Sawtooth)
-                {
-                    // Sawtooth needs lower cutoff (1200 Hz) due to richer harmonic content
+                    // Sawtooth needs cutoff at 1200 Hz due to rich harmonic content
                     // Preserves character (fundamental + 2nd harmonic) while removing harshness
                     audioSource = new LowPassFilterProvider(oscillator, 1200f, 0.707f);
                 }

@@ -149,7 +149,7 @@ public partial class HandFlyOptionsForm : Form
             "Sine (Smoothest)",
             "Triangle (Smooth)",
             "Sawtooth (Bright)",
-            "Square (Harsh)"
+            "Sine (Rich)"
         });
         waveTypeCombo.SelectedIndex = (int)SelectedWaveType;
         waveTypeCombo.SelectedIndexChanged += WaveTypeCombo_SelectedIndexChanged;
@@ -272,7 +272,7 @@ public partial class HandFlyOptionsForm : Form
             "Sine (Smoothest)",
             "Triangle (Smooth)",
             "Sawtooth (Bright)",
-            "Square (Harsh)"
+            "Sine (Rich)"
         });
         guidanceToneCombo.SelectedIndex = (int)GuidanceToneWaveform;
         guidanceToneCombo.SelectedIndexChanged += GuidanceToneCombo_SelectedIndexChanged;

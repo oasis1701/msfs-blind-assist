@@ -26,7 +26,7 @@ public enum HandFlyWaveType
     Triangle,
     /// <summary>Sawtooth wave (brighter, more harmonics).</summary>
     Sawtooth,
-    /// <summary>Square wave (harsh, very harmonic).</summary>
+    /// <summary>Rich sine wave (warm, smooth with subtle harmonic content).</summary>
     Square
 }
 
