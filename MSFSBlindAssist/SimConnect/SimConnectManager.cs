@@ -206,6 +206,8 @@ public class SimConnectManager
         public double Altitude;
         public double HeadingMagnetic;
         public double MagneticVariation;
+        public double GroundSpeedKnots;
+        public double VerticalSpeedFPM;
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
@@ -386,6 +388,10 @@ public class SimConnectManager
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)3);
         sc.AddToDataDefinition(DATA_DEFINITIONS.AIRCRAFT_POSITION, "MAGVAR", "degrees",
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)4);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.AIRCRAFT_POSITION, "GROUND VELOCITY", "knots",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)5);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.AIRCRAFT_POSITION, "VERTICAL SPEED", "feet per minute",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)6);
         sc.RegisterDataDefineStruct<AircraftPosition>(DATA_DEFINITIONS.AIRCRAFT_POSITION);
 
         // Register wind data for wind information
@@ -1326,7 +1332,7 @@ public class SimConnectManager
             case (DATA_REQUESTS)505: // Visual Guidance - AIRCRAFT_POSITION
                 System.Diagnostics.Debug.WriteLine("[SimConnect] Case 505 triggered - Visual guidance position data received");
                 AircraftPosition vgPosData = (AircraftPosition)data.dwData[0];
-                System.Diagnostics.Debug.WriteLine($"[SimConnect] Position: Lat={vgPosData.Latitude}, Lon={vgPosData.Longitude}, Alt={vgPosData.Altitude}, Hdg={vgPosData.HeadingMagnetic}");
+                System.Diagnostics.Debug.WriteLine($"[SimConnect] Position: Lat={vgPosData.Latitude}, Lon={vgPosData.Longitude}, Alt={vgPosData.Altitude}, Hdg={vgPosData.HeadingMagnetic}, GS={vgPosData.GroundSpeedKnots:F1}kt, VS={vgPosData.VerticalSpeedFPM:F0}fpm");
 
                 // Trigger event with special marker for visual guidance position update
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs

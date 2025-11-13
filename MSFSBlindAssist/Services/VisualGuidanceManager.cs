@@ -38,6 +38,11 @@ public class VisualGuidanceManager : IDisposable
     private double? cachedBank;
     private double? cachedHeading;
 
+    // Performance data for dynamic pitch calculation
+    private double currentGroundSpeedKnots = 0.0;
+    private double currentVerticalSpeedFPM = 0.0;
+    private double currentPitch = 0.0;
+
     // Announcement tracking
     private DateTime lastPhaseAnnouncement = DateTime.MinValue;
     private DateTime lastDistanceAnnouncement = DateTime.MinValue;
@@ -57,16 +62,23 @@ public class VisualGuidanceManager : IDisposable
     private const double GLIDESLOPE_CAPTURE_FT = 100.0;  // Capture glideslope when within 100 ft
     private const double FLARE_ALTITUDE_FT = 50.0;       // Start flare at 50 ft AGL
     private const double TOUCHDOWN_ALTITUDE_FT = 5.0;    // Consider touchdown below 5 ft AGL
-    private const double GLIDESLOPE_ANGLE_DEG = 3.0;     // Standard 3-degree glideslope
+
+    // Stabilization gate: Target 3000 ft AGL at 9 NM for terrain clearance
+    private const double STABILIZATION_GATE_NM = 9.0;     // Distance from threshold for stabilization gate
+    private const double STABILIZATION_GATE_AGL_FT = 3000.0;  // Target altitude at stabilization gate
+    // Calculate glideslope angle to pass through stabilization gate: atan(3000 ft / (9 NM × 6076 ft/NM)) ≈ 3.14°
+    private const double GLIDESLOPE_ANGLE_DEG = 3.143;   // Modified glideslope for 3000 ft at 9 NM
+
     private const double TOUCHDOWN_AIM_POINT_FT = 1500.0;  // Aim point distance from threshold
     private const double TOUCHDOWN_AIM_POINT_RATIO = 0.2;  // Use 20% of runway length for short runways
 
     // Lateral guidance gains
-    private const double LATERAL_GAIN_INTERCEPT = 1.0;   // Heading error to bank for intercept
-    private const double LATERAL_GAIN_TRACKING = 30.0;   // Cross-track error (NM) to bank for tracking
+    private const double LATERAL_GAIN_INTERCEPT = 0.5;   // Heading error to bank for intercept
+    private const double LATERAL_GAIN_TRACKING = 5.0;    // Cross-track error (NM) to bank for tracking
 
     // Vertical guidance gains
-    private const double VERTICAL_GAIN = 2.0;            // Glideslope deviation (per 200 ft) to pitch correction
+    private const double VERTICAL_GAIN = 0.5;            // Glideslope deviation (per 200 ft) to pitch correction
+    private const double FPM_PER_DEGREE_PITCH = 175.0;   // Typical vertical speed change per degree of pitch at approach speeds
 
     public bool IsActive => isActive;
     public event EventHandler<bool>? VisualGuidanceActiveChanged;
@@ -192,9 +204,19 @@ public class VisualGuidanceManager : IDisposable
     /// <summary>
     /// Updates cached attitude data from hand fly monitoring
     /// </summary>
-    public void UpdatePitch(double pitchDegrees) => cachedPitch = pitchDegrees;
+    public void UpdatePitch(double pitchDegrees)
+    {
+        cachedPitch = pitchDegrees;
+        currentPitch = pitchDegrees;  // Also update for dynamic pitch calculation
+    }
     public void UpdateBank(double bankDegrees) => cachedBank = bankDegrees;
     public void UpdateHeading(double headingDegrees) => cachedHeading = headingDegrees;
+
+    /// <summary>
+    /// Updates performance data for dynamic pitch calculation
+    /// </summary>
+    public void UpdateGroundSpeed(double groundSpeedKnots) => currentGroundSpeedKnots = groundSpeedKnots;
+    public void UpdateVerticalSpeed(double verticalSpeedFPM) => currentVerticalSpeedFPM = verticalSpeedFPM;
 
     /// <summary>
     /// Processes all cached data when complete position update is available
@@ -347,12 +369,7 @@ public class VisualGuidanceManager : IDisposable
             altMSL,                                      // Aircraft altitude MSL
             distance,                                     // Distance from threshold in NM
             GLIDESLOPE_ANGLE_DEG,                        // 3-degree glideslope
-            thresholdElevationMSL,                       // Threshold elevation MSL
-            touchdownAimPointLat,                        // Glideslope aim point lat (offset from threshold)
-            touchdownAimPointLon,                        // Glideslope aim point lon (offset from threshold)
-            (int?)0,                                      // Glideslope antenna altitude (sea level)
-            lat,                                          // Aircraft lat
-            lon);                                         // Aircraft lon
+            thresholdElevationMSL);                      // Threshold elevation MSL
 
         if (Math.Abs(glideslopeDeviation) < GLIDESLOPE_CAPTURE_FT)
         {
@@ -430,7 +447,13 @@ public class VisualGuidanceManager : IDisposable
     /// </summary>
     private double CalculateDesiredPitch(double lat, double lon, double agl, double altMSL)
     {
-        if (runway == null) return 0.0;
+        System.Diagnostics.Debug.WriteLine($"[VisualGuidance] CalculateDesiredPitch called: Phase={currentPhase}, AGL={agl:F0}ft, Runway={(runway != null ? "OK" : "NULL")}, GS={currentGroundSpeedKnots:F1}kt, VS={currentVerticalSpeedFPM:F0}fpm, CurPitch={currentPitch:F2}°");
+
+        if (runway == null)
+        {
+            System.Diagnostics.Debug.WriteLine("[VisualGuidance] Runway is NULL - returning 0.0");
+            return 0.0;
+        }
 
         if (currentPhase == GuidancePhase.Flare)
         {
@@ -439,7 +462,7 @@ public class VisualGuidanceManager : IDisposable
             double desiredPitch = -3.0 + (flareProgress * 5.0);  // -3° to +2°
             return Math.Clamp(desiredPitch, -3.0, 2.5);
         }
-        else if (currentPhase == GuidancePhase.GlideslopeTracking)
+        else if (currentPhase != GuidancePhase.NotStarted && currentPhase != GuidancePhase.Touchdown)
         {
             // Calculate distance from threshold
             double distanceFromThreshold = NavigationCalculator.CalculateDistance(
@@ -450,18 +473,38 @@ public class VisualGuidanceManager : IDisposable
                 altMSL,                                      // Aircraft altitude MSL
                 distanceFromThreshold,                       // Distance from threshold in NM
                 GLIDESLOPE_ANGLE_DEG,                        // 3-degree glideslope
-                thresholdElevationMSL,                       // Threshold elevation MSL
-                touchdownAimPointLat,                        // Glideslope aim point lat (offset from threshold)
-                touchdownAimPointLon,                        // Glideslope aim point lon (offset from threshold)
-                (int?)0,                                      // Glideslope antenna altitude (sea level)
-                lat,                                          // Aircraft lat
-                lon);                                         // Aircraft lon
+                thresholdElevationMSL);                      // Threshold elevation MSL
 
-            // Positive deviation = above glideslope → need more descent (more negative pitch)
+            // Dynamic pitch calculation based on actual aircraft performance
+            // Calculate required descent rate for glideslope
+            double requiredFPM = -currentGroundSpeedKnots * 101.27 * Math.Sin(GLIDESLOPE_ANGLE_DEG * Math.PI / 180.0);
+
+            // Calculate VS error (positive = need to descend faster)
+            double vsFPM_Error = requiredFPM - currentVerticalSpeedFPM;
+
+            // Convert VS error to pitch adjustment
+            double pitchAdjustment = vsFPM_Error / FPM_PER_DEGREE_PITCH;
+
+            // Calculate desired pitch dynamically from current pitch
+            double desiredPitch = currentPitch + pitchAdjustment;
+
+            // Apply glideslope deviation correction (positive deviation = above glideslope → need more descent)
             double pitchCorrection = (glideslopeDeviation / 200.0) * VERTICAL_GAIN;
-            double desiredPitch = -3.0 - pitchCorrection;
+            desiredPitch -= pitchCorrection;
 
-            return Math.Clamp(desiredPitch, -6.0, 0.0);
+            // Validate groundspeed (below 50 knots, calculation unreliable)
+            if (currentGroundSpeedKnots < 50.0)
+            {
+                // Fall back to simple glideslope-only correction with less aggressive baseline
+                desiredPitch = -1.5 - pitchCorrection;
+                System.Diagnostics.Debug.WriteLine($"[VisualGuidance] Fallback Pitch (GS<50): GS={currentGroundSpeedKnots:F1}kt, VS={currentVerticalSpeedFPM:F0}fpm, using static -1.5° baseline, DesPitch={desiredPitch:F2}°");
+            }
+            else
+            {
+                System.Diagnostics.Debug.WriteLine($"[VisualGuidance] Dynamic Pitch: GS={currentGroundSpeedKnots:F1}kt, VS={currentVerticalSpeedFPM:F0}fpm, ReqFPM={requiredFPM:F0}, VSErr={vsFPM_Error:F0}, PitchAdj={pitchAdjustment:F2}°, CurPitch={currentPitch:F2}°, DesPitch={desiredPitch:F2}°");
+            }
+
+            return Math.Clamp(desiredPitch, -6.0, 3.0);
         }
         else
         {

@@ -490,6 +490,8 @@ public partial class MainForm : Form
             visualGuidanceManager.UpdateLongitude(pos.Longitude);
             visualGuidanceManager.UpdateAltitudeMSL(pos.Altitude);
             visualGuidanceManager.UpdateHeading(pos.HeadingMagnetic);
+            visualGuidanceManager.UpdateGroundSpeed(pos.GroundSpeedKnots);
+            visualGuidanceManager.UpdateVerticalSpeed(pos.VerticalSpeedFPM);
 
             // Note: AGL is updated separately via VISUAL_GUIDANCE_AGL handler
             // ProcessUpdate() is called when AGL arrives to ensure all data is complete
