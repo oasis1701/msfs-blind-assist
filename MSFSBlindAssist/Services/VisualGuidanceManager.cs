@@ -59,6 +59,7 @@ public class VisualGuidanceManager : IDisposable
     private double lastAnnouncedDistance = double.MaxValue;
     private DateTime lastExtendingProgressAnnouncement = DateTime.MinValue;
     private int? lastAnnouncedBankDegrees = null;  // Track last announced bank angle
+    private string? lastAnnouncedCenterlineDeviation = null;  // Track last announced centerline deviation
     private const int ANNOUNCEMENT_INTERVAL_MS = 1000;
     private const int EXTENDING_PROGRESS_INTERVAL_MS = 10000;  // 10 seconds
 
@@ -292,6 +293,9 @@ public class VisualGuidanceManager : IDisposable
             // Announce commanded bank angle
             AnnounceBankGuidance(desiredBank);
 
+            // Centerline deviation announcements (for testing)
+            AnnounceCenterlineDeviation(lat, lon);
+
             // Distance callouts
             HandleDistanceCallouts(lat, lon);
 
@@ -348,8 +352,8 @@ public class VisualGuidanceManager : IDisposable
             lat, lon, runway.StartLat, runway.StartLon, runway.Heading);
 
         // Check if behind runway (need to extend)
-        // Provide extension guidance regardless of distance - always correct to turn around when on wrong side
-        if (IsBehindRunway(lat, lon))
+        // Exclude if below 500 ft AGL - aircraft is landing, continue guidance through touchdown
+        if (agl > 500.0 && IsBehindRunway(lat, lon))
         {
             currentPhase = GuidancePhase.Extending;
             if (previousPhase != currentPhase)
@@ -426,27 +430,7 @@ public class VisualGuidanceManager : IDisposable
         double crossTrackError = NavigationCalculator.CalculateDistanceToLocalizer(
             lat, lon, runway.StartLat, runway.StartLon, runway.Heading);
 
-        if (currentPhase == GuidancePhase.Intercepting && crossTrackError > CENTERLINE_TOLERANCE_NM)
-        {
-            // Use configured intercept angle
-            double interceptAngleDeg = interceptAngle switch
-            {
-                InterceptAngle.Shallow30 => 30.0,
-                InterceptAngle.Medium45 => 45.0,
-                InterceptAngle.Steep60 => 60.0,
-                _ => 45.0
-            };
-
-            double interceptHeading = NavigationCalculator.CalculateAngledInterceptHeading(
-                lat, lon, runway.StartLat, runway.StartLon, runway.Heading,
-                interceptAngleDeg, magneticVariation);
-
-            double headingError = NormalizeHeading(interceptHeading - heading);
-            double desiredBank = Math.Clamp(headingError * LATERAL_GAIN_INTERCEPT, -20.0, 20.0);
-
-            return desiredBank;
-        }
-        else if (currentPhase == GuidancePhase.Extending)
+        if (currentPhase == GuidancePhase.Extending)
         {
             // Guide to extension heading
             double extensionHeading = CalculateExtensionHeading();
@@ -480,7 +464,8 @@ public class VisualGuidanceManager : IDisposable
             previousCrossTrackTimestamp = DateTime.Now;
 
             // Calculate track angle error (heading alignment)
-            double trackAngleError = NormalizeHeading(runway.Heading - heading);
+            // Use magnetic runway heading to compare with magnetic aircraft heading
+            double trackAngleError = NormalizeHeading(runway.HeadingMag - heading);
 
             // Airspeed compensation scaling
             // Higher speeds need stronger corrections (compensates for larger turn radius)
@@ -504,8 +489,29 @@ public class VisualGuidanceManager : IDisposable
                 rawDesiredBank = previousDesiredBank + Math.Sign(bankChange) * maxBankChange;
             }
 
-            // Clamp final command
-            double desiredBank = Math.Clamp(rawDesiredBank, -15.0, 15.0);
+            // Adaptive bank limits based on cross-track error
+            // Far from centerline: allow more aggressive banks for faster intercept
+            // Close to centerline: use gentle banks for smooth tracking
+            double bankLimit;
+            double absXTE = Math.Abs(signedCrossTrackNM);
+            if (absXTE > 1.0)
+            {
+                // Far off centerline (>1 NM): aggressive intercept
+                bankLimit = 25.0;
+            }
+            else if (absXTE > 0.3)
+            {
+                // Medium distance (0.3-1 NM): moderate intercept
+                bankLimit = 20.0;
+            }
+            else
+            {
+                // On or near centerline (<0.3 NM): gentle tracking
+                bankLimit = 15.0;
+            }
+
+            // Clamp final command with adaptive limit
+            double desiredBank = Math.Clamp(rawDesiredBank, -bankLimit, bankLimit);
 
             // Update for next iteration
             previousDesiredBank = desiredBank;
@@ -513,7 +519,7 @@ public class VisualGuidanceManager : IDisposable
             System.Diagnostics.Debug.WriteLine(
                 $"[VisualGuidance] Lateral PD: XTE={signedCrossTrackNM:F3}NM, Rate={crossTrackRate:F3}NM/s, " +
                 $"TrkErr={trackAngleError:F1}°, GS={currentGroundSpeedKnots:F0}kt, SpeedFactor={speedFactor:F2}, " +
-                $"P={proportionalTerm:F2}° D={derivativeTerm:F2}° H={headingTerm:F2}° → Bank={desiredBank:F1}°");
+                $"P={proportionalTerm:F2}° D={derivativeTerm:F2}° H={headingTerm:F2}° → Bank={desiredBank:F1}° (limit=±{bankLimit:F0}°)");
 
             return desiredBank;
         }
@@ -534,10 +540,24 @@ public class VisualGuidanceManager : IDisposable
 
         if (currentPhase == GuidancePhase.Flare)
         {
-            // Smooth transition from -3° at 50ft to +2° at 5ft
-            double flareProgress = Math.Clamp((FLARE_ALTITUDE_FT - agl) / (FLARE_ALTITUDE_FT - TOUCHDOWN_ALTITUDE_FT), 0.0, 1.0);
-            double desiredPitch = -3.0 + (flareProgress * 5.0);  // -3° to +2°
-            return Math.Clamp(desiredPitch, -3.0, 2.5);
+            // Exponential flare: smoothly increase pitch from approach to touchdown
+            // At 50 ft: ~3° (continue approach pitch to maintain glideslope)
+            // At 5 ft: ~8° (arrest descent for gentle touchdown)
+
+            // Calculate altitude ratio (1.0 at 50ft, 0.0 at 5ft)
+            double altitudeRatio = (agl - TOUCHDOWN_ALTITUDE_FT) / (FLARE_ALTITUDE_FT - TOUCHDOWN_ALTITUDE_FT);
+            altitudeRatio = Math.Clamp(altitudeRatio, 0.0, 1.0);
+
+            // Exponential curve: more aggressive pitch increase closer to ground
+            // Using power of 1.5 creates smooth transition with accelerating rate near touchdown
+            double flareProgress = 1.0 - Math.Pow(altitudeRatio, 1.5);
+
+            // Pitch range: 3° (approach) to 8° (touchdown)
+            const double APPROACH_PITCH = 3.0;
+            const double TOUCHDOWN_PITCH = 8.0;
+            double desiredPitch = APPROACH_PITCH + (flareProgress * (TOUCHDOWN_PITCH - APPROACH_PITCH));
+
+            return Math.Clamp(desiredPitch, 2.0, 8.5);
         }
         else if (currentPhase != GuidancePhase.NotStarted && currentPhase != GuidancePhase.Touchdown)
         {
@@ -787,6 +807,49 @@ public class VisualGuidanceManager : IDisposable
         // Announce immediately
         announcer.AnnounceImmediate(announcement);
         lastAnnouncedBankDegrees = roundedBank;
+    }
+
+    /// <summary>
+    /// Announces centerline deviation for testing and situational awareness
+    /// </summary>
+    private void AnnounceCenterlineDeviation(double lat, double lon)
+    {
+        if (runway == null) return;
+
+        // Calculate cross-track error (distance from centerline)
+        double crossTrackErrorNM = NavigationCalculator.CalculateDistanceToLocalizer(
+            lat, lon, runway.StartLat, runway.StartLon, runway.Heading);
+
+        // Get signed cross-track error to determine direction
+        double signedCrossTrack = NavigationCalculator.CalculateCrossTrackError(
+            lat, lon, runway.StartLat, runway.StartLon, runway.Heading);
+
+        // Determine direction and format announcement
+        string announcement;
+        const double ON_CENTER_THRESHOLD = 0.05; // Within 0.05 NM considered "on center"
+
+        if (crossTrackErrorNM <= ON_CENTER_THRESHOLD)
+        {
+            announcement = "on center";
+        }
+        else
+        {
+            // Round to 0.1 NM precision
+            double roundedDistance = Math.Round(crossTrackErrorNM, 1);
+
+            // Determine direction (positive = right, negative = left)
+            string direction = signedCrossTrack > 0 ? "right" : "left";
+
+            announcement = $"{roundedDistance:F1} nm {direction} of center";
+        }
+
+        // Only announce if changed from last announcement
+        if (lastAnnouncedCenterlineDeviation == announcement)
+            return;
+
+        // Announce immediately for testing feedback
+        announcer.AnnounceImmediate(announcement);
+        lastAnnouncedCenterlineDeviation = announcement;
     }
 
     public void Dispose()
