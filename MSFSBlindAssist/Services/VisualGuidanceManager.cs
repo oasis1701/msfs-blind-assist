@@ -43,6 +43,11 @@ public class VisualGuidanceManager : IDisposable
     private double currentVerticalSpeedFPM = 0.0;
     private double currentPitch = 0.0;
 
+    // State tracking for derivative term and rate limiting
+    private double? previousCrossTrackError = null;
+    private DateTime? previousCrossTrackTimestamp = null;
+    private double previousDesiredBank = 0.0;
+
     // Announcement tracking
     private DateTime lastPhaseAnnouncement = DateTime.MinValue;
     private DateTime lastDistanceAnnouncement = DateTime.MinValue;
@@ -75,6 +80,10 @@ public class VisualGuidanceManager : IDisposable
     // Lateral guidance gains
     private const double LATERAL_GAIN_INTERCEPT = 0.5;   // Heading error to bank for intercept
     private const double LATERAL_GAIN_TRACKING = 5.0;    // Cross-track error (NM) to bank for tracking
+    private const double LATERAL_RATE_DAMPING = 15.0;    // Cross-track rate (NM/sec) to bank damping
+    private const double HEADING_ALIGNMENT_GAIN = 0.3;   // Track angle error to bank for heading alignment
+    private const double AIRSPEED_REFERENCE_KNOTS = 140.0;  // Reference speed for gain scaling
+    private const double MAX_BANK_RATE_DEG_PER_SEC = 5.0;   // Maximum bank command change rate
 
     // Vertical guidance gains
     private const double VERTICAL_GAIN = 0.5;            // Glideslope deviation (per 200 ft) to pitch correction
@@ -154,6 +163,11 @@ public class VisualGuidanceManager : IDisposable
         cachedPitch = null;
         cachedBank = null;
         cachedHeading = null;
+
+        // Reset derivative term tracking
+        previousCrossTrackError = null;
+        previousCrossTrackTimestamp = null;
+        previousDesiredBank = 0.0;
 
         // Start desired attitude tone
         try
@@ -430,14 +444,64 @@ public class VisualGuidanceManager : IDisposable
         }
         else
         {
-            // Proportional correction for centerline tracking
+            // Enhanced PD controller with airspeed compensation for centerline tracking
             // Get signed cross-track error for direction (positive = right, negative = left)
             double signedCrossTrack = NavigationCalculator.CalculateCrossTrackError(
                 lat, lon, runway.StartLat, runway.StartLon, runway.Heading);
             // Apply sign to distance (crossTrackError is unsigned distance in NM)
             double signedCrossTrackNM = Math.Sign(signedCrossTrack) * crossTrackError;
-            // Invert to create negative feedback: right of centerline → left bank, left of centerline → right bank
-            double desiredBank = Math.Clamp(-signedCrossTrackNM * LATERAL_GAIN_TRACKING, -15.0, 15.0);
+
+            // Calculate cross-track rate (derivative term) for damping
+            double crossTrackRate = 0.0;
+            if (previousCrossTrackError.HasValue && previousCrossTrackTimestamp.HasValue)
+            {
+                double deltaTime = (DateTime.Now - previousCrossTrackTimestamp.Value).TotalSeconds;
+                if (deltaTime > 0.01)  // Avoid division by zero
+                {
+                    crossTrackRate = (signedCrossTrackNM - previousCrossTrackError.Value) / deltaTime;
+                }
+            }
+
+            // Update tracking state for next iteration
+            previousCrossTrackError = signedCrossTrackNM;
+            previousCrossTrackTimestamp = DateTime.Now;
+
+            // Calculate track angle error (heading alignment)
+            double trackAngleError = NormalizeHeading(runway.Heading - heading);
+
+            // Airspeed compensation scaling
+            // Higher speeds need stronger corrections (compensates for larger turn radius)
+            double speedFactor = Math.Sqrt(Math.Max(currentGroundSpeedKnots, 80.0) / AIRSPEED_REFERENCE_KNOTS);
+
+            // PD controller with heading alignment:
+            // Proportional: -K1 × cross_track_error (main correction)
+            // Derivative: -K2 × cross_track_rate (damping to prevent overshoot)
+            // Heading: K3 × track_angle_error (align with runway heading)
+            double proportionalTerm = -signedCrossTrackNM * LATERAL_GAIN_TRACKING * speedFactor;
+            double derivativeTerm = -crossTrackRate * LATERAL_RATE_DAMPING * speedFactor;
+            double headingTerm = trackAngleError * HEADING_ALIGNMENT_GAIN;
+
+            double rawDesiredBank = proportionalTerm + derivativeTerm + headingTerm;
+
+            // Bank rate limiting - prevent sudden audio panning flips
+            double maxBankChange = MAX_BANK_RATE_DEG_PER_SEC * 1.0;  // 1 second update rate
+            double bankChange = rawDesiredBank - previousDesiredBank;
+            if (Math.Abs(bankChange) > maxBankChange)
+            {
+                rawDesiredBank = previousDesiredBank + Math.Sign(bankChange) * maxBankChange;
+            }
+
+            // Clamp final command
+            double desiredBank = Math.Clamp(rawDesiredBank, -15.0, 15.0);
+
+            // Update for next iteration
+            previousDesiredBank = desiredBank;
+
+            System.Diagnostics.Debug.WriteLine(
+                $"[VisualGuidance] Lateral PD: XTE={signedCrossTrackNM:F3}NM, Rate={crossTrackRate:F3}NM/s, " +
+                $"TrkErr={trackAngleError:F1}°, GS={currentGroundSpeedKnots:F0}kt, SpeedFactor={speedFactor:F2}, " +
+                $"P={proportionalTerm:F2}° D={derivativeTerm:F2}° H={headingTerm:F2}° → Bank={desiredBank:F1}°");
+
             return desiredBank;
         }
     }
