@@ -1107,6 +1107,20 @@ public class SimConnectManager
                 });
                 break;
 
+            case (DATA_REQUESTS)312: // Pitch
+                SingleValue pitchData = (SingleValue)data.dwData[0];
+                double pitchInDegrees = pitchData.value * (180.0 / Math.PI); // Convert radians to degrees
+                string pitchFormatted = pitchInDegrees >= 0
+                    ? $"+{pitchInDegrees:F1}"
+                    : $"{pitchInDegrees:F1}";
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "PITCH_ANGLE",
+                    Value = pitchInDegrees,
+                    Description = pitchFormatted
+                });
+                break;
+
             case (DATA_REQUESTS)314: // Fuel Quantity
                 SingleValue fuelData = (SingleValue)data.dwData[0];
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
@@ -2570,6 +2584,29 @@ public class SimConnectManager
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"Error requesting bank angle: {ex.Message}");
+            }
+        }
+    }
+
+    public void RequestPitch()
+    {
+        if (IsConnected && simConnect != null)
+        {
+            try
+            {
+                var tempDefId = (DATA_DEFINITIONS)312;
+                SafelyClearDataDefinition(tempDefId, requestId: null, delayMs: 50);
+                simConnect.AddToDataDefinition(tempDefId,
+                    "PLANE PITCH DEGREES", "radians",
+                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+                simConnect.RegisterDataDefineStruct<SingleValue>(tempDefId);
+                simConnect.RequestDataOnSimObject((DATA_REQUESTS)312,
+                    tempDefId, SIMCONNECT_OBJECT_ID_USER,
+                    SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error requesting pitch: {ex.Message}");
             }
         }
     }

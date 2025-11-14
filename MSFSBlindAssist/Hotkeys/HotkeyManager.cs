@@ -107,6 +107,7 @@ public class HotkeyManager : IDisposable
         private const int HOTKEY_HANDFLY_SPEED = 9080;
         private const int HOTKEY_HANDFLY_RUNWAY_DISTANCE = 9081;
         private const int HOTKEY_HANDFLY_BANK_ANGLE = 9082;
+        private const int HOTKEY_HANDFLY_PITCH = 9083;
 
         private IntPtr windowHandle;
         private bool outputHotkeyModeActive = false;
@@ -393,7 +394,7 @@ public class HotkeyManager : IDisposable
                 {
                     System.Diagnostics.Debug.WriteLine($"Hand fly hotkeys: Received WM_HOTKEY with ID {hotkeyId}");
 
-                    // Handle hand fly mode hotkeys (H, V, Q, S, D, B)
+                    // Handle hand fly mode hotkeys (H, V, Q, S, D, B, P)
                     switch (hotkeyId)
                     {
                         case HOTKEY_HANDFLY_HEADING:
@@ -419,6 +420,10 @@ public class HotkeyManager : IDisposable
                         case HOTKEY_HANDFLY_BANK_ANGLE:
                             System.Diagnostics.Debug.WriteLine("Hand fly hotkeys: Triggering ReadBankAngle");
                             TriggerHotkey(HotkeyAction.ReadBankAngle);
+                            break;
+                        case HOTKEY_HANDFLY_PITCH:
+                            System.Diagnostics.Debug.WriteLine("Hand fly hotkeys: Triggering ReadPitch");
+                            TriggerHotkey(HotkeyAction.ReadPitch);
                             break;
                         default:
                             System.Diagnostics.Debug.WriteLine($"Hand fly hotkeys: Unknown hotkey ID {hotkeyId}");
@@ -680,18 +685,19 @@ public class HotkeyManager : IDisposable
 
             System.Diagnostics.Debug.WriteLine("Hand fly hotkeys: Attempting registration...");
 
-            // Register H, V, Q, S, D, B without modifiers for global access
+            // Register H, V, Q, S, D, B, P without modifiers for global access
             bool hRegistered = RegisterHotKey(windowHandle, HOTKEY_HANDFLY_HEADING, MOD_NONE, 0x48);         // H (Heading)
             bool vRegistered = RegisterHotKey(windowHandle, HOTKEY_HANDFLY_VERTICAL_SPEED, MOD_NONE, 0x56); // V (Vertical Speed)
             bool qRegistered = RegisterHotKey(windowHandle, HOTKEY_HANDFLY_ALTITUDE_AGL, MOD_NONE, 0x51);   // Q (Altitude AGL)
             bool sRegistered = RegisterHotKey(windowHandle, HOTKEY_HANDFLY_SPEED, MOD_NONE, 0x53);          // S (Airspeed)
             bool dRegistered = RegisterHotKey(windowHandle, HOTKEY_HANDFLY_RUNWAY_DISTANCE, MOD_NONE, 0x44); // D (Runway Distance)
             bool bRegistered = RegisterHotKey(windowHandle, HOTKEY_HANDFLY_BANK_ANGLE, MOD_NONE, 0x42);     // B (Bank Angle)
+            bool pRegistered = RegisterHotKey(windowHandle, HOTKEY_HANDFLY_PITCH, MOD_NONE, 0x50);          // P (Pitch)
 
-            System.Diagnostics.Debug.WriteLine($"Hand fly hotkeys: H={hRegistered}, V={vRegistered}, Q={qRegistered}, S={sRegistered}, D={dRegistered}, B={bRegistered}");
+            System.Diagnostics.Debug.WriteLine($"Hand fly hotkeys: H={hRegistered}, V={vRegistered}, Q={qRegistered}, S={sRegistered}, D={dRegistered}, B={bRegistered}, P={pRegistered}");
 
             // Only mark as active if ALL registrations succeeded
-            if (hRegistered && vRegistered && qRegistered && sRegistered && dRegistered && bRegistered)
+            if (hRegistered && vRegistered && qRegistered && sRegistered && dRegistered && bRegistered && pRegistered)
             {
                 handFlyHotkeysActive = true;
                 System.Diagnostics.Debug.WriteLine("Hand fly hotkeys: All registered successfully");
@@ -707,6 +713,7 @@ public class HotkeyManager : IDisposable
                 if (sRegistered) UnregisterHotKey(windowHandle, HOTKEY_HANDFLY_SPEED);
                 if (dRegistered) UnregisterHotKey(windowHandle, HOTKEY_HANDFLY_RUNWAY_DISTANCE);
                 if (bRegistered) UnregisterHotKey(windowHandle, HOTKEY_HANDFLY_BANK_ANGLE);
+                if (pRegistered) UnregisterHotKey(windowHandle, HOTKEY_HANDFLY_PITCH);
                 return false;
             }
         }
@@ -729,6 +736,7 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_HANDFLY_SPEED);
             UnregisterHotKey(windowHandle, HOTKEY_HANDFLY_RUNWAY_DISTANCE);
             UnregisterHotKey(windowHandle, HOTKEY_HANDFLY_BANK_ANGLE);
+            UnregisterHotKey(windowHandle, HOTKEY_HANDFLY_PITCH);
 
             System.Diagnostics.Debug.WriteLine("Hand fly hotkeys: Unregistered successfully");
         }
@@ -846,5 +854,6 @@ public class HotkeyManager : IDisposable
         ReadDisplayISIS,
         DescribeScene,
         ShowTrackFixWindow,
-        ReadBankAngle
+        ReadBankAngle,
+        ReadPitch
     }
