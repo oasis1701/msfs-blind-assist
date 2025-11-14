@@ -557,6 +557,7 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_TAKEOFF_ASSIST);
             UnregisterHotKey(windowHandle, HOTKEY_TOGGLE_ECAM_MONITORING);
             UnregisterHotKey(windowHandle, HOTKEY_HAND_FLY_MODE);
+            UnregisterHotKey(windowHandle, HOTKEY_VISUAL_GUIDANCE);
             UnregisterHotKey(windowHandle, HOTKEY_EFB);
             UnregisterHotKey(windowHandle, HOTKEY_TRACK_SLOT_1);
             UnregisterHotKey(windowHandle, HOTKEY_TRACK_SLOT_2);
