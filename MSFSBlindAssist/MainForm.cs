@@ -433,7 +433,6 @@ public partial class MainForm : Form
             // Convert radians to degrees and negate (SimConnect uses body axis: negative = nose up)
             double pitchDegrees = -(e.Value * (180.0 / Math.PI));
             takeoffAssistManager.ProcessPitchUpdate(pitchDegrees);
-            return true;
         }
 
         // Handle takeoff assist heading updates
@@ -441,7 +440,6 @@ public partial class MainForm : Form
         {
             double headingDegrees = e.Value * (180.0 / Math.PI); // Convert radians to degrees
             takeoffAssistManager.ProcessHeadingUpdate(headingDegrees);
-            return true;
         }
 
         // Handle hand fly mode pitch updates
