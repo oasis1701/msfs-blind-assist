@@ -1095,7 +1095,7 @@ public class SimConnectManager
 
             case (DATA_REQUESTS)313: // Bank Angle
                 SingleValue bankData = (SingleValue)data.dwData[0];
-                double bankInDegrees = bankData.value * (180.0 / Math.PI); // Convert radians to degrees
+                double bankInDegrees = -bankData.value * (180.0 / Math.PI); // Convert radians to degrees, negated so right bank = positive
                 string bankFormatted = bankInDegrees >= 0
                     ? (bankInDegrees == 0 ? "0" : $"+{bankInDegrees:F1}")
                     : $"{bankInDegrees:F1}";
