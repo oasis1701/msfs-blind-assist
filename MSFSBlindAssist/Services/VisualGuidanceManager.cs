@@ -777,7 +777,7 @@ public class VisualGuidanceManager : IDisposable
         string announcement;
         if (roundedBank == 0)
         {
-            announcement = "centered";
+            announcement = "Tone centered";
         }
         else if (roundedBank < 0)
         {
@@ -814,7 +814,7 @@ public class VisualGuidanceManager : IDisposable
 
         if (crossTrackErrorNM <= ON_CENTER_THRESHOLD)
         {
-            announcement = "on center";
+            announcement = "on runway center";
         }
         else
         {
