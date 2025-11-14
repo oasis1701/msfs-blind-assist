@@ -48,7 +48,6 @@ public class UserSettings
         public int HandFlyAnnouncementIntervalMs { get; set; } = 1000; // Configurable interval for heading/VS announcements
 
         // Visual Guidance Settings
-        public InterceptAngle VisualGuidanceInterceptAngle { get; set; } = InterceptAngle.Medium45;
         public HandFlyWaveType VisualGuidanceToneWaveform { get; set; } = HandFlyWaveType.Triangle;
         public double VisualGuidanceToneVolume { get; set; } = 0.05; // 0.0 to 1.0 (default 5%)
 
@@ -115,7 +114,6 @@ public class UserSettings
             HandFlyMonitorHeading = HandFlyMonitorHeading,
             HandFlyMonitorVerticalSpeed = HandFlyMonitorVerticalSpeed,
             HandFlyAnnouncementIntervalMs = HandFlyAnnouncementIntervalMs,
-            VisualGuidanceInterceptAngle = VisualGuidanceInterceptAngle,
             VisualGuidanceToneWaveform = VisualGuidanceToneWaveform,
             VisualGuidanceToneVolume = VisualGuidanceToneVolume,
             SimulatorVersion = SimulatorVersion,

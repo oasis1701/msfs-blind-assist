@@ -23,9 +23,6 @@ public partial class HandFlyOptionsForm : Form
     private CheckBox monitorHeadingCheckBox = null!;
     private CheckBox monitorVSCheckBox = null!;
 
-    private Label interceptAngleLabel = null!;
-    private ComboBox interceptAngleCombo = null!;
-
     private Label guidanceToneLabel = null!;
     private ComboBox guidanceToneCombo = null!;
 
@@ -43,12 +40,11 @@ public partial class HandFlyOptionsForm : Form
     public double SelectedVolume { get; private set; }
     public bool MonitorHeading { get; private set; }
     public bool MonitorVerticalSpeed { get; private set; }
-    public InterceptAngle InterceptAngle { get; private set; }
     public HandFlyWaveType GuidanceToneWaveform { get; private set; }
     public double SelectedGuidanceVolume { get; private set; }
 
     public HandFlyOptionsForm(HandFlyFeedbackMode currentMode, HandFlyWaveType currentWaveType, double currentVolume,
-        bool monitorHeading, bool monitorVerticalSpeed, InterceptAngle interceptAngle, HandFlyWaveType guidanceToneWaveform,
+        bool monitorHeading, bool monitorVerticalSpeed, HandFlyWaveType guidanceToneWaveform,
         double currentGuidanceVolume)
     {
         SelectedFeedbackMode = currentMode;
@@ -56,7 +52,6 @@ public partial class HandFlyOptionsForm : Form
         SelectedVolume = currentVolume;
         MonitorHeading = monitorHeading;
         MonitorVerticalSpeed = monitorVerticalSpeed;
-        InterceptAngle = interceptAngle;
         GuidanceToneWaveform = guidanceToneWaveform;
         SelectedGuidanceVolume = currentGuidanceVolume;
         InitializeComponent();
@@ -66,7 +61,7 @@ public partial class HandFlyOptionsForm : Form
     private void InitializeComponent()
     {
         Text = "Hand Fly Options";
-        Size = new Size(500, 590);
+        Size = new Size(500, 555);
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -85,10 +80,10 @@ public partial class HandFlyOptionsForm : Form
         // Feedback Mode Group
         feedbackModeGroup = new GroupBox
         {
-            Text = "Feedback Mode",
+            Text = "Hand flying feedback type",
             Location = new Point(20, 50),
             Size = new Size(450, 120),
-            AccessibleName = "Feedback Mode Selection"
+            AccessibleName = "Hand flying feedback type"
         };
 
         tonesOnlyRadio = new RadioButton
@@ -129,10 +124,10 @@ public partial class HandFlyOptionsForm : Form
         // Wave Type Label
         waveTypeLabel = new Label
         {
-            Text = "Wave Type (affects tone character):",
+            Text = "Hand fly tone type:",
             Location = new Point(20, 185),
             Size = new Size(250, 20),
-            AccessibleName = "Wave Type Label"
+            AccessibleName = "Hand fly tone type Label"
         };
 
         // Wave Type ComboBox
@@ -141,8 +136,8 @@ public partial class HandFlyOptionsForm : Form
             Location = new Point(280, 183),
             Size = new Size(190, 25),
             DropDownStyle = ComboBoxStyle.DropDownList,
-            AccessibleName = "Wave Type",
-            AccessibleDescription = "Select the audio wave type for tone generation"
+            AccessibleName = "Hand fly tone type",
+            AccessibleDescription = "Select the audio wave type for hand fly tone generation"
         };
         waveTypeCombo.Items.AddRange(new object[]
         {
@@ -222,38 +217,11 @@ public partial class HandFlyOptionsForm : Form
         };
         monitorVSCheckBox.CheckedChanged += MonitorVSCheckBox_CheckedChanged;
 
-        // Visual Guidance - Intercept Angle Label
-        interceptAngleLabel = new Label
-        {
-            Text = "Visual Guidance Intercept Angle:",
-            Location = new Point(20, 405),
-            Size = new Size(250, 20),
-            AccessibleName = "Intercept Angle Label"
-        };
-
-        // Visual Guidance - Intercept Angle ComboBox
-        interceptAngleCombo = new ComboBox
-        {
-            Location = new Point(280, 403),
-            Size = new Size(190, 25),
-            DropDownStyle = ComboBoxStyle.DropDownList,
-            AccessibleName = "Visual Guidance Intercept Angle",
-            AccessibleDescription = "Select the intercept angle for visual approach guidance"
-        };
-        interceptAngleCombo.Items.AddRange(new object[]
-        {
-            "30° (Shallow)",
-            "45° (Medium)",
-            "60° (Steep)"
-        });
-        interceptAngleCombo.SelectedIndex = (int)InterceptAngle;
-        interceptAngleCombo.SelectedIndexChanged += InterceptAngleCombo_SelectedIndexChanged;
-
         // Visual Guidance - Tone Waveform Label
         guidanceToneLabel = new Label
         {
             Text = "Visual Guidance Tone:",
-            Location = new Point(20, 440),
+            Location = new Point(20, 405),
             Size = new Size(250, 20),
             AccessibleName = "Guidance Tone Label"
         };
@@ -261,7 +229,7 @@ public partial class HandFlyOptionsForm : Form
         // Visual Guidance - Tone Waveform ComboBox
         guidanceToneCombo = new ComboBox
         {
-            Location = new Point(280, 438),
+            Location = new Point(280, 403),
             Size = new Size(190, 25),
             DropDownStyle = ComboBoxStyle.DropDownList,
             AccessibleName = "Visual Guidance Tone",
@@ -281,7 +249,7 @@ public partial class HandFlyOptionsForm : Form
         guidanceVolumeLabel = new Label
         {
             Text = "Visual Guidance Volume:",
-            Location = new Point(20, 475),
+            Location = new Point(20, 440),
             Size = new Size(100, 20),
             AccessibleName = "Visual Guidance Volume Label"
         };
@@ -289,7 +257,7 @@ public partial class HandFlyOptionsForm : Form
         // Visual Guidance Volume TrackBar
         guidanceVolumeTrackBar = new TrackBar
         {
-            Location = new Point(120, 470),
+            Location = new Point(120, 435),
             Size = new Size(300, 45),
             Minimum = 0,
             Maximum = 100,
@@ -304,7 +272,7 @@ public partial class HandFlyOptionsForm : Form
         guidanceVolumeValueLabel = new Label
         {
             Text = $"{guidanceVolumeTrackBar.Value}%",
-            Location = new Point(430, 475),
+            Location = new Point(430, 440),
             Size = new Size(40, 20),
             AccessibleName = "Visual Guidance Volume Value",
             TextAlign = ContentAlignment.MiddleLeft
@@ -314,7 +282,7 @@ public partial class HandFlyOptionsForm : Form
         okButton = new Button
         {
             Text = "OK",
-            Location = new Point(310, 520),
+            Location = new Point(310, 485),
             Size = new Size(75, 30),
             DialogResult = DialogResult.OK,
             AccessibleName = "Apply Settings",
@@ -326,7 +294,7 @@ public partial class HandFlyOptionsForm : Form
         cancelButton = new Button
         {
             Text = "Cancel",
-            Location = new Point(395, 520),
+            Location = new Point(395, 485),
             Size = new Size(75, 30),
             DialogResult = DialogResult.Cancel,
             AccessibleName = "Cancel",
@@ -339,7 +307,6 @@ public partial class HandFlyOptionsForm : Form
             titleLabel, feedbackModeGroup, waveTypeLabel, waveTypeCombo,
             volumeLabel, volumeTrackBar, volumeValueLabel,
             testToneButton, monitorHeadingCheckBox, monitorVSCheckBox,
-            interceptAngleLabel, interceptAngleCombo,
             guidanceToneLabel, guidanceToneCombo,
             guidanceVolumeLabel, guidanceVolumeTrackBar, guidanceVolumeValueLabel,
             okButton, cancelButton
@@ -367,14 +334,12 @@ public partial class HandFlyOptionsForm : Form
         testToneButton.TabIndex = 9;
         monitorHeadingCheckBox.TabIndex = 10;
         monitorVSCheckBox.TabIndex = 11;
-        interceptAngleLabel.TabIndex = 12;
-        interceptAngleCombo.TabIndex = 13;
-        guidanceToneLabel.TabIndex = 14;
-        guidanceToneCombo.TabIndex = 15;
-        guidanceVolumeLabel.TabIndex = 16;
-        guidanceVolumeTrackBar.TabIndex = 17;
-        okButton.TabIndex = 18;
-        cancelButton.TabIndex = 19;
+        guidanceToneLabel.TabIndex = 12;
+        guidanceToneCombo.TabIndex = 13;
+        guidanceVolumeLabel.TabIndex = 14;
+        guidanceVolumeTrackBar.TabIndex = 15;
+        okButton.TabIndex = 16;
+        cancelButton.TabIndex = 17;
 
         // Focus and bring window to front when opened
         Load += (sender, e) =>
@@ -438,11 +403,6 @@ public partial class HandFlyOptionsForm : Form
     private void MonitorVSCheckBox_CheckedChanged(object? sender, EventArgs e)
     {
         MonitorVerticalSpeed = monitorVSCheckBox.Checked;
-    }
-
-    private void InterceptAngleCombo_SelectedIndexChanged(object? sender, EventArgs e)
-    {
-        InterceptAngle = (InterceptAngle)interceptAngleCombo.SelectedIndex;
     }
 
     private void GuidanceToneCombo_SelectedIndexChanged(object? sender, EventArgs e)

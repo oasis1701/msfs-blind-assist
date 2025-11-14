@@ -18,7 +18,6 @@ public class VisualGuidanceManager : IDisposable
     private GuidancePhase currentPhase = GuidancePhase.Intercepting;
     private Runway? runway;
     private Airport? airport;
-    private InterceptAngle interceptAngle = InterceptAngle.Medium45;
     private double magneticVariation = 0.0;
     private double thresholdElevationMSL = 0.0;
     private double touchdownAimPointLat = 0.0;  // Calculated aim point for glideslope
@@ -138,12 +137,10 @@ public class VisualGuidanceManager : IDisposable
     /// Initializes visual guidance with runway and preferences
     /// </summary>
     public void Initialize(Runway destinationRunway, Airport destinationAirport,
-                          InterceptAngle configuredInterceptAngle, HandFlyWaveType guidanceToneWaveform,
-                          double toneVolume)
+                          HandFlyWaveType guidanceToneWaveform, double toneVolume)
     {
         runway = destinationRunway;
         airport = destinationAirport;
-        interceptAngle = configuredInterceptAngle;
         guidanceWaveType = guidanceToneWaveform;
         guidanceVolume = toneVolume;
         magneticVariation = destinationAirport.MagVar;
@@ -372,25 +369,12 @@ public class VisualGuidanceManager : IDisposable
             currentPhase = GuidancePhase.Intercepting;
             if (previousPhase != currentPhase)
             {
-                // Calculate intercept heading based on configured intercept angle
-                double interceptAngleDeg = interceptAngle switch
-                {
-                    InterceptAngle.Shallow30 => 30.0,
-                    InterceptAngle.Medium45 => 45.0,
-                    InterceptAngle.Steep60 => 60.0,
-                    _ => 45.0
-                };
-
-                double interceptHeading = NavigationCalculator.CalculateAngledInterceptHeading(
-                    lat, lon, runway.StartLat, runway.StartLon, runway.Heading,
-                    interceptAngleDeg, magneticVariation);
-
                 // Format distance to final (1 decimal place)
                 string distanceText = crossTrackError < 1.0
                     ? $"{crossTrackError:F1} mile"
                     : $"{crossTrackError:F1} miles";
 
-                AnnouncePhaseChange($"Joining final on heading {interceptHeading:F0}, {distanceText} to final");
+                AnnouncePhaseChange($"Intercepting final, {distanceText} to final");
             }
             return;
         }
@@ -857,14 +841,4 @@ public class VisualGuidanceManager : IDisposable
         Stop();
         GC.SuppressFinalize(this);
     }
-}
-
-/// <summary>
-/// Intercept angle options for visual guidance
-/// </summary>
-public enum InterceptAngle
-{
-    Shallow30,
-    Medium45,
-    Steep60
 }

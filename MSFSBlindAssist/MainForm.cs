@@ -1611,12 +1611,11 @@ public partial class MainForm : Form
 
             // Get user preferences from settings
             var settings = MSFSBlindAssist.Settings.SettingsManager.Current;
-            var interceptAngle = settings.VisualGuidanceInterceptAngle;
             var guidanceToneWaveform = settings.VisualGuidanceToneWaveform;
             var guidanceVolume = settings.VisualGuidanceToneVolume;
 
             // Initialize visual guidance with runway and preferences
-            visualGuidanceManager.Initialize(runway, airport, interceptAngle, guidanceToneWaveform, guidanceVolume);
+            visualGuidanceManager.Initialize(runway, airport, guidanceToneWaveform, guidanceVolume);
 
             // Start monitoring position variables at 1 Hz
             simConnectManager.StartVisualGuidanceMonitoring();
@@ -1721,7 +1720,6 @@ public partial class MainForm : Form
             currentSettings.HandFlyToneVolume,
             currentSettings.HandFlyMonitorHeading,
             currentSettings.HandFlyMonitorVerticalSpeed,
-            currentSettings.VisualGuidanceInterceptAngle,
             currentSettings.VisualGuidanceToneWaveform,
             currentSettings.VisualGuidanceToneVolume))
         {
@@ -1733,7 +1731,6 @@ public partial class MainForm : Form
                 currentSettings.HandFlyToneVolume = settingsForm.SelectedVolume;
                 currentSettings.HandFlyMonitorHeading = settingsForm.MonitorHeading;
                 currentSettings.HandFlyMonitorVerticalSpeed = settingsForm.MonitorVerticalSpeed;
-                currentSettings.VisualGuidanceInterceptAngle = settingsForm.InterceptAngle;
                 currentSettings.VisualGuidanceToneWaveform = settingsForm.GuidanceToneWaveform;
                 currentSettings.VisualGuidanceToneVolume = settingsForm.SelectedGuidanceVolume;
                 SettingsManager.Save();
