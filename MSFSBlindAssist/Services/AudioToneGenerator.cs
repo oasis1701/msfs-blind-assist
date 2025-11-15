@@ -23,7 +23,7 @@ public class AudioToneGenerator : IDisposable
     private const float CENTER_FREQUENCY = 500f; // Level flight
 
     // Bank angle range for full stereo panning
-    private const double BANK_FULL_RANGE = 20.0; // ±20 degrees
+    private const double BANK_FULL_RANGE = 10.0; // ±10 degrees
 
     /// <summary>
     /// Starts continuous tone playback with initial frequency and panning.

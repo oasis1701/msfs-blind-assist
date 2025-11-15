@@ -91,18 +91,18 @@ public class VisualGuidanceManager : IDisposable
 
     // Lateral guidance gains (tuned for A320 - Phase 1 moderate settings)
     private const double LATERAL_GAIN_INTERCEPT = 0.5;   // Heading error to bank for intercept
-    private const double LATERAL_GAIN_TRACKING = 6.5;    // Cross-track error (NM) to bank for tracking (+30% from 5.0)
-    private const double LATERAL_RATE_DAMPING = 12.0;    // Cross-track rate (NM/sec) to bank damping (-20% from 15.0)
-    private const double LATERAL_INTEGRAL_GAIN = 0.8;    // Integral gain for accumulated cross-track error (+60% from 0.5)
+    private const double LATERAL_GAIN_TRACKING = 5.0;    // Cross-track error (NM) to bank for tracking
+    private const double LATERAL_RATE_DAMPING = 15.0;    // Cross-track rate (NM/sec) to bank damping
+    private const double LATERAL_INTEGRAL_GAIN = 0.5;    // Integral gain for accumulated cross-track error
     private const double INTEGRAL_LIMIT_LATERAL = 10.0;  // Anti-windup limit (bank degrees)
-    private const double HEADING_ALIGNMENT_GAIN = 0.5;   // Track angle error to bank for heading alignment (+67% from 0.3)
+    private const double HEADING_ALIGNMENT_GAIN = 0.3;   // Track angle error to bank for heading alignment
     private const double AIRSPEED_REFERENCE_KNOTS = 140.0;  // Reference speed for gain scaling
     private const double MAX_BANK_RATE_DEG_PER_SEC = 5.0;   // Maximum bank command change rate
 
     // Vertical guidance gains (tuned for A320 - Phase 1 moderate settings)
-    private const double VERTICAL_GAIN = 0.8;            // Glideslope deviation (per 200 ft) to pitch correction (+60% from 0.5)
-    private const double VERTICAL_RATE_DAMPING = 0.15;   // Glideslope rate (ft/sec) to pitch damping (unchanged)
-    private const double VERTICAL_INTEGRAL_GAIN = 0.5;   // Integral gain for accumulated glideslope error (+67% from 0.3)
+    private const double VERTICAL_GAIN = 0.5;            // Glideslope deviation (per 200 ft) to pitch correction
+    private const double VERTICAL_RATE_DAMPING = 0.15;   // Glideslope rate (ft/sec) to pitch damping
+    private const double VERTICAL_INTEGRAL_GAIN = 0.3;   // Integral gain for accumulated glideslope error
     private const double INTEGRAL_LIMIT_VERTICAL = 5.0;  // Anti-windup limit (pitch degrees)
     private const double TYPICAL_APPROACH_AOA = 6.0;     // Typical angle of attack for A320 approach configuration
     private const double MAX_PITCH_RATE_DEG_PER_SEC = 2.5;  // Maximum pitch command change rate
