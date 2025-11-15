@@ -437,18 +437,50 @@ public partial class HandFlyOptionsForm : Form
             testToneGenerator = new AudioToneGenerator();
             testToneGenerator.Start(SelectedWaveType, SelectedVolume);
 
-            // Simulate varying pitch and bank for demonstration
+            // Simulate varying pitch and bank for demonstration with smooth transitions
             Task.Run(async () =>
             {
+                // Rate limiting for smooth transitions (different rates for pitch vs panning)
+                const double MAX_PITCH_RATE_DEG_PER_SEC = 3.0;  // Moderate rate to reach full range
+                const double MAX_BANK_RATE_DEG_PER_SEC = 15.0;  // Fast but smooth panning
+                const double UPDATE_INTERVAL_SEC = 0.1; // 100ms
+
+                double maxPitchDelta = MAX_PITCH_RATE_DEG_PER_SEC * UPDATE_INTERVAL_SEC;
+                double maxBankDelta = MAX_BANK_RATE_DEG_PER_SEC * UPDATE_INTERVAL_SEC;
+
+                // Track current values for rate limiting
+                double currentPitch = 0.0;
+                double currentBank = 0.0;
+
                 for (int i = 0; i < 60 && testToneGenerator?.IsPlaying == true; i++)
                 {
-                    // Sweep pitch from -5 to +5 degrees
-                    double pitch = Math.Sin(i * 0.1) * 5.0;
-                    testToneGenerator?.UpdatePitch(pitch);
+                    // Calculate target pitch from -10 to +10 degrees (full 200-800 Hz range)
+                    // Slower sine wave (0.025) allows rate limiting to reach full range
+                    double targetPitch = Math.Sin(i * 0.025) * 10.0;
 
-                    // Sweep bank from -30 to +30 degrees
-                    double bank = Math.Cos(i * 0.15) * 30.0;
-                    testToneGenerator?.UpdateBank(bank);
+                    // Calculate target bank from -30 to +30 degrees for full stereo width
+                    // (AudioToneGenerator clamps at ±20° which maps to full left/right panning)
+                    double targetBank = Math.Cos(i * 0.15) * 30.0;
+
+                    // Apply rate limiting to pitch (prevents crackling)
+                    double pitchDelta = targetPitch - currentPitch;
+                    if (Math.Abs(pitchDelta) > maxPitchDelta)
+                    {
+                        pitchDelta = Math.Sign(pitchDelta) * maxPitchDelta;
+                    }
+                    currentPitch += pitchDelta;
+
+                    // Apply gentle rate limiting to bank (prevents jumpy panning)
+                    double bankDelta = targetBank - currentBank;
+                    if (Math.Abs(bankDelta) > maxBankDelta)
+                    {
+                        bankDelta = Math.Sign(bankDelta) * maxBankDelta;
+                    }
+                    currentBank += bankDelta;
+
+                    // Update tone with smoothed values
+                    testToneGenerator?.UpdatePitch(currentPitch);
+                    testToneGenerator?.UpdateBank(currentBank);
 
                     await Task.Delay(100);
                 }
