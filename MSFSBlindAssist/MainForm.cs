@@ -507,6 +507,13 @@ public partial class MainForm : Form
             return true;
         }
 
+        // Handle visual guidance ground track updates (for PID drift detection)
+        if (e.VarName == "VISUAL_GUIDANCE_GROUND_TRACK" && visualGuidanceManager.IsActive)
+        {
+            visualGuidanceManager.UpdateGroundTrack(e.Value);
+            return true;
+        }
+
         // Share pitch/bank/heading with visual guidance when both modes active
         if (visualGuidanceManager.IsActive)
         {

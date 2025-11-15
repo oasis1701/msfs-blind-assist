@@ -132,6 +132,15 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 IsAnnounced = false, // Handled by VisualGuidanceManager
                 Units = "degrees"
+            },
+            ["VISUAL_GUIDANCE_GROUND_TRACK"] = new SimConnect.SimVarDefinition
+            {
+                Name = "GPS GROUND MAGNETIC TRACK",
+                DisplayName = "Ground Track",
+                Type = SimConnect.SimVarType.SimVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false, // Handled by VisualGuidanceManager
+                Units = "degrees"
             }
         };
     }

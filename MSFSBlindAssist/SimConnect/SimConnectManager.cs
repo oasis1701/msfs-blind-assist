@@ -1385,6 +1385,19 @@ public class SimConnectManager
                 });
                 System.Diagnostics.Debug.WriteLine("[SimConnect] SimVarUpdated invoked for VISUAL_GUIDANCE_AGL");
                 break;
+
+            case (DATA_REQUESTS)507: // Visual Guidance - Ground Track
+                System.Diagnostics.Debug.WriteLine("[SimConnect] Case 507 triggered - Visual guidance ground track data received");
+                SingleValue vgGroundTrackData = (SingleValue)data.dwData[0];
+                System.Diagnostics.Debug.WriteLine($"[SimConnect] Ground track value: {vgGroundTrackData.value}");
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "VISUAL_GUIDANCE_GROUND_TRACK",
+                    Value = vgGroundTrackData.value,
+                    Description = ""
+                });
+                System.Diagnostics.Debug.WriteLine("[SimConnect] SimVarUpdated invoked for VISUAL_GUIDANCE_GROUND_TRACK");
+                break;
         }
     }
 
@@ -3565,7 +3578,18 @@ public class SimConnectManager
                     SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
             }
 
-            System.Diagnostics.Debug.WriteLine("[SimConnectManager] Visual guidance monitoring started (using AIRCRAFT_POSITION + AGL)");
+            // Request Ground Track for drift detection (PID controller)
+            int groundTrackDefId = GetVariableDataDefinition("VISUAL_GUIDANCE_GROUND_TRACK");
+            if (groundTrackDefId != -1)
+            {
+                simConnect.RequestDataOnSimObject((DATA_REQUESTS)507,
+                    (DATA_DEFINITIONS)groundTrackDefId,
+                    SIMCONNECT_OBJECT_ID_USER,
+                    SIMCONNECT_PERIOD.SECOND,
+                    SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+            }
+
+            System.Diagnostics.Debug.WriteLine("[SimConnectManager] Visual guidance monitoring started (using AIRCRAFT_POSITION + AGL + Ground Track)");
         }
         catch (Exception ex)
         {
@@ -3592,6 +3616,17 @@ public class SimConnectManager
             {
                 simConnect.RequestDataOnSimObject((DATA_REQUESTS)506,
                     (DATA_DEFINITIONS)aglDefId,
+                    SIMCONNECT_OBJECT_ID_USER,
+                    SIMCONNECT_PERIOD.NEVER,
+                    SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+            }
+
+            // Stop Ground Track request
+            int groundTrackDefId = GetVariableDataDefinition("VISUAL_GUIDANCE_GROUND_TRACK");
+            if (groundTrackDefId != -1)
+            {
+                simConnect.RequestDataOnSimObject((DATA_REQUESTS)507,
+                    (DATA_DEFINITIONS)groundTrackDefId,
                     SIMCONNECT_OBJECT_ID_USER,
                     SIMCONNECT_PERIOD.NEVER,
                     SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);

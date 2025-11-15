@@ -36,6 +36,7 @@ public class VisualGuidanceManager : IDisposable
     private double? cachedPitch;
     private double? cachedBank;
     private double? cachedHeading;
+    private double? cachedGroundTrack;  // GPS ground track for drift detection
 
     // Performance data for dynamic pitch calculation
     private double currentGroundSpeedKnots = 0.0;
@@ -47,10 +48,16 @@ public class VisualGuidanceManager : IDisposable
     private DateTime? previousCrossTrackTimestamp = null;
     private double previousDesiredBank = 0.0;
 
+    // Integral term accumulation (lateral PID)
+    private double crossTrackIntegral = 0.0;
+
     // State tracking for derivative term and rate limiting (vertical)
     private double? previousGlideslopeDeviation = null;
     private DateTime? previousGlideslopeTimestamp = null;
     private double previousDesiredPitch = 0.0;
+
+    // Integral term accumulation (vertical PID)
+    private double glideslopeIntegral = 0.0;
 
     // Announcement tracking
     private DateTime lastPhaseAnnouncement = DateTime.MinValue;
@@ -82,17 +89,21 @@ public class VisualGuidanceManager : IDisposable
     private const double TOUCHDOWN_AIM_POINT_FT = 1500.0;  // Aim point distance from threshold
     private const double TOUCHDOWN_AIM_POINT_RATIO = 0.2;  // Use 20% of runway length for short runways
 
-    // Lateral guidance gains
+    // Lateral guidance gains (tuned for A320 - Phase 1 moderate settings)
     private const double LATERAL_GAIN_INTERCEPT = 0.5;   // Heading error to bank for intercept
-    private const double LATERAL_GAIN_TRACKING = 5.0;    // Cross-track error (NM) to bank for tracking
-    private const double LATERAL_RATE_DAMPING = 15.0;    // Cross-track rate (NM/sec) to bank damping
-    private const double HEADING_ALIGNMENT_GAIN = 0.3;   // Track angle error to bank for heading alignment
+    private const double LATERAL_GAIN_TRACKING = 6.5;    // Cross-track error (NM) to bank for tracking (+30% from 5.0)
+    private const double LATERAL_RATE_DAMPING = 12.0;    // Cross-track rate (NM/sec) to bank damping (-20% from 15.0)
+    private const double LATERAL_INTEGRAL_GAIN = 0.8;    // Integral gain for accumulated cross-track error (+60% from 0.5)
+    private const double INTEGRAL_LIMIT_LATERAL = 10.0;  // Anti-windup limit (bank degrees)
+    private const double HEADING_ALIGNMENT_GAIN = 0.5;   // Track angle error to bank for heading alignment (+67% from 0.3)
     private const double AIRSPEED_REFERENCE_KNOTS = 140.0;  // Reference speed for gain scaling
     private const double MAX_BANK_RATE_DEG_PER_SEC = 5.0;   // Maximum bank command change rate
 
-    // Vertical guidance gains
-    private const double VERTICAL_GAIN = 0.5;            // Glideslope deviation (per 200 ft) to pitch correction
-    private const double VERTICAL_RATE_DAMPING = 0.15;   // Glideslope rate (ft/sec) to pitch damping
+    // Vertical guidance gains (tuned for A320 - Phase 1 moderate settings)
+    private const double VERTICAL_GAIN = 0.8;            // Glideslope deviation (per 200 ft) to pitch correction (+60% from 0.5)
+    private const double VERTICAL_RATE_DAMPING = 0.15;   // Glideslope rate (ft/sec) to pitch damping (unchanged)
+    private const double VERTICAL_INTEGRAL_GAIN = 0.5;   // Integral gain for accumulated glideslope error (+67% from 0.3)
+    private const double INTEGRAL_LIMIT_VERTICAL = 5.0;  // Anti-windup limit (pitch degrees)
     private const double TYPICAL_APPROACH_AOA = 6.0;     // Typical angle of attack for A320 approach configuration
     private const double MAX_PITCH_RATE_DEG_PER_SEC = 2.5;  // Maximum pitch command change rate
     private const double FPM_PER_DEGREE_PITCH = 175.0;   // Typical vertical speed change per degree of pitch at approach speeds (legacy, may remove)
@@ -169,11 +180,16 @@ public class VisualGuidanceManager : IDisposable
         cachedPitch = null;
         cachedBank = null;
         cachedHeading = null;
+        cachedGroundTrack = null;
 
         // Reset derivative term tracking (lateral)
         previousCrossTrackError = null;
         previousCrossTrackTimestamp = null;
         previousDesiredBank = 0.0;
+
+        // Reset integral terms
+        crossTrackIntegral = 0.0;
+        glideslopeIntegral = 0.0;
 
         // Reset derivative term tracking (vertical)
         previousGlideslopeDeviation = null;
@@ -236,6 +252,7 @@ public class VisualGuidanceManager : IDisposable
     }
     public void UpdateBank(double bankDegrees) => cachedBank = bankDegrees;
     public void UpdateHeading(double headingDegrees) => cachedHeading = headingDegrees;
+    public void UpdateGroundTrack(double groundTrackDegrees) => cachedGroundTrack = groundTrackDegrees;
 
     /// <summary>
     /// Updates performance data for dynamic pitch calculation
@@ -448,22 +465,39 @@ public class VisualGuidanceManager : IDisposable
             previousCrossTrackTimestamp = DateTime.Now;
 
             // Calculate track angle error (heading alignment)
-            // Use magnetic runway heading to compare with magnetic aircraft heading
-            double trackAngleError = NormalizeHeading(runway.HeadingMag - heading);
+            // Use ground track if available for better drift detection, otherwise fall back to heading
+            double actualTrackAngle = cachedGroundTrack ?? heading;
+            double trackAngleError = NormalizeHeading(runway.HeadingMag - actualTrackAngle);
 
             // Airspeed compensation scaling
             // Higher speeds need stronger corrections (compensates for larger turn radius)
             double speedFactor = Math.Sqrt(Math.Max(currentGroundSpeedKnots, 80.0) / AIRSPEED_REFERENCE_KNOTS);
 
-            // PD controller with heading alignment:
+            // Integral term with anti-windup (1 Hz update rate)
+            crossTrackIntegral += signedCrossTrackNM * 1.0;
+
+            // Anti-windup: Reset integral if error is large or changing sign (crossing centerline)
+            if (Math.Abs(signedCrossTrackNM) > 1.0 ||  // Far from centerline
+                (previousCrossTrackError.HasValue &&
+                 Math.Sign(signedCrossTrackNM) != Math.Sign(previousCrossTrackError.Value)))
+            {
+                crossTrackIntegral = 0.0;  // Reset integral
+            }
+
+            // Clamp integral to prevent windup
+            crossTrackIntegral = Math.Clamp(crossTrackIntegral, -INTEGRAL_LIMIT_LATERAL, INTEGRAL_LIMIT_LATERAL);
+
+            // PID controller with heading alignment:
             // Proportional: -K1 × cross_track_error (main correction)
+            // Integral: -Ki × ∫cross_track_error dt (eliminate steady-state error)
             // Derivative: -K2 × cross_track_rate (damping to prevent overshoot)
             // Heading: K3 × track_angle_error (align with runway heading)
             double proportionalTerm = -signedCrossTrackNM * LATERAL_GAIN_TRACKING * speedFactor;
+            double integralTerm = -crossTrackIntegral * LATERAL_INTEGRAL_GAIN * speedFactor;
             double derivativeTerm = -crossTrackRate * LATERAL_RATE_DAMPING * speedFactor;
             double headingTerm = trackAngleError * HEADING_ALIGNMENT_GAIN;
 
-            double rawDesiredBank = proportionalTerm + derivativeTerm + headingTerm;
+            double rawDesiredBank = proportionalTerm + integralTerm + derivativeTerm + headingTerm;
 
             // Bank rate limiting - prevent sudden audio panning flips
             double maxBankChange = MAX_BANK_RATE_DEG_PER_SEC * 1.0;  // 1 second update rate
@@ -501,9 +535,9 @@ public class VisualGuidanceManager : IDisposable
             previousDesiredBank = desiredBank;
 
             System.Diagnostics.Debug.WriteLine(
-                $"[VisualGuidance] Lateral PD: XTE={signedCrossTrackNM:F3}NM, Rate={crossTrackRate:F3}NM/s, " +
-                $"TrkErr={trackAngleError:F1}°, GS={currentGroundSpeedKnots:F0}kt, SpeedFactor={speedFactor:F2}, " +
-                $"P={proportionalTerm:F2}° D={derivativeTerm:F2}° H={headingTerm:F2}° → Bank={desiredBank:F1}° (limit=±{bankLimit:F0}°)");
+                $"[VisualGuidance] Lateral PID: XTE={signedCrossTrackNM:F3}NM, Rate={crossTrackRate:F3}NM/s, Integral={crossTrackIntegral:F3}, " +
+                $"GndTrk={cachedGroundTrack?.ToString("F0") ?? "N/A"}°, TrkErr={trackAngleError:F1}°, GS={currentGroundSpeedKnots:F0}kt, SpeedFactor={speedFactor:F2}, " +
+                $"P={proportionalTerm:F2}° I={integralTerm:F2}° D={derivativeTerm:F2}° H={headingTerm:F2}° → Bank={desiredBank:F1}° (limit=±{bankLimit:F0}°)");
 
             return desiredBank;
         }
@@ -578,13 +612,30 @@ public class VisualGuidanceManager : IDisposable
             // Therefore: pitch = flight_path_angle + AOA
             double nominalPitch = -GLIDESLOPE_ANGLE_DEG + TYPICAL_APPROACH_AOA;  // ≈ +3°
 
-            // PD controller for glideslope tracking:
+            // Integral term with anti-windup (1 Hz update rate)
+            double normalizedGSError = glideslopeDeviation / 200.0;  // Normalize to similar scale as lateral
+            glideslopeIntegral += normalizedGSError * 1.0;
+
+            // Anti-windup: Reset integral if error is large or changing sign
+            if (Math.Abs(glideslopeDeviation) > 400.0 ||  // Far from glideslope
+                (previousGlideslopeDeviation.HasValue &&
+                 Math.Sign(glideslopeDeviation) != Math.Sign(previousGlideslopeDeviation.Value)))
+            {
+                glideslopeIntegral = 0.0;  // Reset integral
+            }
+
+            // Clamp integral to prevent windup
+            glideslopeIntegral = Math.Clamp(glideslopeIntegral, -INTEGRAL_LIMIT_VERTICAL, INTEGRAL_LIMIT_VERTICAL);
+
+            // PID controller for glideslope tracking:
             // Proportional: Correct based on altitude error
+            // Integral: Eliminate steady-state altitude error
             // Derivative: Dampen based on rate of altitude error change
-            double proportionalTerm = -(glideslopeDeviation / 200.0) * VERTICAL_GAIN;
+            double proportionalTerm = -normalizedGSError * VERTICAL_GAIN;
+            double integralTerm = -glideslopeIntegral * VERTICAL_INTEGRAL_GAIN;
             double derivativeTerm = -glideslopeRate * VERTICAL_RATE_DAMPING;
 
-            double rawDesiredPitch = nominalPitch + proportionalTerm + derivativeTerm;
+            double rawDesiredPitch = nominalPitch + proportionalTerm + integralTerm + derivativeTerm;
 
             // Pitch rate limiting - prevent sudden tone frequency jumps
             double maxPitchChange = MAX_PITCH_RATE_DEG_PER_SEC * 1.0;  // 1 second update rate
@@ -601,8 +652,8 @@ public class VisualGuidanceManager : IDisposable
             previousDesiredPitch = desiredPitch;
 
             System.Diagnostics.Debug.WriteLine(
-                $"[VisualGuidance] Vertical PD: GSDev={glideslopeDeviation:F0}ft, Rate={glideslopeRate:F1}ft/s, " +
-                $"Nominal={nominalPitch:F2}°, P={proportionalTerm:F2}° D={derivativeTerm:F2}° → Pitch={desiredPitch:F1}°");
+                $"[VisualGuidance] Vertical PID: GSDev={glideslopeDeviation:F0}ft, Rate={glideslopeRate:F1}ft/s, Integral={glideslopeIntegral:F3}, " +
+                $"Nominal={nominalPitch:F2}°, P={proportionalTerm:F2}° I={integralTerm:F2}° D={derivativeTerm:F2}° → Pitch={desiredPitch:F1}°");
 
             return desiredPitch;
         }
