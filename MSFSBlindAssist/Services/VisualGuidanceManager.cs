@@ -268,11 +268,8 @@ public class VisualGuidanceManager : IDisposable
     /// </summary>
     public void ProcessUpdate()
     {
-        System.Diagnostics.Debug.WriteLine("[VisualGuidanceManager] ProcessUpdate() called");
-
         if (!isActive || runway == null || desiredAttitudeTone == null)
         {
-            System.Diagnostics.Debug.WriteLine($"[VisualGuidanceManager] Early return: isActive={isActive}, runway={(runway != null ? "set" : "null")}, tone={(desiredAttitudeTone != null ? "set" : "null")}");
             return;
         }
 
@@ -281,11 +278,8 @@ public class VisualGuidanceManager : IDisposable
             !cachedAGL.HasValue || !cachedAltMSL.HasValue ||
             !cachedHeading.HasValue)
         {
-            System.Diagnostics.Debug.WriteLine($"[VisualGuidanceManager] Waiting for data: Lat={cachedLatitude.HasValue}, Lon={cachedLongitude.HasValue}, AGL={cachedAGL.HasValue}, MSL={cachedAltMSL.HasValue}, HDG={cachedHeading.HasValue}");
             return;
         }
-
-        System.Diagnostics.Debug.WriteLine("[VisualGuidanceManager] All data present, executing calculations");
 
         double lat = cachedLatitude.Value;
         double lon = cachedLongitude.Value;
@@ -317,10 +311,6 @@ public class VisualGuidanceManager : IDisposable
 
             // Extending phase progress updates
             HandleExtendingProgress(lat, lon);
-
-            System.Diagnostics.Debug.WriteLine(
-                $"[VisualGuidanceManager] Phase: {currentPhase}, " +
-                $"Desired: P={desiredPitch:F1}° B={desiredBank:F1}° AGL={agl:F0}ft");
         }
         catch (Exception ex)
         {
@@ -680,14 +670,22 @@ public class VisualGuidanceManager : IDisposable
         {
             // Enhanced PD controller with absolute pitch commands (no feedback coupling)
 
-            // Calculate distance from threshold
-            double distanceFromThreshold = NavigationCalculator.CalculateDistance(
-                lat, lon, runway.StartLat, runway.StartLon);
+            // Calculate along-track distance (progress along approach path, independent of lateral deviation)
+            // CRITICAL: Use along-track distance instead of straight-line distance for glideslope calculations.
+            // When aircraft is off-centerline, straight-line distance is longer than along-track distance,
+            // causing the system to think it should be at a higher altitude, commanding dangerous pitch-down.
+            // Example: 2 NM off-centerline at 10 NM from threshold creates ~200 ft altitude error.
+            double alongTrackDistance = NavigationCalculator.CalculateAlongTrackDistance(
+                lat, lon, runway.StartLat, runway.StartLon, runway.Heading);
+
+            // Use absolute value - glideslope altitude depends on distance regardless of being ahead/behind
+            // (Behind threshold is already handled by Extending phase check on line 679)
+            double distanceFromThreshold = Math.Abs(alongTrackDistance);
 
             // Calculate glideslope deviation (positive = above glideslope)
             double glideslopeDeviation = NavigationCalculator.CalculateGlideslopeDeviation(
                 altMSL,                                      // Aircraft altitude MSL
-                distanceFromThreshold,                       // Distance from threshold in NM
+                distanceFromThreshold,                       // Along-track distance from threshold in NM
                 GLIDESLOPE_ANGLE_DEG,                        // 3-degree glideslope
                 thresholdElevationMSL);                      // Threshold elevation MSL
 

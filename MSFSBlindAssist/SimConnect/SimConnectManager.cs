@@ -146,6 +146,8 @@ public class SimConnectManager
         CONTINUOUS_BATCH_5 = 12,
         // Panel batch for OnRequest variables
         PANEL_REQUEST_BATCH = 13,
+        // Visual guidance consolidated data
+        VISUAL_GUIDANCE_DATA = 14,
         ECAM_MESSAGES = 350,
         // Individual variable definitions start from 1000
         INDIVIDUAL_VARIABLE_BASE = 1000
@@ -208,6 +210,20 @@ public class SimConnectManager
         public double MagneticVariation;
         public double GroundSpeedKnots;
         public double VerticalSpeedFPM;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
+    public struct VisualGuidanceData
+    {
+        public double Latitude;
+        public double Longitude;
+        public double Altitude;
+        public double HeadingMagnetic;
+        public double MagneticVariation;
+        public double GroundSpeedKnots;
+        public double VerticalSpeedFPM;
+        public double AGL;
+        public double GroundTrack;
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
@@ -393,6 +409,27 @@ public class SimConnectManager
         sc.AddToDataDefinition(DATA_DEFINITIONS.AIRCRAFT_POSITION, "VERTICAL SPEED", "feet per minute",
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)6);
         sc.RegisterDataDefineStruct<AircraftPosition>(DATA_DEFINITIONS.AIRCRAFT_POSITION);
+
+        // Register visual guidance data (consolidated position + AGL + ground track)
+        sc.AddToDataDefinition(DATA_DEFINITIONS.VISUAL_GUIDANCE_DATA, "PLANE LATITUDE", "degrees",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)0);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.VISUAL_GUIDANCE_DATA, "PLANE LONGITUDE", "degrees",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)1);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.VISUAL_GUIDANCE_DATA, "PLANE ALTITUDE", "feet",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)2);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.VISUAL_GUIDANCE_DATA, "PLANE HEADING DEGREES MAGNETIC", "degrees",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)3);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.VISUAL_GUIDANCE_DATA, "MAGVAR", "degrees",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)4);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.VISUAL_GUIDANCE_DATA, "GROUND VELOCITY", "knots",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)5);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.VISUAL_GUIDANCE_DATA, "VERTICAL SPEED", "feet per minute",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)6);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.VISUAL_GUIDANCE_DATA, "PLANE ALT ABOVE GROUND", "feet",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)7);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.VISUAL_GUIDANCE_DATA, "GPS GROUND MAGNETIC TRACK", "degrees",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)8);
+        sc.RegisterDataDefineStruct<VisualGuidanceData>(DATA_DEFINITIONS.VISUAL_GUIDANCE_DATA);
 
         // Register wind data for wind information
         sc.AddToDataDefinition(DATA_DEFINITIONS.WIND_DATA, "AMBIENT WIND DIRECTION", "degrees",
@@ -1357,46 +1394,42 @@ public class SimConnectManager
                 });
                 break;
 
-            case (DATA_REQUESTS)505: // Visual Guidance - AIRCRAFT_POSITION
-                System.Diagnostics.Debug.WriteLine("[SimConnect] Case 505 triggered - Visual guidance position data received");
-                AircraftPosition vgPosData = (AircraftPosition)data.dwData[0];
-                System.Diagnostics.Debug.WriteLine($"[SimConnect] Position: Lat={vgPosData.Latitude}, Lon={vgPosData.Longitude}, Alt={vgPosData.Altitude}, Hdg={vgPosData.HeadingMagnetic}, GS={vgPosData.GroundSpeedKnots:F1}kt, VS={vgPosData.VerticalSpeedFPM:F0}fpm");
+            case (DATA_REQUESTS)505: // Visual Guidance - Consolidated Data
+                VisualGuidanceData vgData = (VisualGuidanceData)data.dwData[0];
 
-                // Trigger event with special marker for visual guidance position update
+                // Extract position data and send as AircraftPosition for compatibility
+                AircraftPosition vgPosData = new AircraftPosition
+                {
+                    Latitude = vgData.Latitude,
+                    Longitude = vgData.Longitude,
+                    Altitude = vgData.Altitude,
+                    HeadingMagnetic = vgData.HeadingMagnetic,
+                    MagneticVariation = vgData.MagneticVariation,
+                    GroundSpeedKnots = vgData.GroundSpeedKnots,
+                    VerticalSpeedFPM = vgData.VerticalSpeedFPM
+                };
+
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
                 {
                     VarName = "VISUAL_GUIDANCE_POSITION",
-                    Value = 0, // Not used, position data passed via event args extension
+                    Value = 0,
                     Description = "",
-                    PositionData = vgPosData  // Pass full position struct
+                    PositionData = vgPosData
                 });
-                System.Diagnostics.Debug.WriteLine("[SimConnect] SimVarUpdated invoked for VISUAL_GUIDANCE_POSITION");
-                break;
 
-            case (DATA_REQUESTS)506: // Visual Guidance - AGL
-                System.Diagnostics.Debug.WriteLine("[SimConnect] Case 506 triggered - Visual guidance AGL data received");
-                SingleValue vgAGLData = (SingleValue)data.dwData[0];
-                System.Diagnostics.Debug.WriteLine($"[SimConnect] AGL value: {vgAGLData.value}");
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
                 {
                     VarName = "VISUAL_GUIDANCE_AGL",
-                    Value = vgAGLData.value,
+                    Value = vgData.AGL,
                     Description = ""
                 });
-                System.Diagnostics.Debug.WriteLine("[SimConnect] SimVarUpdated invoked for VISUAL_GUIDANCE_AGL");
-                break;
 
-            case (DATA_REQUESTS)507: // Visual Guidance - Ground Track
-                System.Diagnostics.Debug.WriteLine("[SimConnect] Case 507 triggered - Visual guidance ground track data received");
-                SingleValue vgGroundTrackData = (SingleValue)data.dwData[0];
-                System.Diagnostics.Debug.WriteLine($"[SimConnect] Ground track value: {vgGroundTrackData.value}");
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
                 {
                     VarName = "VISUAL_GUIDANCE_GROUND_TRACK",
-                    Value = vgGroundTrackData.value,
+                    Value = vgData.GroundTrack,
                     Description = ""
                 });
-                System.Diagnostics.Debug.WriteLine("[SimConnect] SimVarUpdated invoked for VISUAL_GUIDANCE_GROUND_TRACK");
                 break;
         }
     }
@@ -3559,38 +3592,17 @@ public class SimConnectManager
 
         try
         {
-            // Request aircraft position data at high frequency using AIRCRAFT_POSITION struct
-            // This includes: lat, lon, altitude MSL, heading, and magnetic variation
-            // Using SIM_FRAME for rapid bank announcements (~20-30 Hz)
+            // Request consolidated visual guidance data at high frequency
+            // Includes: lat, lon, altitude MSL, heading, mag var, ground speed, vertical speed, AGL, ground track
+            // Using SIM_FRAME for responsive PID controller (~20-30 Hz)
+            // Consolidated into single request to reduce message queue flooding (60-90 msg/sec → 20-30 msg/sec)
             simConnect.RequestDataOnSimObject((DATA_REQUESTS)505,
-                DATA_DEFINITIONS.AIRCRAFT_POSITION,
+                DATA_DEFINITIONS.VISUAL_GUIDANCE_DATA,
                 SIMCONNECT_OBJECT_ID_USER,
-                SIMCONNECT_PERIOD.SIM_FRAME,  // ~20-30 Hz updates (every sim frame)
+                SIMCONNECT_PERIOD.SIM_FRAME,
                 SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
 
-            // Request AGL separately (not included in AIRCRAFT_POSITION struct)
-            int aglDefId = GetVariableDataDefinition("VISUAL_GUIDANCE_AGL");
-            if (aglDefId != -1)
-            {
-                simConnect.RequestDataOnSimObject((DATA_REQUESTS)506,
-                    (DATA_DEFINITIONS)aglDefId,
-                    SIMCONNECT_OBJECT_ID_USER,
-                    SIMCONNECT_PERIOD.SIM_FRAME,  // ~20-30 Hz updates (every sim frame)
-                    SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
-            }
-
-            // Request Ground Track for drift detection (PD controller)
-            int groundTrackDefId = GetVariableDataDefinition("VISUAL_GUIDANCE_GROUND_TRACK");
-            if (groundTrackDefId != -1)
-            {
-                simConnect.RequestDataOnSimObject((DATA_REQUESTS)507,
-                    (DATA_DEFINITIONS)groundTrackDefId,
-                    SIMCONNECT_OBJECT_ID_USER,
-                    SIMCONNECT_PERIOD.SIM_FRAME,  // ~20-30 Hz updates (every sim frame)
-                    SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
-            }
-
-            System.Diagnostics.Debug.WriteLine("[SimConnectManager] Visual guidance monitoring started (using AIRCRAFT_POSITION + AGL + Ground Track)");
+            System.Diagnostics.Debug.WriteLine("[SimConnectManager] Visual guidance monitoring started (consolidated data)");
         }
         catch (Exception ex)
         {
@@ -3604,34 +3616,12 @@ public class SimConnectManager
 
         try
         {
-            // Stop aircraft position request
+            // Stop consolidated visual guidance data request
             simConnect.RequestDataOnSimObject((DATA_REQUESTS)505,
-                DATA_DEFINITIONS.AIRCRAFT_POSITION,
+                DATA_DEFINITIONS.VISUAL_GUIDANCE_DATA,
                 SIMCONNECT_OBJECT_ID_USER,
-                SIMCONNECT_PERIOD.NEVER,  // Stop updates
+                SIMCONNECT_PERIOD.NEVER,
                 SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
-
-            // Stop AGL request
-            int aglDefId = GetVariableDataDefinition("VISUAL_GUIDANCE_AGL");
-            if (aglDefId != -1)
-            {
-                simConnect.RequestDataOnSimObject((DATA_REQUESTS)506,
-                    (DATA_DEFINITIONS)aglDefId,
-                    SIMCONNECT_OBJECT_ID_USER,
-                    SIMCONNECT_PERIOD.NEVER,
-                    SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
-            }
-
-            // Stop Ground Track request
-            int groundTrackDefId = GetVariableDataDefinition("VISUAL_GUIDANCE_GROUND_TRACK");
-            if (groundTrackDefId != -1)
-            {
-                simConnect.RequestDataOnSimObject((DATA_REQUESTS)507,
-                    (DATA_DEFINITIONS)groundTrackDefId,
-                    SIMCONNECT_OBJECT_ID_USER,
-                    SIMCONNECT_PERIOD.NEVER,
-                    SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
-            }
 
             System.Diagnostics.Debug.WriteLine("[SimConnectManager] Visual guidance monitoring stopped");
         }
