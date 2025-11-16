@@ -92,11 +92,11 @@ public class VisualGuidanceManager : IDisposable
 
     // Lateral guidance gains (tuned for blind pilot manual landing with audio guidance)
     private const double LATERAL_GAIN_INTERCEPT = 0.5;   // Heading error to bank for intercept
-    private const double LATERAL_GAIN_TRACKING = 5.0;    // Cross-track error (NM) to bank for tracking
-    private const double LATERAL_RATE_DAMPING = 18.0;    // Cross-track rate damping (increased for stronger heading term)
+    private const double LATERAL_GAIN_TRACKING = 3.5;    // Cross-track error (NM) to bank for tracking
+    private const double LATERAL_RATE_DAMPING = 12.0;    // Cross-track rate damping
     private const double LATERAL_INTEGRAL_GAIN = 0.0;    // Disabled - human tracking lag makes integral counterproductive
     private const double INTEGRAL_LIMIT_LATERAL = 10.0;  // Anti-windup limit (bank degrees)
-    private const double HEADING_ALIGNMENT_GAIN = 0.3;   // Track angle error to bank for heading alignment
+    // HEADING_ALIGNMENT_GAIN removed - derivative term provides natural alignment without steady-state error
     private const double AIRSPEED_REFERENCE_KNOTS = 140.0;  // Reference speed for gain scaling
     private const double MAX_BANK_RATE_DEG_PER_SEC = 5.0;   // Maximum bank command change rate
 
@@ -466,7 +466,10 @@ public class VisualGuidanceManager : IDisposable
             previousCrossTrackError = signedCrossTrackNM;
             previousCrossTrackTimestamp = DateTime.Now;
 
-            // Calculate track angle error (heading alignment)
+            // Ground track monitoring (intentionally NOT used in control law)
+            // Ground track is kept for debugging/logging only (magnetic variation detection).
+            // The derivative term (cross-track rate) already provides all needed heading information
+            // by measuring actual position drift - more accurate than forcing heading alignment.
             // Use ground track if available for better drift detection, otherwise fall back to heading
             double actualTrackAngle = cachedGroundTrack ?? heading;
             double trackAngleError = NormalizeHeading(runway.HeadingMag - actualTrackAngle);
@@ -514,8 +517,8 @@ public class VisualGuidanceManager : IDisposable
                 // INTERCEPT PHASE 1: Far from centerline - 30° intercept (conservative)
                 double interceptAngle = 30.0;
                 double targetHeading = signedCrossTrackNM < 0
-                    ? runway.HeadingMag - interceptAngle  // Left of centerline, fly right of runway heading
-                    : runway.HeadingMag + interceptAngle; // Right of centerline, fly left of runway heading
+                    ? runway.HeadingMag + interceptAngle  // Left of centerline, fly right of runway heading
+                    : runway.HeadingMag - interceptAngle; // Right of centerline, fly left of runway heading
                 targetHeading = NormalizeHeading(targetHeading);
 
                 desiredBank = CalculateHeadingInterceptBank(targetHeading, actualTrackAngle);
@@ -526,8 +529,8 @@ public class VisualGuidanceManager : IDisposable
                 // INTERCEPT PHASE 2: Medium distance - 20° intercept
                 double interceptAngle = 20.0;
                 double targetHeading = signedCrossTrackNM < 0
-                    ? runway.HeadingMag - interceptAngle
-                    : runway.HeadingMag + interceptAngle;
+                    ? runway.HeadingMag + interceptAngle
+                    : runway.HeadingMag - interceptAngle;
                 targetHeading = NormalizeHeading(targetHeading);
 
                 desiredBank = CalculateHeadingInterceptBank(targetHeading, actualTrackAngle);
@@ -538,8 +541,8 @@ public class VisualGuidanceManager : IDisposable
                 // INTERCEPT PHASE 3: Approaching centerline - 10° intercept (gentle)
                 double interceptAngle = 10.0;
                 double targetHeading = signedCrossTrackNM < 0
-                    ? runway.HeadingMag - interceptAngle
-                    : runway.HeadingMag + interceptAngle;
+                    ? runway.HeadingMag + interceptAngle
+                    : runway.HeadingMag - interceptAngle;
                 targetHeading = NormalizeHeading(targetHeading);
 
                 desiredBank = CalculateHeadingInterceptBank(targetHeading, actualTrackAngle);
@@ -552,16 +555,14 @@ public class VisualGuidanceManager : IDisposable
                 guidancePhase = "CAPTURE_TRACK";
 
                 // PD controller for final capture and tracking
+                // P: Corrects based on distance from centerline
+                // D: Prevents overshoot by damping approach rate
+                // Note: Heading alignment removed - derivative term naturally aligns aircraft
                 double proportionalTerm = -signedCrossTrackNM * LATERAL_GAIN_TRACKING * speedFactor;
                 double integralTerm = -crossTrackIntegral * LATERAL_INTEGRAL_GAIN * speedFactor;
-                double derivativeTerm = -crossTrackRate * LATERAL_RATE_DAMPING * speedFactor;
+                double derivativeTerm = crossTrackRate * LATERAL_RATE_DAMPING * speedFactor;
 
-                // STRONG heading alignment - persistent correction to lock on centerline
-                // 3.0× scaling provides continuous nagging until perfectly aligned
-                // Critical for blind pilot - must maintain ±50-100 ft accuracy for safe landing
-                double headingTerm = trackAngleError * HEADING_ALIGNMENT_GAIN * 3.0;
-
-                double rawDesiredBank = proportionalTerm + integralTerm + derivativeTerm + headingTerm;
+                double rawDesiredBank = proportionalTerm + integralTerm + derivativeTerm;
 
                 // Bank rate limiting
                 double maxBankChange = MAX_BANK_RATE_DEG_PER_SEC * 1.0;
@@ -599,9 +600,10 @@ public class VisualGuidanceManager : IDisposable
             }
             else
             {
+                // Track error logged for debugging only - not used in control law
                 System.Diagnostics.Debug.WriteLine(
                     $"[VisualGuidance] {guidancePhase}: XTE={signedCrossTrackNM:F3}NM, Rate={crossTrackRate:F3}NM/s, " +
-                    $"TrkErr={trackAngleError:F1}°, GS={currentGroundSpeedKnots:F0}kt → Bank={desiredBank:F1}°");
+                    $"TrkErr={trackAngleError:F1}° (log only), GS={currentGroundSpeedKnots:F0}kt → Bank={desiredBank:F1}°");
             }
 
             return desiredBank;
@@ -617,9 +619,9 @@ public class VisualGuidanceManager : IDisposable
         // Calculate heading error (how far we are from target heading)
         double headingError = NormalizeHeading(targetHeading - actualTrack);
 
-        // Proportional controller: 3° of bank per degree of heading error
+        // Proportional controller: 0.5° of bank per degree of heading error
         // This provides smooth turn to reach target heading
-        const double HEADING_GAIN = 3.0;
+        const double HEADING_GAIN = 0.5;
         double baseBank = headingError * HEADING_GAIN;
 
         // Clamp to safe bank limits for intercept (±25°)
@@ -726,7 +728,7 @@ public class VisualGuidanceManager : IDisposable
             // Derivative: Dampen based on rate of altitude error change
             double proportionalTerm = -normalizedGSError * VERTICAL_GAIN;
             double integralTerm = -glideslopeIntegral * VERTICAL_INTEGRAL_GAIN;
-            double derivativeTerm = -glideslopeRate * VERTICAL_RATE_DAMPING;
+            double derivativeTerm = glideslopeRate * VERTICAL_RATE_DAMPING;
 
             double rawDesiredPitch = nominalPitch + proportionalTerm + integralTerm + derivativeTerm;
 
