@@ -576,6 +576,17 @@ public class VisualGuidanceManager : IDisposable
                 // 7° provides clear audio feedback without aggressive maneuvering
                 double bankLimit = 7.0;
                 desiredBank = Math.Clamp(rawDesiredBank, -bankLimit, bankLimit);
+
+                // Calculate distance to threshold for debugging
+                double distanceNM = NavigationCalculator.CalculateDistance(
+                    lat, lon, runway.StartLat, runway.StartLon);
+
+                // Detailed PD controller debug output
+                // Shows individual term contributions to diagnose control law issues
+                System.Diagnostics.Debug.WriteLine(
+                    $"[VisualGuidance] {guidancePhase}: XTE={signedCrossTrackNM:F3}NM, Rate={crossTrackRate:F3}NM/s, " +
+                    $"Dist={distanceNM:F1}NM, PD: P={proportionalTerm:F2}° D={derivativeTerm:F2}° → Bank={desiredBank:F1}°, " +
+                    $"TrkErr={trackAngleError:F1}° (log only), GS={currentGroundSpeedKnots:F0}kt");
             }
 
             // Update for next iteration
@@ -590,20 +601,13 @@ public class VisualGuidanceManager : IDisposable
                 $"GroundTrack={cachedGroundTrack?.ToString("F1") ?? "N/A"}° ActualTrack={actualTrackAngle:F1}° " +
                 $"TrackErr={trackAngleError:F1}° ImpliedMagVar={impliedMagVar:F1}°");
 
-            // Phase-specific debug output
+            // Phase-specific debug output (INTERCEPT phases only - CAPTURE_TRACK logs inside its block)
             if (guidancePhase.StartsWith("INTERCEPT"))
             {
                 System.Diagnostics.Debug.WriteLine(
                     $"[VisualGuidance] {guidancePhase}: XTE={signedCrossTrackNM:F3}NM, " +
                     $"ActualTrk={actualTrackAngle:F1}°, TrkErr={trackAngleError:F1}°, " +
                     $"GS={currentGroundSpeedKnots:F0}kt → Bank={desiredBank:F1}°");
-            }
-            else
-            {
-                // Track error logged for debugging only - not used in control law
-                System.Diagnostics.Debug.WriteLine(
-                    $"[VisualGuidance] {guidancePhase}: XTE={signedCrossTrackNM:F3}NM, Rate={crossTrackRate:F3}NM/s, " +
-                    $"TrkErr={trackAngleError:F1}° (log only), GS={currentGroundSpeedKnots:F0}kt → Bank={desiredBank:F1}°");
             }
 
             return desiredBank;
@@ -747,8 +751,8 @@ public class VisualGuidanceManager : IDisposable
             previousDesiredPitch = desiredPitch;
 
             System.Diagnostics.Debug.WriteLine(
-                $"[VisualGuidance] Vertical PID: GSDev={glideslopeDeviation:F0}ft, Rate={glideslopeRate:F1}ft/s, Integral={glideslopeIntegral:F3}, " +
-                $"Nominal={nominalPitch:F2}°, P={proportionalTerm:F2}° I={integralTerm:F2}° D={derivativeTerm:F2}° → Pitch={desiredPitch:F1}°");
+                $"[VisualGuidance] Vertical PD: GSDev={glideslopeDeviation:F0}ft, Rate={glideslopeRate:F1}ft/s, " +
+                $"Nominal={nominalPitch:F2}°, P={proportionalTerm:F2}° D={derivativeTerm:F2}° (I disabled) → Pitch={desiredPitch:F1}°");
 
             return desiredPitch;
         }

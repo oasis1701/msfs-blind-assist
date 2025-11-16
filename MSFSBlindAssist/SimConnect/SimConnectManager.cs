@@ -3559,12 +3559,13 @@ public class SimConnectManager
 
         try
         {
-            // Request aircraft position data at 1 Hz using AIRCRAFT_POSITION struct (same as ILS guidance)
+            // Request aircraft position data at high frequency using AIRCRAFT_POSITION struct
             // This includes: lat, lon, altitude MSL, heading, and magnetic variation
+            // Using SIM_FRAME for rapid bank announcements (~20-30 Hz)
             simConnect.RequestDataOnSimObject((DATA_REQUESTS)505,
                 DATA_DEFINITIONS.AIRCRAFT_POSITION,
                 SIMCONNECT_OBJECT_ID_USER,
-                SIMCONNECT_PERIOD.SECOND,  // 1 Hz updates
+                SIMCONNECT_PERIOD.SIM_FRAME,  // ~20-30 Hz updates (every sim frame)
                 SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
 
             // Request AGL separately (not included in AIRCRAFT_POSITION struct)
@@ -3574,18 +3575,18 @@ public class SimConnectManager
                 simConnect.RequestDataOnSimObject((DATA_REQUESTS)506,
                     (DATA_DEFINITIONS)aglDefId,
                     SIMCONNECT_OBJECT_ID_USER,
-                    SIMCONNECT_PERIOD.SECOND,
+                    SIMCONNECT_PERIOD.SIM_FRAME,  // ~20-30 Hz updates (every sim frame)
                     SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
             }
 
-            // Request Ground Track for drift detection (PID controller)
+            // Request Ground Track for drift detection (PD controller)
             int groundTrackDefId = GetVariableDataDefinition("VISUAL_GUIDANCE_GROUND_TRACK");
             if (groundTrackDefId != -1)
             {
                 simConnect.RequestDataOnSimObject((DATA_REQUESTS)507,
                     (DATA_DEFINITIONS)groundTrackDefId,
                     SIMCONNECT_OBJECT_ID_USER,
-                    SIMCONNECT_PERIOD.SECOND,
+                    SIMCONNECT_PERIOD.SIM_FRAME,  // ~20-30 Hz updates (every sim frame)
                     SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
             }
 
