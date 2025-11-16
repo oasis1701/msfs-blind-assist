@@ -448,7 +448,7 @@ public partial class MainForm : Form
             // Convert radians to degrees and negate (SimConnect uses body axis: negative = nose up)
             double pitchDegrees = -(e.Value * (180.0 / Math.PI));
             handFlyManager.ProcessPitchUpdate(pitchDegrees);
-            return true;
+            // Don't return - allow data to flow to visual guidance too
         }
 
         // Handle hand fly mode bank updates
@@ -457,7 +457,7 @@ public partial class MainForm : Form
             // Convert radians to degrees (positive = right bank, negative = left bank)
             double bankDegrees = e.Value * (180.0 / Math.PI);
             handFlyManager.ProcessBankUpdate(bankDegrees);
-            return true;
+            // Don't return - allow data to flow to visual guidance too
         }
 
         // Handle hand fly mode heading updates
@@ -466,7 +466,7 @@ public partial class MainForm : Form
             // Convert radians to degrees
             double headingDegrees = e.Value * (180.0 / Math.PI);
             handFlyManager.ProcessHeadingUpdate(headingDegrees);
-            return true;
+            // Don't return - allow data to flow to visual guidance too
         }
 
         // Handle hand fly mode vertical speed updates

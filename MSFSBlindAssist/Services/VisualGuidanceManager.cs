@@ -65,6 +65,7 @@ public class VisualGuidanceManager : IDisposable
     private double lastAnnouncedDistance = double.MaxValue;
     private DateTime lastExtendingProgressAnnouncement = DateTime.MinValue;
     private int? lastAnnouncedBankDegrees = null;  // Track last announced bank angle
+    private int? lastAnnouncedBankError = null;  // Track last announced bank error for error-based announcements
     private string? lastAnnouncedCenterlineDeviation = null;  // Track last announced centerline deviation
     private const int ANNOUNCEMENT_INTERVAL_MS = 1000;
     private const int EXTENDING_PROGRESS_INTERVAL_MS = 10000;  // 10 seconds
@@ -89,20 +90,20 @@ public class VisualGuidanceManager : IDisposable
     private const double TOUCHDOWN_AIM_POINT_FT = 1500.0;  // Aim point distance from threshold
     private const double TOUCHDOWN_AIM_POINT_RATIO = 0.2;  // Use 20% of runway length for short runways
 
-    // Lateral guidance gains (tuned for A320 - Phase 1 moderate settings)
+    // Lateral guidance gains (tuned for blind pilot manual landing with audio guidance)
     private const double LATERAL_GAIN_INTERCEPT = 0.5;   // Heading error to bank for intercept
     private const double LATERAL_GAIN_TRACKING = 5.0;    // Cross-track error (NM) to bank for tracking
-    private const double LATERAL_RATE_DAMPING = 15.0;    // Cross-track rate (NM/sec) to bank damping
-    private const double LATERAL_INTEGRAL_GAIN = 0.5;    // Integral gain for accumulated cross-track error
+    private const double LATERAL_RATE_DAMPING = 18.0;    // Cross-track rate damping (increased for stronger heading term)
+    private const double LATERAL_INTEGRAL_GAIN = 0.0;    // Disabled - human tracking lag makes integral counterproductive
     private const double INTEGRAL_LIMIT_LATERAL = 10.0;  // Anti-windup limit (bank degrees)
     private const double HEADING_ALIGNMENT_GAIN = 0.3;   // Track angle error to bank for heading alignment
     private const double AIRSPEED_REFERENCE_KNOTS = 140.0;  // Reference speed for gain scaling
     private const double MAX_BANK_RATE_DEG_PER_SEC = 5.0;   // Maximum bank command change rate
 
-    // Vertical guidance gains (tuned for A320 - Phase 1 moderate settings)
+    // Vertical guidance gains (tuned for A320 - PD controller for testing)
     private const double VERTICAL_GAIN = 0.5;            // Glideslope deviation (per 200 ft) to pitch correction
     private const double VERTICAL_RATE_DAMPING = 0.15;   // Glideslope rate (ft/sec) to pitch damping
-    private const double VERTICAL_INTEGRAL_GAIN = 0.3;   // Integral gain for accumulated glideslope error
+    private const double VERTICAL_INTEGRAL_GAIN = 0.0;   // Disabled - testing PD controller performance
     private const double INTEGRAL_LIMIT_VERTICAL = 5.0;  // Anti-windup limit (pitch degrees)
     private const double TYPICAL_APPROACH_AOA = 6.0;     // Typical angle of attack for A320 approach configuration
     private const double MAX_PITCH_RATE_DEG_PER_SEC = 2.5;  // Maximum pitch command change rate
@@ -173,6 +174,7 @@ public class VisualGuidanceManager : IDisposable
         lastAnnouncedDistance = double.MaxValue;
         lastExtendingProgressAnnouncement = DateTime.MinValue;
         lastAnnouncedBankDegrees = null;
+        lastAnnouncedBankError = null;
         cachedLatitude = null;
         cachedLongitude = null;
         cachedAGL = null;
@@ -474,73 +476,164 @@ public class VisualGuidanceManager : IDisposable
             double speedFactor = Math.Sqrt(Math.Max(currentGroundSpeedKnots, 80.0) / AIRSPEED_REFERENCE_KNOTS);
 
             // Integral term with anti-windup (1 Hz update rate)
-            crossTrackIntegral += signedCrossTrackNM * 1.0;
+            // Gradual decay when close to centerline for smooth tracking
+            if (Math.Abs(signedCrossTrackNM) < 0.3)
+            {
+                crossTrackIntegral *= 0.95;  // 5% decay per second when close
+            }
 
-            // Anti-windup: Reset integral if error is large or changing sign (crossing centerline)
+            // Anti-windup: Check conditions BEFORE accumulating to prevent one-step windup
+            // Reset integral if error is large or changing sign (crossing centerline)
             if (Math.Abs(signedCrossTrackNM) > 1.0 ||  // Far from centerline
                 (previousCrossTrackError.HasValue &&
                  Math.Sign(signedCrossTrackNM) != Math.Sign(previousCrossTrackError.Value)))
             {
                 crossTrackIntegral = 0.0;  // Reset integral
             }
+            else
+            {
+                // Only accumulate if not resetting (prevents one-step windup before reset)
+                crossTrackIntegral += signedCrossTrackNM * 1.0;
+            }
 
             // Clamp integral to prevent windup
             crossTrackIntegral = Math.Clamp(crossTrackIntegral, -INTEGRAL_LIMIT_LATERAL, INTEGRAL_LIMIT_LATERAL);
 
-            // PID controller with heading alignment:
-            // Proportional: -K1 × cross_track_error (main correction)
-            // Integral: -Ki × ∫cross_track_error dt (eliminate steady-state error)
-            // Derivative: -K2 × cross_track_rate (damping to prevent overshoot)
-            // Heading: K3 × track_angle_error (align with runway heading)
-            double proportionalTerm = -signedCrossTrackNM * LATERAL_GAIN_TRACKING * speedFactor;
-            double integralTerm = -crossTrackIntegral * LATERAL_INTEGRAL_GAIN * speedFactor;
-            double derivativeTerm = -crossTrackRate * LATERAL_RATE_DAMPING * speedFactor;
-            double headingTerm = trackAngleError * HEADING_ALIGNMENT_GAIN;
+            // **TARGET HEADING INTERCEPT LOGIC**
+            // Phase-based approach matching real autopilot behavior
+            // INTERCEPT phases (>0.5 NM): Calculate and fly to target intercept heading
+            // CAPTURE/TRACK phase (<=0.5 NM): Use PD controller for final capture
 
-            double rawDesiredBank = proportionalTerm + integralTerm + derivativeTerm + headingTerm;
-
-            // Bank rate limiting - prevent sudden audio panning flips
-            double maxBankChange = MAX_BANK_RATE_DEG_PER_SEC * 1.0;  // 1 second update rate
-            double bankChange = rawDesiredBank - previousDesiredBank;
-            if (Math.Abs(bankChange) > maxBankChange)
-            {
-                rawDesiredBank = previousDesiredBank + Math.Sign(bankChange) * maxBankChange;
-            }
-
-            // Adaptive bank limits based on cross-track error
-            // Far from centerline: allow more aggressive banks for faster intercept
-            // Close to centerline: use gentle banks for smooth tracking
-            double bankLimit;
             double absXTE = Math.Abs(signedCrossTrackNM);
-            if (absXTE > 1.0)
+            double desiredBank;
+            string guidancePhase;
+
+            // Phase determination and target heading calculation
+            if (absXTE > 2.0)
             {
-                // Far off centerline (>1 NM): aggressive intercept
-                bankLimit = 25.0;
+                // INTERCEPT PHASE 1: Far from centerline - 30° intercept (conservative)
+                double interceptAngle = 30.0;
+                double targetHeading = signedCrossTrackNM < 0
+                    ? runway.HeadingMag - interceptAngle  // Left of centerline, fly right of runway heading
+                    : runway.HeadingMag + interceptAngle; // Right of centerline, fly left of runway heading
+                targetHeading = NormalizeHeading(targetHeading);
+
+                desiredBank = CalculateHeadingInterceptBank(targetHeading, actualTrackAngle);
+                guidancePhase = "INTERCEPT_30";
             }
-            else if (absXTE > 0.3)
+            else if (absXTE > 1.0)
             {
-                // Medium distance (0.3-1 NM): moderate intercept
-                bankLimit = 20.0;
+                // INTERCEPT PHASE 2: Medium distance - 20° intercept
+                double interceptAngle = 20.0;
+                double targetHeading = signedCrossTrackNM < 0
+                    ? runway.HeadingMag - interceptAngle
+                    : runway.HeadingMag + interceptAngle;
+                targetHeading = NormalizeHeading(targetHeading);
+
+                desiredBank = CalculateHeadingInterceptBank(targetHeading, actualTrackAngle);
+                guidancePhase = "INTERCEPT_20";
+            }
+            else if (absXTE > 0.5)
+            {
+                // INTERCEPT PHASE 3: Approaching centerline - 10° intercept (gentle)
+                double interceptAngle = 10.0;
+                double targetHeading = signedCrossTrackNM < 0
+                    ? runway.HeadingMag - interceptAngle
+                    : runway.HeadingMag + interceptAngle;
+                targetHeading = NormalizeHeading(targetHeading);
+
+                desiredBank = CalculateHeadingInterceptBank(targetHeading, actualTrackAngle);
+                guidancePhase = "INTERCEPT_10";
             }
             else
             {
-                // On or near centerline (<0.3 NM): gentle tracking
-                bankLimit = 15.0;
-            }
+                // CAPTURE/TRACK PHASE: Close to centerline - Use PD controller
+                // Optimized for blind pilot manual landing - tight tracking required!
+                guidancePhase = "CAPTURE_TRACK";
 
-            // Clamp final command with adaptive limit
-            double desiredBank = Math.Clamp(rawDesiredBank, -bankLimit, bankLimit);
+                // PD controller for final capture and tracking
+                double proportionalTerm = -signedCrossTrackNM * LATERAL_GAIN_TRACKING * speedFactor;
+                double integralTerm = -crossTrackIntegral * LATERAL_INTEGRAL_GAIN * speedFactor;
+                double derivativeTerm = -crossTrackRate * LATERAL_RATE_DAMPING * speedFactor;
+
+                // STRONG heading alignment - persistent correction to lock on centerline
+                // 3.0× scaling provides continuous nagging until perfectly aligned
+                // Critical for blind pilot - must maintain ±50-100 ft accuracy for safe landing
+                double headingTerm = trackAngleError * HEADING_ALIGNMENT_GAIN * 3.0;
+
+                double rawDesiredBank = proportionalTerm + integralTerm + derivativeTerm + headingTerm;
+
+                // Bank rate limiting
+                double maxBankChange = MAX_BANK_RATE_DEG_PER_SEC * 1.0;
+                double bankChange = rawDesiredBank - previousDesiredBank;
+                if (Math.Abs(bankChange) > maxBankChange)
+                {
+                    rawDesiredBank = previousDesiredBank + Math.Sign(bankChange) * maxBankChange;
+                }
+
+                // Small bank limit - gentle but persistent corrections
+                // 7° provides clear audio feedback without aggressive maneuvering
+                double bankLimit = 7.0;
+                desiredBank = Math.Clamp(rawDesiredBank, -bankLimit, bankLimit);
+            }
 
             // Update for next iteration
             previousDesiredBank = desiredBank;
 
+            // Magnetic reference debugging
+            double impliedMagVar = cachedGroundTrack.HasValue ?
+                NormalizeHeading(cachedGroundTrack.Value - heading) : 0.0;
+
             System.Diagnostics.Debug.WriteLine(
-                $"[VisualGuidance] Lateral PID: XTE={signedCrossTrackNM:F3}NM, Rate={crossTrackRate:F3}NM/s, Integral={crossTrackIntegral:F3}, " +
-                $"GndTrk={cachedGroundTrack?.ToString("F0") ?? "N/A"}°, TrkErr={trackAngleError:F1}°, GS={currentGroundSpeedKnots:F0}kt, SpeedFactor={speedFactor:F2}, " +
-                $"P={proportionalTerm:F2}° I={integralTerm:F2}° D={derivativeTerm:F2}° H={headingTerm:F2}° → Bank={desiredBank:F1}° (limit=±{bankLimit:F0}°)");
+                $"[VisualGuidance] MAGNETIC DEBUG: RunwayMag={runway.HeadingMag:F1}° AircraftHdg={heading:F1}° " +
+                $"GroundTrack={cachedGroundTrack?.ToString("F1") ?? "N/A"}° ActualTrack={actualTrackAngle:F1}° " +
+                $"TrackErr={trackAngleError:F1}° ImpliedMagVar={impliedMagVar:F1}°");
+
+            // Phase-specific debug output
+            if (guidancePhase.StartsWith("INTERCEPT"))
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"[VisualGuidance] {guidancePhase}: XTE={signedCrossTrackNM:F3}NM, " +
+                    $"ActualTrk={actualTrackAngle:F1}°, TrkErr={trackAngleError:F1}°, " +
+                    $"GS={currentGroundSpeedKnots:F0}kt → Bank={desiredBank:F1}°");
+            }
+            else
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"[VisualGuidance] {guidancePhase}: XTE={signedCrossTrackNM:F3}NM, Rate={crossTrackRate:F3}NM/s, " +
+                    $"TrkErr={trackAngleError:F1}°, GS={currentGroundSpeedKnots:F0}kt → Bank={desiredBank:F1}°");
+            }
 
             return desiredBank;
         }
+    }
+
+    /// <summary>
+    /// Calculates bank angle needed to intercept and hold a target heading
+    /// Used during INTERCEPT phases (>0.5 NM from centerline)
+    /// </summary>
+    private double CalculateHeadingInterceptBank(double targetHeading, double actualTrack)
+    {
+        // Calculate heading error (how far we are from target heading)
+        double headingError = NormalizeHeading(targetHeading - actualTrack);
+
+        // Proportional controller: 3° of bank per degree of heading error
+        // This provides smooth turn to reach target heading
+        const double HEADING_GAIN = 3.0;
+        double baseBank = headingError * HEADING_GAIN;
+
+        // Clamp to safe bank limits for intercept (±25°)
+        double desiredBank = Math.Clamp(baseBank, -25.0, 25.0);
+
+        // Apply bank rate limiting to prevent sudden changes
+        double maxBankChange = MAX_BANK_RATE_DEG_PER_SEC * 1.0;  // 1 second update rate
+        double bankChange = desiredBank - previousDesiredBank;
+        if (Math.Abs(bankChange) > maxBankChange)
+        {
+            desiredBank = previousDesiredBank + Math.Sign(bankChange) * maxBankChange;
+        }
+
+        return desiredBank;
     }
 
     /// <summary>
@@ -813,35 +906,74 @@ public class VisualGuidanceManager : IDisposable
     }
 
     /// <summary>
-    /// Announces commanded bank angle for verbal guidance feedback
+    /// Announces bank error for verbal guidance feedback (error-based announcements)
     /// </summary>
     private void AnnounceBankGuidance(double desiredBankDegrees)
     {
-        // Round to nearest degree
-        int roundedBank = (int)Math.Round(desiredBankDegrees);
-
-        // Only announce if changed from last announcement
-        if (lastAnnouncedBankDegrees.HasValue && roundedBank == lastAnnouncedBankDegrees.Value)
-            return;
-
-        // Format announcement
         string announcement;
-        if (roundedBank == 0)
+        int roundedError;
+
+        // If actual bank angle is available, use error-based announcements
+        if (cachedBank.HasValue)
         {
-            announcement = "Tone centered";
-        }
-        else if (roundedBank < 0)
-        {
-            announcement = $"{Math.Abs(roundedBank)} left";
+            // Calculate bank error: positive means need to bank right, negative means need to bank left
+            // Note: cachedBank is in SimConnect convention (pos=left), so we add to negate it to standard convention
+            double bankError = desiredBankDegrees + cachedBank.Value;
+            roundedError = (int)Math.Round(bankError);
+
+            // Round commanded bank to check if on correct path
+            int roundedCommandedBank = (int)Math.Round(desiredBankDegrees);
+
+            // Check if we're on the correct path (commanded bank ≈ 0°)
+            bool onCorrectPath = Math.Abs(desiredBankDegrees) < 0.5;  // Within 0.5° of 0 is "on path"
+
+            // Check if actual bank matches commanded bank (within 1.0° tolerance)
+            bool matched = Math.Abs(bankError) <= 1.0;
+
+            if (matched)
+            {
+                // Special announcement if on correct path and wings level
+                if (onCorrectPath)
+                {
+                    announcement = "On commanded path";
+                }
+                else
+                {
+                    announcement = "matched";
+                }
+                roundedError = 0;  // Use 0 for tracking since we're matched
+            }
+            else
+            {
+                // Announce the bank error (how much correction is needed)
+                if (roundedError < 0)
+                {
+                    announcement = $"{Math.Abs(roundedError)} left";
+                }
+                else if (roundedError > 0)
+                {
+                    announcement = $"{roundedError} right";
+                }
+                else
+                {
+                    // Rounded to 0 but not within strict 0.3° tolerance
+                    announcement = "matched";
+                }
+            }
         }
         else
         {
-            announcement = $"{roundedBank} right";
+            // No actual bank data available - cannot provide error-based guidance
+            return;
         }
+
+        // Only announce if error changed from last announcement
+        if (lastAnnouncedBankError.HasValue && roundedError == lastAnnouncedBankError.Value)
+            return;
 
         // Announce immediately
         announcer.AnnounceImmediate(announcement);
-        lastAnnouncedBankDegrees = roundedBank;
+        lastAnnouncedBankError = roundedError;
     }
 
     /// <summary>
