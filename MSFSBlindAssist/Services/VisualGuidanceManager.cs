@@ -54,6 +54,7 @@ public class VisualGuidanceManager : IDisposable
     // State tracking for derivative term and rate limiting (vertical)
     private double? previousGlideslopeDeviation = null;
     private DateTime? previousGlideslopeTimestamp = null;
+    private double? smoothedGlideslopeDeviation = null;
     private double previousDesiredPitch = 0.0;
 
     // Integral term accumulation (vertical PID)
@@ -102,11 +103,12 @@ public class VisualGuidanceManager : IDisposable
 
     // Vertical guidance gains (tuned for A320 - PD controller for testing)
     private const double VERTICAL_GAIN = 0.5;            // Glideslope deviation (per 200 ft) to pitch correction
-    private const double VERTICAL_RATE_DAMPING = 0.15;   // Glideslope rate (ft/sec) to pitch damping
+    private const double VERTICAL_RATE_DAMPING = 0.08;   // Glideslope rate (ft/sec) to pitch damping
     private const double VERTICAL_INTEGRAL_GAIN = 0.0;   // Disabled - testing PD controller performance
     private const double INTEGRAL_LIMIT_VERTICAL = 5.0;  // Anti-windup limit (pitch degrees)
     private const double TYPICAL_APPROACH_AOA = 6.0;     // Typical angle of attack for A320 approach configuration
     private const double MAX_PITCH_RATE_DEG_PER_SEC = 2.5;  // Maximum pitch command change rate
+    private const double GLIDESLOPE_SMOOTHING_FACTOR = 0.7;  // Exponential smoothing for glideslope deviation (0.7 = moderate filtering)
     private const double FPM_PER_DEGREE_PITCH = 175.0;   // Typical vertical speed change per degree of pitch at approach speeds (legacy, may remove)
 
     public bool IsActive => isActive;
@@ -196,6 +198,7 @@ public class VisualGuidanceManager : IDisposable
         // Reset derivative term tracking (vertical)
         previousGlideslopeDeviation = null;
         previousGlideslopeTimestamp = null;
+        smoothedGlideslopeDeviation = null;
         previousDesiredPitch = 0.0;
 
         // Start desired attitude tone
@@ -689,12 +692,27 @@ public class VisualGuidanceManager : IDisposable
             // (Behind threshold is already handled by Extending phase check on line 679)
             double distanceFromThreshold = Math.Abs(alongTrackDistance);
 
-            // Calculate glideslope deviation (positive = above glideslope)
-            double glideslopeDeviation = NavigationCalculator.CalculateGlideslopeDeviation(
+            // Calculate raw glideslope deviation (positive = above glideslope)
+            double rawGlideslopeDeviation = NavigationCalculator.CalculateGlideslopeDeviation(
                 altMSL,                                      // Aircraft altitude MSL
                 distanceFromThreshold,                       // Along-track distance from threshold in NM
                 GLIDESLOPE_ANGLE_DEG,                        // 3-degree glideslope
                 thresholdElevationMSL);                      // Threshold elevation MSL
+
+            // Apply exponential smoothing to reduce GPS/altimeter noise
+            double glideslopeDeviation;
+            if (smoothedGlideslopeDeviation.HasValue)
+            {
+                // Exponential moving average: weighted blend of previous smoothed value and new raw value
+                glideslopeDeviation = GLIDESLOPE_SMOOTHING_FACTOR * smoothedGlideslopeDeviation.Value +
+                                     (1.0 - GLIDESLOPE_SMOOTHING_FACTOR) * rawGlideslopeDeviation;
+            }
+            else
+            {
+                // First sample - use raw value
+                glideslopeDeviation = rawGlideslopeDeviation;
+            }
+            smoothedGlideslopeDeviation = glideslopeDeviation;
 
             // Calculate glideslope deviation rate (derivative term) for damping
             double glideslopeRate = 0.0;
