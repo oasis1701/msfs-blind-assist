@@ -92,11 +92,11 @@ public class VisualGuidanceManager : IDisposable
 
     // Lateral guidance gains (tuned for blind pilot manual landing with audio guidance)
     private const double LATERAL_GAIN_INTERCEPT = 0.5;   // Heading error to bank for intercept
-    private const double LATERAL_GAIN_TRACKING = 3.5;    // Cross-track error (NM) to bank for tracking
+    private const double LATERAL_GAIN_TRACKING = 6.0;    // Cross-track error (NM) to bank for tracking
     private const double LATERAL_RATE_DAMPING = 12.0;    // Cross-track rate damping
     private const double LATERAL_INTEGRAL_GAIN = 0.0;    // Disabled - human tracking lag makes integral counterproductive
+    private const double LATERAL_HEADING_GAIN = 0.3;     // Track/heading error to bank for alignment
     private const double INTEGRAL_LIMIT_LATERAL = 10.0;  // Anti-windup limit (bank degrees)
-    // HEADING_ALIGNMENT_GAIN removed - derivative term provides natural alignment without steady-state error
     private const double AIRSPEED_REFERENCE_KNOTS = 140.0;  // Reference speed for gain scaling
     private const double MAX_BANK_RATE_DEG_PER_SEC = 5.0;   // Maximum bank command change rate
 
@@ -456,12 +456,18 @@ public class VisualGuidanceManager : IDisposable
             previousCrossTrackError = signedCrossTrackNM;
             previousCrossTrackTimestamp = DateTime.Now;
 
-            // Ground track monitoring (intentionally NOT used in control law)
-            // Ground track is kept for debugging/logging only (magnetic variation detection).
-            // The derivative term (cross-track rate) already provides all needed heading information
-            // by measuring actual position drift - more accurate than forcing heading alignment.
-            // Use ground track if available for better drift detection, otherwise fall back to heading
-            double actualTrackAngle = cachedGroundTrack ?? heading;
+            // Ground track vs heading selection based on altitude
+            // High altitude (>100 ft AGL): Use ground track to maintain centerline (allows crab in wind)
+            // Low altitude (≤100 ft AGL): Use heading to align nose with runway (decrab for landing)
+            double actualTrackAngle;
+            if (cachedAGL.HasValue && cachedAGL.Value <= 100.0)
+            {
+                actualTrackAngle = heading;  // Force heading alignment for decrab below 100 ft
+            }
+            else
+            {
+                actualTrackAngle = cachedGroundTrack ?? heading;  // Normal tracking above 100 ft
+            }
             double trackAngleError = NormalizeHeading(runway.HeadingMag - actualTrackAngle);
 
             // Airspeed compensation scaling
@@ -544,15 +550,16 @@ public class VisualGuidanceManager : IDisposable
                 // Optimized for blind pilot manual landing - tight tracking required!
                 guidancePhase = "CAPTURE_TRACK";
 
-                // PD controller for final capture and tracking
+                // PDH controller for final capture and tracking
                 // P: Corrects based on distance from centerline
                 // D: Prevents overshoot by damping approach rate
-                // Note: Heading alignment removed - derivative term naturally aligns aircraft
+                // H: Aligns aircraft heading/track with runway (auto-decrab below 100 ft)
                 double proportionalTerm = -signedCrossTrackNM * LATERAL_GAIN_TRACKING * speedFactor;
                 double integralTerm = -crossTrackIntegral * LATERAL_INTEGRAL_GAIN * speedFactor;
-                double derivativeTerm = crossTrackRate * LATERAL_RATE_DAMPING * speedFactor;
+                double derivativeTerm = -crossTrackRate * LATERAL_RATE_DAMPING * speedFactor;
+                double headingTerm = trackAngleError * LATERAL_HEADING_GAIN * speedFactor;
 
-                double rawDesiredBank = proportionalTerm + integralTerm + derivativeTerm;
+                double rawDesiredBank = proportionalTerm + integralTerm + derivativeTerm + headingTerm;
 
                 // Bank rate limiting
                 double maxBankChange = MAX_BANK_RATE_DEG_PER_SEC * 1.0;
