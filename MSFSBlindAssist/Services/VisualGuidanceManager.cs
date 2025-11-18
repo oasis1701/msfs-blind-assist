@@ -513,19 +513,31 @@ public class VisualGuidanceManager : IDisposable
             // Phase determination and target heading calculation
             if (absXTE > 2.0)
             {
-                // INTERCEPT PHASE 1: Far from centerline - 45° intercept (steeper for faster capture)
-                double interceptAngle = 45.0;
+                // INTERCEPT PHASE 1: Far from centerline - 60° intercept (steeper for faster capture)
+                double interceptAngle = 60.0;
                 double targetHeading = signedCrossTrackNM < 0
                     ? runway.HeadingMag + interceptAngle  // Left of centerline, fly right of runway heading
                     : runway.HeadingMag - interceptAngle; // Right of centerline, fly left of runway heading
                 targetHeading = NormalizeHeading(targetHeading);
 
                 desiredBank = CalculateHeadingInterceptBank(targetHeading, actualTrackAngle);
-                guidancePhase = "INTERCEPT_45";
+                guidancePhase = "INTERCEPT_60";
             }
             else if (absXTE > 1.0)
             {
-                // INTERCEPT PHASE 2: Medium distance - 30° intercept
+                // INTERCEPT PHASE 2: Medium distance - 45° intercept
+                double interceptAngle = 45.0;
+                double targetHeading = signedCrossTrackNM < 0
+                    ? runway.HeadingMag + interceptAngle
+                    : runway.HeadingMag - interceptAngle;
+                targetHeading = NormalizeHeading(targetHeading);
+
+                desiredBank = CalculateHeadingInterceptBank(targetHeading, actualTrackAngle);
+                guidancePhase = "INTERCEPT_45";
+            }
+            else if (absXTE > 0.25)
+            {
+                // INTERCEPT PHASE 3: Approaching centerline - 30° intercept
                 double interceptAngle = 30.0;
                 double targetHeading = signedCrossTrackNM < 0
                     ? runway.HeadingMag + interceptAngle
@@ -534,18 +546,6 @@ public class VisualGuidanceManager : IDisposable
 
                 desiredBank = CalculateHeadingInterceptBank(targetHeading, actualTrackAngle);
                 guidancePhase = "INTERCEPT_30";
-            }
-            else if (absXTE > 0.25)
-            {
-                // INTERCEPT PHASE 3: Approaching centerline - 15° intercept
-                double interceptAngle = 15.0;
-                double targetHeading = signedCrossTrackNM < 0
-                    ? runway.HeadingMag + interceptAngle
-                    : runway.HeadingMag - interceptAngle;
-                targetHeading = NormalizeHeading(targetHeading);
-
-                desiredBank = CalculateHeadingInterceptBank(targetHeading, actualTrackAngle);
-                guidancePhase = "INTERCEPT_15";
             }
             else
             {
