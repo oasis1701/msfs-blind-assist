@@ -47,6 +47,7 @@ public class VisualGuidanceManager : IDisposable
     private double? previousCrossTrackError = null;
     private DateTime? previousCrossTrackTimestamp = null;
     private double previousDesiredBank = 0.0;
+    private double? smoothedCrossTrackRate = null;  // Smoothed rate to prevent oscillation during handoff
 
     // Integral term accumulation (lateral PID)
     private double crossTrackIntegral = 0.0;
@@ -109,6 +110,7 @@ public class VisualGuidanceManager : IDisposable
     private const double TYPICAL_APPROACH_AOA = 6.0;     // Typical angle of attack for A320 approach configuration
     private const double MAX_PITCH_RATE_DEG_PER_SEC = 2.5;  // Maximum pitch command change rate
     private const double GLIDESLOPE_SMOOTHING_FACTOR = 0.7;  // Exponential smoothing for glideslope deviation (0.7 = moderate filtering)
+    private const double CROSS_TRACK_RATE_SMOOTHING_FACTOR = 0.6;  // Exponential smoothing for cross-track rate (0.6 = slightly more responsive)
     private const double FPM_PER_DEGREE_PITCH = 175.0;   // Typical vertical speed change per degree of pitch at approach speeds (legacy, may remove)
 
     public bool IsActive => isActive;
@@ -190,6 +192,7 @@ public class VisualGuidanceManager : IDisposable
         previousCrossTrackError = null;
         previousCrossTrackTimestamp = null;
         previousDesiredBank = 0.0;
+        smoothedCrossTrackRate = null;
 
         // Reset integral terms
         crossTrackIntegral = 0.0;
@@ -451,7 +454,27 @@ public class VisualGuidanceManager : IDisposable
                 double deltaTime = (DateTime.Now - previousCrossTrackTimestamp.Value).TotalSeconds;
                 if (deltaTime > 0.01)  // Avoid division by zero
                 {
-                    crossTrackRate = (signedCrossTrackNM - previousCrossTrackError.Value) / deltaTime;
+                    double rawCrossTrackRate = (signedCrossTrackNM - previousCrossTrackError.Value) / deltaTime;
+
+                    // Apply exponential smoothing to reduce noise (prevents oscillation during phase handoff)
+                    if (smoothedCrossTrackRate.HasValue)
+                    {
+                        // If raw rate is exactly zero (measurement noise), keep previous smoothed value
+                        if (rawCrossTrackRate == 0.0)
+                        {
+                            crossTrackRate = smoothedCrossTrackRate.Value;
+                        }
+                        else
+                        {
+                            crossTrackRate = CROSS_TRACK_RATE_SMOOTHING_FACTOR * smoothedCrossTrackRate.Value +
+                                            (1.0 - CROSS_TRACK_RATE_SMOOTHING_FACTOR) * rawCrossTrackRate;
+                        }
+                    }
+                    else
+                    {
+                        crossTrackRate = rawCrossTrackRate;
+                    }
+                    smoothedCrossTrackRate = crossTrackRate;
                 }
             }
 
