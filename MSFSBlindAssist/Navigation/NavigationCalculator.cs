@@ -479,56 +479,6 @@ public class NavigationCalculator
     }
 
     /// <summary>
-    /// Calculates along-track distance from threshold to aircraft's perpendicular projection on centerline.
-    /// This represents the aircraft's progress along the approach path, independent of lateral deviation.
-    /// This is critical for vertical guidance - glideslope altitude should be based on progress along
-    /// the approach path, not straight-line distance to the threshold.
-    /// </summary>
-    /// <param name="aircraftLat">Aircraft latitude in degrees</param>
-    /// <param name="aircraftLon">Aircraft longitude in degrees</param>
-    /// <param name="thresholdLat">Runway threshold latitude in degrees</param>
-    /// <param name="thresholdLon">Runway threshold longitude in degrees</param>
-    /// <param name="localizerHeading">Localizer true heading in degrees</param>
-    /// <returns>Along-track distance in nautical miles (positive = ahead of threshold, negative = behind)</returns>
-    public static double CalculateAlongTrackDistance(
-        double aircraftLat, double aircraftLon,
-        double thresholdLat, double thresholdLon,
-        double localizerHeading)
-    {
-        // Convert to radians
-        double lat1 = thresholdLat * DEGREES_TO_RADIANS;
-        double lon1 = thresholdLon * DEGREES_TO_RADIANS;
-        double lat2 = aircraftLat * DEGREES_TO_RADIANS;
-        double lon2 = aircraftLon * DEGREES_TO_RADIANS;
-        double locHeadingRad = localizerHeading * DEGREES_TO_RADIANS;
-
-        // Calculate distance from threshold to aircraft (angular distance)
-        double deltaLat = lat2 - lat1;
-        double deltaLon = lon2 - lon1;
-        double a = Math.Sin(deltaLat / 2) * Math.Sin(deltaLat / 2) +
-                   Math.Cos(lat1) * Math.Cos(lat2) *
-                   Math.Sin(deltaLon / 2) * Math.Sin(deltaLon / 2);
-        double angularDistance = 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
-
-        // Calculate bearing from threshold to aircraft
-        double y = Math.Sin(deltaLon) * Math.Cos(lat2);
-        double x = Math.Cos(lat1) * Math.Sin(lat2) -
-                   Math.Sin(lat1) * Math.Cos(lat2) * Math.Cos(deltaLon);
-        double bearingToAircraft = Math.Atan2(y, x);
-
-        // Calculate along-track distance (distance along centerline from threshold to perpendicular point)
-        // This uses the great-circle formula to find the signed distance along the approach path.
-        // Positive values = aircraft is ahead of threshold (approaching)
-        // Negative values = aircraft is behind threshold (passed or extending)
-        double alongTrackDistanceRad = Math.Atan2(
-            Math.Sin(angularDistance) * Math.Cos(bearingToAircraft - locHeadingRad),
-            Math.Cos(angularDistance));
-
-        // Convert from radians to nautical miles
-        return alongTrackDistanceRad * EARTH_RADIUS_NM;
-    }
-
-    /// <summary>
     /// Calculates the perpendicular intercept point on the localizer centerline.
     /// This is the point on the extended centerline that is closest to the aircraft's current position.
     /// </summary>
