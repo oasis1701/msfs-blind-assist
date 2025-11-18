@@ -89,8 +89,7 @@ public class VisualGuidanceManager : IDisposable
     // Calculate glideslope angle to pass through stabilization gate: atan(3000 ft / (9 NM × 6076 ft/NM)) ≈ 3.14°
     private const double GLIDESLOPE_ANGLE_DEG = 3.143;   // Modified glideslope for 3000 ft at 9 NM
 
-    private const double TOUCHDOWN_AIM_POINT_FT = 1500.0;  // Aim point distance from threshold
-    private const double TOUCHDOWN_AIM_POINT_RATIO = 0.2;  // Use 20% of runway length for short runways
+    private const double TOUCHDOWN_AIM_POINT_FT = 500.0;  // Aim point distance from threshold
 
     // Lateral guidance gains (tuned for blind pilot manual landing with audio guidance)
     private const double LATERAL_GAIN_INTERCEPT = 0.5;   // Heading error to bank for intercept
@@ -110,7 +109,7 @@ public class VisualGuidanceManager : IDisposable
     private const double TYPICAL_APPROACH_AOA = 6.0;     // Typical angle of attack for A320 approach configuration
     private const double MAX_PITCH_RATE_DEG_PER_SEC = 2.5;  // Maximum pitch command change rate
     private const double GLIDESLOPE_SMOOTHING_FACTOR = 0.7;  // Exponential smoothing for glideslope deviation (0.7 = moderate filtering)
-    private const double CROSS_TRACK_RATE_SMOOTHING_FACTOR = 0.6;  // Exponential smoothing for cross-track rate (0.6 = slightly more responsive)
+    private const double CROSS_TRACK_RATE_SMOOTHING_FACTOR = 0.85;  // Exponential smoothing for cross-track rate (0.85 = strong filtering to prevent noise spikes)
     private const double FPM_PER_DEGREE_PITCH = 175.0;   // Typical vertical speed change per degree of pitch at approach speeds (legacy, may remove)
 
     public bool IsActive => isActive;
@@ -163,13 +162,11 @@ public class VisualGuidanceManager : IDisposable
         thresholdElevationMSL = destinationAirport.Altitude;
 
         // Calculate touchdown aim point (offset from threshold for safe touchdown zone)
-        double runwayLengthFeet = destinationRunway.Length * 3.28084;  // Convert meters to feet
-        double touchdownDistanceFeet = Math.Min(TOUCHDOWN_AIM_POINT_FT, runwayLengthFeet * TOUCHDOWN_AIM_POINT_RATIO);
         (touchdownAimPointLat, touchdownAimPointLon) = NavigationCalculator.CalculateTouchdownAimPoint(
             destinationRunway.StartLat,
             destinationRunway.StartLon,
             destinationRunway.Heading,
-            touchdownDistanceFeet);
+            TOUCHDOWN_AIM_POINT_FT);
 
         // Reset state
         currentPhase = GuidancePhase.NotStarted;
@@ -459,23 +456,24 @@ public class VisualGuidanceManager : IDisposable
                     // Apply exponential smoothing to reduce noise (prevents oscillation during phase handoff)
                     if (smoothedCrossTrackRate.HasValue)
                     {
-                        // If raw rate is exactly zero (measurement noise), keep previous smoothed value
-                        if (rawCrossTrackRate == 0.0)
-                        {
-                            crossTrackRate = smoothedCrossTrackRate.Value;
-                        }
-                        else
-                        {
-                            crossTrackRate = CROSS_TRACK_RATE_SMOOTHING_FACTOR * smoothedCrossTrackRate.Value +
-                                            (1.0 - CROSS_TRACK_RATE_SMOOTHING_FACTOR) * rawCrossTrackRate;
-                        }
+                        crossTrackRate = CROSS_TRACK_RATE_SMOOTHING_FACTOR * smoothedCrossTrackRate.Value +
+                                        (1.0 - CROSS_TRACK_RATE_SMOOTHING_FACTOR) * rawCrossTrackRate;
                     }
                     else
                     {
                         crossTrackRate = rawCrossTrackRate;
                     }
+
                     smoothedCrossTrackRate = crossTrackRate;
                 }
+            }
+
+            // Apply floor to prevent zero-rate spikes causing H term explosion
+            // Floor of 0.005 gives 87.5% max H term strength when established
+            // Applied OUTSIDE deltaTime check to catch default 0.0 when updates come too fast
+            if (Math.Abs(crossTrackRate) < 0.005)
+            {
+                crossTrackRate = 0.005 * (crossTrackRate >= 0 ? 1 : -1);
             }
 
             // Update tracking state for next iteration
