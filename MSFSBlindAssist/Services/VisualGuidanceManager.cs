@@ -96,7 +96,7 @@ public class VisualGuidanceManager : IDisposable
     private const double LATERAL_GAIN_TRACKING = 6.0;    // Cross-track error (NM) to bank for tracking
     private const double LATERAL_RATE_DAMPING = 12.0;    // Cross-track rate damping
     private const double LATERAL_INTEGRAL_GAIN = 0.0;    // Disabled - human tracking lag makes integral counterproductive
-    private const double LATERAL_HEADING_GAIN = 0.3;     // Track/heading error to bank for alignment
+    private const double LATERAL_HEADING_GAIN = 1.0;     // Track/heading error to bank for alignment (Boeing 747: 1.0-2.8)
     private const double INTEGRAL_LIMIT_LATERAL = 10.0;  // Anti-windup limit (bank degrees)
     private const double AIRSPEED_REFERENCE_KNOTS = 140.0;  // Reference speed for gain scaling
     private const double MAX_BANK_RATE_DEG_PER_SEC = 5.0;   // Maximum bank command change rate
@@ -513,43 +513,43 @@ public class VisualGuidanceManager : IDisposable
             // Phase determination and target heading calculation
             if (absXTE > 2.0)
             {
-                // INTERCEPT PHASE 1: Far from centerline - 30° intercept (conservative)
-                double interceptAngle = 30.0;
+                // INTERCEPT PHASE 1: Far from centerline - 45° intercept (steeper for faster capture)
+                double interceptAngle = 45.0;
                 double targetHeading = signedCrossTrackNM < 0
                     ? runway.HeadingMag + interceptAngle  // Left of centerline, fly right of runway heading
                     : runway.HeadingMag - interceptAngle; // Right of centerline, fly left of runway heading
                 targetHeading = NormalizeHeading(targetHeading);
 
                 desiredBank = CalculateHeadingInterceptBank(targetHeading, actualTrackAngle);
-                guidancePhase = "INTERCEPT_30";
+                guidancePhase = "INTERCEPT_45";
             }
             else if (absXTE > 1.0)
             {
-                // INTERCEPT PHASE 2: Medium distance - 20° intercept
-                double interceptAngle = 20.0;
+                // INTERCEPT PHASE 2: Medium distance - 30° intercept
+                double interceptAngle = 30.0;
                 double targetHeading = signedCrossTrackNM < 0
                     ? runway.HeadingMag + interceptAngle
                     : runway.HeadingMag - interceptAngle;
                 targetHeading = NormalizeHeading(targetHeading);
 
                 desiredBank = CalculateHeadingInterceptBank(targetHeading, actualTrackAngle);
-                guidancePhase = "INTERCEPT_20";
+                guidancePhase = "INTERCEPT_30";
             }
-            else if (absXTE > 0.5)
+            else if (absXTE > 0.25)
             {
-                // INTERCEPT PHASE 3: Approaching centerline - 10° intercept (gentle)
-                double interceptAngle = 10.0;
+                // INTERCEPT PHASE 3: Approaching centerline - 15° intercept
+                double interceptAngle = 15.0;
                 double targetHeading = signedCrossTrackNM < 0
                     ? runway.HeadingMag + interceptAngle
                     : runway.HeadingMag - interceptAngle;
                 targetHeading = NormalizeHeading(targetHeading);
 
                 desiredBank = CalculateHeadingInterceptBank(targetHeading, actualTrackAngle);
-                guidancePhase = "INTERCEPT_10";
+                guidancePhase = "INTERCEPT_15";
             }
             else
             {
-                // CAPTURE/TRACK PHASE: Close to centerline - Use PD controller
+                // CAPTURE/TRACK PHASE: Close to centerline (<0.25 NM) - Use PDH controller
                 // Optimized for blind pilot manual landing - tight tracking required!
                 guidancePhase = "CAPTURE_TRACK";
 
@@ -560,9 +560,18 @@ public class VisualGuidanceManager : IDisposable
                 double proportionalTerm = -signedCrossTrackNM * LATERAL_GAIN_TRACKING * speedFactor;
                 double integralTerm = -crossTrackIntegral * LATERAL_INTEGRAL_GAIN * speedFactor;
                 double derivativeTerm = -crossTrackRate * LATERAL_RATE_DAMPING * speedFactor;
-                double headingTerm = trackAngleError * LATERAL_HEADING_GAIN * speedFactor;
+
+                // Scale H term based on distance AND rate
+                // H term weak when far from centerline (let P dominate for capture)
+                // H term weak when moving fast (let D dominate to stop drift)
+                // H term strong only when established (near centerline AND low rate)
+                double distanceScale = Math.Clamp(1.0 - (Math.Abs(signedCrossTrackNM) - 0.1) / 0.4, 0.0, 1.0);
+                double rateScale = Math.Clamp(1.0 - Math.Abs(crossTrackRate) / 0.04, 0.0, 1.0);  // Fades to zero at 0.04 NM/s
+                double hTermScale = distanceScale * rateScale;
+                double headingTerm = trackAngleError * LATERAL_HEADING_GAIN * speedFactor * hTermScale;
 
                 double rawDesiredBank = proportionalTerm + integralTerm + derivativeTerm + headingTerm;
+                double originalRawBank = rawDesiredBank;  // Save before rate limiting
 
                 // Bank rate limiting
                 double maxBankChange = MAX_BANK_RATE_DEG_PER_SEC * 1.0;
@@ -581,12 +590,25 @@ public class VisualGuidanceManager : IDisposable
                 double distanceNM = NavigationCalculator.CalculateDistance(
                     lat, lon, runway.StartLat, runway.StartLon);
 
-                // Detailed PD controller debug output
+                // Detailed PDH controller debug output
                 // Shows individual term contributions to diagnose control law issues
                 System.Diagnostics.Debug.WriteLine(
                     $"[VisualGuidance] {guidancePhase}: XTE={signedCrossTrackNM:F3}NM, Rate={crossTrackRate:F3}NM/s, " +
-                    $"Dist={distanceNM:F1}NM, PD: P={proportionalTerm:F2}° D={derivativeTerm:F2}° → Bank={desiredBank:F1}°, " +
-                    $"TrkErr={trackAngleError:F1}° (log only), GS={currentGroundSpeedKnots:F0}kt");
+                    $"TrkErr={trackAngleError:F1}°, Dist={distanceNM:F1}NM, GS={currentGroundSpeedKnots:F0}kt");
+
+                // Determine limiting type for debug output
+                string limitingType = "";
+                if (Math.Abs(originalRawBank - desiredBank) > 0.1)
+                {
+                    if (Math.Abs(originalRawBank - rawDesiredBank) > 0.1)
+                        limitingType = " (rate limited)";
+                    else
+                        limitingType = " (bank limited)";
+                }
+
+                System.Diagnostics.Debug.WriteLine(
+                    $"[VisualGuidance] PDH: P={proportionalTerm:F2}° D={derivativeTerm:F2}° H={headingTerm:F2}°(×{hTermScale:F2}) I={integralTerm:F2}° " +
+                    $"= Raw={originalRawBank:F2}° → Bank={desiredBank:F1}°{limitingType}");
             }
 
             // Update for next iteration
@@ -956,8 +978,8 @@ public class VisualGuidanceManager : IDisposable
             // Check if we're on the correct path (commanded bank ≈ 0°)
             bool onCorrectPath = Math.Abs(desiredBankDegrees) < 0.5;  // Within 0.5° of 0 is "on path"
 
-            // Check if actual bank matches commanded bank (within 1.0° tolerance)
-            bool matched = Math.Abs(bankError) <= 1.0;
+            // Check if actual bank matches commanded bank (within 0.4° tolerance)
+            bool matched = Math.Abs(bankError) <= 0.4;
 
             if (matched)
             {
