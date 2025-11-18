@@ -604,9 +604,9 @@ public class VisualGuidanceManager : IDisposable
                     rawDesiredBank = previousDesiredBank + Math.Sign(bankChange) * maxBankChange;
                 }
 
-                // Small bank limit - gentle but persistent corrections
-                // 7° provides clear audio feedback without aggressive maneuvering
-                double bankLimit = 7.0;
+                // Bank limit for CAPTURE_TRACK phase
+                // 25° allows strong corrections to prevent overshoot while PD controller scales appropriately
+                double bankLimit = 25.0;
                 desiredBank = Math.Clamp(rawDesiredBank, -bankLimit, bankLimit);
 
                 // Calculate distance to threshold for debugging
