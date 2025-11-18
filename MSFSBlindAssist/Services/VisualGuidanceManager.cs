@@ -702,22 +702,16 @@ public class VisualGuidanceManager : IDisposable
         {
             // Enhanced PD controller with absolute pitch commands (no feedback coupling)
 
-            // Calculate along-track distance (progress along approach path, independent of lateral deviation)
-            // CRITICAL: Use along-track distance instead of straight-line distance for glideslope calculations.
-            // When aircraft is off-centerline, straight-line distance is longer than along-track distance,
-            // causing the system to think it should be at a higher altitude, commanding dangerous pitch-down.
-            // Example: 2 NM off-centerline at 10 NM from threshold creates ~200 ft altitude error.
-            double alongTrackDistance = NavigationCalculator.CalculateAlongTrackDistance(
-                lat, lon, runway.StartLat, runway.StartLon, runway.Heading);
-
-            // Use absolute value - glideslope altitude depends on distance regardless of being ahead/behind
-            // (Behind threshold is already handled by Extending phase check on line 679)
-            double distanceFromThreshold = Math.Abs(alongTrackDistance);
+            // Calculate direct distance to touchdown aim point (1500 ft past threshold)
+            // Using direct distance instead of along-track distance for stability - avoids oscillation
+            // from centerline projection calculations when aircraft has lateral deviation.
+            double distanceToTouchdown = NavigationCalculator.CalculateDistance(
+                lat, lon, touchdownAimPointLat, touchdownAimPointLon);
 
             // Calculate raw glideslope deviation (positive = above glideslope)
             double rawGlideslopeDeviation = NavigationCalculator.CalculateGlideslopeDeviation(
                 altMSL,                                      // Aircraft altitude MSL
-                distanceFromThreshold,                       // Along-track distance from threshold in NM
+                distanceToTouchdown,                         // Direct distance to touchdown aim point in NM
                 GLIDESLOPE_ANGLE_DEG,                        // 3-degree glideslope
                 thresholdElevationMSL);                      // Threshold elevation MSL
 
