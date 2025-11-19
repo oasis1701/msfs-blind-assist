@@ -89,7 +89,7 @@ public class VisualGuidanceManager : IDisposable
     // Calculate glideslope angle to pass through stabilization gate: atan(3000 ft / (9 NM × 6076 ft/NM)) ≈ 3.14°
     private const double GLIDESLOPE_ANGLE_DEG = 3.143;   // Modified glideslope for 3000 ft at 9 NM
 
-    private const double TOUCHDOWN_AIM_POINT_FT = 500.0;  // Aim point distance from threshold
+    private const double TOUCHDOWN_AIM_POINT_FT = 100.0;  // Aim point distance from threshold
 
     // Lateral guidance gains (tuned for blind pilot manual landing with audio guidance)
     private const double LATERAL_GAIN_INTERCEPT = 0.5;   // Heading error to bank for intercept
@@ -792,7 +792,7 @@ public class VisualGuidanceManager : IDisposable
             // Derivative: Dampen based on rate of altitude error change
             double proportionalTerm = -normalizedGSError * VERTICAL_GAIN;
             double integralTerm = -glideslopeIntegral * VERTICAL_INTEGRAL_GAIN;
-            double derivativeTerm = glideslopeRate * VERTICAL_RATE_DAMPING;
+            double derivativeTerm = -glideslopeRate * VERTICAL_RATE_DAMPING;
 
             double rawDesiredPitch = nominalPitch + proportionalTerm + integralTerm + derivativeTerm;
 
