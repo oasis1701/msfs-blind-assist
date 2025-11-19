@@ -108,6 +108,7 @@ public class HotkeyManager : IDisposable
         private const int HOTKEY_HANDFLY_RUNWAY_DISTANCE = 9081;
         private const int HOTKEY_HANDFLY_BANK_ANGLE = 9082;
         private const int HOTKEY_HANDFLY_PITCH = 9083;
+        private const int HOTKEY_HANDFLY_ALTITUDE_MSL = 9084;
 
         private IntPtr windowHandle;
         private bool outputHotkeyModeActive = false;
@@ -178,12 +179,15 @@ public class HotkeyManager : IDisposable
                             TriggerHotkey(HotkeyAction.ReadFCUVerticalSpeedFPA);
                             break;
                         case HOTKEY_ALTITUDE_AGL:
+                        case HOTKEY_HANDFLY_ALTITUDE_AGL:
                             TriggerHotkey(HotkeyAction.ReadAltitudeAGL);
                             break;
                         case HOTKEY_ALTITUDE_MSL:
+                        case HOTKEY_HANDFLY_ALTITUDE_MSL:
                             TriggerHotkey(HotkeyAction.ReadAltitudeMSL);
                             break;
                         case HOTKEY_AIRSPEED_IND:
+                        case HOTKEY_HANDFLY_SPEED:
                             TriggerHotkey(HotkeyAction.ReadAirspeedIndicated);
                             break;
                         case HOTKEY_AIRSPEED_TRUE:
@@ -196,9 +200,11 @@ public class HotkeyManager : IDisposable
                             TriggerHotkey(HotkeyAction.ReadMachSpeed);
                             break;
                         case HOTKEY_VERTICAL_SPEED:
+                        case HOTKEY_HANDFLY_VERTICAL_SPEED:
                             TriggerHotkey(HotkeyAction.ReadVerticalSpeed);
                             break;
                         case HOTKEY_HEADING_MAGNETIC:
+                        case HOTKEY_HANDFLY_HEADING:
                             TriggerHotkey(HotkeyAction.ReadHeadingMagnetic);
                             break;
                         case HOTKEY_HEADING_TRUE:
@@ -425,6 +431,10 @@ public class HotkeyManager : IDisposable
                             System.Diagnostics.Debug.WriteLine("Hand fly hotkeys: Triggering ReadPitch");
                             TriggerHotkey(HotkeyAction.ReadPitch);
                             break;
+                        case HOTKEY_HANDFLY_ALTITUDE_MSL:
+                            System.Diagnostics.Debug.WriteLine("Hand fly hotkeys: Triggering ReadAltitudeMSL");
+                            TriggerHotkey(HotkeyAction.ReadAltitudeMSL);
+                            break;
                         default:
                             System.Diagnostics.Debug.WriteLine($"Hand fly hotkeys: Unknown hotkey ID {hotkeyId}");
                             break;
@@ -448,15 +458,15 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_FCU_VSFPA, MOD_SHIFT, 0x56); // Shift+V (FCU VS/FPA)
 
             // Register new hotkeys without modifiers
-            // Skip H, V, Q, S if hand fly hotkeys are active (to prevent conflicts)
+            // Skip H, V, Q, S, A if hand fly hotkeys are active (to prevent conflicts)
             if (!handFlyHotkeysActive)
             {
                 RegisterHotKey(windowHandle, HOTKEY_ALTITUDE_AGL, MOD_NONE, 0x51); // Q (Altitude AGL)
                 RegisterHotKey(windowHandle, HOTKEY_VERTICAL_SPEED, MOD_NONE, 0x56); // V (Vertical Speed)
                 RegisterHotKey(windowHandle, HOTKEY_HEADING_MAGNETIC, MOD_NONE, 0x48); // H (Magnetic Heading)
                 RegisterHotKey(windowHandle, HOTKEY_AIRSPEED_IND, MOD_NONE, 0x53); // S (Airspeed Indicated)
+                RegisterHotKey(windowHandle, HOTKEY_ALTITUDE_MSL, MOD_NONE, 0x41); // A (Altitude MSL)
             }
-            RegisterHotKey(windowHandle, HOTKEY_ALTITUDE_MSL, MOD_NONE, 0x41); // A (Altitude MSL)
             RegisterHotKey(windowHandle, HOTKEY_AIRSPEED_TRUE, MOD_NONE, 0x54); // T (Airspeed True)
             RegisterHotKey(windowHandle, HOTKEY_GROUND_SPEED, MOD_NONE, 0x47); // G (Ground Speed)
             RegisterHotKey(windowHandle, HOTKEY_MACH_SPEED, MOD_NONE, 0x4D); // M (Mach Speed)
@@ -519,15 +529,15 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_SPEED);
             UnregisterHotKey(windowHandle, HOTKEY_ALTITUDE);
             UnregisterHotKey(windowHandle, HOTKEY_FCU_VSFPA);
-            // Only unregister H, V, Q, S if hand fly hotkeys aren't active
+            // Only unregister H, V, Q, S, A if hand fly hotkeys aren't active
             if (!handFlyHotkeysActive)
             {
                 UnregisterHotKey(windowHandle, HOTKEY_ALTITUDE_AGL);
                 UnregisterHotKey(windowHandle, HOTKEY_VERTICAL_SPEED);
                 UnregisterHotKey(windowHandle, HOTKEY_HEADING_MAGNETIC);
                 UnregisterHotKey(windowHandle, HOTKEY_AIRSPEED_IND);
+                UnregisterHotKey(windowHandle, HOTKEY_ALTITUDE_MSL);
             }
-            UnregisterHotKey(windowHandle, HOTKEY_ALTITUDE_MSL);
             UnregisterHotKey(windowHandle, HOTKEY_AIRSPEED_TRUE);
             UnregisterHotKey(windowHandle, HOTKEY_GROUND_SPEED);
             UnregisterHotKey(windowHandle, HOTKEY_MACH_SPEED);
@@ -686,7 +696,7 @@ public class HotkeyManager : IDisposable
 
             System.Diagnostics.Debug.WriteLine("Hand fly hotkeys: Attempting registration...");
 
-            // Register H, V, Q, S, D, B, P without modifiers for global access
+            // Register H, V, Q, S, D, B, P, A without modifiers for global access
             bool hRegistered = RegisterHotKey(windowHandle, HOTKEY_HANDFLY_HEADING, MOD_NONE, 0x48);         // H (Heading)
             bool vRegistered = RegisterHotKey(windowHandle, HOTKEY_HANDFLY_VERTICAL_SPEED, MOD_NONE, 0x56); // V (Vertical Speed)
             bool qRegistered = RegisterHotKey(windowHandle, HOTKEY_HANDFLY_ALTITUDE_AGL, MOD_NONE, 0x51);   // Q (Altitude AGL)
@@ -694,11 +704,12 @@ public class HotkeyManager : IDisposable
             bool dRegistered = RegisterHotKey(windowHandle, HOTKEY_HANDFLY_RUNWAY_DISTANCE, MOD_NONE, 0x44); // D (Runway Distance)
             bool bRegistered = RegisterHotKey(windowHandle, HOTKEY_HANDFLY_BANK_ANGLE, MOD_NONE, 0x42);     // B (Bank Angle)
             bool pRegistered = RegisterHotKey(windowHandle, HOTKEY_HANDFLY_PITCH, MOD_NONE, 0x50);          // P (Pitch)
+            bool aRegistered = RegisterHotKey(windowHandle, HOTKEY_HANDFLY_ALTITUDE_MSL, MOD_NONE, 0x41);   // A (Altitude MSL)
 
-            System.Diagnostics.Debug.WriteLine($"Hand fly hotkeys: H={hRegistered}, V={vRegistered}, Q={qRegistered}, S={sRegistered}, D={dRegistered}, B={bRegistered}, P={pRegistered}");
+            System.Diagnostics.Debug.WriteLine($"Hand fly hotkeys: H={hRegistered}, V={vRegistered}, Q={qRegistered}, S={sRegistered}, D={dRegistered}, B={bRegistered}, P={pRegistered}, A={aRegistered}");
 
             // Only mark as active if ALL registrations succeeded
-            if (hRegistered && vRegistered && qRegistered && sRegistered && dRegistered && bRegistered && pRegistered)
+            if (hRegistered && vRegistered && qRegistered && sRegistered && dRegistered && bRegistered && pRegistered && aRegistered)
             {
                 handFlyHotkeysActive = true;
                 System.Diagnostics.Debug.WriteLine("Hand fly hotkeys: All registered successfully");
@@ -715,6 +726,7 @@ public class HotkeyManager : IDisposable
                 if (dRegistered) UnregisterHotKey(windowHandle, HOTKEY_HANDFLY_RUNWAY_DISTANCE);
                 if (bRegistered) UnregisterHotKey(windowHandle, HOTKEY_HANDFLY_BANK_ANGLE);
                 if (pRegistered) UnregisterHotKey(windowHandle, HOTKEY_HANDFLY_PITCH);
+                if (aRegistered) UnregisterHotKey(windowHandle, HOTKEY_HANDFLY_ALTITUDE_MSL);
                 return false;
             }
         }
@@ -738,6 +750,7 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_HANDFLY_RUNWAY_DISTANCE);
             UnregisterHotKey(windowHandle, HOTKEY_HANDFLY_BANK_ANGLE);
             UnregisterHotKey(windowHandle, HOTKEY_HANDFLY_PITCH);
+            UnregisterHotKey(windowHandle, HOTKEY_HANDFLY_ALTITUDE_MSL);
 
             System.Diagnostics.Debug.WriteLine("Hand fly hotkeys: Unregistered successfully");
         }

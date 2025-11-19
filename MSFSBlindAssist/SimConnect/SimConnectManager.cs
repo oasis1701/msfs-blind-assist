@@ -1146,7 +1146,7 @@ public class SimConnectManager
 
             case (DATA_REQUESTS)312: // Pitch
                 SingleValue pitchData = (SingleValue)data.dwData[0];
-                double pitchInDegrees = pitchData.value * (180.0 / Math.PI); // Convert radians to degrees
+                double pitchInDegrees = -(pitchData.value * (180.0 / Math.PI)); // Convert radians to degrees and negate (SimConnect: negative = nose up)
                 string pitchFormatted = pitchInDegrees >= 0
                     ? $"+{pitchInDegrees:F1}"
                     : $"{pitchInDegrees:F1}";
