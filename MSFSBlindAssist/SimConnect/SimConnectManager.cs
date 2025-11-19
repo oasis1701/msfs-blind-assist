@@ -3778,10 +3778,11 @@ public class SimConnectManager
                         position.Latitude, position.Longitude,
                         destinationRunway.StartLat, destinationRunway.StartLon);
 
-                    // Calculate bearing to runway
-                    double bearing = NavigationCalculator.CalculateBearing(
+                    // Calculate magnetic bearing to runway
+                    double bearing = NavigationCalculator.CalculateMagneticBearing(
                         position.Latitude, position.Longitude,
-                        destinationRunway.StartLat, destinationRunway.StartLon);
+                        destinationRunway.StartLat, destinationRunway.StartLon,
+                        position.MagneticVariation);
 
                     // Format announcement with runway identifier
                     string announcement = $"{distance:F1} miles to runway {destinationRunway.RunwayID} at {destinationAirport.ICAO}, bearing {bearing:000} degrees";
