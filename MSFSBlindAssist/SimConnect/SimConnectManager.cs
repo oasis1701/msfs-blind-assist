@@ -2091,8 +2091,8 @@ public class SimConnectManager
             {
                 // On centerline - just track it
                 double localizerMagneticHeading = (ilsData.LocalizerHeading - data.MagneticVariation + 360) % 360;
-                announcement = $"{rangeWarning}{distanceToThreshold:F1} nautical miles from threshold, on centerline. " +
-                              $"Fly runway heading {localizerMagneticHeading:000} to track the localizer.{glideslopeInfo}";
+                announcement = $"{rangeWarning}{distanceToThreshold:F1} nautical miles from threshold, on centerline.{glideslopeInfo} " +
+                              $"Runway heading {localizerMagneticHeading:000}.";
             }
             else
             {
@@ -2108,10 +2108,10 @@ public class SimConnectManager
 
                 announcement = $"{rangeWarning}{distanceToThreshold:F1} nautical miles from threshold, " +
                               $"{distanceToLocalizer:F1} nautical miles {direction} of centerline, " +
-                              $"{Math.Abs(crossTrackError):F0} degrees {direction} of centerline. " +
-                              $"You can join with heading {directHeading:000} for direct intercept, " +
-                              $"{mediumHeading:000} for medium intercept, " +
-                              $"or {shallowHeading:000} for shallow intercept.{glideslopeInfo}";
+                              $"{Math.Abs(crossTrackError):F0} degrees {direction} of centerline.{glideslopeInfo} " +
+                              $"Fly heading {directHeading:000} for 60 degree intercept, " +
+                              $"{mediumHeading:000} for 45 degree intercept, " +
+                              $"or {shallowHeading:000} for 30 degree intercept.";
             }
 
             SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
