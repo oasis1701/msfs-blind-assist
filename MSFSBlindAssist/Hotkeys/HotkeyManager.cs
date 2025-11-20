@@ -110,7 +110,11 @@ public class HotkeyManager : IDisposable
         private const int HOTKEY_HANDFLY_PITCH = 9083;
         private const int HOTKEY_HANDFLY_ALTITUDE_MSL = 9084;
 
+        // Visual guidance mode hotkey IDs
+        private const int HOTKEY_VISUAL_TARGET_FPM = 9090;
+
         private IntPtr windowHandle;
+        private bool visualGuidanceHotkeysActive = false;
         private bool outputHotkeyModeActive = false;
         private bool inputHotkeyModeActive = false;
         private bool handFlyHotkeysActive = false;
@@ -435,11 +439,33 @@ public class HotkeyManager : IDisposable
                             System.Diagnostics.Debug.WriteLine("Hand fly hotkeys: Triggering ReadAltitudeMSL");
                             TriggerHotkey(HotkeyAction.ReadAltitudeMSL);
                             break;
+                        case HOTKEY_VISUAL_TARGET_FPM:
+                            System.Diagnostics.Debug.WriteLine("Hand fly hotkeys: Triggering ReadTargetFPM for visual guidance");
+                            TriggerHotkey(HotkeyAction.ReadTargetFPM);
+                            break;
                         default:
                             System.Diagnostics.Debug.WriteLine($"Hand fly hotkeys: Unknown hotkey ID {hotkeyId}");
                             break;
                     }
                     // Don't deactivate - these stay active until hand fly mode is disabled
+                    return true;
+                }
+                else if (visualGuidanceHotkeysActive)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Visual guidance hotkeys: Received WM_HOTKEY with ID {hotkeyId}");
+
+                    // Handle visual guidance mode hotkeys (F)
+                    switch (hotkeyId)
+                    {
+                        case HOTKEY_VISUAL_TARGET_FPM:
+                            System.Diagnostics.Debug.WriteLine("Visual guidance hotkeys: Triggering ReadTargetFPM");
+                            TriggerHotkey(HotkeyAction.ReadTargetFPM);
+                            break;
+                        default:
+                            System.Diagnostics.Debug.WriteLine($"Visual guidance hotkeys: Unknown hotkey ID {hotkeyId}");
+                            break;
+                    }
+                    // Don't deactivate - these stay active until visual guidance mode is disabled
                     return true;
                 }
             }
@@ -705,11 +731,12 @@ public class HotkeyManager : IDisposable
             bool bRegistered = RegisterHotKey(windowHandle, HOTKEY_HANDFLY_BANK_ANGLE, MOD_NONE, 0x42);     // B (Bank Angle)
             bool pRegistered = RegisterHotKey(windowHandle, HOTKEY_HANDFLY_PITCH, MOD_NONE, 0x50);          // P (Pitch)
             bool aRegistered = RegisterHotKey(windowHandle, HOTKEY_HANDFLY_ALTITUDE_MSL, MOD_NONE, 0x41);   // A (Altitude MSL)
+            bool fRegistered = RegisterHotKey(windowHandle, HOTKEY_VISUAL_TARGET_FPM, MOD_NONE, 0x46);    // F (Target FPM for visual guidance)
 
-            System.Diagnostics.Debug.WriteLine($"Hand fly hotkeys: H={hRegistered}, V={vRegistered}, Q={qRegistered}, S={sRegistered}, D={dRegistered}, B={bRegistered}, P={pRegistered}, A={aRegistered}");
+            System.Diagnostics.Debug.WriteLine($"Hand fly hotkeys: H={hRegistered}, V={vRegistered}, Q={qRegistered}, S={sRegistered}, D={dRegistered}, B={bRegistered}, P={pRegistered}, A={aRegistered}, F={fRegistered}");
 
             // Only mark as active if ALL registrations succeeded
-            if (hRegistered && vRegistered && qRegistered && sRegistered && dRegistered && bRegistered && pRegistered && aRegistered)
+            if (hRegistered && vRegistered && qRegistered && sRegistered && dRegistered && bRegistered && pRegistered && aRegistered && fRegistered)
             {
                 handFlyHotkeysActive = true;
                 System.Diagnostics.Debug.WriteLine("Hand fly hotkeys: All registered successfully");
@@ -727,6 +754,7 @@ public class HotkeyManager : IDisposable
                 if (bRegistered) UnregisterHotKey(windowHandle, HOTKEY_HANDFLY_BANK_ANGLE);
                 if (pRegistered) UnregisterHotKey(windowHandle, HOTKEY_HANDFLY_PITCH);
                 if (aRegistered) UnregisterHotKey(windowHandle, HOTKEY_HANDFLY_ALTITUDE_MSL);
+                if (fRegistered) UnregisterHotKey(windowHandle, HOTKEY_VISUAL_TARGET_FPM);
                 return false;
             }
         }
@@ -751,8 +779,60 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_HANDFLY_BANK_ANGLE);
             UnregisterHotKey(windowHandle, HOTKEY_HANDFLY_PITCH);
             UnregisterHotKey(windowHandle, HOTKEY_HANDFLY_ALTITUDE_MSL);
+            UnregisterHotKey(windowHandle, HOTKEY_VISUAL_TARGET_FPM);
 
             System.Diagnostics.Debug.WriteLine("Hand fly hotkeys: Unregistered successfully");
+        }
+
+        /// <summary>
+        /// Registers F key hotkey for visual guidance mode (target FPM)
+        /// Note: F is now registered with hand-fly hotkeys, this method is kept for compatibility
+        /// </summary>
+        public bool RegisterVisualGuidanceHotkeys()
+        {
+            if (visualGuidanceHotkeysActive)
+            {
+                System.Diagnostics.Debug.WriteLine("Visual guidance hotkeys: Skipped registration (already active)");
+                return false;
+            }
+
+            System.Diagnostics.Debug.WriteLine("Visual guidance hotkeys: Attempting registration...");
+
+            // Register F key without modifiers for target FPM
+            bool fRegistered = RegisterHotKey(windowHandle, HOTKEY_VISUAL_TARGET_FPM, MOD_NONE, 0x46); // F (Target FPM)
+
+            System.Diagnostics.Debug.WriteLine($"Visual guidance hotkeys: F={fRegistered}");
+
+            if (fRegistered)
+            {
+                visualGuidanceHotkeysActive = true;
+                System.Diagnostics.Debug.WriteLine("Visual guidance hotkeys: Registered successfully");
+                return true;
+            }
+            else
+            {
+                System.Diagnostics.Debug.WriteLine("Visual guidance hotkeys: Registration failed");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Unregisters visual guidance mode hotkeys
+        /// </summary>
+        public void UnregisterVisualGuidanceHotkeys()
+        {
+            if (!visualGuidanceHotkeysActive)
+            {
+                System.Diagnostics.Debug.WriteLine("Visual guidance hotkeys: Unregister skipped (not active)");
+                return;
+            }
+
+            System.Diagnostics.Debug.WriteLine("Visual guidance hotkeys: Unregistering...");
+            visualGuidanceHotkeysActive = false;
+
+            UnregisterHotKey(windowHandle, HOTKEY_VISUAL_TARGET_FPM);
+
+            System.Diagnostics.Debug.WriteLine("Visual guidance hotkeys: Unregistered successfully");
         }
 
         public void Cleanup()
@@ -777,6 +857,11 @@ public class HotkeyManager : IDisposable
                 if (handFlyHotkeysActive)
                 {
                     UnregisterHandFlyHotkeys();
+                }
+
+                if (visualGuidanceHotkeysActive)
+                {
+                    UnregisterVisualGuidanceHotkeys();
                 }
 
                 // Unregister main hotkeys
@@ -869,5 +954,6 @@ public class HotkeyManager : IDisposable
         DescribeScene,
         ShowTrackFixWindow,
         ReadBankAngle,
-        ReadPitch
+        ReadPitch,
+        ReadTargetFPM
     }

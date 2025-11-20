@@ -959,6 +959,18 @@ public partial class MainForm : Form
             case HotkeyAction.ToggleVisualGuidance:
                 ToggleVisualGuidance();
                 break;
+            case HotkeyAction.ReadTargetFPM:
+                if (visualGuidanceManager.IsActive)
+                {
+                    double targetFPM = visualGuidanceManager.GetTargetFPM();
+                    string sign = targetFPM < 0 ? "minus " : "";
+                    announcer.AnnounceImmediate($"Target {sign}{Math.Abs(targetFPM):F0} feet per minute");
+                }
+                else
+                {
+                    announcer.AnnounceImmediate("Visual guidance not active");
+                }
+                break;
             case HotkeyAction.ReadTrackSlot1:
                 ReadTrackedWaypoint(1);
                 break;

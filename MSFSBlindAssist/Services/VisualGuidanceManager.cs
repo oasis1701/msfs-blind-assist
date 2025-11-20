@@ -42,6 +42,8 @@ public class VisualGuidanceManager : IDisposable
     private double currentGroundSpeedKnots = 0.0;
     private double currentVerticalSpeedFPM = 0.0;
     private double currentPitch = 0.0;
+    private double? smoothedCurrentFPM = null;  // Smoothed vertical speed for FPM-based guidance
+    private double lastCalculatedTargetFPM = 0.0;  // Last calculated target FPM for hotkey announcement
 
     // State tracking for derivative term and rate limiting (lateral)
     private double? previousCrossTrackError = null;
@@ -53,13 +55,13 @@ public class VisualGuidanceManager : IDisposable
     private double crossTrackIntegral = 0.0;
 
     // State tracking for derivative term and rate limiting (vertical)
-    private double? previousGlideslopeDeviation = null;
+    private double? previousGlideslopeDeviation = null;  // Reused for FPM error history
     private DateTime? previousGlideslopeTimestamp = null;
-    private double? smoothedGlideslopeDeviation = null;
     private double previousDesiredPitch = 0.0;
 
-    // Integral term accumulation (vertical PID)
-    private double glideslopeIntegral = 0.0;
+    // Flare state tracking
+    private double flareEntryVerticalSpeed = 0.0;  // VS captured at flare entry
+    private double lastFlarePitch = 3.0;           // For rate limiting during flare
 
     // Announcement tracking
     private DateTime lastPhaseAnnouncement = DateTime.MinValue;
@@ -80,8 +82,13 @@ public class VisualGuidanceManager : IDisposable
     // Guidance constants
     private const double CENTERLINE_TOLERANCE_NM = 0.3;  // On centerline if within 0.3 NM
     private const double GLIDESLOPE_CAPTURE_FT = 100.0;  // Capture glideslope when within 100 ft
-    private const double FLARE_ALTITUDE_FT = 50.0;       // Start flare at 50 ft AGL
+    private const double FLARE_ALTITUDE_FT = 30.0;       // Start flare at 30 ft AGL
     private const double TOUCHDOWN_ALTITUDE_FT = 5.0;    // Consider touchdown below 5 ft AGL
+
+    // Flare descent rate targeting constants
+    private const double TARGET_TOUCHDOWN_VS_FPM = -125.0;  // Target descent rate at touchdown (-100 to -150 fpm)
+    private const double FLARE_VS_GAIN = 0.01;              // Degrees pitch correction per fpm VS error
+    private const double MAX_FLARE_PITCH_RATE = 1.5;        // Maximum pitch change rate during flare (deg/sec)
 
     // Stabilization gate: Target 3000 ft AGL at 9 NM for terrain clearance
     private const double STABILIZATION_GATE_NM = 9.0;     // Distance from threshold for stabilization gate
@@ -101,19 +108,26 @@ public class VisualGuidanceManager : IDisposable
     private const double AIRSPEED_REFERENCE_KNOTS = 140.0;  // Reference speed for gain scaling
     private const double MAX_BANK_RATE_DEG_PER_SEC = 5.0;   // Maximum bank command change rate
 
-    // Vertical guidance gains (tuned for A320 - PD controller for testing)
-    private const double VERTICAL_GAIN = 0.5;            // Glideslope deviation (per 200 ft) to pitch correction
-    private const double VERTICAL_RATE_DAMPING = 0.08;   // Glideslope rate (ft/sec) to pitch damping
-    private const double VERTICAL_INTEGRAL_GAIN = 0.0;   // Disabled - testing PD controller performance
-    private const double INTEGRAL_LIMIT_VERTICAL = 5.0;  // Anti-windup limit (pitch degrees)
+    // Vertical guidance constants
     private const double TYPICAL_APPROACH_AOA = 6.0;     // Typical angle of attack for A320 approach configuration
     private const double MAX_PITCH_RATE_DEG_PER_SEC = 2.5;  // Maximum pitch command change rate
     private const double GLIDESLOPE_SMOOTHING_FACTOR = 0.7;  // Exponential smoothing for glideslope deviation (0.7 = moderate filtering)
     private const double CROSS_TRACK_RATE_SMOOTHING_FACTOR = 0.85;  // Exponential smoothing for cross-track rate (0.85 = strong filtering to prevent noise spikes)
     private const double FPM_PER_DEGREE_PITCH = 175.0;   // Typical vertical speed change per degree of pitch at approach speeds (legacy, may remove)
 
+    // FPM-based vertical guidance constants
+    private const double FPM_SMOOTHING_FACTOR = 0.7;     // Exponential smoothing for current FPM (0.7 = moderate filtering)
+    private const double TARGET_AGL_AT_TOUCHDOWN_POINT = 50.0; // Target altitude at touchdown aim point for FPM calculation (feet)
+    private const double FPM_P_GAIN = 0.015;             // Pitch correction per FPM error (degrees per FPM)
+    private const double FPM_D_GAIN = 0.002;             // Pitch damping per FPM error rate (degrees per FPM/sec)
+
     public bool IsActive => isActive;
     public event EventHandler<bool>? VisualGuidanceActiveChanged;
+
+    /// <summary>
+    /// Gets the current target FPM for the approach
+    /// </summary>
+    public double GetTargetFPM() => lastCalculatedTargetFPM;
 
     /// <summary>
     /// Guidance phases from approach to touchdown
@@ -125,7 +139,7 @@ public class VisualGuidanceManager : IDisposable
         Intercepting,       // Off centerline, intercepting
         Final,              // On centerline, before glideslope capture
         GlideslopeTracking, // On centerline and glideslope
-        Flare,              // Below 50 ft AGL, flaring
+        Flare,              // Below 30 ft AGL, flaring
         Touchdown           // Below 5 ft AGL, landed
     }
 
@@ -193,13 +207,16 @@ public class VisualGuidanceManager : IDisposable
 
         // Reset integral terms
         crossTrackIntegral = 0.0;
-        glideslopeIntegral = 0.0;
 
         // Reset derivative term tracking (vertical)
         previousGlideslopeDeviation = null;
         previousGlideslopeTimestamp = null;
-        smoothedGlideslopeDeviation = null;
         previousDesiredPitch = 0.0;
+        smoothedCurrentFPM = null;
+
+        // Reset flare state
+        flareEntryVerticalSpeed = 0.0;
+        lastFlarePitch = 3.0;
 
         // Start desired attitude tone
         try
@@ -348,6 +365,9 @@ public class VisualGuidanceManager : IDisposable
             currentPhase = GuidancePhase.Flare;
             if (previousPhase != currentPhase)
             {
+                // Capture entry state for descent rate targeting
+                flareEntryVerticalSpeed = currentVerticalSpeedFPM;
+                lastFlarePitch = previousDesiredPitch;  // Start from current guidance pitch
                 AnnouncePhaseChange("Flare");
             }
             return;
@@ -403,7 +423,7 @@ public class VisualGuidanceManager : IDisposable
             currentPhase = GuidancePhase.GlideslopeTracking;
             if (previousPhase != currentPhase)
             {
-                AnnouncePhaseChange("Glideslope captured");
+                AnnouncePhaseChange("On vertical profile");
             }
         }
         else
@@ -700,101 +720,128 @@ public class VisualGuidanceManager : IDisposable
 
         if (currentPhase == GuidancePhase.Flare)
         {
-            // Exponential flare: smoothly increase pitch from approach to touchdown
-            // At 50 ft: ~3° (continue approach pitch to maintain glideslope)
-            // At 5 ft: ~8° (arrest descent for gentle touchdown)
+            // Descent rate targeting flare: commands pitch to achieve target VS profile
+            // Adapts to entry conditions - works regardless of descent rate at flare entry
 
-            // Calculate altitude ratio (1.0 at 50ft, 0.0 at 5ft)
+            // Calculate altitude ratio (1.0 at 30ft, 0.0 at 5ft)
             double altitudeRatio = (agl - TOUCHDOWN_ALTITUDE_FT) / (FLARE_ALTITUDE_FT - TOUCHDOWN_ALTITUDE_FT);
             altitudeRatio = Math.Clamp(altitudeRatio, 0.0, 1.0);
 
-            // Exponential curve: more aggressive pitch increase closer to ground
-            // Using power of 1.5 creates smooth transition with accelerating rate near touchdown
-            double flareProgress = 1.0 - Math.Pow(altitudeRatio, 1.5);
+            // Calculate target vertical speed profile
+            // Linear interpolation from entry VS to touchdown target VS
+            double targetVS = flareEntryVerticalSpeed + (1.0 - altitudeRatio) * (TARGET_TOUCHDOWN_VS_FPM - flareEntryVerticalSpeed);
 
-            // Pitch range: 3° (approach) to 8° (touchdown)
-            const double APPROACH_PITCH = 3.0;
-            const double TOUCHDOWN_PITCH = 8.0;
-            double desiredPitch = APPROACH_PITCH + (flareProgress * (TOUCHDOWN_PITCH - APPROACH_PITCH));
+            // Calculate VS error (positive = descending too fast, need to pitch up)
+            double vsError = targetVS - currentVerticalSpeedFPM;
 
-            return Math.Clamp(desiredPitch, 2.0, 8.5);
+            // Base pitch increases as we descend (similar to original flare curve)
+            // But now it's a starting point that gets adjusted by VS error
+            double flareProgress = 1.0 - altitudeRatio;
+            const double BASE_APPROACH_PITCH = 3.0;
+            const double BASE_TOUCHDOWN_PITCH = 7.0;
+            double basePitch = BASE_APPROACH_PITCH + (flareProgress * (BASE_TOUCHDOWN_PITCH - BASE_APPROACH_PITCH));
+
+            // Apply VS error correction
+            // Positive vsError (descending too fast) -> increase pitch
+            // Negative vsError (descending too slow) -> decrease pitch
+            double pitchCorrection = vsError * FLARE_VS_GAIN;
+            double rawDesiredPitch = basePitch + pitchCorrection;
+
+            // Rate limit to prevent jerky guidance
+            double maxPitchChange = MAX_FLARE_PITCH_RATE * 1.0;  // 1 second update rate
+            double pitchChange = rawDesiredPitch - lastFlarePitch;
+            if (Math.Abs(pitchChange) > maxPitchChange)
+            {
+                rawDesiredPitch = lastFlarePitch + Math.Sign(pitchChange) * maxPitchChange;
+            }
+
+            // Clamp final command (allow up to 10° for aggressive flare if needed)
+            double desiredPitch = Math.Clamp(rawDesiredPitch, 2.0, 10.0);
+            lastFlarePitch = desiredPitch;
+
+            System.Diagnostics.Debug.WriteLine(
+                $"[VisualGuidance] Flare: AGL={agl:F0}ft, EntryVS={flareEntryVerticalSpeed:F0}, " +
+                $"TargetVS={targetVS:F0}, ActualVS={currentVerticalSpeedFPM:F0}, " +
+                $"VSErr={vsError:F0}, BasePitch={basePitch:F1}°, Corr={pitchCorrection:F1}° → Pitch={desiredPitch:F1}°");
+
+            return desiredPitch;
         }
         else if (currentPhase != GuidancePhase.NotStarted && currentPhase != GuidancePhase.Touchdown)
         {
-            // Enhanced PD controller with absolute pitch commands (no feedback coupling)
+            // FPM-based vertical guidance - targets 50ft AGL at threshold
 
-            // Calculate direct distance to touchdown aim point (1500 ft past threshold)
-            // Using direct distance instead of along-track distance for stability - avoids oscillation
-            // from centerline projection calculations when aircraft has lateral deviation.
-            double distanceToTouchdown = NavigationCalculator.CalculateDistance(
+            // Calculate direct distance to touchdown aim point
+            double distanceToTouchdownNM = NavigationCalculator.CalculateDistance(
                 lat, lon, touchdownAimPointLat, touchdownAimPointLon);
 
-            // Calculate raw glideslope deviation (positive = above glideslope)
-            double rawGlideslopeDeviation = NavigationCalculator.CalculateGlideslopeDeviation(
-                altMSL,                                      // Aircraft altitude MSL
-                distanceToTouchdown,                         // Direct distance to touchdown aim point in NM
-                GLIDESLOPE_ANGLE_DEG,                        // 3-degree glideslope
-                thresholdElevationMSL);                      // Threshold elevation MSL
+            // Get current AGL
+            double currentAGL = altMSL - thresholdElevationMSL;
 
-            // Apply exponential smoothing to reduce GPS/altimeter noise
-            double glideslopeDeviation;
-            if (smoothedGlideslopeDeviation.HasValue)
+            // Apply exponential smoothing to current FPM to reduce oscillation
+            double smoothedFPM;
+            if (smoothedCurrentFPM.HasValue)
             {
-                // Exponential moving average: weighted blend of previous smoothed value and new raw value
-                glideslopeDeviation = GLIDESLOPE_SMOOTHING_FACTOR * smoothedGlideslopeDeviation.Value +
-                                     (1.0 - GLIDESLOPE_SMOOTHING_FACTOR) * rawGlideslopeDeviation;
+                smoothedFPM = FPM_SMOOTHING_FACTOR * smoothedCurrentFPM.Value +
+                             (1.0 - FPM_SMOOTHING_FACTOR) * currentVerticalSpeedFPM;
             }
             else
             {
-                // First sample - use raw value
-                glideslopeDeviation = rawGlideslopeDeviation;
+                smoothedFPM = currentVerticalSpeedFPM;
             }
-            smoothedGlideslopeDeviation = glideslopeDeviation;
+            smoothedCurrentFPM = smoothedFPM;
 
-            // Calculate glideslope deviation rate (derivative term) for damping
-            double glideslopeRate = 0.0;
+            // Calculate target FPM to reach 50ft AGL at threshold
+            double distanceFt = distanceToTouchdownNM * 6076.12;
+            double groundSpeedFPS = currentGroundSpeedKnots * 1.68781;
+            double timeToTouchdownSec = distanceFt / groundSpeedFPS;
+
+            // Prevent division by zero when very close
+            if (timeToTouchdownSec < 1.0)
+            {
+                timeToTouchdownSec = 1.0;
+            }
+
+            double altitudeToLose = currentAGL - TARGET_AGL_AT_TOUCHDOWN_POINT;
+            double targetFPM = -(altitudeToLose / timeToTouchdownSec) * 60.0;
+
+            // Never command a climb during approach - level flight if too low
+            targetFPM = Math.Min(targetFPM, 0.0);
+
+            // Limit maximum descent rate to prevent extreme commands when very high
+            targetFPM = Math.Max(targetFPM, -1500.0);
+
+            // Store for hotkey announcement
+            lastCalculatedTargetFPM = targetFPM;
+
+            // Calculate FPM error (negative = need to descend more, positive = need to descend less)
+            double fpmError = targetFPM - smoothedFPM;
+
+            // Calculate FPM error rate for derivative term
+            double fpmErrorRate = 0.0;
             if (previousGlideslopeDeviation.HasValue && previousGlideslopeTimestamp.HasValue)
             {
                 double deltaTime = (DateTime.Now - previousGlideslopeTimestamp.Value).TotalSeconds;
-                if (deltaTime > 0.01)  // Avoid division by zero
+                if (deltaTime > 0.01)
                 {
-                    glideslopeRate = (glideslopeDeviation - previousGlideslopeDeviation.Value) / deltaTime;
+                    // Using previousGlideslopeDeviation to store previous FPM error
+                    fpmErrorRate = (fpmError - previousGlideslopeDeviation.Value) / deltaTime;
                 }
             }
 
             // Update tracking state for next iteration
-            previousGlideslopeDeviation = glideslopeDeviation;
+            previousGlideslopeDeviation = fpmError;  // Reusing field for FPM error history
             previousGlideslopeTimestamp = DateTime.Now;
 
-            // Calculate nominal pitch for glideslope (INDEPENDENT of current pitch)
-            // Flight path angle = -3.14°, typical A320 approach AOA = 6°
-            // Therefore: pitch = flight_path_angle + AOA
+            // Calculate nominal pitch for descent
             double nominalPitch = -GLIDESLOPE_ANGLE_DEG + TYPICAL_APPROACH_AOA;  // ≈ +3°
 
-            // Integral term with anti-windup (1 Hz update rate)
-            double normalizedGSError = glideslopeDeviation / 200.0;  // Normalize to similar scale as lateral
-            glideslopeIntegral += normalizedGSError * 1.0;
+            // PD controller on FPM error:
+            // Proportional: Correct based on FPM error
+            // Derivative: Dampen based on rate of FPM error change
+            double proportionalTerm = fpmError * FPM_P_GAIN;
+            double derivativeTerm = fpmErrorRate * FPM_D_GAIN;
 
-            // Anti-windup: Reset integral if error is large or changing sign
-            if (Math.Abs(glideslopeDeviation) > 400.0 ||  // Far from glideslope
-                (previousGlideslopeDeviation.HasValue &&
-                 Math.Sign(glideslopeDeviation) != Math.Sign(previousGlideslopeDeviation.Value)))
-            {
-                glideslopeIntegral = 0.0;  // Reset integral
-            }
-
-            // Clamp integral to prevent windup
-            glideslopeIntegral = Math.Clamp(glideslopeIntegral, -INTEGRAL_LIMIT_VERTICAL, INTEGRAL_LIMIT_VERTICAL);
-
-            // PID controller for glideslope tracking:
-            // Proportional: Correct based on altitude error
-            // Integral: Eliminate steady-state altitude error
-            // Derivative: Dampen based on rate of altitude error change
-            double proportionalTerm = -normalizedGSError * VERTICAL_GAIN;
-            double integralTerm = -glideslopeIntegral * VERTICAL_INTEGRAL_GAIN;
-            double derivativeTerm = -glideslopeRate * VERTICAL_RATE_DAMPING;
-
-            double rawDesiredPitch = nominalPitch + proportionalTerm + integralTerm + derivativeTerm;
+            double rawDesiredPitch = nominalPitch + proportionalTerm + derivativeTerm;
 
             // Pitch rate limiting - prevent sudden tone frequency jumps
             double maxPitchChange = MAX_PITCH_RATE_DEG_PER_SEC * 1.0;  // 1 second update rate
@@ -805,14 +852,14 @@ public class VisualGuidanceManager : IDisposable
             }
 
             // Clamp final command
-            double desiredPitch = Math.Clamp(rawDesiredPitch, -6.0, 3.0);
+            double desiredPitch = Math.Clamp(rawDesiredPitch, -12.0, 12.0);
 
             // Update for next iteration
             previousDesiredPitch = desiredPitch;
 
             System.Diagnostics.Debug.WriteLine(
-                $"[VisualGuidance] Vertical PD: GSDev={glideslopeDeviation:F0}ft, Rate={glideslopeRate:F1}ft/s, " +
-                $"Nominal={nominalPitch:F2}°, P={proportionalTerm:F2}° D={derivativeTerm:F2}° (I disabled) → Pitch={desiredPitch:F1}°");
+                $"[VisualGuidance] Vertical FPM: Target={targetFPM:F0}fpm, Current={smoothedFPM:F0}fpm, Error={fpmError:F0}fpm, " +
+                $"AGL={currentAGL:F0}ft, Dist={distanceToTouchdownNM:F2}nm, P={proportionalTerm:F2}° D={derivativeTerm:F2}° → Pitch={desiredPitch:F1}°");
 
             return desiredPitch;
         }
