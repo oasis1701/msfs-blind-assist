@@ -118,6 +118,7 @@ public class VisualGuidanceManager : IDisposable
     // FPM-based vertical guidance constants
     private const double FPM_SMOOTHING_FACTOR = 0.7;     // Exponential smoothing for current FPM (0.7 = moderate filtering)
     private const double TARGET_AGL_AT_TOUCHDOWN_POINT = 50.0; // Target altitude at touchdown aim point for FPM calculation (feet)
+    private const double TARGET_VS_AT_TOUCHDOWN_POINT = -300.0;  // Target descent rate at touchdown aim point (fpm) - smooth flare entry
     private const double FPM_P_GAIN = 0.005;             // Pitch correction per FPM error (degrees per FPM)
     private const double FPM_D_GAIN = 0.002;             // Pitch damping per FPM error rate (degrees per FPM/sec)
 
@@ -362,7 +363,7 @@ public class VisualGuidanceManager : IDisposable
             if (previousPhase != currentPhase)
             {
                 announcer.Announce("Touchdown");
-                Stop();  // Auto-stop on touchdown
+                // Continue guidance for centerline tracking during rollout
             }
             return;
         }
@@ -481,6 +482,13 @@ public class VisualGuidanceManager : IDisposable
                 {
                     double rawCrossTrackRate = (signedCrossTrackNM - previousCrossTrackError.Value) / deltaTime;
 
+                    // Apply floor to raw rate BEFORE smoothing to prevent feedback oscillation
+                    // Floor of 0.005 gives 87.5% max H term strength when established
+                    if (Math.Abs(rawCrossTrackRate) < 0.005)
+                    {
+                        rawCrossTrackRate = 0.005 * (rawCrossTrackRate >= 0 ? 1 : -1);
+                    }
+
                     // Apply exponential smoothing to reduce noise (prevents oscillation during phase handoff)
                     if (smoothedCrossTrackRate.HasValue)
                     {
@@ -494,14 +502,6 @@ public class VisualGuidanceManager : IDisposable
 
                     smoothedCrossTrackRate = crossTrackRate;
                 }
-            }
-
-            // Apply floor to prevent zero-rate spikes causing H term explosion
-            // Floor of 0.005 gives 87.5% max H term strength when established
-            // Applied OUTSIDE deltaTime check to catch default 0.0 when updates come too fast
-            if (Math.Abs(crossTrackRate) < 0.005)
-            {
-                crossTrackRate = 0.005 * (crossTrackRate >= 0 ? 1 : -1);
             }
 
             // Update tracking state for next iteration
@@ -798,7 +798,11 @@ public class VisualGuidanceManager : IDisposable
             }
             smoothedCurrentFPM = smoothedFPM;
 
-            // Calculate target FPM to reach 50ft AGL at threshold
+            // Physics-based trajectory: solve for smooth deceleration to target state
+            // Target state: 50ft AGL at touchdown point, descending at -300 fpm
+            // Current state: currentAGL, smoothedFPM
+            // Calculates targetFPM that achieves both position and velocity targets
+
             double distanceFt = distanceToTouchdownNM * 6076.12;
             double groundSpeedFPS = currentGroundSpeedKnots * 1.68781;
             double timeToTouchdownSec = distanceFt / groundSpeedFPS;
@@ -810,13 +814,22 @@ public class VisualGuidanceManager : IDisposable
             }
 
             double altitudeToLose = currentAGL - TARGET_AGL_AT_TOUCHDOWN_POINT;
-            double targetFPM = -(altitudeToLose / timeToTouchdownSec) * 60.0;
+            double currentVSfps = smoothedFPM / 60.0;  // Convert fpm to fps
+            double targetVSfps = TARGET_VS_AT_TOUCHDOWN_POINT / 60.0;  // -5 fps
 
-            // Never command a climb during approach - level flight if too low
-            targetFPM = Math.Min(targetFPM, 0.0);
+            // Calculate required deceleration (fps²) using kinematic equation:
+            // v_final² = v_current² + 2 * a * distance
+            // Solve for a: a = (v_final² - v_current²) / (2 * distance)
+            double requiredDeceleration = (targetVSfps * targetVSfps - currentVSfps * currentVSfps) / (2.0 * altitudeToLose);
 
-            // Limit maximum descent rate to prevent extreme commands when very high
-            targetFPM = Math.Max(targetFPM, -1500.0);
+            // Calculate target FPM for this update using constant deceleration trajectory:
+            // v_target = v_current + a * time
+            double targetVSfps_now = currentVSfps + requiredDeceleration * timeToTouchdownSec;
+            double targetFPM = targetVSfps_now * 60.0;  // Convert back to fpm
+
+            // Safety clamps
+            targetFPM = Math.Min(targetFPM, 0.0);  // Never command climb
+            targetFPM = Math.Max(targetFPM, -1500.0);  // Limit extreme descent
 
             // Store for hotkey announcement
             lastCalculatedTargetFPM = targetFPM;
@@ -867,7 +880,8 @@ public class VisualGuidanceManager : IDisposable
 
             System.Diagnostics.Debug.WriteLine(
                 $"[VisualGuidance] Vertical FPM: Target={targetFPM:F0}fpm, Current={smoothedFPM:F0}fpm, Error={fpmError:F0}fpm, " +
-                $"AGL={currentAGL:F0}ft, Dist={distanceToTouchdownNM:F2}nm, P={proportionalTerm:F2}° D={derivativeTerm:F2}° → Pitch={desiredPitch:F1}°");
+                $"AGL={currentAGL:F0}ft, Dist={distanceToTouchdownNM:F2}nm, TargetArrival={TARGET_VS_AT_TOUCHDOWN_POINT:F0}fpm@{TARGET_AGL_AT_TOUCHDOWN_POINT:F0}ft, " +
+                $"P={proportionalTerm:F2}° D={derivativeTerm:F2}° → Pitch={desiredPitch:F1}°");
 
             return desiredPitch;
         }
