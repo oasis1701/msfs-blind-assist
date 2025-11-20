@@ -100,7 +100,7 @@ public class VisualGuidanceManager : IDisposable
 
     // Lateral guidance gains (tuned for blind pilot manual landing with audio guidance)
     private const double LATERAL_GAIN_INTERCEPT = 0.5;   // Heading error to bank for intercept
-    private const double LATERAL_GAIN_TRACKING = 6.0;    // Cross-track error (NM) to bank for tracking
+    private const double LATERAL_GAIN_TRACKING = 35.0;    // Cross-track error (NM) to bank for tracking
     private const double LATERAL_RATE_DAMPING = 12.0;    // Cross-track rate damping
     private const double LATERAL_INTEGRAL_GAIN = 0.0;    // Disabled - human tracking lag makes integral counterproductive
     private const double LATERAL_HEADING_GAIN = 1.0;     // Track/heading error to bank for alignment (Boeing 747: 1.0-2.8)
@@ -118,7 +118,7 @@ public class VisualGuidanceManager : IDisposable
     // FPM-based vertical guidance constants
     private const double FPM_SMOOTHING_FACTOR = 0.7;     // Exponential smoothing for current FPM (0.7 = moderate filtering)
     private const double TARGET_AGL_AT_TOUCHDOWN_POINT = 50.0; // Target altitude at touchdown aim point for FPM calculation (feet)
-    private const double FPM_P_GAIN = 0.015;             // Pitch correction per FPM error (degrees per FPM)
+    private const double FPM_P_GAIN = 0.005;             // Pitch correction per FPM error (degrees per FPM)
     private const double FPM_D_GAIN = 0.002;             // Pitch damping per FPM error rate (degrees per FPM/sec)
 
     public bool IsActive => isActive;
@@ -345,10 +345,18 @@ public class VisualGuidanceManager : IDisposable
     {
         if (runway == null) return;
 
+        // Calculate AGL from MSL for consistency with FPM-based vertical guidance
+        // SimConnect AGL sensor can be stale/inaccurate when on ground
+        double calculatedAGL = altMSL - thresholdElevationMSL;
+
+        // Diagnostic logging to help identify sensor issues
+        System.Diagnostics.Debug.WriteLine(
+            $"[VisualGuidance] AGL: SimConnect={agl:F1}ft, Calculated={calculatedAGL:F1}ft, Diff={Math.Abs(agl - calculatedAGL):F1}ft");
+
         GuidancePhase previousPhase = currentPhase;
 
         // Check for touchdown first
-        if (agl <= TOUCHDOWN_ALTITUDE_FT)
+        if (calculatedAGL <= TOUCHDOWN_ALTITUDE_FT)
         {
             currentPhase = GuidancePhase.Touchdown;
             if (previousPhase != currentPhase)
@@ -360,7 +368,7 @@ public class VisualGuidanceManager : IDisposable
         }
 
         // Check for flare
-        if (agl <= FLARE_ALTITUDE_FT)
+        if (calculatedAGL <= FLARE_ALTITUDE_FT)
         {
             currentPhase = GuidancePhase.Flare;
             if (previousPhase != currentPhase)
@@ -382,7 +390,7 @@ public class VisualGuidanceManager : IDisposable
 
         // Check if behind runway (need to extend)
         // Exclude if below 500 ft AGL - aircraft is landing, continue guidance through touchdown
-        if (agl > 500.0 && IsBehindRunway(lat, lon))
+        if (calculatedAGL > 500.0 && IsBehindRunway(lat, lon))
         {
             currentPhase = GuidancePhase.Extending;
             if (previousPhase != currentPhase)
