@@ -20,8 +20,6 @@ public class VisualGuidanceManager : IDisposable
     private Airport? airport;
     private double magneticVariation = 0.0;
     private double thresholdElevationMSL = 0.0;
-    private double touchdownAimPointLat = 0.0;  // Calculated aim point for glideslope
-    private double touchdownAimPointLon = 0.0;
 
     // Audio generators
     private AudioToneGenerator? desiredAttitudeTone;  // Guidance tone
@@ -46,10 +44,12 @@ public class VisualGuidanceManager : IDisposable
     private double lastCalculatedTargetFPM = 0.0;  // Last calculated target FPM for hotkey announcement
 
     // State tracking for derivative term and rate limiting (lateral)
-    private double? previousCrossTrackError = null;
-    private DateTime? previousCrossTrackTimestamp = null;
+    private double? previousCrossTrackError = null;  // Used for integral anti-windup sign change detection
     private double previousDesiredBank = 0.0;
     private double? smoothedCrossTrackRate = null;  // Smoothed rate to prevent oscillation during handoff
+    private Queue<(double xte, DateTime timestamp)> crossTrackHistory = new Queue<(double, DateTime)>();
+    private const int CROSS_TRACK_HISTORY_SIZE = 5;  // 5 samples at 1Hz = 4 second window
+    private double? smoothedHTermScale = null;  // Smoothed H term weight to prevent oscillation
 
     // Integral term accumulation (lateral PID)
     private double crossTrackIntegral = 0.0;
@@ -96,7 +96,11 @@ public class VisualGuidanceManager : IDisposable
     // Calculate glideslope angle to pass through stabilization gate: atan(3000 ft / (9 NM × 6076 ft/NM)) ≈ 3.14°
     private const double GLIDESLOPE_ANGLE_DEG = 3.143;   // Modified glideslope for 3000 ft at 9 NM
 
-    private const double TOUCHDOWN_AIM_POINT_FT = 100.0;  // Aim point distance from threshold
+    // New vertical guidance constants
+    private const double GLIDESLOPE_LOCK_DISTANCE_NM = 0.5;  // Distance at which to lock to steady 3° angle
+    private const double GLIDESLOPE_GAIN = 2.0;              // Proportional gain: fpm correction per foot of deviation
+    private const double MAX_DESCENT_RATE_FPM = -1500.0;     // Maximum descent rate when high
+    private const double FLARE_TARGET_PITCH_DEG = 6.0;       // Target pitch in flare
 
     // Lateral guidance gains (tuned for blind pilot manual landing with audio guidance)
     private const double LATERAL_GAIN_INTERCEPT = 0.5;   // Heading error to bank for intercept
@@ -117,8 +121,6 @@ public class VisualGuidanceManager : IDisposable
 
     // FPM-based vertical guidance constants
     private const double FPM_SMOOTHING_FACTOR = 0.7;     // Exponential smoothing for current FPM (0.7 = moderate filtering)
-    private const double TARGET_AGL_AT_TOUCHDOWN_POINT = 50.0; // Target altitude at touchdown aim point for FPM calculation (feet)
-    private const double TARGET_VS_AT_TOUCHDOWN_POINT = -300.0;  // Target descent rate at touchdown aim point (fpm) - smooth flare entry
     private const double FPM_P_GAIN = 0.005;             // Pitch correction per FPM error (degrees per FPM)
     private const double FPM_D_GAIN = 0.002;             // Pitch damping per FPM error rate (degrees per FPM/sec)
 
@@ -176,13 +178,6 @@ public class VisualGuidanceManager : IDisposable
         magneticVariation = destinationAirport.MagVar;
         thresholdElevationMSL = destinationAirport.Altitude;
 
-        // Calculate touchdown aim point (offset from threshold for safe touchdown zone)
-        (touchdownAimPointLat, touchdownAimPointLon) = NavigationCalculator.CalculateTouchdownAimPoint(
-            destinationRunway.StartLat,
-            destinationRunway.StartLon,
-            destinationRunway.Heading,
-            TOUCHDOWN_AIM_POINT_FT);
-
         // Reset state
         currentPhase = GuidancePhase.NotStarted;
         lastPhaseAnnouncement = DateTime.MinValue;
@@ -202,9 +197,10 @@ public class VisualGuidanceManager : IDisposable
 
         // Reset derivative term tracking (lateral)
         previousCrossTrackError = null;
-        previousCrossTrackTimestamp = null;
         previousDesiredBank = 0.0;
         smoothedCrossTrackRate = null;
+        crossTrackHistory.Clear();  // Clear multi-sample history buffer
+        smoothedHTermScale = null;  // Clear H term weight smoothing
 
         // Reset integral terms
         crossTrackIntegral = 0.0;
@@ -473,14 +469,28 @@ public class VisualGuidanceManager : IDisposable
             // Apply sign to distance (crossTrackError is unsigned distance in NM)
             double signedCrossTrackNM = Math.Sign(signedCrossTrack) * crossTrackError;
 
-            // Calculate cross-track rate (derivative term) for damping
-            double crossTrackRate = 0.0;
-            if (previousCrossTrackError.HasValue && previousCrossTrackTimestamp.HasValue)
+            // Calculate cross-track rate (derivative term) for damping using multi-sample averaging
+            // Add current sample to history buffer
+            crossTrackHistory.Enqueue((signedCrossTrackNM, DateTime.Now));
+
+            // Maintain history size limit (rolling window)
+            while (crossTrackHistory.Count > CROSS_TRACK_HISTORY_SIZE)
             {
-                double deltaTime = (DateTime.Now - previousCrossTrackTimestamp.Value).TotalSeconds;
+                crossTrackHistory.Dequeue();
+            }
+
+            // Calculate rate over entire history window (oldest to newest)
+            // This filters out single-frame noise that caused 0.000 ↔ 0.020 oscillation
+            double crossTrackRate = 0.0;
+            if (crossTrackHistory.Count >= 2)
+            {
+                var oldest = crossTrackHistory.First();
+                var newest = crossTrackHistory.Last();
+                double deltaTime = (newest.timestamp - oldest.timestamp).TotalSeconds;
+
                 if (deltaTime > 0.01)  // Avoid division by zero
                 {
-                    double rawCrossTrackRate = (signedCrossTrackNM - previousCrossTrackError.Value) / deltaTime;
+                    double rawCrossTrackRate = (newest.xte - oldest.xte) / deltaTime;
 
                     // Apply floor to raw rate BEFORE smoothing to prevent feedback oscillation
                     // Floor of 0.005 gives 87.5% max H term strength when established
@@ -504,9 +514,8 @@ public class VisualGuidanceManager : IDisposable
                 }
             }
 
-            // Update tracking state for next iteration
+            // Update tracking state for integral anti-windup logic (sign change detection)
             previousCrossTrackError = signedCrossTrackNM;
-            previousCrossTrackTimestamp = DateTime.Now;
 
             // Ground track vs heading selection based on altitude
             // High altitude (>100 ft AGL): Use ground track to maintain centerline (allows crab in wind)
@@ -616,7 +625,22 @@ public class VisualGuidanceManager : IDisposable
                 // H term strong only when established (near centerline AND low rate)
                 double distanceScale = Math.Clamp(1.0 - (Math.Abs(signedCrossTrackNM) - 0.1) / 0.4, 0.0, 1.0);
                 double rateScale = Math.Clamp(1.0 - Math.Abs(crossTrackRate) / 0.04, 0.0, 1.0);  // Fades to zero at 0.04 NM/s
-                double hTermScale = distanceScale * rateScale;
+                double rawHTermScale = distanceScale * rateScale;
+
+                // Apply exponential smoothing to H term weight to prevent oscillation
+                // Smoothing factor 0.7 = moderate filtering (prevents rapid swings in H weight)
+                double hTermScale;
+                if (smoothedHTermScale.HasValue)
+                {
+                    hTermScale = 0.7 * smoothedHTermScale.Value + 0.3 * rawHTermScale;
+                    smoothedHTermScale = hTermScale;
+                }
+                else
+                {
+                    hTermScale = rawHTermScale;
+                    smoothedHTermScale = rawHTermScale;
+                }
+
                 double headingTerm = trackAngleError * LATERAL_HEADING_GAIN * speedFactor * hTermScale;
 
                 double rawDesiredBank = proportionalTerm + integralTerm + derivativeTerm + headingTerm;
@@ -728,62 +752,43 @@ public class VisualGuidanceManager : IDisposable
 
         if (currentPhase == GuidancePhase.Flare)
         {
-            // Descent rate targeting flare: commands pitch to achieve target VS profile
-            // Adapts to entry conditions - works regardless of descent rate at flare entry
+            // Simplified flare: Command constant +6° pitch
+            double targetPitch = FLARE_TARGET_PITCH_DEG;
 
-            // Calculate altitude ratio (1.0 at 30ft, 0.0 at 5ft)
-            double altitudeRatio = (agl - TOUCHDOWN_ALTITUDE_FT) / (FLARE_ALTITUDE_FT - TOUCHDOWN_ALTITUDE_FT);
-            altitudeRatio = Math.Clamp(altitudeRatio, 0.0, 1.0);
-
-            // Calculate target vertical speed profile
-            // Linear interpolation from entry VS to touchdown target VS
-            double targetVS = flareEntryVerticalSpeed + (1.0 - altitudeRatio) * (TARGET_TOUCHDOWN_VS_FPM - flareEntryVerticalSpeed);
-
-            // Calculate VS error (positive = descending too fast, need to pitch up)
-            double vsError = targetVS - currentVerticalSpeedFPM;
-
-            // Base pitch increases as we descend (similar to original flare curve)
-            // But now it's a starting point that gets adjusted by VS error
-            double flareProgress = 1.0 - altitudeRatio;
-            const double BASE_APPROACH_PITCH = 3.0;
-            const double BASE_TOUCHDOWN_PITCH = 7.0;
-            double basePitch = BASE_APPROACH_PITCH + (flareProgress * (BASE_TOUCHDOWN_PITCH - BASE_APPROACH_PITCH));
-
-            // Apply VS error correction
-            // Positive vsError (descending too fast) -> increase pitch
-            // Negative vsError (descending too slow) -> decrease pitch
-            double pitchCorrection = vsError * FLARE_VS_GAIN;
-            double rawDesiredPitch = basePitch + pitchCorrection;
-
-            // Rate limit to prevent jerky guidance
+            // Apply rate limiting for smooth transition from approach to flare
             double maxPitchChange = MAX_FLARE_PITCH_RATE * 1.0;  // 1 second update rate
-            double pitchChange = rawDesiredPitch - lastFlarePitch;
+            double pitchChange = targetPitch - lastFlarePitch;
             if (Math.Abs(pitchChange) > maxPitchChange)
             {
-                rawDesiredPitch = lastFlarePitch + Math.Sign(pitchChange) * maxPitchChange;
+                targetPitch = lastFlarePitch + Math.Sign(pitchChange) * maxPitchChange;
             }
 
-            // Clamp final command (allow up to 10° for aggressive flare if needed)
-            double desiredPitch = Math.Clamp(rawDesiredPitch, 2.0, 10.0);
-            lastFlarePitch = desiredPitch;
+            lastFlarePitch = targetPitch;
 
             System.Diagnostics.Debug.WriteLine(
-                $"[VisualGuidance] Flare: AGL={agl:F0}ft, EntryVS={flareEntryVerticalSpeed:F0}, " +
-                $"TargetVS={targetVS:F0}, ActualVS={currentVerticalSpeedFPM:F0}, " +
-                $"VSErr={vsError:F0}, BasePitch={basePitch:F1}°, Corr={pitchCorrection:F1}° → Pitch={desiredPitch:F1}°");
+                $"[VisualGuidance] Flare: AGL={agl:F0}ft, Commanding pitch: {targetPitch:F1}°");
 
-            return desiredPitch;
+            return targetPitch;
         }
         else if (currentPhase != GuidancePhase.NotStarted && currentPhase != GuidancePhase.Touchdown)
         {
-            // FPM-based vertical guidance - targets 50ft AGL at threshold
+            // New glideslope-based vertical guidance - enforces 3° glideslope to threshold
 
-            // Calculate direct distance to touchdown aim point
-            double distanceToTouchdownNM = NavigationCalculator.CalculateDistance(
-                lat, lon, touchdownAimPointLat, touchdownAimPointLon);
+            // Calculate direct distance to threshold
+            double distanceToThresholdNM = NavigationCalculator.CalculateDistance(
+                lat, lon, runway.StartLat, runway.StartLon);
 
-            // Get current AGL
+            // Get current AGL relative to threshold
             double currentAGL = altMSL - thresholdElevationMSL;
+
+            // Calculate ideal altitude on 3° glideslope from threshold
+            // idealAltitude = distanceToThreshold × tan(3°) + thresholdElevation
+            double distanceFt = distanceToThresholdNM * 6076.12;
+            double glideslopeAngleRad = GLIDESLOPE_ANGLE_DEG * Math.PI / 180.0;
+            double idealAltitudeAGL = distanceFt * Math.Tan(glideslopeAngleRad);
+
+            // Calculate altitude error (positive = too high, negative = too low)
+            double altitudeError = currentAGL - idealAltitudeAGL;
 
             // Apply exponential smoothing to current FPM to reduce oscillation
             double smoothedFPM;
@@ -798,38 +803,38 @@ public class VisualGuidanceManager : IDisposable
             }
             smoothedCurrentFPM = smoothedFPM;
 
-            // Physics-based trajectory: solve for smooth deceleration to target state
-            // Target state: 50ft AGL at touchdown point, descending at -300 fpm
-            // Current state: currentAGL, smoothedFPM
-            // Calculates targetFPM that achieves both position and velocity targets
+            // Calculate natural 3° descent rate based on groundspeed
+            // FPM = groundspeed (knots) × tan(angle) × 101.269 (conversion factor)
+            double natural3DegDescentRateFPM = -currentGroundSpeedKnots * Math.Tan(glideslopeAngleRad) * 101.269;
 
-            double distanceFt = distanceToTouchdownNM * 6076.12;
-            double groundSpeedFPS = currentGroundSpeedKnots * 1.68781;
-            double timeToTouchdownSec = distanceFt / groundSpeedFPS;
+            double targetFPM;
 
-            // Prevent division by zero when very close
-            if (timeToTouchdownSec < 1.0)
+            // Check if we're within 0.5 NM of threshold - lock to steady 3° angle
+            if (distanceToThresholdNM <= GLIDESLOPE_LOCK_DISTANCE_NM)
             {
-                timeToTouchdownSec = 1.0;
+                // LOCK MODE: Maintain steady 3° descent rate, no altitude corrections
+                targetFPM = natural3DegDescentRateFPM;
+
+                System.Diagnostics.Debug.WriteLine(
+                    $"[VisualGuidance] LOCK MODE: Dist={distanceToThresholdNM:F2}nm, " +
+                    $"Maintaining steady 3° descent: {targetFPM:F0}fpm");
             }
+            else
+            {
+                // CORRECTION MODE: Proportional control on glideslope deviation
+                // Correction is proportional to altitude error, not distance/time dependent
+                // This provides smooth, natural convergence to the glideslope
+                double correctionRateFPM = -altitudeError * GLIDESLOPE_GAIN;
+                targetFPM = natural3DegDescentRateFPM + correctionRateFPM;
 
-            double altitudeToLose = currentAGL - TARGET_AGL_AT_TOUCHDOWN_POINT;
-            double currentVSfps = smoothedFPM / 60.0;  // Convert fpm to fps
-            double targetVSfps = TARGET_VS_AT_TOUCHDOWN_POINT / 60.0;  // -5 fps
+                // Apply safety limits (never command climb, limit max descent)
+                targetFPM = Math.Clamp(targetFPM, MAX_DESCENT_RATE_FPM, 0.0);
 
-            // Calculate required deceleration (fps²) using kinematic equation:
-            // v_final² = v_current² + 2 * a * distance
-            // Solve for a: a = (v_final² - v_current²) / (2 * distance)
-            double requiredDeceleration = (targetVSfps * targetVSfps - currentVSfps * currentVSfps) / (2.0 * altitudeToLose);
-
-            // Calculate target FPM for this update using constant deceleration trajectory:
-            // v_target = v_current + a * time
-            double targetVSfps_now = currentVSfps + requiredDeceleration * timeToTouchdownSec;
-            double targetFPM = targetVSfps_now * 60.0;  // Convert back to fpm
-
-            // Safety clamps
-            targetFPM = Math.Min(targetFPM, 0.0);  // Never command climb
-            targetFPM = Math.Max(targetFPM, -1500.0);  // Limit extreme descent
+                System.Diagnostics.Debug.WriteLine(
+                    $"[VisualGuidance] CORRECTION MODE: AltErr={altitudeError:F0}ft, " +
+                    $"Natural={natural3DegDescentRateFPM:F0}fpm, Correction={correctionRateFPM:F0}fpm, " +
+                    $"Target={targetFPM:F0}fpm, Dist={distanceToThresholdNM:F2}nm");
+            }
 
             // Store for hotkey announcement
             lastCalculatedTargetFPM = targetFPM;
@@ -879,8 +884,9 @@ public class VisualGuidanceManager : IDisposable
             previousDesiredPitch = desiredPitch;
 
             System.Diagnostics.Debug.WriteLine(
-                $"[VisualGuidance] Vertical FPM: Target={targetFPM:F0}fpm, Current={smoothedFPM:F0}fpm, Error={fpmError:F0}fpm, " +
-                $"AGL={currentAGL:F0}ft, Dist={distanceToTouchdownNM:F2}nm, TargetArrival={TARGET_VS_AT_TOUCHDOWN_POINT:F0}fpm@{TARGET_AGL_AT_TOUCHDOWN_POINT:F0}ft, " +
+                $"[VisualGuidance] Vertical: Target={targetFPM:F0}fpm, Current={smoothedFPM:F0}fpm, Error={fpmError:F0}fpm, " +
+                $"AGL={currentAGL:F0}ft, IdealAGL={idealAltitudeAGL:F0}ft, AltErr={altitudeError:F0}ft, " +
+                $"Dist={distanceToThresholdNM:F2}nm, GS={currentGroundSpeedKnots:F0}kt, " +
                 $"P={proportionalTerm:F2}° D={derivativeTerm:F2}° → Pitch={desiredPitch:F1}°");
 
             return desiredPitch;
