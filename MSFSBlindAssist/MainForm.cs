@@ -380,24 +380,6 @@ public partial class MainForm : Form
 
             processedCount++;
         }
-
-        // Diagnostics: Log batch statistics every 100 batches (~3 seconds at 33ms interval)
-        if (processedCount > 0)
-        {
-            processedBatchCount++;
-
-            if (processedBatchCount % 100 == 0)
-            {
-                int remainingInQueue = queuedEventCount;
-                System.Diagnostics.Debug.WriteLine($"[MainForm] Batch stats: processed {processedCount} events, queue: {batchStartQueueSize}→{remainingInQueue}, dropped: {droppedEventCount}, total batches: {processedBatchCount}");
-
-                // Warning if queue is growing (more events arriving than we can process)
-                if (remainingInQueue > MAX_QUEUE_SIZE / 2)
-                {
-                    System.Diagnostics.Debug.WriteLine($"[MainForm] WARNING: Event queue backlog ({remainingInQueue} events). Consider increasing MAX_BATCH_SIZE or EVENT_BATCH_INTERVAL_MS.");
-                }
-            }
-        }
     }
 
     /// <summary>

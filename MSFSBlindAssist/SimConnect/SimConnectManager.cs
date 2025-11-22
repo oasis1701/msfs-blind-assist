@@ -1939,27 +1939,6 @@ public class SimConnectManager
             System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch]   Stack trace: {ex.StackTrace}");
             return;  // Abort processing to prevent crash
         }
-
-        // Log statistics if there were any changes or errors
-        bool hasErrors = invalidIndexCount > 0 || exceptionCount > 0 || skippedCount > 0;
-        if (processedCount > 0 || hasErrors)
-        {
-            System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] Batch {batchNum} Stats: {processedCount} processed, {skippedCount} missing vars, {invalidIndexCount} invalid indices, {exceptionCount} exceptions");
-
-            // Log detailed map state if there are errors
-            if (hasErrors && continuousVariableIndexMap.Count > 0)
-            {
-                var batchVars = continuousVariableIndexMap.Where(kvp => kvp.Value.batchNum == batchNum).ToList();
-                System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] Batch {batchNum} has {batchVars.Count} variables");
-                System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] First 10 mappings for batch {batchNum}:");
-                int logCount = 0;
-                foreach (var kvp in batchVars.OrderBy(k => k.Key, StringComparer.Ordinal))
-                {
-                    System.Diagnostics.Debug.WriteLine($"  [{kvp.Value.index}] {kvp.Key}");
-                    if (++logCount >= 10) break;
-                }
-            }
-        }
     }
 
     private void ProcessFCUValues(FCUValues data)

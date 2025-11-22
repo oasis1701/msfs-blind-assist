@@ -50,6 +50,7 @@ public class VisualGuidanceManager : IDisposable
     private Queue<(double xte, DateTime timestamp)> crossTrackHistory = new Queue<(double, DateTime)>();
     private const int CROSS_TRACK_HISTORY_SIZE = 5;  // 5 samples at 1Hz = 4 second window
     private double? smoothedHTermScale = null;  // Smoothed H term weight to prevent oscillation
+    private double? previousAbsXTE = null;  // Track previous XTE to detect CAPTURE phase entry
 
     // Integral term accumulation (lateral PID)
     private double crossTrackIntegral = 0.0;
@@ -104,13 +105,13 @@ public class VisualGuidanceManager : IDisposable
 
     // Lateral guidance gains (tuned for blind pilot manual landing with audio guidance)
     private const double LATERAL_GAIN_INTERCEPT = 0.5;   // Heading error to bank for intercept
-    private const double LATERAL_GAIN_TRACKING = 35.0;    // Cross-track error (NM) to bank for tracking
+    private const double LATERAL_GAIN_TRACKING = 120.0;    // Cross-track error (NM) to bank for tracking (increased for faster convergence)
     private const double LATERAL_RATE_DAMPING = 12.0;    // Cross-track rate damping
-    private const double LATERAL_INTEGRAL_GAIN = 0.0;    // Disabled - human tracking lag makes integral counterproductive
+    private const double LATERAL_INTEGRAL_GAIN = 0.3;    // Integral term to eliminate steady-state error (enables <20ft precision)
     private const double LATERAL_HEADING_GAIN = 1.0;     // Track/heading error to bank for alignment (Boeing 747: 1.0-2.8)
     private const double INTEGRAL_LIMIT_LATERAL = 10.0;  // Anti-windup limit (bank degrees)
     private const double AIRSPEED_REFERENCE_KNOTS = 140.0;  // Reference speed for gain scaling
-    private const double MAX_BANK_RATE_DEG_PER_SEC = 5.0;   // Maximum bank command change rate
+    private const double MAX_BANK_RATE_DEG_PER_SEC = 3.0;   // Maximum bank command change rate (reduced from 5.0 to prevent oscillations)
 
     // Vertical guidance constants
     private const double TYPICAL_APPROACH_AOA = 6.0;     // Typical angle of attack for A320 approach configuration
@@ -201,6 +202,7 @@ public class VisualGuidanceManager : IDisposable
         smoothedCrossTrackRate = null;
         crossTrackHistory.Clear();  // Clear multi-sample history buffer
         smoothedHTermScale = null;  // Clear H term weight smoothing
+        previousAbsXTE = null;  // Clear phase transition tracking
 
         // Reset integral terms
         crossTrackIntegral = 0.0;
@@ -492,13 +494,6 @@ public class VisualGuidanceManager : IDisposable
                 {
                     double rawCrossTrackRate = (newest.xte - oldest.xte) / deltaTime;
 
-                    // Apply floor to raw rate BEFORE smoothing to prevent feedback oscillation
-                    // Floor of 0.005 gives 87.5% max H term strength when established
-                    if (Math.Abs(rawCrossTrackRate) < 0.005)
-                    {
-                        rawCrossTrackRate = 0.005 * (rawCrossTrackRate >= 0 ? 1 : -1);
-                    }
-
                     // Apply exponential smoothing to reduce noise (prevents oscillation during phase handoff)
                     if (smoothedCrossTrackRate.HasValue)
                     {
@@ -593,9 +588,9 @@ public class VisualGuidanceManager : IDisposable
                 desiredBank = CalculateHeadingInterceptBank(targetHeading, actualTrackAngle);
                 guidancePhase = "INTERCEPT_45";
             }
-            else if (absXTE > 0.25)
+            else if (absXTE > 1.0)
             {
-                // INTERCEPT PHASE 3: Approaching centerline - 30° intercept
+                // INTERCEPT PHASE 3: Medium distance - 30° intercept
                 double interceptAngle = 30.0;
                 double targetHeading = signedCrossTrackNM < 0
                     ? runway.HeadingMag + interceptAngle
@@ -605,11 +600,31 @@ public class VisualGuidanceManager : IDisposable
                 desiredBank = CalculateHeadingInterceptBank(targetHeading, actualTrackAngle);
                 guidancePhase = "INTERCEPT_30";
             }
+            else if (absXTE > 0.3)
+            {
+                // INTERCEPT PHASE 4: Final alignment - 15° intercept (gradual handoff to CAPTURE)
+                double interceptAngle = 15.0;
+                double targetHeading = signedCrossTrackNM < 0
+                    ? runway.HeadingMag + interceptAngle
+                    : runway.HeadingMag - interceptAngle;
+                targetHeading = NormalizeHeading(targetHeading);
+
+                desiredBank = CalculateHeadingInterceptBank(targetHeading, actualTrackAngle);
+                guidancePhase = "INTERCEPT_15";
+            }
             else
             {
-                // CAPTURE/TRACK PHASE: Close to centerline (<0.25 NM) - Use PDH controller
+                // CAPTURE/TRACK PHASE: Close to centerline (<0.3 NM) - Use PDH controller
                 // Optimized for blind pilot manual landing - tight tracking required!
                 guidancePhase = "CAPTURE_TRACK";
+
+                // Detect phase entry from INTERCEPT → CAPTURE and reset H term smoothing
+                // This prevents inheriting noisy state from intercept phase
+                if (previousAbsXTE.HasValue && previousAbsXTE.Value > 0.3)
+                {
+                    smoothedHTermScale = null;  // Reset H term weight smoothing on phase entry
+                    System.Diagnostics.Debug.WriteLine("[VisualGuidance] Entered CAPTURE_TRACK phase - reset H term smoothing");
+                }
 
                 // PDH controller for final capture and tracking
                 // P: Corrects based on distance from centerline
@@ -624,15 +639,17 @@ public class VisualGuidanceManager : IDisposable
                 // H term weak when moving fast (let D dominate to stop drift)
                 // H term strong only when established (near centerline AND low rate)
                 double distanceScale = Math.Clamp(1.0 - (Math.Abs(signedCrossTrackNM) - 0.1) / 0.4, 0.0, 1.0);
-                double rateScale = Math.Clamp(1.0 - Math.Abs(crossTrackRate) / 0.04, 0.0, 1.0);  // Fades to zero at 0.04 NM/s
+                // Sigmoid function for smooth H term weight transition (prevents oscillation feedback loop)
+                // Smoothly fades from 1.0 (low rate) to 0.0 (high rate) with center at 0.02 NM/s
+                double rateScale = 1.0 / (1.0 + Math.Exp(10.0 * (Math.Abs(crossTrackRate) - 0.02)));
                 double rawHTermScale = distanceScale * rateScale;
 
                 // Apply exponential smoothing to H term weight to prevent oscillation
-                // Smoothing factor 0.7 = moderate filtering (prevents rapid swings in H weight)
+                // Smoothing factor 0.85 = strong filtering with ~5.7s time constant (filters 30s oscillation cycle)
                 double hTermScale;
                 if (smoothedHTermScale.HasValue)
                 {
-                    hTermScale = 0.7 * smoothedHTermScale.Value + 0.3 * rawHTermScale;
+                    hTermScale = 0.85 * smoothedHTermScale.Value + 0.15 * rawHTermScale;
                     smoothedHTermScale = hTermScale;
                 }
                 else
@@ -655,8 +672,8 @@ public class VisualGuidanceManager : IDisposable
                 }
 
                 // Bank limit for CAPTURE_TRACK phase
-                // 25° allows strong corrections to prevent overshoot while PD controller scales appropriately
-                double bankLimit = 25.0;
+                // 15° provides gentle commands for manual flying while maintaining precision via I term
+                double bankLimit = 15.0;
                 desiredBank = Math.Clamp(rawDesiredBank, -bankLimit, bankLimit);
 
                 // Calculate distance to threshold for debugging
@@ -686,6 +703,7 @@ public class VisualGuidanceManager : IDisposable
 
             // Update for next iteration
             previousDesiredBank = desiredBank;
+            previousAbsXTE = absXTE;  // Track for phase transition detection
 
             // Magnetic reference debugging
             double impliedMagVar = cachedGroundTrack.HasValue ?
@@ -864,8 +882,8 @@ public class VisualGuidanceManager : IDisposable
             // PD controller on FPM error:
             // Proportional: Correct based on FPM error
             // Derivative: Dampen based on rate of FPM error change
-            double proportionalTerm = fpmError * FPM_P_GAIN;
-            double derivativeTerm = fpmErrorRate * FPM_D_GAIN;
+            double proportionalTerm = -fpmError * FPM_P_GAIN;
+            double derivativeTerm = -fpmErrorRate * FPM_D_GAIN;
 
             double rawDesiredPitch = nominalPitch + proportionalTerm + derivativeTerm;
 
