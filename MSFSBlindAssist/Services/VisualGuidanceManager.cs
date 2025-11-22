@@ -107,7 +107,7 @@ public class VisualGuidanceManager : IDisposable
     private const double LATERAL_GAIN_INTERCEPT = 0.5;   // Heading error to bank for intercept
     private const double LATERAL_GAIN_TRACKING = 120.0;    // Cross-track error (NM) to bank for tracking (increased for faster convergence)
     private const double LATERAL_RATE_DAMPING = 12.0;    // Cross-track rate damping
-    private const double LATERAL_INTEGRAL_GAIN = 0.3;    // Integral term to eliminate steady-state error (enables <20ft precision)
+    private const double LATERAL_INTEGRAL_GAIN = 0.0;    // Disabled for testing - set to 0.1-0.3 for <20ft precision (only active in TRACK mode)
     private const double LATERAL_HEADING_GAIN = 1.0;     // Track/heading error to bank for alignment (Boeing 747: 1.0-2.8)
     private const double INTEGRAL_LIMIT_LATERAL = 10.0;  // Anti-windup limit (bank degrees)
     private const double AIRSPEED_REFERENCE_KNOTS = 140.0;  // Reference speed for gain scaling
@@ -531,35 +531,46 @@ public class VisualGuidanceManager : IDisposable
             double speedFactor = Math.Sqrt(Math.Max(currentGroundSpeedKnots, 80.0) / AIRSPEED_REFERENCE_KNOTS);
 
             // Integral term with anti-windup (1 Hz update rate)
-            // Gradual decay when close to centerline for smooth tracking
-            if (Math.Abs(signedCrossTrackNM) < 0.3)
+            // Only accumulate in TRACK mode (≤0.1 NM) for precision
+            // Reset in CAPTURE mode (>0.1 NM) to prevent windup
+            double absXTE = Math.Abs(signedCrossTrackNM);
+            if (absXTE > 0.1)
             {
-                crossTrackIntegral *= 0.95;  // 5% decay per second when close
-            }
-
-            // Anti-windup: Check conditions BEFORE accumulating to prevent one-step windup
-            // Reset integral if error is large or changing sign (crossing centerline)
-            if (Math.Abs(signedCrossTrackNM) > 1.0 ||  // Far from centerline
-                (previousCrossTrackError.HasValue &&
-                 Math.Sign(signedCrossTrackNM) != Math.Sign(previousCrossTrackError.Value)))
-            {
-                crossTrackIntegral = 0.0;  // Reset integral
+                // CAPTURE MODE: Reset I term to prevent windup
+                crossTrackIntegral = 0.0;
             }
             else
             {
-                // Only accumulate if not resetting (prevents one-step windup before reset)
-                crossTrackIntegral += signedCrossTrackNM * 1.0;
-            }
+                // TRACK MODE: Normal I term accumulation with anti-windup
+                // Gradual decay when close to centerline for smooth tracking
+                if (Math.Abs(signedCrossTrackNM) < 0.3)
+                {
+                    crossTrackIntegral *= 0.95;  // 5% decay per second when close
+                }
 
-            // Clamp integral to prevent windup
-            crossTrackIntegral = Math.Clamp(crossTrackIntegral, -INTEGRAL_LIMIT_LATERAL, INTEGRAL_LIMIT_LATERAL);
+                // Anti-windup: Reset if error is large or changing sign
+                if (Math.Abs(signedCrossTrackNM) > 1.0 ||
+                    (previousCrossTrackError.HasValue &&
+                     Math.Sign(signedCrossTrackNM) != Math.Sign(previousCrossTrackError.Value)))
+                {
+                    crossTrackIntegral = 0.0;
+                }
+                else
+                {
+                    // Only accumulate if not resetting
+                    crossTrackIntegral += signedCrossTrackNM * 1.0;
+                }
+
+                // Clamp integral to prevent windup
+                crossTrackIntegral = Math.Clamp(crossTrackIntegral, -INTEGRAL_LIMIT_LATERAL, INTEGRAL_LIMIT_LATERAL);
+            }
 
             // **TARGET HEADING INTERCEPT LOGIC**
             // Phase-based approach matching real autopilot behavior
             // INTERCEPT phases (>0.5 NM): Calculate and fly to target intercept heading
             // CAPTURE/TRACK phase (<=0.5 NM): Use PD controller for final capture
 
-            double absXTE = Math.Abs(signedCrossTrackNM);
+            // absXTE already declared above for I term logic
             double desiredBank;
             string guidancePhase;
 
@@ -631,6 +642,18 @@ public class VisualGuidanceManager : IDisposable
                 // D: Prevents overshoot by damping approach rate
                 // H: Aligns aircraft heading/track with runway (auto-decrab below 100 ft)
                 double proportionalTerm = -signedCrossTrackNM * LATERAL_GAIN_TRACKING * speedFactor;
+
+                // Limit P term when heading is misaligned to prevent wrong-direction turns
+                // Allows H term to dominate for heading alignment first
+                double pTermLimit = 15.0;
+                if (Math.Abs(trackAngleError) > 10.0)
+                {
+                    // Progressive limit: 10° error → full (1.0x), 25° error → reduced (0.33x)
+                    double headingFactor = Math.Clamp((25.0 - Math.Abs(trackAngleError)) / 15.0, 0.33, 1.0);
+                    pTermLimit = 15.0 * headingFactor;
+                }
+                proportionalTerm = Math.Clamp(proportionalTerm, -pTermLimit, pTermLimit);
+
                 double integralTerm = -crossTrackIntegral * LATERAL_INTEGRAL_GAIN * speedFactor;
                 double derivativeTerm = -crossTrackRate * LATERAL_RATE_DAMPING * speedFactor;
 
@@ -658,7 +681,27 @@ public class VisualGuidanceManager : IDisposable
                     smoothedHTermScale = rawHTermScale;
                 }
 
+                // Boost H term when far from centerline with large heading error
+                // Only applies when absXTE > 0.1 to preserve close-in anti-overshoot behavior
+                bool boostActive = (absXTE > 0.1 && Math.Abs(trackAngleError) > 10.0);
+                if (boostActive)
+                {
+                    double fadeFactor = Math.Clamp((absXTE - 0.1) / 0.2, 0.0, 1.0);
+                    double headingBoost = Math.Clamp(Math.Abs(trackAngleError) / 20.0, 0.0, 1.0);
+                    double minHWeight = 0.5 + (0.4 * headingBoost);
+                    double boostedWeight = Math.Max(hTermScale, minHWeight);
+                    hTermScale = hTermScale + fadeFactor * (boostedWeight - hTermScale);
+                }
+
                 double headingTerm = trackAngleError * LATERAL_HEADING_GAIN * speedFactor * hTermScale;
+
+                // Safety cap: Prevent H term from overpowering P term during intercept
+                // Only applied when boost is active to preserve anti-overshoot feature
+                if (boostActive)
+                {
+                    double maxAllowedHTerm = Math.Abs(proportionalTerm) * 0.8;
+                    headingTerm = Math.Clamp(headingTerm, -maxAllowedHTerm, maxAllowedHTerm);
+                }
 
                 double rawDesiredBank = proportionalTerm + integralTerm + derivativeTerm + headingTerm;
                 double originalRawBank = rawDesiredBank;  // Save before rate limiting
@@ -671,9 +714,25 @@ public class VisualGuidanceManager : IDisposable
                     rawDesiredBank = previousDesiredBank + Math.Sign(bankChange) * maxBankChange;
                 }
 
-                // Bank limit for CAPTURE_TRACK phase
-                // 15° provides gentle commands for manual flying while maintaining precision via I term
-                double bankLimit = 15.0;
+                // Two-mode approach: CAPTURE vs TRACK
+                // CAPTURE (>0.1 NM): Smooth arc via natural convergence with small intercept angle
+                // TRACK (≤0.1 NM): Tight precision tracking with full controller
+                double bankLimit;
+                if (absXTE > 0.1)
+                {
+                    // CAPTURE MODE: Natural convergence with small intercept angle
+                    // Suppress P term to allow H term to maintain ~3-5° intercept angle
+                    proportionalTerm *= 0.15;  // Keep 15% for gentle nudge
+                    rawDesiredBank = proportionalTerm + integralTerm + derivativeTerm + headingTerm;
+                    bankLimit = 6.0;  // Tight limit for smooth arc
+                }
+                else
+                {
+                    // TRACK MODE: Tight precision tracking
+                    // Full PDI controller active, I term accumulates for <20ft precision
+                    // Anti-overshoot feature (H weight = 1.0) automatically active at this range
+                    bankLimit = 15.0;  // Normal limit for precision corrections
+                }
                 desiredBank = Math.Clamp(rawDesiredBank, -bankLimit, bankLimit);
 
                 // Calculate distance to threshold for debugging
