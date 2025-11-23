@@ -113,6 +113,14 @@ public class VisualGuidanceManager : IDisposable
     private const double AIRSPEED_REFERENCE_KNOTS = 140.0;  // Reference speed for gain scaling
     private const double MAX_BANK_RATE_DEG_PER_SEC = 3.0;   // Maximum bank command change rate (reduced from 5.0 to prevent oscillations)
 
+    // Arc mode guidance constants (replaces problematic P/H balance in CAPTURE mode)
+    private const double ARC_MODE_ENTRY_NM = 1.5;           // Start arc capture at 1.5 NM (matches INTERCEPT_45 angle)
+    private const double ARC_MODE_EXIT_NM = 0.05;           // End arc at 300 feet, switch to precision
+    private const double ARC_INTERCEPT_GAIN = 30.0;         // Degrees of intercept angle per NM (tunable: 25-40)
+    private const double ARC_MAX_INTERCEPT_ANGLE = 25.0;    // Maximum intercept angle to prevent excessive bank
+    private const double ARC_RATE_DAMPING = 12.0;           // Damping to prevent overshoot if pilot overbanks
+    private const double ARC_BANK_LIMIT = 15.0;             // Gentle bank limit for comfort during arc
+
     // Vertical guidance constants
     private const double TYPICAL_APPROACH_AOA = 6.0;     // Typical angle of attack for A320 approach configuration
     private const double MAX_PITCH_RATE_DEG_PER_SEC = 2.5;  // Maximum pitch command change rate
@@ -574,20 +582,20 @@ public class VisualGuidanceManager : IDisposable
             double desiredBank;
             string guidancePhase;
 
-            // Phase determination and target heading calculation
+            // Phase determination and guidance calculation
             if (absXTE > 2.0)
             {
-                // INTERCEPT PHASE 1: Far from centerline - 60° intercept (steeper for faster capture)
+                // INTERCEPT PHASE 1: Far from centerline - 60° intercept
                 double interceptAngle = 60.0;
                 double targetHeading = signedCrossTrackNM < 0
-                    ? runway.HeadingMag + interceptAngle  // Left of centerline, fly right of runway heading
-                    : runway.HeadingMag - interceptAngle; // Right of centerline, fly left of runway heading
+                    ? runway.HeadingMag + interceptAngle
+                    : runway.HeadingMag - interceptAngle;
                 targetHeading = NormalizeHeading(targetHeading);
 
                 desiredBank = CalculateHeadingInterceptBank(targetHeading, actualTrackAngle);
                 guidancePhase = "INTERCEPT_60";
             }
-            else if (absXTE > 1.0)
+            else if (absXTE > ARC_MODE_ENTRY_NM)  // 1.0 NM
             {
                 // INTERCEPT PHASE 2: Medium distance - 45° intercept
                 double interceptAngle = 45.0;
@@ -599,114 +607,36 @@ public class VisualGuidanceManager : IDisposable
                 desiredBank = CalculateHeadingInterceptBank(targetHeading, actualTrackAngle);
                 guidancePhase = "INTERCEPT_45";
             }
-            else if (absXTE > 1.0)
+            else if (absXTE > ARC_MODE_EXIT_NM)  // 0.05 NM
             {
-                // INTERCEPT PHASE 3: Medium distance - 30° intercept
-                double interceptAngle = 30.0;
-                double targetHeading = signedCrossTrackNM < 0
-                    ? runway.HeadingMag + interceptAngle
-                    : runway.HeadingMag - interceptAngle;
+                // ========== ARC CAPTURE MODE ==========
+                // Calculates target intercept heading that creates smooth arc to centerline
+                // Intercept angle reduces proportionally as aircraft approaches line
+                // At 1.5 NM: 45° intercept (matches INTERCEPT_45) → At 0.05 NM: 1.5° intercept
+                // This naturally aligns heading while approaching centerline
+
+                guidancePhase = "ARC_CAPTURE";
+
+                // Calculate intercept angle based on distance from centerline
+                // Negative sign: left of centerline (negative XTE) → positive intercept angle
+                double interceptAngle = -ARC_INTERCEPT_GAIN * signedCrossTrackNM;
+
+                // Add damping to prevent overshoot if approaching too fast
+                // (crossTrackRate already calculated above at line 494)
+                double dampedInterceptAngle = interceptAngle - (ARC_RATE_DAMPING * crossTrackRate);
+
+                // Limit to reasonable range
+                dampedInterceptAngle = Math.Clamp(dampedInterceptAngle, -ARC_MAX_INTERCEPT_ANGLE, ARC_MAX_INTERCEPT_ANGLE);
+
+                // Calculate target heading for the arc
+                double targetHeading = runway.HeadingMag + dampedInterceptAngle;
                 targetHeading = NormalizeHeading(targetHeading);
 
-                desiredBank = CalculateHeadingInterceptBank(targetHeading, actualTrackAngle);
-                guidancePhase = "INTERCEPT_30";
-            }
-            else if (absXTE > 0.3)
-            {
-                // INTERCEPT PHASE 4: Final alignment - 15° intercept (gradual handoff to CAPTURE)
-                double interceptAngle = 15.0;
-                double targetHeading = signedCrossTrackNM < 0
-                    ? runway.HeadingMag + interceptAngle
-                    : runway.HeadingMag - interceptAngle;
-                targetHeading = NormalizeHeading(targetHeading);
+                // Simple heading controller to fly the arc
+                double headingError = NormalizeHeading(targetHeading - actualTrackAngle);
+                double rawDesiredBank = headingError * LATERAL_HEADING_GAIN * speedFactor;
 
-                desiredBank = CalculateHeadingInterceptBank(targetHeading, actualTrackAngle);
-                guidancePhase = "INTERCEPT_15";
-            }
-            else
-            {
-                // CAPTURE/TRACK PHASE: Close to centerline (<0.3 NM) - Use PDH controller
-                // Optimized for blind pilot manual landing - tight tracking required!
-                guidancePhase = "CAPTURE_TRACK";
-
-                // Detect phase entry from INTERCEPT → CAPTURE and reset H term smoothing
-                // This prevents inheriting noisy state from intercept phase
-                if (previousAbsXTE.HasValue && previousAbsXTE.Value > 0.3)
-                {
-                    smoothedHTermScale = null;  // Reset H term weight smoothing on phase entry
-                    System.Diagnostics.Debug.WriteLine("[VisualGuidance] Entered CAPTURE_TRACK phase - reset H term smoothing");
-                }
-
-                // PDH controller for final capture and tracking
-                // P: Corrects based on distance from centerline
-                // D: Prevents overshoot by damping approach rate
-                // H: Aligns aircraft heading/track with runway (auto-decrab below 100 ft)
-                double proportionalTerm = -signedCrossTrackNM * LATERAL_GAIN_TRACKING * speedFactor;
-
-                // Limit P term when heading is misaligned to prevent wrong-direction turns
-                // Allows H term to dominate for heading alignment first
-                double pTermLimit = 15.0;
-                if (Math.Abs(trackAngleError) > 10.0)
-                {
-                    // Progressive limit: 10° error → full (1.0x), 25° error → reduced (0.33x)
-                    double headingFactor = Math.Clamp((25.0 - Math.Abs(trackAngleError)) / 15.0, 0.33, 1.0);
-                    pTermLimit = 15.0 * headingFactor;
-                }
-                proportionalTerm = Math.Clamp(proportionalTerm, -pTermLimit, pTermLimit);
-
-                double integralTerm = -crossTrackIntegral * LATERAL_INTEGRAL_GAIN * speedFactor;
-                double derivativeTerm = -crossTrackRate * LATERAL_RATE_DAMPING * speedFactor;
-
-                // Scale H term based on distance AND rate
-                // H term weak when far from centerline (let P dominate for capture)
-                // H term weak when moving fast (let D dominate to stop drift)
-                // H term strong only when established (near centerline AND low rate)
-                double distanceScale = Math.Clamp(1.0 - (Math.Abs(signedCrossTrackNM) - 0.1) / 0.4, 0.0, 1.0);
-                // Sigmoid function for smooth H term weight transition (prevents oscillation feedback loop)
-                // Smoothly fades from 1.0 (low rate) to 0.0 (high rate) with center at 0.02 NM/s
-                double rateScale = 1.0 / (1.0 + Math.Exp(10.0 * (Math.Abs(crossTrackRate) - 0.02)));
-                double rawHTermScale = distanceScale * rateScale;
-
-                // Apply exponential smoothing to H term weight to prevent oscillation
-                // Smoothing factor 0.85 = strong filtering with ~5.7s time constant (filters 30s oscillation cycle)
-                double hTermScale;
-                if (smoothedHTermScale.HasValue)
-                {
-                    hTermScale = 0.85 * smoothedHTermScale.Value + 0.15 * rawHTermScale;
-                    smoothedHTermScale = hTermScale;
-                }
-                else
-                {
-                    hTermScale = rawHTermScale;
-                    smoothedHTermScale = rawHTermScale;
-                }
-
-                // Boost H term when far from centerline with large heading error
-                // Only applies when absXTE > 0.1 to preserve close-in anti-overshoot behavior
-                bool boostActive = (absXTE > 0.1 && Math.Abs(trackAngleError) > 10.0);
-                if (boostActive)
-                {
-                    double fadeFactor = Math.Clamp((absXTE - 0.1) / 0.2, 0.0, 1.0);
-                    double headingBoost = Math.Clamp(Math.Abs(trackAngleError) / 20.0, 0.0, 1.0);
-                    double minHWeight = 0.5 + (0.4 * headingBoost);
-                    double boostedWeight = Math.Max(hTermScale, minHWeight);
-                    hTermScale = hTermScale + fadeFactor * (boostedWeight - hTermScale);
-                }
-
-                double headingTerm = trackAngleError * LATERAL_HEADING_GAIN * speedFactor * hTermScale;
-
-                // Safety cap: Prevent H term from overpowering P term during intercept
-                // Only applied when boost is active to preserve anti-overshoot feature
-                if (boostActive)
-                {
-                    double maxAllowedHTerm = Math.Abs(proportionalTerm) * 0.8;
-                    headingTerm = Math.Clamp(headingTerm, -maxAllowedHTerm, maxAllowedHTerm);
-                }
-
-                double rawDesiredBank = proportionalTerm + integralTerm + derivativeTerm + headingTerm;
-                double originalRawBank = rawDesiredBank;  // Save before rate limiting
-
-                // Bank rate limiting
+                // Apply bank rate limiting
                 double maxBankChange = MAX_BANK_RATE_DEG_PER_SEC * 1.0;
                 double bankChange = rawDesiredBank - previousDesiredBank;
                 if (Math.Abs(bankChange) > maxBankChange)
@@ -714,50 +644,60 @@ public class VisualGuidanceManager : IDisposable
                     rawDesiredBank = previousDesiredBank + Math.Sign(bankChange) * maxBankChange;
                 }
 
-                // Two-mode approach: CAPTURE vs TRACK
-                // CAPTURE (>0.1 NM): Smooth arc via natural convergence with small intercept angle
-                // TRACK (≤0.1 NM): Tight precision tracking with full controller
-                double bankLimit;
-                if (absXTE > 0.1)
-                {
-                    // CAPTURE MODE: Natural convergence with small intercept angle
-                    // Suppress P term to allow H term to maintain ~3-5° intercept angle
-                    proportionalTerm *= 0.15;  // Keep 15% for gentle nudge
-                    rawDesiredBank = proportionalTerm + integralTerm + derivativeTerm + headingTerm;
-                    bankLimit = 6.0;  // Tight limit for smooth arc
-                }
-                else
-                {
-                    // TRACK MODE: Tight precision tracking
-                    // Full PDI controller active, I term accumulates for <20ft precision
-                    // Anti-overshoot feature (H weight = 1.0) automatically active at this range
-                    bankLimit = 15.0;  // Normal limit for precision corrections
-                }
-                desiredBank = Math.Clamp(rawDesiredBank, -bankLimit, bankLimit);
+                // Apply bank limit for comfort
+                desiredBank = Math.Clamp(rawDesiredBank, -ARC_BANK_LIMIT, ARC_BANK_LIMIT);
 
                 // Calculate distance to threshold for debugging
                 double distanceNM = NavigationCalculator.CalculateDistance(
                     lat, lon, runway.StartLat, runway.StartLon);
 
-                // Detailed PDH controller debug output
-                // Shows individual term contributions to diagnose control law issues
+                // Debug output for arc mode
                 System.Diagnostics.Debug.WriteLine(
                     $"[VisualGuidance] {guidancePhase}: XTE={signedCrossTrackNM:F3}NM, Rate={crossTrackRate:F3}NM/s, " +
-                    $"TrkErr={trackAngleError:F1}°, Dist={distanceNM:F1}NM, GS={currentGroundSpeedKnots:F0}kt");
+                    $"IntAngle={interceptAngle:F1}°, Damped={dampedInterceptAngle:F1}°, " +
+                    $"TgtHdg={targetHeading:F1}°, ActTrk={actualTrackAngle:F1}°, HdgErr={headingError:F1}°, " +
+                    $"Bank={desiredBank:F1}°, Dist={distanceNM:F1}NM, GS={currentGroundSpeedKnots:F0}kt");
+            }
+            else
+            {
+                // ========== PRECISION TRACK MODE (< 0.05 NM) ==========
+                // Simplified tracking for final centerline hold
+                // Arc mode should deliver aircraft very close to centerline on heading
+                // This mode just holds position with minimal corrections
 
-                // Determine limiting type for debug output
-                string limitingType = "";
-                if (Math.Abs(originalRawBank - desiredBank) > 0.1)
+                guidancePhase = "PRECISION_TRACK";
+
+                // PDH controller for final precision
+                // Arc mode delivers aircraft at 0.05 NM with ~1.5° heading error
+                // Both XTE and heading errors are tiny, so P and H cooperate (no fighting!)
+                double proportionalTerm = -signedCrossTrackNM * LATERAL_GAIN_TRACKING * speedFactor;
+                double derivativeTerm = -crossTrackRate * LATERAL_RATE_DAMPING * speedFactor;
+
+                // Heading term at FULL strength - prevents wrong-direction turns
+                double headingTerm = trackAngleError * LATERAL_HEADING_GAIN * speedFactor;
+
+                double rawDesiredBank = proportionalTerm + derivativeTerm + headingTerm;
+
+                // Apply bank rate limiting
+                double maxBankChange = MAX_BANK_RATE_DEG_PER_SEC * 1.0;
+                double bankChange = rawDesiredBank - previousDesiredBank;
+                if (Math.Abs(bankChange) > maxBankChange)
                 {
-                    if (Math.Abs(originalRawBank - rawDesiredBank) > 0.1)
-                        limitingType = " (rate limited)";
-                    else
-                        limitingType = " (bank limited)";
+                    rawDesiredBank = previousDesiredBank + Math.Sign(bankChange) * maxBankChange;
                 }
 
+                // Tight bank limit for precision
+                desiredBank = Math.Clamp(rawDesiredBank, -10.0, 10.0);
+
+                // Calculate distance to threshold for debugging
+                double distanceNM = NavigationCalculator.CalculateDistance(
+                    lat, lon, runway.StartLat, runway.StartLon);
+
+                // Debug output for precision mode
                 System.Diagnostics.Debug.WriteLine(
-                    $"[VisualGuidance] PDH: P={proportionalTerm:F2}° D={derivativeTerm:F2}° H={headingTerm:F2}°(×{hTermScale:F2}) I={integralTerm:F2}° " +
-                    $"= Raw={originalRawBank:F2}° → Bank={desiredBank:F1}°{limitingType}");
+                    $"[VisualGuidance] {guidancePhase}: XTE={signedCrossTrackNM:F3}NM, Rate={crossTrackRate:F3}NM/s, " +
+                    $"TrkErr={trackAngleError:F1}°, P={proportionalTerm:F2}° D={derivativeTerm:F2}° H={headingTerm:F2}° " +
+                    $"→ Bank={desiredBank:F1}°, Dist={distanceNM:F1}NM, GS={currentGroundSpeedKnots:F0}kt");
             }
 
             // Update for next iteration
