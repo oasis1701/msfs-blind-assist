@@ -49,11 +49,6 @@ public class VisualGuidanceManager : IDisposable
     private double? smoothedCrossTrackRate = null;  // Smoothed rate to prevent oscillation during handoff
     private Queue<(double xte, DateTime timestamp)> crossTrackHistory = new Queue<(double, DateTime)>();
     private const int CROSS_TRACK_HISTORY_SIZE = 5;  // 5 samples at 1Hz = 4 second window
-    private double? smoothedHTermScale = null;  // Smoothed H term weight to prevent oscillation
-    private double? previousAbsXTE = null;  // Track previous XTE to detect CAPTURE phase entry
-
-    // Integral term accumulation (lateral PID)
-    private double crossTrackIntegral = 0.0;
 
     // State tracking for derivative term and rate limiting (vertical)
     private double? previousGlideslopeDeviation = null;  // Reused for FPM error history
@@ -61,7 +56,6 @@ public class VisualGuidanceManager : IDisposable
     private double previousDesiredPitch = 0.0;
 
     // Flare state tracking
-    private double flareEntryVerticalSpeed = 0.0;  // VS captured at flare entry
     private double lastFlarePitch = 3.0;           // For rate limiting during flare
 
     // Announcement tracking
@@ -69,7 +63,6 @@ public class VisualGuidanceManager : IDisposable
     private DateTime lastDistanceAnnouncement = DateTime.MinValue;
     private double lastAnnouncedDistance = double.MaxValue;
     private DateTime lastExtendingProgressAnnouncement = DateTime.MinValue;
-    private int? lastAnnouncedBankDegrees = null;  // Track last announced bank angle
     private int? lastAnnouncedBankError = null;  // Track last announced bank error for error-based announcements
     private string? lastAnnouncedCenterlineDeviation = null;  // Track last announced centerline deviation
     private const int ANNOUNCEMENT_INTERVAL_MS = 1000;
@@ -86,9 +79,7 @@ public class VisualGuidanceManager : IDisposable
     private const double FLARE_ALTITUDE_FT = 30.0;       // Start flare at 30 ft AGL
     private const double TOUCHDOWN_ALTITUDE_FT = 5.0;    // Consider touchdown below 5 ft AGL
 
-    // Flare descent rate targeting constants
-    private const double TARGET_TOUCHDOWN_VS_FPM = -125.0;  // Target descent rate at touchdown (-100 to -150 fpm)
-    private const double FLARE_VS_GAIN = 0.01;              // Degrees pitch correction per fpm VS error
+    // Flare rate limiting constant
     private const double MAX_FLARE_PITCH_RATE = 1.5;        // Maximum pitch change rate during flare (deg/sec)
 
     // Stabilization gate: Target 3000 ft AGL at 9 NM for terrain clearance
@@ -107,9 +98,7 @@ public class VisualGuidanceManager : IDisposable
     private const double LATERAL_GAIN_INTERCEPT = 0.5;   // Heading error to bank for intercept
     private const double LATERAL_GAIN_TRACKING = 120.0;    // Cross-track error (NM) to bank for tracking (increased for faster convergence)
     private const double LATERAL_RATE_DAMPING = 12.0;    // Cross-track rate damping
-    private const double LATERAL_INTEGRAL_GAIN = 0.0;    // Disabled for testing - set to 0.1-0.3 for <20ft precision (only active in TRACK mode)
     private const double LATERAL_HEADING_GAIN = 1.0;     // Track/heading error to bank for alignment (Boeing 747: 1.0-2.8)
-    private const double INTEGRAL_LIMIT_LATERAL = 10.0;  // Anti-windup limit (bank degrees)
     private const double AIRSPEED_REFERENCE_KNOTS = 140.0;  // Reference speed for gain scaling
     private const double MAX_BANK_RATE_DEG_PER_SEC = 3.0;   // Maximum bank command change rate (reduced from 5.0 to prevent oscillations)
 
@@ -117,16 +106,14 @@ public class VisualGuidanceManager : IDisposable
     private const double ARC_MODE_ENTRY_NM = 1.5;           // Start arc capture at 1.5 NM (matches INTERCEPT_45 angle)
     private const double ARC_MODE_EXIT_NM = 0.05;           // End arc at 300 feet, switch to precision
     private const double ARC_INTERCEPT_GAIN = 30.0;         // Degrees of intercept angle per NM (tunable: 25-40)
-    private const double ARC_MAX_INTERCEPT_ANGLE = 25.0;    // Maximum intercept angle to prevent excessive bank
+    private const double ARC_MAX_INTERCEPT_ANGLE = 45.0;    // Maximum intercept angle (matches INTERCEPT_45 handoff)
     private const double ARC_RATE_DAMPING = 12.0;           // Damping to prevent overshoot if pilot overbanks
     private const double ARC_BANK_LIMIT = 15.0;             // Gentle bank limit for comfort during arc
 
     // Vertical guidance constants
     private const double TYPICAL_APPROACH_AOA = 6.0;     // Typical angle of attack for A320 approach configuration
     private const double MAX_PITCH_RATE_DEG_PER_SEC = 2.5;  // Maximum pitch command change rate
-    private const double GLIDESLOPE_SMOOTHING_FACTOR = 0.7;  // Exponential smoothing for glideslope deviation (0.7 = moderate filtering)
     private const double CROSS_TRACK_RATE_SMOOTHING_FACTOR = 0.85;  // Exponential smoothing for cross-track rate (0.85 = strong filtering to prevent noise spikes)
-    private const double FPM_PER_DEGREE_PITCH = 175.0;   // Typical vertical speed change per degree of pitch at approach speeds (legacy, may remove)
 
     // FPM-based vertical guidance constants
     private const double FPM_SMOOTHING_FACTOR = 0.7;     // Exponential smoothing for current FPM (0.7 = moderate filtering)
@@ -193,7 +180,6 @@ public class VisualGuidanceManager : IDisposable
         lastDistanceAnnouncement = DateTime.MinValue;
         lastAnnouncedDistance = double.MaxValue;
         lastExtendingProgressAnnouncement = DateTime.MinValue;
-        lastAnnouncedBankDegrees = null;
         lastAnnouncedBankError = null;
         cachedLatitude = null;
         cachedLongitude = null;
@@ -209,11 +195,6 @@ public class VisualGuidanceManager : IDisposable
         previousDesiredBank = 0.0;
         smoothedCrossTrackRate = null;
         crossTrackHistory.Clear();  // Clear multi-sample history buffer
-        smoothedHTermScale = null;  // Clear H term weight smoothing
-        previousAbsXTE = null;  // Clear phase transition tracking
-
-        // Reset integral terms
-        crossTrackIntegral = 0.0;
 
         // Reset derivative term tracking (vertical)
         previousGlideslopeDeviation = null;
@@ -222,7 +203,6 @@ public class VisualGuidanceManager : IDisposable
         smoothedCurrentFPM = null;
 
         // Reset flare state
-        flareEntryVerticalSpeed = 0.0;
         lastFlarePitch = 3.0;
 
         // Start desired attitude tone
@@ -380,8 +360,7 @@ public class VisualGuidanceManager : IDisposable
             currentPhase = GuidancePhase.Flare;
             if (previousPhase != currentPhase)
             {
-                // Capture entry state for descent rate targeting
-                flareEntryVerticalSpeed = currentVerticalSpeedFPM;
+                // Capture entry state
                 lastFlarePitch = previousDesiredPitch;  // Start from current guidance pitch
                 AnnouncePhaseChange("Flare");
             }
@@ -538,47 +517,13 @@ public class VisualGuidanceManager : IDisposable
             // Higher speeds need stronger corrections (compensates for larger turn radius)
             double speedFactor = Math.Sqrt(Math.Max(currentGroundSpeedKnots, 80.0) / AIRSPEED_REFERENCE_KNOTS);
 
-            // Integral term with anti-windup (1 Hz update rate)
-            // Only accumulate in TRACK mode (≤0.1 NM) for precision
-            // Reset in CAPTURE mode (>0.1 NM) to prevent windup
-            double absXTE = Math.Abs(signedCrossTrackNM);
-            if (absXTE > 0.1)
-            {
-                // CAPTURE MODE: Reset I term to prevent windup
-                crossTrackIntegral = 0.0;
-            }
-            else
-            {
-                // TRACK MODE: Normal I term accumulation with anti-windup
-                // Gradual decay when close to centerline for smooth tracking
-                if (Math.Abs(signedCrossTrackNM) < 0.3)
-                {
-                    crossTrackIntegral *= 0.95;  // 5% decay per second when close
-                }
-
-                // Anti-windup: Reset if error is large or changing sign
-                if (Math.Abs(signedCrossTrackNM) > 1.0 ||
-                    (previousCrossTrackError.HasValue &&
-                     Math.Sign(signedCrossTrackNM) != Math.Sign(previousCrossTrackError.Value)))
-                {
-                    crossTrackIntegral = 0.0;
-                }
-                else
-                {
-                    // Only accumulate if not resetting
-                    crossTrackIntegral += signedCrossTrackNM * 1.0;
-                }
-
-                // Clamp integral to prevent windup
-                crossTrackIntegral = Math.Clamp(crossTrackIntegral, -INTEGRAL_LIMIT_LATERAL, INTEGRAL_LIMIT_LATERAL);
-            }
-
             // **TARGET HEADING INTERCEPT LOGIC**
             // Phase-based approach matching real autopilot behavior
-            // INTERCEPT phases (>0.5 NM): Calculate and fly to target intercept heading
-            // CAPTURE/TRACK phase (<=0.5 NM): Use PD controller for final capture
+            // INTERCEPT phases: Calculate and fly to target intercept heading
+            // ARC MODE: Smooth arc capture from 1.5 to 0.05 NM
+            // PRECISION TRACK: Final PDH control below 0.05 NM
 
-            // absXTE already declared above for I term logic
+            double absXTE = Math.Abs(signedCrossTrackNM);
             double desiredBank;
             string guidancePhase;
 
@@ -702,7 +647,6 @@ public class VisualGuidanceManager : IDisposable
 
             // Update for next iteration
             previousDesiredBank = desiredBank;
-            previousAbsXTE = absXTE;  // Track for phase transition detection
 
             // Magnetic reference debugging
             double impliedMagVar = cachedGroundTrack.HasValue ?
