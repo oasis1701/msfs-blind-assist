@@ -42,6 +42,7 @@ public class VisualGuidanceManager : IDisposable
     private double currentPitch = 0.0;
     private double? smoothedCurrentFPM = null;  // Smoothed vertical speed for FPM-based guidance
     private double lastCalculatedTargetFPM = 0.0;  // Last calculated target FPM for hotkey announcement
+    private double lastCalculatedAltitudeError = 0.0;  // Last calculated altitude error for hotkey announcement (positive = high, negative = low)
 
     // State tracking for derivative term and rate limiting (lateral)
     private double? previousCrossTrackError = null;  // Used for integral anti-windup sign change detection
@@ -85,11 +86,11 @@ public class VisualGuidanceManager : IDisposable
     // Stabilization gate: Target 3000 ft AGL at 9 NM for terrain clearance
     private const double STABILIZATION_GATE_NM = 9.0;     // Distance from threshold for stabilization gate
     private const double STABILIZATION_GATE_AGL_FT = 3000.0;  // Target altitude at stabilization gate
-    // Calculate glideslope angle to pass through stabilization gate: atan(3000 ft / (9 NM × 6076 ft/NM)) ≈ 3.14°
-    private const double GLIDESLOPE_ANGLE_DEG = 3.143;   // Modified glideslope for 3000 ft at 9 NM
+    // Standard ILS glideslope angle
+    private const double GLIDESLOPE_ANGLE_DEG = 3.0;   // Standard 3° glideslope angle
 
     // New vertical guidance constants
-    private const double GLIDESLOPE_LOCK_DISTANCE_NM = 0.5;  // Distance at which to lock to steady 3° angle
+    private const double GLIDESLOPE_LOCK_DISTANCE_NM = 1.0;  // Distance at which to lock to steady 3° angle
     private const double GLIDESLOPE_GAIN = 2.0;              // Proportional gain: fpm correction per foot of deviation
     private const double MAX_DESCENT_RATE_FPM = -1500.0;     // Maximum descent rate when high
     private const double FLARE_TARGET_PITCH_DEG = 6.0;       // Target pitch in flare
@@ -127,6 +128,12 @@ public class VisualGuidanceManager : IDisposable
     /// Gets the current target FPM for the approach
     /// </summary>
     public double GetTargetFPM() => lastCalculatedTargetFPM;
+
+    /// <summary>
+    /// Gets the current altitude deviation from the calculated glideslope profile in feet
+    /// (positive = above profile/high, negative = below profile/low)
+    /// </summary>
+    public double GetAltitudeDeviation() => lastCalculatedAltitudeError;
 
     /// <summary>
     /// Guidance phases from approach to touchdown
@@ -799,6 +806,7 @@ public class VisualGuidanceManager : IDisposable
 
             // Store for hotkey announcement
             lastCalculatedTargetFPM = targetFPM;
+            lastCalculatedAltitudeError = altitudeError;
 
             // Calculate FPM error (negative = need to descend more, positive = need to descend less)
             double fpmError = targetFPM - smoothedFPM;

@@ -51,6 +51,10 @@ public class UserSettings
         public HandFlyWaveType VisualGuidanceToneWaveform { get; set; } = HandFlyWaveType.Triangle;
         public double VisualGuidanceToneVolume { get; set; } = 0.05; // 0.0 to 1.0 (default 5%)
 
+        // Takeoff Assist Tone Settings
+        public HandFlyWaveType TakeoffAssistToneWaveform { get; set; } = HandFlyWaveType.Sine;
+        public double TakeoffAssistToneVolume { get; set; } = 0.05; // 0.0 to 1.0 (default 5%)
+
         // Simulator Settings
         public string SimulatorVersion { get; set; } = "FS2020";
 
@@ -116,6 +120,8 @@ public class UserSettings
             HandFlyAnnouncementIntervalMs = HandFlyAnnouncementIntervalMs,
             VisualGuidanceToneWaveform = VisualGuidanceToneWaveform,
             VisualGuidanceToneVolume = VisualGuidanceToneVolume,
+            TakeoffAssistToneWaveform = TakeoffAssistToneWaveform,
+            TakeoffAssistToneVolume = TakeoffAssistToneVolume,
             SimulatorVersion = SimulatorVersion,
             LastAircraft = LastAircraft,
             GeoNamesApiUsername = GeoNamesApiUsername,

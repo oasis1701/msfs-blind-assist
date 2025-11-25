@@ -30,6 +30,13 @@ public partial class HandFlyOptionsForm : Form
     private TrackBar guidanceVolumeTrackBar = null!;
     private Label guidanceVolumeValueLabel = null!;
 
+    private Label takeoffToneLabel = null!;
+    private ComboBox takeoffToneCombo = null!;
+
+    private Label takeoffVolumeLabel = null!;
+    private TrackBar takeoffVolumeTrackBar = null!;
+    private Label takeoffVolumeValueLabel = null!;
+
     private Button okButton = null!;
     private Button cancelButton = null!;
 
@@ -42,10 +49,12 @@ public partial class HandFlyOptionsForm : Form
     public bool MonitorVerticalSpeed { get; private set; }
     public HandFlyWaveType GuidanceToneWaveform { get; private set; }
     public double SelectedGuidanceVolume { get; private set; }
+    public HandFlyWaveType TakeoffToneWaveform { get; private set; }
+    public double TakeoffToneVolume { get; private set; }
 
     public HandFlyOptionsForm(HandFlyFeedbackMode currentMode, HandFlyWaveType currentWaveType, double currentVolume,
         bool monitorHeading, bool monitorVerticalSpeed, HandFlyWaveType guidanceToneWaveform,
-        double currentGuidanceVolume)
+        double currentGuidanceVolume, HandFlyWaveType takeoffToneWaveform, double takeoffToneVolume)
     {
         SelectedFeedbackMode = currentMode;
         SelectedWaveType = currentWaveType;
@@ -54,6 +63,8 @@ public partial class HandFlyOptionsForm : Form
         MonitorVerticalSpeed = monitorVerticalSpeed;
         GuidanceToneWaveform = guidanceToneWaveform;
         SelectedGuidanceVolume = currentGuidanceVolume;
+        TakeoffToneWaveform = takeoffToneWaveform;
+        TakeoffToneVolume = takeoffToneVolume;
         InitializeComponent();
         SetupAccessibility();
     }
@@ -61,7 +72,7 @@ public partial class HandFlyOptionsForm : Form
     private void InitializeComponent()
     {
         Text = "Hand Fly Options";
-        Size = new Size(500, 555);
+        Size = new Size(500, 635);
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -278,11 +289,72 @@ public partial class HandFlyOptionsForm : Form
             TextAlign = ContentAlignment.MiddleLeft
         };
 
+        // Takeoff Assist - Tone Waveform Label
+        takeoffToneLabel = new Label
+        {
+            Text = "Takeoff Assist Tone:",
+            Location = new Point(20, 485),
+            Size = new Size(250, 20),
+            AccessibleName = "Takeoff Assist Tone Label"
+        };
+
+        // Takeoff Assist - Tone Waveform ComboBox
+        takeoffToneCombo = new ComboBox
+        {
+            Location = new Point(280, 483),
+            Size = new Size(190, 25),
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            AccessibleName = "Takeoff Assist Tone",
+            AccessibleDescription = "Select the audio wave type for takeoff assist centerline tone"
+        };
+        takeoffToneCombo.Items.AddRange(new object[]
+        {
+            "Sine (Smoothest)",
+            "Triangle (Smooth)",
+            "Sawtooth (Bright)",
+            "Sine (Rich)"
+        });
+        takeoffToneCombo.SelectedIndex = (int)TakeoffToneWaveform;
+        takeoffToneCombo.SelectedIndexChanged += TakeoffToneCombo_SelectedIndexChanged;
+
+        // Takeoff Assist Volume Label
+        takeoffVolumeLabel = new Label
+        {
+            Text = "Takeoff Assist Volume:",
+            Location = new Point(20, 520),
+            Size = new Size(100, 20),
+            AccessibleName = "Takeoff Assist Volume Label"
+        };
+
+        // Takeoff Assist Volume TrackBar
+        takeoffVolumeTrackBar = new TrackBar
+        {
+            Location = new Point(120, 515),
+            Size = new Size(300, 45),
+            Minimum = 0,
+            Maximum = 100,
+            TickFrequency = 10,
+            Value = (int)(TakeoffToneVolume * 100),
+            AccessibleName = "Takeoff Assist Volume Level",
+            AccessibleDescription = "Adjust the takeoff assist centerline tone volume from 0 to 100 percent"
+        };
+        takeoffVolumeTrackBar.ValueChanged += TakeoffVolumeTrackBar_ValueChanged;
+
+        // Takeoff Assist Volume Value Label
+        takeoffVolumeValueLabel = new Label
+        {
+            Text = $"{takeoffVolumeTrackBar.Value}%",
+            Location = new Point(430, 520),
+            Size = new Size(40, 20),
+            AccessibleName = "Takeoff Assist Volume Value",
+            TextAlign = ContentAlignment.MiddleLeft
+        };
+
         // OK Button
         okButton = new Button
         {
             Text = "OK",
-            Location = new Point(310, 485),
+            Location = new Point(310, 565),
             Size = new Size(75, 30),
             DialogResult = DialogResult.OK,
             AccessibleName = "Apply Settings",
@@ -294,7 +366,7 @@ public partial class HandFlyOptionsForm : Form
         cancelButton = new Button
         {
             Text = "Cancel",
-            Location = new Point(395, 485),
+            Location = new Point(395, 565),
             Size = new Size(75, 30),
             DialogResult = DialogResult.Cancel,
             AccessibleName = "Cancel",
@@ -309,6 +381,8 @@ public partial class HandFlyOptionsForm : Form
             testToneButton, monitorHeadingCheckBox, monitorVSCheckBox,
             guidanceToneLabel, guidanceToneCombo,
             guidanceVolumeLabel, guidanceVolumeTrackBar, guidanceVolumeValueLabel,
+            takeoffToneLabel, takeoffToneCombo,
+            takeoffVolumeLabel, takeoffVolumeTrackBar, takeoffVolumeValueLabel,
             okButton, cancelButton
         });
 
@@ -338,8 +412,12 @@ public partial class HandFlyOptionsForm : Form
         guidanceToneCombo.TabIndex = 13;
         guidanceVolumeLabel.TabIndex = 14;
         guidanceVolumeTrackBar.TabIndex = 15;
-        okButton.TabIndex = 16;
-        cancelButton.TabIndex = 17;
+        takeoffToneLabel.TabIndex = 16;
+        takeoffToneCombo.TabIndex = 17;
+        takeoffVolumeLabel.TabIndex = 18;
+        takeoffVolumeTrackBar.TabIndex = 19;
+        okButton.TabIndex = 20;
+        cancelButton.TabIndex = 21;
 
         // Focus and bring window to front when opened
         Load += (sender, e) =>
@@ -414,6 +492,17 @@ public partial class HandFlyOptionsForm : Form
     {
         SelectedGuidanceVolume = guidanceVolumeTrackBar.Value / 100.0;
         guidanceVolumeValueLabel.Text = $"{guidanceVolumeTrackBar.Value}%";
+    }
+
+    private void TakeoffToneCombo_SelectedIndexChanged(object? sender, EventArgs e)
+    {
+        TakeoffToneWaveform = (HandFlyWaveType)takeoffToneCombo.SelectedIndex;
+    }
+
+    private void TakeoffVolumeTrackBar_ValueChanged(object? sender, EventArgs e)
+    {
+        TakeoffToneVolume = takeoffVolumeTrackBar.Value / 100.0;
+        takeoffVolumeValueLabel.Text = $"{takeoffVolumeTrackBar.Value}%";
     }
 
     private void TestToneButton_Click(object? sender, EventArgs e)

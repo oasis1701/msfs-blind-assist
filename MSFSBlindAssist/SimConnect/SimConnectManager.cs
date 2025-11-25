@@ -25,6 +25,7 @@ public class SimConnectManager
     public event EventHandler<AircraftPosition>? AircraftPositionReceived;
     public event EventHandler<WindData>? WindReceived;
     public event EventHandler<ECAMDataEventArgs>? ECAMDataReceived;
+    public event EventHandler<TakeoffRunwayReferenceEventArgs>? TakeoffRunwayReferenceSet;
 
     // Aircraft definition
     public IAircraftDefinition? CurrentAircraft { get; set; }
@@ -148,6 +149,8 @@ public class SimConnectManager
         PANEL_REQUEST_BATCH = 13,
         // Visual guidance consolidated data
         VISUAL_GUIDANCE_DATA = 14,
+        // Takeoff assist consolidated data
+        TAKEOFF_ASSIST_DATA = 15,
         ECAM_MESSAGES = 350,
         // Individual variable definitions start from 1000
         INDIVIDUAL_VARIABLE_BASE = 1000
@@ -224,6 +227,15 @@ public class SimConnectManager
         public double VerticalSpeedFPM;
         public double AGL;
         public double GroundTrack;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
+    public struct TakeoffAssistData
+    {
+        public double Latitude;
+        public double Longitude;
+        public double Pitch;
+        public double HeadingMagnetic;
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
@@ -430,6 +442,17 @@ public class SimConnectManager
         sc.AddToDataDefinition(DATA_DEFINITIONS.VISUAL_GUIDANCE_DATA, "GPS GROUND MAGNETIC TRACK", "degrees",
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)8);
         sc.RegisterDataDefineStruct<VisualGuidanceData>(DATA_DEFINITIONS.VISUAL_GUIDANCE_DATA);
+
+        // Register takeoff assist data (consolidated position + pitch + heading)
+        sc.AddToDataDefinition(DATA_DEFINITIONS.TAKEOFF_ASSIST_DATA, "PLANE LATITUDE", "degrees",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)0);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.TAKEOFF_ASSIST_DATA, "PLANE LONGITUDE", "degrees",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)1);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.TAKEOFF_ASSIST_DATA, "PLANE PITCH DEGREES", "radians",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)2);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.TAKEOFF_ASSIST_DATA, "PLANE HEADING DEGREES MAGNETIC", "radians",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)3);
+        sc.RegisterDataDefineStruct<TakeoffAssistData>(DATA_DEFINITIONS.TAKEOFF_ASSIST_DATA);
 
         // Register wind data for wind information
         sc.AddToDataDefinition(DATA_DEFINITIONS.WIND_DATA, "AMBIENT WIND DIRECTION", "degrees",
@@ -1343,14 +1366,20 @@ public class SimConnectManager
                 });
                 break;
 
-            case (DATA_REQUESTS)326: // Heading for Takeoff Assist Toggle
-                SingleValue takeoffAssistHeadingData = (SingleValue)data.dwData[0];
-                // Return raw value in radians with unique VarName to prevent collision with H hotkey
+            case (DATA_REQUESTS)326: // Position for Takeoff Assist Toggle
+                TakeoffAssistData toggleData = (TakeoffAssistData)data.dwData[0];
+                // Return position data for toggle with unique VarName
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
                 {
-                    VarName = "HEADING_FOR_TAKEOFF_ASSIST",
-                    Value = takeoffAssistHeadingData.value, // Raw radians value
-                    Description = ""
+                    VarName = "POSITION_FOR_TAKEOFF_ASSIST",
+                    Value = toggleData.HeadingMagnetic * (180.0 / Math.PI), // Heading in degrees for announcement
+                    Description = "",
+                    PositionData = new AircraftPosition
+                    {
+                        Latitude = toggleData.Latitude,
+                        Longitude = toggleData.Longitude,
+                        HeadingMagnetic = toggleData.HeadingMagnetic * (180.0 / Math.PI) // Convert radians to degrees
+                    }
                 });
                 break;
 
@@ -1428,6 +1457,32 @@ public class SimConnectManager
                 {
                     VarName = "VISUAL_GUIDANCE_GROUND_TRACK",
                     Value = vgData.GroundTrack,
+                    Description = ""
+                });
+                break;
+
+            case (DATA_REQUESTS)506: // Takeoff Assist - Consolidated Data
+                TakeoffAssistData taData = (TakeoffAssistData)data.dwData[0];
+
+                // Send position update for centerline tracking
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "TAKEOFF_ASSIST_POSITION",
+                    Value = 0,
+                    Description = "",
+                    PositionData = new AircraftPosition
+                    {
+                        Latitude = taData.Latitude,
+                        Longitude = taData.Longitude,
+                        HeadingMagnetic = taData.HeadingMagnetic * (180.0 / Math.PI) // Convert radians to degrees
+                    }
+                });
+
+                // Send pitch update (convert radians to degrees, negate for body axis)
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "TAKEOFF_ASSIST_PITCH",
+                    Value = -(taData.Pitch * (180.0 / Math.PI)),
                     Description = ""
                 });
                 break;
@@ -2660,25 +2715,20 @@ public class SimConnectManager
         }
     }
 
-    public void RequestHeadingForTakeoffAssist()
+    public void RequestPositionForTakeoffAssist()
     {
         if (IsConnected && simConnect != null)
         {
             try
             {
-                var tempDefId = (DATA_DEFINITIONS)326;
-                SafelyClearDataDefinition(tempDefId, requestId: null, delayMs: 50);
-                simConnect.AddToDataDefinition(tempDefId,
-                    "PLANE HEADING DEGREES MAGNETIC", "radians",
-                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
-                simConnect.RegisterDataDefineStruct<SingleValue>(tempDefId);
+                // Request one-shot takeoff assist data (lat, lon, pitch, heading) for toggle
                 simConnect.RequestDataOnSimObject((DATA_REQUESTS)326,
-                    tempDefId, SIMCONNECT_OBJECT_ID_USER,
+                    DATA_DEFINITIONS.TAKEOFF_ASSIST_DATA, SIMCONNECT_OBJECT_ID_USER,
                     SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error requesting heading for takeoff assist: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"Error requesting position for takeoff assist: {ex.Message}");
             }
         }
     }
@@ -3057,6 +3107,16 @@ public class SimConnectManager
 
         TeleportAircraft(teleportLat, teleportLon, teleportAlt, runway.Heading, onGround: true);
 
+        // Notify takeoff assist manager of the runway reference
+        TakeoffRunwayReferenceSet?.Invoke(this, new TakeoffRunwayReferenceEventArgs
+        {
+            ThresholdLat = runway.StartLat,
+            ThresholdLon = runway.StartLon,
+            RunwayHeading = runway.Heading,
+            RunwayID = runway.RunwayID,
+            AirportICAO = airport.ICAO
+        });
+
         System.Diagnostics.Debug.WriteLine($"Teleported to runway {runway.RunwayID} at {airport.ICAO}");
     }
 
@@ -3415,20 +3475,15 @@ public class SimConnectManager
 
         try
         {
-            // Request continuous updates for pitch and heading at SIM_FRAME rate
-            simConnect.RequestDataOnSimObject((DATA_REQUESTS)324,
-                (DATA_DEFINITIONS)GetVariableDataDefinition("PLANE_PITCH_DEGREES"),
+            // Request consolidated takeoff assist data at SIM_FRAME rate
+            // Includes: lat, lon, pitch, heading for centerline tracking
+            simConnect.RequestDataOnSimObject((DATA_REQUESTS)506,
+                DATA_DEFINITIONS.TAKEOFF_ASSIST_DATA,
                 SIMCONNECT_OBJECT_ID_USER,
                 SIMCONNECT_PERIOD.SIM_FRAME,
                 SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
 
-            simConnect.RequestDataOnSimObject((DATA_REQUESTS)325,
-                (DATA_DEFINITIONS)GetVariableDataDefinition("PLANE_HEADING_DEGREES_MAGNETIC"),
-                SIMCONNECT_OBJECT_ID_USER,
-                SIMCONNECT_PERIOD.SIM_FRAME,
-                SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
-
-            System.Diagnostics.Debug.WriteLine("[SimConnectManager] Takeoff assist monitoring started");
+            System.Diagnostics.Debug.WriteLine("[SimConnectManager] Takeoff assist monitoring started (consolidated data)");
         }
         catch (Exception ex)
         {
@@ -3442,15 +3497,9 @@ public class SimConnectManager
 
         try
         {
-            // Stop continuous updates
-            simConnect.RequestDataOnSimObject((DATA_REQUESTS)324,
-                (DATA_DEFINITIONS)GetVariableDataDefinition("PLANE_PITCH_DEGREES"),
-                SIMCONNECT_OBJECT_ID_USER,
-                SIMCONNECT_PERIOD.NEVER,
-                SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
-
-            simConnect.RequestDataOnSimObject((DATA_REQUESTS)325,
-                (DATA_DEFINITIONS)GetVariableDataDefinition("PLANE_HEADING_DEGREES_MAGNETIC"),
+            // Stop consolidated takeoff assist data request
+            simConnect.RequestDataOnSimObject((DATA_REQUESTS)506,
+                DATA_DEFINITIONS.TAKEOFF_ASSIST_DATA,
                 SIMCONNECT_OBJECT_ID_USER,
                 SIMCONNECT_PERIOD.NEVER,
                 SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
@@ -3980,4 +4029,13 @@ public class ECAMDataEventArgs : EventArgs
     public bool MasterWarning { get; set; }
     public bool MasterCaution { get; set; }
     public bool StallWarning { get; set; }
+}
+
+public class TakeoffRunwayReferenceEventArgs : EventArgs
+{
+    public double ThresholdLat { get; set; }
+    public double ThresholdLon { get; set; }
+    public double RunwayHeading { get; set; }
+    public string RunwayID { get; set; } = string.Empty;
+    public string AirportICAO { get; set; } = string.Empty;
 }

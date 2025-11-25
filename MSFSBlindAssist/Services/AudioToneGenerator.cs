@@ -117,6 +117,19 @@ public class AudioToneGenerator : IDisposable
     }
 
     /// <summary>
+    /// Sets stereo panning directly.
+    /// Lock-free for smooth real-time updates.
+    /// </summary>
+    /// <param name="pan">Pan value from -1.0 (full left) to +1.0 (full right).</param>
+    public void SetPan(float pan)
+    {
+        if (panningSampleProvider == null || !isPlaying)
+            return;
+
+        panningSampleProvider.Pan = Math.Clamp(pan, -1.0f, 1.0f);
+    }
+
+    /// <summary>
     /// Updates stereo panning based on bank angle.
     /// Lock-free for smooth real-time updates.
     /// </summary>

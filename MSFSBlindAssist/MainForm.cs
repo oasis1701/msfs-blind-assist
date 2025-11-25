@@ -115,6 +115,7 @@ public partial class MainForm : Form
         simConnectManager.ConnectionStatusChanged += OnConnectionStatusChanged;
         simConnectManager.SimulatorVersionDetected += OnSimulatorVersionDetected;
         simConnectManager.SimVarUpdated += OnSimVarUpdated;
+        simConnectManager.TakeoffRunwayReferenceSet += OnTakeoffRunwayReferenceSet;
 
         simVarMonitor = new SimVarMonitor();
         simVarMonitor.ValueChanged += OnSimVarValueChanged;
@@ -126,7 +127,9 @@ public partial class MainForm : Form
         hotkeyManager.InputHotkeyModeChanged += OnInputHotkeyModeChanged;
 
         // Initialize takeoff assist manager
-        takeoffAssistManager = new TakeoffAssistManager(announcer);
+        var takeoffSettings = MSFSBlindAssist.Settings.SettingsManager.Current;
+        takeoffAssistManager = new TakeoffAssistManager(announcer,
+            takeoffSettings.TakeoffAssistToneWaveform, takeoffSettings.TakeoffAssistToneVolume);
         takeoffAssistManager.TakeoffAssistActiveChanged += OnTakeoffAssistActiveChanged;
 
         // Initialize hand fly manager
@@ -400,28 +403,31 @@ public partial class MainForm : Form
             return true;
         }
 
-        // Handle takeoff assist toggle activation (receives heading from RequestHeadingForTakeoffAssist)
-        if (e.VarName == "HEADING_FOR_TAKEOFF_ASSIST")
+        // Handle takeoff assist toggle activation (receives position from RequestPositionForTakeoffAssist)
+        if (e.VarName == "POSITION_FOR_TAKEOFF_ASSIST")
         {
-            // Convert radians to degrees (value is in radians)
-            double headingDegrees = e.Value * (180.0 / Math.PI);
-            takeoffAssistManager.Toggle(headingDegrees);
+            if (e.PositionData.HasValue)
+            {
+                var pos = e.PositionData.Value;
+                takeoffAssistManager.Toggle(pos.Latitude, pos.Longitude, pos.HeadingMagnetic);
+            }
             return true;
         }
 
-        // Handle takeoff assist pitch updates
-        if (e.VarName == "PLANE_PITCH_DEGREES" && takeoffAssistManager.IsActive)
+        // Handle takeoff assist position updates (for centerline tracking)
+        if (e.VarName == "TAKEOFF_ASSIST_POSITION" && takeoffAssistManager.IsActive)
         {
-            // Convert radians to degrees and negate (SimConnect uses body axis: negative = nose up)
-            double pitchDegrees = -(e.Value * (180.0 / Math.PI));
-            takeoffAssistManager.ProcessPitchUpdate(pitchDegrees);
+            if (e.PositionData.HasValue)
+            {
+                var pos = e.PositionData.Value;
+                takeoffAssistManager.ProcessPositionUpdate(pos.Latitude, pos.Longitude);
+            }
         }
 
-        // Handle takeoff assist heading updates
-        if (e.VarName == "PLANE_HEADING_DEGREES_MAGNETIC" && takeoffAssistManager.IsActive)
+        // Handle takeoff assist pitch updates
+        if (e.VarName == "TAKEOFF_ASSIST_PITCH" && takeoffAssistManager.IsActive)
         {
-            double headingDegrees = e.Value * (180.0 / Math.PI); // Convert radians to degrees
-            takeoffAssistManager.ProcessHeadingUpdate(headingDegrees);
+            takeoffAssistManager.ProcessPitchUpdate(e.Value);
         }
 
         // Handle hand fly mode pitch updates
@@ -945,8 +951,14 @@ public partial class MainForm : Form
                 if (visualGuidanceManager.IsActive)
                 {
                     double targetFPM = visualGuidanceManager.GetTargetFPM();
-                    string sign = targetFPM < 0 ? "minus " : "";
-                    announcer.AnnounceImmediate($"Target {sign}{Math.Abs(targetFPM):F0} feet per minute");
+                    double altitudeDeviation = visualGuidanceManager.GetAltitudeDeviation();
+
+                    // Format: "target -600, 1200 high" or "target -200, 1580 low"
+                    string deviationText = altitudeDeviation >= 0
+                        ? $"{Math.Abs(altitudeDeviation):F0} high"
+                        : $"{Math.Abs(altitudeDeviation):F0} low";
+
+                    announcer.AnnounceImmediate($"target {targetFPM:F0}, {deviationText}");
                 }
                 else
                 {
@@ -1460,8 +1472,8 @@ public partial class MainForm : Form
             return;
         }
 
-        // Request current heading for takeoff assist toggle
-        simConnectManager.RequestHeadingForTakeoffAssist();
+        // Request current position for takeoff assist toggle
+        simConnectManager.RequestPositionForTakeoffAssist();
     }
 
     private async void DescribeSceneAsync()
@@ -1526,7 +1538,7 @@ public partial class MainForm : Form
     {
         if (isActive)
         {
-            // Start monitoring pitch and heading
+            // Start monitoring position and pitch for centerline tracking
             simConnectManager.StartTakeoffAssistMonitoring();
         }
         else
@@ -1534,6 +1546,13 @@ public partial class MainForm : Form
             // Stop monitoring
             simConnectManager.StopTakeoffAssistMonitoring();
         }
+    }
+
+    private void OnTakeoffRunwayReferenceSet(object? sender, TakeoffRunwayReferenceEventArgs e)
+    {
+        // Set the runway reference in the takeoff assist manager when user teleports to a runway
+        takeoffAssistManager.SetRunwayReference(e.ThresholdLat, e.ThresholdLon, e.RunwayHeading,
+            e.RunwayID, e.AirportICAO);
     }
 
     private void ToggleHandFlyMode()
@@ -1722,7 +1741,9 @@ public partial class MainForm : Form
             currentSettings.HandFlyMonitorHeading,
             currentSettings.HandFlyMonitorVerticalSpeed,
             currentSettings.VisualGuidanceToneWaveform,
-            currentSettings.VisualGuidanceToneVolume))
+            currentSettings.VisualGuidanceToneVolume,
+            currentSettings.TakeoffAssistToneWaveform,
+            currentSettings.TakeoffAssistToneVolume))
         {
             if (settingsForm.ShowDialog(this) == DialogResult.OK)
             {
@@ -1734,6 +1755,8 @@ public partial class MainForm : Form
                 currentSettings.HandFlyMonitorVerticalSpeed = settingsForm.MonitorVerticalSpeed;
                 currentSettings.VisualGuidanceToneWaveform = settingsForm.GuidanceToneWaveform;
                 currentSettings.VisualGuidanceToneVolume = settingsForm.SelectedGuidanceVolume;
+                currentSettings.TakeoffAssistToneWaveform = settingsForm.TakeoffToneWaveform;
+                currentSettings.TakeoffAssistToneVolume = settingsForm.TakeoffToneVolume;
                 SettingsManager.Save();
 
                 // Update HandFlyManager if it's active
