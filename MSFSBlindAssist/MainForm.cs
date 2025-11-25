@@ -28,6 +28,7 @@ public partial class MainForm : Form
     private TakeoffAssistManager takeoffAssistManager = null!;
     private HandFlyManager handFlyManager = null!;
     private VisualGuidanceManager visualGuidanceManager = null!;
+    private TaxiwayGuidanceManager taxiwayGuidanceManager = null!;
     private ElectronicFlightBagForm? electronicFlightBagForm;
     private TrackFixForm? trackFixForm;
     private MSFSBlindAssist.Navigation.FlightPlanManager flightPlanManager = null!;
@@ -139,6 +140,14 @@ public partial class MainForm : Form
         // Initialize visual guidance manager
         visualGuidanceManager = new VisualGuidanceManager(announcer);
         visualGuidanceManager.VisualGuidanceActiveChanged += OnVisualGuidanceActiveChanged;
+
+        // Initialize taxiway guidance manager
+        var taxiSettings = MSFSBlindAssist.Settings.SettingsManager.Current;
+        taxiwayGuidanceManager = new TaxiwayGuidanceManager(announcer,
+            taxiSettings.TakeoffAssistToneWaveform, taxiSettings.TakeoffAssistToneVolume);
+        taxiwayGuidanceManager.GuidanceActiveChanged += OnTaxiwayGuidanceActiveChanged;
+        taxiwayGuidanceManager.JunctionDetected += OnTaxiwayJunctionDetected;
+        taxiwayGuidanceManager.HoldShortDetected += OnTaxiwayHoldShortDetected;
 
         // Initialize airport database provider (optional - can be null if database not built yet)
         airportDataProvider = DatabaseSelector.SelectProvider();
@@ -421,6 +430,31 @@ public partial class MainForm : Form
             {
                 var pos = e.PositionData.Value;
                 takeoffAssistManager.ProcessPositionUpdate(pos.Latitude, pos.Longitude);
+            }
+        }
+
+        // Handle taxiway guidance toggle activation (receives position from RequestTaxiwayGuidancePosition)
+        if (e.VarName == "POSITION_FOR_TAXIWAY_GUIDANCE")
+        {
+            if (e.PositionData.HasValue)
+            {
+                var pos = e.PositionData.Value;
+                taxiwayGuidanceManager.StartGuidance(pos.Latitude, pos.Longitude, pos.HeadingMagnetic);
+                if (taxiwayGuidanceManager.IsActive)
+                {
+                    simConnectManager.StartTaxiwayGuidanceMonitoring();
+                }
+            }
+            return true;
+        }
+
+        // Handle taxiway guidance position updates (for centerline tracking)
+        if (e.VarName == "TAXIWAY_GUIDANCE_POSITION" && taxiwayGuidanceManager.IsActive)
+        {
+            if (e.PositionData.HasValue)
+            {
+                var pos = e.PositionData.Value;
+                taxiwayGuidanceManager.ProcessPositionUpdate(pos.Latitude, pos.Longitude, pos.HeadingMagnetic);
             }
         }
 
@@ -982,6 +1016,9 @@ public partial class MainForm : Form
                 break;
             case HotkeyAction.DescribeScene:
                 DescribeSceneAsync();
+                break;
+            case HotkeyAction.ShowTaxiwayJunctionOptions:
+                taxiwayGuidanceManager.ShowJunctionOptions();
                 break;
             // Note: FCU push/pull, autopilot toggles, FCU set value dialogs, and A32NX-specific hotkeys
             // are now handled by the aircraft definition via HandleHotkeyAction()
@@ -1887,6 +1924,105 @@ public partial class MainForm : Form
             fenixA320MenuItem.Checked = true;
         }
     }
+
+    #region Taxi Menu Handlers
+
+    private void TaxiSelectAirportMenuItem_Click(object? sender, EventArgs e)
+    {
+        var settings = MSFSBlindAssist.Settings.SettingsManager.Current;
+        string databasePath = NavdataReaderBuilder.GetDefaultDatabasePath(settings.SimulatorVersion ?? "FS2020");
+
+        if (!File.Exists(databasePath))
+        {
+            announcer.AnnounceImmediate("Navigation database not found. Please configure database in File menu.");
+            return;
+        }
+
+        using var form = new Forms.TaxiAirportSelectForm(databasePath, announcer);
+        if (form.ShowDialog(this) == DialogResult.OK && form.SelectedIcao != null)
+        {
+            bool loaded = taxiwayGuidanceManager.LoadAirport(databasePath, form.SelectedIcao);
+            if (loaded)
+            {
+                taxiStartGuidanceMenuItem.Enabled = true;
+            }
+        }
+    }
+
+    private void TaxiStartGuidanceMenuItem_Click(object? sender, EventArgs e)
+    {
+        if (!simConnectManager.IsConnected)
+        {
+            announcer.AnnounceImmediate("Not connected to simulator");
+            return;
+        }
+
+        // Request current position to start guidance
+        simConnectManager.RequestTaxiwayGuidancePosition();
+    }
+
+    private void TaxiStopGuidanceMenuItem_Click(object? sender, EventArgs e)
+    {
+        taxiwayGuidanceManager.StopGuidance();
+    }
+
+    private void OnTaxiwayGuidanceActiveChanged(object? sender, bool isActive)
+    {
+        if (InvokeRequired)
+        {
+            BeginInvoke(new Action(() => OnTaxiwayGuidanceActiveChanged(sender, isActive)));
+            return;
+        }
+
+        taxiStartGuidanceMenuItem.Enabled = !isActive && taxiwayGuidanceManager.HasGraph;
+        taxiStopGuidanceMenuItem.Enabled = isActive;
+
+        // Stop monitoring when guidance is deactivated
+        if (!isActive)
+        {
+            simConnectManager.StopTaxiwayGuidanceMonitoring();
+        }
+    }
+
+    private void OnTaxiwayJunctionDetected(object? sender, JunctionEventArgs e)
+    {
+        if (InvokeRequired)
+        {
+            BeginInvoke(new Action(() => OnTaxiwayJunctionDetected(sender, e)));
+            return;
+        }
+
+        ShowTaxiwayJunctionForm(e.Options, e.DistanceFeet);
+    }
+
+    private void ShowTaxiwayJunctionForm(List<JunctionOption> options, double distanceFeet)
+    {
+        using var form = new Forms.TaxiJunctionSelectForm(options, announcer, distanceFeet);
+        if (form.ShowDialog(this) == DialogResult.OK && form.SelectedOption != null)
+        {
+            taxiwayGuidanceManager.SelectJunctionOption(form.SelectedOption);
+        }
+    }
+
+    private DateTime _lastHoldShortAnnouncement = DateTime.MinValue;
+    private string? _lastHoldShortRunway = null;
+
+    private void OnTaxiwayHoldShortDetected(object? sender, string message)
+    {
+        // Debounce hold short announcements (don't repeat same runway within 3 seconds)
+        if (message == _lastHoldShortRunway &&
+            DateTime.Now - _lastHoldShortAnnouncement < TimeSpan.FromSeconds(3))
+        {
+            return;
+        }
+
+        _lastHoldShortRunway = message;
+        _lastHoldShortAnnouncement = DateTime.Now;
+
+        announcer.AnnounceImmediate(message);
+    }
+
+    #endregion
 
     private void UpdateDatabaseStatusDisplay()
     {

@@ -151,6 +151,8 @@ public class SimConnectManager
         VISUAL_GUIDANCE_DATA = 14,
         // Takeoff assist consolidated data
         TAKEOFF_ASSIST_DATA = 15,
+        // Taxiway guidance consolidated data
+        TAXIWAY_GUIDANCE_DATA = 16,
         ECAM_MESSAGES = 350,
         // Individual variable definitions start from 1000
         INDIVIDUAL_VARIABLE_BASE = 1000
@@ -235,6 +237,14 @@ public class SimConnectManager
         public double Latitude;
         public double Longitude;
         public double Pitch;
+        public double HeadingMagnetic;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
+    public struct TaxiwayGuidanceData
+    {
+        public double Latitude;
+        public double Longitude;
         public double HeadingMagnetic;
     }
 
@@ -453,6 +463,15 @@ public class SimConnectManager
         sc.AddToDataDefinition(DATA_DEFINITIONS.TAKEOFF_ASSIST_DATA, "PLANE HEADING DEGREES MAGNETIC", "radians",
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)3);
         sc.RegisterDataDefineStruct<TakeoffAssistData>(DATA_DEFINITIONS.TAKEOFF_ASSIST_DATA);
+
+        // Register taxiway guidance data (consolidated position + heading for taxi guidance)
+        sc.AddToDataDefinition(DATA_DEFINITIONS.TAXIWAY_GUIDANCE_DATA, "PLANE LATITUDE", "degrees",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)0);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.TAXIWAY_GUIDANCE_DATA, "PLANE LONGITUDE", "degrees",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)1);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.TAXIWAY_GUIDANCE_DATA, "PLANE HEADING DEGREES MAGNETIC", "radians",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)2);
+        sc.RegisterDataDefineStruct<TaxiwayGuidanceData>(DATA_DEFINITIONS.TAXIWAY_GUIDANCE_DATA);
 
         // Register wind data for wind information
         sc.AddToDataDefinition(DATA_DEFINITIONS.WIND_DATA, "AMBIENT WIND DIRECTION", "degrees",
@@ -1484,6 +1503,42 @@ public class SimConnectManager
                     VarName = "TAKEOFF_ASSIST_PITCH",
                     Value = -(taData.Pitch * (180.0 / Math.PI)),
                     Description = ""
+                });
+                break;
+
+            case (DATA_REQUESTS)510: // Taxiway Guidance - One-shot position for start
+                TaxiwayGuidanceData tgStartData = (TaxiwayGuidanceData)data.dwData[0];
+
+                // Return position data for guidance start with unique VarName
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "POSITION_FOR_TAXIWAY_GUIDANCE",
+                    Value = tgStartData.HeadingMagnetic * (180.0 / Math.PI), // Heading in degrees
+                    Description = "",
+                    PositionData = new AircraftPosition
+                    {
+                        Latitude = tgStartData.Latitude,
+                        Longitude = tgStartData.Longitude,
+                        HeadingMagnetic = tgStartData.HeadingMagnetic * (180.0 / Math.PI)
+                    }
+                });
+                break;
+
+            case (DATA_REQUESTS)511: // Taxiway Guidance - Continuous position updates
+                TaxiwayGuidanceData tgData = (TaxiwayGuidanceData)data.dwData[0];
+
+                // Send position update for centerline tracking
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "TAXIWAY_GUIDANCE_POSITION",
+                    Value = 0,
+                    Description = "",
+                    PositionData = new AircraftPosition
+                    {
+                        Latitude = tgData.Latitude,
+                        Longitude = tgData.Longitude,
+                        HeadingMagnetic = tgData.HeadingMagnetic * (180.0 / Math.PI)
+                    }
                 });
                 break;
         }
@@ -3509,6 +3564,68 @@ public class SimConnectManager
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error stopping takeoff assist monitoring: {ex.Message}");
+        }
+    }
+
+    // Taxiway guidance monitoring
+    public void RequestTaxiwayGuidancePosition()
+    {
+        if (IsConnected && simConnect != null)
+        {
+            try
+            {
+                // Request one-shot taxiway guidance data (lat, lon, heading) for guidance start
+                simConnect.RequestDataOnSimObject((DATA_REQUESTS)510,
+                    DATA_DEFINITIONS.TAXIWAY_GUIDANCE_DATA, SIMCONNECT_OBJECT_ID_USER,
+                    SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error requesting taxiway guidance position: {ex.Message}");
+            }
+        }
+    }
+
+    public void StartTaxiwayGuidanceMonitoring()
+    {
+        if (!IsConnected || simConnect == null) return;
+
+        try
+        {
+            // Request consolidated taxiway guidance data at SIM_FRAME rate
+            // Includes: lat, lon, heading for centerline tracking
+            simConnect.RequestDataOnSimObject((DATA_REQUESTS)511,
+                DATA_DEFINITIONS.TAXIWAY_GUIDANCE_DATA,
+                SIMCONNECT_OBJECT_ID_USER,
+                SIMCONNECT_PERIOD.SIM_FRAME,
+                SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+
+            System.Diagnostics.Debug.WriteLine("[SimConnectManager] Taxiway guidance monitoring started");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error starting taxiway guidance monitoring: {ex.Message}");
+        }
+    }
+
+    public void StopTaxiwayGuidanceMonitoring()
+    {
+        if (!IsConnected || simConnect == null) return;
+
+        try
+        {
+            // Stop consolidated taxiway guidance data request
+            simConnect.RequestDataOnSimObject((DATA_REQUESTS)511,
+                DATA_DEFINITIONS.TAXIWAY_GUIDANCE_DATA,
+                SIMCONNECT_OBJECT_ID_USER,
+                SIMCONNECT_PERIOD.NEVER,
+                SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+
+            System.Diagnostics.Debug.WriteLine("[SimConnectManager] Taxiway guidance monitoring stopped");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error stopping taxiway guidance monitoring: {ex.Message}");
         }
     }
 

@@ -112,6 +112,7 @@ public class HotkeyManager : IDisposable
 
         // Visual guidance mode hotkey IDs
         private const int HOTKEY_VISUAL_TARGET_FPM = 9090;
+        private const int HOTKEY_TAXIWAY_JUNCTION = 9091;
 
         private IntPtr windowHandle;
         private bool visualGuidanceHotkeysActive = false;
@@ -328,6 +329,9 @@ public class HotkeyManager : IDisposable
                         case HOTKEY_DESCRIBE_SCENE:
                             TriggerHotkey(HotkeyAction.DescribeScene);
                             break;
+                        case HOTKEY_TAXIWAY_JUNCTION:
+                            TriggerHotkey(HotkeyAction.ShowTaxiwayJunctionOptions);
+                            break;
                     }
                     DeactivateOutputHotkeyMode();
                     return true;
@@ -538,6 +542,7 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_PFD, MOD_ALT, 0x50);         // Alt+P (Read PFD)
             RegisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_ISIS, MOD_ALT, 0x49);        // Alt+I (Read ISIS)
             RegisterHotKey(windowHandle, HOTKEY_DESCRIBE_SCENE, MOD_ALT, 0x44);           // Alt+D (Describe Scene)
+            RegisterHotKey(windowHandle, HOTKEY_TAXIWAY_JUNCTION, MOD_CONTROL, 0x50);       // Ctrl+P (Taxiway Junction Selection)
 
             // Auto-timeout disabled - hotkey mode stays active until used or escape pressed
 
@@ -609,6 +614,7 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_PFD);
             UnregisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_ISIS);
             UnregisterHotKey(windowHandle, HOTKEY_DESCRIBE_SCENE);
+            UnregisterHotKey(windowHandle, HOTKEY_TAXIWAY_JUNCTION);
 
             OutputHotkeyModeChanged?.Invoke(this, false);
         }
@@ -955,5 +961,6 @@ public class HotkeyManager : IDisposable
         ShowTrackFixWindow,
         ReadBankAngle,
         ReadPitch,
-        ReadTargetFPM
+        ReadTargetFPM,
+        ShowTaxiwayJunctionOptions
     }

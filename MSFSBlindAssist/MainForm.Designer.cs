@@ -17,6 +17,10 @@ namespace MSFSBlindAssist
         private System.Windows.Forms.ToolStripMenuItem aircraftMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem flyByWireA320MenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem fenixA320MenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem taxiMenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem taxiSelectAirportMenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem taxiStartGuidanceMenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem taxiStopGuidanceMenuItem = null!;
         private System.Windows.Forms.ListBox sectionsListBox = null!;
         private System.Windows.Forms.ListBox panelsListBox = null!;
         private System.Windows.Forms.Panel controlsContainer = null!;
@@ -47,6 +51,10 @@ namespace MSFSBlindAssist
             this.aircraftMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.flyByWireA320MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.fenixA320MenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.taxiMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.taxiSelectAirportMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.taxiStartGuidanceMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.taxiStopGuidanceMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.sectionsListBox = new System.Windows.Forms.ListBox();
             this.panelsListBox = new System.Windows.Forms.ListBox();
             this.controlsContainer = new System.Windows.Forms.Panel();
@@ -60,7 +68,8 @@ namespace MSFSBlindAssist
             this.menuStrip.AccessibleDescription = "Main application menu";
             this.menuStrip.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.fileMenuItem,
-            this.aircraftMenuItem});
+            this.aircraftMenuItem,
+            this.taxiMenuItem});
             this.menuStrip.Location = new System.Drawing.Point(0, 0);
             this.menuStrip.Name = "menuStrip";
             this.menuStrip.Size = new System.Drawing.Size(870, 28);
@@ -195,6 +204,47 @@ namespace MSFSBlindAssist
             this.fenixA320MenuItem.Text = "Fenix A320 &CEO";
             this.fenixA320MenuItem.Checked = false;
             this.fenixA320MenuItem.Click += new System.EventHandler(this.FenixA320MenuItem_Click);
+            //
+            // taxiMenuItem
+            //
+            this.taxiMenuItem.AccessibleName = "Taxi menu";
+            this.taxiMenuItem.AccessibleDescription = "Taxiway guidance options";
+            this.taxiMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
+            this.taxiSelectAirportMenuItem,
+            this.taxiStartGuidanceMenuItem,
+            this.taxiStopGuidanceMenuItem});
+            this.taxiMenuItem.Name = "taxiMenuItem";
+            this.taxiMenuItem.Size = new System.Drawing.Size(46, 24);
+            this.taxiMenuItem.Text = "&Taxi";
+            //
+            // taxiSelectAirportMenuItem
+            //
+            this.taxiSelectAirportMenuItem.AccessibleName = "Select Airport";
+            this.taxiSelectAirportMenuItem.AccessibleDescription = "Select an airport for taxiway guidance";
+            this.taxiSelectAirportMenuItem.Name = "taxiSelectAirportMenuItem";
+            this.taxiSelectAirportMenuItem.Size = new System.Drawing.Size(180, 26);
+            this.taxiSelectAirportMenuItem.Text = "Select &Airport...";
+            this.taxiSelectAirportMenuItem.Click += new System.EventHandler(this.TaxiSelectAirportMenuItem_Click);
+            //
+            // taxiStartGuidanceMenuItem
+            //
+            this.taxiStartGuidanceMenuItem.AccessibleName = "Start Guidance";
+            this.taxiStartGuidanceMenuItem.AccessibleDescription = "Start taxiway guidance";
+            this.taxiStartGuidanceMenuItem.Name = "taxiStartGuidanceMenuItem";
+            this.taxiStartGuidanceMenuItem.Size = new System.Drawing.Size(180, 26);
+            this.taxiStartGuidanceMenuItem.Text = "&Start Guidance";
+            this.taxiStartGuidanceMenuItem.Enabled = false;
+            this.taxiStartGuidanceMenuItem.Click += new System.EventHandler(this.TaxiStartGuidanceMenuItem_Click);
+            //
+            // taxiStopGuidanceMenuItem
+            //
+            this.taxiStopGuidanceMenuItem.AccessibleName = "Stop Guidance";
+            this.taxiStopGuidanceMenuItem.AccessibleDescription = "Stop taxiway guidance";
+            this.taxiStopGuidanceMenuItem.Name = "taxiStopGuidanceMenuItem";
+            this.taxiStopGuidanceMenuItem.Size = new System.Drawing.Size(180, 26);
+            this.taxiStopGuidanceMenuItem.Text = "S&top Guidance";
+            this.taxiStopGuidanceMenuItem.Enabled = false;
+            this.taxiStopGuidanceMenuItem.Click += new System.EventHandler(this.TaxiStopGuidanceMenuItem_Click);
             //
             // sectionsListBox
             // 
