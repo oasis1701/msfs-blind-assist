@@ -172,9 +172,9 @@ public class TakeoffAssistManager : IDisposable
         double crossTrackFeet = crossTrackNM * NM_TO_FEET;
         if (signedError > 0) crossTrackFeet = -crossTrackFeet; // Positive signedError = left of centerline
 
-        // Update audio pan - negate so sound goes toward centerline (follow the sound)
-        // If aircraft is RIGHT of centerline (+crossTrackFeet), sound pans LEFT (negative pan)
-        float pan = (float)Math.Clamp(-crossTrackFeet / PAN_FULL_RANGE_FEET, -1.0, 1.0);
+        // Audio pan indicates correction direction - sound pans toward where pilot should steer
+        // If aircraft is RIGHT of centerline, sound pans LEFT (steer toward the sound)
+        float pan = (float)Math.Clamp(crossTrackFeet / PAN_FULL_RANGE_FEET, -1.0, 1.0);
         centerlineTone?.SetPan(pan);
 
         // Check if we should announce
@@ -232,7 +232,7 @@ public class TakeoffAssistManager : IDisposable
 
         // Determine direction and magnitude
         int deviationFeet = (int)Math.Round(Math.Abs(crossTrackFeet));
-        string direction = crossTrackFeet > 0 ? "right" : "left";
+        string direction = crossTrackFeet > 0 ? "left" : "right";
 
         return $"{deviationFeet} feet {direction}";
     }
