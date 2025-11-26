@@ -21,6 +21,7 @@ namespace MSFSBlindAssist
         private System.Windows.Forms.ToolStripMenuItem taxiSelectAirportMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem taxiStartGuidanceMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem taxiStopGuidanceMenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem taxiRelockMenuItem = null!;
         private System.Windows.Forms.ListBox sectionsListBox = null!;
         private System.Windows.Forms.ListBox panelsListBox = null!;
         private System.Windows.Forms.Panel controlsContainer = null!;
@@ -55,6 +56,7 @@ namespace MSFSBlindAssist
             this.taxiSelectAirportMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.taxiStartGuidanceMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.taxiStopGuidanceMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.taxiRelockMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.sectionsListBox = new System.Windows.Forms.ListBox();
             this.panelsListBox = new System.Windows.Forms.ListBox();
             this.controlsContainer = new System.Windows.Forms.Panel();
@@ -212,6 +214,7 @@ namespace MSFSBlindAssist
             this.taxiMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.taxiSelectAirportMenuItem,
             this.taxiStartGuidanceMenuItem,
+            this.taxiRelockMenuItem,
             this.taxiStopGuidanceMenuItem});
             this.taxiMenuItem.Name = "taxiMenuItem";
             this.taxiMenuItem.Size = new System.Drawing.Size(46, 24);
@@ -245,6 +248,16 @@ namespace MSFSBlindAssist
             this.taxiStopGuidanceMenuItem.Text = "S&top Guidance";
             this.taxiStopGuidanceMenuItem.Enabled = false;
             this.taxiStopGuidanceMenuItem.Click += new System.EventHandler(this.TaxiStopGuidanceMenuItem_Click);
+            //
+            // taxiRelockMenuItem
+            //
+            this.taxiRelockMenuItem.AccessibleName = "Relock to Taxiway";
+            this.taxiRelockMenuItem.AccessibleDescription = "Lock onto a different nearby taxiway";
+            this.taxiRelockMenuItem.Name = "taxiRelockMenuItem";
+            this.taxiRelockMenuItem.Size = new System.Drawing.Size(180, 26);
+            this.taxiRelockMenuItem.Text = "&Relock to Taxiway...";
+            this.taxiRelockMenuItem.Enabled = false;
+            this.taxiRelockMenuItem.Click += new System.EventHandler(this.TaxiRelockMenuItem_Click);
             //
             // sectionsListBox
             // 

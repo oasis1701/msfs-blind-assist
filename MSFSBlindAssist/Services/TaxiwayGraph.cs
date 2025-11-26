@@ -313,6 +313,273 @@ public class TaxiwayGraph
     }
 
     /// <summary>
+    /// Finds all nearby segments grouped by taxiway name, with both directions for each.
+    /// Used for initial segment selection and re-locking.
+    /// </summary>
+    /// <param name="latitude">Aircraft latitude</param>
+    /// <param name="longitude">Aircraft longitude</param>
+    /// <param name="aircraftHeading">Aircraft heading for relative direction calculation</param>
+    /// <param name="maxDistanceFeet">Maximum search distance</param>
+    /// <returns>List of segment options sorted by relative direction (ahead first) then distance</returns>
+    public List<SegmentOption> FindNearbySegments(
+        double latitude, double longitude,
+        double aircraftHeading,
+        double maxDistanceFeet = 200.0)
+    {
+        // Step 1: Find all segments within range and group by taxiway identity
+        var segmentsByTaxiway = new Dictionary<string, (TaxiwaySegment Segment, double DistanceFeet, string DisplayName)>();
+
+        foreach (var segment in _segments)
+        {
+            // Calculate perpendicular distance to segment
+            double crossTrackNM = CalculateDistanceToSegment(latitude, longitude, segment);
+            double distanceFeet = Math.Abs(crossTrackNM * NM_TO_FEET);
+
+            if (distanceFeet > maxDistanceFeet)
+                continue;
+
+            // Generate a key for grouping (taxiway name or connector destination)
+            string taxiwayKey;
+            string displayName;
+
+            if (segment.HasName)
+            {
+                taxiwayKey = $"taxiway_{segment.Name}";
+                displayName = $"Taxiway {segment.Name}";
+            }
+            else
+            {
+                // For connectors, use destination names from both ends
+                var destFromStart = GetDestinationNameWithHeading(segment, segment.StartNode);
+                var destFromEnd = GetDestinationNameWithHeading(segment, segment.EndNode);
+                // Use a combined key to group similar connectors
+                taxiwayKey = $"connector_{destFromStart}_{destFromEnd}";
+                displayName = destFromStart; // Will be refined per-direction below
+            }
+
+            // Keep the closest segment for each taxiway
+            if (!segmentsByTaxiway.ContainsKey(taxiwayKey) ||
+                distanceFeet < segmentsByTaxiway[taxiwayKey].DistanceFeet)
+            {
+                segmentsByTaxiway[taxiwayKey] = (segment, distanceFeet, displayName);
+            }
+        }
+
+        // Step 2: Generate two options per taxiway (both directions)
+        var options = new List<SegmentOption>();
+
+        foreach (var (key, (segment, distanceFeet, displayName)) in segmentsByTaxiway)
+        {
+            // Direction 1: StartNode → EndNode (segment.Heading)
+            double heading1 = segment.Heading;
+            var targetNode1 = segment.EndNode;
+            string name1 = segment.HasName
+                ? $"Taxiway {segment.Name}"
+                : GetDestinationNameWithHeading(segment, segment.StartNode);
+            string relativeDir1 = GetRelativeDirection(aircraftHeading, heading1);
+
+            options.Add(new SegmentOption
+            {
+                Segment = segment,
+                TaxiwayName = name1,
+                Heading = heading1,
+                DistanceFeet = distanceFeet,
+                RelativeDirection = relativeDir1,
+                TargetNode = targetNode1
+            });
+
+            // Direction 2: EndNode → StartNode (opposite heading)
+            double heading2 = (segment.Heading + 180) % 360;
+            var targetNode2 = segment.StartNode;
+            string name2 = segment.HasName
+                ? $"Taxiway {segment.Name}"
+                : GetDestinationNameWithHeading(segment, segment.EndNode);
+            string relativeDir2 = GetRelativeDirection(aircraftHeading, heading2);
+
+            options.Add(new SegmentOption
+            {
+                Segment = segment,
+                TaxiwayName = name2,
+                Heading = heading2,
+                DistanceFeet = distanceFeet,
+                RelativeDirection = relativeDir2,
+                TargetNode = targetNode2
+            });
+        }
+
+        // Step 3: Sort options - "ahead" first, then by distance
+        options.Sort((a, b) =>
+        {
+            // Priority: ahead > ahead-left/ahead-right > left/right > behind
+            int priorityA = GetDirectionPriority(a.RelativeDirection);
+            int priorityB = GetDirectionPriority(b.RelativeDirection);
+
+            if (priorityA != priorityB)
+                return priorityA.CompareTo(priorityB);
+
+            return a.DistanceFeet.CompareTo(b.DistanceFeet);
+        });
+
+        return options;
+    }
+
+    /// <summary>
+    /// Gets the relative direction description based on heading difference
+    /// </summary>
+    private static string GetRelativeDirection(double aircraftHeading, double targetHeading)
+    {
+        double diff = targetHeading - aircraftHeading;
+        while (diff > 180) diff -= 360;
+        while (diff < -180) diff += 360;
+
+        // Determine direction based on angle
+        if (Math.Abs(diff) <= 30)
+            return "ahead";
+        if (Math.Abs(diff) >= 150)
+            return "behind";
+        if (diff > 30 && diff < 90)
+            return "ahead right";
+        if (diff >= 90 && diff < 150)
+            return "to your right";
+        if (diff < -30 && diff > -90)
+            return "ahead left";
+        if (diff <= -90 && diff > -150)
+            return "to your left";
+
+        return diff > 0 ? "to your right" : "to your left";
+    }
+
+    /// <summary>
+    /// Gets sort priority for relative direction (lower = first)
+    /// </summary>
+    private static int GetDirectionPriority(string relativeDirection)
+    {
+        return relativeDirection switch
+        {
+            "ahead" => 0,
+            "ahead left" => 1,
+            "ahead right" => 1,
+            "to your left" => 2,
+            "to your right" => 2,
+            "behind" => 3,
+            _ => 4
+        };
+    }
+
+    /// <summary>
+    /// Gets destination name with heading for a connector segment
+    /// </summary>
+    private string GetDestinationNameWithHeading(TaxiwaySegment segment, TaxiwayNode fromNode)
+    {
+        if (segment.HasName)
+            return $"Taxiway {segment.Name}";
+
+        // Get destinations using enhanced lookahead
+        var destinations = GetAllDestinations(segment, fromNode);
+        double heading = segment.GetHeadingFrom(fromNode);
+
+        if (destinations.Count == 0)
+            return $"Connector, heading {(int)heading:000}";
+
+        string destStr = string.Join(" and ", destinations);
+        return $"Connector to {destStr}, heading {(int)heading:000}";
+    }
+
+    /// <summary>
+    /// Gets all reachable named destinations within lookahead depth
+    /// </summary>
+    private List<string> GetAllDestinations(TaxiwaySegment segment, TaxiwayNode fromNode)
+    {
+        var destinations = new HashSet<string>();
+        var visited = new HashSet<TaxiwaySegment> { segment };
+        var queue = new Queue<(TaxiwaySegment seg, TaxiwayNode node, int depth)>();
+
+        var nextNode = segment.GetOtherNode(fromNode);
+        if (nextNode != null)
+        {
+            // Check if immediate destination is parking
+            string? parkingDest = GetParkingDestination(nextNode);
+            if (parkingDest != null)
+            {
+                destinations.Add(parkingDest);
+            }
+
+            queue.Enqueue((segment, nextNode, 0));
+        }
+
+        while (queue.Count > 0)
+        {
+            var (currentSeg, currentNode, depth) = queue.Dequeue();
+
+            if (depth > 5) // Max lookahead depth
+                continue;
+
+            foreach (var connectedSeg in currentNode.ConnectedSegments)
+            {
+                if (visited.Contains(connectedSeg))
+                    continue;
+
+                visited.Add(connectedSeg);
+
+                if (connectedSeg.HasName)
+                {
+                    destinations.Add($"Taxiway {connectedSeg.Name}");
+                    continue; // Don't continue past named taxiways
+                }
+
+                var otherNode = connectedSeg.GetOtherNode(currentNode);
+                if (otherNode != null)
+                {
+                    // Check for parking
+                    string? parkingDest = GetParkingDestination(otherNode);
+                    if (parkingDest != null)
+                    {
+                        destinations.Add(parkingDest);
+                    }
+
+                    if (depth < 5)
+                    {
+                        queue.Enqueue((connectedSeg, otherNode, depth + 1));
+                    }
+                }
+            }
+        }
+
+        return destinations.ToList();
+    }
+
+    /// <summary>
+    /// Calculates cross-track error from a specific segment (public API for locked segment tracking)
+    /// </summary>
+    /// <param name="latitude">Aircraft latitude</param>
+    /// <param name="longitude">Aircraft longitude</param>
+    /// <param name="segment">The segment to calculate cross-track from</param>
+    /// <param name="aircraftHeading">Aircraft heading (used to determine left/right relative to pilot)</param>
+    /// <returns>Cross-track error in feet (positive = right, negative = left from pilot perspective)</returns>
+    public double CalculateCrossTrackFromSegment(
+        double latitude, double longitude,
+        TaxiwaySegment segment,
+        double aircraftHeading)
+    {
+        // Calculate perpendicular distance (always positive)
+        double crossTrackNM = CalculateDistanceToSegment(latitude, longitude, segment);
+        double crossTrackFeet = Math.Abs(crossTrackNM * NM_TO_FEET);
+
+        // Get cross-track sign relative to segment direction
+        double crossTrackSign = Math.Sign(GetCrossTrackSign(latitude, longitude, segment));
+
+        // If aircraft is traveling opposite to segment direction, flip the sign
+        // so left/right are relative to pilot's perspective
+        double headingDiff = GetHeadingDifference(aircraftHeading, segment.Heading);
+        if (headingDiff > 90)
+        {
+            crossTrackSign = -crossTrackSign;
+        }
+
+        return crossTrackFeet * crossTrackSign;
+    }
+
+    /// <summary>
     /// Calculates perpendicular distance from a point to a segment
     /// </summary>
     private static double CalculateDistanceToSegment(double lat, double lon, TaxiwaySegment segment)

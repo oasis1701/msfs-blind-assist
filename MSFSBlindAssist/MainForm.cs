@@ -148,6 +148,7 @@ public partial class MainForm : Form
         taxiwayGuidanceManager.GuidanceActiveChanged += OnTaxiwayGuidanceActiveChanged;
         taxiwayGuidanceManager.JunctionDetected += OnTaxiwayJunctionDetected;
         taxiwayGuidanceManager.HoldShortDetected += OnTaxiwayHoldShortDetected;
+        taxiwayGuidanceManager.SegmentSelectionRequired += OnTaxiwaySegmentSelectionRequired;
 
         // Initialize airport database provider (optional - can be null if database not built yet)
         airportDataProvider = DatabaseSelector.SelectProvider();
@@ -433,16 +434,22 @@ public partial class MainForm : Form
             }
         }
 
-        // Handle taxiway guidance toggle activation (receives position from RequestTaxiwayGuidancePosition)
+        // Handle taxiway guidance activation/relock (receives position from RequestTaxiwayGuidancePosition)
         if (e.VarName == "POSITION_FOR_TAXIWAY_GUIDANCE")
         {
             if (e.PositionData.HasValue)
             {
                 var pos = e.PositionData.Value;
-                taxiwayGuidanceManager.StartGuidance(pos.Latitude, pos.Longitude, pos.HeadingMagnetic);
+
+                // If guidance is already active, this is a relock request
                 if (taxiwayGuidanceManager.IsActive)
                 {
-                    simConnectManager.StartTaxiwayGuidanceMonitoring();
+                    taxiwayGuidanceManager.RequestRelock(pos.Latitude, pos.Longitude, pos.HeadingMagnetic);
+                }
+                else
+                {
+                    // Initial start - will show segment selection form
+                    taxiwayGuidanceManager.StartGuidance(pos.Latitude, pos.Longitude, pos.HeadingMagnetic);
                 }
             }
             return true;
@@ -454,7 +461,7 @@ public partial class MainForm : Form
             if (e.PositionData.HasValue)
             {
                 var pos = e.PositionData.Value;
-                taxiwayGuidanceManager.ProcessPositionUpdate(pos.Latitude, pos.Longitude, pos.HeadingMagnetic);
+                taxiwayGuidanceManager.ProcessPositionUpdate(pos.Latitude, pos.Longitude, pos.HeadingMagnetic, pos.GroundSpeedKnots);
             }
         }
 
@@ -1966,6 +1973,18 @@ public partial class MainForm : Form
         taxiwayGuidanceManager.StopGuidance();
     }
 
+    private void TaxiRelockMenuItem_Click(object? sender, EventArgs e)
+    {
+        if (!simConnectManager.IsConnected)
+        {
+            announcer.AnnounceImmediate("Not connected to simulator");
+            return;
+        }
+
+        // Request current position for relock
+        simConnectManager.RequestTaxiwayGuidancePosition();
+    }
+
     private void OnTaxiwayGuidanceActiveChanged(object? sender, bool isActive)
     {
         if (InvokeRequired)
@@ -1976,6 +1995,7 @@ public partial class MainForm : Form
 
         taxiStartGuidanceMenuItem.Enabled = !isActive && taxiwayGuidanceManager.HasGraph;
         taxiStopGuidanceMenuItem.Enabled = isActive;
+        taxiRelockMenuItem.Enabled = isActive;  // Can relock when guidance is active
 
         // Stop monitoring when guidance is deactivated
         if (!isActive)
@@ -1998,9 +2018,49 @@ public partial class MainForm : Form
     private void ShowTaxiwayJunctionForm(List<JunctionOption> options, double distanceFeet)
     {
         using var form = new Forms.TaxiJunctionSelectForm(options, announcer, distanceFeet);
-        if (form.ShowDialog(this) == DialogResult.OK && form.SelectedOption != null)
+        var result = form.ShowDialog(this);
+
+        if (result == DialogResult.OK && form.SelectedOption != null)
         {
             taxiwayGuidanceManager.SelectJunctionOption(form.SelectedOption);
+        }
+        else
+        {
+            // Cancel/Escape - auto-select continue straight
+            taxiwayGuidanceManager.CancelJunctionSelection();
+        }
+    }
+
+    private void OnTaxiwaySegmentSelectionRequired(object? sender, SegmentSelectionEventArgs e)
+    {
+        if (InvokeRequired)
+        {
+            BeginInvoke(new Action(() => OnTaxiwaySegmentSelectionRequired(sender, e)));
+            return;
+        }
+
+        // Determine if this is a relock (guidance already active) or initial start
+        bool isRelock = taxiwayGuidanceManager.IsActive;
+        ShowTaxiwaySegmentSelectForm(e.NearbySegments, isRelock);
+    }
+
+    private void ShowTaxiwaySegmentSelectForm(List<SegmentOption> options, bool isRelock)
+    {
+        using var form = new Forms.TaxiSegmentSelectForm(options, announcer, isRelock);
+        if (form.ShowDialog(this) == DialogResult.OK && form.SelectedOption != null)
+        {
+            taxiwayGuidanceManager.LockToSegment(form.SelectedOption);
+
+            // Start position monitoring if this was the initial start (not relock)
+            if (!isRelock)
+            {
+                simConnectManager.StartTaxiwayGuidanceMonitoring();
+            }
+        }
+        else
+        {
+            // User cancelled - cancel the segment selection
+            taxiwayGuidanceManager.CancelSegmentSelection();
         }
     }
 
