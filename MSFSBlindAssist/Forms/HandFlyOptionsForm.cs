@@ -37,6 +37,10 @@ public partial class HandFlyOptionsForm : Form
     private TrackBar takeoffVolumeTrackBar = null!;
     private Label takeoffVolumeValueLabel = null!;
 
+    private CheckBox muteCenterlineCheckBox = null!;
+    private CheckBox invertPanningCheckBox = null!;
+    private CheckBox legacyTakeoffCheckBox = null!;
+
     private Button okButton = null!;
     private Button cancelButton = null!;
 
@@ -51,10 +55,14 @@ public partial class HandFlyOptionsForm : Form
     public double SelectedGuidanceVolume { get; private set; }
     public HandFlyWaveType TakeoffToneWaveform { get; private set; }
     public double TakeoffToneVolume { get; private set; }
+    public bool TakeoffAssistMuteCenterlineAnnouncements { get; private set; }
+    public bool TakeoffAssistInvertPanning { get; private set; }
+    public bool TakeoffAssistLegacyMode { get; private set; }
 
     public HandFlyOptionsForm(HandFlyFeedbackMode currentMode, HandFlyWaveType currentWaveType, double currentVolume,
         bool monitorHeading, bool monitorVerticalSpeed, HandFlyWaveType guidanceToneWaveform,
-        double currentGuidanceVolume, HandFlyWaveType takeoffToneWaveform, double takeoffToneVolume)
+        double currentGuidanceVolume, HandFlyWaveType takeoffToneWaveform, double takeoffToneVolume,
+        bool takeoffAssistMuteCenterlineAnnouncements, bool takeoffAssistInvertPanning, bool takeoffAssistLegacyMode)
     {
         SelectedFeedbackMode = currentMode;
         SelectedWaveType = currentWaveType;
@@ -65,6 +73,9 @@ public partial class HandFlyOptionsForm : Form
         SelectedGuidanceVolume = currentGuidanceVolume;
         TakeoffToneWaveform = takeoffToneWaveform;
         TakeoffToneVolume = takeoffToneVolume;
+        TakeoffAssistMuteCenterlineAnnouncements = takeoffAssistMuteCenterlineAnnouncements;
+        TakeoffAssistInvertPanning = takeoffAssistInvertPanning;
+        TakeoffAssistLegacyMode = takeoffAssistLegacyMode;
         InitializeComponent();
         SetupAccessibility();
     }
@@ -72,7 +83,7 @@ public partial class HandFlyOptionsForm : Form
     private void InitializeComponent()
     {
         Text = "Hand Fly Options";
-        Size = new Size(500, 635);
+        Size = new Size(500, 740);
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -350,11 +361,47 @@ public partial class HandFlyOptionsForm : Form
             TextAlign = ContentAlignment.MiddleLeft
         };
 
+        // Mute Centerline Deviation Announcements Checkbox
+        muteCenterlineCheckBox = new CheckBox
+        {
+            Text = "Mute centerline deviation announcements",
+            Location = new Point(20, 555),
+            Size = new Size(450, 25),
+            Checked = TakeoffAssistMuteCenterlineAnnouncements,
+            AccessibleName = "Mute centerline deviation announcements",
+            AccessibleDescription = "When enabled, mutes centerline deviation announcements in modern takeoff assist mode. Audio tone and pitch announcements continue."
+        };
+        muteCenterlineCheckBox.CheckedChanged += MuteCenterlineCheckBox_CheckedChanged;
+
+        // Invert Heading Track Panning Checkbox
+        invertPanningCheckBox = new CheckBox
+        {
+            Text = "Invert heading track panning",
+            Location = new Point(20, 590),
+            Size = new Size(450, 25),
+            Checked = TakeoffAssistInvertPanning,
+            AccessibleName = "Invert heading track panning",
+            AccessibleDescription = "When enabled, reverses the audio panning direction. Heading right of runway pans tone to left ear instead of right."
+        };
+        invertPanningCheckBox.CheckedChanged += InvertPanningCheckBox_CheckedChanged;
+
+        // Legacy Takeoff Assist Mode Checkbox
+        legacyTakeoffCheckBox = new CheckBox
+        {
+            Text = "Legacy takeoff assist mode (heading-based, no tone)",
+            Location = new Point(20, 625),
+            Size = new Size(450, 25),
+            Checked = TakeoffAssistLegacyMode,
+            AccessibleName = "Legacy takeoff assist mode",
+            AccessibleDescription = "When enabled, takeoff assist announces heading deviation in degrees without audio tone. When disabled, uses centerline tracking with audio tone."
+        };
+        legacyTakeoffCheckBox.CheckedChanged += LegacyTakeoffCheckBox_CheckedChanged;
+
         // OK Button
         okButton = new Button
         {
             Text = "OK",
-            Location = new Point(310, 565),
+            Location = new Point(310, 670),
             Size = new Size(75, 30),
             DialogResult = DialogResult.OK,
             AccessibleName = "Apply Settings",
@@ -366,7 +413,7 @@ public partial class HandFlyOptionsForm : Form
         cancelButton = new Button
         {
             Text = "Cancel",
-            Location = new Point(395, 565),
+            Location = new Point(395, 670),
             Size = new Size(75, 30),
             DialogResult = DialogResult.Cancel,
             AccessibleName = "Cancel",
@@ -383,6 +430,7 @@ public partial class HandFlyOptionsForm : Form
             guidanceVolumeLabel, guidanceVolumeTrackBar, guidanceVolumeValueLabel,
             takeoffToneLabel, takeoffToneCombo,
             takeoffVolumeLabel, takeoffVolumeTrackBar, takeoffVolumeValueLabel,
+            muteCenterlineCheckBox, invertPanningCheckBox, legacyTakeoffCheckBox,
             okButton, cancelButton
         });
 
@@ -416,8 +464,11 @@ public partial class HandFlyOptionsForm : Form
         takeoffToneCombo.TabIndex = 17;
         takeoffVolumeLabel.TabIndex = 18;
         takeoffVolumeTrackBar.TabIndex = 19;
-        okButton.TabIndex = 20;
-        cancelButton.TabIndex = 21;
+        muteCenterlineCheckBox.TabIndex = 20;
+        invertPanningCheckBox.TabIndex = 21;
+        legacyTakeoffCheckBox.TabIndex = 22;
+        okButton.TabIndex = 23;
+        cancelButton.TabIndex = 24;
 
         // Focus and bring window to front when opened
         Load += (sender, e) =>
@@ -503,6 +554,21 @@ public partial class HandFlyOptionsForm : Form
     {
         TakeoffToneVolume = takeoffVolumeTrackBar.Value / 100.0;
         takeoffVolumeValueLabel.Text = $"{takeoffVolumeTrackBar.Value}%";
+    }
+
+    private void MuteCenterlineCheckBox_CheckedChanged(object? sender, EventArgs e)
+    {
+        TakeoffAssistMuteCenterlineAnnouncements = muteCenterlineCheckBox.Checked;
+    }
+
+    private void InvertPanningCheckBox_CheckedChanged(object? sender, EventArgs e)
+    {
+        TakeoffAssistInvertPanning = invertPanningCheckBox.Checked;
+    }
+
+    private void LegacyTakeoffCheckBox_CheckedChanged(object? sender, EventArgs e)
+    {
+        TakeoffAssistLegacyMode = legacyTakeoffCheckBox.Checked;
     }
 
     private void TestToneButton_Click(object? sender, EventArgs e)

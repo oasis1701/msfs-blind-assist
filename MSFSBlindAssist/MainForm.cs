@@ -130,7 +130,9 @@ public partial class MainForm : Form
         // Initialize takeoff assist manager
         var takeoffSettings = MSFSBlindAssist.Settings.SettingsManager.Current;
         takeoffAssistManager = new TakeoffAssistManager(announcer,
-            takeoffSettings.TakeoffAssistToneWaveform, takeoffSettings.TakeoffAssistToneVolume);
+            takeoffSettings.TakeoffAssistToneWaveform, takeoffSettings.TakeoffAssistToneVolume,
+            takeoffSettings.TakeoffAssistMuteCenterlineAnnouncements,
+            takeoffSettings.TakeoffAssistInvertPanning, takeoffSettings.TakeoffAssistLegacyMode);
         takeoffAssistManager.TakeoffAssistActiveChanged += OnTakeoffAssistActiveChanged;
 
         // Initialize hand fly manager
@@ -1788,7 +1790,10 @@ public partial class MainForm : Form
             currentSettings.VisualGuidanceToneWaveform,
             currentSettings.VisualGuidanceToneVolume,
             currentSettings.TakeoffAssistToneWaveform,
-            currentSettings.TakeoffAssistToneVolume))
+            currentSettings.TakeoffAssistToneVolume,
+            currentSettings.TakeoffAssistMuteCenterlineAnnouncements,
+            currentSettings.TakeoffAssistInvertPanning,
+            currentSettings.TakeoffAssistLegacyMode))
         {
             if (settingsForm.ShowDialog(this) == DialogResult.OK)
             {
@@ -1802,7 +1807,23 @@ public partial class MainForm : Form
                 currentSettings.VisualGuidanceToneVolume = settingsForm.SelectedGuidanceVolume;
                 currentSettings.TakeoffAssistToneWaveform = settingsForm.TakeoffToneWaveform;
                 currentSettings.TakeoffAssistToneVolume = settingsForm.TakeoffToneVolume;
+                currentSettings.TakeoffAssistMuteCenterlineAnnouncements = settingsForm.TakeoffAssistMuteCenterlineAnnouncements;
+                currentSettings.TakeoffAssistInvertPanning = settingsForm.TakeoffAssistInvertPanning;
+                currentSettings.TakeoffAssistLegacyMode = settingsForm.TakeoffAssistLegacyMode;
                 SettingsManager.Save();
+
+                // Recreate TakeoffAssistManager to pick up new settings (invert panning, legacy mode, tone, volume)
+                // The manager's mode is set at construction time
+                if (takeoffAssistManager != null)
+                {
+                    takeoffAssistManager.Reset();
+                    takeoffAssistManager.Dispose();
+                    takeoffAssistManager = new TakeoffAssistManager(announcer,
+                        currentSettings.TakeoffAssistToneWaveform, currentSettings.TakeoffAssistToneVolume,
+                        currentSettings.TakeoffAssistMuteCenterlineAnnouncements,
+                        currentSettings.TakeoffAssistInvertPanning, currentSettings.TakeoffAssistLegacyMode);
+                    takeoffAssistManager.TakeoffAssistActiveChanged += OnTakeoffAssistActiveChanged;
+                }
 
                 // Update HandFlyManager if it's active
                 handFlyManager?.UpdateSettings(
