@@ -409,7 +409,7 @@ public partial class MainForm : Form
             if (e.PositionData.HasValue)
             {
                 var pos = e.PositionData.Value;
-                takeoffAssistManager.Toggle(pos.Latitude, pos.Longitude, pos.HeadingMagnetic);
+                takeoffAssistManager.Toggle(pos.Latitude, pos.Longitude, pos.HeadingMagnetic, pos.MagneticVariation);
             }
             return true;
         }
@@ -420,7 +420,7 @@ public partial class MainForm : Form
             if (e.PositionData.HasValue)
             {
                 var pos = e.PositionData.Value;
-                takeoffAssistManager.ProcessPositionUpdate(pos.Latitude, pos.Longitude);
+                takeoffAssistManager.ProcessPositionUpdate(pos.Latitude, pos.Longitude, pos.HeadingMagnetic);
             }
         }
 
@@ -1551,7 +1551,8 @@ public partial class MainForm : Form
     private void OnTakeoffRunwayReferenceSet(object? sender, TakeoffRunwayReferenceEventArgs e)
     {
         // Set the runway reference in the takeoff assist manager when user teleports to a runway
-        takeoffAssistManager.SetRunwayReference(e.ThresholdLat, e.ThresholdLon, e.RunwayHeading,
+        takeoffAssistManager.SetRunwayReference(e.ThresholdLat, e.ThresholdLon,
+            e.RunwayHeadingTrue, e.RunwayHeadingMagnetic,
             e.RunwayID, e.AirportICAO);
     }
 

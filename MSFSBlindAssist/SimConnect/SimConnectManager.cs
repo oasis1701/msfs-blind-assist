@@ -3112,7 +3112,8 @@ public class SimConnectManager
         {
             ThresholdLat = runway.StartLat,
             ThresholdLon = runway.StartLon,
-            RunwayHeading = runway.Heading,
+            RunwayHeadingTrue = runway.Heading,
+            RunwayHeadingMagnetic = runway.HeadingMag,
             RunwayID = runway.RunwayID,
             AirportICAO = airport.ICAO
         });
@@ -4035,7 +4036,8 @@ public class TakeoffRunwayReferenceEventArgs : EventArgs
 {
     public double ThresholdLat { get; set; }
     public double ThresholdLon { get; set; }
-    public double RunwayHeading { get; set; }
+    public double RunwayHeadingTrue { get; set; }
+    public double RunwayHeadingMagnetic { get; set; }
     public string RunwayID { get; set; } = string.Empty;
     public string AirportICAO { get; set; } = string.Empty;
 }

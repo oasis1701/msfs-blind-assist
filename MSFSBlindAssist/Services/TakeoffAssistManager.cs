@@ -12,7 +12,8 @@ public class TakeoffAssistManager : IDisposable
     // Runway reference data (set by teleport or manual activation)
     private double? referenceThresholdLat;
     private double? referenceThresholdLon;
-    private double? referenceRunwayHeading;
+    private double? referenceRunwayHeadingTrue;      // For cross-track geometry
+    private double? referenceRunwayHeadingMagnetic;  // For pan comparison
     private string? referenceRunwayID;
     private string? referenceAirportICAO;
     private bool hasRunwayReference = false;
@@ -34,7 +35,7 @@ public class TakeoffAssistManager : IDisposable
     private const double CENTERLINE_CHANGE_THRESHOLD_FEET = 10.0; // Announce if deviation changes by >10 feet
     private const double PITCH_THRESHOLD = 1.0; // Announce if pitch changes by >1 degree
     private const double NM_TO_FEET = 6076.12;
-    private const double PAN_FULL_RANGE_FEET = 50.0; // ±50 feet for full left/right pan
+    private const double PAN_FULL_RANGE_DEGREES = 5.0; // ±5° heading deviation for full left/right pan
 
     public bool IsActive => isActive;
     public bool HasRunwayReference => hasRunwayReference;
@@ -56,20 +57,23 @@ public class TakeoffAssistManager : IDisposable
     /// </summary>
     /// <param name="thresholdLat">Runway threshold latitude</param>
     /// <param name="thresholdLon">Runway threshold longitude</param>
-    /// <param name="runwayHeading">Runway true heading</param>
+    /// <param name="runwayHeadingTrue">Runway true heading (for cross-track geometry)</param>
+    /// <param name="runwayHeadingMagnetic">Runway magnetic heading (for pan comparison)</param>
     /// <param name="runwayID">Runway identifier (e.g., "04L")</param>
     /// <param name="airportICAO">Airport ICAO code (e.g., "KEWR")</param>
-    public void SetRunwayReference(double thresholdLat, double thresholdLon, double runwayHeading,
+    public void SetRunwayReference(double thresholdLat, double thresholdLon,
+        double runwayHeadingTrue, double runwayHeadingMagnetic,
         string runwayID, string airportICAO)
     {
         referenceThresholdLat = thresholdLat;
         referenceThresholdLon = thresholdLon;
-        referenceRunwayHeading = runwayHeading;
+        referenceRunwayHeadingTrue = runwayHeadingTrue;
+        referenceRunwayHeadingMagnetic = runwayHeadingMagnetic;
         referenceRunwayID = runwayID;
         referenceAirportICAO = airportICAO;
         hasRunwayReference = true;
 
-        System.Diagnostics.Debug.WriteLine($"[TakeoffAssistManager] Runway reference set: {runwayID} at {airportICAO}, Lat={thresholdLat:F6}, Lon={thresholdLon:F6}, Hdg={runwayHeading:F1}");
+        System.Diagnostics.Debug.WriteLine($"[TakeoffAssistManager] Runway reference set: {runwayID} at {airportICAO}, Lat={thresholdLat:F6}, Lon={thresholdLon:F6}, HdgTrue={runwayHeadingTrue:F1}, HdgMag={runwayHeadingMagnetic:F1}");
     }
 
     /// <summary>
@@ -79,7 +83,8 @@ public class TakeoffAssistManager : IDisposable
     {
         referenceThresholdLat = null;
         referenceThresholdLon = null;
-        referenceRunwayHeading = null;
+        referenceRunwayHeadingTrue = null;
+        referenceRunwayHeadingMagnetic = null;
         referenceRunwayID = null;
         referenceAirportICAO = null;
         hasRunwayReference = false;
@@ -93,8 +98,9 @@ public class TakeoffAssistManager : IDisposable
     /// </summary>
     /// <param name="currentLat">Current aircraft latitude</param>
     /// <param name="currentLon">Current aircraft longitude</param>
-    /// <param name="currentHeading">Current magnetic heading in degrees</param>
-    public void Toggle(double currentLat, double currentLon, double currentHeading)
+    /// <param name="currentHeadingMagnetic">Current magnetic heading in degrees</param>
+    /// <param name="magVar">Magnetic variation in degrees (East positive, West negative)</param>
+    public void Toggle(double currentLat, double currentLon, double currentHeadingMagnetic, double magVar)
     {
         isActive = !isActive;
 
@@ -106,24 +112,26 @@ public class TakeoffAssistManager : IDisposable
             lastCenterlineAnnouncement = DateTime.MinValue;
             lastPitchAnnouncement = DateTime.MinValue;
 
-            // Start centerline guidance tone
-            centerlineTone?.Start(toneWaveType, toneVolume);
+            // Start centerline guidance tone at 600 Hz
+            centerlineTone?.Start(toneWaveType, toneVolume, 600.0);
 
             if (hasRunwayReference)
             {
                 // Use runway reference from teleport
                 announcer.AnnounceImmediate($"Takeoff assist active, runway {referenceRunwayID} at {referenceAirportICAO}");
-                System.Diagnostics.Debug.WriteLine($"[TakeoffAssistManager] Activated with runway reference: {referenceRunwayID} at {referenceAirportICAO}, Lat={referenceThresholdLat:F6}, Lon={referenceThresholdLon:F6}, Hdg={referenceRunwayHeading:F1}");
+                System.Diagnostics.Debug.WriteLine($"[TakeoffAssistManager] Activated with runway reference: {referenceRunwayID} at {referenceAirportICAO}, Lat={referenceThresholdLat:F6}, Lon={referenceThresholdLon:F6}, HdgTrue={referenceRunwayHeadingTrue:F1}, HdgMag={referenceRunwayHeadingMagnetic:F1}");
             }
             else
             {
                 // Use current position as reference
+                // Magnetic heading is captured directly, true heading computed from magvar
                 referenceThresholdLat = currentLat;
                 referenceThresholdLon = currentLon;
-                referenceRunwayHeading = currentHeading;
+                referenceRunwayHeadingMagnetic = currentHeadingMagnetic;
+                referenceRunwayHeadingTrue = currentHeadingMagnetic + magVar;  // True = Magnetic + MagVar
 
-                announcer.AnnounceImmediate($"Takeoff assist active, no runway selected, extending centerline from current position, heading {Math.Round(currentHeading)}");
-                System.Diagnostics.Debug.WriteLine($"[TakeoffAssistManager] Activated with current position reference: Lat={currentLat:F6}, Lon={currentLon:F6}, Hdg={currentHeading:F1}");
+                announcer.AnnounceImmediate($"Takeoff assist active, no runway selected, extending centerline from current position, heading {Math.Round(currentHeadingMagnetic)}");
+                System.Diagnostics.Debug.WriteLine($"[TakeoffAssistManager] Activated with current position reference: Lat={currentLat:F6}, Lon={currentLon:F6}, HdgMag={currentHeadingMagnetic:F1}, HdgTrue={referenceRunwayHeadingTrue:F1}");
             }
         }
         else
@@ -136,7 +144,8 @@ public class TakeoffAssistManager : IDisposable
             {
                 referenceThresholdLat = null;
                 referenceThresholdLon = null;
-                referenceRunwayHeading = null;
+                referenceRunwayHeadingTrue = null;
+                referenceRunwayHeadingMagnetic = null;
             }
 
             announcer.AnnounceImmediate("Takeoff assist off");
@@ -151,30 +160,38 @@ public class TakeoffAssistManager : IDisposable
     /// </summary>
     /// <param name="currentLat">Current aircraft latitude</param>
     /// <param name="currentLon">Current aircraft longitude</param>
-    public void ProcessPositionUpdate(double currentLat, double currentLon)
+    /// <param name="currentHeadingMagnetic">Current aircraft magnetic heading in degrees</param>
+    public void ProcessPositionUpdate(double currentLat, double currentLon, double currentHeadingMagnetic)
     {
         if (!isActive) return;
-        if (!referenceThresholdLat.HasValue || !referenceThresholdLon.HasValue || !referenceRunwayHeading.HasValue) return;
+        if (!referenceThresholdLat.HasValue || !referenceThresholdLon.HasValue ||
+            !referenceRunwayHeadingTrue.HasValue || !referenceRunwayHeadingMagnetic.HasValue) return;
 
-        // Calculate perpendicular distance to centerline using NavigationCalculator
+        // Calculate perpendicular distance to centerline using TRUE heading (geographic accuracy)
         double crossTrackNM = NavigationCalculator.CalculateDistanceToLocalizer(
             currentLat, currentLon,
             referenceThresholdLat.Value, referenceThresholdLon.Value,
-            referenceRunwayHeading.Value);
+            referenceRunwayHeadingTrue.Value);
 
-        // Get signed cross-track error to determine direction (left/right)
+        // Get signed cross-track error to determine direction (left/right) using TRUE heading
         double signedError = NavigationCalculator.CalculateCrossTrackError(
             currentLat, currentLon,
             referenceThresholdLat.Value, referenceThresholdLon.Value,
-            referenceRunwayHeading.Value);
+            referenceRunwayHeadingTrue.Value);
 
         // Convert to feet and apply sign
         double crossTrackFeet = crossTrackNM * NM_TO_FEET;
         if (signedError > 0) crossTrackFeet = -crossTrackFeet; // Positive signedError = left of centerline
 
-        // Audio pan indicates correction direction - sound pans toward where pilot should steer
-        // If aircraft is RIGHT of centerline, sound pans LEFT (steer toward the sound)
-        float pan = (float)Math.Clamp(crossTrackFeet / PAN_FULL_RANGE_FEET, -1.0, 1.0);
+        // Calculate heading deviation using MAGNETIC headings (pilot intuition)
+        // Normalized to -180 to +180
+        double headingDiff = currentHeadingMagnetic - referenceRunwayHeadingMagnetic.Value;
+        while (headingDiff > 180.0) headingDiff -= 360.0;
+        while (headingDiff < -180.0) headingDiff += 360.0;
+
+        // Audio pan based on heading deviation - centered tone = nose pointed down runway
+        // Positive headingDiff = pointed right of runway, pan right
+        float pan = (float)Math.Clamp(headingDiff / PAN_FULL_RANGE_DEGREES, -1.0, 1.0);
         centerlineTone?.SetPan(pan);
 
         // Check if we should announce
@@ -220,21 +237,21 @@ public class TakeoffAssistManager : IDisposable
     }
 
     /// <summary>
-    /// Formats centerline deviation announcement in feet
+    /// Formats centerline deviation announcement as increments (each increment = 10 feet)
     /// </summary>
     private string FormatCenterlineAnnouncement(double crossTrackFeet)
     {
         // Check if on centerline
         if (Math.Abs(crossTrackFeet) <= CENTERLINE_TOLERANCE_FEET)
         {
-            return "on centerline";
+            return "center";
         }
 
-        // Determine direction and magnitude
-        int deviationFeet = (int)Math.Round(Math.Abs(crossTrackFeet));
+        // Determine direction and magnitude (each increment = 10 feet)
+        int increment = (int)Math.Round(Math.Abs(crossTrackFeet) / 10.0);
         string direction = crossTrackFeet > 0 ? "left" : "right";
 
-        return $"{deviationFeet} feet {direction}";
+        return $"{increment} {direction}";
     }
 
     /// <summary>

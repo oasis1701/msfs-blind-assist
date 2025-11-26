@@ -305,7 +305,7 @@ public partial class HandFlyOptionsForm : Form
             Size = new Size(190, 25),
             DropDownStyle = ComboBoxStyle.DropDownList,
             AccessibleName = "Takeoff Assist Tone",
-            AccessibleDescription = "Select the audio wave type for takeoff assist centerline tone"
+            AccessibleDescription = "Select the audio wave type for takeoff assist Heading alignment tone"
         };
         takeoffToneCombo.Items.AddRange(new object[]
         {
