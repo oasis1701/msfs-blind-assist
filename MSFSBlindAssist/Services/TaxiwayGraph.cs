@@ -1,3 +1,4 @@
+using System.Linq;
 using MSFSBlindAssist.Database;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation;
@@ -105,7 +106,16 @@ public class TaxiwayGraph
         // Associate parking nodes with parking spot data
         graph.AssociateParkingNodes(provider, airportId.Value);
 
-        System.Diagnostics.Debug.WriteLine($"[TaxiwayGraph] Built graph for {airportIcao}: {graph.NodeCount} nodes, {graph.SegmentCount} segments");
+        int junctionCount = graph._nodes.Values.Count(n => n.IsJunction);
+        int deadEndCount = graph._nodes.Values.Count(n => n.IsDeadEnd);
+        System.Diagnostics.Debug.WriteLine($"[TaxiwayGraph] Built graph for {airportIcao}: {graph.NodeCount} nodes ({junctionCount} junctions, {deadEndCount} dead-ends), {graph.SegmentCount} segments");
+
+        // Debug: Log all junctions (nodes with 3+ connections)
+        foreach (var node in graph._nodes.Values.Where(n => n.IsJunction))
+        {
+            var segmentNames = string.Join(", ", node.ConnectedSegments.Select(s => s.Name ?? "unnamed"));
+            System.Diagnostics.Debug.WriteLine($"[TaxiwayGraph] Junction at ({node.Latitude:F6}, {node.Longitude:F6}): {node.ConnectedSegments.Count} connections [{segmentNames}]");
+        }
 
         return graph;
     }
@@ -310,6 +320,168 @@ public class TaxiwayGraph
             return null;
 
         return (bestSegment, bestDistance, bestCrossTrack);
+    }
+
+    /// <summary>
+    /// Finds accessible segments based on graph connectivity, not just distance.
+    /// Uses the closest segment and nearest junction to determine valid options.
+    /// </summary>
+    /// <param name="latitude">Aircraft latitude</param>
+    /// <param name="longitude">Aircraft longitude</param>
+    /// <param name="aircraftHeading">Aircraft heading for relative direction calculation</param>
+    /// <param name="maxDistanceFeet">Maximum search distance</param>
+    /// <returns>List of segment options based on graph connectivity</returns>
+    public List<SegmentOption> FindAccessibleSegments(
+        double latitude, double longitude,
+        double aircraftHeading,
+        double maxDistanceFeet = 200.0)
+    {
+        var options = new List<SegmentOption>();
+
+        // Step 1: Find the closest segment to the aircraft
+        var nearestResult = FindNearestSegment(latitude, longitude, aircraftHeading, maxDistanceFeet);
+        if (nearestResult == null)
+        {
+            System.Diagnostics.Debug.WriteLine("[TaxiwayGraph] FindAccessibleSegments: No segment found within range");
+            return options;
+        }
+
+        var (closestSegment, distanceFeet, _) = nearestResult.Value;
+        System.Diagnostics.Debug.WriteLine($"[TaxiwayGraph] FindAccessibleSegments: Closest segment '{closestSegment.Name ?? "unnamed"}' at {distanceFeet:F1}ft");
+
+        // Step 2: Find the nearest node (could be a junction)
+        var nearestNode = FindNearestNode(latitude, longitude, maxDistanceFeet);
+
+        // Step 3: Check if we're near a junction (node with 3+ connections)
+        const double JUNCTION_PROXIMITY_FEET = 75.0;
+        if (nearestNode != null)
+        {
+            double distanceToNode = GetDistanceToNode(latitude, longitude, nearestNode);
+            bool isNearJunction = nearestNode.IsJunction && distanceToNode <= JUNCTION_PROXIMITY_FEET;
+
+            System.Diagnostics.Debug.WriteLine($"[TaxiwayGraph] FindAccessibleSegments: Nearest node at {distanceToNode:F1}ft, IsJunction={nearestNode.IsJunction}, Connections={nearestNode.ConnectedSegments.Count}");
+
+            if (isNearJunction)
+            {
+                // Near a junction - show all connected segments from this node
+                System.Diagnostics.Debug.WriteLine($"[TaxiwayGraph] FindAccessibleSegments: Using junction mode with {nearestNode.ConnectedSegments.Count} connected segments");
+
+                foreach (var segment in nearestNode.ConnectedSegments)
+                {
+                    // Get heading when leaving this junction via this segment
+                    double segmentHeading = segment.GetHeadingFrom(nearestNode);
+                    var targetNode = segment.GetOtherNode(nearestNode);
+                    if (targetNode == null) continue;
+
+                    string name = segment.HasName
+                        ? $"Taxiway {segment.Name}"
+                        : GetDestinationNameWithHeading(segment, nearestNode);
+                    string relativeDir = GetRelativeDirection(aircraftHeading, segmentHeading);
+
+                    options.Add(new SegmentOption
+                    {
+                        Segment = segment,
+                        TaxiwayName = name,
+                        Heading = segmentHeading,
+                        DistanceFeet = distanceToNode,
+                        RelativeDirection = relativeDir,
+                        TargetNode = targetNode
+                    });
+                }
+            }
+            else
+            {
+                // Not near a junction - show two options for the closest segment
+                options = GenerateSegmentDirectionOptions(closestSegment, distanceFeet, aircraftHeading);
+            }
+        }
+        else
+        {
+            // No node found nearby - show two options for the closest segment
+            options = GenerateSegmentDirectionOptions(closestSegment, distanceFeet, aircraftHeading);
+        }
+
+        // Sort options - "ahead" first, then by distance
+        options.Sort((a, b) =>
+        {
+            int priorityA = GetDirectionPriority(a.RelativeDirection);
+            int priorityB = GetDirectionPriority(b.RelativeDirection);
+
+            if (priorityA != priorityB)
+                return priorityA.CompareTo(priorityB);
+
+            return a.DistanceFeet.CompareTo(b.DistanceFeet);
+        });
+
+        System.Diagnostics.Debug.WriteLine($"[TaxiwayGraph] FindAccessibleSegments: Returning {options.Count} options");
+        return options;
+    }
+
+    /// <summary>
+    /// Generates two options for a segment (one for each direction)
+    /// </summary>
+    private List<SegmentOption> GenerateSegmentDirectionOptions(
+        TaxiwaySegment segment, double distanceFeet, double aircraftHeading)
+    {
+        var options = new List<SegmentOption>();
+
+        // Direction 1: StartNode → EndNode
+        double heading1 = segment.Heading;
+        string name1 = segment.HasName
+            ? $"Taxiway {segment.Name}"
+            : GetDestinationNameWithHeading(segment, segment.StartNode);
+        string relativeDir1 = GetRelativeDirection(aircraftHeading, heading1);
+
+        options.Add(new SegmentOption
+        {
+            Segment = segment,
+            TaxiwayName = name1,
+            Heading = heading1,
+            DistanceFeet = distanceFeet,
+            RelativeDirection = relativeDir1,
+            TargetNode = segment.EndNode
+        });
+
+        // Direction 2: EndNode → StartNode
+        double heading2 = (segment.Heading + 180) % 360;
+        string name2 = segment.HasName
+            ? $"Taxiway {segment.Name}"
+            : GetDestinationNameWithHeading(segment, segment.EndNode);
+        string relativeDir2 = GetRelativeDirection(aircraftHeading, heading2);
+
+        options.Add(new SegmentOption
+        {
+            Segment = segment,
+            TaxiwayName = name2,
+            Heading = heading2,
+            DistanceFeet = distanceFeet,
+            RelativeDirection = relativeDir2,
+            TargetNode = segment.StartNode
+        });
+
+        return options;
+    }
+
+    /// <summary>
+    /// Finds the nearest node to the given position
+    /// </summary>
+    public TaxiwayNode? FindNearestNode(double latitude, double longitude, double maxDistanceFeet = 200.0)
+    {
+        TaxiwayNode? nearestNode = null;
+        double nearestDistance = double.MaxValue;
+
+        foreach (var node in _nodes.Values)
+        {
+            double distanceFeet = GetDistanceToNode(latitude, longitude, node);
+
+            if (distanceFeet < nearestDistance && distanceFeet <= maxDistanceFeet)
+            {
+                nearestDistance = distanceFeet;
+                nearestNode = node;
+            }
+        }
+
+        return nearestNode;
     }
 
     /// <summary>
@@ -561,8 +733,9 @@ public class TaxiwayGraph
         TaxiwaySegment segment,
         double aircraftHeading)
     {
-        // Calculate perpendicular distance (always positive)
-        double crossTrackNM = CalculateDistanceToSegment(latitude, longitude, segment);
+        // Calculate perpendicular distance to infinite line (for active tracking)
+        // Uses infinite line to allow guidance past segment endpoints during junction transitions
+        double crossTrackNM = CalculatePerpendicularDistanceToLine(latitude, longitude, segment);
         double crossTrackFeet = Math.Abs(crossTrackNM * NM_TO_FEET);
 
         // Get cross-track sign relative to segment direction
@@ -580,9 +753,75 @@ public class TaxiwayGraph
     }
 
     /// <summary>
-    /// Calculates perpendicular distance from a point to a segment
+    /// Calculates distance from a point to a FINITE segment (not infinite line).
+    /// Returns perpendicular distance if projection falls within segment,
+    /// otherwise returns distance to nearest endpoint.
     /// </summary>
     private static double CalculateDistanceToSegment(double lat, double lon, TaxiwaySegment segment)
+    {
+        // Calculate along-track and cross-track distances
+        var (alongTrackNM, crossTrackNM) = CalculateTrackDistances(
+            lat, lon,
+            segment.StartNode.Latitude, segment.StartNode.Longitude,
+            segment.Heading);
+
+        double segmentLengthNM = segment.Length / NM_TO_FEET;
+
+        // Check if perpendicular intercept falls within segment bounds
+        if (alongTrackNM >= 0 && alongTrackNM <= segmentLengthNM)
+        {
+            // Within segment - return perpendicular distance
+            return Math.Abs(crossTrackNM);
+        }
+        else if (alongTrackNM < 0)
+        {
+            // Before start node - return distance to start
+            return NavigationCalculator.CalculateDistance(
+                lat, lon,
+                segment.StartNode.Latitude, segment.StartNode.Longitude);
+        }
+        else
+        {
+            // Past end node - return distance to end
+            return NavigationCalculator.CalculateDistance(
+                lat, lon,
+                segment.EndNode.Latitude, segment.EndNode.Longitude);
+        }
+    }
+
+    /// <summary>
+    /// Calculates both along-track and cross-track distances from a point to an infinite line.
+    /// Along-track: distance along the line from origin to perpendicular intercept (positive = ahead)
+    /// Cross-track: perpendicular distance from line (positive = right of line direction)
+    /// </summary>
+    private static (double alongTrackNM, double crossTrackNM) CalculateTrackDistances(
+        double pointLat, double pointLon,
+        double originLat, double originLon,
+        double lineHeading)
+    {
+        // Calculate bearing and distance from origin to point
+        double bearingToPoint = NavigationCalculator.CalculateBearing(
+            originLat, originLon, pointLat, pointLon);
+        double distanceNM = NavigationCalculator.CalculateDistance(
+            originLat, originLon, pointLat, pointLon);
+
+        // Angular difference between line heading and bearing to point
+        double angleDiff = (bearingToPoint - lineHeading) * Math.PI / 180.0;
+
+        // Along-track distance (projection onto line)
+        double alongTrackNM = distanceNM * Math.Cos(angleDiff);
+
+        // Cross-track distance (perpendicular from line)
+        double crossTrackNM = distanceNM * Math.Sin(angleDiff);
+
+        return (alongTrackNM, crossTrackNM);
+    }
+
+    /// <summary>
+    /// Calculates perpendicular distance to an infinite line extending from segment.
+    /// Used for active tracking where we want centerline extension behavior.
+    /// </summary>
+    private static double CalculatePerpendicularDistanceToLine(double lat, double lon, TaxiwaySegment segment)
     {
         return NavigationCalculator.CalculateDistanceToLocalizer(
             lat, lon,
@@ -622,6 +861,8 @@ public class TaxiwayGraph
         TaxiwaySegment? currentSegment,
         double aircraftHeading)
     {
+        System.Diagnostics.Debug.WriteLine($"[TaxiwayGraph] GetJunctionOptions: Node at ({node.Latitude:F6}, {node.Longitude:F6}) has {node.ConnectedSegments.Count} connected segments, excluding incoming '{currentSegment?.Name ?? "unnamed"}'");
+
         var options = new List<JunctionOption>();
 
         foreach (var segment in node.ConnectedSegments)
@@ -669,6 +910,8 @@ public class TaxiwayGraph
                 return 1;
             return Math.Abs(a.TurnAngle).CompareTo(Math.Abs(b.TurnAngle));
         });
+
+        System.Diagnostics.Debug.WriteLine($"[TaxiwayGraph] GetJunctionOptions: Generated {options.Count} options");
 
         return options;
     }

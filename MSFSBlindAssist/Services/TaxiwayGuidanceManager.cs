@@ -187,8 +187,8 @@ public class TaxiwayGuidanceManager : IDisposable
             return;
         }
 
-        // Find nearby segments for selection
-        var nearbySegments = _graph.FindNearbySegments(currentLat, currentLon, currentHeading, SEGMENT_SEARCH_RADIUS_FEET);
+        // Find accessible segments based on graph connectivity
+        var nearbySegments = _graph.FindAccessibleSegments(currentLat, currentLon, currentHeading, SEGMENT_SEARCH_RADIUS_FEET);
 
         if (nearbySegments.Count == 0)
         {
@@ -256,7 +256,7 @@ public class TaxiwayGuidanceManager : IDisposable
         string taxiwayText = selectedOption.TaxiwayName;
         _announcer.AnnounceImmediate($"Locked to {taxiwayText}");
 
-        System.Diagnostics.Debug.WriteLine($"[TaxiwayGuidance] Locked to {selectedOption}");
+        System.Diagnostics.Debug.WriteLine($"[TaxiTrack] LOCKED: Segment '{_lockedSegment.Name ?? "unnamed"}' TargetNode: ({_lockedTargetNode.Latitude:F6}, {_lockedTargetNode.Longitude:F6}) IsJunction={_lockedTargetNode.IsJunction} Connections={_lockedTargetNode.ConnectedSegments.Count}");
     }
 
     /// <summary>
@@ -283,8 +283,8 @@ public class TaxiwayGuidanceManager : IDisposable
             return;
         }
 
-        // Find nearby segments for selection
-        var nearbySegments = _graph.FindNearbySegments(currentLat, currentLon, currentHeading, SEGMENT_SEARCH_RADIUS_FEET);
+        // Find accessible segments based on graph connectivity
+        var nearbySegments = _graph.FindAccessibleSegments(currentLat, currentLon, currentHeading, SEGMENT_SEARCH_RADIUS_FEET);
 
         if (nearbySegments.Count == 0)
         {
@@ -362,6 +362,11 @@ public class TaxiwayGuidanceManager : IDisposable
         _lastAircraftHeading = heading;
         _lastGroundSpeedKnots = groundSpeedKnots;
 
+        // Debug: Log position and target node details
+        double distanceToTarget = _graph.GetDistanceToNode(latitude, longitude, _lockedTargetNode);
+        System.Diagnostics.Debug.WriteLine($"[TaxiTrack] Pos: ({latitude:F6}, {longitude:F6}) Hdg: {heading:F1}° Speed: {groundSpeedKnots:F1}kts State: {_state}");
+        System.Diagnostics.Debug.WriteLine($"[TaxiTrack] TargetNode: IsJunction={_lockedTargetNode.IsJunction} IsDeadEnd={_lockedTargetNode.IsDeadEnd} Connections={_lockedTargetNode.ConnectedSegments.Count} Type={_lockedTargetNode.Type} Dist={distanceToTarget:F1}ft");
+
         // Calculate cross-track from LOCKED segment
         double crossTrackFeet = _graph.CalculateCrossTrackFromSegment(
             latitude, longitude, _lockedSegment, heading);
@@ -372,6 +377,9 @@ public class TaxiwayGuidanceManager : IDisposable
         // Calculate PID steering correction
         double steeringCorrection = CalculateSteeringCorrection(
             crossTrackFeet, targetHeading, heading);
+
+        // Debug: Log cross-track and correction
+        System.Diagnostics.Debug.WriteLine($"[TaxiTrack] CrossTrack: {crossTrackFeet:F1}ft TargetHdg: {targetHeading:F1}° Correction: {steeringCorrection:F1}°");
 
         // Audio panning: Pan in direction of CORRECTION (where to go), not deviation
         // Positive correction (turn right) → pan right (positive)
@@ -583,9 +591,13 @@ public class TaxiwayGuidanceManager : IDisposable
 
         // Skip if not a junction
         if (!_lockedTargetNode.IsJunction)
+        {
+            System.Diagnostics.Debug.WriteLine($"[TaxiTrack] JunctionCheck: Node has {_lockedTargetNode.ConnectedSegments.Count} connections (not a junction, skipping)");
             return;
+        }
 
         double distanceToNode = _graph.GetDistanceToNode(latitude, longitude, _lockedTargetNode);
+        System.Diagnostics.Debug.WriteLine($"[TaxiTrack] JunctionCheck: Distance={distanceToNode:F1}ft IsJunction={_lockedTargetNode.IsJunction} FirstWarnGiven={_junctionFirstWarningGiven} FormPending={_junctionPending}");
 
         // Stage 1: First warning at 150ft (verbal announcement only)
         if (distanceToNode <= JUNCTION_FIRST_WARNING_FEET && !_junctionFirstWarningGiven)
@@ -731,7 +743,7 @@ public class TaxiwayGuidanceManager : IDisposable
         string announcement = option.GetDisplayText();
         _announcer.AnnounceImmediate(announcement);
 
-        System.Diagnostics.Debug.WriteLine($"[TaxiwayGuidance] Junction option selected: {option}");
+        System.Diagnostics.Debug.WriteLine($"[TaxiTrack] JunctionSelected: Segment '{option.Segment.Name ?? "unnamed"}' NewTarget: ({_lockedTargetNode?.Latitude:F6}, {_lockedTargetNode?.Longitude:F6}) IsJunction={_lockedTargetNode?.IsJunction} Connections={_lockedTargetNode?.ConnectedSegments.Count}");
     }
 
     /// <summary>
