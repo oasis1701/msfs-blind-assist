@@ -30,7 +30,8 @@ public class AudioToneGenerator : IDisposable
     /// </summary>
     /// <param name="waveType">Wave type for tone generation.</param>
     /// <param name="volume">Volume level (0.0 to 1.0).</param>
-    public void Start(HandFlyWaveType waveType = HandFlyWaveType.Sine, double volume = 0.5)
+    /// <param name="frequency">Initial frequency in Hz (defaults to CENTER_FREQUENCY = 500 Hz).</param>
+    public void Start(HandFlyWaveType waveType = HandFlyWaveType.Sine, double volume = 0.5, double frequency = CENTER_FREQUENCY)
     {
         lock (startStopLock)
         {
@@ -40,7 +41,7 @@ public class AudioToneGenerator : IDisposable
             try
             {
                 // Create phase-continuous oscillator (eliminates clicks/pops)
-                oscillator = new PhaseContinuousOscillator(44100, waveType, CENTER_FREQUENCY, volume);
+                oscillator = new PhaseContinuousOscillator(44100, waveType, (float)frequency, volume);
 
                 // Apply low-pass filter for sawtooth wave to remove harsh harmonics
                 ISampleProvider audioSource = oscillator;
