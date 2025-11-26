@@ -54,6 +54,9 @@ public class UserSettings
         // Takeoff Assist Tone Settings
         public HandFlyWaveType TakeoffAssistToneWaveform { get; set; } = HandFlyWaveType.Sine;
         public double TakeoffAssistToneVolume { get; set; } = 0.05; // 0.0 to 1.0 (default 5%)
+        public bool TakeoffAssistMuteCenterlineAnnouncements { get; set; } = false; // Mute centerline deviation announcements
+        public bool TakeoffAssistInvertPanning { get; set; } = false; // Invert panning direction
+        public bool TakeoffAssistLegacyMode { get; set; } = false; // Legacy mode: heading-based instead of centerline tracking
 
         // Simulator Settings
         public string SimulatorVersion { get; set; } = "FS2020";
@@ -122,6 +125,9 @@ public class UserSettings
             VisualGuidanceToneVolume = VisualGuidanceToneVolume,
             TakeoffAssistToneWaveform = TakeoffAssistToneWaveform,
             TakeoffAssistToneVolume = TakeoffAssistToneVolume,
+            TakeoffAssistMuteCenterlineAnnouncements = TakeoffAssistMuteCenterlineAnnouncements,
+            TakeoffAssistInvertPanning = TakeoffAssistInvertPanning,
+            TakeoffAssistLegacyMode = TakeoffAssistLegacyMode,
             SimulatorVersion = SimulatorVersion,
             LastAircraft = LastAircraft,
             GeoNamesApiUsername = GeoNamesApiUsername,
