@@ -3828,6 +3828,21 @@ public class SimConnectManager
         }
     }
 
+    /// <summary>
+    /// Gets the last known aircraft position (lat, lon, heading).
+    /// Returns (0, 0, 0) if no position data is available.
+    /// </summary>
+    public (double Latitude, double Longitude, double Heading) GetCurrentPosition()
+    {
+        if (lastKnownPosition.HasValue)
+        {
+            return (lastKnownPosition.Value.Latitude,
+                    lastKnownPosition.Value.Longitude,
+                    lastKnownPosition.Value.HeadingMagnetic);
+        }
+        return (0, 0, 0);
+    }
+
     public void RequestAircraftPosition()
     {
         if (!IsConnected) return;
@@ -3874,6 +3889,32 @@ public class SimConnectManager
         {
             System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error requesting aircraft position async: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Gets fresh aircraft position from SimConnect with timeout.
+    /// Falls back to cached position if timeout occurs.
+    /// </summary>
+    public async Task<(double Latitude, double Longitude, double Heading)> GetFreshPositionAsync(int timeoutMs = 2000)
+    {
+        var tcs = new TaskCompletionSource<(double, double, double)>();
+
+        RequestAircraftPositionAsync(position =>
+        {
+            tcs.TrySetResult((position.Latitude, position.Longitude, position.HeadingMagnetic));
+        });
+
+        var timeoutTask = Task.Delay(timeoutMs);
+        var completedTask = await Task.WhenAny(tcs.Task, timeoutTask);
+
+        if (completedTask == tcs.Task)
+        {
+            return await tcs.Task;
+        }
+
+        // Timeout - fall back to cached position
+        System.Diagnostics.Debug.WriteLine("[SimConnectManager] Fresh position request timed out, using cached");
+        return GetCurrentPosition();
     }
 
     public void RequestWindInfo(Action<WindData> callback)

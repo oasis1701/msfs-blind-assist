@@ -1973,6 +1973,10 @@ public partial class MainForm : Form
             bool loaded = taxiwayGuidanceManager.LoadAirport(databasePath, form.SelectedIcao);
             if (loaded)
             {
+                // Enable route-based taxi menu items
+                taxiToRunwayMenuItem.Enabled = true;
+                taxiToGateMenuItem.Enabled = true;
+                // Legacy menu item (kept for backwards compatibility)
                 taxiStartGuidanceMenuItem.Enabled = true;
             }
         }
@@ -1995,6 +1999,92 @@ public partial class MainForm : Form
         taxiwayGuidanceManager.StopGuidance();
     }
 
+    private async void TaxiToRunwayMenuItem_Click(object? sender, EventArgs e)
+    {
+        if (!simConnectManager.IsConnected)
+        {
+            announcer.AnnounceImmediate("Not connected to simulator");
+            return;
+        }
+
+        var graph = taxiwayGuidanceManager.Graph;
+        if (graph == null)
+        {
+            announcer.AnnounceImmediate("No airport loaded");
+            return;
+        }
+
+        using var form = new Forms.TaxiToRunwayForm(graph, announcer);
+        if (form.ShowDialog(this) == DialogResult.OK &&
+            form.SelectedTaxiways.Count > 0 &&
+            !string.IsNullOrEmpty(form.SelectedRunway))
+        {
+            // Build the route
+            var routeBuilder = new Services.TaxiRouteBuilder(graph);
+
+            // Get fresh aircraft position (form may have been open for a while)
+            var (lat, lon, heading) = await simConnectManager.GetFreshPositionAsync();
+
+            var result = routeBuilder.BuildRouteToRunway(
+                lat, lon, heading,
+                form.SelectedTaxiways,
+                form.SelectedRunway);
+
+            if (result.Success && result.Route != null)
+            {
+                taxiwayGuidanceManager.StartRouteGuidance(result.Route);
+                simConnectManager.StartTaxiwayGuidanceMonitoring();
+            }
+            else
+            {
+                announcer.AnnounceImmediate(result.ErrorMessage ?? "Failed to build route");
+            }
+        }
+    }
+
+    private async void TaxiToGateMenuItem_Click(object? sender, EventArgs e)
+    {
+        if (!simConnectManager.IsConnected)
+        {
+            announcer.AnnounceImmediate("Not connected to simulator");
+            return;
+        }
+
+        var graph = taxiwayGuidanceManager.Graph;
+        if (graph == null)
+        {
+            announcer.AnnounceImmediate("No airport loaded");
+            return;
+        }
+
+        using var form = new Forms.TaxiToGateForm(graph, announcer);
+        if (form.ShowDialog(this) == DialogResult.OK &&
+            form.SelectedTaxiways.Count > 0 &&
+            !string.IsNullOrEmpty(form.SelectedGate))
+        {
+            // Build the route
+            var routeBuilder = new Services.TaxiRouteBuilder(graph);
+
+            // Get fresh aircraft position (form may have been open for a while)
+            var (lat, lon, heading) = await simConnectManager.GetFreshPositionAsync();
+
+            var result = routeBuilder.BuildRouteToGate(
+                lat, lon, heading,
+                form.SelectedTaxiways,
+                form.SelectedGate);
+
+            if (result.Success && result.Route != null)
+            {
+                taxiwayGuidanceManager.StartRouteGuidance(result.Route);
+                simConnectManager.StartTaxiwayGuidanceMonitoring();
+            }
+            else
+            {
+                announcer.AnnounceImmediate(result.ErrorMessage ?? "Failed to build route");
+            }
+        }
+    }
+
     private void TaxiRelockMenuItem_Click(object? sender, EventArgs e)
     {
         if (!simConnectManager.IsConnected)
@@ -2015,9 +2105,14 @@ public partial class MainForm : Form
             return;
         }
 
-        taxiStartGuidanceMenuItem.Enabled = !isActive && taxiwayGuidanceManager.HasGraph;
+        // Route-based menu items
+        taxiToRunwayMenuItem.Enabled = !isActive && taxiwayGuidanceManager.HasGraph;
+        taxiToGateMenuItem.Enabled = !isActive && taxiwayGuidanceManager.HasGraph;
         taxiStopGuidanceMenuItem.Enabled = isActive;
-        taxiRelockMenuItem.Enabled = isActive;  // Can relock when guidance is active
+
+        // Legacy menu items (kept for backwards compatibility)
+        taxiStartGuidanceMenuItem.Enabled = !isActive && taxiwayGuidanceManager.HasGraph;
+        taxiRelockMenuItem.Enabled = isActive && !taxiwayGuidanceManager.IsFollowingRoute;
 
         // Stop monitoring when guidance is deactivated
         if (!isActive)

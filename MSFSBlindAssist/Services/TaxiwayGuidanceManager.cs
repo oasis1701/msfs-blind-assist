@@ -21,7 +21,13 @@ public enum GuidanceState
     /// <summary>Junction form shown, waiting for user input</summary>
     AwaitingJunctionSelection,
     /// <summary>Reached dead-end or parking</summary>
-    AtDestination
+    AtDestination,
+    /// <summary>Following a pre-built route (route-based guidance)</summary>
+    FollowingRoute,
+    /// <summary>Approaching a waypoint on the route</summary>
+    ApproachingWaypoint,
+    /// <summary>Deviated from the planned route</summary>
+    Deviated
 }
 
 /// <summary>
@@ -62,6 +68,12 @@ public class TaxiwayGuidanceManager : IDisposable
     private ParkingSpotData? _currentParkingSpot;
     private DateTime _lastParkingAnnouncement = DateTime.MinValue;
 
+    // Route-based guidance
+    private TaxiRoute? _activeRoute;
+    private bool _isOnRoute = true;
+    private bool _waypointApproachAnnounced;
+    private DateTime _lastDeviationAnnouncement = DateTime.MinValue;
+
     // Configuration constants
     private const int ANNOUNCEMENT_INTERVAL_MS = 500;
     private const double CENTERLINE_TOLERANCE_FEET = 15.0; // Within ±15 feet is "on centerline"
@@ -80,6 +92,13 @@ public class TaxiwayGuidanceManager : IDisposable
 
     // Deviation thresholds
     private const double DEVIATION_SUGGEST_RELOCK_FEET = 200.0; // Suggest re-locking at this distance
+
+    // Route-based guidance constants
+    private const double WAYPOINT_APPROACH_FEET = 150.0;  // Announce upcoming turn
+    private const double WAYPOINT_PASS_FEET = 30.0;       // Advance to next waypoint
+    private const double ROUTE_DEVIATION_FEET = 100.0;    // Consider off-route
+    private const double ROUTE_BACK_ON_FEET = 50.0;       // Consider back on route
+    private const double DEVIATION_ANNOUNCEMENT_INTERVAL_SECONDS = 10.0;
 
     // PID Controller constants for taxi steering guidance
     private const double TAXI_PROPORTIONAL_GAIN = 0.15;     // Degrees per foot of cross-track error
@@ -102,6 +121,10 @@ public class TaxiwayGuidanceManager : IDisposable
     public TaxiwaySegment? LockedSegment => _lockedSegment;
     public bool IsJunctionPending => _junctionPending;
     public GuidanceState State => _state;
+    public TaxiRoute? ActiveRoute => _activeRoute;
+    public bool IsFollowingRoute => _activeRoute != null && _state == GuidanceState.FollowingRoute;
+    public bool IsOnRoute => _isOnRoute;
+    public TaxiwayGraph? Graph => _graph;
 
     public event EventHandler<bool>? GuidanceActiveChanged;
     public event EventHandler<JunctionEventArgs>? JunctionDetected;
@@ -321,6 +344,9 @@ public class TaxiwayGuidanceManager : IDisposable
         _junctionPending = false;
         _junctionFirstWarningGiven = false;
         _relockSuggestionGiven = false;
+        _activeRoute = null;
+        _isOnRoute = true;
+        _waypointApproachAnnounced = false;
         _state = GuidanceState.Idle;
 
         GuidanceActiveChanged?.Invoke(this, false);
@@ -345,6 +371,80 @@ public class TaxiwayGuidanceManager : IDisposable
     }
 
     /// <summary>
+    /// Starts guidance for a pre-built route (route-based guidance mode)
+    /// </summary>
+    /// <param name="route">The pre-built taxi route to follow</param>
+    public void StartRouteGuidance(TaxiRoute route)
+    {
+        if (_graph == null)
+        {
+            _announcer.AnnounceImmediate("No airport loaded.");
+            return;
+        }
+
+        if (route == null || route.Waypoints.Count == 0)
+        {
+            _announcer.AnnounceImmediate("Invalid route.");
+            return;
+        }
+
+        // Stop any existing guidance
+        if (_isActive)
+        {
+            StopGuidance();
+        }
+
+        // Set up the route
+        _activeRoute = route;
+        _isOnRoute = true;
+        _waypointApproachAnnounced = false;
+        _lastDeviationAnnouncement = DateTime.MinValue;
+
+        // Lock to the first waypoint's segment
+        var firstWaypoint = route.CurrentWaypoint;
+        if (firstWaypoint != null)
+        {
+            _lockedSegment = firstWaypoint.Segment;
+            _lockedTargetNode = firstWaypoint.TargetNode;
+            _currentTaxiwayName = firstWaypoint.Segment.Name;
+        }
+
+        // Reset tracking state
+        _lastCenterlineAnnouncement = DateTime.MinValue;
+        _lastTaxiwayChangeAnnouncement = DateTime.MinValue;
+        _lastParkingAnnouncement = DateTime.MinValue;
+        _lastJunctionNode = null;
+        _junctionPending = false;
+        _junctionFirstWarningGiven = false;
+        _relockSuggestionGiven = false;
+
+        // Reset PID state
+        _lastCrossTrackFeet = 0;
+        _lastPositionUpdateTime = DateTime.MinValue;
+        _lastAnnouncedCorrectionDegrees = null;
+
+        // Start audio tone
+        _centerlineTone?.Start(_toneWaveType, _toneVolume);
+
+        _isActive = true;
+        _state = GuidanceState.FollowingRoute;
+        GuidanceActiveChanged?.Invoke(this, true);
+
+        // Announce the start
+        string taxiwayPath = string.Join(", ", route.SelectedTaxiways);
+        _announcer.AnnounceImmediate($"Route guidance started to {route.DestinationDescription}. {route.Waypoints.Count} waypoints via {taxiwayPath}.");
+
+        System.Diagnostics.Debug.WriteLine($"[TaxiwayGuidance] Route guidance started: {route.Waypoints.Count} waypoints to {route.DestinationDescription}");
+
+        // Print all waypoints for debugging
+        for (int i = 0; i < route.Waypoints.Count; i++)
+        {
+            var wp = route.Waypoints[i];
+            System.Diagnostics.Debug.WriteLine($"[TaxiwayGuidance]   Waypoint {i + 1}: {wp}");
+        }
+    }
+
+    /// <summary>
     /// Process position update for guidance (uses LOCKED segment, not nearest)
     /// </summary>
     public void ProcessPositionUpdate(double latitude, double longitude, double heading, double groundSpeedKnots)
@@ -352,7 +452,14 @@ public class TaxiwayGuidanceManager : IDisposable
         // Check parking spot proximity during active guidance
         CheckParkingSpotProximity(latitude, longitude);
 
-        // Only process guidance-specific logic in active states
+        // Route-based guidance mode
+        if (_activeRoute != null && (_state == GuidanceState.FollowingRoute || _state == GuidanceState.ApproachingWaypoint || _state == GuidanceState.Deviated))
+        {
+            ProcessRouteGuidance(latitude, longitude, heading, groundSpeedKnots);
+            return;
+        }
+
+        // Only process guidance-specific logic in active states (legacy mode)
         if (_state != GuidanceState.SegmentLocked && _state != GuidanceState.ApproachingJunction)
             return;
 
@@ -460,6 +567,180 @@ public class TaxiwayGuidanceManager : IDisposable
             System.Diagnostics.Debug.WriteLine($"[TaxiwayGuidance] Arrived at destination: {_lockedTargetNode}");
         }
     }
+
+    #region Route-Based Guidance
+
+    /// <summary>
+    /// Processes position update for route-based guidance mode
+    /// </summary>
+    private void ProcessRouteGuidance(double latitude, double longitude, double heading, double groundSpeedKnots)
+    {
+        if (_activeRoute == null || _graph == null || _lockedSegment == null || _lockedTargetNode == null)
+            return;
+
+        _lastAircraftHeading = heading;
+        _lastGroundSpeedKnots = groundSpeedKnots;
+
+        var currentWaypoint = _activeRoute.CurrentWaypoint;
+        if (currentWaypoint == null)
+        {
+            // Route complete
+            CompleteRouteGuidance();
+            return;
+        }
+
+        // Calculate cross-track from current segment
+        double crossTrackFeet = _graph.CalculateCrossTrackFromSegment(
+            latitude, longitude, _lockedSegment, heading);
+
+        // Get target heading
+        double targetHeading = currentWaypoint.Heading;
+
+        // Calculate PID steering correction
+        double steeringCorrection = CalculateSteeringCorrection(
+            crossTrackFeet, targetHeading, heading);
+
+        // Audio panning
+        float pan = (float)Math.Clamp(steeringCorrection / TAXI_MAX_CORRECTION_DEGREES, -1.0, 1.0);
+        _centerlineTone?.SetPan(pan);
+
+        // Announce steering correction if changed
+        AnnounceSteeringCorrectionIfNeeded(steeringCorrection, crossTrackFeet);
+
+        // Check for route deviation
+        CheckRouteDeviation(crossTrackFeet);
+
+        // Check distance to current waypoint target node
+        double distanceToWaypoint = _graph.GetDistanceToNode(latitude, longitude, currentWaypoint.TargetNode);
+
+        System.Diagnostics.Debug.WriteLine($"[RouteGuidance] Waypoint {_activeRoute.CurrentWaypointIndex + 1}/{_activeRoute.Waypoints.Count}, " +
+            $"dist={distanceToWaypoint:F1}ft, crossTrack={crossTrackFeet:F1}ft, state={_state}");
+
+        // Waypoint approach announcement (150ft)
+        if (distanceToWaypoint <= WAYPOINT_APPROACH_FEET && !_waypointApproachAnnounced)
+        {
+            if (!string.IsNullOrEmpty(currentWaypoint.ApproachAnnouncement))
+            {
+                _announcer.AnnounceImmediate(currentWaypoint.ApproachAnnouncement);
+            }
+            _waypointApproachAnnounced = true;
+            _state = GuidanceState.ApproachingWaypoint;
+            System.Diagnostics.Debug.WriteLine($"[RouteGuidance] Approaching waypoint: {currentWaypoint.ApproachAnnouncement}");
+        }
+
+        // Waypoint pass (30ft) - advance to next waypoint
+        if (distanceToWaypoint <= WAYPOINT_PASS_FEET)
+        {
+            AdvanceToNextWaypoint();
+        }
+    }
+
+    /// <summary>
+    /// Advances to the next waypoint in the route
+    /// </summary>
+    private void AdvanceToNextWaypoint()
+    {
+        if (_activeRoute == null)
+            return;
+
+        var currentWaypoint = _activeRoute.CurrentWaypoint;
+
+        // Announce pass if there's a pass announcement
+        if (currentWaypoint != null && !string.IsNullOrEmpty(currentWaypoint.PassAnnouncement))
+        {
+            _announcer.AnnounceImmediate(currentWaypoint.PassAnnouncement);
+        }
+
+        // Check if this was the destination
+        if (currentWaypoint?.Type == WaypointType.Destination)
+        {
+            CompleteRouteGuidance();
+            return;
+        }
+
+        // Advance to next waypoint
+        _activeRoute.AdvanceWaypoint();
+        _waypointApproachAnnounced = false;
+
+        var nextWaypoint = _activeRoute.CurrentWaypoint;
+        if (nextWaypoint == null)
+        {
+            CompleteRouteGuidance();
+            return;
+        }
+
+        // Update locked segment to new waypoint
+        _lockedSegment = nextWaypoint.Segment;
+        _lockedTargetNode = nextWaypoint.TargetNode;
+        _currentTaxiwayName = nextWaypoint.Segment.Name;
+
+        // Reset PID state for new segment
+        _lastCrossTrackFeet = 0;
+        _lastPositionUpdateTime = DateTime.MinValue;
+        _lastAnnouncedCorrectionDegrees = null;
+
+        _state = GuidanceState.FollowingRoute;
+
+        System.Diagnostics.Debug.WriteLine($"[RouteGuidance] Advanced to waypoint {_activeRoute.CurrentWaypointIndex + 1}/{_activeRoute.Waypoints.Count}");
+    }
+
+    /// <summary>
+    /// Checks if aircraft has deviated from the route
+    /// </summary>
+    private void CheckRouteDeviation(double crossTrackFeet)
+    {
+        bool wasOnRoute = _isOnRoute;
+
+        if (Math.Abs(crossTrackFeet) >= ROUTE_DEVIATION_FEET)
+        {
+            _isOnRoute = false;
+
+            if (wasOnRoute || DateTime.Now - _lastDeviationAnnouncement >= TimeSpan.FromSeconds(DEVIATION_ANNOUNCEMENT_INTERVAL_SECONDS))
+            {
+                _announcer.AnnounceImmediate("Off route. Continue following guidance to return.");
+                _lastDeviationAnnouncement = DateTime.Now;
+                _state = GuidanceState.Deviated;
+            }
+        }
+        else if (Math.Abs(crossTrackFeet) <= ROUTE_BACK_ON_FEET)
+        {
+            if (!wasOnRoute)
+            {
+                _announcer.AnnounceImmediate("Back on route.");
+                _isOnRoute = true;
+                _state = GuidanceState.FollowingRoute;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Completes route guidance when destination is reached
+    /// </summary>
+    private void CompleteRouteGuidance()
+    {
+        if (_activeRoute == null)
+            return;
+
+        string destination = _activeRoute.DestinationDescription;
+        _state = GuidanceState.AtDestination;
+
+        // Stop audio tone
+        _centerlineTone?.Stop();
+        _isActive = false;
+
+        _announcer.AnnounceImmediate($"Arrived at {destination}. Guidance complete.");
+
+        // Clear the route
+        _activeRoute = null;
+        _lockedSegment = null;
+        _lockedTargetNode = null;
+
+        GuidanceActiveChanged?.Invoke(this, false);
+
+        System.Diagnostics.Debug.WriteLine($"[RouteGuidance] Route complete: {destination}");
+    }
+
+    #endregion
 
     /// <summary>
     /// Gets the target heading based on locked segment and travel direction
@@ -827,6 +1108,9 @@ public class TaxiwayGuidanceManager : IDisposable
         _junctionPending = false;
         _junctionFirstWarningGiven = false;
         _relockSuggestionGiven = false;
+        _activeRoute = null;
+        _isOnRoute = true;
+        _waypointApproachAnnounced = false;
         _state = GuidanceState.Idle;
 
         System.Diagnostics.Debug.WriteLine("[TaxiwayGuidance] Reset");

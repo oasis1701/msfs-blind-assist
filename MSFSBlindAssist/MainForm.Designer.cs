@@ -19,6 +19,8 @@ namespace MSFSBlindAssist
         private System.Windows.Forms.ToolStripMenuItem fenixA320MenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem taxiMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem taxiSelectAirportMenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem taxiToRunwayMenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem taxiToGateMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem taxiStartGuidanceMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem taxiStopGuidanceMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem taxiRelockMenuItem = null!;
@@ -54,6 +56,8 @@ namespace MSFSBlindAssist
             this.fenixA320MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.taxiMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.taxiSelectAirportMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.taxiToRunwayMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.taxiToGateMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.taxiStartGuidanceMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.taxiStopGuidanceMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.taxiRelockMenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -213,8 +217,8 @@ namespace MSFSBlindAssist
             this.taxiMenuItem.AccessibleDescription = "Taxiway guidance options";
             this.taxiMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.taxiSelectAirportMenuItem,
-            this.taxiStartGuidanceMenuItem,
-            this.taxiRelockMenuItem,
+            this.taxiToRunwayMenuItem,
+            this.taxiToGateMenuItem,
             this.taxiStopGuidanceMenuItem});
             this.taxiMenuItem.Name = "taxiMenuItem";
             this.taxiMenuItem.Size = new System.Drawing.Size(46, 24);
@@ -225,9 +229,29 @@ namespace MSFSBlindAssist
             this.taxiSelectAirportMenuItem.AccessibleName = "Select Airport";
             this.taxiSelectAirportMenuItem.AccessibleDescription = "Select an airport for taxiway guidance";
             this.taxiSelectAirportMenuItem.Name = "taxiSelectAirportMenuItem";
-            this.taxiSelectAirportMenuItem.Size = new System.Drawing.Size(180, 26);
+            this.taxiSelectAirportMenuItem.Size = new System.Drawing.Size(200, 26);
             this.taxiSelectAirportMenuItem.Text = "Select &Airport...";
             this.taxiSelectAirportMenuItem.Click += new System.EventHandler(this.TaxiSelectAirportMenuItem_Click);
+            //
+            // taxiToRunwayMenuItem
+            //
+            this.taxiToRunwayMenuItem.AccessibleName = "Taxi to Runway";
+            this.taxiToRunwayMenuItem.AccessibleDescription = "Set up taxi route to a runway hold short point";
+            this.taxiToRunwayMenuItem.Name = "taxiToRunwayMenuItem";
+            this.taxiToRunwayMenuItem.Size = new System.Drawing.Size(200, 26);
+            this.taxiToRunwayMenuItem.Text = "Taxi to &Runway...";
+            this.taxiToRunwayMenuItem.Enabled = false;
+            this.taxiToRunwayMenuItem.Click += new System.EventHandler(this.TaxiToRunwayMenuItem_Click);
+            //
+            // taxiToGateMenuItem
+            //
+            this.taxiToGateMenuItem.AccessibleName = "Taxi to Gate";
+            this.taxiToGateMenuItem.AccessibleDescription = "Set up taxi route to a gate or parking spot";
+            this.taxiToGateMenuItem.Name = "taxiToGateMenuItem";
+            this.taxiToGateMenuItem.Size = new System.Drawing.Size(200, 26);
+            this.taxiToGateMenuItem.Text = "Taxi to &Gate...";
+            this.taxiToGateMenuItem.Enabled = false;
+            this.taxiToGateMenuItem.Click += new System.EventHandler(this.TaxiToGateMenuItem_Click);
             //
             // taxiStartGuidanceMenuItem
             //

@@ -168,26 +168,53 @@ public class TaxiwayGraph
     }
 
     /// <summary>
-    /// Associates hold short nodes with their nearest runway
+    /// Associates hold short nodes with their nearest runway using perpendicular distance to centerline.
+    /// Assigns the name of the closest threshold (e.g., "13" or "31", not "13/31").
     /// </summary>
     private void AssociateHoldShortNodes()
     {
         var holdShortNodes = _nodes.Values.Where(n => n.Type == TaxiwayNodeType.HoldShort).ToList();
+        System.Diagnostics.Debug.WriteLine($"[TaxiwayGraph] AssociateHoldShortNodes: {holdShortNodes.Count} hold short nodes to process");
+
+        // Build runway centerlines from pairs of thresholds
+        var runwayCenterlines = BuildRunwayCenterlines();
+        System.Diagnostics.Debug.WriteLine($"[TaxiwayGraph] Built {runwayCenterlines.Count} runway centerlines:");
+        foreach (var (sName, eName, sLat, sLon, eLat, eLon) in runwayCenterlines)
+        {
+            System.Diagnostics.Debug.WriteLine($"[TaxiwayGraph]   {sName}/{eName}: ({sLat:F6}, {sLon:F6}) to ({eLat:F6}, {eLon:F6})");
+        }
 
         foreach (var node in holdShortNodes)
         {
             string? nearestRunway = null;
             double nearestDistance = double.MaxValue;
 
-            foreach (var (runwayName, lat, lon, _) in _runwayEnds)
-            {
-                double distanceFeet = NavigationCalculator.CalculateDistance(
-                    node.Latitude, node.Longitude, lat, lon) * NM_TO_FEET;
+            System.Diagnostics.Debug.WriteLine($"[TaxiwayGraph] Evaluating hold short at ({node.Latitude:F6}, {node.Longitude:F6}):");
 
-                if (distanceFeet < nearestDistance && distanceFeet < HOLD_SHORT_RUNWAY_MATCH_FEET)
+            foreach (var (startName, endName, startLat, startLon, endLat, endLon) in runwayCenterlines)
+            {
+                // Calculate perpendicular distance from node to runway centerline
+                double perpDistFeet = CalculatePerpendicularDistance(
+                    node.Latitude, node.Longitude,
+                    startLat, startLon, endLat, endLon);
+
+                // Check if within runway bounds (not past either threshold)
+                bool withinBounds = IsPointWithinSegmentBounds(
+                    node.Latitude, node.Longitude,
+                    startLat, startLon, endLat, endLon);
+
+                double distToStart = CalculateDistanceFeet(node.Latitude, node.Longitude, startLat, startLon);
+                double distToEnd = CalculateDistanceFeet(node.Latitude, node.Longitude, endLat, endLon);
+
+                System.Diagnostics.Debug.WriteLine($"[TaxiwayGraph]   vs {startName}/{endName}: perpDist={perpDistFeet:F0}ft (max={HOLD_SHORT_RUNWAY_MATCH_FEET}), withinBounds={withinBounds}, distTo{startName}={distToStart:F0}ft, distTo{endName}={distToEnd:F0}ft");
+
+                if (perpDistFeet < nearestDistance &&
+                    perpDistFeet < HOLD_SHORT_RUNWAY_MATCH_FEET &&
+                    withinBounds)
                 {
-                    nearestDistance = distanceFeet;
-                    nearestRunway = runwayName;
+                    nearestDistance = perpDistFeet;
+                    nearestRunway = distToStart < distToEnd ? startName : endName;
+                    System.Diagnostics.Debug.WriteLine($"[TaxiwayGraph]     -> MATCHED to {nearestRunway}");
                 }
             }
 
@@ -195,9 +222,107 @@ public class TaxiwayGraph
 
             if (nearestRunway != null)
             {
-                System.Diagnostics.Debug.WriteLine($"[TaxiwayGraph] Hold short node at ({node.Latitude:F6}, {node.Longitude:F6}) → Runway {nearestRunway} ({nearestDistance:F0}ft)");
+                System.Diagnostics.Debug.WriteLine($"[TaxiwayGraph] Hold short ASSIGNED: ({node.Latitude:F6}, {node.Longitude:F6}) -> Runway {nearestRunway}");
+            }
+            else
+            {
+                System.Diagnostics.Debug.WriteLine($"[TaxiwayGraph] Hold short UNASSIGNED: ({node.Latitude:F6}, {node.Longitude:F6}) - no matching runway");
             }
         }
+    }
+
+    /// <summary>
+    /// Calculates distance between two points in feet
+    /// </summary>
+    private static double CalculateDistanceFeet(double lat1, double lon1, double lat2, double lon2)
+    {
+        const double LAT_TO_FEET = 364000.0;
+        const double LON_TO_FEET = 288000.0;
+
+        double dLat = (lat2 - lat1) * LAT_TO_FEET;
+        double dLon = (lon2 - lon1) * LON_TO_FEET;
+        return Math.Sqrt(dLat * dLat + dLon * dLon);
+    }
+
+    /// <summary>
+    /// Builds runway centerlines by pairing opposite runway ends.
+    /// Returns both runway names separately so we can assign the closest one to hold shorts.
+    /// </summary>
+    private List<(string StartName, string EndName, double StartLat, double StartLon, double EndLat, double EndLon)> BuildRunwayCenterlines()
+    {
+        var centerlines = new List<(string, string, double, double, double, double)>();
+        var processed = new HashSet<string>();
+
+        foreach (var (name, lat, lon, heading) in _runwayEnds)
+        {
+            if (processed.Contains(name)) continue;
+
+            // Find opposite runway end (heading differs by ~180°)
+            var opposite = _runwayEnds.FirstOrDefault(r =>
+                r.RunwayName != name &&
+                Math.Abs(Math.Abs(r.Heading - heading) - 180) < 10);
+
+            if (opposite != default)
+            {
+                // Return both names separately (e.g., "04" and "22", not "04/22")
+                centerlines.Add((name, opposite.RunwayName, lat, lon, opposite.Latitude, opposite.Longitude));
+                processed.Add(name);
+                processed.Add(opposite.RunwayName);
+            }
+        }
+
+        return centerlines;
+    }
+
+    /// <summary>
+    /// Calculates perpendicular distance from a point to a line segment (in feet)
+    /// </summary>
+    private static double CalculatePerpendicularDistance(
+        double pointLat, double pointLon,
+        double lineLat1, double lineLon1, double lineLat2, double lineLon2)
+    {
+        // Convert to approximate feet for calculation
+        const double LAT_TO_FEET = 364000.0;  // ~364000 ft per degree latitude
+        const double LON_TO_FEET = 288000.0;  // ~288000 ft per degree longitude at mid-latitudes
+
+        double px = (pointLon - lineLon1) * LON_TO_FEET;
+        double py = (pointLat - lineLat1) * LAT_TO_FEET;
+        double lx = (lineLon2 - lineLon1) * LON_TO_FEET;
+        double ly = (lineLat2 - lineLat1) * LAT_TO_FEET;
+
+        double lineLen = Math.Sqrt(lx * lx + ly * ly);
+        if (lineLen < 0.001) return double.MaxValue;
+
+        // Perpendicular distance = |cross product| / |line length|
+        double cross = Math.Abs(lx * py - ly * px);
+        return cross / lineLen;
+    }
+
+    /// <summary>
+    /// Checks if a point's projection falls within the line segment bounds (with buffer)
+    /// </summary>
+    private static bool IsPointWithinSegmentBounds(
+        double pointLat, double pointLon,
+        double lineLat1, double lineLon1, double lineLat2, double lineLon2)
+    {
+        // Project point onto line and check if projection is between endpoints
+        const double LAT_TO_FEET = 364000.0;
+        const double LON_TO_FEET = 288000.0;
+
+        double px = (pointLon - lineLon1) * LON_TO_FEET;
+        double py = (pointLat - lineLat1) * LAT_TO_FEET;
+        double lx = (lineLon2 - lineLon1) * LON_TO_FEET;
+        double ly = (lineLat2 - lineLat1) * LAT_TO_FEET;
+
+        double lineLenSq = lx * lx + ly * ly;
+        if (lineLenSq < 0.001) return false;
+
+        // t = dot(point-start, line) / |line|^2
+        double t = (px * lx + py * ly) / lineLenSq;
+
+        // Allow some buffer past the ends (500ft / runway length)
+        double buffer = 500.0 / Math.Sqrt(lineLenSq);
+        return t >= -buffer && t <= 1.0 + buffer;
     }
 
     /// <summary>
@@ -1019,6 +1144,362 @@ public class TaxiwayGraph
 
         return headingToEnd < headingToStart ? segment.EndNode : segment.StartNode;
     }
+
+    #region Route Building Methods
+
+    /// <summary>
+    /// Finds the shortest path between two nodes using Dijkstra's algorithm
+    /// </summary>
+    /// <param name="start">Starting node</param>
+    /// <param name="end">Destination node</param>
+    /// <returns>List of segments forming the path, or null if no path exists</returns>
+    public List<TaxiwaySegment>? FindPath(TaxiwayNode start, TaxiwayNode end)
+    {
+        if (start == end)
+            return new List<TaxiwaySegment>();
+
+        var distances = new Dictionary<TaxiwayNode, double>();
+        var previous = new Dictionary<TaxiwayNode, (TaxiwayNode Node, TaxiwaySegment Segment)>();
+        var queue = new PriorityQueue<TaxiwayNode, double>();
+
+        // Initialize distances
+        foreach (var node in _nodes.Values)
+            distances[node] = double.MaxValue;
+
+        distances[start] = 0;
+        queue.Enqueue(start, 0);
+
+        while (queue.Count > 0)
+        {
+            var current = queue.Dequeue();
+
+            if (current == end)
+                break;
+
+            // Skip if we've found a better path already
+            if (distances[current] == double.MaxValue)
+                continue;
+
+            foreach (var segment in current.ConnectedSegments)
+            {
+                var neighbor = segment.GetOtherNode(current);
+                if (neighbor == null)
+                    continue;
+
+                double newDist = distances[current] + segment.Length;
+                if (newDist < distances[neighbor])
+                {
+                    distances[neighbor] = newDist;
+                    previous[neighbor] = (current, segment);
+                    queue.Enqueue(neighbor, newDist);
+                }
+            }
+        }
+
+        // Check if we found a path
+        if (!previous.ContainsKey(end))
+            return null;
+
+        // Reconstruct path
+        var path = new List<TaxiwaySegment>();
+        var currentNode = end;
+        while (previous.ContainsKey(currentNode))
+        {
+            var (prevNode, segment) = previous[currentNode];
+            path.Insert(0, segment);
+            currentNode = prevNode;
+        }
+
+        return path;
+    }
+
+    /// <summary>
+    /// Finds path from start to end, constrained to pass through segments with the specified taxiway name
+    /// </summary>
+    /// <param name="start">Starting node</param>
+    /// <param name="end">Destination node</param>
+    /// <param name="requiredTaxiwayName">Taxiway name that path must include (or null for any path)</param>
+    /// <returns>List of segments forming the path, or null if no path exists</returns>
+    public List<TaxiwaySegment>? FindPathViaTaxiway(TaxiwayNode start, TaxiwayNode end, string? requiredTaxiwayName)
+    {
+        if (requiredTaxiwayName == null)
+            return FindPath(start, end);
+
+        // Find all segments on the required taxiway
+        var taxiwaySegments = _segments.Where(s => s.Name == requiredTaxiwayName).ToList();
+        if (taxiwaySegments.Count == 0)
+            return null;
+
+        // Find shortest path that goes through any segment on the taxiway
+        List<TaxiwaySegment>? bestPath = null;
+        double bestDistance = double.MaxValue;
+
+        // Get all unique nodes on this taxiway
+        var taxiwayNodes = new HashSet<TaxiwayNode>();
+        foreach (var seg in taxiwaySegments)
+        {
+            taxiwayNodes.Add(seg.StartNode);
+            taxiwayNodes.Add(seg.EndNode);
+        }
+
+        foreach (var taxiwayNode in taxiwayNodes)
+        {
+            // Path: start → taxiwayNode → end
+            var pathToTaxiway = FindPath(start, taxiwayNode);
+            var pathFromTaxiway = FindPath(taxiwayNode, end);
+
+            if (pathToTaxiway != null && pathFromTaxiway != null)
+            {
+                double totalDist = pathToTaxiway.Sum(s => s.Length) + pathFromTaxiway.Sum(s => s.Length);
+                if (totalDist < bestDistance)
+                {
+                    bestDistance = totalDist;
+                    bestPath = pathToTaxiway.Concat(pathFromTaxiway).ToList();
+                }
+            }
+        }
+
+        return bestPath;
+    }
+
+    /// <summary>
+    /// Gets all unique taxiway names in the graph, sorted alphabetically
+    /// </summary>
+    public List<string> GetAllTaxiwayNames()
+    {
+        return _segments
+            .Where(s => s.HasName)
+            .Select(s => s.Name!)
+            .Distinct()
+            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Gets all HoldShort nodes with their associated runway names
+    /// </summary>
+    public List<(TaxiwayNode Node, string RunwayName)> GetAllHoldShortNodes()
+    {
+        return _nodes.Values
+            .Where(n => n.Type == TaxiwayNodeType.HoldShort && !string.IsNullOrEmpty(n.HoldShortRunway))
+            .Select(n => (n, n.HoldShortRunway!))
+            .OrderBy(x => x.Item2)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Gets unique runway names from hold short nodes
+    /// </summary>
+    public List<string> GetAllRunwayNames()
+    {
+        return _nodes.Values
+            .Where(n => n.Type == TaxiwayNodeType.HoldShort && !string.IsNullOrEmpty(n.HoldShortRunway))
+            .Select(n => n.HoldShortRunway!)
+            .Distinct()
+            .OrderBy(n => n)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Gets all Parking nodes with their spot names
+    /// </summary>
+    public List<(TaxiwayNode Node, string SpotName, bool HasJetway)> GetAllParkingNodes()
+    {
+        return _nodes.Values
+            .Where(n => n.Type == TaxiwayNodeType.Parking && !string.IsNullOrEmpty(n.ParkingSpotName))
+            .Select(n => (n, n.ParkingSpotName!, n.HasJetway))
+            .OrderBy(x => x.Item2)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Finds all segments belonging to a specific taxiway
+    /// </summary>
+    public List<TaxiwaySegment> FindSegmentsOnTaxiway(string taxiwayName)
+    {
+        return _segments
+            .Where(s => s.Name == taxiwayName)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Finds the closest segment on a specific taxiway to the given position
+    /// </summary>
+    /// <param name="latitude">Aircraft latitude</param>
+    /// <param name="longitude">Aircraft longitude</param>
+    /// <param name="taxiwayName">Name of the taxiway to search</param>
+    /// <returns>Closest segment on that taxiway and distance, or null if taxiway not found</returns>
+    public (TaxiwaySegment Segment, double DistanceFeet, TaxiwayNode ClosestNode)? FindNearestSegmentOnTaxiway(
+        double latitude, double longitude, string taxiwayName)
+    {
+        var taxiwaySegments = FindSegmentsOnTaxiway(taxiwayName);
+        if (taxiwaySegments.Count == 0)
+            return null;
+
+        TaxiwaySegment? bestSegment = null;
+        double bestDistance = double.MaxValue;
+        TaxiwayNode? bestNode = null;
+
+        foreach (var segment in taxiwaySegments)
+        {
+            // Calculate distance to segment
+            double crossTrackNM = CalculateDistanceToSegment(latitude, longitude, segment);
+            double distanceFeet = Math.Abs(crossTrackNM * NM_TO_FEET);
+
+            if (distanceFeet < bestDistance)
+            {
+                bestDistance = distanceFeet;
+                bestSegment = segment;
+
+                // Determine which node is closer
+                double distToStart = NavigationCalculator.CalculateDistance(
+                    latitude, longitude, segment.StartNode.Latitude, segment.StartNode.Longitude) * NM_TO_FEET;
+                double distToEnd = NavigationCalculator.CalculateDistance(
+                    latitude, longitude, segment.EndNode.Latitude, segment.EndNode.Longitude) * NM_TO_FEET;
+
+                bestNode = distToStart < distToEnd ? segment.StartNode : segment.EndNode;
+            }
+        }
+
+        if (bestSegment == null || bestNode == null)
+            return null;
+
+        return (bestSegment, bestDistance, bestNode);
+    }
+
+    /// <summary>
+    /// Finds the nearest hold short node for a specific runway
+    /// </summary>
+    public (TaxiwayNode Node, double DistanceFeet)? FindNearestHoldShort(
+        double latitude, double longitude, string runwayName)
+    {
+        var holdShorts = GetAllHoldShortNodes()
+            .Where(h => h.RunwayName == runwayName)
+            .ToList();
+
+        if (holdShorts.Count == 0)
+            return null;
+
+        TaxiwayNode? bestNode = null;
+        double bestDistance = double.MaxValue;
+
+        foreach (var (node, _) in holdShorts)
+        {
+            double dist = GetDistanceToNode(latitude, longitude, node);
+            if (dist < bestDistance)
+            {
+                bestDistance = dist;
+                bestNode = node;
+            }
+        }
+
+        if (bestNode == null)
+            return null;
+
+        return (bestNode, bestDistance);
+    }
+
+    /// <summary>
+    /// Finds a parking node by name
+    /// </summary>
+    public TaxiwayNode? FindParkingByName(string spotName)
+    {
+        return _nodes.Values
+            .FirstOrDefault(n => n.Type == TaxiwayNodeType.Parking &&
+                                 n.ParkingSpotName == spotName);
+    }
+
+    /// <summary>
+    /// Finds a hold short node by runway name (returns closest to runway threshold if multiple exist)
+    /// </summary>
+    public TaxiwayNode? FindHoldShortByRunway(string runwayName)
+    {
+        System.Diagnostics.Debug.WriteLine($"[TaxiwayGraph] FindHoldShortByRunway('{runwayName}')");
+
+        var holdShorts = _nodes.Values
+            .Where(n => n.Type == TaxiwayNodeType.HoldShort &&
+                        n.HoldShortRunway == runwayName)
+            .ToList();
+
+        System.Diagnostics.Debug.WriteLine($"[TaxiwayGraph]   Found {holdShorts.Count} hold shorts for runway '{runwayName}'");
+
+        if (holdShorts.Count == 0)
+            return null;
+
+        if (holdShorts.Count == 1)
+        {
+            System.Diagnostics.Debug.WriteLine($"[TaxiwayGraph]   Single hold short at ({holdShorts[0].Latitude:F6}, {holdShorts[0].Longitude:F6})");
+            return holdShorts[0];
+        }
+
+        // Multiple hold shorts with same name - find the one closest to the runway threshold
+        var runwayEnd = _runwayEnds.FirstOrDefault(r => r.RunwayName == runwayName);
+        System.Diagnostics.Debug.WriteLine($"[TaxiwayGraph]   Looking up runway end '{runwayName}' in _runwayEnds ({_runwayEnds.Count} total)");
+
+        if (runwayEnd == default)
+        {
+            System.Diagnostics.Debug.WriteLine($"[TaxiwayGraph]   WARNING: Runway end '{runwayName}' NOT FOUND - returning first hold short");
+            return holdShorts.FirstOrDefault();
+        }
+
+        System.Diagnostics.Debug.WriteLine($"[TaxiwayGraph]   Runway end '{runwayName}' at ({runwayEnd.Latitude:F6}, {runwayEnd.Longitude:F6})");
+
+        // Log distances for each hold short
+        foreach (var hs in holdShorts)
+        {
+            var dist = CalculateDistanceFeet(hs.Latitude, hs.Longitude, runwayEnd.Latitude, runwayEnd.Longitude);
+            System.Diagnostics.Debug.WriteLine($"[TaxiwayGraph]   Hold short ({hs.Latitude:F6}, {hs.Longitude:F6}) -> {dist:F0}ft from threshold");
+        }
+
+        // Return the hold short closest to the runway threshold (departure position)
+        var selected = holdShorts
+            .OrderBy(hs => CalculateDistanceFeet(hs.Latitude, hs.Longitude, runwayEnd.Latitude, runwayEnd.Longitude))
+            .First();
+
+        System.Diagnostics.Debug.WriteLine($"[TaxiwayGraph]   SELECTED: ({selected.Latitude:F6}, {selected.Longitude:F6})");
+        return selected;
+    }
+
+    /// <summary>
+    /// Checks if two taxiways are connected (share at least one node)
+    /// </summary>
+    public bool AreTaxiwaysConnected(string taxiway1, string taxiway2)
+    {
+        var nodes1 = new HashSet<TaxiwayNode>();
+        var nodes2 = new HashSet<TaxiwayNode>();
+
+        foreach (var seg in _segments)
+        {
+            if (seg.Name == taxiway1)
+            {
+                nodes1.Add(seg.StartNode);
+                nodes1.Add(seg.EndNode);
+            }
+            if (seg.Name == taxiway2)
+            {
+                nodes2.Add(seg.StartNode);
+                nodes2.Add(seg.EndNode);
+            }
+        }
+
+        return nodes1.Overlaps(nodes2);
+    }
+
+    /// <summary>
+    /// Gets all nodes that are on a specific taxiway
+    /// </summary>
+    public HashSet<TaxiwayNode> GetNodesOnTaxiway(string taxiwayName)
+    {
+        var nodes = new HashSet<TaxiwayNode>();
+        foreach (var seg in _segments.Where(s => s.Name == taxiwayName))
+        {
+            nodes.Add(seg.StartNode);
+            nodes.Add(seg.EndNode);
+        }
+        return nodes;
+    }
+
+    #endregion
 }
 
 /// <summary>
