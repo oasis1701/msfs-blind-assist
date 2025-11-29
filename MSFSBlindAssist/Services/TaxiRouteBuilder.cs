@@ -149,6 +149,46 @@ public class TaxiRouteBuilder
         double previousHeading = aircraftHeading;
         string? previousTaxiwayName = null;
 
+        // Add waypoint for aircraft's current segment (so guidance starts from where aircraft IS)
+        // This prevents "through walls" guidance when aircraft is on a different segment than the route starts
+        var nearestResult = _graph.FindNearestSegment(aircraftLat, aircraftLon, aircraftHeading);
+        if (nearestResult != null)
+        {
+            var nearestSegment = nearestResult.Value.Segment;
+            var targetNode = _graph.GetAheadNode(nearestSegment, aircraftHeading);
+
+            // Only add starting waypoint if we're not already on the first segment of the path
+            // (avoid duplicate if aircraft is exactly where the path starts)
+            bool isOnFirstPathSegment = allSegments.Count > 0 && allSegments[0].Segment == nearestSegment;
+
+            if (!isOnFirstPathSegment)
+            {
+                var otherNode = nearestSegment.GetOtherNode(targetNode) ?? nearestSegment.StartNode;
+                double segmentHeading = nearestSegment.GetHeadingFrom(otherNode);
+
+                double distanceToTarget = NavigationCalculator.CalculateDistance(
+                    aircraftLat, aircraftLon, targetNode.Latitude, targetNode.Longitude);
+
+                var startingWaypoint = new TaxiRouteWaypoint
+                {
+                    Segment = nearestSegment,
+                    TargetNode = targetNode,
+                    Type = WaypointType.Normal,
+                    TurnDirection = TurnDirection.Straight,
+                    TurnAngle = 0,
+                    Heading = segmentHeading,
+                    ApproachAnnouncement = "Approaching connector",
+                    PassAnnouncement = "",
+                    DistanceFromPreviousFeet = distanceToTarget
+                };
+                route.Waypoints.Add(startingWaypoint);
+                previousHeading = segmentHeading;
+                previousTaxiwayName = nearestSegment.Name;
+
+                System.Diagnostics.Debug.WriteLine($"[TaxiRouteBuilder] Added starting waypoint on {nearestSegment.Name ?? "connector"}, {distanceToTarget:F0}ft to node");
+            }
+        }
+
         for (int i = 0; i < allSegments.Count; i++)
         {
             var (segment, fromNode, toNode) = allSegments[i];

@@ -27,7 +27,11 @@ public enum GuidanceState
     /// <summary>Approaching a waypoint on the route</summary>
     ApproachingWaypoint,
     /// <summary>Deviated from the planned route</summary>
-    Deviated
+    Deviated,
+    /// <summary>Guiding perpendicular to centerline (aircraft off taxiway)</summary>
+    AligningToSegment,
+    /// <summary>On centerline but outside segment bounds, moving to entry point</summary>
+    AligningAlongSegment
 }
 
 /// <summary>
@@ -96,9 +100,19 @@ public class TaxiwayGuidanceManager : IDisposable
     // Route-based guidance constants
     private const double WAYPOINT_APPROACH_FEET = 150.0;  // Announce upcoming turn
     private const double WAYPOINT_PASS_FEET = 30.0;       // Advance to next waypoint
+    private const double ALONG_TRACK_TOLERANCE_FEET = 10.0; // Tolerance past segment end for advancement
     private const double ROUTE_DEVIATION_FEET = 100.0;    // Consider off-route
     private const double ROUTE_BACK_ON_FEET = 50.0;       // Consider back on route
     private const double DEVIATION_ANNOUNCEMENT_INTERVAL_SECONDS = 10.0;
+
+    // Distance-increasing detection constants
+    private const int DISTANCE_INCREASING_THRESHOLD = 10;     // ~1 second at 10Hz updates
+    private const double DISTANCE_INCREASING_TOLERANCE = 5.0; // feet tolerance for noise
+
+    // Alignment phase constants
+    private const double ALIGNMENT_CENTERLINE_TOLERANCE_FEET = 15.0;  // Consider "on centerline"
+    private const double ALIGNMENT_INITIAL_TRIGGER_FEET = 30.0;       // Trigger alignment at route start
+    private const double ALIGNMENT_MIDROUTE_TRIGGER_FEET = 100.0;     // Only trigger alignment mid-route if severely off
 
     // PID Controller constants for taxi steering guidance
     private const double TAXI_PROPORTIONAL_GAIN = 0.15;     // Degrees per foot of cross-track error
@@ -113,6 +127,17 @@ public class TaxiwayGuidanceManager : IDisposable
     private DateTime _lastPositionUpdateTime = DateTime.MinValue;
     private int? _lastAnnouncedCorrectionDegrees = null;
     private double _lastGroundSpeedKnots = 10.0; // Default assumption
+
+    // Distance-increasing detection state
+    private double _lastDistanceToWaypoint = double.MaxValue;
+    private int _distanceIncreasingCount = 0;
+
+    // Turn anticipation state
+    private bool _turnAnticipationAnnounced = false;
+
+    // Alignment phase state
+    private bool _alignmentAnnounced = false;
+    private bool _isInitialAlignment = false;  // True only at route start, before reaching the taxiway
 
     public bool IsActive => _isActive;
     public bool HasGraph => _graph != null;
@@ -347,6 +372,7 @@ public class TaxiwayGuidanceManager : IDisposable
         _activeRoute = null;
         _isOnRoute = true;
         _waypointApproachAnnounced = false;
+        _isInitialAlignment = false;
         _state = GuidanceState.Idle;
 
         GuidanceActiveChanged?.Invoke(this, false);
@@ -428,6 +454,7 @@ public class TaxiwayGuidanceManager : IDisposable
 
         _isActive = true;
         _state = GuidanceState.FollowingRoute;
+        _isInitialAlignment = true;  // Allow alignment mode at route start
         GuidanceActiveChanged?.Invoke(this, true);
 
         // Announce the start
@@ -452,8 +479,12 @@ public class TaxiwayGuidanceManager : IDisposable
         // Check parking spot proximity during active guidance
         CheckParkingSpotProximity(latitude, longitude);
 
-        // Route-based guidance mode
-        if (_activeRoute != null && (_state == GuidanceState.FollowingRoute || _state == GuidanceState.ApproachingWaypoint || _state == GuidanceState.Deviated))
+        // Route-based guidance mode (including alignment states)
+        if (_activeRoute != null && (_state == GuidanceState.FollowingRoute ||
+            _state == GuidanceState.ApproachingWaypoint ||
+            _state == GuidanceState.Deviated ||
+            _state == GuidanceState.AligningToSegment ||
+            _state == GuidanceState.AligningAlongSegment))
         {
             ProcessRouteGuidance(latitude, longitude, heading, groundSpeedKnots);
             return;
@@ -589,9 +620,78 @@ public class TaxiwayGuidanceManager : IDisposable
             return;
         }
 
-        // Calculate cross-track from current segment
-        double crossTrackFeet = _graph.CalculateCrossTrackFromSegment(
-            latitude, longitude, _lockedSegment, heading);
+        // Calculate bounded position relative to segment
+        var positionResult = _graph.CalculatePositionOnSegment(
+            latitude, longitude, _lockedSegment, heading, currentWaypoint.Heading);
+
+        System.Diagnostics.Debug.WriteLine($"[RouteGuidance] Position: type={positionResult.PositionType}, " +
+            $"crossTrack={positionResult.CrossTrackFeet:F1}ft, alongTrack={positionResult.AlongTrackFeet:F1}ft, " +
+            $"state={_state}");
+
+        // Check if alignment is needed (only when in route-following states)
+        if (_state == GuidanceState.FollowingRoute || _state == GuidanceState.ApproachingWaypoint)
+        {
+            // Use different thresholds for initial alignment vs mid-route drift
+            // Initial: 30ft - user may not be on taxiway yet, needs perpendicular intercept guidance
+            // Mid-route: 100ft - normal drift uses smooth PID correction, only severe deviation needs alignment
+            double alignmentThreshold = _isInitialAlignment ? ALIGNMENT_INITIAL_TRIGGER_FEET : ALIGNMENT_MIDROUTE_TRIGGER_FEET;
+
+            if (Math.Abs(positionResult.CrossTrackFeet) > alignmentThreshold)
+            {
+                TransitionToAlignmentState(GuidanceState.AligningToSegment, "Aligning to taxiway centerline");
+            }
+            // On centerline but before segment start (only during initial alignment)
+            else if (_isInitialAlignment &&
+                     positionResult.IsOnCenterline(ALIGNMENT_CENTERLINE_TOLERANCE_FEET) &&
+                     positionResult.AlongTrackFeet < 0)
+            {
+                TransitionToAlignmentState(GuidanceState.AligningAlongSegment, "Approaching taxiway");
+            }
+        }
+
+        // Process based on current state
+        switch (_state)
+        {
+            case GuidanceState.AligningToSegment:
+                ProcessAlignmentToSegment(latitude, longitude, heading, positionResult);
+                return;
+
+            case GuidanceState.AligningAlongSegment:
+                ProcessAlignmentAlongSegment(latitude, longitude, heading, positionResult);
+                return;
+
+            case GuidanceState.FollowingRoute:
+            case GuidanceState.ApproachingWaypoint:
+            case GuidanceState.Deviated:
+                ProcessNormalRouteGuidance(latitude, longitude, heading, groundSpeedKnots, positionResult);
+                return;
+        }
+    }
+
+    /// <summary>
+    /// Processes normal route-following guidance (when on the taxiway)
+    /// </summary>
+    private void ProcessNormalRouteGuidance(
+        double latitude, double longitude, double heading, double groundSpeedKnots,
+        SegmentPositionResult positionResult)
+    {
+        if (_activeRoute == null || _graph == null || _lockedSegment == null || _lockedTargetNode == null)
+            return;
+
+        var currentWaypoint = _activeRoute.CurrentWaypoint;
+        if (currentWaypoint == null)
+            return;
+
+        // Use position result's cross-track for steering
+        double crossTrackFeet = positionResult.CrossTrackFeet;
+
+        // Once we're on the segment, disable initial alignment mode
+        // This ensures mid-route drift uses smooth PID correction instead of perpendicular intercept
+        if (positionResult.PositionType == SegmentPositionType.OnSegment && _isInitialAlignment)
+        {
+            _isInitialAlignment = false;
+            System.Diagnostics.Debug.WriteLine("[RouteGuidance] Initial alignment complete - on taxiway");
+        }
 
         // Get target heading
         double targetHeading = currentWaypoint.Heading;
@@ -607,14 +707,21 @@ public class TaxiwayGuidanceManager : IDisposable
         // Announce steering correction if changed
         AnnounceSteeringCorrectionIfNeeded(steeringCorrection, crossTrackFeet);
 
-        // Check for route deviation
-        CheckRouteDeviation(crossTrackFeet);
-
         // Check distance to current waypoint target node
         double distanceToWaypoint = _graph.GetDistanceToNode(latitude, longitude, currentWaypoint.TargetNode);
 
+        // Use position result's along-track distance
+        double alongTrackFeet = positionResult.AlongTrackFeet;
+        double segmentLength = positionResult.SegmentLengthFeet;
+
         System.Diagnostics.Debug.WriteLine($"[RouteGuidance] Waypoint {_activeRoute.CurrentWaypointIndex + 1}/{_activeRoute.Waypoints.Count}, " +
-            $"dist={distanceToWaypoint:F1}ft, crossTrack={crossTrackFeet:F1}ft, state={_state}");
+            $"dist={distanceToWaypoint:F1}ft, crossTrack={crossTrackFeet:F1}ft, alongTrack={alongTrackFeet:F1}ft/{segmentLength:F1}ft, state={_state}");
+
+        // Check for route deviation (now includes distance metric)
+        CheckRouteDeviation(crossTrackFeet, distanceToWaypoint, segmentLength);
+
+        // Distance-increasing detection (safety net for stuck waypoints)
+        CheckDistanceIncreasing(distanceToWaypoint, alongTrackFeet);
 
         // Waypoint approach announcement (150ft)
         if (distanceToWaypoint <= WAYPOINT_APPROACH_FEET && !_waypointApproachAnnounced)
@@ -628,11 +735,187 @@ public class TaxiwayGuidanceManager : IDisposable
             System.Diagnostics.Debug.WriteLine($"[RouteGuidance] Approaching waypoint: {currentWaypoint.ApproachAnnouncement}");
         }
 
-        // Waypoint pass (30ft) - advance to next waypoint
-        if (distanceToWaypoint <= WAYPOINT_PASS_FEET)
+        // Turn anticipation - announce "Begin turn" for significant turns
+        var nextWaypoint = _activeRoute.NextWaypoint;
+        if (nextWaypoint != null && Math.Abs(nextWaypoint.TurnAngle) > 30 && !_turnAnticipationAnnounced)
         {
+            // Calculate turn anticipation distance based on turn angle
+            // Larger turns need more lead time. At 15kt (~25 ft/sec), a 90° turn needs ~2-3 seconds.
+            double anticipationDistance = Math.Abs(nextWaypoint.TurnAngle) * 0.6; // ~54ft for 90° turn
+            anticipationDistance = Math.Max(anticipationDistance, 40); // Minimum 40ft
+
+            if (distanceToWaypoint <= anticipationDistance)
+            {
+                string direction = nextWaypoint.TurnAngle > 0 ? "right" : "left";
+                _announcer.AnnounceImmediate($"Begin turn {direction}");
+                _turnAnticipationAnnounced = true;
+                System.Diagnostics.Debug.WriteLine($"[RouteGuidance] Turn anticipation: Begin turn {direction} (turn angle: {nextWaypoint.TurnAngle:F0}°)");
+            }
+        }
+
+        // Waypoint pass - advance to next waypoint
+        // Two conditions: within 30ft of target OR passed the segment end
+        bool withinPassDistance = distanceToWaypoint <= WAYPOINT_PASS_FEET;
+        bool passedSegmentEnd = alongTrackFeet > segmentLength + ALONG_TRACK_TOLERANCE_FEET;
+
+        if (withinPassDistance || passedSegmentEnd)
+        {
+            if (passedSegmentEnd && !withinPassDistance)
+            {
+                System.Diagnostics.Debug.WriteLine($"[RouteGuidance] Advancing via along-track (passed segment end): alongTrack={alongTrackFeet:F1}ft > segLen={segmentLength:F1}ft");
+            }
             AdvanceToNextWaypoint();
         }
+    }
+
+    /// <summary>
+    /// Detects when distance to waypoint is consistently increasing (moving away)
+    /// and triggers waypoint advancement if we're past the segment start
+    /// </summary>
+    private void CheckDistanceIncreasing(double distanceToWaypoint, double alongTrackFeet)
+    {
+        if (distanceToWaypoint > _lastDistanceToWaypoint + DISTANCE_INCREASING_TOLERANCE)
+        {
+            _distanceIncreasingCount++;
+            if (_distanceIncreasingCount >= DISTANCE_INCREASING_THRESHOLD)
+            {
+                // Distance consistently increasing - check if we should advance
+                if (alongTrackFeet > 0) // Past segment start
+                {
+                    System.Diagnostics.Debug.WriteLine($"[RouteGuidance] Distance increasing for {_distanceIncreasingCount} cycles, advancing waypoint");
+                    AdvanceToNextWaypoint();
+                }
+                _distanceIncreasingCount = 0;
+            }
+        }
+        else
+        {
+            _distanceIncreasingCount = 0;
+        }
+        _lastDistanceToWaypoint = distanceToWaypoint;
+    }
+
+    /// <summary>
+    /// Processes guidance when aircraft is off centerline (perpendicular alignment)
+    /// </summary>
+    private void ProcessAlignmentToSegment(
+        double latitude, double longitude, double heading,
+        SegmentPositionResult positionResult)
+    {
+        if (_lockedSegment == null || _lockedTargetNode == null)
+            return;
+
+        // CRITICAL: Check if past segment end - must advance waypoint even if still off centerline
+        // This prevents getting stuck forever when aircraft moves past the segment during alignment
+        if (positionResult.AlongTrackFeet > positionResult.SegmentLengthFeet + ALONG_TRACK_TOLERANCE_FEET)
+        {
+            System.Diagnostics.Debug.WriteLine($"[Alignment] Past segment end during alignment (along={positionResult.AlongTrackFeet:F1}ft > len={positionResult.SegmentLengthFeet:F1}ft), advancing waypoint");
+            AdvanceToNextWaypoint();
+            return;
+        }
+
+        // Calculate steering correction toward intercept point
+        double headingError = NormalizeHeading(positionResult.HeadingToIntercept - heading);
+
+        // For alignment, we guide directly to the intercept point on centerline
+        double steeringCorrection = Math.Clamp(headingError, -TAXI_MAX_CORRECTION_DEGREES, TAXI_MAX_CORRECTION_DEGREES);
+
+        // Audio panning based on correction direction
+        float pan = (float)Math.Clamp(steeringCorrection / TAXI_MAX_CORRECTION_DEGREES, -1.0, 1.0);
+        _centerlineTone?.SetPan(pan);
+
+        // Announce steering correction
+        AnnounceSteeringCorrectionIfNeeded(steeringCorrection, positionResult.CrossTrackFeet);
+
+        System.Diagnostics.Debug.WriteLine($"[Alignment] ToSegment: targetHdg={positionResult.HeadingToIntercept:F1}, " +
+            $"correction={steeringCorrection:F1}, crossTrack={positionResult.CrossTrackFeet:F1}ft, dist={positionResult.DistanceToInterceptFeet:F1}ft");
+
+        // Check for transition to next state
+        if (positionResult.IsOnCenterline(ALIGNMENT_CENTERLINE_TOLERANCE_FEET))
+        {
+            if (positionResult.IsWithinSegmentBounds)
+            {
+                TransitionFromAlignment("On taxiway, following route");
+            }
+            else
+            {
+                // Centerline captured but outside segment bounds - transition to along-segment alignment
+                _state = GuidanceState.AligningAlongSegment;
+                _alignmentAnnounced = false; // Reset for new state
+                System.Diagnostics.Debug.WriteLine("[RouteGuidance] Centerline captured, moving along segment to entry");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Processes guidance when aircraft is on centerline but outside segment bounds
+    /// </summary>
+    private void ProcessAlignmentAlongSegment(
+        double latitude, double longitude, double heading,
+        SegmentPositionResult positionResult)
+    {
+        if (_lockedSegment == null || _lockedTargetNode == null || _activeRoute?.CurrentWaypoint == null)
+            return;
+
+        // Get segment heading (direction we should be traveling)
+        double segmentHeading = _activeRoute.CurrentWaypoint.Heading;
+
+        if (positionResult.AlongTrackFeet < 0)
+        {
+            // Before segment start - guide forward along centerline using normal cross-track guidance
+            double steeringCorrection = CalculateSteeringCorrection(
+                positionResult.CrossTrackFeet, segmentHeading, heading);
+
+            float pan = (float)Math.Clamp(steeringCorrection / TAXI_MAX_CORRECTION_DEGREES, -1.0, 1.0);
+            _centerlineTone?.SetPan(pan);
+
+            AnnounceSteeringCorrectionIfNeeded(steeringCorrection, positionResult.CrossTrackFeet);
+
+            System.Diagnostics.Debug.WriteLine($"[Alignment] AlongSegment: segHdg={segmentHeading:F1}, " +
+                $"correction={steeringCorrection:F1}, toEntry={-positionResult.AlongTrackFeet:F1}ft");
+        }
+        else if (positionResult.AlongTrackFeet > positionResult.SegmentLengthFeet)
+        {
+            // Past segment end - advance to next waypoint
+            System.Diagnostics.Debug.WriteLine("[Alignment] Past segment end, advancing waypoint");
+            AdvanceToNextWaypoint();
+            return;
+        }
+
+        // Check for transition to normal route following
+        if (positionResult.IsWithinSegmentBounds)
+        {
+            TransitionFromAlignment("On taxiway, following route");
+        }
+    }
+
+    /// <summary>
+    /// Transitions to alignment state with announcement
+    /// </summary>
+    private void TransitionToAlignmentState(GuidanceState newState, string announcement)
+    {
+        _state = newState;
+        if (!_alignmentAnnounced)
+        {
+            _announcer.AnnounceImmediate(announcement);
+            _alignmentAnnounced = true;
+        }
+        System.Diagnostics.Debug.WriteLine($"[RouteGuidance] Transition to {newState}");
+    }
+
+    /// <summary>
+    /// Transitions from alignment back to normal route following
+    /// </summary>
+    private void TransitionFromAlignment(string announcement)
+    {
+        _state = GuidanceState.FollowingRoute;
+        _announcer.AnnounceImmediate(announcement);
+        _alignmentAnnounced = false;
+
+        // Reset waypoint approach state in case we were interrupted
+        _waypointApproachAnnounced = false;
+
+        System.Diagnostics.Debug.WriteLine("[RouteGuidance] Alignment complete, resuming route");
     }
 
     /// <summary>
@@ -679,25 +962,51 @@ public class TaxiwayGuidanceManager : IDisposable
         _lastPositionUpdateTime = DateTime.MinValue;
         _lastAnnouncedCorrectionDegrees = null;
 
+        // Reset distance-increasing detection state
+        _lastDistanceToWaypoint = double.MaxValue;
+        _distanceIncreasingCount = 0;
+
+        // Reset turn anticipation state
+        _turnAnticipationAnnounced = false;
+
         _state = GuidanceState.FollowingRoute;
 
         System.Diagnostics.Debug.WriteLine($"[RouteGuidance] Advanced to waypoint {_activeRoute.CurrentWaypointIndex + 1}/{_activeRoute.Waypoints.Count}");
     }
 
     /// <summary>
-    /// Checks if aircraft has deviated from the route
+    /// Checks if aircraft has deviated from the route using both cross-track and distance metrics
     /// </summary>
-    private void CheckRouteDeviation(double crossTrackFeet)
+    private void CheckRouteDeviation(double crossTrackFeet, double distanceToWaypoint, double segmentLength)
     {
         bool wasOnRoute = _isOnRoute;
 
-        if (Math.Abs(crossTrackFeet) >= ROUTE_DEVIATION_FEET)
+        // Cross-track deviation (original check)
+        bool crossTrackDeviation = Math.Abs(crossTrackFeet) >= ROUTE_DEVIATION_FEET;
+
+        // Distance-based deviation: if distance to waypoint is way more than segment length,
+        // we've likely missed a turn (even if cross-track is small due to infinite line projection)
+        // Skip this check for first waypoint - aircraft may legitimately be far from first segment
+        // when starting from a gate
+        bool isFirstWaypoint = _activeRoute?.CurrentWaypointIndex == 0;
+        bool distanceDeviation = !isFirstWaypoint && distanceToWaypoint > Math.Max(segmentLength * 3, 500);
+
+        if (crossTrackDeviation || distanceDeviation)
         {
             _isOnRoute = false;
 
             if (wasOnRoute || DateTime.Now - _lastDeviationAnnouncement >= TimeSpan.FromSeconds(DEVIATION_ANNOUNCEMENT_INTERVAL_SECONDS))
             {
-                _announcer.AnnounceImmediate("Off route. Continue following guidance to return.");
+                if (distanceDeviation && !crossTrackDeviation)
+                {
+                    // Special message for distance-based deviation (likely missed a turn)
+                    _announcer.AnnounceImmediate("You may have missed a turn. Recalculating route.");
+                    System.Diagnostics.Debug.WriteLine($"[RouteGuidance] Distance deviation detected: dist={distanceToWaypoint:F1}ft >> segLen={segmentLength:F1}ft");
+                }
+                else
+                {
+                    _announcer.AnnounceImmediate("Off route. Continue following guidance to return.");
+                }
                 _lastDeviationAnnouncement = DateTime.Now;
                 _state = GuidanceState.Deviated;
             }
@@ -1111,6 +1420,7 @@ public class TaxiwayGuidanceManager : IDisposable
         _activeRoute = null;
         _isOnRoute = true;
         _waypointApproachAnnounced = false;
+        _isInitialAlignment = false;
         _state = GuidanceState.Idle;
 
         System.Diagnostics.Debug.WriteLine("[TaxiwayGuidance] Reset");

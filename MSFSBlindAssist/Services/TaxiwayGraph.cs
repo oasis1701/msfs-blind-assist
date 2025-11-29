@@ -878,6 +878,130 @@ public class TaxiwayGraph
     }
 
     /// <summary>
+    /// Calculates aircraft position relative to a BOUNDED segment.
+    /// Used for alignment phase to determine if aircraft needs guidance to centerline.
+    /// </summary>
+    /// <param name="latitude">Aircraft latitude</param>
+    /// <param name="longitude">Aircraft longitude</param>
+    /// <param name="segment">The segment to analyze</param>
+    /// <param name="aircraftHeading">Aircraft heading for left/right determination</param>
+    /// <param name="travelDirection">The heading direction aircraft should be traveling (from route)</param>
+    /// <returns>Position analysis result with intercept point</returns>
+    public SegmentPositionResult CalculatePositionOnSegment(
+        double latitude, double longitude,
+        TaxiwaySegment segment,
+        double aircraftHeading,
+        double travelDirection)
+    {
+        const double CENTERLINE_TOLERANCE_FEET = 15.0;
+        const double FAR_THRESHOLD_FEET = 100.0;
+
+        // Calculate along-track and cross-track using existing method
+        var (alongTrackNM, crossTrackNM) = CalculateTrackDistances(
+            latitude, longitude,
+            segment.StartNode.Latitude, segment.StartNode.Longitude,
+            segment.Heading);
+
+        double alongTrackFeet = alongTrackNM * NM_TO_FEET;
+        double crossTrackFeet = crossTrackNM * NM_TO_FEET;
+        double segmentLength = segment.Length;
+
+        // Adjust cross-track sign based on travel direction vs segment heading
+        // This ensures left/right are relative to the pilot's perspective
+        double headingDiff = GetHeadingDifference(travelDirection, segment.Heading);
+        if (headingDiff > 90)
+        {
+            // Traveling opposite to segment direction - flip cross-track sign
+            crossTrackFeet = -crossTrackFeet;
+            // Also adjust along-track to be relative to travel direction
+            alongTrackFeet = segmentLength - alongTrackFeet;
+        }
+
+        // Calculate intercept point (clamped to segment bounds)
+        double interceptLat, interceptLon;
+        double clampedAlongTrack = Math.Clamp(alongTrackNM * NM_TO_FEET, 0, segmentLength);
+
+        // Project point along segment from start to get intercept
+        (interceptLat, interceptLon) = ProjectPointAlongSegment(
+            segment.StartNode.Latitude, segment.StartNode.Longitude,
+            segment.Heading, clampedAlongTrack);
+
+        // Calculate distance and heading to intercept
+        double distanceToIntercept = NavigationCalculator.CalculateDistance(
+            latitude, longitude, interceptLat, interceptLon) * NM_TO_FEET;
+        double headingToIntercept = NavigationCalculator.CalculateBearing(
+            latitude, longitude, interceptLat, interceptLon);
+
+        // Determine position type
+        SegmentPositionType posType;
+
+        if (Math.Abs(crossTrackFeet) > FAR_THRESHOLD_FEET)
+        {
+            posType = SegmentPositionType.FarFromSegment;
+        }
+        else if (alongTrackFeet < 0)
+        {
+            posType = SegmentPositionType.BeforeSegmentStart;
+        }
+        else if (alongTrackFeet > segmentLength)
+        {
+            posType = SegmentPositionType.AfterSegmentEnd;
+        }
+        else if (Math.Abs(crossTrackFeet) > CENTERLINE_TOLERANCE_FEET)
+        {
+            posType = SegmentPositionType.OffCenterline;
+        }
+        else
+        {
+            posType = SegmentPositionType.OnSegment;
+        }
+
+        return new SegmentPositionResult
+        {
+            CrossTrackFeet = crossTrackFeet,
+            AlongTrackFeet = alongTrackFeet,
+            SegmentLengthFeet = segmentLength,
+            PositionType = posType,
+            InterceptLatitude = interceptLat,
+            InterceptLongitude = interceptLon,
+            DistanceToInterceptFeet = distanceToIntercept,
+            HeadingToIntercept = headingToIntercept
+        };
+    }
+
+    /// <summary>
+    /// Projects a point along a segment from the start node at a given distance and heading.
+    /// Uses great-circle projection formula.
+    /// </summary>
+    /// <param name="startLat">Starting latitude</param>
+    /// <param name="startLon">Starting longitude</param>
+    /// <param name="heading">Heading in degrees</param>
+    /// <param name="distanceFeet">Distance in feet</param>
+    /// <returns>Projected (latitude, longitude)</returns>
+    private static (double lat, double lon) ProjectPointAlongSegment(
+        double startLat, double startLon,
+        double heading, double distanceFeet)
+    {
+        const double EARTH_RADIUS_NM = 3440.065;
+
+        double distanceNM = distanceFeet / NM_TO_FEET;
+        double distanceRad = distanceNM / EARTH_RADIUS_NM;
+        double startLatRad = startLat * Math.PI / 180.0;
+        double startLonRad = startLon * Math.PI / 180.0;
+        double headingRad = heading * Math.PI / 180.0;
+
+        double endLatRad = Math.Asin(
+            Math.Sin(startLatRad) * Math.Cos(distanceRad) +
+            Math.Cos(startLatRad) * Math.Sin(distanceRad) * Math.Cos(headingRad));
+
+        double endLonRad = startLonRad + Math.Atan2(
+            Math.Sin(headingRad) * Math.Sin(distanceRad) * Math.Cos(startLatRad),
+            Math.Cos(distanceRad) - Math.Sin(startLatRad) * Math.Sin(endLatRad));
+
+        return (endLatRad * 180.0 / Math.PI, endLonRad * 180.0 / Math.PI);
+    }
+
+    /// <summary>
     /// Calculates distance from a point to a FINITE segment (not infinite line).
     /// Returns perpendicular distance if projection falls within segment,
     /// otherwise returns distance to nearest endpoint.
@@ -940,6 +1064,25 @@ public class TaxiwayGraph
         double crossTrackNM = distanceNM * Math.Sin(angleDiff);
 
         return (alongTrackNM, crossTrackNM);
+    }
+
+    /// <summary>
+    /// Calculates along-track distance from segment start node.
+    /// Positive = ahead of start (toward end), negative = behind start.
+    /// Values greater than segment.Length mean aircraft has passed the end node.
+    /// </summary>
+    /// <param name="latitude">Aircraft latitude</param>
+    /// <param name="longitude">Aircraft longitude</param>
+    /// <param name="segment">The segment to measure against</param>
+    /// <returns>Along-track distance in feet (positive = toward end node)</returns>
+    public double CalculateAlongTrackDistance(double latitude, double longitude, TaxiwaySegment segment)
+    {
+        var (alongTrackNM, _) = CalculateTrackDistances(
+            latitude, longitude,
+            segment.StartNode.Latitude, segment.StartNode.Longitude,
+            segment.Heading);
+
+        return alongTrackNM * NM_TO_FEET;
     }
 
     /// <summary>
@@ -1540,4 +1683,58 @@ public class JunctionOption
     }
 
     public override string ToString() => GetDisplayText();
+}
+
+/// <summary>
+/// Classification of aircraft position relative to a bounded segment
+/// </summary>
+public enum SegmentPositionType
+{
+    /// <summary>Within segment bounds and on centerline</summary>
+    OnSegment,
+    /// <summary>Within segment bounds but off centerline</summary>
+    OffCenterline,
+    /// <summary>Before segment start node (negative along-track)</summary>
+    BeforeSegmentStart,
+    /// <summary>After segment end node (along-track > length)</summary>
+    AfterSegmentEnd,
+    /// <summary>Far from segment (large cross-track distance)</summary>
+    FarFromSegment
+}
+
+/// <summary>
+/// Result of calculating aircraft position relative to a bounded segment.
+/// Used for alignment phase to determine if aircraft needs to be guided to centerline.
+/// </summary>
+public class SegmentPositionResult
+{
+    /// <summary>Cross-track distance in feet (positive = right, negative = left relative to travel direction)</summary>
+    public double CrossTrackFeet { get; set; }
+
+    /// <summary>Along-track distance from segment start node in feet</summary>
+    public double AlongTrackFeet { get; set; }
+
+    /// <summary>Total segment length in feet</summary>
+    public double SegmentLengthFeet { get; set; }
+
+    /// <summary>Position classification relative to bounded segment</summary>
+    public SegmentPositionType PositionType { get; set; }
+
+    /// <summary>Latitude of intercept point on centerline (clamped to segment bounds)</summary>
+    public double InterceptLatitude { get; set; }
+
+    /// <summary>Longitude of intercept point on centerline (clamped to segment bounds)</summary>
+    public double InterceptLongitude { get; set; }
+
+    /// <summary>Distance to intercept point in feet</summary>
+    public double DistanceToInterceptFeet { get; set; }
+
+    /// <summary>Heading to the intercept point</summary>
+    public double HeadingToIntercept { get; set; }
+
+    /// <summary>True if within segment bounds (0 <= alongTrack <= length)</summary>
+    public bool IsWithinSegmentBounds => AlongTrackFeet >= 0 && AlongTrackFeet <= SegmentLengthFeet;
+
+    /// <summary>True if on centerline (within specified tolerance)</summary>
+    public bool IsOnCenterline(double toleranceFeet) => Math.Abs(CrossTrackFeet) <= toleranceFeet;
 }
