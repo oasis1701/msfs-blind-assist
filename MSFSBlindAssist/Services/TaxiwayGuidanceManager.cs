@@ -35,6 +35,65 @@ public enum GuidanceState
 }
 
 /// <summary>
+/// Represents a carrot (target) position for pursuit guidance.
+/// The carrot is a point on the route ahead of the aircraft that the pilot steers toward.
+/// </summary>
+public struct CarrotPosition
+{
+    /// <summary>Latitude of the carrot point</summary>
+    public double Latitude { get; set; }
+
+    /// <summary>Longitude of the carrot point</summary>
+    public double Longitude { get; set; }
+
+    /// <summary>Heading of the route at the carrot point (for turn anticipation)</summary>
+    public double Heading { get; set; }
+
+    /// <summary>Bearing from aircraft to carrot</summary>
+    public double BearingFromAircraft { get; set; }
+
+    /// <summary>Actual distance from aircraft to carrot in feet</summary>
+    public double DistanceToCarrotFeet { get; set; }
+
+    /// <summary>Which waypoint index the carrot is on (for multi-segment spans)</summary>
+    public int WaypointIndex { get; set; }
+
+    /// <summary>Whether the carrot is at the route destination (no more segments ahead)</summary>
+    public bool IsAtDestination { get; set; }
+}
+
+/// <summary>
+/// Represents a circular arc at a turn junction for smooth carrot projection.
+/// When taxiway segments meet at an angle, this arc provides a smooth transition path.
+/// </summary>
+public struct TurnArc
+{
+    /// <summary>Latitude of the arc circle center</summary>
+    public double CenterLat { get; set; }
+
+    /// <summary>Longitude of the arc circle center</summary>
+    public double CenterLon { get; set; }
+
+    /// <summary>Arc radius in feet</summary>
+    public double RadiusFeet { get; set; }
+
+    /// <summary>Total arc length in feet</summary>
+    public double ArcLengthFeet { get; set; }
+
+    /// <summary>Start angle from center (radians, 0=East, CCW positive)</summary>
+    public double StartAngleRad { get; set; }
+
+    /// <summary>Turn angle in radians (positive = right/clockwise turn)</summary>
+    public double TurnAngleRad { get; set; }
+
+    /// <summary>Distance before turn node where arc begins (feet)</summary>
+    public double EntryDistanceFeet { get; set; }
+
+    /// <summary>Whether this arc is valid for projection (turn angle exceeds threshold)</summary>
+    public bool IsValid { get; set; }
+}
+
+/// <summary>
 /// Manages taxiway guidance for blind pilots
 /// </summary>
 public class TaxiwayGuidanceManager : IDisposable
@@ -114,7 +173,7 @@ public class TaxiwayGuidanceManager : IDisposable
     private const double ALIGNMENT_INITIAL_TRIGGER_FEET = 30.0;       // Trigger alignment at route start
     private const double ALIGNMENT_MIDROUTE_TRIGGER_FEET = 100.0;     // Only trigger alignment mid-route if severely off
 
-    // PID Controller constants for taxi steering guidance
+    // PID Controller constants for taxi steering guidance (legacy - kept for reference)
     private const double TAXI_PROPORTIONAL_GAIN = 0.15;     // Degrees per foot of cross-track error
     private const double TAXI_DERIVATIVE_GAIN = 1.0;        // Damping for rate of drift
     private const double TAXI_HEADING_GAIN = 0.5;           // Weight for heading alignment
@@ -122,8 +181,32 @@ public class TaxiwayGuidanceManager : IDisposable
     private const double TAXI_ON_PATH_THRESHOLD = 0.5;      // Within 0.5° = "on path"
     private const double TAXI_CENTERLINE_CAPTURE = 5.0;     // Within 5 feet = captured
 
-    // PID state tracking
-    private double _lastCrossTrackFeet = 0;
+    // Carrot pursuit guidance constants
+    private const double PURSUIT_GAIN = 1.0;                    // Degrees of correction per degree of bearing error
+    private const double MIN_LOOK_AHEAD_FEET = 30.0;            // Minimum look-ahead distance
+    private const double MAX_LOOK_AHEAD_FEET = 150.0;           // Maximum look-ahead distance
+    private const double LOOK_AHEAD_TIME_SECONDS = 2.0;         // Seconds ahead at current speed
+    private const double CAPTURE_RADIUS_FEET = 20.0;            // Distance to "capture" route for initial alignment
+    private const double ON_TRACK_THRESHOLD_DEGREES = 3.0;      // Within 3° = "on track"
+    private const double KNOTS_TO_FEET_PER_SECOND = 1.68781;    // Conversion factor
+
+    // Arc projection constants (for smooth carrot projection through turns)
+    private const double ARC_MIN_TURN_ANGLE_DEG = 20.0;         // Minimum turn angle to apply arc projection
+    private const double ARC_MIN_RADIUS_FEET = 30.0;            // Minimum arc radius
+    private const double ARC_MAX_RADIUS_FEET = 500.0;           // Maximum arc radius
+    private const double LAT_TO_FEET = 364000.0;                // Feet per degree latitude (approximate)
+    private const double LON_TO_FEET_BASE = 365000.0;           // Feet per degree longitude at equator
+
+    // Heading-based guidance constants (used in alignment phase)
+    private const double HEADING_CORRECTION_GAIN = 1.0;         // Degrees of correction per degree of heading error
+    private const double HEADING_BLEND_DISTANCE_FEET = 100.0;   // Start blending toward next waypoint heading
+
+    // Width-relative safety thresholds (for off-taxiway detection only)
+    private const double DRIFTING_WIDTH_FACTOR = 0.8;           // 80% to edge = "drifting" warning
+    private const double OFF_TAXIWAY_BUFFER_FEET = 15.0;        // Past edge + 15ft = "off taxiway" warning
+    private const double SAFETY_WARNING_INTERVAL_SECONDS = 5.0; // Min interval between safety warnings
+
+    // Guidance state tracking
     private DateTime _lastPositionUpdateTime = DateTime.MinValue;
     private int? _lastAnnouncedCorrectionDegrees = null;
     private double _lastGroundSpeedKnots = 10.0; // Default assumption
@@ -138,6 +221,9 @@ public class TaxiwayGuidanceManager : IDisposable
     // Alignment phase state
     private bool _alignmentAnnounced = false;
     private bool _isInitialAlignment = false;  // True only at route start, before reaching the taxiway
+
+    // Width-relative safety warning state
+    private DateTime _lastSafetyWarningTime = DateTime.MinValue;
 
     public bool IsActive => _isActive;
     public bool HasGraph => _graph != null;
@@ -285,8 +371,7 @@ public class TaxiwayGuidanceManager : IDisposable
         _junctionFirstWarningGiven = false;
         _relockSuggestionGiven = false;
 
-        // Reset PID state
-        _lastCrossTrackFeet = 0;
+        // Reset guidance state
         _lastPositionUpdateTime = DateTime.MinValue;
         _lastAnnouncedCorrectionDegrees = null;
 
@@ -444,8 +529,7 @@ public class TaxiwayGuidanceManager : IDisposable
         _junctionFirstWarningGiven = false;
         _relockSuggestionGiven = false;
 
-        // Reset PID state
-        _lastCrossTrackFeet = 0;
+        // Reset guidance state
         _lastPositionUpdateTime = DateTime.MinValue;
         _lastAnnouncedCorrectionDegrees = null;
 
@@ -505,31 +589,35 @@ public class TaxiwayGuidanceManager : IDisposable
         System.Diagnostics.Debug.WriteLine($"[TaxiTrack] Pos: ({latitude:F6}, {longitude:F6}) Hdg: {heading:F1}° Speed: {groundSpeedKnots:F1}kts State: {_state}");
         System.Diagnostics.Debug.WriteLine($"[TaxiTrack] TargetNode: IsJunction={_lockedTargetNode.IsJunction} IsDeadEnd={_lockedTargetNode.IsDeadEnd} Connections={_lockedTargetNode.ConnectedSegments.Count} Type={_lockedTargetNode.Type} Dist={distanceToTarget:F1}ft");
 
-        // Calculate cross-track from LOCKED segment
+        // Calculate cross-track from LOCKED segment (for safety warnings only)
         double crossTrackFeet = _graph.CalculateCrossTrackFromSegment(
             latitude, longitude, _lockedSegment, heading);
 
         // Get target heading based on travel direction
         double targetHeading = GetTargetHeading();
 
-        // Calculate PID steering correction
-        double steeringCorrection = CalculateSteeringCorrection(
-            crossTrackFeet, targetHeading, heading);
+        // Calculate speed-dependent look-ahead distance
+        double lookAheadFeet = CalculateLookAheadDistance(groundSpeedKnots);
 
-        // Debug: Log cross-track and correction
-        System.Diagnostics.Debug.WriteLine($"[TaxiTrack] CrossTrack: {crossTrackFeet:F1}ft TargetHdg: {targetHeading:F1}° Correction: {steeringCorrection:F1}°");
+        // Calculate carrot position for single-segment mode
+        var carrot = CalculateSingleSegmentCarrot(
+            latitude, longitude, heading, _lockedSegment, targetHeading, lookAheadFeet);
 
-        // Audio panning: Pan in direction of CORRECTION (where to go), not deviation
-        // Positive correction (turn right) → pan right (positive)
-        // Negative correction (turn left) → pan left (negative)
+        // Calculate CARROT PURSUIT steering correction
+        double steeringCorrection = CalculateCarrotPursuitCorrection(heading, carrot);
+
+        // Debug: Log carrot pursuit info
+        System.Diagnostics.Debug.WriteLine($"[TaxiTrack] CrossTrack: {crossTrackFeet:F1}ft Carrot: dist={carrot.DistanceToCarrotFeet:F1}ft bearing={carrot.BearingFromAircraft:F1}° Correction: {steeringCorrection:F1}°");
+
+        // Audio panning based on carrot pursuit correction
         float pan = (float)Math.Clamp(steeringCorrection / TAXI_MAX_CORRECTION_DEGREES, -1.0, 1.0);
         _centerlineTone?.SetPan(pan);
 
-        // Announce steering correction if changed
-        AnnounceSteeringCorrectionIfNeeded(steeringCorrection, crossTrackFeet);
+        // Announce carrot pursuit steering correction if changed
+        AnnouncePursuitCorrectionIfNeeded(steeringCorrection);
 
-        // Check for excessive deviation - suggest relock at 200ft
-        CheckForDeviationWarning(crossTrackFeet);
+        // Safety-only cross-track check (doesn't affect steering, just warns of gross deviations)
+        CheckCrossTrackSafetyWarnings(crossTrackFeet, _lockedSegment.Width);
 
         // Check for junction ahead (two-stage: 150ft warning, 50ft show form)
         CheckForJunction(latitude, longitude);
@@ -682,40 +770,45 @@ public class TaxiwayGuidanceManager : IDisposable
         if (currentWaypoint == null)
             return;
 
-        // Use position result's cross-track for steering
+        // Use position result's cross-track for safety warnings
         double crossTrackFeet = positionResult.CrossTrackFeet;
 
         // Once we're on the segment, disable initial alignment mode
-        // This ensures mid-route drift uses smooth PID correction instead of perpendicular intercept
         if (positionResult.PositionType == SegmentPositionType.OnSegment && _isInitialAlignment)
         {
             _isInitialAlignment = false;
             System.Diagnostics.Debug.WriteLine("[RouteGuidance] Initial alignment complete - on taxiway");
         }
 
-        // Get target heading
-        double targetHeading = currentWaypoint.Heading;
+        // Calculate speed-dependent look-ahead distance
+        double lookAheadFeet = CalculateLookAheadDistance(groundSpeedKnots);
 
-        // Calculate PID steering correction
-        double steeringCorrection = CalculateSteeringCorrection(
-            crossTrackFeet, targetHeading, heading);
+        // Calculate carrot position along the route
+        var carrot = CalculateCarrotPosition(latitude, longitude, heading, _activeRoute, lookAheadFeet);
 
-        // Audio panning
+        // Calculate CARROT PURSUIT steering correction
+        double steeringCorrection = CalculateCarrotPursuitCorrection(heading, carrot);
+
+        // Audio panning based on carrot pursuit correction
         float pan = (float)Math.Clamp(steeringCorrection / TAXI_MAX_CORRECTION_DEGREES, -1.0, 1.0);
         _centerlineTone?.SetPan(pan);
 
-        // Announce steering correction if changed
-        AnnounceSteeringCorrectionIfNeeded(steeringCorrection, crossTrackFeet);
+        // Announce carrot pursuit steering correction if changed
+        AnnouncePursuitCorrectionIfNeeded(steeringCorrection);
 
         // Check distance to current waypoint target node
         double distanceToWaypoint = _graph.GetDistanceToNode(latitude, longitude, currentWaypoint.TargetNode);
+
+        // Safety-only cross-track check (doesn't affect steering, just warns of gross deviations)
+        CheckCrossTrackSafetyWarnings(crossTrackFeet, _lockedSegment.Width);
 
         // Use position result's along-track distance
         double alongTrackFeet = positionResult.AlongTrackFeet;
         double segmentLength = positionResult.SegmentLengthFeet;
 
         System.Diagnostics.Debug.WriteLine($"[RouteGuidance] Waypoint {_activeRoute.CurrentWaypointIndex + 1}/{_activeRoute.Waypoints.Count}, " +
-            $"dist={distanceToWaypoint:F1}ft, crossTrack={crossTrackFeet:F1}ft, alongTrack={alongTrackFeet:F1}ft/{segmentLength:F1}ft, state={_state}");
+            $"dist={distanceToWaypoint:F1}ft, crossTrack={crossTrackFeet:F1}ft, alongTrack={alongTrackFeet:F1}ft/{segmentLength:F1}ft, " +
+            $"carrot@{carrot.WaypointIndex + 1} dist={carrot.DistanceToCarrotFeet:F1}ft bearing={carrot.BearingFromAircraft:F1}° correction={steeringCorrection:F1}°");
 
         // Check for route deviation (now includes distance metric)
         CheckRouteDeviation(crossTrackFeet, distanceToWaypoint, segmentLength);
@@ -824,8 +917,8 @@ public class TaxiwayGuidanceManager : IDisposable
         float pan = (float)Math.Clamp(steeringCorrection / TAXI_MAX_CORRECTION_DEGREES, -1.0, 1.0);
         _centerlineTone?.SetPan(pan);
 
-        // Announce steering correction
-        AnnounceSteeringCorrectionIfNeeded(steeringCorrection, positionResult.CrossTrackFeet);
+        // Announce heading-based steering correction
+        AnnouncePursuitCorrectionIfNeeded(steeringCorrection);
 
         System.Diagnostics.Debug.WriteLine($"[Alignment] ToSegment: targetHdg={positionResult.HeadingToIntercept:F1}, " +
             $"correction={steeringCorrection:F1}, crossTrack={positionResult.CrossTrackFeet:F1}ft, dist={positionResult.DistanceToInterceptFeet:F1}ft");
@@ -862,14 +955,14 @@ public class TaxiwayGuidanceManager : IDisposable
 
         if (positionResult.AlongTrackFeet < 0)
         {
-            // Before segment start - guide forward along centerline using normal cross-track guidance
-            double steeringCorrection = CalculateSteeringCorrection(
-                positionResult.CrossTrackFeet, segmentHeading, heading);
+            // Before segment start - guide forward along centerline using heading-based guidance
+            double steeringCorrection = CalculateHeadingBasedCorrection(
+                segmentHeading, heading, -positionResult.AlongTrackFeet, null);
 
             float pan = (float)Math.Clamp(steeringCorrection / TAXI_MAX_CORRECTION_DEGREES, -1.0, 1.0);
             _centerlineTone?.SetPan(pan);
 
-            AnnounceSteeringCorrectionIfNeeded(steeringCorrection, positionResult.CrossTrackFeet);
+            AnnouncePursuitCorrectionIfNeeded(steeringCorrection);
 
             System.Diagnostics.Debug.WriteLine($"[Alignment] AlongSegment: segHdg={segmentHeading:F1}, " +
                 $"correction={steeringCorrection:F1}, toEntry={-positionResult.AlongTrackFeet:F1}ft");
@@ -957,8 +1050,7 @@ public class TaxiwayGuidanceManager : IDisposable
         _lockedTargetNode = nextWaypoint.TargetNode;
         _currentTaxiwayName = nextWaypoint.Segment.Name;
 
-        // Reset PID state for new segment
-        _lastCrossTrackFeet = 0;
+        // Reset guidance state for new segment
         _lastPositionUpdateTime = DateTime.MinValue;
         _lastAnnouncedCorrectionDegrees = null;
 
@@ -1069,46 +1161,38 @@ public class TaxiwayGuidanceManager : IDisposable
     }
 
     /// <summary>
-    /// Calculates desired steering correction using PID controller
+    /// Calculates desired steering correction using heading-based guidance.
+    /// Primary input is heading error (not cross-track). Blends toward next segment near waypoints.
     /// </summary>
-    private double CalculateSteeringCorrection(double crossTrackFeet, double targetHeading, double aircraftHeading)
+    /// <param name="targetHeading">Current segment's target heading</param>
+    /// <param name="aircraftHeading">Current aircraft heading</param>
+    /// <param name="distanceToNextWaypointFeet">Distance to the next waypoint/node</param>
+    /// <param name="nextSegmentHeading">Heading of the next segment (for blending), or null</param>
+    /// <returns>Steering correction in degrees (positive = turn right, negative = turn left)</returns>
+    private double CalculateHeadingBasedCorrection(
+        double targetHeading,
+        double aircraftHeading,
+        double distanceToNextWaypointFeet,
+        double? nextSegmentHeading)
     {
-        // Calculate time delta for derivative term
-        DateTime now = DateTime.Now;
-        double deltaSeconds = _lastPositionUpdateTime == DateTime.MinValue
-            ? 0.1
-            : (now - _lastPositionUpdateTime).TotalSeconds;
-        deltaSeconds = Math.Max(0.01, Math.Min(deltaSeconds, 1.0)); // Clamp to reasonable range
-
-        // Calculate cross-track rate (feet per second)
-        double crossTrackRate = (crossTrackFeet - _lastCrossTrackFeet) / deltaSeconds;
-
-        // Store for next iteration
-        _lastCrossTrackFeet = crossTrackFeet;
-        _lastPositionUpdateTime = now;
-
-        // Heading error (how well aligned with taxiway)
+        // Calculate base heading error
         double headingError = NormalizeHeading(targetHeading - aircraftHeading);
 
-        // PID calculation
-        // P: Cross-track error drives turn toward centerline
-        //    Positive cross-track (right of center) → negative correction (turn left)
-        double proportionalTerm = -TAXI_PROPORTIONAL_GAIN * crossTrackFeet;
+        // Near waypoints, blend toward next segment's heading for smooth turns
+        if (nextSegmentHeading.HasValue && distanceToNextWaypointFeet < HEADING_BLEND_DISTANCE_FEET)
+        {
+            double blendFactor = 1.0 - (distanceToNextWaypointFeet / HEADING_BLEND_DISTANCE_FEET);
+            blendFactor = Math.Clamp(blendFactor, 0, 0.5); // Max 50% blend
 
-        // D: Rate damping prevents overshoot
-        //    Positive rate (moving right) → negative correction (turn left to stop drift)
-        double derivativeTerm = -TAXI_DERIVATIVE_GAIN * crossTrackRate;
+            double nextHeadingError = NormalizeHeading(nextSegmentHeading.Value - aircraftHeading);
+            headingError = headingError * (1 - blendFactor) + nextHeadingError * blendFactor;
+        }
 
-        // H: Heading alignment ensures nose points along taxiway once on centerline
-        double headingTerm = TAXI_HEADING_GAIN * headingError;
-
-        // Combine terms
-        double correction = proportionalTerm + derivativeTerm + headingTerm;
+        // Apply proportional correction
+        double correction = headingError * HEADING_CORRECTION_GAIN;
 
         // Clamp to max correction
-        correction = Math.Clamp(correction, -TAXI_MAX_CORRECTION_DEGREES, TAXI_MAX_CORRECTION_DEGREES);
-
-        return correction;
+        return Math.Clamp(correction, -TAXI_MAX_CORRECTION_DEGREES, TAXI_MAX_CORRECTION_DEGREES);
     }
 
     /// <summary>
@@ -1122,9 +1206,501 @@ public class TaxiwayGuidanceManager : IDisposable
     }
 
     /// <summary>
-    /// Announces steering correction (degrees left/right) when it changes
+    /// Calculates the carrot (target) position for pursuit guidance.
+    /// Projects ahead along the route by the look-ahead distance, spanning multiple segments if needed.
     /// </summary>
-    private void AnnounceSteeringCorrectionIfNeeded(double steeringCorrectionDegrees, double crossTrackFeet)
+    /// <param name="aircraftLat">Aircraft latitude</param>
+    /// <param name="aircraftLon">Aircraft longitude</param>
+    /// <param name="aircraftHeading">Aircraft heading</param>
+    /// <param name="route">The taxi route being followed</param>
+    /// <param name="lookAheadFeet">Distance to project ahead along the route</param>
+    /// <returns>CarrotPosition with target point coordinates and bearing</returns>
+    private CarrotPosition CalculateCarrotPosition(
+        double aircraftLat, double aircraftLon, double aircraftHeading,
+        TaxiRoute route, double lookAheadFeet)
+    {
+        if (_graph == null || route.CurrentWaypoint == null)
+        {
+            return new CarrotPosition { IsAtDestination = true };
+        }
+
+        var currentWaypoint = route.CurrentWaypoint;
+        var currentSegment = currentWaypoint.Segment;
+
+        // Calculate aircraft's position along current segment
+        var positionResult = _graph.CalculatePositionOnSegment(
+            aircraftLat, aircraftLon, currentSegment, aircraftHeading, currentWaypoint.Heading);
+
+        // Get along-track distance on current segment (clamped to >= 0)
+        double alongTrackFeet = Math.Max(0, positionResult.AlongTrackFeet);
+        double segmentLength = currentSegment.Length;
+
+        // Check if there's a significant turn coming up
+        var nextWaypoint = route.NextWaypoint;
+        TurnArc arc = default;
+        bool hasArc = false;
+
+        if (nextWaypoint != null)
+        {
+            arc = CalculateTurnArc(currentWaypoint, nextWaypoint);
+            hasArc = arc.IsValid;
+        }
+
+        // Start projecting from current position
+        double remainingLookAhead = lookAheadFeet;
+        int waypointIndex = route.CurrentWaypointIndex;
+
+        // Calculate where arc begins (if applicable)
+        double distanceToArcEntry = hasArc
+            ? GetDistanceToArcEntry(alongTrackFeet, segmentLength, arc.EntryDistanceFeet)
+            : double.MaxValue;
+
+        // Case 1: Carrot is in the pre-arc straight portion of current segment
+        if (remainingLookAhead <= distanceToArcEntry && distanceToArcEntry > 0)
+        {
+            double carrotAlongTrack = alongTrackFeet + remainingLookAhead;
+            return ProjectCarrotOnSegment(
+                aircraftLat, aircraftLon,
+                currentSegment, currentWaypoint.Heading, carrotAlongTrack,
+                waypointIndex, false);
+        }
+
+        // Case 2: Carrot is in the arc region
+        if (hasArc && distanceToArcEntry >= 0)
+        {
+            // Consume distance to arc entry
+            remainingLookAhead -= Math.Max(0, distanceToArcEntry);
+
+            // If carrot is within the arc
+            if (remainingLookAhead <= arc.ArcLengthFeet)
+            {
+                return ProjectCarrotOnArc(
+                    aircraftLat, aircraftLon,
+                    arc, remainingLookAhead, waypointIndex);
+            }
+
+            // Consume the arc and continue to next segment
+            remainingLookAhead -= arc.ArcLengthFeet;
+            waypointIndex++;
+
+            // Skip to the position on next segment after arc exit
+            // (arc exit is at arc.EntryDistanceFeet from the start of next segment)
+            if (waypointIndex < route.Waypoints.Count)
+            {
+                var postArcWaypoint = route.Waypoints[waypointIndex];
+                var postArcSegment = postArcWaypoint.Segment;
+                double postArcStartPosition = arc.EntryDistanceFeet; // Start after arc exit
+
+                double postArcRemaining = postArcSegment.Length - postArcStartPosition;
+
+                if (remainingLookAhead <= postArcRemaining)
+                {
+                    double carrotPosition = postArcStartPosition + remainingLookAhead;
+                    return ProjectCarrotOnSegment(
+                        aircraftLat, aircraftLon,
+                        postArcSegment, postArcWaypoint.Heading, carrotPosition,
+                        waypointIndex, false);
+                }
+
+                // Consume this segment and continue
+                remainingLookAhead -= postArcRemaining;
+                waypointIndex++;
+            }
+        }
+        else if (!hasArc)
+        {
+            // No arc - use straight projection for remaining distance on current segment
+            double remainingOnCurrentSegment = Math.Max(0, segmentLength - alongTrackFeet);
+
+            if (remainingLookAhead <= remainingOnCurrentSegment)
+            {
+                double carrotAlongTrack = alongTrackFeet + remainingLookAhead;
+                return ProjectCarrotOnSegment(
+                    aircraftLat, aircraftLon,
+                    currentSegment, currentWaypoint.Heading, carrotAlongTrack,
+                    waypointIndex, false);
+            }
+
+            // Consume current segment
+            remainingLookAhead -= remainingOnCurrentSegment;
+            waypointIndex++;
+        }
+        else
+        {
+            // Already past arc entry - we're in arc region
+            double distanceIntoArc = -distanceToArcEntry;
+
+            if (distanceIntoArc + remainingLookAhead <= arc.ArcLengthFeet)
+            {
+                return ProjectCarrotOnArc(
+                    aircraftLat, aircraftLon,
+                    arc, distanceIntoArc + remainingLookAhead, waypointIndex);
+            }
+
+            // Consume remaining arc and continue
+            remainingLookAhead -= (arc.ArcLengthFeet - distanceIntoArc);
+            waypointIndex++;
+
+            // Continue from arc exit on next segment
+            if (waypointIndex < route.Waypoints.Count)
+            {
+                var postArcWaypoint = route.Waypoints[waypointIndex];
+                var postArcSegment = postArcWaypoint.Segment;
+                double postArcStartPosition = arc.EntryDistanceFeet;
+
+                double postArcRemaining = postArcSegment.Length - postArcStartPosition;
+
+                if (remainingLookAhead <= postArcRemaining)
+                {
+                    double carrotPosition = postArcStartPosition + remainingLookAhead;
+                    return ProjectCarrotOnSegment(
+                        aircraftLat, aircraftLon,
+                        postArcSegment, postArcWaypoint.Heading, carrotPosition,
+                        waypointIndex, false);
+                }
+
+                remainingLookAhead -= postArcRemaining;
+                waypointIndex++;
+            }
+        }
+
+        // Project across subsequent segments (simple straight-line for segments beyond the first turn)
+        while (remainingLookAhead > 0 && waypointIndex < route.Waypoints.Count)
+        {
+            var waypoint = route.Waypoints[waypointIndex];
+            var segment = waypoint.Segment;
+            double waypointSegmentLength = segment.Length;
+
+            if (remainingLookAhead <= waypointSegmentLength)
+            {
+                return ProjectCarrotOnSegment(
+                    aircraftLat, aircraftLon,
+                    segment, waypoint.Heading, remainingLookAhead,
+                    waypointIndex, false);
+            }
+
+            remainingLookAhead -= waypointSegmentLength;
+            waypointIndex++;
+        }
+
+        // Ran out of segments - carrot is at destination
+        var destNode = route.DestinationNode ?? route.Waypoints[^1].TargetNode;
+        double bearingToDest = Navigation.NavigationCalculator.CalculateBearing(
+            aircraftLat, aircraftLon, destNode.Latitude, destNode.Longitude);
+        double distToDest = Navigation.NavigationCalculator.CalculateDistance(
+            aircraftLat, aircraftLon, destNode.Latitude, destNode.Longitude) * 6076.12;
+
+        return new CarrotPosition
+        {
+            Latitude = destNode.Latitude,
+            Longitude = destNode.Longitude,
+            Heading = route.Waypoints[^1].Heading,
+            BearingFromAircraft = bearingToDest,
+            DistanceToCarrotFeet = distToDest,
+            WaypointIndex = route.Waypoints.Count - 1,
+            IsAtDestination = true
+        };
+    }
+
+    /// <summary>
+    /// Projects the carrot point along a segment at a given distance from the start.
+    /// </summary>
+    private CarrotPosition ProjectCarrotOnSegment(
+        double aircraftLat, double aircraftLon,
+        TaxiwaySegment segment, double travelHeading, double distanceAlongSegment,
+        int waypointIndex, bool isAtDestination)
+    {
+        // Determine which direction we're traveling along the segment
+        double headingDiff = Math.Abs(NormalizeHeading(travelHeading - segment.Heading));
+        bool reverseDirection = headingDiff > 90;
+
+        double carrotLat, carrotLon;
+
+        if (reverseDirection)
+        {
+            // Traveling from end to start
+            double distFromEnd = distanceAlongSegment;
+            double distFromStart = segment.Length - distFromEnd;
+
+            // Project from start node toward end node, but at (length - distance)
+            carrotLat = segment.EndNode.Latitude +
+                (segment.StartNode.Latitude - segment.EndNode.Latitude) * (distFromEnd / segment.Length);
+            carrotLon = segment.EndNode.Longitude +
+                (segment.StartNode.Longitude - segment.EndNode.Longitude) * (distFromEnd / segment.Length);
+        }
+        else
+        {
+            // Traveling from start to end (normal direction)
+            carrotLat = segment.StartNode.Latitude +
+                (segment.EndNode.Latitude - segment.StartNode.Latitude) * (distanceAlongSegment / segment.Length);
+            carrotLon = segment.StartNode.Longitude +
+                (segment.EndNode.Longitude - segment.StartNode.Longitude) * (distanceAlongSegment / segment.Length);
+        }
+
+        // Calculate bearing and distance from aircraft to carrot
+        double bearingToCarrot = Navigation.NavigationCalculator.CalculateBearing(
+            aircraftLat, aircraftLon, carrotLat, carrotLon);
+        double distanceToCarrot = Navigation.NavigationCalculator.CalculateDistance(
+            aircraftLat, aircraftLon, carrotLat, carrotLon) * 6076.12; // NM to feet
+
+        return new CarrotPosition
+        {
+            Latitude = carrotLat,
+            Longitude = carrotLon,
+            Heading = travelHeading,
+            BearingFromAircraft = bearingToCarrot,
+            DistanceToCarrotFeet = distanceToCarrot,
+            WaypointIndex = waypointIndex,
+            IsAtDestination = isAtDestination
+        };
+    }
+
+    /// <summary>
+    /// Calculates carrot position for single-segment guidance mode (no route).
+    /// Projects ahead along the segment by look-ahead distance, clamped to segment end.
+    /// </summary>
+    private CarrotPosition CalculateSingleSegmentCarrot(
+        double aircraftLat, double aircraftLon, double aircraftHeading,
+        TaxiwaySegment segment, double travelHeading, double lookAheadFeet)
+    {
+        if (_graph == null)
+        {
+            return new CarrotPosition { IsAtDestination = true };
+        }
+
+        // Calculate aircraft's position along segment
+        var positionResult = _graph.CalculatePositionOnSegment(
+            aircraftLat, aircraftLon, segment, aircraftHeading, travelHeading);
+
+        // Get along-track distance (clamped to >= 0)
+        double alongTrackFeet = Math.Max(0, positionResult.AlongTrackFeet);
+        double segmentLength = segment.Length;
+
+        // Calculate carrot position along segment
+        double carrotAlongTrack = alongTrackFeet + lookAheadFeet;
+
+        // Clamp to segment end
+        bool isAtEnd = carrotAlongTrack >= segmentLength;
+        carrotAlongTrack = Math.Min(carrotAlongTrack, segmentLength);
+
+        // Project carrot point
+        return ProjectCarrotOnSegment(
+            aircraftLat, aircraftLon,
+            segment, travelHeading, carrotAlongTrack,
+            0, isAtEnd);
+    }
+
+    /// <summary>
+    /// Calculates steering correction for carrot pursuit guidance.
+    /// Simply steers toward the carrot point.
+    /// </summary>
+    /// <param name="aircraftHeading">Current aircraft heading</param>
+    /// <param name="carrot">The carrot position to pursue</param>
+    /// <returns>Steering correction in degrees (positive = turn right, negative = turn left)</returns>
+    private double CalculateCarrotPursuitCorrection(double aircraftHeading, CarrotPosition carrot)
+    {
+        // Calculate bearing error: how far off are we from pointing at the carrot?
+        double bearingError = NormalizeHeading(carrot.BearingFromAircraft - aircraftHeading);
+
+        // Apply gain and clamp
+        double correction = bearingError * PURSUIT_GAIN;
+        return Math.Clamp(correction, -TAXI_MAX_CORRECTION_DEGREES, TAXI_MAX_CORRECTION_DEGREES);
+    }
+
+    /// <summary>
+    /// Calculates the speed-dependent look-ahead distance.
+    /// </summary>
+    /// <param name="groundSpeedKnots">Aircraft ground speed in knots</param>
+    /// <returns>Look-ahead distance in feet</returns>
+    private static double CalculateLookAheadDistance(double groundSpeedKnots)
+    {
+        double groundSpeedFps = groundSpeedKnots * KNOTS_TO_FEET_PER_SECOND;
+        double lookAhead = groundSpeedFps * LOOK_AHEAD_TIME_SECONDS;
+        return Math.Clamp(lookAhead, MIN_LOOK_AHEAD_FEET, MAX_LOOK_AHEAD_FEET);
+    }
+
+    #region Arc Projection Methods
+
+    /// <summary>
+    /// Calculates arc parameters for smooth carrot projection through a turn.
+    /// Returns an arc that is tangent to both the incoming and outgoing segments at the turn node.
+    /// </summary>
+    /// <param name="currentWaypoint">Current waypoint (segment leading into the turn)</param>
+    /// <param name="nextWaypoint">Next waypoint (contains TurnAngle at the junction)</param>
+    /// <returns>TurnArc with geometry, or IsValid=false if turn angle is too small</returns>
+    private static TurnArc CalculateTurnArc(TaxiRouteWaypoint currentWaypoint, TaxiRouteWaypoint nextWaypoint)
+    {
+        // Check if turn angle exceeds threshold
+        double turnAngleDeg = nextWaypoint.TurnAngle;
+        if (Math.Abs(turnAngleDeg) <= ARC_MIN_TURN_ANGLE_DEG)
+        {
+            return new TurnArc { IsValid = false };
+        }
+
+        // Get turn node coordinates (target of current segment = start of turn)
+        var turnNode = currentWaypoint.TargetNode;
+        double turnNodeLat = turnNode.Latitude;
+        double turnNodeLon = turnNode.Longitude;
+
+        // Use minimum width of both segments to ensure arc fits
+        double width = Math.Min(currentWaypoint.Segment.Width, nextWaypoint.Segment.Width);
+
+        // Calculate radius constrained by taxiway width
+        // R = width / (2 * tan(|turnAngle|/2)) ensures arc fits within taxiway
+        double halfTurnRad = Math.Abs(turnAngleDeg) * Math.PI / 360.0; // |turnAngle|/2 in radians
+        double radius = width / (2.0 * Math.Tan(halfTurnRad));
+        radius = Math.Clamp(radius, ARC_MIN_RADIUS_FEET, ARC_MAX_RADIUS_FEET);
+
+        // Calculate entry distance (tangent point offset from node)
+        double entryDistance = radius * Math.Tan(halfTurnRad);
+
+        // Calculate arc center position
+        // Center is perpendicular to incoming heading at distance R from turn node
+        double incomingHeadingDeg = currentWaypoint.Heading;
+        double turnSign = Math.Sign(turnAngleDeg);
+        double perpHeadingDeg = incomingHeadingDeg + 90.0 * turnSign;
+        double perpHeadingRad = perpHeadingDeg * Math.PI / 180.0;
+
+        // Longitude scaling factor for latitude
+        double cosLat = Math.Cos(turnNodeLat * Math.PI / 180.0);
+        double lonToFeet = LON_TO_FEET_BASE * cosLat;
+
+        // The center is offset from the turn node in the perpendicular direction
+        // We need to offset in the direction perpendicular to incoming heading
+        double centerLat = turnNodeLat + (radius * Math.Cos(perpHeadingRad)) / LAT_TO_FEET;
+        double centerLon = turnNodeLon + (radius * Math.Sin(perpHeadingRad)) / lonToFeet;
+
+        // Calculate start angle (from center to arc entry point)
+        // Arc entry is on incoming segment, entryDistance before turn node
+        // The direction from center to arc start is opposite to the perpendicular
+        double startAngleRad = (perpHeadingDeg + 180.0) * Math.PI / 180.0;
+
+        // Calculate arc length
+        double turnAngleRad = turnAngleDeg * Math.PI / 180.0;
+        double arcLength = radius * Math.Abs(turnAngleRad);
+
+        return new TurnArc
+        {
+            CenterLat = centerLat,
+            CenterLon = centerLon,
+            RadiusFeet = radius,
+            ArcLengthFeet = arcLength,
+            StartAngleRad = startAngleRad,
+            TurnAngleRad = turnAngleRad,
+            EntryDistanceFeet = entryDistance,
+            IsValid = true
+        };
+    }
+
+    /// <summary>
+    /// Projects the carrot point along a circular arc at the given arc-length distance.
+    /// </summary>
+    /// <param name="aircraftLat">Aircraft latitude for bearing calculation</param>
+    /// <param name="aircraftLon">Aircraft longitude for bearing calculation</param>
+    /// <param name="arc">The turn arc parameters</param>
+    /// <param name="distanceAlongArc">Distance in feet from arc start point</param>
+    /// <param name="waypointIndex">Waypoint index for return value</param>
+    /// <returns>CarrotPosition on the arc</returns>
+    private static CarrotPosition ProjectCarrotOnArc(
+        double aircraftLat, double aircraftLon,
+        TurnArc arc, double distanceAlongArc, int waypointIndex)
+    {
+        // Calculate angular progress along arc (in radians)
+        double theta = distanceAlongArc / arc.RadiusFeet;
+
+        // Calculate current angle from center
+        // For right turns (positive TurnAngleRad), angle increases (CW when viewed from above, but we use CCW convention)
+        // For left turns (negative TurnAngleRad), angle decreases
+        double turnSign = Math.Sign(arc.TurnAngleRad);
+        double currentAngle = arc.StartAngleRad + theta * turnSign;
+
+        // Longitude scaling factor
+        double cosLat = Math.Cos(arc.CenterLat * Math.PI / 180.0);
+        double lonToFeet = LON_TO_FEET_BASE * cosLat;
+
+        // Calculate carrot position on arc
+        double carrotLat = arc.CenterLat + (arc.RadiusFeet * Math.Cos(currentAngle)) / LAT_TO_FEET;
+        double carrotLon = arc.CenterLon + (arc.RadiusFeet * Math.Sin(currentAngle)) / lonToFeet;
+
+        // Calculate tangent heading at arc position (perpendicular to radius, in direction of travel)
+        // Tangent is 90° from the radius direction, adjusted for turn direction
+        double tangentHeadingDeg = currentAngle * 180.0 / Math.PI + 90.0 * turnSign;
+        tangentHeadingDeg = ((tangentHeadingDeg % 360.0) + 360.0) % 360.0; // Normalize to 0-360
+
+        // Calculate bearing and distance from aircraft to carrot
+        double bearingToCarrot = Navigation.NavigationCalculator.CalculateBearing(
+            aircraftLat, aircraftLon, carrotLat, carrotLon);
+        double distanceToCarrot = Navigation.NavigationCalculator.CalculateDistance(
+            aircraftLat, aircraftLon, carrotLat, carrotLon) * 6076.12; // NM to feet
+
+        return new CarrotPosition
+        {
+            Latitude = carrotLat,
+            Longitude = carrotLon,
+            Heading = tangentHeadingDeg,
+            BearingFromAircraft = bearingToCarrot,
+            DistanceToCarrotFeet = distanceToCarrot,
+            WaypointIndex = waypointIndex,
+            IsAtDestination = false
+        };
+    }
+
+    /// <summary>
+    /// Calculates distance from current along-track position to where the arc begins.
+    /// </summary>
+    /// <param name="alongTrackFeet">Current position along segment from start</param>
+    /// <param name="segmentLength">Total segment length</param>
+    /// <param name="arcEntryDistance">Distance before segment end where arc starts</param>
+    /// <returns>Distance to arc entry. Positive = before arc, negative = already in arc region</returns>
+    private static double GetDistanceToArcEntry(double alongTrackFeet, double segmentLength, double arcEntryDistance)
+    {
+        double arcEntryPoint = segmentLength - arcEntryDistance;
+        return arcEntryPoint - alongTrackFeet;
+    }
+
+    #endregion
+
+    /// <summary>
+    /// Checks cross-track distance for safety warnings using width-relative thresholds.
+    /// Does NOT affect steering correction - safety warnings only for gross deviations.
+    /// </summary>
+    /// <param name="crossTrackFeet">Cross-track distance in feet (positive = right, negative = left)</param>
+    /// <param name="segmentWidth">Width of the current taxiway segment in feet</param>
+    private void CheckCrossTrackSafetyWarnings(double crossTrackFeet, double segmentWidth)
+    {
+        DateTime now = DateTime.Now;
+
+        // Throttle warnings to prevent spam
+        if ((now - _lastSafetyWarningTime).TotalSeconds < SAFETY_WARNING_INTERVAL_SECONDS)
+            return;
+
+        // Calculate width-relative thresholds
+        double halfWidth = segmentWidth / 2;
+        double driftingThreshold = halfWidth * DRIFTING_WIDTH_FACTOR;
+        double offTaxiwayThreshold = halfWidth + OFF_TAXIWAY_BUFFER_FEET;
+
+        double absCrossTrack = Math.Abs(crossTrackFeet);
+        string direction = crossTrackFeet > 0 ? "right" : "left";
+
+        if (absCrossTrack >= offTaxiwayThreshold)
+        {
+            // Severe: off the taxiway
+            _announcer.AnnounceImmediate($"Off taxiway, {(int)absCrossTrack} feet {direction}");
+            _lastSafetyWarningTime = now;
+        }
+        else if (absCrossTrack >= driftingThreshold)
+        {
+            // Warning: drifting toward edge
+            _announcer.AnnounceImmediate($"Drifting {direction}");
+            _lastSafetyWarningTime = now;
+        }
+    }
+
+    /// <summary>
+    /// Announces carrot pursuit steering correction when it changes.
+    /// Uses "on track" terminology - pilot is following the carrot well when within threshold.
+    /// </summary>
+    private void AnnouncePursuitCorrectionIfNeeded(double steeringCorrectionDegrees)
     {
         TimeSpan timeSinceLastAnnouncement = DateTime.Now - _lastCenterlineAnnouncement;
 
@@ -1133,16 +1709,15 @@ public class TaxiwayGuidanceManager : IDisposable
 
         int roundedCorrection = (int)Math.Round(steeringCorrectionDegrees);
 
-        // Check if on path (small correction AND near centerline)
-        bool onPath = Math.Abs(steeringCorrectionDegrees) < TAXI_ON_PATH_THRESHOLD
-                      && Math.Abs(crossTrackFeet) < TAXI_CENTERLINE_CAPTURE;
+        // Check if on track (small bearing error to carrot)
+        bool onTrack = Math.Abs(steeringCorrectionDegrees) < ON_TRACK_THRESHOLD_DEGREES;
 
         string announcement;
         int trackingValue;
 
-        if (onPath)
+        if (onTrack)
         {
-            announcement = "on path";
+            announcement = "on track";
             trackingValue = 0;
         }
         else if (roundedCorrection < 0)
@@ -1150,16 +1725,10 @@ public class TaxiwayGuidanceManager : IDisposable
             announcement = $"{Math.Abs(roundedCorrection)} left";
             trackingValue = roundedCorrection;
         }
-        else if (roundedCorrection > 0)
+        else
         {
             announcement = $"{roundedCorrection} right";
             trackingValue = roundedCorrection;
-        }
-        else
-        {
-            // Rounded to 0 but not quite on path
-            announcement = "on path";
-            trackingValue = 0;
         }
 
         // Only announce if correction changed
@@ -1322,8 +1891,7 @@ public class TaxiwayGuidanceManager : IDisposable
         _lastJunctionNode = null;
         _relockSuggestionGiven = false;
 
-        // Reset PID state for new segment
-        _lastCrossTrackFeet = 0;
+        // Reset guidance state for new segment
         _lastPositionUpdateTime = DateTime.MinValue;
         _lastAnnouncedCorrectionDegrees = null;
 

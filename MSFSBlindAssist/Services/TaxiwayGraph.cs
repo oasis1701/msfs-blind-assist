@@ -1643,6 +1643,78 @@ public class TaxiwayGraph
     }
 
     #endregion
+
+    #region Curve Detection
+
+    /// <summary>
+    /// Estimates the curve radius by analyzing heading changes with connected segments.
+    /// Returns double.MaxValue for straight segments, smaller values for tighter curves.
+    /// </summary>
+    /// <param name="segment">The segment to analyze</param>
+    /// <returns>Estimated curve radius in feet (larger = gentler, MaxValue = straight)</returns>
+    public double EstimateCurveRadius(TaxiwaySegment segment)
+    {
+        // Get all connected segments at both ends
+        var connectedSegments = segment.StartNode.ConnectedSegments
+            .Concat(segment.EndNode.ConnectedSegments)
+            .Where(s => s != segment)
+            .ToList();
+
+        if (connectedSegments.Count == 0)
+            return double.MaxValue; // No connections, treat as straight
+
+        // Calculate heading changes with connected segments
+        double maxHeadingChange = 0;
+        foreach (var connected in connectedSegments)
+        {
+            double headingDiff = GetHeadingDifference(segment.Heading, connected.Heading);
+
+            // Only consider moderate heading changes (not sharp junctions)
+            // Small changes (< 10°) are essentially straight
+            // Large changes (> 90°) are likely junctions, not curves
+            if (headingDiff > 10 && headingDiff < 90)
+            {
+                maxHeadingChange = Math.Max(maxHeadingChange, headingDiff);
+            }
+        }
+
+        if (maxHeadingChange < 10)
+            return double.MaxValue; // Essentially straight
+
+        // Estimate radius using arc geometry: R = L / (2 * sin(theta/2))
+        // Where L = chord length (segment length) and theta = heading change
+        double thetaRad = maxHeadingChange * Math.PI / 180.0;
+        double estimatedRadius = segment.Length / (2 * Math.Sin(thetaRad / 2));
+
+        return estimatedRadius;
+    }
+
+    /// <summary>
+    /// Calculates dynamic cross-track tolerance based on segment geometry.
+    /// Curves get larger tolerance to account for chord vs arc difference (sagitta).
+    /// </summary>
+    /// <param name="segment">The segment to analyze</param>
+    /// <returns>Tolerance in feet (base 15ft, adjusted for curves)</returns>
+    public double GetDynamicCrossTrackTolerance(TaxiwaySegment segment)
+    {
+        const double BASE_TOLERANCE = 15.0;  // Base tolerance in feet
+        const double MAX_TOLERANCE = 50.0;   // Maximum tolerance
+
+        double curveRadius = EstimateCurveRadius(segment);
+
+        if (curveRadius > 1000 || curveRadius == double.MaxValue)
+            return BASE_TOLERANCE; // Essentially straight
+
+        // Sagitta formula: chord-to-arc max distance = R - sqrt(R^2 - (L/2)^2)
+        // Simplified for gentle curves: sagitta ≈ L^2 / (8*R)
+        double halfLength = segment.Length / 2;
+        double sagitta = (halfLength * halfLength) / (8 * curveRadius);
+
+        // Add sagitta to base tolerance
+        return Math.Min(BASE_TOLERANCE + sagitta, MAX_TOLERANCE);
+    }
+
+    #endregion
 }
 
 /// <summary>
