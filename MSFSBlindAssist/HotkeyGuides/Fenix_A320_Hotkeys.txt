@@ -4,7 +4,6 @@ Application Navigation:
   Ctrl+1     Focus Sections List
   Ctrl+2     Focus Panels List
 
-
 OUTPUT MODE - Press right bracket to activate
 
 AI Features:
@@ -42,9 +41,11 @@ Weather:
   I Wind info
 
 Tools:
-CTRL+T, Takeoff Assistance
-CTRL+D, Distance to Selected Runway
-CTRL+I, ILS guidance system
+CTRL+h, Activate/deactivate Hand fly mode, Note, enables more hotkeys, advanced feature.
+CTRL+v, activate/deactivate visual guidance mode, note, requires hand fly mode to be on. Enables more hotkeys.
+CTRL+T, activate/deactivate Takeoff Assistance
+CTRL+D, read Distance to Selected Runway
+CTRL+I, read ILS guidance system report
 
 Waypoint tracking, use Fix track window or Electronic flight bag route viewer window to add:
 1. track slot 1
@@ -60,6 +61,18 @@ Displays and windows:
   Shift+D,    SimBrief Briefing
   Shift+C,    Show Checklist
 
+Hand fly mode hotkeys:
+A, read MSL
+S, Read IAS
+D, Read distance to destination runway
+H, Read MH
+P, Read aircraft's pitch
+B, Read aircraft's bank
+Q, read AGL
+V, Read VS
+
+Visual guidance mode hotkeys:
+F, Read target VS
 
 INPUT MODE - Press [ to activate
 
