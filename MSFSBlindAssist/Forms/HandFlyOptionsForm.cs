@@ -39,6 +39,8 @@ public partial class HandFlyOptionsForm : Form
 
     private CheckBox muteCenterlineCheckBox = null!;
     private CheckBox invertPanningCheckBox = null!;
+    private Label headingToneThresholdLabel = null!;
+    private ComboBox headingToneThresholdCombo = null!;
     private CheckBox legacyTakeoffCheckBox = null!;
 
     private Button okButton = null!;
@@ -57,12 +59,14 @@ public partial class HandFlyOptionsForm : Form
     public double TakeoffToneVolume { get; private set; }
     public bool TakeoffAssistMuteCenterlineAnnouncements { get; private set; }
     public bool TakeoffAssistInvertPanning { get; private set; }
+    public int TakeoffAssistHeadingToneThreshold { get; private set; }
     public bool TakeoffAssistLegacyMode { get; private set; }
 
     public HandFlyOptionsForm(HandFlyFeedbackMode currentMode, HandFlyWaveType currentWaveType, double currentVolume,
         bool monitorHeading, bool monitorVerticalSpeed, HandFlyWaveType guidanceToneWaveform,
         double currentGuidanceVolume, HandFlyWaveType takeoffToneWaveform, double takeoffToneVolume,
-        bool takeoffAssistMuteCenterlineAnnouncements, bool takeoffAssistInvertPanning, bool takeoffAssistLegacyMode)
+        bool takeoffAssistMuteCenterlineAnnouncements, bool takeoffAssistInvertPanning,
+        int takeoffAssistHeadingToneThreshold, bool takeoffAssistLegacyMode)
     {
         SelectedFeedbackMode = currentMode;
         SelectedWaveType = currentWaveType;
@@ -75,6 +79,7 @@ public partial class HandFlyOptionsForm : Form
         TakeoffToneVolume = takeoffToneVolume;
         TakeoffAssistMuteCenterlineAnnouncements = takeoffAssistMuteCenterlineAnnouncements;
         TakeoffAssistInvertPanning = takeoffAssistInvertPanning;
+        TakeoffAssistHeadingToneThreshold = takeoffAssistHeadingToneThreshold;
         TakeoffAssistLegacyMode = takeoffAssistLegacyMode;
         InitializeComponent();
         SetupAccessibility();
@@ -83,7 +88,7 @@ public partial class HandFlyOptionsForm : Form
     private void InitializeComponent()
     {
         Text = "Hand Fly Options";
-        Size = new Size(500, 740);
+        Size = new Size(500, 775);
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -385,11 +390,41 @@ public partial class HandFlyOptionsForm : Form
         };
         invertPanningCheckBox.CheckedChanged += InvertPanningCheckBox_CheckedChanged;
 
+        // Heading Tone Threshold Label
+        headingToneThresholdLabel = new Label
+        {
+            Text = "Play heading deviation tone:",
+            Location = new Point(20, 625),
+            Size = new Size(250, 20),
+            AccessibleName = "Heading Tone Threshold Label"
+        };
+
+        // Heading Tone Threshold ComboBox
+        headingToneThresholdCombo = new ComboBox
+        {
+            Location = new Point(280, 623),
+            Size = new Size(190, 25),
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            AccessibleName = "Play heading deviation tone",
+            AccessibleDescription = "Select when the heading deviation tone plays. Always plays continuously, or only when deviation exceeds selected threshold."
+        };
+        headingToneThresholdCombo.Items.AddRange(new object[]
+        {
+            "Always",
+            "At 1 degree error",
+            "At 2 degrees error",
+            "At 3 degrees error",
+            "At 4 degrees error",
+            "At 5 degrees error"
+        });
+        headingToneThresholdCombo.SelectedIndex = TakeoffAssistHeadingToneThreshold;
+        headingToneThresholdCombo.SelectedIndexChanged += HeadingToneThresholdCombo_SelectedIndexChanged;
+
         // Legacy Takeoff Assist Mode Checkbox
         legacyTakeoffCheckBox = new CheckBox
         {
             Text = "Legacy takeoff assist mode (heading-based, no tone)",
-            Location = new Point(20, 625),
+            Location = new Point(20, 660),
             Size = new Size(450, 25),
             Checked = TakeoffAssistLegacyMode,
             AccessibleName = "Legacy takeoff assist mode",
@@ -401,7 +436,7 @@ public partial class HandFlyOptionsForm : Form
         okButton = new Button
         {
             Text = "OK",
-            Location = new Point(310, 670),
+            Location = new Point(310, 705),
             Size = new Size(75, 30),
             DialogResult = DialogResult.OK,
             AccessibleName = "Apply Settings",
@@ -413,7 +448,7 @@ public partial class HandFlyOptionsForm : Form
         cancelButton = new Button
         {
             Text = "Cancel",
-            Location = new Point(395, 670),
+            Location = new Point(395, 705),
             Size = new Size(75, 30),
             DialogResult = DialogResult.Cancel,
             AccessibleName = "Cancel",
@@ -430,7 +465,9 @@ public partial class HandFlyOptionsForm : Form
             guidanceVolumeLabel, guidanceVolumeTrackBar, guidanceVolumeValueLabel,
             takeoffToneLabel, takeoffToneCombo,
             takeoffVolumeLabel, takeoffVolumeTrackBar, takeoffVolumeValueLabel,
-            muteCenterlineCheckBox, invertPanningCheckBox, legacyTakeoffCheckBox,
+            muteCenterlineCheckBox, invertPanningCheckBox,
+            headingToneThresholdLabel, headingToneThresholdCombo,
+            legacyTakeoffCheckBox,
             okButton, cancelButton
         });
 
@@ -466,9 +503,11 @@ public partial class HandFlyOptionsForm : Form
         takeoffVolumeTrackBar.TabIndex = 19;
         muteCenterlineCheckBox.TabIndex = 20;
         invertPanningCheckBox.TabIndex = 21;
-        legacyTakeoffCheckBox.TabIndex = 22;
-        okButton.TabIndex = 23;
-        cancelButton.TabIndex = 24;
+        headingToneThresholdLabel.TabIndex = 22;
+        headingToneThresholdCombo.TabIndex = 23;
+        legacyTakeoffCheckBox.TabIndex = 24;
+        okButton.TabIndex = 25;
+        cancelButton.TabIndex = 26;
 
         // Focus and bring window to front when opened
         Load += (sender, e) =>
@@ -564,6 +603,11 @@ public partial class HandFlyOptionsForm : Form
     private void InvertPanningCheckBox_CheckedChanged(object? sender, EventArgs e)
     {
         TakeoffAssistInvertPanning = invertPanningCheckBox.Checked;
+    }
+
+    private void HeadingToneThresholdCombo_SelectedIndexChanged(object? sender, EventArgs e)
+    {
+        TakeoffAssistHeadingToneThreshold = headingToneThresholdCombo.SelectedIndex;
     }
 
     private void LegacyTakeoffCheckBox_CheckedChanged(object? sender, EventArgs e)

@@ -9,6 +9,7 @@ public class TakeoffAssistManager : IDisposable
     private readonly ScreenReaderAnnouncer announcer;
     private readonly bool muteCenterlineAnnouncements;
     private readonly bool invertPanning;
+    private readonly int headingToneThreshold;
     private readonly bool legacyMode;
     private bool isActive = false;
 
@@ -59,13 +60,15 @@ public class TakeoffAssistManager : IDisposable
 
     public TakeoffAssistManager(ScreenReaderAnnouncer screenReaderAnnouncer,
         HandFlyWaveType waveType = HandFlyWaveType.Sine, double volume = 0.05,
-        bool muteCenterline = false, bool useInvertPanning = false, bool useLegacyMode = false)
+        bool muteCenterline = false, bool useInvertPanning = false,
+        int useHeadingToneThreshold = 0, bool useLegacyMode = false)
     {
         announcer = screenReaderAnnouncer;
         toneWaveType = waveType;
         toneVolume = volume;
         muteCenterlineAnnouncements = muteCenterline;
         invertPanning = useInvertPanning;
+        headingToneThreshold = useHeadingToneThreshold;
         legacyMode = useLegacyMode;
 
         // Only create tone generator if not in legacy mode
@@ -260,6 +263,13 @@ public class TakeoffAssistManager : IDisposable
             float pan = (float)Math.Clamp(headingDiff / PAN_FULL_RANGE_DEGREES, -1.0, 1.0);
             if (invertPanning) pan = -pan;
             centerlineTone?.SetPan(pan);
+
+            // Apply threshold - mute tone if deviation is below threshold
+            if (headingToneThreshold > 0)
+            {
+                bool shouldPlayTone = Math.Abs(headingDiff) >= headingToneThreshold;
+                centerlineTone?.UpdateVolume(shouldPlayTone ? toneVolume : 0);
+            }
 
             // Check if we should announce centerline deviation
             double deviationChange = Math.Abs(crossTrackFeet - lastAnnouncedCrossTrackFeet);
