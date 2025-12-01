@@ -94,6 +94,40 @@ public struct TurnArc
 }
 
 /// <summary>
+/// Represents a recovery arc for smoothly returning to the taxiway centerline when off-track.
+/// The arc provides a gentle curved path that merges back at a shallow angle.
+/// </summary>
+public struct RecoveryArc
+{
+    /// <summary>Latitude of the arc circle center</summary>
+    public double CenterLat { get; set; }
+
+    /// <summary>Longitude of the arc circle center</summary>
+    public double CenterLon { get; set; }
+
+    /// <summary>Arc radius in feet</summary>
+    public double RadiusFeet { get; set; }
+
+    /// <summary>Total arc length in feet</summary>
+    public double ArcLengthFeet { get; set; }
+
+    /// <summary>Start angle from center (radians, 0=East, CCW positive) - points to aircraft</summary>
+    public double StartAngleRad { get; set; }
+
+    /// <summary>Sweep angle in radians (signed: positive = clockwise arc)</summary>
+    public double SweepAngleRad { get; set; }
+
+    /// <summary>Latitude of merge point on centerline</summary>
+    public double MergePointLat { get; set; }
+
+    /// <summary>Longitude of merge point on centerline</summary>
+    public double MergePointLon { get; set; }
+
+    /// <summary>Whether this recovery arc is valid</summary>
+    public bool IsValid { get; set; }
+}
+
+/// <summary>
 /// Manages taxiway guidance for blind pilots
 /// </summary>
 public class TaxiwayGuidanceManager : IDisposable
@@ -170,7 +204,7 @@ public class TaxiwayGuidanceManager : IDisposable
 
     // Alignment phase constants
     private const double ALIGNMENT_CENTERLINE_TOLERANCE_FEET = 15.0;  // Consider "on centerline"
-    private const double ALIGNMENT_INITIAL_TRIGGER_FEET = 30.0;       // Trigger alignment at route start
+    private const double ALIGNMENT_INITIAL_TRIGGER_FEET = 100.0;      // Same as mid-route - recovery arc handles 20-100ft
     private const double ALIGNMENT_MIDROUTE_TRIGGER_FEET = 100.0;     // Only trigger alignment mid-route if severely off
 
     // PID Controller constants for taxi steering guidance (legacy - kept for reference)
@@ -196,6 +230,13 @@ public class TaxiwayGuidanceManager : IDisposable
     private const double ARC_MAX_RADIUS_FEET = 500.0;           // Maximum arc radius
     private const double LAT_TO_FEET = 364000.0;                // Feet per degree latitude (approximate)
     private const double LON_TO_FEET_BASE = 365000.0;           // Feet per degree longitude at equator
+
+    // Recovery arc constants (for smooth return to centerline when off-track)
+    private const double RECOVERY_ARC_THRESHOLD_FEET = 20.0;    // Enter recovery mode when > 20ft off centerline
+    private const double RECOVERY_ARC_EXIT_FEET = 10.0;         // Exit recovery mode when < 10ft off centerline
+    private const double RECOVERY_MERGE_ANGLE_DEGREES = 20.0;   // Gentle 20° merge angle to centerline
+    private const double RECOVERY_MIN_RADIUS_FEET = 50.0;       // Minimum recovery arc radius
+    private const double RECOVERY_MAX_RADIUS_FEET = 500.0;      // Maximum recovery arc radius
 
     // Heading-based guidance constants (used in alignment phase)
     private const double HEADING_CORRECTION_GAIN = 1.0;         // Degrees of correction per degree of heading error
@@ -224,6 +265,10 @@ public class TaxiwayGuidanceManager : IDisposable
 
     // Width-relative safety warning state
     private DateTime _lastSafetyWarningTime = DateTime.MinValue;
+
+    // Recovery arc state (for smooth return to centerline when off-track)
+    private bool _inRecoveryMode = false;
+    private RecoveryArc? _currentRecoveryArc = null;
 
     public bool IsActive => _isActive;
     public bool HasGraph => _graph != null;
@@ -1234,6 +1279,43 @@ public class TaxiwayGuidanceManager : IDisposable
         // Get along-track distance on current segment (clamped to >= 0)
         double alongTrackFeet = Math.Max(0, positionResult.AlongTrackFeet);
         double segmentLength = currentSegment.Length;
+        double crossTrackFeet = positionResult.CrossTrackFeet;
+
+        // === RECOVERY ARC LOGIC ===
+        // When significantly off-centerline, use a recovery arc instead of direct centerline projection.
+        // This provides a smooth, gradual return path instead of a harsh 90-degree intercept.
+        if (Math.Abs(crossTrackFeet) > RECOVERY_ARC_THRESHOLD_FEET)
+        {
+            // Calculate or update recovery arc
+            if (!_inRecoveryMode || _currentRecoveryArc == null)
+            {
+                _currentRecoveryArc = CalculateRecoveryArc(
+                    aircraftLat, aircraftLon, aircraftHeading,
+                    crossTrackFeet, currentWaypoint.Heading);
+
+                if (_currentRecoveryArc.Value.IsValid)
+                {
+                    _inRecoveryMode = true;
+                    System.Diagnostics.Debug.WriteLine($"[RouteGuidance] Entering recovery mode: crossTrack={crossTrackFeet:F1}ft");
+                }
+            }
+
+            // Project carrot on recovery arc if valid
+            if (_inRecoveryMode && _currentRecoveryArc?.IsValid == true)
+            {
+                return ProjectCarrotOnRecoveryArc(
+                    aircraftLat, aircraftLon,
+                    _currentRecoveryArc.Value, lookAheadFeet, route.CurrentWaypointIndex);
+            }
+        }
+        else if (Math.Abs(crossTrackFeet) < RECOVERY_ARC_EXIT_FEET && _inRecoveryMode)
+        {
+            // Exit recovery mode when back near centerline
+            _inRecoveryMode = false;
+            _currentRecoveryArc = null;
+            System.Diagnostics.Debug.WriteLine($"[RouteGuidance] Exiting recovery mode: crossTrack={crossTrackFeet:F1}ft");
+        }
+        // === END RECOVERY ARC LOGIC ===
 
         // Check if there's a significant turn coming up
         var nextWaypoint = route.NextWaypoint;
@@ -1656,6 +1738,170 @@ public class TaxiwayGuidanceManager : IDisposable
     {
         double arcEntryPoint = segmentLength - arcEntryDistance;
         return arcEntryPoint - alongTrackFeet;
+    }
+
+    #endregion
+
+    #region Recovery Arc Methods
+
+    /// <summary>
+    /// Calculates a recovery arc that smoothly guides the aircraft back to the taxiway centerline.
+    /// The arc starts tangent to the aircraft's current heading and ends tangent to the taxiway
+    /// at the merge angle, providing a gradual return path instead of a harsh 90-degree intercept.
+    /// </summary>
+    /// <param name="aircraftLat">Aircraft latitude</param>
+    /// <param name="aircraftLon">Aircraft longitude</param>
+    /// <param name="aircraftHeading">Aircraft heading in degrees</param>
+    /// <param name="crossTrackFeet">Cross-track distance (positive = right of centerline)</param>
+    /// <param name="segmentHeading">Taxiway segment heading in degrees</param>
+    /// <returns>RecoveryArc with geometry, or IsValid=false if not applicable</returns>
+    private RecoveryArc CalculateRecoveryArc(
+        double aircraftLat, double aircraftLon, double aircraftHeading,
+        double crossTrackFeet, double segmentHeading)
+    {
+        double absCrossTrack = Math.Abs(crossTrackFeet);
+
+        // Don't create recovery arc for small cross-track errors
+        if (absCrossTrack < RECOVERY_ARC_THRESHOLD_FEET)
+        {
+            return new RecoveryArc { IsValid = false };
+        }
+
+        // Determine which side we're on and which way to turn
+        bool isRightOfCenterline = crossTrackFeet > 0;
+
+        // Calculate the heading we want at the merge point
+        // If right of centerline, we merge from the right at a 20° angle (heading = segmentHeading - 20)
+        // If left of centerline, we merge from the left at a 20° angle (heading = segmentHeading + 20)
+        double mergeHeadingDeg = isRightOfCenterline
+            ? segmentHeading - RECOVERY_MERGE_ANGLE_DEGREES
+            : segmentHeading + RECOVERY_MERGE_ANGLE_DEGREES;
+        mergeHeadingDeg = ((mergeHeadingDeg % 360.0) + 360.0) % 360.0;
+
+        // Calculate the turn we need to execute (from current heading to merge heading)
+        double turnAngleDeg = NormalizeHeading(mergeHeadingDeg - aircraftHeading);
+
+        // Validate the turn direction makes sense (we should turn toward centerline)
+        // If right of centerline, we should turn left (negative turn angle)
+        // If left of centerline, we should turn right (positive turn angle)
+        bool turnDirectionCorrect = (isRightOfCenterline && turnAngleDeg < 0) ||
+                                     (!isRightOfCenterline && turnAngleDeg > 0);
+
+        if (!turnDirectionCorrect || Math.Abs(turnAngleDeg) < 5.0)
+        {
+            // Turn direction is wrong (heading away from centerline) or turn too small
+            return new RecoveryArc { IsValid = false };
+        }
+
+        // Cap the turn angle to prevent extreme maneuvers
+        double clampedTurnAngleDeg = Math.Clamp(turnAngleDeg, -60.0, 60.0);
+        double turnAngleRad = clampedTurnAngleDeg * Math.PI / 180.0;
+
+        // Calculate arc radius based on cross-track error and turn angle
+        // R = crossTrack / (1 - cos(turnAngle))
+        // This ensures the arc reaches the centerline at the end
+        double denominator = 1.0 - Math.Cos(Math.Abs(turnAngleRad));
+        if (denominator < 0.01) // Avoid division by very small numbers
+        {
+            return new RecoveryArc { IsValid = false };
+        }
+
+        double radius = absCrossTrack / denominator;
+        radius = Math.Clamp(radius, RECOVERY_MIN_RADIUS_FEET, RECOVERY_MAX_RADIUS_FEET);
+
+        // Calculate arc center position
+        // Center is perpendicular to aircraft heading, in the direction of the turn
+        double turnSign = Math.Sign(turnAngleDeg);
+        double perpHeadingDeg = aircraftHeading + 90.0 * turnSign;
+        double perpHeadingRad = perpHeadingDeg * Math.PI / 180.0;
+
+        double cosLat = Math.Cos(aircraftLat * Math.PI / 180.0);
+        double lonToFeet = LON_TO_FEET_BASE * cosLat;
+
+        double centerLat = aircraftLat + (radius * Math.Cos(perpHeadingRad)) / LAT_TO_FEET;
+        double centerLon = aircraftLon + (radius * Math.Sin(perpHeadingRad)) / lonToFeet;
+
+        // Calculate start angle (from center to aircraft position)
+        // This is opposite to the perpendicular direction
+        double startAngleRad = (perpHeadingDeg + 180.0) * Math.PI / 180.0;
+
+        // Calculate arc length
+        double arcLength = radius * Math.Abs(turnAngleRad);
+
+        // Calculate merge point on centerline
+        // End angle on arc
+        double endAngleRad = startAngleRad + turnAngleRad;
+        double mergePointLat = centerLat + (radius * Math.Cos(endAngleRad)) / LAT_TO_FEET;
+        double mergePointLon = centerLon + (radius * Math.Sin(endAngleRad)) / lonToFeet;
+
+        System.Diagnostics.Debug.WriteLine($"[RecoveryArc] Created: crossTrack={crossTrackFeet:F1}ft, " +
+            $"turn={clampedTurnAngleDeg:F1}°, radius={radius:F1}ft, arcLen={arcLength:F1}ft");
+
+        return new RecoveryArc
+        {
+            CenterLat = centerLat,
+            CenterLon = centerLon,
+            RadiusFeet = radius,
+            ArcLengthFeet = arcLength,
+            StartAngleRad = startAngleRad,
+            SweepAngleRad = turnAngleRad,
+            MergePointLat = mergePointLat,
+            MergePointLon = mergePointLon,
+            IsValid = true
+        };
+    }
+
+    /// <summary>
+    /// Projects the carrot point along the recovery arc at the given distance.
+    /// </summary>
+    /// <param name="aircraftLat">Aircraft latitude for bearing calculation</param>
+    /// <param name="aircraftLon">Aircraft longitude for bearing calculation</param>
+    /// <param name="arc">The recovery arc parameters</param>
+    /// <param name="lookAheadFeet">Look-ahead distance in feet</param>
+    /// <param name="waypointIndex">Current waypoint index for return value</param>
+    /// <returns>CarrotPosition on the recovery arc</returns>
+    private CarrotPosition ProjectCarrotOnRecoveryArc(
+        double aircraftLat, double aircraftLon,
+        RecoveryArc arc, double lookAheadFeet, int waypointIndex)
+    {
+        // Calculate how far along the arc the look-ahead distance takes us
+        double distanceAlongArc = Math.Min(lookAheadFeet, arc.ArcLengthFeet);
+
+        // Calculate angular progress along arc (in radians)
+        double theta = distanceAlongArc / arc.RadiusFeet;
+
+        // Apply sweep direction
+        double turnSign = Math.Sign(arc.SweepAngleRad);
+        double currentAngle = arc.StartAngleRad + theta * turnSign;
+
+        // Longitude scaling factor
+        double cosLat = Math.Cos(arc.CenterLat * Math.PI / 180.0);
+        double lonToFeet = LON_TO_FEET_BASE * cosLat;
+
+        // Calculate carrot position on arc
+        double carrotLat = arc.CenterLat + (arc.RadiusFeet * Math.Cos(currentAngle)) / LAT_TO_FEET;
+        double carrotLon = arc.CenterLon + (arc.RadiusFeet * Math.Sin(currentAngle)) / lonToFeet;
+
+        // Calculate tangent heading at arc position (perpendicular to radius, in direction of travel)
+        double tangentHeadingDeg = currentAngle * 180.0 / Math.PI + 90.0 * turnSign;
+        tangentHeadingDeg = ((tangentHeadingDeg % 360.0) + 360.0) % 360.0;
+
+        // Calculate bearing and distance from aircraft to carrot
+        double bearingToCarrot = Navigation.NavigationCalculator.CalculateBearing(
+            aircraftLat, aircraftLon, carrotLat, carrotLon);
+        double distanceToCarrot = Navigation.NavigationCalculator.CalculateDistance(
+            aircraftLat, aircraftLon, carrotLat, carrotLon) * 6076.12; // NM to feet
+
+        return new CarrotPosition
+        {
+            Latitude = carrotLat,
+            Longitude = carrotLon,
+            Heading = tangentHeadingDeg,
+            BearingFromAircraft = bearingToCarrot,
+            DistanceToCarrotFeet = distanceToCarrot,
+            WaypointIndex = waypointIndex,
+            IsAtDestination = false
+        };
     }
 
     #endregion
