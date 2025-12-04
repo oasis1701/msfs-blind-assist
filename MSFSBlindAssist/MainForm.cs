@@ -433,6 +433,12 @@ public partial class MainForm : Form
             takeoffAssistManager.ProcessPitchUpdate(e.Value);
         }
 
+        // Handle takeoff assist IAS updates (for speed callouts)
+        if (e.VarName == "TAKEOFF_ASSIST_IAS" && takeoffAssistManager.IsActive)
+        {
+            takeoffAssistManager.ProcessSpeedUpdate(e.Value);
+        }
+
         // Handle hand fly mode pitch updates
         if (e.VarName == "PLANE_PITCH_DEGREES" && handFlyManager.IsActive)
         {
@@ -1541,13 +1547,30 @@ public partial class MainForm : Form
     {
         if (isActive)
         {
-            // Start monitoring position and pitch for centerline tracking
+            // Start monitoring position, pitch, and IAS for takeoff assist
             simConnectManager.StartTakeoffAssistMonitoring();
+
+            // If Fenix aircraft, read V1/VR speeds from MCDU performance data (already continuously monitored)
+            if (currentAircraft.AircraftCode == "FENIX_A320CEO")
+            {
+                // Use N_MISC_PERF_TO_V1/VR (MCDU performance data), not FNX2PLD_speedV1/VR (display variables)
+                bool foundV1 = currentSimVarValues.TryGetValue("N_MISC_PERF_TO_V1", out double v1Val);
+                bool foundVR = currentSimVarValues.TryGetValue("N_MISC_PERF_TO_VR", out double vrVal);
+
+                double? v1 = foundV1 ? v1Val : null;
+                double? vr = foundVR ? vrVal : null;
+                takeoffAssistManager.SetFenixVSpeeds(v1, vr);
+
+                System.Diagnostics.Debug.WriteLine($"[TakeoffAssist] Fenix V-speeds from MCDU: V1={v1Val}, VR={vrVal}");
+            }
         }
         else
         {
             // Stop monitoring
             simConnectManager.StopTakeoffAssistMonitoring();
+
+            // Clear Fenix V-speeds on deactivation
+            takeoffAssistManager.ClearFenixVSpeeds();
         }
     }
 

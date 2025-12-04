@@ -39,6 +39,17 @@ public class TakeoffAssistManager : IDisposable
     private double lastAnnouncedPitch = 0;
     private DateTime lastPitchAnnouncement = DateTime.MinValue;
 
+    // Speed callout state (for takeoff roll)
+    private bool hasAnnounced80Knots = false;
+    private bool hasAnnounced100Knots = false;
+    private bool hasAnnouncedV1 = false;
+    private bool hasAnnouncedRotate = false;
+
+    // Fenix V-speeds (set when takeoff assist activates, if Fenix loaded)
+    private double? fenixV1Speed = null;
+    private double? fenixVRSpeed = null;
+    private bool isFenixAircraft = false;
+
     // Configuration constants - shared
     private const int ANNOUNCEMENT_INTERVAL_MS = 500; // 500ms between announcements
     private const double PITCH_THRESHOLD = 1.0; // Announce if pitch changes by >1 degree
@@ -136,6 +147,12 @@ public class TakeoffAssistManager : IDisposable
             // Reset tracking state based on mode
             lastAnnouncedPitch = 0;
             lastPitchAnnouncement = DateTime.MinValue;
+
+            // Reset speed callout state
+            hasAnnounced80Knots = false;
+            hasAnnounced100Knots = false;
+            hasAnnouncedV1 = false;
+            hasAnnouncedRotate = false;
 
             if (legacyMode)
             {
@@ -317,6 +334,79 @@ public class TakeoffAssistManager : IDisposable
 
             System.Diagnostics.Debug.WriteLine($"[TakeoffAssistManager] Pitch: {currentPitch:F1}° → {announcement}");
         }
+    }
+
+    /// <summary>
+    /// Process IAS update during takeoff assist for speed callouts.
+    /// Announces "80 knots", "100 knots", "V1" (Fenix only), and "rotate" (Fenix only).
+    /// </summary>
+    /// <param name="currentIAS">Current indicated airspeed in knots</param>
+    public void ProcessSpeedUpdate(double currentIAS)
+    {
+        if (!isActive) return;
+
+        // 80 knots callout (all aircraft)
+        // Use Announce() (queued, non-interrupting) so callouts don't cut each other off
+        if (!hasAnnounced80Knots && currentIAS >= 80.0)
+        {
+            announcer.Announce("80 knots");
+            hasAnnounced80Knots = true;
+            System.Diagnostics.Debug.WriteLine($"[TakeoffAssistManager] Speed callout: 80 knots (IAS={currentIAS:F1})");
+        }
+
+        // 100 knots callout (all aircraft)
+        if (!hasAnnounced100Knots && currentIAS >= 100.0)
+        {
+            announcer.Announce("100 knots");
+            hasAnnounced100Knots = true;
+            System.Diagnostics.Debug.WriteLine($"[TakeoffAssistManager] Speed callout: 100 knots (IAS={currentIAS:F1})");
+        }
+
+        // V1 callout (Fenix only, if V1 speed is configured)
+        if (isFenixAircraft && fenixV1Speed.HasValue && fenixV1Speed.Value > 0)
+        {
+            if (!hasAnnouncedV1 && currentIAS >= fenixV1Speed.Value)
+            {
+                announcer.Announce("V1");
+                hasAnnouncedV1 = true;
+                System.Diagnostics.Debug.WriteLine($"[TakeoffAssistManager] Speed callout: V1 at {fenixV1Speed.Value} kt (IAS={currentIAS:F1})");
+            }
+        }
+
+        // Rotate callout (Fenix only, if VR speed is configured)
+        if (isFenixAircraft && fenixVRSpeed.HasValue && fenixVRSpeed.Value > 0)
+        {
+            if (!hasAnnouncedRotate && currentIAS >= fenixVRSpeed.Value)
+            {
+                announcer.Announce("rotate");
+                hasAnnouncedRotate = true;
+                System.Diagnostics.Debug.WriteLine($"[TakeoffAssistManager] Speed callout: Rotate at {fenixVRSpeed.Value} kt (IAS={currentIAS:F1})");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Sets the Fenix V-speeds for callouts. Call when takeoff assist activates on Fenix.
+    /// </summary>
+    /// <param name="v1">V1 speed in knots (0 or null = not configured)</param>
+    /// <param name="vr">VR speed in knots (0 or null = not configured)</param>
+    public void SetFenixVSpeeds(double? v1, double? vr)
+    {
+        fenixV1Speed = (v1.HasValue && v1.Value > 0) ? v1 : null;
+        fenixVRSpeed = (vr.HasValue && vr.Value > 0) ? vr : null;
+        isFenixAircraft = true;
+
+        System.Diagnostics.Debug.WriteLine($"[TakeoffAssistManager] Fenix V-speeds set: V1={fenixV1Speed?.ToString() ?? "N/A"}, VR={fenixVRSpeed?.ToString() ?? "N/A"}");
+    }
+
+    /// <summary>
+    /// Clears Fenix V-speeds (call when switching away from Fenix or deactivating)
+    /// </summary>
+    public void ClearFenixVSpeeds()
+    {
+        fenixV1Speed = null;
+        fenixVRSpeed = null;
+        isFenixAircraft = false;
     }
 
     /// <summary>

@@ -14,7 +14,7 @@ This application uses Windows standard controls, screen reader announcements and
 - Global hotkeys for accessing a comprehensive set of features, such as on-demand readout of heading/speed/altitude/VS and many more
 - Continuous monitoring of aircraft systems and announcing changes, for example, Master Warning and Master Caution alerts and many more.
 - Capability to teleport to and from gates to runways. This is crucial for blind pilots because taxi operations are not possible to do right now.
-- Additional tools to assist visually impaired pilots to fly, for example, take-off assistance which announces when the pilot is deviating from the runway, as well as pitch monitoring. More tools such as landing assistance and ILS guidance are planned for the future!
+- Additional tools to assist visually impaired pilots to fly, for example, take-off assistance which announces when the pilot is deviating from the runway, as well as pitch monitoring.
 - Aircraft-specific dedicated systems. On the FlyByWire A32NX for example, blind users can hear and read all engine and display warning messages, read fuel and payload and weight/balance details in full, hear Flight Mode Annunciator messages, get on-demand information on next waypoint, etc.
 - An extensive text-based location and map viewer. Configurable with filters, lets users read direction and distance to major and small cities, landmarks, terrain and water bodies while they fly!
 - A full-featured flight plan route viewer that supports SID, STAR and approach procedures, with waypoint tracking during flight.

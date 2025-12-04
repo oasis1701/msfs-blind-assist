@@ -236,6 +236,7 @@ public class SimConnectManager
         public double Longitude;
         public double Pitch;
         public double HeadingMagnetic;
+        public double IndicatedAirspeedKnots;
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
@@ -443,7 +444,7 @@ public class SimConnectManager
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)8);
         sc.RegisterDataDefineStruct<VisualGuidanceData>(DATA_DEFINITIONS.VISUAL_GUIDANCE_DATA);
 
-        // Register takeoff assist data (consolidated position + pitch + heading)
+        // Register takeoff assist data (consolidated position + pitch + heading + airspeed)
         sc.AddToDataDefinition(DATA_DEFINITIONS.TAKEOFF_ASSIST_DATA, "PLANE LATITUDE", "degrees",
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)0);
         sc.AddToDataDefinition(DATA_DEFINITIONS.TAKEOFF_ASSIST_DATA, "PLANE LONGITUDE", "degrees",
@@ -452,6 +453,8 @@ public class SimConnectManager
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)2);
         sc.AddToDataDefinition(DATA_DEFINITIONS.TAKEOFF_ASSIST_DATA, "PLANE HEADING DEGREES MAGNETIC", "radians",
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)3);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.TAKEOFF_ASSIST_DATA, "AIRSPEED INDICATED", "knots",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)4);
         sc.RegisterDataDefineStruct<TakeoffAssistData>(DATA_DEFINITIONS.TAKEOFF_ASSIST_DATA);
 
         // Register wind data for wind information
@@ -1483,6 +1486,14 @@ public class SimConnectManager
                 {
                     VarName = "TAKEOFF_ASSIST_PITCH",
                     Value = -(taData.Pitch * (180.0 / Math.PI)),
+                    Description = ""
+                });
+
+                // Send IAS update for speed callouts
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "TAKEOFF_ASSIST_IAS",
+                    Value = taData.IndicatedAirspeedKnots,
                     Description = ""
                 });
                 break;
