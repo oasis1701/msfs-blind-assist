@@ -132,7 +132,8 @@ public partial class MainForm : Form
             takeoffSettings.TakeoffAssistToneWaveform, takeoffSettings.TakeoffAssistToneVolume,
             takeoffSettings.TakeoffAssistMuteCenterlineAnnouncements,
             takeoffSettings.TakeoffAssistInvertPanning,
-            takeoffSettings.TakeoffAssistHeadingToneThreshold, takeoffSettings.TakeoffAssistLegacyMode);
+            takeoffSettings.TakeoffAssistHeadingToneThreshold, takeoffSettings.TakeoffAssistLegacyMode,
+            takeoffSettings.TakeoffAssistEnableCallouts);
         takeoffAssistManager.TakeoffAssistActiveChanged += OnTakeoffAssistActiveChanged;
 
         // Initialize hand fly manager
@@ -1774,7 +1775,8 @@ public partial class MainForm : Form
             currentSettings.TakeoffAssistMuteCenterlineAnnouncements,
             currentSettings.TakeoffAssistInvertPanning,
             currentSettings.TakeoffAssistHeadingToneThreshold,
-            currentSettings.TakeoffAssistLegacyMode))
+            currentSettings.TakeoffAssistLegacyMode,
+            currentSettings.TakeoffAssistEnableCallouts))
         {
             if (settingsForm.ShowDialog(this) == DialogResult.OK)
             {
@@ -1792,6 +1794,7 @@ public partial class MainForm : Form
                 currentSettings.TakeoffAssistInvertPanning = settingsForm.TakeoffAssistInvertPanning;
                 currentSettings.TakeoffAssistHeadingToneThreshold = settingsForm.TakeoffAssistHeadingToneThreshold;
                 currentSettings.TakeoffAssistLegacyMode = settingsForm.TakeoffAssistLegacyMode;
+                currentSettings.TakeoffAssistEnableCallouts = settingsForm.TakeoffAssistEnableCallouts;
                 SettingsManager.Save();
 
                 // Recreate TakeoffAssistManager to pick up new settings (invert panning, legacy mode, tone, volume)
@@ -1804,7 +1807,8 @@ public partial class MainForm : Form
                         currentSettings.TakeoffAssistToneWaveform, currentSettings.TakeoffAssistToneVolume,
                         currentSettings.TakeoffAssistMuteCenterlineAnnouncements,
                         currentSettings.TakeoffAssistInvertPanning,
-                        currentSettings.TakeoffAssistHeadingToneThreshold, currentSettings.TakeoffAssistLegacyMode);
+                        currentSettings.TakeoffAssistHeadingToneThreshold, currentSettings.TakeoffAssistLegacyMode,
+                        currentSettings.TakeoffAssistEnableCallouts);
                     takeoffAssistManager.TakeoffAssistActiveChanged += OnTakeoffAssistActiveChanged;
                 }
 

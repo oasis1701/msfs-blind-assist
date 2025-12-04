@@ -58,6 +58,7 @@ public class UserSettings
         public bool TakeoffAssistInvertPanning { get; set; } = false; // Invert panning direction
         public bool TakeoffAssistLegacyMode { get; set; } = false; // Legacy mode: heading-based instead of centerline tracking
         public int TakeoffAssistHeadingToneThreshold { get; set; } = 0; // 0 = Always, 1-5 = degrees threshold
+        public bool TakeoffAssistEnableCallouts { get; set; } = true; // Enable speed callouts (80kt, 100kt, V1, rotate)
 
         // Simulator Settings
         public string SimulatorVersion { get; set; } = "FS2020";
@@ -130,6 +131,7 @@ public class UserSettings
             TakeoffAssistInvertPanning = TakeoffAssistInvertPanning,
             TakeoffAssistLegacyMode = TakeoffAssistLegacyMode,
             TakeoffAssistHeadingToneThreshold = TakeoffAssistHeadingToneThreshold,
+            TakeoffAssistEnableCallouts = TakeoffAssistEnableCallouts,
             SimulatorVersion = SimulatorVersion,
             LastAircraft = LastAircraft,
             GeoNamesApiUsername = GeoNamesApiUsername,

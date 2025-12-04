@@ -11,6 +11,7 @@ public class TakeoffAssistManager : IDisposable
     private readonly bool invertPanning;
     private readonly int headingToneThreshold;
     private readonly bool legacyMode;
+    private readonly bool enableCallouts;
     private bool isActive = false;
 
     // Runway reference data (set by teleport or manual activation)
@@ -72,12 +73,14 @@ public class TakeoffAssistManager : IDisposable
     public TakeoffAssistManager(ScreenReaderAnnouncer screenReaderAnnouncer,
         HandFlyWaveType waveType = HandFlyWaveType.Sine, double volume = 0.05,
         bool muteCenterline = false, bool useInvertPanning = false,
-        int useHeadingToneThreshold = 0, bool useLegacyMode = false)
+        int useHeadingToneThreshold = 0, bool useLegacyMode = false,
+        bool useEnableCallouts = true)
     {
         announcer = screenReaderAnnouncer;
         toneWaveType = waveType;
         toneVolume = volume;
         muteCenterlineAnnouncements = muteCenterline;
+        enableCallouts = useEnableCallouts;
         invertPanning = useInvertPanning;
         headingToneThreshold = useHeadingToneThreshold;
         legacyMode = useLegacyMode;
@@ -344,6 +347,7 @@ public class TakeoffAssistManager : IDisposable
     public void ProcessSpeedUpdate(double currentIAS)
     {
         if (!isActive) return;
+        if (!enableCallouts) return;
 
         // 80 knots callout (all aircraft)
         // Use Announce() (queued, non-interrupting) so callouts don't cut each other off

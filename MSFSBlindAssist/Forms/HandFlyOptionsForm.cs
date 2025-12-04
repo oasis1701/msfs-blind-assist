@@ -42,6 +42,7 @@ public partial class HandFlyOptionsForm : Form
     private Label headingToneThresholdLabel = null!;
     private ComboBox headingToneThresholdCombo = null!;
     private CheckBox legacyTakeoffCheckBox = null!;
+    private CheckBox enableCalloutsCheckBox = null!;
 
     private Button okButton = null!;
     private Button cancelButton = null!;
@@ -61,12 +62,14 @@ public partial class HandFlyOptionsForm : Form
     public bool TakeoffAssistInvertPanning { get; private set; }
     public int TakeoffAssistHeadingToneThreshold { get; private set; }
     public bool TakeoffAssistLegacyMode { get; private set; }
+    public bool TakeoffAssistEnableCallouts { get; private set; }
 
     public HandFlyOptionsForm(HandFlyFeedbackMode currentMode, HandFlyWaveType currentWaveType, double currentVolume,
         bool monitorHeading, bool monitorVerticalSpeed, HandFlyWaveType guidanceToneWaveform,
         double currentGuidanceVolume, HandFlyWaveType takeoffToneWaveform, double takeoffToneVolume,
         bool takeoffAssistMuteCenterlineAnnouncements, bool takeoffAssistInvertPanning,
-        int takeoffAssistHeadingToneThreshold, bool takeoffAssistLegacyMode)
+        int takeoffAssistHeadingToneThreshold, bool takeoffAssistLegacyMode,
+        bool takeoffAssistEnableCallouts)
     {
         SelectedFeedbackMode = currentMode;
         SelectedWaveType = currentWaveType;
@@ -81,6 +84,7 @@ public partial class HandFlyOptionsForm : Form
         TakeoffAssistInvertPanning = takeoffAssistInvertPanning;
         TakeoffAssistHeadingToneThreshold = takeoffAssistHeadingToneThreshold;
         TakeoffAssistLegacyMode = takeoffAssistLegacyMode;
+        TakeoffAssistEnableCallouts = takeoffAssistEnableCallouts;
         InitializeComponent();
         SetupAccessibility();
     }
@@ -88,7 +92,7 @@ public partial class HandFlyOptionsForm : Form
     private void InitializeComponent()
     {
         Text = "Hand Fly Options";
-        Size = new Size(500, 775);
+        Size = new Size(500, 805);
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -432,11 +436,23 @@ public partial class HandFlyOptionsForm : Form
         };
         legacyTakeoffCheckBox.CheckedChanged += LegacyTakeoffCheckBox_CheckedChanged;
 
+        // Enable Takeoff Callouts Checkbox
+        enableCalloutsCheckBox = new CheckBox
+        {
+            Text = "Enable takeoff assistant call outs",
+            Location = new Point(20, 690),
+            Size = new Size(450, 25),
+            Checked = TakeoffAssistEnableCallouts,
+            AccessibleName = "Enable takeoff assistant call outs",
+            AccessibleDescription = "When enabled, announces speed callouts during takeoff roll: 80 knots, 100 knots, V1, and rotate."
+        };
+        enableCalloutsCheckBox.CheckedChanged += EnableCalloutsCheckBox_CheckedChanged;
+
         // OK Button
         okButton = new Button
         {
             Text = "OK",
-            Location = new Point(310, 705),
+            Location = new Point(310, 735),
             Size = new Size(75, 30),
             DialogResult = DialogResult.OK,
             AccessibleName = "Apply Settings",
@@ -448,7 +464,7 @@ public partial class HandFlyOptionsForm : Form
         cancelButton = new Button
         {
             Text = "Cancel",
-            Location = new Point(395, 705),
+            Location = new Point(395, 735),
             Size = new Size(75, 30),
             DialogResult = DialogResult.Cancel,
             AccessibleName = "Cancel",
@@ -467,7 +483,7 @@ public partial class HandFlyOptionsForm : Form
             takeoffVolumeLabel, takeoffVolumeTrackBar, takeoffVolumeValueLabel,
             muteCenterlineCheckBox, invertPanningCheckBox,
             headingToneThresholdLabel, headingToneThresholdCombo,
-            legacyTakeoffCheckBox,
+            legacyTakeoffCheckBox, enableCalloutsCheckBox,
             okButton, cancelButton
         });
 
@@ -613,6 +629,11 @@ public partial class HandFlyOptionsForm : Form
     private void LegacyTakeoffCheckBox_CheckedChanged(object? sender, EventArgs e)
     {
         TakeoffAssistLegacyMode = legacyTakeoffCheckBox.Checked;
+    }
+
+    private void EnableCalloutsCheckBox_CheckedChanged(object? sender, EventArgs e)
+    {
+        TakeoffAssistEnableCallouts = enableCalloutsCheckBox.Checked;
     }
 
     private void TestToneButton_Click(object? sender, EventArgs e)
