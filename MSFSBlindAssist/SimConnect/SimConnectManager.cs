@@ -237,6 +237,7 @@ public class SimConnectManager
         public double Pitch;
         public double HeadingMagnetic;
         public double IndicatedAirspeedKnots;
+        public double MagneticVariation;
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
@@ -455,6 +456,8 @@ public class SimConnectManager
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)3);
         sc.AddToDataDefinition(DATA_DEFINITIONS.TAKEOFF_ASSIST_DATA, "AIRSPEED INDICATED", "knots",
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)4);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.TAKEOFF_ASSIST_DATA, "MAGVAR", "degrees",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)5);
         sc.RegisterDataDefineStruct<TakeoffAssistData>(DATA_DEFINITIONS.TAKEOFF_ASSIST_DATA);
 
         // Register wind data for wind information
@@ -1381,7 +1384,8 @@ public class SimConnectManager
                     {
                         Latitude = toggleData.Latitude,
                         Longitude = toggleData.Longitude,
-                        HeadingMagnetic = toggleData.HeadingMagnetic * (180.0 / Math.PI) // Convert radians to degrees
+                        HeadingMagnetic = toggleData.HeadingMagnetic * (180.0 / Math.PI), // Convert radians to degrees
+                        MagneticVariation = toggleData.MagneticVariation
                     }
                 });
                 break;
