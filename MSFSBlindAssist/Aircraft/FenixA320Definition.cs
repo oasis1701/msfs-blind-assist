@@ -8365,7 +8365,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_MIP_MASTER_WARNING_FO_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_MIP_MASTER_WARNING_FO_L",
-                DisplayName = "Glareshield Master Warning FO Lower",
+                DisplayName = "Master Warning FO Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -8374,7 +8374,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_MIP_MASTER_WARNING_FO"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_MIP_MASTER_WARNING_FO",
-                DisplayName = "Glareshield Master Warning FO Fault",
+                DisplayName = "Master Warning FO",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -8383,7 +8383,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_MIP_MASTER_WARNING_CAPT_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_MIP_MASTER_WARNING_CAPT_L",
-                DisplayName = "Glareshield Master Warning Captain Lower",
+                DisplayName = "Master Warning Captain Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -8392,7 +8392,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_MIP_MASTER_WARNING_CAPT"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_MIP_MASTER_WARNING_CAPT",
-                DisplayName = "Glareshield Master Warning Captain Fault",
+                DisplayName = "Master Warning Captain",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -8401,7 +8401,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_MIP_MASTER_CAUTION_FO_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_MIP_MASTER_CAUTION_FO_L",
-                DisplayName = "Glareshield Master Caution FO Lower",
+                DisplayName = "Master Caution FO Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -8410,7 +8410,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_MIP_MASTER_CAUTION_FO"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_MIP_MASTER_CAUTION_FO",
-                DisplayName = "Glareshield Master Caution FO Fault",
+                DisplayName = "Master Caution FO",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -8419,7 +8419,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_MIP_MASTER_CAUTION_CAPT_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_MIP_MASTER_CAUTION_CAPT_L",
-                DisplayName = "Glareshield Master Caution Captain Lower",
+                DisplayName = "Master Caution Captain Lower",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -8428,7 +8428,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_MIP_MASTER_CAUTION_CAPT"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_MIP_MASTER_CAUTION_CAPT",
-                DisplayName = "Glareshield Master Caution Captain Fault",
+                DisplayName = "Master Caution Captain",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,

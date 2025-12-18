@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Settings;
+using MSFSBlindAssist.SimConnect;
 
 namespace MSFSBlindAssist.Forms;
 
@@ -13,31 +14,34 @@ public partial class FenixMonitorManagerForm : Form
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr hWnd);
 
-    // Static list of manageable variables - easy to expand later
-    private static readonly (string Key, string DisplayName)[] ManageableVariables = new[]
+    // Static list of manageable variable keys - easy to expand later
+    // Display names are fetched dynamically from the aircraft definition
+    private static readonly string[] ManageableVariableKeys = new[]
     {
-        ("I_MIP_MASTER_WARNING_CAPT", "Master Warning Captain Fault"),
-        ("I_MIP_MASTER_WARNING_CAPT_L", "Master Warning Captain Lower"),
-        ("I_MIP_MASTER_WARNING_FO", "Master Warning FO Fault"),
-        ("I_MIP_MASTER_WARNING_FO_L", "Master Warning FO Lower"),
-        ("I_MIP_MASTER_CAUTION_CAPT", "Master Caution Captain Fault"),
-        ("I_MIP_MASTER_CAUTION_CAPT_L", "Master Caution Captain Lower"),
-        ("I_MIP_MASTER_CAUTION_FO", "Master Caution FO Fault"),
-        ("I_MIP_MASTER_CAUTION_FO_L", "Master Caution FO Lower"),
-        ("I_ECAM_CLR_LEFT", "ECAM CLR Left"),
-        ("I_ECAM_CLR_RIGHT", "ECAM CLR Right"),
+        "I_MIP_MASTER_WARNING_CAPT",
+        "I_MIP_MASTER_WARNING_CAPT_L",
+        "I_MIP_MASTER_WARNING_FO",
+        "I_MIP_MASTER_WARNING_FO_L",
+        "I_MIP_MASTER_CAUTION_CAPT",
+        "I_MIP_MASTER_CAUTION_CAPT_L",
+        "I_MIP_MASTER_CAUTION_FO",
+        "I_MIP_MASTER_CAUTION_FO_L",
+        "I_ECAM_CLR_LEFT",
+        "I_ECAM_CLR_RIGHT",
     };
 
     private CheckedListBox variableListBox = null!;
     private readonly ScreenReaderAnnouncer _announcer;
+    private readonly Dictionary<string, SimVarDefinition> _variables;
     private IntPtr previousWindow;
 
     // Static field to persist focus position across show/hide cycles
     private static int lastSelectedItemIndex = 0;
 
-    public FenixMonitorManagerForm(ScreenReaderAnnouncer announcer)
+    public FenixMonitorManagerForm(ScreenReaderAnnouncer announcer, Dictionary<string, SimVarDefinition> variables)
     {
         _announcer = announcer;
+        _variables = variables;
         InitializeComponent();
         SetupAccessibility();
         PopulateVariables();
@@ -125,8 +129,10 @@ public partial class FenixMonitorManagerForm : Form
         variableListBox.BeginUpdate();
         variableListBox.Items.Clear();
 
-        foreach (var (key, displayName) in ManageableVariables)
+        foreach (var key in ManageableVariableKeys)
         {
+            // Fetch display name dynamically from aircraft definition
+            string displayName = _variables.TryGetValue(key, out var def) ? def.DisplayName : key;
             int index = variableListBox.Items.Add(displayName);
             // Checkbox checked = monitoring ENABLED (not in disabled list)
             bool isEnabled = !disabledVars.Contains(key);
@@ -138,10 +144,10 @@ public partial class FenixMonitorManagerForm : Form
 
     private void VariableListBox_ItemCheck(object? sender, ItemCheckEventArgs e)
     {
-        if (e.Index < 0 || e.Index >= ManageableVariables.Length)
+        if (e.Index < 0 || e.Index >= ManageableVariableKeys.Length)
             return;
 
-        var variableKey = ManageableVariables[e.Index].Key;
+        var variableKey = ManageableVariableKeys[e.Index];
         var settings = SettingsManager.Current;
 
         // Checked = enabled (remove from disabled list)
