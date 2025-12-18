@@ -25,6 +25,7 @@ public partial class MainForm : Form
     private HotkeyManager hotkeyManager = null!;
     private IAirportDataProvider? airportDataProvider;
     private ChecklistForm? checklistForm;
+    private FenixMonitorManagerForm? fenixMonitorManagerForm;
     private TakeoffAssistManager takeoffAssistManager = null!;
     private HandFlyManager handFlyManager = null!;
     private VisualGuidanceManager visualGuidanceManager = null!;
@@ -360,6 +361,13 @@ public partial class MainForm : Form
             var varDef = currentAircraft.GetVariables()[e.VarName];
             if (varDef.IsAnnounced && varDef.UpdateFrequency == UpdateFrequency.Continuous)
             {
+                // Check if disabled in Fenix Monitor Manager
+                if (currentAircraft.AircraftCode == "FENIX_A320CEO" &&
+                    Settings.SettingsManager.Current.FenixDisabledMonitorVariables.Contains(e.VarName))
+                {
+                    return; // Skip announcement for disabled variable
+                }
+
                 simVarMonitor.ProcessUpdate(e.VarName, e.Value, e.Description);
             }
         }
@@ -1219,6 +1227,18 @@ public partial class MainForm : Form
         checklistForm.ShowForm();
     }
 
+    public void ShowFenixMonitorManagerDialog()
+    {
+        // Create form if it doesn't exist or has been disposed
+        if (fenixMonitorManagerForm == null || fenixMonitorManagerForm.IsDisposed)
+        {
+            fenixMonitorManagerForm = new FenixMonitorManagerForm(announcer);
+        }
+
+        // Show the form (reuses same instance to preserve state)
+        fenixMonitorManagerForm.ShowForm();
+    }
+
     private void ShowElectronicFlightBagDialog()
     {
         // Ensure output hotkey mode is deactivated before showing dialog
@@ -1892,6 +1912,13 @@ public partial class MainForm : Form
         {
             checklistForm.Dispose();
             checklistForm = null;
+        }
+
+        // Dispose fenixMonitorManagerForm when switching aircraft
+        if (fenixMonitorManagerForm != null && !fenixMonitorManagerForm.IsDisposed)
+        {
+            fenixMonitorManagerForm.Dispose();
+            fenixMonitorManagerForm = null;
         }
 
         // Rebuild sections from new aircraft structure

@@ -12842,6 +12842,14 @@ public class FenixA320Definition : BaseAircraftDefinition
                 ShowFenixAutopilotWindow(simConnect, announcer, parentForm);
                 return true;
 
+            case HotkeyAction.MonitorManager:
+                hotkeyManager.ExitOutputHotkeyMode();
+                if (parentForm is MainForm mf)
+                {
+                    mf.ShowFenixMonitorManagerDialog();
+                }
+                return true;
+
             default:
                 // Let base class handle other actions
                 return base.HandleHotkeyAction(action, simConnect, announcer, parentForm, hotkeyManager);

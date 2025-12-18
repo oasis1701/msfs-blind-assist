@@ -113,6 +113,9 @@ public class HotkeyManager : IDisposable
         // Visual guidance mode hotkey IDs
         private const int HOTKEY_VISUAL_TARGET_FPM = 9090;
 
+        // Monitor Manager hotkey ID (per-aircraft behavior)
+        private const int HOTKEY_MONITOR_MANAGER = 9091;
+
         private IntPtr windowHandle;
         private bool visualGuidanceHotkeysActive = false;
         private bool outputHotkeyModeActive = false;
@@ -279,6 +282,9 @@ public class HotkeyManager : IDisposable
                             break;
                         case HOTKEY_TOGGLE_ECAM_MONITORING:
                             TriggerHotkey(HotkeyAction.ToggleECAMMonitoring);
+                            break;
+                        case HOTKEY_MONITOR_MANAGER:
+                            TriggerHotkey(HotkeyAction.MonitorManager);
                             break;
                         case HOTKEY_HAND_FLY_MODE:
                             // Deactivate output mode BEFORE triggering hand fly mode to avoid race condition
@@ -521,6 +527,7 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_STATUS_DISPLAY, MOD_SHIFT, 0x54); // Shift+T (STATUS Display)
             RegisterHotKey(windowHandle, HOTKEY_TAKEOFF_ASSIST, MOD_CONTROL, 0x54); // Ctrl+T (Takeoff Assist)
             RegisterHotKey(windowHandle, HOTKEY_TOGGLE_ECAM_MONITORING, MOD_CONTROL, 0x45); // Ctrl+E (Toggle ECAM Monitoring)
+            RegisterHotKey(windowHandle, HOTKEY_MONITOR_MANAGER, MOD_CONTROL, 0x4D); // Ctrl+M (Monitor Manager - per-aircraft)
             RegisterHotKey(windowHandle, HOTKEY_HAND_FLY_MODE, MOD_CONTROL, 0x48); // Ctrl+H (Hand Fly Mode)
             RegisterHotKey(windowHandle, HOTKEY_VISUAL_GUIDANCE, MOD_CONTROL, 0x56); // Ctrl+V (Visual Guidance)
             RegisterHotKey(windowHandle, HOTKEY_EFB, MOD_SHIFT, 0x45); // Shift+E (Electronic Flight Bag)
@@ -592,6 +599,7 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_STATUS_DISPLAY);
             UnregisterHotKey(windowHandle, HOTKEY_TAKEOFF_ASSIST);
             UnregisterHotKey(windowHandle, HOTKEY_TOGGLE_ECAM_MONITORING);
+            UnregisterHotKey(windowHandle, HOTKEY_MONITOR_MANAGER);
             UnregisterHotKey(windowHandle, HOTKEY_HAND_FLY_MODE);
             UnregisterHotKey(windowHandle, HOTKEY_VISUAL_GUIDANCE);
             UnregisterHotKey(windowHandle, HOTKEY_EFB);
@@ -937,6 +945,7 @@ public class HotkeyManager : IDisposable
         ShowStatusPage,
         ToggleTakeoffAssist,
         ToggleECAMMonitoring,
+        MonitorManager,
         ToggleHandFlyMode,
         ToggleVisualGuidance,
         ShowElectronicFlightBag,

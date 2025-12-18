@@ -101,6 +101,9 @@ public class UserSettings
         // Units
         public string DistanceUnits { get; set; } = "miles";
 
+        // Fenix Monitor Manager Settings
+        public List<string> FenixDisabledMonitorVariables { get; set; } = new List<string>();
+
         /// <summary>
         /// Creates a new UserSettings instance with default values.
         /// </summary>
@@ -154,7 +157,8 @@ public class UserSettings
             MaxTouristLandmarksToShow = MaxTouristLandmarksToShow,
             MajorCityPopulationThreshold = MajorCityPopulationThreshold,
             MajorCityAPIThreshold = MajorCityAPIThreshold,
-            DistanceUnits = DistanceUnits
+            DistanceUnits = DistanceUnits,
+            FenixDisabledMonitorVariables = new List<string>(FenixDisabledMonitorVariables)
         };
     }
 }

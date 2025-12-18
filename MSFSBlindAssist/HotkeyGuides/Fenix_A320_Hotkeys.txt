@@ -55,6 +55,7 @@ Waypoint tracking, use Fix track window or Electronic flight bag route viewer wi
 5. track slot 5
 
 Displays and windows:
+control+m, Fenix Monitor Manager
   Shift+E, Route viewer, procedure planner and airport lookup
   Shift+L,    Location Info
   Shift+M,    Show VATSIM METAR Report
