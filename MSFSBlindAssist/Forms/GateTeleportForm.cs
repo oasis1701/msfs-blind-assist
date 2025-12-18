@@ -263,6 +263,17 @@ public partial class GateTeleportForm : Form
     {
         if (SelectedParkingSpot != null && SelectedAirport != null)
         {
+            // Show confirmation prompt
+            var result = MessageBox.Show(
+                $"You're about to reposition your aircraft to {SelectedParkingSpot} at {SelectedAirport.Name}.\n\nAre you sure?",
+                "Confirm Teleport",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question,
+                MessageBoxDefaultButton.Button2);
+
+            if (result != DialogResult.Yes)
+                return;
+
             DialogResult = DialogResult.OK;
             Close();
 

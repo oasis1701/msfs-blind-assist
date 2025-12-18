@@ -252,6 +252,17 @@ public partial class RunwayTeleportForm : Form
     {
         if (SelectedRunway != null && SelectedAirport != null)
         {
+            // Show confirmation prompt
+            var result = MessageBox.Show(
+                $"You're about to reposition your aircraft to Runway {SelectedRunway.RunwayID} at {SelectedAirport.Name}.\n\nAre you sure?",
+                "Confirm Teleport",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question,
+                MessageBoxDefaultButton.Button2);
+
+            if (result != DialogResult.Yes)
+                return;
+
             DialogResult = DialogResult.OK;
             Close();
 
