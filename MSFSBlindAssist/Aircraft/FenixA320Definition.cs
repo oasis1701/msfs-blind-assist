@@ -12823,22 +12823,27 @@ public class FenixA320Definition : BaseAircraftDefinition
 
             // FCU set windows (Ctrl+H, Ctrl+S, Ctrl+A, Ctrl+V, Ctrl+P in input mode)
             case HotkeyAction.FCUSetHeading:
+                hotkeyManager.ExitInputHotkeyMode();
                 ShowFenixHeadingWindow(simConnect, announcer, parentForm);
                 return true;
 
             case HotkeyAction.FCUSetSpeed:
+                hotkeyManager.ExitInputHotkeyMode();
                 ShowFenixSpeedWindow(simConnect, announcer, parentForm);
                 return true;
 
             case HotkeyAction.FCUSetAltitude:
+                hotkeyManager.ExitInputHotkeyMode();
                 ShowFenixAltitudeWindow(simConnect, announcer, parentForm);
                 return true;
 
             case HotkeyAction.FCUSetVS:
+                hotkeyManager.ExitInputHotkeyMode();
                 ShowFenixVSWindow(simConnect, announcer, parentForm);
                 return true;
 
             case HotkeyAction.FCUSetAutopilot:
+                hotkeyManager.ExitInputHotkeyMode();
                 ShowFenixAutopilotWindow(simConnect, announcer, parentForm);
                 return true;
 

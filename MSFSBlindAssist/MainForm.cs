@@ -1082,6 +1082,9 @@ public partial class MainForm : Form
 
     private void ShowRunwayTeleportDialog()
     {
+        // Deactivate input hotkey mode before showing dialog
+        hotkeyManager.ExitInputHotkeyMode();
+
         if (airportDataProvider == null || !airportDataProvider.DatabaseExists)
         {
             announcer.AnnounceImmediate("Airport database not found. Configure database from File menu first.");
@@ -1104,6 +1107,9 @@ public partial class MainForm : Form
 
     private void ShowGateTeleportDialog()
     {
+        // Deactivate input hotkey mode before showing dialog
+        hotkeyManager.ExitInputHotkeyMode();
+
         if (airportDataProvider == null || !airportDataProvider.DatabaseExists)
         {
             announcer.AnnounceImmediate("Airport database not found. Configure database from File menu first.");
@@ -1126,6 +1132,9 @@ public partial class MainForm : Form
 
     private void ShowLocationInfoDialog()
     {
+        // Deactivate output hotkey mode before showing dialog
+        hotkeyManager.ExitOutputHotkeyMode();
+
         if (!simConnectManager.IsConnected)
         {
             announcer.AnnounceImmediate("Not connected to simulator. Cannot get location information.");
@@ -1229,6 +1238,9 @@ public partial class MainForm : Form
 
     public void ShowFenixMonitorManagerDialog()
     {
+        // Deactivate output hotkey mode before showing dialog
+        hotkeyManager.ExitOutputHotkeyMode();
+
         // Create form if it doesn't exist or has been disposed
         if (fenixMonitorManagerForm == null || fenixMonitorManagerForm.IsDisposed)
         {

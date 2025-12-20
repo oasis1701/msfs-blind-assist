@@ -3564,15 +3564,19 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             // FCU set value dialogs (these need custom logic)
             case HotkeyAction.FCUSetHeading:
+                hotkeyManager.ExitInputHotkeyMode();
                 return ShowA320HeadingInputDialog(simConnect, announcer, parentForm);
 
             case HotkeyAction.FCUSetSpeed:
+                hotkeyManager.ExitInputHotkeyMode();
                 return ShowA320SpeedInputDialog(simConnect, announcer, parentForm);
 
             case HotkeyAction.FCUSetAltitude:
+                hotkeyManager.ExitInputHotkeyMode();
                 return ShowA320AltitudeInputDialog(simConnect, announcer, parentForm);
 
             case HotkeyAction.FCUSetVS:
+                hotkeyManager.ExitInputHotkeyMode();
                 return ShowA320VSInputDialog(simConnect, announcer, parentForm);
 
             // A32NX FCU value readouts
