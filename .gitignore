@@ -96,11 +96,8 @@ $RECYCLE.BIN/
 .idea/
 *.sln.iml
 
-# Claude Code specific files (allow others to use different tools)
-docs
+# local Claude settings
 .claude/
-CLAUDE.md
-GuidesForClaude/
 
 # User-specific development notes
 *.private.md
