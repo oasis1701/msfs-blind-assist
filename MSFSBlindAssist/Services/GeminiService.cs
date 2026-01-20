@@ -11,7 +11,7 @@ namespace MSFSBlindAssist.Services;
 public class GeminiService
 {
     private static readonly HttpClient httpClient = new HttpClient();
-    private const string API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
+    private const string API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent";
     private readonly string apiKey;
 
     static GeminiService()
