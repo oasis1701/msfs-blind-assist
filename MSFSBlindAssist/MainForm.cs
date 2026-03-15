@@ -5,6 +5,7 @@ using MSFSBlindAssist.Database;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Forms;
 using MSFSBlindAssist.Forms.A32NX;
+using MSFSBlindAssist.Forms.FenixA320;
 using MSFSBlindAssist.Hotkeys;
 using MSFSBlindAssist.Services;
 using MSFSBlindAssist.Settings;
@@ -26,6 +27,8 @@ public partial class MainForm : Form
     private IAirportDataProvider? airportDataProvider;
     private ChecklistForm? checklistForm;
     private FenixMonitorManagerForm? fenixMonitorManagerForm;
+    private FenixMCDUForm? fenixMCDUForm;
+    private FenixMCDUService? fenixMCDUService;
     private TakeoffAssistManager takeoffAssistManager = null!;
     private HandFlyManager handFlyManager = null!;
     private VisualGuidanceManager visualGuidanceManager = null!;
@@ -851,7 +854,8 @@ public partial class MainForm : Form
             HotkeyAction.ShowChecklist,
             HotkeyAction.ShowMETARReport,
             HotkeyAction.SimBriefBriefing,
-            HotkeyAction.ShowElectronicFlightBag
+            HotkeyAction.ShowElectronicFlightBag,
+            HotkeyAction.ShowFenixMCDU
         };
 
         // Guard clause: Block SimConnect-dependent actions if not fully connected
@@ -952,6 +956,9 @@ public partial class MainForm : Form
                 break;
             case HotkeyAction.ShowElectronicFlightBag:
                 ShowElectronicFlightBagDialog();
+                break;
+            case HotkeyAction.ShowFenixMCDU:
+                ShowFenixMCDUDialog();
                 break;
             case HotkeyAction.ShowTrackFixWindow:
                 ShowTrackFixDialog();
@@ -1249,6 +1256,28 @@ public partial class MainForm : Form
 
         // Show the form (reuses same instance to preserve state)
         fenixMonitorManagerForm.ShowForm();
+    }
+
+    private void ShowFenixMCDUDialog()
+    {
+        // Deactivate input hotkey mode before showing dialog
+        hotkeyManager.ExitInputHotkeyMode();
+
+        // Create service if it doesn't exist
+        if (fenixMCDUService == null)
+        {
+            fenixMCDUService = new FenixMCDUService();
+            fenixMCDUService.Connect();
+        }
+
+        // Create form if it doesn't exist or has been disposed
+        if (fenixMCDUForm == null || fenixMCDUForm.IsDisposed)
+        {
+            fenixMCDUForm = new FenixMCDUForm(fenixMCDUService, announcer);
+        }
+
+        // Show the form (reuses same instance to preserve state)
+        fenixMCDUForm.ShowForm();
     }
 
     private void ShowElectronicFlightBagDialog()
@@ -1931,6 +1960,18 @@ public partial class MainForm : Form
         {
             fenixMonitorManagerForm.Dispose();
             fenixMonitorManagerForm = null;
+        }
+
+        // Dispose Fenix MCDU form and service when switching aircraft
+        if (fenixMCDUForm != null && !fenixMCDUForm.IsDisposed)
+        {
+            fenixMCDUForm.Dispose();
+            fenixMCDUForm = null;
+        }
+        if (fenixMCDUService != null)
+        {
+            fenixMCDUService.Dispose();
+            fenixMCDUService = null;
         }
 
         // Rebuild sections from new aircraft structure

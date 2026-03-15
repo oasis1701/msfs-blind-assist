@@ -116,6 +116,9 @@ public class HotkeyManager : IDisposable
         // Monitor Manager hotkey ID (per-aircraft behavior)
         private const int HOTKEY_MONITOR_MANAGER = 9091;
 
+        // Fenix MCDU hotkey ID
+        private const int HOTKEY_FENIX_MCDU = 9092;
+
         private IntPtr windowHandle;
         private bool visualGuidanceHotkeysActive = false;
         private bool outputHotkeyModeActive = false;
@@ -402,6 +405,9 @@ public class HotkeyManager : IDisposable
                         case HOTKEY_TRACK_FIX:
                             TriggerHotkey(HotkeyAction.ShowTrackFixWindow);
                             break;
+                        case HOTKEY_FENIX_MCDU:
+                            TriggerHotkey(HotkeyAction.ShowFenixMCDU);
+                            break;
                     }
                     DeactivateInputHotkeyMode();
                     return true;
@@ -650,6 +656,7 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_FCU_SET_AUTOPILOT, MOD_CONTROL, 0x50); // Ctrl+P (Set Autopilot)
             RegisterHotKey(windowHandle, HOTKEY_TOGGLE_AP2, MOD_CONTROL, 0x4F);      // Ctrl+O (Toggle Autopilot 2)
             RegisterHotKey(windowHandle, HOTKEY_TRACK_FIX, MOD_SHIFT, 0x46);         // Shift+F (Track Fix Window)
+            RegisterHotKey(windowHandle, HOTKEY_FENIX_MCDU, MOD_SHIFT, 0x4D);       // Shift+M (Fenix MCDU)
 
             InputHotkeyModeChanged?.Invoke(this, true);
         }
@@ -685,6 +692,7 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_FCU_SET_AUTOPILOT);
             UnregisterHotKey(windowHandle, HOTKEY_TOGGLE_AP2);
             UnregisterHotKey(windowHandle, HOTKEY_TRACK_FIX);
+            UnregisterHotKey(windowHandle, HOTKEY_FENIX_MCDU);
 
             InputHotkeyModeChanged?.Invoke(this, false);
         }
@@ -964,5 +972,6 @@ public class HotkeyManager : IDisposable
         ShowTrackFixWindow,
         ReadBankAngle,
         ReadPitch,
-        ReadTargetFPM
+        ReadTargetFPM,
+        ShowFenixMCDU
     }
