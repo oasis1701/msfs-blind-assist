@@ -40,6 +40,9 @@ Vertical:
 Weather:
   I Wind info
 
+Location:
+  C          Read Nearest City
+
 Tools:
 CTRL+h, Activate/deactivate Hand fly mode, Note, enables more hotkeys, advanced feature.
 CTRL+v, activate/deactivate visual guidance mode, note, requires hand fly mode to be on. Enables more hotkeys.

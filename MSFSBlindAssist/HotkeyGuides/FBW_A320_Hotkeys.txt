@@ -36,6 +36,9 @@ Vertical:
 Weather:
   I Wind info
 
+Location:
+  C          Read Nearest City
+
 Flight planning:
   W Next waypoint information
 
