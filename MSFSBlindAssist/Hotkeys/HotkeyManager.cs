@@ -119,6 +119,9 @@ public class HotkeyManager : IDisposable
         // Fenix MCDU hotkey ID
         private const int HOTKEY_FENIX_MCDU = 9092;
 
+        // Nearest city announcement hotkey ID
+        private const int HOTKEY_NEAREST_CITY = 9093;
+
         private IntPtr windowHandle;
         private bool visualGuidanceHotkeysActive = false;
         private bool outputHotkeyModeActive = false;
@@ -337,6 +340,9 @@ public class HotkeyManager : IDisposable
                         case HOTKEY_DESCRIBE_SCENE:
                             TriggerHotkey(HotkeyAction.DescribeScene);
                             break;
+                        case HOTKEY_NEAREST_CITY:
+                            TriggerHotkey(HotkeyAction.ReadNearestCity);
+                            break;
                     }
                     DeactivateOutputHotkeyMode();
                     return true;
@@ -551,6 +557,7 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_PFD, MOD_ALT, 0x50);         // Alt+P (Read PFD)
             RegisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_ISIS, MOD_ALT, 0x49);        // Alt+I (Read ISIS)
             RegisterHotKey(windowHandle, HOTKEY_DESCRIBE_SCENE, MOD_ALT, 0x44);           // Alt+D (Describe Scene)
+            RegisterHotKey(windowHandle, HOTKEY_NEAREST_CITY, MOD_NONE, 0x43);             // C (Nearest City)
 
             // Auto-timeout disabled - hotkey mode stays active until used or escape pressed
 
@@ -623,6 +630,7 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_PFD);
             UnregisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_ISIS);
             UnregisterHotKey(windowHandle, HOTKEY_DESCRIBE_SCENE);
+            UnregisterHotKey(windowHandle, HOTKEY_NEAREST_CITY);
 
             OutputHotkeyModeChanged?.Invoke(this, false);
         }
@@ -973,5 +981,6 @@ public class HotkeyManager : IDisposable
         ReadBankAngle,
         ReadPitch,
         ReadTargetFPM,
-        ShowFenixMCDU
+        ShowFenixMCDU,
+        ReadNearestCity
     }

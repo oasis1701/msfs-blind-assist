@@ -933,6 +933,9 @@ public partial class MainForm : Form
             case HotkeyAction.LocationInfo:
                 ShowLocationInfoDialog();
                 break;
+            case HotkeyAction.ReadNearestCity:
+                AnnounceNearestCity();
+                break;
             case HotkeyAction.SimBriefBriefing:
                 OpenSimBriefBriefing();
                 break;
@@ -3209,6 +3212,15 @@ public partial class MainForm : Form
     /// </summary>
     private void NearestCityAnnouncementTimer_Tick(object? sender, EventArgs e)
     {
+        AnnounceNearestCity();
+    }
+
+    /// <summary>
+    /// Announces the nearest city to the current aircraft position.
+    /// Used by both the periodic timer and the hotkey shortcut (] then C).
+    /// </summary>
+    private void AnnounceNearestCity()
+    {
         try
         {
             // Guard clause: Check if SimConnect is connected
@@ -3222,7 +3234,7 @@ public partial class MainForm : Form
             var settings = MSFSBlindAssist.Settings.SettingsManager.Current;
             if (string.IsNullOrWhiteSpace(settings.GeoNamesApiUsername))
             {
-                System.Diagnostics.Debug.WriteLine("[MainForm] Nearest city announcement skipped: GeoNames API not configured");
+                announcer.Announce("GeoNames API not configured. Please configure it in the settings.");
                 return;
             }
 
@@ -3245,14 +3257,35 @@ public partial class MainForm : Form
                         {
                             announcement += $", {nearestCity.State}";
                         }
+                        if (!string.IsNullOrEmpty(nearestCity.Country))
+                        {
+                            announcement += $", {nearestCity.Country}";
+                        }
                         announcement += $", {nearestCity.Distance:F1} {settings.DistanceUnits} {nearestCity.Direction}";
+
+                        // Check if over a body of water
+                        var waterLandmark = locationData.Landmarks.FirstOrDefault(l => l.Type == "water");
+                        if (waterLandmark != null)
+                        {
+                            announcement += $", {waterLandmark.Name}";
+                        }
 
                         announcer.Announce(announcement);
                         System.Diagnostics.Debug.WriteLine($"[MainForm] Nearest city announced: {announcement}");
                     }
                     else
                     {
-                        System.Diagnostics.Debug.WriteLine("[MainForm] Nearest city announcement skipped: No nearby cities found");
+                        // No nearby cities found - check if over water
+                        var waterLandmark = locationData?.Landmarks.FirstOrDefault(l => l.Type == "water");
+                        if (waterLandmark != null)
+                        {
+                            announcer.Announce($"Over {waterLandmark.Name}");
+                            System.Diagnostics.Debug.WriteLine($"[MainForm] Nearest city announced: Over {waterLandmark.Name}");
+                        }
+                        else
+                        {
+                            System.Diagnostics.Debug.WriteLine("[MainForm] Nearest city announcement skipped: No nearby cities found");
+                        }
                     }
                 }
                 catch (Exception ex)
