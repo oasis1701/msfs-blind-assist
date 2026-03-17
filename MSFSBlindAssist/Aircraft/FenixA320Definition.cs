@@ -12463,6 +12463,115 @@ public class FenixA320Definition : BaseAircraftDefinition
     }
 
     /// <summary>
+    /// Jumps a counter variable by the given number of steps in a single SetLVar call,
+    /// instead of incrementing one-by-one with delays. The Fenix WASM module detects
+    /// the counter delta each sim frame and processes all steps at once.
+    /// </summary>
+    private void JumpCounter(string varName, int steps, SimConnect.SimConnectManager simConnect)
+    {
+        try
+        {
+            if (!rmpCounters.ContainsKey(varName))
+            {
+                rmpCounters[varName] = 0;
+            }
+
+            rmpCounters[varName] += steps;
+            int newValue = rmpCounters[varName];
+
+            System.Diagnostics.Debug.WriteLine($"[FenixA320] JumpCounter: {varName} += {steps} -> {newValue}");
+
+            if (simConnect != null && simConnect.IsConnected)
+            {
+                simConnect.SetLVar(varName, newValue);
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[FenixA320] Error jumping counter {varName}: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Attempts to set an FCU value using a single counter jump, then verifies and retries if needed.
+    /// Falls back to batched increments if the single jump doesn't work.
+    /// </summary>
+    private async System.Threading.Tasks.Task SetFCUValueWithVerification(
+        string counterVar,
+        string readbackVar,
+        int steps,
+        double targetValue,
+        double tolerance,
+        SimConnect.SimConnectManager simConnect,
+        string valueName)
+    {
+        // Step 1: Try single counter jump
+        JumpCounter(counterVar, steps, simConnect);
+
+        // Step 2: Wait for WASM to process and monitoring to update, then verify
+        // Need enough time for: WASM to process delta + sim to update N_ variable + continuous monitoring to read it
+        await System.Threading.Tasks.Task.Delay(750);
+
+        double? actualValue = simConnect.GetCachedVariableValue(readbackVar);
+        if (actualValue != null && Math.Abs(actualValue.Value - targetValue) <= tolerance)
+        {
+            System.Diagnostics.Debug.WriteLine($"[FenixA320] {valueName} single jump succeeded: target={targetValue}, actual={actualValue.Value}");
+            return;
+        }
+
+        // Second check after additional delay — monitoring may not have refreshed yet
+        System.Diagnostics.Debug.WriteLine($"[FenixA320] {valueName} first check: target={targetValue}, actual={actualValue?.ToString() ?? "null"}, waiting for second check");
+        await System.Threading.Tasks.Task.Delay(750);
+
+        actualValue = simConnect.GetCachedVariableValue(readbackVar);
+        if (actualValue != null && Math.Abs(actualValue.Value - targetValue) <= tolerance)
+        {
+            System.Diagnostics.Debug.WriteLine($"[FenixA320] {valueName} single jump succeeded on second check: target={targetValue}, actual={actualValue.Value}");
+            return;
+        }
+
+        System.Diagnostics.Debug.WriteLine($"[FenixA320] {valueName} single jump missed: target={targetValue}, actual={actualValue?.ToString() ?? "null"}, retrying with batched increments");
+
+        // Step 3: Calculate remaining delta and retry with batched increments
+        if (actualValue != null)
+        {
+            double remaining = targetValue - actualValue.Value;
+            int remainingSteps;
+
+            // Determine step size based on variable type
+            if (counterVar == "E_FCU_ALTITUDE" || counterVar == "E_FCU_VS")
+                remainingSteps = (int)(remaining / 100);
+            else if (counterVar == "E_FCU_HEADING")
+                remainingSteps = CalculateHeadingDelta((int)actualValue.Value, (int)targetValue);
+            else
+                remainingSteps = (int)remaining;
+
+            if (remainingSteps == 0)
+                return;
+
+            // Batched increments: send groups of 10 with frame-aligned delays
+            int batchSize = 10;
+            int totalRemaining = Math.Abs(remainingSteps);
+            int direction = remainingSteps > 0 ? 1 : -1;
+
+            while (totalRemaining > 0)
+            {
+                int currentBatch = Math.Min(batchSize, totalRemaining);
+                JumpCounter(counterVar, currentBatch * direction, simConnect);
+                totalRemaining -= currentBatch;
+
+                if (totalRemaining > 0)
+                    await System.Threading.Tasks.Task.Delay(33);  // ~1 frame at 30fps
+            }
+
+            // Final verification
+            await System.Threading.Tasks.Task.Delay(200);
+            actualValue = simConnect.GetCachedVariableValue(readbackVar);
+            System.Diagnostics.Debug.WriteLine($"[FenixA320] {valueName} after batched retry: target={targetValue}, actual={actualValue?.ToString() ?? "null"}");
+        }
+    }
+
+    /// <summary>
     /// Calculates the shortest heading delta accounting for wraparound (0-359 degrees).
     /// Example: From 340 to 20 = +40 (not -320)
     /// </summary>
@@ -12511,21 +12620,10 @@ public class FenixA320Definition : BaseAircraftDefinition
             return;
         }
 
-        announcer.Announce($"Setting heading from {currentHeading} to {targetHeading}");
+        // No announcement - screen reader already announced the user's input
 
-        // Send counter increments/decrements
-        for (int i = 0; i < Math.Abs(delta); i++)
-        {
-            if (delta > 0)
-                IncrementCounter("E_FCU_HEADING", simConnect);
-            else
-                DecrementCounter("E_FCU_HEADING", simConnect);
-
-            await System.Threading.Tasks.Task.Delay(15);  // Increased from 10ms to 15ms for reliability
-        }
-
-        // Wait for FCU to update
-        await System.Threading.Tasks.Task.Delay(200);
+        // Single counter jump with verification and fallback
+        await SetFCUValueWithVerification("E_FCU_HEADING", "N_FCU_HEADING", delta, targetHeading, 1, simConnect, "Heading");
     }
 
     /// <summary>
@@ -12568,29 +12666,18 @@ public class FenixA320Definition : BaseAircraftDefinition
             return;
         }
 
-        announcer.Announce($"Setting altitude from {currentAltitude} to {targetAltitude}");
+        // No announcement - screen reader already announced the user's input
 
         // ALWAYS use 100ft mode to avoid rounding issues with 1000ft mode
         // (In 1000ft mode, increments round to nearest thousand instead of adding 1000)
         simConnect.SetLVar("S_FCU_ALTITUDE_SCALE", 0);  // Force 100ft mode
         await System.Threading.Tasks.Task.Delay(100);  // Wait for mode to activate
 
-        // Calculate steps (each increment = 100ft)
+        // Calculate steps (each increment = 100ft in 100ft mode)
         int steps = totalDelta / 100;
 
-        // Send all increments in 100ft mode
-        for (int i = 0; i < Math.Abs(steps); i++)
-        {
-            if (steps > 0)
-                IncrementCounter("E_FCU_ALTITUDE", simConnect);
-            else
-                DecrementCounter("E_FCU_ALTITUDE", simConnect);
-
-            await System.Threading.Tasks.Task.Delay(15);  // Increased from 10ms to 15ms for reliability
-        }
-
-        // Wait for final adjustment
-        await System.Threading.Tasks.Task.Delay(200);
+        // Single counter jump with verification and fallback
+        await SetFCUValueWithVerification("E_FCU_ALTITUDE", "N_FCU_ALTITUDE", steps, targetAltitude, 100, simConnect, "Altitude");
 
         // Restore user's preferred mode
         simConnect.SetLVar("S_FCU_ALTITUDE_SCALE", userPreferredScaleMode);
@@ -12627,21 +12714,10 @@ public class FenixA320Definition : BaseAircraftDefinition
             return;
         }
 
-        announcer.Announce($"Setting speed from {currentSpeed} to {targetSpeed}");
+        // No announcement - screen reader already announced the user's input
 
-        // Send counter increments/decrements
-        for (int i = 0; i < Math.Abs(delta); i++)
-        {
-            if (delta > 0)
-                IncrementCounter("E_FCU_SPEED", simConnect);
-            else
-                DecrementCounter("E_FCU_SPEED", simConnect);
-
-            await System.Threading.Tasks.Task.Delay(15);  // Increased from 10ms to 15ms for reliability
-        }
-
-        // Wait for FCU to update
-        await System.Threading.Tasks.Task.Delay(200);
+        // Single counter jump with verification and fallback
+        await SetFCUValueWithVerification("E_FCU_SPEED", "N_FCU_SPEED", delta, targetSpeed, 1, simConnect, "Speed");
     }
 
     /// <summary>
@@ -12675,22 +12751,13 @@ public class FenixA320Definition : BaseAircraftDefinition
             return;
         }
 
-        announcer.Announce($"Setting vertical speed from {currentVS} to {targetVS}");
+        // No announcement - screen reader already announced the user's input
 
-        // Send counter increments/decrements (each increment is 100 fpm)
+        // Calculate steps (each increment is 100 fpm)
         int steps = delta / 100;
-        for (int i = 0; i < Math.Abs(steps); i++)
-        {
-            if (steps > 0)
-                IncrementCounter("E_FCU_VS", simConnect);
-            else
-                DecrementCounter("E_FCU_VS", simConnect);
 
-            await System.Threading.Tasks.Task.Delay(15);  // Increased from 10ms to 15ms for reliability
-        }
-
-        // Wait for FCU to update
-        await System.Threading.Tasks.Task.Delay(200);
+        // Single counter jump with verification and fallback
+        await SetFCUValueWithVerification("E_FCU_VS", "N_FCU_VS", steps, targetVS, 100, simConnect, "VS");
     }
 
     /// <summary>
