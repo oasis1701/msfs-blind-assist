@@ -34,6 +34,9 @@ Heading:
   H          Read Magnetic Heading
   U          Read True Heading
 
+Fuel:
+  F          Read Fuel On Board
+
 Vertical:
   V          Read Vertical Speed
 

@@ -1193,7 +1193,7 @@ public class SimConnectManager
                 {
                     VarName = "FUEL_QUANTITY",
                     Value = fuelData.value,
-                    Description = $"Total fuel {fuelData.value:0} kilograms"
+                    Description = $"Fuel on board {fuelData.value:0}"
                 });
                 break;
 

@@ -12345,6 +12345,31 @@ public class FenixA320Definition : BaseAircraftDefinition
         }
     }
 
+    private void RequestFuelQuantity(SimConnect.SimConnectManager simConnectMgr)
+    {
+        var simConnect = simConnectMgr.SimConnectInstance;
+        if (simConnectMgr.IsConnected && simConnect != null)
+        {
+            try
+            {
+                var tempDefId = (SimConnect.SimConnectManager.DATA_DEFINITIONS)314;
+                simConnect.ClearDataDefinition(tempDefId);
+                simConnect.AddToDataDefinition(tempDefId,
+                    "FUEL TOTAL QUANTITY WEIGHT", "pounds",
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
+                simConnect.RegisterDataDefineStruct<SimConnect.SimConnectManager.SingleValue>(tempDefId);
+                simConnect.RequestDataOnSimObject((SimConnect.SimConnectManager.DATA_REQUESTS)314,
+                    tempDefId, Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_OBJECT_ID_USER,
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_PERIOD.ONCE,
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error requesting fuel quantity: {ex.Message}");
+            }
+        }
+    }
+
     /// <summary>
     /// Helper method to execute Fenix button transition (0→1 pattern).
     /// Fenix buttons are transition-activated: they trigger when the variable goes from 0 to 1.
@@ -12886,6 +12911,10 @@ public class FenixA320Definition : BaseAircraftDefinition
 
             case HotkeyAction.ReadFCUVerticalSpeedFPA:
                 RequestFCUVerticalSpeedWithStatus(simConnect, announcer);
+                return true;
+
+            case HotkeyAction.ReadFuelQuantity:
+                RequestFuelQuantity(simConnect);
                 return true;
 
             // FCU set windows (Ctrl+H, Ctrl+S, Ctrl+A, Ctrl+V, Ctrl+P in input mode)
