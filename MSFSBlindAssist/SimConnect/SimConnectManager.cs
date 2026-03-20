@@ -1197,6 +1197,26 @@ public class SimConnectManager
                 });
                 break;
 
+            case (DATA_REQUESTS)316: // Flap Position
+                SingleValue flapData = (SingleValue)data.dwData[0];
+                int flapIndex = (int)Math.Round(flapData.value);
+                string flapDescription = flapIndex switch
+                {
+                    0 => "Flaps up",
+                    1 => "Flaps 1",
+                    2 => "Flaps 2",
+                    3 => "Flaps 3",
+                    4 => "Flaps full",
+                    _ => $"Flaps {flapIndex}"
+                };
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "FLAP_POSITION",
+                    Value = flapData.value,
+                    Description = flapDescription
+                });
+                break;
+
             // Speed tape values
             case (DATA_REQUESTS)330: // Speed GD (O Speed)
                 SingleValue speedGDData = (SingleValue)data.dwData[0];

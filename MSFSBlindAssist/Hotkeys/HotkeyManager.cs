@@ -89,6 +89,7 @@ public class HotkeyManager : IDisposable
         private const int HOTKEY_TRACK_SLOT_3 = 9064;
         private const int HOTKEY_TRACK_SLOT_4 = 9065;
         private const int HOTKEY_TRACK_SLOT_5 = 9066;
+        private const int HOTKEY_FLAPS = 9067;
         private const int HOTKEY_FUEL_PAYLOAD = 9068;
         private const int HOTKEY_TRACK_FIX = 9076;
 
@@ -270,6 +271,9 @@ public class HotkeyManager : IDisposable
                             break;
                         case HOTKEY_FUEL_QUANTITY:
                             TriggerHotkey(HotkeyAction.ReadFuelQuantity);
+                            break;
+                        case HOTKEY_FLAPS:
+                            TriggerHotkey(HotkeyAction.ReadFlaps);
                             break;
                         case HOTKEY_NAV_DISPLAY:
                             TriggerHotkey(HotkeyAction.ShowNavigationDisplay);
@@ -533,6 +537,7 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_SPEED_VFE, MOD_SHIFT, 0x36);     // Shift+6 (V FE Speed)
             RegisterHotKey(windowHandle, HOTKEY_CHECKLIST, MOD_SHIFT, 0x43);     // Shift+C (Checklist Window)
             RegisterHotKey(windowHandle, HOTKEY_FUEL_QUANTITY, MOD_NONE, 0x46);  // F (Fuel Quantity)
+            RegisterHotKey(windowHandle, HOTKEY_FLAPS, MOD_NONE, 0x4C);          // L (Flaps)
             RegisterHotKey(windowHandle, HOTKEY_NAV_DISPLAY, MOD_SHIFT, 0x4E);    // Shift+N (Navigation Display)
             RegisterHotKey(windowHandle, HOTKEY_WAYPOINT_INFO, MOD_NONE, 0x57);  // W (Waypoint Info)
             RegisterHotKey(windowHandle, HOTKEY_ECAM_DISPLAY, MOD_SHIFT, 0x55);  // Shift+U (ECAM Display)
@@ -606,6 +611,7 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_SPEED_VFE);
             UnregisterHotKey(windowHandle, HOTKEY_CHECKLIST);
             UnregisterHotKey(windowHandle, HOTKEY_FUEL_QUANTITY);
+            UnregisterHotKey(windowHandle, HOTKEY_FLAPS);
             UnregisterHotKey(windowHandle, HOTKEY_NAV_DISPLAY);
             UnregisterHotKey(windowHandle, HOTKEY_WAYPOINT_INFO);
             UnregisterHotKey(windowHandle, HOTKEY_ECAM_DISPLAY);
@@ -955,6 +961,7 @@ public class HotkeyManager : IDisposable
         ReadSpeedVS,
         ShowChecklist,
         ReadFuelQuantity,
+        ReadFlaps,
         ShowNavigationDisplay,
         ReadWaypointInfo,
         ShowECAM,

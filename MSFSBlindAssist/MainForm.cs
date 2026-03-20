@@ -550,7 +550,7 @@ public partial class MainForm : Form
             e.VarName == "BANK_ANGLE" || e.VarName == "PITCH_ANGLE" ||
             e.VarName == "SPEED_GD" || e.VarName == "SPEED_S" || e.VarName == "SPEED_F" ||
             e.VarName == "SPEED_VFE" || e.VarName == "SPEED_VLS" || e.VarName == "SPEED_VS" ||
-            e.VarName == "FUEL_QUANTITY" || e.VarName == "WAYPOINT_INFO")
+            e.VarName == "FUEL_QUANTITY" || e.VarName == "FLAP_POSITION" || e.VarName == "WAYPOINT_INFO")
         {
             announcer.AnnounceImmediate(e.Description);
             return true;

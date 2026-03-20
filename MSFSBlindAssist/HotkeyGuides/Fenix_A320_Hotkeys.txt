@@ -37,6 +37,9 @@ Heading:
 Fuel:
   F          Read Fuel On Board
 
+Flaps:
+  L          Read Flap Position
+
 Vertical:
   V          Read Vertical Speed
 

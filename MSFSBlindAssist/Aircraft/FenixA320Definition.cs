@@ -12345,6 +12345,31 @@ public class FenixA320Definition : BaseAircraftDefinition
         }
     }
 
+    private void RequestFlapPosition(SimConnect.SimConnectManager simConnectMgr)
+    {
+        var simConnect = simConnectMgr.SimConnectInstance;
+        if (simConnectMgr.IsConnected && simConnect != null)
+        {
+            try
+            {
+                var tempDefId = (SimConnect.SimConnectManager.DATA_DEFINITIONS)316;
+                simConnect.ClearDataDefinition(tempDefId);
+                simConnect.AddToDataDefinition(tempDefId,
+                    "FLAPS HANDLE INDEX", "number",
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
+                simConnect.RegisterDataDefineStruct<SimConnect.SimConnectManager.SingleValue>(tempDefId);
+                simConnect.RequestDataOnSimObject((SimConnect.SimConnectManager.DATA_REQUESTS)316,
+                    tempDefId, Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_OBJECT_ID_USER,
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_PERIOD.ONCE,
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error requesting flap position: {ex.Message}");
+            }
+        }
+    }
+
     private void RequestFuelQuantity(SimConnect.SimConnectManager simConnectMgr)
     {
         var simConnect = simConnectMgr.SimConnectInstance;
@@ -12915,6 +12940,10 @@ public class FenixA320Definition : BaseAircraftDefinition
 
             case HotkeyAction.ReadFuelQuantity:
                 RequestFuelQuantity(simConnect);
+                return true;
+
+            case HotkeyAction.ReadFlaps:
+                RequestFlapPosition(simConnect);
                 return true;
 
             // FCU set windows (Ctrl+H, Ctrl+S, Ctrl+A, Ctrl+V, Ctrl+P in input mode)
