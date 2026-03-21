@@ -3022,6 +3022,25 @@ public class SimConnectManager
         }
     }
 
+    /// <summary>
+    /// Executes RPN calculator code via the MobiFlight WASM module.
+    /// Useful for atomic read-modify-write operations on LVars.
+    /// Example: "(L:E_FCU_EFIS1_BARO) 5 + (>L:E_FCU_EFIS1_BARO)"
+    /// </summary>
+    public void ExecuteCalculatorCode(string rpnCode)
+    {
+        if (!IsConnected || mobiFlightWasm == null) return;
+
+        try
+        {
+            mobiFlightWasm.SendMFCommand($"MF.SimVars.Set.{rpnCode}");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error executing calculator code: {ex.Message}");
+        }
+    }
+
     public void SetSimVar(string varName, double value, string units = "number")
     {
         if (!IsConnected || simConnect == null) return;

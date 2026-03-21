@@ -92,6 +92,8 @@ public class HotkeyManager : IDisposable
         private const int HOTKEY_FLAPS = 9067;
         private const int HOTKEY_FUEL_PAYLOAD = 9068;
         private const int HOTKEY_GEAR = 9095;
+        private const int HOTKEY_ALTIMETER = 9096;
+        private const int HOTKEY_FCU_SET_BARO = 9097;
         private const int HOTKEY_TRACK_FIX = 9076;
 
         // Display reading hotkey IDs (Output mode - Alt+1-5, Fenix A320 only)
@@ -279,6 +281,9 @@ public class HotkeyManager : IDisposable
                         case HOTKEY_GEAR:
                             TriggerHotkey(HotkeyAction.ReadGear);
                             break;
+                        case HOTKEY_ALTIMETER:
+                            TriggerHotkey(HotkeyAction.ReadAltimeter);
+                            break;
                         case HOTKEY_NAV_DISPLAY:
                             TriggerHotkey(HotkeyAction.ShowNavigationDisplay);
                             break;
@@ -413,6 +418,9 @@ public class HotkeyManager : IDisposable
                         case HOTKEY_FCU_SET_AUTOPILOT:
                             TriggerHotkey(HotkeyAction.FCUSetAutopilot);
                             break;
+                        case HOTKEY_FCU_SET_BARO:
+                            TriggerHotkey(HotkeyAction.FCUSetBaro);
+                            break;
                         case HOTKEY_TOGGLE_AP2:
                             TriggerHotkey(HotkeyAction.ToggleAutopilot2);
                             break;
@@ -543,6 +551,7 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_FUEL_QUANTITY, MOD_NONE, 0x46);  // F (Fuel Quantity)
             RegisterHotKey(windowHandle, HOTKEY_FLAPS, MOD_NONE, 0x4C);          // L (Flaps)
             RegisterHotKey(windowHandle, HOTKEY_GEAR, MOD_SHIFT, 0x47);          // Shift+G (Gear)
+            RegisterHotKey(windowHandle, HOTKEY_ALTIMETER, MOD_NONE, 0x42);      // B (Altimeter)
             RegisterHotKey(windowHandle, HOTKEY_NAV_DISPLAY, MOD_SHIFT, 0x4E);    // Shift+N (Navigation Display)
             RegisterHotKey(windowHandle, HOTKEY_WAYPOINT_INFO, MOD_NONE, 0x57);  // W (Waypoint Info)
             RegisterHotKey(windowHandle, HOTKEY_ECAM_DISPLAY, MOD_SHIFT, 0x55);  // Shift+U (ECAM Display)
@@ -618,6 +627,7 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_FUEL_QUANTITY);
             UnregisterHotKey(windowHandle, HOTKEY_FLAPS);
             UnregisterHotKey(windowHandle, HOTKEY_GEAR);
+            UnregisterHotKey(windowHandle, HOTKEY_ALTIMETER);
             UnregisterHotKey(windowHandle, HOTKEY_NAV_DISPLAY);
             UnregisterHotKey(windowHandle, HOTKEY_WAYPOINT_INFO);
             UnregisterHotKey(windowHandle, HOTKEY_ECAM_DISPLAY);
@@ -674,6 +684,7 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_FCU_SET_ALTITUDE, MOD_CONTROL, 0x41); // Ctrl+A (Set Altitude)
             RegisterHotKey(windowHandle, HOTKEY_FCU_SET_VS, MOD_CONTROL, 0x56);      // Ctrl+V (Set VS)
             RegisterHotKey(windowHandle, HOTKEY_FCU_SET_AUTOPILOT, MOD_CONTROL, 0x50); // Ctrl+P (Set Autopilot)
+            RegisterHotKey(windowHandle, HOTKEY_FCU_SET_BARO, MOD_CONTROL, 0x42);     // Ctrl+B (Set Baro)
             RegisterHotKey(windowHandle, HOTKEY_TOGGLE_AP2, MOD_CONTROL, 0x4F);      // Ctrl+O (Toggle Autopilot 2)
             RegisterHotKey(windowHandle, HOTKEY_TRACK_FIX, MOD_SHIFT, 0x46);         // Shift+F (Track Fix Window)
             RegisterHotKey(windowHandle, HOTKEY_FENIX_MCDU, MOD_SHIFT, 0x4D);       // Shift+M (Fenix MCDU)
@@ -710,6 +721,7 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_FCU_SET_ALTITUDE);
             UnregisterHotKey(windowHandle, HOTKEY_FCU_SET_VS);
             UnregisterHotKey(windowHandle, HOTKEY_FCU_SET_AUTOPILOT);
+            UnregisterHotKey(windowHandle, HOTKEY_FCU_SET_BARO);
             UnregisterHotKey(windowHandle, HOTKEY_TOGGLE_AP2);
             UnregisterHotKey(windowHandle, HOTKEY_TRACK_FIX);
             UnregisterHotKey(windowHandle, HOTKEY_FENIX_MCDU);
@@ -969,6 +981,8 @@ public class HotkeyManager : IDisposable
         ReadFuelQuantity,
         ReadFlaps,
         ReadGear,
+        ReadAltimeter,
+        FCUSetBaro,
         ShowNavigationDisplay,
         ReadWaypointInfo,
         ShowECAM,

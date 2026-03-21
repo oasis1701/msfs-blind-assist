@@ -43,6 +43,9 @@ Flaps:
 Landing Gear:
   Shift+G    Read Gear Position
 
+Altimeter:
+  B          Read Altimeter Setting
+
 Vertical:
   V          Read Vertical Speed
 
@@ -113,6 +116,7 @@ FCU Set Values:
   Ctrl+S     Set Speed Value
   Ctrl+A     Set Altitude Value
   Ctrl+V     Set VS Value
+  Ctrl+B     Set Altimeter Value
 
 
 General:
