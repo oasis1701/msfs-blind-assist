@@ -12585,6 +12585,57 @@ public class FenixA320Definition : BaseAircraftDefinition
         }
     }
 
+    private void RequestGrossWeight(SimConnect.SimConnectManager simConnectMgr)
+    {
+        var simConnect = simConnectMgr.SimConnectInstance;
+        if (simConnectMgr.IsConnected && simConnect != null)
+        {
+            try
+            {
+                var tempDefId = (SimConnect.SimConnectManager.DATA_DEFINITIONS)319;
+                simConnect.ClearDataDefinition(tempDefId);
+                simConnect.AddToDataDefinition(tempDefId,
+                    "TOTAL WEIGHT", "pounds",
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
+                simConnect.RegisterDataDefineStruct<SimConnect.SimConnectManager.SingleValue>(tempDefId);
+                simConnect.RequestDataOnSimObject((SimConnect.SimConnectManager.DATA_REQUESTS)319,
+                    tempDefId, Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_OBJECT_ID_USER,
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_PERIOD.ONCE,
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error requesting gross weight: {ex.Message}");
+            }
+        }
+    }
+
+    private void RequestGrossWeightKg(SimConnect.SimConnectManager simConnectMgr, Accessibility.ScreenReaderAnnouncer announcer)
+    {
+        var simConnect = simConnectMgr.SimConnectInstance;
+        if (simConnectMgr.IsConnected && simConnect != null)
+        {
+            try
+            {
+                var tempDefId = (SimConnect.SimConnectManager.DATA_DEFINITIONS)320;
+                simConnect.ClearDataDefinition(tempDefId);
+                simConnect.AddToDataDefinition(tempDefId,
+                    "TOTAL WEIGHT", "pounds",
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
+                simConnect.RegisterDataDefineStruct<SimConnect.SimConnectManager.SingleValue>(tempDefId);
+                simConnect.RequestDataOnSimObject((SimConnect.SimConnectManager.DATA_REQUESTS)320,
+                    tempDefId, Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_OBJECT_ID_USER,
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_PERIOD.ONCE,
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+                lastAnnouncer = announcer;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error requesting gross weight kg: {ex.Message}");
+            }
+        }
+    }
+
     private void RequestFuelQuantityKg(SimConnect.SimConnectManager simConnectMgr, Accessibility.ScreenReaderAnnouncer announcer)
     {
         var simConnect = simConnectMgr.SimConnectInstance;
@@ -13183,6 +13234,14 @@ public class FenixA320Definition : BaseAircraftDefinition
 
             case HotkeyAction.ReadFuelQuantity:
                 RequestFuelQuantity(simConnect);
+                return true;
+
+            case HotkeyAction.ReadWaypointInfo:
+                RequestGrossWeight(simConnect);
+                return true;
+
+            case HotkeyAction.ReadGrossWeightKg:
+                RequestGrossWeightKg(simConnect, announcer);
                 return true;
 
             case HotkeyAction.ShowFuelPayloadWindow:

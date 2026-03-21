@@ -1208,6 +1208,27 @@ public class SimConnectManager
                 });
                 break;
 
+            case (DATA_REQUESTS)319: // Gross Weight (Pounds)
+                SingleValue gwData = (SingleValue)data.dwData[0];
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "GROSS_WEIGHT",
+                    Value = gwData.value,
+                    Description = $"Gross weight {gwData.value:0} pounds"
+                });
+                break;
+
+            case (DATA_REQUESTS)320: // Gross Weight (KG)
+                SingleValue gwKgData = (SingleValue)data.dwData[0];
+                double gwKg = gwKgData.value * 0.453592;
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "GROSS_WEIGHT_KG",
+                    Value = gwKg,
+                    Description = $"Gross weight {gwKg:0} kilograms"
+                });
+                break;
+
             case (DATA_REQUESTS)316: // Flap Position
                 SingleValue flapData = (SingleValue)data.dwData[0];
                 int flapIndex = (int)Math.Round(flapData.value);

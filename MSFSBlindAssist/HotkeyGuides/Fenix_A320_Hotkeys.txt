@@ -38,6 +38,10 @@ Fuel:
   F          Read Fuel On Board (Pounds)
   Shift+F    Read Fuel On Board (Kilograms)
 
+Weight:
+  W          Read Gross Weight (Pounds)
+  Shift+W    Read Gross Weight (Kilograms)
+
 Flaps:
   L          Read Flap Position
 

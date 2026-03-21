@@ -94,6 +94,7 @@ public class HotkeyManager : IDisposable
         private const int HOTKEY_GEAR = 9095;
         private const int HOTKEY_ALTIMETER = 9096;
         private const int HOTKEY_FCU_SET_BARO = 9097;
+        private const int HOTKEY_GROSS_WEIGHT_KG = 9098;
         private const int HOTKEY_TRACK_FIX = 9076;
 
         // Display reading hotkey IDs (Output mode - Alt+1-5, Fenix A320 only)
@@ -283,6 +284,9 @@ public class HotkeyManager : IDisposable
                             break;
                         case HOTKEY_ALTIMETER:
                             TriggerHotkey(HotkeyAction.ReadAltimeter);
+                            break;
+                        case HOTKEY_GROSS_WEIGHT_KG:
+                            TriggerHotkey(HotkeyAction.ReadGrossWeightKg);
                             break;
                         case HOTKEY_NAV_DISPLAY:
                             TriggerHotkey(HotkeyAction.ShowNavigationDisplay);
@@ -552,6 +556,7 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_FLAPS, MOD_NONE, 0x4C);          // L (Flaps)
             RegisterHotKey(windowHandle, HOTKEY_GEAR, MOD_SHIFT, 0x47);          // Shift+G (Gear)
             RegisterHotKey(windowHandle, HOTKEY_ALTIMETER, MOD_NONE, 0x42);      // B (Altimeter)
+            RegisterHotKey(windowHandle, HOTKEY_GROSS_WEIGHT_KG, MOD_SHIFT, 0x57); // Shift+W (Gross Weight KG)
             RegisterHotKey(windowHandle, HOTKEY_NAV_DISPLAY, MOD_SHIFT, 0x4E);    // Shift+N (Navigation Display)
             RegisterHotKey(windowHandle, HOTKEY_WAYPOINT_INFO, MOD_NONE, 0x57);  // W (Waypoint Info)
             RegisterHotKey(windowHandle, HOTKEY_ECAM_DISPLAY, MOD_SHIFT, 0x55);  // Shift+U (ECAM Display)
@@ -628,6 +633,7 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_FLAPS);
             UnregisterHotKey(windowHandle, HOTKEY_GEAR);
             UnregisterHotKey(windowHandle, HOTKEY_ALTIMETER);
+            UnregisterHotKey(windowHandle, HOTKEY_GROSS_WEIGHT_KG);
             UnregisterHotKey(windowHandle, HOTKEY_NAV_DISPLAY);
             UnregisterHotKey(windowHandle, HOTKEY_WAYPOINT_INFO);
             UnregisterHotKey(windowHandle, HOTKEY_ECAM_DISPLAY);
@@ -983,6 +989,7 @@ public class HotkeyManager : IDisposable
         ReadGear,
         ReadAltimeter,
         FCUSetBaro,
+        ReadGrossWeightKg,
         ShowNavigationDisplay,
         ReadWaypointInfo,
         ShowECAM,
