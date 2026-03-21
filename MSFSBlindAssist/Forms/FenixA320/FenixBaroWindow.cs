@@ -200,18 +200,20 @@ public partial class FenixBaroWindow : Form
         setButton.Enabled = !isStd;
     }
 
-    private void ValueTextBox_KeyDown(object? sender, KeyEventArgs e)
+    private async void ValueTextBox_KeyDown(object? sender, KeyEventArgs e)
     {
         if (e.KeyCode == Keys.Enter)
         {
             e.Handled = true;
             e.SuppressKeyPress = true;
-            _ = HandleSetClick();
+            await HandleSetClick();
         }
     }
 
     private async System.Threading.Tasks.Task HandleSetClick()
     {
+        if (!setButton.Enabled) return;
+
         string input = valueTextBox.Text.Trim();
 
         if (string.IsNullOrEmpty(input))
@@ -241,8 +243,22 @@ public partial class FenixBaroWindow : Form
                 return;
             }
 
-            announcer.AnnounceImmediate($"Setting altimeter to {hpaValue}");
-            _ = aircraft.SetFCUBaro(hpaValue, null, simConnect, announcer);
+            setButton.Enabled = false;
+            try
+            {
+                announcer.AnnounceImmediate($"Setting altimeter to {hpaValue}");
+                await aircraft.SetFCUBaro(hpaValue, null, simConnect, announcer);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error setting baro: {ex.Message}");
+                announcer.AnnounceImmediate("Error setting altimeter");
+            }
+            finally
+            {
+                setButton.Enabled = baroModeCombo.SelectedIndex != 1;
+                valueTextBox.SelectAll();
+            }
         }
         else
         {
@@ -263,11 +279,23 @@ public partial class FenixBaroWindow : Form
                 return;
             }
 
-            announcer.AnnounceImmediate($"Setting altimeter to {inHgValue:0.00}");
-            double targetInHg = Math.Round(inHgValue, 2);
-            _ = aircraft.SetFCUBaro(null, targetInHg, simConnect, announcer);
+            setButton.Enabled = false;
+            try
+            {
+                announcer.AnnounceImmediate($"Setting altimeter to {inHgValue:0.00}");
+                double targetInHg = Math.Round(inHgValue, 2);
+                await aircraft.SetFCUBaro(null, targetInHg, simConnect, announcer);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error setting baro: {ex.Message}");
+                announcer.AnnounceImmediate("Error setting altimeter");
+            }
+            finally
+            {
+                setButton.Enabled = baroModeCombo.SelectedIndex != 1;
+                valueTextBox.SelectAll();
+            }
         }
-
-        valueTextBox.SelectAll();
     }
 }
