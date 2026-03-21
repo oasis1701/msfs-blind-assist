@@ -1217,6 +1217,17 @@ public class SimConnectManager
                 });
                 break;
 
+            case (DATA_REQUESTS)317: // Gear Position
+                SingleValue gearData = (SingleValue)data.dwData[0];
+                string gearPosition = gearData.value > 0.5 ? "Gear down" : "Gear up";
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "GEAR_POSITION",
+                    Value = gearData.value,
+                    Description = gearPosition
+                });
+                break;
+
             // Speed tape values
             case (DATA_REQUESTS)330: // Speed GD (O Speed)
                 SingleValue speedGDData = (SingleValue)data.dwData[0];

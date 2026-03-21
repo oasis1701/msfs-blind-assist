@@ -40,6 +40,9 @@ Fuel:
 Flaps:
   L          Read Flap Position
 
+Landing Gear:
+  Shift+G    Read Gear Position
+
 Vertical:
   V          Read Vertical Speed
 
