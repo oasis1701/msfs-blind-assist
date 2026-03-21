@@ -1,5 +1,6 @@
 using System.Net.Http;
 using System.Text;
+using System.Xml;
 using Newtonsoft.Json;
 using MSFSBlindAssist.Settings;
 
@@ -16,7 +17,7 @@ public class GeminiService
 
     static GeminiService()
     {
-        httpClient.Timeout = TimeSpan.FromSeconds(30);
+        httpClient.Timeout = TimeSpan.FromSeconds(60);
     }
 
     public GeminiService()
@@ -285,6 +286,298 @@ Do not use markdown formatting. Do not explain what things mean. Just state the 
 
             _ => "Report what you see on this display in plain text. No markdown formatting. No explanations. Just the data."
         };
+    }
+
+    /// <summary>
+    /// Generates a narrative route description from SimBrief OFP XML data.
+    /// </summary>
+    /// <param name="ofpXml">Raw SimBrief OFP XML</param>
+    /// <returns>Text description of the route</returns>
+    public async Task<string> DescribeRouteAsync(string ofpXml)
+    {
+        if (string.IsNullOrEmpty(apiKey))
+        {
+            throw new InvalidOperationException("Gemini API key is not configured. Please configure it in File > Gemini API Key Settings.");
+        }
+
+        string flightData = ExtractFlightData(ofpXml);
+        string prompt = GetRouteDescriptionPrompt(flightData);
+
+        return await GenerateTextAsync(prompt);
+    }
+
+    /// <summary>
+    /// Sends a text-only prompt to Gemini and returns the response.
+    /// </summary>
+    private async Task<string> GenerateTextAsync(string prompt)
+    {
+        if (string.IsNullOrEmpty(apiKey))
+        {
+            throw new InvalidOperationException("Gemini API key is not configured. Please configure it in File > Gemini API Key Settings.");
+        }
+
+        var requestBody = new
+        {
+            contents = new[]
+            {
+                new
+                {
+                    parts = new object[]
+                    {
+                        new { text = prompt }
+                    }
+                }
+            }
+        };
+
+        string jsonRequest = JsonConvert.SerializeObject(requestBody);
+        var content = new StringContent(jsonRequest, Encoding.UTF8, "application/json");
+
+        string url = $"{API_BASE_URL}?key={apiKey}";
+        HttpResponseMessage response = await httpClient.PostAsync(url, content);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            string errorContent = await response.Content.ReadAsStringAsync();
+            throw new HttpRequestException($"Gemini API request failed with status {response.StatusCode}: {errorContent}");
+        }
+
+        string responseJson = await response.Content.ReadAsStringAsync();
+        var result = JsonConvert.DeserializeObject<GeminiResponse>(responseJson);
+
+        if (result?.Candidates == null || result.Candidates.Length == 0)
+        {
+            throw new InvalidOperationException("Gemini API returned no candidates in response.");
+        }
+
+        if (result.Candidates[0].Content?.Parts == null || result.Candidates[0].Content.Parts.Length == 0)
+        {
+            throw new InvalidOperationException("Gemini API returned no content in response.");
+        }
+
+        return result.Candidates[0].Content.Parts[0].Text ?? "No description available.";
+    }
+
+    /// <summary>
+    /// Extracts relevant flight data from SimBrief OFP XML into a readable text summary.
+    /// </summary>
+    private string ExtractFlightData(string ofpXml)
+    {
+        var doc = new XmlDocument();
+        doc.LoadXml(ofpXml);
+
+        var sb = new StringBuilder();
+
+        // General flight info
+        var general = doc.SelectSingleNode("//general");
+        if (general != null)
+        {
+            AppendIfPresent(sb, "Route", general, "route");
+            AppendIfPresent(sb, "Cruise Altitude", general, "initial_altitude");
+            AppendIfPresent(sb, "Distance", general, "route_distance");
+            AppendIfPresent(sb, "Air Time", general, "air_time");
+            AppendIfPresent(sb, "Aircraft Type", general, "icao_airline");
+        }
+
+        // Aircraft info
+        var aircraft = doc.SelectSingleNode("//aircraft");
+        if (aircraft != null)
+        {
+            AppendIfPresent(sb, "Aircraft", aircraft, "name");
+            AppendIfPresent(sb, "Aircraft ICAO", aircraft, "icaocode");
+        }
+
+        // Origin
+        sb.AppendLine();
+        sb.AppendLine("DEPARTURE:");
+        var origin = doc.SelectSingleNode("//origin");
+        if (origin != null)
+        {
+            AppendIfPresent(sb, "Airport", origin, "icao_code");
+            AppendIfPresent(sb, "Name", origin, "name");
+            AppendIfPresent(sb, "Elevation", origin, "elevation");
+            AppendIfPresent(sb, "Runway", origin, "plan_rwy");
+            AppendIfPresent(sb, "SID", origin, "sid_id");
+            AppendIfPresent(sb, "SID Transition", origin, "sid_trans");
+            AppendIfPresent(sb, "METAR", origin, "metar");
+            AppendIfPresent(sb, "TAF", origin, "taf");
+        }
+
+        // Destination
+        sb.AppendLine();
+        sb.AppendLine("ARRIVAL:");
+        var destination = doc.SelectSingleNode("//destination");
+        if (destination != null)
+        {
+            AppendIfPresent(sb, "Airport", destination, "icao_code");
+            AppendIfPresent(sb, "Name", destination, "name");
+            AppendIfPresent(sb, "Elevation", destination, "elevation");
+            AppendIfPresent(sb, "Runway", destination, "plan_rwy");
+            AppendIfPresent(sb, "STAR", destination, "star_id");
+            AppendIfPresent(sb, "STAR Transition", destination, "star_trans");
+            AppendIfPresent(sb, "METAR", destination, "metar");
+            AppendIfPresent(sb, "TAF", destination, "taf");
+        }
+
+        // Alternate
+        var alternate = doc.SelectSingleNode("//alternate");
+        if (alternate != null)
+        {
+            string? altIcao = alternate.SelectSingleNode("icao_code")?.InnerText?.Trim();
+            if (!string.IsNullOrEmpty(altIcao))
+            {
+                sb.AppendLine();
+                sb.AppendLine("ALTERNATE:");
+                AppendIfPresent(sb, "Airport", alternate, "icao_code");
+                AppendIfPresent(sb, "Name", alternate, "name");
+            }
+        }
+
+        // SigMets / significant weather
+        var sigmets = doc.SelectNodes("//sigmets/sigmet");
+        if (sigmets != null && sigmets.Count > 0)
+        {
+            sb.AppendLine();
+            sb.AppendLine("SIGNIFICANT WEATHER (SIGMETs):");
+            foreach (XmlNode sigmet in sigmets)
+            {
+                string? sigmetText = sigmet.InnerText?.Trim();
+                if (!string.IsNullOrEmpty(sigmetText))
+                    sb.AppendLine(sigmetText);
+            }
+        }
+
+        // Navlog waypoints - separate SID, enroute, and STAR
+        var fixes = doc.SelectNodes("//navlog/fix");
+        if (fixes != null && fixes.Count > 0)
+        {
+            var sidWaypoints = new List<string>();
+            var enrouteWaypoints = new List<string>();
+            var starWaypoints = new List<string>();
+            bool passedSid = false;
+            bool inStar = false;
+
+            foreach (XmlNode fix in fixes)
+            {
+                string? ident = fix.SelectSingleNode("ident")?.InnerText?.Trim();
+                string? isSidStar = fix.SelectSingleNode("is_sid_star")?.InnerText?.Trim();
+                string? alt = fix.SelectSingleNode("altitude_feet")?.InnerText?.Trim();
+                string? airway = fix.SelectSingleNode("via_airway")?.InnerText?.Trim();
+                string? lat = fix.SelectSingleNode("pos_lat")?.InnerText?.Trim();
+                string? lon = fix.SelectSingleNode("pos_long")?.InnerText?.Trim();
+                string? windDir = fix.SelectSingleNode("wind_dir")?.InnerText?.Trim();
+                string? windSpd = fix.SelectSingleNode("wind_spd")?.InnerText?.Trim();
+                string? name = fix.SelectSingleNode("name")?.InnerText?.Trim();
+
+                if (string.IsNullOrEmpty(ident)) continue;
+
+                var parts = new List<string> { ident };
+                if (!string.IsNullOrEmpty(name) && name != ident) parts.Add(name);
+                if (!string.IsNullOrEmpty(airway)) parts.Add($"via {airway}");
+                if (!string.IsNullOrEmpty(alt)) parts.Add($"FL{int.Parse(alt) / 100}");
+                if (!string.IsNullOrEmpty(lat) && !string.IsNullOrEmpty(lon)) parts.Add($"({lat}, {lon})");
+                if (!string.IsNullOrEmpty(windDir) && !string.IsNullOrEmpty(windSpd)) parts.Add($"wind {windDir}/{windSpd}kt");
+                string line = string.Join(" | ", parts);
+
+                if (isSidStar == "1")
+                {
+                    if (!passedSid)
+                        sidWaypoints.Add(line);
+                    else
+                        starWaypoints.Add(line);
+                }
+                else
+                {
+                    passedSid = true;
+                    enrouteWaypoints.Add(line);
+                }
+            }
+
+            if (sidWaypoints.Count > 0)
+            {
+                sb.AppendLine();
+                sb.AppendLine("SID WAYPOINTS:");
+                foreach (var wp in sidWaypoints) sb.AppendLine(wp);
+            }
+
+            if (enrouteWaypoints.Count > 0)
+            {
+                sb.AppendLine();
+                sb.AppendLine("ENROUTE WAYPOINTS:");
+                foreach (var wp in enrouteWaypoints) sb.AppendLine(wp);
+            }
+
+            if (starWaypoints.Count > 0)
+            {
+                sb.AppendLine();
+                sb.AppendLine("STAR WAYPOINTS:");
+                foreach (var wp in starWaypoints) sb.AppendLine(wp);
+            }
+        }
+
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Helper to append an XML child node value if present.
+    /// </summary>
+    private void AppendIfPresent(StringBuilder sb, string label, XmlNode parent, string childName)
+    {
+        string? value = parent.SelectSingleNode(childName)?.InnerText?.Trim();
+        if (!string.IsNullOrEmpty(value))
+            sb.AppendLine($"{label}: {value}");
+    }
+
+    /// <summary>
+    /// Generates the prompt for route description.
+    /// </summary>
+    private string GetRouteDescriptionPrompt(string flightData)
+    {
+        return $@"You are writing a flight briefing for a blind flight simulator pilot. Based on the flight plan data below, write a narrative description of the route that helps the pilot understand what they will experience during this flight.
+
+Cover the following topics, using descriptive section headings separated by blank lines:
+
+1. FLIGHT OVERVIEW
+   - Origin and destination cities/airports
+   - Total distance and approximate flight time
+   - Cruise altitude and general direction of flight
+   - Countries or major regions traversed
+
+2. DEPARTURE AND SID
+   - Describe the area around the departure airport (city, terrain, water features, notable landmarks)
+   - Terrain challenges on departure (mountains, obstacles, noise abatement areas)
+   - What a pilot might see looking out the window during climb-out
+   - Describe the filed SID procedure if present: its name, the waypoints it follows, and any notable routing (e.g. follows a river, turns toward the coast, etc.)
+   - State the published top altitude for this SID based on your knowledge of the procedure (not from the flight plan data)
+
+3. ENROUTE
+   - Major cities, regions, or geographic features along the route
+   - Mountain ranges, bodies of water, deserts, or other notable terrain below
+   - Any interesting landmarks or geographic transitions (coastlines, borders, etc.)
+
+4. ARRIVAL AND STAR
+   - Describe the area around the destination airport (city, terrain, water features, notable landmarks)
+   - Terrain challenges on arrival (mountains, obstacles, complex approaches)
+   - What a pilot might see looking out the window during approach
+   - Describe the filed STAR procedure if present: its name, the waypoints it follows, and any notable routing
+   - State the published bottom altitude for this STAR based on your knowledge of the procedure (not from the flight plan data)
+
+5. WEATHER
+   - Summarize departure and arrival weather from the METAR data
+   - Mention any SIGMETs or significant weather along the route
+   - Note any weather that could affect the flight experience (turbulence, visibility, precipitation)
+
+IMPORTANT GUIDELINES:
+- Write in plain text with no markdown formatting
+- Use line breaks between sections for screen reader clarity
+- Use section headings in plain text (not with # or * symbols)
+- Be factual and informative, drawing on your geographic knowledge
+- Aim for 300 to 500 words
+- Focus on helping the pilot build a mental picture of the journey
+- If weather data is not available, note that and skip the weather section
+
+FLIGHT PLAN DATA:
+{flightData}";
     }
 
     #region Response Models

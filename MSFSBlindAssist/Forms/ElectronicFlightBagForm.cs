@@ -5,6 +5,7 @@ using MSFSBlindAssist.Controls;
 using MSFSBlindAssist.Database;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation;
+using MSFSBlindAssist.Services;
 using MSFSBlindAssist.SimConnect;
 using MSFSBlindAssist.Settings;
 
@@ -35,6 +36,8 @@ public partial class ElectronicFlightBagForm : Form
     private Label statusLabel = null!;
     private Button loadSimbriefButton = null!;
     private Button refreshPositionButton = null!;
+    private Button describeRouteButton = null!;
+    private TextBox routeDescriptionTextBox = null!;
 
     // Other tab controls
     private TextBox departureIcaoTextBox = null!;
@@ -96,6 +99,8 @@ public partial class ElectronicFlightBagForm : Form
         {
             // Flight plan already loaded - just refresh the display
             RefreshNavigationGrid();
+            if (!string.IsNullOrEmpty(_flightPlanManager.CurrentFlightPlan.RawOfpXml))
+                describeRouteButton.Enabled = true;
         }
     }
 
@@ -202,8 +207,19 @@ public partial class ElectronicFlightBagForm : Form
             AccessibleDescription = "Update distances and bearings from current aircraft position"
         };
 
+        describeRouteButton = new Button
+        {
+            Text = "Describe Route",
+            Width = 130,
+            Height = 30,
+            Enabled = false,
+            AccessibleName = "Describe Route",
+            AccessibleDescription = "Generate an AI description of the flight route"
+        };
+
         buttonPanel.Controls.Add(loadSimbriefButton);
         buttonPanel.Controls.Add(refreshPositionButton);
+        buttonPanel.Controls.Add(describeRouteButton);
 
         // Navigation list view with grid-like navigation
         navigationListView = new NavigableListView(_announcer)
@@ -220,7 +236,23 @@ public partial class ElectronicFlightBagForm : Form
 
         // Columns will be created dynamically in RefreshNavigationGrid based on available data
 
+        // Route description text box (bottom panel)
+        routeDescriptionTextBox = new TextBox
+        {
+            Dock = DockStyle.Bottom,
+            Height = 200,
+            Multiline = true,
+            ReadOnly = true,
+            ScrollBars = ScrollBars.Vertical,
+            WordWrap = true,
+            Font = new Font("Segoe UI", 10),
+            Visible = false,
+            AccessibleName = "Route Description",
+            AccessibleDescription = "AI-generated description of the flight route"
+        };
+
         panel.Controls.Add(navigationListView);
+        panel.Controls.Add(routeDescriptionTextBox);
         panel.Controls.Add(buttonPanel);
 
         navTab.Controls.Add(panel);
@@ -589,6 +621,7 @@ public partial class ElectronicFlightBagForm : Form
         // Navigation tab
         loadSimbriefButton.Click += (s, e) => LoadSimBriefFlightPlan();
         refreshPositionButton.Click += (s, e) => RefreshAircraftPosition();
+        describeRouteButton.Click += async (s, e) => await DescribeRouteAsync();
 
         // Departure tab
         departureIcaoTextBox.TextChanged += DepartureIcaoTextBox_TextChanged;
@@ -767,12 +800,56 @@ public partial class ElectronicFlightBagForm : Form
             UpdateStatus("Loading flight plan from SimBrief...");
             _flightPlanManager.LoadFromSimBrief(_simbriefUsername);
             _announcer.Announce("SimBrief flight plan loaded");
+            describeRouteButton.Enabled = !string.IsNullOrEmpty(_flightPlanManager.CurrentFlightPlan.RawOfpXml);
         }
         catch (Exception ex)
         {
             MessageBox.Show($"Error loading SimBrief flight plan: {ex.Message}",
                           "SimBrief Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             _announcer.Announce("Error loading SimBrief flight plan");
+        }
+    }
+
+    private async Task DescribeRouteAsync()
+    {
+        try
+        {
+            if (_flightPlanManager.CurrentFlightPlan.IsEmpty() ||
+                string.IsNullOrEmpty(_flightPlanManager.CurrentFlightPlan.RawOfpXml))
+            {
+                _announcer.Announce("No SimBrief flight plan loaded. Please load a flight plan first.");
+                return;
+            }
+
+            _announcer.Announce("Generating route description, please wait");
+            describeRouteButton.Enabled = false;
+            UpdateStatus("Generating route description...");
+
+            var geminiService = new GeminiService();
+            string description = await geminiService.DescribeRouteAsync(
+                _flightPlanManager.CurrentFlightPlan.RawOfpXml);
+
+            routeDescriptionTextBox.Text = description.Replace("\r\n", "\n").Replace("\n", "\r\n");
+            routeDescriptionTextBox.Visible = true;
+            routeDescriptionTextBox.SelectionStart = 0;
+            routeDescriptionTextBox.Focus();
+
+            _announcer.Announce("Route description ready");
+            UpdateStatus("Route description generated");
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("API key"))
+        {
+            _announcer.Announce("Gemini API key not configured. Please configure it in File menu, Gemini API Key Settings.");
+            UpdateStatus("Gemini API key not configured");
+        }
+        catch (Exception ex)
+        {
+            _announcer.Announce($"Error generating route description: {ex.Message}");
+            UpdateStatus("Error generating route description");
+        }
+        finally
+        {
+            describeRouteButton.Enabled = true;
         }
     }
 

@@ -84,7 +84,8 @@ public class SimBriefService
         FlightPlan flightPlan = new FlightPlan
         {
             SimBriefUsername = username,
-            LoadedTime = DateTime.Now
+            LoadedTime = DateTime.Now,
+            RawOfpXml = xmlContent
         };
 
         // Parse origin and destination
