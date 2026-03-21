@@ -35,7 +35,8 @@ Heading:
   U          Read True Heading
 
 Fuel:
-  F          Read Fuel On Board
+  F          Read Fuel On Board (Pounds)
+  Shift+F    Read Fuel On Board (Kilograms)
 
 Flaps:
   L          Read Flap Position

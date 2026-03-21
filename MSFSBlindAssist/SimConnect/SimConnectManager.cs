@@ -1193,7 +1193,18 @@ public class SimConnectManager
                 {
                     VarName = "FUEL_QUANTITY",
                     Value = fuelData.value,
-                    Description = $"Fuel on board {fuelData.value:0}"
+                    Description = $"Fuel on board {fuelData.value:0} pounds"
+                });
+                break;
+
+            case (DATA_REQUESTS)318: // Fuel Quantity in KG
+                SingleValue fuelKgData = (SingleValue)data.dwData[0];
+                double fuelKg = fuelKgData.value * 0.453592;
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "FUEL_QUANTITY_KG",
+                    Value = fuelKg,
+                    Description = $"Fuel on board {fuelKg:0} kilograms"
                 });
                 break;
 
