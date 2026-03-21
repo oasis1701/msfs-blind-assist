@@ -34,6 +34,23 @@ Heading:
   H          Read Magnetic Heading
   U          Read True Heading
 
+Fuel:
+  F          Read Fuel On Board (Pounds)
+  Shift+F    Read Fuel On Board (Kilograms)
+
+Weight:
+  W          Read Gross Weight (Pounds)
+  Shift+W    Read Gross Weight (Kilograms)
+
+Flaps:
+  L          Read Flap Position
+
+Landing Gear:
+  Shift+G    Read Gear Position
+
+Altimeter:
+  B          Read Altimeter Setting
+
 Vertical:
   V          Read Vertical Speed
 
@@ -104,6 +121,7 @@ FCU Set Values:
   Ctrl+S     Set Speed Value
   Ctrl+A     Set Altitude Value
   Ctrl+V     Set VS Value
+  Ctrl+B     Set Altimeter Value
 
 
 General:

@@ -28,11 +28,16 @@ public class FenixA320Definition : BaseAircraftDefinition
     private double? pendingVSValue = null;
     private double? pendingVSStatus = null;
 
+    private double? pendingBaroHpa = null;
+    private double? pendingBaroInch = null;
+
     // Boolean flags to track active FCU readout requests
     private bool isRequestingHeading = false;
     private bool isRequestingSpeed = false;
     private bool isRequestingAltitude = false;
     private bool isRequestingVS = false;
+    private bool isRequestingBaro = false;
+    private bool isSettingBaro = false;
 
     private Accessibility.ScreenReaderAnnouncer? lastAnnouncer = null;
 
@@ -1275,20 +1280,20 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["S_FCU_EFIS1_BARO_MODE"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_FCU_EFIS1_BARO_MODE",
-                DisplayName = "EFIS 1 BARO MODE STATUS",
+                DisplayName = "EFIS 1 Baro Mode",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "STD", [1] = "QNH"}
+                ValueDescriptions = new Dictionary<double, string> {[0] = "inHg", [1] = "hPa"}
             },
             ["S_FCU_EFIS2_BARO_MODE"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_FCU_EFIS2_BARO_MODE",
-                DisplayName = "EFIS 2 BARO MODE STATUS",
+                DisplayName = "EFIS 2 Baro Mode",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "STD", [1] = "QNH"}
+                ValueDescriptions = new Dictionary<double, string> {[0] = "inHg", [1] = "hPa"}
             },
             ["I_FCU_EFIS1_QNH"] = new SimConnect.SimVarDefinition
             {
@@ -2859,16 +2864,6 @@ public class FenixA320Definition : BaseAircraftDefinition
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
             },
 
-            // Baro Mode (inHg/hPa)
-            ["S_FCU_EFIS1_BARO_MODE"] = new SimConnect.SimVarDefinition
-            {
-                Name = "S_FCU_EFIS1_BARO_MODE",
-                DisplayName = "EFIS Left Baro Mode",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "inHg", [1] = "hPa"}
-            },
-
             // Baro Knob Inc/Dec (Counter pattern)
             ["E_FCU_EFIS1_BARO_INC"] = new SimConnect.SimVarDefinition
             {
@@ -3004,16 +2999,6 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
-            },
-
-            // Baro Mode (inHg/hPa)
-            ["S_FCU_EFIS2_BARO_MODE"] = new SimConnect.SimVarDefinition
-            {
-                Name = "S_FCU_EFIS2_BARO_MODE",
-                DisplayName = "EFIS Right Baro Mode",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "inHg", [1] = "hPa"}
             },
 
             // Baro Knob Inc/Dec (Counter pattern)
@@ -12270,6 +12255,45 @@ public class FenixA320Definition : BaseAircraftDefinition
             return true;
         }
 
+        // ========== Suppress baro announcements during set operation ==========
+        if (isSettingBaro && (varName == "N_FCU_EFIS1_BARO_HPA" || varName == "N_FCU_EFIS1_BARO_INCH" ||
+            varName == "N_FCU_EFIS2_BARO_HPA" || varName == "N_FCU_EFIS2_BARO_INCH"))
+        {
+            return true; // Consume the event silently
+        }
+
+        // ========== Altimeter Readout ==========
+        if (varName == "N_FCU_EFIS1_BARO_HPA")
+        {
+            if (!isRequestingBaro)
+                return false;
+
+            pendingBaroHpa = value;
+            if (pendingBaroInch.HasValue)
+            {
+                lastAnnouncer?.AnnounceImmediate($"Altimeter: {pendingBaroHpa.Value:0}, {pendingBaroInch.Value:0.00}");
+                pendingBaroHpa = null;
+                pendingBaroInch = null;
+                isRequestingBaro = false;
+            }
+            return true;
+        }
+        else if (varName == "N_FCU_EFIS1_BARO_INCH")
+        {
+            if (!isRequestingBaro)
+                return false;
+
+            pendingBaroInch = value;
+            if (pendingBaroHpa.HasValue)
+            {
+                lastAnnouncer?.AnnounceImmediate($"Altimeter: {pendingBaroHpa.Value:0}, {pendingBaroInch.Value:0.00}");
+                pendingBaroHpa = null;
+                pendingBaroInch = null;
+                isRequestingBaro = false;
+            }
+            return true;
+        }
+
         // Call base implementation to handle common variables (e.g., altitude thousand-foot crossings)
         return base.ProcessSimVarUpdate(varName, value, announcer);
     }
@@ -12342,6 +12366,324 @@ public class FenixA320Definition : BaseAircraftDefinition
 
             simConnectMgr.RequestVariable("N_FCU_VS");
             simConnectMgr.RequestVariable("B_FCU_VERTICALSPEED_DASHED");
+        }
+    }
+
+    private void RequestAltimeter(SimConnect.SimConnectManager simConnectMgr, Accessibility.ScreenReaderAnnouncer announcer)
+    {
+        if (simConnectMgr.IsConnected)
+        {
+            // Check if in STD mode
+            double? qnhStatus = simConnectMgr.GetCachedVariableValue("I_FCU_EFIS1_QNH");
+            if (qnhStatus != null && qnhStatus.Value < 0.5)
+            {
+                announcer.AnnounceImmediate("Altimeter standard");
+                return;
+            }
+
+            lastAnnouncer = announcer;
+            isRequestingBaro = true;
+            pendingBaroHpa = null;
+            pendingBaroInch = null;
+            simConnectMgr.RequestVariable("N_FCU_EFIS1_BARO_HPA");
+            simConnectMgr.RequestVariable("N_FCU_EFIS1_BARO_INCH");
+        }
+    }
+
+    /// <summary>
+    /// Sets the altimeter on both EFIS. Pass targetHpa for hPa input, targetInHg for inHg input.
+    /// Uses hPa mode (1 step = 1 hPa) for hPa input, temporarily switches to inHg mode
+    /// (1 step = 0.01 inHg) for inHg input to avoid rounding.
+    /// </summary>
+    public async System.Threading.Tasks.Task SetFCUBaro(int? targetHpa, double? targetInHg, SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer announcer)
+    {
+        isSettingBaro = true;
+        try
+        {
+            bool useInHgMode = targetInHg.HasValue;
+            // Required baro mode: 0=inHg (0.01 inHg/step), 1=hPa (1 hPa/step)
+            int requiredMode = useInHgMode ? 0 : 1;
+
+            // Set both EFIS1 and EFIS2 for sync
+            string[] efisIds = { "1", "2" };
+            foreach (var efis in efisIds)
+            {
+                // Switch from STD to QNH if needed
+                double? qnhStatus = simConnect.GetCachedVariableValue($"I_FCU_EFIS{efis}_QNH");
+                if (qnhStatus != null && qnhStatus.Value < 0.5)
+                {
+                    simConnect.SetLVar($"S_FCU_EFIS{efis}_BARO_STD", 0);
+                    await System.Threading.Tasks.Task.Delay(750);
+                }
+
+                // Set baro mode to match the input unit (hPa or inHg)
+                simConnect.SetLVar($"S_FCU_EFIS{efis}_BARO_MODE", requiredMode);
+                await System.Threading.Tasks.Task.Delay(300);
+
+                string counterVar = $"E_FCU_EFIS{efis}_BARO";
+
+                if (useInHgMode)
+                {
+
+                    // Read current inHg
+                    simConnect.RequestVariable($"N_FCU_EFIS{efis}_BARO_INCH");
+                    await System.Threading.Tasks.Task.Delay(500);
+                    double? currentInHg = simConnect.GetCachedVariableValue($"N_FCU_EFIS{efis}_BARO_INCH");
+                    if (currentInHg == null) continue;
+
+                    double currentRounded = Math.Round(currentInHg.Value, 2);
+                    int delta = (int)Math.Round((targetInHg.Value - currentRounded) / 0.01, MidpointRounding.AwayFromZero);
+                    if (delta != 0)
+                    {
+                        AdjustBaroCounter(counterVar, delta, simConnect);
+
+                        // Verify and correct ±1 step
+                        await System.Threading.Tasks.Task.Delay(750);
+                        simConnect.RequestVariable($"N_FCU_EFIS{efis}_BARO_INCH");
+                        await System.Threading.Tasks.Task.Delay(300);
+                        double? verifyInHg = simConnect.GetCachedVariableValue($"N_FCU_EFIS{efis}_BARO_INCH");
+                        if (verifyInHg != null)
+                        {
+                            double verifyRounded = Math.Round(verifyInHg.Value, 2);
+                            if (Math.Abs(verifyRounded - targetInHg.Value) > 0.005)
+                            {
+                                int correction = verifyRounded < targetInHg.Value ? 1 : -1;
+                                AdjustBaroCounter(counterVar, correction, simConnect);
+                            }
+                        }
+                    }
+
+                }
+                else
+                {
+                    // hPa mode (1 step = 1 hPa) — exact integer steps
+                    simConnect.RequestVariable($"N_FCU_EFIS{efis}_BARO_HPA");
+                    await System.Threading.Tasks.Task.Delay(500);
+                    double? currentHpa = simConnect.GetCachedVariableValue($"N_FCU_EFIS{efis}_BARO_HPA");
+                    if (currentHpa == null) continue;
+
+                    int delta = targetHpa!.Value - (int)Math.Round(currentHpa.Value);
+                    if (delta != 0)
+                    {
+                        AdjustBaroCounter(counterVar, delta, simConnect);
+
+                        // Verify and correct ±1 step
+                        await System.Threading.Tasks.Task.Delay(750);
+                        simConnect.RequestVariable($"N_FCU_EFIS{efis}_BARO_HPA");
+                        await System.Threading.Tasks.Task.Delay(300);
+                        double? verifyHpa = simConnect.GetCachedVariableValue($"N_FCU_EFIS{efis}_BARO_HPA");
+                        if (verifyHpa != null)
+                        {
+                            int verifyInt = (int)Math.Round(verifyHpa.Value);
+                            if (verifyInt != targetHpa.Value)
+                            {
+                                int correction = targetHpa.Value - verifyInt;
+                                AdjustBaroCounter(counterVar, correction, simConnect);
+                            }
+                        }
+                    }
+                }
+
+            }
+
+            // Announce final value
+            await System.Threading.Tasks.Task.Delay(500);
+            simConnect.RequestVariable("N_FCU_EFIS1_BARO_HPA");
+            simConnect.RequestVariable("N_FCU_EFIS1_BARO_INCH");
+            await System.Threading.Tasks.Task.Delay(300);
+            double? finalHpa = simConnect.GetCachedVariableValue("N_FCU_EFIS1_BARO_HPA");
+            double? finalInch = simConnect.GetCachedVariableValue("N_FCU_EFIS1_BARO_INCH");
+            if (finalHpa != null && finalInch != null)
+            {
+                announcer.AnnounceImmediate($"Altimeter set: {finalHpa.Value:0}, {finalInch.Value:0.00}");
+            }
+        }
+        finally
+        {
+            isSettingBaro = false;
+        }
+    }
+
+    private void ShowFenixBaroWindow(
+        SimConnect.SimConnectManager simConnect,
+        Accessibility.ScreenReaderAnnouncer announcer,
+        System.Windows.Forms.Form parentForm)
+    {
+        if (!simConnect.IsConnected)
+        {
+            announcer.AnnounceImmediate("Not connected to simulator.");
+            return;
+        }
+
+        var window = new Forms.FenixA320.FenixBaroWindow(this, simConnect, announcer);
+        window.ShowForm();
+    }
+
+    /// <summary>
+    /// Adjusts the baro counter by the given delta using atomic RPN read-modify-write.
+    /// This avoids rmpCounters desync after aircraft reload by always reading the
+    /// actual sim counter value before modifying.
+    /// </summary>
+    private void AdjustBaroCounter(string counterVar, int delta, SimConnect.SimConnectManager simConnect)
+    {
+        if (delta == 0) return;
+
+        string op = delta > 0 ? $"{delta} +" : $"{Math.Abs(delta)} -";
+        string rpn = $"(L:{counterVar}) {op} (>L:{counterVar})";
+        simConnect.ExecuteCalculatorCode(rpn);
+
+        System.Diagnostics.Debug.WriteLine($"[FenixA320] AdjustBaroCounter: {counterVar} delta={delta}");
+    }
+
+    private void RequestGearPosition(SimConnect.SimConnectManager simConnectMgr)
+    {
+        var simConnect = simConnectMgr.SimConnectInstance;
+        if (simConnectMgr.IsConnected && simConnect != null)
+        {
+            try
+            {
+                var tempDefId = (SimConnect.SimConnectManager.DATA_DEFINITIONS)317;
+                simConnect.ClearDataDefinition(tempDefId);
+                simConnect.AddToDataDefinition(tempDefId,
+                    "GEAR HANDLE POSITION", "bool",
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
+                simConnect.RegisterDataDefineStruct<SimConnect.SimConnectManager.SingleValue>(tempDefId);
+                simConnect.RequestDataOnSimObject((SimConnect.SimConnectManager.DATA_REQUESTS)317,
+                    tempDefId, Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_OBJECT_ID_USER,
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_PERIOD.ONCE,
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error requesting gear position: {ex.Message}");
+            }
+        }
+    }
+
+    private void RequestFlapPosition(SimConnect.SimConnectManager simConnectMgr)
+    {
+        var simConnect = simConnectMgr.SimConnectInstance;
+        if (simConnectMgr.IsConnected && simConnect != null)
+        {
+            try
+            {
+                var tempDefId = (SimConnect.SimConnectManager.DATA_DEFINITIONS)316;
+                simConnect.ClearDataDefinition(tempDefId);
+                simConnect.AddToDataDefinition(tempDefId,
+                    "FLAPS HANDLE INDEX", "number",
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
+                simConnect.RegisterDataDefineStruct<SimConnect.SimConnectManager.SingleValue>(tempDefId);
+                simConnect.RequestDataOnSimObject((SimConnect.SimConnectManager.DATA_REQUESTS)316,
+                    tempDefId, Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_OBJECT_ID_USER,
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_PERIOD.ONCE,
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error requesting flap position: {ex.Message}");
+            }
+        }
+    }
+
+    private void RequestGrossWeight(SimConnect.SimConnectManager simConnectMgr)
+    {
+        var simConnect = simConnectMgr.SimConnectInstance;
+        if (simConnectMgr.IsConnected && simConnect != null)
+        {
+            try
+            {
+                var tempDefId = (SimConnect.SimConnectManager.DATA_DEFINITIONS)319;
+                simConnect.ClearDataDefinition(tempDefId);
+                simConnect.AddToDataDefinition(tempDefId,
+                    "TOTAL WEIGHT", "pounds",
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
+                simConnect.RegisterDataDefineStruct<SimConnect.SimConnectManager.SingleValue>(tempDefId);
+                simConnect.RequestDataOnSimObject((SimConnect.SimConnectManager.DATA_REQUESTS)319,
+                    tempDefId, Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_OBJECT_ID_USER,
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_PERIOD.ONCE,
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error requesting gross weight: {ex.Message}");
+            }
+        }
+    }
+
+    private void RequestGrossWeightKg(SimConnect.SimConnectManager simConnectMgr, Accessibility.ScreenReaderAnnouncer announcer)
+    {
+        var simConnect = simConnectMgr.SimConnectInstance;
+        if (simConnectMgr.IsConnected && simConnect != null)
+        {
+            try
+            {
+                var tempDefId = (SimConnect.SimConnectManager.DATA_DEFINITIONS)320;
+                simConnect.ClearDataDefinition(tempDefId);
+                simConnect.AddToDataDefinition(tempDefId,
+                    "TOTAL WEIGHT", "pounds",
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
+                simConnect.RegisterDataDefineStruct<SimConnect.SimConnectManager.SingleValue>(tempDefId);
+                simConnect.RequestDataOnSimObject((SimConnect.SimConnectManager.DATA_REQUESTS)320,
+                    tempDefId, Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_OBJECT_ID_USER,
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_PERIOD.ONCE,
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+                lastAnnouncer = announcer;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error requesting gross weight kg: {ex.Message}");
+            }
+        }
+    }
+
+    private void RequestFuelQuantityKg(SimConnect.SimConnectManager simConnectMgr, Accessibility.ScreenReaderAnnouncer announcer)
+    {
+        var simConnect = simConnectMgr.SimConnectInstance;
+        if (simConnectMgr.IsConnected && simConnect != null)
+        {
+            try
+            {
+                var tempDefId = (SimConnect.SimConnectManager.DATA_DEFINITIONS)318;
+                simConnect.ClearDataDefinition(tempDefId);
+                simConnect.AddToDataDefinition(tempDefId,
+                    "FUEL TOTAL QUANTITY WEIGHT", "pounds",
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
+                simConnect.RegisterDataDefineStruct<SimConnect.SimConnectManager.SingleValue>(tempDefId);
+                simConnect.RequestDataOnSimObject((SimConnect.SimConnectManager.DATA_REQUESTS)318,
+                    tempDefId, Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_OBJECT_ID_USER,
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_PERIOD.ONCE,
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+                lastAnnouncer = announcer;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error requesting fuel quantity kg: {ex.Message}");
+            }
+        }
+    }
+
+    private void RequestFuelQuantity(SimConnect.SimConnectManager simConnectMgr)
+    {
+        var simConnect = simConnectMgr.SimConnectInstance;
+        if (simConnectMgr.IsConnected && simConnect != null)
+        {
+            try
+            {
+                var tempDefId = (SimConnect.SimConnectManager.DATA_DEFINITIONS)314;
+                simConnect.ClearDataDefinition(tempDefId);
+                simConnect.AddToDataDefinition(tempDefId,
+                    "FUEL TOTAL QUANTITY WEIGHT", "pounds",
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
+                simConnect.RegisterDataDefineStruct<SimConnect.SimConnectManager.SingleValue>(tempDefId);
+                simConnect.RequestDataOnSimObject((SimConnect.SimConnectManager.DATA_REQUESTS)314,
+                    tempDefId, Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_OBJECT_ID_USER,
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_PERIOD.ONCE,
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error requesting fuel quantity: {ex.Message}");
+            }
         }
     }
 
@@ -12543,6 +12885,8 @@ public class FenixA320Definition : BaseAircraftDefinition
                 remainingSteps = (int)(remaining / 100);
             else if (counterVar == "E_FCU_HEADING")
                 remainingSteps = CalculateHeadingDelta((int)actualValue.Value, (int)targetValue);
+            else if (counterVar.Contains("BARO"))
+                remainingSteps = (int)Math.Round(remaining / 0.01, MidpointRounding.AwayFromZero);
             else
                 remainingSteps = (int)remaining;
 
@@ -12888,6 +13232,34 @@ public class FenixA320Definition : BaseAircraftDefinition
                 RequestFCUVerticalSpeedWithStatus(simConnect, announcer);
                 return true;
 
+            case HotkeyAction.ReadFuelQuantity:
+                RequestFuelQuantity(simConnect);
+                return true;
+
+            case HotkeyAction.ReadWaypointInfo:
+                RequestGrossWeight(simConnect);
+                return true;
+
+            case HotkeyAction.ReadGrossWeightKg:
+                RequestGrossWeightKg(simConnect, announcer);
+                return true;
+
+            case HotkeyAction.ShowFuelPayloadWindow:
+                RequestFuelQuantityKg(simConnect, announcer);
+                return true;
+
+            case HotkeyAction.ReadFlaps:
+                RequestFlapPosition(simConnect);
+                return true;
+
+            case HotkeyAction.ReadGear:
+                RequestGearPosition(simConnect);
+                return true;
+
+            case HotkeyAction.ReadAltimeter:
+                RequestAltimeter(simConnect, announcer);
+                return true;
+
             // FCU set windows (Ctrl+H, Ctrl+S, Ctrl+A, Ctrl+V, Ctrl+P in input mode)
             case HotkeyAction.FCUSetHeading:
                 hotkeyManager.ExitInputHotkeyMode();
@@ -12912,6 +13284,11 @@ public class FenixA320Definition : BaseAircraftDefinition
             case HotkeyAction.FCUSetAutopilot:
                 hotkeyManager.ExitInputHotkeyMode();
                 ShowFenixAutopilotWindow(simConnect, announcer, parentForm);
+                return true;
+
+            case HotkeyAction.FCUSetBaro:
+                hotkeyManager.ExitInputHotkeyMode();
+                ShowFenixBaroWindow(simConnect, announcer, parentForm);
                 return true;
 
             case HotkeyAction.MonitorManager:

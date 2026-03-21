@@ -1193,7 +1193,70 @@ public class SimConnectManager
                 {
                     VarName = "FUEL_QUANTITY",
                     Value = fuelData.value,
-                    Description = $"Total fuel {fuelData.value:0} kilograms"
+                    Description = $"Fuel on board {fuelData.value:0} pounds"
+                });
+                break;
+
+            case (DATA_REQUESTS)318: // Fuel Quantity in KG
+                SingleValue fuelKgData = (SingleValue)data.dwData[0];
+                double fuelKg = fuelKgData.value * 0.453592;
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "FUEL_QUANTITY_KG",
+                    Value = fuelKg,
+                    Description = $"Fuel on board {fuelKg:0} kilograms"
+                });
+                break;
+
+            case (DATA_REQUESTS)319: // Gross Weight (Pounds)
+                SingleValue gwData = (SingleValue)data.dwData[0];
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "GROSS_WEIGHT",
+                    Value = gwData.value,
+                    Description = $"Gross weight {gwData.value:0} pounds"
+                });
+                break;
+
+            case (DATA_REQUESTS)320: // Gross Weight (KG)
+                SingleValue gwKgData = (SingleValue)data.dwData[0];
+                double gwKg = gwKgData.value * 0.453592;
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "GROSS_WEIGHT_KG",
+                    Value = gwKg,
+                    Description = $"Gross weight {gwKg:0} kilograms"
+                });
+                break;
+
+            case (DATA_REQUESTS)316: // Flap Position
+                SingleValue flapData = (SingleValue)data.dwData[0];
+                int flapIndex = (int)Math.Round(flapData.value);
+                string flapDescription = flapIndex switch
+                {
+                    0 => "Flaps up",
+                    1 => "Flaps 1",
+                    2 => "Flaps 2",
+                    3 => "Flaps 3",
+                    4 => "Flaps full",
+                    _ => $"Flaps {flapIndex}"
+                };
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "FLAP_POSITION",
+                    Value = flapData.value,
+                    Description = flapDescription
+                });
+                break;
+
+            case (DATA_REQUESTS)317: // Gear Position
+                SingleValue gearData = (SingleValue)data.dwData[0];
+                string gearPosition = gearData.value > 0.5 ? "Gear down" : "Gear up";
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "GEAR_POSITION",
+                    Value = gearData.value,
+                    Description = gearPosition
                 });
                 break;
 
@@ -2988,6 +3051,25 @@ public class SimConnectManager
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"Error setting LVar {varName}: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Executes RPN calculator code via the MobiFlight WASM module.
+    /// Useful for atomic read-modify-write operations on LVars.
+    /// Example: "(L:E_FCU_EFIS1_BARO) 5 + (>L:E_FCU_EFIS1_BARO)"
+    /// </summary>
+    public void ExecuteCalculatorCode(string rpnCode)
+    {
+        if (!IsConnected || mobiFlightWasm == null) return;
+
+        try
+        {
+            mobiFlightWasm.SendMFCommand($"MF.SimVars.Set.{rpnCode}");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error executing calculator code: {ex.Message}");
         }
     }
 
