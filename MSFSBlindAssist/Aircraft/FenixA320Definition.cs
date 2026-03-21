@@ -12560,29 +12560,26 @@ public class FenixA320Definition : BaseAircraftDefinition
         }
     }
 
-    private void RequestFlapPosition(SimConnect.SimConnectManager simConnectMgr)
+    private void RequestFlapPosition(SimConnect.SimConnectManager simConnectMgr, Accessibility.ScreenReaderAnnouncer announcer)
     {
-        var simConnect = simConnectMgr.SimConnectInstance;
-        if (simConnectMgr.IsConnected && simConnect != null)
+        if (!simConnectMgr.IsConnected) return;
+
+        // Use Fenix LVar S_FC_FLAPS (0-4) instead of generic FLAPS HANDLE INDEX
+        // which has a different detent count and doesn't match A320 positions
+        double? flapValue = simConnectMgr.GetCachedVariableValue("S_FC_FLAPS");
+        if (flapValue == null) return;
+
+        int flapIndex = (int)Math.Round(flapValue.Value);
+        string flapDescription = flapIndex switch
         {
-            try
-            {
-                var tempDefId = SimConnect.SimConnectManager.DATA_DEFINITIONS.DEF_FLAP_POSITION;
-                simConnect.ClearDataDefinition(tempDefId);
-                simConnect.AddToDataDefinition(tempDefId,
-                    "FLAPS HANDLE INDEX", "number",
-                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
-                simConnect.RegisterDataDefineStruct<SimConnect.SimConnectManager.SingleValue>(tempDefId);
-                simConnect.RequestDataOnSimObject(SimConnect.SimConnectManager.DATA_REQUESTS.REQUEST_FLAP_POSITION,
-                    tempDefId, Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_OBJECT_ID_USER,
-                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_PERIOD.ONCE,
-                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error requesting flap position: {ex.Message}");
-            }
-        }
+            0 => "Flaps up",
+            1 => "Flaps 1",
+            2 => "Flaps 2",
+            3 => "Flaps 3",
+            4 => "Flaps full",
+            _ => $"Flaps {flapIndex}"
+        };
+        announcer.AnnounceImmediate(flapDescription);
     }
 
     private void RequestGrossWeight(SimConnect.SimConnectManager simConnectMgr)
@@ -13249,7 +13246,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 return true;
 
             case HotkeyAction.ReadFlaps:
-                RequestFlapPosition(simConnect);
+                RequestFlapPosition(simConnect, announcer);
                 return true;
 
             case HotkeyAction.ReadGear:
