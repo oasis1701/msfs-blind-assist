@@ -126,6 +126,29 @@ public class SimConnectManager
         REQUEST_CONTINUOUS_BATCH_5 = 12,
         // Panel batch for OnRequest variables
         REQUEST_PANEL_BATCH = 13,
+        // Hotkey readout requests (one-shot, used by aircraft definitions)
+        REQUEST_HEADING = 300,
+        REQUEST_SPEED = 301,
+        REQUEST_ALTITUDE = 302,
+        REQUEST_ALTITUDE_AGL = 303,
+        REQUEST_ALTITUDE_MSL = 304,
+        REQUEST_AIRSPEED_IAS = 305,
+        REQUEST_AIRSPEED_TAS = 306,
+        REQUEST_GROUND_SPEED = 307,
+        REQUEST_VERTICAL_SPEED = 308,
+        REQUEST_HEADING_MAG = 309,
+        REQUEST_HEADING_TRUE = 310,
+        REQUEST_MACH = 311,
+        REQUEST_PITCH = 312,
+        REQUEST_BANK = 313,
+        REQUEST_FUEL_QUANTITY = 314,
+        REQUEST_WAYPOINT_INFO = 315,
+        REQUEST_FLAP_POSITION = 316,
+        REQUEST_GEAR_POSITION = 317,
+        REQUEST_FUEL_QUANTITY_KG = 318,
+        REQUEST_GROSS_WEIGHT = 319,
+        REQUEST_GROSS_WEIGHT_KG = 320,
+        REQUEST_FUEL_QUANTITY_FBW = 321,
         REQUEST_ECAM_MESSAGES = 350,
         // Individual variable requests start from 1000
         INDIVIDUAL_VARIABLE_BASE = 1000
@@ -151,6 +174,29 @@ public class SimConnectManager
         VISUAL_GUIDANCE_DATA = 14,
         // Takeoff assist consolidated data
         TAKEOFF_ASSIST_DATA = 15,
+        // Hotkey readout definitions (one-shot, used by aircraft definitions)
+        DEF_HEADING = 300,
+        DEF_SPEED = 301,
+        DEF_ALTITUDE = 302,
+        DEF_ALTITUDE_AGL = 303,
+        DEF_ALTITUDE_MSL = 304,
+        DEF_AIRSPEED_IAS = 305,
+        DEF_AIRSPEED_TAS = 306,
+        DEF_GROUND_SPEED = 307,
+        DEF_VERTICAL_SPEED = 308,
+        DEF_HEADING_MAG = 309,
+        DEF_HEADING_TRUE = 310,
+        DEF_MACH = 311,
+        DEF_PITCH = 312,
+        DEF_BANK = 313,
+        DEF_FUEL_QUANTITY = 314,
+        DEF_WAYPOINT_INFO = 315,
+        DEF_FLAP_POSITION = 316,
+        DEF_GEAR_POSITION = 317,
+        DEF_FUEL_QUANTITY_KG = 318,
+        DEF_GROSS_WEIGHT = 319,
+        DEF_GROSS_WEIGHT_KG = 320,
+        DEF_FUEL_QUANTITY_FBW = 321,
         ECAM_MESSAGES = 350,
         // Individual variable definitions start from 1000
         INDIVIDUAL_VARIABLE_BASE = 1000
@@ -1033,7 +1079,7 @@ public class SimConnectManager
 
             // REQUEST_ECAM_MESSAGES case removed - now handled via MobiFlight
 
-            case (DATA_REQUESTS)300: // Heading only
+            case DATA_REQUESTS.REQUEST_HEADING:
                 SingleValue headingData = (SingleValue)data.dwData[0];
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
                 {
@@ -1042,8 +1088,8 @@ public class SimConnectManager
                     Description = $"Heading {headingData.value:000} degrees"
                 });
                 break;
-                
-            case (DATA_REQUESTS)301: // Speed only
+
+            case DATA_REQUESTS.REQUEST_SPEED:
                 SingleValue speedData = (SingleValue)data.dwData[0];
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
                 {
@@ -1052,8 +1098,8 @@ public class SimConnectManager
                     Description = $"Speed {speedData.value:000}"
                 });
                 break;
-                
-            case (DATA_REQUESTS)302: // Altitude only
+
+            case DATA_REQUESTS.REQUEST_ALTITUDE:
                 SingleValue altitudeData = (SingleValue)data.dwData[0];
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
                 {
@@ -1063,10 +1109,7 @@ public class SimConnectManager
                 });
                 break;
 
-            // NOTE: FCU data requests (320-323) removed - now handled by aircraft definitions
-            // using existing variable registrations instead of duplicate temp definitions
-
-            case (DATA_REQUESTS)304: // Altitude MSL (swapped)
+            case DATA_REQUESTS.REQUEST_ALTITUDE_MSL:
                 SingleValue altMslData = (SingleValue)data.dwData[0];
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
                 {
@@ -1076,7 +1119,7 @@ public class SimConnectManager
                 });
                 break;
 
-            case (DATA_REQUESTS)303: // Altitude AGL (swapped)
+            case DATA_REQUESTS.REQUEST_ALTITUDE_AGL:
                 SingleValue altAglData = (SingleValue)data.dwData[0];
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
                 {
@@ -1086,7 +1129,7 @@ public class SimConnectManager
                 });
                 break;
 
-            case (DATA_REQUESTS)305: // Airspeed Indicated
+            case DATA_REQUESTS.REQUEST_AIRSPEED_IAS:
                 SingleValue iasData = (SingleValue)data.dwData[0];
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
                 {
@@ -1096,7 +1139,7 @@ public class SimConnectManager
                 });
                 break;
 
-            case (DATA_REQUESTS)306: // Airspeed True
+            case DATA_REQUESTS.REQUEST_AIRSPEED_TAS:
                 SingleValue tasData = (SingleValue)data.dwData[0];
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
                 {
@@ -1106,7 +1149,7 @@ public class SimConnectManager
                 });
                 break;
 
-            case (DATA_REQUESTS)307: // Ground Speed
+            case DATA_REQUESTS.REQUEST_GROUND_SPEED:
                 SingleValue gsData = (SingleValue)data.dwData[0];
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
                 {
@@ -1116,7 +1159,7 @@ public class SimConnectManager
                 });
                 break;
 
-            case (DATA_REQUESTS)308: // Vertical Speed
+            case DATA_REQUESTS.REQUEST_VERTICAL_SPEED:
                 SingleValue vsData = (SingleValue)data.dwData[0];
                 double vsInFpm = vsData.value; // Already in feet per minute
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
@@ -1127,7 +1170,7 @@ public class SimConnectManager
                 });
                 break;
 
-            case (DATA_REQUESTS)310: // Heading True (swapped)
+            case DATA_REQUESTS.REQUEST_HEADING_TRUE:
                 SingleValue hdgTrueData = (SingleValue)data.dwData[0];
                 double hdgTrueInDegrees = hdgTrueData.value * (180.0 / Math.PI); // Convert radians to degrees
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
@@ -1138,7 +1181,7 @@ public class SimConnectManager
                 });
                 break;
 
-            case (DATA_REQUESTS)309: // Heading Magnetic (swapped)
+            case DATA_REQUESTS.REQUEST_HEADING_MAG:
                 SingleValue hdgMagData = (SingleValue)data.dwData[0];
                 double hdgMagInDegrees = hdgMagData.value * (180.0 / Math.PI); // Convert radians to degrees
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
@@ -1149,7 +1192,7 @@ public class SimConnectManager
                 });
                 break;
 
-            case (DATA_REQUESTS)311: // Mach Speed
+            case DATA_REQUESTS.REQUEST_MACH:
                 SingleValue machData = (SingleValue)data.dwData[0];
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
                 {
@@ -1159,7 +1202,7 @@ public class SimConnectManager
                 });
                 break;
 
-            case (DATA_REQUESTS)313: // Bank Angle
+            case DATA_REQUESTS.REQUEST_BANK:
                 SingleValue bankData = (SingleValue)data.dwData[0];
                 double bankInDegrees = -bankData.value * (180.0 / Math.PI); // Convert radians to degrees, negated so right bank = positive
                 string bankFormatted = bankInDegrees >= 0
@@ -1173,7 +1216,7 @@ public class SimConnectManager
                 });
                 break;
 
-            case (DATA_REQUESTS)312: // Pitch
+            case DATA_REQUESTS.REQUEST_PITCH:
                 SingleValue pitchData = (SingleValue)data.dwData[0];
                 double pitchInDegrees = -(pitchData.value * (180.0 / Math.PI)); // Convert radians to degrees and negate (SimConnect: negative = nose up)
                 string pitchFormatted = pitchInDegrees >= 0
@@ -1187,7 +1230,7 @@ public class SimConnectManager
                 });
                 break;
 
-            case (DATA_REQUESTS)314: // Fuel Quantity
+            case DATA_REQUESTS.REQUEST_FUEL_QUANTITY: // Fenix: pounds
                 SingleValue fuelData = (SingleValue)data.dwData[0];
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
                 {
@@ -1197,7 +1240,17 @@ public class SimConnectManager
                 });
                 break;
 
-            case (DATA_REQUESTS)318: // Fuel Quantity in KG
+            case DATA_REQUESTS.REQUEST_FUEL_QUANTITY_FBW: // FBW: kilograms
+                SingleValue fuelFbwData = (SingleValue)data.dwData[0];
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "FUEL_QUANTITY",
+                    Value = fuelFbwData.value,
+                    Description = $"Fuel on board {fuelFbwData.value:0} kilograms"
+                });
+                break;
+
+            case DATA_REQUESTS.REQUEST_FUEL_QUANTITY_KG:
                 SingleValue fuelKgData = (SingleValue)data.dwData[0];
                 double fuelKg = fuelKgData.value * 0.453592;
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
@@ -1208,7 +1261,7 @@ public class SimConnectManager
                 });
                 break;
 
-            case (DATA_REQUESTS)319: // Gross Weight (Pounds)
+            case DATA_REQUESTS.REQUEST_GROSS_WEIGHT:
                 SingleValue gwData = (SingleValue)data.dwData[0];
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
                 {
@@ -1218,7 +1271,7 @@ public class SimConnectManager
                 });
                 break;
 
-            case (DATA_REQUESTS)320: // Gross Weight (KG)
+            case DATA_REQUESTS.REQUEST_GROSS_WEIGHT_KG:
                 SingleValue gwKgData = (SingleValue)data.dwData[0];
                 double gwKg = gwKgData.value * 0.453592;
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
@@ -1229,7 +1282,7 @@ public class SimConnectManager
                 });
                 break;
 
-            case (DATA_REQUESTS)316: // Flap Position
+            case DATA_REQUESTS.REQUEST_FLAP_POSITION:
                 SingleValue flapData = (SingleValue)data.dwData[0];
                 int flapIndex = (int)Math.Round(flapData.value);
                 string flapDescription = flapIndex switch
@@ -1249,7 +1302,7 @@ public class SimConnectManager
                 });
                 break;
 
-            case (DATA_REQUESTS)317: // Gear Position
+            case DATA_REQUESTS.REQUEST_GEAR_POSITION:
                 SingleValue gearData = (SingleValue)data.dwData[0];
                 string gearPosition = gearData.value > 0.5 ? "Gear down" : "Gear up";
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
@@ -1357,7 +1410,7 @@ public class SimConnectManager
                 });
                 break;
 
-            case (DATA_REQUESTS)315: // Waypoint Info
+            case DATA_REQUESTS.REQUEST_WAYPOINT_INFO:
                 WaypointInfo waypointData = (WaypointInfo)data.dwData[0];
 
                 // Unpack waypoint name from encoded doubles
@@ -2568,13 +2621,13 @@ public class SimConnectManager
         {
             try
             {
-                var tempDefId = (DATA_DEFINITIONS)303;
+                var tempDefId = DATA_DEFINITIONS.DEF_ALTITUDE_AGL;
                 SafelyClearDataDefinition(tempDefId, requestId: null, delayMs: 50);
                 simConnect.AddToDataDefinition(tempDefId,
                     "PLANE ALT ABOVE GROUND", "feet",
                     SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
                 simConnect.RegisterDataDefineStruct<SingleValue>(tempDefId);
-                simConnect.RequestDataOnSimObject((DATA_REQUESTS)303,
+                simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_ALTITUDE_AGL,
                     tempDefId, SIMCONNECT_OBJECT_ID_USER,
                     SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
             }
@@ -2591,13 +2644,13 @@ public class SimConnectManager
         {
             try
             {
-                var tempDefId = (DATA_DEFINITIONS)304;
+                var tempDefId = DATA_DEFINITIONS.DEF_ALTITUDE_MSL;
                 SafelyClearDataDefinition(tempDefId, requestId: null, delayMs: 50);
                 simConnect.AddToDataDefinition(tempDefId,
                     "INDICATED ALTITUDE", "feet",
                     SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
                 simConnect.RegisterDataDefineStruct<SingleValue>(tempDefId);
-                simConnect.RequestDataOnSimObject((DATA_REQUESTS)304,
+                simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_ALTITUDE_MSL,
                     tempDefId, SIMCONNECT_OBJECT_ID_USER,
                     SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
             }
@@ -2614,13 +2667,13 @@ public class SimConnectManager
         {
             try
             {
-                var tempDefId = (DATA_DEFINITIONS)305;
+                var tempDefId = DATA_DEFINITIONS.DEF_AIRSPEED_IAS;
                 SafelyClearDataDefinition(tempDefId, requestId: null, delayMs: 50);
                 simConnect.AddToDataDefinition(tempDefId,
                     "AIRSPEED INDICATED", "knots",
                     SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
                 simConnect.RegisterDataDefineStruct<SingleValue>(tempDefId);
-                simConnect.RequestDataOnSimObject((DATA_REQUESTS)305,
+                simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_AIRSPEED_IAS,
                     tempDefId, SIMCONNECT_OBJECT_ID_USER,
                     SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
             }
@@ -2637,13 +2690,13 @@ public class SimConnectManager
         {
             try
             {
-                var tempDefId = (DATA_DEFINITIONS)306;
+                var tempDefId = DATA_DEFINITIONS.DEF_AIRSPEED_TAS;
                 SafelyClearDataDefinition(tempDefId, requestId: null, delayMs: 50);
                 simConnect.AddToDataDefinition(tempDefId,
                     "AIRSPEED TRUE", "knots",
                     SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
                 simConnect.RegisterDataDefineStruct<SingleValue>(tempDefId);
-                simConnect.RequestDataOnSimObject((DATA_REQUESTS)306,
+                simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_AIRSPEED_TAS,
                     tempDefId, SIMCONNECT_OBJECT_ID_USER,
                     SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
             }
@@ -2660,13 +2713,13 @@ public class SimConnectManager
         {
             try
             {
-                var tempDefId = (DATA_DEFINITIONS)307;
+                var tempDefId = DATA_DEFINITIONS.DEF_GROUND_SPEED;
                 SafelyClearDataDefinition(tempDefId, requestId: null, delayMs: 50);
                 simConnect.AddToDataDefinition(tempDefId,
                     "GROUND VELOCITY", "knots",
                     SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
                 simConnect.RegisterDataDefineStruct<SingleValue>(tempDefId);
-                simConnect.RequestDataOnSimObject((DATA_REQUESTS)307,
+                simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_GROUND_SPEED,
                     tempDefId, SIMCONNECT_OBJECT_ID_USER,
                     SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
             }
@@ -2683,13 +2736,13 @@ public class SimConnectManager
         {
             try
             {
-                var tempDefId = (DATA_DEFINITIONS)308;
+                var tempDefId = DATA_DEFINITIONS.DEF_VERTICAL_SPEED;
                 SafelyClearDataDefinition(tempDefId, requestId: null, delayMs: 50);
                 simConnect.AddToDataDefinition(tempDefId,
                     "VERTICAL SPEED", "feet per minute",
                     SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
                 simConnect.RegisterDataDefineStruct<SingleValue>(tempDefId);
-                simConnect.RequestDataOnSimObject((DATA_REQUESTS)308,
+                simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_VERTICAL_SPEED,
                     tempDefId, SIMCONNECT_OBJECT_ID_USER,
                     SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
             }
@@ -2706,13 +2759,13 @@ public class SimConnectManager
         {
             try
             {
-                var tempDefId = (DATA_DEFINITIONS)311;
+                var tempDefId = DATA_DEFINITIONS.DEF_MACH;
                 SafelyClearDataDefinition(tempDefId, requestId: null, delayMs: 50);
                 simConnect.AddToDataDefinition(tempDefId,
                     "AIRSPEED MACH", "number",
                     SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
                 simConnect.RegisterDataDefineStruct<SingleValue>(tempDefId);
-                simConnect.RequestDataOnSimObject((DATA_REQUESTS)311,
+                simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_MACH,
                     tempDefId, SIMCONNECT_OBJECT_ID_USER,
                     SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
             }
@@ -2729,13 +2782,13 @@ public class SimConnectManager
         {
             try
             {
-                var tempDefId = (DATA_DEFINITIONS)313;
+                var tempDefId = DATA_DEFINITIONS.DEF_BANK;
                 SafelyClearDataDefinition(tempDefId, requestId: null, delayMs: 50);
                 simConnect.AddToDataDefinition(tempDefId,
                     "PLANE BANK DEGREES", "radians",
                     SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
                 simConnect.RegisterDataDefineStruct<SingleValue>(tempDefId);
-                simConnect.RequestDataOnSimObject((DATA_REQUESTS)313,
+                simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_BANK,
                     tempDefId, SIMCONNECT_OBJECT_ID_USER,
                     SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
             }
@@ -2752,13 +2805,13 @@ public class SimConnectManager
         {
             try
             {
-                var tempDefId = (DATA_DEFINITIONS)312;
+                var tempDefId = DATA_DEFINITIONS.DEF_PITCH;
                 SafelyClearDataDefinition(tempDefId, requestId: null, delayMs: 50);
                 simConnect.AddToDataDefinition(tempDefId,
                     "PLANE PITCH DEGREES", "radians",
                     SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
                 simConnect.RegisterDataDefineStruct<SingleValue>(tempDefId);
-                simConnect.RequestDataOnSimObject((DATA_REQUESTS)312,
+                simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_PITCH,
                     tempDefId, SIMCONNECT_OBJECT_ID_USER,
                     SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
             }
@@ -2776,13 +2829,13 @@ public class SimConnectManager
         {
             try
             {
-                var tempDefId = (DATA_DEFINITIONS)309;
+                var tempDefId = DATA_DEFINITIONS.DEF_HEADING_MAG;
                 SafelyClearDataDefinition(tempDefId, requestId: null, delayMs: 50);
                 simConnect.AddToDataDefinition(tempDefId,
                     "PLANE HEADING DEGREES MAGNETIC", "radians",
                     SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
                 simConnect.RegisterDataDefineStruct<SingleValue>(tempDefId);
-                simConnect.RequestDataOnSimObject((DATA_REQUESTS)309,
+                simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_HEADING_MAG,
                     tempDefId, SIMCONNECT_OBJECT_ID_USER,
                     SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
             }
@@ -2817,13 +2870,13 @@ public class SimConnectManager
         {
             try
             {
-                var tempDefId = (DATA_DEFINITIONS)310;
+                var tempDefId = DATA_DEFINITIONS.DEF_HEADING_TRUE;
                 SafelyClearDataDefinition(tempDefId, requestId: null, delayMs: 50);
                 simConnect.AddToDataDefinition(tempDefId,
                     "PLANE HEADING DEGREES TRUE", "radians",
                     SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
                 simConnect.RegisterDataDefineStruct<SingleValue>(tempDefId);
-                simConnect.RequestDataOnSimObject((DATA_REQUESTS)310,
+                simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_HEADING_TRUE,
                     tempDefId, SIMCONNECT_OBJECT_ID_USER,
                     SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
             }
@@ -2904,13 +2957,13 @@ public class SimConnectManager
         {
             try
             {
-                var tempDefId = (DATA_DEFINITIONS)314;
+                var tempDefId = DATA_DEFINITIONS.DEF_FUEL_QUANTITY;
                 SafelyClearDataDefinition(tempDefId, requestId: null, delayMs: 50);
                 simConnect.AddToDataDefinition(tempDefId,
                     "L:A32NX_TOTAL_FUEL_QUANTITY", "kilograms",
                     SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
                 simConnect.RegisterDataDefineStruct<SingleValue>(tempDefId);
-                simConnect.RequestDataOnSimObject((DATA_REQUESTS)314,
+                simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_FUEL_QUANTITY,
                     tempDefId, SIMCONNECT_OBJECT_ID_USER,
                     SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
             }

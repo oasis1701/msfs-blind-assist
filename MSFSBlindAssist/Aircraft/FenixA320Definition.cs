@@ -12542,13 +12542,13 @@ public class FenixA320Definition : BaseAircraftDefinition
         {
             try
             {
-                var tempDefId = (SimConnect.SimConnectManager.DATA_DEFINITIONS)317;
+                var tempDefId = SimConnect.SimConnectManager.DATA_DEFINITIONS.DEF_GEAR_POSITION;
                 simConnect.ClearDataDefinition(tempDefId);
                 simConnect.AddToDataDefinition(tempDefId,
                     "GEAR HANDLE POSITION", "bool",
                     Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
                 simConnect.RegisterDataDefineStruct<SimConnect.SimConnectManager.SingleValue>(tempDefId);
-                simConnect.RequestDataOnSimObject((SimConnect.SimConnectManager.DATA_REQUESTS)317,
+                simConnect.RequestDataOnSimObject(SimConnect.SimConnectManager.DATA_REQUESTS.REQUEST_GEAR_POSITION,
                     tempDefId, Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_OBJECT_ID_USER,
                     Microsoft.FlightSimulator.SimConnect.SIMCONNECT_PERIOD.ONCE,
                     Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
@@ -12567,13 +12567,13 @@ public class FenixA320Definition : BaseAircraftDefinition
         {
             try
             {
-                var tempDefId = (SimConnect.SimConnectManager.DATA_DEFINITIONS)316;
+                var tempDefId = SimConnect.SimConnectManager.DATA_DEFINITIONS.DEF_FLAP_POSITION;
                 simConnect.ClearDataDefinition(tempDefId);
                 simConnect.AddToDataDefinition(tempDefId,
                     "FLAPS HANDLE INDEX", "number",
                     Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
                 simConnect.RegisterDataDefineStruct<SimConnect.SimConnectManager.SingleValue>(tempDefId);
-                simConnect.RequestDataOnSimObject((SimConnect.SimConnectManager.DATA_REQUESTS)316,
+                simConnect.RequestDataOnSimObject(SimConnect.SimConnectManager.DATA_REQUESTS.REQUEST_FLAP_POSITION,
                     tempDefId, Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_OBJECT_ID_USER,
                     Microsoft.FlightSimulator.SimConnect.SIMCONNECT_PERIOD.ONCE,
                     Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
@@ -12592,13 +12592,13 @@ public class FenixA320Definition : BaseAircraftDefinition
         {
             try
             {
-                var tempDefId = (SimConnect.SimConnectManager.DATA_DEFINITIONS)319;
+                var tempDefId = SimConnect.SimConnectManager.DATA_DEFINITIONS.DEF_GROSS_WEIGHT;
                 simConnect.ClearDataDefinition(tempDefId);
                 simConnect.AddToDataDefinition(tempDefId,
                     "TOTAL WEIGHT", "pounds",
                     Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
                 simConnect.RegisterDataDefineStruct<SimConnect.SimConnectManager.SingleValue>(tempDefId);
-                simConnect.RequestDataOnSimObject((SimConnect.SimConnectManager.DATA_REQUESTS)319,
+                simConnect.RequestDataOnSimObject(SimConnect.SimConnectManager.DATA_REQUESTS.REQUEST_GROSS_WEIGHT,
                     tempDefId, Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_OBJECT_ID_USER,
                     Microsoft.FlightSimulator.SimConnect.SIMCONNECT_PERIOD.ONCE,
                     Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
@@ -12617,13 +12617,13 @@ public class FenixA320Definition : BaseAircraftDefinition
         {
             try
             {
-                var tempDefId = (SimConnect.SimConnectManager.DATA_DEFINITIONS)320;
+                var tempDefId = SimConnect.SimConnectManager.DATA_DEFINITIONS.DEF_GROSS_WEIGHT_KG;
                 simConnect.ClearDataDefinition(tempDefId);
                 simConnect.AddToDataDefinition(tempDefId,
                     "TOTAL WEIGHT", "pounds",
                     Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
                 simConnect.RegisterDataDefineStruct<SimConnect.SimConnectManager.SingleValue>(tempDefId);
-                simConnect.RequestDataOnSimObject((SimConnect.SimConnectManager.DATA_REQUESTS)320,
+                simConnect.RequestDataOnSimObject(SimConnect.SimConnectManager.DATA_REQUESTS.REQUEST_GROSS_WEIGHT_KG,
                     tempDefId, Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_OBJECT_ID_USER,
                     Microsoft.FlightSimulator.SimConnect.SIMCONNECT_PERIOD.ONCE,
                     Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
@@ -12643,13 +12643,13 @@ public class FenixA320Definition : BaseAircraftDefinition
         {
             try
             {
-                var tempDefId = (SimConnect.SimConnectManager.DATA_DEFINITIONS)318;
+                var tempDefId = SimConnect.SimConnectManager.DATA_DEFINITIONS.DEF_FUEL_QUANTITY_KG;
                 simConnect.ClearDataDefinition(tempDefId);
                 simConnect.AddToDataDefinition(tempDefId,
                     "FUEL TOTAL QUANTITY WEIGHT", "pounds",
                     Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
                 simConnect.RegisterDataDefineStruct<SimConnect.SimConnectManager.SingleValue>(tempDefId);
-                simConnect.RequestDataOnSimObject((SimConnect.SimConnectManager.DATA_REQUESTS)318,
+                simConnect.RequestDataOnSimObject(SimConnect.SimConnectManager.DATA_REQUESTS.REQUEST_FUEL_QUANTITY_KG,
                     tempDefId, Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_OBJECT_ID_USER,
                     Microsoft.FlightSimulator.SimConnect.SIMCONNECT_PERIOD.ONCE,
                     Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
@@ -12669,13 +12669,13 @@ public class FenixA320Definition : BaseAircraftDefinition
         {
             try
             {
-                var tempDefId = (SimConnect.SimConnectManager.DATA_DEFINITIONS)314;
+                var tempDefId = SimConnect.SimConnectManager.DATA_DEFINITIONS.DEF_FUEL_QUANTITY;
                 simConnect.ClearDataDefinition(tempDefId);
                 simConnect.AddToDataDefinition(tempDefId,
                     "FUEL TOTAL QUANTITY WEIGHT", "pounds",
                     Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
                 simConnect.RegisterDataDefineStruct<SimConnect.SimConnectManager.SingleValue>(tempDefId);
-                simConnect.RequestDataOnSimObject((SimConnect.SimConnectManager.DATA_REQUESTS)314,
+                simConnect.RequestDataOnSimObject(SimConnect.SimConnectManager.DATA_REQUESTS.REQUEST_FUEL_QUANTITY,
                     tempDefId, Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_OBJECT_ID_USER,
                     Microsoft.FlightSimulator.SimConnect.SIMCONNECT_PERIOD.ONCE,
                     Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
@@ -12885,8 +12885,6 @@ public class FenixA320Definition : BaseAircraftDefinition
                 remainingSteps = (int)(remaining / 100);
             else if (counterVar == "E_FCU_HEADING")
                 remainingSteps = CalculateHeadingDelta((int)actualValue.Value, (int)targetValue);
-            else if (counterVar.Contains("BARO"))
-                remainingSteps = (int)Math.Round(remaining / 0.01, MidpointRounding.AwayFromZero);
             else
                 remainingSteps = (int)remaining;
 
@@ -13236,6 +13234,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 RequestFuelQuantity(simConnect);
                 return true;
 
+            // Fenix has no waypoint info feature — W key repurposed for gross weight (lbs)
             case HotkeyAction.ReadWaypointInfo:
                 RequestGrossWeight(simConnect);
                 return true;
@@ -13244,6 +13243,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 RequestGrossWeightKg(simConnect, announcer);
                 return true;
 
+            // Fenix has no fuel/payload window — Shift+F repurposed for fuel quantity (kg)
             case HotkeyAction.ShowFuelPayloadWindow:
                 RequestFuelQuantityKg(simConnect, announcer);
                 return true;
