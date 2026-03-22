@@ -86,7 +86,7 @@ public class SimBriefService
         {
             SimBriefUsername = username,
             LoadedTime = DateTime.Now,
-            ExtractedFlightData = ExtractFlightData(xmlContent, doc)
+            ExtractedFlightData = ExtractFlightData(doc)
         };
 
         // Parse origin and destination
@@ -327,7 +327,7 @@ public class SimBriefService
     /// Extracts relevant flight data from SimBrief OFP XML into a readable text summary
     /// for use in AI route description generation.
     /// </summary>
-    private string ExtractFlightData(string ofpXml, XmlDocument doc)
+    private string ExtractFlightData(XmlDocument doc)
     {
         var sb = new StringBuilder();
 
