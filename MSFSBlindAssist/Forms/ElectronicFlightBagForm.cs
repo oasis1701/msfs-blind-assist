@@ -100,7 +100,7 @@ public partial class ElectronicFlightBagForm : Form
         {
             // Flight plan already loaded - just refresh the display
             RefreshNavigationGrid();
-            if (!string.IsNullOrEmpty(_flightPlanManager.CurrentFlightPlan.RawOfpXml))
+            if (!string.IsNullOrEmpty(_flightPlanManager.CurrentFlightPlan.ExtractedFlightData))
                 describeRouteButton.Enabled = true;
         }
     }
@@ -799,9 +799,11 @@ public partial class ElectronicFlightBagForm : Form
             }
 
             UpdateStatus("Loading flight plan from SimBrief...");
+            routeDescriptionTextBox.Text = "";
+            routeDescriptionTextBox.Visible = false;
             _flightPlanManager.LoadFromSimBrief(_simbriefUsername);
             _announcer.Announce("SimBrief flight plan loaded");
-            describeRouteButton.Enabled = !string.IsNullOrEmpty(_flightPlanManager.CurrentFlightPlan.RawOfpXml);
+            describeRouteButton.Enabled = !string.IsNullOrEmpty(_flightPlanManager.CurrentFlightPlan.ExtractedFlightData);
         }
         catch (Exception ex)
         {
@@ -816,7 +818,7 @@ public partial class ElectronicFlightBagForm : Form
         try
         {
             if (_flightPlanManager.CurrentFlightPlan.IsEmpty() ||
-                string.IsNullOrEmpty(_flightPlanManager.CurrentFlightPlan.RawOfpXml))
+                string.IsNullOrEmpty(_flightPlanManager.CurrentFlightPlan.ExtractedFlightData))
             {
                 _announcer.Announce("No SimBrief flight plan loaded. Please load a flight plan first.");
                 return;
@@ -827,7 +829,7 @@ public partial class ElectronicFlightBagForm : Form
             UpdateStatus("Generating route description...");
 
             string description = await _geminiService.DescribeRouteAsync(
-                _flightPlanManager.CurrentFlightPlan.RawOfpXml);
+                _flightPlanManager.CurrentFlightPlan.ExtractedFlightData);
 
             routeDescriptionTextBox.Text = description.Replace("\r\n", "\n").Replace("\n", "\r\n");
             routeDescriptionTextBox.Visible = true;

@@ -1,6 +1,5 @@
 using System.Net.Http;
 using System.Text;
-using System.Xml;
 using Newtonsoft.Json;
 using MSFSBlindAssist.Settings;
 
@@ -45,71 +44,13 @@ public class GeminiService
     /// <returns>Text description of the scene</returns>
     public async Task<string> AnalyzeSceneAsync(byte[] imageBytes)
     {
-        if (string.IsNullOrEmpty(apiKey))
-        {
-            throw new InvalidOperationException("Gemini API key is not configured. Please configure it in File > Gemini API Key Settings.");
-        }
-
         if (imageBytes == null || imageBytes.Length == 0)
         {
             throw new ArgumentException("Image data is empty or null.", nameof(imageBytes));
         }
 
-        // Generate scene-focused prompt
         string prompt = GetScenePrompt();
-
-        // Prepare the request
-        var requestBody = new
-        {
-            contents = new[]
-            {
-                new
-                {
-                    parts = new object[]
-                    {
-                        new { text = prompt },
-                        new
-                        {
-                            inline_data = new
-                            {
-                                mime_type = "image/png",
-                                data = Convert.ToBase64String(imageBytes)
-                            }
-                        }
-                    }
-                }
-            }
-        };
-
-        string jsonRequest = JsonConvert.SerializeObject(requestBody);
-        var content = new StringContent(jsonRequest, Encoding.UTF8, "application/json");
-
-        // Send request to Gemini API
-        string url = $"{API_BASE_URL}?key={apiKey}";
-        HttpResponseMessage response = await httpClient.PostAsync(url, content);
-
-        if (!response.IsSuccessStatusCode)
-        {
-            string errorContent = await response.Content.ReadAsStringAsync();
-            throw new HttpRequestException($"Gemini API request failed with status {response.StatusCode}: {errorContent}");
-        }
-
-        // Parse response
-        string responseJson = await response.Content.ReadAsStringAsync();
-        var result = JsonConvert.DeserializeObject<GeminiResponse>(responseJson);
-
-        if (result?.Candidates == null || result.Candidates.Length == 0)
-        {
-            throw new InvalidOperationException("Gemini API returned no candidates in response.");
-        }
-
-        var candidateContent = result.Candidates[0].Content;
-        if (candidateContent?.Parts == null || candidateContent.Parts.Length == 0)
-        {
-            throw new InvalidOperationException("Gemini API returned no content in response.");
-        }
-
-        return candidateContent.Parts[0].Text ?? "No description available.";
+        return await SendImageRequestAsync(prompt, imageBytes);
     }
 
     /// <summary>
@@ -120,71 +61,13 @@ public class GeminiService
     /// <returns>Text description of the display</returns>
     public async Task<string> AnalyzeDisplayAsync(byte[] imageBytes, DisplayType displayType)
     {
-        if (string.IsNullOrEmpty(apiKey))
-        {
-            throw new InvalidOperationException("Gemini API key is not configured. Please configure it in File > Gemini API Key Settings.");
-        }
-
         if (imageBytes == null || imageBytes.Length == 0)
         {
             throw new ArgumentException("Image data is empty or null.", nameof(imageBytes));
         }
 
-        // Generate prompt based on display type
         string prompt = GetPromptForDisplay(displayType);
-
-        // Prepare the request
-        var requestBody = new
-        {
-            contents = new[]
-            {
-                new
-                {
-                    parts = new object[]
-                    {
-                        new { text = prompt },
-                        new
-                        {
-                            inline_data = new
-                            {
-                                mime_type = "image/png",
-                                data = Convert.ToBase64String(imageBytes)
-                            }
-                        }
-                    }
-                }
-            }
-        };
-
-        string jsonRequest = JsonConvert.SerializeObject(requestBody);
-        var content = new StringContent(jsonRequest, Encoding.UTF8, "application/json");
-
-        // Send request to Gemini API
-        string url = $"{API_BASE_URL}?key={apiKey}";
-        HttpResponseMessage response = await httpClient.PostAsync(url, content);
-
-        if (!response.IsSuccessStatusCode)
-        {
-            string errorContent = await response.Content.ReadAsStringAsync();
-            throw new HttpRequestException($"Gemini API request failed with status {response.StatusCode}: {errorContent}");
-        }
-
-        // Parse response
-        string responseJson = await response.Content.ReadAsStringAsync();
-        var result = JsonConvert.DeserializeObject<GeminiResponse>(responseJson);
-
-        if (result?.Candidates == null || result.Candidates.Length == 0)
-        {
-            throw new InvalidOperationException("Gemini API returned no candidates in response.");
-        }
-
-        var candidateContent = result.Candidates[0].Content;
-        if (candidateContent?.Parts == null || candidateContent.Parts.Length == 0)
-        {
-            throw new InvalidOperationException("Gemini API returned no content in response.");
-        }
-
-        return candidateContent.Parts[0].Text ?? "No description available.";
+        return await SendImageRequestAsync(prompt, imageBytes);
     }
 
     /// <summary>
@@ -291,33 +174,21 @@ Do not use markdown formatting. Do not explain what things mean. Just state the 
     }
 
     /// <summary>
-    /// Generates a narrative route description from SimBrief OFP XML data.
+    /// Generates a narrative route description from pre-extracted flight data.
     /// </summary>
-    /// <param name="ofpXml">Raw SimBrief OFP XML</param>
+    /// <param name="flightData">Pre-extracted flight data summary text</param>
     /// <returns>Text description of the route</returns>
-    public async Task<string> DescribeRouteAsync(string ofpXml)
+    public async Task<string> DescribeRouteAsync(string flightData)
     {
-        if (string.IsNullOrEmpty(apiKey))
-        {
-            throw new InvalidOperationException("Gemini API key is not configured. Please configure it in File > Gemini API Key Settings.");
-        }
-
-        string flightData = ExtractFlightData(ofpXml);
         string prompt = GetRouteDescriptionPrompt(flightData);
-
-        return await GenerateTextAsync(prompt);
+        return await SendTextRequestAsync(prompt);
     }
 
     /// <summary>
-    /// Sends a text-only prompt to Gemini and returns the response.
+    /// Sends a text-only request to Gemini and parses the response.
     /// </summary>
-    private async Task<string> GenerateTextAsync(string prompt)
+    private async Task<string> SendTextRequestAsync(string prompt)
     {
-        if (string.IsNullOrEmpty(apiKey))
-        {
-            throw new InvalidOperationException("Gemini API key is not configured. Please configure it in File > Gemini API Key Settings.");
-        }
-
         var requestBody = new
         {
             contents = new[]
@@ -331,6 +202,49 @@ Do not use markdown formatting. Do not explain what things mean. Just state the 
                 }
             }
         };
+
+        return await SendRequestAsync(requestBody);
+    }
+
+    /// <summary>
+    /// Sends an image + text request to Gemini and parses the response.
+    /// </summary>
+    private async Task<string> SendImageRequestAsync(string prompt, byte[] imageBytes)
+    {
+        var requestBody = new
+        {
+            contents = new[]
+            {
+                new
+                {
+                    parts = new object[]
+                    {
+                        new { text = prompt },
+                        new
+                        {
+                            inline_data = new
+                            {
+                                mime_type = "image/png",
+                                data = Convert.ToBase64String(imageBytes)
+                            }
+                        }
+                    }
+                }
+            }
+        };
+
+        return await SendRequestAsync(requestBody);
+    }
+
+    /// <summary>
+    /// Sends a request to the Gemini API and returns the text response.
+    /// </summary>
+    private async Task<string> SendRequestAsync(object requestBody)
+    {
+        if (string.IsNullOrEmpty(apiKey))
+        {
+            throw new InvalidOperationException("Gemini API key is not configured. Please configure it in File > Gemini API Key Settings.");
+        }
 
         string jsonRequest = JsonConvert.SerializeObject(requestBody);
         var content = new StringContent(jsonRequest, Encoding.UTF8, "application/json");
@@ -359,175 +273,6 @@ Do not use markdown formatting. Do not explain what things mean. Just state the 
         }
 
         return candidateContent.Parts[0].Text ?? "No description available.";
-    }
-
-    /// <summary>
-    /// Extracts relevant flight data from SimBrief OFP XML into a readable text summary.
-    /// </summary>
-    private string ExtractFlightData(string ofpXml)
-    {
-        var doc = new XmlDocument();
-        doc.LoadXml(ofpXml);
-
-        var sb = new StringBuilder();
-
-        // General flight info
-        var general = doc.SelectSingleNode("//general");
-        if (general != null)
-        {
-            AppendIfPresent(sb, "Route", general, "route");
-            AppendIfPresent(sb, "Cruise Altitude", general, "initial_altitude");
-            AppendIfPresent(sb, "Distance", general, "route_distance");
-            AppendIfPresent(sb, "Air Time", general, "air_time");
-            AppendIfPresent(sb, "Airline ICAO", general, "icao_airline");
-        }
-
-        // Aircraft info
-        var aircraft = doc.SelectSingleNode("//aircraft");
-        if (aircraft != null)
-        {
-            AppendIfPresent(sb, "Aircraft", aircraft, "name");
-            AppendIfPresent(sb, "Aircraft ICAO", aircraft, "icaocode");
-        }
-
-        // Origin
-        sb.AppendLine();
-        sb.AppendLine("DEPARTURE:");
-        var origin = doc.SelectSingleNode("//origin");
-        if (origin != null)
-        {
-            AppendIfPresent(sb, "Airport", origin, "icao_code");
-            AppendIfPresent(sb, "Name", origin, "name");
-            AppendIfPresent(sb, "Elevation", origin, "elevation");
-            AppendIfPresent(sb, "Runway", origin, "plan_rwy");
-            AppendIfPresent(sb, "SID", origin, "sid_id");
-            AppendIfPresent(sb, "SID Transition", origin, "sid_trans");
-            AppendIfPresent(sb, "METAR", origin, "metar");
-            AppendIfPresent(sb, "TAF", origin, "taf");
-        }
-
-        // Destination
-        sb.AppendLine();
-        sb.AppendLine("ARRIVAL:");
-        var destination = doc.SelectSingleNode("//destination");
-        if (destination != null)
-        {
-            AppendIfPresent(sb, "Airport", destination, "icao_code");
-            AppendIfPresent(sb, "Name", destination, "name");
-            AppendIfPresent(sb, "Elevation", destination, "elevation");
-            AppendIfPresent(sb, "Runway", destination, "plan_rwy");
-            AppendIfPresent(sb, "STAR", destination, "star_id");
-            AppendIfPresent(sb, "STAR Transition", destination, "star_trans");
-            AppendIfPresent(sb, "METAR", destination, "metar");
-            AppendIfPresent(sb, "TAF", destination, "taf");
-        }
-
-        // Alternate
-        var alternate = doc.SelectSingleNode("//alternate");
-        if (alternate != null)
-        {
-            string? altIcao = alternate.SelectSingleNode("icao_code")?.InnerText?.Trim();
-            if (!string.IsNullOrEmpty(altIcao))
-            {
-                sb.AppendLine();
-                sb.AppendLine("ALTERNATE:");
-                AppendIfPresent(sb, "Airport", alternate, "icao_code");
-                AppendIfPresent(sb, "Name", alternate, "name");
-            }
-        }
-
-        // SigMets / significant weather
-        var sigmets = doc.SelectNodes("//sigmets/sigmet");
-        if (sigmets != null && sigmets.Count > 0)
-        {
-            sb.AppendLine();
-            sb.AppendLine("SIGNIFICANT WEATHER (SIGMETs):");
-            foreach (XmlNode sigmet in sigmets)
-            {
-                string? sigmetText = sigmet.InnerText?.Trim();
-                if (!string.IsNullOrEmpty(sigmetText))
-                    sb.AppendLine(sigmetText);
-            }
-        }
-
-        // Navlog waypoints - separate SID, enroute, and STAR
-        var fixes = doc.SelectNodes("//navlog/fix");
-        if (fixes != null && fixes.Count > 0)
-        {
-            var sidWaypoints = new List<string>();
-            var enrouteWaypoints = new List<string>();
-            var starWaypoints = new List<string>();
-            bool passedSid = false;
-
-            foreach (XmlNode fix in fixes)
-            {
-                string? ident = fix.SelectSingleNode("ident")?.InnerText?.Trim();
-                string? isSidStar = fix.SelectSingleNode("is_sid_star")?.InnerText?.Trim();
-                string? alt = fix.SelectSingleNode("altitude_feet")?.InnerText?.Trim();
-                string? airway = fix.SelectSingleNode("via_airway")?.InnerText?.Trim();
-                string? lat = fix.SelectSingleNode("pos_lat")?.InnerText?.Trim();
-                string? lon = fix.SelectSingleNode("pos_long")?.InnerText?.Trim();
-                string? windDir = fix.SelectSingleNode("wind_dir")?.InnerText?.Trim();
-                string? windSpd = fix.SelectSingleNode("wind_spd")?.InnerText?.Trim();
-                string? name = fix.SelectSingleNode("name")?.InnerText?.Trim();
-
-                if (string.IsNullOrEmpty(ident)) continue;
-
-                var parts = new List<string> { ident };
-                if (!string.IsNullOrEmpty(name) && name != ident) parts.Add(name);
-                if (!string.IsNullOrEmpty(airway)) parts.Add($"via {airway}");
-                if (!string.IsNullOrEmpty(alt) && int.TryParse(alt, out int altFeet)) parts.Add($"FL{altFeet / 100}");
-                if (!string.IsNullOrEmpty(lat) && !string.IsNullOrEmpty(lon)) parts.Add($"({lat}, {lon})");
-                if (!string.IsNullOrEmpty(windDir) && !string.IsNullOrEmpty(windSpd)) parts.Add($"wind {windDir}/{windSpd}kt");
-                string line = string.Join(" | ", parts);
-
-                if (isSidStar == "1")
-                {
-                    if (!passedSid)
-                        sidWaypoints.Add(line);
-                    else
-                        starWaypoints.Add(line);
-                }
-                else
-                {
-                    passedSid = true;
-                    enrouteWaypoints.Add(line);
-                }
-            }
-
-            if (sidWaypoints.Count > 0)
-            {
-                sb.AppendLine();
-                sb.AppendLine("SID WAYPOINTS:");
-                foreach (var wp in sidWaypoints) sb.AppendLine(wp);
-            }
-
-            if (enrouteWaypoints.Count > 0)
-            {
-                sb.AppendLine();
-                sb.AppendLine("ENROUTE WAYPOINTS:");
-                foreach (var wp in enrouteWaypoints) sb.AppendLine(wp);
-            }
-
-            if (starWaypoints.Count > 0)
-            {
-                sb.AppendLine();
-                sb.AppendLine("STAR WAYPOINTS:");
-                foreach (var wp in starWaypoints) sb.AppendLine(wp);
-            }
-        }
-
-        return sb.ToString();
-    }
-
-    /// <summary>
-    /// Helper to append an XML child node value if present.
-    /// </summary>
-    private void AppendIfPresent(StringBuilder sb, string label, XmlNode parent, string childName)
-    {
-        string? value = parent.SelectSingleNode(childName)?.InnerText?.Trim();
-        if (!string.IsNullOrEmpty(value))
-            sb.AppendLine($"{label}: {value}");
     }
 
     /// <summary>

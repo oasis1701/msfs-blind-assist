@@ -26,7 +26,7 @@ public class FlightPlan
     // SimBrief metadata
     public string SimBriefUsername { get; set; } = "";
     public DateTime? LoadedTime { get; set; }
-    public string RawOfpXml { get; set; } = "";
+    public string ExtractedFlightData { get; set; } = "";
 
     /// <summary>
     /// Gets all waypoints in flight plan order (A through F)
