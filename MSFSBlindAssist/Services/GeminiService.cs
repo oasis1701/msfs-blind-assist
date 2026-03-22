@@ -16,7 +16,7 @@ public class GeminiService
 
     static GeminiService()
     {
-        httpClient.Timeout = TimeSpan.FromSeconds(30);
+        httpClient.Timeout = TimeSpan.FromSeconds(60);
     }
 
     public GeminiService()
@@ -44,70 +44,13 @@ public class GeminiService
     /// <returns>Text description of the scene</returns>
     public async Task<string> AnalyzeSceneAsync(byte[] imageBytes)
     {
-        if (string.IsNullOrEmpty(apiKey))
-        {
-            throw new InvalidOperationException("Gemini API key is not configured. Please configure it in File > Gemini API Key Settings.");
-        }
-
         if (imageBytes == null || imageBytes.Length == 0)
         {
             throw new ArgumentException("Image data is empty or null.", nameof(imageBytes));
         }
 
-        // Generate scene-focused prompt
         string prompt = GetScenePrompt();
-
-        // Prepare the request
-        var requestBody = new
-        {
-            contents = new[]
-            {
-                new
-                {
-                    parts = new object[]
-                    {
-                        new { text = prompt },
-                        new
-                        {
-                            inline_data = new
-                            {
-                                mime_type = "image/png",
-                                data = Convert.ToBase64String(imageBytes)
-                            }
-                        }
-                    }
-                }
-            }
-        };
-
-        string jsonRequest = JsonConvert.SerializeObject(requestBody);
-        var content = new StringContent(jsonRequest, Encoding.UTF8, "application/json");
-
-        // Send request to Gemini API
-        string url = $"{API_BASE_URL}?key={apiKey}";
-        HttpResponseMessage response = await httpClient.PostAsync(url, content);
-
-        if (!response.IsSuccessStatusCode)
-        {
-            string errorContent = await response.Content.ReadAsStringAsync();
-            throw new HttpRequestException($"Gemini API request failed with status {response.StatusCode}: {errorContent}");
-        }
-
-        // Parse response
-        string responseJson = await response.Content.ReadAsStringAsync();
-        var result = JsonConvert.DeserializeObject<GeminiResponse>(responseJson);
-
-        if (result?.Candidates == null || result.Candidates.Length == 0)
-        {
-            throw new InvalidOperationException("Gemini API returned no candidates in response.");
-        }
-
-        if (result.Candidates[0].Content?.Parts == null || result.Candidates[0].Content.Parts.Length == 0)
-        {
-            throw new InvalidOperationException("Gemini API returned no content in response.");
-        }
-
-        return result.Candidates[0].Content.Parts[0].Text ?? "No description available.";
+        return await SendImageRequestAsync(prompt, imageBytes);
     }
 
     /// <summary>
@@ -118,70 +61,13 @@ public class GeminiService
     /// <returns>Text description of the display</returns>
     public async Task<string> AnalyzeDisplayAsync(byte[] imageBytes, DisplayType displayType)
     {
-        if (string.IsNullOrEmpty(apiKey))
-        {
-            throw new InvalidOperationException("Gemini API key is not configured. Please configure it in File > Gemini API Key Settings.");
-        }
-
         if (imageBytes == null || imageBytes.Length == 0)
         {
             throw new ArgumentException("Image data is empty or null.", nameof(imageBytes));
         }
 
-        // Generate prompt based on display type
         string prompt = GetPromptForDisplay(displayType);
-
-        // Prepare the request
-        var requestBody = new
-        {
-            contents = new[]
-            {
-                new
-                {
-                    parts = new object[]
-                    {
-                        new { text = prompt },
-                        new
-                        {
-                            inline_data = new
-                            {
-                                mime_type = "image/png",
-                                data = Convert.ToBase64String(imageBytes)
-                            }
-                        }
-                    }
-                }
-            }
-        };
-
-        string jsonRequest = JsonConvert.SerializeObject(requestBody);
-        var content = new StringContent(jsonRequest, Encoding.UTF8, "application/json");
-
-        // Send request to Gemini API
-        string url = $"{API_BASE_URL}?key={apiKey}";
-        HttpResponseMessage response = await httpClient.PostAsync(url, content);
-
-        if (!response.IsSuccessStatusCode)
-        {
-            string errorContent = await response.Content.ReadAsStringAsync();
-            throw new HttpRequestException($"Gemini API request failed with status {response.StatusCode}: {errorContent}");
-        }
-
-        // Parse response
-        string responseJson = await response.Content.ReadAsStringAsync();
-        var result = JsonConvert.DeserializeObject<GeminiResponse>(responseJson);
-
-        if (result?.Candidates == null || result.Candidates.Length == 0)
-        {
-            throw new InvalidOperationException("Gemini API returned no candidates in response.");
-        }
-
-        if (result.Candidates[0].Content?.Parts == null || result.Candidates[0].Content.Parts.Length == 0)
-        {
-            throw new InvalidOperationException("Gemini API returned no content in response.");
-        }
-
-        return result.Candidates[0].Content.Parts[0].Text ?? "No description available.";
+        return await SendImageRequestAsync(prompt, imageBytes);
     }
 
     /// <summary>
@@ -285,6 +171,160 @@ Do not use markdown formatting. Do not explain what things mean. Just state the 
 
             _ => "Report what you see on this display in plain text. No markdown formatting. No explanations. Just the data."
         };
+    }
+
+    /// <summary>
+    /// Generates a narrative route description from pre-extracted flight data.
+    /// </summary>
+    /// <param name="flightData">Pre-extracted flight data summary text</param>
+    /// <returns>Text description of the route</returns>
+    public async Task<string> DescribeRouteAsync(string flightData)
+    {
+        string prompt = GetRouteDescriptionPrompt(flightData);
+        return await SendTextRequestAsync(prompt);
+    }
+
+    /// <summary>
+    /// Sends a text-only request to Gemini and parses the response.
+    /// </summary>
+    private async Task<string> SendTextRequestAsync(string prompt)
+    {
+        var requestBody = new
+        {
+            contents = new[]
+            {
+                new
+                {
+                    parts = new object[]
+                    {
+                        new { text = prompt }
+                    }
+                }
+            }
+        };
+
+        return await SendRequestAsync(requestBody);
+    }
+
+    /// <summary>
+    /// Sends an image + text request to Gemini and parses the response.
+    /// </summary>
+    private async Task<string> SendImageRequestAsync(string prompt, byte[] imageBytes)
+    {
+        var requestBody = new
+        {
+            contents = new[]
+            {
+                new
+                {
+                    parts = new object[]
+                    {
+                        new { text = prompt },
+                        new
+                        {
+                            inline_data = new
+                            {
+                                mime_type = "image/png",
+                                data = Convert.ToBase64String(imageBytes)
+                            }
+                        }
+                    }
+                }
+            }
+        };
+
+        return await SendRequestAsync(requestBody);
+    }
+
+    /// <summary>
+    /// Sends a request to the Gemini API and returns the text response.
+    /// </summary>
+    private async Task<string> SendRequestAsync(object requestBody)
+    {
+        if (string.IsNullOrEmpty(apiKey))
+        {
+            throw new InvalidOperationException("Gemini API key is not configured. Please configure it in File > Gemini API Key Settings.");
+        }
+
+        string jsonRequest = JsonConvert.SerializeObject(requestBody);
+        var content = new StringContent(jsonRequest, Encoding.UTF8, "application/json");
+
+        string url = $"{API_BASE_URL}?key={apiKey}";
+        HttpResponseMessage response = await httpClient.PostAsync(url, content);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            string errorContent = await response.Content.ReadAsStringAsync();
+            throw new HttpRequestException($"Gemini API request failed with status {response.StatusCode}: {errorContent}");
+        }
+
+        string responseJson = await response.Content.ReadAsStringAsync();
+        var result = JsonConvert.DeserializeObject<GeminiResponse>(responseJson);
+
+        if (result?.Candidates == null || result.Candidates.Length == 0)
+        {
+            throw new InvalidOperationException("Gemini API returned no candidates in response.");
+        }
+
+        var candidateContent = result.Candidates[0].Content;
+        if (candidateContent?.Parts == null || candidateContent.Parts.Length == 0)
+        {
+            throw new InvalidOperationException("Gemini API returned no content in response.");
+        }
+
+        return candidateContent.Parts[0].Text ?? "No description available.";
+    }
+
+    /// <summary>
+    /// Generates the prompt for route description.
+    /// </summary>
+    private string GetRouteDescriptionPrompt(string flightData)
+    {
+        return $@"You are writing a flight briefing for a blind flight simulator pilot. Based on the flight plan data below, write a narrative description of the route that helps the pilot understand what they will experience during this flight.
+
+Cover the following topics, using descriptive section headings separated by blank lines:
+
+1. FLIGHT OVERVIEW
+   - Origin and destination cities/airports
+   - Total distance and approximate flight time
+   - Cruise altitude and general direction of flight
+   - Countries or major regions traversed
+
+2. DEPARTURE AND SID
+   - Describe the area around the departure airport (city, terrain, water features, notable landmarks)
+   - Terrain challenges on departure (mountains, obstacles, noise abatement areas)
+   - What a pilot might see looking out the window during climb-out
+   - Describe the filed SID procedure if present: its name, the waypoints it follows, and any notable routing (e.g. follows a river, turns toward the coast, etc.)
+   - State the published top altitude for this SID based on your knowledge of the procedure (not from the flight plan data)
+
+3. ENROUTE
+   - Major cities, regions, or geographic features along the route
+   - Mountain ranges, bodies of water, deserts, or other notable terrain below
+   - Any interesting landmarks or geographic transitions (coastlines, borders, etc.)
+
+4. ARRIVAL AND STAR
+   - Describe the area around the destination airport (city, terrain, water features, notable landmarks)
+   - Terrain challenges on arrival (mountains, obstacles, complex approaches)
+   - What a pilot might see looking out the window during approach
+   - Describe the filed STAR procedure if present: its name, the waypoints it follows, and any notable routing
+   - State the published bottom altitude for this STAR based on your knowledge of the procedure (not from the flight plan data)
+
+5. WEATHER
+   - Summarize departure and arrival weather from the METAR data
+   - Mention any SIGMETs or significant weather along the route
+   - Note any weather that could affect the flight experience (turbulence, visibility, precipitation)
+
+IMPORTANT GUIDELINES:
+- Write in plain text with no markdown formatting
+- Use line breaks between sections for screen reader clarity
+- Use section headings in plain text (not with # or * symbols)
+- Be factual and informative, drawing on your geographic knowledge
+- Aim for 300 to 500 words
+- Focus on helping the pilot build a mental picture of the journey
+- If weather data is not available, note that and skip the weather section
+
+FLIGHT PLAN DATA:
+{flightData}";
     }
 
     #region Response Models
