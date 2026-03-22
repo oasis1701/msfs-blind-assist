@@ -38,6 +38,7 @@ public partial class ElectronicFlightBagForm : Form
     private Button refreshPositionButton = null!;
     private Button describeRouteButton = null!;
     private TextBox routeDescriptionTextBox = null!;
+    private readonly GeminiService _geminiService = new();
 
     // Other tab controls
     private TextBox departureIcaoTextBox = null!;
@@ -825,8 +826,7 @@ public partial class ElectronicFlightBagForm : Form
             describeRouteButton.Enabled = false;
             UpdateStatus("Generating route description...");
 
-            var geminiService = new GeminiService();
-            string description = await geminiService.DescribeRouteAsync(
+            string description = await _geminiService.DescribeRouteAsync(
                 _flightPlanManager.CurrentFlightPlan.RawOfpXml);
 
             routeDescriptionTextBox.Text = description.Replace("\r\n", "\n").Replace("\n", "\r\n");

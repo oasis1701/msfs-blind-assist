@@ -103,12 +103,13 @@ public class GeminiService
             throw new InvalidOperationException("Gemini API returned no candidates in response.");
         }
 
-        if (result.Candidates[0].Content?.Parts == null || result.Candidates[0].Content.Parts.Length == 0)
+        var candidateContent = result.Candidates[0].Content;
+        if (candidateContent?.Parts == null || candidateContent.Parts.Length == 0)
         {
             throw new InvalidOperationException("Gemini API returned no content in response.");
         }
 
-        return result.Candidates[0].Content.Parts[0].Text ?? "No description available.";
+        return candidateContent.Parts[0].Text ?? "No description available.";
     }
 
     /// <summary>
@@ -177,12 +178,13 @@ public class GeminiService
             throw new InvalidOperationException("Gemini API returned no candidates in response.");
         }
 
-        if (result.Candidates[0].Content?.Parts == null || result.Candidates[0].Content.Parts.Length == 0)
+        var candidateContent = result.Candidates[0].Content;
+        if (candidateContent?.Parts == null || candidateContent.Parts.Length == 0)
         {
             throw new InvalidOperationException("Gemini API returned no content in response.");
         }
 
-        return result.Candidates[0].Content.Parts[0].Text ?? "No description available.";
+        return candidateContent.Parts[0].Text ?? "No description available.";
     }
 
     /// <summary>
@@ -350,12 +352,13 @@ Do not use markdown formatting. Do not explain what things mean. Just state the 
             throw new InvalidOperationException("Gemini API returned no candidates in response.");
         }
 
-        if (result.Candidates[0].Content?.Parts == null || result.Candidates[0].Content.Parts.Length == 0)
+        var candidateContent = result.Candidates[0].Content;
+        if (candidateContent?.Parts == null || candidateContent.Parts.Length == 0)
         {
             throw new InvalidOperationException("Gemini API returned no content in response.");
         }
 
-        return result.Candidates[0].Content.Parts[0].Text ?? "No description available.";
+        return candidateContent.Parts[0].Text ?? "No description available.";
     }
 
     /// <summary>
@@ -376,7 +379,7 @@ Do not use markdown formatting. Do not explain what things mean. Just state the 
             AppendIfPresent(sb, "Cruise Altitude", general, "initial_altitude");
             AppendIfPresent(sb, "Distance", general, "route_distance");
             AppendIfPresent(sb, "Air Time", general, "air_time");
-            AppendIfPresent(sb, "Aircraft Type", general, "icao_airline");
+            AppendIfPresent(sb, "Airline ICAO", general, "icao_airline");
         }
 
         // Aircraft info
@@ -455,7 +458,6 @@ Do not use markdown formatting. Do not explain what things mean. Just state the 
             var enrouteWaypoints = new List<string>();
             var starWaypoints = new List<string>();
             bool passedSid = false;
-            bool inStar = false;
 
             foreach (XmlNode fix in fixes)
             {
@@ -474,7 +476,7 @@ Do not use markdown formatting. Do not explain what things mean. Just state the 
                 var parts = new List<string> { ident };
                 if (!string.IsNullOrEmpty(name) && name != ident) parts.Add(name);
                 if (!string.IsNullOrEmpty(airway)) parts.Add($"via {airway}");
-                if (!string.IsNullOrEmpty(alt)) parts.Add($"FL{int.Parse(alt) / 100}");
+                if (!string.IsNullOrEmpty(alt) && int.TryParse(alt, out int altFeet)) parts.Add($"FL{altFeet / 100}");
                 if (!string.IsNullOrEmpty(lat) && !string.IsNullOrEmpty(lon)) parts.Add($"({lat}, {lon})");
                 if (!string.IsNullOrEmpty(windDir) && !string.IsNullOrEmpty(windSpd)) parts.Add($"wind {windDir}/{windSpd}kt");
                 string line = string.Join(" | ", parts);
