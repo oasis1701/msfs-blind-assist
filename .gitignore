@@ -117,3 +117,12 @@ Navdatareader-win-1.2.3/
 
 # nul
 nul
+
+# External DLLs required for CI builds
+!lib/managed/Microsoft.FlightSimulator.SimConnect.dll
+!SimConnect_msfs_2020.dll
+!SimConnect_msfs_2024.dll
+!MSFSBlindAssist/Libraries/Tolk.dll
+!nvda_controllerClient/
+!nvda_controllerClient/x64/
+!nvda_controllerClient/x64/nvdaControllerClient.dll

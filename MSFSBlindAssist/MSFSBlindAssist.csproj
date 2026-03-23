@@ -53,7 +53,8 @@
   <ItemGroup>
     <!-- External SDK Reference -->
     <Reference Include="Microsoft.FlightSimulator.SimConnect">
-      <HintPath>$(MSFS_SDK)\SimConnect SDK\lib\managed\Microsoft.FlightSimulator.SimConnect.dll</HintPath>
+      <HintPath Condition="Exists('$(MSFS_SDK)\SimConnect SDK\lib\managed\Microsoft.FlightSimulator.SimConnect.dll')">$(MSFS_SDK)\SimConnect SDK\lib\managed\Microsoft.FlightSimulator.SimConnect.dll</HintPath>
+      <HintPath Condition="!Exists('$(MSFS_SDK)\SimConnect SDK\lib\managed\Microsoft.FlightSimulator.SimConnect.dll')">$(ProjectDir)..\lib\managed\Microsoft.FlightSimulator.SimConnect.dll</HintPath>
       <Private>True</Private>
     </Reference>
   </ItemGroup>
@@ -113,7 +114,7 @@
   </ItemGroup>
 
   <Target Name="PostBuild" AfterTargets="PostBuildEvent">
-    <Exec Command="REM Copy both versioned SimConnect DLLs to output directory&#xD;&#xA;xcopy /Y &quot;$(ProjectDir)..\SimConnect_msfs_2020.dll&quot; &quot;$(TargetDir)&quot;&#xD;&#xA;xcopy /Y &quot;$(ProjectDir)..\SimConnect_msfs_2024.dll&quot; &quot;$(TargetDir)&quot;&#xD;&#xA;xcopy /Y &quot;$(ProjectDir)Libraries\Tolk.dll&quot; &quot;$(TargetDir)&quot;&#xD;&#xA;xcopy /Y &quot;$(ProjectDir)..\nvda_controllerClient\x64\nvdaControllerClient.dll&quot; &quot;$(TargetDir)&quot;&#xD;&#xA;&#xD;&#xA;REM Copy navdatareader and all its dependencies to output directory&#xD;&#xA;if not exist &quot;$(TargetDir)navdatareader\&quot; mkdir &quot;$(TargetDir)navdatareader\&quot;&#xD;&#xA;xcopy /Y /E /I &quot;$(ProjectDir)..\Navdatareader-win-1.2.3\*&quot; &quot;$(TargetDir)navdatareader\&quot;&#xD;&#xA;&#xD;&#xA;REM Copy SimConnect.cfg to navdatareader directory for FS2024 SimConnect support&#xD;&#xA;xcopy /Y &quot;$(ProjectDir)SimConnect.cfg&quot; &quot;$(TargetDir)navdatareader\&quot;" />
+    <Exec Command="REM Copy both versioned SimConnect DLLs to output directory&#xD;&#xA;xcopy /Y &quot;$(ProjectDir)..\SimConnect_msfs_2020.dll&quot; &quot;$(TargetDir)&quot;&#xD;&#xA;xcopy /Y &quot;$(ProjectDir)..\SimConnect_msfs_2024.dll&quot; &quot;$(TargetDir)&quot;&#xD;&#xA;xcopy /Y &quot;$(ProjectDir)Libraries\Tolk.dll&quot; &quot;$(TargetDir)&quot;&#xD;&#xA;xcopy /Y &quot;$(ProjectDir)..\nvda_controllerClient\x64\nvdaControllerClient.dll&quot; &quot;$(TargetDir)&quot;&#xD;&#xA;&#xD;&#xA;REM Copy navdatareader and all its dependencies to output directory (skip if not present)&#xD;&#xA;if exist &quot;$(ProjectDir)..\Navdatareader-win-1.2.3\&quot; (&#xD;&#xA;  if not exist &quot;$(TargetDir)navdatareader\&quot; mkdir &quot;$(TargetDir)navdatareader\&quot;&#xD;&#xA;  xcopy /Y /E /I &quot;$(ProjectDir)..\Navdatareader-win-1.2.3\*&quot; &quot;$(TargetDir)navdatareader\&quot;&#xD;&#xA;  REM Copy SimConnect.cfg to navdatareader directory for FS2024 SimConnect support&#xD;&#xA;  xcopy /Y &quot;$(ProjectDir)SimConnect.cfg&quot; &quot;$(TargetDir)navdatareader\&quot;&#xD;&#xA;)" />
   </Target>
 
 </Project>
