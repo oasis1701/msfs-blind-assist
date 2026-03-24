@@ -175,13 +175,14 @@ Do not use markdown formatting. Do not explain what things mean. Just state the 
 
     /// <summary>
     /// Generates a narrative route description from pre-extracted flight data.
+    /// Uses Google Search grounding to find current NOTAMs and real-time information.
     /// </summary>
     /// <param name="flightData">Pre-extracted flight data summary text</param>
     /// <returns>Text description of the route</returns>
     public async Task<string> DescribeRouteAsync(string flightData)
     {
         string prompt = GetRouteDescriptionPrompt(flightData);
-        return await SendTextRequestAsync(prompt);
+        return await SendTextRequestWithSearchAsync(prompt);
     }
 
     /// <summary>
@@ -200,6 +201,33 @@ Do not use markdown formatting. Do not explain what things mean. Just state the 
                         new { text = prompt }
                     }
                 }
+            }
+        };
+
+        return await SendRequestAsync(requestBody);
+    }
+
+    /// <summary>
+    /// Sends a text request to Gemini with Google Search grounding enabled.
+    /// This allows the model to search the web for current information like NOTAMs.
+    /// </summary>
+    private async Task<string> SendTextRequestWithSearchAsync(string prompt)
+    {
+        var requestBody = new
+        {
+            contents = new[]
+            {
+                new
+                {
+                    parts = new object[]
+                    {
+                        new { text = prompt }
+                    }
+                }
+            },
+            tools = new object[]
+            {
+                new { google_search = new { } }
             }
         };
 
@@ -313,6 +341,18 @@ Cover the following topics, using descriptive section headings separated by blan
    - Summarize departure and arrival weather from the METAR data
    - Mention any SIGMETs or significant weather along the route
    - Note any weather that could affect the flight experience (turbulence, visibility, precipitation)
+
+6. NOTAMS
+   - Search for current NOTAMs for both the departure and arrival airports using their ICAO codes
+   - Focus on operationally significant NOTAMs that would affect this flight, such as:
+     - Closed or restricted runways
+     - Inoperative ILS, VOR, or other navigation aids
+     - Taxiway closures or restrictions
+     - Airspace restrictions or temporary flight restrictions
+     - Airport facility outages (lighting, PAPI, etc.)
+   - Summarize each relevant NOTAM in plain language (not raw NOTAM code)
+   - If no significant NOTAMs are found, state that no notable NOTAMs were found for these airports
+   - Skip routine or minor NOTAMs (e.g. crane notifications, wildlife warnings) unless they affect runway operations
 
 IMPORTANT GUIDELINES:
 - Write in plain text with no markdown formatting
