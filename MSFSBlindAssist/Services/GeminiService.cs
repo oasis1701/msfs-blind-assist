@@ -182,54 +182,36 @@ Do not use markdown formatting. Do not explain what things mean. Just state the 
     public async Task<string> DescribeRouteAsync(string flightData)
     {
         string prompt = GetRouteDescriptionPrompt(flightData);
-        return await SendTextRequestWithSearchAsync(prompt);
+        return await SendTextRequestAsync(prompt, enableSearch: true);
     }
 
     /// <summary>
     /// Sends a text-only request to Gemini and parses the response.
+    /// Optionally enables Google Search grounding for real-time information like NOTAMs.
     /// </summary>
-    private async Task<string> SendTextRequestAsync(string prompt)
+    private async Task<string> SendTextRequestAsync(string prompt, bool enableSearch = false)
     {
-        var requestBody = new
+        var contents = new[]
         {
-            contents = new[]
+            new
             {
-                new
+                parts = new object[]
                 {
-                    parts = new object[]
-                    {
-                        new { text = prompt }
-                    }
+                    new { text = prompt }
                 }
             }
         };
 
-        return await SendRequestAsync(requestBody);
-    }
-
-    /// <summary>
-    /// Sends a text request to Gemini with Google Search grounding enabled.
-    /// This allows the model to search the web for current information like NOTAMs.
-    /// </summary>
-    private async Task<string> SendTextRequestWithSearchAsync(string prompt)
-    {
-        var requestBody = new
-        {
-            contents = new[]
+        object requestBody = enableSearch
+            ? new
             {
-                new
+                contents,
+                tools = new object[]
                 {
-                    parts = new object[]
-                    {
-                        new { text = prompt }
-                    }
+                    new { google_search = new { } }
                 }
-            },
-            tools = new object[]
-            {
-                new { google_search = new { } }
             }
-        };
+            : new { contents };
 
         return await SendRequestAsync(requestBody);
     }
