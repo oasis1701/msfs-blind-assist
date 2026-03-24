@@ -1,0 +1,51 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 9
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+        shell: bash
+
+      - name: Build
+        run: dotnet build MSFSBlindAssist.sln -c Release -p:Version=${{ steps.version.outputs.VERSION }}
+
+      - name: Download Navdatareader
+        run: |
+          gh release download v1.2.3 -R albar965/navdatareader -p "Navdatareader-win-1.2.3.zip"
+          Expand-Archive -Path Navdatareader-win-1.2.3.zip -DestinationPath temp-navdata
+          Move-Item temp-navdata\Navdatareader-win-1.2.3 MSFSBlindAssist\bin\x64\Release\net9.0-windows\navdatareader
+          Copy-Item MSFSBlindAssist\SimConnect.cfg MSFSBlindAssist\bin\x64\Release\net9.0-windows\navdatareader\
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Create release zip
+        run: |
+          Compress-Archive -Path MSFSBlindAssist\bin\x64\Release\net9.0-windows\* -DestinationPath MSFSBA.zip
+        shell: pwsh
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: MSFSBA.zip
+          generate_release_notes: true
