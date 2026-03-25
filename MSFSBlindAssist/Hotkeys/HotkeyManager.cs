@@ -593,7 +593,7 @@ public class HotkeyManager : IDisposable
 
             // Auto-timeout disabled - hotkey mode stays active until used or escape pressed
 
-            OutputHotkeyModeChanged?.Invoke(this, new HotkeyModeEventArgs(active: true));
+            OutputHotkeyModeChanged?.Invoke(this, new HotkeyModeEventArgs(HotkeyModeStatus.Activated));
         }
 
         private void DeactivateOutputHotkeyMode(bool wasCancelled = false)
@@ -668,7 +668,7 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_DESCRIBE_SCENE);
             UnregisterHotKey(windowHandle, HOTKEY_NEAREST_CITY);
 
-            OutputHotkeyModeChanged?.Invoke(this, new HotkeyModeEventArgs(active: false, wasCancelled));
+            OutputHotkeyModeChanged?.Invoke(this, new HotkeyModeEventArgs(wasCancelled ? HotkeyModeStatus.Cancelled : HotkeyModeStatus.Deactivated));
         }
 
         private void ActivateInputHotkeyMode()
@@ -703,7 +703,7 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_TRACK_FIX, MOD_SHIFT, 0x46);         // Shift+F (Track Fix Window)
             RegisterHotKey(windowHandle, HOTKEY_FENIX_MCDU, MOD_SHIFT, 0x4D);       // Shift+M (Fenix MCDU)
 
-            InputHotkeyModeChanged?.Invoke(this, new HotkeyModeEventArgs(active: true));
+            InputHotkeyModeChanged?.Invoke(this, new HotkeyModeEventArgs(HotkeyModeStatus.Activated));
         }
 
         private void DeactivateInputHotkeyMode(bool wasCancelled = false)
@@ -740,7 +740,7 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_TRACK_FIX);
             UnregisterHotKey(windowHandle, HOTKEY_FENIX_MCDU);
 
-            InputHotkeyModeChanged?.Invoke(this, new HotkeyModeEventArgs(active: false, wasCancelled));
+            InputHotkeyModeChanged?.Invoke(this, new HotkeyModeEventArgs(wasCancelled ? HotkeyModeStatus.Cancelled : HotkeyModeStatus.Deactivated));
         }
 
         private void TriggerHotkey(HotkeyAction action)
@@ -938,18 +938,13 @@ public class HotkeyManager : IDisposable
         }
     }
 
+    public enum HotkeyModeStatus { Activated, Deactivated, Cancelled }
+
     public class HotkeyModeEventArgs : EventArgs
     {
-        public bool Active { get; }
-        public bool WasCancelled { get; }
+        public HotkeyModeStatus Status { get; }
 
-        public HotkeyModeEventArgs(bool active, bool wasCancelled = false)
-        {
-            if (active && wasCancelled)
-                throw new ArgumentException("A mode cannot be both active and cancelled.");
-            Active = active;
-            WasCancelled = wasCancelled;
-        }
+        public HotkeyModeEventArgs(HotkeyModeStatus status) => Status = status;
     }
 
     public class HotkeyEventArgs : EventArgs

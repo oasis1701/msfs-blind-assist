@@ -1018,26 +1018,18 @@ public partial class MainForm : Form
 
     private void OnOutputHotkeyModeChanged(object? sender, HotkeyModeEventArgs e)
     {
-        if (e.Active)
-        {
+        if (e.Status == HotkeyModeStatus.Activated)
             announcer.AnnounceImmediate("output");
-        }
-        else if (e.WasCancelled)
-        {
+        else if (e.Status == HotkeyModeStatus.Cancelled)
             announcer.AnnounceImmediate("cancelled");
-        }
     }
 
     private void OnInputHotkeyModeChanged(object? sender, HotkeyModeEventArgs e)
     {
-        if (e.Active)
-        {
+        if (e.Status == HotkeyModeStatus.Activated)
             announcer.AnnounceImmediate("input");
-        }
-        else if (e.WasCancelled)
-        {
+        else if (e.Status == HotkeyModeStatus.Cancelled)
             announcer.AnnounceImmediate("cancelled");
-        }
     }
 
     /// <summary>
