@@ -1016,21 +1016,20 @@ public partial class MainForm : Form
         }
     }
 
-    private void OnOutputHotkeyModeChanged(object? sender, bool active)
+    private void OnOutputHotkeyModeChanged(object? sender, HotkeyModeEventArgs e)
     {
-        // Use the announcer properly
-        if (active)
-        {
+        if (e.Status == HotkeyModeStatus.Activated)
             announcer.AnnounceImmediate("output");
-        }
+        else if (e.Status == HotkeyModeStatus.Cancelled)
+            announcer.AnnounceImmediate("cancelled");
     }
 
-    private void OnInputHotkeyModeChanged(object? sender, bool active)
+    private void OnInputHotkeyModeChanged(object? sender, HotkeyModeEventArgs e)
     {
-        if (active)
-        {
+        if (e.Status == HotkeyModeStatus.Activated)
             announcer.AnnounceImmediate("input");
-        }
+        else if (e.Status == HotkeyModeStatus.Cancelled)
+            announcer.AnnounceImmediate("cancelled");
     }
 
     /// <summary>

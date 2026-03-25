@@ -4,6 +4,8 @@ Application Navigation:
   Ctrl+1     Focus Sections List
   Ctrl+2     Focus Panels List
 
+Tip: Press the same bracket key again to cancel a mode you activated by accident.
+
 
 OUTPUT MODE - Press right bracket to activate
 

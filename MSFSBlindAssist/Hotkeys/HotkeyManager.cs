@@ -135,8 +135,8 @@ public class HotkeyManager : IDisposable
         private bool disposed = false;
 
         public event EventHandler<HotkeyEventArgs>? HotkeyTriggered;
-        public event EventHandler<bool>? OutputHotkeyModeChanged;
-        public event EventHandler<bool>? InputHotkeyModeChanged;
+        public event EventHandler<HotkeyModeEventArgs>? OutputHotkeyModeChanged;
+        public event EventHandler<HotkeyModeEventArgs>? InputHotkeyModeChanged;
 
         public bool IsOutputHotkeyModeActive => outputHotkeyModeActive;
         public bool IsInputHotkeyModeActive => inputHotkeyModeActive;
@@ -166,7 +166,11 @@ public class HotkeyManager : IDisposable
 
                 if (hotkeyId == HOTKEY_ACTIVATE)
                 {
-                    if (!outputHotkeyModeActive && !inputHotkeyModeActive)
+                    if (outputHotkeyModeActive)
+                    {
+                        DeactivateOutputHotkeyMode(wasCancelled: true);
+                    }
+                    else if (!inputHotkeyModeActive)
                     {
                         ActivateOutputHotkeyMode();
                     }
@@ -174,7 +178,11 @@ public class HotkeyManager : IDisposable
                 }
                 else if (hotkeyId == HOTKEY_INPUT_ACTIVATE)
                 {
-                    if (!inputHotkeyModeActive && !outputHotkeyModeActive)
+                    if (inputHotkeyModeActive)
+                    {
+                        DeactivateInputHotkeyMode(wasCancelled: true);
+                    }
+                    else if (!outputHotkeyModeActive)
                     {
                         ActivateInputHotkeyMode();
                     }
@@ -585,10 +593,10 @@ public class HotkeyManager : IDisposable
 
             // Auto-timeout disabled - hotkey mode stays active until used or escape pressed
 
-            OutputHotkeyModeChanged?.Invoke(this, true);
+            OutputHotkeyModeChanged?.Invoke(this, new HotkeyModeEventArgs(HotkeyModeStatus.Activated));
         }
 
-        private void DeactivateOutputHotkeyMode()
+        private void DeactivateOutputHotkeyMode(bool wasCancelled = false)
         {
             if (!outputHotkeyModeActive) return;
 
@@ -660,7 +668,7 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_DESCRIBE_SCENE);
             UnregisterHotKey(windowHandle, HOTKEY_NEAREST_CITY);
 
-            OutputHotkeyModeChanged?.Invoke(this, false);
+            OutputHotkeyModeChanged?.Invoke(this, new HotkeyModeEventArgs(wasCancelled ? HotkeyModeStatus.Cancelled : HotkeyModeStatus.Deactivated));
         }
 
         private void ActivateInputHotkeyMode()
@@ -695,10 +703,10 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_TRACK_FIX, MOD_SHIFT, 0x46);         // Shift+F (Track Fix Window)
             RegisterHotKey(windowHandle, HOTKEY_FENIX_MCDU, MOD_SHIFT, 0x4D);       // Shift+M (Fenix MCDU)
 
-            InputHotkeyModeChanged?.Invoke(this, true);
+            InputHotkeyModeChanged?.Invoke(this, new HotkeyModeEventArgs(HotkeyModeStatus.Activated));
         }
 
-        private void DeactivateInputHotkeyMode()
+        private void DeactivateInputHotkeyMode(bool wasCancelled = false)
         {
             if (!inputHotkeyModeActive) return;
 
@@ -732,7 +740,7 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_TRACK_FIX);
             UnregisterHotKey(windowHandle, HOTKEY_FENIX_MCDU);
 
-            InputHotkeyModeChanged?.Invoke(this, false);
+            InputHotkeyModeChanged?.Invoke(this, new HotkeyModeEventArgs(wasCancelled ? HotkeyModeStatus.Cancelled : HotkeyModeStatus.Deactivated));
         }
 
         private void TriggerHotkey(HotkeyAction action)
@@ -746,9 +754,9 @@ public class HotkeyManager : IDisposable
             if ((outputHotkeyModeActive || inputHotkeyModeActive) && keyData == Keys.Escape)
             {
                 if (outputHotkeyModeActive)
-                    DeactivateOutputHotkeyMode();
+                    DeactivateOutputHotkeyMode(wasCancelled: true);
                 if (inputHotkeyModeActive)
-                    DeactivateInputHotkeyMode();
+                    DeactivateInputHotkeyMode(wasCancelled: true);
                 return true;
             }
 
@@ -928,6 +936,15 @@ public class HotkeyManager : IDisposable
                 disposed = true;
             }
         }
+    }
+
+    public enum HotkeyModeStatus { Activated, Deactivated, Cancelled }
+
+    public class HotkeyModeEventArgs : EventArgs
+    {
+        public HotkeyModeStatus Status { get; }
+
+        public HotkeyModeEventArgs(HotkeyModeStatus status) => Status = status;
     }
 
     public class HotkeyEventArgs : EventArgs
