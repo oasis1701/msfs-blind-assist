@@ -1016,25 +1016,25 @@ public partial class MainForm : Form
         }
     }
 
-    private void OnOutputHotkeyModeChanged(object? sender, bool active)
+    private void OnOutputHotkeyModeChanged(object? sender, HotkeyModeEventArgs e)
     {
-        if (active)
+        if (e.Active)
         {
             announcer.AnnounceImmediate("output");
         }
-        else if (hotkeyManager.WasCancelled)
+        else if (e.WasCancelled)
         {
             announcer.AnnounceImmediate("cancelled");
         }
     }
 
-    private void OnInputHotkeyModeChanged(object? sender, bool active)
+    private void OnInputHotkeyModeChanged(object? sender, HotkeyModeEventArgs e)
     {
-        if (active)
+        if (e.Active)
         {
             announcer.AnnounceImmediate("input");
         }
-        else if (hotkeyManager.WasCancelled)
+        else if (e.WasCancelled)
         {
             announcer.AnnounceImmediate("cancelled");
         }
