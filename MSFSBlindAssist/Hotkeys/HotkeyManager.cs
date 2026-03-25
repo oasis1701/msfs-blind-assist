@@ -945,6 +945,8 @@ public class HotkeyManager : IDisposable
 
         public HotkeyModeEventArgs(bool active, bool wasCancelled = false)
         {
+            if (active && wasCancelled)
+                throw new ArgumentException("A mode cannot be both active and cancelled.");
             Active = active;
             WasCancelled = wasCancelled;
         }
