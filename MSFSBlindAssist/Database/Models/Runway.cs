@@ -54,7 +54,7 @@ public class Runway
 
         public override string ToString()
         {
-            string baseInfo = $"Runway {RunwayID} - {Length:0}m {GetSurfaceType()}";
+            string baseInfo = $"Runway {RunwayID} - {Length:0}ft {GetSurfaceType()}";
 
             if (ILSFreq > 0)
             {
