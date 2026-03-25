@@ -3,18 +3,19 @@ using MSFSBlindAssist.Settings;
 namespace MSFSBlindAssist.Forms;
 
 /// <summary>
-/// Settings form for Gemini AI API key configuration
+/// Settings form for Gemini AI configuration
 /// </summary>
-public partial class GeminiApiKeySettingsForm : Form
+public partial class GeminiSettingsForm : Form
 {
     private TextBox apiKeyTextBox = null!;
+    private CheckBox searchGroundingCheckBox = null!;
     private Button saveButton = null!;
     private Button cancelButton = null!;
     private Label instructionsLabel = null!;
     private Label apiKeyLabel = null!;
     private LinkLabel linkLabel = null!;
 
-    public GeminiApiKeySettingsForm()
+    public GeminiSettingsForm()
     {
         InitializeComponent();
         LoadCurrentSettings();
@@ -22,8 +23,8 @@ public partial class GeminiApiKeySettingsForm : Form
 
     private void InitializeComponent()
     {
-        Text = "Gemini API Key Settings";
-        Size = new System.Drawing.Size(550, 310);
+        Text = "Gemini Settings";
+        Size = new System.Drawing.Size(550, 360);
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -39,7 +40,7 @@ public partial class GeminiApiKeySettingsForm : Form
             Location = new System.Drawing.Point(20, 20),
             Size = new System.Drawing.Size(500, 90),
             AccessibleName = "Instructions",
-            AccessibleDescription = "Gemini API key settings instructions"
+            AccessibleDescription = "Gemini settings instructions"
         };
 
         // Link to get API key
@@ -72,15 +73,25 @@ public partial class GeminiApiKeySettingsForm : Form
             UseSystemPasswordChar = false  // Show the key (it's not a password)
         };
 
+        // Google Search grounding checkbox
+        searchGroundingCheckBox = new CheckBox
+        {
+            Text = "Enable Grounding with Google Search (paid feature)",
+            Location = new System.Drawing.Point(20, 215),
+            Size = new System.Drawing.Size(500, 25),
+            AccessibleName = "Enable Grounding with Google Search",
+            AccessibleDescription = "Enables Google Search grounding for route descriptions. This is a paid Gemini API feature that requires a billing account."
+        };
+
         // Save button
         saveButton = new Button
         {
             Text = "Save",
-            Location = new System.Drawing.Point(330, 225),
+            Location = new System.Drawing.Point(330, 270),
             Size = new System.Drawing.Size(90, 30),
             DialogResult = DialogResult.OK,
             AccessibleName = "Save",
-            AccessibleDescription = "Save Gemini API key settings"
+            AccessibleDescription = "Save Gemini settings"
         };
         saveButton.Click += SaveButton_Click;
 
@@ -88,7 +99,7 @@ public partial class GeminiApiKeySettingsForm : Form
         cancelButton = new Button
         {
             Text = "Cancel",
-            Location = new System.Drawing.Point(430, 225),
+            Location = new System.Drawing.Point(430, 270),
             Size = new System.Drawing.Size(90, 30),
             DialogResult = DialogResult.Cancel,
             AccessibleName = "Cancel",
@@ -102,6 +113,7 @@ public partial class GeminiApiKeySettingsForm : Form
         Controls.Add(linkLabel);
         Controls.Add(apiKeyLabel);
         Controls.Add(apiKeyTextBox);
+        Controls.Add(searchGroundingCheckBox);
         Controls.Add(saveButton);
         Controls.Add(cancelButton);
 
@@ -110,8 +122,9 @@ public partial class GeminiApiKeySettingsForm : Form
         linkLabel.TabIndex = 1;
         apiKeyLabel.TabIndex = 2;
         apiKeyTextBox.TabIndex = 3;
-        saveButton.TabIndex = 4;
-        cancelButton.TabIndex = 5;
+        searchGroundingCheckBox.TabIndex = 4;
+        saveButton.TabIndex = 5;
+        cancelButton.TabIndex = 6;
 
         // Focus on API key textbox when form loads
         Load += (sender, e) =>
@@ -124,15 +137,17 @@ public partial class GeminiApiKeySettingsForm : Form
     {
         var settings = SettingsManager.Current;
         apiKeyTextBox.Text = settings.GeminiApiKey ?? "";
+        searchGroundingCheckBox.Checked = settings.GeminiSearchGrounding;
     }
 
     private void SaveButton_Click(object? sender, EventArgs e)
     {
         var settings = SettingsManager.Current;
         settings.GeminiApiKey = apiKeyTextBox.Text.Trim();
+        settings.GeminiSearchGrounding = searchGroundingCheckBox.Checked;
         SettingsManager.Save(settings);
 
-        MessageBox.Show("Gemini API key saved successfully.\n\n" +
+        MessageBox.Show("Gemini settings saved successfully.\n\n" +
                        "You can now use Input Hotkey Mode (press '[') followed by:\n" +
                        "  1 - Read PFD\n" +
                        "  2 - Read Lower ECAM\n" +

@@ -841,7 +841,7 @@ public partial class ElectronicFlightBagForm : Form
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("API key"))
         {
-            _announcer.Announce("Gemini API key not configured. Please configure it in File menu, Gemini API Key Settings.");
+            _announcer.Announce("Gemini API key not configured. Please configure it in File menu, Gemini Settings.");
             UpdateStatus("Gemini API key not configured");
         }
         catch (Exception ex)

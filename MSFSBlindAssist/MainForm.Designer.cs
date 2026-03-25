@@ -9,7 +9,7 @@ namespace MSFSBlindAssist
         private System.Windows.Forms.ToolStripMenuItem announcementSettingsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem geoNamesSettingsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem simbriefSettingsMenuItem = null!;
-        private System.Windows.Forms.ToolStripMenuItem geminiApiKeySettingsMenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem geminiSettingsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem handFlyOptionsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem hotkeyListMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem updateApplicationMenuItem = null!;
@@ -39,7 +39,7 @@ namespace MSFSBlindAssist
             this.announcementSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.geoNamesSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.simbriefSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
-            this.geminiApiKeySettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.geminiSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.handFlyOptionsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.hotkeyListMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.updateApplicationMenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -75,7 +75,7 @@ namespace MSFSBlindAssist
             this.announcementSettingsMenuItem,
             this.geoNamesSettingsMenuItem,
             this.simbriefSettingsMenuItem,
-            this.geminiApiKeySettingsMenuItem,
+            this.geminiSettingsMenuItem,
             this.handFlyOptionsMenuItem,
             this.hotkeyListMenuItem,
             this.updateApplicationMenuItem,
@@ -120,14 +120,14 @@ namespace MSFSBlindAssist
             this.simbriefSettingsMenuItem.Text = "Define &SimBrief Username";
             this.simbriefSettingsMenuItem.Click += new System.EventHandler(this.SimBriefSettingsMenuItem_Click);
             //
-            // geminiApiKeySettingsMenuItem
+            // geminiSettingsMenuItem
             //
-            this.geminiApiKeySettingsMenuItem.AccessibleName = "Gemini API Key Settings";
-            this.geminiApiKeySettingsMenuItem.AccessibleDescription = "Configure Google Gemini API key for AI-powered display reading";
-            this.geminiApiKeySettingsMenuItem.Name = "geminiApiKeySettingsMenuItem";
-            this.geminiApiKeySettingsMenuItem.Size = new System.Drawing.Size(280, 26);
-            this.geminiApiKeySettingsMenuItem.Text = "Ge&mini API Key Settings";
-            this.geminiApiKeySettingsMenuItem.Click += new System.EventHandler(this.GeminiApiKeySettingsMenuItem_Click);
+            this.geminiSettingsMenuItem.AccessibleName = "Gemini Settings";
+            this.geminiSettingsMenuItem.AccessibleDescription = "Configure Google Gemini settings";
+            this.geminiSettingsMenuItem.Name = "geminiSettingsMenuItem";
+            this.geminiSettingsMenuItem.Size = new System.Drawing.Size(280, 26);
+            this.geminiSettingsMenuItem.Text = "Ge&mini Settings";
+            this.geminiSettingsMenuItem.Click += new System.EventHandler(this.GeminiSettingsMenuItem_Click);
             //
             // handFlyOptionsMenuItem
             //

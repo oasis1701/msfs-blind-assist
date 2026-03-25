@@ -13343,12 +13343,12 @@ public class FenixA320Definition : BaseAircraftDefinition
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("API key"))
         {
-            announcer.Announce("Gemini API key not configured. Please go to File menu, Gemini API Key Settings.");
+            announcer.Announce("Gemini API key not configured. Please go to File menu, Gemini Settings.");
             System.Windows.Forms.MessageBox.Show(
                 parentForm,
                 "Gemini API key is not configured.\n\n" +
                 "Please configure your API key in:\n" +
-                "File > Gemini API Key Settings\n\n" +
+                "File > Gemini Settings\n\n" +
                 "Get a free API key at: https://aistudio.google.com/apikey",
                 "API Key Required",
                 System.Windows.Forms.MessageBoxButtons.OK,

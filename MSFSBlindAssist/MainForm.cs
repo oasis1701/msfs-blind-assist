@@ -1586,7 +1586,7 @@ public partial class MainForm : Form
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("API key"))
         {
-            announcer.AnnounceImmediate("Gemini API key not configured. Please configure it in File menu, Gemini API Key Settings.");
+            announcer.AnnounceImmediate("Gemini API key not configured. Please configure it in File menu, Gemini Settings.");
         }
         catch (Exception ex)
         {
@@ -1811,14 +1811,14 @@ public partial class MainForm : Form
         }
     }
 
-    private void GeminiApiKeySettingsMenuItem_Click(object? sender, EventArgs e)
+    private void GeminiSettingsMenuItem_Click(object? sender, EventArgs e)
     {
-        using (var settingsForm = new Forms.GeminiApiKeySettingsForm())
+        using (var settingsForm = new Forms.GeminiSettingsForm())
         {
             if (settingsForm.ShowDialog(this) == DialogResult.OK)
             {
-                statusLabel.Text = "Gemini API key saved successfully";
-                announcer.Announce("Gemini API key saved successfully");
+                statusLabel.Text = "Gemini settings saved successfully";
+                announcer.Announce("Gemini settings saved successfully");
             }
         }
     }

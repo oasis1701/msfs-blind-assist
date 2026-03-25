@@ -175,14 +175,15 @@ Do not use markdown formatting. Do not explain what things mean. Just state the 
 
     /// <summary>
     /// Generates a narrative route description from pre-extracted flight data.
-    /// Uses Google Search grounding to find current NOTAMs and real-time information.
+    /// Optionally uses Google Search grounding to find current NOTAMs and real-time information.
     /// </summary>
     /// <param name="flightData">Pre-extracted flight data summary text</param>
     /// <returns>Text description of the route</returns>
     public async Task<string> DescribeRouteAsync(string flightData)
     {
         string prompt = GetRouteDescriptionPrompt(flightData);
-        return await SendTextRequestAsync(prompt, enableSearch: true);
+        bool enableSearch = SettingsManager.Current.GeminiSearchGrounding;
+        return await SendTextRequestAsync(prompt, enableSearch: enableSearch);
     }
 
     /// <summary>
@@ -253,7 +254,7 @@ Do not use markdown formatting. Do not explain what things mean. Just state the 
     {
         if (string.IsNullOrEmpty(apiKey))
         {
-            throw new InvalidOperationException("Gemini API key is not configured. Please configure it in File > Gemini API Key Settings.");
+            throw new InvalidOperationException("Gemini API key is not configured. Please configure it in File > Gemini Settings.");
         }
 
         string jsonRequest = JsonConvert.SerializeObject(requestBody);
