@@ -140,6 +140,7 @@ public class HotkeyManager : IDisposable
 
         public bool IsOutputHotkeyModeActive => outputHotkeyModeActive;
         public bool IsInputHotkeyModeActive => inputHotkeyModeActive;
+        public bool WasCancelled { get; private set; }
 
         public void Initialize(IntPtr handle)
         {
@@ -166,7 +167,12 @@ public class HotkeyManager : IDisposable
 
                 if (hotkeyId == HOTKEY_ACTIVATE)
                 {
-                    if (!outputHotkeyModeActive && !inputHotkeyModeActive)
+                    if (outputHotkeyModeActive)
+                    {
+                        WasCancelled = true;
+                        DeactivateOutputHotkeyMode();
+                    }
+                    else if (!inputHotkeyModeActive)
                     {
                         ActivateOutputHotkeyMode();
                     }
@@ -174,7 +180,12 @@ public class HotkeyManager : IDisposable
                 }
                 else if (hotkeyId == HOTKEY_INPUT_ACTIVATE)
                 {
-                    if (!inputHotkeyModeActive && !outputHotkeyModeActive)
+                    if (inputHotkeyModeActive)
+                    {
+                        WasCancelled = true;
+                        DeactivateInputHotkeyMode();
+                    }
+                    else if (!outputHotkeyModeActive)
                     {
                         ActivateInputHotkeyMode();
                     }
@@ -513,6 +524,7 @@ public class HotkeyManager : IDisposable
 
         private void ActivateOutputHotkeyMode()
         {
+            WasCancelled = false;
             outputHotkeyModeActive = true;
 
             // Register the temporary hotkeys
@@ -665,6 +677,7 @@ public class HotkeyManager : IDisposable
 
         private void ActivateInputHotkeyMode()
         {
+            WasCancelled = false;
             inputHotkeyModeActive = true;
 
             // Register input mode hotkeys
@@ -745,6 +758,7 @@ public class HotkeyManager : IDisposable
             // Handle Escape key to exit output hotkey mode or input hotkey mode
             if ((outputHotkeyModeActive || inputHotkeyModeActive) && keyData == Keys.Escape)
             {
+                WasCancelled = true;
                 if (outputHotkeyModeActive)
                     DeactivateOutputHotkeyMode();
                 if (inputHotkeyModeActive)

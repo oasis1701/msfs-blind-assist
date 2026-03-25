@@ -1018,10 +1018,13 @@ public partial class MainForm : Form
 
     private void OnOutputHotkeyModeChanged(object? sender, bool active)
     {
-        // Use the announcer properly
         if (active)
         {
             announcer.AnnounceImmediate("output");
+        }
+        else if (hotkeyManager.WasCancelled)
+        {
+            announcer.AnnounceImmediate("cancelled");
         }
     }
 
@@ -1030,6 +1033,10 @@ public partial class MainForm : Form
         if (active)
         {
             announcer.AnnounceImmediate("input");
+        }
+        else if (hotkeyManager.WasCancelled)
+        {
+            announcer.AnnounceImmediate("cancelled");
         }
     }
 

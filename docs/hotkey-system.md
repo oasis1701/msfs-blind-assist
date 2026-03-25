@@ -18,6 +18,13 @@ Two hotkey modes with three-tier delegation architecture for multi-aircraft supp
 3. Press modifier+key for desired action
 4. Mode auto-deactivates after use
 
+### Dismissing a Mode
+If you activate a mode by accident, press the same key again to cancel:
+- `]` again exits Read Mode
+- `[` again exits Input Mode
+
+The screen reader announces "cancelled" to confirm the mode was dismissed. ESC also works when the app window is focused.
+
 ## Multi-Aircraft Hotkey Delegation (Three-Tier Routing)
 
 ### Tier 1: Aircraft-Specific Handler (First Priority)
