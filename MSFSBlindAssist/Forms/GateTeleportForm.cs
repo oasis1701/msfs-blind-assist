@@ -13,10 +13,15 @@ public partial class GateTeleportForm : Form
     private static extern bool SetForegroundWindow(IntPtr hWnd);
 
     private TextBox icaoTextBox = null!;
+    private ComboBox filterComboBox = null!;
+    private CheckBox fitFilterCheckBox = null!;
     private ListBox gateListBox = null!;
     private Button teleportButton = null!;
     private Button cancelButton = null!;
     private Label statusLabel = null!;
+
+    private List<ParkingSpot> _allParkingSpots = new();
+    private readonly double _aircraftWingspan;
 
     private readonly IAirportDataProvider _database;
     private readonly ScreenReaderAnnouncer _announcer;
@@ -25,13 +30,14 @@ public partial class GateTeleportForm : Form
     public ParkingSpot? SelectedParkingSpot { get; private set; }
     public Airport? SelectedAirport { get; private set; }
 
-    public GateTeleportForm(IAirportDataProvider database, ScreenReaderAnnouncer announcer)
+    public GateTeleportForm(IAirportDataProvider database, ScreenReaderAnnouncer announcer, double aircraftWingspan = 0)
     {
         // Capture the current foreground window (likely the simulator)
         previousWindow = GetForegroundWindow();
 
         _database = database;
         _announcer = announcer;
+        _aircraftWingspan = aircraftWingspan;
         InitializeComponent();
         SetupAccessibility();
     }
@@ -39,7 +45,7 @@ public partial class GateTeleportForm : Form
     private void InitializeComponent()
     {
         Text = "Gate & Parking Teleport";
-        Size = new Size(400, 350);
+        Size = new Size(400, 375);
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -67,18 +73,52 @@ public partial class GateTeleportForm : Form
         icaoTextBox.TextChanged += IcaoTextBox_TextChanged;
         icaoTextBox.KeyDown += IcaoTextBox_KeyDown;
 
+        // Filter Label and ComboBox
+        var filterLabel = new Label
+        {
+            Text = "Filter:",
+            Location = new Point(200, 20),
+            Size = new Size(50, 20),
+            AccessibleName = "Filter by parking type"
+        };
+
+        filterComboBox = new ComboBox
+        {
+            Location = new Point(200, 45),
+            Size = new Size(170, 25),
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            AccessibleName = "Filter by parking type",
+            AccessibleDescription = "Filter the parking list by type category"
+        };
+        filterComboBox.Items.Add("All");
+        filterComboBox.SelectedIndex = 0;
+        filterComboBox.SelectedIndexChanged += FilterComboBox_SelectedIndexChanged;
+
+        // Fit filter checkbox
+        fitFilterCheckBox = new CheckBox
+        {
+            Text = "Show only fitting stands",
+            Location = new Point(20, 80),
+            Size = new Size(350, 20),
+            Checked = _aircraftWingspan > 0,
+            Enabled = _aircraftWingspan > 0,
+            AccessibleName = "Show only fitting stands",
+            AccessibleDescription = "When checked, only shows parking spots large enough for your aircraft"
+        };
+        fitFilterCheckBox.CheckedChanged += (s, e) => { if (_allParkingSpots.Count > 0) ApplyFilter(); };
+
         // Gate Label and ListBox
         var gateLabel = new Label
         {
             Text = "Available Gates & Parking:",
-            Location = new Point(20, 80),
+            Location = new Point(20, 105),
             Size = new Size(180, 20),
             AccessibleName = "Available Gates and Parking"
         };
 
         gateListBox = new ListBox
         {
-            Location = new Point(20, 105),
+            Location = new Point(20, 130),
             Size = new Size(350, 150),
             AccessibleName = "Gate and Parking List",
             AccessibleDescription = "Select a gate or parking spot from the list and press Enter to teleport"
@@ -89,7 +129,7 @@ public partial class GateTeleportForm : Form
         // Status Label
         statusLabel = new Label
         {
-            Location = new Point(20, 265),
+            Location = new Point(20, 290),
             Size = new Size(350, 20),
             AccessibleName = "Status",
             Text = "Enter an airport ICAO code to see available gates and parking"
@@ -99,7 +139,7 @@ public partial class GateTeleportForm : Form
         teleportButton = new Button
         {
             Text = "Teleport",
-            Location = new Point(215, 290),
+            Location = new Point(215, 315),
             Size = new Size(75, 30),
             Enabled = false,
             AccessibleName = "Teleport to Selected Gate or Parking",
@@ -110,7 +150,7 @@ public partial class GateTeleportForm : Form
         cancelButton = new Button
         {
             Text = "Cancel",
-            Location = new Point(295, 290),
+            Location = new Point(295, 315),
             Size = new Size(75, 30),
             DialogResult = DialogResult.Cancel,
             AccessibleName = "Cancel",
@@ -120,7 +160,8 @@ public partial class GateTeleportForm : Form
         // Add controls to form
         Controls.AddRange(new Control[]
         {
-            icaoLabel, icaoTextBox, gateLabel, gateListBox,
+            icaoLabel, icaoTextBox, filterLabel, filterComboBox,
+            fitFilterCheckBox, gateLabel, gateListBox,
             statusLabel, teleportButton, cancelButton
         });
 
@@ -132,9 +173,11 @@ public partial class GateTeleportForm : Form
     {
         // Set tab order for logical navigation
         icaoTextBox.TabIndex = 0;
-        gateListBox.TabIndex = 1;
-        teleportButton.TabIndex = 2;
-        cancelButton.TabIndex = 3;
+        filterComboBox.TabIndex = 1;
+        fitFilterCheckBox.TabIndex = 2;
+        gateListBox.TabIndex = 3;
+        teleportButton.TabIndex = 4;
+        cancelButton.TabIndex = 5;
 
         // Focus and bring window to front when opened
         Load += (sender, e) =>
@@ -195,23 +238,9 @@ public partial class GateTeleportForm : Form
             }
 
             SelectedAirport = airport;
-            gateListBox.Items.Clear();
-            gateListBox.Items.AddRange(parkingSpots.ToArray());
-
-            var gateCount = parkingSpots.Count(p => p.GetParkingType().Contains("Gate"));
-            var parkingCount = parkingSpots.Count - gateCount;
-
-            string statusText;
-            if (gateCount > 0 && parkingCount > 0)
-                statusText = $"Found {gateCount} gates and {parkingCount} parking spots for {airport.Name}";
-            else if (gateCount > 0)
-                statusText = $"Found {gateCount} gates for {airport.Name}";
-            else
-                statusText = $"Found {parkingCount} parking spots for {airport.Name}";
-
-            statusLabel.Text = statusText;
-
-            teleportButton.Enabled = false;
+            _allParkingSpots = parkingSpots;
+            PopulateFilterOptions();
+            ApplyFilter();
         }
         catch (Exception ex)
         {
@@ -220,12 +249,97 @@ public partial class GateTeleportForm : Form
         }
     }
 
+    private void PopulateFilterOptions()
+    {
+        // Temporarily detach event handler to avoid triggering filter during population
+        filterComboBox.SelectedIndexChanged -= FilterComboBox_SelectedIndexChanged;
+
+        filterComboBox.Items.Clear();
+        filterComboBox.Items.Add("All");
+
+        // Define display order: gate sizes ascending, then ramp types, then other
+        var categoryOrder = new List<string>
+        {
+            "Gate Small", "Gate Medium", "Gate Large", "Gate Heavy", "Gate Extra",
+            "Ramp GA", "Ramp Cargo", "Ramp Military", "Dock", "Other"
+        };
+
+        var present = _allParkingSpots
+            .Select(p => p.GetFilterCategory())
+            .Distinct()
+            .ToHashSet();
+
+        var categories = categoryOrder.Where(c => present.Contains(c)).ToList();
+
+        foreach (var category in categories)
+            filterComboBox.Items.Add(category);
+
+        filterComboBox.SelectedIndex = 0;
+        filterComboBox.SelectedIndexChanged += FilterComboBox_SelectedIndexChanged;
+    }
+
+    private void FilterComboBox_SelectedIndexChanged(object? sender, EventArgs e)
+    {
+        if (_allParkingSpots.Count > 0)
+            ApplyFilter();
+    }
+
+    private void ApplyFilter()
+    {
+        string selectedFilter = filterComboBox.SelectedItem?.ToString() ?? "All";
+
+        var filtered = selectedFilter == "All"
+            ? _allParkingSpots
+            : _allParkingSpots.Where(p => p.GetFilterCategory() == selectedFilter).ToList();
+
+        if (fitFilterCheckBox.Checked && _aircraftWingspan > 0)
+            filtered = filtered.Where(p => p.Radius >= _aircraftWingspan / 2.0).ToList();
+
+        gateListBox.Items.Clear();
+        gateListBox.Items.AddRange(filtered.ToArray());
+
+        UpdateStatusLabel(filtered, selectedFilter);
+
+        SelectedParkingSpot = null;
+        teleportButton.Enabled = false;
+    }
+
+    private void UpdateStatusLabel(List<ParkingSpot> spots, string filter)
+    {
+        if (SelectedAirport == null)
+            return;
+
+        var gateCount = spots.Count(p => p.GetFilterCategory().StartsWith("Gate"));
+        var parkingCount = spots.Count - gateCount;
+
+        string statusText;
+        if (gateCount > 0 && parkingCount > 0)
+            statusText = $"Found {gateCount} gates and {parkingCount} parking spots for {SelectedAirport.Name}";
+        else if (gateCount > 0)
+            statusText = $"Found {gateCount} gates for {SelectedAirport.Name}";
+        else
+            statusText = $"Found {parkingCount} parking spots for {SelectedAirport.Name}";
+
+        if (filter != "All")
+            statusText += $" (showing: {filter})";
+
+        statusLabel.Text = statusText;
+    }
+
     private void ClearGatesAndParking()
     {
         gateListBox.Items.Clear();
+        _allParkingSpots.Clear();
         SelectedParkingSpot = null;
         SelectedAirport = null;
         teleportButton.Enabled = false;
+
+        // Reset filter to just "All"
+        filterComboBox.SelectedIndexChanged -= FilterComboBox_SelectedIndexChanged;
+        filterComboBox.Items.Clear();
+        filterComboBox.Items.Add("All");
+        filterComboBox.SelectedIndex = 0;
+        filterComboBox.SelectedIndexChanged += FilterComboBox_SelectedIndexChanged;
 
         if (string.IsNullOrEmpty(icaoTextBox.Text))
         {

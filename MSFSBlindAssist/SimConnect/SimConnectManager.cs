@@ -33,6 +33,7 @@ public class SimConnectManager
     // Connection state
     public bool IsConnected { get; private set; }
     public bool IsFullyConnected { get; private set; } // Set to true after aircraft detection completes
+    public double AircraftWingSpan { get; private set; } // Wing span in feet, populated on connect
     private bool wasConnected = false; // Track if we've already announced connection state
     private System.Windows.Forms.Timer reconnectTimer = null!;
 
@@ -221,6 +222,7 @@ public class SimConnectManager
     {
         [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)]
         public string title;
+        public double wingSpan;
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
@@ -434,6 +436,8 @@ public class SimConnectManager
         // Register aircraft info
         sc.AddToDataDefinition(DATA_DEFINITIONS.AIRCRAFT_INFO, "TITLE", null,
             SIMCONNECT_DATATYPE.STRING256, 0.0f, SIMCONNECT_UNUSED);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.AIRCRAFT_INFO, "WING SPAN", "feet",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
         sc.RegisterDataDefineStruct<AircraftInfo>(DATA_DEFINITIONS.AIRCRAFT_INFO);
 
         // Register ATC data separately (ID, Type, Airline, Flight Number)
@@ -2411,6 +2415,9 @@ public class SimConnectManager
             identification = $" - {currentAircraftAtcId}";
         }
         // Priority 3: No identification available (just show aircraft type)
+
+        // Store aircraft dimensions
+        AircraftWingSpan = info.wingSpan;
 
         // Announce full aircraft title with ATC identification
         ConnectionStatusChanged?.Invoke(this, $"Connected to {info.title}{identification}");

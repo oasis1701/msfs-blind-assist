@@ -13,6 +13,7 @@ public class ParkingSpot
     public double Radius { get; set; }
 
     // Additional properties from Little Navmap database (optional, defaults for legacy databases)
+    public string Suffix { get; set; }
     public bool HasJetway { get; set; }
     public string AirlineCodes { get; set; }
 
@@ -20,6 +21,7 @@ public class ParkingSpot
     {
         AirportICAO = string.Empty;
         Name = string.Empty;
+        Suffix = string.Empty;
         AirlineCodes = string.Empty;
         HasJetway = false;
     }
@@ -40,24 +42,46 @@ public class ParkingSpot
             case 10: return "Gate Medium";
             case 11: return "Gate Large";
             case 12: return "Dock GA";
-            default: return "Parking";
+            case 13: return "Gate Heavy";
+            case 14: return "Gate Extra";
+            case 15: return "Ramp GA Extra";
+            case 16: return "Fuel";
+            case 17: return "Vehicles";
+            default: return "Unknown";
         }
+    }
+
+    public string GetFilterCategory()
+    {
+        return Type switch
+        {
+            9 => "Gate Small",
+            10 => "Gate Medium",
+            11 => "Gate Large",
+            13 => "Gate Heavy",
+            14 => "Gate Extra",
+            2 or 3 or 4 or 5 or 15 => "Ramp GA",
+            6 => "Ramp Cargo",
+            7 or 8 => "Ramp Military",
+            12 => "Dock",
+            _ => "Other"
+        };
     }
 
     public override string ToString()
     {
         string baseDescription;
+        string numberPart = Number > 0 ? $"{Number}{Suffix}" : "";
 
-        if (!string.IsNullOrEmpty(Name) && Number > 0)
-            baseDescription = $"{Name} {Number} - {GetParkingType()}";
+        if (!string.IsNullOrEmpty(Name) && !string.IsNullOrEmpty(numberPart))
+            baseDescription = $"{Name} {numberPart} - {GetParkingType()}";
         else if (!string.IsNullOrEmpty(Name))
             baseDescription = $"{Name} - {GetParkingType()}";
-        else if (Number > 0)
-            baseDescription = $"Spot {Number} - {GetParkingType()}";
+        else if (!string.IsNullOrEmpty(numberPart))
+            baseDescription = $"Spot {numberPart} - {GetParkingType()}";
         else
             baseDescription = $"Parking - {GetParkingType()}";
 
-        // Add jetway indicator if available
         if (HasJetway)
             baseDescription += " (Jetway)";
 

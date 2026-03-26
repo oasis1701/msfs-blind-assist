@@ -1129,7 +1129,7 @@ public partial class MainForm : Form
         if (!ValidateDatabaseSimulatorMatch())
             return;
 
-        var dialog = new GateTeleportForm(airportDataProvider, announcer);
+        var dialog = new GateTeleportForm(airportDataProvider, announcer, simConnectManager.AircraftWingSpan);
         if (dialog.ShowDialog(this) == DialogResult.OK)
         {
             if (dialog.SelectedParkingSpot != null && dialog.SelectedAirport != null)

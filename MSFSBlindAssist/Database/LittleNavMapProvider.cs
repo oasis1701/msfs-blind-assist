@@ -231,14 +231,15 @@ public class LittleNavMapProvider : IAirportDataProvider
                 {
                     while (reader.Read())
                     {
-                        string name = reader["name"]?.ToString() ?? "";
+                        string name = MapParkingName(reader["name"]?.ToString() ?? "");
                         string suffix = reader["suffix"]?.ToString() ?? "";
                         int number = reader["number"] != DBNull.Value ? Convert.ToInt32(reader["number"]) : 0;
 
                         parkingSpots.Add(new ParkingSpot
                         {
                             AirportICAO = icao,
-                            Name = !string.IsNullOrEmpty(suffix) ? $"{name}{suffix}" : name,
+                            Name = name,
+                            Suffix = suffix,
                             Number = number,
                             Type = MapParkingType(reader["type"]?.ToString()),
                             Latitude = Convert.ToDouble(reader["laty"] ?? 0.0),
@@ -554,6 +555,7 @@ public class LittleNavMapProvider : IAirportDataProvider
     private int MapParkingType(string? littleNavMapType)
     {
         // Map Little Navmap parking types to legacy integer codes
+        // Supports both full names (e.g. "GATE_SMALL") and navdatareader abbreviations (e.g. "GS")
         if (string.IsNullOrEmpty(littleNavMapType))
             return 1;
 
@@ -561,41 +563,118 @@ public class LittleNavMapProvider : IAirportDataProvider
         {
             case "NONE":
                 return 1;
+
             case "RAMP GA":
             case "RAMP_GA":
+            case "RGA":
                 return 2;
             case "RAMP GA SMALL":
             case "RAMP_GA_SMALL":
+            case "RGAS":
                 return 3;
             case "RAMP GA MEDIUM":
             case "RAMP_GA_MEDIUM":
+            case "RGAM":
                 return 4;
             case "RAMP GA LARGE":
             case "RAMP_GA_LARGE":
+            case "RGAL":
                 return 5;
+            case "RAMP GA EXTRA":
+            case "RAMP_GA_EXTRA":
+            case "RE":
+                return 15;
+
             case "RAMP CARGO":
             case "RAMP_CARGO":
+            case "RC":
                 return 6;
             case "RAMP MIL CARGO":
             case "RAMP_MIL_CARGO":
+            case "RMC":
                 return 7;
             case "RAMP MIL COMBAT":
             case "RAMP_MIL_COMBAT":
+            case "RMCB":
                 return 8;
+
             case "GATE SMALL":
             case "GATE_SMALL":
+            case "GS":
                 return 9;
             case "GATE MEDIUM":
             case "GATE_MEDIUM":
+            case "GM":
                 return 10;
             case "GATE LARGE":
             case "GATE_LARGE":
                 return 11;
+            case "GATE HEAVY":
+            case "GATE_HEAVY":
+            case "GH":
+                return 13;
+            case "GATE EXTRA":
+            case "GATE_EXTRA":
+            case "GE":
+                return 14;
+
             case "DOCK GA":
             case "DOCK_GA":
+            case "DGA":
                 return 12;
+
+            case "FUEL":
+                return 16;
+            case "VEHICLES":
+            case "V":
+                return 17;
+
+            case "UNKNOWN":
+            case "UNKN":
+                return 1;
+
             default:
-                return 2; // Default to Ramp GA
+                return 1; // Unknown types map to None
+        }
+    }
+
+    private string MapParkingName(string name)
+    {
+        // Map navdatareader ParkingName abbreviations to display-friendly names
+        // Gate codes use "G" prefix (GA = GATE_A, GZ = GATE_Z) — strip it
+        // Directional parking uses abbreviations (NP = North, etc.) — expand them
+        switch (name.ToUpper())
+        {
+            case "NONE":
+            case "":
+                return "";
+            case "P":
+                return "Parking";
+            case "NP":
+                return "North";
+            case "NEP":
+                return "Northeast";
+            case "EP":
+                return "East";
+            case "SEP":
+                return "Southeast";
+            case "SP":
+                return "South";
+            case "SWP":
+                return "Southwest";
+            case "WP":
+                return "West";
+            case "NWP":
+                return "Northwest";
+            case "G":
+                return "";
+            case "D":
+                return "Dock";
+            default:
+                // Gate codes: "GA" → "A", "GB" → "B", etc.
+                if (name.Length >= 2 && name.StartsWith("G", StringComparison.OrdinalIgnoreCase))
+                    return name.Substring(1);
+                return name;
         }
     }
 
