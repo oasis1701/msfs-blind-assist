@@ -4748,7 +4748,440 @@ public class PMDG777Definition : BaseAircraftDefinition
         SimConnect.SimConnectManager simConnect,
         ScreenReaderAnnouncer announcer,
         Form parentForm,
-        HotkeyManager hotkeyManager) => false;
+        HotkeyManager hotkeyManager)
+    {
+        switch (action)
+        {
+            // ------------------------------------------------------------------
+            // MCP Readouts
+            // ------------------------------------------------------------------
+
+            case HotkeyAction.ReadHeading:
+            {
+                var dm = simConnect.PMDG777DataManager;
+                if (dm == null) return false;
+                int heading = (int)dm.GetFieldValue("MCP_Heading");
+                announcer.AnnounceImmediate($"Heading {heading}");
+                return true;
+            }
+
+            case HotkeyAction.ReadSpeed:
+            {
+                var dm = simConnect.PMDG777DataManager;
+                if (dm == null) return false;
+                float speed = (float)dm.GetFieldValue("MCP_IASMach");
+                // If speed < 10, it's Mach; otherwise IAS in knots
+                string speedText = speed < 10f
+                    ? $"Mach {speed:0.000}"
+                    : $"Speed {(int)speed} knots";
+                announcer.AnnounceImmediate(speedText);
+                return true;
+            }
+
+            case HotkeyAction.ReadAltitude:
+            {
+                var dm = simConnect.PMDG777DataManager;
+                if (dm == null) return false;
+                int altitude = (int)dm.GetFieldValue("MCP_Altitude");
+                announcer.AnnounceImmediate($"Altitude {altitude}");
+                return true;
+            }
+
+            case HotkeyAction.ReadFCUVerticalSpeedFPA:
+            {
+                var dm = simConnect.PMDG777DataManager;
+                if (dm == null) return false;
+                // MCP_VSDial_Mode: 0 = VS, 1 = FPA
+                int vsMode = (int)dm.GetFieldValue("MCP_VSDial_Mode");
+                if (vsMode == 1)
+                {
+                    float fpa = (float)dm.GetFieldValue("MCP_FPA");
+                    announcer.AnnounceImmediate($"FPA {fpa:+0.0;-0.0;0.0} degrees");
+                }
+                else
+                {
+                    int vs = (int)dm.GetFieldValue("MCP_VertSpeed");
+                    announcer.AnnounceImmediate($"Vertical speed {vs} feet per minute");
+                }
+                return true;
+            }
+
+            // ------------------------------------------------------------------
+            // Fuel Readout
+            // ------------------------------------------------------------------
+
+            case HotkeyAction.ReadFuelQuantity:
+            {
+                var dm = simConnect.PMDG777DataManager;
+                if (dm == null) return false;
+                int left   = (int)Math.Round(dm.GetFieldValue("FUEL_QtyLeft"));
+                int center = (int)Math.Round(dm.GetFieldValue("FUEL_QtyCenter"));
+                int right  = (int)Math.Round(dm.GetFieldValue("FUEL_QtyRight"));
+                int aux    = (int)Math.Round(dm.GetFieldValue("FUEL_QtyAux"));
+                int total  = left + center + right + aux;
+                announcer.AnnounceImmediate(
+                    $"Left {left}, Center {center}, Right {right}, Aux {aux}, Total {total} pounds");
+                return true;
+            }
+
+            // ------------------------------------------------------------------
+            // Flaps and Gear
+            // ------------------------------------------------------------------
+
+            case HotkeyAction.ReadFlaps:
+            {
+                var dm = simConnect.PMDG777DataManager;
+                if (dm == null) return false;
+                int lever = (int)dm.GetFieldValue("FCTL_Flaps_Lever");
+                string position = lever switch
+                {
+                    0 => "Up",
+                    1 => "1",
+                    2 => "5",
+                    3 => "15",
+                    4 => "20",
+                    5 => "25",
+                    6 => "30",
+                    _ => lever.ToString()
+                };
+                announcer.AnnounceImmediate($"Flaps {position}");
+                return true;
+            }
+
+            case HotkeyAction.ReadGear:
+            {
+                var dm = simConnect.PMDG777DataManager;
+                if (dm == null) return false;
+                int gear = (int)dm.GetFieldValue("GEAR_Lever");
+                // GEAR_Lever: 0 = up, 1 = down
+                announcer.AnnounceImmediate(gear == 0 ? "Gear up" : "Gear down");
+                return true;
+            }
+
+            // ------------------------------------------------------------------
+            // Altimeter (EFIS baro)
+            // ------------------------------------------------------------------
+
+            case HotkeyAction.ReadAltimeter:
+            {
+                var dm = simConnect.PMDG777DataManager;
+                if (dm == null) return false;
+                // EFIS_BaroSTD_Sw_Pushed_0: true = STD selected
+                double baroStd = dm.GetFieldValue("EFIS_BaroSTD_Sw_Pushed_0");
+                if (baroStd > 0.5)
+                {
+                    announcer.AnnounceImmediate("Altimeter standard");
+                    return true;
+                }
+                // EFIS_BaroSelHPA_0: 0 = IN, 1 = HPA
+                double isHpa = dm.GetFieldValue("EFIS_BaroSelHPA_0");
+                // EFIS_BaroKnob_0: raw knob value
+                double knobRaw = dm.GetFieldValue("EFIS_BaroKnob_0");
+                if (isHpa > 0.5)
+                {
+                    // HPA value stored directly
+                    announcer.AnnounceImmediate($"Altimeter {(int)knobRaw} hectopascals");
+                }
+                else
+                {
+                    // Inches value stored as integer tenths (e.g. 2992 = 29.92)
+                    double inHg = knobRaw / 100.0;
+                    announcer.AnnounceImmediate($"Altimeter {inHg:0.00} inches");
+                }
+                return true;
+            }
+
+            // ------------------------------------------------------------------
+            // MCP Direct-Set Input Dialogs
+            // ------------------------------------------------------------------
+
+            case HotkeyAction.FCUSetHeading:
+            {
+                hotkeyManager.ExitInputHotkeyMode();
+                ShowPMDGHeadingDialog(simConnect, announcer, parentForm);
+                return true;
+            }
+
+            case HotkeyAction.FCUSetSpeed:
+            {
+                hotkeyManager.ExitInputHotkeyMode();
+                ShowPMDGSpeedDialog(simConnect, announcer, parentForm);
+                return true;
+            }
+
+            case HotkeyAction.FCUSetAltitude:
+            {
+                hotkeyManager.ExitInputHotkeyMode();
+                ShowPMDGAltitudeDialog(simConnect, announcer, parentForm);
+                return true;
+            }
+
+            case HotkeyAction.FCUSetVS:
+            {
+                hotkeyManager.ExitInputHotkeyMode();
+                ShowPMDGVSDialog(simConnect, announcer, parentForm);
+                return true;
+            }
+
+            case HotkeyAction.FCUSetBaro:
+            {
+                hotkeyManager.ExitInputHotkeyMode();
+                ShowPMDGBaroDialog(simConnect, announcer, parentForm);
+                return true;
+            }
+
+            // CDU handled by MainForm (Task 13)
+            case HotkeyAction.ShowFenixMCDU:
+                return false;
+
+            default:
+                return base.HandleHotkeyAction(action, simConnect, announcer, parentForm, hotkeyManager);
+        }
+    }
+
+    // =========================================================================
+    // FCU Request Override Methods
+    // =========================================================================
+
+    public override void RequestFCUHeading(SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
+    {
+        var dm = simConnect.PMDG777DataManager;
+        if (dm == null) return;
+        int heading = (int)dm.GetFieldValue("MCP_Heading");
+        announcer.AnnounceImmediate($"Heading {heading}");
+    }
+
+    public override void RequestFCUSpeed(SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
+    {
+        var dm = simConnect.PMDG777DataManager;
+        if (dm == null) return;
+        float speed = (float)dm.GetFieldValue("MCP_IASMach");
+        string speedText = speed < 10f
+            ? $"Mach {speed:0.000}"
+            : $"Speed {(int)speed} knots";
+        announcer.AnnounceImmediate(speedText);
+    }
+
+    public override void RequestFCUAltitude(SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
+    {
+        var dm = simConnect.PMDG777DataManager;
+        if (dm == null) return;
+        int altitude = (int)dm.GetFieldValue("MCP_Altitude");
+        announcer.AnnounceImmediate($"Altitude {altitude}");
+    }
+
+    public override void RequestFCUVerticalSpeed(SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
+    {
+        var dm = simConnect.PMDG777DataManager;
+        if (dm == null) return;
+        int vsMode = (int)dm.GetFieldValue("MCP_VSDial_Mode");
+        if (vsMode == 1)
+        {
+            float fpa = (float)dm.GetFieldValue("MCP_FPA");
+            announcer.AnnounceImmediate($"FPA {fpa:+0.0;-0.0;0.0} degrees");
+        }
+        else
+        {
+            int vs = (int)dm.GetFieldValue("MCP_VertSpeed");
+            announcer.AnnounceImmediate($"Vertical speed {vs} feet per minute");
+        }
+    }
+
+    // =========================================================================
+    // MCP Direct-Set Dialog Helpers
+    // =========================================================================
+
+    private void ShowPMDGHeadingDialog(
+        SimConnect.SimConnectManager simConnect,
+        ScreenReaderAnnouncer announcer,
+        Form parentForm)
+    {
+        if (!simConnect.IsConnected)
+        {
+            announcer.AnnounceImmediate("Not connected to simulator.");
+            return;
+        }
+
+        var dialog = new Forms.FCUInputForm(
+            "MCP Heading", "heading", "0-359", announcer,
+            input =>
+            {
+                if (int.TryParse(input, out int val) && val >= 0 && val <= 359)
+                    return (true, "");
+                return (false, "Enter a value between 0 and 359");
+            });
+
+        if (dialog.ShowDialog(parentForm) == DialogResult.OK && dialog.IsValidInput)
+        {
+            if (int.TryParse(dialog.InputValue, out int hdg))
+            {
+                if (EventIds.TryGetValue("EVT_MCP_HDGTRK_SET", out int evId))
+                    simConnect.SendPMDGEvent("EVT_MCP_HDGTRK_SET", (uint)evId, hdg);
+                announcer.AnnounceImmediate($"Heading set to {hdg}");
+            }
+        }
+    }
+
+    private void ShowPMDGSpeedDialog(
+        SimConnect.SimConnectManager simConnect,
+        ScreenReaderAnnouncer announcer,
+        Form parentForm)
+    {
+        if (!simConnect.IsConnected)
+        {
+            announcer.AnnounceImmediate("Not connected to simulator.");
+            return;
+        }
+
+        var dialog = new Forms.FCUInputForm(
+            "MCP Speed", "speed (knots or Mach, e.g. 280 or 0.84)", "100-399 or 0.00-0.99", announcer,
+            input =>
+            {
+                if (double.TryParse(input, System.Globalization.NumberStyles.Any,
+                    System.Globalization.CultureInfo.InvariantCulture, out double val))
+                {
+                    if (val >= 0.0 && val < 10.0) return (true, ""); // Mach
+                    if (val >= 100 && val <= 399)  return (true, ""); // IAS knots
+                }
+                return (false, "Enter knots (100-399) or Mach (0.00-0.99)");
+            });
+
+        if (dialog.ShowDialog(parentForm) == DialogResult.OK && dialog.IsValidInput)
+        {
+            if (double.TryParse(dialog.InputValue, System.Globalization.NumberStyles.Any,
+                System.Globalization.CultureInfo.InvariantCulture, out double spd))
+            {
+                if (spd < 10.0)
+                {
+                    // Mach: send as Mach * 1000 (e.g., 0.84 → 840)
+                    int machVal = (int)Math.Round(spd * 1000);
+                    if (EventIds.TryGetValue("EVT_MCP_MACH_SET", out int evId))
+                        simConnect.SendPMDGEvent("EVT_MCP_MACH_SET", (uint)evId, machVal);
+                    announcer.AnnounceImmediate($"Mach set to {spd:0.000}");
+                }
+                else
+                {
+                    int iasVal = (int)spd;
+                    if (EventIds.TryGetValue("EVT_MCP_IAS_SET", out int evId))
+                        simConnect.SendPMDGEvent("EVT_MCP_IAS_SET", (uint)evId, iasVal);
+                    announcer.AnnounceImmediate($"Speed set to {iasVal} knots");
+                }
+            }
+        }
+    }
+
+    private void ShowPMDGAltitudeDialog(
+        SimConnect.SimConnectManager simConnect,
+        ScreenReaderAnnouncer announcer,
+        Form parentForm)
+    {
+        if (!simConnect.IsConnected)
+        {
+            announcer.AnnounceImmediate("Not connected to simulator.");
+            return;
+        }
+
+        var dialog = new Forms.FCUInputForm(
+            "MCP Altitude", "altitude", "0-45000", announcer,
+            input =>
+            {
+                if (int.TryParse(input, out int val) && val >= 0 && val <= 45000)
+                    return (true, "");
+                return (false, "Enter a value between 0 and 45000");
+            });
+
+        if (dialog.ShowDialog(parentForm) == DialogResult.OK && dialog.IsValidInput)
+        {
+            if (int.TryParse(dialog.InputValue, out int alt))
+            {
+                if (EventIds.TryGetValue("EVT_MCP_ALT_SET", out int evId))
+                    simConnect.SendPMDGEvent("EVT_MCP_ALT_SET", (uint)evId, alt);
+                announcer.AnnounceImmediate($"Altitude set to {alt}");
+            }
+        }
+    }
+
+    private void ShowPMDGVSDialog(
+        SimConnect.SimConnectManager simConnect,
+        ScreenReaderAnnouncer announcer,
+        Form parentForm)
+    {
+        if (!simConnect.IsConnected)
+        {
+            announcer.AnnounceImmediate("Not connected to simulator.");
+            return;
+        }
+
+        var dialog = new Forms.FCUInputForm(
+            "MCP Vertical Speed", "vertical speed (fpm)", "-9900 to 9900", announcer,
+            input =>
+            {
+                if (int.TryParse(input, out int val) && val >= -9900 && val <= 9900)
+                    return (true, "");
+                return (false, "Enter a value between -9900 and 9900 fpm");
+            });
+
+        if (dialog.ShowDialog(parentForm) == DialogResult.OK && dialog.IsValidInput)
+        {
+            if (int.TryParse(dialog.InputValue, out int vs))
+            {
+                // Encode: value + 10000 (e.g. -1800 fpm → 8200)
+                int encoded = vs + 10000;
+                if (EventIds.TryGetValue("EVT_MCP_VS_SET", out int evId))
+                    simConnect.SendPMDGEvent("EVT_MCP_VS_SET", (uint)evId, encoded);
+                announcer.AnnounceImmediate($"Vertical speed set to {vs} feet per minute");
+            }
+        }
+    }
+
+    private void ShowPMDGBaroDialog(
+        SimConnect.SimConnectManager simConnect,
+        ScreenReaderAnnouncer announcer,
+        Form parentForm)
+    {
+        if (!simConnect.IsConnected)
+        {
+            announcer.AnnounceImmediate("Not connected to simulator.");
+            return;
+        }
+
+        var dialog = new Forms.FCUInputForm(
+            "Altimeter Setting", "baro (hPa or in Hg, e.g. 1013 or 29.92)", "940-1050 or 27.00-31.50", announcer,
+            input =>
+            {
+                if (double.TryParse(input, System.Globalization.NumberStyles.Any,
+                    System.Globalization.CultureInfo.InvariantCulture, out double val))
+                {
+                    if (val >= 940 && val <= 1050) return (true, "");  // hPa
+                    if (val >= 27.0 && val <= 31.5) return (true, ""); // in Hg
+                }
+                return (false, "Enter hPa (940-1050) or in Hg (27.00-31.50)");
+            });
+
+        if (dialog.ShowDialog(parentForm) == DialogResult.OK && dialog.IsValidInput)
+        {
+            if (double.TryParse(dialog.InputValue, System.Globalization.NumberStyles.Any,
+                System.Globalization.CultureInfo.InvariantCulture, out double baro))
+            {
+                if (baro >= 940 && baro <= 1050)
+                {
+                    // HPA: send as raw integer hPa value
+                    int hpaVal = (int)Math.Round(baro);
+                    if (EventIds.TryGetValue("EVT_EFIS_CPT_BARO", out int evId))
+                        simConnect.SendPMDGEvent("EVT_EFIS_CPT_BARO", (uint)evId, hpaVal);
+                    announcer.AnnounceImmediate($"Altimeter set to {hpaVal} hectopascals");
+                }
+                else
+                {
+                    // Inches: send as integer hundredths (e.g. 29.92 → 2992)
+                    int inchVal = (int)Math.Round(baro * 100);
+                    if (EventIds.TryGetValue("EVT_EFIS_CPT_BARO", out int evId))
+                        simConnect.SendPMDGEvent("EVT_EFIS_CPT_BARO", (uint)evId, inchVal);
+                    announcer.AnnounceImmediate($"Altimeter set to {baro:0.00} inches");
+                }
+            }
+        }
+    }
 
     // =========================================================================
     // Static PMDG 777 Event ID Dictionary
