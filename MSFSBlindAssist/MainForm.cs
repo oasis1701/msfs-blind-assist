@@ -69,14 +69,9 @@ public partial class MainForm : Form
 
     public MainForm()
     {
-        SimConnect.PMDG777Debug.Clear();
-        SimConnect.PMDG777Debug.Log("=== MainForm constructor ===");
-
         // Load last selected aircraft from settings
         var settings = MSFSBlindAssist.Settings.SettingsManager.Current;
-        SimConnect.PMDG777Debug.Log($"LastAircraft setting: {settings.LastAircraft ?? "null"}");
         currentAircraft = LoadAircraftFromCode(settings.LastAircraft ?? "A320");
-        SimConnect.PMDG777Debug.Log($"Loaded aircraft: {currentAircraft.AircraftCode}");
 
         InitializeComponent();
         InitializeManagers();
@@ -237,30 +232,10 @@ public partial class MainForm : Form
             // After SimConnect connects, if current aircraft is PMDG 777, initialize data manager
             if (currentAircraft?.AircraftCode == "PMDG_777")
             {
-                announcer.Announce("PMDG debug startup: initializing data manager on connect");
                 simConnectManager.InitializePMDG777();
                 if (simConnectManager.PMDG777DataManager != null)
                 {
                     simConnectManager.PMDG777DataManager.VariableChanged += OnPMDGVariableChanged;
-                    announcer.Announce("PMDG debug startup: data manager ready");
-                    // Diagnostic timer - same as in SwitchAircraft
-                    var diagTimer = new System.Windows.Forms.Timer();
-                    diagTimer.Interval = 5000;
-                    diagTimer.Tick += (ds, de) =>
-                    {
-                        diagTimer.Stop();
-                        diagTimer.Dispose();
-                        var dm = simConnectManager.PMDG777DataManager;
-                        if (dm != null)
-                        {
-                            announcer.AnnounceImmediate($"PMDG startup debug: {dm.InitStatus}. Sent {dm.RequestSentCount}, received {dm.DataReceivedCount}. Events: {_pmdgEventCount} total, {_pmdgMappedCount} mapped, {_pmdgUnmappedCount} unmapped. Last: {_lastPmdgMappedField ?? "none"}");
-                        }
-                    };
-                    diagTimer.Start();
-                }
-                else
-                {
-                    announcer.Announce("PMDG debug startup: data manager is NULL");
                 }
             }
 
@@ -314,18 +289,10 @@ public partial class MainForm : Form
 
     private void OnSimVarUpdated(object? sender, SimVarUpdateEventArgs e)
     {
-        // PMDG pipeline tracing
-        bool isPmdgTrace = currentAircraft?.AircraftCode == "PMDG_777" &&
-            (e.VarName.StartsWith("ELEC_") || e.VarName.StartsWith("MCP_"));
-        if (isPmdgTrace)
-            SimConnect.PMDG777Debug.Log($"OnSimVarUpdated: {e.VarName}={e.Value}, InvokeRequired={InvokeRequired}");
-
         if (InvokeRequired)
         {
             // PRODUCER: Enqueue event for batch processing instead of immediate BeginInvoke
             // This reduces UI thread marshaling overhead by ~95% for high-volume updates (400+ vars/sec)
-            if (isPmdgTrace)
-                SimConnect.PMDG777Debug.Log($"  QUEUED (InvokeRequired=true)");
             if (Interlocked.Increment(ref queuedEventCount) <= MAX_QUEUE_SIZE)
             {
                 eventQueue.Enqueue(e);
@@ -358,8 +325,6 @@ public partial class MainForm : Form
         // Step 2.5: Allow aircraft-specific variable processing (e.g., FCU display combining)
         // This lets each aircraft handle complex variables before generic processing
         bool wasProcessedByAircraft = currentAircraft.ProcessSimVarUpdate(e.VarName, e.Value, announcer);
-        if (isPmdgTrace)
-            SimConnect.PMDG777Debug.Log($"  ProcessSimVarUpdate returned {wasProcessedByAircraft}");
         if (wasProcessedByAircraft)
         {
             // Update window title if flight phase changed (for aircraft that track flight phases)
@@ -410,8 +375,6 @@ public partial class MainForm : Form
         if (currentAircraft.GetVariables().ContainsKey(e.VarName))
         {
             var varDef = currentAircraft.GetVariables()[e.VarName];
-            if (isPmdgTrace)
-                SimConnect.PMDG777Debug.Log($"  Step6: found in variables, IsAnnounced={varDef.IsAnnounced}, Freq={varDef.UpdateFrequency}");
             if (varDef.IsAnnounced && varDef.UpdateFrequency == UpdateFrequency.Continuous)
             {
                 // Check if disabled in Fenix Monitor Manager
@@ -436,8 +399,6 @@ public partial class MainForm : Form
                     description = $"{varDef.DisplayName}: {e.Value}";
                 }
 
-                if (isPmdgTrace)
-                    SimConnect.PMDG777Debug.Log($"  Step6: calling simVarMonitor.ProcessUpdate({e.VarName}, {e.Value}, \"{description}\")");
                 simVarMonitor.ProcessUpdate(e.VarName, e.Value, description);
             }
         }
@@ -931,27 +892,15 @@ public partial class MainForm : Form
         }
     }
 
-    private int _pmdgEventCount;
-    private int _pmdgMappedCount;
-    private int _pmdgUnmappedCount;
-    private string? _lastPmdgMappedField;
-
     private void OnPMDGVariableChanged(object? sender, PMDGVarUpdateEventArgs e)
     {
-        _pmdgEventCount++;
-        PMDG777Debug.Log($"OnPMDGVariableChanged: field={e.FieldName}, value={e.Value}");
         if (_pmdgFieldToKeyMap == null) BuildPMDGFieldMap();
 
         // Translate struct field name to variable key
         if (!_pmdgFieldToKeyMap!.TryGetValue(e.FieldName, out string? varKey))
         {
-            _pmdgUnmappedCount++;
-            PMDG777Debug.Log($"  UNMAPPED: {e.FieldName} not in field map ({_pmdgFieldToKeyMap.Count} entries)");
             return;
         }
-        _pmdgMappedCount++;
-        _lastPmdgMappedField = $"{e.FieldName}->{varKey}={e.Value}";
-        PMDG777Debug.Log($"  MAPPED: {e.FieldName} -> {varKey} = {e.Value}");
 
         // Route PMDG variable changes through the same pipeline as SimVar updates
         var simVarEvent = new SimVarUpdateEventArgs
@@ -2131,33 +2080,12 @@ public partial class MainForm : Form
         }
 
         // PMDG 777 data manager lifecycle
-        announcer.AnnounceImmediate($"PMDG debug: aircraft={newAircraft.AircraftCode}, connected={simConnectManager.IsConnected}");
         if (newAircraft.AircraftCode == "PMDG_777" && simConnectManager.IsConnected)
         {
-            announcer.AnnounceImmediate("PMDG debug: initializing data manager");
             simConnectManager.InitializePMDG777();
             if (simConnectManager.PMDG777DataManager != null)
             {
                 simConnectManager.PMDG777DataManager.VariableChanged += OnPMDGVariableChanged;
-                announcer.AnnounceImmediate("PMDG debug: data manager ready, polling started");
-                // Diagnostic: check after 5 seconds if data is flowing
-                var diagTimer = new System.Windows.Forms.Timer();
-                diagTimer.Interval = 5000;
-                diagTimer.Tick += (ds, de) =>
-                {
-                    diagTimer.Stop();
-                    diagTimer.Dispose();
-                    var dm = simConnectManager.PMDG777DataManager;
-                    if (dm != null)
-                    {
-                        announcer.AnnounceImmediate($"PMDG debug: {dm.InitStatus}. Sent {dm.RequestSentCount}, received {dm.DataReceivedCount}. Events: {_pmdgEventCount} total, {_pmdgMappedCount} mapped, {_pmdgUnmappedCount} unmapped. Last: {_lastPmdgMappedField ?? "none"}");
-                    }
-                };
-                diagTimer.Start();
-            }
-            else
-            {
-                announcer.AnnounceImmediate("PMDG debug: data manager is NULL after init");
             }
         }
         else
