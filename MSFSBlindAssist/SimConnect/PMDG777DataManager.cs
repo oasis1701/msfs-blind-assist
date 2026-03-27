@@ -63,6 +63,7 @@ public class PMDG777DataManager : IDisposable
     private bool _hasSnapshot;
 
     private readonly PMDG777CDUScreen?[] _lastCDUScreen = new PMDG777CDUScreen?[3];
+    private int _rpnNonce; // Incrementing counter appended to RPN to prevent SetClientData dedup
 
     private System.Windows.Forms.Timer? _pollTimer;
 
@@ -432,9 +433,14 @@ public class PMDG777DataManager : IDisposable
             return;
         }
 
+        // Append an incrementing nonce AFTER the K: event so each command string is unique.
+        // Without this, SetClientData sees identical bytes and SimConnect doesn't notify
+        // the MobiFlight WASM module on repeated sends of the same event.
+        // The nonce is pushed onto the RPN stack after ROTOR_BRAKE executes, and is harmless.
+        int nonce = Interlocked.Increment(ref _rpnNonce);
         string rpn = parameter.HasValue
-            ? $"{offset * 100 + 1} {parameter.Value} (>K:ROTOR_BRAKE)"
-            : $"{offset * 100 + 1} (>K:ROTOR_BRAKE)";
+            ? $"{offset * 100 + 1} {parameter.Value} (>K:ROTOR_BRAKE) {nonce}"
+            : $"{offset * 100 + 1} (>K:ROTOR_BRAKE) {nonce}";
 
         _mobiFlightWasm.SendMFCommand($"MF.SimVars.Set.{rpn}");
 
