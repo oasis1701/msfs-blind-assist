@@ -670,11 +670,11 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["FUEL_FuelToRemainPulled"] = new SimConnect.SimVarDefinition
             {
                 Name = "FUEL_FuelToRemain_Sw_Pulled",
-                DisplayName = "Fuel To Remain Pulled",
+                DisplayName = "Fuel To Remain Pull",
                 Type = SimConnect.SimVarType.PMDGVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Pulled" }
+                UpdateFrequency = SimConnect.UpdateFrequency.Never,
+                RenderAsButton = true,
+                IsMomentary = true,
             },
             ["FUEL_FuelToRemainSelector"] = new SimConnect.SimVarDefinition
             {
@@ -1190,11 +1190,11 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["AIR_LdgAltPulled"] = new SimConnect.SimVarDefinition
             {
                 Name = "AIR_LdgAlt_Sw_Pulled",
-                DisplayName = "Landing Altitude Pulled",
+                DisplayName = "Landing Altitude Pull",
                 Type = SimConnect.SimVarType.PMDGVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Pulled" }
+                UpdateFrequency = SimConnect.UpdateFrequency.Never,
+                RenderAsButton = true,
+                IsMomentary = true,
             },
             // Pressurization annunciators
             ["AIR_annunOutflowValveMAN_1"] = new SimConnect.SimVarDefinition
