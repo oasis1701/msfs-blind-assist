@@ -1,6 +1,5 @@
 using System.Reflection;
 using System.Runtime.InteropServices;
-using System.Timers;
 using Microsoft.FlightSimulator.SimConnect;
 using static Microsoft.FlightSimulator.SimConnect.SimConnect;
 
@@ -64,8 +63,18 @@ public class PMDG777DataManager : IDisposable
     private bool _hasSnapshot;
 
     private readonly PMDG777CDUScreen?[] _lastCDUScreen = new PMDG777CDUScreen?[3];
+    private int _dataReceivedCount;
+    private int _requestSentCount;
+    private string _initStatus = "not initialized";
 
-    private System.Timers.Timer? _pollTimer;
+    /// <summary>Diagnostic: how many data snapshots have been received.</summary>
+    public int DataReceivedCount => _dataReceivedCount;
+    /// <summary>Diagnostic: how many requests have been sent.</summary>
+    public int RequestSentCount => _requestSentCount;
+    /// <summary>Diagnostic: initialization status.</summary>
+    public string InitStatus => _initStatus;
+
+    private System.Windows.Forms.Timer? _pollTimer;
 
     // ------------------------------------------------------------------
     // Events
@@ -86,22 +95,28 @@ public class PMDG777DataManager : IDisposable
         _simConnect     = simConnect;
         _mobiFlightWasm = mobiFlightWasm;
 
+        uint structSize = (uint)Marshal.SizeOf<PMDG777XDataStruct>();
+        _initStatus = $"struct size={structSize}";
+
         try
         {
             RegisterClientDataAreas();
+            _initStatus += ", registration OK";
         }
         catch (Exception ex)
         {
+            _initStatus += $", registration FAILED: {ex.Message}";
             System.Diagnostics.Debug.WriteLine(
                 $"[PMDG777DataManager] RegisterClientDataAreas failed: {ex.Message}");
         }
 
-        _pollTimer            = new System.Timers.Timer(1000);
-        _pollTimer.Elapsed   += PollTimer_Elapsed;
-        _pollTimer.AutoReset  = true;
+        _pollTimer = new System.Windows.Forms.Timer();
+        _pollTimer.Interval = 1000;
+        _pollTimer.Tick += PollTimer_Tick;
         _pollTimer.Start();
 
-        System.Diagnostics.Debug.WriteLine("[PMDG777DataManager] Initialized.");
+        PMDG777Debug.Log($"Initialized. {_initStatus}");
+        System.Diagnostics.Debug.WriteLine($"[PMDG777DataManager] Initialized. {_initStatus}");
     }
 
     // ------------------------------------------------------------------
@@ -147,6 +162,7 @@ public class PMDG777DataManager : IDisposable
         _simConnect.RegisterStruct<SIMCONNECT_RECV_CLIENT_DATA, PMDG777CDUScreen>(
             PMDG_DATA_DEFINITION_ID.CDU_2);
 
+        PMDG777Debug.Log("Client data areas registered.");
         System.Diagnostics.Debug.WriteLine("[PMDG777DataManager] Client data areas registered.");
     }
 
@@ -154,7 +170,7 @@ public class PMDG777DataManager : IDisposable
     // Polling
     // ------------------------------------------------------------------
 
-    private void PollTimer_Elapsed(object? sender, ElapsedEventArgs e) => RequestData();
+    private void PollTimer_Tick(object? sender, EventArgs e) => RequestData();
 
     /// <summary>
     /// Issues a one-shot request for the PMDG_777X_Data CDA.
@@ -165,6 +181,7 @@ public class PMDG777DataManager : IDisposable
 
         try
         {
+            _requestSentCount++;
             _simConnect.RequestClientData(
                 PMDG_CLIENT_DATA_ID.Data,
                 PMDG_DATA_REQUEST_ID.Data,
@@ -191,11 +208,24 @@ public class PMDG777DataManager : IDisposable
     {
         try
         {
+            // Log every incoming client data with its request ID
+            uint reqId = data.dwRequestID;
+            bool isPMDG = reqId >= 50000 && reqId <= 50003;
+            if (isPMDG)
+            {
+                PMDG777Debug.Log($"ProcessClientData: reqID={reqId} (PMDG match)");
+            }
+
             switch ((PMDG_DATA_REQUEST_ID)data.dwRequestID)
             {
                 case PMDG_DATA_REQUEST_ID.Data:
                 {
                     var newData = (PMDG777XDataStruct)data.dwData[0];
+                    _dataReceivedCount++;
+                    if (!_hasSnapshot)
+                    {
+                        PMDG777Debug.Log($"First snapshot: Battery={newData.ELEC_Battery_Sw_ON}, MCP_Heading={newData.MCP_Heading}");
+                    }
                     DetectAndRaiseChanges(newData);
                     _lastDataSnapshot = newData;
                     _hasSnapshot      = true;
@@ -223,16 +253,17 @@ public class PMDG777DataManager : IDisposable
     // Change detection via reflection
     // ------------------------------------------------------------------
 
+    private int _changeEventsFired;
+
     private void DetectAndRaiseChanges(PMDG777XDataStruct newData)
     {
         if (!_hasSnapshot)
         {
-            // First snapshot — silently store initial state without raising events.
-            // Raising all fields here would flood the screen reader with announcements
-            // for every cockpit variable the moment PMDG data first arrives.
+            PMDG777Debug.Log("DetectAndRaiseChanges: first snapshot, storing silently");
             return;
         }
 
+        int changesThisCycle = 0;
         foreach (var field in typeof(PMDG777XDataStruct)
                      .GetFields(BindingFlags.Public | BindingFlags.Instance))
         {
@@ -241,13 +272,21 @@ public class PMDG777DataManager : IDisposable
 
             if (field.FieldType.IsArray)
             {
+                int before = _changeEventsFired;
                 CompareArrayField(field.Name, oldVal, newVal);
+                changesThisCycle += _changeEventsFired - before;
             }
             else if (!Equals(oldVal, newVal))
             {
+                PMDG777Debug.Log($"  CHANGE: {field.Name} = {ToDouble(oldVal)} -> {ToDouble(newVal)}");
                 RaiseVariableChanged(field.Name, ToDouble(newVal));
+                changesThisCycle++;
+                _changeEventsFired++;
             }
         }
+
+        if (changesThisCycle > 0)
+            PMDG777Debug.Log($"DetectAndRaiseChanges: {changesThisCycle} changes fired");
     }
 
     private void RaiseAllFields(PMDG777XDataStruct data)

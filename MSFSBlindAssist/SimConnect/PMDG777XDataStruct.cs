@@ -47,16 +47,16 @@ namespace MSFSBlindAssist.SimConnect
         // ------------------------------------------------------------------
         // Overhead Maintenance Panel
         // ------------------------------------------------------------------
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] ICE_WindowHeatBackUp_Sw_OFF;            // c_bool * 2
         public byte ELEC_StandbyPowerSw;                      // c_ubyte
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 3)]
         public bool[] FCTL_WingHydValve_Sw_SHUT_OFF;          // c_bool * 3
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 3)]
         public bool[] FCTL_TailHydValve_Sw_SHUT_OFF;          // c_bool * 3
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 3)]
         public bool[] FCTL_annunTailHydVALVE_CLOSED;          // c_bool * 3
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 3)]
         public bool[] FCTL_annunWingHydVALVE_CLOSED;          // c_bool * 3
         [MarshalAs(UnmanagedType.U1)]
         public bool FCTL_PrimFltComputersSw_AUTO;             // c_bool
@@ -64,7 +64,7 @@ namespace MSFSBlindAssist.SimConnect
         public bool FCTL_annunPrimFltComputersDISC;           // c_bool
         [MarshalAs(UnmanagedType.U1)]
         public bool APU_Power_Sw_TEST;                        // c_bool
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] ENG_EECPower_Sw_TEST;                   // c_bool * 2
         [MarshalAs(UnmanagedType.U1)]
         public bool ELEC_TowingPower_Sw_BATT;                 // c_bool
@@ -109,27 +109,27 @@ namespace MSFSBlindAssist.SimConnect
         public byte ELEC_APU_Selector;                        // c_ubyte
         [MarshalAs(UnmanagedType.U1)]
         public bool ELEC_annunAPU_FAULT;                      // c_bool
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] ELEC_BusTie_Sw_AUTO;                    // c_bool * 2
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] ELEC_annunBusTieISLN;                   // c_bool * 2
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] ELEC_ExtPwrSw;                          // c_bool * 2
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] ELEC_annunExtPowr_ON;                   // c_bool * 2
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] ELEC_annunExtPowr_AVAIL;                // c_bool * 2
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] ELEC_Gen_Sw_ON;                         // c_bool * 2
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] ELEC_annunGenOFF;                       // c_bool * 2
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] ELEC_BackupGen_Sw_ON;                   // c_bool * 2
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] ELEC_annunBackupGenOFF;                 // c_bool * 2
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] ELEC_IDGDiscSw;                         // c_bool * 2
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] ELEC_annunIDGDiscDRIVE;                 // c_bool * 2
         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
         public byte[] WIPERS_Selector;                        // c_ubyte * 2
@@ -140,9 +140,9 @@ namespace MSFSBlindAssist.SimConnect
         public bool OXY_PassOxygen_Sw_On;                     // c_bool
         [MarshalAs(UnmanagedType.U1)]
         public bool OXY_annunPassOxygenON;                    // c_bool
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 4)]
         public bool[] ICE_WindowHeat_Sw_ON;                   // c_bool * 4
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 4)]
         public bool[] ICE_annunWindowHeatINOP;                // c_bool * 4
         [MarshalAs(UnmanagedType.U1)]
         public bool HYD_RamAirTurbineSw;                      // c_bool
@@ -150,21 +150,21 @@ namespace MSFSBlindAssist.SimConnect
         public bool HYD_annunRamAirTurbinePRESS;              // c_bool
         [MarshalAs(UnmanagedType.U1)]
         public bool HYD_annunRamAirTurbineUNLKD;              // c_bool
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] HYD_PrimaryEngPump_Sw_ON;               // c_bool * 2
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] HYD_PrimaryElecPump_Sw_ON;              // c_bool * 2
         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
         public byte[] HYD_DemandElecPump_Selector;            // c_ubyte * 2
         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
         public byte[] HYD_DemandAirPump_Selector;             // c_ubyte * 2
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] HYD_annunPrimaryEngPumpFAULT;           // c_bool * 2
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] HYD_annunPrimaryElecPumpFAULT;          // c_bool * 2
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] HYD_annunDemandElecPumpFAULT;           // c_bool * 2
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] HYD_annunDemandAirPumpFAULT;            // c_bool * 2
         public byte SIGNS_NoSmokingSelector;                   // c_ubyte
         public byte SIGNS_SeatBeltsSelector;                   // c_ubyte
@@ -179,7 +179,7 @@ namespace MSFSBlindAssist.SimConnect
         public bool LTS_MasterBright_Sw_ON;                   // c_bool
         public byte LTS_MasterBrigntKnob;                     // c_ubyte
         public byte LTS_IndLightsTestSw;                      // c_ubyte
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 3)]
         public bool[] LTS_LandingLights_Sw_ON;                // c_bool * 3
         [MarshalAs(UnmanagedType.U1)]
         public bool LTS_Beacon_Sw_ON;                         // c_bool
@@ -189,15 +189,15 @@ namespace MSFSBlindAssist.SimConnect
         public bool LTS_Logo_Sw_ON;                           // c_bool
         [MarshalAs(UnmanagedType.U1)]
         public bool LTS_Wing_Sw_ON;                           // c_bool
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] LTS_RunwayTurnoff_Sw_ON;                // c_bool * 2
         [MarshalAs(UnmanagedType.U1)]
         public bool LTS_Taxi_Sw_ON;                           // c_bool
         [MarshalAs(UnmanagedType.U1)]
         public bool LTS_Strobe_Sw_ON;                         // c_bool
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] FIRE_CargoFire_Sw_Arm;                  // c_bool * 2
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] FIRE_annunCargoFire;                    // c_bool * 2
         [MarshalAs(UnmanagedType.U1)]
         public bool FIRE_CargoFireDisch_Sw;                   // c_bool
@@ -210,11 +210,11 @@ namespace MSFSBlindAssist.SimConnect
         public bool FIRE_APUHandleUnlock_Sw;                  // c_bool
         [MarshalAs(UnmanagedType.U1)]
         public bool FIRE_annunAPU_BTL_DISCH;                  // c_bool
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] FIRE_EngineHandleIlluminated;           // c_bool * 2
         [MarshalAs(UnmanagedType.U1)]
         public bool FIRE_APUHandleIlluminated;                // c_bool
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] FIRE_EngineHandleIsUnlocked;            // c_bool * 2
         [MarshalAs(UnmanagedType.U1)]
         public bool FIRE_APUHandleIsUnlocked;                 // c_bool
@@ -222,13 +222,13 @@ namespace MSFSBlindAssist.SimConnect
         public bool FIRE_annunMainDeckCargoFire;              // c_bool
         [MarshalAs(UnmanagedType.U1)]
         public bool FIRE_annunCargoDEPR;                      // c_bool
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] ENG_EECMode_Sw_NORM;                    // c_bool * 2
         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
         public byte[] ENG_Start_Selector;                     // c_ubyte * 2
         [MarshalAs(UnmanagedType.U1)]
         public bool ENG_Autostart_Sw_ON;                      // c_bool
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] ENG_annunALTN;                          // c_bool * 2
         [MarshalAs(UnmanagedType.U1)]
         public bool ENG_annunAutostartOFF;                    // c_bool
@@ -236,13 +236,13 @@ namespace MSFSBlindAssist.SimConnect
         public bool FUEL_CrossFeedFwd_Sw;                     // c_bool
         [MarshalAs(UnmanagedType.U1)]
         public bool FUEL_CrossFeedAft_Sw;                     // c_bool
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] FUEL_PumpFwd_Sw;                        // c_bool * 2
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] FUEL_PumpAft_Sw;                        // c_bool * 2
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] FUEL_PumpCtr_Sw;                        // c_bool * 2
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] FUEL_JettisonNozle_Sw;                  // c_bool * 2
         [MarshalAs(UnmanagedType.U1)]
         public bool FUEL_JettisonArm_Sw;                      // c_bool
@@ -253,24 +253,24 @@ namespace MSFSBlindAssist.SimConnect
         public bool FUEL_annunFwdXFEED_VALVE;                 // c_bool
         [MarshalAs(UnmanagedType.U1)]
         public bool FUEL_annunAftXFEED_VALVE;                 // c_bool
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] FUEL_annunLOWPRESS_Fwd;                 // c_bool * 2
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] FUEL_annunLOWPRESS_Aft;                 // c_bool * 2
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] FUEL_annunLOWPRESS_Ctr;                 // c_bool * 2
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] FUEL_annunJettisonNozleVALVE;           // c_bool * 2
         [MarshalAs(UnmanagedType.U1)]
         public bool FUEL_annunArmFAULT;                       // c_bool
         public byte ICE_WingAntiIceSw;                        // c_ubyte
         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
         public byte[] ICE_EngAntiIceSw;                       // c_ubyte * 2
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] AIR_Pack_Sw_AUTO;                       // c_bool * 2
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] AIR_TrimAir_Sw_On;                      // c_bool * 2
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] AIR_RecircFan_Sw_On;                    // c_bool * 2
         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
         public byte[] AIR_TempSelector;                       // c_ubyte * 2
@@ -280,9 +280,9 @@ namespace MSFSBlindAssist.SimConnect
         public bool AIR_EquipCooling_Sw_AUTO;                 // c_bool
         [MarshalAs(UnmanagedType.U1)]
         public bool AIR_Gasper_Sw_On;                         // c_bool
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] AIR_annunPackOFF;                       // c_bool * 2
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] AIR_annunTrimAirFAULT;                  // c_bool * 2
         [MarshalAs(UnmanagedType.U1)]
         public bool AIR_annunEquipCoolingOVRD;                // c_bool
@@ -292,30 +292,30 @@ namespace MSFSBlindAssist.SimConnect
         public bool AIR_annunAltnVentFAULT;                   // c_bool
         [MarshalAs(UnmanagedType.U1)]
         public bool AIR_MainDeckFlowSw_NORM;                  // c_bool
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] AIR_EngBleedAir_Sw_AUTO;                // c_bool * 2
         [MarshalAs(UnmanagedType.U1)]
         public bool AIR_APUBleedAir_Sw_AUTO;                  // c_bool
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] AIR_IsolationValve_Sw;                  // c_bool * 2
         [MarshalAs(UnmanagedType.U1)]
         public bool AIR_CtrIsolationValve_Sw;                 // c_bool
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] AIR_annunEngBleedAirOFF;                // c_bool * 2
         [MarshalAs(UnmanagedType.U1)]
         public bool AIR_annunAPUBleedAirOFF;                  // c_bool
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] AIR_annunIsolationValveCLOSED;          // c_bool * 2
         [MarshalAs(UnmanagedType.U1)]
         public bool AIR_annunCtrIsolationValveCLOSED;         // c_bool
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] AIR_OutflowValve_Sw_AUTO;               // c_bool * 2
         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
         public byte[] AIR_OutflowValveManual_Selector;        // c_ubyte * 2
         [MarshalAs(UnmanagedType.U1)]
         public bool AIR_LdgAlt_Sw_Pulled;                     // c_bool
         public byte AIR_LdgAlt_Selector;                      // c_ubyte
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] AIR_annunOutflowValve_MAN;              // c_bool * 2
 
         // ------------------------------------------------------------------
@@ -387,9 +387,9 @@ namespace MSFSBlindAssist.SimConnect
         public byte LTS_RightFwdPanelFLOODKnob;              // c_ubyte
         public byte LTS_RightInbdDsplBRIGHTNESSKnob;         // c_ubyte
         public byte LTS_RightOutbdDsplBRIGHTNESSKnob;        // c_ubyte
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] CHR_Chr_Sw_Pushed;                      // c_bool * 2
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] CHR_TimeDate_Sw_Pushed;                 // c_bool * 2
         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
         public byte[] CHR_TimeDate_Selector;                  // c_ubyte * 2
@@ -401,9 +401,9 @@ namespace MSFSBlindAssist.SimConnect
         // ------------------------------------------------------------------
         // Glareshield
         // ------------------------------------------------------------------
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] EFIS_MinsSelBARO;                       // c_bool * 2
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] EFIS_BaroSelHPA;                        // c_bool * 2
         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
         public byte[] EFIS_VORADFSel1;                        // c_ubyte * 2
@@ -417,27 +417,27 @@ namespace MSFSBlindAssist.SimConnect
         public byte[] EFIS_MinsKnob;                          // c_ubyte * 2
         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
         public byte[] EFIS_BaroKnob;                          // c_ubyte * 2
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] EFIS_MinsRST_Sw_Pushed;                 // c_bool * 2
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] EFIS_BaroSTD_Sw_Pushed;                 // c_bool * 2
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] EFIS_ModeCTR_Sw_Pushed;                 // c_bool * 2
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] EFIS_RangeTFC_Sw_Pushed;                // c_bool * 2
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] EFIS_WXR_Sw_Pushed;                     // c_bool * 2
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] EFIS_STA_Sw_Pushed;                     // c_bool * 2
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] EFIS_WPT_Sw_Pushed;                     // c_bool * 2
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] EFIS_ARPT_Sw_Pushed;                    // c_bool * 2
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] EFIS_DATA_Sw_Pushed;                    // c_bool * 2
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] EFIS_POS_Sw_Pushed;                     // c_bool * 2
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] EFIS_TERR_Sw_Pushed;                    // c_bool * 2
         public float MCP_IASMach;                             // c_float (4-byte aligned)
         [MarshalAs(UnmanagedType.U1)]
@@ -448,9 +448,9 @@ namespace MSFSBlindAssist.SimConnect
         public float MCP_FPA;                                 // c_float (4-byte aligned)
         [MarshalAs(UnmanagedType.U1)]
         public bool MCP_VertSpeedBlank;                       // c_bool
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] MCP_FD_Sw_On;                           // c_bool * 2
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] MCP_ATArm_Sw_On;                        // c_bool * 2
         public byte MCP_BankLimitSel;                         // c_ubyte
         [MarshalAs(UnmanagedType.U1)]
@@ -463,7 +463,7 @@ namespace MSFSBlindAssist.SimConnect
         public byte MCP_VS_Wheel;                             // c_ubyte
         public byte MCP_HDGDial_Mode;                         // c_ubyte
         public byte MCP_VSDial_Mode;                          // c_ubyte
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] MCP_AP_Sw_Pushed;                       // c_bool * 2
         [MarshalAs(UnmanagedType.U1)]
         public bool MCP_CLB_CON_Sw_Pushed;                    // c_bool
@@ -497,7 +497,7 @@ namespace MSFSBlindAssist.SimConnect
         public bool MCP_HDG_TRK_Toggle_Sw_Pushed;             // c_bool
         [MarshalAs(UnmanagedType.U1)]
         public bool MCP_VS_FPA_Toggle_Sw_Pushed;              // c_bool
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] MCP_annunAP;                            // c_bool * 2
         [MarshalAs(UnmanagedType.U1)]
         public bool MCP_annunAT;                              // c_bool
@@ -557,11 +557,11 @@ namespace MSFSBlindAssist.SimConnect
         public bool DSP_annunR_INBD;                          // c_bool
         [MarshalAs(UnmanagedType.U1)]
         public bool DSP_annunLWR_CTR;                         // c_bool
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] WARN_Reset_Sw_Pushed;                   // c_bool * 2
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] WARN_annunMASTER_WARNING;               // c_bool * 2
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] WARN_annunMASTER_CAUTION;               // c_bool * 2
 
         // ------------------------------------------------------------------
@@ -573,15 +573,15 @@ namespace MSFSBlindAssist.SimConnect
         public byte LTS_LowerDsplBRIGHTNESSKnob;              // c_ubyte
         [MarshalAs(UnmanagedType.U1)]
         public bool EICAS_EventRcd_Sw_Pushed;                  // c_bool
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 3)]
         public bool[] CDU_annunEXEC;                           // c_bool * 3
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 3)]
         public bool[] CDU_annunDSPY;                           // c_bool * 3
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 3)]
         public bool[] CDU_annunFAIL;                           // c_bool * 3
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 3)]
         public bool[] CDU_annunMSG;                            // c_bool * 3
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 3)]
         public bool[] CDU_annunOFST;                           // c_bool * 3
         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)]
         public byte[] CDU_BrtKnob;                             // c_ubyte * 3
@@ -599,7 +599,7 @@ namespace MSFSBlindAssist.SimConnect
         public byte FCTL_AltnPitch_Lever;                     // c_ubyte
         public byte FCTL_Speedbrake_Lever;                    // c_ubyte
         public byte FCTL_Flaps_Lever;                         // c_ubyte
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] ENG_FuelControl_Sw_RUN;                 // c_bool * 2
         [MarshalAs(UnmanagedType.U1)]
         public bool BRAKES_ParkingBrakeLeverOn;               // c_bool
@@ -614,11 +614,11 @@ namespace MSFSBlindAssist.SimConnect
         public byte COMM_OBSAudio_Selector;                   // c_ubyte
         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)]
         public byte[] COMM_SelectedRadio;                     // c_ubyte * 3
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 3)]
         public bool[] COMM_RadioTransfer_Sw_Pushed;           // c_bool * 3
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 3)]
         public bool[] COMM_RadioPanelOff;                     // c_bool * 3
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 3)]
         public bool[] COMM_annunAM;                           // c_bool * 3
         [MarshalAs(UnmanagedType.U1)]
         public bool XPDR_XpndrSelector_R;                     // c_bool
@@ -629,9 +629,9 @@ namespace MSFSBlindAssist.SimConnect
         public bool XPDR_Ident_Sw_Pushed;                     // c_bool
         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
         public byte[] FIRE_EngineHandle;                      // c_ubyte * 2
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] FIRE_EngineHandleUnlock_Sw;             // c_bool * 2
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] FIRE_annunENG_BTL_DISCH;                // c_bool * 2
         public byte FCTL_AileronTrim_Switches;                // c_ubyte
         public byte FCTL_RudderTrim_Knob;                     // c_ubyte
@@ -660,7 +660,7 @@ namespace MSFSBlindAssist.SimConnect
         // ------------------------------------------------------------------
         // Additional variables
         // ------------------------------------------------------------------
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] ENG_StartValve;                         // c_bool * 2
         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
         public float[] AIR_DuctPress;                         // c_float * 2 (4-byte aligned)
@@ -670,11 +670,11 @@ namespace MSFSBlindAssist.SimConnect
         public float FUEL_QtyAux;                             // c_float
         [MarshalAs(UnmanagedType.U1)]
         public bool IRS_aligned;                              // c_bool
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] EFIS_BaroMinimumsSet;                   // c_bool * 2
         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
         public int[] EFIS_BaroMinimums;                       // c_int * 2 (4-byte aligned)
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 2)]
         public bool[] EFIS_RadioMinimumsSet;                  // c_bool * 2
         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
         public int[] EFIS_RadioMinimums;                      // c_int * 2 (4-byte aligned)
@@ -711,7 +711,7 @@ namespace MSFSBlindAssist.SimConnect
         [MarshalAs(UnmanagedType.U1)]
         public bool APURunning;                               // c_bool
         public byte FMC_ThrustLimitMode;                      // c_ubyte
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 10)]
+        [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.U1, SizeConst = 10)]
         public bool[] ECL_ChecklistComplete;                  // c_bool * 10
         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 84)]
         public byte[] reserved;                               // c_ubyte * 84
