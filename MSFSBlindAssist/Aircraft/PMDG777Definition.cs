@@ -4206,8 +4206,10 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["ELEC_APU_Selector"]   = "EVT_OH_ELEC_APU_SEL_SWITCH",
             ["ELEC_BusTie_1"]       = "EVT_OH_ELEC_BUS_TIE1_SWITCH",
             ["ELEC_BusTie_2"]       = "EVT_OH_ELEC_BUS_TIE2_SWITCH",
-            ["ELEC_ExtPwrPrim"]     = "EVT_OH_ELEC_GRD_PWR_PRIM_SWITCH",
-            ["ELEC_ExtPwrSec"]      = "EVT_OH_ELEC_GRD_PWR_SEC_SWITCH",
+            // NOTE: PMDG event names are swapped vs annunciator array indices.
+            // SEC event (69639) controls annun index 0 (primary), PRIM event (69640) controls index 1 (secondary).
+            ["ELEC_ExtPwrPrim"]     = "EVT_OH_ELEC_GRD_PWR_SEC_SWITCH",
+            ["ELEC_ExtPwrSec"]      = "EVT_OH_ELEC_GRD_PWR_PRIM_SWITCH",
             ["ELEC_Gen_1"]          = "EVT_OH_ELEC_GEN1_SWITCH",
             ["ELEC_Gen_2"]          = "EVT_OH_ELEC_GEN2_SWITCH",
             ["ELEC_BackupGen_1"]    = "EVT_OH_ELEC_BACKUP_GEN1_SWITCH",

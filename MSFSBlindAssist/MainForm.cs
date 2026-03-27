@@ -2582,9 +2582,34 @@ public partial class MainForm : Form
             layout.Controls.Add(label, 0, rowIndex);
 
             // Create control based on type
-            if (varDef.ValueDescriptions != null && varDef.ValueDescriptions.Count > 1)
+            // Check RenderAsButton FIRST — buttons may have no ValueDescriptions
+            if (varDef.RenderAsButton)
+            {
+                // Render as button (momentary pushbutton, action button, etc.)
+                Button controlButton = new Button();
+                controlButton.Text = varDef.DisplayName;
+                controlButton.Size = new Size(240, 25);
+                controlButton.Name = varKey;
+                controlButton.AccessibleName = varDef.DisplayName;
+                controlButton.AccessibleDescription = $"Press {varDef.DisplayName}";
+
+                controlButton.Click += (s2, e2) =>
+                {
+                    if (currentAircraft.HandleUIVariableSet(varKey, 1, varDef, simConnectManager, announcer))
+                    {
+                        return;
+                    }
+                    simConnectManager?.SetLVar(varDef.Name, 1);
+                    announcer.Announce($"{varDef.DisplayName} pressed");
+                };
+
+                layout.Controls.Add(controlButton, 1, rowIndex);
+                currentControls[varKey] = controlButton;
+            }
+            else if (varDef.ValueDescriptions != null && varDef.ValueDescriptions.Count > 1)
             {
                 // Check if variable should be rendered as button instead of combo box (aircraft-specific)
+                // (Legacy path — kept for backward compat with Fenix buttons that have ValueDescriptions)
                 if (varDef.RenderAsButton)
                 {
                     Button controlButton = new Button();
