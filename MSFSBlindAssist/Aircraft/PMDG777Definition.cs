@@ -4578,10 +4578,19 @@ public class PMDG777Definition : BaseAircraftDefinition
         }
 
         // ------------------------------------------------------------------
-        // 4. Two-position toggle — send toggle event, PMDG flips state
+        // 4. Two-position toggle — only toggle if requested value differs from current state.
+        //    PMDG toggle events flip the current state, so sending when already at the
+        //    desired state would toggle AWAY from it (causing feedback-loop issues).
         // ------------------------------------------------------------------
         if (varDef.ValueDescriptions.Count == 2)
         {
+            var dm = simConnect.PMDG777DataManager;
+            if (dm != null)
+            {
+                double currentValue = dm.GetFieldValue(varDef.Name);
+                if (Math.Abs(currentValue - value) < 0.001)
+                    return true; // Already at requested state — don't toggle
+            }
             simConnect.SendPMDGEvent(eventName, eventId);
             return true;
         }
