@@ -69,6 +69,10 @@ public partial class MainForm : Form
 
     public MainForm()
     {
+        // Clear PMDG debug log at startup so each session starts fresh
+        MSFSBlindAssist.SimConnect.PMDG777Debug.Clear();
+        MSFSBlindAssist.SimConnect.PMDG777Debug.Log("[MainForm] Application started — debug log cleared");
+
         // Load last selected aircraft from settings
         var settings = MSFSBlindAssist.Settings.SettingsManager.Current;
         currentAircraft = LoadAircraftFromCode(settings.LastAircraft ?? "A320");
@@ -316,6 +320,12 @@ public partial class MainForm : Form
         // Step 1: ALWAYS store the value first (needed by all consumers)
         currentSimVarValues[e.VarName] = e.Value;
 
+        bool isPMDGAircraft = currentAircraft?.AircraftCode == "PMDG_777";
+        if (isPMDGAircraft)
+        {
+            MSFSBlindAssist.SimConnect.PMDG777Debug.Log($"[MainForm.OnSimVarUpdated] VarName={e.VarName} Value={e.Value} InvokeRequired=false (on UI thread)");
+        }
+
         // Step 2: Handle special one-off announcements (terminal cases only)
         if (HandleSpecialAnnouncements(e))
         {
@@ -325,6 +335,10 @@ public partial class MainForm : Form
         // Step 2.5: Allow aircraft-specific variable processing (e.g., FCU display combining)
         // This lets each aircraft handle complex variables before generic processing
         bool wasProcessedByAircraft = currentAircraft.ProcessSimVarUpdate(e.VarName, e.Value, announcer);
+        if (isPMDGAircraft)
+        {
+            MSFSBlindAssist.SimConnect.PMDG777Debug.Log($"[MainForm.OnSimVarUpdated] ProcessSimVarUpdate returned {wasProcessedByAircraft} for {e.VarName}");
+        }
         if (wasProcessedByAircraft)
         {
             // Update window title if flight phase changed (for aircraft that track flight phases)
@@ -361,6 +375,10 @@ public partial class MainForm : Form
         }
 
         // Step 4: Update UI controls (if this variable has a control in current panel)
+        if (isPMDGAircraft)
+        {
+            MSFSBlindAssist.SimConnect.PMDG777Debug.Log($"[MainForm.OnSimVarUpdated] Calling UpdateControlFromSimVar: varName={e.VarName} value={e.Value}");
+        }
         UpdateControlFromSimVar(e.VarName, e.Value);
 
         // Step 5: Handle pending state announcements (button press feedback)
@@ -399,6 +417,10 @@ public partial class MainForm : Form
                     description = $"{varDef.DisplayName}: {e.Value}";
                 }
 
+                if (isPMDGAircraft)
+                {
+                    MSFSBlindAssist.SimConnect.PMDG777Debug.Log($"[MainForm.OnSimVarUpdated] Calling simVarMonitor.ProcessUpdate: varName={e.VarName} value={e.Value} description=\"{description}\"");
+                }
                 simVarMonitor.ProcessUpdate(e.VarName, e.Value, description);
             }
         }
@@ -646,10 +668,17 @@ public partial class MainForm : Form
 
     private void UpdateControlFromSimVar(string varName, double value)
     {
-        if (currentControls.ContainsKey(varName))
+        bool isPMDG = currentAircraft?.AircraftCode == "PMDG_777";
+        bool controlFound = currentControls.ContainsKey(varName);
+        if (isPMDG)
+        {
+            MSFSBlindAssist.SimConnect.PMDG777Debug.Log($"[MainForm.UpdateControlFromSimVar] varName={varName} value={value} controlFound={controlFound}");
+        }
+
+        if (controlFound)
         {
             updatingFromSim = true;
-            
+
             Control control = currentControls[varName];
             if (control is ComboBox combo)
             {
@@ -661,14 +690,22 @@ public partial class MainForm : Form
                     {
                         string description = varDef.ValueDescriptions[value];
                         int index = combo.Items.IndexOf(description);
+                        if (isPMDG)
+                        {
+                            MSFSBlindAssist.SimConnect.PMDG777Debug.Log($"[MainForm.UpdateControlFromSimVar] ComboBox: currentIndex={combo.SelectedIndex} targetIndex={index} description=\"{description}\"");
+                        }
                         if (index >= 0 && combo.SelectedIndex != index)
                         {
                             combo.SelectedIndex = index;
                         }
                     }
+                    else if (isPMDG)
+                    {
+                        MSFSBlindAssist.SimConnect.PMDG777Debug.Log($"[MainForm.UpdateControlFromSimVar] ComboBox: value={value} not found in ValueDescriptions for {varName}");
+                    }
                 }
             }
-            
+
             updatingFromSim = false;
         }
     }
@@ -874,8 +911,17 @@ public partial class MainForm : Form
         bool isPMDG = currentAircraft?.AircraftCode == "PMDG_777";
         bool shouldAnnounce = isPMDG ? !updatingFromSim : (!e.IsInitialValue && !updatingFromSim);
 
+        if (isPMDG)
+        {
+            MSFSBlindAssist.SimConnect.PMDG777Debug.Log($"[MainForm.OnSimVarValueChanged] VarName={e.VarName} OldValue={e.OldValue} NewValue={e.NewValue} IsInitialValue={e.IsInitialValue} updatingFromSim={updatingFromSim} shouldAnnounce={shouldAnnounce} description=\"{e.Description}\"");
+        }
+
         if (shouldAnnounce && !string.IsNullOrEmpty(e.Description))
         {
+            if (isPMDG)
+            {
+                MSFSBlindAssist.SimConnect.PMDG777Debug.Log($"[MainForm.OnSimVarValueChanged] Announcing: \"{e.Description}\"");
+            }
             announcer.Announce(e.Description);
         }
     }
@@ -899,8 +945,11 @@ public partial class MainForm : Form
         // Translate struct field name to variable key
         if (!_pmdgFieldToKeyMap!.TryGetValue(e.FieldName, out string? varKey))
         {
+            MSFSBlindAssist.SimConnect.PMDG777Debug.Log($"[MainForm.OnPMDGVariableChanged] UNMAPPED field={e.FieldName} value={e.Value}");
             return;
         }
+
+        MSFSBlindAssist.SimConnect.PMDG777Debug.Log($"[MainForm.OnPMDGVariableChanged] MAPPED field={e.FieldName} -> varKey={varKey} value={e.Value}");
 
         // Route PMDG variable changes through the same pipeline as SimVar updates
         var simVarEvent = new SimVarUpdateEventArgs
@@ -2595,7 +2644,10 @@ public partial class MainForm : Form
 
                 controlButton.Click += (s2, e2) =>
                 {
-                    if (currentAircraft.HandleUIVariableSet(varKey, 1, varDef, simConnectManager, announcer))
+                    MSFSBlindAssist.SimConnect.PMDG777Debug.Log($"[MainForm.ButtonClick] varKey={varKey} value=1 RenderAsButton=true");
+                    bool handled = currentAircraft.HandleUIVariableSet(varKey, 1, varDef, simConnectManager, announcer);
+                    MSFSBlindAssist.SimConnect.PMDG777Debug.Log($"[MainForm.ButtonClick] HandleUIVariableSet returned {handled}");
+                    if (handled)
                     {
                         return;
                     }
@@ -2622,8 +2674,11 @@ public partial class MainForm : Form
                     // Handle button click - send value 1 which triggers HandleUIVariableSet
                     controlButton.Click += (s2, e2) =>
                     {
+                        MSFSBlindAssist.SimConnect.PMDG777Debug.Log($"[MainForm.LegacyButtonClick] varKey={varKey} value=1 RenderAsButton=true (legacy path)");
                         // Let aircraft handle special cases first (custom button logic, transitions, etc.)
-                        if (currentAircraft.HandleUIVariableSet(varKey, 1, varDef, simConnectManager, announcer))
+                        bool handled = currentAircraft.HandleUIVariableSet(varKey, 1, varDef, simConnectManager, announcer);
+                        MSFSBlindAssist.SimConnect.PMDG777Debug.Log($"[MainForm.LegacyButtonClick] HandleUIVariableSet returned {handled}");
+                        if (handled)
                         {
                             currentSimVarValues[varKey] = 1;
                             // NOTE: We do NOT call RequestRelatedVariables here because:
@@ -2947,12 +3002,16 @@ public partial class MainForm : Form
                     // Handle selection change
                     combo.SelectedIndexChanged += (s2, e2) =>
                     {
+                        MSFSBlindAssist.SimConnect.PMDG777Debug.Log($"[MainForm.ComboChanged] varKey={varKey} selectedIndex={combo.SelectedIndex} updatingFromSim={updatingFromSim}");
                         if (!updatingFromSim && combo.SelectedIndex >= 0)
                         {
                             var selectedValue = sortedValues[combo.SelectedIndex].Key;
+                            MSFSBlindAssist.SimConnect.PMDG777Debug.Log($"[MainForm.ComboChanged] Calling HandleUIVariableSet: varKey={varKey} selectedValue={selectedValue}");
 
                             // Let aircraft handle special cases first (validation, conversion, multi-step logic)
-                            if (currentAircraft.HandleUIVariableSet(varKey, selectedValue, varDef, simConnectManager, announcer))
+                            bool aircraftHandled = currentAircraft.HandleUIVariableSet(varKey, selectedValue, varDef, simConnectManager, announcer);
+                            MSFSBlindAssist.SimConnect.PMDG777Debug.Log($"[MainForm.ComboChanged] HandleUIVariableSet returned {aircraftHandled}");
+                            if (aircraftHandled)
                             {
                                 currentSimVarValues[varKey] = selectedValue;
                                 // NOTE: We do NOT call RequestRelatedVariables here because:
@@ -3324,6 +3383,7 @@ public partial class MainForm : Form
             // For PMDG aircraft, populate controls with current data from the data manager
             if (currentAircraft?.AircraftCode == "PMDG_777" && simConnectManager?.PMDG777DataManager != null)
             {
+                MSFSBlindAssist.SimConnect.PMDG777Debug.Log($"[MainForm.PanelLoadTimer_Tick] Populating PMDG controls for panel='{currentPanel}'");
                 var dm = simConnectManager.PMDG777DataManager;
                 foreach (var varKey in currentAircraft.GetPanelControls()[currentPanel])
                 {
@@ -3332,6 +3392,7 @@ public partial class MainForm : Form
 
                     // Read current value from PMDG data manager using the struct field name
                     double value = dm.GetFieldValue(varDef.Name);
+                    MSFSBlindAssist.SimConnect.PMDG777Debug.Log($"[MainForm.PanelLoadTimer_Tick] varKey={varKey} fieldName={varDef.Name} value={value}");
                     currentSimVarValues[varKey] = value;
 
                     // Update the UI control

@@ -4542,37 +4542,50 @@ public class PMDG777Definition : BaseAircraftDefinition
         SimConnect.SimConnectManager simConnect,
         ScreenReaderAnnouncer announcer)
     {
+        SimConnect.PMDG777Debug.Log($"[PMDG777Definition.HandleUIVariableSet] ENTRY varKey={varKey} value={value} RenderAsButton={varDef.RenderAsButton} IsMomentary={varDef.IsMomentary} ValueDescriptions.Count={varDef.ValueDescriptions.Count}");
+
         // ------------------------------------------------------------------
         // 1. Guarded switches — require guard open → toggle → guard close
         // ------------------------------------------------------------------
         if (_guardedMap.TryGetValue(varKey, out var guardPair))
         {
+            SimConnect.PMDG777Debug.Log($"[PMDG777Definition.HandleUIVariableSet] Branch: GUARDED switch guard={guardPair.Guard} switch={guardPair.Switch}");
             if (EventIds.TryGetValue(guardPair.Guard, out int gId) &&
                 EventIds.TryGetValue(guardPair.Switch, out int sId))
             {
+                SimConnect.PMDG777Debug.Log($"[PMDG777Definition.HandleUIVariableSet] Sending guarded toggle: guardId={gId} switchId={sId}");
                 _ = simConnect.SendPMDGGuardedToggle(
                     guardPair.Guard,  (uint)gId,
                     guardPair.Switch, (uint)sId);
                 return true;
             }
+            SimConnect.PMDG777Debug.Log($"[PMDG777Definition.HandleUIVariableSet] GUARDED: event IDs not found for guard={guardPair.Guard} or switch={guardPair.Switch}");
         }
 
         // ------------------------------------------------------------------
         // 2. Look up the event name for this variable key
         // ------------------------------------------------------------------
         if (!_simpleEventMap.TryGetValue(varKey, out string? eventName))
+        {
+            SimConnect.PMDG777Debug.Log($"[PMDG777Definition.HandleUIVariableSet] NOT in _simpleEventMap — returning false");
             return false;
+        }
 
         if (!EventIds.TryGetValue(eventName, out int evId))
+        {
+            SimConnect.PMDG777Debug.Log($"[PMDG777Definition.HandleUIVariableSet] eventName={eventName} NOT in EventIds — returning false");
             return false;
+        }
 
         uint eventId = (uint)evId;
+        SimConnect.PMDG777Debug.Log($"[PMDG777Definition.HandleUIVariableSet] eventName={eventName} eventId={eventId} (0x{eventId:X})");
 
         // ------------------------------------------------------------------
         // 3. Momentary / button press — send once with no parameter
         // ------------------------------------------------------------------
         if (varDef.RenderAsButton || varDef.IsMomentary)
         {
+            SimConnect.PMDG777Debug.Log($"[PMDG777Definition.HandleUIVariableSet] Branch: MOMENTARY/BUTTON — calling SendPMDGEvent({eventName}, {eventId})");
             simConnect.SendPMDGEvent(eventName, eventId);
             return true;
         }
@@ -4584,13 +4597,23 @@ public class PMDG777Definition : BaseAircraftDefinition
         // ------------------------------------------------------------------
         if (varDef.ValueDescriptions.Count == 2)
         {
+            SimConnect.PMDG777Debug.Log($"[PMDG777Definition.HandleUIVariableSet] Branch: TWO-POSITION TOGGLE fieldName={varDef.Name}");
             var dm = simConnect.PMDG777DataManager;
             if (dm != null)
             {
                 double currentValue = dm.GetFieldValue(varDef.Name);
+                SimConnect.PMDG777Debug.Log($"[PMDG777Definition.HandleUIVariableSet] TWO-POSITION: currentValue={currentValue} requestedValue={value} diff={Math.Abs(currentValue - value)}");
                 if (Math.Abs(currentValue - value) < 0.001)
+                {
+                    SimConnect.PMDG777Debug.Log($"[PMDG777Definition.HandleUIVariableSet] TWO-POSITION: already at requested state — SKIPPING toggle");
                     return true; // Already at requested state — don't toggle
+                }
             }
+            else
+            {
+                SimConnect.PMDG777Debug.Log($"[PMDG777Definition.HandleUIVariableSet] TWO-POSITION: DataManager is null — sending unconditionally");
+            }
+            SimConnect.PMDG777Debug.Log($"[PMDG777Definition.HandleUIVariableSet] TWO-POSITION: calling SendPMDGEvent({eventName}, {eventId})");
             simConnect.SendPMDGEvent(eventName, eventId);
             return true;
         }
@@ -4608,11 +4631,16 @@ public class PMDG777Definition : BaseAircraftDefinition
                 current = (int)dm.GetFieldValue(varDef.Name);
 
             int steps = target - current;
+            SimConnect.PMDG777Debug.Log($"[PMDG777Definition.HandleUIVariableSet] Branch: MULTI-POSITION current={current} target={target} steps={steps}");
             if (steps == 0)
+            {
+                SimConnect.PMDG777Debug.Log($"[PMDG777Definition.HandleUIVariableSet] MULTI-POSITION: already at target — skipping");
                 return true; // already there
+            }
 
             int mouseFlag = steps > 0 ? PMDG_WHEEL_UP : PMDG_WHEEL_DOWN;
             int abs = Math.Abs(steps);
+            SimConnect.PMDG777Debug.Log($"[PMDG777Definition.HandleUIVariableSet] MULTI-POSITION: sending {abs} step(s) mouseFlag={mouseFlag}");
             for (int i = 0; i < abs; i++)
                 simConnect.SendPMDGEvent(eventName, eventId, mouseFlag);
 
@@ -4622,13 +4650,19 @@ public class PMDG777Definition : BaseAircraftDefinition
         // ------------------------------------------------------------------
         // 6. No ValueDescriptions — treat as a single toggle/press
         // ------------------------------------------------------------------
+        SimConnect.PMDG777Debug.Log($"[PMDG777Definition.HandleUIVariableSet] Branch: NO ValueDescriptions — calling SendPMDGEvent({eventName}, {eventId})");
         simConnect.SendPMDGEvent(eventName, eventId);
         return true;
     }
 
     public override bool ProcessSimVarUpdate(string varName, double value, ScreenReaderAnnouncer announcer)
     {
-        if (base.ProcessSimVarUpdate(varName, value, announcer)) return true;
+        SimConnect.PMDG777Debug.Log($"[PMDG777Definition.ProcessSimVarUpdate] ENTRY varName={varName} value={value}");
+        if (base.ProcessSimVarUpdate(varName, value, announcer))
+        {
+            SimConnect.PMDG777Debug.Log($"[PMDG777Definition.ProcessSimVarUpdate] Handled by base class: {varName}");
+            return true;
+        }
 
         // MCP display value announcements
         if (varName == "MCP_IASMach")
@@ -4752,6 +4786,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             return true;
         }
 
+        SimConnect.PMDG777Debug.Log($"[PMDG777Definition.ProcessSimVarUpdate] No match — returning false for {varName}");
         return false;
     }
 

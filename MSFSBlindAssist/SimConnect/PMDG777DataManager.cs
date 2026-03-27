@@ -66,6 +66,10 @@ public class PMDG777DataManager : IDisposable
 
     private System.Windows.Forms.Timer? _pollTimer;
 
+    // Debug counters
+    private int _processClientDataCount = 0;
+    private int _getFieldValueCount = 0;
+
     // ------------------------------------------------------------------
     // Events
     // ------------------------------------------------------------------
@@ -194,6 +198,11 @@ public class PMDG777DataManager : IDisposable
             {
                 case PMDG_DATA_REQUEST_ID.Data:
                 {
+                    int count = System.Threading.Interlocked.Increment(ref _processClientDataCount);
+                    if (count % 50 == 1) // Log every 50th poll to avoid spam
+                    {
+                        PMDG777Debug.Log($"[PMDG777DataManager.ProcessClientData] Data request received (count={count} hasSnapshot={_hasSnapshot})");
+                    }
                     var newData = (PMDG777XDataStruct)data.dwData[0];
                     DetectAndRaiseChanges(newData);
                     _lastDataSnapshot = newData;
@@ -229,6 +238,7 @@ public class PMDG777DataManager : IDisposable
             return;
         }
 
+        int changeCount = 0;
         foreach (var field in typeof(PMDG777XDataStruct)
                      .GetFields(BindingFlags.Public | BindingFlags.Instance))
         {
@@ -241,8 +251,17 @@ public class PMDG777DataManager : IDisposable
             }
             else if (!Equals(oldVal, newVal))
             {
-                RaiseVariableChanged(field.Name, ToDouble(newVal));
+                double newDouble = ToDouble(newVal);
+                double oldDouble = ToDouble(oldVal);
+                PMDG777Debug.Log($"[PMDG777DataManager.DetectAndRaiseChanges] CHANGED field={field.Name} old={oldDouble} new={newDouble}");
+                changeCount++;
+                RaiseVariableChanged(field.Name, newDouble);
             }
+        }
+
+        if (changeCount > 0)
+        {
+            PMDG777Debug.Log($"[PMDG777DataManager.DetectAndRaiseChanges] Total changes this cycle: {changeCount}");
         }
     }
 
@@ -313,14 +332,27 @@ public class PMDG777DataManager : IDisposable
     /// </summary>
     public double GetFieldValue(string fieldName)
     {
-        if (!_hasSnapshot) return 0.0;
+        if (!_hasSnapshot)
+        {
+            PMDG777Debug.Log($"[PMDG777DataManager.GetFieldValue] fieldName={fieldName} — no snapshot yet, returning 0");
+            return 0.0;
+        }
 
         // Plain field
         var field = typeof(PMDG777XDataStruct)
             .GetField(fieldName, BindingFlags.Public | BindingFlags.Instance);
 
         if (field != null)
-            return ToDouble(field.GetValue(_lastDataSnapshot));
+        {
+            double result = ToDouble(field.GetValue(_lastDataSnapshot));
+            // Log only non-array fields; throttle to first 20 calls to avoid spam
+            int callNum = System.Threading.Interlocked.Increment(ref _getFieldValueCount);
+            if (callNum <= 20 || callNum % 100 == 0)
+            {
+                PMDG777Debug.Log($"[PMDG777DataManager.GetFieldValue] fieldName={fieldName} result={result} (call #{callNum})");
+            }
+            return result;
+        }
 
         // Array index suffix: "FieldName_N"
         int lastUnderscore = fieldName.LastIndexOf('_');
@@ -334,6 +366,7 @@ public class PMDG777DataManager : IDisposable
                 return ToDouble(arr.GetValue(index));
         }
 
+        PMDG777Debug.Log($"[PMDG777DataManager.GetFieldValue] UNKNOWN field '{fieldName}'");
         System.Diagnostics.Debug.WriteLine(
             $"[PMDG777DataManager] GetFieldValue: unknown field '{fieldName}'");
         return 0.0;
@@ -353,6 +386,8 @@ public class PMDG777DataManager : IDisposable
         try
         {
             int offset = (int)(eventId - THIRD_PARTY_EVENT_ID_MIN);
+            string method = offset >= DIRECT_SET_OFFSET_THRESHOLD ? "CDA (SetClientData)" : "ROTOR_BRAKE RPN";
+            PMDG777Debug.Log($"[PMDG777DataManager.SendEvent] eventName={eventName} eventId={eventId} (0x{eventId:X}) parameter={parameter?.ToString() ?? "null"} offset={offset} method={method}");
 
             if (offset >= DIRECT_SET_OFFSET_THRESHOLD)
                 SendViaCDA(eventId, (uint)(parameter ?? 0));
@@ -361,6 +396,7 @@ public class PMDG777DataManager : IDisposable
         }
         catch (Exception ex)
         {
+            PMDG777Debug.Log($"[PMDG777DataManager.SendEvent] EXCEPTION for '{eventName}': {ex.Message}");
             System.Diagnostics.Debug.WriteLine(
                 $"[PMDG777DataManager] SendEvent '{eventName}' failed: {ex.Message}");
         }
@@ -368,7 +404,11 @@ public class PMDG777DataManager : IDisposable
 
     private void SendViaCDA(uint eventId, uint parameter)
     {
-        if (_simConnect == null) return;
+        if (_simConnect == null)
+        {
+            PMDG777Debug.Log($"[PMDG777DataManager.SendViaCDA] SKIPPED — _simConnect is null");
+            return;
+        }
 
         var ctrl = new PMDG777Control { EventId = eventId, Parameter = parameter };
 
@@ -379,13 +419,18 @@ public class PMDG777DataManager : IDisposable
             0,
             ctrl);
 
+        PMDG777Debug.Log($"[PMDG777DataManager.SendViaCDA] SetClientData sent: eventId=0x{eventId:X} param={parameter}");
         System.Diagnostics.Debug.WriteLine(
             $"[PMDG777DataManager] SendViaCDA: eventId=0x{eventId:X} param={parameter}");
     }
 
     private void SendViaRPN(int offset, int? parameter)
     {
-        if (_mobiFlightWasm == null) return;
+        if (_mobiFlightWasm == null)
+        {
+            PMDG777Debug.Log($"[PMDG777DataManager.SendViaRPN] SKIPPED — _mobiFlightWasm is null");
+            return;
+        }
 
         string rpn = parameter.HasValue
             ? $"{offset * 100 + 1} {parameter.Value} (>K:ROTOR_BRAKE)"
@@ -393,6 +438,7 @@ public class PMDG777DataManager : IDisposable
 
         _mobiFlightWasm.SendMFCommand($"MF.SimVars.Set.{rpn}");
 
+        PMDG777Debug.Log($"[PMDG777DataManager.SendViaRPN] MobiFlight command sent: offset={offset} rpn={rpn}");
         System.Diagnostics.Debug.WriteLine(
             $"[PMDG777DataManager] SendViaRPN: offset={offset} rpn={rpn}");
     }
