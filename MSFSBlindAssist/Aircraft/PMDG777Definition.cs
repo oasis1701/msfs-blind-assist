@@ -2016,6 +2016,1038 @@ public class PMDG777Definition : BaseAircraftDefinition
                 IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Test" }
             },
+
+            // =================================================================
+            // GLARESHIELD — EFIS CAPTAIN (index 0)
+            // =================================================================
+            ["EFIS_MinsSelBARO_Capt"] = new SimConnect.SimVarDefinition
+            {
+                Name = "EFIS_MinsSelBARO_0",
+                DisplayName = "Minimums Type (Capt)",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Radio", [1] = "Baro" }
+            },
+            ["EFIS_BaroSelHPA_Capt"] = new SimConnect.SimVarDefinition
+            {
+                Name = "EFIS_BaroSelHPA_0",
+                DisplayName = "Baro Unit (Capt)",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "IN", [1] = "HPA" }
+            },
+            ["EFIS_VORADFSel1_Capt"] = new SimConnect.SimVarDefinition
+            {
+                Name = "EFIS_VORADFSel1_0",
+                DisplayName = "VOR/ADF 1 (Capt)",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "VOR", [1] = "Off", [2] = "ADF" }
+            },
+            ["EFIS_VORADFSel2_Capt"] = new SimConnect.SimVarDefinition
+            {
+                Name = "EFIS_VORADFSel2_0",
+                DisplayName = "VOR/ADF 2 (Capt)",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "VOR", [1] = "Off", [2] = "ADF" }
+            },
+            ["EFIS_ModeSel_Capt"] = new SimConnect.SimVarDefinition
+            {
+                Name = "EFIS_ModeSel_0",
+                DisplayName = "Mode (Capt)",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "APP", [1] = "VOR", [2] = "MAP", [3] = "PLAN" }
+            },
+            ["EFIS_RangeSel_Capt"] = new SimConnect.SimVarDefinition
+            {
+                Name = "EFIS_RangeSel_0",
+                DisplayName = "Range (Capt)",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "10", [1] = "20", [2] = "40", [3] = "80", [4] = "160", [5] = "320", [6] = "640" }
+            },
+            ["EFIS_MinsKnob_Capt"] = new SimConnect.SimVarDefinition
+            {
+                Name = "EFIS_MinsKnob_0",
+                DisplayName = "Mins Knob (Capt)",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true
+            },
+            ["EFIS_BaroKnob_Capt"] = new SimConnect.SimVarDefinition
+            {
+                Name = "EFIS_BaroKnob_0",
+                DisplayName = "Baro Knob (Capt)",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true
+            },
+            ["EFIS_MinsRST_Capt"] = new SimConnect.SimVarDefinition
+            {
+                Name = "EFIS_MinsRST_Sw_Pushed_0",
+                DisplayName = "Mins RST (Capt)",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true
+            },
+            ["EFIS_BaroSTD_Capt"] = new SimConnect.SimVarDefinition
+            {
+                Name = "EFIS_BaroSTD_Sw_Pushed_0",
+                DisplayName = "Baro STD (Capt)",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true
+            },
+            ["EFIS_ModeCTR_Capt"] = new SimConnect.SimVarDefinition
+            {
+                Name = "EFIS_ModeCTR_Sw_Pushed_0",
+                DisplayName = "Mode CTR (Capt)",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true
+            },
+            ["EFIS_RangeTFC_Capt"] = new SimConnect.SimVarDefinition
+            {
+                Name = "EFIS_RangeTFC_Sw_Pushed_0",
+                DisplayName = "Range TFC (Capt)",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true
+            },
+            ["EFIS_WXR_Capt"] = new SimConnect.SimVarDefinition
+            {
+                Name = "EFIS_WXR_Sw_Pushed_0",
+                DisplayName = "WXR (Capt)",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true
+            },
+            ["EFIS_STA_Capt"] = new SimConnect.SimVarDefinition
+            {
+                Name = "EFIS_STA_Sw_Pushed_0",
+                DisplayName = "STA (Capt)",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true
+            },
+            ["EFIS_WPT_Capt"] = new SimConnect.SimVarDefinition
+            {
+                Name = "EFIS_WPT_Sw_Pushed_0",
+                DisplayName = "WPT (Capt)",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true
+            },
+            ["EFIS_ARPT_Capt"] = new SimConnect.SimVarDefinition
+            {
+                Name = "EFIS_ARPT_Sw_Pushed_0",
+                DisplayName = "ARPT (Capt)",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true
+            },
+            ["EFIS_DATA_Capt"] = new SimConnect.SimVarDefinition
+            {
+                Name = "EFIS_DATA_Sw_Pushed_0",
+                DisplayName = "DATA (Capt)",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true
+            },
+            ["EFIS_POS_Capt"] = new SimConnect.SimVarDefinition
+            {
+                Name = "EFIS_POS_Sw_Pushed_0",
+                DisplayName = "POS (Capt)",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true
+            },
+            ["EFIS_TERR_Capt"] = new SimConnect.SimVarDefinition
+            {
+                Name = "EFIS_TERR_Sw_Pushed_0",
+                DisplayName = "TERR (Capt)",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true
+            },
+
+            // =================================================================
+            // GLARESHIELD — EFIS FIRST OFFICER (index 1)
+            // =================================================================
+            ["EFIS_MinsSelBARO_FO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "EFIS_MinsSelBARO_1",
+                DisplayName = "Minimums Type (FO)",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Radio", [1] = "Baro" }
+            },
+            ["EFIS_BaroSelHPA_FO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "EFIS_BaroSelHPA_1",
+                DisplayName = "Baro Unit (FO)",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "IN", [1] = "HPA" }
+            },
+            ["EFIS_VORADFSel1_FO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "EFIS_VORADFSel1_1",
+                DisplayName = "VOR/ADF 1 (FO)",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "VOR", [1] = "Off", [2] = "ADF" }
+            },
+            ["EFIS_VORADFSel2_FO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "EFIS_VORADFSel2_1",
+                DisplayName = "VOR/ADF 2 (FO)",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "VOR", [1] = "Off", [2] = "ADF" }
+            },
+            ["EFIS_ModeSel_FO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "EFIS_ModeSel_1",
+                DisplayName = "Mode (FO)",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "APP", [1] = "VOR", [2] = "MAP", [3] = "PLAN" }
+            },
+            ["EFIS_RangeSel_FO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "EFIS_RangeSel_1",
+                DisplayName = "Range (FO)",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "10", [1] = "20", [2] = "40", [3] = "80", [4] = "160", [5] = "320", [6] = "640" }
+            },
+            ["EFIS_MinsKnob_FO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "EFIS_MinsKnob_1",
+                DisplayName = "Mins Knob (FO)",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true
+            },
+            ["EFIS_BaroKnob_FO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "EFIS_BaroKnob_1",
+                DisplayName = "Baro Knob (FO)",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true
+            },
+            ["EFIS_MinsRST_FO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "EFIS_MinsRST_Sw_Pushed_1",
+                DisplayName = "Mins RST (FO)",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true
+            },
+            ["EFIS_BaroSTD_FO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "EFIS_BaroSTD_Sw_Pushed_1",
+                DisplayName = "Baro STD (FO)",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true
+            },
+            ["EFIS_ModeCTR_FO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "EFIS_ModeCTR_Sw_Pushed_1",
+                DisplayName = "Mode CTR (FO)",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true
+            },
+            ["EFIS_RangeTFC_FO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "EFIS_RangeTFC_Sw_Pushed_1",
+                DisplayName = "Range TFC (FO)",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true
+            },
+            ["EFIS_WXR_FO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "EFIS_WXR_Sw_Pushed_1",
+                DisplayName = "WXR (FO)",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true
+            },
+            ["EFIS_STA_FO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "EFIS_STA_Sw_Pushed_1",
+                DisplayName = "STA (FO)",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true
+            },
+            ["EFIS_WPT_FO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "EFIS_WPT_Sw_Pushed_1",
+                DisplayName = "WPT (FO)",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true
+            },
+            ["EFIS_ARPT_FO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "EFIS_ARPT_Sw_Pushed_1",
+                DisplayName = "ARPT (FO)",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true
+            },
+            ["EFIS_DATA_FO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "EFIS_DATA_Sw_Pushed_1",
+                DisplayName = "DATA (FO)",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true
+            },
+            ["EFIS_POS_FO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "EFIS_POS_Sw_Pushed_1",
+                DisplayName = "POS (FO)",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true
+            },
+            ["EFIS_TERR_FO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "EFIS_TERR_Sw_Pushed_1",
+                DisplayName = "TERR (FO)",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true
+            },
+
+            // =================================================================
+            // GLARESHIELD — MODE CONTROL PANEL (MCP) — Read-only displays
+            // =================================================================
+            ["MCP_IASMach"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MCP_IASMach",
+                DisplayName = "Speed",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                PreventTextInput = true
+            },
+            ["MCP_Heading"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MCP_Heading",
+                DisplayName = "Heading",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                PreventTextInput = true
+            },
+            ["MCP_Altitude"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MCP_Altitude",
+                DisplayName = "Altitude",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                PreventTextInput = true
+            },
+            ["MCP_VertSpeed"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MCP_VertSpeed",
+                DisplayName = "Vertical Speed",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                PreventTextInput = true
+            },
+
+            // MCP — Boolean switches
+            ["MCP_FD_L"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MCP_FD_Sw_On_0",
+                DisplayName = "Flight Director Left",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["MCP_FD_R"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MCP_FD_Sw_On_1",
+                DisplayName = "Flight Director Right",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["MCP_ATArm_L"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MCP_ATArm_Sw_On_0",
+                DisplayName = "AT Arm Left",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Arm" }
+            },
+            ["MCP_ATArm_R"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MCP_ATArm_Sw_On_1",
+                DisplayName = "AT Arm Right",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Arm" }
+            },
+            ["MCP_AltIncrSel"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MCP_AltIncrSel",
+                DisplayName = "Alt Increment",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Auto", [1] = "1000" }
+            },
+            ["MCP_DisengageBar"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MCP_DisengageBar",
+                DisplayName = "Disengage Bar",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Up", [1] = "Down" }
+            },
+
+            // MCP — Selectors
+            ["MCP_BankLimitSel"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MCP_BankLimitSel",
+                DisplayName = "Bank Limit",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Auto", [1] = "5", [2] = "10", [3] = "15", [4] = "20", [5] = "25" }
+            },
+            ["MCP_HDGDialMode"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MCP_HDGDial_Mode",
+                DisplayName = "HDG/TRK Mode",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "HDG", [1] = "TRK" }
+            },
+            ["MCP_VSDialMode"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MCP_VSDial_Mode",
+                DisplayName = "VS/FPA Mode",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "VS", [1] = "FPA" }
+            },
+
+            // MCP — Mode engage buttons (momentary)
+            ["MCP_LNAV"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MCP_LNAV_Sw_Pushed",
+                DisplayName = "LNAV",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
+            ["MCP_VNAV"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MCP_VNAV_Sw_Pushed",
+                DisplayName = "VNAV",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
+            ["MCP_FLCH"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MCP_FLCH_Sw_Pushed",
+                DisplayName = "FLCH",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
+            ["MCP_HDG_HOLD"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MCP_HDG_HOLD_Sw_Pushed",
+                DisplayName = "HDG HOLD",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
+            ["MCP_VS_FPA"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MCP_VS_FPA_Sw_Pushed",
+                DisplayName = "VS/FPA",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
+            ["MCP_ALT_HOLD"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MCP_ALT_HOLD_Sw_Pushed",
+                DisplayName = "ALT HOLD",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
+            ["MCP_LOC"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MCP_LOC_Sw_Pushed",
+                DisplayName = "LOC",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
+            ["MCP_APP"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MCP_APP_Sw_Pushed",
+                DisplayName = "APP",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
+            ["MCP_AT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MCP_AT_Sw_Pushed",
+                DisplayName = "A/T",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
+            ["MCP_CLB_CON"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MCP_CLB_CON_Sw_Pushed",
+                DisplayName = "CLB CON",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
+            ["MCP_AP_L"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MCP_AP_Sw_Pushed_0",
+                DisplayName = "AP Left",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
+            ["MCP_AP_R"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MCP_AP_Sw_Pushed_1",
+                DisplayName = "AP Right",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
+            ["MCP_SpeedPush"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MCP_Speeed_Sw_Pushed",
+                DisplayName = "Speed Push",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
+            ["MCP_HeadingPush"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MCP_Heading_Sw_Pushed",
+                DisplayName = "Heading Push",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
+            ["MCP_AltitudePush"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MCP_Altitude_Sw_Pushed",
+                DisplayName = "Altitude Push",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
+            ["MCP_IAS_MACH_Toggle"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MCP_IAS_MACH_Toggle_Sw_Pushed",
+                DisplayName = "IAS/MACH Toggle",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
+            ["MCP_HDG_TRK_Toggle"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MCP_HDG_TRK_Toggle_Sw_Pushed",
+                DisplayName = "HDG/TRK Toggle",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
+            ["MCP_VS_FPA_Toggle"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MCP_VS_FPA_Toggle_Sw_Pushed",
+                DisplayName = "VS/FPA Toggle",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
+
+            // MCP — Annunciators (monitored, not in panel controls)
+            ["MCP_annunAP_L"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MCP_annunAP_0",
+                DisplayName = "AP Left Annunciator",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["MCP_annunAP_R"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MCP_annunAP_1",
+                DisplayName = "AP Right Annunciator",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["MCP_annunAT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MCP_annunAT",
+                DisplayName = "A/T Annunciator",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["MCP_annunLNAV"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MCP_annunLNAV",
+                DisplayName = "LNAV Annunciator",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["MCP_annunVNAV"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MCP_annunVNAV",
+                DisplayName = "VNAV Annunciator",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["MCP_annunFLCH"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MCP_annunFLCH",
+                DisplayName = "FLCH Annunciator",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["MCP_annunHDG_HOLD"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MCP_annunHDG_HOLD",
+                DisplayName = "HDG HOLD Annunciator",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["MCP_annunVS_FPA"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MCP_annunVS_FPA",
+                DisplayName = "VS/FPA Annunciator",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["MCP_annunALT_HOLD"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MCP_annunALT_HOLD",
+                DisplayName = "ALT HOLD Annunciator",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["MCP_annunLOC"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MCP_annunLOC",
+                DisplayName = "LOC Annunciator",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["MCP_annunAPP"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MCP_annunAPP",
+                DisplayName = "APP Annunciator",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+
+            // =================================================================
+            // GLARESHIELD — DISPLAY SELECT PANEL (DSP)
+            // =================================================================
+            ["DSP_L_INBD"] = new SimConnect.SimVarDefinition
+            {
+                Name = "DSP_L_INBD_Sw",
+                DisplayName = "L INBD",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
+            ["DSP_R_INBD"] = new SimConnect.SimVarDefinition
+            {
+                Name = "DSP_R_INBD_Sw",
+                DisplayName = "R INBD",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
+            ["DSP_LWR_CTR"] = new SimConnect.SimVarDefinition
+            {
+                Name = "DSP_LWR_CTR_Sw",
+                DisplayName = "LWR CTR",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
+            ["DSP_ENG"] = new SimConnect.SimVarDefinition
+            {
+                Name = "DSP_ENG_Sw",
+                DisplayName = "ENG",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
+            ["DSP_STAT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "DSP_STAT_Sw",
+                DisplayName = "STAT",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
+            ["DSP_ELEC"] = new SimConnect.SimVarDefinition
+            {
+                Name = "DSP_ELEC_Sw",
+                DisplayName = "ELEC",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
+            ["DSP_HYD"] = new SimConnect.SimVarDefinition
+            {
+                Name = "DSP_HYD_Sw",
+                DisplayName = "HYD",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
+            ["DSP_FUEL"] = new SimConnect.SimVarDefinition
+            {
+                Name = "DSP_FUEL_Sw",
+                DisplayName = "FUEL",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
+            ["DSP_AIR"] = new SimConnect.SimVarDefinition
+            {
+                Name = "DSP_AIR_Sw",
+                DisplayName = "AIR",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
+            ["DSP_DOOR"] = new SimConnect.SimVarDefinition
+            {
+                Name = "DSP_DOOR_Sw",
+                DisplayName = "DOOR",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
+            ["DSP_GEAR"] = new SimConnect.SimVarDefinition
+            {
+                Name = "DSP_GEAR_Sw",
+                DisplayName = "GEAR",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
+            ["DSP_FCTL"] = new SimConnect.SimVarDefinition
+            {
+                Name = "DSP_FCTL_Sw",
+                DisplayName = "FCTL",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
+            ["DSP_CAM"] = new SimConnect.SimVarDefinition
+            {
+                Name = "DSP_CAM_Sw",
+                DisplayName = "CAM",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
+            ["DSP_CHKL"] = new SimConnect.SimVarDefinition
+            {
+                Name = "DSP_CHKL_Sw",
+                DisplayName = "CHKL",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
+            ["DSP_COMM"] = new SimConnect.SimVarDefinition
+            {
+                Name = "DSP_COMM_Sw",
+                DisplayName = "COMM",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
+            ["DSP_NAV"] = new SimConnect.SimVarDefinition
+            {
+                Name = "DSP_NAV_Sw",
+                DisplayName = "NAV",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
+            ["DSP_CANC_RCL"] = new SimConnect.SimVarDefinition
+            {
+                Name = "DSP_CANC_RCL_Sw",
+                DisplayName = "CANC/RCL",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
+            // DSP — Annunciators (monitored, not in panel controls)
+            ["DSP_annunL_INBD"] = new SimConnect.SimVarDefinition
+            {
+                Name = "DSP_annunL_INBD",
+                DisplayName = "L INBD Annunciator",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["DSP_annunR_INBD"] = new SimConnect.SimVarDefinition
+            {
+                Name = "DSP_annunR_INBD",
+                DisplayName = "R INBD Annunciator",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["DSP_annunLWR_CTR"] = new SimConnect.SimVarDefinition
+            {
+                Name = "DSP_annunLWR_CTR",
+                DisplayName = "LWR CTR Annunciator",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+
+            // =================================================================
+            // GLARESHIELD — WARNING
+            // =================================================================
+            ["WARN_Reset_L"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WARN_Reset_Sw_Pushed_0",
+                DisplayName = "Master Warning Reset Left",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true
+            },
+            ["WARN_Reset_R"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WARN_Reset_Sw_Pushed_1",
+                DisplayName = "Master Warning Reset Right",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true
+            },
+            ["WARN_annunMasterWarning_L"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WARN_annunMASTER_WARNING_0",
+                DisplayName = "Master Warning Left",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["WARN_annunMasterWarning_R"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WARN_annunMASTER_WARNING_1",
+                DisplayName = "Master Warning Right",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["WARN_annunMasterCaution_L"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WARN_annunMASTER_CAUTION_0",
+                DisplayName = "Master Caution Left",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["WARN_annunMasterCaution_R"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WARN_annunMASTER_CAUTION_1",
+                DisplayName = "Master Caution Right",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
         };
     }
 
@@ -2165,6 +3197,58 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["EEC/APU Maintenance"] = new List<string>
             {
                 "ENG_EECTest_L", "ENG_EECTest_R", "APU_PowerTest"
+            },
+
+            // Glareshield — EFIS Captain
+            ["EFIS Captain"] = new List<string>
+            {
+                "EFIS_MinsSelBARO_Capt", "EFIS_BaroSelHPA_Capt",
+                "EFIS_VORADFSel1_Capt", "EFIS_VORADFSel2_Capt",
+                "EFIS_ModeSel_Capt", "EFIS_RangeSel_Capt",
+                "EFIS_MinsKnob_Capt", "EFIS_BaroKnob_Capt",
+                "EFIS_MinsRST_Capt", "EFIS_BaroSTD_Capt",
+                "EFIS_ModeCTR_Capt", "EFIS_RangeTFC_Capt",
+                "EFIS_WXR_Capt", "EFIS_STA_Capt", "EFIS_WPT_Capt",
+                "EFIS_ARPT_Capt", "EFIS_DATA_Capt", "EFIS_POS_Capt", "EFIS_TERR_Capt"
+            },
+
+            // Glareshield — EFIS First Officer
+            ["EFIS First Officer"] = new List<string>
+            {
+                "EFIS_MinsSelBARO_FO", "EFIS_BaroSelHPA_FO",
+                "EFIS_VORADFSel1_FO", "EFIS_VORADFSel2_FO",
+                "EFIS_ModeSel_FO", "EFIS_RangeSel_FO",
+                "EFIS_MinsKnob_FO", "EFIS_BaroKnob_FO",
+                "EFIS_MinsRST_FO", "EFIS_BaroSTD_FO",
+                "EFIS_ModeCTR_FO", "EFIS_RangeTFC_FO",
+                "EFIS_WXR_FO", "EFIS_STA_FO", "EFIS_WPT_FO",
+                "EFIS_ARPT_FO", "EFIS_DATA_FO", "EFIS_POS_FO", "EFIS_TERR_FO"
+            },
+
+            // Glareshield — Mode Control Panel
+            ["Mode Control Panel"] = new List<string>
+            {
+                "MCP_IASMach", "MCP_Heading", "MCP_Altitude", "MCP_VertSpeed",
+                "MCP_FD_L", "MCP_FD_R",
+                "MCP_ATArm_L", "MCP_ATArm_R",
+                "MCP_AltIncrSel", "MCP_DisengageBar",
+                "MCP_BankLimitSel", "MCP_HDGDialMode", "MCP_VSDialMode",
+                "MCP_LNAV", "MCP_VNAV", "MCP_FLCH",
+                "MCP_HDG_HOLD", "MCP_VS_FPA", "MCP_ALT_HOLD",
+                "MCP_LOC", "MCP_APP", "MCP_AT", "MCP_CLB_CON",
+                "MCP_AP_L", "MCP_AP_R",
+                "MCP_SpeedPush", "MCP_HeadingPush", "MCP_AltitudePush",
+                "MCP_IAS_MACH_Toggle", "MCP_HDG_TRK_Toggle", "MCP_VS_FPA_Toggle",
+                "WARN_Reset_L", "WARN_Reset_R"
+            },
+
+            // Glareshield — Display Select Panel
+            ["Display Select Panel"] = new List<string>
+            {
+                "DSP_L_INBD", "DSP_R_INBD", "DSP_LWR_CTR",
+                "DSP_ENG", "DSP_STAT", "DSP_ELEC", "DSP_HYD", "DSP_FUEL",
+                "DSP_AIR", "DSP_DOOR", "DSP_GEAR", "DSP_FCTL",
+                "DSP_CAM", "DSP_CHKL", "DSP_COMM", "DSP_NAV", "DSP_CANC_RCL"
             },
         };
     }
