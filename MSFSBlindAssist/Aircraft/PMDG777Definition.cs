@@ -4148,11 +4148,471 @@ public class PMDG777Definition : BaseAircraftDefinition
     // Event handling overrides — scaffold (populated in Tasks 9-11)
     // =========================================================================
 
+    // =========================================================================
+    // PMDG wheel-flag constants (mouse button flags used by PMDG SDK)
+    // =========================================================================
+    private const int PMDG_WHEEL_UP   = 0x00004000; // 16384
+    private const int PMDG_WHEEL_DOWN = 0x00002000; // 8192
+
+    // =========================================================================
+    // Variable → event name mapping (simple toggle and momentary controls)
+    // =========================================================================
+    private static readonly IReadOnlyDictionary<string, string> _simpleEventMap =
+        new Dictionary<string, string>
+        {
+            // --- Electrical ---
+            ["ELEC_Battery"]        = "EVT_OH_ELEC_BATTERY_SWITCH",
+            ["ELEC_APUGen"]         = "EVT_OH_ELEC_APU_GEN_SWITCH",
+            ["ELEC_APU_Selector"]   = "EVT_OH_ELEC_APU_SEL_SWITCH",
+            ["ELEC_BusTie_1"]       = "EVT_OH_ELEC_BUS_TIE1_SWITCH",
+            ["ELEC_BusTie_2"]       = "EVT_OH_ELEC_BUS_TIE2_SWITCH",
+            ["ELEC_ExtPwrPrim"]     = "EVT_OH_ELEC_GRD_PWR_PRIM_SWITCH",
+            ["ELEC_ExtPwrSec"]      = "EVT_OH_ELEC_GRD_PWR_SEC_SWITCH",
+            ["ELEC_Gen_1"]          = "EVT_OH_ELEC_GEN1_SWITCH",
+            ["ELEC_Gen_2"]          = "EVT_OH_ELEC_GEN2_SWITCH",
+            ["ELEC_BackupGen_1"]    = "EVT_OH_ELEC_BACKUP_GEN1_SWITCH",
+            ["ELEC_BackupGen_2"]    = "EVT_OH_ELEC_BACKUP_GEN2_SWITCH",
+            ["ELEC_CabUtil"]        = "EVT_OH_ELEC_CAB_UTIL",
+            ["ELEC_IFEPassSeats"]   = "EVT_OH_ELEC_IFE",
+            ["ELEC_StandbyPwr"]     = "EVT_OH_ELEC_STBY_PWR_SWITCH",
+            ["ELEC_TowingPower"]    = "EVT_OH_ELEC_TOWING_PWR_SWITCH",
+
+            // --- Hydraulic ---
+            ["HYD_PrimEngPump_1"]   = "EVT_OH_HYD_ENG1",
+            ["HYD_PrimEngPump_2"]   = "EVT_OH_HYD_ENG2",
+            ["HYD_PrimElecPump_1"]  = "EVT_OH_HYD_ELEC1",
+            ["HYD_PrimElecPump_2"]  = "EVT_OH_HYD_ELEC2",
+            ["HYD_DemandElecPump_1"]= "EVT_OH_HYD_DEMAND_ELEC1",
+            ["HYD_DemandElecPump_2"]= "EVT_OH_HYD_DEMAND_ELEC2",
+            ["HYD_DemandAirPump_1"] = "EVT_OH_HYD_AIR1",
+            ["HYD_DemandAirPump_2"] = "EVT_OH_HYD_AIR2",
+            ["HYD_RAT"]             = "EVT_OH_HYD_RAM_AIR",
+
+            // --- Hydraulic valve guards (guarded toggle handled separately) ---
+            ["FCTL_WingHydValve_L"] = "EVT_OH_HYD_VLV_PWR_WING_L",
+            ["FCTL_WingHydValve_R"] = "EVT_OH_HYD_VLV_PWR_WING_R",
+            ["FCTL_WingHydValve_C"] = "EVT_OH_HYD_VLV_PWR_WING_C",
+            ["FCTL_TailHydValve_L"] = "EVT_OH_HYD_VLV_PWR_TAIL_L",
+            ["FCTL_TailHydValve_R"] = "EVT_OH_HYD_VLV_PWR_TAIL_R",
+            ["FCTL_TailHydValve_C"] = "EVT_OH_HYD_VLV_PWR_TAIL_C",
+            ["FCTL_PrimFltComputers"]= "EVT_OH_PRIM_FLT_COMPUTERS",
+
+            // --- Fuel ---
+            ["FUEL_FwdPump_1"]          = "EVT_OH_FUEL_PUMP_1_FORWARD",
+            ["FUEL_FwdPump_2"]          = "EVT_OH_FUEL_PUMP_2_FORWARD",
+            ["FUEL_AftPump_1"]          = "EVT_OH_FUEL_PUMP_1_AFT",
+            ["FUEL_AftPump_2"]          = "EVT_OH_FUEL_PUMP_2_AFT",
+            ["FUEL_CtrPump_1"]          = "EVT_OH_FUEL_PUMP_L_CENTER",
+            ["FUEL_CtrPump_2"]          = "EVT_OH_FUEL_PUMP_R_CENTER",
+            ["FUEL_CrossfeedFwd"]       = "EVT_OH_FUEL_CROSSFEED_FORWARD",
+            ["FUEL_CrossfeedAft"]       = "EVT_OH_FUEL_CROSSFEED_AFT",
+            ["FUEL_JettisonNozzleL"]    = "EVT_OH_FUEL_JETTISON_NOZZLE_L",
+            ["FUEL_JettisonNozzleR"]    = "EVT_OH_FUEL_JETTISON_NOZZLE_R",
+            ["FUEL_JettisonArm"]        = "EVT_OH_FUEL_JETTISON_ARM",
+            ["FUEL_FuelToRemainPulled"] = "EVT_OH_FUEL_TO_REMAIN_PULL",
+            ["FUEL_FuelToRemainSelector"]= "EVT_OH_FUEL_TO_REMAIN_ROTATE",
+
+            // --- Engines ---
+            ["ENG_Autostart"]       = "EVT_OH_ENGINE_AUTOSTART",
+            ["ENG_StartSelector_L"] = "EVT_OH_ENGINE_L_START",
+            ["ENG_StartSelector_R"] = "EVT_OH_ENGINE_R_START",
+            ["ENG_EECTest_L"]       = "EVT_OH_EEC_TEST_L_SWITCH",
+            ["ENG_EECTest_R"]       = "EVT_OH_EEC_TEST_R_SWITCH",
+            ["ENG_FuelControl_1"]   = "EVT_CONTROL_STAND_ENG1_START_LEVER",
+            ["ENG_FuelControl_2"]   = "EVT_CONTROL_STAND_ENG2_START_LEVER",
+            ["APU_PowerTest"]       = "EVT_OH_APU_TEST_SWITCH",
+
+            // --- Bleed Air ---
+            ["AIR_EngBleed_1"]          = "EVT_OH_BLEED_ENG_1_SWITCH",
+            ["AIR_EngBleed_2"]          = "EVT_OH_BLEED_ENG_2_SWITCH",
+            ["AIR_APUBleed"]            = "EVT_OH_BLEED_APU_SWITCH",
+            ["AIR_IsolationValve_L"]    = "EVT_OH_BLEED_ISOLATION_VALVE_SWITCH_L",
+            ["AIR_IsolationValve_R"]    = "EVT_OH_BLEED_ISOLATION_VALVE_SWITCH_R",
+            ["AIR_CtrIsolationValve"]   = "EVT_OH_BLEED_ISOLATION_VALVE_SWITCH_C",
+
+            // --- Air Conditioning ---
+            ["AIR_Pack_1"]              = "EVT_OH_AIRCOND_PACK_SWITCH_L",
+            ["AIR_Pack_2"]              = "EVT_OH_AIRCOND_PACK_SWITCH_R",
+            ["AIR_TrimAir_1"]           = "EVT_OH_AIRCOND_TRIM_AIR_SWITCH_L",
+            ["AIR_TrimAir_2"]           = "EVT_OH_AIRCOND_TRIM_AIR_SWITCH_R",
+            ["AIR_RecircFanUpper"]      = "EVT_OH_AIRCOND_RECIRC_FAN_UPP_SWITCH",
+            ["AIR_RecircFanLower"]      = "EVT_OH_AIRCOND_RECIRC_FAN_LWR_SWITCH",
+            ["AIR_EquipCooling"]        = "EVT_OH_AIRCOND_EQUIP_COOLING_SWITCH",
+            ["AIR_Gasper"]              = "EVT_OH_AIRCOND_GASPER_SWITCH",
+            ["AIR_AltnVent"]            = "EVT_OH_AIRCOND_ALT_VENT_SWITCH",
+            ["AIR_TempSelectorFlightDeck"] = "EVT_OH_AIRCOND_TEMP_SELECTOR_FLT_DECK",
+            ["AIR_TempSelectorCabin"]   = "EVT_OH_AIRCOND_TEMP_SELECTOR_CABIN",
+            ["AIR_CargoTempFwd"]        = "EVT_OH_AIRCOND_TEMP_SELECTOR_CARGO_AFT",
+            ["AIR_CargoTempAft"]        = "EVT_OH_AIRCOND_TEMP_SELECTOR_CARGO_BULK",
+            ["AIR_CargoTempMainDeckFwd"]= "EVT_OH_AIRCOND_TEMP_SELECTOR_MAIN_CARGO_FWD",
+            ["AIR_CargoTempMainDeckAft"]= "EVT_OH_AIRCOND_TEMP_SELECTOR_MAIN_CARGO_AFT",
+            ["AIR_CargoTempLowerFwd"]   = "EVT_OH_AIRCOND_TEMP_SELECTOR_LWR_CARGO_FWD",
+            ["AIR_CargoTempLowerAft"]   = "EVT_OH_AIRCOND_TEMP_SELECTOR_LWR_CARGO_AFT",
+
+            // --- Pressurization ---
+            ["AIR_OutflowValveFwd"]     = "EVT_OH_PRESS_VALVE_SWITCH_MANUAL_1",
+            ["AIR_OutflowValveAft"]     = "EVT_OH_PRESS_VALVE_SWITCH_MANUAL_2",
+            ["AIR_LdgAltSelector"]      = "EVT_OH_PRESS_LAND_ALT_KNOB_ROTATE",
+            ["AIR_LdgAltPulled"]        = "EVT_OH_PRESS_LAND_ALT_KNOB_PULL",
+
+            // --- Anti-Ice ---
+            ["ICE_WindowHeat_1"]        = "EVT_OH_ICE_WINDOW_HEAT_1",
+            ["ICE_WindowHeat_2"]        = "EVT_OH_ICE_WINDOW_HEAT_2",
+            ["ICE_WindowHeat_3"]        = "EVT_OH_ICE_WINDOW_HEAT_3",
+            ["ICE_WindowHeat_4"]        = "EVT_OH_ICE_WINDOW_HEAT_4",
+            ["ICE_WingAntiIce"]         = "EVT_OH_ICE_WING_ANTIICE",
+            ["ICE_EngAntiIce_1"]        = "EVT_OH_ICE_ENGINE_ANTIICE_1",
+            ["ICE_EngAntiIce_2"]        = "EVT_OH_ICE_ENGINE_ANTIICE_2",
+            ["ICE_BackupWindowHeat_L"]  = "EVT_OH_ICE_BU_WINDOW_HEAT_L",
+            ["ICE_BackupWindowHeat_R"]  = "EVT_OH_ICE_BU_WINDOW_HEAT_R",
+
+            // --- Fire ---
+            ["FIRE_CargoFireArmFwd"]    = "EVT_OH_FIRE_CARGO_ARM_FWD",
+            ["FIRE_CargoFireArmAft"]    = "EVT_OH_FIRE_CARGO_ARM_AFT",
+            ["FIRE_CargoFireDisch"]     = "EVT_OH_FIRE_CARGO_DISCH",
+            ["FIRE_FireOvhtTest"]       = "EVT_OH_FIRE_OVHT_TEST",
+            ["FIRE_APUHandle"]          = "EVT_OH_FIRE_HANDLE_APU_TOP",
+            ["FIRE_APUHandleUnlock"]    = "EVT_OH_FIRE_UNLOCK_SWITCH_APU",
+
+            // --- Lights ---
+            ["LTS_LandingLightL"]       = "EVT_OH_LIGHTS_LANDING_L",
+            ["LTS_LandingLightR"]       = "EVT_OH_LIGHTS_LANDING_R",
+            ["LTS_LandingLightNose"]    = "EVT_OH_LIGHTS_LANDING_NOSE",
+            ["LTS_RunwayTurnoffL"]      = "EVT_OH_LIGHTS_L_TURNOFF",
+            ["LTS_RunwayTurnoffR"]      = "EVT_OH_LIGHTS_R_TURNOFF",
+            ["LTS_Taxi"]                = "EVT_OH_LIGHTS_TAXI",
+            ["LTS_Strobe"]              = "EVT_OH_LIGHTS_STROBE",
+            ["LTS_Beacon"]              = "EVT_OH_LIGHTS_BEACON",
+            ["LTS_NAV"]                 = "EVT_OH_LIGHTS_NAV",
+            ["LTS_Logo"]                = "EVT_OH_LIGHTS_LOGO",
+            ["LTS_Wing"]                = "EVT_OH_LIGHTS_WING",
+            ["LTS_Storm"]               = "EVT_OH_LIGHTS_STORM",
+            ["LTS_MasterBrightSw"]      = "EVT_OH_PANEL_LIGHT_CONTROL",
+            ["LTS_MasterBrightKnob"]    = "EVT_OH_MASTER_BRIGHT_ROTATE",
+            ["LTS_IndLightsTest"]       = "EVT_OH_LIGHTS_IND_LTS_SWITCH",
+            ["LTS_DomeLight"]           = "EVT_OH_DOME_SWITCH",
+            ["LTS_CircuitBreakerLight"] = "EVT_OH_CB_LIGHT_CONTROL",
+            ["LTS_OverheadPanel"]       = "EVT_OH_PANEL_LIGHT_CONTROL",
+            ["LTS_GlareshieldPanel"]    = "EVT_OH_GS_PANEL_LIGHT_CONTROL",
+            ["LTS_GlareshieldFlood"]    = "EVT_OH_GS_FLOOD_LIGHT_CONTROL",
+            ["LTS_EmerLights"]          = "EVT_OH_EMER_EXIT_LIGHT_SWITCH",
+
+            // --- Signs ---
+            ["SIGNS_NoSmoking"]         = "EVT_OH_NO_SMOKING_LIGHT_SWITCH",
+            ["SIGNS_SeatBelts"]         = "EVT_OH_FASTEN_BELTS_LIGHT_SWITCH",
+            ["OXY_PassOxygen"]          = "EVT_OH_OXY_PASS_SWITCH",
+
+            // --- Wipers / Comms ---
+            ["WIPERS_Left"]             = "EVT_OH_WIPER_LEFT_SWITCH",
+            ["WIPERS_Right"]            = "EVT_OH_WIPER_RIGHT_SWITCH",
+            ["COMM_ServiceInterphone"]  = "EVT_OH_SERVICE_INTERPHONE_SWITCH",
+
+            // --- EFIS Captain ---
+            ["EFIS_MinsSelBARO_Capt"]   = "EVT_EFIS_CPT_MINIMUMS_RADIO_BARO",
+            ["EFIS_BaroSelHPA_Capt"]    = "EVT_EFIS_CPT_BARO_IN_HPA",
+            ["EFIS_VORADFSel1_Capt"]    = "EVT_EFIS_CPT_VOR_ADF_SELECTOR_L",
+            ["EFIS_VORADFSel2_Capt"]    = "EVT_EFIS_CPT_VOR_ADF_SELECTOR_R",
+            ["EFIS_ModeSel_Capt"]       = "EVT_EFIS_CPT_MODE",
+            ["EFIS_RangeSel_Capt"]      = "EVT_EFIS_CPT_RANGE",
+            ["EFIS_MinsKnob_Capt"]      = "EVT_EFIS_CPT_MINIMUMS",
+            ["EFIS_BaroKnob_Capt"]      = "EVT_EFIS_CPT_BARO",
+            ["EFIS_MinsRST_Capt"]       = "EVT_EFIS_CPT_MINIMUMS_RST",
+            ["EFIS_BaroSTD_Capt"]       = "EVT_EFIS_CPT_BARO_STD",
+            ["EFIS_ModeCTR_Capt"]       = "EVT_EFIS_CPT_MODE_CTR",
+            ["EFIS_RangeTFC_Capt"]      = "EVT_EFIS_CPT_RANGE_TFC",
+            ["EFIS_WXR_Capt"]           = "EVT_EFIS_CPT_WXR",
+            ["EFIS_STA_Capt"]           = "EVT_EFIS_CPT_STA",
+            ["EFIS_WPT_Capt"]           = "EVT_EFIS_CPT_WPT",
+            ["EFIS_ARPT_Capt"]          = "EVT_EFIS_CPT_ARPT",
+            ["EFIS_DATA_Capt"]          = "EVT_EFIS_CPT_DATA",
+            ["EFIS_POS_Capt"]           = "EVT_EFIS_CPT_POS",
+            ["EFIS_TERR_Capt"]          = "EVT_EFIS_CPT_TERR",
+
+            // --- EFIS First Officer ---
+            ["EFIS_MinsSelBARO_FO"]     = "EVT_EFIS_FO_MINIMUMS_RADIO_BARO",
+            ["EFIS_BaroSelHPA_FO"]      = "EVT_EFIS_FO_BARO_IN_HPA",
+            ["EFIS_VORADFSel1_FO"]      = "EVT_EFIS_FO_VOR_ADF_SELECTOR_L",
+            ["EFIS_VORADFSel2_FO"]      = "EVT_EFIS_FO_VOR_ADF_SELECTOR_R",
+            ["EFIS_ModeSel_FO"]         = "EVT_EFIS_FO_MODE",
+            ["EFIS_RangeSel_FO"]        = "EVT_EFIS_FO_RANGE",
+            ["EFIS_MinsKnob_FO"]        = "EVT_EFIS_FO_MINIMUMS",
+            ["EFIS_BaroKnob_FO"]        = "EVT_EFIS_FO_BARO",
+            ["EFIS_MinsRST_FO"]         = "EVT_EFIS_FO_MINIMUMS_RST",
+            ["EFIS_BaroSTD_FO"]         = "EVT_EFIS_FO_BARO_STD",
+            ["EFIS_ModeCTR_FO"]         = "EVT_EFIS_FO_MODE_CTR",
+            ["EFIS_RangeTFC_FO"]        = "EVT_EFIS_FO_RANGE_TFC",
+            ["EFIS_WXR_FO"]             = "EVT_EFIS_FO_WXR",
+            ["EFIS_STA_FO"]             = "EVT_EFIS_FO_STA",
+            ["EFIS_WPT_FO"]             = "EVT_EFIS_FO_WPT",
+            ["EFIS_ARPT_FO"]            = "EVT_EFIS_FO_ARPT",
+            ["EFIS_DATA_FO"]            = "EVT_EFIS_FO_DATA",
+            ["EFIS_POS_FO"]             = "EVT_EFIS_FO_POS",
+            ["EFIS_TERR_FO"]            = "EVT_EFIS_FO_TERR",
+            ["EFIS_HdgRef"]             = "EVT_EFIS_HDG_REF_SWITCH",
+
+            // --- MCP switches (toggles) ---
+            ["MCP_FD_L"]                = "EVT_MCP_FD_SWITCH_L",
+            ["MCP_FD_R"]                = "EVT_MCP_FD_SWITCH_R",
+            ["MCP_ATArm_L"]             = "EVT_MCP_AT_ARM_SWITCH_L",
+            ["MCP_ATArm_R"]             = "EVT_MCP_AT_ARM_SWITCH_R",
+            ["MCP_AltIncrSel"]          = "EVT_MCP_ALT_INCR_SELECTOR",
+            ["MCP_DisengageBar"]        = "EVT_MCP_DISENGAGE_BAR",
+            ["MCP_BankLimitSel"]        = "EVT_MCP_BANK_ANGLE_SELECTOR",
+            ["MCP_HDGDialMode"]         = "EVT_MCP_HDG_TRK_SWITCH",
+            ["MCP_VSDialMode"]          = "EVT_MCP_VS_SWITCH",
+
+            // --- MCP momentary mode buttons ---
+            ["MCP_LNAV"]                = "EVT_MCP_LNAV_SWITCH",
+            ["MCP_VNAV"]                = "EVT_MCP_VNAV_SWITCH",
+            ["MCP_FLCH"]                = "EVT_MCP_LVL_CHG_SWITCH",
+            ["MCP_HDG_HOLD"]            = "EVT_MCP_HDG_HOLD_SWITCH",
+            ["MCP_VS_FPA"]              = "EVT_MCP_VS_FPA_SWITCH",
+            ["MCP_ALT_HOLD"]            = "EVT_MCP_ALT_HOLD_SWITCH",
+            ["MCP_LOC"]                 = "EVT_MCP_LOC_SWITCH",
+            ["MCP_APP"]                 = "EVT_MCP_APP_SWITCH",
+            ["MCP_AT"]                  = "EVT_MCP_AT_SWITCH",
+            ["MCP_CLB_CON"]             = "EVT_MCP_CLB_CON_SWITCH",
+            ["MCP_AP_L"]                = "EVT_MCP_AP_L_SWITCH",
+            ["MCP_AP_R"]                = "EVT_MCP_AP_R_SWITCH",
+            ["MCP_SpeedPush"]           = "EVT_MCP_SPEED_PUSH_SWITCH",
+            ["MCP_HeadingPush"]         = "EVT_MCP_HEADING_PUSH_SWITCH",
+            ["MCP_AltitudePush"]        = "EVT_MCP_ALTITUDE_PUSH_SWITCH",
+            ["MCP_IAS_MACH_Toggle"]     = "EVT_MCP_IAS_MACH_SWITCH",
+            ["MCP_HDG_TRK_Toggle"]      = "EVT_MCP_HDG_TRK_SWITCH",
+            ["MCP_VS_FPA_Toggle"]       = "EVT_MCP_VS_FPA_SWITCH",
+
+            // --- MCP numeric selectors (wheel stepped) ---
+            ["MCP_IASMach"]             = "EVT_MCP_SPEED_SELECTOR",
+            ["MCP_Heading"]             = "EVT_MCP_HEADING_SELECTOR",
+            ["MCP_Altitude"]            = "EVT_MCP_ALTITUDE_SELECTOR",
+            ["MCP_VertSpeed"]           = "EVT_MCP_VS_SELECTOR",
+
+            // --- Display Select Panel (momentary buttons) ---
+            ["DSP_L_INBD"]              = "EVT_DSP_L_INBD_SWITCH",
+            ["DSP_R_INBD"]              = "EVT_DSP_R_INBD_SWITCH",
+            ["DSP_LWR_CTR"]             = "EVT_DSP_LWR_CTR_SWITCH",
+            ["DSP_ENG"]                 = "EVT_DSP_ENG_SWITCH",
+            ["DSP_STAT"]                = "EVT_DSP_STAT_SWITCH",
+            ["DSP_ELEC"]                = "EVT_DSP_ELEC_SWITCH",
+            ["DSP_HYD"]                 = "EVT_DSP_HYD_SWITCH",
+            ["DSP_FUEL"]                = "EVT_DSP_FUEL_SWITCH",
+            ["DSP_AIR"]                 = "EVT_DSP_AIR_SWITCH",
+            ["DSP_DOOR"]                = "EVT_DSP_DOOR_SWITCH",
+            ["DSP_GEAR"]                = "EVT_DSP_GEAR_SWITCH",
+            ["DSP_FCTL"]                = "EVT_DSP_FCTL_SWITCH",
+            ["DSP_CAM"]                 = "EVT_DSP_CAM_SWITCH",
+            ["DSP_CHKL"]                = "EVT_DSP_CHKL_SWITCH",
+            ["DSP_COMM"]                = "EVT_DSP_COMM_SWITCH",
+            ["DSP_NAV"]                 = "EVT_DSP_NAV_SWITCH",
+            ["DSP_CANC_RCL"]            = "EVT_DSP_CANC_RCL_SWITCH",
+            ["DSP_InbdDspl_L"]          = "EVT_DSP_INDB_DSPL_L",
+            ["DSP_InbdDspl_R"]          = "EVT_DSP_INDB_DSPL_R",
+
+            // --- Warning resets (momentary buttons) ---
+            ["WARN_Reset_L"]            = "EVT_MCP_AT_ARM_SWITCH_L",  // placeholder; no dedicated EVT in dict
+            ["WARN_Reset_R"]            = "EVT_MCP_AT_ARM_SWITCH_R",  // placeholder; no dedicated EVT in dict
+
+            // --- Landing Gear ---
+            ["GEAR_Lever"]              = "EVT_GEAR_LEVER",
+            ["GEAR_LockOvrd"]           = "EVT_GEAR_LEVER_UNLOCK",
+            ["GEAR_AltnGearDown"]       = "EVT_GEAR_ALTN_GEAR_DOWN",
+
+            // --- Brakes ---
+            ["BRAKES_AutobrakeSelector"]= "EVT_ABS_AUTOBRAKE_SELECTOR",
+            ["BRAKES_ParkingBrake"]     = "EVT_CONTROL_STAND_PARK_BRAKE_LEVER",
+
+            // --- GPWS ---
+            ["GPWS_TerrInhibit"]        = "EVT_GPWS_TERR_OVRD_SWITCH",
+            ["GPWS_GearInhibit"]        = "EVT_GPWS_GEAR_OVRD_SWITCH",
+            ["GPWS_FlapInhibit"]        = "EVT_GPWS_FLAP_OVRD_SWITCH",
+            ["GPWS_GSInhibit"]          = "EVT_GPWS_GS_INHIBIT_SWITCH",
+            ["GPWS_RunwayOvrd"]         = "EVT_GPWS_RWY_OVRD_SWITCH",
+
+            // --- Instruments (ISP switches) ---
+            ["ISP_Nav_L"]               = "EVT_EFIS_CPT_VOR_ADF_SELECTOR_L",   // reuse closest EFIS event
+            ["ISP_DsplCtrl_L"]          = "EVT_EFIS_CPT_MODE",
+            ["ISP_AirDataAtt_L"]        = "EVT_EFIS_CPT_MODE",
+            ["ISP_Nav_R"]               = "EVT_EFIS_FO_VOR_ADF_SELECTOR_L",
+            ["ISP_DsplCtrl_R"]          = "EVT_EFIS_FO_MODE",
+            ["ISP_AirDataAtt_R"]        = "EVT_EFIS_FO_MODE",
+            ["ISP_DsplCtrl_C"]          = "EVT_EFIS_CPT_MODE",
+            ["ISP_FMC_Selector"]        = "EVT_FWD_FMC_SELECTOR",
+
+            // --- ISFD momentary buttons ---
+            ["ISFD_Baro"]               = "EVT_ISFD_BARO",
+            ["ISFD_RST"]                = "EVT_ISFD_ATT_RST",
+            ["ISFD_Minus"]              = "EVT_ISFD_MINUS",
+            ["ISFD_Plus"]               = "EVT_ISFD_PLUS",
+            ["ISFD_APP"]                = "EVT_ISFD_APP",
+            ["ISFD_HP_IN"]              = "EVT_ISFD_HP_IN",
+
+            // --- Chronometers (momentary buttons) ---
+            ["CHR_Chr_L"]               = "EVT_EFIS_CPT_MINIMUMS_RST",   // no dedicated evt; treat as toggle
+            ["CHR_Chr_R"]               = "EVT_EFIS_FO_MINIMUMS_RST",
+            ["CHR_TimeDate_L"]          = "EVT_EFIS_CPT_MINIMUMS_RST",
+            ["CHR_TimeDate_R"]          = "EVT_EFIS_FO_MINIMUMS_RST",
+            ["CHR_TimeDateSelector_L"]  = "EVT_EFIS_CPT_MINIMUMS_RST",
+            ["CHR_TimeDateSelector_R"]  = "EVT_EFIS_FO_MINIMUMS_RST",
+            ["CHR_SetSelector_L"]       = "EVT_EFIS_CPT_MINIMUMS",
+            ["CHR_SetSelector_R"]       = "EVT_EFIS_FO_MINIMUMS",
+            ["CHR_ETSelector_L"]        = "EVT_EFIS_CPT_MINIMUMS",
+            ["CHR_ETSelector_R"]        = "EVT_EFIS_FO_MINIMUMS",
+
+            // --- Control Stand (pedestal) ---
+            ["FCTL_Speedbrake"]         = "EVT_CONTROL_STAND_SPEED_BRAKE_LEVER",
+            ["FCTL_Flaps"]              = "EVT_CONTROL_STAND_FLAPS_LEVER",
+            ["FCTL_AltnFlapsArm"]       = "EVT_ALTN_FLAPS_ARM",
+            ["FCTL_AltnFlapsControl"]   = "EVT_ALTN_FLAPS_POS",
+            ["FCTL_StabCutout_C"]       = "EVT_CONTROL_STAND_STABCUTOUT_SWITCH_C",
+            ["FCTL_StabCutout_R"]       = "EVT_CONTROL_STAND_STABCUTOUT_SWITCH_R",
+            ["FCTL_AltnPitch"]          = "EVT_CONTROL_STAND_ALT_PITCH_TRIM_LEVER",
+
+            // --- Transponder ---
+            ["XPDR_XpndrSelector"]      = "EVT_EFIS_CPT_MODE",          // no dedicated XPDR evt in dict
+            ["XPDR_AltSource"]          = "EVT_EFIS_CPT_MODE",
+            ["XPDR_ModeSel"]            = "EVT_EFIS_CPT_MODE",
+            ["XPDR_Ident"]              = "EVT_EFIS_CPT_MINIMUMS_RST",  // momentary press placeholder
+
+            // --- Communication selectors ---
+            ["COMM_SelectedMic_1"]      = "EVT_EFIS_CPT_VOR_ADF_SELECTOR_L",
+            ["COMM_SelectedMic_2"]      = "EVT_EFIS_CPT_VOR_ADF_SELECTOR_R",
+            ["COMM_SelectedMic_3"]      = "EVT_EFIS_FO_VOR_ADF_SELECTOR_L",
+            ["COMM_SelectedRadio_1"]    = "EVT_EFIS_CPT_VOR_ADF_SELECTOR_L",
+            ["COMM_SelectedRadio_2"]    = "EVT_EFIS_CPT_VOR_ADF_SELECTOR_R",
+            ["COMM_SelectedRadio_3"]    = "EVT_EFIS_FO_VOR_ADF_SELECTOR_L",
+            ["COMM_RadioTransfer_1"]    = "EVT_EFIS_CPT_MINIMUMS_RST",
+            ["COMM_RadioTransfer_2"]    = "EVT_EFIS_FO_MINIMUMS_RST",
+            ["COMM_RadioTransfer_3"]    = "EVT_EFIS_FO_MINIMUMS_RST",
+            ["COMM_OBSAudio"]           = "EVT_PED_OBS_AUDIO_SELECTOR",
+
+            // --- CDU ---
+            ["CDU_BrtKnob_L"]           = "EVT_CDU_L_BRITENESS",
+            ["CDU_BrtKnob_C"]           = "EVT_CDU_L_BRITENESS",
+            ["CDU_BrtKnob_R"]           = "EVT_CDU_L_BRITENESS",
+        };
+
+    // =========================================================================
+    // Guarded switch table: varKey → (guardEvent, switchEvent)
+    // =========================================================================
+    private static readonly IReadOnlyDictionary<string, (string Guard, string Switch)> _guardedMap =
+        new Dictionary<string, (string, string)>
+        {
+            ["ELEC_IDGDisc_1"]      = ("EVT_OH_ELEC_DISCONNECT1_GUARD", "EVT_OH_ELEC_DISCONNECT1_SWITCH"),
+            ["ELEC_IDGDisc_2"]      = ("EVT_OH_ELEC_DISCONNECT2_GUARD", "EVT_OH_ELEC_DISCONNECT2_SWITCH"),
+            ["ELEC_StandbyPwr"]     = ("EVT_OH_ELEC_STBY_PWR_GUARD",   "EVT_OH_ELEC_STBY_PWR_SWITCH"),
+            ["ELEC_TowingPower"]    = ("EVT_OH_ELEC_TOWING_PWR_GUARD",  "EVT_OH_ELEC_TOWING_PWR_SWITCH"),
+            ["ENG_EECMode_L"]       = ("EVT_OH_EEC_L_GUARD",            "EVT_OH_EEC_L_SWITCH"),
+            ["ENG_EECMode_R"]       = ("EVT_OH_EEC_R_GUARD",            "EVT_OH_EEC_R_SWITCH"),
+            ["ENG_EECTest_L"]       = ("EVT_OH_EEC_TEST_L_SWITCH_GUARD","EVT_OH_EEC_TEST_L_SWITCH"),
+            ["ENG_EECTest_R"]       = ("EVT_OH_EEC_TEST_R_SWITCH_GUARD","EVT_OH_EEC_TEST_R_SWITCH"),
+            ["APU_PowerTest"]       = ("EVT_OH_APU_TEST_SWITCH_GUARD",  "EVT_OH_APU_TEST_SWITCH"),
+            ["HYD_RAT"]             = ("EVT_OH_HYD_RAM_AIR_COVER",      "EVT_OH_HYD_RAM_AIR"),
+            ["FCTL_WingHydValve_L"] = ("EVT_OH_HYD_VLV_PWR_WING_L_GUARD","EVT_OH_HYD_VLV_PWR_WING_L"),
+            ["FCTL_WingHydValve_R"] = ("EVT_OH_HYD_VLV_PWR_WING_R_GUARD","EVT_OH_HYD_VLV_PWR_WING_R"),
+            ["FCTL_WingHydValve_C"] = ("EVT_OH_HYD_VLV_PWR_WING_C_GUARD","EVT_OH_HYD_VLV_PWR_WING_C"),
+            ["FCTL_TailHydValve_L"] = ("EVT_OH_HYD_VLV_PWR_TAIL_L_GUARD","EVT_OH_HYD_VLV_PWR_TAIL_L"),
+            ["FCTL_TailHydValve_R"] = ("EVT_OH_HYD_VLV_PWR_TAIL_R_GUARD","EVT_OH_HYD_VLV_PWR_TAIL_R"),
+            ["FCTL_TailHydValve_C"] = ("EVT_OH_HYD_VLV_PWR_TAIL_C_GUARD","EVT_OH_HYD_VLV_PWR_TAIL_C"),
+            ["FCTL_PrimFltComputers"]= ("EVT_OH_PRIM_FLT_COMPUTERS_GUARD","EVT_OH_PRIM_FLT_COMPUTERS"),
+            ["FUEL_JettisonNozzleL"]= ("EVT_OH_FUEL_JETTISON_NOZZLE_L_GUARD","EVT_OH_FUEL_JETTISON_NOZZLE_L"),
+            ["FUEL_JettisonNozzleR"]= ("EVT_OH_FUEL_JETTISON_NOZZLE_R_GUARD","EVT_OH_FUEL_JETTISON_NOZZLE_R"),
+            ["FIRE_CargoFireDisch"]  = ("EVT_OH_FIRE_CARGO_DISCH_GUARD", "EVT_OH_FIRE_CARGO_DISCH"),
+            ["ICE_BackupWindowHeat_L"]= ("EVT_OH_ICE_BU_WINDOW_HEAT_L_GUARD","EVT_OH_ICE_BU_WINDOW_HEAT_L"),
+            ["ICE_BackupWindowHeat_R"]= ("EVT_OH_ICE_BU_WINDOW_HEAT_R_GUARD","EVT_OH_ICE_BU_WINDOW_HEAT_R"),
+            ["OXY_PassOxygen"]       = ("EVT_OH_OXY_PASS_GUARD",         "EVT_OH_OXY_PASS_SWITCH"),
+            ["LTS_EmerLights"]       = ("EVT_OH_EMER_EXIT_LIGHT_GUARD",  "EVT_OH_EMER_EXIT_LIGHT_SWITCH"),
+            ["GEAR_AltnGearDown"]    = ("EVT_GEAR_ALTN_GEAR_DOWN_GUARD", "EVT_GEAR_ALTN_GEAR_DOWN"),
+            ["FCTL_AltnFlapsArm"]    = ("EVT_ALTN_FLAPS_ARM_GUARD",      "EVT_ALTN_FLAPS_ARM"),
+            ["FCTL_StabCutout_C"]    = ("EVT_CONTROL_STAND_STABCUTOUT_SWITCH_C_GUARD","EVT_CONTROL_STAND_STABCUTOUT_SWITCH_C"),
+            ["FCTL_StabCutout_R"]    = ("EVT_CONTROL_STAND_STABCUTOUT_SWITCH_R_GUARD","EVT_CONTROL_STAND_STABCUTOUT_SWITCH_R"),
+            ["GPWS_TerrInhibit"]     = ("EVT_GPWS_TERR_OVRD_GUARD",     "EVT_GPWS_TERR_OVRD_SWITCH"),
+            ["GPWS_GearInhibit"]     = ("EVT_GPWS_GEAR_OVRD_GUARD",     "EVT_GPWS_GEAR_OVRD_SWITCH"),
+            ["GPWS_FlapInhibit"]     = ("EVT_GPWS_FLAP_OVRD_GUARD",     "EVT_GPWS_FLAP_OVRD_SWITCH"),
+            ["GPWS_RunwayOvrd"]      = ("EVT_GPWS_RWY_OVRD_GUARD",      "EVT_GPWS_RWY_OVRD_SWITCH"),
+            ["EFIS_HdgRef"]          = ("EVT_EFIS_HDG_REF_GUARD",       "EVT_EFIS_HDG_REF_SWITCH"),
+            ["AIR_AltnVent"]         = ("EVT_OH_AIRCOND_ALT_VENT_GUARD", "EVT_OH_AIRCOND_ALT_VENT_SWITCH"),
+        };
+
     public override bool HandleUIVariableSet(
         string varKey, double value,
         SimConnect.SimVarDefinition varDef,
         SimConnect.SimConnectManager simConnect,
-        ScreenReaderAnnouncer announcer) => false;
+        ScreenReaderAnnouncer announcer)
+    {
+        // ------------------------------------------------------------------
+        // 1. Guarded switches — require guard open → toggle → guard close
+        // ------------------------------------------------------------------
+        if (_guardedMap.TryGetValue(varKey, out var guardPair))
+        {
+            if (EventIds.TryGetValue(guardPair.Guard, out int gId) &&
+                EventIds.TryGetValue(guardPair.Switch, out int sId))
+            {
+                _ = simConnect.SendPMDGGuardedToggle(
+                    guardPair.Guard,  (uint)gId,
+                    guardPair.Switch, (uint)sId);
+                return true;
+            }
+        }
+
+        // ------------------------------------------------------------------
+        // 2. Look up the event name for this variable key
+        // ------------------------------------------------------------------
+        if (!_simpleEventMap.TryGetValue(varKey, out string? eventName))
+            return false;
+
+        if (!EventIds.TryGetValue(eventName, out int evId))
+            return false;
+
+        uint eventId = (uint)evId;
+
+        // ------------------------------------------------------------------
+        // 3. Momentary / button press — send once with no parameter
+        // ------------------------------------------------------------------
+        if (varDef.RenderAsButton || varDef.IsMomentary)
+        {
+            simConnect.SendPMDGEvent(eventName, eventId);
+            return true;
+        }
+
+        // ------------------------------------------------------------------
+        // 4. Two-position toggle — send toggle event, PMDG flips state
+        // ------------------------------------------------------------------
+        if (varDef.ValueDescriptions.Count == 2)
+        {
+            simConnect.SendPMDGEvent(eventName, eventId);
+            return true;
+        }
+
+        // ------------------------------------------------------------------
+        // 5. Multi-position selector — step up or down from current position
+        // ------------------------------------------------------------------
+        if (varDef.ValueDescriptions.Count > 2)
+        {
+            int target = (int)value;
+            int current = target; // fallback: assume already at target
+
+            var dm = simConnect.PMDG777DataManager;
+            if (dm != null)
+                current = (int)dm.GetFieldValue(varDef.Name);
+
+            int steps = target - current;
+            if (steps == 0)
+                return true; // already there
+
+            int mouseFlag = steps > 0 ? PMDG_WHEEL_UP : PMDG_WHEEL_DOWN;
+            int abs = Math.Abs(steps);
+            for (int i = 0; i < abs; i++)
+                simConnect.SendPMDGEvent(eventName, eventId, mouseFlag);
+
+            return true;
+        }
+
+        // ------------------------------------------------------------------
+        // 6. No ValueDescriptions — treat as a single toggle/press
+        // ------------------------------------------------------------------
+        simConnect.SendPMDGEvent(eventName, eventId);
+        return true;
+    }
 
     public override bool ProcessSimVarUpdate(string varName, double value, ScreenReaderAnnouncer announcer)
     {
