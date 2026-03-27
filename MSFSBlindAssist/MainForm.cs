@@ -6,6 +6,7 @@ using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Forms;
 using MSFSBlindAssist.Forms.A32NX;
 using MSFSBlindAssist.Forms.FenixA320;
+using MSFSBlindAssist.Forms.PMDG777;
 using MSFSBlindAssist.Hotkeys;
 using MSFSBlindAssist.Services;
 using MSFSBlindAssist.Settings;
@@ -29,6 +30,7 @@ public partial class MainForm : Form
     private FenixMonitorManagerForm? fenixMonitorManagerForm;
     private FenixMCDUForm? fenixMCDUForm;
     private FenixMCDUService? fenixMCDUService;
+    private PMDG777CDUForm? pmdg777CDUForm;
     private TakeoffAssistManager takeoffAssistManager = null!;
     private HandFlyManager handFlyManager = null!;
     private VisualGuidanceManager visualGuidanceManager = null!;
@@ -83,6 +85,7 @@ public partial class MainForm : Form
         {
             "A320" => new FlyByWireA320Definition(),
             "FENIX_A320CEO" => new FenixA320Definition(),
+            "PMDG_777" => new PMDG777Definition(),
             // Future aircraft will be added here
             _ => new FlyByWireA320Definition() // Default to A320
         };
@@ -846,6 +849,18 @@ public partial class MainForm : Form
         }
     }
 
+    private void OnPMDGVariableChanged(object? sender, PMDGVarUpdateEventArgs e)
+    {
+        // Route PMDG variable changes through the same pipeline as SimVar updates
+        var simVarEvent = new SimVarUpdateEventArgs
+        {
+            VarName = e.FieldName,
+            Value   = e.Value,
+            Description = string.Empty
+        };
+        OnSimVarUpdated(this, simVarEvent);
+    }
+
     private void OnHotkeyTriggered(object? sender, HotkeyEventArgs e)
     {
         // Actions that don't require SimConnect connection (can be used offline)
@@ -961,7 +976,14 @@ public partial class MainForm : Form
                 ShowElectronicFlightBagDialog();
                 break;
             case HotkeyAction.ShowFenixMCDU:
-                ShowFenixMCDUDialog();
+                if (currentAircraft?.AircraftCode == "PMDG_777" && simConnectManager.PMDG777DataManager != null)
+                {
+                    ShowPMDG777CDUDialog();
+                }
+                else
+                {
+                    ShowFenixMCDUDialog();
+                }
                 break;
             case HotkeyAction.ShowTrackFixWindow:
                 ShowTrackFixDialog();
@@ -1280,6 +1302,21 @@ public partial class MainForm : Form
 
         // Show the form (reuses same instance to preserve state)
         fenixMCDUForm.ShowForm();
+    }
+
+    private void ShowPMDG777CDUDialog()
+    {
+        // Deactivate input hotkey mode before showing dialog
+        hotkeyManager.ExitInputHotkeyMode();
+
+        // Create form if it doesn't exist or has been disposed
+        if (pmdg777CDUForm == null || pmdg777CDUForm.IsDisposed)
+        {
+            pmdg777CDUForm = new PMDG777CDUForm(simConnectManager.PMDG777DataManager!, announcer);
+        }
+
+        // Show the form (reuses same instance to preserve state)
+        pmdg777CDUForm.ShowForm();
     }
 
     private void ShowElectronicFlightBagDialog()
@@ -1907,6 +1944,11 @@ public partial class MainForm : Form
         SwitchAircraft(new FenixA320Definition());
     }
 
+    private void PMDG777MenuItem_Click(object? sender, EventArgs e)
+    {
+        SwitchAircraft(new PMDG777Definition());
+    }
+
     private void SwitchAircraft(IAircraftDefinition newAircraft)
     {
         // Update the aircraft instance
@@ -1976,6 +2018,32 @@ public partial class MainForm : Form
             fenixMCDUService = null;
         }
 
+        // Dispose PMDG 777 CDU form when switching aircraft
+        if (pmdg777CDUForm != null && !pmdg777CDUForm.IsDisposed)
+        {
+            pmdg777CDUForm.Dispose();
+            pmdg777CDUForm = null;
+        }
+
+        // PMDG 777 data manager lifecycle
+        if (newAircraft.AircraftCode == "PMDG_777" && simConnectManager.IsConnected)
+        {
+            simConnectManager.InitializePMDG777();
+            if (simConnectManager.PMDG777DataManager != null)
+            {
+                simConnectManager.PMDG777DataManager.VariableChanged += OnPMDGVariableChanged;
+            }
+        }
+        else
+        {
+            // Unwire events before disposing
+            if (simConnectManager.PMDG777DataManager != null)
+            {
+                simConnectManager.PMDG777DataManager.VariableChanged -= OnPMDGVariableChanged;
+            }
+            simConnectManager.DisposePMDG777();
+        }
+
         // Rebuild sections from new aircraft structure
         foreach (var section in currentAircraft.GetPanelStructure().Keys)
         {
@@ -2011,6 +2079,7 @@ public partial class MainForm : Form
         // Clear all menu item checks first
         flyByWireA320MenuItem.Checked = false;
         fenixA320MenuItem.Checked = false;
+        pmdg777MenuItem.Checked = false;
 
         // Set the check on the current aircraft's menu item
         if (currentAircraft is FlyByWireA320Definition)
@@ -2020,6 +2089,10 @@ public partial class MainForm : Form
         else if (currentAircraft is FenixA320Definition)
         {
             fenixA320MenuItem.Checked = true;
+        }
+        else if (currentAircraft is PMDG777Definition)
+        {
+            pmdg777MenuItem.Checked = true;
         }
     }
 
@@ -2811,7 +2884,14 @@ public partial class MainForm : Form
                             }
 
                             // Generic handling follows if aircraft didn't handle it
-                            if (varKey == "CABIN SEATBELTS ALERT SWITCH") // Seat Belts Signs
+                            if (varDef.Type == SimVarType.PMDGVar)
+                            {
+                                bool handled = currentAircraft.HandleUIVariableSet(varKey, selectedValue, varDef, simConnectManager, announcer);
+                                if (!handled)
+                                    System.Diagnostics.Debug.WriteLine($"[PMDG] Unhandled PMDGVar set: {varKey}");
+                                currentSimVarValues[varKey] = selectedValue;
+                            }
+                            else if (varKey == "CABIN SEATBELTS ALERT SWITCH") // Seat Belts Signs
                             {
                                 // Send the toggle event to change the state
                                 simConnectManager?.SendEvent("CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE", 0);
