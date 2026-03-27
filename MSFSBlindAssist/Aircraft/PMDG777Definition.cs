@@ -70,7 +70,1952 @@ public class PMDG777Definition : BaseAircraftDefinition
     {
         return new Dictionary<string, SimConnect.SimVarDefinition>
         {
-            // Will be populated in Tasks 6-8
+            // =================================================================
+            // ELECTRICAL
+            // =================================================================
+            ["ELEC_Battery"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ELEC_Battery_Sw_ON",
+                DisplayName = "Battery",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["ELEC_APUGen"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ELEC_APUGen_Sw_ON",
+                DisplayName = "APU Generator",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["ELEC_APU_Selector"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ELEC_APU_Selector",
+                DisplayName = "APU Selector",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On", [2] = "Start" }
+            },
+            ["ELEC_BusTie_1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ELEC_BusTie_Sw_AUTO_0",
+                DisplayName = "Bus Tie 1",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Isln", [1] = "Auto" }
+            },
+            ["ELEC_BusTie_2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ELEC_BusTie_Sw_AUTO_1",
+                DisplayName = "Bus Tie 2",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Isln", [1] = "Auto" }
+            },
+            ["ELEC_ExtPwrPrim"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ELEC_ExtPwrSw_0",
+                DisplayName = "External Power Primary",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["ELEC_ExtPwrSec"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ELEC_ExtPwrSw_1",
+                DisplayName = "External Power Secondary",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["ELEC_Gen_1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ELEC_Gen_Sw_ON_0",
+                DisplayName = "Generator 1",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["ELEC_Gen_2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ELEC_Gen_Sw_ON_1",
+                DisplayName = "Generator 2",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["ELEC_BackupGen_1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ELEC_BackupGen_Sw_ON_0",
+                DisplayName = "Backup Generator 1",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["ELEC_BackupGen_2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ELEC_BackupGen_Sw_ON_1",
+                DisplayName = "Backup Generator 2",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["ELEC_IDGDisc_1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ELEC_IDGDiscSw_0",
+                DisplayName = "IDG Disconnect 1",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Disconnect" }
+            },
+            ["ELEC_IDGDisc_2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ELEC_IDGDiscSw_1",
+                DisplayName = "IDG Disconnect 2",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Disconnect" }
+            },
+            ["ELEC_CabUtil"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ELEC_CabUtilSw",
+                DisplayName = "Cabin Utility",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["ELEC_IFEPassSeats"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ELEC_IFEPassSeatsSw",
+                DisplayName = "IFE Passenger Seats",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["ELEC_StandbyPwr"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ELEC_StandbyPowerSw",
+                DisplayName = "Standby Power",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Auto", [2] = "Bat" }
+            },
+            // Electrical annunciators
+            ["ELEC_annunBattery_OFF"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ELEC_annunBattery_OFF",
+                DisplayName = "Battery OFF Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["ELEC_annunAPU_GEN_OFF"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ELEC_annunAPU_GEN_OFF",
+                DisplayName = "APU GEN OFF Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["ELEC_annunAPU_FAULT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ELEC_annunAPU_FAULT",
+                DisplayName = "APU FAULT Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["ELEC_annunBusTieISLN_1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ELEC_annunBusTieISLN_0",
+                DisplayName = "Bus Tie 1 ISLN Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["ELEC_annunBusTieISLN_2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ELEC_annunBusTieISLN_1",
+                DisplayName = "Bus Tie 2 ISLN Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["ELEC_annunExtPwrON_1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ELEC_annunExtPowr_ON_0",
+                DisplayName = "Ext Power 1 ON Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["ELEC_annunExtPwrON_2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ELEC_annunExtPowr_ON_1",
+                DisplayName = "Ext Power 2 ON Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["ELEC_annunExtPwrAVAIL_1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ELEC_annunExtPowr_AVAIL_0",
+                DisplayName = "Ext Power 1 AVAIL Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["ELEC_annunExtPwrAVAIL_2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ELEC_annunExtPowr_AVAIL_1",
+                DisplayName = "Ext Power 2 AVAIL Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["ELEC_annunGenOFF_1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ELEC_annunGenOFF_0",
+                DisplayName = "Generator 1 OFF Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["ELEC_annunGenOFF_2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ELEC_annunGenOFF_1",
+                DisplayName = "Generator 2 OFF Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["ELEC_annunBackupGenOFF_1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ELEC_annunBackupGenOFF_0",
+                DisplayName = "Backup Generator 1 OFF Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["ELEC_annunBackupGenOFF_2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ELEC_annunBackupGenOFF_1",
+                DisplayName = "Backup Generator 2 OFF Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["ELEC_annunIDGDiscDRIVE_1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ELEC_annunIDGDiscDRIVE_0",
+                DisplayName = "IDG 1 Disc Drive Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["ELEC_annunIDGDiscDRIVE_2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ELEC_annunIDGDiscDRIVE_1",
+                DisplayName = "IDG 2 Disc Drive Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["ELEC_annunCabUtilOFF"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ELEC_annunCabUtilOFF",
+                DisplayName = "Cabin Utility OFF Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["ELEC_annunIFEPassSeatsOFF"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ELEC_annunIFEPassSeatsOFF",
+                DisplayName = "IFE Pass Seats OFF Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["ELEC_annunTowingPowerON_BATT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ELEC_annunTowingPowerON_BATT",
+                DisplayName = "Towing Power ON BATT Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+
+            // =================================================================
+            // HYDRAULIC
+            // =================================================================
+            ["HYD_PrimEngPump_1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "HYD_PrimaryEngPump_Sw_ON_0",
+                DisplayName = "Primary Engine Pump 1",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["HYD_PrimEngPump_2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "HYD_PrimaryEngPump_Sw_ON_1",
+                DisplayName = "Primary Engine Pump 2",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["HYD_PrimElecPump_1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "HYD_PrimaryElecPump_Sw_ON_0",
+                DisplayName = "Primary Electric Pump 1",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["HYD_PrimElecPump_2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "HYD_PrimaryElecPump_Sw_ON_1",
+                DisplayName = "Primary Electric Pump 2",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["HYD_DemandElecPump_1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "HYD_DemandElecPump_Selector_0",
+                DisplayName = "Demand Electric Pump 1",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Auto", [2] = "On" }
+            },
+            ["HYD_DemandElecPump_2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "HYD_DemandElecPump_Selector_1",
+                DisplayName = "Demand Electric Pump 2",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Auto", [2] = "On" }
+            },
+            ["HYD_DemandAirPump_1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "HYD_DemandAirPump_Selector_0",
+                DisplayName = "Demand Air Pump 1",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Auto", [2] = "On" }
+            },
+            ["HYD_DemandAirPump_2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "HYD_DemandAirPump_Selector_1",
+                DisplayName = "Demand Air Pump 2",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Auto", [2] = "On" }
+            },
+            ["HYD_RAT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "HYD_RamAirTurbineSw",
+                DisplayName = "RAM Air Turbine",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Deploy" }
+            },
+            // Hydraulic annunciators
+            ["HYD_annunPrimEngPumpFAULT_1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "HYD_annunPrimaryEngPumpFAULT_0",
+                DisplayName = "Primary Engine Pump 1 FAULT Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["HYD_annunPrimEngPumpFAULT_2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "HYD_annunPrimaryEngPumpFAULT_1",
+                DisplayName = "Primary Engine Pump 2 FAULT Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["HYD_annunPrimElecPumpFAULT_1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "HYD_annunPrimaryElecPumpFAULT_0",
+                DisplayName = "Primary Electric Pump 1 FAULT Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["HYD_annunPrimElecPumpFAULT_2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "HYD_annunPrimaryElecPumpFAULT_1",
+                DisplayName = "Primary Electric Pump 2 FAULT Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["HYD_annunDemandElecPumpFAULT_1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "HYD_annunDemandElecPumpFAULT_0",
+                DisplayName = "Demand Electric Pump 1 FAULT Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["HYD_annunDemandElecPumpFAULT_2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "HYD_annunDemandElecPumpFAULT_1",
+                DisplayName = "Demand Electric Pump 2 FAULT Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["HYD_annunDemandAirPumpFAULT_1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "HYD_annunDemandAirPumpFAULT_0",
+                DisplayName = "Demand Air Pump 1 FAULT Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["HYD_annunDemandAirPumpFAULT_2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "HYD_annunDemandAirPumpFAULT_1",
+                DisplayName = "Demand Air Pump 2 FAULT Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["HYD_annunRATPress"] = new SimConnect.SimVarDefinition
+            {
+                Name = "HYD_annunRamAirTurbinePRESS",
+                DisplayName = "RAM Air Turbine PRESS Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["HYD_annunRATUnlkd"] = new SimConnect.SimVarDefinition
+            {
+                Name = "HYD_annunRamAirTurbineUNLKD",
+                DisplayName = "RAM Air Turbine UNLKD Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+
+            // =================================================================
+            // FUEL
+            // =================================================================
+            ["FUEL_FwdPump_1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FUEL_PumpFwd_Sw_0",
+                DisplayName = "Forward Pump 1",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["FUEL_FwdPump_2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FUEL_PumpFwd_Sw_1",
+                DisplayName = "Forward Pump 2",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["FUEL_AftPump_1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FUEL_PumpAft_Sw_0",
+                DisplayName = "Aft Pump 1",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["FUEL_AftPump_2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FUEL_PumpAft_Sw_1",
+                DisplayName = "Aft Pump 2",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["FUEL_CtrPump_1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FUEL_PumpCtr_Sw_0",
+                DisplayName = "Center Pump 1",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["FUEL_CtrPump_2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FUEL_PumpCtr_Sw_1",
+                DisplayName = "Center Pump 2",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["FUEL_CrossfeedFwd"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FUEL_CrossFeedFwd_Sw",
+                DisplayName = "Crossfeed Forward",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+            },
+            ["FUEL_CrossfeedAft"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FUEL_CrossFeedAft_Sw",
+                DisplayName = "Crossfeed Aft",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+            },
+            ["FUEL_JettisonNozzleL"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FUEL_JettisonNozle_Sw_0",
+                DisplayName = "Jettison Nozzle Left",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["FUEL_JettisonNozzleR"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FUEL_JettisonNozle_Sw_1",
+                DisplayName = "Jettison Nozzle Right",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["FUEL_JettisonArm"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FUEL_JettisonArm_Sw",
+                DisplayName = "Jettison Arm",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Arm" }
+            },
+            ["FUEL_FuelToRemainPulled"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FUEL_FuelToRemain_Sw_Pulled",
+                DisplayName = "Fuel To Remain Pulled",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Pulled" }
+            },
+            ["FUEL_FuelToRemainSelector"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FUEL_FuelToRemain_Selector",
+                DisplayName = "Fuel To Remain Selector",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Decr", [1] = "Off", [2] = "Incr" }
+            },
+            // Fuel annunciators
+            ["FUEL_annunFwdXFEED_VALVE"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FUEL_annunFwdXFEED_VALVE",
+                DisplayName = "Fwd XFEED VALVE Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["FUEL_annunAftXFEED_VALVE"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FUEL_annunAftXFEED_VALVE",
+                DisplayName = "Aft XFEED VALVE Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["FUEL_annunLOWPRESS_Fwd_1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FUEL_annunLOWPRESS_Fwd_0",
+                DisplayName = "LOW PRESS Fwd 1 Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["FUEL_annunLOWPRESS_Fwd_2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FUEL_annunLOWPRESS_Fwd_1",
+                DisplayName = "LOW PRESS Fwd 2 Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["FUEL_annunLOWPRESS_Aft_1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FUEL_annunLOWPRESS_Aft_0",
+                DisplayName = "LOW PRESS Aft 1 Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["FUEL_annunLOWPRESS_Aft_2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FUEL_annunLOWPRESS_Aft_1",
+                DisplayName = "LOW PRESS Aft 2 Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["FUEL_annunLOWPRESS_Ctr_1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FUEL_annunLOWPRESS_Ctr_0",
+                DisplayName = "LOW PRESS Center 1 Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["FUEL_annunLOWPRESS_Ctr_2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FUEL_annunLOWPRESS_Ctr_1",
+                DisplayName = "LOW PRESS Center 2 Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["FUEL_annunJettisonNozzleVALVE_1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FUEL_annunJettisonNozleVALVE_0",
+                DisplayName = "Jettison Nozzle 1 VALVE Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["FUEL_annunJettisonNozzleVALVE_2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FUEL_annunJettisonNozleVALVE_1",
+                DisplayName = "Jettison Nozzle 2 VALVE Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["FUEL_annunArmFAULT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FUEL_annunArmFAULT",
+                DisplayName = "Arm FAULT Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+
+            // =================================================================
+            // ENGINES
+            // =================================================================
+            ["ENG_EECMode_L"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ENG_EECMode_Sw_NORM_0",
+                DisplayName = "EEC Mode Left",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Altn", [1] = "Norm" }
+            },
+            ["ENG_EECMode_R"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ENG_EECMode_Sw_NORM_1",
+                DisplayName = "EEC Mode Right",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Altn", [1] = "Norm" }
+            },
+            ["ENG_StartSelector_L"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ENG_Start_Selector_0",
+                DisplayName = "Start Selector Left",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Norm", [1] = "Start" }
+            },
+            ["ENG_StartSelector_R"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ENG_Start_Selector_1",
+                DisplayName = "Start Selector Right",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Norm", [1] = "Start" }
+            },
+            ["ENG_Autostart"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ENG_Autostart_Sw_ON",
+                DisplayName = "Autostart",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            // Engine annunciators
+            ["ENG_annunALTN_L"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ENG_annunALTN_0",
+                DisplayName = "EEC ALTN Left Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["ENG_annunALTN_R"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ENG_annunALTN_1",
+                DisplayName = "EEC ALTN Right Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["ENG_annunAutostartOFF"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ENG_annunAutostartOFF",
+                DisplayName = "Autostart OFF Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+
+            // =================================================================
+            // BLEED AIR
+            // =================================================================
+            ["AIR_EngBleed_1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "AIR_EngBleedAir_Sw_AUTO_0",
+                DisplayName = "Engine Bleed 1",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Auto" }
+            },
+            ["AIR_EngBleed_2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "AIR_EngBleedAir_Sw_AUTO_1",
+                DisplayName = "Engine Bleed 2",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Auto" }
+            },
+            ["AIR_APUBleed"] = new SimConnect.SimVarDefinition
+            {
+                Name = "AIR_APUBleedAir_Sw_AUTO",
+                DisplayName = "APU Bleed",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Auto" }
+            },
+            ["AIR_IsolationValve_L"] = new SimConnect.SimVarDefinition
+            {
+                Name = "AIR_IsolationValve_Sw_0",
+                DisplayName = "Isolation Valve Left",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Auto" }
+            },
+            ["AIR_IsolationValve_R"] = new SimConnect.SimVarDefinition
+            {
+                Name = "AIR_IsolationValve_Sw_1",
+                DisplayName = "Isolation Valve Right",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Auto" }
+            },
+            ["AIR_CtrIsolationValve"] = new SimConnect.SimVarDefinition
+            {
+                Name = "AIR_CtrIsolationValve_Sw",
+                DisplayName = "Center Isolation Valve",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Auto" }
+            },
+            // Bleed air annunciators
+            ["AIR_annunEngBleedOFF_1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "AIR_annunEngBleedAirOFF_0",
+                DisplayName = "Engine Bleed 1 OFF Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["AIR_annunEngBleedOFF_2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "AIR_annunEngBleedAirOFF_1",
+                DisplayName = "Engine Bleed 2 OFF Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["AIR_annunAPUBleedOFF"] = new SimConnect.SimVarDefinition
+            {
+                Name = "AIR_annunAPUBleedAirOFF",
+                DisplayName = "APU Bleed OFF Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["AIR_annunIsolationValveCLOSED_L"] = new SimConnect.SimVarDefinition
+            {
+                Name = "AIR_annunIsolationValveCLOSED_0",
+                DisplayName = "Isolation Valve Left CLOSED Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["AIR_annunIsolationValveCLOSED_R"] = new SimConnect.SimVarDefinition
+            {
+                Name = "AIR_annunIsolationValveCLOSED_1",
+                DisplayName = "Isolation Valve Right CLOSED Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["AIR_annunCtrIsolationValveCLOSED"] = new SimConnect.SimVarDefinition
+            {
+                Name = "AIR_annunCtrIsolationValveCLOSED",
+                DisplayName = "Center Isolation Valve CLOSED Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+
+            // =================================================================
+            // AIR CONDITIONING
+            // =================================================================
+            ["AIR_Pack_1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "AIR_Pack_Sw_AUTO_0",
+                DisplayName = "Pack 1",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Auto" }
+            },
+            ["AIR_Pack_2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "AIR_Pack_Sw_AUTO_1",
+                DisplayName = "Pack 2",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Auto" }
+            },
+            ["AIR_TrimAir_1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "AIR_TrimAir_Sw_On_0",
+                DisplayName = "Trim Air 1",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["AIR_TrimAir_2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "AIR_TrimAir_Sw_On_1",
+                DisplayName = "Trim Air 2",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["AIR_RecircFanUpper"] = new SimConnect.SimVarDefinition
+            {
+                Name = "AIR_RecircFan_Sw_On_0",
+                DisplayName = "Recirc Fan Upper",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["AIR_RecircFanLower"] = new SimConnect.SimVarDefinition
+            {
+                Name = "AIR_RecircFan_Sw_On_1",
+                DisplayName = "Recirc Fan Lower",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["AIR_EquipCooling"] = new SimConnect.SimVarDefinition
+            {
+                Name = "AIR_EquipCooling_Sw_AUTO",
+                DisplayName = "Equipment Cooling",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Ovrd", [1] = "Auto" }
+            },
+            ["AIR_Gasper"] = new SimConnect.SimVarDefinition
+            {
+                Name = "AIR_Gasper_Sw_On",
+                DisplayName = "Gasper",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["AIR_AltnVent"] = new SimConnect.SimVarDefinition
+            {
+                Name = "AIR_AltnVentSw_ON",
+                DisplayName = "Alt Ventilation",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["AIR_TempSelectorFlightDeck"] = new SimConnect.SimVarDefinition
+            {
+                Name = "AIR_TempSelector_0",
+                DisplayName = "Temp Selector Flight Deck",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true
+            },
+            ["AIR_TempSelectorCabin"] = new SimConnect.SimVarDefinition
+            {
+                Name = "AIR_TempSelector_1",
+                DisplayName = "Temp Selector Cabin",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true
+            },
+            // Air conditioning annunciators
+            ["AIR_annunPackOFF_1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "AIR_annunPackOFF_0",
+                DisplayName = "Pack 1 OFF Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["AIR_annunPackOFF_2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "AIR_annunPackOFF_1",
+                DisplayName = "Pack 2 OFF Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["AIR_annunTrimAirFAULT_1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "AIR_annunTrimAirFAULT_0",
+                DisplayName = "Trim Air 1 FAULT Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["AIR_annunTrimAirFAULT_2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "AIR_annunTrimAirFAULT_1",
+                DisplayName = "Trim Air 2 FAULT Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["AIR_annunEquipCoolingOVRD"] = new SimConnect.SimVarDefinition
+            {
+                Name = "AIR_annunEquipCoolingOVRD",
+                DisplayName = "Equipment Cooling OVRD Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["AIR_annunAltnVentFAULT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "AIR_annunAltnVentFAULT",
+                DisplayName = "Alt Vent FAULT Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+
+            // =================================================================
+            // PRESSURIZATION
+            // =================================================================
+            ["AIR_OutflowValveFwd"] = new SimConnect.SimVarDefinition
+            {
+                Name = "AIR_OutflowValveManual_Selector_0",
+                DisplayName = "Outflow Valve Forward",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Open", [1] = "Auto", [2] = "Close" }
+            },
+            ["AIR_OutflowValveAft"] = new SimConnect.SimVarDefinition
+            {
+                Name = "AIR_OutflowValveManual_Selector_1",
+                DisplayName = "Outflow Valve Aft",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Open", [1] = "Auto", [2] = "Close" }
+            },
+            ["AIR_LdgAltSelector"] = new SimConnect.SimVarDefinition
+            {
+                Name = "AIR_LdgAlt_Selector",
+                DisplayName = "Landing Altitude Selector",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true
+            },
+            ["AIR_LdgAltPulled"] = new SimConnect.SimVarDefinition
+            {
+                Name = "AIR_LdgAlt_Sw_Pulled",
+                DisplayName = "Landing Altitude Pulled",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Pulled" }
+            },
+            // Pressurization annunciators
+            ["AIR_annunOutflowValveMAN_1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "AIR_annunOutflowValve_MAN_0",
+                DisplayName = "Outflow Valve 1 MAN Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["AIR_annunOutflowValveMAN_2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "AIR_annunOutflowValve_MAN_1",
+                DisplayName = "Outflow Valve 2 MAN Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+
+            // =================================================================
+            // ANTI-ICE
+            // =================================================================
+            ["ICE_WindowHeat_1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ICE_WindowHeat_Sw_ON_0",
+                DisplayName = "Window Heat 1 (Left Side)",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["ICE_WindowHeat_2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ICE_WindowHeat_Sw_ON_1",
+                DisplayName = "Window Heat 2 (Left Forward)",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["ICE_WindowHeat_3"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ICE_WindowHeat_Sw_ON_2",
+                DisplayName = "Window Heat 3 (Right Forward)",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["ICE_WindowHeat_4"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ICE_WindowHeat_Sw_ON_3",
+                DisplayName = "Window Heat 4 (Right Side)",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["ICE_WingAntiIce"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ICE_WingAntiIceSw",
+                DisplayName = "Wing Anti-Ice",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Auto", [2] = "On" }
+            },
+            ["ICE_EngAntiIce_1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ICE_EngAntiIceSw_0",
+                DisplayName = "Engine Anti-Ice 1",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Auto", [2] = "On" }
+            },
+            ["ICE_EngAntiIce_2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ICE_EngAntiIceSw_1",
+                DisplayName = "Engine Anti-Ice 2",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Auto", [2] = "On" }
+            },
+            // Anti-ice annunciators
+            ["ICE_annunWindowHeatINOP_1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ICE_annunWindowHeatINOP_0",
+                DisplayName = "Window Heat 1 INOP Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["ICE_annunWindowHeatINOP_2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ICE_annunWindowHeatINOP_1",
+                DisplayName = "Window Heat 2 INOP Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["ICE_annunWindowHeatINOP_3"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ICE_annunWindowHeatINOP_2",
+                DisplayName = "Window Heat 3 INOP Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["ICE_annunWindowHeatINOP_4"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ICE_annunWindowHeatINOP_3",
+                DisplayName = "Window Heat 4 INOP Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+
+            // =================================================================
+            // FIRE
+            // =================================================================
+            ["FIRE_CargoFireArmFwd"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FIRE_CargoFire_Sw_Arm_0",
+                DisplayName = "Cargo Fire Arm Forward",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Arm" }
+            },
+            ["FIRE_CargoFireArmAft"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FIRE_CargoFire_Sw_Arm_1",
+                DisplayName = "Cargo Fire Arm Aft",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Arm" }
+            },
+            ["FIRE_CargoFireDisch"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FIRE_CargoFireDisch_Sw",
+                DisplayName = "Cargo Fire Discharge",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Discharge" }
+            },
+            ["FIRE_FireOvhtTest"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FIRE_FireOvhtTest_Sw",
+                DisplayName = "Fire Overheat Test",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Test" }
+            },
+            ["FIRE_APUHandle"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FIRE_APUHandle",
+                DisplayName = "APU Fire Handle",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Pulled", [2] = "Left", [3] = "Right" }
+            },
+            ["FIRE_APUHandleUnlock"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FIRE_APUHandleUnlock_Sw",
+                DisplayName = "APU Handle Unlock",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Unlock" }
+            },
+            // Fire annunciators
+            ["FIRE_annunCargoFire_1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FIRE_annunCargoFire_0",
+                DisplayName = "Cargo Fire 1 Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["FIRE_annunCargoFire_2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FIRE_annunCargoFire_1",
+                DisplayName = "Cargo Fire 2 Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["FIRE_annunCargoDISCH"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FIRE_annunCargoDISCH",
+                DisplayName = "Cargo DISCH Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["FIRE_annunAPU_BTL_DISCH"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FIRE_annunAPU_BTL_DISCH",
+                DisplayName = "APU Bottle DISCH Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["FIRE_annunEngHandle_1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FIRE_EngineHandleIlluminated_0",
+                DisplayName = "Engine 1 Handle Illuminated",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["FIRE_annunEngHandle_2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FIRE_EngineHandleIlluminated_1",
+                DisplayName = "Engine 2 Handle Illuminated",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["FIRE_annunAPUHandleIllum"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FIRE_APUHandleIlluminated",
+                DisplayName = "APU Handle Illuminated",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["FIRE_annunMainDeckCargoFire"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FIRE_annunMainDeckCargoFire",
+                DisplayName = "Main Deck Cargo Fire Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["FIRE_annunCargoDEPR"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FIRE_annunCargoDEPR",
+                DisplayName = "Cargo DEPR Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+
+            // =================================================================
+            // LIGHTS
+            // =================================================================
+            ["LTS_LandingLightL"] = new SimConnect.SimVarDefinition
+            {
+                Name = "LTS_LandingLights_Sw_ON_0",
+                DisplayName = "Landing Light Left",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["LTS_LandingLightR"] = new SimConnect.SimVarDefinition
+            {
+                Name = "LTS_LandingLights_Sw_ON_1",
+                DisplayName = "Landing Light Right",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["LTS_LandingLightNose"] = new SimConnect.SimVarDefinition
+            {
+                Name = "LTS_LandingLights_Sw_ON_2",
+                DisplayName = "Landing Light Nose",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["LTS_RunwayTurnoffL"] = new SimConnect.SimVarDefinition
+            {
+                Name = "LTS_RunwayTurnoff_Sw_ON_0",
+                DisplayName = "Runway Turnoff Left",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["LTS_RunwayTurnoffR"] = new SimConnect.SimVarDefinition
+            {
+                Name = "LTS_RunwayTurnoff_Sw_ON_1",
+                DisplayName = "Runway Turnoff Right",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["LTS_Taxi"] = new SimConnect.SimVarDefinition
+            {
+                Name = "LTS_Taxi_Sw_ON",
+                DisplayName = "Taxi",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["LTS_Strobe"] = new SimConnect.SimVarDefinition
+            {
+                Name = "LTS_Strobe_Sw_ON",
+                DisplayName = "Strobe",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["LTS_Beacon"] = new SimConnect.SimVarDefinition
+            {
+                Name = "LTS_Beacon_Sw_ON",
+                DisplayName = "Beacon",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["LTS_NAV"] = new SimConnect.SimVarDefinition
+            {
+                Name = "LTS_NAV_Sw_ON",
+                DisplayName = "Nav",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["LTS_Logo"] = new SimConnect.SimVarDefinition
+            {
+                Name = "LTS_Logo_Sw_ON",
+                DisplayName = "Logo",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["LTS_Wing"] = new SimConnect.SimVarDefinition
+            {
+                Name = "LTS_Wing_Sw_ON",
+                DisplayName = "Wing",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["LTS_Storm"] = new SimConnect.SimVarDefinition
+            {
+                Name = "LTS_Storm_Sw_ON",
+                DisplayName = "Storm Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+
+            // =================================================================
+            // SIGNS
+            // =================================================================
+            ["SIGNS_NoSmoking"] = new SimConnect.SimVarDefinition
+            {
+                Name = "SIGNS_NoSmokingSelector",
+                DisplayName = "No Smoking",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Auto", [2] = "On" }
+            },
+            ["SIGNS_SeatBelts"] = new SimConnect.SimVarDefinition
+            {
+                Name = "SIGNS_SeatBeltsSelector",
+                DisplayName = "Seat Belts",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Auto", [2] = "On" }
+            },
+            ["OXY_PassOxygen"] = new SimConnect.SimVarDefinition
+            {
+                Name = "OXY_PassOxygen_Sw_On",
+                DisplayName = "Passenger Oxygen",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "On" }
+            },
+            // Signs annunciators
+            ["OXY_annunPassOxygenON"] = new SimConnect.SimVarDefinition
+            {
+                Name = "OXY_annunPassOxygenON",
+                DisplayName = "Passenger Oxygen ON Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+
+            // =================================================================
+            // WIPERS
+            // =================================================================
+            ["WIPERS_Left"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WIPERS_Selector_0",
+                DisplayName = "Wiper Left",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Int", [2] = "Low", [3] = "High" }
+            },
+            ["WIPERS_Right"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WIPERS_Selector_1",
+                DisplayName = "Wiper Right",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Int", [2] = "Low", [3] = "High" }
+            },
+            ["COMM_ServiceInterphone"] = new SimConnect.SimVarDefinition
+            {
+                Name = "COMM_ServiceInterphoneSw",
+                DisplayName = "Service Interphone",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+
+            // =================================================================
+            // PANEL LIGHTING
+            // =================================================================
+            ["LTS_MasterBrightSw"] = new SimConnect.SimVarDefinition
+            {
+                Name = "LTS_MasterBright_Sw_ON",
+                DisplayName = "Master Bright Switch",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["LTS_MasterBrightKnob"] = new SimConnect.SimVarDefinition
+            {
+                Name = "LTS_MasterBrigntKnob",
+                DisplayName = "Master Bright Knob",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [25] = "Dim", [50] = "Medium", [75] = "Bright", [100] = "Full" }
+            },
+            ["LTS_IndLightsTest"] = new SimConnect.SimVarDefinition
+            {
+                Name = "LTS_IndLightsTestSw",
+                DisplayName = "Indicator Lights Test",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Bright", [2] = "Dim" }
+            },
+            ["LTS_DomeLight"] = new SimConnect.SimVarDefinition
+            {
+                Name = "LTS_DomeLightKnob",
+                DisplayName = "Dome Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [25] = "Dim", [50] = "Medium", [75] = "Bright", [100] = "Full" }
+            },
+            ["LTS_CircuitBreakerLight"] = new SimConnect.SimVarDefinition
+            {
+                Name = "LTS_CircuitBreakerKnob",
+                DisplayName = "Circuit Breaker Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [25] = "Dim", [50] = "Medium", [75] = "Bright", [100] = "Full" }
+            },
+            ["LTS_OverheadPanel"] = new SimConnect.SimVarDefinition
+            {
+                Name = "LTS_OvereadPanelKnob",
+                DisplayName = "Overhead Panel",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [25] = "Dim", [50] = "Medium", [75] = "Bright", [100] = "Full" }
+            },
+            ["LTS_GlareshieldPanel"] = new SimConnect.SimVarDefinition
+            {
+                Name = "LTS_GlareshieldPNLlKnob",
+                DisplayName = "Glareshield Panel",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [25] = "Dim", [50] = "Medium", [75] = "Bright", [100] = "Full" }
+            },
+            ["LTS_GlareshieldFlood"] = new SimConnect.SimVarDefinition
+            {
+                Name = "LTS_GlareshieldFLOODKnob",
+                DisplayName = "Glareshield Flood",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [25] = "Dim", [50] = "Medium", [75] = "Bright", [100] = "Full" }
+            },
+            ["LTS_EmerLights"] = new SimConnect.SimVarDefinition
+            {
+                Name = "LTS_EmerLightsSelector",
+                DisplayName = "Emergency Lights",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Armed", [2] = "On" }
+            },
+
+            // =================================================================
+            // CARGO TEMPERATURE
+            // =================================================================
+            ["AIR_CargoTempFwd"] = new SimConnect.SimVarDefinition
+            {
+                Name = "AIR_CargoTemp_Selector_0",
+                DisplayName = "Cargo Temp Forward",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true
+            },
+            ["AIR_CargoTempAft"] = new SimConnect.SimVarDefinition
+            {
+                Name = "AIR_CargoTemp_Selector_1",
+                DisplayName = "Cargo Temp Aft",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true
+            },
+            ["AIR_CargoTempMainDeckFwd"] = new SimConnect.SimVarDefinition
+            {
+                Name = "AIR_CargoTemp_MainDeckFwd_Sel",
+                DisplayName = "Cargo Temp Main Deck Forward",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true
+            },
+            ["AIR_CargoTempMainDeckAft"] = new SimConnect.SimVarDefinition
+            {
+                Name = "AIR_CargoTemp_MainDeckAft_Sel",
+                DisplayName = "Cargo Temp Main Deck Aft",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true
+            },
+            ["AIR_CargoTempLowerFwd"] = new SimConnect.SimVarDefinition
+            {
+                Name = "AIR_CargoTemp_LowerFwd_Sel",
+                DisplayName = "Cargo Temp Lower Forward",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true
+            },
+            ["AIR_CargoTempLowerAft"] = new SimConnect.SimVarDefinition
+            {
+                Name = "AIR_CargoTemp_LowerAft_Sel",
+                DisplayName = "Cargo Temp Lower Aft",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true
+            },
+
+            // =================================================================
+            // OVERHEAD MAINTENANCE — FLIGHT CONTROLS
+            // =================================================================
+            ["FCTL_WingHydValve_L"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FCTL_WingHydValve_Sw_SHUT_OFF_0",
+                DisplayName = "Wing Hydraulic Valve Left",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Shut Off" }
+            },
+            ["FCTL_WingHydValve_R"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FCTL_WingHydValve_Sw_SHUT_OFF_1",
+                DisplayName = "Wing Hydraulic Valve Right",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Shut Off" }
+            },
+            ["FCTL_WingHydValve_C"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FCTL_WingHydValve_Sw_SHUT_OFF_2",
+                DisplayName = "Wing Hydraulic Valve Center",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Shut Off" }
+            },
+            ["FCTL_TailHydValve_L"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FCTL_TailHydValve_Sw_SHUT_OFF_0",
+                DisplayName = "Tail Hydraulic Valve Left",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Shut Off" }
+            },
+            ["FCTL_TailHydValve_R"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FCTL_TailHydValve_Sw_SHUT_OFF_1",
+                DisplayName = "Tail Hydraulic Valve Right",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Shut Off" }
+            },
+            ["FCTL_TailHydValve_C"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FCTL_TailHydValve_Sw_SHUT_OFF_2",
+                DisplayName = "Tail Hydraulic Valve Center",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Shut Off" }
+            },
+            ["FCTL_PrimFltComputers"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FCTL_PrimFltComputersSw_AUTO",
+                DisplayName = "Primary Flight Computers",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Disc", [1] = "Auto" }
+            },
+            // Flight controls annunciators
+            ["FCTL_annunWingHydVALVE_CLOSED_L"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FCTL_annunWingHydVALVE_CLOSED_0",
+                DisplayName = "Wing Hyd Valve Left CLOSED Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["FCTL_annunWingHydVALVE_CLOSED_R"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FCTL_annunWingHydVALVE_CLOSED_1",
+                DisplayName = "Wing Hyd Valve Right CLOSED Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["FCTL_annunWingHydVALVE_CLOSED_C"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FCTL_annunWingHydVALVE_CLOSED_2",
+                DisplayName = "Wing Hyd Valve Center CLOSED Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["FCTL_annunTailHydVALVE_CLOSED_L"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FCTL_annunTailHydVALVE_CLOSED_0",
+                DisplayName = "Tail Hyd Valve Left CLOSED Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["FCTL_annunTailHydVALVE_CLOSED_R"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FCTL_annunTailHydVALVE_CLOSED_1",
+                DisplayName = "Tail Hyd Valve Right CLOSED Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["FCTL_annunTailHydVALVE_CLOSED_C"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FCTL_annunTailHydVALVE_CLOSED_2",
+                DisplayName = "Tail Hyd Valve Center CLOSED Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["FCTL_annunPrimFltComputersDISC"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FCTL_annunPrimFltComputersDISC",
+                DisplayName = "Primary Flight Computers DISC Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+
+            // =================================================================
+            // OVERHEAD MAINTENANCE — BACKUP SYSTEMS
+            // =================================================================
+            ["ICE_BackupWindowHeat_L"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ICE_WindowHeatBackUp_Sw_OFF_0",
+                DisplayName = "Backup Window Heat Left",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Off" }
+            },
+            ["ICE_BackupWindowHeat_R"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ICE_WindowHeatBackUp_Sw_OFF_1",
+                DisplayName = "Backup Window Heat Right",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Off" }
+            },
+            ["ELEC_TowingPower"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ELEC_TowingPower_Sw_BATT",
+                DisplayName = "Towing Power",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Batt" }
+            },
+
+            // =================================================================
+            // OVERHEAD MAINTENANCE — EEC/APU MAINTENANCE
+            // =================================================================
+            ["ENG_EECTest_L"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ENG_EECPower_Sw_TEST_0",
+                DisplayName = "EEC Test Left",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Test" }
+            },
+            ["ENG_EECTest_R"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ENG_EECPower_Sw_TEST_1",
+                DisplayName = "EEC Test Right",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Test" }
+            },
+            ["APU_PowerTest"] = new SimConnect.SimVarDefinition
+            {
+                Name = "APU_Power_Sw_TEST",
+                DisplayName = "APU Test",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Test" }
+            },
         };
     }
 
@@ -82,7 +2027,145 @@ public class PMDG777Definition : BaseAircraftDefinition
     {
         return new Dictionary<string, List<string>>
         {
-            // Will be populated in Tasks 6-8
+            // Overhead — Electrical
+            ["Electrical"] = new List<string>
+            {
+                "ELEC_Battery", "ELEC_APUGen", "ELEC_APU_Selector",
+                "ELEC_BusTie_1", "ELEC_BusTie_2",
+                "ELEC_ExtPwrPrim", "ELEC_ExtPwrSec",
+                "ELEC_Gen_1", "ELEC_Gen_2",
+                "ELEC_BackupGen_1", "ELEC_BackupGen_2",
+                "ELEC_IDGDisc_1", "ELEC_IDGDisc_2",
+                "ELEC_CabUtil", "ELEC_IFEPassSeats", "ELEC_StandbyPwr"
+            },
+
+            // Overhead — Hydraulic
+            ["Hydraulic"] = new List<string>
+            {
+                "HYD_PrimEngPump_1", "HYD_PrimEngPump_2",
+                "HYD_PrimElecPump_1", "HYD_PrimElecPump_2",
+                "HYD_DemandElecPump_1", "HYD_DemandElecPump_2",
+                "HYD_DemandAirPump_1", "HYD_DemandAirPump_2",
+                "HYD_RAT"
+            },
+
+            // Overhead — Fuel
+            ["Fuel"] = new List<string>
+            {
+                "FUEL_FwdPump_1", "FUEL_FwdPump_2",
+                "FUEL_AftPump_1", "FUEL_AftPump_2",
+                "FUEL_CtrPump_1", "FUEL_CtrPump_2",
+                "FUEL_CrossfeedFwd", "FUEL_CrossfeedAft",
+                "FUEL_JettisonNozzleL", "FUEL_JettisonNozzleR",
+                "FUEL_JettisonArm", "FUEL_FuelToRemainPulled", "FUEL_FuelToRemainSelector"
+            },
+
+            // Overhead — Engines
+            ["Engines"] = new List<string>
+            {
+                "ENG_EECMode_L", "ENG_EECMode_R",
+                "ENG_StartSelector_L", "ENG_StartSelector_R",
+                "ENG_Autostart"
+            },
+
+            // Overhead — Bleed Air
+            ["Bleed Air"] = new List<string>
+            {
+                "AIR_EngBleed_1", "AIR_EngBleed_2", "AIR_APUBleed",
+                "AIR_IsolationValve_L", "AIR_IsolationValve_R", "AIR_CtrIsolationValve"
+            },
+
+            // Overhead — Air Conditioning
+            ["Air Conditioning"] = new List<string>
+            {
+                "AIR_Pack_1", "AIR_Pack_2",
+                "AIR_TrimAir_1", "AIR_TrimAir_2",
+                "AIR_RecircFanUpper", "AIR_RecircFanLower",
+                "AIR_EquipCooling", "AIR_Gasper", "AIR_AltnVent",
+                "AIR_TempSelectorFlightDeck", "AIR_TempSelectorCabin"
+            },
+
+            // Overhead — Pressurization
+            ["Pressurization"] = new List<string>
+            {
+                "AIR_OutflowValveFwd", "AIR_OutflowValveAft",
+                "AIR_LdgAltSelector", "AIR_LdgAltPulled"
+            },
+
+            // Overhead — Anti-Ice
+            ["Anti-Ice"] = new List<string>
+            {
+                "ICE_WindowHeat_1", "ICE_WindowHeat_2", "ICE_WindowHeat_3", "ICE_WindowHeat_4",
+                "ICE_WingAntiIce", "ICE_EngAntiIce_1", "ICE_EngAntiIce_2"
+            },
+
+            // Overhead — Fire
+            ["Fire"] = new List<string>
+            {
+                "FIRE_CargoFireArmFwd", "FIRE_CargoFireArmAft",
+                "FIRE_CargoFireDisch", "FIRE_FireOvhtTest",
+                "FIRE_APUHandle", "FIRE_APUHandleUnlock"
+            },
+
+            // Overhead — Lights
+            ["Lights"] = new List<string>
+            {
+                "LTS_LandingLightL", "LTS_LandingLightR", "LTS_LandingLightNose",
+                "LTS_RunwayTurnoffL", "LTS_RunwayTurnoffR",
+                "LTS_Taxi", "LTS_Strobe", "LTS_Beacon",
+                "LTS_NAV", "LTS_Logo", "LTS_Wing", "LTS_Storm"
+            },
+
+            // Overhead — Signs
+            ["Signs"] = new List<string>
+            {
+                "SIGNS_NoSmoking", "SIGNS_SeatBelts", "OXY_PassOxygen"
+            },
+
+            // Overhead — Wipers
+            ["Wipers"] = new List<string>
+            {
+                "WIPERS_Left", "WIPERS_Right", "COMM_ServiceInterphone"
+            },
+
+            // Overhead — Panel Lighting
+            ["Panel Lighting"] = new List<string>
+            {
+                "LTS_MasterBrightSw", "LTS_MasterBrightKnob",
+                "LTS_IndLightsTest", "LTS_DomeLight",
+                "LTS_CircuitBreakerLight", "LTS_OverheadPanel",
+                "LTS_GlareshieldPanel", "LTS_GlareshieldFlood",
+                "LTS_EmerLights"
+            },
+
+            // Overhead — Cargo Temperature
+            ["Cargo Temperature"] = new List<string>
+            {
+                "AIR_CargoTempFwd", "AIR_CargoTempAft",
+                "AIR_CargoTempMainDeckFwd", "AIR_CargoTempMainDeckAft",
+                "AIR_CargoTempLowerFwd", "AIR_CargoTempLowerAft"
+            },
+
+            // Overhead Maintenance — Flight Controls
+            ["Flight Controls"] = new List<string>
+            {
+                "FCTL_WingHydValve_L", "FCTL_WingHydValve_R", "FCTL_WingHydValve_C",
+                "FCTL_TailHydValve_L", "FCTL_TailHydValve_R", "FCTL_TailHydValve_C",
+                "FCTL_PrimFltComputers"
+            },
+
+            // Overhead Maintenance — Backup Systems
+            ["Backup Systems"] = new List<string>
+            {
+                "ICE_BackupWindowHeat_L", "ICE_BackupWindowHeat_R",
+                "ELEC_TowingPower"
+            },
+
+            // Overhead Maintenance — EEC/APU Maintenance
+            ["EEC/APU Maintenance"] = new List<string>
+            {
+                "ENG_EECTest_L", "ENG_EECTest_R", "APU_PowerTest"
+            },
         };
     }
 
