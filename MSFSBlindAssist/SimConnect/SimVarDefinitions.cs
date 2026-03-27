@@ -5,7 +5,8 @@ public enum SimVarType
     LVar,      // Local variable (L:varname)
     Event,     // SimConnect Event
     SimVar,    // Standard SimVar
-    HVar       // H-variable (requires MobiFlight WASM)
+    HVar,      // H-variable (requires MobiFlight WASM)
+    PMDGVar    // PMDG SDK variable (read via Client Data Area)
 }
 
 public enum UpdateFrequency
