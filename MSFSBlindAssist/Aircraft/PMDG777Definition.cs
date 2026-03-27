@@ -120,7 +120,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             },
             ["ELEC_ExtPwrPrim"] = new SimConnect.SimVarDefinition
             {
-                Name = "ELEC_ExtPwrSw_0",
+                Name = "ELEC_annunExtPowr_ON_0",
                 DisplayName = "External Power Primary",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -129,7 +129,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             },
             ["ELEC_ExtPwrSec"] = new SimConnect.SimVarDefinition
             {
-                Name = "ELEC_ExtPwrSw_1",
+                Name = "ELEC_annunExtPowr_ON_1",
                 DisplayName = "External Power Secondary",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -177,18 +177,18 @@ public class PMDG777Definition : BaseAircraftDefinition
                 Name = "ELEC_IDGDiscSw_0",
                 DisplayName = "IDG Disconnect 1",
                 Type = SimConnect.SimVarType.PMDGVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Disconnect" }
+                UpdateFrequency = SimConnect.UpdateFrequency.Never,
+                RenderAsButton = true,
+                IsMomentary = true,
             },
             ["ELEC_IDGDisc_2"] = new SimConnect.SimVarDefinition
             {
                 Name = "ELEC_IDGDiscSw_1",
                 DisplayName = "IDG Disconnect 2",
                 Type = SimConnect.SimVarType.PMDGVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Disconnect" }
+                UpdateFrequency = SimConnect.UpdateFrequency.Never,
+                RenderAsButton = true,
+                IsMomentary = true,
             },
             ["ELEC_CabUtil"] = new SimConnect.SimVarDefinition
             {
@@ -262,26 +262,6 @@ public class PMDG777Definition : BaseAircraftDefinition
             {
                 Name = "ELEC_annunBusTieISLN_1",
                 DisplayName = "Bus Tie 2 ISLN Light",
-                Type = SimConnect.SimVarType.PMDGVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
-            },
-            ["ELEC_annunExtPwrON_1"] = new SimConnect.SimVarDefinition
-            {
-                Name = "ELEC_annunExtPowr_ON_0",
-                DisplayName = "Ext Power 1 ON Light",
-                Type = SimConnect.SimVarType.PMDGVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
-            },
-            ["ELEC_annunExtPwrON_2"] = new SimConnect.SimVarDefinition
-            {
-                Name = "ELEC_annunExtPowr_ON_1",
-                DisplayName = "Ext Power 2 ON Light",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
