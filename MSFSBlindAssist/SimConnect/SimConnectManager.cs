@@ -26,6 +26,7 @@ public class SimConnectManager
     public event EventHandler<WindData>? WindReceived;
     public event EventHandler<ECAMDataEventArgs>? ECAMDataReceived;
     public event EventHandler<TakeoffRunwayReferenceEventArgs>? TakeoffRunwayReferenceSet;
+    public event EventHandler<string>? AircraftDetected;
 
     // Aircraft definition
     public IAircraftDefinition? CurrentAircraft { get; set; }
@@ -535,8 +536,8 @@ public class SimConnectManager
         {
             var varDef = kvp.Value;
 
-            // Skip write-only variables (Never frequency) and H-variables
-            if (varDef.UpdateFrequency == UpdateFrequency.Never || varDef.Type == SimVarType.HVar)
+            // Skip write-only variables (Never frequency), H-variables, AND PMDG variables (handled by PMDG777DataManager)
+            if (varDef.UpdateFrequency == UpdateFrequency.Never || varDef.Type == SimVarType.HVar || varDef.Type == SimVarType.PMDGVar)
                 continue;
 
             // Get a unique data definition ID for this variable
@@ -617,6 +618,10 @@ public class SimConnectManager
             if (kvp.Value.UpdateFrequency == UpdateFrequency.Continuous &&
                 kvp.Value.IsAnnounced)
             {
+                // Skip PMDGVar - these are monitored by PMDG777DataManager, not SimConnect batches
+                if (kvp.Value.Type == SimVarType.PMDGVar)
+                    continue;
+
                 continuousVariables.Add(kvp);
             }
         }
