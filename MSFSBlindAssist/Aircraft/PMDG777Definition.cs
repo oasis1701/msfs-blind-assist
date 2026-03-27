@@ -4620,13 +4620,13 @@ public class PMDG777Definition : BaseAircraftDefinition
         }
 
         // MCP mode annunciator announcements
-        if (varName == "MCP_annunAP_0")
+        if (varName == "MCP_annunAP_L")
         {
             announcer.AnnounceImmediate(value > 0 ? "Autopilot left engaged" : "Autopilot left disengaged");
             return true;
         }
 
-        if (varName == "MCP_annunAP_1")
+        if (varName == "MCP_annunAP_R")
         {
             announcer.AnnounceImmediate(value > 0 ? "Autopilot right engaged" : "Autopilot right disengaged");
             return true;
@@ -4687,14 +4687,14 @@ public class PMDG777Definition : BaseAircraftDefinition
         }
 
         // Master warning and caution
-        if (varName == "WARN_annunMASTER_WARNING_0" || varName == "WARN_annunMASTER_WARNING_1")
+        if (varName == "WARN_annunMasterWarning_L" || varName == "WARN_annunMasterWarning_R")
         {
             if (value > 0)
                 announcer.AnnounceImmediate("Master WARNING");
             return true;
         }
 
-        if (varName == "WARN_annunMASTER_CAUTION_0" || varName == "WARN_annunMASTER_CAUTION_1")
+        if (varName == "WARN_annunMasterCaution_L" || varName == "WARN_annunMasterCaution_R")
         {
             if (value > 0)
                 announcer.AnnounceImmediate("Master CAUTION");

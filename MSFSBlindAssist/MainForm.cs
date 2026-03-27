@@ -65,6 +65,7 @@ public partial class MainForm : Form
     private ConcurrentDictionary<string, bool> pendingStateAnnouncements = new ConcurrentDictionary<string, bool>();  // Track state announcement requests
     private string currentFlightPhase = "";  // Track current flight phase for window title
     private IAircraftDefinition currentAircraft;
+    private Dictionary<string, string>? _pmdgFieldToKeyMap;
 
     public MainForm()
     {
@@ -859,12 +860,30 @@ public partial class MainForm : Form
         }
     }
 
+    private void BuildPMDGFieldMap()
+    {
+        _pmdgFieldToKeyMap = new Dictionary<string, string>();
+        if (currentAircraft == null) return;
+        foreach (var kvp in currentAircraft.GetVariables())
+        {
+            // Map Name (struct field name) → Key (variable key)
+            if (!_pmdgFieldToKeyMap.ContainsKey(kvp.Value.Name))
+                _pmdgFieldToKeyMap[kvp.Value.Name] = kvp.Key;
+        }
+    }
+
     private void OnPMDGVariableChanged(object? sender, PMDGVarUpdateEventArgs e)
     {
+        if (_pmdgFieldToKeyMap == null) BuildPMDGFieldMap();
+
+        // Translate struct field name to variable key
+        if (!_pmdgFieldToKeyMap!.TryGetValue(e.FieldName, out string? varKey))
+            return; // Unknown field (e.g., reserved bytes), skip silently
+
         // Route PMDG variable changes through the same pipeline as SimVar updates
         var simVarEvent = new SimVarUpdateEventArgs
         {
-            VarName = e.FieldName,
+            VarName = varKey,
             Value   = e.Value,
             Description = string.Empty
         };
@@ -1963,6 +1982,9 @@ public partial class MainForm : Form
     {
         // Update the aircraft instance
         currentAircraft = newAircraft;
+
+        // Invalidate PMDG field map so it rebuilds for the new aircraft
+        _pmdgFieldToKeyMap = null;
 
         // Update SimConnectManager
         simConnectManager.CurrentAircraft = currentAircraft;
@@ -3251,6 +3273,24 @@ public partial class MainForm : Form
         }
 
             controlsContainer.Controls.Add(layout);
+
+            // For PMDG aircraft, populate controls with current data from the data manager
+            if (currentAircraft?.AircraftCode == "PMDG_777" && simConnectManager?.PMDG777DataManager != null)
+            {
+                var dm = simConnectManager.PMDG777DataManager;
+                foreach (var varKey in currentAircraft.GetPanelControls()[currentPanel])
+                {
+                    if (!currentAircraft.GetVariables().ContainsKey(varKey)) continue;
+                    var varDef = currentAircraft.GetVariables()[varKey];
+
+                    // Read current value from PMDG data manager using the struct field name
+                    double value = dm.GetFieldValue(varDef.Name);
+                    currentSimVarValues[varKey] = value;
+
+                    // Update the UI control
+                    UpdateControlFromSimVar(varKey, value);
+                }
+            }
         })); // End BeginInvoke - deferred control creation
     } // End PanelLoadTimer_Tick
 
