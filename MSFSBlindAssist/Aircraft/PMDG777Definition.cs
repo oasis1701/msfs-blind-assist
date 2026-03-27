@@ -48,7 +48,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["Pedestal"] = new List<string>
             {
                 "Control Stand", "Transponder/TCAS", "Weather Radar",
-                "Communication", "CDU", "Warning"
+                "Communication", "CDU", "Evacuation", "Warning"
             }
         };
     }
@@ -1352,18 +1352,18 @@ public class PMDG777Definition : BaseAircraftDefinition
                 Name = "FIRE_CargoFireDisch_Sw",
                 DisplayName = "Cargo Fire Discharge",
                 Type = SimConnect.SimVarType.PMDGVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Discharge" }
+                UpdateFrequency = SimConnect.UpdateFrequency.Never,
+                RenderAsButton = true,
+                IsMomentary = true,
             },
             ["FIRE_FireOvhtTest"] = new SimConnect.SimVarDefinition
             {
                 Name = "FIRE_FireOvhtTest_Sw",
                 DisplayName = "Fire Overheat Test",
                 Type = SimConnect.SimVarType.PMDGVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Test" }
+                UpdateFrequency = SimConnect.UpdateFrequency.Never,
+                RenderAsButton = true,
+                IsMomentary = true,
             },
             ["FIRE_APUHandle"] = new SimConnect.SimVarDefinition
             {
@@ -1379,9 +1379,9 @@ public class PMDG777Definition : BaseAircraftDefinition
                 Name = "FIRE_APUHandleUnlock_Sw",
                 DisplayName = "APU Handle Unlock",
                 Type = SimConnect.SimVarType.PMDGVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Unlock" }
+                UpdateFrequency = SimConnect.UpdateFrequency.Never,
+                RenderAsButton = true,
+                IsMomentary = true,
             },
             // Fire annunciators
             ["FIRE_annunCargoFire_1"] = new SimConnect.SimVarDefinition
@@ -1974,27 +1974,27 @@ public class PMDG777Definition : BaseAircraftDefinition
                 Name = "ENG_EECPower_Sw_TEST_0",
                 DisplayName = "EEC Test Left",
                 Type = SimConnect.SimVarType.PMDGVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Test" }
+                UpdateFrequency = SimConnect.UpdateFrequency.Never,
+                RenderAsButton = true,
+                IsMomentary = true,
             },
             ["ENG_EECTest_R"] = new SimConnect.SimVarDefinition
             {
                 Name = "ENG_EECPower_Sw_TEST_1",
                 DisplayName = "EEC Test Right",
                 Type = SimConnect.SimVarType.PMDGVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Test" }
+                UpdateFrequency = SimConnect.UpdateFrequency.Never,
+                RenderAsButton = true,
+                IsMomentary = true,
             },
             ["APU_PowerTest"] = new SimConnect.SimVarDefinition
             {
                 Name = "APU_Power_Sw_TEST",
                 DisplayName = "APU Test",
                 Type = SimConnect.SimVarType.PMDGVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Test" }
+                UpdateFrequency = SimConnect.UpdateFrequency.Never,
+                RenderAsButton = true,
+                IsMomentary = true,
             },
 
             // =================================================================
@@ -2975,18 +2975,18 @@ public class PMDG777Definition : BaseAircraftDefinition
                 Name = "WARN_Reset_Sw_Pushed_0",
                 DisplayName = "Master Warning Reset Left",
                 Type = SimConnect.SimVarType.PMDGVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                RenderAsButton = true
+                UpdateFrequency = SimConnect.UpdateFrequency.Never,
+                RenderAsButton = true,
+                IsMomentary = true,
             },
             ["WARN_Reset_R"] = new SimConnect.SimVarDefinition
             {
                 Name = "WARN_Reset_Sw_Pushed_1",
                 DisplayName = "Master Warning Reset Right",
                 Type = SimConnect.SimVarType.PMDGVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                RenderAsButton = true
+                UpdateFrequency = SimConnect.UpdateFrequency.Never,
+                RenderAsButton = true,
+                IsMomentary = true,
             },
             ["WARN_annunMasterWarning_L"] = new SimConnect.SimVarDefinition
             {
@@ -3829,6 +3829,58 @@ public class PMDG777Definition : BaseAircraftDefinition
                 OnlyAnnounceValueDescriptionMatches = true,
                 ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
             },
+
+            // =================================================================
+            // PEDESTAL — EICAS EVENT RECORD
+            // =================================================================
+            ["EICAS_EventRcd"] = new SimConnect.SimVarDefinition
+            {
+                Name = "EICAS_EventRcd_Sw_Pushed",
+                DisplayName = "EICAS Event Record",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Never,
+                RenderAsButton = true,
+                IsMomentary = true,
+            },
+
+            // =================================================================
+            // OVERHEAD — AIR CONDITIONING RESET
+            // =================================================================
+            ["AIR_AirCondReset"] = new SimConnect.SimVarDefinition
+            {
+                Name = "AIR_AirCondReset_Sw_Pushed",
+                DisplayName = "Air Cond Reset",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Never,
+                RenderAsButton = true,
+                IsMomentary = true,
+            },
+
+            // =================================================================
+            // PEDESTAL — FLIGHT CONTROLS (RUDDER TRIM CANCEL)
+            // =================================================================
+            ["FCTL_RudderTrimCancel"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FCTL_RudderTrimCancel_Sw_Pushed",
+                DisplayName = "Rudder Trim Cancel",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Never,
+                RenderAsButton = true,
+                IsMomentary = true,
+            },
+
+            // =================================================================
+            // PEDESTAL — EVACUATION
+            // =================================================================
+            ["EVAC_PressToTest"] = new SimConnect.SimVarDefinition
+            {
+                Name = "EVAC_PressToTest_Sw_Pressed",
+                DisplayName = "Evacuation Press to Test",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Never,
+                RenderAsButton = true,
+                IsMomentary = true,
+            },
         };
     }
 
@@ -3895,7 +3947,8 @@ public class PMDG777Definition : BaseAircraftDefinition
                 "AIR_TrimAir_1", "AIR_TrimAir_2",
                 "AIR_RecircFanUpper", "AIR_RecircFanLower",
                 "AIR_EquipCooling", "AIR_Gasper", "AIR_AltnVent",
-                "AIR_TempSelectorFlightDeck", "AIR_TempSelectorCabin"
+                "AIR_TempSelectorFlightDeck", "AIR_TempSelectorCabin",
+                "AIR_AirCondReset"
             },
 
             // Overhead — Pressurization
@@ -4078,7 +4131,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 "FCTL_Speedbrake", "FCTL_Flaps",
                 "FCTL_AltnFlapsArm", "FCTL_AltnFlapsControl",
                 "FCTL_StabCutout_C", "FCTL_StabCutout_R",
-                "FCTL_AltnPitch",
+                "FCTL_AltnPitch", "FCTL_RudderTrimCancel",
                 "ENG_FuelControl_1", "ENG_FuelControl_2",
                 "BRAKES_ParkingBrake"
             },
@@ -4106,7 +4159,14 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["CDU"] = new List<string>
             {
                 "CDU_OpenCDU",
-                "CDU_BrtKnob_L", "CDU_BrtKnob_C", "CDU_BrtKnob_R"
+                "CDU_BrtKnob_L", "CDU_BrtKnob_C", "CDU_BrtKnob_R",
+                "EICAS_EventRcd"
+            },
+
+            // Pedestal — Evacuation
+            ["Evacuation"] = new List<string>
+            {
+                "EVAC_PressToTest"
             },
 
             // Pedestal — Warning (Master Warning/Caution already in Glareshield Warning section)
