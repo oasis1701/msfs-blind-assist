@@ -228,6 +228,16 @@ public partial class MainForm : Form
             announcer.Announce(status);
             announcer.Announce($"{currentAircraft.AircraftName} Profile and panels active");
 
+            // After SimConnect connects, if current aircraft is PMDG 777, initialize data manager
+            if (currentAircraft?.AircraftCode == "PMDG_777")
+            {
+                simConnectManager.InitializePMDG777();
+                if (simConnectManager.PMDG777DataManager != null)
+                {
+                    simConnectManager.PMDG777DataManager.VariableChanged += OnPMDGVariableChanged;
+                }
+            }
+
             // Automatically switch database if simulator version doesn't match
             CheckAndSwitchDatabase();
 

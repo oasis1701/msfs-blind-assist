@@ -4408,10 +4408,6 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["DSP_InbdDspl_L"]          = "EVT_DSP_INDB_DSPL_L",
             ["DSP_InbdDspl_R"]          = "EVT_DSP_INDB_DSPL_R",
 
-            // --- Warning resets (momentary buttons) ---
-            ["WARN_Reset_L"]            = "EVT_MCP_AT_ARM_SWITCH_L",  // placeholder; no dedicated EVT in dict
-            ["WARN_Reset_R"]            = "EVT_MCP_AT_ARM_SWITCH_R",  // placeholder; no dedicated EVT in dict
-
             // --- Landing Gear ---
             ["GEAR_Lever"]              = "EVT_GEAR_LEVER",
             ["GEAR_LockOvrd"]           = "EVT_GEAR_LEVER_UNLOCK",
@@ -4429,13 +4425,6 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["GPWS_RunwayOvrd"]         = "EVT_GPWS_RWY_OVRD_SWITCH",
 
             // --- Instruments (ISP switches) ---
-            ["ISP_Nav_L"]               = "EVT_EFIS_CPT_VOR_ADF_SELECTOR_L",   // reuse closest EFIS event
-            ["ISP_DsplCtrl_L"]          = "EVT_EFIS_CPT_MODE",
-            ["ISP_AirDataAtt_L"]        = "EVT_EFIS_CPT_MODE",
-            ["ISP_Nav_R"]               = "EVT_EFIS_FO_VOR_ADF_SELECTOR_L",
-            ["ISP_DsplCtrl_R"]          = "EVT_EFIS_FO_MODE",
-            ["ISP_AirDataAtt_R"]        = "EVT_EFIS_FO_MODE",
-            ["ISP_DsplCtrl_C"]          = "EVT_EFIS_CPT_MODE",
             ["ISP_FMC_Selector"]        = "EVT_FWD_FMC_SELECTOR",
 
             // --- ISFD momentary buttons ---
@@ -4446,18 +4435,6 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["ISFD_APP"]                = "EVT_ISFD_APP",
             ["ISFD_HP_IN"]              = "EVT_ISFD_HP_IN",
 
-            // --- Chronometers (momentary buttons) ---
-            ["CHR_Chr_L"]               = "EVT_EFIS_CPT_MINIMUMS_RST",   // no dedicated evt; treat as toggle
-            ["CHR_Chr_R"]               = "EVT_EFIS_FO_MINIMUMS_RST",
-            ["CHR_TimeDate_L"]          = "EVT_EFIS_CPT_MINIMUMS_RST",
-            ["CHR_TimeDate_R"]          = "EVT_EFIS_FO_MINIMUMS_RST",
-            ["CHR_TimeDateSelector_L"]  = "EVT_EFIS_CPT_MINIMUMS_RST",
-            ["CHR_TimeDateSelector_R"]  = "EVT_EFIS_FO_MINIMUMS_RST",
-            ["CHR_SetSelector_L"]       = "EVT_EFIS_CPT_MINIMUMS",
-            ["CHR_SetSelector_R"]       = "EVT_EFIS_FO_MINIMUMS",
-            ["CHR_ETSelector_L"]        = "EVT_EFIS_CPT_MINIMUMS",
-            ["CHR_ETSelector_R"]        = "EVT_EFIS_FO_MINIMUMS",
-
             // --- Control Stand (pedestal) ---
             ["FCTL_Speedbrake"]         = "EVT_CONTROL_STAND_SPEED_BRAKE_LEVER",
             ["FCTL_Flaps"]              = "EVT_CONTROL_STAND_FLAPS_LEVER",
@@ -4467,28 +4444,12 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["FCTL_StabCutout_R"]       = "EVT_CONTROL_STAND_STABCUTOUT_SWITCH_R",
             ["FCTL_AltnPitch"]          = "EVT_CONTROL_STAND_ALT_PITCH_TRIM_LEVER",
 
-            // --- Transponder ---
-            ["XPDR_XpndrSelector"]      = "EVT_EFIS_CPT_MODE",          // no dedicated XPDR evt in dict
-            ["XPDR_AltSource"]          = "EVT_EFIS_CPT_MODE",
-            ["XPDR_ModeSel"]            = "EVT_EFIS_CPT_MODE",
-            ["XPDR_Ident"]              = "EVT_EFIS_CPT_MINIMUMS_RST",  // momentary press placeholder
-
             // --- Communication selectors ---
-            ["COMM_SelectedMic_1"]      = "EVT_EFIS_CPT_VOR_ADF_SELECTOR_L",
-            ["COMM_SelectedMic_2"]      = "EVT_EFIS_CPT_VOR_ADF_SELECTOR_R",
-            ["COMM_SelectedMic_3"]      = "EVT_EFIS_FO_VOR_ADF_SELECTOR_L",
-            ["COMM_SelectedRadio_1"]    = "EVT_EFIS_CPT_VOR_ADF_SELECTOR_L",
-            ["COMM_SelectedRadio_2"]    = "EVT_EFIS_CPT_VOR_ADF_SELECTOR_R",
-            ["COMM_SelectedRadio_3"]    = "EVT_EFIS_FO_VOR_ADF_SELECTOR_L",
-            ["COMM_RadioTransfer_1"]    = "EVT_EFIS_CPT_MINIMUMS_RST",
-            ["COMM_RadioTransfer_2"]    = "EVT_EFIS_FO_MINIMUMS_RST",
-            ["COMM_RadioTransfer_3"]    = "EVT_EFIS_FO_MINIMUMS_RST",
             ["COMM_OBSAudio"]           = "EVT_PED_OBS_AUDIO_SELECTOR",
 
             // --- CDU ---
             ["CDU_BrtKnob_L"]           = "EVT_CDU_L_BRITENESS",
-            ["CDU_BrtKnob_C"]           = "EVT_CDU_L_BRITENESS",
-            ["CDU_BrtKnob_R"]           = "EVT_CDU_L_BRITENESS",
+            ["CDU_BrtKnob_R"]           = "EVT_CDU_R_BRITENESS",
         };
 
     // =========================================================================

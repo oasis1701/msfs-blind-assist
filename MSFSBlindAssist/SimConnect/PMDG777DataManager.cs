@@ -227,8 +227,9 @@ public class PMDG777DataManager : IDisposable
     {
         if (!_hasSnapshot)
         {
-            // First snapshot — raise all fields so consumers get initial state
-            RaiseAllFields(newData);
+            // First snapshot — silently store initial state without raising events.
+            // Raising all fields here would flood the screen reader with announcements
+            // for every cockpit variable the moment PMDG data first arrives.
             return;
         }
 
@@ -459,6 +460,7 @@ public class PMDG777DataManager : IDisposable
         if (cdu < 0 || cdu > 2 || _lastCDUScreen[cdu] == null) return null;
 
         var screen = _lastCDUScreen[cdu]!.Value;
+        if (!screen.Powered) return null;
         if (screen.Cells == null || screen.Cells.Length < CDU_COLS * CDU_ROWS) return null;
 
         var rows = new string[CDU_ROWS];
@@ -467,7 +469,7 @@ public class PMDG777DataManager : IDisposable
             var sb = new System.Text.StringBuilder(CDU_COLS);
             for (int col = 0; col < CDU_COLS; col++)
             {
-                byte sym = screen.Cells[row * CDU_COLS + col].Symbol;
+                byte sym = screen.Cells[col * CDU_ROWS + row].Symbol;
                 char ch  = sym switch
                 {
                     0xA1                   => '<',
