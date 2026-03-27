@@ -43,6 +43,10 @@ public class SimConnectManager
     public bool CanSendHVars => mobiFlightWasm?.CanSendHVars == true;
     public string MobiFlightStatus => mobiFlightWasm?.ConnectionStatus ?? "Not Available";
 
+    // PMDG 777 data manager
+    private PMDG777DataManager? pmdg777DataManager;
+    public PMDG777DataManager? PMDG777DataManager => pmdg777DataManager;
+
     // ECAM data collection via MobiFlight
     private Dictionary<string, string> ecamStringData = new Dictionary<string, string>();
     private int ecamStringsReceived = 0;
@@ -2491,6 +2495,12 @@ public class SimConnectManager
         {
             mobiFlightWasm.ProcessClientDataResponse(data);
         }
+
+        // Forward client data to PMDG 777 data manager
+        if (pmdg777DataManager != null)
+        {
+            pmdg777DataManager.ProcessClientData(data);
+        }
     }
 
     public void RequestAircraftInfo()
@@ -3463,6 +3473,31 @@ public class SimConnectManager
             mobiFlightWasm.ReadLedVariable(ledVariable);
             System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Reading LED variable: {ledVariable}");
         }
+    }
+
+    public void InitializePMDG777()
+    {
+        if (simConnect == null || !IsConnected) return;
+        pmdg777DataManager = new PMDG777DataManager();
+        pmdg777DataManager.Initialize(simConnect, mobiFlightWasm);
+    }
+
+    public void DisposePMDG777()
+    {
+        pmdg777DataManager?.Dispose();
+        pmdg777DataManager = null;
+    }
+
+    public void SendPMDGEvent(string eventName, uint eventId, int? parameter = null)
+    {
+        pmdg777DataManager?.SendEvent(eventName, eventId, parameter);
+    }
+
+    public async Task SendPMDGGuardedToggle(string guardEventName, uint guardEventId,
+                                              string switchEventName, uint switchEventId)
+    {
+        if (pmdg777DataManager != null)
+            await pmdg777DataManager.SendGuardedToggle(guardEventName, guardEventId, switchEventName, switchEventId);
     }
 
     public void Disconnect()
