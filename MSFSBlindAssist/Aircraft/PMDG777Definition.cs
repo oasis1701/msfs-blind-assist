@@ -4616,7 +4616,131 @@ public class PMDG777Definition : BaseAircraftDefinition
 
     public override bool ProcessSimVarUpdate(string varName, double value, ScreenReaderAnnouncer announcer)
     {
-        return base.ProcessSimVarUpdate(varName, value, announcer);
+        if (base.ProcessSimVarUpdate(varName, value, announcer)) return true;
+
+        // MCP display value announcements
+        if (varName == "MCP_IASMach")
+        {
+            if (value < 10)
+                announcer.AnnounceImmediate($"Mach {value:F2}");
+            else
+                announcer.AnnounceImmediate($"Speed {(int)value} knots");
+            return true;
+        }
+
+        if (varName == "MCP_Heading")
+        {
+            announcer.AnnounceImmediate($"Heading {(int)value}");
+            return true;
+        }
+
+        if (varName == "MCP_Altitude")
+        {
+            announcer.AnnounceImmediate($"Altitude {(int)value}");
+            return true;
+        }
+
+        if (varName == "MCP_VertSpeed")
+        {
+            announcer.AnnounceImmediate($"Vertical speed {(int)value}");
+            return true;
+        }
+
+        if (varName == "MCP_IASBlank" && value > 0)
+        {
+            announcer.AnnounceImmediate("Speed blank");
+            return true;
+        }
+
+        if (varName == "MCP_VertSpeedBlank" && value > 0)
+        {
+            announcer.AnnounceImmediate("Vertical speed blank");
+            return true;
+        }
+
+        // MCP mode annunciator announcements
+        if (varName == "MCP_annunAP_0")
+        {
+            announcer.AnnounceImmediate(value > 0 ? "Autopilot left engaged" : "Autopilot left disengaged");
+            return true;
+        }
+
+        if (varName == "MCP_annunAP_1")
+        {
+            announcer.AnnounceImmediate(value > 0 ? "Autopilot right engaged" : "Autopilot right disengaged");
+            return true;
+        }
+
+        if (varName == "MCP_annunAT")
+        {
+            announcer.AnnounceImmediate(value > 0 ? "Autothrottle engaged" : "Autothrottle disengaged");
+            return true;
+        }
+
+        if (varName == "MCP_annunLNAV")
+        {
+            announcer.AnnounceImmediate(value > 0 ? "LNAV engaged" : "LNAV disengaged");
+            return true;
+        }
+
+        if (varName == "MCP_annunVNAV")
+        {
+            announcer.AnnounceImmediate(value > 0 ? "VNAV engaged" : "VNAV disengaged");
+            return true;
+        }
+
+        if (varName == "MCP_annunFLCH")
+        {
+            announcer.AnnounceImmediate(value > 0 ? "FLCH engaged" : "FLCH disengaged");
+            return true;
+        }
+
+        if (varName == "MCP_annunHDG_HOLD")
+        {
+            announcer.AnnounceImmediate(value > 0 ? "Heading hold engaged" : "Heading hold disengaged");
+            return true;
+        }
+
+        if (varName == "MCP_annunVS_FPA")
+        {
+            announcer.AnnounceImmediate(value > 0 ? "VS/FPA engaged" : "VS/FPA disengaged");
+            return true;
+        }
+
+        if (varName == "MCP_annunALT_HOLD")
+        {
+            announcer.AnnounceImmediate(value > 0 ? "Altitude hold engaged" : "Altitude hold disengaged");
+            return true;
+        }
+
+        if (varName == "MCP_annunLOC")
+        {
+            announcer.AnnounceImmediate(value > 0 ? "Localizer engaged" : "Localizer disengaged");
+            return true;
+        }
+
+        if (varName == "MCP_annunAPP")
+        {
+            announcer.AnnounceImmediate(value > 0 ? "Approach engaged" : "Approach disengaged");
+            return true;
+        }
+
+        // Master warning and caution
+        if (varName == "WARN_annunMASTER_WARNING_0" || varName == "WARN_annunMASTER_WARNING_1")
+        {
+            if (value > 0)
+                announcer.AnnounceImmediate("Master WARNING");
+            return true;
+        }
+
+        if (varName == "WARN_annunMASTER_CAUTION_0" || varName == "WARN_annunMASTER_CAUTION_1")
+        {
+            if (value > 0)
+                announcer.AnnounceImmediate("Master CAUTION");
+            return true;
+        }
+
+        return false;
     }
 
     public override bool HandleHotkeyAction(
