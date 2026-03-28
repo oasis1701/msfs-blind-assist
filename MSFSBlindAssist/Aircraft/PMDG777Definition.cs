@@ -3759,7 +3759,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.SimVar,
                 Units = "BCO16",
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = false
+                IsAnnounced = true
             },
 
             // =================================================================
@@ -4416,7 +4416,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.SimVar,
                 Units = "MHz",
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = false,
+                IsAnnounced = true,
                 PreventTextInput = true
             },
             ["COM_STANDBY_FREQUENCY_SET:1"] = new SimConnect.SimVarDefinition
@@ -4426,7 +4426,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.SimVar,
                 Units = "MHz",
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = false
+                IsAnnounced = true
             },
             ["COM1_RADIO_SWAP"] = new SimConnect.SimVarDefinition
             {
@@ -4444,7 +4444,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.SimVar,
                 Units = "MHz",
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = false,
+                IsAnnounced = true,
                 PreventTextInput = true
             },
             ["COM_STANDBY_FREQUENCY_SET:2"] = new SimConnect.SimVarDefinition
@@ -4454,7 +4454,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.SimVar,
                 Units = "MHz",
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = false
+                IsAnnounced = true
             },
             ["COM2_RADIO_SWAP"] = new SimConnect.SimVarDefinition
             {
