@@ -2174,6 +2174,24 @@ public class PMDG777Definition : BaseAircraftDefinition
                 IsAnnounced = true,
                 RenderAsButton = true
             },
+            ["EFIS_FPV_Capt"] = new SimConnect.SimVarDefinition
+            {
+                Name = "EFIS_FPV_Capt",
+                DisplayName = "FPV",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Never,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
+            ["EFIS_MTRS_Capt"] = new SimConnect.SimVarDefinition
+            {
+                Name = "EFIS_MTRS_Capt",
+                DisplayName = "MTRS",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Never,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
 
             // =================================================================
             // GLARESHIELD — EFIS FIRST OFFICER (index 1)
@@ -2346,6 +2364,24 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 RenderAsButton = true
+            },
+            ["EFIS_FPV_FO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "EFIS_FPV_FO",
+                DisplayName = "FPV",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Never,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
+            ["EFIS_MTRS_FO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "EFIS_MTRS_FO",
+                DisplayName = "MTRS",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Never,
+                RenderAsButton = true,
+                IsMomentary = true
             },
 
             // =================================================================
@@ -4079,7 +4115,8 @@ public class PMDG777Definition : BaseAircraftDefinition
                 "EFIS_MinsRST_Capt", "EFIS_BaroSTD_Capt",
                 "EFIS_ModeCTR_Capt", "EFIS_RangeTFC_Capt",
                 "EFIS_WXR_Capt", "EFIS_STA_Capt", "EFIS_WPT_Capt",
-                "EFIS_ARPT_Capt", "EFIS_DATA_Capt", "EFIS_POS_Capt", "EFIS_TERR_Capt"
+                "EFIS_ARPT_Capt", "EFIS_DATA_Capt", "EFIS_POS_Capt", "EFIS_TERR_Capt",
+                "EFIS_FPV_Capt", "EFIS_MTRS_Capt"
             },
 
             // Glareshield — EFIS First Officer
@@ -4092,7 +4129,8 @@ public class PMDG777Definition : BaseAircraftDefinition
                 "EFIS_MinsRST_FO", "EFIS_BaroSTD_FO",
                 "EFIS_ModeCTR_FO", "EFIS_RangeTFC_FO",
                 "EFIS_WXR_FO", "EFIS_STA_FO", "EFIS_WPT_FO",
-                "EFIS_ARPT_FO", "EFIS_DATA_FO", "EFIS_POS_FO", "EFIS_TERR_FO"
+                "EFIS_ARPT_FO", "EFIS_DATA_FO", "EFIS_POS_FO", "EFIS_TERR_FO",
+                "EFIS_FPV_FO", "EFIS_MTRS_FO"
             },
 
             // Glareshield — Mode Control Panel
@@ -4405,6 +4443,8 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["EFIS_DATA_Capt"]          = "EVT_EFIS_CPT_DATA",
             ["EFIS_POS_Capt"]           = "EVT_EFIS_CPT_POS",
             ["EFIS_TERR_Capt"]          = "EVT_EFIS_CPT_TERR",
+            ["EFIS_FPV_Capt"]           = "EVT_EFIS_CPT_FPV",
+            ["EFIS_MTRS_Capt"]          = "EVT_EFIS_CPT_MTRS",
 
             // --- EFIS First Officer ---
             ["EFIS_MinsSelBARO_FO"]     = "EVT_EFIS_FO_MINIMUMS_RADIO_BARO",
@@ -4426,6 +4466,8 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["EFIS_DATA_FO"]            = "EVT_EFIS_FO_DATA",
             ["EFIS_POS_FO"]             = "EVT_EFIS_FO_POS",
             ["EFIS_TERR_FO"]            = "EVT_EFIS_FO_TERR",
+            ["EFIS_FPV_FO"]             = "EVT_EFIS_FO_FPV",
+            ["EFIS_MTRS_FO"]            = "EVT_EFIS_FO_MTRS",
             ["EFIS_HdgRef"]             = "EVT_EFIS_HDG_REF_SWITCH",
 
             // --- MCP switches (toggles) ---
@@ -4535,6 +4577,18 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["CDU_BrtKnob_L"]           = "EVT_CDU_L_BRITENESS",
             ["CDU_BrtKnob_R"]           = "EVT_CDU_R_BRITENESS",
             ["CDU_BrtKnob_C"]           = "EVT_CDU_C_BRITENESS",
+
+            // --- Chronometers ---
+            ["CHR_Chr_L"]               = "EVT_CHRONO_L_CHR",
+            ["CHR_TimeDate_L"]          = "EVT_CHRONO_L_TIME_DATE_PUSH",
+            ["CHR_TimeDateSelector_L"]  = "EVT_CHRONO_L_TIME_DATE_SELECT",
+            ["CHR_SetSelector_L"]       = "EVT_CHRONO_L_SET",
+            ["CHR_ETSelector_L"]        = "EVT_CHRONO_L_ET",
+            ["CHR_Chr_R"]               = "EVT_CHRONO_R_CHR",
+            ["CHR_TimeDate_R"]          = "EVT_CHRONO_R_TIME_DATE_PUSH",
+            ["CHR_TimeDateSelector_R"]  = "EVT_CHRONO_R_TIME_DATE_SELECT",
+            ["CHR_SetSelector_R"]       = "EVT_CHRONO_R_SET",
+            ["CHR_ETSelector_R"]        = "EVT_CHRONO_R_ET",
 
             // --- XPDR/TCAS ---
             ["XPDR_XpndrSelector"]     = "EVT_TCAS_XPNDR",
@@ -5839,6 +5893,28 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["EVT_FWD_DSPL_CTRL_SOURCE_R"]        = 69909,
             ["EVT_FWD_AIR_DATA_ATT_SOURCE_L"]     = 69802,
             ["EVT_FWD_AIR_DATA_ATT_SOURCE_R"]     = 69910,
+
+            // -----------------------------------------------------------------
+            // FORWARD PANEL — Chronometers
+            // -----------------------------------------------------------------
+            ["EVT_CHRONO_L_CHR"]                   = 69803,
+            ["EVT_CHRONO_L_TIME_DATE_SELECT"]      = 69804,
+            ["EVT_CHRONO_L_TIME_DATE_PUSH"]        = 71353,
+            ["EVT_CHRONO_L_ET"]                    = 69805,
+            ["EVT_CHRONO_L_SET"]                   = 69806,
+            ["EVT_CHRONO_R_CHR"]                   = 69911,
+            ["EVT_CHRONO_R_TIME_DATE_SELECT"]      = 69912,
+            ["EVT_CHRONO_R_TIME_DATE_PUSH"]        = 72434,
+            ["EVT_CHRONO_R_ET"]                    = 69913,
+            ["EVT_CHRONO_R_SET"]                   = 69914,
+
+            // -----------------------------------------------------------------
+            // FORWARD PANEL — Standby Instruments
+            // -----------------------------------------------------------------
+            ["EVT_STANDBY_ASI_KNOB"]              = 69940,
+            ["EVT_STANDBY_ASI_KNOB_PUSH"]         = 72712,
+            ["EVT_STANDBY_ALTIMETER_KNOB"]        = 69943,
+            ["EVT_STANDBY_ALTIMETER_KNOB_PUSH"]   = 72742,
 
             // -----------------------------------------------------------------
             // PEDESTAL — CDU Right and Center brightness
