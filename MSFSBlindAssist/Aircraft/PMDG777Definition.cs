@@ -4458,7 +4458,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             },
             ["COM2_RADIO_SWAP"] = new SimConnect.SimVarDefinition
             {
-                Name = "COM2_STBY_RADIO_SWAP",
+                Name = "COM2_RADIO_SWAP",
                 DisplayName = "COM2 Swap",
                 Type = SimConnect.SimVarType.Event,
                 RenderAsButton = true,
