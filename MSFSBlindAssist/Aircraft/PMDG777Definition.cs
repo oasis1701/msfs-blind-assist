@@ -4097,8 +4097,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 "MCP_LOC", "MCP_APP", "MCP_AT", "MCP_CLB_CON",
                 "MCP_AP_L", "MCP_AP_R",
                 "MCP_SpeedPush", "MCP_HeadingPush", "MCP_AltitudePush",
-                "MCP_IAS_MACH_Toggle", "MCP_HDG_TRK_Toggle", "MCP_VS_FPA_Toggle",
-                "WARN_Reset_L", "WARN_Reset_R"
+                "MCP_IAS_MACH_Toggle", "MCP_HDG_TRK_Toggle", "MCP_VS_FPA_Toggle"
             },
 
             // Glareshield — Display Select Panel
@@ -4298,6 +4297,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["AIR_CtrIsolationValve"]   = "EVT_OH_BLEED_ISOLATION_VALVE_SWITCH_C",
 
             // --- Air Conditioning ---
+            ["AIR_AirCondReset"]        = "EVT_OH_AIRCOND_RESET_SWITCH",
             ["AIR_Pack_1"]              = "EVT_OH_AIRCOND_PACK_SWITCH_L",
             ["AIR_Pack_2"]              = "EVT_OH_AIRCOND_PACK_SWITCH_R",
             ["AIR_TrimAir_1"]           = "EVT_OH_AIRCOND_TRIM_AIR_SWITCH_L",
@@ -4493,6 +4493,12 @@ public class PMDG777Definition : BaseAircraftDefinition
 
             // --- Instruments (ISP switches) ---
             ["ISP_FMC_Selector"]        = "EVT_FWD_FMC_SELECTOR",
+            ["ISP_Nav_L"]               = "EVT_FWD_NAV_SOURCE_L",
+            ["ISP_Nav_R"]               = "EVT_FWD_NAV_SOURCE_R",
+            ["ISP_DsplCtrl_L"]          = "EVT_FWD_DSPL_CTRL_SOURCE_L",
+            ["ISP_DsplCtrl_R"]          = "EVT_FWD_DSPL_CTRL_SOURCE_R",
+            ["ISP_AirDataAtt_L"]        = "EVT_FWD_AIR_DATA_ATT_SOURCE_L",
+            ["ISP_AirDataAtt_R"]        = "EVT_FWD_AIR_DATA_ATT_SOURCE_R",
 
             // --- ISFD momentary buttons ---
             ["ISFD_Baro"]               = "EVT_ISFD_BARO",
@@ -4517,6 +4523,13 @@ public class PMDG777Definition : BaseAircraftDefinition
             // --- CDU ---
             ["CDU_BrtKnob_L"]           = "EVT_CDU_L_BRITENESS",
             ["CDU_BrtKnob_R"]           = "EVT_CDU_R_BRITENESS",
+            ["CDU_BrtKnob_C"]           = "EVT_CDU_C_BRITENESS",
+
+            // --- XPDR/TCAS ---
+            ["XPDR_XpndrSelector"]     = "EVT_TCAS_XPNDR",
+            ["XPDR_AltSource"]          = "EVT_TCAS_ALTSOURCE",
+            ["XPDR_ModeSel"]             = "EVT_TCAS_MODE",
+            ["XPDR_Ident"]              = "EVT_TCAS_IDENT",
         };
 
     // =========================================================================
@@ -5805,5 +5818,29 @@ public class PMDG777Definition : BaseAircraftDefinition
             // FORWARD PANEL — FMC Selector
             // -----------------------------------------------------------------
             ["EVT_FWD_FMC_SELECTOR"]               = 69923,
+
+            // -----------------------------------------------------------------
+            // FORWARD PANEL — Source Selectors
+            // -----------------------------------------------------------------
+            ["EVT_FWD_NAV_SOURCE_L"]              = 69800,
+            ["EVT_FWD_NAV_SOURCE_R"]              = 69908,
+            ["EVT_FWD_DSPL_CTRL_SOURCE_L"]        = 69801,
+            ["EVT_FWD_DSPL_CTRL_SOURCE_R"]        = 69909,
+            ["EVT_FWD_AIR_DATA_ATT_SOURCE_L"]     = 69802,
+            ["EVT_FWD_AIR_DATA_ATT_SOURCE_R"]     = 69910,
+
+            // -----------------------------------------------------------------
+            // PEDESTAL — CDU Right and Center brightness
+            // -----------------------------------------------------------------
+            ["EVT_CDU_R_BRITENESS"]               = 70105,
+            ["EVT_CDU_C_BRITENESS"]               = 70357,
+
+            // -----------------------------------------------------------------
+            // PEDESTAL — TCAS
+            // -----------------------------------------------------------------
+            ["EVT_TCAS_XPNDR"]                    = 70383,
+            ["EVT_TCAS_ALTSOURCE"]                 = 70375,
+            ["EVT_TCAS_MODE"]                      = 70381,
+            ["EVT_TCAS_IDENT"]                     = 70378,
         };
 }
