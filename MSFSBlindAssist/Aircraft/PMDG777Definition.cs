@@ -48,7 +48,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["Pedestal"] = new List<string>
             {
                 "Control Stand", "Transponder/TCAS", "Weather Radar",
-                "Communication", "CDU", "Evacuation", "Warning", "Engine Fire"
+                "Communication", "CDU", "Evacuation", "Warning", "Engine Fire", "Radio"
             },
         };
     }
@@ -4396,6 +4396,82 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = false
             },
+
+            // =================================================================
+            // RADIO — COM1/COM2 Frequencies (standard SimConnect, not PMDG SDK)
+            // =================================================================
+            ["COM1_ActiveFreq"] = new SimConnect.SimVarDefinition
+            {
+                Name = "COM ACTIVE FREQUENCY:1",
+                DisplayName = "COM1 Active",
+                Type = SimConnect.SimVarType.SimVar,
+                Units = "MHz",
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                PreventTextInput = true
+            },
+            ["COM1_StandbyFreq"] = new SimConnect.SimVarDefinition
+            {
+                Name = "COM STANDBY FREQUENCY:1",
+                DisplayName = "COM1 Standby",
+                Type = SimConnect.SimVarType.SimVar,
+                Units = "MHz",
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true
+            },
+            ["COM_STANDBY_FREQUENCY_SET:1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "COM STANDBY FREQUENCY:1",
+                DisplayName = "Set COM1 Standby",
+                Type = SimConnect.SimVarType.SimVar,
+                Units = "kHz",
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
+            },
+            ["COM1_RADIO_SWAP"] = new SimConnect.SimVarDefinition
+            {
+                Name = "COM_STBY_RADIO_SWAP",
+                DisplayName = "COM1 Swap",
+                Type = SimConnect.SimVarType.Event,
+                RenderAsButton = true,
+                IsMomentary = true,
+                HelpText = "Swap COM1 active and standby frequencies"
+            },
+            ["COM2_ActiveFreq"] = new SimConnect.SimVarDefinition
+            {
+                Name = "COM ACTIVE FREQUENCY:2",
+                DisplayName = "COM2 Active",
+                Type = SimConnect.SimVarType.SimVar,
+                Units = "MHz",
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                PreventTextInput = true
+            },
+            ["COM2_StandbyFreq"] = new SimConnect.SimVarDefinition
+            {
+                Name = "COM STANDBY FREQUENCY:2",
+                DisplayName = "COM2 Standby",
+                Type = SimConnect.SimVarType.SimVar,
+                Units = "MHz",
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true
+            },
+            ["COM_STANDBY_FREQUENCY_SET:2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "COM STANDBY FREQUENCY:2",
+                DisplayName = "Set COM2 Standby",
+                Type = SimConnect.SimVarType.SimVar,
+                Units = "kHz",
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
+            },
+            ["COM2_RADIO_SWAP"] = new SimConnect.SimVarDefinition
+            {
+                Name = "COM2_STBY_RADIO_SWAP",
+                DisplayName = "COM2 Swap",
+                Type = SimConnect.SimVarType.Event,
+                RenderAsButton = true,
+                IsMomentary = true,
+                HelpText = "Swap COM2 active and standby frequencies"
+            },
         };
     }
 
@@ -4687,6 +4763,13 @@ public class PMDG777Definition : BaseAircraftDefinition
             {
                 "FIRE_EngineHandleUnlock_1", "FIRE_EngineHandle_1",
                 "FIRE_EngineHandleUnlock_2", "FIRE_EngineHandle_2"
+            },
+
+            // Pedestal — Radio
+            ["Radio"] = new List<string>
+            {
+                "COM1_ActiveFreq", "COM_STANDBY_FREQUENCY_SET:1", "COM1_RADIO_SWAP",
+                "COM2_ActiveFreq", "COM_STANDBY_FREQUENCY_SET:2", "COM2_RADIO_SWAP"
             },
 
         };
@@ -5388,6 +5471,28 @@ public class PMDG777Definition : BaseAircraftDefinition
         if (varName == "MON_APURunning")
         {
             announcer.AnnounceImmediate(value > 0 ? "APU running" : "APU shut down");
+            return true;
+        }
+
+        // COM frequency announcements
+        if (varName == "COM1_ActiveFreq")
+        {
+            announcer.AnnounceImmediate($"COM1 active {value:F3}");
+            return true;
+        }
+        if (varName == "COM1_StandbyFreq")
+        {
+            announcer.AnnounceImmediate($"COM1 standby {value:F3}");
+            return true;
+        }
+        if (varName == "COM2_ActiveFreq")
+        {
+            announcer.AnnounceImmediate($"COM2 active {value:F3}");
+            return true;
+        }
+        if (varName == "COM2_StandbyFreq")
+        {
+            announcer.AnnounceImmediate($"COM2 standby {value:F3}");
             return true;
         }
 
