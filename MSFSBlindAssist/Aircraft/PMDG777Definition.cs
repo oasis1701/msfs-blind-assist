@@ -108,7 +108,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Never,
                 RenderAsButton = true,
                 IsMomentary = true,
-                HelpText = "Press twice to start the APU. APU Selector must be set to On first."
+                HelpText = "Press twice to start the APU."
             },
             ["ELEC_BusTie_1"] = new SimConnect.SimVarDefinition
             {
