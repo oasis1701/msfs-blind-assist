@@ -5119,11 +5119,26 @@ public class PMDG777Definition : BaseAircraftDefinition
         SimConnect.PMDG777Debug.Log($"[PMDG777Definition.HandleUIVariableSet] eventName={eventName} eventId={eventId} (0x{eventId:X})");
 
         // ------------------------------------------------------------------
-        // 2b. APU Start — step up (right-click) on the APU selector switch
+        // 2b. APU Selector / Start — directional stepping (not a simple toggle)
         // ------------------------------------------------------------------
+        if (varKey == "ELEC_APU_Selector")
+        {
+            var dm = simConnect.PMDG777DataManager;
+            int current = dm != null ? (int)dm.GetFieldValue(varDef.Name) : 0;
+            int target = (int)value;
+            if (target > current)
+                simConnect.SendPMDGEvent(eventName, eventId, PMDG_WHEEL_UP);
+            else if (target < current)
+                simConnect.SendPMDGEvent(eventName, eventId, PMDG_WHEEL_DOWN);
+            return true;
+        }
         if (varKey == "ELEC_APU_Start")
         {
-            simConnect.SendPMDGEvent(eventName, eventId, PMDG_WHEEL_UP);
+            // Only start if selector is at On (1); ignore if Off
+            var dm = simConnect.PMDG777DataManager;
+            int current = dm != null ? (int)dm.GetFieldValue("ELEC_APU_Selector") : 0;
+            if (current == 1)
+                simConnect.SendPMDGEvent(eventName, eventId, PMDG_WHEEL_UP);
             return true;
         }
 
@@ -5366,6 +5381,20 @@ public class PMDG777Definition : BaseAircraftDefinition
             return true;
         }
 
+
+        // APU Selector — custom announcement to handle all positions including Start (2)
+        if (varName == "ELEC_APU_Selector")
+        {
+            string state = (int)value switch
+            {
+                0 => "Off",
+                1 => "On",
+                2 => "Start",
+                _ => ((int)value).ToString()
+            };
+            announcer.AnnounceImmediate($"APU Selector {state}");
+            return true;
+        }
 
         // APU Running state
         if (varName == "MON_APURunning")
