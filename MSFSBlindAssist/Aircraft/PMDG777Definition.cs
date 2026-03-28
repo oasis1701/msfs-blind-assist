@@ -5505,38 +5505,38 @@ public class PMDG777Definition : BaseAircraftDefinition
             return true;
         }
 
-        // COM/squawk announcements — suppress initial load, announce subsequent changes
+        // COM/squawk announcements — only announce when value actually changes
         if (varName == "COM1_ActiveFreq")
         {
-            if (_lastComActiveFreq1 > 0)
+            if (_lastComActiveFreq1 > 0 && Math.Abs(value - _lastComActiveFreq1) > 0.001)
                 announcer.Announce($"COM1 active {value:F3}");
             _lastComActiveFreq1 = value;
             return true;
         }
         if (varName == "COM_STANDBY_FREQUENCY_SET:1")
         {
-            if (_lastComStandbyFreq1 > 0)
+            if (_lastComStandbyFreq1 > 0 && Math.Abs(value - _lastComStandbyFreq1) > 0.001)
                 announcer.Announce($"COM1 standby {value:F3}");
             _lastComStandbyFreq1 = value;
             return true;
         }
         if (varName == "COM2_ActiveFreq")
         {
-            if (_lastComActiveFreq2 > 0)
+            if (_lastComActiveFreq2 > 0 && Math.Abs(value - _lastComActiveFreq2) > 0.001)
                 announcer.Announce($"COM2 active {value:F3}");
             _lastComActiveFreq2 = value;
             return true;
         }
         if (varName == "COM_STANDBY_FREQUENCY_SET:2")
         {
-            if (_lastComStandbyFreq2 > 0)
+            if (_lastComStandbyFreq2 > 0 && Math.Abs(value - _lastComStandbyFreq2) > 0.001)
                 announcer.Announce($"COM2 standby {value:F3}");
             _lastComStandbyFreq2 = value;
             return true;
         }
         if (varName == "TRANSPONDER_CODE_SET")
         {
-            if (_lastSquawkCode > 0)
+            if (_lastSquawkCode > 0 && Math.Abs(value - _lastSquawkCode) > 0.5)
             {
                 int bcd = (int)value;
                 int d1 = (bcd >> 12) & 0xF;
