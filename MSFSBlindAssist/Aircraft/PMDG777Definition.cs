@@ -50,10 +50,6 @@ public class PMDG777Definition : BaseAircraftDefinition
                 "Control Stand", "Transponder/TCAS", "Weather Radar",
                 "Communication", "CDU", "Evacuation", "Warning", "Engine Fire"
             },
-            ["Doors"] = new List<string>
-            {
-                "Door Status"
-            },
         };
     }
 
@@ -4659,19 +4655,6 @@ public class PMDG777Definition : BaseAircraftDefinition
                 "FIRE_EngineHandleIsUnlocked_1", "FIRE_EngineHandleIsUnlocked_2"
             },
 
-            // Doors
-            ["Door Status"] = new List<string>
-            {
-                "DOOR_Entry_1L", "DOOR_Entry_1R",
-                "DOOR_Entry_2L", "DOOR_Entry_2R",
-                "DOOR_Entry_3L", "DOOR_Entry_3R",
-                "DOOR_Entry_4L", "DOOR_Entry_4R",
-                "DOOR_Entry_5L", "DOOR_Entry_5R",
-                "DOOR_Cargo_Fwd", "DOOR_Cargo_Aft",
-                "DOOR_Cargo_Bulk", "DOOR_Cargo_Main",
-                "DOOR_Fwd_Access", "DOOR_EE_Access",
-                "DOOR_CockpitDoor"
-            },
         };
     }
 
