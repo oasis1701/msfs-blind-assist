@@ -5354,7 +5354,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             return true;
         }
 
-        if (varName == "BRAKES_BrakePressNeedle")
+        if (varName == "BRAKES_BrakePressure")
         {
             int psi = (int)(value * 40); // 0-100 maps to 0-4000 PSI
             announcer.AnnounceImmediate($"Brake pressure {psi} PSI");
