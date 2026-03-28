@@ -5119,17 +5119,13 @@ public class PMDG777Definition : BaseAircraftDefinition
         SimConnect.PMDG777Debug.Log($"[PMDG777Definition.HandleUIVariableSet] eventName={eventName} eventId={eventId} (0x{eventId:X})");
 
         // ------------------------------------------------------------------
-        // 2b. APU Selector / Start — directional stepping (not a simple toggle)
+        // 2b. APU Selector / Start — use CDA with direct position values
+        //     (RPN/ROTOR_BRAKE moves the visual switch but doesn't trigger
+        //      the APU start logic; CDA with position value does)
         // ------------------------------------------------------------------
         if (varKey == "ELEC_APU_Selector")
         {
-            var dm = simConnect.PMDG777DataManager;
-            int current = dm != null ? (int)dm.GetFieldValue(varDef.Name) : 0;
-            int target = (int)value;
-            if (target > current)
-                simConnect.SendPMDGEvent(eventName, eventId, PMDG_WHEEL_UP);
-            else if (target < current)
-                simConnect.SendPMDGEvent(eventName, eventId, PMDG_WHEEL_DOWN);
+            simConnect.SendPMDGEventViaCDA(eventId, (uint)value);
             return true;
         }
         if (varKey == "ELEC_APU_Start")
@@ -5138,7 +5134,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             var dm = simConnect.PMDG777DataManager;
             int current = dm != null ? (int)dm.GetFieldValue("ELEC_APU_Selector") : 0;
             if (current == 1)
-                simConnect.SendPMDGEvent(eventName, eventId, PMDG_WHEEL_UP);
+                simConnect.SendPMDGEventViaCDA(eventId, 2); // 2 = Start position
             return true;
         }
 

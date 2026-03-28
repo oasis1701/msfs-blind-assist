@@ -403,6 +403,15 @@ public class PMDG777DataManager : IDisposable
         }
     }
 
+    /// <summary>
+    /// Sends a PMDG event directly via CDA, bypassing the offset-based routing.
+    /// Use for switches that need direct position values (e.g., spring-loaded selectors).
+    /// </summary>
+    public void SendEventViaCDA(uint eventId, uint parameter)
+    {
+        SendViaCDA(eventId, parameter);
+    }
+
     private void SendViaCDA(uint eventId, uint parameter)
     {
         if (_simConnect == null)
