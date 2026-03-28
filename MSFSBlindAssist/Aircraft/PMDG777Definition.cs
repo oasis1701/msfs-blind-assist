@@ -4193,6 +4193,40 @@ public class PMDG777Definition : BaseAircraftDefinition
                 IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
             },
+
+            // FMC DATA (background monitoring — no panel placement)
+            ["FMC_V1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FMC_V1",
+                DisplayName = "V1",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true
+            },
+            ["FMC_VR"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FMC_VR",
+                DisplayName = "VR",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true
+            },
+            ["FMC_V2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FMC_V2",
+                DisplayName = "V2",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true
+            },
+            ["FMC_CruiseAlt"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FMC_CruiseAlt",
+                DisplayName = "Cruise Altitude",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true
+            },
         };
     }
 
@@ -5160,6 +5194,32 @@ public class PMDG777Definition : BaseAircraftDefinition
         {
             if (value > 0)
                 announcer.AnnounceImmediate("Master CAUTION");
+            return true;
+        }
+
+        // FMC V-speeds — suppress when 0 (not yet set)
+        if (varName == "FMC_V1")
+        {
+            if (value > 0)
+                announcer.AnnounceImmediate($"V1 {(int)value} knots");
+            return true;
+        }
+        if (varName == "FMC_VR")
+        {
+            if (value > 0)
+                announcer.AnnounceImmediate($"VR {(int)value} knots");
+            return true;
+        }
+        if (varName == "FMC_V2")
+        {
+            if (value > 0)
+                announcer.AnnounceImmediate($"V2 {(int)value} knots");
+            return true;
+        }
+        if (varName == "FMC_CruiseAlt")
+        {
+            if (value > 0)
+                announcer.AnnounceImmediate($"Cruise altitude {(int)value} feet");
             return true;
         }
 
