@@ -31,7 +31,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             {
                 "Electrical", "Hydraulic", "Fuel", "Engines", "Bleed Air",
                 "Air Conditioning", "Pressurization", "Anti-Ice", "Fire",
-                "Lights", "Signs", "Wipers", "Panel Lighting", "Cargo Temperature"
+                "Lights", "Signs", "Wipers", "Panel Lighting"
             },
             ["Overhead Maintenance"] = new List<string>
             {
@@ -4404,7 +4404,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 "FUEL_CtrPump_1", "FUEL_CtrPump_2",
                 "FUEL_CrossfeedFwd", "FUEL_CrossfeedAft",
                 "FUEL_JettisonNozzleL", "FUEL_JettisonNozzleR",
-                "FUEL_JettisonArm", "FUEL_FuelToRemainPulled", "FUEL_FuelToRemainSelector"
+                "FUEL_JettisonArm", "FUEL_FuelToRemainPulled"
             },
 
             // Overhead — Engines
@@ -4430,7 +4430,6 @@ public class PMDG777Definition : BaseAircraftDefinition
                 "AIR_TrimAir_1", "AIR_TrimAir_2",
                 "AIR_RecircFanUpper", "AIR_RecircFanLower",
                 "AIR_EquipCooling", "AIR_Gasper", "AIR_AltnVent",
-                "AIR_TempSelectorFlightDeck", "AIR_TempSelectorCabin",
                 "AIR_AirCondReset"
             },
 
@@ -4438,7 +4437,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["Pressurization"] = new List<string>
             {
                 "AIR_OutflowValveFwd", "AIR_OutflowValveAft",
-                "AIR_LdgAltSelector", "AIR_LdgAltPulled"
+                "AIR_LdgAltPulled"
             },
 
             // Overhead — Anti-Ice
@@ -4480,19 +4479,9 @@ public class PMDG777Definition : BaseAircraftDefinition
             // Overhead — Panel Lighting
             ["Panel Lighting"] = new List<string>
             {
-                "LTS_MasterBrightSw", "LTS_MasterBrightKnob",
-                "LTS_IndLightsTest", "LTS_DomeLight",
-                "LTS_CircuitBreakerLight", "LTS_OverheadPanel",
-                "LTS_GlareshieldPanel", "LTS_GlareshieldFlood",
+                "LTS_MasterBrightSw",
+                "LTS_IndLightsTest",
                 "LTS_EmerLights"
-            },
-
-            // Overhead — Cargo Temperature
-            ["Cargo Temperature"] = new List<string>
-            {
-                "AIR_CargoTempFwd", "AIR_CargoTempAft",
-                "AIR_CargoTempMainDeckFwd", "AIR_CargoTempMainDeckAft",
-                "AIR_CargoTempLowerFwd", "AIR_CargoTempLowerAft"
             },
 
             // Overhead Maintenance — Flight Controls
@@ -4522,7 +4511,6 @@ public class PMDG777Definition : BaseAircraftDefinition
                 "EFIS_MinsSelBARO_Capt", "EFIS_BaroSelHPA_Capt",
                 "EFIS_VORADFSel1_Capt", "EFIS_VORADFSel2_Capt",
                 "EFIS_ModeSel_Capt", "EFIS_RangeSel_Capt",
-                "EFIS_MinsKnob_Capt", "EFIS_BaroKnob_Capt",
                 "EFIS_MinsRST_Capt", "EFIS_BaroSTD_Capt",
                 "EFIS_ModeCTR_Capt", "EFIS_RangeTFC_Capt",
                 "EFIS_WXR_Capt", "EFIS_STA_Capt", "EFIS_WPT_Capt",
@@ -4536,7 +4524,6 @@ public class PMDG777Definition : BaseAircraftDefinition
                 "EFIS_MinsSelBARO_FO", "EFIS_BaroSelHPA_FO",
                 "EFIS_VORADFSel1_FO", "EFIS_VORADFSel2_FO",
                 "EFIS_ModeSel_FO", "EFIS_RangeSel_FO",
-                "EFIS_MinsKnob_FO", "EFIS_BaroKnob_FO",
                 "EFIS_MinsRST_FO", "EFIS_BaroSTD_FO",
                 "EFIS_ModeCTR_FO", "EFIS_RangeTFC_FO",
                 "EFIS_WXR_FO", "EFIS_STA_FO", "EFIS_WPT_FO",
@@ -4641,7 +4628,6 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["CDU"] = new List<string>
             {
                 "CDU_OpenCDU",
-                "CDU_BrtKnob_L", "CDU_BrtKnob_C", "CDU_BrtKnob_R",
                 "EICAS_EventRcd"
             },
 
@@ -4661,9 +4647,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["Engine Fire"] = new List<string>
             {
                 "FIRE_EngineHandleUnlock_1", "FIRE_EngineHandle_1",
-                "FIRE_EngineHandleUnlock_2", "FIRE_EngineHandle_2",
-                "FIRE_annunENG_BTL_DISCH_1", "FIRE_annunENG_BTL_DISCH_2",
-                "FIRE_EngineHandleIsUnlocked_1", "FIRE_EngineHandleIsUnlocked_2"
+                "FIRE_EngineHandleUnlock_2", "FIRE_EngineHandle_2"
             },
 
         };
