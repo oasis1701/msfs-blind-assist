@@ -3752,6 +3752,15 @@ public class PMDG777Definition : BaseAircraftDefinition
                 IsAnnounced = true,
                 RenderAsButton = true
             },
+            ["TRANSPONDER_CODE_SET"] = new SimConnect.SimVarDefinition
+            {
+                Name = "TRANSPONDER CODE:1",
+                DisplayName = "Squawk Code",
+                Type = SimConnect.SimVarType.SimVar,
+                Units = "BCO16",
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true
+            },
 
             // =================================================================
             // PEDESTAL — COMMUNICATION
@@ -4725,7 +4734,8 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["Transponder/TCAS"] = new List<string>
             {
                 "XPDR_XpndrSelector", "XPDR_AltSource",
-                "XPDR_ModeSel", "XPDR_Ident"
+                "XPDR_ModeSel", "XPDR_Ident",
+                "TRANSPONDER_CODE_SET"
             },
 
             // Pedestal — Weather Radar (no dedicated struct fields — panel present but empty)
@@ -5493,6 +5503,18 @@ public class PMDG777Definition : BaseAircraftDefinition
         if (varName == "COM2_StandbyFreq")
         {
             announcer.AnnounceImmediate($"COM2 standby {value:F3}");
+            return true;
+        }
+
+        // Squawk code announcement — convert BCO16 to 4-digit display
+        if (varName == "TRANSPONDER_CODE_SET")
+        {
+            int bcd = (int)value;
+            int d1 = (bcd >> 12) & 0xF;
+            int d2 = (bcd >> 8) & 0xF;
+            int d3 = (bcd >> 4) & 0xF;
+            int d4 = bcd & 0xF;
+            announcer.AnnounceImmediate($"Squawk {d1}{d2}{d3}{d4}");
             return true;
         }
 
