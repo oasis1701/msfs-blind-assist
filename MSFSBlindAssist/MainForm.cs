@@ -2640,7 +2640,7 @@ public partial class MainForm : Form
                 controlButton.Size = new Size(240, 25);
                 controlButton.Name = varKey;
                 controlButton.AccessibleName = varDef.DisplayName;
-                controlButton.AccessibleDescription = $"Press {varDef.DisplayName}";
+                controlButton.AccessibleDescription = varDef.HelpText ?? $"Press {varDef.DisplayName}";
 
                 controlButton.Click += (s2, e2) =>
                 {
@@ -2669,7 +2669,7 @@ public partial class MainForm : Form
                     controlButton.Size = new Size(240, 25);
                     controlButton.Name = varKey;
                     controlButton.AccessibleName = varDef.DisplayName;
-                    controlButton.AccessibleDescription = $"Press {varDef.DisplayName}";
+                    controlButton.AccessibleDescription = varDef.HelpText ?? $"Press {varDef.DisplayName}";
 
                     // Handle button click - send value 1 which triggers HandleUIVariableSet
                     controlButton.Click += (s2, e2) =>
