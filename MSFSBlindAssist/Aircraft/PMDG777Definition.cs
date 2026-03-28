@@ -4680,12 +4680,6 @@ public class PMDG777Definition : BaseAircraftDefinition
     // =========================================================================
 
     // =========================================================================
-    // PMDG wheel-flag constants (mouse button flags used by PMDG SDK)
-    // =========================================================================
-    private const int PMDG_WHEEL_UP   = 0x00004000; // 16384
-    private const int PMDG_WHEEL_DOWN = 0x00002000; // 8192
-
-    // =========================================================================
     // Variable → event name mapping (simple toggle and momentary controls)
     // =========================================================================
     private static readonly IReadOnlyDictionary<string, string> _simpleEventMap =
@@ -5119,22 +5113,15 @@ public class PMDG777Definition : BaseAircraftDefinition
         SimConnect.PMDG777Debug.Log($"[PMDG777Definition.HandleUIVariableSet] eventName={eventName} eventId={eventId} (0x{eventId:X})");
 
         // ------------------------------------------------------------------
-        // 2b. APU Selector / Start — use CDA with direct position values
-        //     (RPN/ROTOR_BRAKE moves the visual switch but doesn't trigger
-        //      the APU start logic; CDA with position value does)
+        // 2b. APU Start — special: send position 2 to the APU selector event,
+        //     but only when the selector is already at On (1)
         // ------------------------------------------------------------------
-        if (varKey == "ELEC_APU_Selector")
-        {
-            simConnect.SendPMDGEventViaCDA(eventId, (uint)value);
-            return true;
-        }
         if (varKey == "ELEC_APU_Start")
         {
-            // Only start if selector is at On (1); ignore if Off
             var dm = simConnect.PMDG777DataManager;
             int current = dm != null ? (int)dm.GetFieldValue("ELEC_APU_Selector") : 0;
             if (current == 1)
-                simConnect.SendPMDGEventViaCDA(eventId, 2); // 2 = Start position
+                simConnect.SendPMDGEvent(eventName, eventId, 2); // 2 = Start position
             return true;
         }
 
@@ -5149,59 +5136,27 @@ public class PMDG777Definition : BaseAircraftDefinition
         }
 
         // ------------------------------------------------------------------
-        // 4. Two-position toggle — only toggle if requested value differs from current state.
-        //    PMDG toggle events flip the current state, so sending when already at the
-        //    desired state would toggle AWAY from it (causing feedback-loop issues).
+        // 4. Switches with ValueDescriptions — send target position directly via CDA.
+        //    Works for both two-position toggles and multi-position selectors.
+        //    CDA sends {EventId, PositionValue} to set the switch to the exact
+        //    target position — no stepping, no direction ambiguity.
         // ------------------------------------------------------------------
-        if (varDef.ValueDescriptions.Count == 2)
-        {
-            SimConnect.PMDG777Debug.Log($"[PMDG777Definition.HandleUIVariableSet] Branch: TWO-POSITION TOGGLE fieldName={varDef.Name}");
-            var dm = simConnect.PMDG777DataManager;
-            if (dm != null)
-            {
-                double currentValue = dm.GetFieldValue(varDef.Name);
-                SimConnect.PMDG777Debug.Log($"[PMDG777Definition.HandleUIVariableSet] TWO-POSITION: currentValue={currentValue} requestedValue={value} diff={Math.Abs(currentValue - value)}");
-                if (Math.Abs(currentValue - value) < 0.001)
-                {
-                    SimConnect.PMDG777Debug.Log($"[PMDG777Definition.HandleUIVariableSet] TWO-POSITION: already at requested state — SKIPPING toggle");
-                    return true; // Already at requested state — don't toggle
-                }
-            }
-            else
-            {
-                SimConnect.PMDG777Debug.Log($"[PMDG777Definition.HandleUIVariableSet] TWO-POSITION: DataManager is null — sending unconditionally");
-            }
-            SimConnect.PMDG777Debug.Log($"[PMDG777Definition.HandleUIVariableSet] TWO-POSITION: calling SendPMDGEvent({eventName}, {eventId})");
-            simConnect.SendPMDGEvent(eventName, eventId);
-            return true;
-        }
-
-        // ------------------------------------------------------------------
-        // 5. Multi-position selector — step up or down from current position
-        // ------------------------------------------------------------------
-        if (varDef.ValueDescriptions.Count > 2)
+        if (varDef.ValueDescriptions.Count >= 2)
         {
             int target = (int)value;
-            int current = target; // fallback: assume already at target
-
             var dm = simConnect.PMDG777DataManager;
             if (dm != null)
-                current = (int)dm.GetFieldValue(varDef.Name);
-
-            int steps = target - current;
-            SimConnect.PMDG777Debug.Log($"[PMDG777Definition.HandleUIVariableSet] Branch: MULTI-POSITION current={current} target={target} steps={steps}");
-            if (steps == 0)
             {
-                SimConnect.PMDG777Debug.Log($"[PMDG777Definition.HandleUIVariableSet] MULTI-POSITION: already at target — skipping");
-                return true; // already there
+                int current = (int)dm.GetFieldValue(varDef.Name);
+                SimConnect.PMDG777Debug.Log($"[PMDG777Definition.HandleUIVariableSet] Branch: CDA DIRECT current={current} target={target}");
+                if (current == target)
+                {
+                    SimConnect.PMDG777Debug.Log($"[PMDG777Definition.HandleUIVariableSet] CDA DIRECT: already at target — skipping");
+                    return true;
+                }
             }
-
-            int mouseFlag = steps > 0 ? PMDG_WHEEL_UP : PMDG_WHEEL_DOWN;
-            int abs = Math.Abs(steps);
-            SimConnect.PMDG777Debug.Log($"[PMDG777Definition.HandleUIVariableSet] MULTI-POSITION: sending {abs} step(s) mouseFlag={mouseFlag}");
-            for (int i = 0; i < abs; i++)
-                simConnect.SendPMDGEvent(eventName, eventId, mouseFlag);
-
+            SimConnect.PMDG777Debug.Log($"[PMDG777Definition.HandleUIVariableSet] CDA DIRECT: sending position {target} for {eventName}");
+            simConnect.SendPMDGEvent(eventName, eventId, target);
             return true;
         }
 

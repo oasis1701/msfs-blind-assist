@@ -3498,11 +3498,6 @@ public class SimConnectManager
         pmdg777DataManager?.SendEvent(eventName, eventId, parameter);
     }
 
-    public void SendPMDGEventViaCDA(uint eventId, uint parameter)
-    {
-        pmdg777DataManager?.SendEventViaCDA(eventId, parameter);
-    }
-
     public async Task SendPMDGGuardedToggle(string guardEventName, uint guardEventId,
                                               string switchEventName, uint switchEventId)
     {

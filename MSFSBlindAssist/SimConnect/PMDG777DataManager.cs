@@ -47,7 +47,6 @@ public class PMDG777DataManager : IDisposable
     // Other constants
     // ------------------------------------------------------------------
     private const uint THIRD_PARTY_EVENT_ID_MIN    = 0x00011000; // 69632
-    private const int  DIRECT_SET_OFFSET_THRESHOLD = 14500;
 
     // CDU dimensions
     private const int CDU_COLS = 24;
@@ -63,8 +62,6 @@ public class PMDG777DataManager : IDisposable
     private bool _hasSnapshot;
 
     private readonly PMDG777CDUScreen?[] _lastCDUScreen = new PMDG777CDUScreen?[3];
-    private int _rpnNonce; // Incrementing counter appended to RPN to prevent SetClientData dedup
-
     private System.Windows.Forms.Timer? _pollTimer;
 
     // Debug counters
@@ -378,22 +375,14 @@ public class PMDG777DataManager : IDisposable
     // ------------------------------------------------------------------
 
     /// <summary>
-    /// Sends a PMDG control event.
-    /// offset >= 14500 → 8-byte control struct via PMDG_777X_Control CDA.
-    /// offset <  14500 → RPN string via MobiFlight.
+    /// Sends a PMDG control event via CDA (SetClientData) with direct position value.
     /// </summary>
     public void SendEvent(string eventName, uint eventId, int? parameter)
     {
         try
         {
-            int offset = (int)(eventId - THIRD_PARTY_EVENT_ID_MIN);
-            string method = offset >= DIRECT_SET_OFFSET_THRESHOLD ? "CDA (SetClientData)" : "ROTOR_BRAKE RPN";
-            PMDG777Debug.Log($"[PMDG777DataManager.SendEvent] eventName={eventName} eventId={eventId} (0x{eventId:X}) parameter={parameter?.ToString() ?? "null"} offset={offset} method={method}");
-
-            if (offset >= DIRECT_SET_OFFSET_THRESHOLD)
-                SendViaCDA(eventId, (uint)(parameter ?? 0));
-            else
-                SendViaRPN(offset, parameter);
+            PMDG777Debug.Log($"[PMDG777DataManager.SendEvent] eventName={eventName} eventId=0x{eventId:X} parameter={parameter?.ToString() ?? "null"}");
+            SendViaCDA(eventId, (uint)(parameter ?? 0));
         }
         catch (Exception ex)
         {
@@ -401,15 +390,6 @@ public class PMDG777DataManager : IDisposable
             System.Diagnostics.Debug.WriteLine(
                 $"[PMDG777DataManager] SendEvent '{eventName}' failed: {ex.Message}");
         }
-    }
-
-    /// <summary>
-    /// Sends a PMDG event directly via CDA, bypassing the offset-based routing.
-    /// Use for switches that need direct position values (e.g., spring-loaded selectors).
-    /// </summary>
-    public void SendEventViaCDA(uint eventId, uint parameter)
-    {
-        SendViaCDA(eventId, parameter);
     }
 
     private void SendViaCDA(uint eventId, uint parameter)
@@ -432,41 +412,6 @@ public class PMDG777DataManager : IDisposable
         PMDG777Debug.Log($"[PMDG777DataManager.SendViaCDA] SetClientData sent: eventId=0x{eventId:X} param={parameter}");
         System.Diagnostics.Debug.WriteLine(
             $"[PMDG777DataManager] SendViaCDA: eventId=0x{eventId:X} param={parameter}");
-    }
-
-    private void SendViaRPN(int offset, int? parameter)
-    {
-        if (_mobiFlightWasm == null)
-        {
-            PMDG777Debug.Log($"[PMDG777DataManager.SendViaRPN] SKIPPED — _mobiFlightWasm is null");
-            return;
-        }
-
-        // Append an incrementing nonce AFTER the K: event so each command string is unique.
-        // Without this, SetClientData sees identical bytes and SimConnect doesn't notify
-        // the MobiFlight WASM module on repeated sends of the same event.
-        // The nonce is pushed onto the RPN stack after ROTOR_BRAKE executes, and is harmless.
-        //
-        // ROTOR_BRAKE encoding: offset * 100 + flagCode, where:
-        //   1 = left click (toggle / step down)
-        //   2 = right click (step up)
-        // PMDG convention: right-click = increase, left-click = decrease.
-        // Mouse wheel flags are mapped to click codes because ROTOR_BRAKE
-        // accepts a single combined value, not separate stack entries.
-        int nonce = Interlocked.Increment(ref _rpnNonce);
-        int flagCode = parameter switch
-        {
-            0x4000 => 2, // MOUSE_FLAG_WHEEL_UP → right click (step up/increase)
-            0x2000 => 1, // MOUSE_FLAG_WHEEL_DOWN → left click (step down/decrease)
-            _      => 1  // default: left click (toggle)
-        };
-        string rpn = $"{offset * 100 + flagCode} (>K:ROTOR_BRAKE) {nonce}";
-
-        _mobiFlightWasm.SendMFCommand($"MF.SimVars.Set.{rpn}");
-
-        PMDG777Debug.Log($"[PMDG777DataManager.SendViaRPN] MobiFlight command sent: offset={offset} rpn={rpn}");
-        System.Diagnostics.Debug.WriteLine(
-            $"[PMDG777DataManager] SendViaRPN: offset={offset} rpn={rpn}");
     }
 
     /// <summary>
