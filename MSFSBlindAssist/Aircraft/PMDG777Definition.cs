@@ -2761,6 +2761,31 @@ public class PMDG777Definition : BaseAircraftDefinition
                 OnlyAnnounceValueDescriptionMatches = true,
                 ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
             },
+            // MCP — Display state variables (monitored, not in panel controls)
+            ["MCP_IASBlank"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MCP_IASBlank",
+                DisplayName = "IAS Blank",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true
+            },
+            ["MCP_VertSpeedBlank"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MCP_VertSpeedBlank",
+                DisplayName = "Vertical Speed Blank",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true
+            },
+            ["MCP_FPA"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MCP_FPA",
+                DisplayName = "Flight Path Angle",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true
+            },
 
             // =================================================================
             // GLARESHIELD — DISPLAY SELECT PANEL (DSP)
@@ -4701,6 +4726,13 @@ public class PMDG777Definition : BaseAircraftDefinition
         if (varName == "MCP_VertSpeedBlank" && value > 0)
         {
             announcer.AnnounceImmediate("Vertical speed blank");
+            return true;
+        }
+
+        if (varName == "MCP_FPA")
+        {
+            float fpa = (float)value;
+            announcer.AnnounceImmediate($"FPA {fpa:F1} degrees");
             return true;
         }
 
