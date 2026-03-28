@@ -98,7 +98,16 @@ public class PMDG777Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On", [2] = "Start" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["ELEC_APU_Start"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ELEC_APU_Start",
+                DisplayName = "APU Start",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Never,
+                RenderAsButton = true,
+                IsMomentary = true
             },
             ["ELEC_BusTie_1"] = new SimConnect.SimVarDefinition
             {
@@ -4367,7 +4376,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             // Overhead — Electrical
             ["Electrical"] = new List<string>
             {
-                "ELEC_Battery", "ELEC_APUGen", "ELEC_APU_Selector",
+                "ELEC_Battery", "ELEC_APUGen", "ELEC_APU_Selector", "ELEC_APU_Start",
                 "ELEC_BusTie_1", "ELEC_BusTie_2",
                 "ELEC_ExtPwrPrim", "ELEC_ExtPwrSec",
                 "ELEC_Gen_1", "ELEC_Gen_2",
@@ -4686,6 +4695,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["ELEC_Battery"]        = "EVT_OH_ELEC_BATTERY_SWITCH",
             ["ELEC_APUGen"]         = "EVT_OH_ELEC_APU_GEN_SWITCH",
             ["ELEC_APU_Selector"]   = "EVT_OH_ELEC_APU_SEL_SWITCH",
+            ["ELEC_APU_Start"]      = "EVT_OH_ELEC_APU_SEL_SWITCH",
             ["ELEC_BusTie_1"]       = "EVT_OH_ELEC_BUS_TIE1_SWITCH",
             ["ELEC_BusTie_2"]       = "EVT_OH_ELEC_BUS_TIE2_SWITCH",
             // NOTE: PMDG event names are swapped vs annunciator array indices.
@@ -5109,6 +5119,15 @@ public class PMDG777Definition : BaseAircraftDefinition
         SimConnect.PMDG777Debug.Log($"[PMDG777Definition.HandleUIVariableSet] eventName={eventName} eventId={eventId} (0x{eventId:X})");
 
         // ------------------------------------------------------------------
+        // 2b. APU Start — step up (right-click) on the APU selector switch
+        // ------------------------------------------------------------------
+        if (varKey == "ELEC_APU_Start")
+        {
+            simConnect.SendPMDGEvent(eventName, eventId, PMDG_WHEEL_UP);
+            return true;
+        }
+
+        // ------------------------------------------------------------------
         // 3. Momentary / button press — send once with no parameter
         // ------------------------------------------------------------------
         if (varDef.RenderAsButton || varDef.IsMomentary)
@@ -5171,22 +5190,6 @@ public class PMDG777Definition : BaseAircraftDefinition
             SimConnect.PMDG777Debug.Log($"[PMDG777Definition.HandleUIVariableSet] MULTI-POSITION: sending {abs} step(s) mouseFlag={mouseFlag}");
             for (int i = 0; i < abs; i++)
                 simConnect.SendPMDGEvent(eventName, eventId, mouseFlag);
-
-            // APU Selector "Start" is spring-loaded — bounces back to "On".
-            // Schedule a delayed refresh so the UI combo reflects the actual state.
-            if (varKey == "ELEC_APU_Selector" && target == 2)
-            {
-                _ = Task.Run(async () =>
-                {
-                    await Task.Delay(1000);
-                    var dm = simConnect.PMDG777DataManager;
-                    if (dm != null)
-                    {
-                        double actual = dm.GetFieldValue("ELEC_APU_Selector");
-                        dm.RaiseVariableChanged("ELEC_APU_Selector", actual);
-                    }
-                });
-            }
 
             return true;
         }
@@ -5363,14 +5366,6 @@ public class PMDG777Definition : BaseAircraftDefinition
             return true;
         }
 
-
-        // APU Selector — announce "APU starting" when selector moves to Start
-        if (varName == "ELEC_APU_Selector")
-        {
-            if ((int)value == 2)
-                announcer.AnnounceImmediate("APU starting");
-            return true;
-        }
 
         // APU Running state
         if (varName == "MON_APURunning")
