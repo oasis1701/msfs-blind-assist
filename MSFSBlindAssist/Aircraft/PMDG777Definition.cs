@@ -4012,6 +4012,34 @@ public class PMDG777Definition : BaseAircraftDefinition
             },
 
             // =================================================================
+            // PEDESTAL — FLIGHT CONTROLS (TRIM)
+            // =================================================================
+            ["FCTL_AileronTrim"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FCTL_AileronTrim_Switches",
+                DisplayName = "Aileron Trim",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "Left Wing Down", [1] = "Neutral", [2] = "Right Wing Down"
+                }
+            },
+            ["FCTL_RudderTrim"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FCTL_RudderTrim_Knob",
+                DisplayName = "Rudder Trim",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "Nose Left", [1] = "Neutral", [2] = "Nose Right"
+                }
+            },
+
+            // =================================================================
             // PEDESTAL — FLIGHT CONTROLS (RUDDER TRIM CANCEL)
             // =================================================================
             ["FCTL_RudderTrimCancel"] = new SimConnect.SimVarDefinition
@@ -4478,7 +4506,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 "FCTL_Speedbrake", "FCTL_Flaps",
                 "FCTL_AltnFlapsArm", "FCTL_AltnFlapsControl",
                 "FCTL_StabCutout_C", "FCTL_StabCutout_R",
-                "FCTL_AltnPitch", "FCTL_RudderTrimCancel",
+                "FCTL_AltnPitch", "FCTL_AileronTrim", "FCTL_RudderTrim", "FCTL_RudderTrimCancel",
                 "ENG_FuelControl_1", "ENG_FuelControl_2",
                 "BRAKES_ParkingBrake"
             },
@@ -4868,6 +4896,9 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["FCTL_StabCutout_C"]       = "EVT_CONTROL_STAND_STABCUTOUT_SWITCH_C",
             ["FCTL_StabCutout_R"]       = "EVT_CONTROL_STAND_STABCUTOUT_SWITCH_R",
             ["FCTL_AltnPitch"]          = "EVT_CONTROL_STAND_ALT_PITCH_TRIM_LEVER",
+            ["FCTL_AileronTrim"]        = "EVT_FCTL_AILERON_TRIM",
+            ["FCTL_RudderTrim"]         = "EVT_FCTL_RUDDER_TRIM",
+            ["FCTL_RudderTrimCancel"]   = "EVT_FCTL_RUDDER_TRIM_CANCEL",
 
             // --- Communication selectors ---
             ["COMM_OBSAudio"]           = "EVT_PED_OBS_AUDIO_SELECTOR",
@@ -6139,6 +6170,13 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["EVT_CONTROL_STAND_STABCUTOUT_SWITCH_R_GUARD"] = 70150,
             ["EVT_CONTROL_STAND_ENG1_START_LEVER"]         = 70152,
             ["EVT_CONTROL_STAND_ENG2_START_LEVER"]         = 70153,
+
+            // -----------------------------------------------------------------
+            // PEDESTAL — Trim
+            // -----------------------------------------------------------------
+            ["EVT_FCTL_AILERON_TRIM"]             = 70359,
+            ["EVT_FCTL_RUDDER_TRIM"]              = 70360,
+            ["EVT_FCTL_RUDDER_TRIM_CANCEL"]       = 70361,
 
             // -----------------------------------------------------------------
             // PEDESTAL — Alternate Flaps
