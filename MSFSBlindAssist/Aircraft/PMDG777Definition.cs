@@ -49,7 +49,11 @@ public class PMDG777Definition : BaseAircraftDefinition
             {
                 "Control Stand", "Transponder/TCAS", "Weather Radar",
                 "Communication", "CDU", "Evacuation", "Warning", "Engine Fire"
-            }
+            },
+            ["Doors"] = new List<string>
+            {
+                "Door Status"
+            },
         };
     }
 
@@ -4032,6 +4036,163 @@ public class PMDG777Definition : BaseAircraftDefinition
                 RenderAsButton = true,
                 IsMomentary = true,
             },
+
+            // =================================================================
+            // DOORS
+            // =================================================================
+            ["DOOR_Entry_1L"] = new SimConnect.SimVarDefinition
+            {
+                Name = "DOOR_state_0",
+                DisplayName = "Entry 1L",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+            },
+            ["DOOR_Entry_1R"] = new SimConnect.SimVarDefinition
+            {
+                Name = "DOOR_state_1",
+                DisplayName = "Entry 1R",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+            },
+            ["DOOR_Entry_2L"] = new SimConnect.SimVarDefinition
+            {
+                Name = "DOOR_state_2",
+                DisplayName = "Entry 2L",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+            },
+            ["DOOR_Entry_2R"] = new SimConnect.SimVarDefinition
+            {
+                Name = "DOOR_state_3",
+                DisplayName = "Entry 2R",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+            },
+            ["DOOR_Entry_3L"] = new SimConnect.SimVarDefinition
+            {
+                Name = "DOOR_state_4",
+                DisplayName = "Entry 3L",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+            },
+            ["DOOR_Entry_3R"] = new SimConnect.SimVarDefinition
+            {
+                Name = "DOOR_state_5",
+                DisplayName = "Entry 3R",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+            },
+            ["DOOR_Entry_4L"] = new SimConnect.SimVarDefinition
+            {
+                Name = "DOOR_state_6",
+                DisplayName = "Entry 4L",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+            },
+            ["DOOR_Entry_4R"] = new SimConnect.SimVarDefinition
+            {
+                Name = "DOOR_state_7",
+                DisplayName = "Entry 4R",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+            },
+            ["DOOR_Entry_5L"] = new SimConnect.SimVarDefinition
+            {
+                Name = "DOOR_state_8",
+                DisplayName = "Entry 5L",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+            },
+            ["DOOR_Entry_5R"] = new SimConnect.SimVarDefinition
+            {
+                Name = "DOOR_state_9",
+                DisplayName = "Entry 5R",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+            },
+            ["DOOR_Cargo_Fwd"] = new SimConnect.SimVarDefinition
+            {
+                Name = "DOOR_state_10",
+                DisplayName = "Cargo Forward",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+            },
+            ["DOOR_Cargo_Aft"] = new SimConnect.SimVarDefinition
+            {
+                Name = "DOOR_state_11",
+                DisplayName = "Cargo Aft",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+            },
+            ["DOOR_Cargo_Bulk"] = new SimConnect.SimVarDefinition
+            {
+                Name = "DOOR_state_12",
+                DisplayName = "Cargo Bulk",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+            },
+            ["DOOR_Cargo_Main"] = new SimConnect.SimVarDefinition
+            {
+                Name = "DOOR_state_13",
+                DisplayName = "Cargo Main",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+            },
+            ["DOOR_Fwd_Access"] = new SimConnect.SimVarDefinition
+            {
+                Name = "DOOR_state_14",
+                DisplayName = "Forward Access",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+            },
+            ["DOOR_EE_Access"] = new SimConnect.SimVarDefinition
+            {
+                Name = "DOOR_state_15",
+                DisplayName = "E/E Access",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+            },
+            ["DOOR_CockpitDoor"] = new SimConnect.SimVarDefinition
+            {
+                Name = "DOOR_CockpitDoorOpen",
+                DisplayName = "Cockpit Door",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+            },
         };
     }
 
@@ -4334,6 +4495,20 @@ public class PMDG777Definition : BaseAircraftDefinition
                 "FIRE_EngineHandleUnlock_2", "FIRE_EngineHandle_2",
                 "FIRE_annunENG_BTL_DISCH_1", "FIRE_annunENG_BTL_DISCH_2",
                 "FIRE_EngineHandleIsUnlocked_1", "FIRE_EngineHandleIsUnlocked_2"
+            },
+
+            // Doors
+            ["Door Status"] = new List<string>
+            {
+                "DOOR_Entry_1L", "DOOR_Entry_1R",
+                "DOOR_Entry_2L", "DOOR_Entry_2R",
+                "DOOR_Entry_3L", "DOOR_Entry_3R",
+                "DOOR_Entry_4L", "DOOR_Entry_4R",
+                "DOOR_Entry_5L", "DOOR_Entry_5R",
+                "DOOR_Cargo_Fwd", "DOOR_Cargo_Aft",
+                "DOOR_Cargo_Bulk", "DOOR_Cargo_Main",
+                "DOOR_Fwd_Access", "DOOR_EE_Access",
+                "DOOR_CockpitDoor"
             },
         };
     }
