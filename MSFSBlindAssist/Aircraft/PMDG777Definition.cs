@@ -4319,15 +4319,6 @@ public class PMDG777Definition : BaseAircraftDefinition
             },
 
             // BRAKES — panel control
-            ["BRAKES_BrakePressure"] = new SimConnect.SimVarDefinition
-            {
-                Name = "BRAKES_BrakePressNeedle",
-                DisplayName = "Brake Pressure",
-                Type = SimConnect.SimVarType.PMDGVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                IsAnnounced = false,
-                PreventTextInput = true
-            },
 
             // FUEL QUANTITY (continuous monitoring for hotkey reads — no auto announcements)
             ["MON_FUEL_QtyLeft"] = new SimConnect.SimVarDefinition
@@ -4577,7 +4568,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             // Forward Panel — Brakes
             ["Brakes"] = new List<string>
             {
-                "BRAKES_AutobrakeSelector", "BRAKES_ParkingBrake", "BRAKES_BrakePressure"
+                "BRAKES_AutobrakeSelector", "BRAKES_ParkingBrake"
             },
 
             // Forward Panel — GPWS
@@ -5356,10 +5347,19 @@ public class PMDG777Definition : BaseAircraftDefinition
             return true;
         }
 
-        if (varName == "BRAKES_BrakePressure")
+
+        // APU Selector — announce "APU starting" when selector moves to On
+        if (varName == "ELEC_APU_Selector")
         {
-            int psi = (int)(value * 40); // 0-100 maps to 0-4000 PSI
-            announcer.AnnounceImmediate($"Brake pressure {psi} PSI");
+            if ((int)value == 1)
+                announcer.AnnounceImmediate("APU starting");
+            return true;
+        }
+
+        // APU Running state
+        if (varName == "MON_APURunning")
+        {
+            announcer.AnnounceImmediate(value > 0 ? "APU running" : "APU shut down");
             return true;
         }
 
