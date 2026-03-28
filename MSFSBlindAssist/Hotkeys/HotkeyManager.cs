@@ -1034,5 +1034,8 @@ public class HotkeyManager : IDisposable
         ReadPitch,
         ReadTargetFPM,
         ShowFenixMCDU,
-        ReadNearestCity
+        ReadNearestCity,
+        ReadDistanceToTOD,
+        ReadDistanceToDest,
+        ReadThrustLimitMode,
     }
