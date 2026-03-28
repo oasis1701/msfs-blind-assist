@@ -4075,7 +4075,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Open", [1] = "Closed", [2] = "Closed and Armed", [3] = "Closing", [4] = "Opening" }
             },
             ["DOOR_Entry_1R"] = new SimConnect.SimVarDefinition
             {
@@ -4084,7 +4084,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Open", [1] = "Closed", [2] = "Closed and Armed", [3] = "Closing", [4] = "Opening" }
             },
             ["DOOR_Entry_2L"] = new SimConnect.SimVarDefinition
             {
@@ -4093,7 +4093,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Open", [1] = "Closed", [2] = "Closed and Armed", [3] = "Closing", [4] = "Opening" }
             },
             ["DOOR_Entry_2R"] = new SimConnect.SimVarDefinition
             {
@@ -4102,7 +4102,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Open", [1] = "Closed", [2] = "Closed and Armed", [3] = "Closing", [4] = "Opening" }
             },
             ["DOOR_Entry_3L"] = new SimConnect.SimVarDefinition
             {
@@ -4111,7 +4111,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Open", [1] = "Closed", [2] = "Closed and Armed", [3] = "Closing", [4] = "Opening" }
             },
             ["DOOR_Entry_3R"] = new SimConnect.SimVarDefinition
             {
@@ -4120,7 +4120,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Open", [1] = "Closed", [2] = "Closed and Armed", [3] = "Closing", [4] = "Opening" }
             },
             ["DOOR_Entry_4L"] = new SimConnect.SimVarDefinition
             {
@@ -4129,7 +4129,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Open", [1] = "Closed", [2] = "Closed and Armed", [3] = "Closing", [4] = "Opening" }
             },
             ["DOOR_Entry_4R"] = new SimConnect.SimVarDefinition
             {
@@ -4138,7 +4138,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Open", [1] = "Closed", [2] = "Closed and Armed", [3] = "Closing", [4] = "Opening" }
             },
             ["DOOR_Entry_5L"] = new SimConnect.SimVarDefinition
             {
@@ -4147,7 +4147,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Open", [1] = "Closed", [2] = "Closed and Armed", [3] = "Closing", [4] = "Opening" }
             },
             ["DOOR_Entry_5R"] = new SimConnect.SimVarDefinition
             {
@@ -4156,7 +4156,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Open", [1] = "Closed", [2] = "Closed and Armed", [3] = "Closing", [4] = "Opening" }
             },
             ["DOOR_Cargo_Fwd"] = new SimConnect.SimVarDefinition
             {
@@ -4165,7 +4165,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Open", [1] = "Closed", [2] = "Closed and Armed", [3] = "Closing", [4] = "Opening" }
             },
             ["DOOR_Cargo_Aft"] = new SimConnect.SimVarDefinition
             {
@@ -4174,7 +4174,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Open", [1] = "Closed", [2] = "Closed and Armed", [3] = "Closing", [4] = "Opening" }
             },
             ["DOOR_Cargo_Bulk"] = new SimConnect.SimVarDefinition
             {
@@ -4183,7 +4183,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Open", [1] = "Closed", [2] = "Closed and Armed", [3] = "Closing", [4] = "Opening" }
             },
             ["DOOR_Cargo_Main"] = new SimConnect.SimVarDefinition
             {
@@ -4192,7 +4192,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Open", [1] = "Closed", [2] = "Closed and Armed", [3] = "Closing", [4] = "Opening" }
             },
             ["DOOR_Fwd_Access"] = new SimConnect.SimVarDefinition
             {
@@ -4201,7 +4201,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Open", [1] = "Closed", [2] = "Closed and Armed", [3] = "Closing", [4] = "Opening" }
             },
             ["DOOR_EE_Access"] = new SimConnect.SimVarDefinition
             {
@@ -4210,7 +4210,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Open", [1] = "Closed", [2] = "Closed and Armed", [3] = "Closing", [4] = "Opening" }
             },
             ["DOOR_CockpitDoor"] = new SimConnect.SimVarDefinition
             {
