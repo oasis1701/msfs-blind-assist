@@ -5163,6 +5163,15 @@ public class PMDG777Definition : BaseAircraftDefinition
             return true;
         }
 
+        // Suppress raw value announcements for momentary button push states.
+        // These _Sw_Pushed fields briefly go to 1 then back to 0 — the actual
+        // mode state is announced via separate annunciator variables.
+        var variables = GetVariables();
+        if (variables.TryGetValue(varName, out var varDef) && varDef.RenderAsButton)
+        {
+            return true; // Suppress — screen reader announces the button press via UI
+        }
+
         // MCP display value announcements
         if (varName == "MCP_IASMach")
         {
