@@ -4411,7 +4411,8 @@ public class PMDG777Definition : BaseAircraftDefinition
             {
                 "ENG_EECMode_L", "ENG_EECMode_R",
                 "ENG_StartSelector_L", "ENG_StartSelector_R",
-                "ENG_Autostart"
+                "ENG_Autostart",
+                "ENG_FuelControl_1", "ENG_FuelControl_2"
             },
 
             // Overhead — Bleed Air
@@ -4614,7 +4615,6 @@ public class PMDG777Definition : BaseAircraftDefinition
                 "FCTL_AltnFlapsArm", "FCTL_AltnFlapsControl",
                 "FCTL_StabCutout_C", "FCTL_StabCutout_R",
                 "FCTL_AltnPitch", "FCTL_AileronTrim", "FCTL_RudderTrim", "FCTL_RudderTrimCancel",
-                "ENG_FuelControl_1", "ENG_FuelControl_2",
                 "BRAKES_ParkingBrake"
             },
 
