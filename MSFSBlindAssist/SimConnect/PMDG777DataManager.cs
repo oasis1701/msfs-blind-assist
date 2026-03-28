@@ -437,10 +437,21 @@ public class PMDG777DataManager : IDisposable
         // Without this, SetClientData sees identical bytes and SimConnect doesn't notify
         // the MobiFlight WASM module on repeated sends of the same event.
         // The nonce is pushed onto the RPN stack after ROTOR_BRAKE executes, and is harmless.
+        //
+        // ROTOR_BRAKE encoding: offset * 100 + flagCode, where:
+        //   1 = left click (toggle / step forward)
+        //   2 = right click (step backward)
+        // Mouse wheel flags (WHEEL_UP=0x4000, WHEEL_DOWN=0x2000) are mapped to
+        // left/right click codes because ROTOR_BRAKE accepts a single combined value,
+        // not separate event + parameter stack entries.
         int nonce = Interlocked.Increment(ref _rpnNonce);
-        string rpn = parameter.HasValue
-            ? $"{offset * 100 + 1} {parameter.Value} (>K:ROTOR_BRAKE) {nonce}"
-            : $"{offset * 100 + 1} (>K:ROTOR_BRAKE) {nonce}";
+        int flagCode = parameter switch
+        {
+            0x4000 => 1, // MOUSE_FLAG_WHEEL_UP → left click (step forward)
+            0x2000 => 2, // MOUSE_FLAG_WHEEL_DOWN → right click (step backward)
+            _      => 1  // default: left click (toggle)
+        };
+        string rpn = $"{offset * 100 + flagCode} (>K:ROTOR_BRAKE) {nonce}";
 
         _mobiFlightWasm.SendMFCommand($"MF.SimVars.Set.{rpn}");
 
