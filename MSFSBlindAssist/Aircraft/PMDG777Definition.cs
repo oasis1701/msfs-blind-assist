@@ -4255,6 +4255,106 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true
             },
+
+            // MONITORING ENHANCEMENTS (background — no panel placement)
+            ["MON_APURunning"] = new SimConnect.SimVarDefinition
+            {
+                Name = "APURunning",
+                DisplayName = "APU",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Shut Down", [1] = "Running" }
+            },
+            ["MON_IRS_Aligned"] = new SimConnect.SimVarDefinition
+            {
+                Name = "IRS_aligned",
+                DisplayName = "IRS",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Not Aligned", [1] = "Aligned" }
+            },
+            ["MON_ENG_StartValve_1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ENG_StartValve_0",
+                DisplayName = "Engine 1 Start Valve",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+            },
+            ["MON_ENG_StartValve_2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ENG_StartValve_1",
+                DisplayName = "Engine 2 Start Valve",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+            },
+            ["MON_WheelChocks"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WheelChocksSet",
+                DisplayName = "Wheel Chocks",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Removed", [1] = "Set" }
+            },
+            ["MON_GroundConn"] = new SimConnect.SimVarDefinition
+            {
+                Name = "GroundConnAvailable",
+                DisplayName = "Ground Connections",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Not Available", [1] = "Available" }
+            },
+
+            // BRAKES — panel control
+            ["BRAKES_BrakePressure"] = new SimConnect.SimVarDefinition
+            {
+                Name = "BRAKES_BrakePressNeedle",
+                DisplayName = "Brake Pressure",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+
+            // FUEL QUANTITY (continuous monitoring for hotkey reads — no auto announcements)
+            ["MON_FUEL_QtyLeft"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FUEL_QtyLeft",
+                DisplayName = "Fuel Left Tank",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = false
+            },
+            ["MON_FUEL_QtyCenter"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FUEL_QtyCenter",
+                DisplayName = "Fuel Center Tank",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = false
+            },
+            ["MON_FUEL_QtyRight"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FUEL_QtyRight",
+                DisplayName = "Fuel Right Tank",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = false
+            },
+            ["MON_FUEL_QtyAux"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FUEL_QtyAux",
+                DisplayName = "Fuel Aux Tank",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = false
+            },
         };
     }
 
@@ -4469,7 +4569,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             // Forward Panel — Brakes
             ["Brakes"] = new List<string>
             {
-                "BRAKES_AutobrakeSelector", "BRAKES_ParkingBrake"
+                "BRAKES_AutobrakeSelector", "BRAKES_ParkingBrake", "BRAKES_BrakePressure"
             },
 
             // Forward Panel — GPWS
@@ -5251,6 +5351,13 @@ public class PMDG777Definition : BaseAircraftDefinition
         {
             if (value > 0)
                 announcer.AnnounceImmediate($"Cruise altitude {(int)value} feet");
+            return true;
+        }
+
+        if (varName == "BRAKES_BrakePressNeedle")
+        {
+            int psi = (int)(value * 40); // 0-100 maps to 0-4000 PSI
+            announcer.AnnounceImmediate($"Brake pressure {psi} PSI");
             return true;
         }
 
