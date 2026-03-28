@@ -48,7 +48,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["Pedestal"] = new List<string>
             {
                 "Control Stand", "Transponder/TCAS", "Weather Radar",
-                "Communication", "CDU", "Evacuation", "Warning"
+                "Communication", "CDU", "Evacuation", "Warning", "Engine Fire"
             }
         };
     }
@@ -1385,6 +1385,85 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Never,
                 RenderAsButton = true,
                 IsMomentary = true,
+            },
+            // ENGINE FIRE HANDLES (Pedestal)
+            ["FIRE_EngineHandle_1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FIRE_EngineHandle_0",
+                DisplayName = "Engine 1 Fire Handle",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "Normal", [1] = "Pulled", [2] = "Disch Left", [3] = "Disch Right"
+                }
+            },
+            ["FIRE_EngineHandle_2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FIRE_EngineHandle_1",
+                DisplayName = "Engine 2 Fire Handle",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "Normal", [1] = "Pulled", [2] = "Disch Left", [3] = "Disch Right"
+                }
+            },
+            ["FIRE_EngineHandleUnlock_1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FIRE_EngineHandleUnlock_Sw_0",
+                DisplayName = "Engine 1 Handle Unlock",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Never,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
+            ["FIRE_EngineHandleUnlock_2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FIRE_EngineHandleUnlock_Sw_1",
+                DisplayName = "Engine 2 Handle Unlock",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Never,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
+            ["FIRE_annunENG_BTL_DISCH_1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FIRE_annunENG_BTL_DISCH_0",
+                DisplayName = "Engine 1 Bottle Discharged",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["FIRE_annunENG_BTL_DISCH_2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FIRE_annunENG_BTL_DISCH_1",
+                DisplayName = "Engine 2 Bottle Discharged",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["FIRE_EngineHandleIsUnlocked_1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FIRE_EngineHandleIsUnlocked_0",
+                DisplayName = "Engine 1 Handle Unlocked",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["FIRE_EngineHandleIsUnlocked_2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FIRE_EngineHandleIsUnlocked_1",
+                DisplayName = "Engine 2 Handle Unlocked",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
             },
             // Fire annunciators
             ["FIRE_annunCargoFire_1"] = new SimConnect.SimVarDefinition
@@ -4247,6 +4326,15 @@ public class PMDG777Definition : BaseAircraftDefinition
             {
                 "WARN_Reset_L", "WARN_Reset_R"
             },
+
+            // Pedestal — Engine Fire
+            ["Engine Fire"] = new List<string>
+            {
+                "FIRE_EngineHandleUnlock_1", "FIRE_EngineHandle_1",
+                "FIRE_EngineHandleUnlock_2", "FIRE_EngineHandle_2",
+                "FIRE_annunENG_BTL_DISCH_1", "FIRE_annunENG_BTL_DISCH_2",
+                "FIRE_EngineHandleIsUnlocked_1", "FIRE_EngineHandleIsUnlocked_2"
+            },
         };
     }
 
@@ -4389,6 +4477,8 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["FIRE_FireOvhtTest"]       = "EVT_OH_FIRE_OVHT_TEST",
             ["FIRE_APUHandle"]          = "EVT_OH_FIRE_HANDLE_APU_TOP",
             ["FIRE_APUHandleUnlock"]    = "EVT_OH_FIRE_UNLOCK_SWITCH_APU",
+            ["FIRE_EngineHandle_1"]     = "EVT_FIRE_HANDLE_ENGINE_1_TOP",
+            ["FIRE_EngineHandle_2"]     = "EVT_FIRE_HANDLE_ENGINE_2_TOP",
 
             // --- Lights ---
             ["LTS_LandingLightL"]       = "EVT_OH_LIGHTS_LANDING_L",
@@ -4623,6 +4713,8 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["FUEL_JettisonNozzleL"]= ("EVT_OH_FUEL_JETTISON_NOZZLE_L_GUARD","EVT_OH_FUEL_JETTISON_NOZZLE_L"),
             ["FUEL_JettisonNozzleR"]= ("EVT_OH_FUEL_JETTISON_NOZZLE_R_GUARD","EVT_OH_FUEL_JETTISON_NOZZLE_R"),
             ["FIRE_CargoFireDisch"]  = ("EVT_OH_FIRE_CARGO_DISCH_GUARD", "EVT_OH_FIRE_CARGO_DISCH"),
+            ["FIRE_EngineHandleUnlock_1"] = ("EVT_FIRE_UNLOCK_SWITCH_ENGINE_1", "EVT_FIRE_HANDLE_ENGINE_1_TOP"),
+            ["FIRE_EngineHandleUnlock_2"] = ("EVT_FIRE_UNLOCK_SWITCH_ENGINE_2", "EVT_FIRE_HANDLE_ENGINE_2_TOP"),
             ["ICE_BackupWindowHeat_L"]= ("EVT_OH_ICE_BU_WINDOW_HEAT_L_GUARD","EVT_OH_ICE_BU_WINDOW_HEAT_L"),
             ["ICE_BackupWindowHeat_R"]= ("EVT_OH_ICE_BU_WINDOW_HEAT_R_GUARD","EVT_OH_ICE_BU_WINDOW_HEAT_R"),
             ["OXY_PassOxygen"]       = ("EVT_OH_OXY_PASS_GUARD",         "EVT_OH_OXY_PASS_SWITCH"),
