@@ -439,16 +439,16 @@ public class PMDG777DataManager : IDisposable
         // The nonce is pushed onto the RPN stack after ROTOR_BRAKE executes, and is harmless.
         //
         // ROTOR_BRAKE encoding: offset * 100 + flagCode, where:
-        //   1 = left click (toggle / step forward)
-        //   2 = right click (step backward)
-        // Mouse wheel flags (WHEEL_UP=0x4000, WHEEL_DOWN=0x2000) are mapped to
-        // left/right click codes because ROTOR_BRAKE accepts a single combined value,
-        // not separate event + parameter stack entries.
+        //   1 = left click (toggle / step down)
+        //   2 = right click (step up)
+        // PMDG convention: right-click = increase, left-click = decrease.
+        // Mouse wheel flags are mapped to click codes because ROTOR_BRAKE
+        // accepts a single combined value, not separate stack entries.
         int nonce = Interlocked.Increment(ref _rpnNonce);
         int flagCode = parameter switch
         {
-            0x4000 => 1, // MOUSE_FLAG_WHEEL_UP → left click (step forward)
-            0x2000 => 2, // MOUSE_FLAG_WHEEL_DOWN → right click (step backward)
+            0x4000 => 2, // MOUSE_FLAG_WHEEL_UP → right click (step up/increase)
+            0x2000 => 1, // MOUSE_FLAG_WHEEL_DOWN → left click (step down/decrease)
             _      => 1  // default: left click (toggle)
         };
         string rpn = $"{offset * 100 + flagCode} (>K:ROTOR_BRAKE) {nonce}";
