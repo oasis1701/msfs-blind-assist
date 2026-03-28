@@ -4419,7 +4419,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 IsAnnounced = false,
                 PreventTextInput = true
             },
-            ["COM1_StandbyFreq"] = new SimConnect.SimVarDefinition
+            ["COM_STANDBY_FREQUENCY_SET:1"] = new SimConnect.SimVarDefinition
             {
                 Name = "COM STANDBY FREQUENCY:1",
                 DisplayName = "COM1 Standby",
@@ -4427,14 +4427,6 @@ public class PMDG777Definition : BaseAircraftDefinition
                 Units = "MHz",
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = false
-            },
-            ["COM_STANDBY_FREQUENCY_SET:1"] = new SimConnect.SimVarDefinition
-            {
-                Name = "COM STANDBY FREQUENCY:1",
-                DisplayName = "Set COM1 Standby",
-                Type = SimConnect.SimVarType.SimVar,
-                Units = "kHz",
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
             },
             ["COM1_RADIO_SWAP"] = new SimConnect.SimVarDefinition
             {
@@ -4455,7 +4447,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 IsAnnounced = false,
                 PreventTextInput = true
             },
-            ["COM2_StandbyFreq"] = new SimConnect.SimVarDefinition
+            ["COM_STANDBY_FREQUENCY_SET:2"] = new SimConnect.SimVarDefinition
             {
                 Name = "COM STANDBY FREQUENCY:2",
                 DisplayName = "COM2 Standby",
@@ -4463,14 +4455,6 @@ public class PMDG777Definition : BaseAircraftDefinition
                 Units = "MHz",
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = false
-            },
-            ["COM_STANDBY_FREQUENCY_SET:2"] = new SimConnect.SimVarDefinition
-            {
-                Name = "COM STANDBY FREQUENCY:2",
-                DisplayName = "Set COM2 Standby",
-                Type = SimConnect.SimVarType.SimVar,
-                Units = "kHz",
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
             },
             ["COM2_RADIO_SWAP"] = new SimConnect.SimVarDefinition
             {
@@ -5529,7 +5513,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             _lastComActiveFreq1 = value;
             return true;
         }
-        if (varName == "COM1_StandbyFreq")
+        if (varName == "COM_STANDBY_FREQUENCY_SET:1")
         {
             if (_lastComStandbyFreq1 > 0)
                 announcer.AnnounceImmediate($"COM1 standby {value:F3}");
@@ -5543,7 +5527,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             _lastComActiveFreq2 = value;
             return true;
         }
-        if (varName == "COM2_StandbyFreq")
+        if (varName == "COM_STANDBY_FREQUENCY_SET:2")
         {
             if (_lastComStandbyFreq2 > 0)
                 announcer.AnnounceImmediate($"COM2 standby {value:F3}");
