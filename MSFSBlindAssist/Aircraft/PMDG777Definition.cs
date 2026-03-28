@@ -1436,6 +1436,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
+                PreventTextInput = true,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
             },
             ["FIRE_annunENG_BTL_DISCH_2"] = new SimConnect.SimVarDefinition
@@ -1445,6 +1446,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
+                PreventTextInput = true,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
             },
             ["FIRE_EngineHandleIsUnlocked_1"] = new SimConnect.SimVarDefinition
@@ -1454,6 +1456,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
+                PreventTextInput = true,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
             },
             ["FIRE_EngineHandleIsUnlocked_2"] = new SimConnect.SimVarDefinition
@@ -1463,6 +1466,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
+                PreventTextInput = true,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
             },
             // Fire annunciators
@@ -3715,7 +3719,8 @@ public class PMDG777Definition : BaseAircraftDefinition
                 DisplayName = "Selected Mic 1",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true
+                IsAnnounced = true,
+                PreventTextInput = true
             },
             ["COMM_SelectedMic_2"] = new SimConnect.SimVarDefinition
             {
@@ -3723,7 +3728,8 @@ public class PMDG777Definition : BaseAircraftDefinition
                 DisplayName = "Selected Mic 2",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true
+                IsAnnounced = true,
+                PreventTextInput = true
             },
             ["COMM_SelectedMic_3"] = new SimConnect.SimVarDefinition
             {
@@ -3731,7 +3737,8 @@ public class PMDG777Definition : BaseAircraftDefinition
                 DisplayName = "Selected Mic 3",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true
+                IsAnnounced = true,
+                PreventTextInput = true
             },
             ["COMM_SelectedRadio_1"] = new SimConnect.SimVarDefinition
             {
@@ -3739,7 +3746,8 @@ public class PMDG777Definition : BaseAircraftDefinition
                 DisplayName = "Selected Radio 1",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true
+                IsAnnounced = true,
+                PreventTextInput = true
             },
             ["COMM_SelectedRadio_2"] = new SimConnect.SimVarDefinition
             {
@@ -3747,7 +3755,8 @@ public class PMDG777Definition : BaseAircraftDefinition
                 DisplayName = "Selected Radio 2",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true
+                IsAnnounced = true,
+                PreventTextInput = true
             },
             ["COMM_SelectedRadio_3"] = new SimConnect.SimVarDefinition
             {
@@ -3755,7 +3764,8 @@ public class PMDG777Definition : BaseAircraftDefinition
                 DisplayName = "Selected Radio 3",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true
+                IsAnnounced = true,
+                PreventTextInput = true
             },
             ["COMM_RadioTransfer_1"] = new SimConnect.SimVarDefinition
             {
@@ -4315,7 +4325,8 @@ public class PMDG777Definition : BaseAircraftDefinition
                 DisplayName = "Brake Pressure",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                IsAnnounced = false
+                IsAnnounced = false,
+                PreventTextInput = true
             },
 
             // FUEL QUANTITY (continuous monitoring for hotkey reads — no auto announcements)
@@ -4622,7 +4633,6 @@ public class PMDG777Definition : BaseAircraftDefinition
             {
                 "COMM_SelectedMic_1", "COMM_SelectedMic_2", "COMM_SelectedMic_3",
                 "COMM_SelectedRadio_1", "COMM_SelectedRadio_2", "COMM_SelectedRadio_3",
-                "COMM_RadioTransfer_1", "COMM_RadioTransfer_2", "COMM_RadioTransfer_3",
                 "COMM_OBSAudio"
             },
 
@@ -5008,6 +5018,15 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["XPDR_AltSource"]          = "EVT_TCAS_ALTSOURCE",
             ["XPDR_ModeSel"]             = "EVT_TCAS_MODE",
             ["XPDR_Ident"]              = "EVT_TCAS_IDENT",
+
+            // --- Warning ---
+            ["WARN_Reset_L"]            = "EVT_MASTER_WARNING_RESET_LEFT",
+            ["WARN_Reset_R"]            = "EVT_MASTER_WARNING_RESET_RIGHT",
+
+            // --- Pedestal misc ---
+            ["EVAC_PressToTest"]        = "EVT_PED_EVAC_TEST_SWITCH",
+            ["EICAS_EventRcd"]          = "EVT_PED_EICAS_EVENT_RCD",
+            ["ISP_DsplCtrl_C"]          = "EVT_PED_DSPL_CTRL_SOURCE_C",
         };
 
     // =========================================================================
@@ -6190,6 +6209,12 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["EVT_DSP_CANC_RCL_SWITCH"]            = 69879,
             ["EVT_DSP_INDB_DSPL_L"]                = 69947,
             ["EVT_DSP_INDB_DSPL_R"]                = 69922,
+
+            // -----------------------------------------------------------------
+            // GLARESHIELD — Master Warning Reset
+            // -----------------------------------------------------------------
+            ["EVT_MASTER_WARNING_RESET_LEFT"]       = 69809,
+            ["EVT_MASTER_WARNING_RESET_RIGHT"]      = 69904,
 
             // -----------------------------------------------------------------
             // FORWARD PANEL — Landing Gear
