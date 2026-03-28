@@ -5111,12 +5111,13 @@ public class PMDG777Definition : BaseAircraftDefinition
         }
 
         // ------------------------------------------------------------------
-        // 3. Momentary / button press — send once with no parameter
+        // 3. Momentary / button press — CDA parameter 1 = "pressed"
+        //    (CDA parameter 0 means "not pressed" which is a no-op)
         // ------------------------------------------------------------------
         if (varDef.RenderAsButton || varDef.IsMomentary)
         {
-            SimConnect.PMDG777Debug.Log($"[PMDG777Definition.HandleUIVariableSet] Branch: MOMENTARY/BUTTON — calling SendPMDGEvent({eventName}, {eventId})");
-            simConnect.SendPMDGEvent(eventName, eventId);
+            SimConnect.PMDG777Debug.Log($"[PMDG777Definition.HandleUIVariableSet] Branch: MOMENTARY/BUTTON — calling SendPMDGEvent({eventName}, {eventId}, 1)");
+            simConnect.SendPMDGEvent(eventName, eventId, 1);
             return true;
         }
 
