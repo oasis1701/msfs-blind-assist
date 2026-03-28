@@ -299,7 +299,7 @@ public class PMDG777DataManager : IDisposable
         }
     }
 
-    private void RaiseVariableChanged(string fieldName, double value) =>
+    internal void RaiseVariableChanged(string fieldName, double value) =>
         VariableChanged?.Invoke(this, new PMDGVarUpdateEventArgs
         {
             FieldName = fieldName,

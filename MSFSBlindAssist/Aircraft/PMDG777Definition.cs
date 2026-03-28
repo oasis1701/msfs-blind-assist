@@ -5172,6 +5172,22 @@ public class PMDG777Definition : BaseAircraftDefinition
             for (int i = 0; i < abs; i++)
                 simConnect.SendPMDGEvent(eventName, eventId, mouseFlag);
 
+            // APU Selector "Start" is spring-loaded — bounces back to "On".
+            // Schedule a delayed refresh so the UI combo reflects the actual state.
+            if (varKey == "ELEC_APU_Selector" && target == 2)
+            {
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(1000);
+                    var dm = simConnect.PMDG777DataManager;
+                    if (dm != null)
+                    {
+                        double actual = dm.GetFieldValue("ELEC_APU_Selector");
+                        dm.RaiseVariableChanged("ELEC_APU_Selector", actual);
+                    }
+                });
+            }
+
             return true;
         }
 
@@ -5348,10 +5364,10 @@ public class PMDG777Definition : BaseAircraftDefinition
         }
 
 
-        // APU Selector — announce "APU starting" when selector moves to On
+        // APU Selector — announce "APU starting" when selector moves to Start
         if (varName == "ELEC_APU_Selector")
         {
-            if ((int)value == 1)
+            if ((int)value == 2)
                 announcer.AnnounceImmediate("APU starting");
             return true;
         }
