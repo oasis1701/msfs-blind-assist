@@ -3758,7 +3758,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 DisplayName = "Squawk Code",
                 Type = SimConnect.SimVarType.SimVar,
                 Units = "BCO16",
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = false
             },
 
@@ -4419,6 +4419,15 @@ public class PMDG777Definition : BaseAircraftDefinition
                 IsAnnounced = false,
                 PreventTextInput = true
             },
+            ["COM1_StandbyFreq"] = new SimConnect.SimVarDefinition
+            {
+                Name = "COM STANDBY FREQUENCY:1",
+                DisplayName = "COM1 Standby",
+                Type = SimConnect.SimVarType.SimVar,
+                Units = "MHz",
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = false
+            },
             ["COM_STANDBY_FREQUENCY_SET:1"] = new SimConnect.SimVarDefinition
             {
                 Name = "COM STANDBY FREQUENCY:1",
@@ -4445,6 +4454,15 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = false,
                 PreventTextInput = true
+            },
+            ["COM2_StandbyFreq"] = new SimConnect.SimVarDefinition
+            {
+                Name = "COM STANDBY FREQUENCY:2",
+                DisplayName = "COM2 Standby",
+                Type = SimConnect.SimVarType.SimVar,
+                Units = "MHz",
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = false
             },
             ["COM_STANDBY_FREQUENCY_SET:2"] = new SimConnect.SimVarDefinition
             {
@@ -4778,9 +4796,13 @@ public class PMDG777Definition : BaseAircraftDefinition
     // Event handling overrides — scaffold (populated in Tasks 9-11)
     // =========================================================================
 
-    // Track last known COM active frequencies to suppress initial load announcement
+    // Track last known radio/squawk values to suppress initial load announcement.
+    // Value 0 means "not yet seen" — first update stores silently, subsequent updates announce.
     private double _lastComActiveFreq1;
     private double _lastComActiveFreq2;
+    private double _lastComStandbyFreq1;
+    private double _lastComStandbyFreq2;
+    private double _lastSquawkCode;
 
     // =========================================================================
     // Variable → event name mapping (simple toggle and momentary controls)
@@ -5183,12 +5205,31 @@ public class PMDG777Definition : BaseAircraftDefinition
         SimConnect.PMDG777Debug.Log($"[PMDG777Definition.HandleUIVariableSet] ENTRY varKey={varKey} value={value} RenderAsButton={varDef.RenderAsButton} IsMomentary={varDef.IsMomentary} ValueDescriptions.Count={varDef.ValueDescriptions.Count}");
 
         // ------------------------------------------------------------------
-        // 0. Standard SimConnect events (non-PMDG) — e.g., COM swap buttons
+        // 0. Standard SimConnect events and COM frequency set
+        //    Handled here to prevent MainForm's redundant announcements.
+        //    ProcessSimVarUpdate announces when the SimVar actually changes.
         // ------------------------------------------------------------------
         if (varDef.Type == SimConnect.SimVarType.Event)
         {
             SimConnect.PMDG777Debug.Log($"[PMDG777Definition.HandleUIVariableSet] Branch: SIMCONNECT EVENT — calling SendEvent({varDef.Name})");
             simConnect.SendEvent(varDef.Name);
+            return true;
+        }
+
+        // COM standby frequency set — validate, convert to Hz, send via SimConnect.
+        // Return true to prevent MainForm's "Standby frequency set to xxx" announcement.
+        if (varKey.StartsWith("COM_STANDBY_FREQUENCY_SET"))
+        {
+            if (value >= 118.0 && value <= 136.975)
+            {
+                uint frequencyHz = (uint)(value * 1000000);
+                string setEvent = varKey.Contains(":2") ? "COM2_STBY_RADIO_SET_HZ" : "COM_STBY_RADIO_SET_HZ";
+                simConnect.SendEvent(setEvent, frequencyHz);
+            }
+            else
+            {
+                announcer.AnnounceImmediate("Invalid frequency. Range: 118.000 to 136.975");
+            }
             return true;
         }
 
@@ -5480,7 +5521,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             return true;
         }
 
-        // COM active frequency announcements — only after swap, suppress initial load
+        // COM/squawk announcements — suppress initial load, announce subsequent changes
         if (varName == "COM1_ActiveFreq")
         {
             if (_lastComActiveFreq1 > 0)
@@ -5488,11 +5529,39 @@ public class PMDG777Definition : BaseAircraftDefinition
             _lastComActiveFreq1 = value;
             return true;
         }
+        if (varName == "COM1_StandbyFreq")
+        {
+            if (_lastComStandbyFreq1 > 0)
+                announcer.AnnounceImmediate($"COM1 standby {value:F3}");
+            _lastComStandbyFreq1 = value;
+            return true;
+        }
         if (varName == "COM2_ActiveFreq")
         {
             if (_lastComActiveFreq2 > 0)
                 announcer.AnnounceImmediate($"COM2 active {value:F3}");
             _lastComActiveFreq2 = value;
+            return true;
+        }
+        if (varName == "COM2_StandbyFreq")
+        {
+            if (_lastComStandbyFreq2 > 0)
+                announcer.AnnounceImmediate($"COM2 standby {value:F3}");
+            _lastComStandbyFreq2 = value;
+            return true;
+        }
+        if (varName == "TRANSPONDER_CODE_SET")
+        {
+            if (_lastSquawkCode > 0)
+            {
+                int bcd = (int)value;
+                int d1 = (bcd >> 12) & 0xF;
+                int d2 = (bcd >> 8) & 0xF;
+                int d3 = (bcd >> 4) & 0xF;
+                int d4 = bcd & 0xF;
+                announcer.AnnounceImmediate($"Squawk {d1}{d2}{d3}{d4}");
+            }
+            _lastSquawkCode = value;
             return true;
         }
 

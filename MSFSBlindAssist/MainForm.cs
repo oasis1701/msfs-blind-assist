@@ -3096,7 +3096,7 @@ public partial class MainForm : Form
                         else
                         {
                             simConnectManager?.SendEvent(varKey, bcdValue);
-                            announcer.Announce($"Squawk set to {squawkCode}");
+                            // Announcement handled by aircraft's ProcessSimVarUpdate when the SimVar changes
                         }
                     }
                     else if (double.TryParse(textBox.Text, out double value))
