@@ -31,7 +31,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             {
                 "Electrical", "Hydraulic", "Fuel", "Engines", "Bleed Air",
                 "Air Conditioning", "Pressurization", "Anti-Ice", "Fire",
-                "Lights", "Signs", "Wipers", "Panel Lighting"
+                "Lights", "Signs", "Wipers", "Panel Lighting", "ADIRU"
             },
             ["Overhead Maintenance"] = new List<string>
             {
@@ -1893,6 +1893,39 @@ public class PMDG777Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true
+            },
+
+            // =================================================================
+            // OVERHEAD — ADIRU
+            // =================================================================
+            ["ADIRU_Switch"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ADIRU_Sw_On",
+                DisplayName = "ADIRU Switch",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["ADIRU_annunOFF"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ADIRU_annunOFF",
+                DisplayName = "ADIRU OFF Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                PreventTextInput = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["ADIRU_annunON_BAT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ADIRU_annunON_BAT",
+                DisplayName = "ADIRU ON BAT Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                PreventTextInput = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
             },
 
             // =================================================================
@@ -4484,6 +4517,12 @@ public class PMDG777Definition : BaseAircraftDefinition
                 "LTS_EmerLights"
             },
 
+            // Overhead — ADIRU
+            ["ADIRU"] = new List<string>
+            {
+                "ADIRU_Switch"
+            },
+
             // Overhead Maintenance — Flight Controls
             ["Flight Controls"] = new List<string>
             {
@@ -4689,6 +4728,9 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["ELEC_IFEPassSeats"]   = "EVT_OH_ELEC_IFE",
             ["ELEC_StandbyPwr"]     = "EVT_OH_ELEC_STBY_PWR_SWITCH",
             ["ELEC_TowingPower"]    = "EVT_OH_ELEC_TOWING_PWR_SWITCH",
+
+            // --- ADIRU ---
+            ["ADIRU_Switch"]        = "EVT_OH_ADIRU_SWITCH",
 
             // --- Hydraulic ---
             ["HYD_PrimEngPump_1"]   = "EVT_OH_HYD_ENG1",
