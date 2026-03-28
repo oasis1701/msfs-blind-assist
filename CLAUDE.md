@@ -76,6 +76,22 @@ dotnet build MSFSBlindAssist.sln -c Release
 - **K:EVENT** - Standard MSFS events (via SimConnect TransmitClientEvent)
 - **L:VARIABLE** - Local variables (reading aircraft state)
 - **H:EVENT** - Hardware events (via MobiFlight WASM module)
+- **PMDGVar** - PMDG SDK variables (read via Client Data Area broadcast)
+
+### PMDG 777 Specific Patterns
+
+**Switch control:** Use CDA (SetClientData) with direct position values for ALL switches.
+- Two-position toggles: `SendPMDGEvent(eventName, eventId, targetPosition)` where targetPosition is 0 or 1
+- Multi-position selectors: same, with the target position index
+- Momentary buttons: `SendPMDGEvent(eventName, eventId, 1)` — parameter 1 = pressed, 0 = no-op
+- Continuous knobs (brightness, temperature, EFIS baro/mins): **cannot be controlled via SDK** — do not add to panels
+
+**Radio frequencies and transponder:** Use standard SimConnect events (not PMDG SDK):
+- `COM_STBY_RADIO_SET_HZ` / `COM2_STBY_RADIO_SET_HZ` for setting standby freqs
+- `COM_STBY_RADIO_SWAP` / `COM2_RADIO_SWAP` for swapping active/standby
+- `XPNDR_SET` for squawk code (BCD16 encoded)
+
+**Announcements:** Use `Announce()` (queued) in ProcessSimVarUpdate, `AnnounceImmediate()` only in HandleHotkeyAction. `IsAnnounced = true` is required for continuous monitoring registration. Suppress button push state (_Sw_Pushed) announcements via RenderAsButton check.
 
 ## Detailed Documentation
 
