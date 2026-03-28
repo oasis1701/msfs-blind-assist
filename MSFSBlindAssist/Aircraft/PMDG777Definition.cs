@@ -683,7 +683,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Decr", [1] = "Off", [2] = "Incr" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Decr", [1] = "Neutral", [2] = "Incr" }
             },
             // Fuel annunciators
             ["FUEL_annunFwdXFEED_VALVE"] = new SimConnect.SimVarDefinition
@@ -825,7 +825,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Norm", [1] = "Start" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Start", [1] = "Norm" }
             },
             ["ENG_StartSelector_R"] = new SimConnect.SimVarDefinition
             {
@@ -834,7 +834,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Norm", [1] = "Start" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Start", [1] = "Norm" }
             },
             ["ENG_Autostart"] = new SimConnect.SimVarDefinition
             {
@@ -1086,7 +1086,8 @@ public class PMDG777Definition : BaseAircraftDefinition
                 DisplayName = "Temp Selector Flight Deck",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Cold", [35] = "Neutral", [60] = "Warm", [70] = "Manual" }
             },
             ["AIR_TempSelectorCabin"] = new SimConnect.SimVarDefinition
             {
@@ -1094,7 +1095,8 @@ public class PMDG777Definition : BaseAircraftDefinition
                 DisplayName = "Temp Selector Cabin",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Cold", [35] = "Neutral", [60] = "Warm", [70] = "Manual" }
             },
             // Air conditioning annunciators
             ["AIR_annunPackOFF_1"] = new SimConnect.SimVarDefinition
@@ -1185,7 +1187,8 @@ public class PMDG777Definition : BaseAircraftDefinition
                 DisplayName = "Landing Altitude Selector",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Decr", [1] = "Neutral", [2] = "Incr" }
             },
             ["AIR_LdgAltPulled"] = new SimConnect.SimVarDefinition
             {
@@ -1688,7 +1691,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Bright", [2] = "Dim" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Test", [1] = "Bright", [2] = "Dim" }
             },
             ["LTS_DomeLight"] = new SimConnect.SimVarDefinition
             {
@@ -1754,7 +1757,8 @@ public class PMDG777Definition : BaseAircraftDefinition
                 DisplayName = "Cargo Temp Forward",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Low", [2] = "High" }
             },
             ["AIR_CargoTempAft"] = new SimConnect.SimVarDefinition
             {
@@ -1762,7 +1766,8 @@ public class PMDG777Definition : BaseAircraftDefinition
                 DisplayName = "Cargo Temp Aft",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Low", [2] = "High" }
             },
             ["AIR_CargoTempMainDeckFwd"] = new SimConnect.SimVarDefinition
             {
@@ -3098,7 +3103,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 ValueDescriptions = new Dictionary<double, string>
                 {
                     [0] = "RTO", [1] = "Off", [2] = "Disarm",
-                    [3] = "1", [4] = "2", [5] = "3", [6] = "Max Auto"
+                    [3] = "1", [4] = "2", [5] = "Max Auto"
                 }
             },
             ["BRAKES_ParkingBrake"] = new SimConnect.SimVarDefinition
@@ -3271,7 +3276,8 @@ public class PMDG777Definition : BaseAircraftDefinition
                 DisplayName = "Inboard Display Left",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "ND", [1] = "NAV", [2] = "MFD", [3] = "EICAS" }
             },
             ["DSP_InbdDspl_R"] = new SimConnect.SimVarDefinition
             {
@@ -3279,7 +3285,8 @@ public class PMDG777Definition : BaseAircraftDefinition
                 DisplayName = "Inboard Display Right",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "EICAS", [1] = "MFD", [2] = "ND", [3] = "PFD" }
             },
             ["EFIS_HdgRef"] = new SimConnect.SimVarDefinition
             {
@@ -3401,7 +3408,8 @@ public class PMDG777Definition : BaseAircraftDefinition
                 DisplayName = "Time/Date Selector Left",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "UTC", [1] = "MAN" }
             },
             ["CHR_TimeDateSelector_R"] = new SimConnect.SimVarDefinition
             {
@@ -3409,7 +3417,8 @@ public class PMDG777Definition : BaseAircraftDefinition
                 DisplayName = "Time/Date Selector Right",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "UTC", [1] = "MAN" }
             },
             ["CHR_SetSelector_L"] = new SimConnect.SimVarDefinition
             {
@@ -3417,7 +3426,8 @@ public class PMDG777Definition : BaseAircraftDefinition
                 DisplayName = "Set Selector Left",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "RUN", [1] = "HLDY", [2] = "MM", [3] = "HD" }
             },
             ["CHR_SetSelector_R"] = new SimConnect.SimVarDefinition
             {
@@ -3425,7 +3435,8 @@ public class PMDG777Definition : BaseAircraftDefinition
                 DisplayName = "Set Selector Right",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "RUN", [1] = "HLDY", [2] = "MM", [3] = "HD" }
             },
             ["CHR_ETSelector_L"] = new SimConnect.SimVarDefinition
             {
@@ -3433,7 +3444,8 @@ public class PMDG777Definition : BaseAircraftDefinition
                 DisplayName = "ET Selector Left",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Reset", [1] = "Hold", [2] = "Run" }
             },
             ["CHR_ETSelector_R"] = new SimConnect.SimVarDefinition
             {
@@ -3441,7 +3453,8 @@ public class PMDG777Definition : BaseAircraftDefinition
                 DisplayName = "ET Selector Right",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Reset", [1] = "Hold", [2] = "Run" }
             },
 
             // =================================================================
@@ -3454,10 +3467,8 @@ public class PMDG777Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string>
-                {
-                    [0] = "Down", [1] = "Armed"
-                }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Down", [25] = "Armed" },
+                OnlyAnnounceValueDescriptionMatches = true
             },
             ["FCTL_Flaps"] = new SimConnect.SimVarDefinition
             {
@@ -4354,7 +4365,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["LTS_Logo"]                = "EVT_OH_LIGHTS_LOGO",
             ["LTS_Wing"]                = "EVT_OH_LIGHTS_WING",
             ["LTS_Storm"]               = "EVT_OH_LIGHTS_STORM",
-            ["LTS_MasterBrightSw"]      = "EVT_OH_PANEL_LIGHT_CONTROL",
+            ["LTS_MasterBrightSw"]      = "EVT_OH_MASTER_BRIGHT_PUSH",
             ["LTS_MasterBrightKnob"]    = "EVT_OH_MASTER_BRIGHT_ROTATE",
             ["LTS_IndLightsTest"]       = "EVT_OH_LIGHTS_IND_LTS_SWITCH",
             ["LTS_DomeLight"]           = "EVT_OH_DOME_SWITCH",
