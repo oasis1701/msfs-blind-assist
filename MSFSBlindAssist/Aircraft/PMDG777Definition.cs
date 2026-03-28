@@ -5332,113 +5332,113 @@ public class PMDG777Definition : BaseAircraftDefinition
         if (varName == "MCP_IASMach")
         {
             if (value < 10)
-                announcer.AnnounceImmediate($"Mach {value:F2}");
+                announcer.Announce($"Mach {value:F2}");
             else
-                announcer.AnnounceImmediate($"Speed {(int)value} knots");
+                announcer.Announce($"Speed {(int)value} knots");
             return true;
         }
 
         if (varName == "MCP_Heading")
         {
-            announcer.AnnounceImmediate($"Heading {(int)value}");
+            announcer.Announce($"Heading {(int)value}");
             return true;
         }
 
         if (varName == "MCP_Altitude")
         {
-            announcer.AnnounceImmediate($"Altitude {(int)value}");
+            announcer.Announce($"Altitude {(int)value}");
             return true;
         }
 
         if (varName == "MCP_VertSpeed")
         {
-            announcer.AnnounceImmediate($"Vertical speed {(int)value}");
+            announcer.Announce($"Vertical speed {(int)value}");
             return true;
         }
 
         if (varName == "MCP_IASBlank" && value > 0)
         {
-            announcer.AnnounceImmediate("Speed blank");
+            announcer.Announce("Speed blank");
             return true;
         }
 
         if (varName == "MCP_VertSpeedBlank" && value > 0)
         {
-            announcer.AnnounceImmediate("Vertical speed blank");
+            announcer.Announce("Vertical speed blank");
             return true;
         }
 
         if (varName == "MCP_FPA")
         {
             float fpa = (float)value;
-            announcer.AnnounceImmediate($"FPA {fpa:F1} degrees");
+            announcer.Announce($"FPA {fpa:F1} degrees");
             return true;
         }
 
         // MCP mode annunciator announcements
         if (varName == "MCP_annunAP_L")
         {
-            announcer.AnnounceImmediate(value > 0 ? "Autopilot left engaged" : "Autopilot left disengaged");
+            announcer.Announce(value > 0 ? "Autopilot left engaged" : "Autopilot left disengaged");
             return true;
         }
 
         if (varName == "MCP_annunAP_R")
         {
-            announcer.AnnounceImmediate(value > 0 ? "Autopilot right engaged" : "Autopilot right disengaged");
+            announcer.Announce(value > 0 ? "Autopilot right engaged" : "Autopilot right disengaged");
             return true;
         }
 
         if (varName == "MCP_annunAT")
         {
-            announcer.AnnounceImmediate(value > 0 ? "Autothrottle engaged" : "Autothrottle disengaged");
+            announcer.Announce(value > 0 ? "Autothrottle engaged" : "Autothrottle disengaged");
             return true;
         }
 
         if (varName == "MCP_annunLNAV")
         {
-            announcer.AnnounceImmediate(value > 0 ? "LNAV engaged" : "LNAV disengaged");
+            announcer.Announce(value > 0 ? "LNAV engaged" : "LNAV disengaged");
             return true;
         }
 
         if (varName == "MCP_annunVNAV")
         {
-            announcer.AnnounceImmediate(value > 0 ? "VNAV engaged" : "VNAV disengaged");
+            announcer.Announce(value > 0 ? "VNAV engaged" : "VNAV disengaged");
             return true;
         }
 
         if (varName == "MCP_annunFLCH")
         {
-            announcer.AnnounceImmediate(value > 0 ? "FLCH engaged" : "FLCH disengaged");
+            announcer.Announce(value > 0 ? "FLCH engaged" : "FLCH disengaged");
             return true;
         }
 
         if (varName == "MCP_annunHDG_HOLD")
         {
-            announcer.AnnounceImmediate(value > 0 ? "Heading hold engaged" : "Heading hold disengaged");
+            announcer.Announce(value > 0 ? "Heading hold engaged" : "Heading hold disengaged");
             return true;
         }
 
         if (varName == "MCP_annunVS_FPA")
         {
-            announcer.AnnounceImmediate(value > 0 ? "VS/FPA engaged" : "VS/FPA disengaged");
+            announcer.Announce(value > 0 ? "VS/FPA engaged" : "VS/FPA disengaged");
             return true;
         }
 
         if (varName == "MCP_annunALT_HOLD")
         {
-            announcer.AnnounceImmediate(value > 0 ? "Altitude hold engaged" : "Altitude hold disengaged");
+            announcer.Announce(value > 0 ? "Altitude hold engaged" : "Altitude hold disengaged");
             return true;
         }
 
         if (varName == "MCP_annunLOC")
         {
-            announcer.AnnounceImmediate(value > 0 ? "Localizer engaged" : "Localizer disengaged");
+            announcer.Announce(value > 0 ? "Localizer engaged" : "Localizer disengaged");
             return true;
         }
 
         if (varName == "MCP_annunAPP")
         {
-            announcer.AnnounceImmediate(value > 0 ? "Approach engaged" : "Approach disengaged");
+            announcer.Announce(value > 0 ? "Approach engaged" : "Approach disengaged");
             return true;
         }
 
@@ -5446,14 +5446,14 @@ public class PMDG777Definition : BaseAircraftDefinition
         if (varName == "WARN_annunMasterWarning_L" || varName == "WARN_annunMasterWarning_R")
         {
             if (value > 0)
-                announcer.AnnounceImmediate("Master WARNING");
+                announcer.Announce("Master WARNING");
             return true;
         }
 
         if (varName == "WARN_annunMasterCaution_L" || varName == "WARN_annunMasterCaution_R")
         {
             if (value > 0)
-                announcer.AnnounceImmediate("Master CAUTION");
+                announcer.Announce("Master CAUTION");
             return true;
         }
 
@@ -5461,25 +5461,25 @@ public class PMDG777Definition : BaseAircraftDefinition
         if (varName == "FMC_V1")
         {
             if (value > 0)
-                announcer.AnnounceImmediate($"V1 {(int)value} knots");
+                announcer.Announce($"V1 {(int)value} knots");
             return true;
         }
         if (varName == "FMC_VR")
         {
             if (value > 0)
-                announcer.AnnounceImmediate($"VR {(int)value} knots");
+                announcer.Announce($"VR {(int)value} knots");
             return true;
         }
         if (varName == "FMC_V2")
         {
             if (value > 0)
-                announcer.AnnounceImmediate($"V2 {(int)value} knots");
+                announcer.Announce($"V2 {(int)value} knots");
             return true;
         }
         if (varName == "FMC_CruiseAlt")
         {
             if (value > 0)
-                announcer.AnnounceImmediate($"Cruise altitude {(int)value} feet");
+                announcer.Announce($"Cruise altitude {(int)value} feet");
             return true;
         }
 
@@ -5494,14 +5494,14 @@ public class PMDG777Definition : BaseAircraftDefinition
                 2 => "Start",
                 _ => ((int)value).ToString()
             };
-            announcer.AnnounceImmediate($"APU Selector {state}");
+            announcer.Announce($"APU Selector {state}");
             return true;
         }
 
         // APU Running state
         if (varName == "MON_APURunning")
         {
-            announcer.AnnounceImmediate(value > 0 ? "APU running" : "APU shut down");
+            announcer.Announce(value > 0 ? "APU running" : "APU shut down");
             return true;
         }
 
@@ -5509,28 +5509,28 @@ public class PMDG777Definition : BaseAircraftDefinition
         if (varName == "COM1_ActiveFreq")
         {
             if (_lastComActiveFreq1 > 0)
-                announcer.AnnounceImmediate($"COM1 active {value:F3}");
+                announcer.Announce($"COM1 active {value:F3}");
             _lastComActiveFreq1 = value;
             return true;
         }
         if (varName == "COM_STANDBY_FREQUENCY_SET:1")
         {
             if (_lastComStandbyFreq1 > 0)
-                announcer.AnnounceImmediate($"COM1 standby {value:F3}");
+                announcer.Announce($"COM1 standby {value:F3}");
             _lastComStandbyFreq1 = value;
             return true;
         }
         if (varName == "COM2_ActiveFreq")
         {
             if (_lastComActiveFreq2 > 0)
-                announcer.AnnounceImmediate($"COM2 active {value:F3}");
+                announcer.Announce($"COM2 active {value:F3}");
             _lastComActiveFreq2 = value;
             return true;
         }
         if (varName == "COM_STANDBY_FREQUENCY_SET:2")
         {
             if (_lastComStandbyFreq2 > 0)
-                announcer.AnnounceImmediate($"COM2 standby {value:F3}");
+                announcer.Announce($"COM2 standby {value:F3}");
             _lastComStandbyFreq2 = value;
             return true;
         }
@@ -5543,7 +5543,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 int d2 = (bcd >> 8) & 0xF;
                 int d3 = (bcd >> 4) & 0xF;
                 int d4 = bcd & 0xF;
-                announcer.AnnounceImmediate($"Squawk {d1}{d2}{d3}{d4}");
+                announcer.Announce($"Squawk {d1}{d2}{d3}{d4}");
             }
             _lastSquawkCode = value;
             return true;
