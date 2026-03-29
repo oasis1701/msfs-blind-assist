@@ -957,7 +957,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["AIR_annunEngBleedOFF_1"] = new SimConnect.SimVarDefinition
             {
                 Name = "AIR_annunEngBleedAirOFF_0",
-                DisplayName = "Engine Bleed 1 OFF Light",
+                DisplayName = "Engine 1 Bleed OFF Light",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -967,7 +967,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["AIR_annunEngBleedOFF_2"] = new SimConnect.SimVarDefinition
             {
                 Name = "AIR_annunEngBleedAirOFF_1",
-                DisplayName = "Engine Bleed 2 OFF Light",
+                DisplayName = "Engine 2 Bleed OFF Light",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -987,7 +987,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["AIR_annunIsolationValveCLOSED_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "AIR_annunIsolationValveCLOSED_0",
-                DisplayName = "Isolation Valve Left CLOSED Light",
+                DisplayName = "Isolation Valve L CLOSED Light",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -997,7 +997,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["AIR_annunIsolationValveCLOSED_R"] = new SimConnect.SimVarDefinition
             {
                 Name = "AIR_annunIsolationValveCLOSED_1",
-                DisplayName = "Isolation Valve Right CLOSED Light",
+                DisplayName = "Isolation Valve R CLOSED Light",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -1378,6 +1378,15 @@ public class PMDG777Definition : BaseAircraftDefinition
                 IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Arm" }
             },
+            ["FIRE_CargoFireArmMainDeck"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FIRE_CargoFire_Sw_MainDeckArm",
+                DisplayName = "Main Deck Cargo Fire Arm",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Arm" }
+            },
             ["FIRE_CargoFireDisch"] = new SimConnect.SimVarDefinition
             {
                 Name = "FIRE_CargoFireDisch_Sw",
@@ -1386,6 +1395,15 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Never,
                 RenderAsButton = true,
                 IsMomentary = true,
+            },
+            ["FIRE_CargoDepr"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FIRE_CargoDepr",
+                DisplayName = "Cargo Depressurization",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Never,
+                RenderAsButton = true,
+                IsMomentary = true
             },
             ["FIRE_FireOvhtTest"] = new SimConnect.SimVarDefinition
             {
@@ -1561,7 +1579,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["FIRE_annunAPUHandleIllum"] = new SimConnect.SimVarDefinition
             {
                 Name = "FIRE_APUHandleIlluminated",
-                DisplayName = "APU Handle Illuminated",
+                DisplayName = "APU Fire Handle Illuminated",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -3824,6 +3842,15 @@ public class PMDG777Definition : BaseAircraftDefinition
                 IsAnnounced = true,
                 RenderAsButton = true
             },
+            ["XPDR_Test"] = new SimConnect.SimVarDefinition
+            {
+                Name = "XPDR_Test",
+                DisplayName = "TCAS Test",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Never,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
             ["TRANSPONDER_CODE_SET"] = new SimConnect.SimVarDefinition
             {
                 Name = "TRANSPONDER CODE:1",
@@ -4592,8 +4619,8 @@ public class PMDG777Definition : BaseAircraftDefinition
             // Overhead — Fire
             ["Fire"] = new List<string>
             {
-                "FIRE_CargoFireArmFwd", "FIRE_CargoFireArmAft",
-                "FIRE_CargoFireDisch", "FIRE_FireOvhtTest",
+                "FIRE_CargoFireArmFwd", "FIRE_CargoFireArmAft", "FIRE_CargoFireArmMainDeck",
+                "FIRE_CargoFireDisch", "FIRE_CargoDepr", "FIRE_FireOvhtTest",
                 "FIRE_APUHandle", "FIRE_APUHandleUnlock"
             },
 
@@ -4762,7 +4789,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["Transponder/TCAS"] = new List<string>
             {
                 "XPDR_XpndrSelector", "XPDR_AltSource",
-                "XPDR_ModeSel", "XPDR_Ident",
+                "XPDR_ModeSel", "XPDR_Ident", "XPDR_Test",
                 "TRANSPONDER_CODE_SET"
             },
 
@@ -4949,7 +4976,9 @@ public class PMDG777Definition : BaseAircraftDefinition
             // --- Fire ---
             ["FIRE_CargoFireArmFwd"]    = "EVT_OH_FIRE_CARGO_ARM_FWD",
             ["FIRE_CargoFireArmAft"]    = "EVT_OH_FIRE_CARGO_ARM_AFT",
+            ["FIRE_CargoFireArmMainDeck"]  = "EVT_OH_FIRE_CARGO_ARM_MAIN_DECK",
             ["FIRE_CargoFireDisch"]     = "EVT_OH_FIRE_CARGO_DISCH",
+            ["FIRE_CargoDepr"]          = "EVT_OH_FIRE_CARGO_DISCH_DEPR",
             ["FIRE_FireOvhtTest"]       = "EVT_OH_FIRE_OVHT_TEST",
             ["FIRE_APUHandle"]          = "EVT_OH_FIRE_HANDLE_APU_TOP",
             ["FIRE_APUHandleUnlock"]    = "EVT_OH_FIRE_UNLOCK_SWITCH_APU",
@@ -5163,6 +5192,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["XPDR_AltSource"]          = "EVT_TCAS_ALTSOURCE",
             ["XPDR_ModeSel"]             = "EVT_TCAS_MODE",
             ["XPDR_Ident"]              = "EVT_TCAS_IDENT",
+            ["XPDR_Test"]               = "EVT_TCAS_TEST",
 
             // --- Warning ---
             ["WARN_Reset_L"]            = "EVT_MASTER_WARNING_RESET_LEFT",
@@ -6682,5 +6712,6 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["EVT_TCAS_ALTSOURCE"]                 = 70375,
             ["EVT_TCAS_MODE"]                      = 70381,
             ["EVT_TCAS_IDENT"]                     = 70378,
+            ["EVT_TCAS_TEST"]                      = 70373,
         };
 }
