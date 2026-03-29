@@ -4454,7 +4454,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 DisplayName = "Altimeter Setting",
                 Type = SimConnect.SimVarType.SimVar,
                 Units = "inHg",
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = false
             },
 
