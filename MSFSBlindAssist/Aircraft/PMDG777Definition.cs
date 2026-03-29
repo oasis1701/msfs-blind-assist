@@ -4455,7 +4455,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.SimVar,
                 Units = "inHg",
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = false
+                IsAnnounced = true  // Required for continuous monitoring cache; suppressed in ProcessSimVarUpdate
             },
 
             // MONITORING ENHANCEMENTS (background — no panel placement)
@@ -5504,6 +5504,10 @@ public class PMDG777Definition : BaseAircraftDefinition
         {
             return true; // Suppress — screen reader announces the button press via UI
         }
+
+        // Altimeter setting — cached for hotkey readout, no automatic announcements
+        if (varName == "ALTIMETER_SETTING")
+            return true;
 
         // Speed brake — custom formatting for lever position
         if (varName == "FCTL_Speedbrake")
