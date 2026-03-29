@@ -378,7 +378,15 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
                 return true; // Suppress when toggled off
 
             double rounded = Math.Round(value, 1);
-            if (!double.IsNaN(_lastAnnouncedTrimDeg) && Math.Abs(rounded - _lastAnnouncedTrimDeg) < 0.05)
+
+            // First update: store silently, don't announce initial value on app load
+            if (double.IsNaN(_lastAnnouncedTrimDeg))
+            {
+                _lastAnnouncedTrimDeg = rounded;
+                return true;
+            }
+
+            if (Math.Abs(rounded - _lastAnnouncedTrimDeg) < 0.05)
                 return true; // Debounce — skip if less than 0.1 degree change
 
             _lastAnnouncedTrimDeg = rounded;
