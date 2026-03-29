@@ -121,11 +121,26 @@ public partial class PMDG777CDUForm
         btnDel  = CreatePageButton("DEL",    "DEL",  230, y, 100, pageBtnHeight);
 
         btnExec.AccessibleName = "Execute";
-        btnExec.AccessibleDescription = "Execute the current flight plan modification (Ctrl+Enter)";
+        btnExec.AccessibleDescription = "Execute flight plan modification (Alt+E)";
         btnClr.AccessibleName = "Clear";
-        btnClr.AccessibleDescription = "Clear the scratchpad";
+        btnClr.AccessibleDescription = "Clear scratchpad (Alt+C)";
         btnDel.AccessibleName = "Delete";
-        btnDel.AccessibleDescription = "Delete selected field";
+        btnDel.AccessibleDescription = "Delete selected field (Alt+L)";
+
+        // Accessible descriptions with hotkeys for page buttons
+        btnInitRef.AccessibleDescription = "CDU Init Ref page (Alt+I)";
+        btnRte.AccessibleDescription = "CDU Route page (Alt+R)";
+        btnDepArr.AccessibleDescription = "CDU Dep/Arr page (Alt+D)";
+        btnAltn.AccessibleDescription = "CDU Altn page (Alt+A)";
+        btnVnav.AccessibleDescription = "CDU VNAV page (Alt+V)";
+        btnFix.AccessibleDescription = "CDU Fix page (Alt+F)";
+        btnLegs.AccessibleDescription = "CDU Legs page (Alt+G)";
+        btnHold.AccessibleDescription = "CDU Hold page (Alt+H)";
+        btnFmcComm.AccessibleDescription = "CDU FMC Comm (Alt+O)";
+        btnProg.AccessibleDescription = "CDU Prog page (Alt+P)";
+        btnMenu.AccessibleDescription = "CDU Menu page (Alt+M)";
+        btnPrevPage.AccessibleDescription = "Previous page (PageUp)";
+        btnNextPage.AccessibleDescription = "Next page (PageDown)";
 
         // Add all controls
         this.Controls.AddRange(new Control[]

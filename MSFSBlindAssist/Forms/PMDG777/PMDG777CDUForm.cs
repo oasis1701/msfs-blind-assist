@@ -299,6 +299,37 @@ public partial class PMDG777CDUForm : Form
             e.SuppressKeyPress = true;
             return;
         }
+
+        // Alt+letter: page button hotkeys
+        if (e.Alt && !e.Control && !e.Shift)
+        {
+            string? key = e.KeyCode switch
+            {
+                Keys.I => "INIT_REF",
+                Keys.R => "RTE",
+                Keys.D => "DEP_ARR",
+                Keys.A => "ALTN",
+                Keys.V => "VNAV",
+                Keys.F => "FIX",
+                Keys.G => "LEGS",
+                Keys.H => "HOLD",
+                Keys.P => "PROG",
+                Keys.E => "EXEC",
+                Keys.M => "MENU",
+                Keys.C => "CLR",
+                Keys.L => "DEL",
+                Keys.O => "FMCCOMM",
+                _ => null
+            };
+
+            if (key != null)
+            {
+                SendCDUKey(key);
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                return;
+            }
+        }
     }
 
     private void ScratchpadInput_KeyDown(object? sender, KeyEventArgs e)
