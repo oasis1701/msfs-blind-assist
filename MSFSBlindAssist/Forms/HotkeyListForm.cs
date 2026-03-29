@@ -85,7 +85,9 @@ public partial class HotkeyListForm : Form
         {
             if (File.Exists(filePath))
             {
-                return File.ReadAllText(filePath);
+                string text = File.ReadAllText(filePath);
+                // Normalize line endings for Windows Forms TextBox
+                return text.Replace("\r\n", "\n").Replace("\n", "\r\n");
             }
             else
             {
