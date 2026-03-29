@@ -136,8 +136,6 @@ public class PMDG777Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                RenderAsButton = true,
-                IsMomentary = true,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
             },
             ["ELEC_ExtPwrSec"] = new SimConnect.SimVarDefinition
@@ -147,8 +145,6 @@ public class PMDG777Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                RenderAsButton = true,
-                IsMomentary = true,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
             },
             ["ELEC_Gen_1"] = new SimConnect.SimVarDefinition
@@ -5431,7 +5427,16 @@ public class PMDG777Definition : BaseAircraftDefinition
         }
 
         // ------------------------------------------------------------------
-        // 2c. APU Start — special: send position 2 to the APU selector event,
+        // 2c. Ground power switches — momentary push buttons, send parameter 1
+        // ------------------------------------------------------------------
+        if (varKey == "ELEC_ExtPwrPrim" || varKey == "ELEC_ExtPwrSec")
+        {
+            simConnect.SendPMDGEvent(eventName, eventId, 1);
+            return true;
+        }
+
+        // ------------------------------------------------------------------
+        // 2d. APU Start — special: send position 2 to the APU selector event,
         //     but only when the selector is already at On (1)
         // ------------------------------------------------------------------
         if (varKey == "ELEC_APU_Start")
