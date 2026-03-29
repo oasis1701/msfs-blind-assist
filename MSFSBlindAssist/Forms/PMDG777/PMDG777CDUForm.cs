@@ -440,22 +440,30 @@ public partial class PMDG777CDUForm : Form
 
     private static string MarkSelectedOption(string row, byte[,] colors, byte[,] flags, int rowIndex)
     {
-        // Only process rows with the ←→ toggle arrow pattern
-        if (!row.Contains('\u2190') || !row.Contains('\u2192')) return row;
-
-        int arrowStart = row.IndexOf('\u2190');
-        int arrowEnd = row.LastIndexOf('\u2192') + 1;
+        // Find the toggle arrow pattern: <> that appears mid-row (not at edges)
+        // The CDU maps 0xA1→'<' and 0xA2→'>' for arrows, same chars as LSK brackets
+        // Toggle arrows appear as adjacent <> somewhere in the middle of the row
+        int arrowStart = -1;
+        for (int pos = 1; pos < row.Length - 2; pos++)
+        {
+            if (row[pos] == '<' && pos + 1 < row.Length && row[pos + 1] == '>')
+            {
+                arrowStart = pos;
+                break;
+            }
+        }
+        if (arrowStart < 0) return row;
+        int arrowEnd = arrowStart + 2;
 
         // Find the left option: scan backwards from arrow to find the text word touching it
         int leftWordStart = -1;
         int leftWordEnd = arrowStart;
         for (int col = arrowStart - 1; col >= 0; col--)
         {
-            char ch = row[col];
-            if (ch == ' ' || ch == '<' || ch == '>')
+            if (row[col] == ' ')
             {
-                if (leftWordStart >= 0) break; // Found end of word
-                continue; // Skip trailing spaces before arrow
+                if (leftWordStart >= 0) break;
+                continue;
             }
             leftWordStart = col;
         }
@@ -465,8 +473,7 @@ public partial class PMDG777CDUForm : Form
         int rightWordEnd = -1;
         for (int col = arrowEnd; col < row.Length; col++)
         {
-            char ch = row[col];
-            if (ch == ' ' || ch == '<' || ch == '>')
+            if (row[col] == ' ' || (row[col] == '>' && col == row.Length - 1))
             {
                 if (rightWordStart >= 0) { rightWordEnd = col; break; }
                 continue;
@@ -509,15 +516,15 @@ public partial class PMDG777CDUForm : Form
         {
             char ch = row[i];
 
-            // Replace ←→ arrows with a single space
-            if (ch == '\u2190' || ch == '\u2192')
+            // Replace toggle <> arrows with a single space
+            if (i == arrowStart)
             {
-                if (ch == '\u2190') sb.Append(' ');
-                i++;
+                sb.Append(' ');
+                i = arrowEnd; // Skip both < and >
                 continue;
             }
 
-            // Pass through spaces and brackets
+            // Pass through spaces and LSK brackets
             if (ch == ' ' || ch == '<' || ch == '>')
             {
                 sb.Append(ch);
@@ -531,9 +538,10 @@ public partial class PMDG777CDUForm : Form
             if ((isLeftOption && leftSelected) || (isRightOption && rightSelected))
                 sb.Append("X ");
 
-            // Copy the word
-            while (i < row.Length && row[i] != ' ' && row[i] != '<' && row[i] != '>'
-                   && row[i] != '\u2190' && row[i] != '\u2192')
+            // Copy the word (stop at spaces, LSK brackets at edges, or toggle arrows)
+            while (i < row.Length && row[i] != ' ' && i != arrowStart
+                   && !(row[i] == '<' && i == 0)
+                   && !(row[i] == '>' && i == row.Length - 1))
             {
                 sb.Append(row[i]);
                 i++;
