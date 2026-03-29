@@ -20,7 +20,6 @@ public partial class PMDG777CDUForm : Form
     private string _previousScratchpad = "";
     private int _selectedCDU = 0;
     private IntPtr _previousWindow = IntPtr.Zero;
-    private bool _typingInProgress = false;
 
     public PMDG777CDUForm(PMDG777DataManager dataManager, ScreenReaderAnnouncer announcer)
     {
@@ -168,7 +167,7 @@ public partial class PMDG777CDUForm : Form
                             (_previousRows == null || title != _previousRows[0].Trim());
         if (titleChanged)
         {
-            if (!_typingInProgress)
+            if (!_announcer.SuppressAnnouncements)
                 _announcer.Announce($"Page: {title}");
             if (cduDisplay.Items.Count > 0)
                 cduDisplay.SelectedIndex = 0;
@@ -181,7 +180,7 @@ public partial class PMDG777CDUForm : Form
         // Announce scratchpad change (suppressed while typing)
         if (scratchpad != _previousScratchpad)
         {
-            if (!_typingInProgress)
+            if (!_announcer.SuppressAnnouncements)
             {
                 string msg = string.IsNullOrWhiteSpace(scratchpad)
                     ? "Scratchpad cleared"
@@ -375,7 +374,7 @@ public partial class PMDG777CDUForm : Form
 
     private async Task SendTextToCDU(string text)
     {
-        _typingInProgress = true;
+        _announcer.SuppressAnnouncements = true;
         foreach (char c in text)
         {
             string? keySuffix = c switch
@@ -405,10 +404,9 @@ public partial class PMDG777CDUForm : Form
                 await Task.Delay(350);
             }
         }
-        _typingInProgress = false;
-
-        // Announce final scratchpad state after typing completes
-        await Task.Delay(500); // Wait for CDU to update
+        // Wait for CDU to process final character, then announce result
+        await Task.Delay(500);
+        _announcer.SuppressAnnouncements = false;
         if (!string.IsNullOrWhiteSpace(_previousScratchpad))
             _announcer.Announce($"Scratchpad: {_previousScratchpad}");
     }

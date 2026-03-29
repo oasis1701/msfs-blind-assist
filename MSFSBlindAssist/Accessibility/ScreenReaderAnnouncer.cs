@@ -207,9 +207,15 @@ public class ScreenReaderAnnouncer : IDisposable
             System.Diagnostics.Debug.WriteLine("[ScreenReaderAnnouncer] === End Diagnostic Test ===");
         }
 
+        /// <summary>
+        /// When true, Announce() calls are silently dropped. AnnounceImmediate() is not affected.
+        /// Used by CDU form to suppress announcements during text entry.
+        /// </summary>
+        public bool SuppressAnnouncements { get; set; }
+
         public void Announce(string message)
         {
-            if (string.IsNullOrEmpty(message))
+            if (string.IsNullOrEmpty(message) || SuppressAnnouncements)
                 return;
 
             // System.Diagnostics.Debug.WriteLine($"[ScreenReaderAnnouncer] Announce called - Mode: {currentMode}, Message: {message}");
