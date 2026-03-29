@@ -7061,6 +7061,10 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["EVT_TCAS_ALTSOURCE"]                 = 70375,
             ["EVT_TCAS_MODE"]                      = 70381,
             ["EVT_TCAS_IDENT"]                     = 70378,
-            ["EVT_TCAS_TEST"]                      = 70373,
+            ["EVT_TCAS_TEST"]                      = 77123,
+
+            // CDU Right and Center brightness (missing from initial registration)
+            ["EVT_CDU_R_BRITENESS"]                = 70105,
+            ["EVT_CDU_C_BRITENESS"]                = 70357,
         };
 }
