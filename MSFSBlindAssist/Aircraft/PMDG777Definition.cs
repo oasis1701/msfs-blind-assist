@@ -3391,8 +3391,8 @@ public class PMDG777Definition : BaseAircraftDefinition
                 IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
-                    [0] = "RTO", [1] = "Off", [2] = "Disarm",
-                    [3] = "1", [4] = "2", [5] = "Max Auto"
+                    [0] = "RTO", [1] = "Off", [2] = "1", [3] = "2",
+                    [4] = "3", [5] = "4", [6] = "Auto"
                 }
             },
             ["BRAKES_ParkingBrake"] = new SimConnect.SimVarDefinition
@@ -3662,9 +3662,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 DisplayName = "Speed Brake",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Down", [25] = "Armed" },
-                OnlyAnnounceValueDescriptionMatches = true
+                IsAnnounced = true
             },
             ["FCTL_Flaps"] = new SimConnect.SimVarDefinition
             {
@@ -4449,6 +4447,15 @@ public class PMDG777Definition : BaseAircraftDefinition
             },
 
             // MONITORING ENHANCEMENTS (background — no panel placement)
+            ["MON_ElevatorTrim"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ELEVATOR TRIM POSITION",
+                DisplayName = "Elevator Trim",
+                Type = SimConnect.SimVarType.SimVar,
+                Units = "degrees",
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true
+            },
             ["MON_APURunning"] = new SimConnect.SimVarDefinition
             {
                 Name = "APURunning",
@@ -4842,7 +4849,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             // Pedestal — Control Stand
             ["Control Stand"] = new List<string>
             {
-                "FCTL_Speedbrake", "FCTL_Flaps",
+                "FCTL_Flaps",
                 "FCTL_AltnFlapsArm", "FCTL_AltnFlapsControl",
                 "FCTL_StabCutout_C", "FCTL_StabCutout_R",
                 "FCTL_AltnPitch", "FCTL_AileronTrim", "FCTL_RudderTrim", "FCTL_RudderTrimCancel",
@@ -4911,6 +4918,10 @@ public class PMDG777Definition : BaseAircraftDefinition
     // =========================================================================
     // Event handling overrides — scaffold (populated in Tasks 9-11)
     // =========================================================================
+
+    // Elevator trim announcement toggle and debounce
+    private bool _trimAnnouncementsEnabled = true;
+    private double _lastAnnouncedTrimDeg = double.NaN;
 
     // Track last known radio/squawk values to suppress initial load announcement.
     // Value 0 means "not yet seen" — first update stores silently, subsequent updates announce.
@@ -5488,6 +5499,23 @@ public class PMDG777Definition : BaseAircraftDefinition
             return true; // Suppress — screen reader announces the button press via UI
         }
 
+        // Speed brake — custom formatting for lever position
+        if (varName == "FCTL_Speedbrake")
+        {
+            int lever = (int)value;
+            if (lever == 0)
+                announcer.Announce("Speed brake down");
+            else if (lever == 25)
+                announcer.Announce("Speed brake armed");
+            else
+            {
+                // 26-100 = deployed, map to approximate percentage
+                int pct = (int)Math.Round((lever - 25.0) / 75.0 * 100);
+                announcer.Announce($"Speed brake {pct} percent");
+            }
+            return true;
+        }
+
         // MCP display value announcements
         if (varName == "MCP_IASMach")
         {
@@ -5660,6 +5688,22 @@ public class PMDG777Definition : BaseAircraftDefinition
         if (varName == "MON_APURunning")
         {
             announcer.Announce(value > 0 ? "APU running" : "APU shut down");
+            return true;
+        }
+
+        // Elevator trim — announce in degrees with nose up/down, debounced to 0.1 degree
+        if (varName == "MON_ElevatorTrim")
+        {
+            if (!_trimAnnouncementsEnabled)
+                return true; // Suppress when toggled off
+
+            double rounded = Math.Round(value, 1);
+            if (!double.IsNaN(_lastAnnouncedTrimDeg) && Math.Abs(rounded - _lastAnnouncedTrimDeg) < 0.05)
+                return true; // Debounce — skip if less than 0.1 degree change
+
+            _lastAnnouncedTrimDeg = rounded;
+            string direction = rounded >= 0 ? "nose up" : "nose down";
+            announcer.Announce($"Trim {Math.Abs(rounded):F1} {direction}");
             return true;
         }
 
@@ -5945,6 +5989,16 @@ public class PMDG777Definition : BaseAircraftDefinition
             // CDU handled by MainForm (Task 13)
             case HotkeyAction.ShowFenixMCDU:
                 return false;
+
+            // Shift+T — repurposed from Status Display (Airbus concept) to toggle trim announcements
+            case HotkeyAction.ShowStatusPage:
+            {
+                _trimAnnouncementsEnabled = !_trimAnnouncementsEnabled;
+                announcer.AnnounceImmediate(_trimAnnouncementsEnabled
+                    ? "Trim announcements on"
+                    : "Trim announcements off");
+                return true;
+            }
 
             default:
                 return base.HandleHotkeyAction(action, simConnect, announcer, parentForm, hotkeyManager);
