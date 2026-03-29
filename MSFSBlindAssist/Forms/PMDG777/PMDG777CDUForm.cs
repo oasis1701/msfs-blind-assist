@@ -456,11 +456,13 @@ public partial class PMDG777CDUForm : Form
         int arrowEnd = arrowStart + 2;
 
         // Find the left option: scan backwards from arrow to find the text word touching it
+        // Stop at LSK bracket '<' at position 0
         int leftWordStart = -1;
         int leftWordEnd = arrowStart;
         for (int col = arrowStart - 1; col >= 0; col--)
         {
-            if (row[col] == ' ')
+            char ch = row[col];
+            if (ch == ' ' || (ch == '<' && col == 0))
             {
                 if (leftWordStart >= 0) break;
                 continue;
