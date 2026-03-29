@@ -199,7 +199,7 @@ public partial class PMDG777CDUForm : Form
                 return;
         }
 
-        _dataManager.SendEvent(eventName, (uint)eventId, null);
+        _dataManager.SendEvent(eventName, (uint)eventId, 1);
     }
 
     private void OnLineSelect(string suffix, int lineNumber)
