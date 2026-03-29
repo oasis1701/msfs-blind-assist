@@ -446,40 +446,61 @@ public partial class PMDG777CDUForm : Form
         int arrowStart = row.IndexOf('\u2190');
         int arrowEnd = row.LastIndexOf('\u2192') + 1;
 
-        // Determine selection using two methods:
-        // 1. Non-white color (green, red, cyan) = selected
-        // 2. Non-small font (flag bit 0x01 clear) = selected
-        // Either method finding a match on one side marks it as selected.
+        // Find the left option: scan backwards from arrow to find the text word touching it
+        int leftWordStart = -1;
+        int leftWordEnd = arrowStart;
+        for (int col = arrowStart - 1; col >= 0; col--)
+        {
+            char ch = row[col];
+            if (ch == ' ' || ch == '<' || ch == '>')
+            {
+                if (leftWordStart >= 0) break; // Found end of word
+                continue; // Skip trailing spaces before arrow
+            }
+            leftWordStart = col;
+        }
 
+        // Find the right option: scan forwards from arrow to find the text word touching it
+        int rightWordStart = -1;
+        int rightWordEnd = -1;
+        for (int col = arrowEnd; col < row.Length; col++)
+        {
+            char ch = row[col];
+            if (ch == ' ' || ch == '<' || ch == '>')
+            {
+                if (rightWordStart >= 0) { rightWordEnd = col; break; }
+                continue;
+            }
+            if (rightWordStart < 0) rightWordStart = col;
+        }
+        if (rightWordStart >= 0 && rightWordEnd < 0) rightWordEnd = row.Length;
+
+        if (leftWordStart < 0 || rightWordStart < 0) return row; // Need both sides
+
+        // Check which option is selected using color (non-white) or font size (non-small)
         bool leftSelected = false;
         bool rightSelected = false;
 
-        // Check left side text (before arrows)
-        for (int col = 0; col < arrowStart && col < 24; col++)
+        for (int col = leftWordStart; col < leftWordEnd; col++)
         {
-            char ch = row[col];
-            if (ch != ' ' && ch != '<')
+            if (row[col] != ' ')
             {
                 if (colors[rowIndex, col] > 0) { leftSelected = true; break; }
                 if ((flags[rowIndex, col] & 0x01) == 0) { leftSelected = true; break; }
             }
         }
 
-        // Check right side text (after arrows)
-        for (int col = arrowEnd; col < 24 && col < row.Length; col++)
+        for (int col = rightWordStart; col < rightWordEnd; col++)
         {
-            char ch = row[col];
-            if (ch != ' ' && ch != '>')
+            if (row[col] != ' ')
             {
                 if (colors[rowIndex, col] > 0) { rightSelected = true; break; }
                 if ((flags[rowIndex, col] & 0x01) == 0) { rightSelected = true; break; }
             }
         }
 
-        // If both sides appear selected (shouldn't happen), don't mark
-        if (leftSelected && rightSelected) return row;
-        // If neither side detected, don't mark
-        if (!leftSelected && !rightSelected) return row;
+        // If both or neither, don't mark
+        if (leftSelected == rightSelected) return row;
 
         // Build output: replace ←→ with space, prefix selected option with X
         var sb = new System.Text.StringBuilder();
@@ -504,10 +525,11 @@ public partial class PMDG777CDUForm : Form
                 continue;
             }
 
-            // Start of a text word — mark selected side with X
-            bool isLeftSide = i < arrowStart;
-            bool isSelected = isLeftSide ? leftSelected : rightSelected;
-            if (isSelected) sb.Append("X ");
+            // Mark only the toggle options (adjacent to arrows), not other text on the row
+            bool isLeftOption = (i >= leftWordStart && i < leftWordEnd);
+            bool isRightOption = (i >= rightWordStart && i < rightWordEnd);
+            if ((isLeftOption && leftSelected) || (isRightOption && rightSelected))
+                sb.Append("X ");
 
             // Copy the word
             while (i < row.Length && row[i] != ' ' && row[i] != '<' && row[i] != '>'
