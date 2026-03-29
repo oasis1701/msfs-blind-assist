@@ -4447,15 +4447,6 @@ public class PMDG777Definition : BaseAircraftDefinition
             },
 
             // MONITORING ENHANCEMENTS (background — no panel placement)
-            ["MON_ElevatorTrim"] = new SimConnect.SimVarDefinition
-            {
-                Name = "ELEVATOR TRIM POSITION",
-                DisplayName = "Elevator Trim",
-                Type = SimConnect.SimVarType.SimVar,
-                Units = "degrees",
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true
-            },
             ["MON_APURunning"] = new SimConnect.SimVarDefinition
             {
                 Name = "APURunning",
@@ -4918,10 +4909,6 @@ public class PMDG777Definition : BaseAircraftDefinition
     // =========================================================================
     // Event handling overrides — scaffold (populated in Tasks 9-11)
     // =========================================================================
-
-    // Elevator trim announcement toggle and debounce
-    private bool _trimAnnouncementsEnabled = true;
-    private double _lastAnnouncedTrimDeg = double.NaN;
 
     // Track last known radio/squawk values to suppress initial load announcement.
     // Value 0 means "not yet seen" — first update stores silently, subsequent updates announce.
@@ -5691,22 +5678,6 @@ public class PMDG777Definition : BaseAircraftDefinition
             return true;
         }
 
-        // Elevator trim — announce in degrees with nose up/down, debounced to 0.1 degree
-        if (varName == "MON_ElevatorTrim")
-        {
-            if (!_trimAnnouncementsEnabled)
-                return true; // Suppress when toggled off
-
-            double rounded = Math.Round(value, 1);
-            if (!double.IsNaN(_lastAnnouncedTrimDeg) && Math.Abs(rounded - _lastAnnouncedTrimDeg) < 0.05)
-                return true; // Debounce — skip if less than 0.1 degree change
-
-            _lastAnnouncedTrimDeg = rounded;
-            string direction = rounded >= 0 ? "up" : "down";
-            announcer.Announce($"Trim {direction} {Math.Abs(rounded):F1}");
-            return true;
-        }
-
         // COM/squawk announcements — only announce when value actually changes
         if (varName == "COM1_ActiveFreq")
         {
@@ -5990,15 +5961,6 @@ public class PMDG777Definition : BaseAircraftDefinition
             case HotkeyAction.ShowFenixMCDU:
                 return false;
 
-            // Shift+T — repurposed from Status Display (Airbus concept) to toggle trim announcements
-            case HotkeyAction.ShowStatusPage:
-            {
-                _trimAnnouncementsEnabled = !_trimAnnouncementsEnabled;
-                announcer.AnnounceImmediate(_trimAnnouncementsEnabled
-                    ? "Trim announcements on"
-                    : "Trim announcements off");
-                return true;
-            }
 
             default:
                 return base.HandleHotkeyAction(action, simConnect, announcer, parentForm, hotkeyManager);
