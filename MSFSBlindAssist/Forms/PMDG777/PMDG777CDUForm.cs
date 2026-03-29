@@ -283,6 +283,15 @@ public partial class PMDG777CDUForm : Form
             return;
         }
 
+        // Backspace (when not in scratchpad input) → CLR/DEL
+        if (e.KeyCode == Keys.Back && !e.Control && !e.Alt && !(sender is TextBox))
+        {
+            ClearOrDelete();
+            e.Handled = true;
+            e.SuppressKeyPress = true;
+            return;
+        }
+
         // Alt+S: focus scratchpad
         if (e.Alt && !e.Shift && e.KeyCode == Keys.S)
         {
@@ -386,7 +395,7 @@ public partial class PMDG777CDUForm : Form
             if (keySuffix != null)
             {
                 SendCDUKey(keySuffix);
-                await Task.Delay(50);
+                await Task.Delay(150);
             }
         }
     }
