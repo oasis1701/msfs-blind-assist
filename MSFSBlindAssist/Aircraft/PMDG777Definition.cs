@@ -5905,17 +5905,9 @@ public class PMDG777Definition : BaseAircraftDefinition
                     return true;
                 }
 
-                // Report in the unit the pilot has selected
-                double isHpa = dm.GetFieldValue("EFIS_BaroSelHPA_0");
-                if (isHpa > 0.5)
-                {
-                    int hpa = (int)Math.Round(inHg * 33.8639);
-                    announcer.AnnounceImmediate($"Altimeter {hpa} hectopascals");
-                }
-                else
-                {
-                    announcer.AnnounceImmediate($"Altimeter {inHg:0.00} inches");
-                }
+                // Report in both units
+                int hpa = (int)Math.Round(inHg * 33.8639);
+                announcer.AnnounceImmediate($"Altimeter {inHg:0.00} inches, {hpa} hectopascals");
                 return true;
             }
 
