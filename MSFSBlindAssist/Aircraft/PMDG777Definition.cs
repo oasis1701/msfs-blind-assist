@@ -47,8 +47,8 @@ public class PMDG777Definition : BaseAircraftDefinition
             },
             ["Pedestal"] = new List<string>
             {
-                "Control Stand", "Transponder/TCAS", "Weather Radar",
-                "Communication", "CDU", "Evacuation", "Warning", "Engine Fire", "Radio"
+                "Control Stand", "Transponder/TCAS",
+                "CDU", "Evacuation", "Warning", "Engine Fire", "Radio"
             },
         };
     }
@@ -3765,60 +3765,6 @@ public class PMDG777Definition : BaseAircraftDefinition
             // =================================================================
             // PEDESTAL — COMMUNICATION
             // =================================================================
-            ["COMM_SelectedMic_1"] = new SimConnect.SimVarDefinition
-            {
-                Name = "COMM_SelectedMic_0",
-                DisplayName = "Selected Mic 1",
-                Type = SimConnect.SimVarType.PMDGVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                PreventTextInput = true
-            },
-            ["COMM_SelectedMic_2"] = new SimConnect.SimVarDefinition
-            {
-                Name = "COMM_SelectedMic_1",
-                DisplayName = "Selected Mic 2",
-                Type = SimConnect.SimVarType.PMDGVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                PreventTextInput = true
-            },
-            ["COMM_SelectedMic_3"] = new SimConnect.SimVarDefinition
-            {
-                Name = "COMM_SelectedMic_2",
-                DisplayName = "Selected Mic 3",
-                Type = SimConnect.SimVarType.PMDGVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                PreventTextInput = true
-            },
-            ["COMM_SelectedRadio_1"] = new SimConnect.SimVarDefinition
-            {
-                Name = "COMM_SelectedRadio_0",
-                DisplayName = "Selected Radio 1",
-                Type = SimConnect.SimVarType.PMDGVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                PreventTextInput = true
-            },
-            ["COMM_SelectedRadio_2"] = new SimConnect.SimVarDefinition
-            {
-                Name = "COMM_SelectedRadio_1",
-                DisplayName = "Selected Radio 2",
-                Type = SimConnect.SimVarType.PMDGVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                PreventTextInput = true
-            },
-            ["COMM_SelectedRadio_3"] = new SimConnect.SimVarDefinition
-            {
-                Name = "COMM_SelectedRadio_2",
-                DisplayName = "Selected Radio 3",
-                Type = SimConnect.SimVarType.PMDGVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                PreventTextInput = true
-            },
             ["COMM_RadioTransfer_1"] = new SimConnect.SimVarDefinition
             {
                 Name = "COMM_RadioTransfer_Sw_Pushed_0",
@@ -3846,15 +3792,6 @@ public class PMDG777Definition : BaseAircraftDefinition
                 IsAnnounced = true,
                 RenderAsButton = true
             },
-            ["COMM_OBSAudio"] = new SimConnect.SimVarDefinition
-            {
-                Name = "COMM_OBSAudio_Selector",
-                DisplayName = "OBS Audio Selector",
-                Type = SimConnect.SimVarType.PMDGVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true
-            },
-
             // =================================================================
             // PEDESTAL — CDU
             // =================================================================
@@ -4722,17 +4659,6 @@ public class PMDG777Definition : BaseAircraftDefinition
                 "TRANSPONDER_CODE_SET"
             },
 
-            // Pedestal — Weather Radar (no dedicated struct fields — panel present but empty)
-            ["Weather Radar"] = new List<string>(),
-
-            // Pedestal — Communication
-            ["Communication"] = new List<string>
-            {
-                "COMM_SelectedMic_1", "COMM_SelectedMic_2", "COMM_SelectedMic_3",
-                "COMM_SelectedRadio_1", "COMM_SelectedRadio_2", "COMM_SelectedRadio_3",
-                "COMM_OBSAudio"
-            },
-
             // Pedestal — CDU
             ["CDU"] = new List<string>
             {
@@ -5099,9 +5025,6 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["FCTL_AileronTrim"]        = "EVT_FCTL_AILERON_TRIM",
             ["FCTL_RudderTrim"]         = "EVT_FCTL_RUDDER_TRIM",
             ["FCTL_RudderTrimCancel"]   = "EVT_FCTL_RUDDER_TRIM_CANCEL",
-
-            // --- Communication selectors ---
-            ["COMM_OBSAudio"]           = "EVT_PED_OBS_AUDIO_SELECTOR",
 
             // --- CDU ---
             ["CDU_BrtKnob_L"]           = "EVT_CDU_L_BRITENESS",
