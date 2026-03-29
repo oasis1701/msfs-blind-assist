@@ -1,5 +1,6 @@
 using MSFSBlindAssist.Hotkeys;
 using MSFSBlindAssist.Accessibility;
+using MSFSBlindAssist.Forms;
 
 namespace MSFSBlindAssist.Aircraft;
 
@@ -6019,6 +6020,12 @@ public class PMDG777Definition : BaseAircraftDefinition
     // MCP Direct-Set Dialog Helpers
     // =========================================================================
 
+    private void SendPMDGMomentary(SimConnect.SimConnectManager simConnect, string eventName)
+    {
+        if (EventIds.TryGetValue(eventName, out int evId))
+            simConnect.SendPMDGEvent(eventName, (uint)evId, 1);
+    }
+
     private void ShowPMDGHeadingDialog(
         SimConnect.SimConnectManager simConnect,
         ScreenReaderAnnouncer announcer,
@@ -6030,14 +6037,37 @@ public class PMDG777Definition : BaseAircraftDefinition
             return;
         }
 
-        var dialog = new Forms.ValueInputForm(
+        var dm = simConnect.PMDG777DataManager;
+
+        var toggles = new List<ToggleButtonDef>
+        {
+            new("Intervene", () => "Push", () => SendPMDGMomentary(simConnect, "EVT_MCP_HEADING_PUSH_SWITCH")),
+            new("Mode", () =>
+            {
+                if (dm == null) return "?";
+                return (int)dm.GetFieldValue("MCP_HDGDial_Mode") == 0 ? "HDG" : "TRK";
+            }, () => SendPMDGMomentary(simConnect, "EVT_MCP_HDG_TRK_SWITCH")),
+            new("LNAV", () =>
+            {
+                if (dm == null) return "?";
+                return (int)dm.GetFieldValue("MCP_annunLNAV") > 0 ? "Engaged" : "Off";
+            }, () => SendPMDGMomentary(simConnect, "EVT_MCP_LNAV_SWITCH")),
+            new("Heading Hold", () =>
+            {
+                if (dm == null) return "?";
+                return (int)dm.GetFieldValue("MCP_annunHDG_HOLD") > 0 ? "Engaged" : "Off";
+            }, () => SendPMDGMomentary(simConnect, "EVT_MCP_HDG_HOLD_SWITCH")),
+        };
+
+        var dialog = new ValueInputForm(
             "MCP Heading", "heading", "0-359", announcer,
             input =>
             {
                 if (int.TryParse(input, out int val) && val >= 0 && val <= 359)
                     return (true, "");
-                return (false, "Enter a value between 0 and 359");
-            });
+                return (false, "Enter a heading between 0 and 359");
+            },
+            toggles);
 
         if (dialog.ShowDialog(parentForm) == DialogResult.OK && dialog.IsValidInput)
         {
@@ -6061,18 +6091,32 @@ public class PMDG777Definition : BaseAircraftDefinition
             return;
         }
 
-        var dialog = new Forms.ValueInputForm(
-            "MCP Speed", "speed (knots or Mach, e.g. 280 or 0.84)", "100-399 or 0.00-0.99", announcer,
+        var dm = simConnect.PMDG777DataManager;
+
+        var toggles = new List<ToggleButtonDef>
+        {
+            new("Intervene", () => "Push", () => SendPMDGMomentary(simConnect, "EVT_MCP_SPEED_PUSH_SWITCH")),
+            new("Mode", () =>
+            {
+                if (dm == null) return "?";
+                float speed = (float)dm.GetFieldValue("MCP_IASMach");
+                return speed < 10f ? "Mach" : "IAS";
+            }, () => SendPMDGMomentary(simConnect, "EVT_MCP_IAS_MACH_SWITCH")),
+        };
+
+        var dialog = new ValueInputForm(
+            "MCP Speed", "speed", "IAS: 100-399 / Mach: 0.00-0.99", announcer,
             input =>
             {
                 if (double.TryParse(input, System.Globalization.NumberStyles.Any,
                     System.Globalization.CultureInfo.InvariantCulture, out double val))
                 {
-                    if (val >= 0.0 && val < 10.0) return (true, ""); // Mach
-                    if (val >= 100 && val <= 399)  return (true, ""); // IAS knots
+                    if (val >= 100 && val <= 399) return (true, "");
+                    if (val >= 0.0 && val < 10.0) return (true, "");
                 }
                 return (false, "Enter knots (100-399) or Mach (0.00-0.99)");
-            });
+            },
+            toggles);
 
         if (dialog.ShowDialog(parentForm) == DialogResult.OK && dialog.IsValidInput)
         {
@@ -6081,7 +6125,6 @@ public class PMDG777Definition : BaseAircraftDefinition
             {
                 if (spd < 10.0)
                 {
-                    // Mach: send as Mach * 1000 (e.g., 0.84 → 840)
                     int machVal = (int)Math.Round(spd * 1000);
                     if (EventIds.TryGetValue("EVT_MCP_MACH_SET", out int evId))
                         simConnect.SendPMDGEvent("EVT_MCP_MACH_SET", (uint)evId, machVal);
@@ -6109,14 +6152,37 @@ public class PMDG777Definition : BaseAircraftDefinition
             return;
         }
 
-        var dialog = new Forms.ValueInputForm(
+        var dm = simConnect.PMDG777DataManager;
+
+        var toggles = new List<ToggleButtonDef>
+        {
+            new("Intervene", () => "Push", () => SendPMDGMomentary(simConnect, "EVT_MCP_ALTITUDE_PUSH_SWITCH")),
+            new("VNAV", () =>
+            {
+                if (dm == null) return "?";
+                return (int)dm.GetFieldValue("MCP_annunVNAV") > 0 ? "Engaged" : "Off";
+            }, () => SendPMDGMomentary(simConnect, "EVT_MCP_VNAV_SWITCH")),
+            new("Level Change", () =>
+            {
+                if (dm == null) return "?";
+                return (int)dm.GetFieldValue("MCP_annunFLCH") > 0 ? "Engaged" : "Off";
+            }, () => SendPMDGMomentary(simConnect, "EVT_MCP_LVL_CHG_SWITCH")),
+            new("Altitude Hold", () =>
+            {
+                if (dm == null) return "?";
+                return (int)dm.GetFieldValue("MCP_annunALT_HOLD") > 0 ? "Engaged" : "Off";
+            }, () => SendPMDGMomentary(simConnect, "EVT_MCP_ALT_HOLD_SWITCH")),
+        };
+
+        var dialog = new ValueInputForm(
             "MCP Altitude", "altitude", "0-45000", announcer,
             input =>
             {
                 if (int.TryParse(input, out int val) && val >= 0 && val <= 45000)
                     return (true, "");
                 return (false, "Enter a value between 0 and 45000");
-            });
+            },
+            toggles);
 
         if (dialog.ShowDialog(parentForm) == DialogResult.OK && dialog.IsValidInput)
         {
@@ -6140,20 +6206,25 @@ public class PMDG777Definition : BaseAircraftDefinition
             return;
         }
 
-        var dialog = new Forms.ValueInputForm(
+        var toggles = new List<ToggleButtonDef>
+        {
+            new("Intervene", () => "Push", () => SendPMDGMomentary(simConnect, "EVT_MCP_VS_FPA_SWITCH")),
+        };
+
+        var dialog = new ValueInputForm(
             "MCP Vertical Speed", "vertical speed (fpm)", "-9900 to 9900", announcer,
             input =>
             {
                 if (int.TryParse(input, out int val) && val >= -9900 && val <= 9900)
                     return (true, "");
                 return (false, "Enter a value between -9900 and 9900 fpm");
-            });
+            },
+            toggles);
 
         if (dialog.ShowDialog(parentForm) == DialogResult.OK && dialog.IsValidInput)
         {
             if (int.TryParse(dialog.InputValue, out int vs))
             {
-                // Encode: value + 10000 (e.g. -1800 fpm → 8200)
                 int encoded = vs + 10000;
                 if (EventIds.TryGetValue("EVT_MCP_VS_SET", out int evId))
                     simConnect.SendPMDGEvent("EVT_MCP_VS_SET", (uint)evId, encoded);
