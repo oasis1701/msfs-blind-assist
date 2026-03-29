@@ -3874,6 +3874,37 @@ public class PMDG777Definition : BaseAircraftDefinition
             },
 
             // =================================================================
+            // FORWARD PANEL — Yoke / Standby Instruments
+            // =================================================================
+            ["YOKE_APDisc"] = new SimConnect.SimVarDefinition
+            {
+                Name = "YOKE_APDisc",
+                DisplayName = "Yoke AP Disconnect",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Never,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
+            ["STBY_ASI_Push"] = new SimConnect.SimVarDefinition
+            {
+                Name = "STBY_ASI_Push",
+                DisplayName = "Standby ASI Push",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Never,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
+            ["STBY_ALT_Push"] = new SimConnect.SimVarDefinition
+            {
+                Name = "STBY_ALT_Push",
+                DisplayName = "Standby Altimeter Push",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Never,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
+
+            // =================================================================
             // PEDESTAL — TRANSPONDER/TCAS
             // =================================================================
             ["XPDR_XpndrSelector"] = new SimConnect.SimVarDefinition
@@ -4857,7 +4888,8 @@ public class PMDG777Definition : BaseAircraftDefinition
                 "MCP_AP_L", "MCP_AP_R",
                 "MCP_SpeedPush", "MCP_HeadingPush", "MCP_AltitudePush",
                 "MCP_IAS_MACH_Toggle", "MCP_HDG_TRK_Toggle", "MCP_VS_FPA_Toggle",
-                "MCP_CRS_L_Push", "MCP_CRS_R_Push"
+                "MCP_CRS_L_Push", "MCP_CRS_R_Push",
+                "YOKE_APDisc"
             },
 
             // Glareshield — Display Select Panel
@@ -4896,7 +4928,8 @@ public class PMDG777Definition : BaseAircraftDefinition
                 "ISP_DsplCtrl_C", "ISP_FMC_Selector",
                 "DSP_InbdDspl_L", "DSP_InbdDspl_R",
                 "EFIS_HdgRef",
-                "ISFD_Baro", "ISFD_RST", "ISFD_Minus", "ISFD_Plus", "ISFD_APP", "ISFD_HP_IN"
+                "ISFD_Baro", "ISFD_RST", "ISFD_Minus", "ISFD_Plus", "ISFD_APP", "ISFD_HP_IN",
+                "STBY_ASI_Push", "STBY_ALT_Push"
             },
 
             // Forward Panel — Chronometers
@@ -5368,6 +5401,11 @@ public class PMDG777Definition : BaseAircraftDefinition
             // --- Outflow Valve Auto/Manual ---
             ["AIR_OutflowValve_Fwd"]  = "EVT_OH_PRESS_VALVE_SWITCH_1",
             ["AIR_OutflowValve_Aft"]  = "EVT_OH_PRESS_VALVE_SWITCH_2",
+
+            // --- Yoke / Standby Instruments ---
+            ["YOKE_APDisc"]           = "EVT_YOKE_AP_DISC_SWITCH",
+            ["STBY_ASI_Push"]         = "EVT_STANDBY_ASI_KNOB_PUSH",
+            ["STBY_ALT_Push"]         = "EVT_STANDBY_ALTIMETER_KNOB_PUSH",
         };
 
     // =========================================================================
@@ -6800,6 +6838,152 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["EVT_CDU_L_FMCCOMM"]                  = 73103,
 
             // -----------------------------------------------------------------
+            // PEDESTAL — CDU Right
+            // -----------------------------------------------------------------
+            ["EVT_CDU_R_L1"]                       = 70033,
+            ["EVT_CDU_R_L2"]                       = 70034,
+            ["EVT_CDU_R_L3"]                       = 70035,
+            ["EVT_CDU_R_L4"]                       = 70036,
+            ["EVT_CDU_R_L5"]                       = 70037,
+            ["EVT_CDU_R_L6"]                       = 70038,
+            ["EVT_CDU_R_R1"]                       = 70039,
+            ["EVT_CDU_R_R2"]                       = 70040,
+            ["EVT_CDU_R_R3"]                       = 70041,
+            ["EVT_CDU_R_R4"]                       = 70042,
+            ["EVT_CDU_R_R5"]                       = 70043,
+            ["EVT_CDU_R_R6"]                       = 70044,
+            ["EVT_CDU_R_INIT_REF"]                 = 70045,
+            ["EVT_CDU_R_RTE"]                      = 70046,
+            ["EVT_CDU_R_DEP_ARR"]                  = 70047,
+            ["EVT_CDU_R_ALTN"]                     = 70048,
+            ["EVT_CDU_R_VNAV"]                     = 70049,
+            ["EVT_CDU_R_FIX"]                      = 70050,
+            ["EVT_CDU_R_LEGS"]                     = 70051,
+            ["EVT_CDU_R_HOLD"]                     = 70052,
+            ["EVT_CDU_R_PROG"]                     = 70053,
+            ["EVT_CDU_R_EXEC"]                     = 70054,
+            ["EVT_CDU_R_MENU"]                     = 70055,
+            ["EVT_CDU_R_NAV_RAD"]                  = 70056,
+            ["EVT_CDU_R_PREV_PAGE"]                = 70057,
+            ["EVT_CDU_R_NEXT_PAGE"]                = 70058,
+            ["EVT_CDU_R_1"]                        = 70059,
+            ["EVT_CDU_R_2"]                        = 70060,
+            ["EVT_CDU_R_3"]                        = 70061,
+            ["EVT_CDU_R_4"]                        = 70062,
+            ["EVT_CDU_R_5"]                        = 70063,
+            ["EVT_CDU_R_6"]                        = 70064,
+            ["EVT_CDU_R_7"]                        = 70065,
+            ["EVT_CDU_R_8"]                        = 70066,
+            ["EVT_CDU_R_9"]                        = 70067,
+            ["EVT_CDU_R_DOT"]                      = 70068,
+            ["EVT_CDU_R_0"]                        = 70069,
+            ["EVT_CDU_R_PLUS_MINUS"]               = 70070,
+            ["EVT_CDU_R_A"]                        = 70071,
+            ["EVT_CDU_R_B"]                        = 70072,
+            ["EVT_CDU_R_C"]                        = 70073,
+            ["EVT_CDU_R_D"]                        = 70074,
+            ["EVT_CDU_R_E"]                        = 70075,
+            ["EVT_CDU_R_F"]                        = 70076,
+            ["EVT_CDU_R_G"]                        = 70077,
+            ["EVT_CDU_R_H"]                        = 70078,
+            ["EVT_CDU_R_I"]                        = 70079,
+            ["EVT_CDU_R_J"]                        = 70080,
+            ["EVT_CDU_R_K"]                        = 70081,
+            ["EVT_CDU_R_L"]                        = 70082,
+            ["EVT_CDU_R_M"]                        = 70083,
+            ["EVT_CDU_R_N"]                        = 70084,
+            ["EVT_CDU_R_O"]                        = 70085,
+            ["EVT_CDU_R_P"]                        = 70086,
+            ["EVT_CDU_R_Q"]                        = 70087,
+            ["EVT_CDU_R_R"]                        = 70088,
+            ["EVT_CDU_R_S"]                        = 70089,
+            ["EVT_CDU_R_T"]                        = 70090,
+            ["EVT_CDU_R_U"]                        = 70091,
+            ["EVT_CDU_R_V"]                        = 70092,
+            ["EVT_CDU_R_W"]                        = 70093,
+            ["EVT_CDU_R_X"]                        = 70094,
+            ["EVT_CDU_R_Y"]                        = 70095,
+            ["EVT_CDU_R_Z"]                        = 70096,
+            ["EVT_CDU_R_SPACE"]                    = 70097,
+            ["EVT_CDU_R_DEL"]                      = 70098,
+            ["EVT_CDU_R_SLASH"]                    = 70099,
+            ["EVT_CDU_R_CLR"]                      = 70100,
+            ["EVT_CDU_R_FMCCOMM"]                  = 73833,
+
+            // -----------------------------------------------------------------
+            // PEDESTAL — CDU Center
+            // -----------------------------------------------------------------
+            ["EVT_CDU_C_L1"]                       = 70285,
+            ["EVT_CDU_C_L2"]                       = 70286,
+            ["EVT_CDU_C_L3"]                       = 70287,
+            ["EVT_CDU_C_L4"]                       = 70288,
+            ["EVT_CDU_C_L5"]                       = 70289,
+            ["EVT_CDU_C_L6"]                       = 70290,
+            ["EVT_CDU_C_R1"]                       = 70291,
+            ["EVT_CDU_C_R2"]                       = 70292,
+            ["EVT_CDU_C_R3"]                       = 70293,
+            ["EVT_CDU_C_R4"]                       = 70294,
+            ["EVT_CDU_C_R5"]                       = 70295,
+            ["EVT_CDU_C_R6"]                       = 70296,
+            ["EVT_CDU_C_INIT_REF"]                 = 70297,
+            ["EVT_CDU_C_RTE"]                      = 70298,
+            ["EVT_CDU_C_DEP_ARR"]                  = 70299,
+            ["EVT_CDU_C_ALTN"]                     = 70300,
+            ["EVT_CDU_C_VNAV"]                     = 70301,
+            ["EVT_CDU_C_FIX"]                      = 70302,
+            ["EVT_CDU_C_LEGS"]                     = 70303,
+            ["EVT_CDU_C_HOLD"]                     = 70304,
+            ["EVT_CDU_C_PROG"]                     = 70305,
+            ["EVT_CDU_C_EXEC"]                     = 70306,
+            ["EVT_CDU_C_MENU"]                     = 70307,
+            ["EVT_CDU_C_NAV_RAD"]                  = 70308,
+            ["EVT_CDU_C_PREV_PAGE"]                = 70309,
+            ["EVT_CDU_C_NEXT_PAGE"]                = 70310,
+            ["EVT_CDU_C_1"]                        = 70311,
+            ["EVT_CDU_C_2"]                        = 70312,
+            ["EVT_CDU_C_3"]                        = 70313,
+            ["EVT_CDU_C_4"]                        = 70314,
+            ["EVT_CDU_C_5"]                        = 70315,
+            ["EVT_CDU_C_6"]                        = 70316,
+            ["EVT_CDU_C_7"]                        = 70317,
+            ["EVT_CDU_C_8"]                        = 70318,
+            ["EVT_CDU_C_9"]                        = 70319,
+            ["EVT_CDU_C_DOT"]                      = 70320,
+            ["EVT_CDU_C_0"]                        = 70321,
+            ["EVT_CDU_C_PLUS_MINUS"]               = 70322,
+            ["EVT_CDU_C_A"]                        = 70323,
+            ["EVT_CDU_C_B"]                        = 70324,
+            ["EVT_CDU_C_C"]                        = 70325,
+            ["EVT_CDU_C_D"]                        = 70326,
+            ["EVT_CDU_C_E"]                        = 70327,
+            ["EVT_CDU_C_F"]                        = 70328,
+            ["EVT_CDU_C_G"]                        = 70329,
+            ["EVT_CDU_C_H"]                        = 70330,
+            ["EVT_CDU_C_I"]                        = 70331,
+            ["EVT_CDU_C_J"]                        = 70332,
+            ["EVT_CDU_C_K"]                        = 70333,
+            ["EVT_CDU_C_L"]                        = 70334,
+            ["EVT_CDU_C_M"]                        = 70335,
+            ["EVT_CDU_C_N"]                        = 70336,
+            ["EVT_CDU_C_O"]                        = 70337,
+            ["EVT_CDU_C_P"]                        = 70338,
+            ["EVT_CDU_C_Q"]                        = 70339,
+            ["EVT_CDU_C_R"]                        = 70340,
+            ["EVT_CDU_C_S"]                        = 70341,
+            ["EVT_CDU_C_T"]                        = 70342,
+            ["EVT_CDU_C_U"]                        = 70343,
+            ["EVT_CDU_C_V"]                        = 70344,
+            ["EVT_CDU_C_W"]                        = 70345,
+            ["EVT_CDU_C_X"]                        = 70346,
+            ["EVT_CDU_C_Y"]                        = 70347,
+            ["EVT_CDU_C_Z"]                        = 70348,
+            ["EVT_CDU_C_SPACE"]                    = 70349,
+            ["EVT_CDU_C_DEL"]                      = 70350,
+            ["EVT_CDU_C_SLASH"]                    = 70351,
+            ["EVT_CDU_C_CLR"]                      = 70352,
+            ["EVT_CDU_C_FMCCOMM"]                  = 76353,
+
+            // -----------------------------------------------------------------
             // PEDESTAL — Misc
             // -----------------------------------------------------------------
             ["EVT_PED_DSPL_CTRL_SOURCE_C"]         = 70110,
@@ -6866,10 +7050,9 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["EVT_STANDBY_ALTIMETER_KNOB_PUSH"]   = 72742,
 
             // -----------------------------------------------------------------
-            // PEDESTAL — CDU Right and Center brightness
+            // FORWARD PANEL — Yoke
             // -----------------------------------------------------------------
-            ["EVT_CDU_R_BRITENESS"]               = 70105,
-            ["EVT_CDU_C_BRITENESS"]               = 70357,
+            ["EVT_YOKE_AP_DISC_SWITCH"]           = 70716,
 
             // -----------------------------------------------------------------
             // PEDESTAL — TCAS
