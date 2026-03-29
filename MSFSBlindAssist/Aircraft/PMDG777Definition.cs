@@ -6064,16 +6064,17 @@ public class PMDG777Definition : BaseAircraftDefinition
                     return (true, "");
                 return (false, "Enter a heading between 0 and 359");
             },
-            toggles);
-
-        if (dialog.ShowDialog(parentForm) == DialogResult.OK && dialog.IsValidInput)
-        {
-            if (int.TryParse(dialog.InputValue, out int hdg))
+            toggles,
+            input =>
             {
-                if (EventIds.TryGetValue("EVT_MCP_HDGTRK_SET", out int evId))
-                    simConnect.SendPMDGEvent("EVT_MCP_HDGTRK_SET", (uint)evId, hdg);
-            }
-        }
+                if (int.TryParse(input, out int hdg))
+                {
+                    if (EventIds.TryGetValue("EVT_MCP_HDGTRK_SET", out int evId))
+                        simConnect.SendPMDGEvent("EVT_MCP_HDGTRK_SET", (uint)evId, hdg);
+                }
+            });
+
+        dialog.ShowDialog(parentForm);
     }
 
     private void ShowPMDGSpeedDialog(
@@ -6112,27 +6113,28 @@ public class PMDG777Definition : BaseAircraftDefinition
                 }
                 return (false, "Enter knots (100-399) or Mach (0.00-0.99)");
             },
-            toggles);
-
-        if (dialog.ShowDialog(parentForm) == DialogResult.OK && dialog.IsValidInput)
-        {
-            if (double.TryParse(dialog.InputValue, System.Globalization.NumberStyles.Any,
-                System.Globalization.CultureInfo.InvariantCulture, out double spd))
+            toggles,
+            input =>
             {
-                if (spd < 10.0)
+                if (double.TryParse(input, System.Globalization.NumberStyles.Any,
+                    System.Globalization.CultureInfo.InvariantCulture, out double spd))
                 {
-                    int machVal = (int)Math.Round(spd * 1000);
-                    if (EventIds.TryGetValue("EVT_MCP_MACH_SET", out int evId))
-                        simConnect.SendPMDGEvent("EVT_MCP_MACH_SET", (uint)evId, machVal);
+                    if (spd < 10.0)
+                    {
+                        int machVal = (int)Math.Round(spd * 1000);
+                        if (EventIds.TryGetValue("EVT_MCP_MACH_SET", out int evId))
+                            simConnect.SendPMDGEvent("EVT_MCP_MACH_SET", (uint)evId, machVal);
+                    }
+                    else
+                    {
+                        int iasVal = (int)spd;
+                        if (EventIds.TryGetValue("EVT_MCP_IAS_SET", out int evId))
+                            simConnect.SendPMDGEvent("EVT_MCP_IAS_SET", (uint)evId, iasVal);
+                    }
                 }
-                else
-                {
-                    int iasVal = (int)spd;
-                    if (EventIds.TryGetValue("EVT_MCP_IAS_SET", out int evId))
-                        simConnect.SendPMDGEvent("EVT_MCP_IAS_SET", (uint)evId, iasVal);
-                }
-            }
-        }
+            });
+
+        dialog.ShowDialog(parentForm);
     }
 
     private void ShowPMDGAltitudeDialog(
@@ -6176,16 +6178,17 @@ public class PMDG777Definition : BaseAircraftDefinition
                     return (true, "");
                 return (false, "Enter a value between 0 and 45000");
             },
-            toggles);
-
-        if (dialog.ShowDialog(parentForm) == DialogResult.OK && dialog.IsValidInput)
-        {
-            if (int.TryParse(dialog.InputValue, out int alt))
+            toggles,
+            input =>
             {
-                if (EventIds.TryGetValue("EVT_MCP_ALT_SET", out int evId))
-                    simConnect.SendPMDGEvent("EVT_MCP_ALT_SET", (uint)evId, alt);
-            }
-        }
+                if (int.TryParse(input, out int alt))
+                {
+                    if (EventIds.TryGetValue("EVT_MCP_ALT_SET", out int evId))
+                        simConnect.SendPMDGEvent("EVT_MCP_ALT_SET", (uint)evId, alt);
+                }
+            });
+
+        dialog.ShowDialog(parentForm);
     }
 
     private void ShowPMDGVSDialog(
@@ -6212,17 +6215,18 @@ public class PMDG777Definition : BaseAircraftDefinition
                     return (true, "");
                 return (false, "Enter a value between -9900 and 9900 fpm");
             },
-            toggles);
-
-        if (dialog.ShowDialog(parentForm) == DialogResult.OK && dialog.IsValidInput)
-        {
-            if (int.TryParse(dialog.InputValue, out int vs))
+            toggles,
+            input =>
             {
-                int encoded = vs + 10000;
-                if (EventIds.TryGetValue("EVT_MCP_VS_SET", out int evId))
-                    simConnect.SendPMDGEvent("EVT_MCP_VS_SET", (uint)evId, encoded);
-            }
-        }
+                if (int.TryParse(input, out int vs))
+                {
+                    int encoded = vs + 10000;
+                    if (EventIds.TryGetValue("EVT_MCP_VS_SET", out int evId))
+                        simConnect.SendPMDGEvent("EVT_MCP_VS_SET", (uint)evId, encoded);
+                }
+            });
+
+        dialog.ShowDialog(parentForm);
     }
 
     private void ShowPMDGBaroDialog(
@@ -6236,7 +6240,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             return;
         }
 
-        var dialog = new Forms.ValueInputForm(
+        var dialog = new ValueInputForm(
             "Altimeter Setting", "baro (hPa or in Hg, e.g. 1013 or 29.92)", "940-1050 or 27.00-31.50", announcer,
             input =>
             {
@@ -6247,31 +6251,31 @@ public class PMDG777Definition : BaseAircraftDefinition
                     if (val >= 27.0 && val <= 31.5) return (true, ""); // in Hg
                 }
                 return (false, "Enter hPa (940-1050) or in Hg (27.00-31.50)");
+            },
+            new List<ToggleButtonDef>(),
+            input =>
+            {
+                if (double.TryParse(input, System.Globalization.NumberStyles.Any,
+                    System.Globalization.CultureInfo.InvariantCulture, out double baro))
+                {
+                    if (baro >= 940 && baro <= 1050)
+                    {
+                        int hpaVal = (int)Math.Round(baro);
+                        if (EventIds.TryGetValue("EVT_EFIS_CPT_BARO", out int evId))
+                            simConnect.SendPMDGEvent("EVT_EFIS_CPT_BARO", (uint)evId, hpaVal);
+                        announcer.AnnounceImmediate($"Altimeter set to {hpaVal} hectopascals");
+                    }
+                    else
+                    {
+                        int inchVal = (int)Math.Round(baro * 100);
+                        if (EventIds.TryGetValue("EVT_EFIS_CPT_BARO", out int evId))
+                            simConnect.SendPMDGEvent("EVT_EFIS_CPT_BARO", (uint)evId, inchVal);
+                        announcer.AnnounceImmediate($"Altimeter set to {baro:0.00} inches");
+                    }
+                }
             });
 
-        if (dialog.ShowDialog(parentForm) == DialogResult.OK && dialog.IsValidInput)
-        {
-            if (double.TryParse(dialog.InputValue, System.Globalization.NumberStyles.Any,
-                System.Globalization.CultureInfo.InvariantCulture, out double baro))
-            {
-                if (baro >= 940 && baro <= 1050)
-                {
-                    // HPA: send as raw integer hPa value
-                    int hpaVal = (int)Math.Round(baro);
-                    if (EventIds.TryGetValue("EVT_EFIS_CPT_BARO", out int evId))
-                        simConnect.SendPMDGEvent("EVT_EFIS_CPT_BARO", (uint)evId, hpaVal);
-                    announcer.AnnounceImmediate($"Altimeter set to {hpaVal} hectopascals");
-                }
-                else
-                {
-                    // Inches: send as integer hundredths (e.g. 29.92 → 2992)
-                    int inchVal = (int)Math.Round(baro * 100);
-                    if (EventIds.TryGetValue("EVT_EFIS_CPT_BARO", out int evId))
-                        simConnect.SendPMDGEvent("EVT_EFIS_CPT_BARO", (uint)evId, inchVal);
-                    announcer.AnnounceImmediate($"Altimeter set to {baro:0.00} inches");
-                }
-            }
-        }
+        dialog.ShowDialog(parentForm);
     }
 
     // =========================================================================

@@ -32,24 +32,26 @@ public partial class ValueInputForm : Form
         private readonly ScreenReaderAnnouncer announcer;
         private readonly string parameterType;
         private readonly Func<string, (bool isValid, string message)> validator;
+        private readonly Action<string>? onValueSet;
         private readonly IntPtr previousWindow;
         private readonly List<ToggleButtonDef> _toggleDefs;
         private readonly List<Button> _toggleButtons = new();
 
         public ValueInputForm(string title, string parameterType, string rangeText,
             ScreenReaderAnnouncer announcer, Func<string, (bool, string)> validator)
-            : this(title, parameterType, rangeText, announcer, validator, new List<ToggleButtonDef>())
+            : this(title, parameterType, rangeText, announcer, validator, new List<ToggleButtonDef>(), null)
         {
         }
 
         public ValueInputForm(string title, string parameterType, string rangeText,
             ScreenReaderAnnouncer announcer, Func<string, (bool, string)> validator,
-            List<ToggleButtonDef> toggles)
+            List<ToggleButtonDef> toggles, Action<string>? onValueSet = null)
         {
             previousWindow = GetForegroundWindow();
             this.announcer = announcer;
             this.parameterType = parameterType;
             this.validator = validator;
+            this.onValueSet = onValueSet;
             _toggleDefs = toggles;
 
             InitializeComponent(title, rangeText);
@@ -227,13 +229,24 @@ public partial class ValueInputForm : Form
             {
                 InputValue = input;
                 IsValidInput = true;
-                DialogResult = DialogResult.OK;
-                Close();
 
-                // Restore focus to the previous window (likely the simulator)
-                if (previousWindow != IntPtr.Zero)
+                if (onValueSet != null)
                 {
-                    SetForegroundWindow(previousWindow);
+                    // Callback mode: send value immediately, stay open for more input
+                    onValueSet(input);
+                    valueTextBox.SelectAll();
+                    valueTextBox.Focus();
+                }
+                else
+                {
+                    // Legacy mode: close dialog, caller reads InputValue
+                    DialogResult = DialogResult.OK;
+                    Close();
+
+                    if (previousWindow != IntPtr.Zero)
+                    {
+                        SetForegroundWindow(previousWindow);
+                    }
                 }
             }
             else
