@@ -145,7 +145,7 @@ public partial class PMDG777CDUForm : Form
                 lines.Add($"{lineNum}:");
         }
 
-        lines.Add($"Scratchpad: {rows[13]}"); // Row 13: scratchpad
+        lines.Add(rows[13]); // Row 13: scratchpad
 
         // Update ListBox items efficiently
         int savedIndex = cduDisplay.SelectedIndex;
@@ -168,7 +168,7 @@ public partial class PMDG777CDUForm : Form
                             (_previousRows == null || title != _previousRows[0].Trim());
         if (titleChanged)
         {
-            _announcer.Announce($"Page: {title}");
+            _announcer.Announce(title);
             if (cduDisplay.Items.Count > 0)
                 cduDisplay.SelectedIndex = 0;
         }
@@ -183,8 +183,8 @@ public partial class PMDG777CDUForm : Form
             if (!_typingInProgress)
             {
                 string msg = string.IsNullOrWhiteSpace(scratchpad)
-                    ? "Scratchpad cleared"
-                    : $"Scratchpad: {scratchpad}";
+                    ? "Cleared"
+                    : scratchpad;
                 _announcer.Announce(msg);
             }
             _previousScratchpad = scratchpad;
@@ -413,7 +413,7 @@ public partial class PMDG777CDUForm : Form
         await Task.Delay(500);
         _typingInProgress = false;
         if (!string.IsNullOrWhiteSpace(_previousScratchpad))
-            _announcer.Announce($"Scratchpad: {_previousScratchpad}");
+            _announcer.Announce(_previousScratchpad);
     }
 
     // ------------------------------------------------------------------
@@ -473,7 +473,7 @@ public partial class PMDG777CDUForm : Form
 
             // Start of a text word — check its color
             byte segColor = colors[rowIndex, i];
-            string marker = segColor == 2 ? "[X]" : "[ ]";
+            string marker = segColor == 2 ? "X " : "  ";
             sb.Append(marker);
 
             // Copy the word
