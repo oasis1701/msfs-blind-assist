@@ -80,18 +80,23 @@ dotnet build MSFSBlindAssist.sln -c Release
 
 ### PMDG 777 Specific Patterns
 
-**Switch control:** Use CDA (SetClientData) with direct position values for ALL switches.
+**Switch control:** Use CDA (SetClientData) with direct position values for most switches.
 - Two-position toggles: `SendPMDGEvent(eventName, eventId, targetPosition)` where targetPosition is 0 or 1
 - Multi-position selectors: same, with the target position index
 - Momentary buttons: `SendPMDGEvent(eventName, eventId, 1)` — parameter 1 = pressed, 0 = no-op
 - Continuous knobs (brightness, temperature, EFIS baro/mins): **cannot be controlled via SDK** — do not add to panels
+- **Fuel control levers:** Exception — use CDA with **inverted** parameter (1=Cutoff, 0=Run). See special case in HandleUIVariableSet.
 
 **Radio frequencies and transponder:** Use standard SimConnect events (not PMDG SDK):
 - `COM_STBY_RADIO_SET_HZ` / `COM2_STBY_RADIO_SET_HZ` for setting standby freqs
 - `COM_STBY_RADIO_SWAP` / `COM2_RADIO_SWAP` for swapping active/standby
 - `XPNDR_SET` for squawk code (BCD16 encoded)
 
-**Announcements:** Use `Announce()` (queued) in ProcessSimVarUpdate, `AnnounceImmediate()` only in HandleHotkeyAction. `IsAnnounced = true` is required for continuous monitoring registration. Suppress button push state (_Sw_Pushed) announcements via RenderAsButton check.
+**CDU interaction:** CDU buttons must send parameter 1 (pressed) via CDA. Text entry sends one character at a time with 350ms delay; repeated characters need an extra 200ms. CDU display uses color data to detect toggle selections (non-white color = selected, marked with `X`). Toggle detection only applies to rows with `←→` arrows.
+
+**MCP dialogs:** Use `ValueInputForm` with `ToggleButtonDef` for mode toggles. Dialogs stay open after value entry (callback pattern). `MCP_IASBlank` indicates FMC-controlled speed.
+
+**Announcements:** Use `Announce()` (queued) in ProcessSimVarUpdate, `AnnounceImmediate()` only in HandleHotkeyAction. `IsAnnounced = true` is required for continuous monitoring registration. Suppress button push state (_Sw_Pushed) announcements via RenderAsButton check. Annunciator lights announce both on and off states. For variables needing cache but no auto-announcement, set `IsAnnounced = true` and return `true` from ProcessSimVarUpdate to suppress.
 
 ## Detailed Documentation
 

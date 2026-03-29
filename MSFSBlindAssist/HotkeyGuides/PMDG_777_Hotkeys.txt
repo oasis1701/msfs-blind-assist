@@ -1,0 +1,161 @@
+PMDG 777 HOTKEY REFERENCE
+
+Application Navigation:
+  Ctrl+1     Focus Sections List
+  Ctrl+2     Focus Panels List
+
+Tip: Press the same bracket key again to cancel a mode you activated by accident.
+
+OUTPUT MODE - Press right bracket to activate
+
+MCP Readouts:
+  Shift+H    Read MCP Heading (includes HDG/TRK mode, LNAV/HDG HOLD status)
+  Shift+S    Read MCP Speed (includes FLCH status, shows blank if FMC-controlled)
+  Shift+A    Read MCP Altitude (includes VNAV/FLCH/ALT HOLD status)
+  Shift+V    Read MCP VS/FPA (includes engaged status)
+
+Altitude:
+  Q          Read Altitude AGL
+  A          Read Altitude MSL
+
+Airspeed:
+  S          Read IAS (Indicated Airspeed)
+  T          Read TAS (True Airspeed)
+  G          Read Ground Speed
+  M          Read Mach Number
+
+Heading:
+  H          Read Magnetic Heading
+  U          Read True Heading
+
+Fuel:
+  F          Read Fuel Quantity (Left, Center, Right, Aux, Total in pounds)
+
+Flaps:
+  L          Read Flap Position
+
+Landing Gear:
+  Shift+G    Read Gear Position
+
+Altimeter:
+  B          Read Altimeter Setting (hPa and inHg, or Standard)
+
+Vertical:
+  V          Read Vertical Speed
+
+Weather:
+  I          Wind Info
+
+Location:
+  C          Read Nearest City
+
+Trim:
+  Shift+T    Toggle Trim Announcements On/Off
+
+Tools:
+  Ctrl+H     Activate/deactivate Hand Fly mode
+  Ctrl+V     Activate/deactivate Visual Guidance mode (requires Hand Fly mode)
+  Ctrl+T     Activate/deactivate Takeoff Assistance
+  Ctrl+D     Read Distance to Selected Runway
+  Ctrl+I     Read ILS Guidance System Report
+  Ctrl+0     Read Approach Capability
+
+Waypoint Tracking (use Fix Track window or EFB route viewer to add):
+  1          Track Slot 1
+  2          Track Slot 2
+  3          Track Slot 3
+  4          Track Slot 4
+  5          Track Slot 5
+
+Displays and Windows:
+  Ctrl+M     PMDG Monitor Manager
+  Shift+E    Route viewer, procedure planner and airport lookup
+  Shift+L    Location Info
+  Shift+M    Show VATSIM METAR Report
+  Shift+D    SimBrief Briefing
+  Shift+C    Show Checklist
+  Shift+N    Navigation Display
+  Shift+P    PFD Window
+
+Hand Fly Mode Hotkeys:
+  A          Read MSL
+  S          Read IAS
+  D          Read Distance to Destination Runway
+  H          Read Magnetic Heading
+  P          Read Aircraft Pitch
+  B          Read Aircraft Bank
+  Q          Read AGL
+  V          Read VS
+
+Visual Guidance Mode Hotkeys:
+  F          Read Target VS
+
+INPUT MODE - Press [ to activate
+
+Teleport:
+  Shift+R    Runway Teleport
+  Shift+G    Gate Teleport
+
+Flight Planning:
+  Shift+F    Fix/Waypoint Tracking Window
+  Shift+D    Select Destination Runway
+
+MCP Set Values:
+  Ctrl+H     Set Heading (opens dialog with Intervene, HDG/TRK Mode, LNAV, HDG HOLD toggles)
+  Ctrl+S     Set Speed (opens dialog with Intervene, IAS/Mach Mode toggles)
+  Ctrl+A     Set Altitude (opens dialog with Intervene, VNAV, Level Change, ALT HOLD toggles)
+  Ctrl+V     Set Vertical Speed (opens dialog with VS/FPA Engage and Mode toggles)
+
+General:
+  Escape     Exit active hotkey mode
+
+CDU Window (open with [ then Shift+M):
+
+Navigation:
+  Up/Down        Navigate display lines
+  PageUp         Previous CDU page
+  PageDown       Next CDU page
+  Alt+Up         Previous CDU page (alternative)
+  Alt+Down       Next CDU page (alternative)
+  Backspace      CLR (if scratchpad has text) / DEL (if scratchpad empty)
+
+Line Select Keys:
+  Ctrl+1-6       Left LSK 1-6
+  Alt+1-6        Right LSK 1-6
+
+Text Input:
+  Alt+S          Focus scratchpad input field
+  Enter          Submit typed text to CDU scratchpad
+  Alt+Home       Return focus to display output
+
+CDU Page Buttons:
+  Alt+I          Init Ref
+  Alt+R          RTE (Route)
+  Alt+D          Dep/Arr (Departure/Arrival)
+  Alt+A          Altn (Alternate)
+  Alt+V          VNAV
+  Alt+F          Fix
+  Alt+G          Legs
+  Alt+H          Hold
+  Alt+P          Prog (Progress)
+  Alt+M          Menu
+  Alt+O          FMC Comm
+  Alt+E          Execute
+  Alt+C          CLR/DEL (Clear or Delete)
+
+Automatic Announcements:
+  - MCP value changes (speed, heading, altitude, vertical speed)
+  - Autopilot mode changes (AP, AT, LNAV, VNAV, FLCH, HDG HOLD, VS/FPA, ALT HOLD, LOC, APP)
+  - Master Warning / Master Caution (with cleared state)
+  - All annunciator lights (on and off)
+  - Speed brake position changes
+  - Flap position changes
+  - FMC V-speeds (V1, VR, V2, Cruise Altitude)
+  - APU status (running / shut down)
+  - IRS alignment
+  - Elevator trim changes (toggle with Shift+T)
+  - Altimeter setting changes
+  - Thousand-foot altitude crossings
+  - COM frequency changes
+  - Squawk code changes
+  - CDU page changes and scratchpad updates
