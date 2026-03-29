@@ -5953,24 +5953,6 @@ public class PMDG777Definition : BaseAircraftDefinition
                 return true;
             }
 
-            case HotkeyAction.ReadThrustLimitMode:
-            {
-                var dm = simConnect.PMDG777DataManager;
-                if (dm == null) return false;
-                int mode = (int)dm.GetFieldValue("FMC_ThrustLimitMode");
-                string modeText = mode switch
-                {
-                    0 => "None",
-                    1 => "TO", 2 => "TO 1", 3 => "TO 2",
-                    4 => "D-TO", 5 => "D-TO 1", 6 => "D-TO 2",
-                    7 => "CLB", 8 => "CLB 1", 9 => "CLB 2",
-                    10 => "CRZ", 11 => "CON",
-                    _ => $"Unknown ({mode})"
-                };
-                announcer.AnnounceImmediate($"Thrust limit {modeText}");
-                return true;
-            }
-
             // ------------------------------------------------------------------
             // MCP Direct-Set Input Dialogs
             // ------------------------------------------------------------------

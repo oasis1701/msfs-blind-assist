@@ -82,7 +82,7 @@ control+m, Fenix Monitor Manager
   Shift+L,    Location Info
   Shift+M,    Show VATSIM METAR Report
   Shift+T,    Toggle Trim Announcements
-  Shift+D,    SimBrief Briefing
+  Shift+B,    SimBrief Briefing
   Shift+C,    Show Checklist
 
 Hand fly mode hotkeys:

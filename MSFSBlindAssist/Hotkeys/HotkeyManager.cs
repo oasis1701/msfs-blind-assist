@@ -79,6 +79,8 @@ public class HotkeyManager : IDisposable
         private const int HOTKEY_ECAM_DISPLAY = 9056;
         private const int HOTKEY_STATUS_DISPLAY = 9057;
         private const int HOTKEY_TOGGLE_TRIM = 9100;
+        private const int HOTKEY_DISTANCE_TO_DEST = 9101;
+        private const int HOTKEY_DISTANCE_TO_TOD = 9102;
         private const int HOTKEY_TAKEOFF_ASSIST = 9058;
         private const int HOTKEY_TOGGLE_ECAM_MONITORING = 9059;
         private const int HOTKEY_HAND_FLY_MODE = 9075;
@@ -257,6 +259,12 @@ public class HotkeyManager : IDisposable
                             break;
                         case HOTKEY_SIMBRIEF_BRIEFING:
                             TriggerHotkey(HotkeyAction.SimBriefBriefing);
+                            break;
+                        case HOTKEY_DISTANCE_TO_DEST:
+                            TriggerHotkey(HotkeyAction.ReadDistanceToDest);
+                            break;
+                        case HOTKEY_DISTANCE_TO_TOD:
+                            TriggerHotkey(HotkeyAction.ReadDistanceToTOD);
                             break;
                         case HOTKEY_APPROACH_CAPABILITY:
                             TriggerHotkey(HotkeyAction.ReadApproachCapability);
@@ -534,7 +542,7 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_FCU_VSFPA, MOD_SHIFT, 0x56); // Shift+V (FCU VS/FPA)
 
             // Register new hotkeys without modifiers
-            // Skip H, V, Q, S, A if hand fly hotkeys are active (to prevent conflicts)
+            // Skip H, V, Q, S, A, D if hand fly hotkeys are active (to prevent conflicts)
             if (!handFlyHotkeysActive)
             {
                 RegisterHotKey(windowHandle, HOTKEY_ALTITUDE_AGL, MOD_NONE, 0x51); // Q (Altitude AGL)
@@ -542,6 +550,7 @@ public class HotkeyManager : IDisposable
                 RegisterHotKey(windowHandle, HOTKEY_HEADING_MAGNETIC, MOD_NONE, 0x48); // H (Magnetic Heading)
                 RegisterHotKey(windowHandle, HOTKEY_AIRSPEED_IND, MOD_NONE, 0x53); // S (Airspeed Indicated)
                 RegisterHotKey(windowHandle, HOTKEY_ALTITUDE_MSL, MOD_NONE, 0x41); // A (Altitude MSL)
+                RegisterHotKey(windowHandle, HOTKEY_DISTANCE_TO_DEST, MOD_NONE, 0x44); // D (Distance to Destination)
             }
             RegisterHotKey(windowHandle, HOTKEY_AIRSPEED_TRUE, MOD_NONE, 0x54); // T (Airspeed True)
             RegisterHotKey(windowHandle, HOTKEY_GROUND_SPEED, MOD_NONE, 0x47); // G (Ground Speed)
@@ -553,7 +562,8 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_WIND_INFO, MOD_NONE, 0x49); // I (Wind Info)
             RegisterHotKey(windowHandle, HOTKEY_METAR_REPORT, MOD_SHIFT, 0x4D); // Shift+M (METAR Report)
             RegisterHotKey(windowHandle, HOTKEY_PFD, MOD_SHIFT, 0x50); // Shift+P (PFD Window)
-            RegisterHotKey(windowHandle, HOTKEY_SIMBRIEF_BRIEFING, MOD_SHIFT, 0x44); // Shift+D (SimBrief Briefing)
+            RegisterHotKey(windowHandle, HOTKEY_SIMBRIEF_BRIEFING, MOD_SHIFT, 0x42); // Shift+B (SimBrief Briefing)
+            RegisterHotKey(windowHandle, HOTKEY_DISTANCE_TO_TOD, MOD_SHIFT, 0x44); // Shift+D (Distance to TOD)
             RegisterHotKey(windowHandle, HOTKEY_APPROACH_CAPABILITY, MOD_CONTROL, 0x30); // Ctrl+0 (Approach Capability)
 
             // Register speed tape hotkeys
@@ -632,6 +642,8 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_METAR_REPORT);
             UnregisterHotKey(windowHandle, HOTKEY_PFD);
             UnregisterHotKey(windowHandle, HOTKEY_SIMBRIEF_BRIEFING);
+            UnregisterHotKey(windowHandle, HOTKEY_DISTANCE_TO_DEST);
+            UnregisterHotKey(windowHandle, HOTKEY_DISTANCE_TO_TOD);
             UnregisterHotKey(windowHandle, HOTKEY_APPROACH_CAPABILITY);
 
             // Unregister speed tape hotkeys

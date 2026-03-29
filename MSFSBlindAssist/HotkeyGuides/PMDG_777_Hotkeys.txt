@@ -46,6 +46,10 @@ Vertical:
 Weather:
   I          Wind Info
 
+Distance:
+  D          Read Distance to Destination
+  Shift+D    Read Distance to Top of Descent
+
 Location:
   C          Read Nearest City
 
@@ -72,7 +76,7 @@ Displays and Windows:
   Shift+E    Route viewer, procedure planner and airport lookup
   Shift+L    Location Info
   Shift+M    Show VATSIM METAR Report
-  Shift+D    SimBrief Briefing
+  Shift+B    SimBrief Briefing
   Shift+C    Show Checklist
   Shift+N    Navigation Display
   Shift+P    PFD Window
