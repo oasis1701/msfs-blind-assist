@@ -4447,6 +4447,17 @@ public class PMDG777Definition : BaseAircraftDefinition
                 IsAnnounced = true
             },
 
+            // Altimeter setting — read from SimConnect for reliable STD detection
+            ["ALTIMETER_SETTING"] = new SimConnect.SimVarDefinition
+            {
+                Name = "KOHLSMAN SETTING HG",
+                DisplayName = "Altimeter Setting",
+                Type = SimConnect.SimVarType.SimVar,
+                Units = "inHg",
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                IsAnnounced = false
+            },
+
             // MONITORING ENHANCEMENTS (background — no panel placement)
             ["MON_APURunning"] = new SimConnect.SimVarDefinition
             {
@@ -5876,26 +5887,33 @@ public class PMDG777Definition : BaseAircraftDefinition
             {
                 var dm = simConnect.PMDG777DataManager;
                 if (dm == null) return false;
-                // EFIS_BaroSTD_Sw_Pushed_0: true = STD selected
-                double baroStd = dm.GetFieldValue("EFIS_BaroSTD_Sw_Pushed_0");
-                if (baroStd > 0.5)
+
+                // Read actual altimeter setting from cached SimConnect variable
+                double? inHgRaw = simConnect.GetCachedVariableValue("ALTIMETER_SETTING");
+                if (inHgRaw == null)
+                {
+                    announcer.AnnounceImmediate("Altimeter not available");
+                    return true;
+                }
+
+                double inHg = inHgRaw.Value;
+
+                // Detect STD: 29.92 inHg (1013.25 hPa) is standard pressure
+                if (Math.Abs(inHg - 29.92) < 0.005)
                 {
                     announcer.AnnounceImmediate("Altimeter standard");
                     return true;
                 }
-                // EFIS_BaroSelHPA_0: 0 = IN, 1 = HPA
+
+                // Report in the unit the pilot has selected
                 double isHpa = dm.GetFieldValue("EFIS_BaroSelHPA_0");
-                // EFIS_BaroKnob_0: raw knob value
-                double knobRaw = dm.GetFieldValue("EFIS_BaroKnob_0");
                 if (isHpa > 0.5)
                 {
-                    // HPA value stored directly
-                    announcer.AnnounceImmediate($"Altimeter {(int)knobRaw} hectopascals");
+                    int hpa = (int)Math.Round(inHg * 33.8639);
+                    announcer.AnnounceImmediate($"Altimeter {hpa} hectopascals");
                 }
                 else
                 {
-                    // Inches value stored as integer tenths (e.g. 2992 = 29.92)
-                    double inHg = knobRaw / 100.0;
                     announcer.AnnounceImmediate($"Altimeter {inHg:0.00} inches");
                 }
                 return true;
