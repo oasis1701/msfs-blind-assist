@@ -396,7 +396,7 @@ public partial class PMDG777CDUForm : Form
             if (keySuffix != null)
             {
                 SendCDUKey(keySuffix);
-                await Task.Delay(250);
+                await Task.Delay(350);
             }
         }
     }
