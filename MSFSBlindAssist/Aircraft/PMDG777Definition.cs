@@ -136,6 +136,8 @@ public class PMDG777Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
+                RenderAsButton = true,
+                IsMomentary = true,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
             },
             ["ELEC_ExtPwrSec"] = new SimConnect.SimVarDefinition
@@ -145,6 +147,8 @@ public class PMDG777Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
+                RenderAsButton = true,
+                IsMomentary = true,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
             },
             ["ELEC_Gen_1"] = new SimConnect.SimVarDefinition
