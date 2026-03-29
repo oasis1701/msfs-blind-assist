@@ -4919,6 +4919,9 @@ public class PMDG777Definition : BaseAircraftDefinition
     // Event handling overrides — scaffold (populated in Tasks 9-11)
     // =========================================================================
 
+    // Altimeter announcement suppression (initial value)
+    private double _lastAnnouncedAltimeter = double.NaN;
+
     // Track last known radio/squawk values to suppress initial load announcement.
     // Value 0 means "not yet seen" — first update stores silently, subsequent updates announce.
     private double _lastComActiveFreq1;
@@ -5505,9 +5508,33 @@ public class PMDG777Definition : BaseAircraftDefinition
             return true; // Suppress — screen reader announces the button press via UI
         }
 
-        // Altimeter setting — cached for hotkey readout, no automatic announcements
+        // Altimeter setting — announce changes, suppress initial value
         if (varName == "ALTIMETER_SETTING")
+        {
+            double inHg = value;
+
+            // First update: store silently
+            if (double.IsNaN(_lastAnnouncedAltimeter))
+            {
+                _lastAnnouncedAltimeter = inHg;
+                return true;
+            }
+
+            // Debounce — skip if less than 0.005 inHg change
+            if (Math.Abs(inHg - _lastAnnouncedAltimeter) < 0.005)
+                return true;
+
+            _lastAnnouncedAltimeter = inHg;
+
+            if (Math.Abs(inHg - 29.92) < 0.005)
+                announcer.Announce("Altimeter standard");
+            else
+            {
+                int hpa = (int)Math.Round(inHg * 33.8639);
+                announcer.Announce($"Altimeter: {hpa}, {inHg:0.00}");
+            }
             return true;
+        }
 
         // Speed brake — custom formatting for lever position
         if (varName == "FCTL_Speedbrake")
@@ -5991,13 +6018,6 @@ public class PMDG777Definition : BaseAircraftDefinition
                 return true;
             }
 
-            case HotkeyAction.FCUSetBaro:
-            {
-                hotkeyManager.ExitInputHotkeyMode();
-                ShowPMDGBaroDialog(simConnect, announcer, parentForm);
-                return true;
-            }
-
             // CDU handled by MainForm (Task 13)
             case HotkeyAction.ShowFenixMCDU:
                 return false;
@@ -6282,55 +6302,6 @@ public class PMDG777Definition : BaseAircraftDefinition
                     int encoded = vs + 10000;
                     if (EventIds.TryGetValue("EVT_MCP_VS_SET", out int evId))
                         simConnect.SendPMDGEvent("EVT_MCP_VS_SET", (uint)evId, encoded);
-                }
-            });
-
-        dialog.ShowDialog(parentForm);
-    }
-
-    private void ShowPMDGBaroDialog(
-        SimConnect.SimConnectManager simConnect,
-        ScreenReaderAnnouncer announcer,
-        Form parentForm)
-    {
-        if (!simConnect.IsConnected)
-        {
-            announcer.AnnounceImmediate("Not connected to simulator.");
-            return;
-        }
-
-        var dialog = new ValueInputForm(
-            "Altimeter Setting", "baro (hPa or in Hg, e.g. 1013 or 29.92)", "940-1050 or 27.00-31.50", announcer,
-            input =>
-            {
-                if (double.TryParse(input, System.Globalization.NumberStyles.Any,
-                    System.Globalization.CultureInfo.InvariantCulture, out double val))
-                {
-                    if (val >= 940 && val <= 1050) return (true, "");  // hPa
-                    if (val >= 27.0 && val <= 31.5) return (true, ""); // in Hg
-                }
-                return (false, "Enter hPa (940-1050) or in Hg (27.00-31.50)");
-            },
-            new List<ToggleButtonDef>(),
-            input =>
-            {
-                if (double.TryParse(input, System.Globalization.NumberStyles.Any,
-                    System.Globalization.CultureInfo.InvariantCulture, out double baro))
-                {
-                    if (baro >= 940 && baro <= 1050)
-                    {
-                        int hpaVal = (int)Math.Round(baro);
-                        if (EventIds.TryGetValue("EVT_EFIS_CPT_BARO", out int evId))
-                            simConnect.SendPMDGEvent("EVT_EFIS_CPT_BARO", (uint)evId, hpaVal);
-                        announcer.AnnounceImmediate($"Altimeter set to {hpaVal} hectopascals");
-                    }
-                    else
-                    {
-                        int inchVal = (int)Math.Round(baro * 100);
-                        if (EventIds.TryGetValue("EVT_EFIS_CPT_BARO", out int evId))
-                            simConnect.SendPMDGEvent("EVT_EFIS_CPT_BARO", (uint)evId, inchVal);
-                        announcer.AnnounceImmediate($"Altimeter set to {baro:0.00} inches");
-                    }
                 }
             });
 
