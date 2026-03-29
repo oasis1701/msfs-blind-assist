@@ -5544,12 +5544,12 @@ public class PMDG777Definition : BaseAircraftDefinition
             int lever = (int)Math.Round(value);
             if (lever <= 0)
                 announcer.Announce("Speed brake down");
-            else if (lever <= 25)
+            else if (lever <= 50)
                 announcer.Announce("Speed brake armed");
             else
             {
-                // 26-100 = deployed, map to percentage
-                int pct = (int)Math.Round((lever - 25.0) / 75.0 * 100);
+                // 51-100 = deployed, map to percentage
+                int pct = (int)Math.Round((lever - 50.0) / 50.0 * 100);
                 announcer.Announce($"Speed brake {pct} percent");
             }
             return true;
