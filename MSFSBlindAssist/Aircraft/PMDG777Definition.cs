@@ -6160,7 +6160,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             new("Intervene", () =>
             {
                 if (dm == null) return "?";
-                return (int)dm.GetFieldValue("MCP_IASBlank") > 0 ? "Intervene" : "Active";
+                return (int)dm.GetFieldValue("MCP_IASBlank") > 0 ? "Off" : "Active";
             }, () => SendPMDGMomentary(simConnect, "EVT_MCP_SPEED_PUSH_SWITCH")),
             new("Mode", () =>
             {
