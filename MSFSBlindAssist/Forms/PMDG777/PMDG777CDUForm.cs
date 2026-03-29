@@ -375,6 +375,7 @@ public partial class PMDG777CDUForm : Form
     private async Task SendTextToCDU(string text)
     {
         _typingInProgress = true;
+        string? previousKey = null;
         foreach (char c in text)
         {
             string? keySuffix = c switch
@@ -400,8 +401,12 @@ public partial class PMDG777CDUForm : Form
 
             if (keySuffix != null)
             {
+                // Repeated key needs extra delay for CDU to distinguish separate presses
+                if (keySuffix == previousKey)
+                    await Task.Delay(200);
                 SendCDUKey(keySuffix);
                 await Task.Delay(350);
+                previousKey = keySuffix;
             }
         }
         // Wait for CDU to process final character, then announce result
