@@ -102,7 +102,7 @@ public partial class PMDG777CDUForm
         {
             Location = new Point(10, y),
             Size = new Size(570, 25),
-            AccessibleName = "CDU Input",
+            AccessibleName = "Scratchpad",
             AccessibleDescription = "Type text and press Enter to send to the CDU scratchpad. Press Backspace on empty field to send CLR."
         };
         y += 35;

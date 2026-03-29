@@ -37,7 +37,7 @@ public partial class PMDG777CDUForm : Form
     {
         this.Load += (s, e) =>
         {
-            scratchpadInput.Focus();
+            cduDisplay.Focus();
             _pollTimer.Start();
         };
 
@@ -362,7 +362,7 @@ public partial class PMDG777CDUForm : Form
         Activate();
         TopMost = true;
         TopMost = false;
-        scratchpadInput.Focus();
+        cduDisplay.Focus();
     }
 
     // ------------------------------------------------------------------
