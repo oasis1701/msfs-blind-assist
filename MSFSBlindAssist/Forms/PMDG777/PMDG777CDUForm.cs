@@ -138,11 +138,11 @@ public partial class PMDG777CDUForm : Form
             if (!string.IsNullOrWhiteSpace(label))
                 lines.Add($"   {label}");
 
-            // Data: numbered (selectable via LSK)
+            // Data: numbered (selectable via LSK) — always show line number
             if (!string.IsNullOrWhiteSpace(data))
                 lines.Add($"{lineNum}: {data}");
-            else if (string.IsNullOrWhiteSpace(label))
-                lines.Add($"{lineNum}:"); // Empty pair — still show line number
+            else
+                lines.Add($"{lineNum}:");
         }
 
         lines.Add($"Scratchpad: {rows[13]}"); // Row 13: scratchpad
