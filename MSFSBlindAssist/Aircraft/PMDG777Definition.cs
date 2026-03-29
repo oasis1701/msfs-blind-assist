@@ -6072,7 +6072,6 @@ public class PMDG777Definition : BaseAircraftDefinition
             {
                 if (EventIds.TryGetValue("EVT_MCP_HDGTRK_SET", out int evId))
                     simConnect.SendPMDGEvent("EVT_MCP_HDGTRK_SET", (uint)evId, hdg);
-                announcer.AnnounceImmediate($"Heading set to {hdg}");
             }
         }
     }
@@ -6125,14 +6124,12 @@ public class PMDG777Definition : BaseAircraftDefinition
                     int machVal = (int)Math.Round(spd * 1000);
                     if (EventIds.TryGetValue("EVT_MCP_MACH_SET", out int evId))
                         simConnect.SendPMDGEvent("EVT_MCP_MACH_SET", (uint)evId, machVal);
-                    announcer.AnnounceImmediate($"Mach set to {spd:0.000}");
                 }
                 else
                 {
                     int iasVal = (int)spd;
                     if (EventIds.TryGetValue("EVT_MCP_IAS_SET", out int evId))
                         simConnect.SendPMDGEvent("EVT_MCP_IAS_SET", (uint)evId, iasVal);
-                    announcer.AnnounceImmediate($"Speed set to {iasVal} knots");
                 }
             }
         }
@@ -6187,7 +6184,6 @@ public class PMDG777Definition : BaseAircraftDefinition
             {
                 if (EventIds.TryGetValue("EVT_MCP_ALT_SET", out int evId))
                     simConnect.SendPMDGEvent("EVT_MCP_ALT_SET", (uint)evId, alt);
-                announcer.AnnounceImmediate($"Altitude set to {alt}");
             }
         }
     }
@@ -6225,7 +6221,6 @@ public class PMDG777Definition : BaseAircraftDefinition
                 int encoded = vs + 10000;
                 if (EventIds.TryGetValue("EVT_MCP_VS_SET", out int evId))
                     simConnect.SendPMDGEvent("EVT_MCP_VS_SET", (uint)evId, encoded);
-                announcer.AnnounceImmediate($"Vertical speed set to {vs} feet per minute");
             }
         }
     }

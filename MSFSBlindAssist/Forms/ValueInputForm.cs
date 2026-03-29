@@ -85,9 +85,21 @@ public partial class ValueInputForm : Form
                 AccessibleName = $"Valid range: {rangeText}"
             };
 
+            // Text box gets TabIndex 0 (first focus target)
+            int tabIdx = 0;
+
+            valueTextBox = new TextBox
+            {
+                Location = new Point(20, 75 + toggleOffset),
+                Size = new Size(150, 25),
+                AccessibleName = $"{parameterType} value",
+                AccessibleDescription = $"Enter {parameterType} value and press Enter to set",
+                TabIndex = tabIdx++
+            };
+            valueTextBox.KeyDown += ValueTextBox_KeyDown;
+
             // Toggle buttons
             int toggleY = 70;
-            int tabIdx = 0;
             foreach (var def in _toggleDefs)
             {
                 string state = def.GetCurrentState();
@@ -125,16 +137,6 @@ public partial class ValueInputForm : Form
                 _toggleButtons.Add(btn);
                 toggleY += 35;
             }
-
-            valueTextBox = new TextBox
-            {
-                Location = new Point(20, 75 + toggleOffset),
-                Size = new Size(150, 25),
-                AccessibleName = $"{parameterType} value",
-                AccessibleDescription = $"Enter {parameterType} value and press Enter to set",
-                TabIndex = tabIdx++
-            };
-            valueTextBox.KeyDown += ValueTextBox_KeyDown;
 
             okButton = new Button
             {
@@ -178,10 +180,7 @@ public partial class ValueInputForm : Form
                 Activate();
                 TopMost = true;
                 TopMost = false;
-                if (_toggleButtons.Count > 0)
-                    _toggleButtons[0].Focus();
-                else
-                    valueTextBox.Focus();
+                valueTextBox.Focus();
             };
         }
 
