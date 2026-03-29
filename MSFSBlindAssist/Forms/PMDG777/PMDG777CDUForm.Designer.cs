@@ -39,7 +39,6 @@ public partial class PMDG777CDUForm
         this.StartPosition = FormStartPosition.CenterParent;
         this.KeyPreview = true;
         this.AccessibleName = "PMDG 777 CDU";
-        this.AccessibleDescription = "PMDG 777 CDU display and controls";
 
         int y = 10;
 
@@ -50,7 +49,6 @@ public partial class PMDG777CDUForm
             Location = new Point(10, y),
             Size = new Size(400, 20),
             AccessibleName = "CDU status",
-            AccessibleDescription = "Shows whether the CDU is connected and powered",
             TabStop = false
         };
 
@@ -60,8 +58,7 @@ public partial class PMDG777CDUForm
             Location = new Point(420, y),
             Size = new Size(160, 25),
             DropDownStyle = ComboBoxStyle.DropDownList,
-            AccessibleName = "CDU selector",
-            AccessibleDescription = "Choose which CDU to display: Left (Captain), Center, or Right (First Officer)"
+            AccessibleName = "CDU selector"
         };
         cduSelector.Items.AddRange(new object[] { "Left (Captain)", "Center", "Right (First Officer)" });
         cduSelector.SelectedIndex = 0;
@@ -77,8 +74,7 @@ public partial class PMDG777CDUForm
             ForeColor = Color.Lime,
             SelectionMode = SelectionMode.One,
             IntegralHeight = false,
-            AccessibleName = "CDU Display",
-            AccessibleDescription = "Shows the current CDU screen content. Use arrow keys to read lines."
+            AccessibleName = "CDU Display"
         };
         y += 220;
 
@@ -87,8 +83,7 @@ public partial class PMDG777CDUForm
         {
             Location = new Point(10, y),
             Size = new Size(570, 25),
-            AccessibleName = "Scratchpad",
-            AccessibleDescription = "Type text and press Enter to send to the CDU scratchpad. Press Backspace on empty field to send CLR."
+            AccessibleName = "Scratchpad"
         };
         y += 35;
 
@@ -120,27 +115,23 @@ public partial class PMDG777CDUForm
         btnClr  = CreatePageButton("CLR",    "CLR",  120, y, 100, pageBtnHeight);
         btnDel  = CreatePageButton("DEL",    "DEL",  230, y, 100, pageBtnHeight);
 
-        btnExec.AccessibleName = "Execute";
-        btnExec.AccessibleDescription = "Execute flight plan modification (Alt+E)";
-        btnClr.AccessibleName = "Clear";
-        btnClr.AccessibleDescription = "Clear scratchpad (Alt+C)";
-        btnDel.AccessibleName = "Delete";
-        btnDel.AccessibleDescription = "Delete selected field (Alt+L)";
-
-        // Accessible descriptions with hotkeys for page buttons
-        btnInitRef.AccessibleDescription = "CDU Init Ref page (Alt+I)";
-        btnRte.AccessibleDescription = "CDU Route page (Alt+R)";
-        btnDepArr.AccessibleDescription = "CDU Dep/Arr page (Alt+D)";
-        btnAltn.AccessibleDescription = "CDU Altn page (Alt+A)";
-        btnVnav.AccessibleDescription = "CDU VNAV page (Alt+V)";
-        btnFix.AccessibleDescription = "CDU Fix page (Alt+F)";
-        btnLegs.AccessibleDescription = "CDU Legs page (Alt+G)";
-        btnHold.AccessibleDescription = "CDU Hold page (Alt+H)";
-        btnFmcComm.AccessibleDescription = "CDU FMC Comm (Alt+O)";
-        btnProg.AccessibleDescription = "CDU Prog page (Alt+P)";
-        btnMenu.AccessibleDescription = "CDU Menu page (Alt+M)";
-        btnPrevPage.AccessibleDescription = "Previous page (PageUp)";
-        btnNextPage.AccessibleDescription = "Next page (PageDown)";
+        // Button accessible names: label + hotkey
+        btnInitRef.AccessibleName = "Init Ref (Alt+I)";
+        btnRte.AccessibleName = "RTE (Alt+R)";
+        btnDepArr.AccessibleName = "Dep/Arr (Alt+D)";
+        btnAltn.AccessibleName = "Altn (Alt+A)";
+        btnVnav.AccessibleName = "VNAV (Alt+V)";
+        btnFix.AccessibleName = "Fix (Alt+F)";
+        btnLegs.AccessibleName = "Legs (Alt+G)";
+        btnHold.AccessibleName = "Hold (Alt+H)";
+        btnFmcComm.AccessibleName = "FMC Comm (Alt+O)";
+        btnProg.AccessibleName = "Prog (Alt+P)";
+        btnMenu.AccessibleName = "Menu (Alt+M)";
+        btnPrevPage.AccessibleName = "Prev Page (PageUp)";
+        btnNextPage.AccessibleName = "Next Page (PageDown)";
+        btnExec.AccessibleName = "Execute (Alt+E)";
+        btnClr.AccessibleName = "CLR (Alt+C)";
+        btnDel.AccessibleName = "DEL (Alt+L)";
 
         // Add all controls
         this.Controls.AddRange(new Control[]
@@ -183,8 +174,7 @@ public partial class PMDG777CDUForm
             Text = text,
             Location = new Point(x, y),
             Size = new Size(width, height),
-            AccessibleName = text,
-            AccessibleDescription = $"CDU {text} page button"
+            AccessibleName = text
         };
     }
 }

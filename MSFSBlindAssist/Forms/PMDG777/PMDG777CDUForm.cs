@@ -118,7 +118,7 @@ public partial class PMDG777CDUForm : Form
 
         // Build display lines (matches Fenix MCDU format)
         var lines = new List<string>();
-        lines.Add($"Title: {rows[0]}"); // Row 0: page title
+        lines.Add(rows[0]); // Row 0: page title
 
         // Rows 1-12: 6 label/value pairs
         for (int pair = 0; pair < 6; pair++)
@@ -219,25 +219,6 @@ public partial class PMDG777CDUForm : Form
     private void OnLineSelect(string suffix, int lineNumber)
     {
         SendCDUKey(suffix);
-
-        // Announce the content of the selected line
-        if (_previousRows != null)
-        {
-            // LSK rows: L1=row2, L2=row4, L3=row6, L4=row8, L5=row10, L6=row12
-            // R keys are in same rows (right side of same line)
-            bool isLeft = suffix.StartsWith('L');
-            int rowIndex = lineNumber * 2; // rows 2,4,6,8,10,12
-            if (rowIndex < _previousRows.Length)
-            {
-                string content = _previousRows[rowIndex].Trim();
-                if (string.IsNullOrWhiteSpace(content) && rowIndex - 1 >= 0)
-                    content = _previousRows[rowIndex - 1].Trim();
-                if (!string.IsNullOrWhiteSpace(content))
-                    _announcer.Announce($"Line {suffix}: {content}");
-                else
-                    _announcer.Announce($"Line {suffix}: empty");
-            }
-        }
     }
 
     // ------------------------------------------------------------------
