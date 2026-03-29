@@ -4788,12 +4788,9 @@ public class PMDG777Definition : BaseAircraftDefinition
                 "MCP_ATArm_L", "MCP_ATArm_R",
                 "MCP_AltIncrSel", "MCP_DisengageBar",
                 "MCP_BankLimitSel", "MCP_HDGDialMode", "MCP_VSDialMode",
-                "MCP_LNAV", "MCP_VNAV", "MCP_FLCH",
-                "MCP_HDG_HOLD", "MCP_VS_FPA", "MCP_ALT_HOLD",
+                "MCP_VS_FPA",
                 "MCP_LOC", "MCP_APP", "MCP_AT", "MCP_CLB_CON",
                 "MCP_AP_L", "MCP_AP_R",
-                "MCP_SpeedPush", "MCP_HeadingPush", "MCP_AltitudePush",
-                "MCP_IAS_MACH_Toggle", "MCP_HDG_TRK_Toggle", "MCP_VS_FPA_Toggle",
                 "MCP_CRS_L_Push", "MCP_CRS_R_Push",
                 "YOKE_APDisc"
             },
