@@ -86,13 +86,14 @@ dotnet build MSFSBlindAssist.sln -c Release
 - Momentary buttons: `SendPMDGEvent(eventName, eventId, 1)` — parameter 1 = pressed, 0 = no-op
 - Continuous knobs (brightness, temperature, EFIS baro/mins): **cannot be controlled via SDK** — do not add to panels
 - **Fuel control levers:** Exception — use CDA with **inverted** parameter (1=Cutoff, 0=Run). See special case in HandleUIVariableSet.
+- **Ground power switches (ELEC_ExtPwr):** Momentary push buttons — send parameter 1 regardless of target. See special case in HandleUIVariableSet.
 
 **Radio frequencies and transponder:** Use standard SimConnect events (not PMDG SDK):
 - `COM_STBY_RADIO_SET_HZ` / `COM2_STBY_RADIO_SET_HZ` for setting standby freqs
 - `COM_STBY_RADIO_SWAP` / `COM2_RADIO_SWAP` for swapping active/standby
 - `XPNDR_SET` for squawk code (BCD16 encoded)
 
-**CDU interaction:** CDU buttons must send parameter 1 (pressed) via CDA. Text entry sends one character at a time with 350ms delay; repeated characters need an extra 200ms. CDU display uses color data to detect toggle selections (non-white color = selected, marked with `X`). Toggle detection only applies to rows with `←→` arrows.
+**CDU interaction:** CDU buttons must send parameter 1 (pressed) via CDA. Text entry sends one character at a time with 350ms delay; repeated characters need an extra 200ms. CDU display uses color and font-size data to detect toggle selections (non-white color or non-small font = selected, marked with `X`). Toggle detection only applies to rows with adjacent `<>` (mapped from 0xA1/0xA2 arrow symbols). Scratchpad announcements are suppressed during text entry.
 
 **MCP dialogs:** Use `ValueInputForm` with `ToggleButtonDef` for mode toggles. Dialogs stay open after value entry (callback pattern). `MCP_IASBlank` indicates FMC-controlled speed.
 
