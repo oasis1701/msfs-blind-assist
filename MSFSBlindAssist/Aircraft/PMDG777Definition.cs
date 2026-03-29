@@ -4050,6 +4050,24 @@ public class PMDG777Definition : BaseAircraftDefinition
             // =================================================================
             // PEDESTAL — EVACUATION
             // =================================================================
+            ["EVAC_Command"] = new SimConnect.SimVarDefinition
+            {
+                Name = "EVAC_Command_Sw_ON",
+                DisplayName = "Evacuation Command",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["EVAC_HornShutoff"] = new SimConnect.SimVarDefinition
+            {
+                Name = "EVAC_HornSutOff_Sw_Pulled",
+                DisplayName = "Evacuation Horn Shutoff",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Never,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
             ["EVAC_PressToTest"] = new SimConnect.SimVarDefinition
             {
                 Name = "EVAC_PressToTest_Sw_Pressed",
@@ -4058,6 +4076,16 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Never,
                 RenderAsButton = true,
                 IsMomentary = true,
+            },
+            ["EVAC_annunLight"] = new SimConnect.SimVarDefinition
+            {
+                Name = "EVAC_LightIlluminated",
+                DisplayName = "Evacuation Light",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
             },
 
             // =================================================================
@@ -4669,7 +4697,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             // Pedestal — Evacuation
             ["Evacuation"] = new List<string>
             {
-                "EVAC_PressToTest"
+                "EVAC_Command", "EVAC_HornShutoff", "EVAC_PressToTest"
             },
 
             // Pedestal — Warning (Master Warning/Caution already in Glareshield Warning section)
@@ -5054,6 +5082,8 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["WARN_Reset_R"]            = "EVT_MASTER_WARNING_RESET_RIGHT",
 
             // --- Pedestal misc ---
+            ["EVAC_Command"]            = "EVT_PED_EVAC_SWITCH",
+            ["EVAC_HornShutoff"]        = "EVT_PED_EVAC_HORN_SHUTOFF",
             ["EVAC_PressToTest"]        = "EVT_PED_EVAC_TEST_SWITCH",
             ["EICAS_EventRcd"]          = "EVT_PED_EICAS_EVENT_RCD",
             ["ISP_DsplCtrl_C"]          = "EVT_PED_DSPL_CTRL_SOURCE_C",
@@ -5101,6 +5131,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["GPWS_RunwayOvrd"]      = ("EVT_GPWS_RWY_OVRD_GUARD",      "EVT_GPWS_RWY_OVRD_SWITCH"),
             ["EFIS_HdgRef"]          = ("EVT_EFIS_HDG_REF_GUARD",       "EVT_EFIS_HDG_REF_SWITCH"),
             ["AIR_AltnVent"]         = ("EVT_OH_AIRCOND_ALT_VENT_GUARD", "EVT_OH_AIRCOND_ALT_VENT_SWITCH"),
+            ["EVAC_Command"]         = ("EVT_PED_EVAC_SWITCH_GUARD",    "EVT_PED_EVAC_SWITCH"),
         };
 
     public override bool HandleUIVariableSet(
