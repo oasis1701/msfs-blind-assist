@@ -5429,10 +5429,9 @@ public class PMDG777Definition : BaseAircraftDefinition
         // ------------------------------------------------------------------
         if (varKey == "ENG_FuelControl_1" || varKey == "ENG_FuelControl_2")
         {
-            // TransmitClientEvent parameter is inverted for this lever:
-            // sending 1 moves to Cutoff, sending 0 moves to Run
+            // Parameter is inverted for this lever: 1=Cutoff, 0=Run
             int target = (int)value == 0 ? 1 : 0;
-            simConnect.SendEvent($"#{eventId}", (uint)target);
+            simConnect.SendPMDGEvent(eventName, eventId, target);
             return true;
         }
 
