@@ -472,7 +472,7 @@ public class PMDG777DataManager : IDisposable
         return rows;
     }
 
-    public (string[] rows, byte[,] colors)? GetCDURowsWithColors(int cdu)
+    public (string[] rows, byte[,] colors, byte[,] flags)? GetCDURowsWithColors(int cdu)
     {
         if (cdu < 0 || cdu > 2) return null;
         var screen = _lastCDUScreen[cdu];
@@ -480,6 +480,7 @@ public class PMDG777DataManager : IDisposable
 
         var rows = new string[14];
         var colors = new byte[14, 24];
+        var flags = new byte[14, 24];
 
         for (int row = 0; row < 14; row++)
         {
@@ -489,6 +490,7 @@ public class PMDG777DataManager : IDisposable
                 var cell = screen.Value.Cells[col * 14 + row];
                 byte sym = cell.Symbol;
                 colors[row, col] = cell.Color;
+                flags[row, col] = cell.Flags;
 
                 if (sym == 0xA1) sb.Append('<');
                 else if (sym == 0xA2) sb.Append('>');
@@ -498,7 +500,7 @@ public class PMDG777DataManager : IDisposable
             rows[row] = sb.ToString();
         }
 
-        return (rows, colors);
+        return (rows, colors, flags);
     }
 
     // ------------------------------------------------------------------

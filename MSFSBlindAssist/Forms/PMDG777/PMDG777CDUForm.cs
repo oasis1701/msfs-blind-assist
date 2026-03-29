@@ -91,16 +91,16 @@ public partial class PMDG777CDUForm : Form
         _dataManager.RequestCDUScreen(_selectedCDU);
         var result = _dataManager.GetCDURowsWithColors(_selectedCDU);
         if (result != null)
-            UpdateDisplay(result.Value.rows, result.Value.colors);
+            UpdateDisplay(result.Value.rows, result.Value.colors, result.Value.flags);
         else
-            UpdateDisplay(null, null);
+            UpdateDisplay(null, null, null);
     }
 
     // ------------------------------------------------------------------
     // Display update
     // ------------------------------------------------------------------
 
-    private void UpdateDisplay(string[]? rows, byte[,]? colors)
+    private void UpdateDisplay(string[]? rows, byte[,]? colors, byte[,]? flags)
     {
         if (rows == null)
         {
@@ -130,9 +130,9 @@ public partial class PMDG777CDUForm : Form
             string label = rows[labelRow];
             string data = rows[dataRow];
 
-            // Mark selected options on data rows using color data
-            if (colors != null)
-                data = MarkSelectedOption(data, colors, dataRow);
+            // Mark selected options on data rows using color and flag data
+            if (colors != null && flags != null)
+                data = MarkSelectedOption(data, colors, flags, dataRow);
 
             // Label: indented (no line number — not selectable)
             if (!string.IsNullOrWhiteSpace(label))
@@ -438,46 +438,76 @@ public partial class PMDG777CDUForm : Form
     // Color-based selection markers
     // ------------------------------------------------------------------
 
-    private static string MarkSelectedOption(string row, byte[,] colors, int rowIndex)
+    private static string MarkSelectedOption(string row, byte[,] colors, byte[,] flags, int rowIndex)
     {
         // Only process rows with the ←→ toggle arrow pattern
         if (!row.Contains('\u2190') || !row.Contains('\u2192')) return row;
 
-        // Detect colored vs white text segments
-        bool hasColoredText = false;
-        bool hasWhiteText = false;
+        int arrowStart = row.IndexOf('\u2190');
+        int arrowEnd = row.LastIndexOf('\u2192') + 1;
 
-        for (int col = 0; col < 24 && col < row.Length; col++)
+        // Determine selection using two methods:
+        // 1. Non-white color (green, red, cyan) = selected
+        // 2. Non-small font (flag bit 0x01 clear) = selected
+        // Either method finding a match on one side marks it as selected.
+
+        bool leftSelected = false;
+        bool rightSelected = false;
+
+        // Check left side text (before arrows)
+        for (int col = 0; col < arrowStart && col < 24; col++)
         {
             char ch = row[col];
-            if (ch != ' ' && ch != '<' && ch != '>' && ch != '\u2190' && ch != '\u2192')
+            if (ch != ' ' && ch != '<')
             {
-                byte c = colors[rowIndex, col];
-                if (c > 0) hasColoredText = true;
-                else if (char.IsLetterOrDigit(ch)) hasWhiteText = true;
+                if (colors[rowIndex, col] > 0) { leftSelected = true; break; }
+                if ((flags[rowIndex, col] & 0x01) == 0) { leftSelected = true; break; }
             }
         }
 
-        if (!hasColoredText || !hasWhiteText) return row;
+        // Check right side text (after arrows)
+        for (int col = arrowEnd; col < 24 && col < row.Length; col++)
+        {
+            char ch = row[col];
+            if (ch != ' ' && ch != '>')
+            {
+                if (colors[rowIndex, col] > 0) { rightSelected = true; break; }
+                if ((flags[rowIndex, col] & 0x01) == 0) { rightSelected = true; break; }
+            }
+        }
 
+        // If both sides appear selected (shouldn't happen), don't mark
+        if (leftSelected && rightSelected) return row;
+        // If neither side detected, don't mark
+        if (!leftSelected && !rightSelected) return row;
+
+        // Build output: replace ←→ with space, prefix selected option with X
         var sb = new System.Text.StringBuilder();
         int i = 0;
         while (i < row.Length)
         {
             char ch = row[i];
 
-            // Pass through spaces and arrows
-            if (ch == ' ' || ch == '<' || ch == '>' || ch == '\u2190' || ch == '\u2192')
+            // Replace ←→ arrows with a single space
+            if (ch == '\u2190' || ch == '\u2192')
+            {
+                if (ch == '\u2190') sb.Append(' ');
+                i++;
+                continue;
+            }
+
+            // Pass through spaces and brackets
+            if (ch == ' ' || ch == '<' || ch == '>')
             {
                 sb.Append(ch);
                 i++;
                 continue;
             }
 
-            // Start of a text word — colored text is the selected option
-            byte segColor = colors[rowIndex, i];
-            string marker = segColor > 0 ? "X " : "  ";
-            sb.Append(marker);
+            // Start of a text word — mark selected side with X
+            bool isLeftSide = i < arrowStart;
+            bool isSelected = isLeftSide ? leftSelected : rightSelected;
+            if (isSelected) sb.Append("X ");
 
             // Copy the word
             while (i < row.Length && row[i] != ' ' && row[i] != '<' && row[i] != '>'
