@@ -5905,9 +5905,9 @@ public class PMDG777Definition : BaseAircraftDefinition
                     return true;
                 }
 
-                // Report in both units
+                // Report in both units (hPa first, matching Fenix format)
                 int hpa = (int)Math.Round(inHg * 33.8639);
-                announcer.AnnounceImmediate($"Altimeter {inHg:0.00} inches, {hpa} hectopascals");
+                announcer.AnnounceImmediate($"Altimeter: {hpa}, {inHg:0.00}");
                 return true;
             }
 
