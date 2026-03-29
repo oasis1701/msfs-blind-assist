@@ -5164,7 +5164,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["MCP_AltitudePush"]        = "EVT_MCP_ALTITUDE_PUSH_SWITCH",
             ["MCP_IAS_MACH_Toggle"]     = "EVT_MCP_IAS_MACH_SWITCH",
             ["MCP_HDG_TRK_Toggle"]      = "EVT_MCP_HDG_TRK_SWITCH",
-            ["MCP_VS_FPA_Toggle"]       = "EVT_MCP_VS_FPA_SWITCH",
+            ["MCP_VS_FPA_Toggle"]       = "EVT_MCP_VS_SWITCH",
 
             // --- MCP numeric selectors (wheel stepped) ---
             ["MCP_IASMach"]             = "EVT_MCP_SPEED_SELECTOR",
@@ -6202,9 +6202,20 @@ public class PMDG777Definition : BaseAircraftDefinition
             return;
         }
 
+        var dm = simConnect.PMDG777DataManager;
+
         var toggles = new List<ToggleButtonDef>
         {
-            new("Intervene", () => "Push", () => SendPMDGMomentary(simConnect, "EVT_MCP_VS_FPA_SWITCH")),
+            new("Engage VS/FPA", () =>
+            {
+                if (dm == null) return "?";
+                return (int)dm.GetFieldValue("MCP_annunVS_FPA") > 0 ? "Engaged" : "Off";
+            }, () => SendPMDGMomentary(simConnect, "EVT_MCP_VS_FPA_SWITCH")),
+            new("Mode", () =>
+            {
+                if (dm == null) return "?";
+                return (int)dm.GetFieldValue("MCP_VSDial_Mode") == 0 ? "VS" : "FPA";
+            }, () => SendPMDGMomentary(simConnect, "EVT_MCP_VS_SWITCH")),
         };
 
         var dialog = new ValueInputForm(
