@@ -58,8 +58,9 @@ CTRL+E, Enable Engine and warning display auto announcements
 Displays and windows:
 shift+e, Route viewer, procedure planning and airport lookup
   Shift+F, Fuel and payload window
+  Shift+T,    Toggle Trim Announcements
   Shift+U,    Engine and warning display window
-  Shift+T,    SD Status window
+  Shift+Y,    SD Status window
   Shift+N,    Navigation display
   Shift+L,    Location Info
   Shift+M,    Show VATSIM METAR Report

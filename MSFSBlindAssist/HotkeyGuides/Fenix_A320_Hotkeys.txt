@@ -81,6 +81,7 @@ control+m, Fenix Monitor Manager
   Shift+E, Route viewer, procedure planner and airport lookup
   Shift+L,    Location Info
   Shift+M,    Show VATSIM METAR Report
+  Shift+T,    Toggle Trim Announcements
   Shift+D,    SimBrief Briefing
   Shift+C,    Show Checklist
 
