@@ -121,18 +121,25 @@ public partial class ValueInputForm : Form
                 btn.Click += (_, _) =>
                 {
                     capturedDef.OnPressed();
-                    Task.Delay(150).ContinueWith(_ =>
+                    // Wait for sim to process, then update ALL toggle buttons
+                    Task.Delay(1200).ContinueWith(_ =>
                     {
-                        if (!capturedBtn.IsDisposed && capturedBtn.IsHandleCreated)
+                        if (capturedBtn.IsDisposed || !capturedBtn.IsHandleCreated) return;
+                        capturedBtn.Invoke(() =>
                         {
-                            capturedBtn.Invoke(() =>
+                            // Update all buttons — pressing one toggle can affect others
+                            for (int j = 0; j < _toggleButtons.Count; j++)
                             {
-                                string newState = capturedDef.GetCurrentState();
-                                capturedBtn.Text = $"{capturedDef.Label}: {newState}";
-                                capturedBtn.AccessibleName = $"{capturedDef.Label}: {newState}";
-                                announcer.AnnounceImmediate($"{capturedDef.Label} {newState}");
-                            });
-                        }
+                                var b = _toggleButtons[j];
+                                var d = _toggleDefs[j];
+                                string s = d.GetCurrentState();
+                                b.Text = $"{d.Label}: {s}";
+                                b.AccessibleName = $"{d.Label}: {s}";
+                            }
+                            // Announce the pressed button's new state
+                            string newState = capturedDef.GetCurrentState();
+                            announcer.AnnounceImmediate($"{capturedDef.Label} {newState}");
+                        });
                     });
                 };
 

@@ -6158,12 +6158,11 @@ public class PMDG777Definition : BaseAircraftDefinition
             new("Intervene", () =>
             {
                 if (dm == null) return "?";
-                return (int)dm.GetFieldValue("MCP_IASBlank") > 0 ? "Blank (FMC)" : "Active";
+                return (int)dm.GetFieldValue("MCP_IASBlank") > 0 ? "Intervene" : "Active";
             }, () => SendPMDGMomentary(simConnect, "EVT_MCP_SPEED_PUSH_SWITCH")),
             new("Mode", () =>
             {
                 if (dm == null) return "?";
-                if ((int)dm.GetFieldValue("MCP_IASBlank") > 0) return "Blank (FMC)";
                 float speed = (float)dm.GetFieldValue("MCP_IASMach");
                 return speed < 10f ? "Mach" : "IAS";
             }, () => SendPMDGMomentary(simConnect, "EVT_MCP_IAS_MACH_SWITCH")),
