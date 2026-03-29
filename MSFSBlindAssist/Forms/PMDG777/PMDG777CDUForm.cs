@@ -438,10 +438,12 @@ public partial class PMDG777CDUForm : Form
 
     private static string MarkSelectedOption(string row, byte[,] colors, int rowIndex)
     {
-        // Check if this row has mixed colors (indicating a toggle like OFF←→ON)
-        // Green (color=2) = selected option
-        bool hasGreen = false;
-        bool hasNonGreen = false;
+        // Detect toggle rows (e.g. "SET←→REMOVED" or "OFF←→ON")
+        // The selected option has a distinct color (green, red, cyan, etc.)
+        // The unselected option is white (color=0) with small font
+        // We detect by finding text segments with different colors
+        bool hasColoredText = false;
+        bool hasWhiteText = false;
 
         for (int col = 0; col < 24 && col < row.Length; col++)
         {
@@ -449,13 +451,13 @@ public partial class PMDG777CDUForm : Form
             if (ch != ' ' && ch != '<' && ch != '>' && ch != '\u2190' && ch != '\u2192')
             {
                 byte c = colors[rowIndex, col];
-                if (c == 2) hasGreen = true;
-                else if (c != 0 || char.IsLetterOrDigit(ch)) hasNonGreen = true;
+                if (c > 0) hasColoredText = true;  // Any non-white color
+                else if (char.IsLetterOrDigit(ch)) hasWhiteText = true;
             }
         }
 
-        // Only mark if there's a toggle (both green and non-green text)
-        if (!hasGreen || !hasNonGreen) return row;
+        // Only mark if there's a toggle (both colored and white text)
+        if (!hasColoredText || !hasWhiteText) return row;
 
         var sb = new System.Text.StringBuilder();
         int i = 0;
@@ -471,9 +473,9 @@ public partial class PMDG777CDUForm : Form
                 continue;
             }
 
-            // Start of a text word — check its color
+            // Start of a text word — colored text is the selected option
             byte segColor = colors[rowIndex, i];
-            string marker = segColor == 2 ? "X " : "  ";
+            string marker = segColor > 0 ? "X " : "  ";
             sb.Append(marker);
 
             // Copy the word
