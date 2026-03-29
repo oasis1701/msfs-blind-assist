@@ -215,25 +215,6 @@ public partial class PMDG777CDUForm : Form
         _dataManager.SendEvent(eventName, (uint)eventId, 1);
     }
 
-    private void SendCDUKeyRelease(string eventSuffix)
-    {
-        string prefix = _selectedCDU switch
-        {
-            1 => "EVT_CDU_C_",
-            2 => "EVT_CDU_R_",
-            _ => "EVT_CDU_L_"
-        };
-
-        string eventName = $"{prefix}{eventSuffix}";
-        if (!PMDG777Definition.EventIds.TryGetValue(eventName, out int eventId))
-        {
-            eventName = $"EVT_CDU_L_{eventSuffix}";
-            if (!PMDG777Definition.EventIds.TryGetValue(eventName, out eventId))
-                return;
-        }
-
-        _dataManager.SendEvent(eventName, (uint)eventId, 0);
-    }
 
     private void OnLineSelect(string suffix, int lineNumber)
     {
@@ -415,10 +396,7 @@ public partial class PMDG777CDUForm : Form
             if (keySuffix != null)
             {
                 SendCDUKey(keySuffix);
-                await Task.Delay(100);
-                // Send release (parameter 0) to complete the press cycle
-                SendCDUKeyRelease(keySuffix);
-                await Task.Delay(100);
+                await Task.Delay(250);
             }
         }
     }
