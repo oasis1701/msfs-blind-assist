@@ -236,7 +236,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["ELEC_annunAPU_GEN_OFF"] = new SimConnect.SimVarDefinition
             {
@@ -246,7 +246,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["ELEC_annunAPU_FAULT"] = new SimConnect.SimVarDefinition
             {
@@ -256,7 +256,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["ELEC_annunBusTieISLN_1"] = new SimConnect.SimVarDefinition
             {
@@ -266,7 +266,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["ELEC_annunBusTieISLN_2"] = new SimConnect.SimVarDefinition
             {
@@ -276,7 +276,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["ELEC_annunExtPwrAVAIL_1"] = new SimConnect.SimVarDefinition
             {
@@ -286,7 +286,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["ELEC_annunExtPwrAVAIL_2"] = new SimConnect.SimVarDefinition
             {
@@ -296,7 +296,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["ELEC_annunGenOFF_1"] = new SimConnect.SimVarDefinition
             {
@@ -306,7 +306,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["ELEC_annunGenOFF_2"] = new SimConnect.SimVarDefinition
             {
@@ -316,7 +316,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["ELEC_annunBackupGenOFF_1"] = new SimConnect.SimVarDefinition
             {
@@ -326,7 +326,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["ELEC_annunBackupGenOFF_2"] = new SimConnect.SimVarDefinition
             {
@@ -336,7 +336,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["ELEC_annunIDGDiscDRIVE_1"] = new SimConnect.SimVarDefinition
             {
@@ -346,7 +346,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["ELEC_annunIDGDiscDRIVE_2"] = new SimConnect.SimVarDefinition
             {
@@ -356,7 +356,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["ELEC_annunCabUtilOFF"] = new SimConnect.SimVarDefinition
             {
@@ -366,7 +366,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["ELEC_annunIFEPassSeatsOFF"] = new SimConnect.SimVarDefinition
             {
@@ -376,7 +376,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["ELEC_annunTowingPowerON_BATT"] = new SimConnect.SimVarDefinition
             {
@@ -386,7 +386,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
 
             // =================================================================
@@ -482,7 +482,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["HYD_annunPrimEngPumpFAULT_2"] = new SimConnect.SimVarDefinition
             {
@@ -492,7 +492,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["HYD_annunPrimElecPumpFAULT_1"] = new SimConnect.SimVarDefinition
             {
@@ -502,7 +502,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["HYD_annunPrimElecPumpFAULT_2"] = new SimConnect.SimVarDefinition
             {
@@ -512,7 +512,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["HYD_annunDemandElecPumpFAULT_1"] = new SimConnect.SimVarDefinition
             {
@@ -522,7 +522,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["HYD_annunDemandElecPumpFAULT_2"] = new SimConnect.SimVarDefinition
             {
@@ -532,7 +532,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["HYD_annunDemandAirPumpFAULT_1"] = new SimConnect.SimVarDefinition
             {
@@ -542,7 +542,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["HYD_annunDemandAirPumpFAULT_2"] = new SimConnect.SimVarDefinition
             {
@@ -552,7 +552,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["HYD_annunRATPress"] = new SimConnect.SimVarDefinition
             {
@@ -562,7 +562,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["HYD_annunRATUnlkd"] = new SimConnect.SimVarDefinition
             {
@@ -572,7 +572,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
 
             // =================================================================
@@ -704,7 +704,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["FUEL_annunAftXFEED_VALVE"] = new SimConnect.SimVarDefinition
             {
@@ -714,7 +714,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["FUEL_annunLOWPRESS_Fwd_1"] = new SimConnect.SimVarDefinition
             {
@@ -724,7 +724,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["FUEL_annunLOWPRESS_Fwd_2"] = new SimConnect.SimVarDefinition
             {
@@ -734,7 +734,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["FUEL_annunLOWPRESS_Aft_1"] = new SimConnect.SimVarDefinition
             {
@@ -744,7 +744,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["FUEL_annunLOWPRESS_Aft_2"] = new SimConnect.SimVarDefinition
             {
@@ -754,7 +754,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["FUEL_annunLOWPRESS_Ctr_1"] = new SimConnect.SimVarDefinition
             {
@@ -764,7 +764,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["FUEL_annunLOWPRESS_Ctr_2"] = new SimConnect.SimVarDefinition
             {
@@ -774,7 +774,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["FUEL_annunJettisonNozzleVALVE_1"] = new SimConnect.SimVarDefinition
             {
@@ -784,7 +784,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["FUEL_annunJettisonNozzleVALVE_2"] = new SimConnect.SimVarDefinition
             {
@@ -794,7 +794,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["FUEL_annunArmFAULT"] = new SimConnect.SimVarDefinition
             {
@@ -804,7 +804,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["FUEL_AuxPump"] = new SimConnect.SimVarDefinition
             {
@@ -873,7 +873,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["ENG_annunALTN_R"] = new SimConnect.SimVarDefinition
             {
@@ -883,7 +883,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["ENG_annunAutostartOFF"] = new SimConnect.SimVarDefinition
             {
@@ -893,7 +893,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
 
             // =================================================================
@@ -962,7 +962,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["AIR_annunEngBleedOFF_2"] = new SimConnect.SimVarDefinition
             {
@@ -972,7 +972,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["AIR_annunAPUBleedOFF"] = new SimConnect.SimVarDefinition
             {
@@ -982,7 +982,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["AIR_annunIsolationValveCLOSED_L"] = new SimConnect.SimVarDefinition
             {
@@ -992,7 +992,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["AIR_annunIsolationValveCLOSED_R"] = new SimConnect.SimVarDefinition
             {
@@ -1002,7 +1002,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["AIR_annunCtrIsolationValveCLOSED"] = new SimConnect.SimVarDefinition
             {
@@ -1012,7 +1012,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
 
             // =================================================================
@@ -1126,7 +1126,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["AIR_annunPackOFF_2"] = new SimConnect.SimVarDefinition
             {
@@ -1136,7 +1136,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["AIR_annunTrimAirFAULT_1"] = new SimConnect.SimVarDefinition
             {
@@ -1146,7 +1146,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["AIR_annunTrimAirFAULT_2"] = new SimConnect.SimVarDefinition
             {
@@ -1156,7 +1156,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["AIR_annunEquipCoolingOVRD"] = new SimConnect.SimVarDefinition
             {
@@ -1166,7 +1166,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["AIR_annunAltnVentFAULT"] = new SimConnect.SimVarDefinition
             {
@@ -1176,7 +1176,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["AIR_MainDeckFlow"] = new SimConnect.SimVarDefinition
             {
@@ -1254,7 +1254,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["AIR_annunOutflowValveMAN_2"] = new SimConnect.SimVarDefinition
             {
@@ -1264,7 +1264,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
 
             // =================================================================
@@ -1342,7 +1342,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["ICE_annunWindowHeatINOP_2"] = new SimConnect.SimVarDefinition
             {
@@ -1352,7 +1352,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["ICE_annunWindowHeatINOP_3"] = new SimConnect.SimVarDefinition
             {
@@ -1362,7 +1362,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["ICE_annunWindowHeatINOP_4"] = new SimConnect.SimVarDefinition
             {
@@ -1372,7 +1372,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
 
             // =================================================================
@@ -1542,7 +1542,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["FIRE_annunCargoFire_2"] = new SimConnect.SimVarDefinition
             {
@@ -1552,7 +1552,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["FIRE_annunCargoDISCH"] = new SimConnect.SimVarDefinition
             {
@@ -1562,7 +1562,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["FIRE_annunAPU_BTL_DISCH"] = new SimConnect.SimVarDefinition
             {
@@ -1572,7 +1572,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["FIRE_annunEngHandle_1"] = new SimConnect.SimVarDefinition
             {
@@ -1582,7 +1582,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["FIRE_annunEngHandle_2"] = new SimConnect.SimVarDefinition
             {
@@ -1592,7 +1592,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["FIRE_annunAPUHandleIllum"] = new SimConnect.SimVarDefinition
             {
@@ -1602,7 +1602,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["FIRE_annunMainDeckCargoFire"] = new SimConnect.SimVarDefinition
             {
@@ -1612,7 +1612,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["FIRE_annunCargoDEPR"] = new SimConnect.SimVarDefinition
             {
@@ -1622,7 +1622,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
 
             // =================================================================
@@ -1794,7 +1794,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
 
             // =================================================================
@@ -2084,7 +2084,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["FCTL_annunWingHydVALVE_CLOSED_R"] = new SimConnect.SimVarDefinition
             {
@@ -2094,7 +2094,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["FCTL_annunWingHydVALVE_CLOSED_C"] = new SimConnect.SimVarDefinition
             {
@@ -2104,7 +2104,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["FCTL_annunTailHydVALVE_CLOSED_L"] = new SimConnect.SimVarDefinition
             {
@@ -2114,7 +2114,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["FCTL_annunTailHydVALVE_CLOSED_R"] = new SimConnect.SimVarDefinition
             {
@@ -2124,7 +2124,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["FCTL_annunTailHydVALVE_CLOSED_C"] = new SimConnect.SimVarDefinition
             {
@@ -2134,7 +2134,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["FCTL_annunPrimFltComputersDISC"] = new SimConnect.SimVarDefinition
             {
@@ -2144,7 +2144,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
 
             // =================================================================
@@ -2953,7 +2953,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["MCP_annunAP_R"] = new SimConnect.SimVarDefinition
             {
@@ -2963,7 +2963,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["MCP_annunAT"] = new SimConnect.SimVarDefinition
             {
@@ -2973,7 +2973,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["MCP_annunLNAV"] = new SimConnect.SimVarDefinition
             {
@@ -2983,7 +2983,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["MCP_annunVNAV"] = new SimConnect.SimVarDefinition
             {
@@ -2993,7 +2993,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["MCP_annunFLCH"] = new SimConnect.SimVarDefinition
             {
@@ -3003,7 +3003,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["MCP_annunHDG_HOLD"] = new SimConnect.SimVarDefinition
             {
@@ -3013,7 +3013,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["MCP_annunVS_FPA"] = new SimConnect.SimVarDefinition
             {
@@ -3023,7 +3023,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["MCP_annunALT_HOLD"] = new SimConnect.SimVarDefinition
             {
@@ -3033,7 +3033,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["MCP_annunLOC"] = new SimConnect.SimVarDefinition
             {
@@ -3043,7 +3043,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["MCP_annunAPP"] = new SimConnect.SimVarDefinition
             {
@@ -3053,7 +3053,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             // MCP — Display state variables (monitored, not in panel controls)
             ["MCP_IASBlank"] = new SimConnect.SimVarDefinition
@@ -3263,7 +3263,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["DSP_annunR_INBD"] = new SimConnect.SimVarDefinition
             {
@@ -3273,7 +3273,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["DSP_annunLWR_CTR"] = new SimConnect.SimVarDefinition
             {
@@ -3283,7 +3283,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
 
             // =================================================================
@@ -3315,7 +3315,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["WARN_annunMasterWarning_R"] = new SimConnect.SimVarDefinition
             {
@@ -3325,7 +3325,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["WARN_annunMasterCaution_L"] = new SimConnect.SimVarDefinition
             {
@@ -3335,7 +3335,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["WARN_annunMasterCaution_R"] = new SimConnect.SimVarDefinition
             {
@@ -3345,7 +3345,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
 
             // =================================================================
@@ -3412,7 +3412,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
 
             // =================================================================
@@ -3471,7 +3471,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["GPWS_annunGND_PROX_bottom"] = new SimConnect.SimVarDefinition
             {
@@ -3481,7 +3481,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
 
             // =================================================================
@@ -3594,7 +3594,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             // ISFD momentary buttons
             ["ISFD_Baro"] = new SimConnect.SimVarDefinition
@@ -3948,7 +3948,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["CDU_annunEXEC_C"] = new SimConnect.SimVarDefinition
             {
@@ -3958,7 +3958,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["CDU_annunEXEC_R"] = new SimConnect.SimVarDefinition
             {
@@ -3968,7 +3968,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["CDU_annunDSPY_L"] = new SimConnect.SimVarDefinition
             {
@@ -3978,7 +3978,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["CDU_annunDSPY_C"] = new SimConnect.SimVarDefinition
             {
@@ -3988,7 +3988,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["CDU_annunDSPY_R"] = new SimConnect.SimVarDefinition
             {
@@ -3998,7 +3998,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["CDU_annunFAIL_L"] = new SimConnect.SimVarDefinition
             {
@@ -4008,7 +4008,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["CDU_annunFAIL_C"] = new SimConnect.SimVarDefinition
             {
@@ -4018,7 +4018,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["CDU_annunFAIL_R"] = new SimConnect.SimVarDefinition
             {
@@ -4028,7 +4028,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["CDU_annunMSG_L"] = new SimConnect.SimVarDefinition
             {
@@ -4038,7 +4038,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["CDU_annunMSG_C"] = new SimConnect.SimVarDefinition
             {
@@ -4048,7 +4048,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["CDU_annunMSG_R"] = new SimConnect.SimVarDefinition
             {
@@ -4058,7 +4058,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["CDU_annunOFST_L"] = new SimConnect.SimVarDefinition
             {
@@ -4068,7 +4068,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["CDU_annunOFST_C"] = new SimConnect.SimVarDefinition
             {
@@ -4078,7 +4078,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
             ["CDU_annunOFST_R"] = new SimConnect.SimVarDefinition
             {
@@ -4088,7 +4088,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
 
             // =================================================================
@@ -4196,7 +4196,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
 
             // =================================================================
@@ -5605,15 +5605,13 @@ public class PMDG777Definition : BaseAircraftDefinition
         // Master warning and caution
         if (varName == "WARN_annunMasterWarning_L" || varName == "WARN_annunMasterWarning_R")
         {
-            if (value > 0)
-                announcer.Announce("Master WARNING");
+            announcer.Announce(value > 0 ? "Master WARNING" : "Master WARNING cleared");
             return true;
         }
 
         if (varName == "WARN_annunMasterCaution_L" || varName == "WARN_annunMasterCaution_R")
         {
-            if (value > 0)
-                announcer.Announce("Master CAUTION");
+            announcer.Announce(value > 0 ? "Master CAUTION" : "Master CAUTION cleared");
             return true;
         }
 
