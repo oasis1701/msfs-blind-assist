@@ -131,7 +131,16 @@ public partial class PMDG777CDUForm : Form
         // Build display lines
         var lines = new List<string>(rows.Length);
         for (int i = 0; i < rows.Length; i++)
-            lines.Add(rows[i]);
+        {
+            if (i == 0)
+                lines.Add(rows[i]); // Title row
+            else if (i == 13)
+                lines.Add($"SP: {rows[i]}"); // Scratchpad
+            else if (i % 2 == 1)
+                lines.Add($"{(i + 1) / 2}H: {rows[i]}"); // Header rows (1H, 2H, 3H...)
+            else
+                lines.Add($"{i / 2}: {rows[i]}"); // Data rows (1, 2, 3...)
+        }
 
         // Update ListBox items efficiently
         int savedIndex = cduDisplay.SelectedIndex;
