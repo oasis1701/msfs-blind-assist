@@ -20,6 +20,7 @@ public partial class PMDG777CDUForm : Form
     private string _previousScratchpad = "";
     private int _selectedCDU = 0;
     private IntPtr _previousWindow = IntPtr.Zero;
+    private bool _typingInProgress = false;
 
     public PMDG777CDUForm(PMDG777DataManager dataManager, ScreenReaderAnnouncer announcer)
     {
@@ -162,12 +163,13 @@ public partial class PMDG777CDUForm : Form
         }
         cduDisplay.EndUpdate();
 
-        // Announce title change
+        // Announce title change (suppressed while typing)
         bool titleChanged = !string.IsNullOrWhiteSpace(title) &&
                             (_previousRows == null || title != _previousRows[0].Trim());
         if (titleChanged)
         {
-            _announcer.Announce($"Page: {title}");
+            if (!_typingInProgress)
+                _announcer.Announce($"Page: {title}");
             if (cduDisplay.Items.Count > 0)
                 cduDisplay.SelectedIndex = 0;
         }
@@ -176,13 +178,16 @@ public partial class PMDG777CDUForm : Form
             cduDisplay.SelectedIndex = savedIndex;
         }
 
-        // Announce scratchpad change
+        // Announce scratchpad change (suppressed while typing)
         if (scratchpad != _previousScratchpad)
         {
-            string msg = string.IsNullOrWhiteSpace(scratchpad)
-                ? "Scratchpad cleared"
-                : $"Scratchpad: {scratchpad}";
-            _announcer.Announce(msg);
+            if (!_typingInProgress)
+            {
+                string msg = string.IsNullOrWhiteSpace(scratchpad)
+                    ? "Scratchpad cleared"
+                    : $"Scratchpad: {scratchpad}";
+                _announcer.Announce(msg);
+            }
             _previousScratchpad = scratchpad;
         }
 
@@ -370,6 +375,7 @@ public partial class PMDG777CDUForm : Form
 
     private async Task SendTextToCDU(string text)
     {
+        _typingInProgress = true;
         foreach (char c in text)
         {
             string? keySuffix = c switch
@@ -399,6 +405,12 @@ public partial class PMDG777CDUForm : Form
                 await Task.Delay(350);
             }
         }
+        _typingInProgress = false;
+
+        // Announce final scratchpad state after typing completes
+        await Task.Delay(500); // Wait for CDU to update
+        if (!string.IsNullOrWhiteSpace(_previousScratchpad))
+            _announcer.Announce($"Scratchpad: {_previousScratchpad}");
     }
 
     // ------------------------------------------------------------------
