@@ -283,8 +283,8 @@ public partial class PMDG777CDUForm : Form
             return;
         }
 
-        // Backspace (when not in scratchpad input) → CLR/DEL
-        if (e.KeyCode == Keys.Back && !e.Control && !e.Alt && !(sender is TextBox))
+        // Backspace (when CDU display is focused) → CLR/DEL
+        if (e.KeyCode == Keys.Back && !e.Control && !e.Alt && ActiveControl == cduDisplay)
         {
             ClearOrDelete();
             e.Handled = true;
