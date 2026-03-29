@@ -78,8 +78,7 @@ public partial class PMDG777CDUForm : Form
 
         // Special buttons
         btnExec.Click += (s, e) => SendCDUKey("EXEC");
-        btnClr.Click  += (s, e) => SendCDUKey("CLR");
-        btnDel.Click  += (s, e) => SendCDUKey("DEL");
+        btnClr.Click  += (s, e) => ClearOrDelete();
     }
 
     // ------------------------------------------------------------------
@@ -221,6 +220,16 @@ public partial class PMDG777CDUForm : Form
         SendCDUKey(suffix);
     }
 
+    private void ClearOrDelete()
+    {
+        // If CDU scratchpad has content → CLR (clear it)
+        // If CDU scratchpad is empty → DEL (puts "DELETE" in scratchpad for field deletion)
+        if (!string.IsNullOrWhiteSpace(_previousScratchpad))
+            SendCDUKey("CLR");
+        else
+            SendCDUKey("DEL");
+    }
+
     // ------------------------------------------------------------------
     // Keyboard shortcuts
     // ------------------------------------------------------------------
@@ -292,6 +301,15 @@ public partial class PMDG777CDUForm : Form
             return;
         }
 
+        // Alt+C: combined CLR/DEL
+        if (e.Alt && !e.Control && !e.Shift && e.KeyCode == Keys.C)
+        {
+            ClearOrDelete();
+            e.Handled = true;
+            e.SuppressKeyPress = true;
+            return;
+        }
+
         // Alt+letter: page button hotkeys
         if (e.Alt && !e.Control && !e.Shift)
         {
@@ -308,8 +326,6 @@ public partial class PMDG777CDUForm : Form
                 Keys.P => "PROG",
                 Keys.E => "EXEC",
                 Keys.M => "MENU",
-                Keys.C => "CLR",
-                Keys.L => "DEL",
                 Keys.O => "FMCCOMM",
                 _ => null
             };
@@ -336,7 +352,7 @@ public partial class PMDG777CDUForm : Form
         }
         else if (e.KeyCode == Keys.Back && scratchpadInput.Text.Length == 0)
         {
-            SendCDUKey("CLR");
+            ClearOrDelete();
             e.Handled = true;
             e.SuppressKeyPress = true;
         }

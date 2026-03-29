@@ -25,7 +25,6 @@ public partial class PMDG777CDUForm
     // Special buttons
     private Button btnExec = null!;
     private Button btnClr = null!;
-    private Button btnDel = null!;
 
     private void InitializeComponent()
     {
@@ -112,8 +111,7 @@ public partial class PMDG777CDUForm
 
         // Special buttons
         btnExec = CreatePageButton("Exec",   "EXEC", 10,  y, 100, pageBtnHeight);
-        btnClr  = CreatePageButton("CLR",    "CLR",  120, y, 100, pageBtnHeight);
-        btnDel  = CreatePageButton("DEL",    "DEL",  230, y, 100, pageBtnHeight);
+        btnClr  = CreatePageButton("CLR/DEL","CLR",  120, y, 100, pageBtnHeight);
 
         // Button accessible names: label + hotkey
         btnInitRef.AccessibleName = "Init Ref (Alt+I)";
@@ -130,8 +128,7 @@ public partial class PMDG777CDUForm
         btnPrevPage.AccessibleName = "Prev Page (PageUp)";
         btnNextPage.AccessibleName = "Next Page (PageDown)";
         btnExec.AccessibleName = "Execute (Alt+E)";
-        btnClr.AccessibleName = "CLR (Alt+C)";
-        btnDel.AccessibleName = "DEL (Alt+L)";
+        btnClr.AccessibleName = "CLR/DEL (Alt+C)";
 
         // Add all controls
         this.Controls.AddRange(new Control[]
@@ -139,7 +136,7 @@ public partial class PMDG777CDUForm
             statusLabel, cduSelector, cduDisplay, scratchpadInput,
             btnInitRef, btnRte, btnDepArr, btnAltn, btnVnav, btnFix, btnLegs,
             btnHold, btnFmcComm, btnProg, btnMenu, btnPrevPage, btnNextPage,
-            btnExec, btnClr, btnDel
+            btnExec, btnClr
         });
 
         // Set logical tab order
@@ -162,7 +159,6 @@ public partial class PMDG777CDUForm
         btnNextPage.TabIndex = tabIdx++;
         btnExec.TabIndex = tabIdx++;
         btnClr.TabIndex  = tabIdx++;
-        btnDel.TabIndex  = tabIdx++;
 
         this.ResumeLayout(false);
     }
