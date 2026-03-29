@@ -78,6 +78,7 @@ public class HotkeyManager : IDisposable
         private const int HOTKEY_WAYPOINT_INFO = 9055;
         private const int HOTKEY_ECAM_DISPLAY = 9056;
         private const int HOTKEY_STATUS_DISPLAY = 9057;
+        private const int HOTKEY_TOGGLE_TRIM = 9100;
         private const int HOTKEY_TAKEOFF_ASSIST = 9058;
         private const int HOTKEY_TOGGLE_ECAM_MONITORING = 9059;
         private const int HOTKEY_HAND_FLY_MODE = 9075;
@@ -307,6 +308,9 @@ public class HotkeyManager : IDisposable
                             break;
                         case HOTKEY_STATUS_DISPLAY:
                             TriggerHotkey(HotkeyAction.ShowStatusPage);
+                            break;
+                        case HOTKEY_TOGGLE_TRIM:
+                            TriggerHotkey(HotkeyAction.ToggleTrimAnnouncements);
                             break;
                         case HOTKEY_TAKEOFF_ASSIST:
                             TriggerHotkey(HotkeyAction.ToggleTakeoffAssist);
@@ -568,7 +572,8 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_NAV_DISPLAY, MOD_SHIFT, 0x4E);    // Shift+N (Navigation Display)
             RegisterHotKey(windowHandle, HOTKEY_WAYPOINT_INFO, MOD_NONE, 0x57);  // W (Waypoint Info)
             RegisterHotKey(windowHandle, HOTKEY_ECAM_DISPLAY, MOD_SHIFT, 0x55);  // Shift+U (ECAM Display)
-            RegisterHotKey(windowHandle, HOTKEY_STATUS_DISPLAY, MOD_SHIFT, 0x54); // Shift+T (STATUS Display)
+            RegisterHotKey(windowHandle, HOTKEY_STATUS_DISPLAY, MOD_SHIFT, 0x59); // Shift+Y (STATUS Display)
+            RegisterHotKey(windowHandle, HOTKEY_TOGGLE_TRIM, MOD_SHIFT, 0x54);   // Shift+T (Toggle Trim Announcements)
             RegisterHotKey(windowHandle, HOTKEY_TAKEOFF_ASSIST, MOD_CONTROL, 0x54); // Ctrl+T (Takeoff Assist)
             RegisterHotKey(windowHandle, HOTKEY_TOGGLE_ECAM_MONITORING, MOD_CONTROL, 0x45); // Ctrl+E (Toggle ECAM Monitoring)
             RegisterHotKey(windowHandle, HOTKEY_MONITOR_MANAGER, MOD_CONTROL, 0x4D); // Ctrl+M (Monitor Manager - per-aircraft)
@@ -646,6 +651,7 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_WAYPOINT_INFO);
             UnregisterHotKey(windowHandle, HOTKEY_ECAM_DISPLAY);
             UnregisterHotKey(windowHandle, HOTKEY_STATUS_DISPLAY);
+            UnregisterHotKey(windowHandle, HOTKEY_TOGGLE_TRIM);
             UnregisterHotKey(windowHandle, HOTKEY_TAKEOFF_ASSIST);
             UnregisterHotKey(windowHandle, HOTKEY_TOGGLE_ECAM_MONITORING);
             UnregisterHotKey(windowHandle, HOTKEY_MONITOR_MANAGER);
@@ -1038,4 +1044,5 @@ public class HotkeyManager : IDisposable
         ReadDistanceToTOD,
         ReadDistanceToDest,
         ReadThrustLimitMode,
+        ToggleTrimAnnouncements,
     }
