@@ -61,20 +61,6 @@ public partial class PMDG777CDUForm : Form
             _previousScratchpad = "";
         };
 
-        // Line select button click handlers
-        btnL1.Click += (s, e) => OnLineSelect("L1", 1);
-        btnL2.Click += (s, e) => OnLineSelect("L2", 2);
-        btnL3.Click += (s, e) => OnLineSelect("L3", 3);
-        btnL4.Click += (s, e) => OnLineSelect("L4", 4);
-        btnL5.Click += (s, e) => OnLineSelect("L5", 5);
-        btnL6.Click += (s, e) => OnLineSelect("L6", 6);
-        btnR1.Click += (s, e) => OnLineSelect("R1", 1);
-        btnR2.Click += (s, e) => OnLineSelect("R2", 2);
-        btnR3.Click += (s, e) => OnLineSelect("R3", 3);
-        btnR4.Click += (s, e) => OnLineSelect("R4", 4);
-        btnR5.Click += (s, e) => OnLineSelect("R5", 5);
-        btnR6.Click += (s, e) => OnLineSelect("R6", 6);
-
         // Page button click handlers
         btnInitRef.Click  += (s, e) => SendCDUKey("INIT_REF");
         btnRte.Click      += (s, e) => SendCDUKey("RTE");
@@ -87,7 +73,6 @@ public partial class PMDG777CDUForm : Form
         btnFmcComm.Click  += (s, e) => SendCDUKey("FMCCOMM");
         btnProg.Click     += (s, e) => SendCDUKey("PROG");
         btnMenu.Click     += (s, e) => SendCDUKey("MENU");
-        btnNavRad.Click   += (s, e) => SendCDUKey("NAV_RAD");
         btnPrevPage.Click += (s, e) => SendCDUKey("PREV_PAGE");
         btnNextPage.Click += (s, e) => SendCDUKey("NEXT_PAGE");
 

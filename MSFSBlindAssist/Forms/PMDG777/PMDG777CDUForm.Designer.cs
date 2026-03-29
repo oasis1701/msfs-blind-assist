@@ -7,20 +7,6 @@ public partial class PMDG777CDUForm
     private TextBox scratchpadInput = null!;
     private ComboBox cduSelector = null!;
 
-    // Line select buttons
-    private Button btnL1 = null!;
-    private Button btnL2 = null!;
-    private Button btnL3 = null!;
-    private Button btnL4 = null!;
-    private Button btnL5 = null!;
-    private Button btnL6 = null!;
-    private Button btnR1 = null!;
-    private Button btnR2 = null!;
-    private Button btnR3 = null!;
-    private Button btnR4 = null!;
-    private Button btnR5 = null!;
-    private Button btnR6 = null!;
-
     // Page buttons
     private Button btnInitRef = null!;
     private Button btnRte = null!;
@@ -33,7 +19,6 @@ public partial class PMDG777CDUForm
     private Button btnFmcComm = null!;
     private Button btnProg = null!;
     private Button btnMenu = null!;
-    private Button btnNavRad = null!;
     private Button btnPrevPage = null!;
     private Button btnNextPage = null!;
 
@@ -47,7 +32,7 @@ public partial class PMDG777CDUForm
         this.SuspendLayout();
 
         this.Text = "PMDG 777 CDU";
-        this.Size = new Size(600, 750);
+        this.Size = new Size(600, 540);
         this.FormBorderStyle = FormBorderStyle.FixedDialog;
         this.MaximizeBox = false;
         this.MinimizeBox = false;
@@ -107,38 +92,7 @@ public partial class PMDG777CDUForm
         };
         y += 35;
 
-        // Line select buttons — two columns: L1-L6 on left, R1-R6 on right
-        int lskBtnWidth = 120;
-        int lskBtnHeight = 28;
-        int lskSpacing = 4;
-        int lCol = 10;
-        int rCol = 460;
-
-        btnL1 = CreateLineSelectButton("L1", "L1", lCol, y, lskBtnWidth, lskBtnHeight);
-        btnR1 = CreateLineSelectButton("R1", "R1", rCol, y, lskBtnWidth, lskBtnHeight);
-        y += lskBtnHeight + lskSpacing;
-
-        btnL2 = CreateLineSelectButton("L2", "L2", lCol, y, lskBtnWidth, lskBtnHeight);
-        btnR2 = CreateLineSelectButton("R2", "R2", rCol, y, lskBtnWidth, lskBtnHeight);
-        y += lskBtnHeight + lskSpacing;
-
-        btnL3 = CreateLineSelectButton("L3", "L3", lCol, y, lskBtnWidth, lskBtnHeight);
-        btnR3 = CreateLineSelectButton("R3", "R3", rCol, y, lskBtnWidth, lskBtnHeight);
-        y += lskBtnHeight + lskSpacing;
-
-        btnL4 = CreateLineSelectButton("L4", "L4", lCol, y, lskBtnWidth, lskBtnHeight);
-        btnR4 = CreateLineSelectButton("R4", "R4", rCol, y, lskBtnWidth, lskBtnHeight);
-        y += lskBtnHeight + lskSpacing;
-
-        btnL5 = CreateLineSelectButton("L5", "L5", lCol, y, lskBtnWidth, lskBtnHeight);
-        btnR5 = CreateLineSelectButton("R5", "R5", rCol, y, lskBtnWidth, lskBtnHeight);
-        y += lskBtnHeight + lskSpacing;
-
-        btnL6 = CreateLineSelectButton("L6", "L6", lCol, y, lskBtnWidth, lskBtnHeight);
-        btnR6 = CreateLineSelectButton("R6", "R6", rCol, y, lskBtnWidth, lskBtnHeight);
-        y += lskBtnHeight + lskSpacing + 6;
-
-        // Page buttons — two rows of 7
+        // Page buttons — two rows of 7 and 6
         int pageBtnWidth = 78;
         int pageBtnHeight = 28;
         int pageSpacing = 4;
@@ -157,9 +111,8 @@ public partial class PMDG777CDUForm
         btnFmcComm  = CreatePageButton("FMC Comm",   "FMCCOMM",   pageStartX + 1  * (pageBtnWidth + pageSpacing), y, pageBtnWidth, pageBtnHeight);
         btnProg     = CreatePageButton("Prog",       "PROG",      pageStartX + 2  * (pageBtnWidth + pageSpacing), y, pageBtnWidth, pageBtnHeight);
         btnMenu     = CreatePageButton("Menu",       "MENU",      pageStartX + 3  * (pageBtnWidth + pageSpacing), y, pageBtnWidth, pageBtnHeight);
-        btnNavRad   = CreatePageButton("Nav Rad",    "NAV_RAD",   pageStartX + 4  * (pageBtnWidth + pageSpacing), y, pageBtnWidth, pageBtnHeight);
-        btnPrevPage = CreatePageButton("Prev Page",  "PREV_PAGE", pageStartX + 5  * (pageBtnWidth + pageSpacing), y, pageBtnWidth, pageBtnHeight);
-        btnNextPage = CreatePageButton("Next Page",  "NEXT_PAGE", pageStartX + 6  * (pageBtnWidth + pageSpacing), y, pageBtnWidth, pageBtnHeight);
+        btnPrevPage = CreatePageButton("Prev Page",  "PREV_PAGE", pageStartX + 4  * (pageBtnWidth + pageSpacing), y, pageBtnWidth, pageBtnHeight);
+        btnNextPage = CreatePageButton("Next Page",  "NEXT_PAGE", pageStartX + 5  * (pageBtnWidth + pageSpacing), y, pageBtnWidth, pageBtnHeight);
         y += pageBtnHeight + pageSpacing + 6;
 
         // Special buttons
@@ -178,10 +131,8 @@ public partial class PMDG777CDUForm
         this.Controls.AddRange(new Control[]
         {
             statusLabel, cduSelector, cduDisplay, scratchpadInput,
-            btnL1, btnL2, btnL3, btnL4, btnL5, btnL6,
-            btnR1, btnR2, btnR3, btnR4, btnR5, btnR6,
             btnInitRef, btnRte, btnDepArr, btnAltn, btnVnav, btnFix, btnLegs,
-            btnHold, btnFmcComm, btnProg, btnMenu, btnNavRad, btnPrevPage, btnNextPage,
+            btnHold, btnFmcComm, btnProg, btnMenu, btnPrevPage, btnNextPage,
             btnExec, btnClr, btnDel
         });
 
@@ -190,18 +141,6 @@ public partial class PMDG777CDUForm
         cduDisplay.TabIndex     = tabIdx++;
         scratchpadInput.TabIndex = tabIdx++;
         cduSelector.TabIndex    = tabIdx++;
-        btnL1.TabIndex = tabIdx++;
-        btnR1.TabIndex = tabIdx++;
-        btnL2.TabIndex = tabIdx++;
-        btnR2.TabIndex = tabIdx++;
-        btnL3.TabIndex = tabIdx++;
-        btnR3.TabIndex = tabIdx++;
-        btnL4.TabIndex = tabIdx++;
-        btnR4.TabIndex = tabIdx++;
-        btnL5.TabIndex = tabIdx++;
-        btnR5.TabIndex = tabIdx++;
-        btnL6.TabIndex = tabIdx++;
-        btnR6.TabIndex = tabIdx++;
         btnInitRef.TabIndex  = tabIdx++;
         btnRte.TabIndex      = tabIdx++;
         btnDepArr.TabIndex   = tabIdx++;
@@ -213,7 +152,6 @@ public partial class PMDG777CDUForm
         btnFmcComm.TabIndex  = tabIdx++;
         btnProg.TabIndex     = tabIdx++;
         btnMenu.TabIndex     = tabIdx++;
-        btnNavRad.TabIndex   = tabIdx++;
         btnPrevPage.TabIndex = tabIdx++;
         btnNextPage.TabIndex = tabIdx++;
         btnExec.TabIndex = tabIdx++;
@@ -221,18 +159,6 @@ public partial class PMDG777CDUForm
         btnDel.TabIndex  = tabIdx++;
 
         this.ResumeLayout(false);
-    }
-
-    private static Button CreateLineSelectButton(string text, string suffix, int x, int y, int width, int height)
-    {
-        return new Button
-        {
-            Text = text,
-            Location = new Point(x, y),
-            Size = new Size(width, height),
-            AccessibleName = $"Line select {suffix}",
-            AccessibleDescription = $"Select CDU line {suffix} (Ctrl+{suffix[1]} for left, Alt+{suffix[1]} for right)"
-        };
     }
 
     private static Button CreatePageButton(string text, string suffix, int x, int y, int width, int height)
