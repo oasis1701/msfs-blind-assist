@@ -806,6 +806,15 @@ public class PMDG777Definition : BaseAircraftDefinition
                 OnlyAnnounceValueDescriptionMatches = true,
                 ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
             },
+            ["FUEL_AuxPump"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FUEL_PumpAux_Sw",
+                DisplayName = "Aux Fuel Pump",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
 
             // =================================================================
             // ENGINES
@@ -1168,6 +1177,15 @@ public class PMDG777Definition : BaseAircraftDefinition
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
                 ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+            ["AIR_MainDeckFlow"] = new SimConnect.SimVarDefinition
+            {
+                Name = "AIR_MainDeckFlowSw_NORM",
+                DisplayName = "Main Deck Flow",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "High", [1] = "Normal" }
             },
 
             // =================================================================
@@ -1682,6 +1700,15 @@ public class PMDG777Definition : BaseAircraftDefinition
                 IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
             },
+            ["LTS_CameraLights"] = new SimConnect.SimVarDefinition
+            {
+                Name = "LTS_Camera_LTS_Sw_ON",
+                DisplayName = "Camera Lights",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
 
             // =================================================================
             // SIGNS
@@ -1712,6 +1739,15 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "On" }
+            },
+            ["OXY_Suprnmry"] = new SimConnect.SimVarDefinition
+            {
+                Name = "OXY_Suprnmry_Sw_On",
+                DisplayName = "Supernumerary Oxygen",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
             },
             // Signs annunciators
             ["OXY_annunPassOxygenON"] = new SimConnect.SimVarDefinition
@@ -1994,6 +2030,15 @@ public class PMDG777Definition : BaseAircraftDefinition
                 IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "Disc", [1] = "Auto" }
             },
+            ["FCTL_ThrustAsymComp"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FCTL_ThrustAsymComp_Sw_AUTO",
+                DisplayName = "Thrust Asymmetry Comp",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Auto" }
+            },
             // Flight controls annunciators
             ["FCTL_annunWingHydVALVE_CLOSED_L"] = new SimConnect.SimVarDefinition
             {
@@ -2095,6 +2140,33 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Batt" }
+            },
+            ["CVR_Test"] = new SimConnect.SimVarDefinition
+            {
+                Name = "CVR_Test",
+                DisplayName = "CVR Test",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Never,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
+            ["CVR_Erase"] = new SimConnect.SimVarDefinition
+            {
+                Name = "CVR_Erase",
+                DisplayName = "CVR Erase",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Never,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
+            ["ELEC_GndTest"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ELEC_GndTest",
+                DisplayName = "Ground Test",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Never,
+                RenderAsButton = true,
+                IsMomentary = true
             },
 
             // =================================================================
@@ -4450,7 +4522,8 @@ public class PMDG777Definition : BaseAircraftDefinition
                 "ELEC_Gen_1", "ELEC_Gen_2",
                 "ELEC_BackupGen_1", "ELEC_BackupGen_2",
                 "ELEC_IDGDisc_1", "ELEC_IDGDisc_2",
-                "ELEC_CabUtil", "ELEC_IFEPassSeats", "ELEC_StandbyPwr"
+                "ELEC_CabUtil", "ELEC_IFEPassSeats", "ELEC_StandbyPwr",
+                "ELEC_GndTest"
             },
 
             // Overhead — Hydraulic
@@ -4471,7 +4544,8 @@ public class PMDG777Definition : BaseAircraftDefinition
                 "FUEL_CtrPump_1", "FUEL_CtrPump_2",
                 "FUEL_CrossfeedFwd", "FUEL_CrossfeedAft",
                 "FUEL_JettisonNozzleL", "FUEL_JettisonNozzleR",
-                "FUEL_JettisonArm", "FUEL_FuelToRemainPulled"
+                "FUEL_JettisonArm", "FUEL_FuelToRemainPulled",
+                "FUEL_AuxPump"
             },
 
             // Overhead — Engines
@@ -4497,7 +4571,8 @@ public class PMDG777Definition : BaseAircraftDefinition
                 "AIR_TrimAir_1", "AIR_TrimAir_2",
                 "AIR_RecircFanUpper", "AIR_RecircFanLower",
                 "AIR_EquipCooling", "AIR_Gasper", "AIR_AltnVent",
-                "AIR_AirCondReset"
+                "AIR_AirCondReset",
+                "AIR_MainDeckFlow"
             },
 
             // Overhead — Pressurization
@@ -4528,13 +4603,15 @@ public class PMDG777Definition : BaseAircraftDefinition
                 "LTS_LandingLightL", "LTS_LandingLightR", "LTS_LandingLightNose",
                 "LTS_RunwayTurnoffL", "LTS_RunwayTurnoffR",
                 "LTS_Taxi", "LTS_Strobe", "LTS_Beacon",
-                "LTS_NAV", "LTS_Logo", "LTS_Wing", "LTS_Storm"
+                "LTS_NAV", "LTS_Logo", "LTS_Wing", "LTS_Storm",
+                "LTS_CameraLights"
             },
 
             // Overhead — Signs
             ["Signs"] = new List<string>
             {
-                "SIGNS_NoSmoking", "SIGNS_SeatBelts", "OXY_PassOxygen"
+                "SIGNS_NoSmoking", "SIGNS_SeatBelts", "OXY_PassOxygen",
+                "OXY_Suprnmry"
             },
 
             // Overhead — Wipers
@@ -4562,14 +4639,16 @@ public class PMDG777Definition : BaseAircraftDefinition
             {
                 "FCTL_WingHydValve_L", "FCTL_WingHydValve_R", "FCTL_WingHydValve_C",
                 "FCTL_TailHydValve_L", "FCTL_TailHydValve_R", "FCTL_TailHydValve_C",
-                "FCTL_PrimFltComputers"
+                "FCTL_PrimFltComputers",
+                "FCTL_ThrustAsymComp"
             },
 
             // Overhead Maintenance — Backup Systems
             ["Backup Systems"] = new List<string>
             {
                 "ICE_BackupWindowHeat_L", "ICE_BackupWindowHeat_R",
-                "ELEC_TowingPower"
+                "ELEC_TowingPower",
+                "CVR_Test", "CVR_Erase"
             },
 
             // Overhead Maintenance — EEC/APU Maintenance
@@ -4767,6 +4846,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["ELEC_IFEPassSeats"]   = "EVT_OH_ELEC_IFE",
             ["ELEC_StandbyPwr"]     = "EVT_OH_ELEC_STBY_PWR_SWITCH",
             ["ELEC_TowingPower"]    = "EVT_OH_ELEC_TOWING_PWR_SWITCH",
+            ["ELEC_GndTest"]        = "EVT_OH_ELEC_GND_TEST_SWITCH",
 
             // --- ADIRU ---
             ["ADIRU_Switch"]        = "EVT_OH_ADIRU_SWITCH",
@@ -4790,6 +4870,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["FCTL_TailHydValve_R"] = "EVT_OH_HYD_VLV_PWR_TAIL_R",
             ["FCTL_TailHydValve_C"] = "EVT_OH_HYD_VLV_PWR_TAIL_C",
             ["FCTL_PrimFltComputers"]= "EVT_OH_PRIM_FLT_COMPUTERS",
+            ["FCTL_ThrustAsymComp"] = "EVT_OH_THRUST_ASYM_COMP",
 
             // --- Fuel ---
             ["FUEL_FwdPump_1"]          = "EVT_OH_FUEL_PUMP_1_FORWARD",
@@ -4805,6 +4886,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["FUEL_JettisonArm"]        = "EVT_OH_FUEL_JETTISON_ARM",
             ["FUEL_FuelToRemainPulled"] = "EVT_OH_FUEL_TO_REMAIN_PULL",
             ["FUEL_FuelToRemainSelector"]= "EVT_OH_FUEL_TO_REMAIN_ROTATE",
+            ["FUEL_AuxPump"]            = "EVT_OH_FUEL_PUMP_AUX",
 
             // --- Engines ---
             ["ENG_Autostart"]       = "EVT_OH_ENGINE_AUTOSTART",
@@ -4815,6 +4897,8 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["ENG_FuelControl_1"]   = "EVT_CONTROL_STAND_ENG1_START_LEVER",
             ["ENG_FuelControl_2"]   = "EVT_CONTROL_STAND_ENG2_START_LEVER",
             ["APU_PowerTest"]       = "EVT_OH_APU_TEST_SWITCH",
+            ["CVR_Test"]            = "EVT_OH_CVR_TEST",
+            ["CVR_Erase"]           = "EVT_OH_CVR_ERASE",
 
             // --- Bleed Air ---
             ["AIR_EngBleed_1"]          = "EVT_OH_BLEED_ENG_1_SWITCH",
@@ -4843,6 +4927,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["AIR_CargoTempMainDeckAft"]= "EVT_OH_AIRCOND_TEMP_SELECTOR_MAIN_CARGO_AFT",
             ["AIR_CargoTempLowerFwd"]   = "EVT_OH_AIRCOND_TEMP_SELECTOR_LWR_CARGO_FWD",
             ["AIR_CargoTempLowerAft"]   = "EVT_OH_AIRCOND_TEMP_SELECTOR_LWR_CARGO_AFT",
+            ["AIR_MainDeckFlow"]        = "EVT_OH_AIRCOND_MAIN_DECK_FLOW_SWITCH",
 
             // --- Pressurization ---
             ["AIR_OutflowValveFwd"]     = "EVT_OH_PRESS_VALVE_SWITCH_MANUAL_1",
@@ -4884,6 +4969,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["LTS_Logo"]                = "EVT_OH_LIGHTS_LOGO",
             ["LTS_Wing"]                = "EVT_OH_LIGHTS_WING",
             ["LTS_Storm"]               = "EVT_OH_LIGHTS_STORM",
+            ["LTS_CameraLights"]        = "EVT_OH_CAMERA_LTS_SWITCH",
             ["LTS_MasterBrightSw"]      = "EVT_OH_MASTER_BRIGHT_PUSH",
             ["LTS_MasterBrightKnob"]    = "EVT_OH_MASTER_BRIGHT_ROTATE",
             ["LTS_IndLightsTest"]       = "EVT_OH_LIGHTS_IND_LTS_SWITCH",
@@ -4898,6 +4984,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["SIGNS_NoSmoking"]         = "EVT_OH_NO_SMOKING_LIGHT_SWITCH",
             ["SIGNS_SeatBelts"]         = "EVT_OH_FASTEN_BELTS_LIGHT_SWITCH",
             ["OXY_PassOxygen"]          = "EVT_OH_OXY_PASS_SWITCH",
+            ["OXY_Suprnmry"]            = "EVT_OH_OXY_SUPRNMRY_SWITCH",
 
             // --- Wipers / Comms ---
             ["WIPERS_Left"]             = "EVT_OH_WIPER_LEFT_SWITCH",
@@ -5120,6 +5207,8 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["ICE_BackupWindowHeat_L"]= ("EVT_OH_ICE_BU_WINDOW_HEAT_L_GUARD","EVT_OH_ICE_BU_WINDOW_HEAT_L"),
             ["ICE_BackupWindowHeat_R"]= ("EVT_OH_ICE_BU_WINDOW_HEAT_R_GUARD","EVT_OH_ICE_BU_WINDOW_HEAT_R"),
             ["OXY_PassOxygen"]       = ("EVT_OH_OXY_PASS_GUARD",         "EVT_OH_OXY_PASS_SWITCH"),
+            ["OXY_Suprnmry"]         = ("EVT_OH_OXY_SUPRNMRY_GUARD",    "EVT_OH_OXY_SUPRNMRY_SWITCH"),
+            ["ELEC_GndTest"]         = ("EVT_OH_ELEC_GND_TEST_GUARD",   "EVT_OH_ELEC_GND_TEST_SWITCH"),
             ["LTS_EmerLights"]       = ("EVT_OH_EMER_EXIT_LIGHT_GUARD",  "EVT_OH_EMER_EXIT_LIGHT_SWITCH"),
             ["GEAR_AltnGearDown"]    = ("EVT_GEAR_ALTN_GEAR_DOWN_GUARD", "EVT_GEAR_ALTN_GEAR_DOWN"),
             ["FCTL_AltnFlapsArm"]    = ("EVT_ALTN_FLAPS_ARM_GUARD",      "EVT_ALTN_FLAPS_ARM"),
