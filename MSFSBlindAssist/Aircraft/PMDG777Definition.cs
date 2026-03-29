@@ -48,7 +48,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["Pedestal"] = new List<string>
             {
                 "Control Stand", "Transponder/TCAS",
-                "CDU", "Evacuation", "Warning", "Engine Fire", "Radio"
+                "CDU", "Evacuation", "Warning", "Engine Fire", "Radio", "Calls"
             },
         };
     }
@@ -1226,6 +1226,24 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Never,
                 RenderAsButton = true,
                 IsMomentary = true,
+            },
+            ["AIR_OutflowValve_Fwd"] = new SimConnect.SimVarDefinition
+            {
+                Name = "AIR_OutflowValve_Sw_AUTO_0",
+                DisplayName = "Outflow Valve Fwd",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Manual", [1] = "Auto" }
+            },
+            ["AIR_OutflowValve_Aft"] = new SimConnect.SimVarDefinition
+            {
+                Name = "AIR_OutflowValve_Sw_AUTO_1",
+                DisplayName = "Outflow Valve Aft",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Manual", [1] = "Auto" }
             },
             // Pressurization annunciators
             ["AIR_annunOutflowValveMAN_1"] = new SimConnect.SimVarDefinition
@@ -2907,6 +2925,25 @@ public class PMDG777Definition : BaseAircraftDefinition
                 IsMomentary = true
             },
 
+            ["MCP_CRS_L_Push"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MCP_CRS_L_Push",
+                DisplayName = "Course Left Push",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Never,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
+            ["MCP_CRS_R_Push"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MCP_CRS_R_Push",
+                DisplayName = "Course Right Push",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Never,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
+
             // MCP — Annunciators (monitored, not in panel controls)
             ["MCP_annunAP_L"] = new SimConnect.SimVarDefinition
             {
@@ -3799,6 +3836,43 @@ public class PMDG777Definition : BaseAircraftDefinition
                 ValueDescriptions = new Dictionary<double, string> { [0] = "Cutoff", [1] = "Run" }
             },
 
+            ["ENG_TOGA_1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ENG_TOGA_1",
+                DisplayName = "TOGA Switch 1",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Never,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
+            ["ENG_TOGA_2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ENG_TOGA_2",
+                DisplayName = "TOGA Switch 2",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Never,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
+            ["ENG_ATDisengage_1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ENG_ATDisengage_1",
+                DisplayName = "AT Disengage 1",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Never,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
+            ["ENG_ATDisengage_2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ENG_ATDisengage_2",
+                DisplayName = "AT Disengage 2",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Never,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
+
             // =================================================================
             // PEDESTAL — TRANSPONDER/TCAS
             // =================================================================
@@ -4185,6 +4259,64 @@ public class PMDG777Definition : BaseAircraftDefinition
                 IsAnnounced = true,
                 OnlyAnnounceValueDescriptionMatches = true,
                 ValueDescriptions = new Dictionary<double, string> { [1] = "on" }
+            },
+
+            // =================================================================
+            // PEDESTAL — CALL PANEL
+            // =================================================================
+            ["CALL_Ground"] = new SimConnect.SimVarDefinition
+            {
+                Name = "CALL_Ground",
+                DisplayName = "Call Ground",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Never,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
+            ["CALL_CrewRest"] = new SimConnect.SimVarDefinition
+            {
+                Name = "CALL_CrewRest",
+                DisplayName = "Call Crew Rest",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Never,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
+            ["CALL_Suprnmry"] = new SimConnect.SimVarDefinition
+            {
+                Name = "CALL_Suprnmry",
+                DisplayName = "Call Supernumerary",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Never,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
+            ["CALL_Cargo"] = new SimConnect.SimVarDefinition
+            {
+                Name = "CALL_Cargo",
+                DisplayName = "Call Cargo",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Never,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
+            ["CALL_CargoAudio"] = new SimConnect.SimVarDefinition
+            {
+                Name = "CALL_CargoAudio",
+                DisplayName = "Call Cargo Audio",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Never,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
+            ["CALL_MainDeckAlert"] = new SimConnect.SimVarDefinition
+            {
+                Name = "CALL_MainDeckAlert",
+                DisplayName = "Main Deck Alert",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Never,
+                RenderAsButton = true,
+                IsMomentary = true
             },
 
             // =================================================================
@@ -4606,7 +4738,8 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["Pressurization"] = new List<string>
             {
                 "AIR_OutflowValveFwd", "AIR_OutflowValveAft",
-                "AIR_LdgAltPulled"
+                "AIR_LdgAltPulled",
+                "AIR_OutflowValve_Fwd", "AIR_OutflowValve_Aft"
             },
 
             // Overhead — Anti-Ice
@@ -4723,7 +4856,8 @@ public class PMDG777Definition : BaseAircraftDefinition
                 "MCP_LOC", "MCP_APP", "MCP_AT", "MCP_CLB_CON",
                 "MCP_AP_L", "MCP_AP_R",
                 "MCP_SpeedPush", "MCP_HeadingPush", "MCP_AltitudePush",
-                "MCP_IAS_MACH_Toggle", "MCP_HDG_TRK_Toggle", "MCP_VS_FPA_Toggle"
+                "MCP_IAS_MACH_Toggle", "MCP_HDG_TRK_Toggle", "MCP_VS_FPA_Toggle",
+                "MCP_CRS_L_Push", "MCP_CRS_R_Push"
             },
 
             // Glareshield — Display Select Panel
@@ -4782,7 +4916,8 @@ public class PMDG777Definition : BaseAircraftDefinition
                 "FCTL_AltnFlapsArm", "FCTL_AltnFlapsControl",
                 "FCTL_StabCutout_C", "FCTL_StabCutout_R",
                 "FCTL_AltnPitch", "FCTL_AileronTrim", "FCTL_RudderTrim", "FCTL_RudderTrimCancel",
-                "BRAKES_ParkingBrake"
+                "BRAKES_ParkingBrake",
+                "ENG_TOGA_1", "ENG_TOGA_2", "ENG_ATDisengage_1", "ENG_ATDisengage_2"
             },
 
             // Pedestal — Transponder/TCAS
@@ -4824,6 +4959,13 @@ public class PMDG777Definition : BaseAircraftDefinition
             {
                 "COM1_ActiveFreq", "COM_STANDBY_FREQUENCY_SET:1", "COM1_RADIO_SWAP",
                 "COM2_ActiveFreq", "COM_STANDBY_FREQUENCY_SET:2", "COM2_RADIO_SWAP"
+            },
+
+            // Pedestal — Calls
+            ["Calls"] = new List<string>
+            {
+                "CALL_Ground", "CALL_CrewRest", "CALL_Suprnmry",
+                "CALL_Cargo", "CALL_CargoAudio", "CALL_MainDeckAlert"
             },
 
         };
@@ -5204,6 +5346,28 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["EVAC_PressToTest"]        = "EVT_PED_EVAC_TEST_SWITCH",
             ["EICAS_EventRcd"]          = "EVT_PED_EICAS_EVENT_RCD",
             ["ISP_DsplCtrl_C"]          = "EVT_PED_DSPL_CTRL_SOURCE_C",
+
+            // --- Call Panel ---
+            ["CALL_Ground"]         = "EVT_PED_CALL_GND",
+            ["CALL_CrewRest"]       = "EVT_PED_CALL_CREW_REST",
+            ["CALL_Suprnmry"]       = "EVT_PED_CALL_SUPRNMRY",
+            ["CALL_Cargo"]          = "EVT_PED_CALL_CARGO",
+            ["CALL_CargoAudio"]     = "EVT_PED_CALL_CARGO_AUDIO",
+            ["CALL_MainDeckAlert"]  = "EVT_PED_CALL_MAIN_DK_ALERT",
+
+            // --- MCP Course Push ---
+            ["MCP_CRS_L_Push"]  = "EVT_MCP_CRS_L_PUSH",
+            ["MCP_CRS_R_Push"]  = "EVT_MCP_CRS_R_PUSH",
+
+            // --- TOGA / AT Disengage ---
+            ["ENG_TOGA_1"]        = "EVT_CONTROL_STAND_TOGA1_SWITCH",
+            ["ENG_TOGA_2"]        = "EVT_CONTROL_STAND_TOGA2_SWITCH",
+            ["ENG_ATDisengage_1"] = "EVT_CONTROL_STAND_AT1_DISENGAGE_SWITCH",
+            ["ENG_ATDisengage_2"] = "EVT_CONTROL_STAND_AT2_DISENGAGE_SWITCH",
+
+            // --- Outflow Valve Auto/Manual ---
+            ["AIR_OutflowValve_Fwd"]  = "EVT_OH_PRESS_VALVE_SWITCH_1",
+            ["AIR_OutflowValve_Aft"]  = "EVT_OH_PRESS_VALVE_SWITCH_2",
         };
 
     // =========================================================================
@@ -6381,6 +6545,8 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["EVT_MCP_SPEED_PUSH_SWITCH"]          = 71732,
             ["EVT_MCP_HEADING_PUSH_SWITCH"]        = 69850,
             ["EVT_MCP_ALTITUDE_PUSH_SWITCH"]       = 71883,
+            ["EVT_MCP_CRS_L_PUSH"]                 = 69853,
+            ["EVT_MCP_CRS_R_PUSH"]                 = 69856,
             ["EVT_MCP_VS_SWITCH"]                  = 69855,
             ["EVT_MCP_IAS_MACH_SWITCH"]            = 69840,
             ["EVT_MCP_HDG_TRK_SWITCH"]             = 69848,
