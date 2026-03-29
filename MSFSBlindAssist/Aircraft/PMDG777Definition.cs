@@ -5424,7 +5424,18 @@ public class PMDG777Definition : BaseAircraftDefinition
         SimConnect.PMDG777Debug.Log($"[PMDG777Definition.HandleUIVariableSet] eventName={eventName} eventId={eventId} (0x{eventId:X})");
 
         // ------------------------------------------------------------------
-        // 2b. APU Start — special: send position 2 to the APU selector event,
+        // 2b. Fuel Control levers — CDA doesn't work for these, use
+        //     TransmitClientEvent with "#eventId" PMDG convention
+        // ------------------------------------------------------------------
+        if (varKey == "ENG_FuelControl_1" || varKey == "ENG_FuelControl_2")
+        {
+            int target = (int)value;
+            simConnect.SendEvent($"#{eventId}", (uint)target);
+            return true;
+        }
+
+        // ------------------------------------------------------------------
+        // 2c. APU Start — special: send position 2 to the APU selector event,
         //     but only when the selector is already at On (1)
         // ------------------------------------------------------------------
         if (varKey == "ELEC_APU_Start")
