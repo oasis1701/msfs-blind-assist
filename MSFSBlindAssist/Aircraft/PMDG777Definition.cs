@@ -5702,8 +5702,8 @@ public class PMDG777Definition : BaseAircraftDefinition
                 return true; // Debounce — skip if less than 0.1 degree change
 
             _lastAnnouncedTrimDeg = rounded;
-            string direction = rounded >= 0 ? "nose up" : "nose down";
-            announcer.Announce($"Trim {Math.Abs(rounded):F1} {direction}");
+            string direction = rounded >= 0 ? "up" : "down";
+            announcer.Announce($"Trim {direction} {Math.Abs(rounded):F1}");
             return true;
         }
 
