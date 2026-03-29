@@ -6030,7 +6030,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             return;
         }
 
-        var dialog = new Forms.FCUInputForm(
+        var dialog = new Forms.ValueInputForm(
             "MCP Heading", "heading", "0-359", announcer,
             input =>
             {
@@ -6061,7 +6061,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             return;
         }
 
-        var dialog = new Forms.FCUInputForm(
+        var dialog = new Forms.ValueInputForm(
             "MCP Speed", "speed (knots or Mach, e.g. 280 or 0.84)", "100-399 or 0.00-0.99", announcer,
             input =>
             {
@@ -6109,7 +6109,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             return;
         }
 
-        var dialog = new Forms.FCUInputForm(
+        var dialog = new Forms.ValueInputForm(
             "MCP Altitude", "altitude", "0-45000", announcer,
             input =>
             {
@@ -6140,7 +6140,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             return;
         }
 
-        var dialog = new Forms.FCUInputForm(
+        var dialog = new Forms.ValueInputForm(
             "MCP Vertical Speed", "vertical speed (fpm)", "-9900 to 9900", announcer,
             input =>
             {
@@ -6173,7 +6173,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             return;
         }
 
-        var dialog = new Forms.FCUInputForm(
+        var dialog = new Forms.ValueInputForm(
             "Altimeter Setting", "baro (hPa or in Hg, e.g. 1013 or 29.92)", "940-1050 or 27.00-31.50", announcer,
             input =>
             {

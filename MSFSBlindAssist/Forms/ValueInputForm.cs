@@ -2,7 +2,7 @@ using MSFSBlindAssist.Accessibility;
 
 namespace MSFSBlindAssist.Forms;
 
-public partial class FCUInputForm : Form
+public partial class ValueInputForm : Form
     {
         // Windows API declarations for focus management
         [DllImport("user32.dll")]
@@ -25,7 +25,7 @@ public partial class FCUInputForm : Form
         private readonly Func<string, (bool isValid, string message)> validator;
         private readonly IntPtr previousWindow;
 
-        public FCUInputForm(string title, string parameterType, string rangeText, ScreenReaderAnnouncer announcer, Func<string, (bool, string)> validator)
+        public ValueInputForm(string title, string parameterType, string rangeText, ScreenReaderAnnouncer announcer, Func<string, (bool, string)> validator)
         {
             // Capture the current foreground window (likely the simulator)
             previousWindow = GetForegroundWindow();

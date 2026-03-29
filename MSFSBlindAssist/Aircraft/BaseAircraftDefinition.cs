@@ -259,7 +259,7 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
             return false;
         }
 
-        var dialog = new Forms.FCUInputForm(title, parameterType, rangeText, announcer, validator);
+        var dialog = new Forms.ValueInputForm(title, parameterType, rangeText, announcer, validator);
         if (dialog.ShowDialog(parentForm) == DialogResult.OK && dialog.IsValidInput)
         {
             if (double.TryParse(dialog.InputValue, out double value))
