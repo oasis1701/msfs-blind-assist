@@ -116,25 +116,36 @@ public partial class PMDG777CDUForm : Form
         string title      = rows[0].Trim();
         string scratchpad = rows[13].Trim();
 
-        // Build display lines
-        var lines = new List<string>(rows.Length);
-        for (int i = 0; i < rows.Length; i++)
+        // Build display lines (matches Fenix MCDU format)
+        var lines = new List<string>();
+        lines.Add($"Title: {rows[0]}"); // Row 0: page title
+
+        // Rows 1-12: 6 label/value pairs
+        for (int pair = 0; pair < 6; pair++)
         {
-            string row = rows[i];
+            int labelRow = 1 + (pair * 2);  // odd rows: 1, 3, 5, 7, 9, 11
+            int dataRow = 2 + (pair * 2);    // even rows: 2, 4, 6, 8, 10, 12
+            int lineNum = pair + 1;
+
+            string label = rows[labelRow];
+            string data = rows[dataRow];
 
             // Mark selected options on data rows using color data
-            if (colors != null && i >= 2 && i <= 12 && i % 2 == 0)
-                row = MarkSelectedOption(row, colors, i);
+            if (colors != null)
+                data = MarkSelectedOption(data, colors, dataRow);
 
-            if (i == 0)
-                lines.Add(row); // Title row
-            else if (i == 13)
-                lines.Add($"SP: {row}"); // Scratchpad
-            else if (i % 2 == 1)
-                lines.Add($"{(i + 1) / 2}H: {row}"); // Header rows (1H, 2H, 3H...)
-            else
-                lines.Add($"{i / 2}: {row}"); // Data rows (1, 2, 3...)
+            // Label: indented (no line number — not selectable)
+            if (!string.IsNullOrWhiteSpace(label))
+                lines.Add($"   {label}");
+
+            // Data: numbered (selectable via LSK)
+            if (!string.IsNullOrWhiteSpace(data))
+                lines.Add($"{lineNum}: {data}");
+            else if (string.IsNullOrWhiteSpace(label))
+                lines.Add($"{lineNum}:"); // Empty pair — still show line number
         }
+
+        lines.Add($"Scratchpad: {rows[13]}"); // Row 13: scratchpad
 
         // Update ListBox items efficiently
         int savedIndex = cduDisplay.SelectedIndex;
