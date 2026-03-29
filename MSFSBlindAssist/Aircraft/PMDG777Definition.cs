@@ -5356,8 +5356,6 @@ public class PMDG777Definition : BaseAircraftDefinition
         SimConnect.SimConnectManager simConnect,
         ScreenReaderAnnouncer announcer)
     {
-        SimConnect.PMDG777Debug.Log($"[PMDG777Definition.HandleUIVariableSet] ENTRY varKey={varKey} value={value} RenderAsButton={varDef.RenderAsButton} IsMomentary={varDef.IsMomentary} ValueDescriptions.Count={varDef.ValueDescriptions.Count}");
-
         // ------------------------------------------------------------------
         // 0. Standard SimConnect events and COM frequency set
         //    Handled here to prevent MainForm's redundant announcements.
@@ -5365,7 +5363,6 @@ public class PMDG777Definition : BaseAircraftDefinition
         // ------------------------------------------------------------------
         if (varDef.Type == SimConnect.SimVarType.Event)
         {
-            SimConnect.PMDG777Debug.Log($"[PMDG777Definition.HandleUIVariableSet] Branch: SIMCONNECT EVENT — calling SendEvent({varDef.Name})");
             simConnect.SendEvent(varDef.Name);
             return true;
         }
@@ -5392,17 +5389,14 @@ public class PMDG777Definition : BaseAircraftDefinition
         // ------------------------------------------------------------------
         if (_guardedMap.TryGetValue(varKey, out var guardPair))
         {
-            SimConnect.PMDG777Debug.Log($"[PMDG777Definition.HandleUIVariableSet] Branch: GUARDED switch guard={guardPair.Guard} switch={guardPair.Switch}");
             if (EventIds.TryGetValue(guardPair.Guard, out int gId) &&
                 EventIds.TryGetValue(guardPair.Switch, out int sId))
             {
-                SimConnect.PMDG777Debug.Log($"[PMDG777Definition.HandleUIVariableSet] Sending guarded toggle: guardId={gId} switchId={sId}");
                 _ = simConnect.SendPMDGGuardedToggle(
                     guardPair.Guard,  (uint)gId,
                     guardPair.Switch, (uint)sId);
                 return true;
             }
-            SimConnect.PMDG777Debug.Log($"[PMDG777Definition.HandleUIVariableSet] GUARDED: event IDs not found for guard={guardPair.Guard} or switch={guardPair.Switch}");
         }
 
         // ------------------------------------------------------------------
@@ -5410,18 +5404,15 @@ public class PMDG777Definition : BaseAircraftDefinition
         // ------------------------------------------------------------------
         if (!_simpleEventMap.TryGetValue(varKey, out string? eventName))
         {
-            SimConnect.PMDG777Debug.Log($"[PMDG777Definition.HandleUIVariableSet] NOT in _simpleEventMap — returning false");
             return false;
         }
 
         if (!EventIds.TryGetValue(eventName, out int evId))
         {
-            SimConnect.PMDG777Debug.Log($"[PMDG777Definition.HandleUIVariableSet] eventName={eventName} NOT in EventIds — returning false");
             return false;
         }
 
         uint eventId = (uint)evId;
-        SimConnect.PMDG777Debug.Log($"[PMDG777Definition.HandleUIVariableSet] eventName={eventName} eventId={eventId} (0x{eventId:X})");
 
         // ------------------------------------------------------------------
         // 2b. Fuel Control levers — CDA doesn't work for these, use
@@ -5454,7 +5445,6 @@ public class PMDG777Definition : BaseAircraftDefinition
         // ------------------------------------------------------------------
         if (varDef.RenderAsButton || varDef.IsMomentary)
         {
-            SimConnect.PMDG777Debug.Log($"[PMDG777Definition.HandleUIVariableSet] Branch: MOMENTARY/BUTTON — calling SendPMDGEvent({eventName}, {eventId}, 1)");
             simConnect.SendPMDGEvent(eventName, eventId, 1);
             return true;
         }
@@ -5472,14 +5462,11 @@ public class PMDG777Definition : BaseAircraftDefinition
             if (dm != null)
             {
                 int current = (int)dm.GetFieldValue(varDef.Name);
-                SimConnect.PMDG777Debug.Log($"[PMDG777Definition.HandleUIVariableSet] Branch: CDA DIRECT current={current} target={target}");
                 if (current == target)
                 {
-                    SimConnect.PMDG777Debug.Log($"[PMDG777Definition.HandleUIVariableSet] CDA DIRECT: already at target — skipping");
                     return true;
                 }
             }
-            SimConnect.PMDG777Debug.Log($"[PMDG777Definition.HandleUIVariableSet] CDA DIRECT: sending position {target} for {eventName}");
             simConnect.SendPMDGEvent(eventName, eventId, target);
             return true;
         }
@@ -5487,17 +5474,14 @@ public class PMDG777Definition : BaseAircraftDefinition
         // ------------------------------------------------------------------
         // 6. No ValueDescriptions — treat as a single toggle/press
         // ------------------------------------------------------------------
-        SimConnect.PMDG777Debug.Log($"[PMDG777Definition.HandleUIVariableSet] Branch: NO ValueDescriptions — calling SendPMDGEvent({eventName}, {eventId})");
         simConnect.SendPMDGEvent(eventName, eventId);
         return true;
     }
 
     public override bool ProcessSimVarUpdate(string varName, double value, ScreenReaderAnnouncer announcer)
     {
-        SimConnect.PMDG777Debug.Log($"[PMDG777Definition.ProcessSimVarUpdate] ENTRY varName={varName} value={value}");
         if (base.ProcessSimVarUpdate(varName, value, announcer))
         {
-            SimConnect.PMDG777Debug.Log($"[PMDG777Definition.ProcessSimVarUpdate] Handled by base class: {varName}");
             return true;
         }
 
@@ -5774,7 +5758,6 @@ public class PMDG777Definition : BaseAircraftDefinition
             return true;
         }
 
-        SimConnect.PMDG777Debug.Log($"[PMDG777Definition.ProcessSimVarUpdate] No match — returning false for {varName}");
         return false;
     }
 
