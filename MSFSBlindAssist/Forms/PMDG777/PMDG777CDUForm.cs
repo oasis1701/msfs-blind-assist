@@ -104,15 +104,18 @@ public partial class PMDG777CDUForm : Form
     private void PollTimer_Tick(object? sender, EventArgs e)
     {
         _dataManager.RequestCDUScreen(_selectedCDU);
-        var rows = _dataManager.GetCDURows(_selectedCDU);
-        UpdateDisplay(rows);
+        var result = _dataManager.GetCDURowsWithColors(_selectedCDU);
+        if (result != null)
+            UpdateDisplay(result.Value.rows, result.Value.colors);
+        else
+            UpdateDisplay(null, null);
     }
 
     // ------------------------------------------------------------------
     // Display update
     // ------------------------------------------------------------------
 
-    private void UpdateDisplay(string[]? rows)
+    private void UpdateDisplay(string[]? rows, byte[,]? colors)
     {
         if (rows == null)
         {
@@ -132,14 +135,20 @@ public partial class PMDG777CDUForm : Form
         var lines = new List<string>(rows.Length);
         for (int i = 0; i < rows.Length; i++)
         {
+            string row = rows[i];
+
+            // Mark selected options on data rows using color data
+            if (colors != null && i >= 2 && i <= 12 && i % 2 == 0)
+                row = MarkSelectedOption(row, colors, i);
+
             if (i == 0)
-                lines.Add(rows[i]); // Title row
+                lines.Add(row); // Title row
             else if (i == 13)
-                lines.Add($"SP: {rows[i]}"); // Scratchpad
+                lines.Add($"SP: {row}"); // Scratchpad
             else if (i % 2 == 1)
-                lines.Add($"{(i + 1) / 2}H: {rows[i]}"); // Header rows (1H, 2H, 3H...)
+                lines.Add($"{(i + 1) / 2}H: {row}"); // Header rows (1H, 2H, 3H...)
             else
-                lines.Add($"{i / 2}: {rows[i]}"); // Data rows (1, 2, 3...)
+                lines.Add($"{i / 2}: {row}"); // Data rows (1, 2, 3...)
         }
 
         // Update ListBox items efficiently
@@ -372,6 +381,62 @@ public partial class PMDG777CDUForm : Form
         TopMost = true;
         TopMost = false;
         cduDisplay.Focus();
+    }
+
+    // ------------------------------------------------------------------
+    // Color-based selection markers
+    // ------------------------------------------------------------------
+
+    private static string MarkSelectedOption(string row, byte[,] colors, int rowIndex)
+    {
+        // Check if this row has mixed colors (indicating a toggle like OFF←→ON)
+        // Green (color=2) = selected option
+        bool hasGreen = false;
+        bool hasNonGreen = false;
+
+        for (int col = 0; col < 24 && col < row.Length; col++)
+        {
+            char ch = row[col];
+            if (ch != ' ' && ch != '<' && ch != '>' && ch != '\u2190' && ch != '\u2192')
+            {
+                byte c = colors[rowIndex, col];
+                if (c == 2) hasGreen = true;
+                else if (c != 0 || char.IsLetterOrDigit(ch)) hasNonGreen = true;
+            }
+        }
+
+        // Only mark if there's a toggle (both green and non-green text)
+        if (!hasGreen || !hasNonGreen) return row;
+
+        var sb = new System.Text.StringBuilder();
+        int i = 0;
+        while (i < row.Length)
+        {
+            char ch = row[i];
+
+            // Pass through spaces and arrows
+            if (ch == ' ' || ch == '<' || ch == '>' || ch == '\u2190' || ch == '\u2192')
+            {
+                sb.Append(ch);
+                i++;
+                continue;
+            }
+
+            // Start of a text word — check its color
+            byte segColor = colors[rowIndex, i];
+            string marker = segColor == 2 ? "[X]" : "[ ]";
+            sb.Append(marker);
+
+            // Copy the word
+            while (i < row.Length && row[i] != ' ' && row[i] != '<' && row[i] != '>'
+                   && row[i] != '\u2190' && row[i] != '\u2192')
+            {
+                sb.Append(row[i]);
+                i++;
+            }
+        }
+
+        return sb.ToString();
     }
 
     // ------------------------------------------------------------------

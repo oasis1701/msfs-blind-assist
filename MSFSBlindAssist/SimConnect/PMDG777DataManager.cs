@@ -497,6 +497,35 @@ public class PMDG777DataManager : IDisposable
         return rows;
     }
 
+    public (string[] rows, byte[,] colors)? GetCDURowsWithColors(int cdu)
+    {
+        if (cdu < 0 || cdu > 2) return null;
+        var screen = _lastCDUScreen[cdu];
+        if (screen == null || !screen.Value.Powered) return null;
+
+        var rows = new string[14];
+        var colors = new byte[14, 24];
+
+        for (int row = 0; row < 14; row++)
+        {
+            var sb = new System.Text.StringBuilder(24);
+            for (int col = 0; col < 24; col++)
+            {
+                var cell = screen.Value.Cells[col * 14 + row];
+                byte sym = cell.Symbol;
+                colors[row, col] = cell.Color;
+
+                if (sym == 0xA1) sb.Append('<');
+                else if (sym == 0xA2) sb.Append('>');
+                else if (sym >= 0x20 && sym <= 0x7E) sb.Append((char)sym);
+                else sb.Append(' ');
+            }
+            rows[row] = sb.ToString();
+        }
+
+        return (rows, colors);
+    }
+
     // ------------------------------------------------------------------
     // IDisposable
     // ------------------------------------------------------------------
