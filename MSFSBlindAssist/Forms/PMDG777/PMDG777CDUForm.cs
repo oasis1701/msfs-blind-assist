@@ -261,8 +261,9 @@ public partial class PMDG777CDUForm : Form
             return;
         }
 
-        // PageUp → PREV_PAGE
-        if (e.KeyCode == Keys.PageUp && !e.Control && !e.Alt)
+        // PageUp / Alt+Up → PREV_PAGE
+        if ((e.KeyCode == Keys.PageUp && !e.Control && !e.Alt) ||
+            (e.Alt && e.KeyCode == Keys.Up))
         {
             SendCDUKey("PREV_PAGE");
             e.Handled = true;
@@ -270,8 +271,9 @@ public partial class PMDG777CDUForm : Form
             return;
         }
 
-        // PageDown → NEXT_PAGE
-        if (e.KeyCode == Keys.PageDown && !e.Control && !e.Alt)
+        // PageDown / Alt+Down → NEXT_PAGE
+        if ((e.KeyCode == Keys.PageDown && !e.Control && !e.Alt) ||
+            (e.Alt && e.KeyCode == Keys.Down))
         {
             SendCDUKey("NEXT_PAGE");
             e.Handled = true;
