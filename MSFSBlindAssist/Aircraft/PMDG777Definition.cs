@@ -43,7 +43,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             },
             ["Forward Panel"] = new List<string>
             {
-                "Landing Gear", "Brakes", "GPWS", "Instruments", "Chronometers"
+                "Landing Gear", "Brakes", "GPWS", "Instruments"
             },
             ["Pedestal"] = new List<string>
             {
@@ -3652,99 +3652,6 @@ public class PMDG777Definition : BaseAircraftDefinition
                 RenderAsButton = true
             },
 
-            // =================================================================
-            // FORWARD PANEL — CHRONOMETERS
-            // =================================================================
-            ["CHR_Chr_L"] = new SimConnect.SimVarDefinition
-            {
-                Name = "CHR_Chr_Sw_Pushed_0",
-                DisplayName = "CHR Left",
-                Type = SimConnect.SimVarType.PMDGVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                RenderAsButton = true
-            },
-            ["CHR_Chr_R"] = new SimConnect.SimVarDefinition
-            {
-                Name = "CHR_Chr_Sw_Pushed_1",
-                DisplayName = "CHR Right",
-                Type = SimConnect.SimVarType.PMDGVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                RenderAsButton = true
-            },
-            ["CHR_TimeDate_L"] = new SimConnect.SimVarDefinition
-            {
-                Name = "CHR_TimeDate_Sw_Pushed_0",
-                DisplayName = "Time/Date Left",
-                Type = SimConnect.SimVarType.PMDGVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                RenderAsButton = true
-            },
-            ["CHR_TimeDate_R"] = new SimConnect.SimVarDefinition
-            {
-                Name = "CHR_TimeDate_Sw_Pushed_1",
-                DisplayName = "Time/Date Right",
-                Type = SimConnect.SimVarType.PMDGVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                RenderAsButton = true
-            },
-            ["CHR_TimeDateSelector_L"] = new SimConnect.SimVarDefinition
-            {
-                Name = "CHR_TimeDate_Selector_0",
-                DisplayName = "Time/Date Selector Left",
-                Type = SimConnect.SimVarType.PMDGVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "UTC", [1] = "MAN" }
-            },
-            ["CHR_TimeDateSelector_R"] = new SimConnect.SimVarDefinition
-            {
-                Name = "CHR_TimeDate_Selector_1",
-                DisplayName = "Time/Date Selector Right",
-                Type = SimConnect.SimVarType.PMDGVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "UTC", [1] = "MAN" }
-            },
-            ["CHR_SetSelector_L"] = new SimConnect.SimVarDefinition
-            {
-                Name = "CHR_Set_Selector_0",
-                DisplayName = "Set Selector Left",
-                Type = SimConnect.SimVarType.PMDGVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "RUN", [1] = "HLDY", [2] = "MM", [3] = "HD" }
-            },
-            ["CHR_SetSelector_R"] = new SimConnect.SimVarDefinition
-            {
-                Name = "CHR_Set_Selector_1",
-                DisplayName = "Set Selector Right",
-                Type = SimConnect.SimVarType.PMDGVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "RUN", [1] = "HLDY", [2] = "MM", [3] = "HD" }
-            },
-            ["CHR_ETSelector_L"] = new SimConnect.SimVarDefinition
-            {
-                Name = "CHR_ET_Selector_0",
-                DisplayName = "ET Selector Left",
-                Type = SimConnect.SimVarType.PMDGVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Reset", [1] = "Hold", [2] = "Run" }
-            },
-            ["CHR_ETSelector_R"] = new SimConnect.SimVarDefinition
-            {
-                Name = "CHR_ET_Selector_1",
-                DisplayName = "ET Selector Right",
-                Type = SimConnect.SimVarType.PMDGVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Reset", [1] = "Hold", [2] = "Run" }
-            },
 
             // =================================================================
             // PEDESTAL — CONTROL STAND
@@ -4932,16 +4839,6 @@ public class PMDG777Definition : BaseAircraftDefinition
                 "STBY_ASI_Push", "STBY_ALT_Push"
             },
 
-            // Forward Panel — Chronometers
-            ["Chronometers"] = new List<string>
-            {
-                "CHR_Chr_L", "CHR_Chr_R",
-                "CHR_TimeDate_L", "CHR_TimeDate_R",
-                "CHR_TimeDateSelector_L", "CHR_TimeDateSelector_R",
-                "CHR_SetSelector_L", "CHR_SetSelector_R",
-                "CHR_ETSelector_L", "CHR_ETSelector_R"
-            },
-
             // Pedestal — Control Stand
             ["Control Stand"] = new List<string>
             {
@@ -5349,18 +5246,6 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["CDU_BrtKnob_L"]           = "EVT_CDU_L_BRITENESS",
             ["CDU_BrtKnob_R"]           = "EVT_CDU_R_BRITENESS",
             ["CDU_BrtKnob_C"]           = "EVT_CDU_C_BRITENESS",
-
-            // --- Chronometers ---
-            ["CHR_Chr_L"]               = "EVT_CHRONO_L_CHR",
-            ["CHR_TimeDate_L"]          = "EVT_CHRONO_L_TIME_DATE_PUSH",
-            ["CHR_TimeDateSelector_L"]  = "EVT_CHRONO_L_TIME_DATE_SELECT",
-            ["CHR_SetSelector_L"]       = "EVT_CHRONO_L_SET",
-            ["CHR_ETSelector_L"]        = "EVT_CHRONO_L_ET",
-            ["CHR_Chr_R"]               = "EVT_CHRONO_R_CHR",
-            ["CHR_TimeDate_R"]          = "EVT_CHRONO_R_TIME_DATE_PUSH",
-            ["CHR_TimeDateSelector_R"]  = "EVT_CHRONO_R_TIME_DATE_SELECT",
-            ["CHR_SetSelector_R"]       = "EVT_CHRONO_R_SET",
-            ["CHR_ETSelector_R"]        = "EVT_CHRONO_R_ET",
 
             // --- XPDR/TCAS ---
             ["XPDR_XpndrSelector"]     = "EVT_TCAS_XPNDR",
