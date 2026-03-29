@@ -5764,13 +5764,23 @@ public class PMDG777Definition : BaseAircraftDefinition
             {
                 var dm = simConnect.PMDG777DataManager;
                 if (dm == null) return false;
-                float speed = (float)dm.GetFieldValue("MCP_IASMach");
-                string speedText = speed < 10f
-                    ? $"Mach {speed:0.000}"
-                    : $"Speed {(int)speed} knots";
-                string speedMode = "";
-                if ((int)dm.GetFieldValue("MCP_annunFLCH") > 0) speedMode = ", FLCH";
-                announcer.AnnounceImmediate($"{speedText}{speedMode}");
+                bool isBlank = (int)dm.GetFieldValue("MCP_IASBlank") > 0;
+                if (isBlank)
+                {
+                    string mode = "";
+                    if ((int)dm.GetFieldValue("MCP_annunVNAV") > 0) mode = ", VNAV";
+                    announcer.AnnounceImmediate($"Speed blank{mode}");
+                }
+                else
+                {
+                    float speed = (float)dm.GetFieldValue("MCP_IASMach");
+                    string speedText = speed < 10f
+                        ? $"Mach {speed:0.000}"
+                        : $"Speed {(int)speed} knots";
+                    string speedMode = "";
+                    if ((int)dm.GetFieldValue("MCP_annunFLCH") > 0) speedMode = ", FLCH";
+                    announcer.AnnounceImmediate($"{speedText}{speedMode}");
+                }
                 return true;
             }
 
@@ -6111,10 +6121,15 @@ public class PMDG777Definition : BaseAircraftDefinition
 
         var toggles = new List<ToggleButtonDef>
         {
-            new("Intervene", () => "Push", () => SendPMDGMomentary(simConnect, "EVT_MCP_SPEED_PUSH_SWITCH")),
+            new("Intervene", () =>
+            {
+                if (dm == null) return "?";
+                return (int)dm.GetFieldValue("MCP_IASBlank") > 0 ? "Blank (FMC)" : "Active";
+            }, () => SendPMDGMomentary(simConnect, "EVT_MCP_SPEED_PUSH_SWITCH")),
             new("Mode", () =>
             {
                 if (dm == null) return "?";
+                if ((int)dm.GetFieldValue("MCP_IASBlank") > 0) return "Blank (FMC)";
                 float speed = (float)dm.GetFieldValue("MCP_IASMach");
                 return speed < 10f ? "Mach" : "IAS";
             }, () => SendPMDGMomentary(simConnect, "EVT_MCP_IAS_MACH_SWITCH")),
