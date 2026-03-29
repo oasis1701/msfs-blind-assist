@@ -438,10 +438,10 @@ public partial class PMDG777CDUForm : Form
 
     private static string MarkSelectedOption(string row, byte[,] colors, int rowIndex)
     {
-        // Detect toggle rows (e.g. "SET←→REMOVED" or "OFF←→ON")
-        // The selected option has a distinct color (green, red, cyan, etc.)
-        // The unselected option is white (color=0) with small font
-        // We detect by finding text segments with different colors
+        // Only process rows with the ←→ toggle arrow pattern
+        if (!row.Contains('\u2190') || !row.Contains('\u2192')) return row;
+
+        // Detect colored vs white text segments
         bool hasColoredText = false;
         bool hasWhiteText = false;
 
@@ -451,12 +451,11 @@ public partial class PMDG777CDUForm : Form
             if (ch != ' ' && ch != '<' && ch != '>' && ch != '\u2190' && ch != '\u2192')
             {
                 byte c = colors[rowIndex, col];
-                if (c > 0) hasColoredText = true;  // Any non-white color
+                if (c > 0) hasColoredText = true;
                 else if (char.IsLetterOrDigit(ch)) hasWhiteText = true;
             }
         }
 
-        // Only mark if there's a toggle (both colored and white text)
         if (!hasColoredText || !hasWhiteText) return row;
 
         var sb = new System.Text.StringBuilder();
