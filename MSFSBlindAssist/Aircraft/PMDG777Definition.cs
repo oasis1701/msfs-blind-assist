@@ -5742,7 +5742,11 @@ public class PMDG777Definition : BaseAircraftDefinition
                 var dm = simConnect.PMDG777DataManager;
                 if (dm == null) return false;
                 int heading = (int)dm.GetFieldValue("MCP_Heading");
-                announcer.AnnounceImmediate($"Heading {heading}");
+                string hdgMode = (int)dm.GetFieldValue("MCP_HDGDial_Mode") == 0 ? "HDG" : "TRK";
+                string lateralMode = "";
+                if ((int)dm.GetFieldValue("MCP_annunLNAV") > 0) lateralMode = ", LNAV";
+                else if ((int)dm.GetFieldValue("MCP_annunHDG_HOLD") > 0) lateralMode = ", HDG HOLD";
+                announcer.AnnounceImmediate($"{hdgMode} {heading}{lateralMode}");
                 return true;
             }
 
@@ -5751,11 +5755,12 @@ public class PMDG777Definition : BaseAircraftDefinition
                 var dm = simConnect.PMDG777DataManager;
                 if (dm == null) return false;
                 float speed = (float)dm.GetFieldValue("MCP_IASMach");
-                // If speed < 10, it's Mach; otherwise IAS in knots
                 string speedText = speed < 10f
                     ? $"Mach {speed:0.000}"
                     : $"Speed {(int)speed} knots";
-                announcer.AnnounceImmediate(speedText);
+                string speedMode = "";
+                if ((int)dm.GetFieldValue("MCP_annunFLCH") > 0) speedMode = ", FLCH";
+                announcer.AnnounceImmediate($"{speedText}{speedMode}");
                 return true;
             }
 
@@ -5764,7 +5769,11 @@ public class PMDG777Definition : BaseAircraftDefinition
                 var dm = simConnect.PMDG777DataManager;
                 if (dm == null) return false;
                 int altitude = (int)dm.GetFieldValue("MCP_Altitude");
-                announcer.AnnounceImmediate($"Altitude {altitude}");
+                string altMode = "";
+                if ((int)dm.GetFieldValue("MCP_annunVNAV") > 0) altMode = ", VNAV";
+                else if ((int)dm.GetFieldValue("MCP_annunFLCH") > 0) altMode = ", FLCH";
+                else if ((int)dm.GetFieldValue("MCP_annunALT_HOLD") > 0) altMode = ", ALT HOLD";
+                announcer.AnnounceImmediate($"Altitude {altitude}{altMode}");
                 return true;
             }
 
@@ -5772,17 +5781,17 @@ public class PMDG777Definition : BaseAircraftDefinition
             {
                 var dm = simConnect.PMDG777DataManager;
                 if (dm == null) return false;
-                // MCP_VSDial_Mode: 0 = VS, 1 = FPA
                 int vsMode = (int)dm.GetFieldValue("MCP_VSDial_Mode");
+                string vsEngaged = (int)dm.GetFieldValue("MCP_annunVS_FPA") > 0 ? ", engaged" : "";
                 if (vsMode == 1)
                 {
                     float fpa = (float)dm.GetFieldValue("MCP_FPA");
-                    announcer.AnnounceImmediate($"FPA {fpa:+0.0;-0.0;0.0} degrees");
+                    announcer.AnnounceImmediate($"FPA {fpa:+0.0;-0.0;0.0} degrees{vsEngaged}");
                 }
                 else
                 {
                     int vs = (int)dm.GetFieldValue("MCP_VertSpeed");
-                    announcer.AnnounceImmediate($"Vertical speed {vs} feet per minute");
+                    announcer.AnnounceImmediate($"Vertical speed {vs} feet per minute{vsEngaged}");
                 }
                 return true;
             }
