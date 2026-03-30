@@ -33,7 +33,11 @@ public class GeminiService
         LowerECAM,     // Lower ECAM
         UpperECAM,     // Upper ECAM / Engine Warning Display
         ND,            // Navigation Display
-        ISIS           // Integrated Standby Instrument System
+        ISIS,          // Integrated Standby Instrument System
+        EICAS,         // Engine Indicating and Crew Alerting System (Boeing 777)
+        PFD777,        // Primary Flight Display (Boeing 777)
+        ND777,         // Navigation Display (Boeing 777)
+        ISFD           // Integrated Standby Flight Display (Boeing 777)
     }
 
     /// <summary>
@@ -167,6 +171,72 @@ Be extremely concise and direct. Skip descriptions of instrument layout and visu
 Skip normal colors - only mention warning/alert colors (amber, red).
 Report: airspeed value, altitude value, pitch/roll if significant, any warnings.
 Use line breaks to separate values. Put airspeed, altitude, and attitude each on their own line.
+Do not use markdown formatting. Do not explain what things mean. Just state the essential data.",
+
+            DisplayType.ISFD => @"You are reading the Integrated Standby Flight Display (ISFD) of a Boeing 777 for a screen reader user.
+The image may contain multiple displays. ONLY describe the ISFD — the small square backup instrument located between the captain's displays and the EICAS. Ignore all other displays.
+The ISFD is a compact display showing basic flight parameters as backup instruments.
+Be extremely concise and direct. Skip descriptions of instrument layout and visual positioning. Only report actual values.
+Report: airspeed in knots, altitude in feet, barometric setting, pitch and roll attitude if significant, any warnings or flags.
+Skip normal colors - only mention warning/alert colors (amber, red).
+Use line breaks to separate values. Put airspeed, altitude, baro setting, and attitude each on their own line.
+Do not use markdown formatting. Do not explain what things mean. Just state the essential data.",
+
+            DisplayType.ND777 => @"You are reading the Navigation Display (ND) of a Boeing 777 for a screen reader user.
+The image may contain multiple displays. ONLY describe the Navigation Display (ND) — the second display from the left showing the map/navigation information. Ignore PFD, EICAS, and any other displays.
+Be extremely concise and direct. Skip descriptions of map layouts, visual positioning, and symbology explanations. Only report actual values, modes, and navigation data.
+
+Report in this order:
+Display mode: MAP, CTR MAP, PLAN, APP, or VOR.
+Range setting.
+Aircraft heading or track.
+Active waypoint and next waypoints in sequence with distances and times if shown.
+Course deviation if present.
+Wind direction and speed if displayed.
+True airspeed and ground speed if shown in the display corners.
+Weather radar returns if shown (intensity and position relative to aircraft).
+TCAS traffic if present (relative position, altitude, and trend).
+Any terrain warnings or alerts.
+
+Skip normal colors (green, white, magenta) - only mention warning/alert colors (amber, red).
+Use line breaks to separate information. Put mode and range on the first line, heading/track on the next, then each waypoint on its own line.
+Do not use markdown formatting. Do not explain what things mean. Just state the essential data.",
+
+            DisplayType.PFD777 => @"You are reading the Primary Flight Display (PFD) of a Boeing 777 for a screen reader user.
+The image may contain multiple displays. ONLY describe the Primary Flight Display (PFD) — the leftmost display showing airspeed, altitude, and attitude. Ignore EICAS, ND, and any other displays.
+Be extremely concise and direct. Skip descriptions of tape layouts, scales, and visual positioning. Only report actual values, modes, states, and deviations.
+
+Report in this order:
+Airspeed: current indicated airspeed in knots, any speed bugs or reference speeds shown (V1, VR, V2, Vref).
+Mach number if displayed.
+Altitude: current altitude, target/selected altitude if shown.
+Vertical speed value.
+Heading or track value.
+Flight Mode Annunciators (FMA): report the active modes across the top of the PFD — autothrottle mode, roll mode, pitch mode, autopilot engagement status. Report colors for FMA (green = active, white = armed, amber = warning).
+Flight director status if active.
+Localizer and glideslope deviation if displayed and not centered.
+Radio altitude if displayed.
+QNH/altimeter setting.
+Any warnings or alerts.
+
+Skip normal colors (green, white) for flight data — only mention warning/alert colors (amber, red).
+Use line breaks to separate major values. Put each item on its own line.
+Do not use markdown formatting. Do not explain what things mean. Just state the essential data.",
+
+            DisplayType.EICAS => @"You are reading the EICAS display of a Boeing 777 for a screen reader user.
+The image may contain multiple displays. ONLY describe the EICAS (the center display showing engine parameters and system information). Ignore PFD, ND, and any other displays.
+The EICAS has two sections: the upper section shows primary engine parameters, and the lower section shows either a secondary engine display or a system synoptic page.
+
+UPPER EICAS - Report these engine parameters for each engine (left engine and right engine):
+N1 percentage, N2 percentage, EGT in degrees Celsius, fuel flow.
+Also report: TAT (Total Air Temperature), SAT (Static Air Temperature), total fuel, flap position, gear status if displayed, and thrust mode if shown.
+
+LOWER EICAS / SYSTEM PAGE - If a system page is displayed below the engine parameters, identify which page it is (ENG, ELEC, HYD, FUEL, AIR, DOOR, GEAR, FCTL, STAT, CHKL) and report all values, states, and parameters shown on that page. If a checklist is displayed, read the checklist title and all items with their status.
+
+Report any caution or warning messages displayed in the crew alerting area.
+Be extremely concise and direct. Skip descriptions of gauge layouts, arc positions, and visual formatting. Only report actual values and states.
+Skip normal colors (green, white) - only mention warning/alert colors (amber, red).
+Use line breaks to separate parameters. Put each engine on its own line, then system page data on separate lines.
 Do not use markdown formatting. Do not explain what things mean. Just state the essential data.",
 
             _ => "Report what you see on this display in plain text. No markdown formatting. No explanations. Just the data."

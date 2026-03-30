@@ -71,6 +71,13 @@ Waypoint Tracking (use Fix Track window or EFB route viewer to add):
   4          Track Slot 4
   5          Track Slot 5
 
+AI Display Reading (requires Gemini API key in File > Gemini Settings):
+  Alt+P      Read PFD (use Ctrl+2 cockpit view first)
+  Alt+N      Read Navigation Display (use Ctrl+2 cockpit view first)
+  Alt+I      Read ISFD backup instruments (use Ctrl+2 cockpit view first)
+  Alt+E      Read EICAS display (use Ctrl+2 cockpit view first)
+  Alt+D      Describe outside scene
+
 Displays and Windows:
   Ctrl+M     PMDG Monitor Manager
   Shift+E    Route viewer, procedure planner and airport lookup

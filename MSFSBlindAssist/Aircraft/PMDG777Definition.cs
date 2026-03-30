@@ -5984,8 +5984,84 @@ public class PMDG777Definition : BaseAircraftDefinition
                 return false;
 
 
+            case HotkeyAction.ReadDisplayPFD:
+                ReadDisplay(Services.GeminiService.DisplayType.PFD777, "PFD", announcer, parentForm);
+                return true;
+
+            case HotkeyAction.ReadDisplayND:
+                ReadDisplay(Services.GeminiService.DisplayType.ND777, "ND", announcer, parentForm);
+                return true;
+
+            case HotkeyAction.ReadDisplayISIS:
+                ReadDisplay(Services.GeminiService.DisplayType.ISFD, "ISFD", announcer, parentForm);
+                return true;
+
+            case HotkeyAction.ReadDisplayUpperECAM:
+                ReadDisplay(Services.GeminiService.DisplayType.EICAS, "EICAS", announcer, parentForm);
+                return true;
+
             default:
                 return base.HandleHotkeyAction(action, simConnect, announcer, parentForm, hotkeyManager);
+        }
+    }
+
+    /// <summary>
+    /// Captures screenshot and analyzes cockpit display using Gemini AI.
+    /// </summary>
+    private async void ReadDisplay(Services.GeminiService.DisplayType displayType,
+                                    string displayName,
+                                    ScreenReaderAnnouncer announcer,
+                                    System.Windows.Forms.Form parentForm)
+    {
+        try
+        {
+            announcer.Announce($"Capturing {displayName}...");
+
+            var screenshotService = new Services.ScreenshotService();
+            var geminiService = new Services.GeminiService();
+
+            if (!screenshotService.IsMsfsWindowAvailable())
+            {
+                announcer.Announce("Microsoft Flight Simulator window not found. Make sure the simulator is running.");
+                return;
+            }
+
+            byte[]? screenshot = await screenshotService.CaptureAsync();
+            if (screenshot == null || screenshot.Length == 0)
+            {
+                announcer.Announce($"Failed to capture {displayName} screenshot.");
+                return;
+            }
+
+            string analysis = await geminiService.AnalyzeDisplayAsync(screenshot, displayType);
+
+            var resultForm = new Forms.DisplayReadingResultForm(displayName, analysis);
+            resultForm.ShowForm();
+
+            announcer.Announce($"{displayName} analysis ready.");
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("API key"))
+        {
+            announcer.Announce("Gemini API key not configured. Please go to File menu, Gemini Settings.");
+            System.Windows.Forms.MessageBox.Show(
+                parentForm,
+                "Gemini API key is not configured.\n\n" +
+                "Please configure your API key in:\n" +
+                "File > Gemini Settings\n\n" +
+                "Get a free API key at: https://aistudio.google.com/apikey",
+                "API Key Required",
+                System.Windows.Forms.MessageBoxButtons.OK,
+                System.Windows.Forms.MessageBoxIcon.Warning);
+        }
+        catch (Exception ex)
+        {
+            announcer.Announce($"Error analyzing {displayName}: {ex.Message}");
+            System.Windows.Forms.MessageBox.Show(
+                parentForm,
+                $"Error analyzing {displayName}:\n\n{ex.Message}",
+                "Error",
+                System.Windows.Forms.MessageBoxButtons.OK,
+                System.Windows.Forms.MessageBoxIcon.Error);
         }
     }
 
