@@ -3949,36 +3949,6 @@ public class PMDG777Definition : BaseAircraftDefinition
                 OnlyAnnounceValueDescriptionMatches = true,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
-            ["CDU_annunDSPY_L"] = new SimConnect.SimVarDefinition
-            {
-                Name = "CDU_annunDSPY_0",
-                DisplayName = "CDU DSPY Left",
-                Type = SimConnect.SimVarType.PMDGVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
-            },
-            ["CDU_annunDSPY_C"] = new SimConnect.SimVarDefinition
-            {
-                Name = "CDU_annunDSPY_1",
-                DisplayName = "CDU DSPY Center",
-                Type = SimConnect.SimVarType.PMDGVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
-            },
-            ["CDU_annunDSPY_R"] = new SimConnect.SimVarDefinition
-            {
-                Name = "CDU_annunDSPY_2",
-                DisplayName = "CDU DSPY Right",
-                Type = SimConnect.SimVarType.PMDGVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
-            },
             ["CDU_annunFAIL_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "CDU_annunFAIL_0",
