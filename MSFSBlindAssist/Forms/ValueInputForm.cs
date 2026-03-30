@@ -108,12 +108,13 @@ public partial class ValueInputForm : Form
             foreach (var def in _toggleDefs)
             {
                 string state = def.GetCurrentState();
+                string label = string.IsNullOrEmpty(state) ? def.Label : $"{def.Label}: {state}";
                 var btn = new Button
                 {
-                    Text = $"{def.Label}: {state}",
+                    Text = label,
                     Location = new Point(20, toggleY),
                     Size = new Size(295, 28),
-                    AccessibleName = $"{def.Label}: {state}",
+                    AccessibleName = label,
                     AccessibleDescription = $"Press to toggle {def.Label}",
                     TabIndex = tabIdx++,
                     FlatStyle = FlatStyle.Standard
@@ -136,12 +137,16 @@ public partial class ValueInputForm : Form
                                 var b = _toggleButtons[j];
                                 var d = _toggleDefs[j];
                                 string s = d.GetCurrentState();
-                                b.Text = $"{d.Label}: {s}";
-                                b.AccessibleName = $"{d.Label}: {s}";
+                                string lbl = string.IsNullOrEmpty(s) ? d.Label : $"{d.Label}: {s}";
+                                b.Text = lbl;
+                                b.AccessibleName = lbl;
                             }
                             // Announce the pressed button's new state
                             string newState = capturedDef.GetCurrentState();
-                            announcer.AnnounceImmediate($"{capturedDef.Label} {newState}");
+                            if (string.IsNullOrEmpty(newState))
+                                announcer.AnnounceImmediate(capturedDef.Label);
+                            else
+                                announcer.AnnounceImmediate($"{capturedDef.Label} {newState}");
                         });
                     });
                 };

@@ -6027,7 +6027,7 @@ public class PMDG777Definition : BaseAircraftDefinition
 
         var toggles = new List<ToggleButtonDef>
         {
-            new("Intervene", () => "Push", () => SendPMDGMomentary(simConnect, "EVT_MCP_HEADING_PUSH_SWITCH")),
+            new("Intervene", () => "", () => SendPMDGMomentary(simConnect, "EVT_MCP_HEADING_PUSH_SWITCH")),
             new("Mode", () =>
             {
                 if (dm == null) return "?";
@@ -6147,7 +6147,7 @@ public class PMDG777Definition : BaseAircraftDefinition
 
         var toggles = new List<ToggleButtonDef>
         {
-            new("Intervene", () => "Push", () => SendPMDGMomentary(simConnect, "EVT_MCP_ALTITUDE_PUSH_SWITCH")),
+            new("Intervene", () => "", () => SendPMDGMomentary(simConnect, "EVT_MCP_ALTITUDE_PUSH_SWITCH")),
             new("VNAV", () =>
             {
                 if (dm == null) return "?";
