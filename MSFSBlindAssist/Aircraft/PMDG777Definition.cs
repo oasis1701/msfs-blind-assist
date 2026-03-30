@@ -49,7 +49,8 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["Pedestal"] = new List<string>
             {
                 "Control Stand", "Transponder/TCAS",
-                "CDU", "Evacuation", "Warning", "Engine Fire", "Radio", "Calls"
+                "CDU", "Evacuation", "Warning", "Engine Fire", "Radio", "Calls",
+                "Boris Audio Works"
             },
         };
     }
@@ -4559,6 +4560,34 @@ public class PMDG777Definition : BaseAircraftDefinition
                 IsMomentary = true,
                 HelpText = "Swap COM2 active and standby frequencies"
             },
+
+            // =================================================================
+            // BORIS AUDIO WORKS SOUNDPACK
+            // =================================================================
+            ["switch_622_a"] = new SimConnect.SimVarDefinition
+            {
+                Name = "switch_622_a",
+                DisplayName = "Headphone Simulation",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [100] = "On" }
+            },
+            ["switch_49_a"] = new SimConnect.SimVarDefinition
+            {
+                Name = "switch_49_a",
+                DisplayName = "Passenger Ambience",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [100] = "On" }
+            },
+            ["switch_319_a"] = new SimConnect.SimVarDefinition
+            {
+                Name = "switch_319_a",
+                DisplayName = "Hydraulic Pump Model",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Vickers 1", [100] = "Vickers 2" }
+            },
         };
     }
 
@@ -4853,6 +4882,12 @@ public class PMDG777Definition : BaseAircraftDefinition
             {
                 "CALL_Ground", "CALL_CrewRest", "CALL_Suprnmry",
                 "CALL_Cargo", "CALL_CargoAudio", "CALL_MainDeckAlert"
+            },
+
+            // Pedestal — Boris Audio Works Soundpack
+            ["Boris Audio Works"] = new List<string>
+            {
+                "switch_622_a", "switch_49_a", "switch_319_a"
             },
 
         };
