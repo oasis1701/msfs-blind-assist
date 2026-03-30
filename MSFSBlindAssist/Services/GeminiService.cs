@@ -188,14 +188,15 @@ Be extremely concise and direct. Skip descriptions of map layouts, visual positi
 
 Report in this order:
 Display mode: MAP, CTR MAP, PLAN, APP, or VOR.
-Range setting.
-Aircraft heading or track.
-Active waypoint and next waypoints in sequence with distances and times if shown.
+Range setting in nautical miles.
+Aircraft heading or track in degrees, and whether HDG or TRK reference is selected.
+Active waypoint and next waypoints in sequence with distances (NM) and ETA/time remaining if shown.
+Step climb or descent points if visible.
 Course deviation if present.
-Wind direction and speed if displayed.
-True airspeed and ground speed if shown in the display corners.
+Wind direction (degrees true) and speed (knots) if displayed.
+True airspeed (TAS) and ground speed (GS) if shown.
 Weather radar returns if shown (intensity and position relative to aircraft).
-TCAS traffic if present (relative position, altitude, and trend).
+TCAS traffic if present (relative position, altitude, and climb/descend trend).
 Any terrain warnings or alerts.
 
 Skip normal colors (green, white, magenta) - only mention warning/alert colors (amber, red).
@@ -207,16 +208,16 @@ The image may contain multiple displays. ONLY describe the Primary Flight Displa
 Be extremely concise and direct. Skip descriptions of tape layouts, scales, and visual positioning. Only report actual values, modes, states, and deviations.
 
 Report in this order:
-Airspeed: current indicated airspeed in knots, any speed bugs or reference speeds shown (V1, VR, V2, Vref).
+Airspeed: current indicated airspeed in knots, any speed reference bugs shown (V1, VR, V2, Vref, flap maneuvering speeds).
 Mach number if displayed.
-Altitude: current altitude, target/selected altitude if shown.
-Vertical speed value.
+Altitude: current altitude in feet, MCP selected altitude if shown.
+Vertical speed in feet per minute.
 Heading or track value.
-Flight Mode Annunciators (FMA): report the active modes across the top of the PFD — autothrottle mode, roll mode, pitch mode, autopilot engagement status. Report colors for FMA (green = active, white = armed, amber = warning).
-Flight director status if active.
+Flight Mode Annunciations (FMA) across the top of the PFD: report thrust mode (HOLD, IDLE, THR, THR REF, SPD), roll mode (HDG HOLD, HDG SEL, LNAV, LOC), pitch mode (ALT, V/S, VNAV SPD, VNAV PTH, G/S, FLCH SPD, TO/GA), and autopilot/autothrottle engagement (CMD, FD, A/T). Green = active, white = armed, magenta = FMC commanded mode.
+Flight director bars if active.
 Localizer and glideslope deviation if displayed and not centered.
 Radio altitude if displayed.
-QNH/altimeter setting.
+Barometric setting (IN HG or HPA).
 Any warnings or alerts.
 
 Skip normal colors (green, white) for flight data — only mention warning/alert colors (amber, red).
@@ -228,8 +229,8 @@ The image may contain multiple displays. ONLY describe the EICAS (the center dis
 The EICAS has two sections: the upper section shows primary engine parameters, and the lower section shows either a secondary engine display or a system synoptic page.
 
 UPPER EICAS - Report these engine parameters for each engine (left engine and right engine):
-N1 percentage, N2 percentage, EGT in degrees Celsius, fuel flow.
-Also report: TAT (Total Air Temperature), SAT (Static Air Temperature), total fuel, flap position, gear status if displayed, and thrust mode if shown.
+N1 percentage and N1 limit/reference if shown, N2 percentage, EGT in degrees Celsius, fuel flow in pounds per hour (PPH).
+Also report: thrust mode (TO, CLB, CRZ, GA, CON if shown), TAT (Total Air Temperature), SAT (Static Air Temperature), total fuel in pounds, flap position, gear status if displayed.
 
 LOWER EICAS / SYSTEM PAGE - If a system page is displayed below the engine parameters, identify which page it is (ENG, ELEC, HYD, FUEL, AIR, DOOR, GEAR, FCTL, STAT, CHKL) and report all values, states, and parameters shown on that page. If a checklist is displayed, read the checklist title and all items with their status.
 

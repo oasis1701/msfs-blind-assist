@@ -4788,10 +4788,9 @@ public class PMDG777Definition : BaseAircraftDefinition
             // Glareshield — Display Select Panel
             ["Display Select Panel"] = new List<string>
             {
-                "DSP_L_INBD", "DSP_R_INBD", "DSP_LWR_CTR",
                 "DSP_ENG", "DSP_STAT", "DSP_ELEC", "DSP_HYD", "DSP_FUEL",
                 "DSP_AIR", "DSP_DOOR", "DSP_GEAR", "DSP_FCTL",
-                "DSP_CAM", "DSP_CHKL", "DSP_COMM", "DSP_NAV", "DSP_CANC_RCL"
+                "DSP_CHKL", "DSP_CANC_RCL"
             },
 
             // Forward Panel — Landing Gear
