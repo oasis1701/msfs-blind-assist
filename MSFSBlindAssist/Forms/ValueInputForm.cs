@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using MSFSBlindAssist.Accessibility;
 
 namespace MSFSBlindAssist.Forms;
@@ -28,6 +29,8 @@ public partial class ValueInputForm : Form
 
         public string InputValue { get; private set; } = null!;
         public bool IsValidInput { get; private set; }
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public bool ShowCancelButton { get; set; } = true;
 
         private readonly ScreenReaderAnnouncer announcer;
         private readonly string parameterType;
@@ -185,12 +188,29 @@ public partial class ValueInputForm : Form
         {
             Load += (sender, e) =>
             {
+                if (!ShowCancelButton)
+                {
+                    cancelButton.Visible = false;
+                    CancelButton = null;
+                }
                 BringToFront();
                 Activate();
                 TopMost = true;
                 TopMost = false;
                 valueTextBox.Focus();
             };
+        }
+
+        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+        {
+            if (keyData == Keys.Escape)
+            {
+                Close();
+                if (previousWindow != IntPtr.Zero)
+                    SetForegroundWindow(previousWindow);
+                return true;
+            }
+            return base.ProcessCmdKey(ref msg, keyData);
         }
 
         private void ValueTextBox_KeyDown(object? sender, KeyEventArgs e)

@@ -21,6 +21,7 @@ public partial class PMDG777CDUForm : Form
     private int _selectedCDU = 0;
     private IntPtr _previousWindow = IntPtr.Zero;
     private bool _typingInProgress = false;
+    private bool _clearingInProgress = false;
 
     public PMDG777CDUForm(PMDG777DataManager dataManager, ScreenReaderAnnouncer announcer)
     {
@@ -177,17 +178,27 @@ public partial class PMDG777CDUForm : Form
             cduDisplay.SelectedIndex = savedIndex;
         }
 
-        // Announce scratchpad change (suppressed while typing)
-        if (scratchpad != _previousScratchpad)
+        // Announce scratchpad change (suppressed while typing/clearing)
+        if (scratchpad != _previousScratchpad && !_typingInProgress)
         {
-            if (!_typingInProgress)
+            if (_clearingInProgress)
+            {
+                // Only announce once scratchpad is fully empty
+                if (string.IsNullOrWhiteSpace(scratchpad))
+                {
+                    _clearingInProgress = false;
+                    _announcer.Announce("Cleared");
+                    _previousScratchpad = scratchpad;
+                }
+            }
+            else
             {
                 string msg = string.IsNullOrWhiteSpace(scratchpad)
                     ? "Cleared"
                     : scratchpad;
                 _announcer.Announce(msg);
+                _previousScratchpad = scratchpad;
             }
-            _previousScratchpad = scratchpad;
         }
 
         _previousRows = rows;
@@ -219,7 +230,6 @@ public partial class PMDG777CDUForm : Form
         _dataManager.SendEvent(eventName, (uint)eventId, 1);
     }
 
-
     private void OnLineSelect(string suffix, int lineNumber)
     {
         SendCDUKey(suffix);
@@ -230,7 +240,10 @@ public partial class PMDG777CDUForm : Form
         // If CDU scratchpad has content → CLR (clear it)
         // If CDU scratchpad is empty → DEL (puts "DELETE" in scratchpad for field deletion)
         if (!string.IsNullOrWhiteSpace(_previousScratchpad))
+        {
+            _clearingInProgress = true;
             SendCDUKey("CLR");
+        }
         else
             SendCDUKey("DEL");
     }
@@ -383,16 +396,7 @@ public partial class PMDG777CDUForm : Form
             string? keySuffix = c switch
             {
                 >= 'A' and <= 'Z' => c.ToString(),
-                '1' => "1",
-                '2' => "2",
-                '3' => "3",
-                '4' => "4",
-                '5' => "5",
-                '6' => "6",
-                '7' => "7",
-                '8' => "8",
-                '9' => "9",
-                '0' => "0",
+                >= '0' and <= '9' => c.ToString(),
                 '.' => "DOT",
                 '/' => "SLASH",
                 ' ' => "SPACE",
@@ -405,17 +409,16 @@ public partial class PMDG777CDUForm : Form
             {
                 // Repeated key needs extra delay for CDU to distinguish separate presses
                 if (keySuffix == previousKey)
-                    await Task.Delay(200);
+                    await Task.Delay(400);
                 SendCDUKey(keySuffix);
                 await Task.Delay(350);
                 previousKey = keySuffix;
             }
         }
-        // Wait for CDU to process final character, then announce result
+        // Wait for CDU to process final character before re-enabling announcements.
+        // The poll handler will announce the scratchpad once it detects the change.
         await Task.Delay(500);
         _typingInProgress = false;
-        if (!string.IsNullOrWhiteSpace(_previousScratchpad))
-            _announcer.Announce(_previousScratchpad);
     }
 
     // ------------------------------------------------------------------

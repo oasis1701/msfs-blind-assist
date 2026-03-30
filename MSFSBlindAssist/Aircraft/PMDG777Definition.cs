@@ -30,9 +30,9 @@ public class PMDG777Definition : BaseAircraftDefinition
         {
             ["Overhead"] = new List<string>
             {
-                "Electrical", "Hydraulic", "Fuel", "Engines", "Bleed Air",
+                "Electrical", "ADIRU", "Hydraulic", "Fuel", "Engines", "Bleed Air",
                 "Air Conditioning", "Pressurization", "Anti-Ice", "Fire",
-                "Lights", "Signs", "Wipers", "Panel Lighting", "ADIRU"
+                "Lights", "Signs", "Wipers", "Panel Lighting"
             },
             ["Overhead Maintenance"] = new List<string>
             {
@@ -3318,30 +3318,10 @@ public class PMDG777Definition : BaseAircraftDefinition
                 OnlyAnnounceValueDescriptionMatches = true,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             },
-            ["WARN_annunMasterWarning_R"] = new SimConnect.SimVarDefinition
-            {
-                Name = "WARN_annunMASTER_WARNING_1",
-                DisplayName = "Master Warning Right",
-                Type = SimConnect.SimVarType.PMDGVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
-            },
             ["WARN_annunMasterCaution_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "WARN_annunMASTER_CAUTION_0",
                 DisplayName = "Master Caution Left",
-                Type = SimConnect.SimVarType.PMDGVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
-            },
-            ["WARN_annunMasterCaution_R"] = new SimConnect.SimVarDefinition
-            {
-                Name = "WARN_annunMASTER_CAUTION_1",
-                DisplayName = "Master Caution Right",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -4659,9 +4639,9 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["Engines"] = new List<string>
             {
                 "ENG_EECMode_L", "ENG_EECMode_R",
-                "ENG_StartSelector_L", "ENG_StartSelector_R",
                 "ENG_Autostart",
-                "ENG_FuelControl_1", "ENG_FuelControl_2"
+                "ENG_StartSelector_L", "ENG_FuelControl_1",
+                "ENG_StartSelector_R", "ENG_FuelControl_2"
             },
 
             // Overhead — Bleed Air
@@ -5663,13 +5643,13 @@ public class PMDG777Definition : BaseAircraftDefinition
         }
 
         // Master warning and caution
-        if (varName == "WARN_annunMasterWarning_L" || varName == "WARN_annunMasterWarning_R")
+        if (varName == "WARN_annunMasterWarning_L")
         {
             announcer.Announce(value > 0 ? "Master WARNING" : "Master WARNING cleared");
             return true;
         }
 
-        if (varName == "WARN_annunMasterCaution_L" || varName == "WARN_annunMasterCaution_R")
+        if (varName == "WARN_annunMasterCaution_L")
         {
             announcer.Announce(value > 0 ? "Master CAUTION" : "Master CAUTION cleared");
             return true;
@@ -6113,7 +6093,8 @@ public class PMDG777Definition : BaseAircraftDefinition
                 }
             });
 
-        dialog.ShowDialog(parentForm);
+        dialog.ShowCancelButton = false;
+        dialog.Show(parentForm);
     }
 
     private void ShowPMDGSpeedDialog(
@@ -6177,7 +6158,8 @@ public class PMDG777Definition : BaseAircraftDefinition
                 }
             });
 
-        dialog.ShowDialog(parentForm);
+        dialog.ShowCancelButton = false;
+        dialog.Show(parentForm);
     }
 
     private void ShowPMDGAltitudeDialog(
@@ -6231,7 +6213,8 @@ public class PMDG777Definition : BaseAircraftDefinition
                 }
             });
 
-        dialog.ShowDialog(parentForm);
+        dialog.ShowCancelButton = false;
+        dialog.Show(parentForm);
     }
 
     private void ShowPMDGVSDialog(
@@ -6280,7 +6263,8 @@ public class PMDG777Definition : BaseAircraftDefinition
                 }
             });
 
-        dialog.ShowDialog(parentForm);
+        dialog.ShowCancelButton = false;
+        dialog.Show(parentForm);
     }
 
     // =========================================================================
