@@ -28,6 +28,9 @@ Heading:
   H          Read Magnetic Heading
   U          Read True Heading
 
+Navigation:
+  N          Read NAV 1 and NAV 2 radio info (frequency, ident, localizer, glideslope, DME)
+
 Fuel:
   F          Read Fuel Quantity (Left, Center, Right, Aux, Total in pounds)
 

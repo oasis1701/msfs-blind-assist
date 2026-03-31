@@ -24,6 +24,7 @@ public class SimConnectManager
     public event EventHandler<SimVarUpdateEventArgs>? SimVarUpdated;
     public event EventHandler<AircraftPosition>? AircraftPositionReceived;
     public event EventHandler<WindData>? WindReceived;
+    public event EventHandler<NavRadioData>? NavRadioReceived;
     public event EventHandler<ECAMDataEventArgs>? ECAMDataReceived;
     public event EventHandler<TakeoffRunwayReferenceEventArgs>? TakeoffRunwayReferenceSet;
     public event EventHandler<string>? AircraftDetected;
@@ -155,6 +156,7 @@ public class SimConnectManager
         REQUEST_GROSS_WEIGHT = 319,
         REQUEST_GROSS_WEIGHT_KG = 320,
         REQUEST_FUEL_QUANTITY_FBW = 321,
+        REQUEST_NAV_RADIO = 322,
         REQUEST_ECAM_MESSAGES = 350,
         // Individual variable requests start from 1000
         INDIVIDUAL_VARIABLE_BASE = 1000
@@ -203,6 +205,7 @@ public class SimConnectManager
         DEF_GROSS_WEIGHT = 319,
         DEF_GROSS_WEIGHT_KG = 320,
         DEF_FUEL_QUANTITY_FBW = 321,
+        DEF_NAV_RADIO = 322,
         ECAM_MESSAGES = 350,
         // Individual variable definitions start from 1000
         INDIVIDUAL_VARIABLE_BASE = 1000
@@ -298,6 +301,35 @@ public class SimConnectManager
     {
         public double Direction;
         public double Speed;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
+    public struct NavRadioData
+    {
+        public double Nav1Freq;
+        public double Nav1HasNav;
+        public double Nav1HasLocalizer;
+        public double Nav1HasGlideSlope;
+        public double Nav1HasDME;
+        public double Nav1DME;
+        public double Nav1Localizer;
+        public double Nav1GlideSlope;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)]
+        public string Nav1Ident;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)]
+        public string Nav1Name;
+        public double Nav2Freq;
+        public double Nav2HasNav;
+        public double Nav2HasLocalizer;
+        public double Nav2HasGlideSlope;
+        public double Nav2HasDME;
+        public double Nav2DME;
+        public double Nav2Localizer;
+        public double Nav2GlideSlope;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)]
+        public string Nav2Ident;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)]
+        public string Nav2Name;
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
@@ -521,6 +553,29 @@ public class SimConnectManager
         sc.AddToDataDefinition(DATA_DEFINITIONS.WIND_DATA, "AMBIENT WIND VELOCITY", "knots",
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)1);
         sc.RegisterDataDefineStruct<WindData>(DATA_DEFINITIONS.WIND_DATA);
+
+        // NAV Radio data
+        sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_NAV_RADIO, "NAV ACTIVE FREQUENCY:1", "MHz", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_NAV_RADIO, "NAV HAS NAV:1", "Bool", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_NAV_RADIO, "NAV HAS LOCALIZER:1", "Bool", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_NAV_RADIO, "NAV HAS GLIDE SLOPE:1", "Bool", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_NAV_RADIO, "NAV HAS DME:1", "Bool", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_NAV_RADIO, "NAV DME:1", "Nautical miles", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_NAV_RADIO, "NAV LOCALIZER:1", "Degrees", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_NAV_RADIO, "NAV RAW GLIDE SLOPE:1", "Degrees", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_NAV_RADIO, "NAV IDENT:1", null, SIMCONNECT_DATATYPE.STRING256, 0.0f, SIMCONNECT_UNUSED);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_NAV_RADIO, "NAV NAME:1", null, SIMCONNECT_DATATYPE.STRING256, 0.0f, SIMCONNECT_UNUSED);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_NAV_RADIO, "NAV ACTIVE FREQUENCY:2", "MHz", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_NAV_RADIO, "NAV HAS NAV:2", "Bool", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_NAV_RADIO, "NAV HAS LOCALIZER:2", "Bool", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_NAV_RADIO, "NAV HAS GLIDE SLOPE:2", "Bool", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_NAV_RADIO, "NAV HAS DME:2", "Bool", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_NAV_RADIO, "NAV DME:2", "Nautical miles", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_NAV_RADIO, "NAV LOCALIZER:2", "Degrees", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_NAV_RADIO, "NAV RAW GLIDE SLOPE:2", "Degrees", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_NAV_RADIO, "NAV IDENT:2", null, SIMCONNECT_DATATYPE.STRING256, 0.0f, SIMCONNECT_UNUSED);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_NAV_RADIO, "NAV NAME:2", null, SIMCONNECT_DATATYPE.STRING256, 0.0f, SIMCONNECT_UNUSED);
+        sc.RegisterDataDefineStruct<NavRadioData>(DATA_DEFINITIONS.DEF_NAV_RADIO);
     }
 
     /// <summary>
@@ -1088,6 +1143,11 @@ public class SimConnectManager
             case DATA_REQUESTS.REQUEST_WIND_DATA:
                 WindData windData = (WindData)data.dwData[0];
                 ProcessWindData(windData);
+                break;
+
+            case DATA_REQUESTS.REQUEST_NAV_RADIO:
+                NavRadioData navRadioData = (NavRadioData)data.dwData[0];
+                NavRadioReceived?.Invoke(this, navRadioData);
                 break;
 
             // REQUEST_ECAM_MESSAGES case removed - now handled via MobiFlight
@@ -3953,6 +4013,31 @@ public class SimConnectManager
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error requesting aircraft position async: {ex.Message}");
+        }
+    }
+
+    public void RequestNavRadioInfo(Action<NavRadioData> callback)
+    {
+        if (!IsConnected || callback == null) return;
+
+        try
+        {
+            EventHandler<NavRadioData>? handler = null;
+            handler = (sender, navData) =>
+            {
+                NavRadioReceived -= handler!;
+                callback(navData);
+            };
+            NavRadioReceived += handler;
+
+            simConnect!.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_NAV_RADIO,
+                DATA_DEFINITIONS.DEF_NAV_RADIO, SIMCONNECT_OBJECT_ID_USER,
+                SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT,
+                0, 0, 0);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error requesting NAV radio info: {ex.Message}");
         }
     }
 

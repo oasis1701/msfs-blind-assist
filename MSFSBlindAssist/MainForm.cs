@@ -1033,6 +1033,9 @@ public partial class MainForm : Form
             case HotkeyAction.ReadWindInfo:
                 RequestWindInfo();
                 break;
+            case HotkeyAction.ReadNavRadioInfo:
+                RequestNavRadioInfo();
+                break;
             case HotkeyAction.ShowMETARReport:
                 ShowMETARReportDialog();
                 break;
@@ -1574,6 +1577,81 @@ public partial class MainForm : Form
         // Request ILS guidance calculation
         // This will be handled asynchronously through the SimConnect event system
         simConnectManager.RequestILSGuidance(ilsData, runway, airport);
+    }
+
+    private async void RequestNavRadioInfo()
+    {
+        if (simConnectManager == null || !simConnectManager.IsConnected)
+        {
+            announcer.AnnounceImmediate("Not connected to simulator.");
+            return;
+        }
+
+        bool received = false;
+        string announcement = "";
+
+        simConnectManager.RequestNavRadioInfo(navData =>
+        {
+            announcement = FormatNavRadioData(navData);
+            received = true;
+        });
+
+        var timeout = DateTime.Now.AddSeconds(2);
+        while (!received && DateTime.Now < timeout)
+        {
+            await Task.Delay(50);
+            Application.DoEvents();
+        }
+
+        if (received)
+            announcer.AnnounceImmediate(announcement);
+        else
+            announcer.AnnounceImmediate("NAV radio data unavailable.");
+    }
+
+    private string FormatNavRadioData(SimConnect.SimConnectManager.NavRadioData data)
+    {
+        var parts = new List<string>();
+
+        parts.Add(FormatSingleNav("Nav 1", data.Nav1Freq, data.Nav1HasNav, data.Nav1HasLocalizer,
+            data.Nav1HasGlideSlope, data.Nav1HasDME, data.Nav1DME, data.Nav1Localizer,
+            data.Nav1GlideSlope, data.Nav1Ident, data.Nav1Name));
+
+        parts.Add(FormatSingleNav("Nav 2", data.Nav2Freq, data.Nav2HasNav, data.Nav2HasLocalizer,
+            data.Nav2HasGlideSlope, data.Nav2HasDME, data.Nav2DME, data.Nav2Localizer,
+            data.Nav2GlideSlope, data.Nav2Ident, data.Nav2Name));
+
+        return string.Join(". ", parts);
+    }
+
+    private string FormatSingleNav(string label, double freq, double hasNav, double hasLoc,
+        double hasGS, double hasDME, double dme, double locCourse, double gsAngle,
+        string ident, string name)
+    {
+        string freqStr = freq.ToString("F2");
+        var info = new List<string> { $"{label}: {freqStr}" };
+
+        if (hasNav <= 0)
+        {
+            info.Add("no signal");
+            return string.Join(", ", info);
+        }
+
+        if (!string.IsNullOrWhiteSpace(ident))
+            info.Add(ident);
+        if (!string.IsNullOrWhiteSpace(name))
+            info.Add(name);
+
+        if (hasLoc > 0)
+            info.Add($"localizer course {(int)locCourse}");
+
+        if (hasGS > 0)
+            info.Add($"glideslope {gsAngle:F1} degrees");
+
+        if (hasDME > 0)
+            info.Add($"DME {dme:F1} nautical miles");
+
+        return string.Join(", ", info);
     }
 
     private async void RequestWindInfo()

@@ -81,6 +81,7 @@ public class HotkeyManager : IDisposable
         private const int HOTKEY_TOGGLE_TRIM = 9100;
         private const int HOTKEY_DISTANCE_TO_DEST = 9101;
         private const int HOTKEY_DISTANCE_TO_TOD = 9102;
+        private const int HOTKEY_NAV_RADIO_INFO = 9103;
         private const int HOTKEY_TAKEOFF_ASSIST = 9058;
         private const int HOTKEY_TOGGLE_ECAM_MONITORING = 9059;
         private const int HOTKEY_HAND_FLY_MODE = 9075;
@@ -265,6 +266,9 @@ public class HotkeyManager : IDisposable
                             break;
                         case HOTKEY_DISTANCE_TO_TOD:
                             TriggerHotkey(HotkeyAction.ReadDistanceToTOD);
+                            break;
+                        case HOTKEY_NAV_RADIO_INFO:
+                            TriggerHotkey(HotkeyAction.ReadNavRadioInfo);
                             break;
                         case HOTKEY_APPROACH_CAPABILITY:
                             TriggerHotkey(HotkeyAction.ReadApproachCapability);
@@ -560,6 +564,7 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_ILS_GUIDANCE, MOD_CONTROL, 0x49); // Ctrl+I (ILS Guidance)
             RegisterHotKey(windowHandle, HOTKEY_LOCATION_INFO, MOD_SHIFT, 0x4C);   // Shift+L (Location Info)
             RegisterHotKey(windowHandle, HOTKEY_WIND_INFO, MOD_NONE, 0x49); // I (Wind Info)
+            RegisterHotKey(windowHandle, HOTKEY_NAV_RADIO_INFO, MOD_NONE, 0x4E); // N (NAV Radio Info)
             RegisterHotKey(windowHandle, HOTKEY_METAR_REPORT, MOD_SHIFT, 0x4D); // Shift+M (METAR Report)
             RegisterHotKey(windowHandle, HOTKEY_PFD, MOD_SHIFT, 0x50); // Shift+P (PFD Window)
             RegisterHotKey(windowHandle, HOTKEY_SIMBRIEF_BRIEFING, MOD_SHIFT, 0x42); // Shift+B (SimBrief Briefing)
@@ -644,6 +649,7 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_SIMBRIEF_BRIEFING);
             UnregisterHotKey(windowHandle, HOTKEY_DISTANCE_TO_DEST);
             UnregisterHotKey(windowHandle, HOTKEY_DISTANCE_TO_TOD);
+            UnregisterHotKey(windowHandle, HOTKEY_NAV_RADIO_INFO);
             UnregisterHotKey(windowHandle, HOTKEY_APPROACH_CAPABILITY);
 
             // Unregister speed tape hotkeys
@@ -1057,4 +1063,5 @@ public class HotkeyManager : IDisposable
         ReadDistanceToDest,
         ReadThrustLimitMode,
         ToggleTrimAnnouncements,
+        ReadNavRadioInfo,
     }

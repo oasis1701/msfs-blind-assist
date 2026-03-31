@@ -21,6 +21,9 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     private bool _trimAnnouncementsEnabled = true;
     private double _lastAnnouncedTrimDeg = double.NaN;
 
+    // Glideslope alive/lost tracking
+    private bool _previousGlideSlopeAlive = false;
+
     // Abstract members from IAircraftDefinition that must be implemented
     public abstract string AircraftName { get; }
     public abstract string AircraftCode { get; }
@@ -69,6 +72,17 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
                 Units = "feet",
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true  // Required for batched continuous monitoring (custom logic handles actual announcements)
+            },
+
+            // Glideslope signal - monitors NAV1 glideslope alive/lost transitions
+            ["MON_GlideSlopeAlive"] = new SimConnect.SimVarDefinition
+            {
+                Name = "NAV HAS GLIDE SLOPE:1",
+                DisplayName = "Glideslope",
+                Type = SimConnect.SimVarType.SimVar,
+                Units = "Bool",
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true
             },
 
             // Elevator trim - universal SimConnect variable for trim position announcements
@@ -392,6 +406,17 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
             _lastAnnouncedTrimDeg = rounded;
             string direction = rounded >= 0 ? "up" : "down";
             announcer.Announce($"Trim {direction} {Math.Abs(rounded):F1}");
+            return true;
+        }
+
+        if (varName == "MON_GlideSlopeAlive")
+        {
+            bool alive = value > 0;
+            if (alive && !_previousGlideSlopeAlive)
+                announcer.Announce("Glideslope alive");
+            else if (!alive && _previousGlideSlopeAlive)
+                announcer.Announce("Glideslope lost");
+            _previousGlideSlopeAlive = alive;
             return true;
         }
 
