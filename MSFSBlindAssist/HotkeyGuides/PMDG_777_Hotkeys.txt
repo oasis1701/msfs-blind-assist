@@ -32,7 +32,12 @@ Navigation:
   N          Read NAV 1 and NAV 2 radio info (frequency, ident, localizer, glideslope, DME)
 
 Fuel:
-  F          Read Fuel Quantity (Left, Center, Right, Aux, Total in pounds)
+  F          Read Fuel Quantity per tank (pounds)
+  Shift+F    Read Fuel Quantity per tank (kilograms)
+
+Weight:
+  W          Read Gross Weight (pounds)
+  Shift+W    Read Gross Weight (kilograms)
 
 Flaps:
   L          Read Flap Position

@@ -5891,6 +5891,36 @@ public class PMDG777Definition : BaseAircraftDefinition
                 ReadDisplay(Services.GeminiService.DisplayType.EICAS, "EICAS", announcer, parentForm);
                 return true;
 
+            case HotkeyAction.ShowFuelPayloadWindow:
+            {
+                var dm = simConnect.PMDG777DataManager;
+                if (dm == null) return false;
+                int leftKg   = (int)Math.Round(dm.GetFieldValue("FUEL_QtyLeft") * 0.453592);
+                int centerKg = (int)Math.Round(dm.GetFieldValue("FUEL_QtyCenter") * 0.453592);
+                int rightKg  = (int)Math.Round(dm.GetFieldValue("FUEL_QtyRight") * 0.453592);
+                int auxKg    = (int)Math.Round(dm.GetFieldValue("FUEL_QtyAux") * 0.453592);
+                int totalKg  = leftKg + centerKg + rightKg + auxKg;
+                announcer.AnnounceImmediate(
+                    $"Left {leftKg}, Center {centerKg}, Right {rightKg}, Aux {auxKg}, Total {totalKg} kilograms");
+                return true;
+            }
+
+            case HotkeyAction.ReadWaypointInfo:
+            {
+                simConnect.RequestSingleValue(
+                    (int)SimConnect.SimConnectManager.DATA_DEFINITIONS.DEF_GROSS_WEIGHT,
+                    "TOTAL WEIGHT", "pounds", "GROSS_WEIGHT");
+                return true;
+            }
+
+            case HotkeyAction.ReadGrossWeightKg:
+            {
+                simConnect.RequestSingleValue(
+                    (int)SimConnect.SimConnectManager.DATA_DEFINITIONS.DEF_GROSS_WEIGHT_KG,
+                    "TOTAL WEIGHT", "pounds", "GROSS_WEIGHT_KG");
+                return true;
+            }
+
             default:
                 return base.HandleHotkeyAction(action, simConnect, announcer, parentForm, hotkeyManager);
         }
