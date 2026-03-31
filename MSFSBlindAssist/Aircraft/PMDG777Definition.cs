@@ -4677,7 +4677,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 "MCP_AP_L", "MCP_AP_R", "MCP_FD_L", "MCP_FD_R",
                 "MCP_ATArm_L", "MCP_ATArm_R", "MCP_AT",
                 "MCP_LNAV", "MCP_HDG_HOLD", "MCP_LOC",
-                "MCP_VNAV", "MCP_FLCH", "MCP_ALT_HOLD", "MCP_VS_FPA", "MCP_APP",
+                "MCP_VNAV", "MCP_FLCH", "MCP_ALT_HOLD", "MCP_APP",
                 "MCP_BankLimitSel", "MCP_DisengageBar"
             },
 
@@ -5863,12 +5863,6 @@ public class PMDG777Definition : BaseAircraftDefinition
                 return true;
             }
 
-            case HotkeyAction.FCUSetVS:
-            {
-                hotkeyManager.ExitInputHotkeyMode();
-                ShowPMDGVSDialog(simConnect, announcer, parentForm);
-                return true;
-            }
 
             // CDU handled by MainForm (Task 13)
             case HotkeyAction.ShowFenixMCDU:
@@ -6212,51 +6206,6 @@ public class PMDG777Definition : BaseAircraftDefinition
                 {
                     if (EventIds.TryGetValue("EVT_MCP_ALT_SET", out int evId))
                         simConnect.SendPMDGEvent("EVT_MCP_ALT_SET", (uint)evId, alt);
-                }
-            });
-
-        dialog.ShowCancelButton = false;
-        dialog.Show(parentForm);
-    }
-
-    private void ShowPMDGVSDialog(
-        SimConnect.SimConnectManager simConnect,
-        ScreenReaderAnnouncer announcer,
-        Form parentForm)
-    {
-        if (!simConnect.IsConnected)
-        {
-            announcer.AnnounceImmediate("Not connected to simulator.");
-            return;
-        }
-
-        var dm = simConnect.PMDG777DataManager;
-
-        var toggles = new List<ToggleButtonDef>
-        {
-            new("&V/S", () =>
-            {
-                if (dm == null) return "?";
-                return (int)dm.GetFieldValue("MCP_annunVS_FPA") > 0 ? "Engaged" : "Off";
-            }, () => SendPMDGMomentary(simConnect, "EVT_MCP_VS_FPA_SWITCH")),
-        };
-
-        var dialog = new ValueInputForm(
-            "MCP Vertical Speed", "vertical speed (fpm)", "-9900 to 9900", announcer,
-            input =>
-            {
-                if (int.TryParse(input, out int val) && val >= -9900 && val <= 9900)
-                    return (true, "");
-                return (false, "Enter a value between -9900 and 9900 fpm");
-            },
-            toggles,
-            input =>
-            {
-                if (int.TryParse(input, out int vs))
-                {
-                    int encoded = vs + 10000;
-                    if (EventIds.TryGetValue("EVT_MCP_VS_SET", out int evId))
-                        simConnect.SendPMDGEvent("EVT_MCP_VS_SET", (uint)evId, encoded);
                 }
             });
 
