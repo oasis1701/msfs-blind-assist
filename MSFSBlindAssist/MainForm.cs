@@ -670,6 +670,20 @@ public partial class MainForm : Form
                     }
                 }
             }
+            else if (control is Button btn)
+            {
+                // Update stateful button label from ValueDescriptions
+                if (currentAircraft.GetVariables().ContainsKey(varName))
+                {
+                    var varDef = currentAircraft.GetVariables()[varName];
+                    if (varDef.ValueDescriptions != null && varDef.ValueDescriptions.TryGetValue(value, out string? stateText))
+                    {
+                        string newLabel = $"{varDef.DisplayName}: {stateText}";
+                        btn.Text = newLabel;
+                        btn.AccessibleName = newLabel;
+                    }
+                }
+            }
 
             updatingFromSim = false;
         }
@@ -2588,12 +2602,21 @@ public partial class MainForm : Form
             if (varDef.RenderAsButton)
             {
                 // Render as button (momentary pushbutton, action button, etc.)
+                // If ValueDescriptions are present, show current state in the label
+                bool hasState = varDef.ValueDescriptions != null && varDef.ValueDescriptions.Count >= 2;
+                string buttonText = varDef.DisplayName;
+                if (hasState && currentSimVarValues.ContainsKey(varKey))
+                {
+                    double val = currentSimVarValues[varKey];
+                    if (varDef.ValueDescriptions.TryGetValue(val, out string? stateText))
+                        buttonText = $"{varDef.DisplayName}: {stateText}";
+                }
+
                 Button controlButton = new Button();
-                controlButton.Text = varDef.DisplayName;
+                controlButton.Text = buttonText;
                 controlButton.Size = new Size(240, 25);
                 controlButton.Name = varKey;
-                controlButton.AccessibleName = varDef.DisplayName;
-                controlButton.AccessibleDescription = varDef.HelpText ?? $"Press {varDef.DisplayName}";
+                controlButton.AccessibleName = buttonText;
 
                 controlButton.Click += (s2, e2) =>
                 {

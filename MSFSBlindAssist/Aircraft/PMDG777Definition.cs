@@ -40,7 +40,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             },
             ["Glareshield"] = new List<string>
             {
-                "EFIS Captain", "EFIS First Officer", "Mode Control Panel", "Display Select Panel"
+                "EFIS Captain", "EFIS First Officer", "MCP", "Display Select Panel"
             },
             ["Forward Panel"] = new List<string>
             {
@@ -49,7 +49,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["Pedestal"] = new List<string>
             {
                 "Control Stand", "Transponder/TCAS",
-                "CDU", "Evacuation", "Warning", "Engine Fire", "Radio", "Calls",
+                "Evacuation", "Warning", "Engine Fire", "Radio", "Calls",
                 "Boris Audio Works"
             },
         };
@@ -2748,93 +2748,102 @@ public class PMDG777Definition : BaseAircraftDefinition
             // MCP — Mode engage buttons (momentary)
             ["MCP_LNAV"] = new SimConnect.SimVarDefinition
             {
-                Name = "MCP_LNAV_Sw_Pushed",
+                Name = "MCP_annunLNAV",
                 DisplayName = "LNAV",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 RenderAsButton = true,
-                IsMomentary = true
+                IsMomentary = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Engaged" }
             },
             ["MCP_VNAV"] = new SimConnect.SimVarDefinition
             {
-                Name = "MCP_VNAV_Sw_Pushed",
+                Name = "MCP_annunVNAV",
                 DisplayName = "VNAV",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 RenderAsButton = true,
-                IsMomentary = true
+                IsMomentary = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Engaged" }
             },
             ["MCP_FLCH"] = new SimConnect.SimVarDefinition
             {
-                Name = "MCP_FLCH_Sw_Pushed",
+                Name = "MCP_annunFLCH",
                 DisplayName = "FLCH",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 RenderAsButton = true,
-                IsMomentary = true
+                IsMomentary = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Engaged" }
             },
             ["MCP_HDG_HOLD"] = new SimConnect.SimVarDefinition
             {
-                Name = "MCP_HDG_HOLD_Sw_Pushed",
+                Name = "MCP_annunHDG_HOLD",
                 DisplayName = "HDG HOLD",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 RenderAsButton = true,
-                IsMomentary = true
+                IsMomentary = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Engaged" }
             },
             ["MCP_VS_FPA"] = new SimConnect.SimVarDefinition
             {
-                Name = "MCP_VS_FPA_Sw_Pushed",
+                Name = "MCP_annunVS_FPA",
                 DisplayName = "VS/FPA",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 RenderAsButton = true,
-                IsMomentary = true
+                IsMomentary = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Engaged" }
             },
             ["MCP_ALT_HOLD"] = new SimConnect.SimVarDefinition
             {
-                Name = "MCP_ALT_HOLD_Sw_Pushed",
+                Name = "MCP_annunALT_HOLD",
                 DisplayName = "ALT HOLD",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 RenderAsButton = true,
-                IsMomentary = true
+                IsMomentary = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Engaged" }
             },
             ["MCP_LOC"] = new SimConnect.SimVarDefinition
             {
-                Name = "MCP_LOC_Sw_Pushed",
+                Name = "MCP_annunLOC",
                 DisplayName = "LOC",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 RenderAsButton = true,
-                IsMomentary = true
+                IsMomentary = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Engaged" }
             },
             ["MCP_APP"] = new SimConnect.SimVarDefinition
             {
-                Name = "MCP_APP_Sw_Pushed",
+                Name = "MCP_annunAPP",
                 DisplayName = "APP",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 RenderAsButton = true,
-                IsMomentary = true
+                IsMomentary = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Engaged" }
             },
             ["MCP_AT"] = new SimConnect.SimVarDefinition
             {
-                Name = "MCP_AT_Sw_Pushed",
+                Name = "MCP_annunAT",
                 DisplayName = "A/T",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 RenderAsButton = true,
-                IsMomentary = true
+                IsMomentary = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Engaged" }
             },
             ["MCP_CLB_CON"] = new SimConnect.SimVarDefinition
             {
@@ -2848,23 +2857,25 @@ public class PMDG777Definition : BaseAircraftDefinition
             },
             ["MCP_AP_L"] = new SimConnect.SimVarDefinition
             {
-                Name = "MCP_AP_Sw_Pushed_0",
+                Name = "MCP_annunAP_0",
                 DisplayName = "AP Left",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 RenderAsButton = true,
-                IsMomentary = true
+                IsMomentary = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Engaged" }
             },
             ["MCP_AP_R"] = new SimConnect.SimVarDefinition
             {
-                Name = "MCP_AP_Sw_Pushed_1",
+                Name = "MCP_annunAP_1",
                 DisplayName = "AP Right",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 RenderAsButton = true,
-                IsMomentary = true
+                IsMomentary = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Engaged" }
             },
             ["MCP_SpeedPush"] = new SimConnect.SimVarDefinition
             {
@@ -2947,116 +2958,6 @@ public class PMDG777Definition : BaseAircraftDefinition
             },
 
             // MCP — Annunciators (monitored, not in panel controls)
-            ["MCP_annunAP_L"] = new SimConnect.SimVarDefinition
-            {
-                Name = "MCP_annunAP_0",
-                DisplayName = "AP Left Annunciator",
-                Type = SimConnect.SimVarType.PMDGVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
-            },
-            ["MCP_annunAP_R"] = new SimConnect.SimVarDefinition
-            {
-                Name = "MCP_annunAP_1",
-                DisplayName = "AP Right Annunciator",
-                Type = SimConnect.SimVarType.PMDGVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
-            },
-            ["MCP_annunAT"] = new SimConnect.SimVarDefinition
-            {
-                Name = "MCP_annunAT",
-                DisplayName = "A/T Annunciator",
-                Type = SimConnect.SimVarType.PMDGVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
-            },
-            ["MCP_annunLNAV"] = new SimConnect.SimVarDefinition
-            {
-                Name = "MCP_annunLNAV",
-                DisplayName = "LNAV Annunciator",
-                Type = SimConnect.SimVarType.PMDGVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
-            },
-            ["MCP_annunVNAV"] = new SimConnect.SimVarDefinition
-            {
-                Name = "MCP_annunVNAV",
-                DisplayName = "VNAV Annunciator",
-                Type = SimConnect.SimVarType.PMDGVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
-            },
-            ["MCP_annunFLCH"] = new SimConnect.SimVarDefinition
-            {
-                Name = "MCP_annunFLCH",
-                DisplayName = "FLCH Annunciator",
-                Type = SimConnect.SimVarType.PMDGVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
-            },
-            ["MCP_annunHDG_HOLD"] = new SimConnect.SimVarDefinition
-            {
-                Name = "MCP_annunHDG_HOLD",
-                DisplayName = "HDG HOLD Annunciator",
-                Type = SimConnect.SimVarType.PMDGVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
-            },
-            ["MCP_annunVS_FPA"] = new SimConnect.SimVarDefinition
-            {
-                Name = "MCP_annunVS_FPA",
-                DisplayName = "VS/FPA Annunciator",
-                Type = SimConnect.SimVarType.PMDGVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
-            },
-            ["MCP_annunALT_HOLD"] = new SimConnect.SimVarDefinition
-            {
-                Name = "MCP_annunALT_HOLD",
-                DisplayName = "ALT HOLD Annunciator",
-                Type = SimConnect.SimVarType.PMDGVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
-            },
-            ["MCP_annunLOC"] = new SimConnect.SimVarDefinition
-            {
-                Name = "MCP_annunLOC",
-                DisplayName = "LOC Annunciator",
-                Type = SimConnect.SimVarType.PMDGVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
-            },
-            ["MCP_annunAPP"] = new SimConnect.SimVarDefinition
-            {
-                Name = "MCP_annunAPP",
-                DisplayName = "APP Annunciator",
-                Type = SimConnect.SimVarType.PMDGVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
-            },
             // MCP — Display state variables (monitored, not in panel controls)
             ["MCP_IASBlank"] = new SimConnect.SimVarDefinition
             {
@@ -4704,7 +4605,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             // Overhead — Wipers
             ["Wipers"] = new List<string>
             {
-                "WIPERS_Left", "WIPERS_Right", "COMM_ServiceInterphone"
+                "WIPERS_Left", "WIPERS_Right"
             },
 
             // Overhead — Panel Lighting
@@ -4771,18 +4672,13 @@ public class PMDG777Definition : BaseAircraftDefinition
             },
 
             // Glareshield — Mode Control Panel
-            ["Mode Control Panel"] = new List<string>
+            ["MCP"] = new List<string>
             {
-                "MCP_IASMach", "MCP_Heading", "MCP_Altitude", "MCP_VertSpeed",
-                "MCP_FD_L", "MCP_FD_R",
-                "MCP_ATArm_L", "MCP_ATArm_R",
-                "MCP_AltIncrSel", "MCP_DisengageBar",
-                "MCP_BankLimitSel", "MCP_HDGDialMode", "MCP_VSDialMode",
-                "MCP_VS_FPA",
-                "MCP_LOC", "MCP_APP", "MCP_AT", "MCP_CLB_CON",
-                "MCP_AP_L", "MCP_AP_R",
-                "MCP_CRS_L_Push", "MCP_CRS_R_Push",
-                "YOKE_APDisc"
+                "MCP_AP_L", "MCP_AP_R", "MCP_FD_L", "MCP_FD_R",
+                "MCP_ATArm_L", "MCP_ATArm_R", "MCP_AT",
+                "MCP_LNAV", "MCP_HDG_HOLD", "MCP_LOC",
+                "MCP_VNAV", "MCP_FLCH", "MCP_ALT_HOLD", "MCP_VS_FPA", "MCP_APP",
+                "MCP_BankLimitSel", "MCP_DisengageBar"
             },
 
             // Glareshield — Display Select Panel
@@ -4844,11 +4740,6 @@ public class PMDG777Definition : BaseAircraftDefinition
             },
 
             // Pedestal — CDU
-            ["CDU"] = new List<string>
-            {
-                "CDU_OpenCDU",
-                "EICAS_EventRcd"
-            },
 
             // Pedestal — Evacuation
             ["Evacuation"] = new List<string>
@@ -4880,7 +4771,8 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["Calls"] = new List<string>
             {
                 "CALL_Ground", "CALL_CrewRest", "CALL_Suprnmry",
-                "CALL_Cargo", "CALL_CargoAudio", "CALL_MainDeckAlert"
+                "CALL_Cargo", "CALL_CargoAudio", "CALL_MainDeckAlert",
+                "COMM_ServiceInterphone"
             },
 
             // Pedestal — Boris Audio Works Soundpack
@@ -5580,67 +5472,67 @@ public class PMDG777Definition : BaseAircraftDefinition
         }
 
         // MCP mode annunciator announcements
-        if (varName == "MCP_annunAP_L")
+        if (varName == "MCP_AP_L")
         {
             announcer.Announce(value > 0 ? "Autopilot left engaged" : "Autopilot left disengaged");
             return true;
         }
 
-        if (varName == "MCP_annunAP_R")
+        if (varName == "MCP_AP_R")
         {
             announcer.Announce(value > 0 ? "Autopilot right engaged" : "Autopilot right disengaged");
             return true;
         }
 
-        if (varName == "MCP_annunAT")
+        if (varName == "MCP_AT")
         {
             announcer.Announce(value > 0 ? "Autothrottle engaged" : "Autothrottle disengaged");
             return true;
         }
 
-        if (varName == "MCP_annunLNAV")
+        if (varName == "MCP_LNAV")
         {
             announcer.Announce(value > 0 ? "LNAV engaged" : "LNAV disengaged");
             return true;
         }
 
-        if (varName == "MCP_annunVNAV")
+        if (varName == "MCP_VNAV")
         {
             announcer.Announce(value > 0 ? "VNAV engaged" : "VNAV disengaged");
             return true;
         }
 
-        if (varName == "MCP_annunFLCH")
+        if (varName == "MCP_FLCH")
         {
             announcer.Announce(value > 0 ? "FLCH engaged" : "FLCH disengaged");
             return true;
         }
 
-        if (varName == "MCP_annunHDG_HOLD")
+        if (varName == "MCP_HDG_HOLD")
         {
             announcer.Announce(value > 0 ? "Heading hold engaged" : "Heading hold disengaged");
             return true;
         }
 
-        if (varName == "MCP_annunVS_FPA")
+        if (varName == "MCP_VS_FPA")
         {
             announcer.Announce(value > 0 ? "VS/FPA engaged" : "VS/FPA disengaged");
             return true;
         }
 
-        if (varName == "MCP_annunALT_HOLD")
+        if (varName == "MCP_ALT_HOLD")
         {
             announcer.Announce(value > 0 ? "Altitude hold engaged" : "Altitude hold disengaged");
             return true;
         }
 
-        if (varName == "MCP_annunLOC")
+        if (varName == "MCP_LOC")
         {
             announcer.Announce(value > 0 ? "Localizer engaged" : "Localizer disengaged");
             return true;
         }
 
-        if (varName == "MCP_annunAPP")
+        if (varName == "MCP_APP")
         {
             announcer.Announce(value > 0 ? "Approach engaged" : "Approach disengaged");
             return true;
@@ -6137,18 +6029,18 @@ public class PMDG777Definition : BaseAircraftDefinition
 
         var toggles = new List<ToggleButtonDef>
         {
-            new("Intervene", () => "", () => SendPMDGMomentary(simConnect, "EVT_MCP_HEADING_PUSH_SWITCH")),
-            new("Mode", () =>
+            new("&Intervene", () => "", () => SendPMDGMomentary(simConnect, "EVT_MCP_HEADING_PUSH_SWITCH")),
+            new("&Mode", () =>
             {
                 if (dm == null) return "?";
                 return (int)dm.GetFieldValue("MCP_HDGDial_Mode") == 0 ? "HDG" : "TRK";
             }, () => SendPMDGMomentary(simConnect, "EVT_MCP_HDG_TRK_SWITCH")),
-            new("LNAV", () =>
+            new("&LNAV", () =>
             {
                 if (dm == null) return "?";
                 return (int)dm.GetFieldValue("MCP_annunLNAV") > 0 ? "Engaged" : "Off";
             }, () => SendPMDGMomentary(simConnect, "EVT_MCP_LNAV_SWITCH")),
-            new("Heading Hold", () =>
+            new("&Heading Hold", () =>
             {
                 if (dm == null) return "?";
                 return (int)dm.GetFieldValue("MCP_annunHDG_HOLD") > 0 ? "Engaged" : "Off";
@@ -6192,12 +6084,12 @@ public class PMDG777Definition : BaseAircraftDefinition
 
         var toggles = new List<ToggleButtonDef>
         {
-            new("Intervene", () =>
+            new("&Intervene", () =>
             {
                 if (dm == null) return "?";
                 return (int)dm.GetFieldValue("MCP_IASBlank") > 0 ? "Off" : "Active";
             }, () => SendPMDGMomentary(simConnect, "EVT_MCP_SPEED_PUSH_SWITCH")),
-            new("Mode", () =>
+            new("&Mode", () =>
             {
                 if (dm == null) return "?";
                 float speed = (float)dm.GetFieldValue("MCP_IASMach");
@@ -6257,18 +6149,18 @@ public class PMDG777Definition : BaseAircraftDefinition
 
         var toggles = new List<ToggleButtonDef>
         {
-            new("Intervene", () => "", () => SendPMDGMomentary(simConnect, "EVT_MCP_ALTITUDE_PUSH_SWITCH")),
-            new("VNAV", () =>
+            new("&Intervene", () => "", () => SendPMDGMomentary(simConnect, "EVT_MCP_ALTITUDE_PUSH_SWITCH")),
+            new("&VNAV", () =>
             {
                 if (dm == null) return "?";
                 return (int)dm.GetFieldValue("MCP_annunVNAV") > 0 ? "Engaged" : "Off";
             }, () => SendPMDGMomentary(simConnect, "EVT_MCP_VNAV_SWITCH")),
-            new("Level Change", () =>
+            new("&Level Change", () =>
             {
                 if (dm == null) return "?";
                 return (int)dm.GetFieldValue("MCP_annunFLCH") > 0 ? "Engaged" : "Off";
             }, () => SendPMDGMomentary(simConnect, "EVT_MCP_LVL_CHG_SWITCH")),
-            new("Altitude Hold", () =>
+            new("Altitude &Hold", () =>
             {
                 if (dm == null) return "?";
                 return (int)dm.GetFieldValue("MCP_annunALT_HOLD") > 0 ? "Engaged" : "Off";
@@ -6312,16 +6204,11 @@ public class PMDG777Definition : BaseAircraftDefinition
 
         var toggles = new List<ToggleButtonDef>
         {
-            new("Engage VS/FPA", () =>
+            new("&V/S", () =>
             {
                 if (dm == null) return "?";
                 return (int)dm.GetFieldValue("MCP_annunVS_FPA") > 0 ? "Engaged" : "Off";
             }, () => SendPMDGMomentary(simConnect, "EVT_MCP_VS_FPA_SWITCH")),
-            new("Mode", () =>
-            {
-                if (dm == null) return "?";
-                return (int)dm.GetFieldValue("MCP_VSDial_Mode") == 0 ? "VS" : "FPA";
-            }, () => SendPMDGMomentary(simConnect, "EVT_MCP_VS_SWITCH")),
         };
 
         var dialog = new ValueInputForm(

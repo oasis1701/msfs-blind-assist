@@ -109,13 +109,13 @@ public partial class ValueInputForm : Form
             {
                 string state = def.GetCurrentState();
                 string label = string.IsNullOrEmpty(state) ? def.Label : $"{def.Label}: {state}";
+                string accessLabel = label.Replace("&", "");
                 var btn = new Button
                 {
                     Text = label,
                     Location = new Point(20, toggleY),
                     Size = new Size(295, 28),
-                    AccessibleName = label,
-                    AccessibleDescription = $"Press to toggle {def.Label}",
+                    AccessibleName = accessLabel,
                     TabIndex = tabIdx++,
                     FlatStyle = FlatStyle.Standard
                 };
@@ -139,14 +139,15 @@ public partial class ValueInputForm : Form
                                 string s = d.GetCurrentState();
                                 string lbl = string.IsNullOrEmpty(s) ? d.Label : $"{d.Label}: {s}";
                                 b.Text = lbl;
-                                b.AccessibleName = lbl;
+                                b.AccessibleName = lbl.Replace("&", "");
                             }
                             // Announce the pressed button's new state
                             string newState = capturedDef.GetCurrentState();
+                            string announceLabel = capturedDef.Label.Replace("&", "");
                             if (string.IsNullOrEmpty(newState))
-                                announcer.AnnounceImmediate(capturedDef.Label);
+                                announcer.AnnounceImmediate(announceLabel);
                             else
-                                announcer.AnnounceImmediate($"{capturedDef.Label} {newState}");
+                                announcer.AnnounceImmediate($"{announceLabel} {newState}");
                         });
                     });
                 };
@@ -161,7 +162,6 @@ public partial class ValueInputForm : Form
                 Location = new Point(185, 105 + toggleOffset),
                 Size = new Size(60, 30),
                 AccessibleName = $"Set {parameterType}",
-                AccessibleDescription = $"Set the {parameterType} value",
                 TabIndex = tabIdx++
             };
             okButton.Click += OkButton_Click;
@@ -173,7 +173,6 @@ public partial class ValueInputForm : Form
                 Size = new Size(60, 30),
                 DialogResult = DialogResult.Cancel,
                 AccessibleName = "Cancel",
-                AccessibleDescription = "Cancel input",
                 TabIndex = tabIdx++
             };
 
