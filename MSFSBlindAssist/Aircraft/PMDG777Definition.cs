@@ -4504,8 +4504,8 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["Electrical"] = new List<string>
             {
                 "ELEC_Battery", "ELEC_APUGen", "ELEC_APU_Selector", "ELEC_APU_Start",
-                "ELEC_BusTie_1", "ELEC_BusTie_2",
                 "ELEC_ExtPwrPrim", "ELEC_ExtPwrSec",
+                "ELEC_BusTie_1", "ELEC_BusTie_2",
                 "ELEC_Gen_1", "ELEC_Gen_2",
                 "ELEC_BackupGen_1", "ELEC_BackupGen_2",
                 "ELEC_IDGDisc_1", "ELEC_IDGDisc_2",
