@@ -12,6 +12,7 @@ MCP Readouts:
   Shift+H    Read MCP Heading (includes HDG/TRK mode, LNAV/HDG HOLD status)
   Shift+S    Read MCP Speed (includes FLCH status, shows blank if FMC-controlled)
   Shift+A    Read MCP Altitude (includes VNAV/FLCH/ALT HOLD status)
+  Shift+V    Read MCP V/S or FPA (includes VS/FPA engaged status)
 
 Altitude:
   Q          Read Altitude AGL
