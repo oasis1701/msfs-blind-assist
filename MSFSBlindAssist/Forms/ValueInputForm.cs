@@ -39,6 +39,7 @@ public partial class ValueInputForm : Form
         private readonly IntPtr previousWindow;
         private readonly List<ToggleButtonDef> _toggleDefs;
         private readonly List<Button> _toggleButtons = new();
+        private readonly Func<bool>? _inputEnabledCheck;
 
         public ValueInputForm(string title, string parameterType, string rangeText,
             ScreenReaderAnnouncer announcer, Func<string, (bool, string)> validator)
@@ -48,7 +49,8 @@ public partial class ValueInputForm : Form
 
         public ValueInputForm(string title, string parameterType, string rangeText,
             ScreenReaderAnnouncer announcer, Func<string, (bool, string)> validator,
-            List<ToggleButtonDef> toggles, Action<string>? onValueSet = null)
+            List<ToggleButtonDef> toggles, Action<string>? onValueSet = null,
+            Func<bool>? inputEnabledCheck = null)
         {
             previousWindow = GetForegroundWindow();
             this.announcer = announcer;
@@ -56,6 +58,7 @@ public partial class ValueInputForm : Form
             this.validator = validator;
             this.onValueSet = onValueSet;
             _toggleDefs = toggles;
+            _inputEnabledCheck = inputEnabledCheck;
 
             InitializeComponent(title, rangeText);
             SetupAccessibility();
@@ -141,6 +144,7 @@ public partial class ValueInputForm : Form
                                 b.Text = lbl;
                                 b.AccessibleName = lbl.Replace("&", "");
                             }
+                            UpdateInputEnabled();
                             // Announce the pressed button's new state
                             string newState = capturedDef.GetCurrentState();
                             string announceLabel = capturedDef.Label.Replace("&", "");
@@ -188,6 +192,14 @@ public partial class ValueInputForm : Form
             CancelButton = cancelButton;
         }
 
+        private void UpdateInputEnabled()
+        {
+            if (_inputEnabledCheck == null) return;
+            bool enabled = _inputEnabledCheck();
+            valueTextBox.ReadOnly = !enabled;
+            okButton.Enabled = enabled;
+        }
+
         private void SetupAccessibility()
         {
             Load += (sender, e) =>
@@ -202,6 +214,7 @@ public partial class ValueInputForm : Form
                 TopMost = true;
                 TopMost = false;
                 valueTextBox.Focus();
+                UpdateInputEnabled();
             };
         }
 
