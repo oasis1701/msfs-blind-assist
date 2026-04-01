@@ -5034,14 +5034,14 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["MCP_DisengageBar"]        = "EVT_MCP_DISENGAGE_BAR",
             ["MCP_BankLimitSel"]        = "EVT_MCP_BANK_ANGLE_SELECTOR",
             ["MCP_HDGDialMode"]         = "EVT_MCP_HDG_TRK_SWITCH",
-            ["MCP_VSDialMode"]          = "EVT_MCP_VS_SWITCH",
+            ["MCP_VSDialMode"]          = "EVT_MCP_VS_FPA_SWITCH",
 
             // --- MCP momentary mode buttons ---
             ["MCP_LNAV"]                = "EVT_MCP_LNAV_SWITCH",
             ["MCP_VNAV"]                = "EVT_MCP_VNAV_SWITCH",
             ["MCP_FLCH"]                = "EVT_MCP_LVL_CHG_SWITCH",
             ["MCP_HDG_HOLD"]            = "EVT_MCP_HDG_HOLD_SWITCH",
-            ["MCP_VS_FPA"]              = "EVT_MCP_VS_FPA_SWITCH",
+            ["MCP_VS_FPA"]              = "EVT_MCP_VS_SWITCH",
             ["MCP_ALT_HOLD"]            = "EVT_MCP_ALT_HOLD_SWITCH",
             ["MCP_LOC"]                 = "EVT_MCP_LOC_SWITCH",
             ["MCP_APP"]                 = "EVT_MCP_APP_SWITCH",
@@ -5054,7 +5054,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["MCP_AltitudePush"]        = "EVT_MCP_ALTITUDE_PUSH_SWITCH",
             ["MCP_IAS_MACH_Toggle"]     = "EVT_MCP_IAS_MACH_SWITCH",
             ["MCP_HDG_TRK_Toggle"]      = "EVT_MCP_HDG_TRK_SWITCH",
-            ["MCP_VS_FPA_Toggle"]       = "EVT_MCP_VS_SWITCH",
+            ["MCP_VS_FPA_Toggle"]       = "EVT_MCP_VS_FPA_SWITCH",
 
             // --- MCP numeric selectors (wheel stepped) ---
             ["MCP_IASMach"]             = "EVT_MCP_SPEED_SELECTOR",
@@ -6238,12 +6238,12 @@ public class PMDG777Definition : BaseAircraftDefinition
             {
                 if (dm == null) return "?";
                 return (int)dm.GetFieldValue("MCP_annunVS_FPA") > 0 ? "Engaged" : "Off";
-            }, () => SendPMDGMomentary(simConnect, "EVT_MCP_VS_FPA_SWITCH")),
+            }, () => SendPMDGMomentary(simConnect, "EVT_MCP_VS_SWITCH")),
             new("&Mode", () =>
             {
                 if (dm == null) return "?";
                 return (int)dm.GetFieldValue("MCP_VSDial_Mode") == 1 ? "FPA" : "V/S";
-            }, () => SendPMDGMomentary(simConnect, "EVT_MCP_VS_SWITCH")),
+            }, () => SendPMDGMomentary(simConnect, "EVT_MCP_VS_FPA_SWITCH")),
         };
 
         var dialog = new ValueInputForm(
