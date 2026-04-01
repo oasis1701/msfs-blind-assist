@@ -4677,7 +4677,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 "MCP_AP_L", "MCP_AP_R", "MCP_FD_L", "MCP_FD_R",
                 "MCP_ATArm_L", "MCP_ATArm_R", "MCP_AT",
                 "MCP_LNAV", "MCP_HDG_HOLD", "MCP_LOC",
-                "MCP_VNAV", "MCP_FLCH", "MCP_ALT_HOLD", "MCP_APP",
+                "MCP_VNAV", "MCP_FLCH", "MCP_ALT_HOLD", "MCP_VS_FPA", "MCP_APP",
                 "MCP_BankLimitSel", "MCP_DisengageBar"
             },
 
