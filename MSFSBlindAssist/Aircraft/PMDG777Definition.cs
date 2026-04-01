@@ -5863,6 +5863,12 @@ public class PMDG777Definition : BaseAircraftDefinition
                 return true;
             }
 
+            case HotkeyAction.FCUSetVS:
+            {
+                hotkeyManager.ExitInputHotkeyMode();
+                ShowPMDGVSDialog(simConnect, announcer, parentForm);
+                return true;
+            }
 
             // CDU handled by MainForm (Task 13)
             case HotkeyAction.ShowFenixMCDU:
@@ -6208,6 +6214,83 @@ public class PMDG777Definition : BaseAircraftDefinition
                         simConnect.SendPMDGEvent("EVT_MCP_ALT_SET", (uint)evId, alt);
                 }
             });
+
+        dialog.ShowCancelButton = false;
+        dialog.Show(parentForm);
+    }
+
+    private void ShowPMDGVSDialog(
+        SimConnect.SimConnectManager simConnect,
+        ScreenReaderAnnouncer announcer,
+        Form parentForm)
+    {
+        if (!simConnect.IsConnected)
+        {
+            announcer.AnnounceImmediate("Not connected to simulator.");
+            return;
+        }
+
+        var dm = simConnect.PMDG777DataManager;
+
+        var toggles = new List<ToggleButtonDef>
+        {
+            new("&Engage", () =>
+            {
+                if (dm == null) return "?";
+                return (int)dm.GetFieldValue("MCP_annunVS_FPA") > 0 ? "Engaged" : "Off";
+            }, () => SendPMDGMomentary(simConnect, "EVT_MCP_VS_FPA_SWITCH")),
+            new("&Mode", () =>
+            {
+                if (dm == null) return "?";
+                return (int)dm.GetFieldValue("MCP_VSDial_Mode") == 1 ? "FPA" : "V/S";
+            }, () => SendPMDGMomentary(simConnect, "EVT_MCP_VS_SWITCH")),
+        };
+
+        var dialog = new ValueInputForm(
+            "MCP Vertical Speed", "V/S or FPA", "V/S: -8000 to 6000 fpm / FPA: -9.9 to 9.9", announcer,
+            input =>
+            {
+                if (double.TryParse(input, System.Globalization.NumberStyles.Any,
+                    System.Globalization.CultureInfo.InvariantCulture, out double val))
+                {
+                    if (dm != null && (int)dm.GetFieldValue("MCP_VSDial_Mode") == 1)
+                    {
+                        if (val >= -9.9 && val <= 9.9)
+                            return (true, "");
+                        return (false, "Enter FPA between -9.9 and 9.9 degrees");
+                    }
+                    else
+                    {
+                        if (val >= -8000 && val <= 6000)
+                            return (true, "");
+                        return (false, "Enter V/S between -8000 and 6000 fpm");
+                    }
+                }
+                return (false, "Enter a numeric value");
+            },
+            toggles,
+            input =>
+            {
+                if (!double.TryParse(input, System.Globalization.NumberStyles.Any,
+                    System.Globalization.CultureInfo.InvariantCulture, out double val))
+                    return;
+
+                bool isFPA = dm != null && (int)dm.GetFieldValue("MCP_VSDial_Mode") == 1;
+
+                if (isFPA)
+                {
+                    int encoded = (int)Math.Round((val + 10) * 10);
+                    if (EventIds.TryGetValue("EVT_MCP_FPA_SET", out int evId))
+                        simConnect.SendPMDGEvent("EVT_MCP_FPA_SET", (uint)evId, encoded);
+                }
+                else
+                {
+                    int encoded = (int)val + 10000;
+                    if (EventIds.TryGetValue("EVT_MCP_VS_SET", out int evId))
+                        simConnect.SendPMDGEvent("EVT_MCP_VS_SET", (uint)evId, encoded);
+                }
+            },
+            inputEnabledCheck: () => dm != null && (int)dm.GetFieldValue("MCP_annunVS_FPA") > 0);
 
         dialog.ShowCancelButton = false;
         dialog.Show(parentForm);
