@@ -5373,8 +5373,10 @@ public class PMDG777Definition : BaseAircraftDefinition
         // Suppress raw value announcements for momentary button push states.
         // These _Sw_Pushed fields briefly go to 1 then back to 0 — the actual
         // mode state is announced via separate annunciator variables.
+        // Only suppress variables that DON'T have explicit handlers below (annunciators).
         var variables = GetVariables();
-        if (variables.TryGetValue(varName, out var varDef) && varDef.RenderAsButton)
+        if (variables.TryGetValue(varName, out var varDef) && varDef.RenderAsButton &&
+            varDef.Name.Contains("_Sw_Pushed"))
         {
             return true; // Suppress — screen reader announces the button press via UI
         }
