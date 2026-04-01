@@ -198,6 +198,9 @@ public partial class ValueInputForm : Form
             bool enabled = _inputEnabledCheck();
             valueTextBox.ReadOnly = !enabled;
             okButton.Enabled = enabled;
+            valueTextBox.AccessibleDescription = enabled
+                ? $"Enter {parameterType} value and press Enter to set"
+                : $"Engage mode first to enter a value";
         }
 
         private void SetupAccessibility()
@@ -235,7 +238,8 @@ public partial class ValueInputForm : Form
             if (e.KeyCode == Keys.Enter)
             {
                 e.Handled = true;
-                SetValue();
+                if (_inputEnabledCheck == null || _inputEnabledCheck())
+                    SetValue();
             }
             else if (e.KeyCode == Keys.Escape)
             {
