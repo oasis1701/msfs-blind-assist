@@ -14,6 +14,10 @@ public class PMDG777Definition : BaseAircraftDefinition
     public override string AircraftName => "PMDG 777";
     public override string AircraftCode => "PMDG_777";
 
+    // Cached merged variables dictionary — built once on first access.
+    // All callers are read-only so sharing a single instance is safe.
+    private Dictionary<string, SimConnect.SimVarDefinition>? _cachedVariables;
+
     // Cached set of RenderAsButton keys that are NOT annunciators.
     // Used in ProcessSimVarUpdate to suppress raw value announcements
     // without re-allocating GetVariables() on every call.
@@ -80,10 +84,14 @@ public class PMDG777Definition : BaseAircraftDefinition
 
     public override Dictionary<string, SimConnect.SimVarDefinition> GetVariables()
     {
+        if (_cachedVariables != null)
+            return _cachedVariables;
+
         var variables = GetBaseVariables();
         var pmdgVars = GetPMDGVariables();
         foreach (var kvp in pmdgVars)
             variables[kvp.Key] = kvp.Value;
+        _cachedVariables = variables;
         return variables;
     }
 
