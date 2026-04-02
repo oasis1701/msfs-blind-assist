@@ -14,6 +14,25 @@ public class PMDG777Definition : BaseAircraftDefinition
     public override string AircraftName => "PMDG 777";
     public override string AircraftCode => "PMDG_777";
 
+    // Cached set of RenderAsButton keys that are NOT annunciators.
+    // Used in ProcessSimVarUpdate to suppress raw value announcements
+    // without re-allocating GetVariables() on every call.
+    private HashSet<string>? _suppressedButtonKeys;
+
+    private HashSet<string> SuppressedButtonKeys =>
+        _suppressedButtonKeys ??= BuildSuppressedButtonKeys();
+
+    private HashSet<string> BuildSuppressedButtonKeys()
+    {
+        var set = new HashSet<string>();
+        foreach (var kvp in GetVariables())
+        {
+            if (kvp.Value.RenderAsButton && !kvp.Value.Name.Contains("_annun"))
+                set.Add(kvp.Key);
+        }
+        return set;
+    }
+
     // PMDG 777 MCP uses increment/decrement selectors for speed/heading/altitude/VS
     public override FCUControlType GetAltitudeControlType() => FCUControlType.SetValue;
     public override FCUControlType GetHeadingControlType() => FCUControlType.SetValue;
@@ -5373,9 +5392,7 @@ public class PMDG777Definition : BaseAircraftDefinition
         // Suppress raw value announcements for momentary button/switch states.
         // These fields briefly go to 1 then back to 0. Only allow annunciator
         // lights (_annun) through — they have explicit handlers below.
-        var variables = GetVariables();
-        if (variables.TryGetValue(varName, out var varDef) && varDef.RenderAsButton &&
-            !varDef.Name.Contains("_annun"))
+        if (SuppressedButtonKeys.Contains(varName))
         {
             return true; // Suppress — not an annunciator light
         }

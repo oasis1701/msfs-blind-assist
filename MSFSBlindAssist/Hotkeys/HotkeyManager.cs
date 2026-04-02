@@ -1061,7 +1061,6 @@ public class HotkeyManager : IDisposable
         ReadNearestCity,
         ReadDistanceToTOD,
         ReadDistanceToDest,
-        ReadThrustLimitMode,
         ToggleTrimAnnouncements,
         ReadNavRadioInfo,
     }

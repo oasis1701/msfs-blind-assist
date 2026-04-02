@@ -12,6 +12,8 @@ namespace MSFSBlindAssist.SimConnect;
 /// </summary>
 public class PMDG777DataManager : IDisposable
 {
+    private static readonly FieldInfo[] s_dataFields =
+        typeof(PMDG777XDataStruct).GetFields(BindingFlags.Public | BindingFlags.Instance);
     // ------------------------------------------------------------------
     // Local enum IDs — SimConnect accepts any Enum type for these calls,
     // so we define our own enums rather than casting raw uints.
@@ -230,8 +232,7 @@ public class PMDG777DataManager : IDisposable
         }
 
         int changeCount = 0;
-        foreach (var field in typeof(PMDG777XDataStruct)
-                     .GetFields(BindingFlags.Public | BindingFlags.Instance))
+        foreach (var field in s_dataFields)
         {
             object? oldVal = field.GetValue(_lastDataSnapshot);
             object? newVal = field.GetValue(newData);
@@ -253,8 +254,7 @@ public class PMDG777DataManager : IDisposable
 
     private void RaiseAllFields(PMDG777XDataStruct data)
     {
-        foreach (var field in typeof(PMDG777XDataStruct)
-                     .GetFields(BindingFlags.Public | BindingFlags.Instance))
+        foreach (var field in s_dataFields)
         {
             object? val = field.GetValue(data);
 

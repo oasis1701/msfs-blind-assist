@@ -27,7 +27,6 @@ public class SimConnectManager
     public event EventHandler<NavRadioData>? NavRadioReceived;
     public event EventHandler<ECAMDataEventArgs>? ECAMDataReceived;
     public event EventHandler<TakeoffRunwayReferenceEventArgs>? TakeoffRunwayReferenceSet;
-    public event EventHandler<string>? AircraftDetected;
 
     // Aircraft definition
     public IAircraftDefinition? CurrentAircraft { get; set; }
