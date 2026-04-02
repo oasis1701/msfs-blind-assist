@@ -5909,7 +5909,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 ReadDisplay(Services.GeminiService.DisplayType.EICAS, "EICAS", announcer, parentForm);
                 return true;
 
-            case HotkeyAction.ShowFuelPayloadWindow:
+            case HotkeyAction.ReadFuelInfo:
             {
                 var dm = simConnect.PMDG777DataManager;
                 if (dm == null) return false;
@@ -5923,6 +5923,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 return true;
             }
 
+            // W key — PMDG 777 repurposes waypoint-info key for gross weight (lbs)
             case HotkeyAction.ReadWaypointInfo:
             {
                 simConnect.RequestSingleValue(

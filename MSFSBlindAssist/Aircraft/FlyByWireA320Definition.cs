@@ -3645,7 +3645,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
                 ShowA320NavigationDisplay(simConnect, announcer);
                 return true;
 
-            case HotkeyAction.ShowFuelPayloadWindow:
+            case HotkeyAction.ReadFuelInfo:
                 hotkeyManager.ExitOutputHotkeyMode();
                 ShowA320FuelPayloadWindow(simConnect, announcer);
                 return true;

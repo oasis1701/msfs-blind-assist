@@ -361,7 +361,7 @@ public class HotkeyManager : IDisposable
                             TriggerHotkey(HotkeyAction.ReadTrackSlot5);
                             break;
                         case HOTKEY_FUEL_PAYLOAD:
-                            TriggerHotkey(HotkeyAction.ShowFuelPayloadWindow);
+                            TriggerHotkey(HotkeyAction.ReadFuelInfo);
                             break;
                         case HOTKEY_READ_DISPLAY_UPPER_ECAM:
                             TriggerHotkey(HotkeyAction.ReadDisplayUpperECAM);
@@ -1046,7 +1046,7 @@ public class HotkeyManager : IDisposable
         ReadTrackSlot3,
         ReadTrackSlot4,
         ReadTrackSlot5,
-        ShowFuelPayloadWindow,
+        ReadFuelInfo,
         ReadDisplayPFD,
         ReadDisplayLowerECAM,
         ReadDisplayUpperECAM,
