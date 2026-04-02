@@ -22,6 +22,8 @@ public partial class PMDG777CDUForm : Form
     private IntPtr _previousWindow = IntPtr.Zero;
     private bool _typingInProgress = false;
     private bool _clearingInProgress = false;
+    private int _clearingPollCount = 0;
+    private const int MaxClearingPolls = 3; // timeout after ~1500ms (3 × 500ms poll)
 
     public PMDG777CDUForm(PMDG777DataManager dataManager, ScreenReaderAnnouncer announcer)
     {
@@ -183,11 +185,19 @@ public partial class PMDG777CDUForm : Form
         {
             if (_clearingInProgress)
             {
-                // Only announce once scratchpad is fully empty
+                _clearingPollCount++;
                 if (string.IsNullOrWhiteSpace(scratchpad))
                 {
+                    // CLR succeeded — scratchpad is empty
                     _clearingInProgress = false;
                     _announcer.Announce("Cleared");
+                    _previousScratchpad = scratchpad;
+                }
+                else if (_clearingPollCount > MaxClearingPolls)
+                {
+                    // Timeout — FMC likely posted a new message during CLR
+                    _clearingInProgress = false;
+                    _announcer.Announce(scratchpad);
                     _previousScratchpad = scratchpad;
                 }
             }
@@ -242,6 +252,7 @@ public partial class PMDG777CDUForm : Form
         if (!string.IsNullOrWhiteSpace(_previousScratchpad))
         {
             _clearingInProgress = true;
+            _clearingPollCount = 0;
             SendCDUKey("CLR");
         }
         else
