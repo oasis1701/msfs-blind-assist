@@ -13240,8 +13240,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 RequestGrossWeightKg(simConnect, announcer);
                 return true;
 
-            // Fenix has no fuel/payload window — Shift+F repurposed for fuel quantity (kg)
-            case HotkeyAction.ShowFuelPayloadWindow:
+            case HotkeyAction.ReadFuelInfo:
                 RequestFuelQuantityKg(simConnect, announcer);
                 return true;
 

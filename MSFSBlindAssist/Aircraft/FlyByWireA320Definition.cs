@@ -3645,7 +3645,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
                 ShowA320NavigationDisplay(simConnect, announcer);
                 return true;
 
-            case HotkeyAction.ShowFuelPayloadWindow:
+            case HotkeyAction.ReadFuelInfo:
                 hotkeyManager.ExitOutputHotkeyMode();
                 ShowA320FuelPayloadWindow(simConnect, announcer);
                 return true;
@@ -3754,7 +3754,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             return (false, "Invalid number format");
         });
 
-        var dialog = new Forms.FCUInputForm("Set Altitude", "Altitude", "100-49000 feet", announcer, validator);
+        var dialog = new Forms.ValueInputForm("Set Altitude", "Altitude", "100-49000 feet", announcer, validator);
         if (dialog.ShowDialog(parentForm) == DialogResult.OK && dialog.IsValidInput)
         {
             if (double.TryParse(dialog.InputValue, out double value))
@@ -3803,7 +3803,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             return (false, "Invalid number format");
         });
 
-        var dialog = new Forms.FCUInputForm("Set Vertical Speed / FPA", "VS/FPA", rangeText, announcer, validator);
+        var dialog = new Forms.ValueInputForm("Set Vertical Speed / FPA", "VS/FPA", rangeText, announcer, validator);
         if (dialog.ShowDialog(parentForm) == DialogResult.OK && dialog.IsValidInput)
         {
             if (double.TryParse(dialog.InputValue, out double value))

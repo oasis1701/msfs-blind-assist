@@ -6,6 +6,7 @@ using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Forms;
 using MSFSBlindAssist.Forms.A32NX;
 using MSFSBlindAssist.Forms.FenixA320;
+using MSFSBlindAssist.Forms.PMDG777;
 using MSFSBlindAssist.Hotkeys;
 using MSFSBlindAssist.Services;
 using MSFSBlindAssist.Settings;
@@ -29,6 +30,7 @@ public partial class MainForm : Form
     private FenixMonitorManagerForm? fenixMonitorManagerForm;
     private FenixMCDUForm? fenixMCDUForm;
     private FenixMCDUService? fenixMCDUService;
+    private PMDG777CDUForm? pmdg777CDUForm;
     private TakeoffAssistManager takeoffAssistManager = null!;
     private HandFlyManager handFlyManager = null!;
     private VisualGuidanceManager visualGuidanceManager = null!;
@@ -63,6 +65,7 @@ public partial class MainForm : Form
     private ConcurrentDictionary<string, bool> pendingStateAnnouncements = new ConcurrentDictionary<string, bool>();  // Track state announcement requests
     private string currentFlightPhase = "";  // Track current flight phase for window title
     private IAircraftDefinition currentAircraft;
+    private Dictionary<string, string>? _pmdgFieldToKeyMap;
 
     public MainForm()
     {
@@ -83,6 +86,7 @@ public partial class MainForm : Form
         {
             "A320" => new FlyByWireA320Definition(),
             "FENIX_A320CEO" => new FenixA320Definition(),
+            "PMDG_777" => new PMDG777Definition(),
             // Future aircraft will be added here
             _ => new FlyByWireA320Definition() // Default to A320
         };
@@ -225,6 +229,16 @@ public partial class MainForm : Form
             announcer.Announce(status);
             announcer.Announce($"{currentAircraft.AircraftName} Profile and panels active");
 
+            // After SimConnect connects, if current aircraft is PMDG 777, initialize data manager
+            if (currentAircraft?.AircraftCode == "PMDG_777")
+            {
+                simConnectManager.InitializePMDG777();
+                if (simConnectManager.PMDG777DataManager != null)
+                {
+                    simConnectManager.PMDG777DataManager.VariableChanged += OnPMDGVariableChanged;
+                }
+            }
+
             // Automatically switch database if simulator version doesn't match
             CheckAndSwitchDatabase();
 
@@ -279,7 +293,6 @@ public partial class MainForm : Form
         {
             // PRODUCER: Enqueue event for batch processing instead of immediate BeginInvoke
             // This reduces UI thread marshaling overhead by ~95% for high-volume updates (400+ vars/sec)
-            // Queue overflow protection prevents unbounded memory growth
             if (Interlocked.Increment(ref queuedEventCount) <= MAX_QUEUE_SIZE)
             {
                 eventQueue.Enqueue(e);
@@ -371,7 +384,22 @@ public partial class MainForm : Form
                     return; // Skip announcement for disabled variable
                 }
 
-                simVarMonitor.ProcessUpdate(e.VarName, e.Value, e.Description);
+                // For PMDG variables, build the description from ValueDescriptions
+                // since PMDG events don't carry description strings like SimConnect does
+                string description = e.Description;
+                if (string.IsNullOrEmpty(description) && varDef.ValueDescriptions.Count > 0)
+                {
+                    if (varDef.ValueDescriptions.TryGetValue(e.Value, out string? desc))
+                        description = $"{varDef.DisplayName}: {desc}";
+                    else if (!varDef.OnlyAnnounceValueDescriptionMatches)
+                        description = $"{varDef.DisplayName}: {e.Value}";
+                }
+                else if (string.IsNullOrEmpty(description))
+                {
+                    description = $"{varDef.DisplayName}: {e.Value}";
+                }
+
+                simVarMonitor.ProcessUpdate(e.VarName, e.Value, description);
             }
         }
     }
@@ -618,10 +646,12 @@ public partial class MainForm : Form
 
     private void UpdateControlFromSimVar(string varName, double value)
     {
-        if (currentControls.ContainsKey(varName))
+        bool controlFound = currentControls.ContainsKey(varName);
+
+        if (controlFound)
         {
             updatingFromSim = true;
-            
+
             Control control = currentControls[varName];
             if (control is ComboBox combo)
             {
@@ -640,7 +670,21 @@ public partial class MainForm : Form
                     }
                 }
             }
-            
+            else if (control is Button btn)
+            {
+                // Update stateful button label from ValueDescriptions
+                if (currentAircraft.GetVariables().ContainsKey(varName))
+                {
+                    var varDef = currentAircraft.GetVariables()[varName];
+                    if (varDef.ValueDescriptions != null && varDef.ValueDescriptions.TryGetValue(value, out string? stateText))
+                    {
+                        string newLabel = $"{varDef.DisplayName}: {stateText}";
+                        btn.Text = newLabel;
+                        btn.AccessibleName = newLabel;
+                    }
+                }
+            }
+
             updatingFromSim = false;
         }
     }
@@ -840,10 +884,48 @@ public partial class MainForm : Form
 
     private void OnSimVarValueChanged(object? sender, SimVarChangeEventArgs e)
     {
-        if (!e.IsInitialValue && !updatingFromSim)
+        // For PMDG aircraft, IsInitialValue is always true on first change because the
+        // simVarMonitor has never seen the variable before. But PMDG data manager already
+        // suppresses the initial snapshot, so any change that reaches here IS a real change.
+        bool isPMDG = currentAircraft?.AircraftCode == "PMDG_777";
+        bool shouldAnnounce = isPMDG ? !updatingFromSim : (!e.IsInitialValue && !updatingFromSim);
+
+        if (shouldAnnounce && !string.IsNullOrEmpty(e.Description))
         {
             announcer.Announce(e.Description);
         }
+    }
+
+    private void BuildPMDGFieldMap()
+    {
+        _pmdgFieldToKeyMap = new Dictionary<string, string>();
+        if (currentAircraft == null) return;
+        foreach (var kvp in currentAircraft.GetVariables())
+        {
+            // Map Name (struct field name) → Key (variable key)
+            if (!_pmdgFieldToKeyMap.ContainsKey(kvp.Value.Name))
+                _pmdgFieldToKeyMap[kvp.Value.Name] = kvp.Key;
+        }
+    }
+
+    private void OnPMDGVariableChanged(object? sender, PMDGVarUpdateEventArgs e)
+    {
+        if (_pmdgFieldToKeyMap == null) BuildPMDGFieldMap();
+
+        // Translate struct field name to variable key
+        if (!_pmdgFieldToKeyMap!.TryGetValue(e.FieldName, out string? varKey))
+        {
+            return;
+        }
+
+        // Route PMDG variable changes through the same pipeline as SimVar updates
+        var simVarEvent = new SimVarUpdateEventArgs
+        {
+            VarName = varKey,
+            Value   = e.Value,
+            Description = string.Empty
+        };
+        OnSimVarUpdated(this, simVarEvent);
     }
 
     private void OnHotkeyTriggered(object? sender, HotkeyEventArgs e)
@@ -951,6 +1033,9 @@ public partial class MainForm : Form
             case HotkeyAction.ReadWindInfo:
                 RequestWindInfo();
                 break;
+            case HotkeyAction.ReadNavRadioInfo:
+                RequestNavRadioInfo();
+                break;
             case HotkeyAction.ShowMETARReport:
                 ShowMETARReportDialog();
                 break;
@@ -961,7 +1046,14 @@ public partial class MainForm : Form
                 ShowElectronicFlightBagDialog();
                 break;
             case HotkeyAction.ShowFenixMCDU:
-                ShowFenixMCDUDialog();
+                if (currentAircraft?.AircraftCode == "PMDG_777" && simConnectManager.PMDG777DataManager != null)
+                {
+                    ShowPMDG777CDUDialog();
+                }
+                else
+                {
+                    ShowFenixMCDUDialog();
+                }
                 break;
             case HotkeyAction.ShowTrackFixWindow:
                 ShowTrackFixDialog();
@@ -1282,6 +1374,21 @@ public partial class MainForm : Form
         fenixMCDUForm.ShowForm();
     }
 
+    private void ShowPMDG777CDUDialog()
+    {
+        // Deactivate input hotkey mode before showing dialog
+        hotkeyManager.ExitInputHotkeyMode();
+
+        // Create form if it doesn't exist or has been disposed
+        if (pmdg777CDUForm == null || pmdg777CDUForm.IsDisposed)
+        {
+            pmdg777CDUForm = new PMDG777CDUForm(simConnectManager.PMDG777DataManager!, announcer);
+        }
+
+        // Show the form (reuses same instance to preserve state)
+        pmdg777CDUForm.ShowForm();
+    }
+
     private void ShowElectronicFlightBagDialog()
     {
         // Ensure output hotkey mode is deactivated before showing dialog
@@ -1470,6 +1577,81 @@ public partial class MainForm : Form
         // Request ILS guidance calculation
         // This will be handled asynchronously through the SimConnect event system
         simConnectManager.RequestILSGuidance(ilsData, runway, airport);
+    }
+
+    private async void RequestNavRadioInfo()
+    {
+        if (simConnectManager == null || !simConnectManager.IsConnected)
+        {
+            announcer.AnnounceImmediate("Not connected to simulator.");
+            return;
+        }
+
+        bool received = false;
+        string announcement = "";
+
+        simConnectManager.RequestNavRadioInfo(navData =>
+        {
+            announcement = FormatNavRadioData(navData);
+            received = true;
+        });
+
+        var timeout = DateTime.Now.AddSeconds(2);
+        while (!received && DateTime.Now < timeout)
+        {
+            await Task.Delay(50);
+            Application.DoEvents();
+        }
+
+        if (received)
+            announcer.AnnounceImmediate(announcement);
+        else
+            announcer.AnnounceImmediate("NAV radio data unavailable.");
+    }
+
+    private string FormatNavRadioData(SimConnect.SimConnectManager.NavRadioData data)
+    {
+        var parts = new List<string>();
+
+        parts.Add(FormatSingleNav("Nav 1", data.Nav1Freq, data.Nav1HasNav, data.Nav1HasLocalizer,
+            data.Nav1HasGlideSlope, data.Nav1HasDME, data.Nav1DME, data.Nav1Localizer,
+            data.Nav1GlideSlope, data.Nav1Ident, data.Nav1Name));
+
+        parts.Add(FormatSingleNav("Nav 2", data.Nav2Freq, data.Nav2HasNav, data.Nav2HasLocalizer,
+            data.Nav2HasGlideSlope, data.Nav2HasDME, data.Nav2DME, data.Nav2Localizer,
+            data.Nav2GlideSlope, data.Nav2Ident, data.Nav2Name));
+
+        return string.Join(". ", parts);
+    }
+
+    private string FormatSingleNav(string label, double freq, double hasNav, double hasLoc,
+        double hasGS, double hasDME, double dme, double locCourse, double gsAngle,
+        string ident, string name)
+    {
+        string freqStr = freq.ToString("F2");
+        var info = new List<string> { $"{label}: {freqStr}" };
+
+        if (hasNav <= 0)
+        {
+            info.Add("no signal");
+            return string.Join(", ", info);
+        }
+
+        if (!string.IsNullOrWhiteSpace(ident))
+            info.Add(ident);
+        if (!string.IsNullOrWhiteSpace(name))
+            info.Add(name);
+
+        if (hasLoc > 0)
+            info.Add($"localizer course {(int)locCourse}");
+
+        if (hasGS > 0)
+            info.Add($"glideslope {gsAngle:F1} degrees");
+
+        if (hasDME > 0)
+            info.Add($"DME {dme:F1} nautical miles");
+
+        return string.Join(", ", info);
     }
 
     private async void RequestWindInfo()
@@ -1907,10 +2089,18 @@ public partial class MainForm : Form
         SwitchAircraft(new FenixA320Definition());
     }
 
+    private void PMDG777MenuItem_Click(object? sender, EventArgs e)
+    {
+        SwitchAircraft(new PMDG777Definition());
+    }
+
     private void SwitchAircraft(IAircraftDefinition newAircraft)
     {
         // Update the aircraft instance
         currentAircraft = newAircraft;
+
+        // Invalidate PMDG field map so it rebuilds for the new aircraft
+        _pmdgFieldToKeyMap = null;
 
         // Update SimConnectManager
         simConnectManager.CurrentAircraft = currentAircraft;
@@ -1976,6 +2166,32 @@ public partial class MainForm : Form
             fenixMCDUService = null;
         }
 
+        // Dispose PMDG 777 CDU form when switching aircraft
+        if (pmdg777CDUForm != null && !pmdg777CDUForm.IsDisposed)
+        {
+            pmdg777CDUForm.Dispose();
+            pmdg777CDUForm = null;
+        }
+
+        // PMDG 777 data manager lifecycle
+        if (newAircraft.AircraftCode == "PMDG_777" && simConnectManager.IsConnected)
+        {
+            simConnectManager.InitializePMDG777();
+            if (simConnectManager.PMDG777DataManager != null)
+            {
+                simConnectManager.PMDG777DataManager.VariableChanged += OnPMDGVariableChanged;
+            }
+        }
+        else
+        {
+            // Unwire events before disposing
+            if (simConnectManager.PMDG777DataManager != null)
+            {
+                simConnectManager.PMDG777DataManager.VariableChanged -= OnPMDGVariableChanged;
+            }
+            simConnectManager.DisposePMDG777();
+        }
+
         // Rebuild sections from new aircraft structure
         foreach (var section in currentAircraft.GetPanelStructure().Keys)
         {
@@ -2011,6 +2227,7 @@ public partial class MainForm : Form
         // Clear all menu item checks first
         flyByWireA320MenuItem.Checked = false;
         fenixA320MenuItem.Checked = false;
+        pmdg777MenuItem.Checked = false;
 
         // Set the check on the current aircraft's menu item
         if (currentAircraft is FlyByWireA320Definition)
@@ -2020,6 +2237,10 @@ public partial class MainForm : Form
         else if (currentAircraft is FenixA320Definition)
         {
             fenixA320MenuItem.Checked = true;
+        }
+        else if (currentAircraft is PMDG777Definition)
+        {
+            pmdg777MenuItem.Checked = true;
         }
     }
 
@@ -2455,9 +2676,44 @@ public partial class MainForm : Form
             layout.Controls.Add(label, 0, rowIndex);
 
             // Create control based on type
-            if (varDef.ValueDescriptions != null && varDef.ValueDescriptions.Count > 1)
+            // Check RenderAsButton FIRST — buttons may have no ValueDescriptions
+            if (varDef.RenderAsButton)
+            {
+                // Render as button (momentary pushbutton, action button, etc.)
+                // If ValueDescriptions are present, show current state in the label
+                bool hasState = varDef.ValueDescriptions != null && varDef.ValueDescriptions.Count >= 2;
+                string buttonText = varDef.DisplayName;
+                if (hasState && currentSimVarValues.ContainsKey(varKey))
+                {
+                    double val = currentSimVarValues[varKey];
+                    if (varDef.ValueDescriptions.TryGetValue(val, out string? stateText))
+                        buttonText = $"{varDef.DisplayName}: {stateText}";
+                }
+
+                Button controlButton = new Button();
+                controlButton.Text = buttonText;
+                controlButton.Size = new Size(240, 25);
+                controlButton.Name = varKey;
+                controlButton.AccessibleName = buttonText;
+
+                controlButton.Click += (s2, e2) =>
+                {
+                    bool handled = currentAircraft.HandleUIVariableSet(varKey, 1, varDef, simConnectManager, announcer);
+                    if (handled)
+                    {
+                        return;
+                    }
+                    simConnectManager?.SetLVar(varDef.Name, 1);
+                    announcer.Announce($"{varDef.DisplayName} pressed");
+                };
+
+                layout.Controls.Add(controlButton, 1, rowIndex);
+                currentControls[varKey] = controlButton;
+            }
+            else if (varDef.ValueDescriptions != null && varDef.ValueDescriptions.Count > 1)
             {
                 // Check if variable should be rendered as button instead of combo box (aircraft-specific)
+                // (Legacy path — kept for backward compat with Fenix buttons that have ValueDescriptions)
                 if (varDef.RenderAsButton)
                 {
                     Button controlButton = new Button();
@@ -2465,13 +2721,14 @@ public partial class MainForm : Form
                     controlButton.Size = new Size(240, 25);
                     controlButton.Name = varKey;
                     controlButton.AccessibleName = varDef.DisplayName;
-                    controlButton.AccessibleDescription = $"Press {varDef.DisplayName}";
+                    controlButton.AccessibleDescription = varDef.HelpText ?? $"Press {varDef.DisplayName}";
 
                     // Handle button click - send value 1 which triggers HandleUIVariableSet
                     controlButton.Click += (s2, e2) =>
                     {
                         // Let aircraft handle special cases first (custom button logic, transitions, etc.)
-                        if (currentAircraft.HandleUIVariableSet(varKey, 1, varDef, simConnectManager, announcer))
+                        bool handled = currentAircraft.HandleUIVariableSet(varKey, 1, varDef, simConnectManager, announcer);
+                        if (handled)
                         {
                             currentSimVarValues[varKey] = 1;
                             // NOTE: We do NOT call RequestRelatedVariables here because:
@@ -2800,7 +3057,8 @@ public partial class MainForm : Form
                             var selectedValue = sortedValues[combo.SelectedIndex].Key;
 
                             // Let aircraft handle special cases first (validation, conversion, multi-step logic)
-                            if (currentAircraft.HandleUIVariableSet(varKey, selectedValue, varDef, simConnectManager, announcer))
+                            bool aircraftHandled = currentAircraft.HandleUIVariableSet(varKey, selectedValue, varDef, simConnectManager, announcer);
+                            if (aircraftHandled)
                             {
                                 currentSimVarValues[varKey] = selectedValue;
                                 // NOTE: We do NOT call RequestRelatedVariables here because:
@@ -2811,7 +3069,14 @@ public partial class MainForm : Form
                             }
 
                             // Generic handling follows if aircraft didn't handle it
-                            if (varKey == "CABIN SEATBELTS ALERT SWITCH") // Seat Belts Signs
+                            if (varDef.Type == SimVarType.PMDGVar)
+                            {
+                                bool handled = currentAircraft.HandleUIVariableSet(varKey, selectedValue, varDef, simConnectManager, announcer);
+                                if (!handled)
+                                    System.Diagnostics.Debug.WriteLine($"[PMDG] Unhandled PMDGVar set: {varKey}");
+                                currentSimVarValues[varKey] = selectedValue;
+                            }
+                            else if (varKey == "CABIN SEATBELTS ALERT SWITCH") // Seat Belts Signs
                             {
                                 // Send the toggle event to change the state
                                 simConnectManager?.SendEvent("CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE", 0);
@@ -2878,7 +3143,7 @@ public partial class MainForm : Form
                         else
                         {
                             simConnectManager?.SendEvent(varKey, bcdValue);
-                            announcer.Announce($"Squawk set to {squawkCode}");
+                            // Announcement handled by aircraft's ProcessSimVarUpdate when the SimVar changes
                         }
                     }
                     else if (double.TryParse(textBox.Text, out double value))
@@ -3161,6 +3426,24 @@ public partial class MainForm : Form
         }
 
             controlsContainer.Controls.Add(layout);
+
+            // For PMDG aircraft, populate controls with current data from the data manager
+            if (currentAircraft?.AircraftCode == "PMDG_777" && simConnectManager?.PMDG777DataManager != null)
+            {
+                var dm = simConnectManager.PMDG777DataManager;
+                foreach (var varKey in currentAircraft.GetPanelControls()[currentPanel])
+                {
+                    if (!currentAircraft.GetVariables().ContainsKey(varKey)) continue;
+                    var varDef = currentAircraft.GetVariables()[varKey];
+
+                    // Read current value from PMDG data manager using the struct field name
+                    double value = dm.GetFieldValue(varDef.Name);
+                    currentSimVarValues[varKey] = value;
+
+                    // Update the UI control
+                    UpdateControlFromSimVar(varKey, value);
+                }
+            }
         })); // End BeginInvoke - deferred control creation
     } // End PanelLoadTimer_Tick
 

@@ -17,6 +17,13 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     private int? _lastAnnouncedAltitudeThousands = null;
     private double? _lastAnnouncedRawAltitude = null;
 
+    // Elevator trim announcement toggle and debounce
+    private bool _trimAnnouncementsEnabled = true;
+    private double _lastAnnouncedTrimDeg = double.NaN;
+
+    // Glideslope alive/lost tracking
+    private bool _previousGlideSlopeAlive = false;
+
     // Abstract members from IAircraftDefinition that must be implemented
     public abstract string AircraftName { get; }
     public abstract string AircraftCode { get; }
@@ -63,6 +70,28 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
                 DisplayName = "Altitude",  // Not used for announcements (custom logic in ProcessSimVarUpdate)
                 Type = SimConnect.SimVarType.SimVar,
                 Units = "feet",
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true  // Required for batched continuous monitoring (custom logic handles actual announcements)
+            },
+
+            // Glideslope signal - monitors NAV1 glideslope alive/lost transitions
+            ["MON_GlideSlopeAlive"] = new SimConnect.SimVarDefinition
+            {
+                Name = "NAV HAS GLIDE SLOPE:1",
+                DisplayName = "Glideslope",
+                Type = SimConnect.SimVarType.SimVar,
+                Units = "Bool",
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true
+            },
+
+            // Elevator trim - universal SimConnect variable for trim position announcements
+            ["MON_ElevatorTrim"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ELEVATOR TRIM POSITION",
+                DisplayName = "Elevator Trim",
+                Type = SimConnect.SimVarType.SimVar,
+                Units = "degrees",
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true  // Required for batched continuous monitoring (custom logic handles actual announcements)
             },
@@ -209,6 +238,16 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
             }
         }
 
+        // Toggle trim announcements (Shift+T)
+        if (action == HotkeyAction.ToggleTrimAnnouncements)
+        {
+            _trimAnnouncementsEnabled = !_trimAnnouncementsEnabled;
+            announcer.AnnounceImmediate(_trimAnnouncementsEnabled
+                ? "Trim announcements on"
+                : "Trim announcements off");
+            return true;
+        }
+
         // Not handled by simple mapping - aircraft can override to handle complex actions
         return false;
     }
@@ -234,7 +273,7 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
             return false;
         }
 
-        var dialog = new Forms.FCUInputForm(title, parameterType, rangeText, announcer, validator);
+        var dialog = new Forms.ValueInputForm(title, parameterType, rangeText, announcer, validator);
         if (dialog.ShowDialog(parentForm) == DialogResult.OK && dialog.IsValidInput)
         {
             if (double.TryParse(dialog.InputValue, out double value))
@@ -343,6 +382,41 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
             _previousAltitude = value;
 
             // Return true to suppress default announcement (we handle it custom)
+            return true;
+        }
+
+        // Elevator trim — announce in degrees with up/down, debounced to 0.1 degree
+        if (varName == "MON_ElevatorTrim")
+        {
+            if (!_trimAnnouncementsEnabled)
+                return true; // Suppress when toggled off
+
+            double rounded = Math.Round(value, 1);
+
+            // First update: store silently, don't announce initial value on app load
+            if (double.IsNaN(_lastAnnouncedTrimDeg))
+            {
+                _lastAnnouncedTrimDeg = rounded;
+                return true;
+            }
+
+            if (Math.Abs(rounded - _lastAnnouncedTrimDeg) < 0.05)
+                return true; // Debounce — skip if less than 0.1 degree change
+
+            _lastAnnouncedTrimDeg = rounded;
+            string direction = rounded >= 0 ? "up" : "down";
+            announcer.Announce($"Trim {direction} {Math.Abs(rounded):F1}");
+            return true;
+        }
+
+        if (varName == "MON_GlideSlopeAlive")
+        {
+            bool alive = value > 0;
+            if (alive && !_previousGlideSlopeAlive)
+                announcer.Announce("Glideslope alive");
+            else if (!alive && _previousGlideSlopeAlive)
+                announcer.Announce("Glideslope lost");
+            _previousGlideSlopeAlive = alive;
             return true;
         }
 

@@ -68,7 +68,8 @@ public partial class HotkeyListForm : Form
         var filenameMap = new Dictionary<string, string>
         {
             { "A320", "FBW_A320_Hotkeys.txt" },
-            { "FENIX_A320CEO", "Fenix_A320_Hotkeys.txt" }
+            { "FENIX_A320CEO", "Fenix_A320_Hotkeys.txt" },
+            { "PMDG_777", "PMDG_777_Hotkeys.txt" }
         };
 
         // Determine which file to load
@@ -84,7 +85,9 @@ public partial class HotkeyListForm : Form
         {
             if (File.Exists(filePath))
             {
-                return File.ReadAllText(filePath);
+                string text = File.ReadAllText(filePath);
+                // Normalize line endings for Windows Forms TextBox
+                return text.Replace("\r\n", "\n").Replace("\n", "\r\n");
             }
             else
             {

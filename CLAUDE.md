@@ -76,6 +76,30 @@ dotnet build MSFSBlindAssist.sln -c Release
 - **K:EVENT** - Standard MSFS events (via SimConnect TransmitClientEvent)
 - **L:VARIABLE** - Local variables (reading aircraft state)
 - **H:EVENT** - Hardware events (via MobiFlight WASM module)
+- **PMDGVar** - PMDG SDK variables (read via Client Data Area broadcast)
+
+### PMDG 777 Specific Patterns
+
+**Switch control:** Use CDA (SetClientData) with direct position values for most switches.
+- Two-position toggles: `SendPMDGEvent(eventName, eventId, targetPosition)` where targetPosition is 0 or 1
+- Multi-position selectors: same, with the target position index
+- Momentary buttons: `SendPMDGEvent(eventName, eventId, 1)` — parameter 1 = pressed, 0 = no-op
+- Continuous knobs (brightness, temperature, EFIS baro/mins): **cannot be controlled via SDK** — do not add to panels
+- **Fuel control levers:** Exception — use CDA with **inverted** parameter (1=Cutoff, 0=Run). See special case in HandleUIVariableSet.
+- **Ground power switches (ELEC_ExtPwr):** Momentary push buttons — send parameter 1 regardless of target. See special case in HandleUIVariableSet.
+
+**Radio frequencies and transponder:** Use standard SimConnect events (not PMDG SDK):
+- `COM_STBY_RADIO_SET_HZ` / `COM2_STBY_RADIO_SET_HZ` for setting standby freqs
+- `COM_STBY_RADIO_SWAP` / `COM2_RADIO_SWAP` for swapping active/standby
+- `XPNDR_SET` for squawk code (BCD16 encoded)
+
+**CDU interaction:** CDU buttons must send parameter 1 (pressed) via CDA; parameter 0 also registers as a press (not a release). Text entry sends one character at a time with 350ms delay; repeated characters need an extra 400ms for the CDU to distinguish separate presses. CDU display uses color and font-size data to detect toggle selections (non-white color or non-small font = selected, marked with `X`). Toggle detection only applies to rows with adjacent `<>` (mapped from 0xA1/0xA2 arrow symbols). Scratchpad announcements are suppressed during text entry and clearing (`_typingInProgress`/`_clearingInProgress` flags); `_previousScratchpad` is only updated when the announcement actually fires. CLR uses `_clearingInProgress` to suppress intermediate states and only announces "Cleared" once the scratchpad is empty.
+
+**MCP dialogs:** Use `ValueInputForm` with `ToggleButtonDef` for mode toggles. Opened non-modal (`Show()`, not `ShowDialog()`) with `ShowCancelButton = false` so other windows remain accessible. Dialogs stay open after value entry (callback pattern). `MCP_IASBlank` indicates FMC-controlled speed. VS/FPA dialog uses `inputEnabledCheck` to gate input on mode engagement (`MCP_annunVS_FPA`). `EVT_MCP_VS_SET` requires VS mode to be engaged first ("VS window open").
+
+**VS/FPA event naming (SDK names are misleading):** `EVT_MCP_VS_SWITCH` (69855) is the **engage/disengage** button. `EVT_MCP_VS_FPA_SWITCH` (69852) is the **VS↔FPA display mode toggle**. Confirmed by live sim testing — do not trust the SDK naming alone.
+
+**Announcements:** Use `Announce()` (queued) in ProcessSimVarUpdate, `AnnounceImmediate()` only in HandleHotkeyAction. `IsAnnounced = true` is required for continuous monitoring registration. Suppress button push state (_Sw_Pushed) announcements via RenderAsButton check. Annunciator lights announce both on and off states. For variables needing cache but no auto-announcement, set `IsAnnounced = true` and return `true` from ProcessSimVarUpdate to suppress.
 
 ## Detailed Documentation
 
