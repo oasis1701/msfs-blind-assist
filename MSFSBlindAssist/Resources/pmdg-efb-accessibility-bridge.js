@@ -212,6 +212,7 @@ _efb.cmdStartNavigraphAuth = function() {
     _efb.publisher.pub('current_app', 'efb');
     _efb.publisher.pub('current_page', 'authenticate');
     _efb.startNavigraphCodeObserver();
+    _efb.startNavigraphAuthPoller();
 };
 
 _efb.cmdSignOutNavigraph = function() {
@@ -304,6 +305,43 @@ _efb.stopNavigraphCodeObserver = function() {
     if (_efb.navigraphCodeTimer) {
         clearInterval(_efb.navigraphCodeTimer);
         _efb.navigraphCodeTimer = null;
+    }
+};
+
+// Poll for auth completion after starting the device flow.
+// This catches the auth state change even if onAuthStateChanged doesn't fire reliably.
+// Also auto-dismisses the EFB's success alert popup.
+_efb.navigraphAuthPoller = null;
+
+_efb.startNavigraphAuthPoller = function() {
+    _efb.stopNavigraphAuthPoller();
+    _efb.navigraphAuthPoller = setInterval(function() {
+        if (typeof Navigraph === 'undefined' || !Navigraph.auth || !Navigraph.auth.getUser) return;
+        Navigraph.auth.getUser(true).then(function(user) {
+            if (user) {
+                _efb.postState('navigraph_auth_state', {
+                    authenticated: 'true',
+                    username: user.preferred_username || user.name || 'Unknown'
+                });
+                _efb.stopNavigraphAuthPoller();
+                // Auto-dismiss the EFB's success alert if visible
+                var alertDiv = document.getElementById('PMDGAlert');
+                if (alertDiv && alertDiv.style.display === 'block') {
+                    var okBtn = document.getElementById('alert_card_button');
+                    if (okBtn) okBtn.click();
+                }
+            }
+        }).catch(function() {});
+    }, 2000);
+
+    // Stop polling after 5 minutes
+    setTimeout(function() { _efb.stopNavigraphAuthPoller(); }, 300000);
+};
+
+_efb.stopNavigraphAuthPoller = function() {
+    if (_efb.navigraphAuthPoller) {
+        clearInterval(_efb.navigraphAuthPoller);
+        _efb.navigraphAuthPoller = null;
     }
 };
 
