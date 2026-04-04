@@ -18,7 +18,8 @@ var _efb = {
     commandPollTimer: null,
     heartbeatTimer: null,
     fmsTransferWxCode: null,
-    fmsTransferFpCode: null
+    fmsTransferFpCode: null,
+    fmsTransferTimeout: null
 };
 
 // --- HTTP Communication ---
@@ -356,6 +357,43 @@ _efb.stopNavigraphAuthPoller = function() {
     }
 };
 
+// --- FMS Transfer Result Reporting ---
+
+_efb.reportFmsTransferResult = function() {
+    if (_efb.fmsTransferTimeout !== null) {
+        clearTimeout(_efb.fmsTransferTimeout);
+        _efb.fmsTransferTimeout = null;
+    }
+    // Nothing to report if neither result arrived
+    if (_efb.fmsTransferWxCode === null && _efb.fmsTransferFpCode === null) return;
+
+    var wxOk = _efb.fmsTransferWxCode === '200';
+    var fpOk = _efb.fmsTransferFpCode === '200';
+    var message = '';
+    if (_efb.fmsTransferWxCode !== null && _efb.fmsTransferFpCode !== null) {
+        if (wxOk && fpOk) {
+            message = 'Route and weather files transferred successfully';
+        } else if (wxOk) {
+            message = 'Weather file transferred, but route file failed (status ' + _efb.fmsTransferFpCode + ')';
+        } else if (fpOk) {
+            message = 'Route file transferred, but weather file failed (status ' + _efb.fmsTransferWxCode + ')';
+        } else {
+            message = 'Both transfers failed (WX: ' + _efb.fmsTransferWxCode + ', Route: ' + _efb.fmsTransferFpCode + ')';
+        }
+    } else if (_efb.fmsTransferWxCode !== null) {
+        message = wxOk ? 'Weather file transferred, but route file result was not received' : 'Weather file failed (status ' + _efb.fmsTransferWxCode + '), route file result was not received';
+    } else {
+        message = fpOk ? 'Route file transferred, but weather file result was not received' : 'Route file failed (status ' + _efb.fmsTransferFpCode + '), weather file result was not received';
+    }
+    _efb.postState('simbrief_fetch_result', {
+        success: String(wxOk && fpOk && _efb.fmsTransferWxCode !== null && _efb.fmsTransferFpCode !== null),
+        message: message
+    });
+    // Reset for next transfer
+    _efb.fmsTransferWxCode = null;
+    _efb.fmsTransferFpCode = null;
+};
+
 // --- EventBus Subscriptions ---
 
 _efb.subscribeToBusEvents = function() {
@@ -388,7 +426,8 @@ _efb.subscribeToBusEvents = function() {
 
     // The WASM sends two simbrief_fetch_result messages: one for WX, one for Flightplans.
     // Each has data.directory ("WX" or "Flightplans") and data.result (HTTP status code).
-    // We collect both before reporting success/failure.
+    // We collect both before reporting success/failure. A 15s timeout flushes partial results
+    // in case one message never arrives.
     subscriber.on('simbrief_fetch_result').handle(function(result) {
         try {
             var parsed = typeof result === 'string' ? JSON.parse(result) : result;
@@ -397,27 +436,17 @@ _efb.subscribeToBusEvents = function() {
             } else if (parsed.data && parsed.data.directory === 'Flightplans') {
                 _efb.fmsTransferFpCode = parsed.data.result;
             }
-            // Report once we have both results
+
+            // Start a timeout on first result so we don't get stuck if the second never arrives
+            if (_efb.fmsTransferTimeout === null && (_efb.fmsTransferWxCode !== null || _efb.fmsTransferFpCode !== null)) {
+                _efb.fmsTransferTimeout = setTimeout(function() {
+                    _efb.reportFmsTransferResult();
+                }, 15000);
+            }
+
+            // Report immediately once we have both results
             if (_efb.fmsTransferWxCode !== null && _efb.fmsTransferFpCode !== null) {
-                var wxOk = _efb.fmsTransferWxCode === '200';
-                var fpOk = _efb.fmsTransferFpCode === '200';
-                var message = '';
-                if (wxOk && fpOk) {
-                    message = 'Route and weather files transferred successfully';
-                } else if (wxOk) {
-                    message = 'Weather file transferred, but route file failed (status ' + _efb.fmsTransferFpCode + ')';
-                } else if (fpOk) {
-                    message = 'Route file transferred, but weather file failed (status ' + _efb.fmsTransferWxCode + ')';
-                } else {
-                    message = 'Both transfers failed (WX: ' + _efb.fmsTransferWxCode + ', Route: ' + _efb.fmsTransferFpCode + ')';
-                }
-                _efb.postState('simbrief_fetch_result', {
-                    success: String(wxOk && fpOk),
-                    message: message
-                });
-                // Reset for next transfer
-                _efb.fmsTransferWxCode = null;
-                _efb.fmsTransferFpCode = null;
+                _efb.reportFmsTransferResult();
             }
         } catch (e) {
             console.error('[EFB Bridge] Error processing simbrief_fetch_result:', e);

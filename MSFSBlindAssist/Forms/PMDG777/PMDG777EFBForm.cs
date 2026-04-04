@@ -98,8 +98,7 @@ namespace MSFSBlindAssist.Forms.PMDG777
                     break;
 
                 case "simbrief_fetch_result":
-                    bool success = e.Data.GetValueOrDefault("success", "false") == "true" ||
-                                   e.Data.GetValueOrDefault("success", "false") == "True";
+                    bool success = bool.TryParse(e.Data.GetValueOrDefault("success", "false"), out var s) && s;
                     string message = e.Data.GetValueOrDefault("message", "");
                     if (success)
                     {

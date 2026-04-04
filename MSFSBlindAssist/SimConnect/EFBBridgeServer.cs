@@ -23,6 +23,7 @@ namespace MSFSBlindAssist.SimConnect
         private const string Prefix = "http://localhost:19777/";
         private const int HeartbeatTimeoutSeconds = 15;
         private const int CommandExpirySeconds = 30;
+        private const int MaxRequestBodyBytes = 64 * 1024; // 64 KB
 
         private HttpListener? _listener;
         private CancellationTokenSource? _cts;
@@ -57,6 +58,8 @@ namespace MSFSBlindAssist.SimConnect
             catch (HttpListenerException ex)
             {
                 System.Diagnostics.Debug.WriteLine($"EFBBridgeServer: Failed to start on {Prefix}: {ex.Message}");
+                _cts.Dispose();
+                _cts = null;
                 _listener = null;
             }
         }
@@ -161,8 +164,17 @@ namespace MSFSBlindAssist.SimConnect
         {
             _lastHeartbeat = DateTime.UtcNow;
 
+            if (request.ContentLength64 > MaxRequestBodyBytes)
+            {
+                response.StatusCode = 413;
+                await WriteJson(response, new { error = "Request too large" });
+                return;
+            }
+
             using var reader = new StreamReader(request.InputStream, request.ContentEncoding);
-            string body = await reader.ReadToEndAsync();
+            var buffer = new char[MaxRequestBodyBytes];
+            int charsRead = await reader.ReadAsync(buffer, 0, buffer.Length);
+            string body = new string(buffer, 0, charsRead);
 
             try
             {
