@@ -1462,13 +1462,22 @@ public partial class MainForm : Form
             switch (installResult)
             {
                 case ModPackageResult.Success:
-                    announcer.Announce("EFB accessibility mod package installed. Restart the simulator for changes to take effect.");
+                    string successMsg = "EFB accessibility mod package installed successfully. If the simulator is currently running, please restart it for changes to take effect.";
+                    announcer.Announce(successMsg);
+                    MessageBox.Show(successMsg, "EFB Accessibility Bridge", MessageBoxButtons.OK, MessageBoxIcon.Information);
                     break;
                 case ModPackageResult.AlreadyInstalled:
                     announcer.Announce("EFB accessibility mod package is already installed.");
                     break;
+                case ModPackageResult.PmdgPackageNotFound:
+                    string notFoundMsg = "Could not find the PMDG 777 aircraft package in your Community folder. Please ensure the PMDG 777 is installed.";
+                    announcer.Announce(notFoundMsg);
+                    MessageBox.Show(notFoundMsg, "EFB Accessibility Bridge", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    break;
                 default:
-                    announcer.Announce($"Failed to install EFB mod package: {installResult}");
+                    string failMsg = $"Failed to install EFB mod package: {installResult}";
+                    announcer.Announce(failMsg);
+                    MessageBox.Show(failMsg, "EFB Accessibility Bridge", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     break;
             }
         }
