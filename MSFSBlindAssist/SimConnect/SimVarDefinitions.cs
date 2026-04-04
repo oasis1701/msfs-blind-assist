@@ -5,7 +5,8 @@ public enum SimVarType
     LVar,      // Local variable (L:varname)
     Event,     // SimConnect Event
     SimVar,    // Standard SimVar
-    HVar       // H-variable (requires MobiFlight WASM)
+    HVar,      // H-variable (requires MobiFlight WASM)
+    PMDGVar    // PMDG SDK variable (read via Client Data Area)
 }
 
 public enum UpdateFrequency
@@ -33,6 +34,7 @@ public class SimVarDefinition
     // UI customization properties (aircraft-specific)
     public bool RenderAsButton { get; set; }  // True to render as button instead of combo box (e.g., APU Start)
     public bool PreventTextInput { get; set; }  // True to prevent text input UI for _SET variables (e.g., autobrake)
+    public string? HelpText { get; set; }  // Optional help text read by screen reader (overrides default AccessibleDescription)
 
     // MobiFlight WASM support properties
     public bool UseMobiFlight { get; set; }  // Flag to route through MobiFlight WASM
