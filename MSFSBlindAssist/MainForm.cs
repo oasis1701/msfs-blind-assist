@@ -10,6 +10,7 @@ using MSFSBlindAssist.Forms.PMDG777;
 using MSFSBlindAssist.Hotkeys;
 using MSFSBlindAssist.Services;
 using MSFSBlindAssist.Settings;
+using MSFSBlindAssist.Patching;
 using MSFSBlindAssist.SimConnect;
 
 namespace MSFSBlindAssist;
@@ -31,6 +32,9 @@ public partial class MainForm : Form
     private FenixMCDUForm? fenixMCDUForm;
     private FenixMCDUService? fenixMCDUService;
     private PMDG777CDUForm? pmdg777CDUForm;
+    private PMDG777EFBForm? pmdg777EFBForm;
+    private EFBBridgeServer? efbBridgeServer;
+    private string? efbCommunityFolderPath;
     private TakeoffAssistManager takeoffAssistManager = null!;
     private HandFlyManager handFlyManager = null!;
     private VisualGuidanceManager visualGuidanceManager = null!;
@@ -105,6 +109,13 @@ public partial class MainForm : Form
 
         // Sync menu items with the loaded aircraft (fixes first-launch menu mismatch)
         UpdateAircraftMenuItems();
+
+        // Initialize EFB bridge if starting with PMDG 777
+        if (currentAircraft?.AircraftCode == "PMDG_777")
+        {
+            CheckAndOfferEFBModPackage();
+            StartEFBBridgeServer();
+        }
 
         // Don't set focus - let default tab order handle it for proper menu accessibility
     }
@@ -1055,6 +1066,12 @@ public partial class MainForm : Form
                     ShowFenixMCDUDialog();
                 }
                 break;
+            case HotkeyAction.ShowPMDG777EFB:
+                if (currentAircraft?.AircraftCode == "PMDG_777")
+                {
+                    ShowPMDG777EFBDialog();
+                }
+                break;
             case HotkeyAction.ShowTrackFixWindow:
                 ShowTrackFixDialog();
                 break;
@@ -1387,6 +1404,136 @@ public partial class MainForm : Form
 
         // Show the form (reuses same instance to preserve state)
         pmdg777CDUForm.ShowForm();
+    }
+
+    private void ShowPMDG777EFBDialog()
+    {
+        hotkeyManager.ExitInputHotkeyMode();
+
+        if (efbBridgeServer == null || !efbBridgeServer.IsRunning)
+        {
+            announcer.Announce("EFB bridge server is not running. Please ensure the EFB mod package is installed and restart the flight.");
+            return;
+        }
+
+        if (pmdg777EFBForm == null || pmdg777EFBForm.IsDisposed)
+        {
+            pmdg777EFBForm = new PMDG777EFBForm(efbBridgeServer, announcer);
+        }
+
+        pmdg777EFBForm.ShowForm();
+    }
+
+    private void CheckAndOfferEFBModPackage()
+    {
+        efbCommunityFolderPath ??= EFBModPackageManager.FindCommunityFolderPath();
+        if (efbCommunityFolderPath == null)
+        {
+            System.Diagnostics.Debug.WriteLine("EFB Mod Package: Could not find MSFS Community folder, trying local build fallback");
+            BuildEFBModPackageLocally();
+            return;
+        }
+
+        if (EFBModPackageManager.IsInstalled(efbCommunityFolderPath))
+        {
+            // Update the bridge JS in case the app was updated
+            string bridgeJsSource = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources", "pmdg-efb-accessibility-bridge.js");
+            if (File.Exists(bridgeJsSource))
+            {
+                EFBModPackageManager.UpdateBridgeJs(efbCommunityFolderPath, bridgeJsSource);
+            }
+            return;
+        }
+
+        string message = "The PMDG EFB accessibility mod package is not installed. Would you like to install it? This creates a separate mod in your Community folder — no PMDG files are modified.";
+
+        announcer.Announce(message);
+        var result = MessageBox.Show(message, "EFB Accessibility Bridge", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+
+        if (result == DialogResult.Yes)
+        {
+            string bridgeJsSource = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources", "pmdg-efb-accessibility-bridge.js");
+            if (!File.Exists(bridgeJsSource))
+            {
+                announcer.Announce("Bridge script file not found. Cannot install mod package.");
+                return;
+            }
+
+            var installResult = EFBModPackageManager.Install(efbCommunityFolderPath, bridgeJsSource);
+            switch (installResult)
+            {
+                case ModPackageResult.Success:
+                    MessageBox.Show("EFB accessibility mod package installed successfully. If the simulator is currently running, please restart it for changes to take effect.", "EFB Accessibility Bridge", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    break;
+                case ModPackageResult.AlreadyInstalled:
+                    break;
+                case ModPackageResult.PmdgPackageNotFound:
+                    MessageBox.Show("Could not find the PMDG 777 aircraft package in your Community folder. Please ensure the PMDG 777 is installed.", "EFB Accessibility Bridge", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    break;
+                default:
+                    MessageBox.Show($"Failed to install EFB mod package: {installResult}", "EFB Accessibility Bridge", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    break;
+            }
+        }
+    }
+
+    private void BuildEFBModPackageLocally()
+    {
+        string bridgeJsSource = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources", "pmdg-efb-accessibility-bridge.js");
+        if (!File.Exists(bridgeJsSource))
+            return;
+
+        string localOutputDir = AppDomain.CurrentDomain.BaseDirectory;
+        string localPackagePath = Path.Combine(localOutputDir, EFBModPackageManager.GetPackageFolderName());
+
+        // Skip if we already built it locally before
+        if (Directory.Exists(localPackagePath))
+            return;
+
+        var buildResult = EFBModPackageManager.BuildLocalPackage(localOutputDir, bridgeJsSource);
+        switch (buildResult)
+        {
+            case ModPackageResult.Success:
+                string message = $"Could not automatically detect your MSFS Community folder. The EFB accessibility mod package has been created in the application folder instead. Please copy the \"{EFBModPackageManager.GetPackageFolderName()}\" folder into your MSFS Community folder manually, then restart the simulator.";
+                announcer.Announce(message);
+                MessageBox.Show(message, "EFB Accessibility Bridge \u2014 Manual Install Required", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                try
+                {
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(localOutputDir) { UseShellExecute = true });
+                }
+                catch { }
+                break;
+            case ModPackageResult.PmdgPackageNotFound:
+                announcer.Announce("Could not find the PMDG 777 package to build the EFB mod. Please ensure the PMDG 777 is installed.");
+                break;
+            default:
+                System.Diagnostics.Debug.WriteLine($"EFB Mod Package: Local build failed: {buildResult}");
+                break;
+        }
+    }
+
+    private void StartEFBBridgeServer()
+    {
+        if (efbBridgeServer == null)
+        {
+            efbBridgeServer = new EFBBridgeServer();
+        }
+
+        if (!efbBridgeServer.IsRunning)
+        {
+            efbBridgeServer.Start();
+        }
+    }
+
+    private void StopEFBBridgeServer()
+    {
+        if (pmdg777EFBForm != null && !pmdg777EFBForm.IsDisposed)
+        {
+            pmdg777EFBForm.Dispose();
+            pmdg777EFBForm = null;
+        }
+
+        efbBridgeServer?.Stop();
     }
 
     private void ShowElectronicFlightBagDialog()
@@ -2173,6 +2320,13 @@ public partial class MainForm : Form
             pmdg777CDUForm = null;
         }
 
+        // Dispose PMDG 777 EFB form when switching aircraft
+        if (pmdg777EFBForm != null && !pmdg777EFBForm.IsDisposed)
+        {
+            pmdg777EFBForm.Dispose();
+            pmdg777EFBForm = null;
+        }
+
         // PMDG 777 data manager lifecycle
         if (newAircraft.AircraftCode == "PMDG_777" && simConnectManager.IsConnected)
         {
@@ -2190,6 +2344,17 @@ public partial class MainForm : Form
                 simConnectManager.PMDG777DataManager.VariableChanged -= OnPMDGVariableChanged;
             }
             simConnectManager.DisposePMDG777();
+        }
+
+        // EFB bridge: mod package check and server start
+        if (newAircraft.AircraftCode == "PMDG_777")
+        {
+            CheckAndOfferEFBModPackage();
+            StartEFBBridgeServer();
+        }
+        else
+        {
+            StopEFBBridgeServer();
         }
 
         // Rebuild sections from new aircraft structure
@@ -3594,6 +3759,10 @@ public partial class MainForm : Form
 
         nearestCityAnnouncementTimer?.Stop();
         nearestCityAnnouncementTimer?.Dispose();
+
+        // Clean up EFB bridge
+        efbBridgeServer?.Dispose();
+        efbBridgeServer = null;
 
         // Clean up managers and resources
         hotkeyManager?.Cleanup();

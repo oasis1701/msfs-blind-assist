@@ -99,6 +99,10 @@
     <None Update="Checklists\Fenix_A320_Checklist.txt">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <!-- EFB Bridge Script -->
+    <None Update="Resources\pmdg-efb-accessibility-bridge.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
   <ItemGroup>

@@ -89,6 +89,7 @@ AI Display Reading (requires Gemini API key in File > Gemini Settings):
 Displays and Windows:
   Ctrl+M     PMDG Monitor Manager
   Shift+E    Route viewer, procedure planner and airport lookup
+  Shift+T    PMDG EFB Tablet (SimBrief uplink, Navigraph, preferences)
   Shift+L    Location Info
   Shift+M    Show VATSIM METAR Report
   Shift+B    SimBrief Briefing
