@@ -2997,58 +2997,33 @@ public partial class MainForm : Form
                             // Send additional events based on the control and value
                             if (capturedVarKey == "LIGHTING_LANDING_1") // Nose Light
                             {
-                                if (selectedValue == 2) // Off
-                                {
-                                    simConnectManager?.SendEvent("LANDING_LIGHTS_OFF", 1);
-                                    simConnectManager?.SendEvent("LIGHT_TAXI", 0);
-                                }
-                                else if (selectedValue == 1) // Taxi
-                                {
-                                    simConnectManager?.SendEvent("LANDING_LIGHTS_ON", 1);
-                                    simConnectManager?.SendEvent("CIRCUIT_SWITCH_ON_20", 1);
-                                    simConnectManager?.SendEvent("LIGHT_TAXI", 1);
-                                }
-                                else if (selectedValue == 0) // T.O.
-                                {
-                                    simConnectManager?.SendEvent("LANDING_LIGHTS_ON", 1);
-                                    simConnectManager?.SendEvent("CIRCUIT_SWITCH_ON_17", 1);
-                                    simConnectManager?.SendEvent("LIGHT_TAXI", 0);
-                                }
+                                // Primary LVar already set at line above.
+                                // FBW: circuit 17 = T.O. landing light, circuit 20 = taxi light.
+                                // Circuit ops handled by ASOBO template when switch LVar changes.
                             }
                             else if (capturedVarKey == "LIGHTING_LANDING_2") // Left Landing Light
                             {
+                                // FBW: LANDING_2_RETRACTED is an LVar (not a K event).
+                                // 0 = extended (On/Off), 1 = retracted (Retract).
                                 if (selectedValue == 2) // Retract
                                 {
-                                    simConnectManager?.SendEvent("LANDING_2_RETRACTED", 1);
-                                    simConnectManager?.SendEvent("CIRCUIT_SWITCH_ON_18", 0);
+                                    simConnectManager?.SetLVar("LANDING_2_RETRACTED", 1);
                                 }
-                                else if (selectedValue == 1) // Off
+                                else // On or Off - light is extended
                                 {
-                                    simConnectManager?.SendEvent("LANDING_2_RETRACTED", 0);
-                                    simConnectManager?.SendEvent("CIRCUIT_SWITCH_ON_18", 0);
-                                }
-                                else if (selectedValue == 0) // On
-                                {
-                                    simConnectManager?.SendEvent("LANDING_2_RETRACTED", 0);
-                                    simConnectManager?.SendEvent("CIRCUIT_SWITCH_ON_18", 1);
+                                    simConnectManager?.SetLVar("LANDING_2_RETRACTED", 0);
                                 }
                             }
                             else if (capturedVarKey == "LIGHTING_LANDING_3") // Right Landing Light
                             {
+                                // FBW: LANDING_3_RETRACTED is an LVar (not a K event).
                                 if (selectedValue == 2) // Retract
                                 {
-                                    simConnectManager?.SendEvent("LANDING_3_RETRACTED", 1);
-                                    simConnectManager?.SendEvent("CIRCUIT_SWITCH_ON_19", 0);
+                                    simConnectManager?.SetLVar("LANDING_3_RETRACTED", 1);
                                 }
-                                else if (selectedValue == 1) // Off
+                                else // On or Off - light is extended
                                 {
-                                    simConnectManager?.SendEvent("LANDING_3_RETRACTED", 0);
-                                    simConnectManager?.SendEvent("CIRCUIT_SWITCH_ON_19", 0);
-                                }
-                                else if (selectedValue == 0) // On
-                                {
-                                    simConnectManager?.SendEvent("LANDING_3_RETRACTED", 0);
-                                    simConnectManager?.SendEvent("CIRCUIT_SWITCH_ON_19", 1);
+                                    simConnectManager?.SetLVar("LANDING_3_RETRACTED", 0);
                                 }
                             }
                             else if (capturedVarKey == "LIGHTING_STROBE_0") // Strobe Lights
@@ -3127,13 +3102,24 @@ public partial class MainForm : Form
                             }
                             else if (capturedVarKey == "CIRCUIT_SWITCH_ON:21") // Left RWY Turn Off Light
                             {
-                                // Write directly to the SimVar (as per FBW documentation)
-                                simConnectManager?.SetSimVar("CIRCUIT SWITCH ON:21", selectedValue, "bool");
+                                // FBW: toggle circuit 21 only if not already in desired state.
+                                // CIRCUIT SWITCH ON:21 is read-only; use ELECTRICAL_CIRCUIT_TOGGLE to change it.
+                                double currentState = currentSimVarValues.ContainsKey("CIRCUIT_SWITCH_ON:21")
+                                    ? currentSimVarValues["CIRCUIT_SWITCH_ON:21"] : -1;
+                                bool wantOn = selectedValue == 1;
+                                bool isOn = currentState == 1;
+                                if (wantOn != isOn)
+                                    simConnectManager?.SendEvent("ELECTRICAL_CIRCUIT_TOGGLE", 21);
                             }
                             else if (capturedVarKey == "CIRCUIT_SWITCH_ON:22") // Right RWY Turn Off Light
                             {
-                                // Write directly to the SimVar (as per FBW documentation)
-                                simConnectManager?.SetSimVar("CIRCUIT SWITCH ON:22", selectedValue, "bool");
+                                // FBW: toggle circuit 22 only if not already in desired state.
+                                double currentState = currentSimVarValues.ContainsKey("CIRCUIT_SWITCH_ON:22")
+                                    ? currentSimVarValues["CIRCUIT_SWITCH_ON:22"] : -1;
+                                bool wantOn = selectedValue == 1;
+                                bool isOn = currentState == 1;
+                                if (wantOn != isOn)
+                                    simConnectManager?.SendEvent("ELECTRICAL_CIRCUIT_TOGGLE", 22);
                             }
                         }
                     };
