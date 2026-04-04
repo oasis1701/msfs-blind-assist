@@ -101,6 +101,30 @@ dotnet build MSFSBlindAssist.sln -c Release
 
 **Announcements:** Use `Announce()` (queued) in ProcessSimVarUpdate, `AnnounceImmediate()` only in HandleHotkeyAction. `IsAnnounced = true` is required for continuous monitoring registration. Suppress button push state (_Sw_Pushed) announcements via RenderAsButton check. Annunciator lights announce both on and off states. For variables needing cache but no auto-announcement, set `IsAnnounced = true` and return `true` from ProcessSimVarUpdate to suppress.
 
+### PMDG 777 EFB Bridge
+
+The EFB (Electronic Flight Bag) tablet is made accessible via a JavaScript bridge injected through an MSFS mod package override.
+
+**Architecture:** A standalone MSFS Community package (`zzz-pmdg-efb-accessibility`) overrides the EFB's `PMDGTabletCA.html` to load an additional JS script. The `zzz-` prefix ensures it loads after the PMDG package alphabetically, so our HTML takes precedence. The JS bridge communicates with the C# app via HTTP on `localhost:19777`.
+
+**Key components:**
+- **`EFBBridgeServer`** (`SimConnect/EFBBridgeServer.cs`) — HttpListener with `/ping`, `/state` (POST), `/commands` (GET) endpoints. JS pushes state, C# queues commands.
+- **`EFBModPackageManager`** (`Patching/EFBModPackageManager.cs`) — Installs/updates/removes the mod package. Reads original PMDG HTML at install time (no PMDG IP in repo), appends bridge script tag. Auto-updates bridge JS on app startup.
+- **`pmdg-efb-accessibility-bridge.js`** (`Resources/`) — Runs inside MSFS Coherent GT. Hooks into EFB's `MessageService.messaging_bus` EventBus. Must be Coherent GT compatible (no `AbortSignal.timeout`, top-level try-catch, tested patterns only).
+- **`PMDG777EFBForm`** (`Forms/PMDG777/`) — Accessible form with SimBrief, Navigraph, Preferences tabs. Opened via Shift+T in input mode.
+
+**JS bridge constraints (Coherent GT):**
+- No `AbortSignal.timeout()` — use manual Promise-based timeout
+- Top-level try-catch wrapping entire script — errors must never break the EFB
+- `layout.json` in the mod package must have exact file sizes — MSFS validates these
+- Sim must be restarted after mod package install/update for MSFS to load new files
+- The JS file is copied while the sim is closed (sim locks files while running)
+
+**Communication flow:**
+- JS → C#: `POST /state` with `{type, data}` JSON (state updates, auth codes, SimBrief data)
+- C# → JS: `GET /commands` polled every 500ms, returns JSON array of `{command, payload}`
+- Bridge connects on startup, retries every 5s if server unavailable
+
 ## Detailed Documentation
 
 **Claude: Read these docs only when the task specifically requires them.**
