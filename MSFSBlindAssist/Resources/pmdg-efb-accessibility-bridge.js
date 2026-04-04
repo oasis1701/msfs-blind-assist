@@ -223,22 +223,33 @@ _efb.cmdSignOutNavigraph = function() {
 };
 
 _efb.sendCurrentNavigraphState = function() {
-    if (typeof Navigraph !== 'undefined' && Navigraph.auth && Navigraph.auth.getUser) {
-        Navigraph.auth.getUser(true).then(function(user) {
-            if (user) {
-                _efb.postState('navigraph_auth_state', {
-                    authenticated: 'true',
-                    username: user.preferred_username || user.name || 'Unknown'
-                });
-            } else {
-                _efb.postState('navigraph_auth_state', {
-                    authenticated: 'false',
-                    username: ''
-                });
-            }
-        }).catch(function(e) {
-            console.error('[EFB Bridge] Error getting Navigraph user:', e);
-        });
+    // Navigraph SDK may not be fully initialized yet when the bridge first connects.
+    // Retry a few times with increasing delays to catch it.
+    var attempts = [0, 2000, 5000, 10000, 20000];
+    for (var i = 0; i < attempts.length; i++) {
+        (function(delay) {
+            setTimeout(function() {
+                if (typeof Navigraph !== 'undefined' && Navigraph.auth && Navigraph.auth.getUser) {
+                    Navigraph.auth.getUser(true).then(function(user) {
+                        if (user) {
+                            _efb.postState('navigraph_auth_state', {
+                                authenticated: 'true',
+                                username: user.preferred_username || user.name || 'Unknown'
+                            });
+                        }
+                        // Only send "not authenticated" on the last attempt to avoid false negatives
+                        else if (delay === 20000) {
+                            _efb.postState('navigraph_auth_state', {
+                                authenticated: 'false',
+                                username: ''
+                            });
+                        }
+                    }).catch(function(e) {
+                        console.error('[EFB Bridge] Error getting Navigraph user:', e);
+                    });
+                }
+            }, delay);
+        })(attempts[i]);
     }
 };
 
