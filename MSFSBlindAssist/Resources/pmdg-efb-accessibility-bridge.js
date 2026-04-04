@@ -16,7 +16,9 @@ var _efb = {
     publisher: null,
     serverConnected: false,
     commandPollTimer: null,
-    heartbeatTimer: null
+    heartbeatTimer: null,
+    fmsTransferWxCode: null,
+    fmsTransferFpCode: null
 };
 
 // --- HTTP Communication ---
@@ -337,14 +339,39 @@ _efb.subscribeToBusEvents = function() {
         }
     });
 
+    // The WASM sends two simbrief_fetch_result messages: one for WX, one for Flightplans.
+    // Each has data.directory ("WX" or "Flightplans") and data.result (HTTP status code).
+    // We collect both before reporting success/failure.
     subscriber.on('simbrief_fetch_result').handle(function(result) {
         try {
             var parsed = typeof result === 'string' ? JSON.parse(result) : result;
-            var success = parsed.data && parsed.data.status === 'ok';
-            _efb.postState('simbrief_fetch_result', {
-                success: String(success),
-                message: success ? 'Files transferred to FMC' : 'Transfer failed'
-            });
+            if (parsed.data && parsed.data.directory === 'WX') {
+                _efb.fmsTransferWxCode = parsed.data.result;
+            } else if (parsed.data && parsed.data.directory === 'Flightplans') {
+                _efb.fmsTransferFpCode = parsed.data.result;
+            }
+            // Report once we have both results
+            if (_efb.fmsTransferWxCode !== null && _efb.fmsTransferFpCode !== null) {
+                var wxOk = _efb.fmsTransferWxCode === '200';
+                var fpOk = _efb.fmsTransferFpCode === '200';
+                var message = '';
+                if (wxOk && fpOk) {
+                    message = 'Route and weather files transferred successfully';
+                } else if (wxOk) {
+                    message = 'Weather file transferred, but route file failed (status ' + _efb.fmsTransferFpCode + ')';
+                } else if (fpOk) {
+                    message = 'Route file transferred, but weather file failed (status ' + _efb.fmsTransferWxCode + ')';
+                } else {
+                    message = 'Both transfers failed (WX: ' + _efb.fmsTransferWxCode + ', Route: ' + _efb.fmsTransferFpCode + ')';
+                }
+                _efb.postState('simbrief_fetch_result', {
+                    success: String(wxOk && fpOk),
+                    message: message
+                });
+                // Reset for next transfer
+                _efb.fmsTransferWxCode = null;
+                _efb.fmsTransferFpCode = null;
+            }
         } catch (e) {
             console.error('[EFB Bridge] Error processing simbrief_fetch_result:', e);
         }
