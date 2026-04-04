@@ -1429,7 +1429,8 @@ public partial class MainForm : Form
         efbCommunityFolderPath ??= EFBModPackageManager.FindCommunityFolderPath();
         if (efbCommunityFolderPath == null)
         {
-            System.Diagnostics.Debug.WriteLine("EFB Mod Package: Could not find MSFS Community folder");
+            System.Diagnostics.Debug.WriteLine("EFB Mod Package: Could not find MSFS Community folder, trying local build fallback");
+            BuildEFBModPackageLocally();
             return;
         }
 
@@ -1473,6 +1474,41 @@ public partial class MainForm : Form
                     MessageBox.Show($"Failed to install EFB mod package: {installResult}", "EFB Accessibility Bridge", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     break;
             }
+        }
+    }
+
+    private void BuildEFBModPackageLocally()
+    {
+        string bridgeJsSource = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources", "pmdg-efb-accessibility-bridge.js");
+        if (!File.Exists(bridgeJsSource))
+            return;
+
+        string localOutputDir = AppDomain.CurrentDomain.BaseDirectory;
+        string localPackagePath = Path.Combine(localOutputDir, EFBModPackageManager.GetPackageFolderName());
+
+        // Skip if we already built it locally before
+        if (Directory.Exists(localPackagePath))
+            return;
+
+        var buildResult = EFBModPackageManager.BuildLocalPackage(localOutputDir, bridgeJsSource);
+        switch (buildResult)
+        {
+            case ModPackageResult.Success:
+                string message = $"Could not automatically detect your MSFS Community folder. The EFB accessibility mod package has been created in the application folder instead. Please copy the \"{EFBModPackageManager.GetPackageFolderName()}\" folder into your MSFS Community folder manually, then restart the simulator.";
+                announcer.Announce(message);
+                MessageBox.Show(message, "EFB Accessibility Bridge \u2014 Manual Install Required", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                try
+                {
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(localOutputDir) { UseShellExecute = true });
+                }
+                catch { }
+                break;
+            case ModPackageResult.PmdgPackageNotFound:
+                announcer.Announce("Could not find the PMDG 777 package to build the EFB mod. Please ensure the PMDG 777 is installed.");
+                break;
+            default:
+                System.Diagnostics.Debug.WriteLine($"EFB Mod Package: Local build failed: {buildResult}");
+                break;
         }
     }
 
