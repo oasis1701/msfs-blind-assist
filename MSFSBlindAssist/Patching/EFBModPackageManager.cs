@@ -31,6 +31,20 @@ namespace MSFSBlindAssist.Patching
             "pmdg-aircraft-77f"
         };
 
+        // Default MS Store community folder paths (packages stored inside app LocalCache)
+        private static readonly string[] DefaultMSStoreCommunityPaths = new[]
+        {
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Packages", "Microsoft.Limitless_8wekyb3d8bbwe", "LocalCache", "Packages", "Community"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Packages", "Microsoft.FlightSimulator_8wekyb3d8bbwe", "LocalCache", "Packages", "Community"),
+        };
+
+        private static readonly string[] FallbackCommunityPaths = new[]
+        {
+            @"D:\MSFS\Community",
+            @"C:\MSFS\Community",
+            @"E:\MSFS\Community",
+        };
+
         private const string ManifestJson = @"{
   ""dependencies"": [],
   ""content_type"": ""MISC"",
@@ -84,15 +98,15 @@ namespace MSFSBlindAssist.Patching
                 }
             }
 
-            // Fallback to common manual install paths
-            string[] commonPaths = new[]
+            // Fallback: default MS Store paths (packages inside app LocalCache)
+            foreach (string path in DefaultMSStoreCommunityPaths)
             {
-                @"D:\MSFS\Community",
-                @"C:\MSFS\Community",
-                @"E:\MSFS\Community",
-            };
+                if (Directory.Exists(path))
+                    return path;
+            }
 
-            foreach (string path in commonPaths)
+            // Fallback: common manual install paths
+            foreach (string path in FallbackCommunityPaths)
             {
                 if (Directory.Exists(path))
                     return path;
@@ -224,56 +238,6 @@ namespace MSFSBlindAssist.Patching
         }
 
         /// <summary>
-        /// Gets the package folder name for use by callers building local packages.
-        /// </summary>
-        public static string GetPackageFolderName() => PackageFolderName;
-
-        /// <summary>
-        /// Builds the mod package into a specified output directory.
-        /// Searches all known MSFS config paths to find the original PMDG HTML.
-        /// Used as a fallback when the Community folder cannot be auto-detected.
-        /// </summary>
-        public static ModPackageResult BuildLocalPackage(string outputDir, string bridgeJsSourcePath)
-        {
-            if (!File.Exists(bridgeJsSourcePath))
-                return ModPackageResult.BridgeJsSourceNotFound;
-
-            // Search all known config paths to find any community folder with PMDG installed
-            string? originalHtml = FindOriginalPmdgHtmlBroadSearch();
-            if (originalHtml == null)
-                return ModPackageResult.PmdgPackageNotFound;
-
-            try
-            {
-                string packagePath = Path.Combine(outputDir, PackageFolderName);
-                string htmlDir = Path.Combine(packagePath, HtmlRelativePath);
-
-                Directory.CreateDirectory(htmlDir);
-
-                string htmlPath = Path.Combine(htmlDir, HtmlFileName);
-                string modifiedHtml = originalHtml.TrimEnd() + BridgeScriptTag;
-                File.WriteAllText(htmlPath, modifiedHtml);
-
-                string bridgeJsDest = Path.Combine(htmlDir, BridgeJsFileName);
-                File.Copy(bridgeJsSourcePath, bridgeJsDest, overwrite: true);
-
-                long htmlSize = new FileInfo(htmlPath).Length;
-                long jsSize = new FileInfo(bridgeJsDest).Length;
-                string layoutJson = GenerateLayoutJson(htmlSize, jsSize);
-                File.WriteAllText(Path.Combine(packagePath, "layout.json"), layoutJson);
-
-                File.WriteAllText(Path.Combine(packagePath, "manifest.json"), ManifestJson);
-
-                return ModPackageResult.Success;
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"EFBModPackageManager: Local build failed: {ex.Message}");
-                return ModPackageResult.InstallFailed;
-            }
-        }
-
-        /// <summary>
         /// Finds the original PMDGTabletCA.html from any installed PMDG 777 package.
         /// </summary>
         private static string? FindOriginalPmdgHtml(string communityFolderPath)
@@ -286,46 +250,6 @@ namespace MSFSBlindAssist.Patching
                     return File.ReadAllText(pmdgHtmlPath);
                 }
             }
-            return null;
-        }
-
-        /// <summary>
-        /// Searches all known MSFS config locations for the original PMDG HTML.
-        /// Used when the Community folder path couldn't be auto-detected.
-        /// </summary>
-        private static string? FindOriginalPmdgHtmlBroadSearch()
-        {
-            string[] configPaths = new[]
-            {
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Microsoft Flight Simulator", "UserCfg.opt"),
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Packages", "Microsoft.FlightSimulator_8wekyb3d8bbwe", "LocalCache", "UserCfg.opt"),
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Microsoft Flight Simulator 2024", "UserCfg.opt"),
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Packages", "Microsoft.Limitless_8wekyb3d8bbwe", "LocalCache", "UserCfg.opt"),
-            };
-
-            foreach (string configPath in configPaths)
-            {
-                string? basePath = TryParseInstalledPackagesPath(configPath);
-                if (basePath == null) continue;
-
-                string communityPath = Path.Combine(basePath, "Community");
-                string? html = FindOriginalPmdgHtml(communityPath);
-                if (html != null) return html;
-            }
-
-            string[] commonPaths = new[]
-            {
-                @"D:\MSFS\Community",
-                @"C:\MSFS\Community",
-                @"E:\MSFS\Community",
-            };
-
-            foreach (string path in commonPaths)
-            {
-                string? html = FindOriginalPmdgHtml(path);
-                if (html != null) return html;
-            }
-
             return null;
         }
 
