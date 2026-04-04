@@ -9,6 +9,7 @@ namespace MSFSBlindAssist.Patching
         AlreadyInstalled,
         CommunityFolderNotFound,
         BridgeJsSourceNotFound,
+        PmdgPackageNotFound,
         InstallFailed,
         Removed
     }
@@ -19,38 +20,16 @@ namespace MSFSBlindAssist.Patching
         private const string HtmlRelativePath = "html_ui/Pages/VCockpit/Instruments/PMDGTablet/pmdg-777-200ER";
         private const string HtmlFileName = "PMDGTabletCA.html";
         private const string BridgeJsFileName = "pmdg-efb-accessibility-bridge.js";
+        private const string BridgeScriptTag = "\n<script type=\"text/html\" import-script=\"/Pages/VCockpit/Instruments/PMDGTablet/pmdg-777-200ER/pmdg-efb-accessibility-bridge.js\"></script>";
 
-        // The modified HTML that loads the bridge script alongside the original EFB
-        private const string ModifiedHtml = @"<script>
-  // Create a new link element
-  var link = document.createElement('link');
-
-  // Set the attributes of the link element
-  link.href = ""/Pages/VCockpit/Instruments/PMDGTablet/pmdg-777-200ER/Assets/fontawesome/css/all.css"";
-  link.rel = ""stylesheet"";
-
-  // Append the link element to the head of the document
-  document.head.appendChild(link);
-</script>
-
-<script type=""text/html"" id=""PMDGTablet"">
-    <div class=""container-flex"" id=""FullScreen"" data-tablet-side=""ca"">
-        <div id=""StatusBar"">
-        </div>
-        <div id=""AppContent"">
-        </div>
-    </div>
-</script>
-
-<script type=""text/html"" import-script=""/JS/dataStorage.js""></script>
-<script type=""text/html"" import-script=""/JS/Services/CommBus.js""></script>
-
-<link rel=""stylesheet"" href=""PMDGTablet.css"" />
-<script>
-  window.pmdg_tablet_path = ""/Pages/VCockpit/Instruments/PMDGTablet/pmdg-777-200ER"";
-</script>
-<script type=""text/html"" import-script=""/Pages/VCockpit/Instruments/PMDGTablet/pmdg-777-200ER/PMDGTablet.js""></script>
-<script type=""text/html"" import-script=""/Pages/VCockpit/Instruments/PMDGTablet/pmdg-777-200ER/pmdg-efb-accessibility-bridge.js""></script>";
+        // Known PMDG 777 package folder names to search for the original HTML
+        private static readonly string[] PmdgPackageFolderNames = new[]
+        {
+            "pmdg-aircraft-77er",
+            "pmdg-aircraft-77w",
+            "pmdg-aircraft-77l",
+            "pmdg-aircraft-77f"
+        };
 
         private const string ManifestJson = @"{
   ""dependencies"": [],
@@ -141,14 +120,20 @@ namespace MSFSBlindAssist.Patching
             if (IsInstalled(communityFolderPath))
                 return ModPackageResult.AlreadyInstalled;
 
+            // Find the original PMDG HTML to base our override on
+            string? originalHtml = FindOriginalPmdgHtml(communityFolderPath);
+            if (originalHtml == null)
+                return ModPackageResult.PmdgPackageNotFound;
+
             try
             {
                 // Create directory structure
                 Directory.CreateDirectory(htmlDir);
 
-                // Write the modified HTML
+                // Write the modified HTML: original + our bridge script tag
                 string htmlPath = Path.Combine(htmlDir, HtmlFileName);
-                File.WriteAllText(htmlPath, ModifiedHtml);
+                string modifiedHtml = originalHtml.TrimEnd() + BridgeScriptTag;
+                File.WriteAllText(htmlPath, modifiedHtml);
 
                 // Copy the bridge JS
                 string bridgeJsDest = Path.Combine(htmlDir, BridgeJsFileName);
@@ -236,6 +221,22 @@ namespace MSFSBlindAssist.Patching
                 System.Diagnostics.Debug.WriteLine($"EFBModPackageManager: Remove failed: {ex.Message}");
                 return ModPackageResult.InstallFailed;
             }
+        }
+
+        /// <summary>
+        /// Finds the original PMDGTabletCA.html from any installed PMDG 777 package.
+        /// </summary>
+        private static string? FindOriginalPmdgHtml(string communityFolderPath)
+        {
+            foreach (string folderName in PmdgPackageFolderNames)
+            {
+                string pmdgHtmlPath = Path.Combine(communityFolderPath, folderName, HtmlRelativePath, HtmlFileName);
+                if (File.Exists(pmdgHtmlPath))
+                {
+                    return File.ReadAllText(pmdgHtmlPath);
+                }
+            }
+            return null;
         }
 
         private static string GenerateLayoutJson(long htmlSize, long jsSize)
