@@ -479,25 +479,12 @@ public partial class FuelPayloadDisplayForm : Form
         double totalPaxWeight = totalPax * paxWeight;
         double totalBagWeight = totalPax * bagWeight;
 
-        // Get FMS passenger count
-        int fmsPax = _data.ContainsKey("FMS_PAX") ? (int)_data["FMS_PAX"] : 0;
-
         output.AppendLine("PASSENGER DISTRIBUTION");
         output.AppendLine($"Rows 1-6: {paxA} passengers");
         output.AppendLine($"Rows 7-13: {paxB} passengers");
         output.AppendLine($"Rows 14-21: {paxC} passengers");
         output.AppendLine($"Rows 22-29: {paxD} passengers");
         output.AppendLine($"TOTAL PASSENGERS: {totalPax}");
-        output.AppendLine("");
-        output.AppendLine("FMS PASSENGER COUNT");
-        if (fmsPax > 0)
-        {
-            output.AppendLine($"FMS Passengers: {fmsPax}");
-        }
-        else
-        {
-            output.AppendLine("FMS Passengers: Not Entered");
-        }
         output.AppendLine("");
         output.AppendLine("PASSENGER WEIGHTS");
         output.AppendLine($"Weight per Passenger: {paxWeight:F0} kg");

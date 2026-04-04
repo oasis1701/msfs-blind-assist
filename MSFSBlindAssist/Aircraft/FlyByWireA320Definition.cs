@@ -2978,7 +2978,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         },
         ["A32NX_FAC_1_V_FE_NEXT"] = new SimConnect.SimVarDefinition
         {
-            Name = "A32NX_FAC_1_V_FE_NEXT.value",
+            Name = "A32NX_FAC_1_V_FE_NEXT",
             Type = SimConnect.SimVarType.LVar,
             DisplayName = "V FE Speed",
             Units = "knots",
@@ -4348,7 +4348,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
                 var tempDefId = (SimConnect.SimConnectManager.DATA_DEFINITIONS)343;
                 simConnect.ClearDataDefinition(tempDefId);
                 simConnect.AddToDataDefinition(tempDefId,
-                    "L:A32NX_FAC_1_V_FE_NEXT.value", "number",
+                    "L:A32NX_FAC_1_V_FE_NEXT", "number",
                     Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
                 simConnect.RegisterDataDefineStruct<SimConnect.SimConnectManager.SingleValue>(tempDefId);
                 simConnect.RequestDataOnSimObject((SimConnect.SimConnectManager.DATA_REQUESTS)343,
@@ -4464,7 +4464,6 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
                 simConnectMgr.RequestSingleValue(358, "L:A32NX_AIRFRAME_GW", "number", "GW");
                 simConnectMgr.RequestSingleValue(359, "L:A32NX_AIRFRAME_ZFW_CG_PERCENT_MAC", "number", "ZFW_CG_MAC");
                 simConnectMgr.RequestSingleValue(360, "L:A32NX_AIRFRAME_GW_CG_PERCENT_MAC", "number", "GW_CG_MAC");
-                simConnectMgr.RequestSingleValue(361, "L:A32NX_FMS_PAX_NUMBER", "number", "FMS_PAX");
                 simConnectMgr.RequestSingleValue(362, "L:A32NX_FM1_ZERO_FUEL_WEIGHT", "number", "FMS_ZFW");
                 simConnectMgr.RequestSingleValue(363, "L:A32NX_FM_GROSS_WEIGHT", "number", "FMS_GW");
                 simConnectMgr.RequestSingleValue(364, "L:A32NX_FM1_ZERO_FUEL_WEIGHT_CG", "number", "FMS_CG");

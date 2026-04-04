@@ -3013,7 +3013,6 @@ public class SimConnectManager
                 RequestSingleValue(360, "L:A32NX_AIRFRAME_GW_CG_PERCENT_MAC", "number", "GW_CG_MAC");
 
                 // Request FMS values (entered by pilot in MCDU)
-                RequestSingleValue(361, "L:A32NX_FMS_PAX_NUMBER", "number", "FMS_PAX");
                 RequestSingleValue(362, "L:A32NX_FM1_ZERO_FUEL_WEIGHT", "number", "FMS_ZFW");
                 RequestSingleValue(363, "L:A32NX_FM_GROSS_WEIGHT", "number", "FMS_GW");
                 RequestSingleValue(364, "L:A32NX_FM1_ZERO_FUEL_WEIGHT_CG", "number", "FMS_CG");
@@ -3103,7 +3102,6 @@ public class SimConnectManager
             358 => "GW",
             359 => "ZFW_CG_MAC",
             360 => "GW_CG_MAC",
-            361 => "FMS_PAX",
             362 => "FMS_ZFW",
             363 => "FMS_GW",
             364 => "FMS_CG",
