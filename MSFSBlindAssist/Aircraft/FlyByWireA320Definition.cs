@@ -406,6 +406,214 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         },
 
+        // Fire Panel
+        ["A32NX_FIRE_BUTTON_ENG1"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FIRE_BUTTON_ENG1",
+            DisplayName = "Eng 1 Fire Handle",
+            Type = SimConnect.SimVarType.LVar,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Pulled" }
+        },
+        ["A32NX_FIRE_BUTTON_ENG2"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FIRE_BUTTON_ENG2",
+            DisplayName = "Eng 2 Fire Handle",
+            Type = SimConnect.SimVarType.LVar,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Pulled" }
+        },
+        ["A32NX_FIRE_BUTTON_APU"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FIRE_BUTTON_APU",
+            DisplayName = "APU Fire Handle",
+            Type = SimConnect.SimVarType.LVar,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Pulled" }
+        },
+        ["A32NX_FIRE_TEST_ENG1"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FIRE_TEST_ENG1",
+            DisplayName = "Eng 1 Fire Test",
+            Type = SimConnect.SimVarType.LVar,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Active" }
+        },
+        ["A32NX_FIRE_TEST_ENG2"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FIRE_TEST_ENG2",
+            DisplayName = "Eng 2 Fire Test",
+            Type = SimConnect.SimVarType.LVar,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Active" }
+        },
+        ["A32NX_FIRE_TEST_APU"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FIRE_TEST_APU",
+            DisplayName = "APU Fire Test",
+            Type = SimConnect.SimVarType.LVar,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Active" }
+        },
+        ["A32NX_FIRE_ENG1_AGENT1_Discharge"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FIRE_ENG1_AGENT1_Discharge",
+            DisplayName = "Eng 1 Agent 1",
+            Type = SimConnect.SimVarType.LVar,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Ready", [1] = "Discharged" }
+        },
+        ["A32NX_FIRE_ENG1_AGENT2_Discharge"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FIRE_ENG1_AGENT2_Discharge",
+            DisplayName = "Eng 1 Agent 2",
+            Type = SimConnect.SimVarType.LVar,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Ready", [1] = "Discharged" }
+        },
+        ["A32NX_FIRE_ENG2_AGENT1_Discharge"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FIRE_ENG2_AGENT1_Discharge",
+            DisplayName = "Eng 2 Agent 1",
+            Type = SimConnect.SimVarType.LVar,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Ready", [1] = "Discharged" }
+        },
+        ["A32NX_FIRE_ENG2_AGENT2_Discharge"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FIRE_ENG2_AGENT2_Discharge",
+            DisplayName = "Eng 2 Agent 2",
+            Type = SimConnect.SimVarType.LVar,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Ready", [1] = "Discharged" }
+        },
+        ["A32NX_FIRE_APU_AGENT1_Discharge"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FIRE_APU_AGENT1_Discharge",
+            DisplayName = "APU Agent",
+            Type = SimConnect.SimVarType.LVar,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Ready", [1] = "Discharged" }
+        },
+
+        // Hydraulic Panel
+        ["A32NX_OVHD_HYD_ENG_1_PUMP_PB_IS_AUTO"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_OVHD_HYD_ENG_1_PUMP_PB_IS_AUTO",
+            DisplayName = "Green Eng Pump",
+            Type = SimConnect.SimVarType.LVar,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Auto" }
+        },
+        ["A32NX_OVHD_HYD_ENG_1_PUMP_PB_HAS_FAULT"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_OVHD_HYD_ENG_1_PUMP_PB_HAS_FAULT",
+            DisplayName = "Green Eng Pump Fault",
+            Type = SimConnect.SimVarType.LVar,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Fault" }
+        },
+        ["A32NX_OVHD_HYD_ENG_2_PUMP_PB_IS_AUTO"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_OVHD_HYD_ENG_2_PUMP_PB_IS_AUTO",
+            DisplayName = "Blue Eng Pump",
+            Type = SimConnect.SimVarType.LVar,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Auto" }
+        },
+        ["A32NX_OVHD_HYD_ENG_2_PUMP_PB_HAS_FAULT"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_OVHD_HYD_ENG_2_PUMP_PB_HAS_FAULT",
+            DisplayName = "Blue Eng Pump Fault",
+            Type = SimConnect.SimVarType.LVar,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Fault" }
+        },
+        ["A32NX_OVHD_HYD_EPUMPB_PB_IS_AUTO"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_OVHD_HYD_EPUMPB_PB_IS_AUTO",
+            DisplayName = "Blue Elec Pump",
+            Type = SimConnect.SimVarType.LVar,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Auto" }
+        },
+        ["A32NX_OVHD_HYD_EPUMPB_PB_HAS_FAULT"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_OVHD_HYD_EPUMPB_PB_HAS_FAULT",
+            DisplayName = "Blue Elec Pump Fault",
+            Type = SimConnect.SimVarType.LVar,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Fault" }
+        },
+        ["A32NX_OVHD_HYD_EPUMPY_PB_IS_AUTO"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_OVHD_HYD_EPUMPY_PB_IS_AUTO",
+            DisplayName = "Yellow Elec Pump",
+            Type = SimConnect.SimVarType.LVar,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Auto" }
+        },
+        ["A32NX_OVHD_HYD_EPUMPY_PB_HAS_FAULT"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_OVHD_HYD_EPUMPY_PB_HAS_FAULT",
+            DisplayName = "Yellow Elec Pump Fault",
+            Type = SimConnect.SimVarType.LVar,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Fault" }
+        },
+        ["A32NX_OVHD_HYD_PTU_PB_IS_AUTO"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_OVHD_HYD_PTU_PB_IS_AUTO",
+            DisplayName = "PTU",
+            Type = SimConnect.SimVarType.LVar,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Auto" }
+        },
+        ["A32NX_OVHD_HYD_PTU_PB_HAS_FAULT"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_OVHD_HYD_PTU_PB_HAS_FAULT",
+            DisplayName = "PTU Fault",
+            Type = SimConnect.SimVarType.LVar,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Fault" }
+        },
+
+        // Cockpit Door Panel
+        ["A32NX_COCKPIT_DOOR_LOCKED"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_COCKPIT_DOOR_LOCKED",
+            DisplayName = "Cockpit Door",
+            Type = SimConnect.SimVarType.LVar,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Unlocked", [1] = "Locked" }
+        },
+        ["A32NX_OVHD_COCKPITDOORVIDEO_TOGGLE"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_OVHD_COCKPITDOORVIDEO_TOGGLE",
+            DisplayName = "Door Video",
+            Type = SimConnect.SimVarType.LVar,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        },
+
+        // Evacuation Panel
+        ["A32NX_EVAC_COMMAND_TOGGLE"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_EVAC_COMMAND_TOGGLE",
+            DisplayName = "EVAC Command",
+            Type = SimConnect.SimVarType.LVar,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        },
+
+        // Cargo Smoke Panel
+        ["A32NX_FIRE_TEST_CARGO"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FIRE_TEST_CARGO",
+            DisplayName = "Cargo Smoke Test",
+            Type = SimConnect.SimVarType.LVar,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Active" }
+        },
+        ["A32NX_CARGOSMOKE_FWD_DISCHARGED"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_CARGOSMOKE_FWD_DISCHARGED",
+            DisplayName = "FWD Extinguisher",
+            Type = SimConnect.SimVarType.LVar,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Ready", [1] = "Discharged" }
+        },
+
+        // Engine Maintenance Panel
+        ["A32NX_OVHD_FADEC_1"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_OVHD_FADEC_1",
+            DisplayName = "FADEC 1",
+            Type = SimConnect.SimVarType.LVar,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Powered" }
+        },
+        ["A32NX_OVHD_FADEC_2"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_OVHD_FADEC_2",
+            DisplayName = "FADEC 2",
+            Type = SimConnect.SimVarType.LVar,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Powered" }
+        },
+
         // Fuel Panel (these are events with parameters)
         ["FUELSYSTEM_PUMP_TOGGLE:2"] = new SimConnect.SimVarDefinition
         {
@@ -583,6 +791,29 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        },
+
+        // INSTRUMENT SECTION - ISIS Panel
+        ["A32NX_ISIS_BARO_MODE"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_ISIS_BARO_MODE",
+            DisplayName = "ISIS Baro Mode",
+            Type = SimConnect.SimVarType.LVar,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "QNH", [1] = "STD" }
+        },
+        ["A32NX_ISIS_BUGS_ACTIVE"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_ISIS_BUGS_ACTIVE",
+            DisplayName = "ISIS Bugs",
+            Type = SimConnect.SimVarType.LVar,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Active" }
+        },
+        ["A32NX_ISIS_LS_ACTIVE"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_ISIS_LS_ACTIVE",
+            DisplayName = "ISIS ILS",
+            Type = SimConnect.SimVarType.LVar,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Active" }
         },
 
         // GLARESHIELD SECTION - FCU Panel
@@ -3236,10 +3467,10 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     {
         return new Dictionary<string, List<string>>
         {
-["Overhead Forward"] = new List<string> { "ELEC", "ADIRS", "APU", "Oxygen", "Fuel", "Air Con", "Anti Ice", "Signs", "Exterior Lighting", "Calls", "GPWS" },
+["Overhead Forward"] = new List<string> { "ELEC", "ADIRS", "APU", "Oxygen", "Fire", "Hydraulic", "Fuel", "Air Con", "Anti Ice", "Signs", "Exterior Lighting", "Calls", "GPWS", "Cockpit Door", "Evacuation", "Cargo Smoke", "Engine" },
         ["Glareshield"] = new List<string> { "FCU", "EFIS Control Panel", "Warnings" },
-        ["Instrument"] = new List<string> { "Autobrake and Gear" },
-        ["Pedestal"] = new List<string> { "Speed Brake", "Parking Brake", "Engines", "ECAM", "WX", "ATC-TCAS", "RMP" }
+        ["Instrument"] = new List<string> { "Autobrake and Gear", "ISIS" },
+        ["Pedestal"] = new List<string> { "Flight Controls", "Speed Brake", "Parking Brake", "Engines", "ECAM", "WX", "ATC-TCAS", "RMP" }
         };
     }
 
@@ -3270,7 +3501,34 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             "A32NX_OXYGEN_MASKS_DEPLOYED",
             "A32NX_OXYGEN_PASSENGER_LIGHT_ON"
         },
-        ["Fuel"] = new List<string> 
+        ["Fire"] = new List<string>
+        {
+            "A32NX_FIRE_BUTTON_ENG1",
+            "A32NX_FIRE_BUTTON_ENG2",
+            "A32NX_FIRE_BUTTON_APU",
+            "A32NX_FIRE_TEST_ENG1",
+            "A32NX_FIRE_TEST_ENG2",
+            "A32NX_FIRE_TEST_APU",
+            "A32NX_FIRE_ENG1_AGENT1_Discharge",
+            "A32NX_FIRE_ENG1_AGENT2_Discharge",
+            "A32NX_FIRE_ENG2_AGENT1_Discharge",
+            "A32NX_FIRE_ENG2_AGENT2_Discharge",
+            "A32NX_FIRE_APU_AGENT1_Discharge",
+        },
+        ["Hydraulic"] = new List<string>
+        {
+            "A32NX_OVHD_HYD_ENG_1_PUMP_PB_IS_AUTO",
+            "A32NX_OVHD_HYD_ENG_1_PUMP_PB_HAS_FAULT",
+            "A32NX_OVHD_HYD_ENG_2_PUMP_PB_IS_AUTO",
+            "A32NX_OVHD_HYD_ENG_2_PUMP_PB_HAS_FAULT",
+            "A32NX_OVHD_HYD_EPUMPB_PB_IS_AUTO",
+            "A32NX_OVHD_HYD_EPUMPB_PB_HAS_FAULT",
+            "A32NX_OVHD_HYD_EPUMPY_PB_IS_AUTO",
+            "A32NX_OVHD_HYD_EPUMPY_PB_HAS_FAULT",
+            "A32NX_OVHD_HYD_PTU_PB_IS_AUTO",
+            "A32NX_OVHD_HYD_PTU_PB_HAS_FAULT",
+        },
+        ["Fuel"] = new List<string>
         { 
             "FUELSYSTEM_PUMP_TOGGLE:2", 
             "FUELSYSTEM_PUMP_TOGGLE:5", 
@@ -3329,6 +3587,25 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             "A32NX_GPWS_SYS_OFF",
             "A32NX_GPWS_TERR_OFF"
         },
+        ["Cockpit Door"] = new List<string>
+        {
+            "A32NX_COCKPIT_DOOR_LOCKED",
+            "A32NX_OVHD_COCKPITDOORVIDEO_TOGGLE",
+        },
+        ["Evacuation"] = new List<string>
+        {
+            "A32NX_EVAC_COMMAND_TOGGLE",
+        },
+        ["Cargo Smoke"] = new List<string>
+        {
+            "A32NX_FIRE_TEST_CARGO",
+            "A32NX_CARGOSMOKE_FWD_DISCHARGED",
+        },
+        ["Engine"] = new List<string>
+        {
+            "A32NX_OVHD_FADEC_1",
+            "A32NX_OVHD_FADEC_2",
+        },
         ["FCU"] = new List<string>
         {
             "A32NX.FCU_HDG_SET",
@@ -3377,6 +3654,12 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             "AUTOBRAKE_MODE",
             "A32NX_BRAKE_FAN_BTN_PRESSED",
             "GEAR_HANDLE_POSITION"
+        },
+        ["ISIS"] = new List<string>
+        {
+            "A32NX_ISIS_BARO_MODE",
+            "A32NX_ISIS_BUGS_ACTIVE",
+            "A32NX_ISIS_LS_ACTIVE",
         },
         ["Speed Brake"] = new List<string>
         {
@@ -3462,7 +3745,9 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         },
         ["Flight Controls"] = new List<string>
         {
-            "A32NX_FLAPS_HANDLE_INDEX"
+            "A32NX_SPOILERS_ARMED",
+            "A32NX_SPOILERS_HANDLE_POSITION",
+            "A32NX_FLAPS_HANDLE_INDEX",
         },
         };
     }
