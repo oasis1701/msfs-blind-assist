@@ -45,7 +45,7 @@ namespace MSFSBlindAssist.Forms.PMDG777
 
             fetchSimbriefButton!.Click += (_, _) =>
             {
-                simbriefStatusLabel!.Text = "Fetching...";
+                simbriefStatusText!.Text = "Fetching...";
                 _bridgeServer.EnqueueCommand("fetch_simbrief");
             };
 
@@ -56,7 +56,7 @@ namespace MSFSBlindAssist.Forms.PMDG777
 
             navigraphSignInButton!.Click += (_, _) =>
             {
-                navigraphStatusLabel!.Text = "Awaiting code...";
+                navigraphStatusText!.Text = "Awaiting code...";
                 authCodeTextBox!.Text = "";
                 _bridgeServer.EnqueueCommand("start_navigraph_auth");
             };
@@ -90,7 +90,7 @@ namespace MSFSBlindAssist.Forms.PMDG777
                 case "simbrief_loaded":
                     _simbriefLoaded = true;
                     UpdateFlightDetails(e.Data);
-                    simbriefStatusLabel!.Text = "Loaded";
+                    simbriefStatusText!.Text = "Loaded";
                     sendToFmcButton!.Enabled = true;
                     string origin = e.Data.GetValueOrDefault("origin_icao", "");
                     string dest = e.Data.GetValueOrDefault("dest_icao", "");
@@ -132,14 +132,14 @@ namespace MSFSBlindAssist.Forms.PMDG777
                     string username = e.Data.GetValueOrDefault("username", "");
                     if (authenticated)
                     {
-                        navigraphStatusLabel!.Text = $"Authenticated as: {username}";
+                        navigraphStatusText!.Text = $"Authenticated as: {username}";
                         navigraphSignInButton!.Enabled = false;
                         navigraphSignOutButton!.Enabled = true;
                         _announcer.Announce($"Signed in to Navigraph as {username}");
                     }
                     else
                     {
-                        navigraphStatusLabel!.Text = "Not authenticated";
+                        navigraphStatusText!.Text = "Not authenticated";
                         navigraphSignInButton!.Enabled = true;
                         navigraphSignOutButton!.Enabled = false;
                         authCodeTextBox!.Text = "";
@@ -156,7 +156,7 @@ namespace MSFSBlindAssist.Forms.PMDG777
 
                 case "error":
                     string errorMsg = e.Data.GetValueOrDefault("message", "Unknown error");
-                    simbriefStatusLabel!.Text = $"Error: {errorMsg}";
+                    simbriefStatusText!.Text = $"Error: {errorMsg}";
                     _announcer.Announce($"EFB error: {errorMsg}");
                     break;
             }

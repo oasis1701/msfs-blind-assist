@@ -10,28 +10,28 @@ namespace MSFSBlindAssist.Forms.PMDG777
         private TabPage? preferencesTab;
 
         private Button? fetchSimbriefButton;
-        private Label? simbriefStatusLabel;
+        private TextBox? simbriefStatusText;
         private Label? callsignLabel;
-        private Label? callsignValue;
+        private TextBox? callsignValue;
         private Label? originLabel;
-        private Label? originValue;
+        private TextBox? originValue;
         private Label? destLabel;
-        private Label? destValue;
+        private TextBox? destValue;
         private Label? altLabel;
-        private Label? altValue;
+        private TextBox? altValue;
         private Label? cruiseAltLabel;
-        private Label? cruiseAltValue;
+        private TextBox? cruiseAltValue;
         private Label? costIndexLabel;
-        private Label? costIndexValue;
+        private TextBox? costIndexValue;
         private Label? zfwLabel;
-        private Label? zfwValue;
+        private TextBox? zfwValue;
         private Label? fuelLabel;
-        private Label? fuelValue;
+        private TextBox? fuelValue;
         private Label? windLabel;
-        private Label? windValue;
+        private TextBox? windValue;
         private Button? sendToFmcButton;
 
-        private Label? navigraphStatusLabel;
+        private TextBox? navigraphStatusText;
         private Button? navigraphSignInButton;
         private Label? authCodeLabel;
         private TextBox? authCodeTextBox;
@@ -60,6 +60,20 @@ namespace MSFSBlindAssist.Forms.PMDG777
             base.Dispose(disposing);
         }
 
+        private TextBox CreateReadOnlyField(string accessibleName, System.Drawing.Point location, System.Drawing.Size size)
+        {
+            return new TextBox
+            {
+                ReadOnly = true,
+                BorderStyle = BorderStyle.None,
+                BackColor = System.Drawing.SystemColors.Control,
+                Location = location,
+                Size = size,
+                AccessibleName = accessibleName,
+                Text = "\u2014"
+            };
+        }
+
         private void InitializeComponent()
         {
             this.Text = "PMDG 777 EFB";
@@ -73,47 +87,49 @@ namespace MSFSBlindAssist.Forms.PMDG777
             tabControl = new Controls.AccessibleTabControl();
             tabControl.Dock = DockStyle.Fill;
 
+            // === SimBrief Tab ===
             simbriefTab = new TabPage("SimBrief");
             simbriefTab.Padding = new Padding(10);
             int y = 10;
             const int labelX = 10;
             const int valueX = 160;
+            const int valueWidth = 300;
             const int rowHeight = 28;
 
-            simbriefStatusLabel = new Label { Text = "Ready", Location = new System.Drawing.Point(labelX, y), AutoSize = true, Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont, System.Drawing.FontStyle.Bold), AccessibleName = "Status" };
+            simbriefStatusText = new TextBox { Text = "Ready", Location = new System.Drawing.Point(labelX, y), Size = new System.Drawing.Size(valueWidth + valueX - labelX, 22), ReadOnly = true, BorderStyle = BorderStyle.None, BackColor = System.Drawing.SystemColors.Control, Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont, System.Drawing.FontStyle.Bold), AccessibleName = "Status" };
             y += rowHeight + 5;
             fetchSimbriefButton = new Button { Text = "Fetch SimBrief", Location = new System.Drawing.Point(labelX, y), Size = new System.Drawing.Size(140, 30), AccessibleName = "Fetch SimBrief" };
             sendToFmcButton = new Button { Text = "Send to FMC", Location = new System.Drawing.Point(valueX, y), Size = new System.Drawing.Size(140, 30), Enabled = false, AccessibleName = "Send to FMC" };
             y += 40;
             callsignLabel = new Label { Text = "Callsign:", Location = new System.Drawing.Point(labelX, y), AutoSize = true };
-            callsignValue = new Label { Text = "\u2014", Location = new System.Drawing.Point(valueX, y), AutoSize = true, AccessibleName = "Callsign" };
+            callsignValue = CreateReadOnlyField("Callsign", new System.Drawing.Point(valueX, y), new System.Drawing.Size(valueWidth, 22));
             y += rowHeight;
             originLabel = new Label { Text = "Origin:", Location = new System.Drawing.Point(labelX, y), AutoSize = true };
-            originValue = new Label { Text = "\u2014", Location = new System.Drawing.Point(valueX, y), AutoSize = true, AccessibleName = "Origin" };
+            originValue = CreateReadOnlyField("Origin", new System.Drawing.Point(valueX, y), new System.Drawing.Size(valueWidth, 22));
             y += rowHeight;
             destLabel = new Label { Text = "Destination:", Location = new System.Drawing.Point(labelX, y), AutoSize = true };
-            destValue = new Label { Text = "\u2014", Location = new System.Drawing.Point(valueX, y), AutoSize = true, AccessibleName = "Destination" };
+            destValue = CreateReadOnlyField("Destination", new System.Drawing.Point(valueX, y), new System.Drawing.Size(valueWidth, 22));
             y += rowHeight;
             altLabel = new Label { Text = "Alternate:", Location = new System.Drawing.Point(labelX, y), AutoSize = true };
-            altValue = new Label { Text = "\u2014", Location = new System.Drawing.Point(valueX, y), AutoSize = true, AccessibleName = "Alternate" };
+            altValue = CreateReadOnlyField("Alternate", new System.Drawing.Point(valueX, y), new System.Drawing.Size(valueWidth, 22));
             y += rowHeight;
             cruiseAltLabel = new Label { Text = "Cruise Altitude:", Location = new System.Drawing.Point(labelX, y), AutoSize = true };
-            cruiseAltValue = new Label { Text = "\u2014", Location = new System.Drawing.Point(valueX, y), AutoSize = true, AccessibleName = "Cruise Altitude" };
+            cruiseAltValue = CreateReadOnlyField("Cruise Altitude", new System.Drawing.Point(valueX, y), new System.Drawing.Size(valueWidth, 22));
             y += rowHeight;
             costIndexLabel = new Label { Text = "Cost Index:", Location = new System.Drawing.Point(labelX, y), AutoSize = true };
-            costIndexValue = new Label { Text = "\u2014", Location = new System.Drawing.Point(valueX, y), AutoSize = true, AccessibleName = "Cost Index" };
+            costIndexValue = CreateReadOnlyField("Cost Index", new System.Drawing.Point(valueX, y), new System.Drawing.Size(valueWidth, 22));
             y += rowHeight;
             zfwLabel = new Label { Text = "ZFW:", Location = new System.Drawing.Point(labelX, y), AutoSize = true };
-            zfwValue = new Label { Text = "\u2014", Location = new System.Drawing.Point(valueX, y), AutoSize = true, AccessibleName = "Zero Fuel Weight" };
+            zfwValue = CreateReadOnlyField("Zero Fuel Weight", new System.Drawing.Point(valueX, y), new System.Drawing.Size(valueWidth, 22));
             y += rowHeight;
             fuelLabel = new Label { Text = "Total Fuel:", Location = new System.Drawing.Point(labelX, y), AutoSize = true };
-            fuelValue = new Label { Text = "\u2014", Location = new System.Drawing.Point(valueX, y), AutoSize = true, AccessibleName = "Total Fuel" };
+            fuelValue = CreateReadOnlyField("Total Fuel", new System.Drawing.Point(valueX, y), new System.Drawing.Size(valueWidth, 22));
             y += rowHeight;
             windLabel = new Label { Text = "Average Wind:", Location = new System.Drawing.Point(labelX, y), AutoSize = true };
-            windValue = new Label { Text = "\u2014", Location = new System.Drawing.Point(valueX, y), AutoSize = true, AccessibleName = "Average Wind" };
+            windValue = CreateReadOnlyField("Average Wind", new System.Drawing.Point(valueX, y), new System.Drawing.Size(valueWidth, 22));
 
             simbriefTab.Controls.AddRange(new Control[] {
-                simbriefStatusLabel, fetchSimbriefButton, sendToFmcButton,
+                simbriefStatusText, fetchSimbriefButton, sendToFmcButton,
                 callsignLabel, callsignValue, originLabel, originValue,
                 destLabel, destValue, altLabel, altValue,
                 cruiseAltLabel, cruiseAltValue, costIndexLabel, costIndexValue,
@@ -121,10 +137,11 @@ namespace MSFSBlindAssist.Forms.PMDG777
                 windLabel, windValue
             });
 
+            // === Navigraph Tab ===
             navigraphTab = new TabPage("Navigraph");
             navigraphTab.Padding = new Padding(10);
             y = 10;
-            navigraphStatusLabel = new Label { Text = "Not authenticated", Location = new System.Drawing.Point(labelX, y), AutoSize = true, Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont, System.Drawing.FontStyle.Bold), AccessibleName = "Navigraph Status" };
+            navigraphStatusText = new TextBox { Text = "Not authenticated", Location = new System.Drawing.Point(labelX, y), Size = new System.Drawing.Size(valueWidth + valueX - labelX, 22), ReadOnly = true, BorderStyle = BorderStyle.None, BackColor = System.Drawing.SystemColors.Control, Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont, System.Drawing.FontStyle.Bold), AccessibleName = "Navigraph Status" };
             y += rowHeight + 5;
             navigraphSignInButton = new Button { Text = "Sign In", Location = new System.Drawing.Point(labelX, y), Size = new System.Drawing.Size(140, 30), AccessibleName = "Sign In to Navigraph" };
             navigraphSignOutButton = new Button { Text = "Sign Out", Location = new System.Drawing.Point(valueX, y), Size = new System.Drawing.Size(140, 30), Enabled = false, AccessibleName = "Sign Out of Navigraph" };
@@ -133,10 +150,11 @@ namespace MSFSBlindAssist.Forms.PMDG777
             authCodeTextBox = new TextBox { Location = new System.Drawing.Point(valueX, y), Size = new System.Drawing.Size(200, 25), ReadOnly = true, AccessibleName = "Navigraph Auth Code" };
 
             navigraphTab.Controls.AddRange(new Control[] {
-                navigraphStatusLabel, navigraphSignInButton, navigraphSignOutButton,
+                navigraphStatusText, navigraphSignInButton, navigraphSignOutButton,
                 authCodeLabel, authCodeTextBox
             });
 
+            // === Preferences Tab ===
             preferencesTab = new TabPage("Preferences");
             preferencesTab.Padding = new Padding(10);
             y = 10;
@@ -180,11 +198,27 @@ namespace MSFSBlindAssist.Forms.PMDG777
             tabControl.TabPages.Add(preferencesTab);
             this.Controls.Add(tabControl);
 
-            fetchSimbriefButton.TabIndex = 0;
-            sendToFmcButton.TabIndex = 1;
-            navigraphSignInButton.TabIndex = 0;
-            navigraphSignOutButton.TabIndex = 1;
-            authCodeTextBox.TabIndex = 2;
+            // Tab order — SimBrief
+            simbriefStatusText.TabIndex = 0;
+            fetchSimbriefButton.TabIndex = 1;
+            sendToFmcButton.TabIndex = 2;
+            callsignValue.TabIndex = 3;
+            originValue.TabIndex = 4;
+            destValue.TabIndex = 5;
+            altValue.TabIndex = 6;
+            cruiseAltValue.TabIndex = 7;
+            costIndexValue.TabIndex = 8;
+            zfwValue.TabIndex = 9;
+            fuelValue.TabIndex = 10;
+            windValue.TabIndex = 11;
+
+            // Tab order — Navigraph
+            navigraphStatusText.TabIndex = 0;
+            navigraphSignInButton.TabIndex = 1;
+            navigraphSignOutButton.TabIndex = 2;
+            authCodeTextBox.TabIndex = 3;
+
+            // Tab order — Preferences
             simbriefAliasTextBox.TabIndex = 0;
             weatherSourceCombo.TabIndex = 1;
             weightUnitCombo.TabIndex = 2;
