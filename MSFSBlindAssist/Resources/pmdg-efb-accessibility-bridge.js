@@ -73,6 +73,8 @@ _efb.tryConnect = async function() {
                 console.log('[EFB Bridge] Connected to accessibility server');
                 _efb.startPolling();
                 _efb.postState('connected');
+                // Send current state now that connection is established
+                _efb.sendCurrentNavigraphState();
             }
             return true;
         }
@@ -219,6 +221,26 @@ _efb.cmdSignOutNavigraph = function() {
     }
 };
 
+_efb.sendCurrentNavigraphState = function() {
+    if (typeof Navigraph !== 'undefined' && Navigraph.auth && Navigraph.auth.getUser) {
+        Navigraph.auth.getUser(true).then(function(user) {
+            if (user) {
+                _efb.postState('navigraph_auth_state', {
+                    authenticated: 'true',
+                    username: user.preferred_username || user.name || 'Unknown'
+                });
+            } else {
+                _efb.postState('navigraph_auth_state', {
+                    authenticated: 'false',
+                    username: ''
+                });
+            }
+        }).catch(function(e) {
+            console.error('[EFB Bridge] Error getting Navigraph user:', e);
+        });
+    }
+};
+
 _efb.cmdGetPreferences = function() {
     var prefs = {};
     var keys = [
@@ -235,41 +257,17 @@ _efb.cmdGetPreferences = function() {
 };
 
 _efb.cmdSetPreference = function(key, value) {
-    var elementMap = {
-        'simbrief_id': 'efb_preferences_simbrief_id',
-        'weather_source': 'efb_preferences_weather_source',
-        'weight_unit': 'efb_preferences_weight_unit',
-        'distance_unit': 'efb_preferences_distance_unit',
-        'altitude_unit': 'efb_preferences_altitude_unit',
-        'temperature_unit': 'efb_preferences_temperature_unit'
-    };
-
-    var elementId = elementMap[key];
-    if (!elementId) return;
-
-    var element = document.getElementById(elementId);
-    if (!element) return;
-
-    if (element.tagName === 'INPUT' && element.type === 'text') {
-        element.value = value;
-    } else if (element.classList.contains('custom-select')) {
-        element.setAttribute('data-selected', value);
-        var selectedOption = element.querySelector('.selected-option');
-        if (selectedOption) selectedOption.textContent = value;
-    } else if (element.type === 'checkbox') {
-        element.checked = value === 'true' || value === '1';
+    // Use Settings.updateSetting() directly — this persists to DataStore
+    // and is the same mechanism the EFB's own save uses.
+    if (typeof Settings !== 'undefined' && Settings.updateSetting) {
+        Settings.updateSetting(key, value);
     }
 };
 
 _efb.cmdSavePreferences = function() {
-    if (_efb.publisher) {
-        _efb.publisher.pub('current_app', 'efb');
-        _efb.publisher.pub('current_page', 'preferences');
-    }
-    setTimeout(function() {
-        var saveBtn = document.getElementById('efb_preferences_save_tablet_prefs');
-        if (saveBtn) saveBtn.click();
-    }, 300);
+    // All preferences were already persisted via Settings.updateSetting() in set_preference.
+    // Send back the current state so the C# form can confirm.
+    _efb.cmdGetPreferences();
 };
 
 // --- Navigraph Auth Code Observer ---
