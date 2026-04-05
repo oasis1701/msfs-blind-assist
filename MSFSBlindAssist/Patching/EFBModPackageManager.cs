@@ -7,6 +7,8 @@ namespace MSFSBlindAssist.Patching
     {
         Success,
         AlreadyInstalled,
+        AlreadyUpToDate,
+        Updated,
         CommunityFolderNotFound,
         BridgeJsSourceNotFound,
         PmdgPackageNotFound,
@@ -16,6 +18,12 @@ namespace MSFSBlindAssist.Patching
 
     public static class EFBModPackageManager
     {
+        // Bump this version when the mod package structure or bridge JS changes.
+        // On app startup, if the installed version is older, UpdateModPackage will
+        // re-patch HTML for all variants, copy the latest bridge JS, and regenerate layout.json.
+        private const int BridgeVersion = 2;
+        private const string VersionFileName = "bridge-version.txt";
+
         private const string PackageFolderName = "zzz-pmdg-efb-accessibility";
         private const string HtmlBasePath = "html_ui/Pages/VCockpit/Instruments/PMDGTablet";
         private const string HtmlFileName = "PMDGTabletCA.html";
@@ -126,6 +134,26 @@ namespace MSFSBlindAssist.Patching
         }
 
         /// <summary>
+        /// Returns the installed bridge version, or 0 if no version file exists
+        /// (pre-versioning installation).
+        /// </summary>
+        public static int GetInstalledVersion(string communityFolderPath)
+        {
+            string versionPath = Path.Combine(communityFolderPath, PackageFolderName, VersionFileName);
+            if (File.Exists(versionPath) && int.TryParse(File.ReadAllText(versionPath).Trim(), out int version))
+                return version;
+            // Package exists but no version file = version 1 (pre-versioning)
+            if (IsInstalled(communityFolderPath))
+                return 1;
+            return 0;
+        }
+
+        private static void WriteVersionFile(string packagePath)
+        {
+            File.WriteAllText(Path.Combine(packagePath, VersionFileName), BridgeVersion.ToString());
+        }
+
+        /// <summary>
         /// Installs the mod package into the MSFS Community folder.
         /// Creates the package directory with manifest.json, layout.json,
         /// the modified HTML file, and the bridge JS file.
@@ -175,8 +203,9 @@ namespace MSFSBlindAssist.Patching
                 string layoutJson = GenerateLayoutJson(layoutEntries);
                 File.WriteAllText(Path.Combine(packagePath, "layout.json"), layoutJson);
 
-                // Write manifest.json
+                // Write manifest.json and version file
                 File.WriteAllText(Path.Combine(packagePath, "manifest.json"), ManifestJson);
+                WriteVersionFile(packagePath);
 
                 return ModPackageResult.Success;
             }
@@ -195,10 +224,12 @@ namespace MSFSBlindAssist.Patching
         }
 
         /// <summary>
-        /// Updates the bridge JS file in an existing mod package installation.
-        /// Regenerates layout.json with the new file size.
+        /// Updates an existing mod package if the app ships a newer bridge version.
+        /// Re-patches HTML for all installed variants, adds override folders for any
+        /// newly installed variants, copies the latest bridge JS, and regenerates layout.json.
+        /// Returns AlreadyUpToDate if no update is needed, or Updated if changes were made.
         /// </summary>
-        public static ModPackageResult UpdateBridgeJs(string communityFolderPath, string bridgeJsSourcePath)
+        public static ModPackageResult UpdateModPackage(string communityFolderPath, string bridgeJsSourcePath)
         {
             if (!IsInstalled(communityFolderPath))
                 return ModPackageResult.CommunityFolderNotFound;
@@ -206,22 +237,30 @@ namespace MSFSBlindAssist.Patching
             if (!File.Exists(bridgeJsSourcePath))
                 return ModPackageResult.BridgeJsSourceNotFound;
 
+            int installedVersion = GetInstalledVersion(communityFolderPath);
+            if (installedVersion >= BridgeVersion)
+                return ModPackageResult.AlreadyUpToDate;
+
             try
             {
                 string packagePath = Path.Combine(communityFolderPath, PackageFolderName);
                 var layoutEntries = new List<(string relativePath, long size)>();
 
-                // Update bridge JS in all installed variant folders
-                foreach (var (_, variantSubfolder) in Variants)
+                // Find original HTML for all installed PMDG 777 variants
+                var foundVariants = FindOriginalPmdgHtmlPerVariant(communityFolderPath);
+
+                foreach (var (variantSubfolder, originalHtml) in foundVariants)
                 {
                     string htmlRelPath = GetHtmlRelativePath(variantSubfolder);
                     string htmlDir = Path.Combine(packagePath, htmlRelPath);
+                    Directory.CreateDirectory(htmlDir);
+
+                    // Re-patch HTML with variant-specific bridge script tag
                     string htmlPath = Path.Combine(htmlDir, HtmlFileName);
+                    string modifiedHtml = originalHtml.TrimEnd() + GetBridgeScriptTag(variantSubfolder);
+                    File.WriteAllText(htmlPath, modifiedHtml);
 
-                    if (!File.Exists(htmlPath))
-                        continue;
-
-                    // Copy updated bridge JS
+                    // Copy latest bridge JS
                     string bridgeJsDest = Path.Combine(htmlDir, BridgeJsFileName);
                     File.Copy(bridgeJsSourcePath, bridgeJsDest, overwrite: true);
 
@@ -229,11 +268,12 @@ namespace MSFSBlindAssist.Patching
                     layoutEntries.Add(($"{htmlRelPath}/{BridgeJsFileName}", new FileInfo(bridgeJsDest).Length));
                 }
 
-                // Regenerate layout.json for all variants
+                // Regenerate layout.json and update version
                 string layoutJson = GenerateLayoutJson(layoutEntries);
                 File.WriteAllText(Path.Combine(packagePath, "layout.json"), layoutJson);
+                WriteVersionFile(packagePath);
 
-                return ModPackageResult.Success;
+                return ModPackageResult.Updated;
             }
             catch (Exception ex)
             {
