@@ -1426,55 +1426,162 @@ public partial class MainForm : Form
 
     private void CheckAndOfferEFBModPackage()
     {
-        efbCommunityFolderPath ??= EFBModPackageManager.FindCommunityFolderPath();
-        if (efbCommunityFolderPath == null)
+        var allFolders = EFBModPackageManager.FindAllCommunityFolders();
+        if (allFolders.Count == 0)
         {
-            System.Diagnostics.Debug.WriteLine("EFB Mod Package: Could not find MSFS Community folder");
+            System.Diagnostics.Debug.WriteLine("EFB Mod Package: Could not find any MSFS Community folder");
             return;
         }
 
-        if (EFBModPackageManager.IsInstalled(efbCommunityFolderPath))
+        // Set efbCommunityFolderPath to the running sim's folder for the bridge server
+        efbCommunityFolderPath ??= EFBModPackageManager.FindCommunityFolderPath();
+
+        string bridgeJsSource = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources", "pmdg-efb-accessibility-bridge.js");
+
+        // First, update any already-installed packages
+        bool anyInstalled = false;
+        foreach (var (simLabel, folderPath) in allFolders)
         {
-            // Update the mod package if the app ships a newer bridge version
-            string bridgeJsSource = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources", "pmdg-efb-accessibility-bridge.js");
-            if (File.Exists(bridgeJsSource))
+            if (EFBModPackageManager.IsInstalled(folderPath))
             {
-                var updateResult = EFBModPackageManager.UpdateModPackage(efbCommunityFolderPath, bridgeJsSource);
-                if (updateResult == ModPackageResult.Updated)
+                anyInstalled = true;
+                if (File.Exists(bridgeJsSource))
                 {
-                    MessageBox.Show("The EFB accessibility mod package has been updated. If the simulator is currently running, please restart it for changes to take effect.", "EFB Accessibility Bridge", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    var updateResult = EFBModPackageManager.UpdateModPackage(folderPath, bridgeJsSource);
+                    if (updateResult == ModPackageResult.Updated)
+                    {
+                        MessageBox.Show($"The EFB accessibility mod package for {simLabel} has been updated. Changes will take effect next time the simulator starts.",
+                            "EFB Accessibility Bridge", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    }
                 }
             }
+        }
+
+        // Check if any sims still need installation
+        var notInstalledFolders = allFolders.Where(f => !EFBModPackageManager.IsInstalled(f.Path)).ToList();
+        if (notInstalledFolders.Count == 0) return; // All detected sims have it
+
+        // Not installed everywhere — offer to install in remaining sims
+        if (!File.Exists(bridgeJsSource))
+        {
+            announcer.Announce("Bridge script file not found. Cannot install mod package.");
             return;
         }
 
-        string message = "The PMDG EFB accessibility mod package is not installed. Would you like to install it? This creates a separate mod in your Community folder — no PMDG files are modified.";
+        // Determine which sims to offer
+        List<string> installTargets = new();
 
-        announcer.Announce(message);
-        var result = MessageBox.Show(message, "EFB Accessibility Bridge", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
-
-        if (result == DialogResult.Yes)
+        if (notInstalledFolders.Count == 1)
         {
-            string bridgeJsSource = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources", "pmdg-efb-accessibility-bridge.js");
-            if (!File.Exists(bridgeJsSource))
+            // Only one sim needs it — simple yes/no
+            var (simLabel, folderPath) = notInstalledFolders[0];
+            string context = anyInstalled
+                ? $"The EFB mod is already installed for {allFolders.First(f => EFBModPackageManager.IsInstalled(f.Path)).SimLabel}. Would you also like to install it for {simLabel}?"
+                : $"The PMDG EFB accessibility mod package is not installed. Would you like to install it for {simLabel}? No PMDG files are modified.";
+            announcer.Announce(context);
+            if (MessageBox.Show(context, "EFB Accessibility Bridge", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
             {
-                announcer.Announce("Bridge script file not found. Cannot install mod package.");
-                return;
+                installTargets.Add(folderPath);
+            }
+        }
+        else
+        {
+            // Multiple sims need installation — show choice dialog
+            using var dialog = new Form
+            {
+                Text = "EFB Accessibility Bridge",
+                ClientSize = new Size(400, 220),
+                FormBorderStyle = FormBorderStyle.FixedDialog,
+                StartPosition = FormStartPosition.CenterScreen,
+                MaximizeBox = false,
+                MinimizeBox = false
+            };
+
+            var label = new Label
+            {
+                Text = "MSFS 2020 and 2024 detected. Where would you like to install the EFB accessibility mod?",
+                Location = new Point(15, 15),
+                Size = new Size(370, 40),
+                AccessibleName = "Installation location"
+            };
+
+            var radioButtons = new List<RadioButton>();
+            int y = 60;
+            foreach (var (simLabel, _) in notInstalledFolders)
+            {
+                var rb = new RadioButton
+                {
+                    Text = simLabel,
+                    Location = new Point(20, y),
+                    Size = new Size(350, 25),
+                    AccessibleName = simLabel
+                };
+                radioButtons.Add(rb);
+                dialog.Controls.Add(rb);
+                y += 30;
             }
 
-            var installResult = EFBModPackageManager.Install(efbCommunityFolderPath, bridgeJsSource);
+            var rbBoth = new RadioButton
+            {
+                Text = "Both",
+                Location = new Point(20, y),
+                Size = new Size(350, 25),
+                AccessibleName = "Both simulators",
+                Checked = true
+            };
+            radioButtons.Add(rbBoth);
+            dialog.Controls.Add(rbBoth);
+            y += 40;
+
+            var btnOk = new Button { Text = "Install", Location = new Point(200, y), Size = new Size(80, 30), DialogResult = DialogResult.OK };
+            var btnCancel = new Button { Text = "Cancel", Location = new Point(290, y), Size = new Size(80, 30), DialogResult = DialogResult.Cancel };
+            dialog.Controls.AddRange(new Control[] { label, btnOk, btnCancel });
+            dialog.AcceptButton = btnOk;
+            dialog.CancelButton = btnCancel;
+
+            announcer.Announce("MSFS 2020 and 2024 detected. Choose where to install the EFB accessibility mod.");
+
+            if (dialog.ShowDialog(this) == DialogResult.OK)
+            {
+                if (rbBoth.Checked)
+                {
+                    installTargets.AddRange(notInstalledFolders.Select(f => f.Path));
+                }
+                else
+                {
+                    for (int i = 0; i < notInstalledFolders.Count; i++)
+                    {
+                        if (radioButtons[i].Checked)
+                        {
+                            installTargets.Add(notInstalledFolders[i].Path);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Install to selected targets
+        foreach (string folderPath in installTargets)
+        {
+            var installResult = EFBModPackageManager.Install(folderPath, bridgeJsSource);
+            string simName = notInstalledFolders.FirstOrDefault(f => f.Path == folderPath).SimLabel
+                ?? allFolders.FirstOrDefault(f => f.Path == folderPath).SimLabel ?? "MSFS";
             switch (installResult)
             {
                 case ModPackageResult.Success:
-                    MessageBox.Show("EFB accessibility mod package installed successfully. If the simulator is currently running, please restart it for changes to take effect.", "EFB Accessibility Bridge", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    MessageBox.Show($"EFB mod package installed for {simName} successfully.",
+                        "EFB Accessibility Bridge", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    break;
+                case ModPackageResult.PmdgPackageNotFound:
+                    MessageBox.Show($"Could not find the PMDG 777 in the {simName} Community folder. Skipping.",
+                        "EFB Accessibility Bridge", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     break;
                 case ModPackageResult.AlreadyInstalled:
                     break;
-                case ModPackageResult.PmdgPackageNotFound:
-                    MessageBox.Show("Could not find the PMDG 777 aircraft package in your Community folder. Please ensure the PMDG 777 is installed.", "EFB Accessibility Bridge", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    break;
                 default:
-                    MessageBox.Show($"Failed to install EFB mod package: {installResult}", "EFB Accessibility Bridge", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    MessageBox.Show($"Failed to install for {simName}: {installResult}",
+                        "EFB Accessibility Bridge", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     break;
             }
         }
