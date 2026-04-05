@@ -17,19 +17,24 @@ namespace MSFSBlindAssist.Patching
     public static class EFBModPackageManager
     {
         private const string PackageFolderName = "zzz-pmdg-efb-accessibility";
-        private const string HtmlRelativePath = "html_ui/Pages/VCockpit/Instruments/PMDGTablet/pmdg-777-200ER";
+        private const string HtmlBasePath = "html_ui/Pages/VCockpit/Instruments/PMDGTablet";
         private const string HtmlFileName = "PMDGTabletCA.html";
         private const string BridgeJsFileName = "pmdg-efb-accessibility-bridge.js";
-        private const string BridgeScriptTag = "\n<script type=\"text/html\" import-script=\"/Pages/VCockpit/Instruments/PMDGTablet/pmdg-777-200ER/pmdg-efb-accessibility-bridge.js\"></script>";
 
-        // Known PMDG 777 package folder names to search for the original HTML
-        private static readonly string[] PmdgPackageFolderNames = new[]
+        // Each PMDG 777 variant has its own tablet subfolder that needs an override
+        private static readonly (string PackageFolder, string VariantSubfolder)[] Variants = new[]
         {
-            "pmdg-aircraft-77er",
-            "pmdg-aircraft-77w",
-            "pmdg-aircraft-77l",
-            "pmdg-aircraft-77f"
+            ("pmdg-aircraft-77er", "pmdg-777-200ER"),
+            ("pmdg-aircraft-77w", "pmdg-777-300ER"),
+            ("pmdg-aircraft-77l", "pmdg-777-200LR"),
+            ("pmdg-aircraft-77f", "pmdg-777F"),
         };
+
+        private static string GetHtmlRelativePath(string variantSubfolder) =>
+            $"{HtmlBasePath}/{variantSubfolder}";
+
+        private static string GetBridgeScriptTag(string variantSubfolder) =>
+            $"\n<script type=\"text/html\" import-script=\"/Pages/VCockpit/Instruments/PMDGTablet/{variantSubfolder}/{BridgeJsFileName}\"></script>";
 
         // Default MS Store community folder paths (packages stored inside app LocalCache)
         private static readonly string[] DefaultMSStoreCommunityPaths = new[]
@@ -68,8 +73,13 @@ namespace MSFSBlindAssist.Patching
         public static bool IsInstalled(string communityFolderPath)
         {
             string packagePath = Path.Combine(communityFolderPath, PackageFolderName);
-            string htmlPath = Path.Combine(packagePath, HtmlRelativePath, HtmlFileName);
-            return File.Exists(htmlPath);
+            foreach (var (_, variantSubfolder) in Variants)
+            {
+                string htmlPath = Path.Combine(packagePath, GetHtmlRelativePath(variantSubfolder), HtmlFileName);
+                if (File.Exists(htmlPath))
+                    return true;
+            }
+            return false;
         }
 
         /// <summary>
@@ -129,34 +139,40 @@ namespace MSFSBlindAssist.Patching
                 return ModPackageResult.BridgeJsSourceNotFound;
 
             string packagePath = Path.Combine(communityFolderPath, PackageFolderName);
-            string htmlDir = Path.Combine(packagePath, HtmlRelativePath);
 
             if (IsInstalled(communityFolderPath))
                 return ModPackageResult.AlreadyInstalled;
 
-            // Find the original PMDG HTML to base our override on
-            string? originalHtml = FindOriginalPmdgHtml(communityFolderPath);
-            if (originalHtml == null)
+            // Find original HTML for each installed PMDG 777 variant
+            var foundVariants = FindOriginalPmdgHtmlPerVariant(communityFolderPath);
+            if (foundVariants.Count == 0)
                 return ModPackageResult.PmdgPackageNotFound;
 
             try
             {
-                // Create directory structure
-                Directory.CreateDirectory(htmlDir);
+                var layoutEntries = new List<(string relativePath, long size)>();
 
-                // Write the modified HTML: original + our bridge script tag
-                string htmlPath = Path.Combine(htmlDir, HtmlFileName);
-                string modifiedHtml = originalHtml.TrimEnd() + BridgeScriptTag;
-                File.WriteAllText(htmlPath, modifiedHtml);
+                foreach (var (variantSubfolder, originalHtml) in foundVariants)
+                {
+                    string htmlRelPath = GetHtmlRelativePath(variantSubfolder);
+                    string htmlDir = Path.Combine(packagePath, htmlRelPath);
+                    Directory.CreateDirectory(htmlDir);
 
-                // Copy the bridge JS
-                string bridgeJsDest = Path.Combine(htmlDir, BridgeJsFileName);
-                File.Copy(bridgeJsSourcePath, bridgeJsDest, overwrite: true);
+                    // Write the modified HTML: original + variant-specific bridge script tag
+                    string htmlPath = Path.Combine(htmlDir, HtmlFileName);
+                    string modifiedHtml = originalHtml.TrimEnd() + GetBridgeScriptTag(variantSubfolder);
+                    File.WriteAllText(htmlPath, modifiedHtml);
 
-                // Generate layout.json with correct file sizes
-                long htmlSize = new FileInfo(htmlPath).Length;
-                long jsSize = new FileInfo(bridgeJsDest).Length;
-                string layoutJson = GenerateLayoutJson(htmlSize, jsSize);
+                    // Copy the bridge JS into this variant's folder
+                    string bridgeJsDest = Path.Combine(htmlDir, BridgeJsFileName);
+                    File.Copy(bridgeJsSourcePath, bridgeJsDest, overwrite: true);
+
+                    layoutEntries.Add(($"{htmlRelPath}/{HtmlFileName}", new FileInfo(htmlPath).Length));
+                    layoutEntries.Add(($"{htmlRelPath}/{BridgeJsFileName}", new FileInfo(bridgeJsDest).Length));
+                }
+
+                // Generate layout.json with entries for all variants
+                string layoutJson = GenerateLayoutJson(layoutEntries);
                 File.WriteAllText(Path.Combine(packagePath, "layout.json"), layoutJson);
 
                 // Write manifest.json
@@ -193,17 +209,28 @@ namespace MSFSBlindAssist.Patching
             try
             {
                 string packagePath = Path.Combine(communityFolderPath, PackageFolderName);
-                string htmlDir = Path.Combine(packagePath, HtmlRelativePath);
+                var layoutEntries = new List<(string relativePath, long size)>();
 
-                // Copy updated bridge JS
-                string bridgeJsDest = Path.Combine(htmlDir, BridgeJsFileName);
-                File.Copy(bridgeJsSourcePath, bridgeJsDest, overwrite: true);
+                // Update bridge JS in all installed variant folders
+                foreach (var (_, variantSubfolder) in Variants)
+                {
+                    string htmlRelPath = GetHtmlRelativePath(variantSubfolder);
+                    string htmlDir = Path.Combine(packagePath, htmlRelPath);
+                    string htmlPath = Path.Combine(htmlDir, HtmlFileName);
 
-                // Regenerate layout.json
-                string htmlPath = Path.Combine(htmlDir, HtmlFileName);
-                long htmlSize = new FileInfo(htmlPath).Length;
-                long jsSize = new FileInfo(bridgeJsDest).Length;
-                string layoutJson = GenerateLayoutJson(htmlSize, jsSize);
+                    if (!File.Exists(htmlPath))
+                        continue;
+
+                    // Copy updated bridge JS
+                    string bridgeJsDest = Path.Combine(htmlDir, BridgeJsFileName);
+                    File.Copy(bridgeJsSourcePath, bridgeJsDest, overwrite: true);
+
+                    layoutEntries.Add(($"{htmlRelPath}/{HtmlFileName}", new FileInfo(htmlPath).Length));
+                    layoutEntries.Add(($"{htmlRelPath}/{BridgeJsFileName}", new FileInfo(bridgeJsDest).Length));
+                }
+
+                // Regenerate layout.json for all variants
+                string layoutJson = GenerateLayoutJson(layoutEntries);
                 File.WriteAllText(Path.Combine(packagePath, "layout.json"), layoutJson);
 
                 return ModPackageResult.Success;
@@ -238,37 +265,44 @@ namespace MSFSBlindAssist.Patching
         }
 
         /// <summary>
-        /// Finds the original PMDGTabletCA.html from any installed PMDG 777 package.
+        /// Finds the original PMDGTabletCA.html for each installed PMDG 777 variant.
+        /// Returns a list of (variantSubfolder, htmlContent) for each variant found.
         /// </summary>
-        private static string? FindOriginalPmdgHtml(string communityFolderPath)
+        private static List<(string VariantSubfolder, string HtmlContent)> FindOriginalPmdgHtmlPerVariant(string communityFolderPath)
         {
-            foreach (string folderName in PmdgPackageFolderNames)
+            var results = new List<(string, string)>();
+            foreach (var (packageFolder, variantSubfolder) in Variants)
             {
-                string pmdgHtmlPath = Path.Combine(communityFolderPath, folderName, HtmlRelativePath, HtmlFileName);
+                string pmdgHtmlPath = Path.Combine(communityFolderPath, packageFolder, GetHtmlRelativePath(variantSubfolder), HtmlFileName);
                 if (File.Exists(pmdgHtmlPath))
                 {
-                    return File.ReadAllText(pmdgHtmlPath);
+                    results.Add((variantSubfolder, File.ReadAllText(pmdgHtmlPath)));
                 }
             }
-            return null;
+            return results;
         }
 
-        private static string GenerateLayoutJson(long htmlSize, long jsSize)
+        private static string GenerateLayoutJson(List<(string relativePath, long size)> entries)
         {
-            return $@"{{
-  ""content"": [
-    {{
-      ""path"": ""{HtmlRelativePath.Replace("\\", "/")}/{HtmlFileName}"",
-      ""size"": {htmlSize},
-      ""date"": 133888888888888888
-    }},
-    {{
-      ""path"": ""{HtmlRelativePath.Replace("\\", "/")}/{BridgeJsFileName}"",
-      ""size"": {jsSize},
-      ""date"": 133888888888888888
-    }}
-  ]
-}}";
+            var sb = new StringBuilder();
+            sb.AppendLine("{");
+            sb.AppendLine("  \"content\": [");
+            for (int i = 0; i < entries.Count; i++)
+            {
+                var (path, size) = entries[i];
+                sb.AppendLine("    {");
+                sb.AppendLine($"      \"path\": \"{path.Replace("\\", "/")}\",");
+                sb.AppendLine($"      \"size\": {size},");
+                sb.AppendLine("      \"date\": 133888888888888888");
+                sb.Append("    }");
+                if (i < entries.Count - 1)
+                    sb.AppendLine(",");
+                else
+                    sb.AppendLine();
+            }
+            sb.AppendLine("  ]");
+            sb.Append("}");
+            return sb.ToString();
         }
 
         private static string? TryParseInstalledPackagesPath(string configPath)
