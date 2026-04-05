@@ -1435,11 +1435,15 @@ public partial class MainForm : Form
 
         if (EFBModPackageManager.IsInstalled(efbCommunityFolderPath))
         {
-            // Update the bridge JS in case the app was updated
+            // Update the mod package if the app ships a newer bridge version
             string bridgeJsSource = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources", "pmdg-efb-accessibility-bridge.js");
             if (File.Exists(bridgeJsSource))
             {
-                EFBModPackageManager.UpdateBridgeJs(efbCommunityFolderPath, bridgeJsSource);
+                var updateResult = EFBModPackageManager.UpdateModPackage(efbCommunityFolderPath, bridgeJsSource);
+                if (updateResult == ModPackageResult.Updated)
+                {
+                    MessageBox.Show("The EFB accessibility mod package has been updated. If the simulator is currently running, please restart it for changes to take effect.", "EFB Accessibility Bridge", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
             }
             return;
         }
