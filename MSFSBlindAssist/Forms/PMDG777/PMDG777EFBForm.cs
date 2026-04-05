@@ -201,37 +201,33 @@ namespace MSFSBlindAssist.Forms.PMDG777
 
         private void OnSavePreferences(object? sender, EventArgs e)
         {
-            if (!string.IsNullOrEmpty(simbriefAliasTextBox!.Text))
+            if (!_bridgeServer.IsBridgeConnected)
             {
-                _bridgeServer.EnqueueCommand("set_preference", new Dictionary<string, string>
-                    { { "key", "simbrief_id" }, { "value", simbriefAliasTextBox.Text } });
+                _announcer.Announce("EFB bridge not connected. Preferences cannot be saved while the EFB tablet is not active in the simulator.");
+                return;
             }
-            if (weatherSourceCombo!.SelectedItem != null)
-            {
-                _bridgeServer.EnqueueCommand("set_preference", new Dictionary<string, string>
-                    { { "key", "weather_source" }, { "value", weatherSourceCombo.SelectedItem.ToString()! } });
-            }
-            if (weightUnitCombo!.SelectedItem != null)
-            {
-                _bridgeServer.EnqueueCommand("set_preference", new Dictionary<string, string>
-                    { { "key", "weight_unit" }, { "value", weightUnitCombo.SelectedItem.ToString()! } });
-            }
-            if (distanceUnitCombo!.SelectedItem != null)
-            {
-                _bridgeServer.EnqueueCommand("set_preference", new Dictionary<string, string>
-                    { { "key", "distance_unit" }, { "value", distanceUnitCombo.SelectedItem.ToString()! } });
-            }
-            if (altitudeUnitCombo!.SelectedItem != null)
-            {
-                _bridgeServer.EnqueueCommand("set_preference", new Dictionary<string, string>
-                    { { "key", "altitude_unit" }, { "value", altitudeUnitCombo.SelectedItem.ToString()! } });
-            }
-            if (temperatureUnitCombo!.SelectedItem != null)
-            {
-                _bridgeServer.EnqueueCommand("set_preference", new Dictionary<string, string>
-                    { { "key", "temperature_unit" }, { "value", temperatureUnitCombo.SelectedItem.ToString()! } });
-            }
+
+            _bridgeServer.EnqueueCommand("set_preference", new Dictionary<string, string>
+                { { "key", "simbrief_id" }, { "value", simbriefAliasTextBox!.Text ?? "" } });
+
+            EnqueueComboPreference(weatherSourceCombo!, "weather_source");
+            EnqueueComboPreference(weightUnitCombo!, "weight_unit");
+            EnqueueComboPreference(distanceUnitCombo!, "distance_unit");
+            EnqueueComboPreference(altitudeUnitCombo!, "altitude_unit");
+            EnqueueComboPreference(temperatureUnitCombo!, "temperature_unit");
+
             _bridgeServer.EnqueueCommand("save_preferences");
+            _announcer.Announce("Preferences saved");
+        }
+
+        private void EnqueueComboPreference(ComboBox combo, string key)
+        {
+            string? value = combo.SelectedItem?.ToString();
+            if (value != null)
+            {
+                _bridgeServer.EnqueueCommand("set_preference", new Dictionary<string, string>
+                    { { "key", key }, { "value", value } });
+            }
         }
 
         protected override void OnFormClosing(FormClosingEventArgs e)

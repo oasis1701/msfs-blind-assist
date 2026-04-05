@@ -274,13 +274,33 @@ _efb.cmdSetPreference = function(key, value) {
     // and is the same mechanism the EFB's own save uses.
     if (typeof Settings !== 'undefined' && Settings.updateSetting) {
         Settings.updateSetting(key, value);
+    } else {
+        _efb.postState('error', { message: 'EFB Settings not available — preferences cannot be saved' });
     }
 };
 
 _efb.cmdSavePreferences = function() {
     // All preferences were already persisted via Settings.updateSetting() in set_preference.
+    // Auto-dismiss any alert the EFB might show after settings changes.
+    _efb.dismissAlertAfterDelay();
     // Send back the current state so the C# form can confirm.
     _efb.cmdGetPreferences();
+};
+
+_efb.dismissAlertAfterDelay = function() {
+    // The EFB may show a PMDGAlert after certain operations. Poll briefly to dismiss it.
+    var attempts = 0;
+    var timer = setInterval(function() {
+        var alertDiv = document.getElementById('PMDGAlert');
+        if (alertDiv && alertDiv.style.display === 'block') {
+            var okBtn = document.getElementById('alert_card_button');
+            if (okBtn) okBtn.click();
+            clearInterval(timer);
+            return;
+        }
+        attempts++;
+        if (attempts >= 6) clearInterval(timer); // Stop after 3 seconds
+    }, 500);
 };
 
 // --- Navigraph Auth Code Observer ---
@@ -337,11 +357,7 @@ _efb.startNavigraphAuthPoller = function() {
                 });
                 _efb.stopNavigraphAuthPoller();
                 // Auto-dismiss the EFB's success alert if visible
-                var alertDiv = document.getElementById('PMDGAlert');
-                if (alertDiv && alertDiv.style.display === 'block') {
-                    var okBtn = document.getElementById('alert_card_button');
-                    if (okBtn) okBtn.click();
-                }
+                _efb.dismissAlertAfterDelay();
             }
         }).catch(function() {});
     }, 2000);
