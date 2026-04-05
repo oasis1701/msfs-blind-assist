@@ -91,17 +91,119 @@ namespace MSFSBlindAssist.Patching
         }
 
         /// <summary>
-        /// Finds the MSFS Community folder by checking known config locations.
+        /// Finds ALL available MSFS Community folder paths, tagged by sim version.
+        /// Returns a list of (simLabel, path) tuples.
         /// </summary>
+        public static List<(string SimLabel, string Path)> FindAllCommunityFolders()
+        {
+            var results = new List<(string, string)>();
+
+            var fs2024Paths = new[]
+            {
+                System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Microsoft Flight Simulator 2024", "UserCfg.opt"),
+                System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Packages", "Microsoft.Limitless_8wekyb3d8bbwe", "LocalCache", "UserCfg.opt"),
+            };
+
+            var fs2020Paths = new[]
+            {
+                System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Microsoft Flight Simulator", "UserCfg.opt"),
+                System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Packages", "Microsoft.FlightSimulator_8wekyb3d8bbwe", "LocalCache", "UserCfg.opt"),
+            };
+
+            // Check FS2024
+            foreach (string configPath in fs2024Paths)
+            {
+                string? basePath = TryParseInstalledPackagesPath(configPath);
+                if (basePath != null)
+                {
+                    string communityPath = System.IO.Path.Combine(basePath, "Community");
+                    if (Directory.Exists(communityPath) && !results.Any(r => r.Item2 == communityPath))
+                    {
+                        results.Add(("MSFS 2024", communityPath));
+                        break; // Found FS2024, don't check second path
+                    }
+                }
+            }
+
+            // Check FS2020
+            foreach (string configPath in fs2020Paths)
+            {
+                string? basePath = TryParseInstalledPackagesPath(configPath);
+                if (basePath != null)
+                {
+                    string communityPath = System.IO.Path.Combine(basePath, "Community");
+                    if (Directory.Exists(communityPath) && !results.Any(r => r.Item2 == communityPath))
+                    {
+                        results.Add(("MSFS 2020", communityPath));
+                        break;
+                    }
+                }
+            }
+
+            // Also check default MS Store paths if nothing found via config
+            if (!results.Any(r => r.Item1 == "MSFS 2024"))
+            {
+                foreach (string path in DefaultMSStoreCommunityPaths)
+                {
+                    if (Directory.Exists(path) && path.Contains("Limitless"))
+                    {
+                        results.Add(("MSFS 2024", path));
+                        break;
+                    }
+                }
+            }
+
+            if (!results.Any(r => r.Item1 == "MSFS 2020"))
+            {
+                foreach (string path in DefaultMSStoreCommunityPaths)
+                {
+                    if (Directory.Exists(path) && path.Contains("FlightSimulator"))
+                    {
+                        results.Add(("MSFS 2020", path));
+                        break;
+                    }
+                }
+            }
+
+            // Fallback: common manual install paths
+            if (results.Count == 0)
+            {
+                foreach (string path in FallbackCommunityPaths)
+                {
+                    if (Directory.Exists(path))
+                    {
+                        results.Add(("MSFS", path));
+                        break;
+                    }
+                }
+            }
+
+            return results;
+        }
+
         public static string? FindCommunityFolderPath()
         {
-            string[] configPaths = new[]
+            // Detect which sim is running and prioritize its paths first.
+            // Without this, FS2020 paths are found before FS2024 when both are installed,
+            // causing the mod package to be installed in the wrong Community folder.
+            string runningSimulator = Utils.SimulatorDetector.DetectRunningSimulator();
+
+            var fs2024Paths = new[]
             {
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Microsoft Flight Simulator", "UserCfg.opt"),
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Packages", "Microsoft.FlightSimulator_8wekyb3d8bbwe", "LocalCache", "UserCfg.opt"),
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Microsoft Flight Simulator 2024", "UserCfg.opt"),
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Packages", "Microsoft.Limitless_8wekyb3d8bbwe", "LocalCache", "UserCfg.opt"),
             };
+
+            var fs2020Paths = new[]
+            {
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Microsoft Flight Simulator", "UserCfg.opt"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Packages", "Microsoft.FlightSimulator_8wekyb3d8bbwe", "LocalCache", "UserCfg.opt"),
+            };
+
+            // Check the running sim's paths first, then fall back to the other
+            var configPaths = runningSimulator == "FS2020"
+                ? fs2020Paths.Concat(fs2024Paths).ToArray()
+                : fs2024Paths.Concat(fs2020Paths).ToArray(); // FS2024 first (also for Unknown)
 
             foreach (string configPath in configPaths)
             {
@@ -111,6 +213,7 @@ namespace MSFSBlindAssist.Patching
                     string communityPath = Path.Combine(basePath, "Community");
                     if (Directory.Exists(communityPath))
                     {
+                        System.Diagnostics.Debug.WriteLine($"[EFBModPackageManager] Found Community folder: {communityPath} (sim={runningSimulator})");
                         return communityPath;
                     }
                 }
