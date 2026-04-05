@@ -34,7 +34,6 @@ public partial class MainForm : Form
     private PMDG777CDUForm? pmdg777CDUForm;
     private PMDG777EFBForm? pmdg777EFBForm;
     private EFBBridgeServer? efbBridgeServer;
-    private string? efbCommunityFolderPath;
     private TakeoffAssistManager takeoffAssistManager = null!;
     private HandFlyManager handFlyManager = null!;
     private VisualGuidanceManager visualGuidanceManager = null!;
@@ -1432,9 +1431,6 @@ public partial class MainForm : Form
             System.Diagnostics.Debug.WriteLine("EFB Mod Package: Could not find any MSFS Community folder");
             return;
         }
-
-        // Set efbCommunityFolderPath to the running sim's folder for the bridge server
-        efbCommunityFolderPath ??= EFBModPackageManager.FindCommunityFolderPath();
 
         string bridgeJsSource = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources", "pmdg-efb-accessibility-bridge.js");
 

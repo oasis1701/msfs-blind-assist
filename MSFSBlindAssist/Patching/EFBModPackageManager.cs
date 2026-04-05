@@ -91,9 +91,6 @@ namespace MSFSBlindAssist.Patching
         }
 
         /// <summary>
-        /// Finds the MSFS Community folder by checking known config locations.
-        /// </summary>
-        /// <summary>
         /// Finds ALL available MSFS Community folder paths, tagged by sim version.
         /// Returns a list of (simLabel, path) tuples.
         /// </summary>
@@ -151,6 +148,31 @@ namespace MSFSBlindAssist.Patching
                     if (Directory.Exists(path) && path.Contains("Limitless"))
                     {
                         results.Add(("MSFS 2024", path));
+                        break;
+                    }
+                }
+            }
+
+            if (!results.Any(r => r.Item1 == "MSFS 2020"))
+            {
+                foreach (string path in DefaultMSStoreCommunityPaths)
+                {
+                    if (Directory.Exists(path) && path.Contains("FlightSimulator"))
+                    {
+                        results.Add(("MSFS 2020", path));
+                        break;
+                    }
+                }
+            }
+
+            // Fallback: common manual install paths
+            if (results.Count == 0)
+            {
+                foreach (string path in FallbackCommunityPaths)
+                {
+                    if (Directory.Exists(path))
+                    {
+                        results.Add(("MSFS", path));
                         break;
                     }
                 }
