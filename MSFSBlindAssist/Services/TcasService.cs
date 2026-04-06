@@ -84,11 +84,18 @@ public class TcasService : IDisposable
         // it is clearly airborne — treat it as airborne regardless of the flag.
         bool effectivelyOnGround = e.OnGround && altDiff <= 500;
 
+        // SimConnect often returns "ATCCONN" or a model path for vPilot/FSLTL-injected
+        // VATSIM traffic.  If the resolved type is still empty, cross-reference the
+        // VATSIM live data feed using the callsign.
+        string aircraftType = string.IsNullOrEmpty(e.AircraftType)
+            ? VatsimPilotDataService.GetAircraftType(e.Callsign)
+            : e.AircraftType;
+
         var traffic = new TcasTraffic
         {
             ObjectId         = e.ObjectId,
             Callsign         = e.Callsign,
-            AircraftType     = e.AircraftType,
+            AircraftType     = aircraftType,
             Latitude         = e.Latitude,
             Longitude        = e.Longitude,
             AltitudeFt       = e.AltitudeFt,

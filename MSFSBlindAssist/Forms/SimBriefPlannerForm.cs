@@ -43,23 +43,23 @@ public class SimBriefPlannerForm : Form
     private Label     _viewStatus     = null!;
     private TabControl _viewTabs      = null!;
     private TreeView  _overviewTree   = null!;
-    private TextBox   _overviewDetail = null!;
+    private ListBox   _overviewDetail = null!;
     private SplitContainer _overviewSplit = null!;
     private TreeView _navLogGrid = null!;
-    private TextBox   _fuelText       = null!;
-    private TextBox   _weightsText    = null!;
+    private ListBox   _fuelText       = null!;
+    private ListBox   _weightsText    = null!;
     // Performance tab – three separate panes + expand buttons
-    private TextBox   _perfTakeoffText      = null!;
-    private TextBox   _perfEnRouteText      = null!;
-    private TextBox   _perfLandingText      = null!;
+    private ListBox   _perfTakeoffText      = null!;
+    private ListBox   _perfEnRouteText      = null!;
+    private ListBox   _perfLandingText      = null!;
     private Button    _perfTakeoffExpandBtn = null!;
     private Button    _perfLandingExpandBtn = null!;
     private bool      _perfTakeoffExpanded;
     private bool      _perfLandingExpanded;
     // Weather tab – one pane per station
-    private TextBox   _weatherDepText   = null!;
-    private TextBox   _weatherDestText  = null!;
-    private TextBox   _weatherAltnText  = null!;
+    private ListBox   _weatherDepText   = null!;
+    private ListBox   _weatherDestText  = null!;
+    private ListBox   _weatherAltnText  = null!;
 
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -343,15 +343,13 @@ public class SimBriefPlannerForm : Form
         };
         _overviewTree.AfterSelect += OverviewTree_AfterSelect;
 
-        _overviewDetail = new TextBox
+        _overviewDetail = new ListBox
         {
             Dock = DockStyle.Fill,
-            Multiline = true,
-            ReadOnly = true,
-            ScrollBars = ScrollBars.Vertical,
             Font = new System.Drawing.Font("Consolas", 9.5f),
+            HorizontalScrollbar = true,
             AccessibleName = "Section details",
-            AccessibleDescription = "Read-only detail for the selected section"
+            AccessibleDescription = "Detail for the selected section"
         };
 
         // Prevent Tab from landing on the SplitterPanel containers themselves;
@@ -401,7 +399,7 @@ public class SimBriefPlannerForm : Form
         return tab;
     }
 
-    private TabPage BuildTextSubTab(string tabName, string accessibleName, string description, ref TextBox textField)
+    private TabPage BuildTextSubTab(string tabName, string accessibleName, string description, ref ListBox textField)
     {
         var tab = new TabPage(tabName)
         {
@@ -409,17 +407,14 @@ public class SimBriefPlannerForm : Form
             AccessibleDescription = description
         };
 
-        textField = new TextBox
+        textField = new ListBox
         {
             Dock = DockStyle.Fill,
-            Multiline = true,
-            ReadOnly = true,
-            ScrollBars = ScrollBars.Vertical,
             Font = new System.Drawing.Font("Consolas", 9.5f),
+            HorizontalScrollbar = true,
             AccessibleName = accessibleName,
-            AccessibleDescription = description + ". Read only."
+            AccessibleDescription = description
         };
-        textField.GotFocus += (s, _) => { var tb = (TextBox)s!; tb.SelectionStart = 0; tb.SelectionLength = 0; };
 
         tab.Controls.Add(textField);
         return tab;
@@ -447,27 +442,18 @@ public class SimBriefPlannerForm : Form
             AutoSize = false, Width = 500, Height = lh, Font = boldFont, TabStop = false
         };
 
-        TextBox MakeBox(string accName, string desc, int y, int h, ref TextBox field)
+        ListBox MakeBox(string accName, string desc, int y, int h, ref ListBox field)
         {
-            field = new TextBox
+            field = new ListBox
             {
                 Location = new System.Drawing.Point(6, y),
                 Size = new System.Drawing.Size(600, h),
-                Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical,
-                Font = font, BackColor = System.Drawing.SystemColors.Window,
+                Font = font,
+                HorizontalScrollbar = true,
                 AccessibleName = accName,
-                AccessibleDescription = desc + ". Read only.",
+                AccessibleDescription = desc,
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
                 TabStop = true
-            };
-            // When tabbing into the box, clear any auto-selection so NVDA starts at the top.
-            // Windows ReadOnly TextBox selects all text on focus (SelectionLength = Text.Length),
-            // which causes NVDA to jump to the bottom — clearing it unconditionally fixes this.
-            field.GotFocus += (s, _) =>
-            {
-                var tb = (TextBox)s!;
-                tb.SelectionStart  = 0;
-                tb.SelectionLength = 0;
             };
             return field;
         }
@@ -537,14 +523,11 @@ public class SimBriefPlannerForm : Form
         _perfTakeoffExpandBtn.Text = _perfTakeoffExpanded
             ? "Hide Additional Takeoff Info"
             : "Show Additional Takeoff Info";
-        _perfTakeoffText.Text = BuildTakeoffText();
+        SetListText(_perfTakeoffText, BuildTakeoffText());
         if (_perfTakeoffExpanded)
-            FocusTextBoxAtSection(_perfTakeoffText, "Additional Info");
-        else
-        {
-            _perfTakeoffText.SelectionStart = 0;
-            _perfTakeoffText.SelectionLength = 0;
-        }
+            FocusListBoxAtSection(_perfTakeoffText, "Additional Info");
+        else if (_perfTakeoffText.Items.Count > 0)
+            _perfTakeoffText.SelectedIndex = 0;
     }
 
     private void LandingExpandBtn_Click(object? sender, EventArgs e)
@@ -553,14 +536,11 @@ public class SimBriefPlannerForm : Form
         _perfLandingExpandBtn.Text = _perfLandingExpanded
             ? "Hide Additional Landing Info"
             : "Show Additional Landing Info";
-        _perfLandingText.Text = BuildLandingText();
+        SetListText(_perfLandingText, BuildLandingText());
         if (_perfLandingExpanded)
-            FocusTextBoxAtSection(_perfLandingText, "Additional Info");
-        else
-        {
-            _perfLandingText.SelectionStart = 0;
-            _perfLandingText.SelectionLength = 0;
-        }
+            FocusListBoxAtSection(_perfLandingText, "Additional Info");
+        else if (_perfLandingText.Items.Count > 0)
+            _perfLandingText.SelectedIndex = 0;
     }
 
     private TabPage BuildWeatherTab()
@@ -586,15 +566,15 @@ public class SimBriefPlannerForm : Form
             TabStop = false
         };
 
-        TextBox MakeBox(string accessibleName, string description, int y, ref TextBox field) =>
-            field = new TextBox
+        ListBox MakeBox(string accessibleName, string description, int y, ref ListBox field) =>
+            field = new ListBox
             {
                 Location = new System.Drawing.Point(6, y),
                 Size = new System.Drawing.Size(600, boxHeight),
-                Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical,
-                Font = font, BackColor = System.Drawing.SystemColors.Window,
+                Font = font,
+                HorizontalScrollbar = true,
                 AccessibleName = accessibleName,
-                AccessibleDescription = description + ". Read only. Arrow keys scroll.",
+                AccessibleDescription = description,
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
                 TabStop = true
             };
@@ -760,20 +740,16 @@ public class SimBriefPlannerForm : Form
     {
         if (_ofp == null || e.Node == null) return;
 
-        _overviewDetail.Text = e.Node.Name switch
+        SetListText(_overviewDetail, e.Node.Name switch
         {
-            "FlightInfo"  => BuildFlightInfoText(),
-            "Departure"   => BuildDepartureText(),
-            "Destination" => BuildDestinationText(),
-            "Cruise"      => BuildCruiseText(),
-            "FuelSummary"    => BuildFuelSummaryText(),
-            "WeightSummary"  => BuildWeightSummaryText(),
-            _                => ""
-        };
-
-        // Move reading cursor to start so NVDA reads from top
-        _overviewDetail.SelectionStart = 0;
-        _overviewDetail.SelectionLength = 0;
+            "FlightInfo"   => BuildFlightInfoText(),
+            "Departure"    => BuildDepartureText(),
+            "Destination"  => BuildDestinationText(),
+            "Cruise"       => BuildCruiseText(),
+            "FuelSummary"  => BuildFuelSummaryText(),
+            "WeightSummary"=> BuildWeightSummaryText(),
+            _              => ""
+        });
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -786,8 +762,8 @@ public class SimBriefPlannerForm : Form
 
         PopulateOverviewTree();
         PopulateNavLog();
-        _fuelText.Text    = BuildFuelText();
-        _weightsText.Text = BuildWeightsText();
+        SetListText(_fuelText,    BuildFuelText());
+        SetListText(_weightsText, BuildWeightsText());
 
         // Reset expand state on fresh load
         _perfTakeoffExpanded = false;
@@ -798,21 +774,21 @@ public class SimBriefPlannerForm : Form
         _perfTakeoffExpandBtn.Text = "Show Additional Takeoff Info";
         _perfLandingExpandBtn.Text = "Show Additional Landing Info";
 
-        _perfTakeoffText.Text  = BuildTakeoffText();
-        _perfEnRouteText.Text  = BuildEnRouteText();
-        _perfLandingText.Text  = BuildLandingText();
+        SetListText(_perfTakeoffText, BuildTakeoffText());
+        SetListText(_perfEnRouteText, BuildEnRouteText());
+        SetListText(_perfLandingText, BuildLandingText());
 
-        _weatherDepText.Text  = BuildWeatherStationText("DEPARTURE",  _ofp.OriginIcao, _ofp.OriginMetar, _ofp.OriginTaf);
-        _weatherDestText.Text = BuildWeatherStationText("DESTINATION", _ofp.DestIcao,   _ofp.DestMetar,   _ofp.DestTaf);
-        _weatherAltnText.Text = string.IsNullOrEmpty(_ofp.AltnIcao)
+        SetListText(_weatherDepText,  BuildWeatherStationText("DEPARTURE",  _ofp.OriginIcao, _ofp.OriginMetar, _ofp.OriginTaf));
+        SetListText(_weatherDestText, BuildWeatherStationText("DESTINATION", _ofp.DestIcao,   _ofp.DestMetar,   _ofp.DestTaf));
+        SetListText(_weatherAltnText, string.IsNullOrEmpty(_ofp.AltnIcao)
             ? "No alternate in this flight plan."
-            : BuildWeatherStationText("ALTERNATE", _ofp.AltnIcao, _ofp.AltnMetar, _ofp.AltnTaf);
+            : BuildWeatherStationText("ALTERNATE", _ofp.AltnIcao, _ofp.AltnMetar, _ofp.AltnTaf));
     }
 
     private void PopulateOverviewTree()
     {
         _overviewTree.Nodes.Clear();
-        _overviewDetail.Text = "";
+        _overviewDetail.Items.Clear();
 
         AddNode("Flight Info",     "FlightInfo");
         AddNode("Departure",       "Departure");
@@ -824,7 +800,7 @@ public class SimBriefPlannerForm : Form
         if (_overviewTree.Nodes.Count > 0)
         {
             _overviewTree.SelectedNode = _overviewTree.Nodes[0];
-            _overviewDetail.Text = BuildFlightInfoText();
+            SetListText(_overviewDetail, BuildFlightInfoText());
         }
 
         void AddNode(string text, string name)
@@ -1704,23 +1680,46 @@ public class SimBriefPlannerForm : Form
 
     // ─────────────────────────────────────────────────────────────────────────
     /// <summary>
-    /// Sets focus to a read-only TextBox and scrolls to the first occurrence of sectionText,
-    /// so NVDA starts reading from that point rather than the beginning of the box.
+    /// Populates a ListBox with lines split from a multi-line string.
+    /// Each \n-delimited line becomes one item.
     /// </summary>
-    private static void FocusTextBoxAtSection(TextBox tb, string sectionText)
+    private static void SetListText(ListBox lb, string text)
     {
-        int idx = tb.Text.IndexOf(sectionText, StringComparison.OrdinalIgnoreCase);
-        // Jump past the separator line to the first real content line
+        lb.BeginUpdate();
+        lb.Items.Clear();
+        foreach (string line in text.Split('\n'))
+        {
+            string trimmed = line.TrimEnd('\r');
+            // Skip blank lines and pure-separator lines (─, -, =, etc.) that NVDA reads as silence
+            if (trimmed.Any(char.IsLetterOrDigit))
+                lb.Items.Add(trimmed);
+        }
+        lb.EndUpdate();
+    }
+
+    /// <summary>
+    /// Scrolls a ListBox to the first item whose text contains sectionText
+    /// (skipping one line past the header), so NVDA starts reading from there.
+    /// </summary>
+    private static void FocusListBoxAtSection(ListBox lb, string sectionText)
+    {
+        int idx = -1;
+        for (int i = 0; i < lb.Items.Count; i++)
+        {
+            string item = lb.Items[i]?.ToString() ?? "";
+            if (item.IndexOf(sectionText, StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                // Start one line after the section header
+                idx = Math.Min(i + 1, lb.Items.Count - 1);
+                break;
+            }
+        }
         if (idx >= 0)
         {
-            int lineStart = tb.Text.IndexOf('\n', idx);
-            if (lineStart >= 0 && lineStart + 1 < tb.Text.Length)
-                idx = lineStart + 1;
+            lb.SelectedIndex = idx;
+            lb.TopIndex      = idx;
         }
-        tb.SelectionStart  = idx >= 0 ? idx : 0;
-        tb.SelectionLength = 0;
-        tb.ScrollToCaret();
-        tb.Focus();
+        lb.Focus();
     }
 
     // Formatting helpers

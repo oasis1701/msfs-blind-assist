@@ -280,6 +280,8 @@ public class SimConnectManager
         public string AtcId;
         [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
         public string AtcType;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
+        public string AtcModel;
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
@@ -543,6 +545,7 @@ public class SimConnectManager
         sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_AI_TRAFFIC, "SIM ON GROUND",   "bool",      SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
         sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_AI_TRAFFIC, "ATC ID",          null,        SIMCONNECT_DATATYPE.STRING64, 0.0f, SIMCONNECT_UNUSED);
         sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_AI_TRAFFIC, "ATC TYPE",        null,        SIMCONNECT_DATATYPE.STRING32, 0.0f, SIMCONNECT_UNUSED);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_AI_TRAFFIC, "ATC MODEL",       null,        SIMCONNECT_DATATYPE.STRING32, 0.0f, SIMCONNECT_UNUSED);
         sc.RegisterDataDefineStruct<AiTrafficData>(DATA_DEFINITIONS.DEF_AI_TRAFFIC);
 
         // Register visual guidance data (consolidated position + AGL + ground track)
@@ -2564,7 +2567,7 @@ public class SimConnectManager
                 GroundSpeedKnots = raw.GroundSpeedKnots,
                 OnGround         = raw.SimOnGround >= 0.5,
                 Callsign         = raw.AtcId?.Trim() ?? "",
-                AircraftType     = raw.AtcType?.Trim() ?? "",
+                AircraftType     = ResolveAiAircraftType(raw.AtcType, raw.AtcModel),
             };
             AiTrafficReceived?.Invoke(this, eventArgs);
         }
@@ -2572,6 +2575,35 @@ public class SimConnectManager
         {
             System.Diagnostics.Debug.WriteLine($"[SimConnectManager] AI traffic parse error: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Resolves the best available aircraft type string for TCAS display.
+    /// vPilot/FSLTL-injected VATSIM traffic often has ATC TYPE = "ATCCONN" (a
+    /// multiplayer placeholder); in that case ATC MODEL is a better source since
+    /// FSLTL names its models with the ICAO designator (e.g. "B77W", "A20N").
+    /// </summary>
+    private static string ResolveAiAircraftType(string? atcType, string? atcModel)
+    {
+        string type  = atcType?.Trim()  ?? "";
+        string model = atcModel?.Trim() ?? "";
+
+        // If type is meaningful and not a known placeholder or file-path, use it.
+        if (!string.IsNullOrEmpty(type) &&
+            !type.Equals("ATCCONN",     StringComparison.OrdinalIgnoreCase) &&
+            !type.Equals("ATC",         StringComparison.OrdinalIgnoreCase) &&
+            !type.Contains('.',         StringComparison.Ordinal) &&   // e.g. "atcconn.atc" is a model filename
+            !type.Contains('\\',        StringComparison.Ordinal) &&
+            !type.Contains('/',         StringComparison.Ordinal))
+            return type;
+
+        // Strip any file extension from the model name (e.g. "B77W.mdl" → "B77W").
+        if (model.Contains('.', StringComparison.Ordinal))
+            model = model[..model.LastIndexOf('.')];
+
+        // Fall back to the model name — the TcasForm.ShortenAircraftType parser
+        // handles FSLTL-style names like "B77W FSLTL" or "Airbus A320 Neo".
+        return model;
     }
 
     /// <summary>
