@@ -64,7 +64,10 @@ public partial class MainForm : Form
     // Weather auto-announcement timer
     private System.Windows.Forms.Timer? weatherAnnouncementTimer;
     private double _prevPrecipState = -1;
+    private double _prevPrecipRate = -1;
     private double _prevInCloud = -1;
+    private double _prevVisibility = -1;      // meters; -1 = uninitialized
+    private bool _prevVisLow = false;         // was visibility below 1500m last check
     private readonly HashSet<string> _announcedSigmetKeys = new HashSet<string>();
     private DateTime _sigmetKeysClearedAt = DateTime.MinValue;
 
@@ -293,7 +296,10 @@ public partial class MainForm : Form
 
             // Start weather auto-announcement timer
             _prevPrecipState = -1;
+            _prevPrecipRate = -1;
             _prevInCloud = -1;
+            _prevVisibility = -1;
+            _prevVisLow = false;
             weatherAnnouncementTimer?.Start();
         }
         else if (status.Contains("Disconnected"))
@@ -3752,30 +3758,65 @@ public partial class MainForm : Form
         // Cloud entry/exit
         double inCloud = data.InCloud;
         if (_prevInCloud >= 0 && Math.Abs(inCloud - _prevInCloud) > 0.5)
-        {
             announcer.Announce(inCloud >= 0.5 ? "Entering cloud" : "Leaving cloud");
-        }
         _prevInCloud = inCloud;
 
-        // Precipitation state changes
+        // Precipitation — announce on start, stop, and intensity tier changes
         double precipState = data.PrecipState;
-        if (_prevPrecipState >= 0 && Math.Abs(precipState - _prevPrecipState) > 0.5)
+        double precipRate = data.PrecipRate;
+        bool wasRaining = _prevPrecipState > 0.5;
+        bool isRaining = precipState > 0.5;
+
+        if (_prevPrecipState >= 0)
         {
-            if (precipState < 0.5)
+            if (!wasRaining && isRaining)
             {
+                // Started
+                announcer.Announce($"Precipitation started: {DescribePrecipIntensity(precipRate)}");
+            }
+            else if (wasRaining && !isRaining)
+            {
+                // Stopped
                 announcer.Announce("Precipitation stopped");
             }
-            else
+            else if (isRaining && _prevPrecipRate >= 0 && IntensityTier(precipRate) != IntensityTier(_prevPrecipRate))
             {
-                string desc = MSFSBlindAssist.Services.WeatherService.FormatAmbientWeather(data)
-                    .Split('\n')
-                    .FirstOrDefault(l => l.StartsWith("Precipitation:"))
-                    ?.Replace("Precipitation:", "").Trim() ?? "Precipitation";
-                announcer.Announce($"Precipitation: {desc}");
+                // Intensity changed tier (light → moderate, moderate → heavy, etc.)
+                announcer.Announce($"Precipitation now {DescribePrecipIntensity(precipRate)}");
             }
         }
         _prevPrecipState = precipState;
+        _prevPrecipRate = precipRate;
+
+        // Visibility — announce crossing the 1500 m threshold in either direction
+        double vis = data.Visibility;
+        if (_prevVisibility >= 0)
+        {
+            bool isLow = vis < 1500;
+            if (isLow && !_prevVisLow)
+                announcer.Announce($"Visibility low: {vis / 1000.0:F1} km");
+            else if (!isLow && _prevVisLow)
+                announcer.Announce($"Visibility improving: {vis / 1000.0:F1} km");
+        }
+        _prevVisibility = vis;
+        _prevVisLow = vis < 1500;
     }
+
+    private static int IntensityTier(double rate) => rate switch
+    {
+        < 20 => 0,   // light
+        < 50 => 1,   // moderate
+        < 80 => 2,   // heavy
+        _    => 3    // extreme
+    };
+
+    private static string DescribePrecipIntensity(double rate) => rate switch
+    {
+        < 20 => "light",
+        < 50 => "moderate",
+        < 80 => "heavy",
+        _    => "extreme"
+    };
 
     private async Task CheckSigmetProximityAsync(int rangeNm)
     {
