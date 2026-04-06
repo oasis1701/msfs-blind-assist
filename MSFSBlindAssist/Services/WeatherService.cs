@@ -107,7 +107,7 @@ public static class WeatherService
 
     private const string ISIGMET_URL    = "https://aviationweather.gov/api/data/isigmet?format=geojson";
     private const string AIRSIGMET_URL  = "https://aviationweather.gov/api/data/airsigmet?format=geojson";
-    private const string PIREP_URL_BASE = "https://aviationweather.gov/api/data/pirep?format=geojson&bbox=";
+    private const string PIREP_URL_BASE = "https://aviationweather.gov/api/data/pirep?format=geojson&age=4&bbox=";
 
     // Pressure levels for Open-Meteo winds aloft, ordered low→high altitude
     private static readonly int[] WindPressureLevels =
@@ -176,25 +176,21 @@ public static class WeatherService
     public static async Task<List<WeatherPirep>> GetNearbyPirepsAsync(
         double lat, double lon, double maxRangeNm, bool forceRefresh = false)
     {
-        try
-        {
-            string bbox = BuildBbox(lat, lon, maxRangeNm);
-            string url  = PIREP_URL_BASE + bbox;
+        string bbox = BuildBbox(lat, lon, maxRangeNm);
+        string url  = PIREP_URL_BASE + bbox;
 
-            // Re-fetch if forced, if cache is stale, or if position moved significantly
-            bool stale = (DateTime.UtcNow - _pirepCacheTime).TotalMinutes >= PIREP_CACHE_MINUTES;
-            if (forceRefresh || stale || string.IsNullOrEmpty(_pirepJson))
-                await RefreshCacheAsync(url, true, PIREP_CACHE_MINUTES,
-                    s => _pirepJson = s, () => _pirepCacheTime, t => _pirepCacheTime = t);
-
-            if (string.IsNullOrEmpty(_pirepJson)) return new List<WeatherPirep>();
-            return ParsePireps(_pirepJson, lat, lon, maxRangeNm);
-        }
-        catch (Exception ex)
+        // Re-fetch if forced, if cache is stale, or if position moved significantly
+        bool stale = (DateTime.UtcNow - _pirepCacheTime).TotalMinutes >= PIREP_CACHE_MINUTES;
+        if (forceRefresh || stale || string.IsNullOrEmpty(_pirepJson))
         {
-            System.Diagnostics.Debug.WriteLine($"[WeatherService] PIREPs error: {ex.Message}");
-            return new List<WeatherPirep>();
+            // Fetch directly so HTTP errors propagate to caller
+            string json = await httpClient.GetStringAsync(url);
+            _pirepJson = json;
+            _pirepCacheTime = DateTime.UtcNow;
         }
+
+        if (string.IsNullOrEmpty(_pirepJson)) return new List<WeatherPirep>();
+        return ParsePireps(_pirepJson, lat, lon, maxRangeNm);
     }
 
     // ── Winds aloft ─────────────────────────────────────────────────────────
@@ -556,6 +552,87 @@ public static class WeatherService
         if (string.IsNullOrEmpty(iso)) return "";
         return DateTime.TryParse(iso, out var dt)
             ? dt.ToUniversalTime().ToString("HH:mmZ") : iso;
+    }
+
+    // ── Plain-English decoders ────────────────────────────────────────────────
+
+    public static string DecodeQualifier(string q) => q.Trim().ToUpperInvariant() switch
+    {
+        "LGT"            => "Light",
+        "MOD"            => "Moderate",
+        "SEV"            => "Severe",
+        "EXTRM" or "EXTM"=> "Extreme",
+        "OCCNL"          => "Occasional",
+        "FREQ"           => "Frequent",
+        "ISOL"           => "Isolated",
+        "EMBD"           => "Embedded",
+        ""               => "",
+        var v            => v
+    };
+
+    public static string DecodeIntensity(string s) => s.Trim().ToUpperInvariant() switch
+    {
+        "NEG" or "NIL"   => "None",
+        "LGT"            => "Light",
+        "LGT-MOD"        => "Light to moderate",
+        "MOD"            => "Moderate",
+        "MOD-SEV"        => "Moderate to severe",
+        "SEV"            => "Severe",
+        "EXTRM" or "EXTM"=> "Extreme",
+        ""               => "",
+        var v            => v
+    };
+
+    public static string DecodeTurbType(string s) => s.Trim().ToUpperInvariant() switch
+    {
+        "CHOP"           => "choppy",
+        "CAT"            => "clear air",
+        "LLWS"           => "wind shear",
+        "MWAVE"          => "mountain wave",
+        ""               => "",
+        var v            => v.ToLower()
+    };
+
+    public static string DecodeIcingType(string s) => s.Trim().ToUpperInvariant() switch
+    {
+        "RIME"           => "rime",
+        "CLEAR" or "GLAZE" => "clear ice",
+        "MIXED" or "MXD" => "mixed",
+        ""               => "",
+        var v            => v.ToLower()
+    };
+
+    /// <summary>Converts FL050-FL180 / SFC-FL050 to "5,000 ft to 18,000 ft" etc.</summary>
+    public static string DecodeAltitudeRange(int lowFt, int highFt)
+    {
+        string low  = lowFt  <= 0 ? "surface"         : $"{lowFt:N0} ft";
+        string high = highFt <= 0 ? "unlimited"        : $"{highFt:N0} ft";
+        if (lowFt <= 0 && highFt <= 0) return "";
+        return $"{low} to {high}";
+    }
+
+    /// <summary>Builds a decoded hazard summary string for a PIREP.</summary>
+    public static string DecodePirepHazard(WeatherPirep p)
+    {
+        var parts = new List<string>();
+
+        if (!string.IsNullOrEmpty(p.TurbulenceIntensity))
+        {
+            string t = $"{DecodeIntensity(p.TurbulenceIntensity)} turbulence";
+            if (!string.IsNullOrEmpty(p.TurbulenceType))
+                t += $" ({DecodeTurbType(p.TurbulenceType)})";
+            parts.Add(t);
+        }
+
+        if (!string.IsNullOrEmpty(p.IcingIntensity))
+        {
+            string i = $"{DecodeIntensity(p.IcingIntensity)} icing";
+            if (!string.IsNullOrEmpty(p.IcingType))
+                i += $" ({DecodeIcingType(p.IcingType)})";
+            parts.Add(i);
+        }
+
+        return parts.Count > 0 ? string.Join(", ", parts) : "weather report";
     }
 
     // ── Ambient weather formatting ────────────────────────────────────────────

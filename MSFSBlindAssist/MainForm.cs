@@ -1337,7 +1337,8 @@ public partial class MainForm : Form
             settings.WeatherAutoAnnounceEnabled,
             settings.SigmetProximityAlertsEnabled,
             settings.PirepProximityAlertsEnabled,
-            settings.SigmetProximityRangeNm);
+            settings.SigmetProximityRangeNm,
+            settings.DecodeWeatherAdvisories);
 
         if (form.ShowDialog(this) == DialogResult.OK)
         {
@@ -1345,8 +1346,9 @@ public partial class MainForm : Form
             settings.SigmetProximityAlertsEnabled  = form.SigmetProximityAlertsEnabled;
             settings.PirepProximityAlertsEnabled   = form.PirepProximityAlertsEnabled;
             settings.SigmetProximityRangeNm        = form.SigmetProximityRangeNm;
+            settings.DecodeWeatherAdvisories       = form.DecodeWeatherAdvisories;
             MSFSBlindAssist.Settings.SettingsManager.Save();
-            announcer.Announce("Weather settings saved");
+            announcer.Announce("Weather radar settings saved");
         }
     }
 

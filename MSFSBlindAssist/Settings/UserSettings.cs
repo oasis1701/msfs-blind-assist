@@ -110,6 +110,7 @@ public class UserSettings
         public bool SigmetProximityAlertsEnabled { get; set; } = false;
         public bool PirepProximityAlertsEnabled { get; set; } = false;
         public int SigmetProximityRangeNm { get; set; } = 100;
+        public bool DecodeWeatherAdvisories { get; set; } = false;
 
         /// <summary>
         /// Creates a new UserSettings instance with default values.
@@ -170,7 +171,8 @@ public class UserSettings
             WeatherAutoAnnounceEnabled = WeatherAutoAnnounceEnabled,
             SigmetProximityAlertsEnabled = SigmetProximityAlertsEnabled,
             PirepProximityAlertsEnabled = PirepProximityAlertsEnabled,
-            SigmetProximityRangeNm = SigmetProximityRangeNm
+            SigmetProximityRangeNm = SigmetProximityRangeNm,
+            DecodeWeatherAdvisories = DecodeWeatherAdvisories
         };
     }
 }

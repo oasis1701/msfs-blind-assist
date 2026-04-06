@@ -27,6 +27,7 @@ public class WeatherRadarForm : Form
     private Button _closeButton = null!;
 
     private bool _isFetching = false;
+    private System.Windows.Forms.Timer? _autoRefreshTimer;
 
     public WeatherRadarForm(ScreenReaderAnnouncer announcer, SimConnectManager simConnect)
     {
@@ -167,8 +168,14 @@ public class WeatherRadarForm : Form
             BringToFront(); Activate();
             TopMost = true; TopMost = false;
             _currentWeatherBox.Focus();
-            await RefreshAsync(forceRefresh: false);
+            await RefreshAsync(forceRefresh: true);
+
+            _autoRefreshTimer = new System.Windows.Forms.Timer { Interval = 5 * 60 * 1000 };
+            _autoRefreshTimer.Tick += (_, _) => _ = RefreshAsync(forceRefresh: true);
+            _autoRefreshTimer.Start();
         };
+
+        FormClosed += (s, e) => _autoRefreshTimer?.Stop();
 
         KeyDown += (s, e) =>
         {
@@ -264,18 +271,23 @@ public class WeatherRadarForm : Form
         if (lat == 0 && lon == 0)
             return "Aircraft position unavailable — connect to simulator first.";
 
-        var settings    = SettingsManager.Current;
+        var settings     = SettingsManager.Current;
         int displayRange = Math.Max(settings.SigmetProximityRangeNm, 300);
+        bool decode      = settings.DecodeWeatherAdvisories;
 
         var sigmetTask = WeatherService.GetNearbyAdvisoriesAsync(lat, lon, displayRange, forceRefresh);
-        var pirepTask  = WeatherService.GetNearbyPirepsAsync(lat, lon, displayRange, forceRefresh);
-        await Task.WhenAll(sigmetTask, pirepTask);
+        List<WeatherPirep>? pireps = null;
+        string? pirepError = null;
+        try
+        {
+            pireps = await WeatherService.GetNearbyPirepsAsync(lat, lon, displayRange, forceRefresh);
+        }
+        catch (Exception ex)
+        {
+            pirepError = ex.Message;
+        }
 
-        var sigmets = sigmetTask.Result;
-        var pireps  = pirepTask.Result;
-
-        if (sigmets.Count == 0 && pireps.Count == 0)
-            return $"No active advisories or pilot reports found within {displayRange} nm.";
+        var sigmets = await sigmetTask;
 
         var sb = new System.Text.StringBuilder();
         sb.AppendLine($"Position: {lat:F2}°, {lon:F2}° | Range: {displayRange} nm");
@@ -286,23 +298,44 @@ public class WeatherRadarForm : Form
             sb.AppendLine($"SIGMETs / AIRMETs ({sigmets.Count}):");
             foreach (var adv in sigmets)
             {
+                string qualifier = decode && !string.IsNullOrEmpty(adv.Qualifier)
+                    ? WeatherService.DecodeQualifier(adv.Qualifier) : adv.Qualifier;
+                string altRange = decode
+                    ? WeatherService.DecodeAltitudeRange(adv.AltLowFt, adv.AltHighFt)
+                    : adv.AltitudeRange;
+
                 sb.AppendLine($"[{adv.AdvisoryType}] {adv.HazardLabel}" +
-                    (string.IsNullOrEmpty(adv.Qualifier) ? "" : $" — {adv.Qualifier}"));
-                if (!string.IsNullOrEmpty(adv.AltitudeRange))
-                    sb.AppendLine($"  Altitude: {adv.AltitudeRange}");
+                    (string.IsNullOrEmpty(qualifier) ? "" : $" — {qualifier}"));
+                if (!string.IsNullOrEmpty(altRange))
+                    sb.AppendLine($"  Altitude: {altRange}");
                 sb.AppendLine($"  {adv.BearingDeg:F0}° / {adv.DistanceNm:F0} nm" +
                     (adv.ValidFrom.Length > 0 ? $"  |  {adv.ValidFrom}–{adv.ValidTo}" : ""));
                 sb.AppendLine();
             }
         }
+        else
+        {
+            sb.AppendLine("No active SIGMETs or AIRMETs found.");
+            sb.AppendLine();
+        }
 
-        if (pireps.Count > 0)
+        if (pirepError != null)
+        {
+            sb.AppendLine($"Pilot Reports: fetch error — {pirepError}");
+        }
+        else if (pireps == null || pireps.Count == 0)
+        {
+            sb.AppendLine($"No pilot reports (turbulence/icing) found within {displayRange} nm.");
+        }
+        else
         {
             sb.AppendLine($"Pilot Reports ({pireps.Count}):");
             foreach (var p in pireps)
             {
-                int fl = p.AltitudeFt / 100;
-                sb.AppendLine($"[PIREP] {p.HazardSummary} — FL{fl:D3}");
+                string hazard = decode ? WeatherService.DecodePirepHazard(p) : p.HazardSummary;
+                string alt    = decode ? $"{p.AltitudeFt:N0} ft" : $"FL{p.AltitudeFt / 100:D3}";
+
+                sb.AppendLine($"[PIREP] {hazard} — {alt}");
                 sb.AppendLine($"  {p.BearingDeg:F0}° / {p.DistanceNm:F0} nm" +
                     (p.ObsTime.Length > 0 ? $"  |  {p.ObsTime}" : "") +
                     (p.AircraftType.Length > 0 ? $"  |  {p.AircraftType}" : ""));
