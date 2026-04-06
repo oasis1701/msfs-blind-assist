@@ -20,6 +20,8 @@ public class WeatherRadarForm : Form
     private TextBox _currentWeatherBox = null!;
     private Label _advisoriesLabel = null!;
     private TextBox _advisoriesBox = null!;
+    private Label _windsAloftLabel = null!;
+    private TextBox _windsAloftBox = null!;
     private Label _statusLabel = null!;
     private Button _refreshButton = null!;
     private Button _closeButton = null!;
@@ -43,7 +45,7 @@ public class WeatherRadarForm : Form
     private void InitializeComponent()
     {
         Text = "Weather Radar";
-        Size = new Size(600, 560);
+        Size = new Size(600, 680);
         StartPosition = FormStartPosition.CenterScreen;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -51,7 +53,7 @@ public class WeatherRadarForm : Form
         ShowInTaskbar = true;
         KeyPreview = true;
 
-        // Current position weather
+        // ── Current position weather ──────────────────────────────────────
         _currentWeatherLabel = new Label
         {
             Text = "Weather at Current Position:",
@@ -63,64 +65,78 @@ public class WeatherRadarForm : Form
         _currentWeatherBox = new TextBox
         {
             Location = new Point(12, 36),
-            Size = new Size(566, 120),
-            Multiline = true,
-            ReadOnly = true,
-            ScrollBars = ScrollBars.Vertical,
+            Size = new Size(566, 100),
+            Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical,
             Font = new Font("Consolas", 9),
-            Text = "Press F5 or click Refresh to fetch weather data.",
+            Text = "Press F5 or Refresh to fetch weather data.",
             AccessibleName = "Weather at Current Position",
             AccessibleDescription = "Ambient weather conditions at aircraft position from simulator"
         };
 
-        // Nearby advisories
+        // ── Advisories (SIGMETs, AIRMETs, PIREPs) ────────────────────────
         _advisoriesLabel = new Label
         {
-            Text = "Nearby Weather Advisories (SIGMETs / AIRMETs):",
-            Location = new Point(12, 172),
+            Text = "Nearby Advisories (SIGMETs / AIRMETs / PIREPs):",
+            Location = new Point(12, 148),
             Size = new Size(570, 20),
-            AccessibleName = "Nearby Weather Advisories label"
+            AccessibleName = "Nearby Advisories label"
         };
 
         _advisoriesBox = new TextBox
         {
-            Location = new Point(12, 196),
-            Size = new Size(566, 260),
-            Multiline = true,
-            ReadOnly = true,
-            ScrollBars = ScrollBars.Vertical,
+            Location = new Point(12, 172),
+            Size = new Size(566, 210),
+            Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical,
             Font = new Font("Consolas", 9),
-            Text = "Press F5 or click Refresh to fetch nearby advisories.",
-            AccessibleName = "Nearby Weather Advisories",
-            AccessibleDescription = "Active SIGMETs and AIRMETs near the aircraft from aviationweather.gov"
+            Text = "Press F5 or Refresh to fetch advisories.",
+            AccessibleName = "Nearby Advisories",
+            AccessibleDescription = "Active SIGMETs, AIRMETs, and pilot reports near the aircraft"
         };
 
-        // Status label
+        // ── Winds Aloft ───────────────────────────────────────────────────
+        _windsAloftLabel = new Label
+        {
+            Text = "Winds Aloft (±5000 ft):",
+            Location = new Point(12, 394),
+            Size = new Size(570, 20),
+            AccessibleName = "Winds Aloft label"
+        };
+
+        _windsAloftBox = new TextBox
+        {
+            Location = new Point(12, 418),
+            Size = new Size(566, 170),
+            Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical,
+            Font = new Font("Consolas", 9),
+            Text = "Press F5 or Refresh to fetch winds aloft.",
+            AccessibleName = "Winds Aloft",
+            AccessibleDescription = "Forecast wind direction and speed at each 1000 ft from 5000 ft below to 5000 ft above aircraft altitude"
+        };
+
+        // ── Status + buttons ──────────────────────────────────────────────
         _statusLabel = new Label
         {
-            Location = new Point(12, 470),
-            Size = new Size(380, 20),
+            Location = new Point(12, 604),
+            Size = new Size(370, 20),
             Text = "",
             AccessibleName = "Status"
         };
 
-        // Refresh button
         _refreshButton = new Button
         {
             Text = "&Refresh (F5)",
-            Location = new Point(400, 464),
+            Location = new Point(390, 598),
             Size = new Size(100, 28),
             AccessibleName = "Refresh",
-            AccessibleDescription = "Fetch current weather and advisories"
+            AccessibleDescription = "Fetch current weather, advisories, and winds aloft"
         };
         _refreshButton.Click += (s, e) => _ = RefreshAsync(forceRefresh: true);
 
-        // Close button
         _closeButton = new Button
         {
             Text = "&Close",
-            Location = new Point(510, 464),
-            Size = new Size(68, 28),
+            Location = new Point(500, 598),
+            Size = new Size(78, 28),
             DialogResult = DialogResult.OK,
             AccessibleName = "Close",
             AccessibleDescription = "Close weather radar window"
@@ -131,6 +147,7 @@ public class WeatherRadarForm : Form
         {
             _currentWeatherLabel, _currentWeatherBox,
             _advisoriesLabel, _advisoriesBox,
+            _windsAloftLabel, _windsAloftBox,
             _statusLabel, _refreshButton, _closeButton
         });
 
@@ -141,49 +158,46 @@ public class WeatherRadarForm : Form
     {
         _currentWeatherBox.TabIndex = 0;
         _advisoriesBox.TabIndex = 1;
-        _refreshButton.TabIndex = 2;
-        _closeButton.TabIndex = 3;
+        _windsAloftBox.TabIndex = 2;
+        _refreshButton.TabIndex = 3;
+        _closeButton.TabIndex = 4;
 
         Load += async (s, e) =>
         {
-            BringToFront();
-            Activate();
-            TopMost = true;
-            TopMost = false;
+            BringToFront(); Activate();
+            TopMost = true; TopMost = false;
             _currentWeatherBox.Focus();
             await RefreshAsync(forceRefresh: false);
         };
 
-        KeyDown += WeatherRadarForm_KeyDown;
-    }
-
-    private void WeatherRadarForm_KeyDown(object? sender, KeyEventArgs e)
-    {
-        if (e.KeyCode == Keys.F5)
+        KeyDown += (s, e) =>
         {
-            e.Handled = true;
-            _ = RefreshAsync(forceRefresh: true);
-        }
+            if (e.KeyCode == Keys.F5) { e.Handled = true; _ = RefreshAsync(forceRefresh: true); }
+        };
     }
 
     private async Task RefreshAsync(bool forceRefresh)
     {
         if (_isFetching) return;
         _isFetching = true;
-
         SetStatus("Fetching weather data...");
         _refreshButton.Enabled = false;
 
         try
         {
-            // Fetch ambient weather from SimConnect and advisories from aviationweather.gov in parallel
-            Task<string> ambientTask = FetchAmbientWeatherAsync();
-            Task<string> advisoriesTask = FetchAdvisoriesAsync(forceRefresh);
+            // Get aircraft position (needed for advisories and winds aloft)
+            (double lat, double lon, int altFt) = await GetPositionAsync();
 
-            await Task.WhenAll(ambientTask, advisoriesTask);
+            // Fetch all three in parallel
+            var ambientTask    = FetchAmbientAsync();
+            var advisoriesTask = FetchAdvisoriesAsync(lat, lon, forceRefresh);
+            var windsTask      = FetchWindsAloftAsync(lat, lon, altFt, forceRefresh);
+
+            await Task.WhenAll(ambientTask, advisoriesTask, windsTask);
 
             _currentWeatherBox.Text = ambientTask.Result;
-            _advisoriesBox.Text = advisoriesTask.Result;
+            _advisoriesBox.Text     = advisoriesTask.Result;
+            _windsAloftBox.Text     = windsTask.Result;
 
             SetStatus($"Last updated: {DateTime.Now:HH:mm:ss}");
         }
@@ -198,116 +212,156 @@ public class WeatherRadarForm : Form
         }
     }
 
-    private Task<string> FetchAmbientWeatherAsync()
+    // ── Position helper ───────────────────────────────────────────────────────
+
+    private async Task<(double lat, double lon, int altFt)> GetPositionAsync()
+    {
+        var last = _simConnect.LastKnownPosition;
+        double lat = last?.Latitude ?? 0;
+        double lon = last?.Longitude ?? 0;
+        int altFt  = (int)(last?.Altitude ?? 0);
+
+        if (lat == 0 && lon == 0 && _simConnect.IsConnected)
+        {
+            var tcs = new TaskCompletionSource<SimConnectManager.AircraftPosition>();
+            _simConnect.RequestAircraftPositionAsync(p => tcs.TrySetResult(p));
+            _ = Task.Delay(5000).ContinueWith(_ => tcs.TrySetResult(default));
+            var pos = await tcs.Task;
+            lat   = pos.Latitude;
+            lon   = pos.Longitude;
+            altFt = (int)pos.Altitude;
+        }
+
+        return (lat, lon, altFt);
+    }
+
+    // ── Ambient weather ───────────────────────────────────────────────────────
+
+    private Task<string> FetchAmbientAsync()
     {
         var tcs = new TaskCompletionSource<string>();
 
         if (!_simConnect.IsConnected)
-        {
-            tcs.SetResult("Not connected to simulator.");
-            return tcs.Task;
-        }
+        { tcs.SetResult("Not connected to simulator."); return tcs.Task; }
 
         _simConnect.RequestWeatherInfo(data =>
         {
             string text = WeatherService.FormatAmbientWeather(data);
-            if (IsHandleCreated && !IsDisposed)
-                Invoke(() => tcs.TrySetResult(text));
-            else
-                tcs.TrySetResult(text);
+            if (IsHandleCreated && !IsDisposed) Invoke(() => tcs.TrySetResult(text));
+            else tcs.TrySetResult(text);
         });
 
-        // Timeout after 5 seconds
-        Task.Delay(5000).ContinueWith(_ =>
+        _ = Task.Delay(5000).ContinueWith(_ =>
             tcs.TrySetResult("Timed out waiting for simulator weather data."));
 
         return tcs.Task;
     }
 
-    private async Task<string> FetchAdvisoriesAsync(bool forceRefresh)
+    // ── Advisories (SIGMETs + PIREPs) ────────────────────────────────────────
+
+    private async Task<string> FetchAdvisoriesAsync(double lat, double lon, bool forceRefresh)
     {
-        if (!_simConnect.IsConnected)
-            return "Not connected to simulator — cannot determine aircraft position.";
-
-        var lastPos = _simConnect.LastKnownPosition;
-        double lat = lastPos?.Latitude ?? 0;
-        double lon = lastPos?.Longitude ?? 0;
-
         if (lat == 0 && lon == 0)
-        {
-            // Request a fresh position
-            var posTcs = new TaskCompletionSource<SimConnectManager.AircraftPosition>();
-            _simConnect.RequestAircraftPositionAsync(pos => posTcs.TrySetResult(pos));
-            _ = Task.Delay(5000).ContinueWith(_ => posTcs.TrySetResult(default));
-            var freshPos = await posTcs.Task;
-            lat = freshPos.Latitude;
-            lon = freshPos.Longitude;
-        }
+            return "Aircraft position unavailable — connect to simulator first.";
 
-        if (lat == 0 && lon == 0)
-            return "Could not determine aircraft position.";
+        var settings    = SettingsManager.Current;
+        int displayRange = Math.Max(settings.SigmetProximityRangeNm, 300);
 
-        var settings = SettingsManager.Current;
-        int rangeNm = settings.SigmetProximityRangeNm > 0 ? settings.SigmetProximityRangeNm : 300;
-        // Show everything within 300 nm in the form regardless of proximity alert setting
-        int displayRange = Math.Max(rangeNm, 300);
+        var sigmetTask = WeatherService.GetNearbyAdvisoriesAsync(lat, lon, displayRange, forceRefresh);
+        var pirepTask  = WeatherService.GetNearbyPirepsAsync(lat, lon, displayRange, forceRefresh);
+        await Task.WhenAll(sigmetTask, pirepTask);
 
-        List<WeatherAdvisory> advisories = await WeatherService.GetNearbyAdvisoriesAsync(
-            lat, lon, displayRange, forceRefresh);
+        var sigmets = sigmetTask.Result;
+        var pireps  = pirepTask.Result;
 
-        if (advisories.Count == 0)
-            return $"No active SIGMETs or AIRMETs found within {displayRange} nm.";
+        if (sigmets.Count == 0 && pireps.Count == 0)
+            return $"No active advisories or pilot reports found within {displayRange} nm.";
 
         var sb = new System.Text.StringBuilder();
-        sb.AppendLine($"Aircraft: {lat:F2}°, {lon:F2}° | {advisories.Count} advisories within {displayRange} nm");
-        sb.AppendLine(new string('─', 60));
+        sb.AppendLine($"Position: {lat:F2}°, {lon:F2}° | Range: {displayRange} nm");
+        sb.AppendLine(new string('─', 58));
 
-        foreach (var adv in advisories)
+        if (sigmets.Count > 0)
         {
-            sb.AppendLine($"[{adv.AdvisoryType}] {adv.HazardLabel}" +
-                (string.IsNullOrEmpty(adv.Qualifier) ? "" : $" — {adv.Qualifier}"));
+            sb.AppendLine($"SIGMETs / AIRMETs ({sigmets.Count}):");
+            foreach (var adv in sigmets)
+            {
+                sb.AppendLine($"[{adv.AdvisoryType}] {adv.HazardLabel}" +
+                    (string.IsNullOrEmpty(adv.Qualifier) ? "" : $" — {adv.Qualifier}"));
+                if (!string.IsNullOrEmpty(adv.AltitudeRange))
+                    sb.AppendLine($"  Altitude: {adv.AltitudeRange}");
+                sb.AppendLine($"  {adv.BearingDeg:F0}° / {adv.DistanceNm:F0} nm" +
+                    (adv.ValidFrom.Length > 0 ? $"  |  {adv.ValidFrom}–{adv.ValidTo}" : ""));
+                sb.AppendLine();
+            }
+        }
 
-            if (!string.IsNullOrEmpty(adv.AltitudeRange))
-                sb.AppendLine($"  Altitude: {adv.AltitudeRange}");
-
-            sb.AppendLine($"  Bearing: {adv.BearingDeg:F0}°  Distance: {adv.DistanceNm:F0} nm");
-
-            if (!string.IsNullOrEmpty(adv.ValidFrom) || !string.IsNullOrEmpty(adv.ValidTo))
-                sb.AppendLine($"  Valid: {adv.ValidFrom} – {adv.ValidTo}");
-
-            sb.AppendLine();
+        if (pireps.Count > 0)
+        {
+            sb.AppendLine($"Pilot Reports ({pireps.Count}):");
+            foreach (var p in pireps)
+            {
+                int fl = p.AltitudeFt / 100;
+                sb.AppendLine($"[PIREP] {p.HazardSummary} — FL{fl:D3}");
+                sb.AppendLine($"  {p.BearingDeg:F0}° / {p.DistanceNm:F0} nm" +
+                    (p.ObsTime.Length > 0 ? $"  |  {p.ObsTime}" : "") +
+                    (p.AircraftType.Length > 0 ? $"  |  {p.AircraftType}" : ""));
+                sb.AppendLine();
+            }
         }
 
         return sb.ToString().TrimEnd();
     }
 
+    // ── Winds aloft ───────────────────────────────────────────────────────────
+
+    private async Task<string> FetchWindsAloftAsync(double lat, double lon, int altFt, bool forceRefresh)
+    {
+        if (lat == 0 && lon == 0)
+            return "Aircraft position unavailable — connect to simulator first.";
+
+        var winds = await WeatherService.GetWindsAloftAsync(lat, lon, altFt, forceRefresh);
+
+        if (winds.Count == 0)
+            return "Winds aloft data unavailable.";
+
+        var sb = new System.Text.StringBuilder();
+        int acFl = altFt / 100;
+        sb.AppendLine($"Aircraft: FL{acFl:D3} ({altFt} ft)  |  forecast winds:");
+        sb.AppendLine(new string('─', 38));
+
+        foreach (var w in winds)
+        {
+            int fl = w.AltitudeFt / 100;
+            string marker = Math.Abs(w.AltitudeFt - altFt) < 500 ? " ◄" : "";
+            sb.AppendLine($"FL{fl:D3} ({w.AltitudeFt,6:N0} ft):  {w.DirectionDeg:F0}° / {w.SpeedKts:F0} kts{marker}");
+        }
+
+        return sb.ToString().TrimEnd();
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
     private void SetStatus(string text)
     {
-        if (IsHandleCreated && !IsDisposed)
-            _statusLabel.Text = text;
+        if (IsHandleCreated && !IsDisposed) _statusLabel.Text = text;
     }
 
     private void CloseButton_Click(object? sender, EventArgs e)
     {
         Close();
-        if (_previousWindow != IntPtr.Zero)
-            SetForegroundWindow(_previousWindow);
+        if (_previousWindow != IntPtr.Zero) SetForegroundWindow(_previousWindow);
     }
 
     protected override bool ProcessDialogKey(Keys keyData)
     {
-        if (keyData == Keys.Escape)
-        {
-            Close();
-            return true;
-        }
+        if (keyData == Keys.Escape) { Close(); return true; }
         return base.ProcessDialogKey(keyData);
     }
 
     protected override void OnFormClosed(FormClosedEventArgs e)
     {
         base.OnFormClosed(e);
-        if (_previousWindow != IntPtr.Zero)
-            SetForegroundWindow(_previousWindow);
+        if (_previousWindow != IntPtr.Zero) SetForegroundWindow(_previousWindow);
     }
 }

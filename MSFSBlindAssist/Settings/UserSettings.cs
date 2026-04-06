@@ -108,6 +108,7 @@ public class UserSettings
         // Weather Settings
         public bool WeatherAutoAnnounceEnabled { get; set; } = false;
         public bool SigmetProximityAlertsEnabled { get; set; } = false;
+        public bool PirepProximityAlertsEnabled { get; set; } = false;
         public int SigmetProximityRangeNm { get; set; } = 100;
 
         /// <summary>
@@ -168,6 +169,7 @@ public class UserSettings
             FenixDisabledMonitorVariables = new List<string>(FenixDisabledMonitorVariables),
             WeatherAutoAnnounceEnabled = WeatherAutoAnnounceEnabled,
             SigmetProximityAlertsEnabled = SigmetProximityAlertsEnabled,
+            PirepProximityAlertsEnabled = PirepProximityAlertsEnabled,
             SigmetProximityRangeNm = SigmetProximityRangeNm
         };
     }

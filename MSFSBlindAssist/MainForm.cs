@@ -69,6 +69,7 @@ public partial class MainForm : Form
     private double _prevVisibility = -1;      // meters; -1 = uninitialized
     private bool _prevVisLow = false;         // was visibility below 1500m last check
     private readonly HashSet<string> _announcedSigmetKeys = new HashSet<string>();
+    private readonly HashSet<string> _announcedPirepKeys  = new HashSet<string>();
     private DateTime _sigmetKeysClearedAt = DateTime.MinValue;
 
     // Current state
@@ -300,6 +301,9 @@ public partial class MainForm : Form
             _prevInCloud = -1;
             _prevVisibility = -1;
             _prevVisLow = false;
+            _announcedSigmetKeys.Clear();
+            _announcedPirepKeys.Clear();
+            _sigmetKeysClearedAt = DateTime.UtcNow;
             weatherAnnouncementTimer?.Start();
         }
         else if (status.Contains("Disconnected"))
@@ -1332,13 +1336,15 @@ public partial class MainForm : Form
         using var form = new Forms.WeatherSettingsForm(
             settings.WeatherAutoAnnounceEnabled,
             settings.SigmetProximityAlertsEnabled,
+            settings.PirepProximityAlertsEnabled,
             settings.SigmetProximityRangeNm);
 
         if (form.ShowDialog(this) == DialogResult.OK)
         {
-            settings.WeatherAutoAnnounceEnabled = form.WeatherAutoAnnounceEnabled;
-            settings.SigmetProximityAlertsEnabled = form.SigmetProximityAlertsEnabled;
-            settings.SigmetProximityRangeNm = form.SigmetProximityRangeNm;
+            settings.WeatherAutoAnnounceEnabled    = form.WeatherAutoAnnounceEnabled;
+            settings.SigmetProximityAlertsEnabled  = form.SigmetProximityAlertsEnabled;
+            settings.PirepProximityAlertsEnabled   = form.PirepProximityAlertsEnabled;
+            settings.SigmetProximityRangeNm        = form.SigmetProximityRangeNm;
             MSFSBlindAssist.Settings.SettingsManager.Save();
             announcer.Announce("Weather settings saved");
         }
@@ -3740,8 +3746,9 @@ public partial class MainForm : Form
         if (settings.WeatherAutoAnnounceEnabled)
             CheckAmbientWeatherChanges();
 
-        if (settings.SigmetProximityAlertsEnabled)
-            _ = CheckSigmetProximityAsync(settings.SigmetProximityRangeNm);
+        if (settings.SigmetProximityAlertsEnabled || settings.PirepProximityAlertsEnabled)
+            _ = CheckWeatherProximityAsync(settings.SigmetProximityRangeNm,
+                    settings.SigmetProximityAlertsEnabled, settings.PirepProximityAlertsEnabled);
     }
 
     private void CheckAmbientWeatherChanges()
@@ -3818,43 +3825,70 @@ public partial class MainForm : Form
         _    => "extreme"
     };
 
-    private async Task CheckSigmetProximityAsync(int rangeNm)
+    private async Task CheckWeatherProximityAsync(int rangeNm, bool checkSigmets, bool checkPireps)
     {
         try
         {
             var lastPos = simConnectManager.LastKnownPosition;
             if (lastPos == null) return;
-            var position = lastPos.Value;
-            if (position.Latitude == 0 && position.Longitude == 0) return;
+            var pos = lastPos.Value;
+            if (pos.Latitude == 0 && pos.Longitude == 0) return;
 
             // Clear stale announced keys every 15 minutes
             if ((DateTime.UtcNow - _sigmetKeysClearedAt).TotalMinutes > 15)
             {
                 _announcedSigmetKeys.Clear();
+                _announcedPirepKeys.Clear();
                 _sigmetKeysClearedAt = DateTime.UtcNow;
             }
 
-            var advisories = await MSFSBlindAssist.Services.WeatherService.GetNearbyAdvisoriesAsync(
-                position.Latitude, position.Longitude, rangeNm);
-
             if (!IsHandleCreated || IsDisposed) return;
 
-            foreach (var adv in advisories)
+            if (checkSigmets)
             {
-                string key = $"{adv.AdvisoryType}_{adv.Hazard}_{adv.ValidFrom}_{adv.ValidTo}";
-                if (_announcedSigmetKeys.Contains(key)) continue;
+                var advisories = await MSFSBlindAssist.Services.WeatherService.GetNearbyAdvisoriesAsync(
+                    pos.Latitude, pos.Longitude, rangeNm);
 
-                _announcedSigmetKeys.Add(key);
-                string msg = $"{adv.AdvisoryType}: {adv.HazardLabel}";
-                if (!string.IsNullOrEmpty(adv.AltitudeRange))
-                    msg += $", {adv.AltitudeRange}";
-                msg += $", bearing {adv.BearingDeg:F0} degrees, {adv.DistanceNm:F0} nautical miles";
-                Invoke(() => announcer.Announce(msg));
+                if (!IsHandleCreated || IsDisposed) return;
+
+                foreach (var adv in advisories)
+                {
+                    string key = $"{adv.AdvisoryType}_{adv.Hazard}_{adv.ValidFrom}_{adv.ValidTo}";
+                    if (_announcedSigmetKeys.Contains(key)) continue;
+                    _announcedSigmetKeys.Add(key);
+
+                    string msg = $"{adv.AdvisoryType}: {adv.HazardLabel}";
+                    if (!string.IsNullOrEmpty(adv.AltitudeRange)) msg += $", {adv.AltitudeRange}";
+                    msg += $", bearing {adv.BearingDeg:F0} degrees, {adv.DistanceNm:F0} nautical miles";
+                    Invoke(() => announcer.Announce(msg));
+                }
+            }
+
+            if (checkPireps)
+            {
+                var pireps = await MSFSBlindAssist.Services.WeatherService.GetNearbyPirepsAsync(
+                    pos.Latitude, pos.Longitude, rangeNm);
+
+                if (!IsHandleCreated || IsDisposed) return;
+
+                foreach (var p in pireps)
+                {
+                    if (!p.IsSignificantHazard) continue;  // skip light reports
+
+                    string key = $"PIREP_{p.ObsTime}_{p.AltitudeFt}_{p.TurbulenceIntensity}_{p.IcingIntensity}";
+                    if (_announcedPirepKeys.Contains(key)) continue;
+                    _announcedPirepKeys.Add(key);
+
+                    int fl = p.AltitudeFt / 100;
+                    string msg = $"Pilot report: {p.HazardSummary} at FL{fl:D3}";
+                    msg += $", bearing {p.BearingDeg:F0} degrees, {p.DistanceNm:F0} nautical miles";
+                    Invoke(() => announcer.Announce(msg));
+                }
             }
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[MainForm] SIGMET proximity check error: {ex.Message}");
+            System.Diagnostics.Debug.WriteLine($"[MainForm] Weather proximity check error: {ex.Message}");
         }
     }
 
