@@ -42,6 +42,7 @@ public partial class MainForm : Form
     private TrackFixForm? trackFixForm;
     private TcasForm? tcasForm;
     private MSFSBlindAssist.Services.TcasService? tcasService;
+    private Forms.WeatherRadarForm? weatherRadarForm;
     private MSFSBlindAssist.Navigation.FlightPlanManager flightPlanManager = null!;
     private MSFSBlindAssist.Navigation.WaypointTracker waypointTracker = null!;
 
@@ -59,6 +60,13 @@ public partial class MainForm : Form
 
     // Nearest city announcement timer (periodic automatic announcements)
     private System.Windows.Forms.Timer? nearestCityAnnouncementTimer;
+
+    // Weather auto-announcement timer
+    private System.Windows.Forms.Timer? weatherAnnouncementTimer;
+    private double _prevPrecipState = -1;
+    private double _prevInCloud = -1;
+    private readonly HashSet<string> _announcedSigmetKeys = new HashSet<string>();
+    private DateTime _sigmetKeysClearedAt = DateTime.MinValue;
 
     // Current state
     private string currentSection = "";
@@ -198,6 +206,11 @@ public partial class MainForm : Form
         nearestCityAnnouncementTimer.Tick += NearestCityAnnouncementTimer_Tick;
         // Timer interval and start/stop handled by settings and connection status
 
+        // Initialize weather auto-announcement timer (30 second interval)
+        weatherAnnouncementTimer = new System.Windows.Forms.Timer();
+        weatherAnnouncementTimer.Interval = 30000;
+        weatherAnnouncementTimer.Tick += WeatherAnnouncementTimer_Tick;
+
         // Update status bar with database info
         UpdateDatabaseStatusDisplay();
 
@@ -277,6 +290,11 @@ public partial class MainForm : Form
 
             // Start nearest city announcement timer if enabled in settings
             StartNearestCityAnnouncementTimer();
+
+            // Start weather auto-announcement timer
+            _prevPrecipState = -1;
+            _prevInCloud = -1;
+            weatherAnnouncementTimer?.Start();
         }
         else if (status.Contains("Disconnected"))
         {
@@ -285,6 +303,9 @@ public partial class MainForm : Form
 
             // Stop nearest city announcement timer
             nearestCityAnnouncementTimer?.Stop();
+
+            // Stop weather auto-announcement timer
+            weatherAnnouncementTimer?.Stop();
 
             // Clear event queue and reset counters
             while (eventQueue.TryDequeue(out _)) { }
@@ -1296,6 +1317,40 @@ public partial class MainForm : Form
         }
     }
 
+
+    private void WeatherRadarMenuItem_Click(object? sender, EventArgs e) => OpenWeatherRadarWindow();
+
+    private void WeatherSettingsMenuItem_Click(object? sender, EventArgs e)
+    {
+        var settings = MSFSBlindAssist.Settings.SettingsManager.Current;
+        using var form = new Forms.WeatherSettingsForm(
+            settings.WeatherAutoAnnounceEnabled,
+            settings.SigmetProximityAlertsEnabled,
+            settings.SigmetProximityRangeNm);
+
+        if (form.ShowDialog(this) == DialogResult.OK)
+        {
+            settings.WeatherAutoAnnounceEnabled = form.WeatherAutoAnnounceEnabled;
+            settings.SigmetProximityAlertsEnabled = form.SigmetProximityAlertsEnabled;
+            settings.SigmetProximityRangeNm = form.SigmetProximityRangeNm;
+            MSFSBlindAssist.Settings.SettingsManager.Save();
+            announcer.Announce("Weather settings saved");
+        }
+    }
+
+    private void OpenWeatherRadarWindow()
+    {
+        try
+        {
+            if (weatherRadarForm == null || weatherRadarForm.IsDisposed)
+                weatherRadarForm = new Forms.WeatherRadarForm(announcer, simConnectManager);
+            weatherRadarForm.ShowForm();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[MainForm] Error opening weather radar: {ex.Message}");
+        }
+    }
 
     private void TcasMenuItem_Click(object? sender, EventArgs e) => OpenTcasWindow();
 
@@ -3671,6 +3726,97 @@ public partial class MainForm : Form
         AnnounceNearestCity();
     }
 
+    private void WeatherAnnouncementTimer_Tick(object? sender, EventArgs e)
+    {
+        var settings = MSFSBlindAssist.Settings.SettingsManager.Current;
+        if (!simConnectManager.IsConnected) return;
+
+        if (settings.WeatherAutoAnnounceEnabled)
+            CheckAmbientWeatherChanges();
+
+        if (settings.SigmetProximityAlertsEnabled)
+            _ = CheckSigmetProximityAsync(settings.SigmetProximityRangeNm);
+    }
+
+    private void CheckAmbientWeatherChanges()
+    {
+        simConnectManager.RequestWeatherInfo(data =>
+        {
+            if (InvokeRequired) { BeginInvoke(() => AnnounceAmbientChanges(data)); return; }
+            AnnounceAmbientChanges(data);
+        });
+    }
+
+    private void AnnounceAmbientChanges(MSFSBlindAssist.SimConnect.SimConnectManager.AmbientWeatherData data)
+    {
+        // Cloud entry/exit
+        double inCloud = data.InCloud;
+        if (_prevInCloud >= 0 && Math.Abs(inCloud - _prevInCloud) > 0.5)
+        {
+            announcer.Announce(inCloud >= 0.5 ? "Entering cloud" : "Leaving cloud");
+        }
+        _prevInCloud = inCloud;
+
+        // Precipitation state changes
+        double precipState = data.PrecipState;
+        if (_prevPrecipState >= 0 && Math.Abs(precipState - _prevPrecipState) > 0.5)
+        {
+            if (precipState < 0.5)
+            {
+                announcer.Announce("Precipitation stopped");
+            }
+            else
+            {
+                string desc = MSFSBlindAssist.Services.WeatherService.FormatAmbientWeather(data)
+                    .Split('\n')
+                    .FirstOrDefault(l => l.StartsWith("Precipitation:"))
+                    ?.Replace("Precipitation:", "").Trim() ?? "Precipitation";
+                announcer.Announce($"Precipitation: {desc}");
+            }
+        }
+        _prevPrecipState = precipState;
+    }
+
+    private async Task CheckSigmetProximityAsync(int rangeNm)
+    {
+        try
+        {
+            var lastPos = simConnectManager.LastKnownPosition;
+            if (lastPos == null) return;
+            var position = lastPos.Value;
+            if (position.Latitude == 0 && position.Longitude == 0) return;
+
+            // Clear stale announced keys every 15 minutes
+            if ((DateTime.UtcNow - _sigmetKeysClearedAt).TotalMinutes > 15)
+            {
+                _announcedSigmetKeys.Clear();
+                _sigmetKeysClearedAt = DateTime.UtcNow;
+            }
+
+            var advisories = await MSFSBlindAssist.Services.WeatherService.GetNearbyAdvisoriesAsync(
+                position.Latitude, position.Longitude, rangeNm);
+
+            if (!IsHandleCreated || IsDisposed) return;
+
+            foreach (var adv in advisories)
+            {
+                string key = $"{adv.AdvisoryType}_{adv.Hazard}_{adv.ValidFrom}_{adv.ValidTo}";
+                if (_announcedSigmetKeys.Contains(key)) continue;
+
+                _announcedSigmetKeys.Add(key);
+                string msg = $"{adv.AdvisoryType}: {adv.HazardLabel}";
+                if (!string.IsNullOrEmpty(adv.AltitudeRange))
+                    msg += $", {adv.AltitudeRange}";
+                msg += $", bearing {adv.BearingDeg:F0} degrees, {adv.DistanceNm:F0} nautical miles";
+                Invoke(() => announcer.Announce(msg));
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[MainForm] SIGMET proximity check error: {ex.Message}");
+        }
+    }
+
     /// <summary>
     /// Announces the nearest city to the current aircraft position.
     /// Used by both the periodic timer and the hotkey shortcut (] then C).
@@ -3768,6 +3914,9 @@ public partial class MainForm : Form
 
         nearestCityAnnouncementTimer?.Stop();
         nearestCityAnnouncementTimer?.Dispose();
+
+        weatherAnnouncementTimer?.Stop();
+        weatherAnnouncementTimer?.Dispose();
 
         // Clean up EFB bridge
         efbBridgeServer?.Dispose();

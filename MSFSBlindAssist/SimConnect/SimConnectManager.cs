@@ -25,6 +25,7 @@ public class SimConnectManager
     public event EventHandler<AircraftPosition>? AircraftPositionReceived;
     public event EventHandler<AiTrafficDataEventArgs>? AiTrafficReceived;
     public event EventHandler<WindData>? WindReceived;
+    public event EventHandler<AmbientWeatherData>? WeatherDataReceived;
     public event EventHandler<NavRadioData>? NavRadioReceived;
     public event EventHandler<ECAMDataEventArgs>? ECAMDataReceived;
     public event EventHandler<TakeoffRunwayReferenceEventArgs>? TakeoffRunwayReferenceSet;
@@ -135,6 +136,7 @@ public class SimConnectManager
         REQUEST_CONTINUOUS_BATCH_5 = 12,
         // Panel batch for OnRequest variables
         REQUEST_PANEL_BATCH = 13,
+        REQUEST_WEATHER_DATA = 14,
         // Hotkey readout requests (one-shot, used by aircraft definitions)
         REQUEST_HEADING = 300,
         REQUEST_SPEED = 301,
@@ -185,6 +187,8 @@ public class SimConnectManager
         VISUAL_GUIDANCE_DATA = 14,
         // Takeoff assist consolidated data
         TAKEOFF_ASSIST_DATA = 15,
+        // Ambient weather data (on-request)
+        WEATHER_DATA = 16,
         // Hotkey readout definitions (one-shot, used by aircraft definitions)
         DEF_HEADING = 300,
         DEF_SPEED = 301,
@@ -326,6 +330,18 @@ public class SimConnectManager
     {
         public double Direction;
         public double Speed;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
+    public struct AmbientWeatherData
+    {
+        public double PrecipRate;      // AMBIENT PRECIP RATE, percent (0-100)
+        public double PrecipState;     // AMBIENT PRECIP STATE, bitmask (0=none,1=rain,4=snow,8=freezing)
+        public double InCloud;         // AMBIENT IN CLOUD, bool
+        public double Visibility;      // AMBIENT VISIBILITY, meters
+        public double Temperature;     // AMBIENT TEMPERATURE, Celsius
+        public double WindDirection;   // AMBIENT WIND DIRECTION, degrees
+        public double WindSpeed;       // AMBIENT WIND VELOCITY, knots
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
@@ -590,6 +606,23 @@ public class SimConnectManager
         sc.AddToDataDefinition(DATA_DEFINITIONS.WIND_DATA, "AMBIENT WIND VELOCITY", "knots",
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)1);
         sc.RegisterDataDefineStruct<WindData>(DATA_DEFINITIONS.WIND_DATA);
+
+        // Register ambient weather data (on-request)
+        sc.AddToDataDefinition(DATA_DEFINITIONS.WEATHER_DATA, "AMBIENT PRECIP RATE", "percent",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)0);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.WEATHER_DATA, "AMBIENT PRECIP STATE", "mask",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)1);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.WEATHER_DATA, "AMBIENT IN CLOUD", "bool",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)2);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.WEATHER_DATA, "AMBIENT VISIBILITY", "meters",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)3);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.WEATHER_DATA, "AMBIENT TEMPERATURE", "celsius",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)4);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.WEATHER_DATA, "AMBIENT WIND DIRECTION", "degrees",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)5);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.WEATHER_DATA, "AMBIENT WIND VELOCITY", "knots",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)6);
+        sc.RegisterDataDefineStruct<AmbientWeatherData>(DATA_DEFINITIONS.WEATHER_DATA);
 
         // NAV Radio data
         sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_NAV_RADIO, "NAV ACTIVE FREQUENCY:1", "MHz", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
@@ -1181,6 +1214,11 @@ public class SimConnectManager
             case DATA_REQUESTS.REQUEST_WIND_DATA:
                 WindData windData = (WindData)data.dwData[0];
                 ProcessWindData(windData);
+                break;
+
+            case DATA_REQUESTS.REQUEST_WEATHER_DATA:
+                AmbientWeatherData weatherData = (AmbientWeatherData)data.dwData[0];
+                ProcessWeatherData(weatherData);
                 break;
 
             case DATA_REQUESTS.REQUEST_NAV_RADIO:
@@ -2420,6 +2458,18 @@ public class SimConnectManager
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error processing wind data: {ex.Message}");
+        }
+    }
+
+    private void ProcessWeatherData(AmbientWeatherData data)
+    {
+        try
+        {
+            WeatherDataReceived?.Invoke(this, data);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error processing weather data: {ex.Message}");
         }
     }
 
@@ -4194,6 +4244,32 @@ public class SimConnectManager
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error requesting wind info: {ex.Message}");
+        }
+    }
+
+    public void RequestWeatherInfo(Action<AmbientWeatherData> callback)
+    {
+        if (!IsConnected || callback == null) return;
+
+        try
+        {
+            EventHandler<AmbientWeatherData>? handler = null;
+            handler = (sender, data) =>
+            {
+                WeatherDataReceived -= handler!;
+                callback(data);
+            };
+
+            WeatherDataReceived += handler;
+
+            simConnect!.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_WEATHER_DATA,
+                DATA_DEFINITIONS.WEATHER_DATA, SIMCONNECT_OBJECT_ID_USER,
+                SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT,
+                0, 0, 0);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error requesting weather data: {ex.Message}");
         }
     }
 
