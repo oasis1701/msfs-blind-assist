@@ -134,6 +134,9 @@ public class HotkeyManager : IDisposable
         // Nearest city announcement hotkey ID
         private const int HOTKEY_NEAREST_CITY = 9093;
 
+        // TCAS tracked aircraft announce
+        private const int HOTKEY_TCAS_ANNOUNCE = 9104;
+
         private IntPtr windowHandle;
         private bool visualGuidanceHotkeysActive = false;
         private bool outputHotkeyModeActive = false;
@@ -464,6 +467,9 @@ public class HotkeyManager : IDisposable
                         case HOTKEY_PMDG_777_EFB:
                             TriggerHotkey(HotkeyAction.ShowPMDG777EFB);
                             break;
+                        case HOTKEY_TCAS_ANNOUNCE:
+                            TriggerHotkey(HotkeyAction.AnnounceTcasTraffic);
+                            break;
                     }
                     DeactivateInputHotkeyMode();
                     return true;
@@ -732,7 +738,8 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_TOGGLE_AP2, MOD_CONTROL, 0x4F);      // Ctrl+O (Toggle Autopilot 2)
             RegisterHotKey(windowHandle, HOTKEY_TRACK_FIX, MOD_SHIFT, 0x46);         // Shift+F (Track Fix Window)
             RegisterHotKey(windowHandle, HOTKEY_FENIX_MCDU, MOD_SHIFT, 0x4D);       // Shift+M (Fenix MCDU)
-            RegisterHotKey(windowHandle, HOTKEY_PMDG_777_EFB, MOD_SHIFT, 0x54);  // Shift+T (PMDG 777 EFB Tablet)
+            RegisterHotKey(windowHandle, HOTKEY_PMDG_777_EFB, MOD_SHIFT, 0x54);    // Shift+T (PMDG 777 EFB Tablet)
+            RegisterHotKey(windowHandle, HOTKEY_TCAS_ANNOUNCE, MOD_SHIFT, 0x53);   // Shift+S (Announce tracked TCAS traffic)
 
             InputHotkeyModeChanged?.Invoke(this, new HotkeyModeEventArgs(HotkeyModeStatus.Activated));
         }
@@ -771,6 +778,7 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_TRACK_FIX);
             UnregisterHotKey(windowHandle, HOTKEY_FENIX_MCDU);
             UnregisterHotKey(windowHandle, HOTKEY_PMDG_777_EFB);
+            UnregisterHotKey(windowHandle, HOTKEY_TCAS_ANNOUNCE);
 
             InputHotkeyModeChanged?.Invoke(this, new HotkeyModeEventArgs(wasCancelled ? HotkeyModeStatus.Cancelled : HotkeyModeStatus.Deactivated));
         }
@@ -1072,4 +1080,6 @@ public class HotkeyManager : IDisposable
         ReadDistanceToDest,
         ToggleTrimAnnouncements,
         ReadNavRadioInfo,
+        AnnounceTcasTraffic,
+        ShowTcasWindow,
     }

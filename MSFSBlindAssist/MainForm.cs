@@ -40,6 +40,8 @@ public partial class MainForm : Form
     private VisualGuidanceManager visualGuidanceManager = null!;
     private ElectronicFlightBagForm? electronicFlightBagForm;
     private TrackFixForm? trackFixForm;
+    private TcasForm? tcasForm;
+    private MSFSBlindAssist.Services.TcasService? tcasService;
     private MSFSBlindAssist.Navigation.FlightPlanManager flightPlanManager = null!;
     private MSFSBlindAssist.Navigation.WaypointTracker waypointTracker = null!;
 
@@ -173,6 +175,9 @@ public partial class MainForm : Form
 
         // Initialize waypoint tracker
         waypointTracker = new MSFSBlindAssist.Navigation.WaypointTracker();
+
+        // Initialize TCAS service (polls for AI/multiplayer traffic via SimConnect)
+        tcasService = new MSFSBlindAssist.Services.TcasService(simConnectManager);
 
         // Initialize event batching timer for high-volume variable updates
         // Timer runs on UI thread, draining the event queue in controlled batches
@@ -1032,6 +1037,12 @@ public partial class MainForm : Form
             case HotkeyAction.SimBriefBriefing:
                 OpenSimBriefBriefing();
                 break;
+            case HotkeyAction.ShowTcasWindow:
+                OpenTcasWindow();
+                break;
+            case HotkeyAction.AnnounceTcasTraffic:
+                AnnounceTrackedTcasTraffic();
+                break;
             case HotkeyAction.SelectDestinationRunway:
                 ShowDestinationRunwayDialog();
                 break;
@@ -1285,6 +1296,39 @@ public partial class MainForm : Form
         }
     }
 
+
+    private void TcasMenuItem_Click(object? sender, EventArgs e) => OpenTcasWindow();
+
+    private void OpenTcasWindow()
+    {
+        try
+        {
+            if (tcasForm == null || tcasForm.IsDisposed)
+                tcasForm = new Forms.TcasForm(tcasService!, announcer);
+            tcasForm.ShowForm();
+        }
+        catch (Exception ex)
+        {
+            announcer.AnnounceImmediate($"Error opening TCAS: {ex.Message}");
+        }
+    }
+
+    private async void AnnounceTrackedTcasTraffic()
+    {
+        if (tcasService == null || !tcasService.HasTracked)
+        {
+            announcer.AnnounceImmediate("No tracked aircraft. Add aircraft to track list from the TCAS window.");
+            return;
+        }
+
+        // Kick off a fresh poll so SimConnect returns the latest positions.
+        // Wait ~600 ms for responses to arrive before reading announcements.
+        tcasService.PollNow();
+        await Task.Delay(600);
+
+        var items = tcasService.GetTrackedAnnouncements();
+        announcer.AnnounceImmediate(string.Join(". ", items));
+    }
 
     private void OpenSimBriefBriefing()
     {
@@ -2102,6 +2146,7 @@ public partial class MainForm : Form
             }
         }
     }
+
 
     private void GeminiSettingsMenuItem_Click(object? sender, EventArgs e)
     {
