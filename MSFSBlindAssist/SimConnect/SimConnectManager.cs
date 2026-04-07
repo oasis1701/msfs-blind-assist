@@ -290,6 +290,10 @@ public class SimConnectManager
         public string FromAirport;
         [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 8)]
         public string ToAirport;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]
+        public string AtcAirline;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
+        public string TrafficState;
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
@@ -568,6 +572,8 @@ public class SimConnectManager
         sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_AI_TRAFFIC, "ATC MODEL",       null,        SIMCONNECT_DATATYPE.STRING32, 0.0f, SIMCONNECT_UNUSED);
         sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_AI_TRAFFIC, "AI TRAFFIC FROMAIRPORT", null, SIMCONNECT_DATATYPE.STRING8, 0.0f, SIMCONNECT_UNUSED);
         sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_AI_TRAFFIC, "AI TRAFFIC TOAIRPORT",   null, SIMCONNECT_DATATYPE.STRING8, 0.0f, SIMCONNECT_UNUSED);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_AI_TRAFFIC, "ATC AIRLINE",         null,     SIMCONNECT_DATATYPE.STRING64, 0.0f, SIMCONNECT_UNUSED);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_AI_TRAFFIC, "AI TRAFFIC STATE",    null,     SIMCONNECT_DATATYPE.STRING32, 0.0f, SIMCONNECT_UNUSED);
         sc.RegisterDataDefineStruct<AiTrafficData>(DATA_DEFINITIONS.DEF_AI_TRAFFIC);
 
         // Register visual guidance data (consolidated position + AGL + ground track)
@@ -2626,6 +2632,8 @@ public class SimConnectManager
                 AircraftType     = ResolveAiAircraftType(raw.AtcType, raw.AtcModel),
                 FromAirport      = raw.FromAirport?.Trim() ?? "",
                 ToAirport        = raw.ToAirport?.Trim() ?? "",
+                Airline          = raw.AtcAirline?.Trim() ?? "",
+                TrafficState     = raw.TrafficState?.Trim() ?? "",
             };
             AiTrafficReceived?.Invoke(this, eventArgs);
         }
@@ -4507,6 +4515,8 @@ public class AiTrafficDataEventArgs : EventArgs
     public bool   OnGround         { get; set; }
     public string FromAirport      { get; set; } = "";
     public string ToAirport        { get; set; } = "";
+    public string Airline          { get; set; } = "";
+    public string TrafficState     { get; set; } = "";
 }
 
 public class SimVarUpdateEventArgs : EventArgs

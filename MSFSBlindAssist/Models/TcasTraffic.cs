@@ -17,6 +17,8 @@ public class TcasTraffic
     public bool   OnGround          { get; set; }
     public string FromAirport       { get; set; } = "";
     public string ToAirport         { get; set; } = "";
+    public string Airline           { get; set; } = "";
+    public string TrafficState      { get; set; } = "";
 
     // Computed relative to own aircraft by TcasService
     public double DistanceNm        { get; set; }
