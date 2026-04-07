@@ -1,5 +1,6 @@
 using System.Net.Http;
 using System.Text.Json;
+using System.Threading;
 
 namespace MSFSBlindAssist.Services;
 
@@ -17,9 +18,9 @@ public static class VatsimPilotDataService
     private const string FeedUrl = "https://data.vatsim.net/v3/vatsim-data.json";
     private static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(60);
 
-    private static Dictionary<string, string> _typeByCallsign = new(StringComparer.OrdinalIgnoreCase);
+    private static volatile Dictionary<string, string> _typeByCallsign = new(StringComparer.OrdinalIgnoreCase);
     private static DateTime _lastFetch = DateTime.MinValue;
-    private static bool _fetchInProgress;
+    private static int _fetchInProgress;
 
     /// <summary>
     /// Returns the ICAO aircraft type for <paramref name="callsign"/> from the
@@ -36,8 +37,8 @@ public static class VatsimPilotDataService
 
     private static void TriggerRefreshIfStale()
     {
-        if (_fetchInProgress || DateTime.UtcNow - _lastFetch < RefreshInterval) return;
-        _fetchInProgress = true;
+        if (DateTime.UtcNow - _lastFetch < RefreshInterval) return;
+        if (Interlocked.CompareExchange(ref _fetchInProgress, 1, 0) != 0) return;
         _ = RefreshAsync();
     }
 
@@ -47,7 +48,7 @@ public static class VatsimPilotDataService
         {
             string json = await _http.GetStringAsync(FeedUrl).ConfigureAwait(false);
             var parsed = ParseFeed(json);
-            _typeByCallsign = parsed;
+            Interlocked.Exchange(ref _typeByCallsign, parsed);
             _lastFetch = DateTime.UtcNow;
             System.Diagnostics.Debug.WriteLine(
                 $"[VatsimPilotDataService] Refreshed — {parsed.Count} pilots with filed aircraft type.");
@@ -58,7 +59,7 @@ public static class VatsimPilotDataService
         }
         finally
         {
-            _fetchInProgress = false;
+            Interlocked.Exchange(ref _fetchInProgress, 0);
         }
     }
 

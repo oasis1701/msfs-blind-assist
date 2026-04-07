@@ -14,7 +14,8 @@ public class TcasService : IDisposable
     private readonly System.Windows.Forms.Timer _pollTimer;
 
     private readonly object _lock = new();
-    private readonly Dictionary<uint, TcasTraffic> _current = new();
+    private Dictionary<uint, TcasTraffic> _current = new();
+    private Dictionary<uint, TcasTraffic> _pending = new();
 
     private readonly HashSet<string> _trackedCallsigns = new(StringComparer.OrdinalIgnoreCase);
 
@@ -50,7 +51,10 @@ public class TcasService : IDisposable
     {
         // Refresh own-aircraft position cache before requesting traffic
         _simConnect.RequestAircraftPosition();
-        lock (_lock) _current.Clear();
+        // Start a new pending dict — responses accumulate here without
+        // clearing _current, so GetTraffic() always returns the previous
+        // complete snapshot until the new one is promoted.
+        lock (_lock) _pending = new Dictionary<uint, TcasTraffic>();
         _simConnect.RequestAiTrafficData();
     }
 
@@ -109,7 +113,10 @@ public class TcasService : IDisposable
 
         lock (_lock)
         {
-            _current[e.ObjectId] = traffic;
+            _pending[e.ObjectId] = traffic;
+            // Promote pending to current so GetTraffic() always sees
+            // the most complete snapshot available.
+            _current = _pending;
 
             // Keep the last-known snapshot for any tracked callsign so announcements
             // still work after the aircraft drifts out of SimConnect range.

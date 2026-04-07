@@ -249,7 +249,7 @@ public static class WeatherService
                     ValidFrom = from, ValidTo = to, RawText = raw
                 });
             }
-            catch { }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[WeatherService] Feature parse error: {ex.Message}"); }
         }
     }
 
@@ -293,7 +293,7 @@ public static class WeatherService
                     ValidFrom = from, ValidTo = to, RawText = raw
                 });
             }
-            catch { }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[WeatherService] Feature parse error: {ex.Message}"); }
         }
     }
 
@@ -341,7 +341,7 @@ public static class WeatherService
                         RawText = raw
                     });
                 }
-                catch { }
+                catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[WeatherService] Feature parse error: {ex.Message}"); }
             }
 
             results.Sort((a, b) => a.DistanceNm.CompareTo(b.DistanceNm));

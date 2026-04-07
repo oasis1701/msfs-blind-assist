@@ -27,7 +27,6 @@ public class WeatherRadarForm : Form
     private Button _closeButton = null!;
 
     private bool _isFetching = false;
-    private System.Windows.Forms.Timer? _autoRefreshTimer;
 
     public WeatherRadarForm(ScreenReaderAnnouncer announcer, SimConnectManager simConnect)
     {
@@ -166,16 +165,9 @@ public class WeatherRadarForm : Form
         Load += async (s, e) =>
         {
             BringToFront(); Activate();
-            TopMost = true; TopMost = false;
             _currentWeatherBox.Focus();
             await RefreshAsync(forceRefresh: true);
-
-            _autoRefreshTimer = new System.Windows.Forms.Timer { Interval = 5 * 60 * 1000 };
-            _autoRefreshTimer.Tick += (_, _) => _ = RefreshAsync(forceRefresh: true);
-            _autoRefreshTimer.Start();
         };
-
-        FormClosed += (s, e) => _autoRefreshTimer?.Stop();
 
         KeyDown += (s, e) =>
         {
