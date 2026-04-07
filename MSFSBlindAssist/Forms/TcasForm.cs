@@ -216,6 +216,11 @@ public class TcasForm : Form
         if (!string.IsNullOrEmpty(type))
             parts.Add($"type {type}");
 
+        // Show origin→destination route when available (AI traffic with schedules)
+        string route = FormatRoute(t.FromAirport, t.ToAirport);
+        if (!string.IsNullOrEmpty(route))
+            parts.Add(route);
+
         parts.Add($"heading {(int)t.HeadingMagnetic}");
         parts.Add($"{(int)t.AltitudeFt:N0} feet");
 
@@ -223,6 +228,19 @@ public class TcasForm : Form
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Formats origin→destination route string. Returns empty if neither is available.
+    /// </summary>
+    private static string FormatRoute(string from, string to)
+    {
+        bool hasFrom = !string.IsNullOrEmpty(from);
+        bool hasTo   = !string.IsNullOrEmpty(to);
+        if (hasFrom && hasTo) return $"{from} to {to}";
+        if (hasFrom)          return $"from {from}";
+        if (hasTo)            return $"to {to}";
+        return "";
+    }
 
     private static string TrafficKey(TcasTraffic t) =>
         string.IsNullOrEmpty(t.Callsign) ? t.ObjectId.ToString() : t.Callsign;

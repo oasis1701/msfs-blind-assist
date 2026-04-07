@@ -15,6 +15,8 @@ public class TcasTraffic
     public double HeadingMagnetic   { get; set; }
     public double GroundSpeedKnots  { get; set; }
     public bool   OnGround          { get; set; }
+    public string FromAirport       { get; set; } = "";
+    public string ToAirport         { get; set; } = "";
 
     // Computed relative to own aircraft by TcasService
     public double DistanceNm        { get; set; }

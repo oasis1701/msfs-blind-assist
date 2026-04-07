@@ -106,6 +106,8 @@ public class TcasService : IDisposable
             HeadingMagnetic  = e.HeadingMagnetic,
             GroundSpeedKnots = e.GroundSpeedKnots,
             OnGround         = effectivelyOnGround,
+            FromAirport      = e.FromAirport,
+            ToAirport        = e.ToAirport,
             DistanceNm       = distNm,
             AltitudeDiffFt   = altDiff,
             RelativeBearing  = relBearing,
