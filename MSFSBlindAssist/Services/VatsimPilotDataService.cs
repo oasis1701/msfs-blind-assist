@@ -46,7 +46,7 @@ public static class VatsimPilotDataService
         if (string.IsNullOrWhiteSpace(callsign)) return ("", "");
         TriggerRefreshIfStale();
         _routeByCallsign.TryGetValue(callsign, out var route);
-        return route;
+        return (route.Departure ?? "", route.Arrival ?? "");
     }
 
     private static void TriggerRefreshIfStale()

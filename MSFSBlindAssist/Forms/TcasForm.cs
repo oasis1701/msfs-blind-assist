@@ -241,7 +241,7 @@ public class TcasForm : Form
 
         // Altitude is irrelevant for ground traffic
         if (!t.OnGround)
-            parts.Add($"{(int)t.AltitudeFt:N0} feet");
+            parts.Add($"{t.AltitudeFt:N0} feet");
 
         return string.Join(" — ", parts);
     }
