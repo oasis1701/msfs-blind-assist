@@ -2981,7 +2981,7 @@ public partial class MainForm : Form
                         }
                     }
 
-                    // Handle selection change - send multiple events
+                    // Handle selection change
                     // Capture varKey to avoid nullable reference warnings in closure
                     string capturedVarKey = varKey;
                     combo.SelectedIndexChanged += (s2, e2) =>
@@ -2990,120 +2990,64 @@ public partial class MainForm : Form
                         {
                             var selectedValue = sortedValues[combo.SelectedIndex].Key;
 
-                            // Send the main LVar
-                            simConnectManager?.SetLVar(capturedVarKey, selectedValue);
                             currentSimVarValues[capturedVarKey] = selectedValue;
 
-                            // Send additional events based on the control and value
-                            if (capturedVarKey == "LIGHTING_LANDING_1") // Nose Light
+                            // Landing lights: ASOBO_LIGHTING_Switch_Light_Landing_Template reads
+                            // LIGHTING_LANDING_x every frame and manages the circuits automatically.
+                            // SetLVar via SimConnect is equivalent to the cockpit click. No MobiFlight needed.
+                            if (capturedVarKey == "LIGHTING_LANDING_1") // Nose Light (T.O./Taxi/Off)
                             {
-                                // Primary LVar already set at line above.
-                                // FBW: circuit 17 = T.O. landing light, circuit 20 = taxi light.
-                                // Circuit ops handled by ASOBO template when switch LVar changes.
+                                simConnectManager?.SetLVar("LIGHTING_LANDING_1", selectedValue);
                             }
                             else if (capturedVarKey == "LIGHTING_LANDING_2") // Left Landing Light
                             {
-                                // FBW: LANDING_2_RETRACTED is an LVar (not a K event).
-                                // 0 = extended (On/Off), 1 = retracted (Retract).
-                                if (selectedValue == 2) // Retract
-                                {
-                                    simConnectManager?.SetLVar("LANDING_2_RETRACTED", 1);
-                                }
-                                else // On or Off - light is extended
-                                {
-                                    simConnectManager?.SetLVar("LANDING_2_RETRACTED", 0);
-                                }
+                                // LANDING_2_RETRACTED: 0 = extended, 1 = retracted
+                                simConnectManager?.SetLVar("LIGHTING_LANDING_2", selectedValue);
+                                simConnectManager?.SetLVar("LANDING_2_RETRACTED", selectedValue == 2 ? 1 : 0);
                             }
                             else if (capturedVarKey == "LIGHTING_LANDING_3") // Right Landing Light
                             {
-                                // FBW: LANDING_3_RETRACTED is an LVar (not a K event).
-                                if (selectedValue == 2) // Retract
-                                {
-                                    simConnectManager?.SetLVar("LANDING_3_RETRACTED", 1);
-                                }
-                                else // On or Off - light is extended
-                                {
-                                    simConnectManager?.SetLVar("LANDING_3_RETRACTED", 0);
-                                }
+                                simConnectManager?.SetLVar("LIGHTING_LANDING_3", selectedValue);
+                                simConnectManager?.SetLVar("LANDING_3_RETRACTED", selectedValue == 2 ? 1 : 0);
                             }
                             else if (capturedVarKey == "LIGHTING_STROBE_0") // Strobe Lights
                             {
                                 if (selectedValue == 2) // Off
                                 {
-                                    simConnectManager?.SendEvent("STROBES_OFF", 0);
                                     simConnectManager?.SetLVar("STROBE_0_AUTO", 0);
-                                    simConnectManager?.SetLVar("LIGHT STROBE", 0);
-                                    simConnectManager?.SetLVar("LIGHTING_STROBE_0", 2);
+                                    simConnectManager?.SendEvent("STROBES_OFF", 0);
                                 }
                                 else if (selectedValue == 0) // On
                                 {
-                                    simConnectManager?.SendEvent("STROBES_ON", 0);
-                                    simConnectManager?.SetLVar("LIGHT STROBE", 1);
                                     simConnectManager?.SetLVar("STROBE_0_AUTO", 0);
-                                    simConnectManager?.SetLVar("LIGHTING_STROBE_0", 0);
+                                    simConnectManager?.SendEvent("STROBES_ON", 0);
                                 }
-                                else if (selectedValue == 1) // Auto
+                                else // Auto (1)
                                 {
                                     simConnectManager?.SetLVar("STROBE_0_AUTO", 1);
-                                    simConnectManager?.SetLVar("LIGHTING_STROBE_0", 1);
+                                    simConnectManager?.SendEvent("STROBES_ON", 0);
                                 }
                             }
                             else if (capturedVarKey == "LIGHT BEACON") // Beacon Light
                             {
-                                if (selectedValue == 0) // Off
-                                {
-                                    simConnectManager?.SendEvent("BEACON_LIGHTS_SET", 0);
-                                }
-                                else if (selectedValue == 1) // On
-                                {
-                                    simConnectManager?.SendEvent("BEACON_LIGHTS_SET", 1);
-                                }
+                                simConnectManager?.SendEvent("BEACON_LIGHTS_SET", (uint)selectedValue);
                             }
                             else if (capturedVarKey == "LIGHT WING") // Wing Lights
                             {
-                                if (selectedValue == 0) // Off
-                                {
-                                    simConnectManager?.SendEvent("WING_LIGHTS_SET", 0);
-                                }
-                                else if (selectedValue == 1) // On
-                                {
-                                    simConnectManager?.SendEvent("WING_LIGHTS_SET", 1);
-                                }
+                                simConnectManager?.SendEvent("WING_LIGHTS_SET", (uint)selectedValue);
                             }
-                            else if (capturedVarKey == "LIGHT NAV") // Nav Lights
+                            else if (capturedVarKey == "LIGHT NAV") // Nav Lights (controls both Nav and Logo)
                             {
-                                // Nav and Logo lights are combined in real aircraft
-                                // Control both when Nav light is changed
-                                if (selectedValue == 0) // Off
-                                {
-                                    simConnectManager?.SendEvent("NAV_LIGHTS_SET", 0);
-                                    simConnectManager?.SendEvent("LOGO_LIGHTS_SET", 0);
-                                }
-                                else if (selectedValue == 1) // On
-                                {
-                                    simConnectManager?.SendEvent("NAV_LIGHTS_SET", 1);
-                                    simConnectManager?.SendEvent("LOGO_LIGHTS_SET", 1);
-                                }
+                                simConnectManager?.SendEvent("NAV_LIGHTS_SET", (uint)selectedValue);
+                                simConnectManager?.SendEvent("LOGO_LIGHTS_SET", (uint)selectedValue);
                             }
-                            else if (capturedVarKey == "LIGHT LOGO") // Logo Lights
+                            else if (capturedVarKey == "LIGHT LOGO") // Logo Lights (controls both Nav and Logo)
                             {
-                                // Logo lights are controlled with Nav lights in real aircraft
-                                // Control both when Logo light is changed
-                                if (selectedValue == 0) // Off
-                                {
-                                    simConnectManager?.SendEvent("NAV_LIGHTS_SET", 0);
-                                    simConnectManager?.SendEvent("LOGO_LIGHTS_SET", 0);
-                                }
-                                else if (selectedValue == 1) // On
-                                {
-                                    simConnectManager?.SendEvent("NAV_LIGHTS_SET", 1);
-                                    simConnectManager?.SendEvent("LOGO_LIGHTS_SET", 1);
-                                }
+                                simConnectManager?.SendEvent("NAV_LIGHTS_SET", (uint)selectedValue);
+                                simConnectManager?.SendEvent("LOGO_LIGHTS_SET", (uint)selectedValue);
                             }
                             else if (capturedVarKey == "CIRCUIT_SWITCH_ON:21") // Left RWY Turn Off Light
                             {
-                                // FBW: toggle circuit 21 only if not already in desired state.
-                                // CIRCUIT SWITCH ON:21 is read-only; use ELECTRICAL_CIRCUIT_TOGGLE to change it.
                                 double currentState = currentSimVarValues.ContainsKey("CIRCUIT_SWITCH_ON:21")
                                     ? currentSimVarValues["CIRCUIT_SWITCH_ON:21"] : -1;
                                 bool wantOn = selectedValue == 1;
@@ -3113,7 +3057,6 @@ public partial class MainForm : Form
                             }
                             else if (capturedVarKey == "CIRCUIT_SWITCH_ON:22") // Right RWY Turn Off Light
                             {
-                                // FBW: toggle circuit 22 only if not already in desired state.
                                 double currentState = currentSimVarValues.ContainsKey("CIRCUIT_SWITCH_ON:22")
                                     ? currentSimVarValues["CIRCUIT_SWITCH_ON:22"] : -1;
                                 bool wantOn = selectedValue == 1;
