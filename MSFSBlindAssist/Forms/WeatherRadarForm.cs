@@ -368,15 +368,13 @@ public class WeatherRadarForm : Form
             return "Winds aloft data unavailable.";
 
         var sb = new System.Text.StringBuilder();
-        int acFl = altFt / 100;
-        sb.AppendLine($"Aircraft: FL{acFl:D3} ({altFt} ft)  |  forecast winds:");
-        sb.AppendLine(new string('─', 38));
+        sb.AppendLine($"Aircraft: {altFt:N0} ft  |  forecast winds:");
+        sb.AppendLine(new string('─', 36));
 
         foreach (var w in winds)
         {
-            int fl = w.AltitudeFt / 100;
-            string marker = Math.Abs(w.AltitudeFt - altFt) < 500 ? " ◄" : "";
-            sb.AppendLine($"FL{fl:D3} ({w.AltitudeFt,6:N0} ft):  {w.DirectionDeg:F0}° / {w.SpeedKts:F0} kts{marker}");
+            string marker = Math.Abs(w.AltitudeFt - altFt) < 500 ? " (nearest)" : "";
+            sb.AppendLine($"{w.AltitudeFt:N0} ft:  {w.DirectionDeg:F0}° / {w.SpeedKts:F0} kts{marker}");
         }
 
         return sb.ToString().TrimEnd();
