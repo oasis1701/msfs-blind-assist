@@ -73,6 +73,9 @@ public partial class ElectronicFlightBagForm : Form
     private TextBox airportInfoTextBox = null!;
     private TextBox runwayInfoTextBox = null!;
 
+    // SimBrief tab
+    private SimBriefPlannerForm? _simbriefPlannerForm;
+
     public ElectronicFlightBagForm(FlightPlanManager flightPlanManager, SimConnectManager simConnectManager,
                                    ScreenReaderAnnouncer announcer, WaypointTracker waypointTracker, string simbriefUsername)
     {
@@ -155,6 +158,7 @@ public partial class ElectronicFlightBagForm : Form
         CreateDepartureTab();
         CreateArrivalTab();
         CreateAirportLookupTab();
+        CreateSimBriefTab();
 
         // Status label at bottom
         statusLabel = new Label
@@ -615,6 +619,52 @@ public partial class ElectronicFlightBagForm : Form
         });
         lookupTab.Controls.Add(panel);
         mainTabControl.TabPages.Add(lookupTab);
+    }
+
+    private void CreateSimBriefTab()
+    {
+        var simBriefTab = new TabPage("SimBrief")
+        {
+            AccessibleName = "SimBrief",
+            AccessibleDescription = "Create a SimBrief flight plan or view detailed plan information"
+        };
+
+        var panel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(20) };
+
+        var createButton = new Button
+        {
+            Text = "Create SimBrief Plan",
+            Location = new Point(20, 20),
+            Size = new Size(220, 36),
+            AccessibleName = "Create SimBrief Plan",
+            AccessibleDescription = "Open the SimBrief flight planner to pre-fill and dispatch a new flight plan in your browser"
+        };
+        createButton.Click += (_, _) => OpenSimbriefPlanner(0);
+
+        var viewButton = new Button
+        {
+            Text = "View Detailed Plan Info",
+            Location = new Point(20, 70),
+            Size = new Size(220, 36),
+            AccessibleName = "View Detailed Plan Info",
+            AccessibleDescription = "Open a window showing your latest SimBrief flight plan with tabs for overview, nav log, fuel, weights, performance and weather"
+        };
+        viewButton.Click += (_, _) => OpenSimbriefPlanner(1);
+
+        panel.Controls.AddRange(new Control[] { createButton, viewButton });
+        simBriefTab.Controls.Add(panel);
+        mainTabControl.TabPages.Add(simBriefTab);
+    }
+
+    private void OpenSimbriefPlanner(int tabIndex)
+    {
+        if (_simbriefPlannerForm == null || _simbriefPlannerForm.IsDisposed)
+            _simbriefPlannerForm = new SimBriefPlannerForm(_simbriefUsername, _announcer);
+
+        // Always kick off a fresh fetch so the nav log is never stale.
+        // _fetchInProgress guard inside prevents concurrent fetches.
+        _simbriefPlannerForm.BeginAutoFetch();
+        _simbriefPlannerForm.ShowPlanner(tabIndex);
     }
 
     private void SetupEventHandlers()

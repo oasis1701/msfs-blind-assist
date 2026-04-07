@@ -79,6 +79,11 @@ Waypoint tracking, use Fix track window or Electronic flight bag route viewer wi
 4. track slot 4
 5. track slot 5
 
+Traffic and Weather:
+  R          Announce Tracked TCAS Traffic
+  Ctrl+R     Open TCAS Traffic Window
+  Shift+R    Open Weather Radar Window
+
 Displays and windows:
 control+m, Fenix Monitor Manager
   Shift+E, Route viewer, procedure planner and airport lookup

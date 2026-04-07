@@ -105,6 +105,13 @@ public class UserSettings
         // Fenix Monitor Manager Settings
         public List<string> FenixDisabledMonitorVariables { get; set; } = new List<string>();
 
+        // Weather Settings
+        public bool WeatherAutoAnnounceEnabled { get; set; } = false;
+        public bool SigmetProximityAlertsEnabled { get; set; } = false;
+        public bool PirepProximityAlertsEnabled { get; set; } = false;
+        public int SigmetProximityRangeNm { get; set; } = 100;
+        public bool DecodeWeatherAdvisories { get; set; } = false;
+
         /// <summary>
         /// Creates a new UserSettings instance with default values.
         /// </summary>
@@ -160,7 +167,12 @@ public class UserSettings
             MajorCityPopulationThreshold = MajorCityPopulationThreshold,
             MajorCityAPIThreshold = MajorCityAPIThreshold,
             DistanceUnits = DistanceUnits,
-            FenixDisabledMonitorVariables = new List<string>(FenixDisabledMonitorVariables)
+            FenixDisabledMonitorVariables = new List<string>(FenixDisabledMonitorVariables),
+            WeatherAutoAnnounceEnabled = WeatherAutoAnnounceEnabled,
+            SigmetProximityAlertsEnabled = SigmetProximityAlertsEnabled,
+            PirepProximityAlertsEnabled = PirepProximityAlertsEnabled,
+            SigmetProximityRangeNm = SigmetProximityRangeNm,
+            DecodeWeatherAdvisories = DecodeWeatherAdvisories
         };
     }
 }

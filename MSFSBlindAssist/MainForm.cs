@@ -34,12 +34,14 @@ public partial class MainForm : Form
     private PMDG777CDUForm? pmdg777CDUForm;
     private PMDG777EFBForm? pmdg777EFBForm;
     private EFBBridgeServer? efbBridgeServer;
-    private string? efbCommunityFolderPath;
     private TakeoffAssistManager takeoffAssistManager = null!;
     private HandFlyManager handFlyManager = null!;
     private VisualGuidanceManager visualGuidanceManager = null!;
     private ElectronicFlightBagForm? electronicFlightBagForm;
     private TrackFixForm? trackFixForm;
+    private TcasForm? tcasForm;
+    private MSFSBlindAssist.Services.TcasService? tcasService;
+    private Forms.WeatherRadarForm? weatherRadarForm;
     private MSFSBlindAssist.Navigation.FlightPlanManager flightPlanManager = null!;
     private MSFSBlindAssist.Navigation.WaypointTracker waypointTracker = null!;
 
@@ -57,6 +59,17 @@ public partial class MainForm : Form
 
     // Nearest city announcement timer (periodic automatic announcements)
     private System.Windows.Forms.Timer? nearestCityAnnouncementTimer;
+
+    // Weather auto-announcement timer
+    private System.Windows.Forms.Timer? weatherAnnouncementTimer;
+    private double _prevPrecipState = -1;
+    private double _prevPrecipRate = -1;
+    private double _prevInCloud = -1;
+    private double _prevVisibility = -1;      // meters; -1 = uninitialized
+    private bool _prevVisLow = false;         // was visibility below 1500m last check
+    private readonly HashSet<string> _announcedSigmetKeys = new HashSet<string>();
+    private readonly HashSet<string> _announcedPirepKeys  = new HashSet<string>();
+    private DateTime _sigmetKeysClearedAt = DateTime.MinValue;
 
     // Current state
     private string currentSection = "";
@@ -174,6 +187,9 @@ public partial class MainForm : Form
         // Initialize waypoint tracker
         waypointTracker = new MSFSBlindAssist.Navigation.WaypointTracker();
 
+        // Initialize TCAS service (polls for AI/multiplayer traffic via SimConnect)
+        tcasService = new MSFSBlindAssist.Services.TcasService(simConnectManager);
+
         // Initialize event batching timer for high-volume variable updates
         // Timer runs on UI thread, draining the event queue in controlled batches
         eventBatchTimer = new System.Windows.Forms.Timer();
@@ -192,6 +208,11 @@ public partial class MainForm : Form
         nearestCityAnnouncementTimer = new System.Windows.Forms.Timer();
         nearestCityAnnouncementTimer.Tick += NearestCityAnnouncementTimer_Tick;
         // Timer interval and start/stop handled by settings and connection status
+
+        // Initialize weather auto-announcement timer (30 second interval)
+        weatherAnnouncementTimer = new System.Windows.Forms.Timer();
+        weatherAnnouncementTimer.Interval = 30000;
+        weatherAnnouncementTimer.Tick += WeatherAnnouncementTimer_Tick;
 
         // Update status bar with database info
         UpdateDatabaseStatusDisplay();
@@ -272,6 +293,17 @@ public partial class MainForm : Form
 
             // Start nearest city announcement timer if enabled in settings
             StartNearestCityAnnouncementTimer();
+
+            // Start weather auto-announcement timer
+            _prevPrecipState = -1;
+            _prevPrecipRate = -1;
+            _prevInCloud = -1;
+            _prevVisibility = -1;
+            _prevVisLow = false;
+            _announcedSigmetKeys.Clear();
+            _announcedPirepKeys.Clear();
+            _sigmetKeysClearedAt = DateTime.UtcNow;
+            weatherAnnouncementTimer?.Start();
         }
         else if (status.Contains("Disconnected"))
         {
@@ -280,6 +312,9 @@ public partial class MainForm : Form
 
             // Stop nearest city announcement timer
             nearestCityAnnouncementTimer?.Stop();
+
+            // Stop weather auto-announcement timer
+            weatherAnnouncementTimer?.Stop();
 
             // Clear event queue and reset counters
             while (eventQueue.TryDequeue(out _)) { }
@@ -1032,6 +1067,15 @@ public partial class MainForm : Form
             case HotkeyAction.SimBriefBriefing:
                 OpenSimBriefBriefing();
                 break;
+            case HotkeyAction.ShowTcasWindow:
+                OpenTcasWindow();
+                break;
+            case HotkeyAction.AnnounceTcasTraffic:
+                AnnounceTrackedTcasTraffic();
+                break;
+            case HotkeyAction.ShowWeatherRadar:
+                OpenWeatherRadarWindow();
+                break;
             case HotkeyAction.SelectDestinationRunway:
                 ShowDestinationRunwayDialog();
                 break;
@@ -1286,6 +1330,53 @@ public partial class MainForm : Form
     }
 
 
+    private void OpenWeatherRadarWindow()
+    {
+        try
+        {
+            if (weatherRadarForm == null || weatherRadarForm.IsDisposed)
+                weatherRadarForm = new Forms.WeatherRadarForm(announcer, simConnectManager);
+            weatherRadarForm.ShowForm();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[MainForm] Error opening weather radar: {ex.Message}");
+        }
+    }
+
+
+
+    private void OpenTcasWindow()
+    {
+        try
+        {
+            if (tcasForm == null || tcasForm.IsDisposed)
+                tcasForm = new Forms.TcasForm(tcasService!, announcer);
+            tcasForm.ShowForm();
+        }
+        catch (Exception ex)
+        {
+            announcer.AnnounceImmediate($"Error opening TCAS: {ex.Message}");
+        }
+    }
+
+    private async void AnnounceTrackedTcasTraffic()
+    {
+        if (tcasService == null || !tcasService.HasTracked)
+        {
+            announcer.AnnounceImmediate("No tracked aircraft. Add aircraft to track list from the TCAS window.");
+            return;
+        }
+
+        // Kick off a fresh poll so SimConnect returns the latest positions.
+        // Wait ~600 ms for responses to arrive before reading announcements.
+        tcasService.PollNow();
+        await Task.Delay(600);
+
+        var items = tcasService.GetTrackedAnnouncements();
+        announcer.AnnounceImmediate(string.Join(". ", items));
+    }
+
     private void OpenSimBriefBriefing()
     {
         try
@@ -1426,51 +1517,159 @@ public partial class MainForm : Form
 
     private void CheckAndOfferEFBModPackage()
     {
-        efbCommunityFolderPath ??= EFBModPackageManager.FindCommunityFolderPath();
-        if (efbCommunityFolderPath == null)
+        var allFolders = EFBModPackageManager.FindAllCommunityFolders();
+        if (allFolders.Count == 0)
         {
-            System.Diagnostics.Debug.WriteLine("EFB Mod Package: Could not find MSFS Community folder");
+            System.Diagnostics.Debug.WriteLine("EFB Mod Package: Could not find any MSFS Community folder");
             return;
         }
 
-        if (EFBModPackageManager.IsInstalled(efbCommunityFolderPath))
+        string bridgeJsSource = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources", "pmdg-efb-accessibility-bridge.js");
+
+        // First, update any already-installed packages
+        bool anyInstalled = false;
+        foreach (var (simLabel, folderPath) in allFolders)
         {
-            // Update the bridge JS in case the app was updated
-            string bridgeJsSource = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources", "pmdg-efb-accessibility-bridge.js");
-            if (File.Exists(bridgeJsSource))
+            if (EFBModPackageManager.IsInstalled(folderPath))
             {
-                EFBModPackageManager.UpdateBridgeJs(efbCommunityFolderPath, bridgeJsSource);
+                anyInstalled = true;
+                if (File.Exists(bridgeJsSource))
+                {
+                    var updateResult = EFBModPackageManager.UpdateModPackage(folderPath, bridgeJsSource);
+                    if (updateResult == ModPackageResult.Updated)
+                    {
+                        MessageBox.Show($"The EFB accessibility mod package for {simLabel} has been updated. Changes will take effect next time the simulator starts.",
+                            "EFB Accessibility Bridge", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    }
+                }
             }
+        }
+
+        // Check if any sims still need installation
+        var notInstalledFolders = allFolders.Where(f => !EFBModPackageManager.IsInstalled(f.Path)).ToList();
+        if (notInstalledFolders.Count == 0) return; // All detected sims have it
+
+        // Not installed everywhere — offer to install in remaining sims
+        if (!File.Exists(bridgeJsSource))
+        {
+            announcer.Announce("Bridge script file not found. Cannot install mod package.");
             return;
         }
 
-        string message = "The PMDG EFB accessibility mod package is not installed. Would you like to install it? This creates a separate mod in your Community folder — no PMDG files are modified.";
+        // Determine which sims to offer
+        List<string> installTargets = new();
 
-        announcer.Announce(message);
-        var result = MessageBox.Show(message, "EFB Accessibility Bridge", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
-
-        if (result == DialogResult.Yes)
+        if (notInstalledFolders.Count == 1)
         {
-            string bridgeJsSource = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources", "pmdg-efb-accessibility-bridge.js");
-            if (!File.Exists(bridgeJsSource))
+            // Only one sim needs it — simple yes/no
+            var (simLabel, folderPath) = notInstalledFolders[0];
+            string context = anyInstalled
+                ? $"The EFB mod is already installed for {allFolders.First(f => EFBModPackageManager.IsInstalled(f.Path)).SimLabel}. Would you also like to install it for {simLabel}?"
+                : $"The PMDG EFB accessibility mod package is not installed. Would you like to install it for {simLabel}? No PMDG files are modified.";
+            announcer.Announce(context);
+            if (MessageBox.Show(context, "EFB Accessibility Bridge", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
             {
-                announcer.Announce("Bridge script file not found. Cannot install mod package.");
-                return;
+                installTargets.Add(folderPath);
+            }
+        }
+        else
+        {
+            // Multiple sims need installation — show choice dialog
+            using var dialog = new Form
+            {
+                Text = "EFB Accessibility Bridge",
+                ClientSize = new Size(400, 220),
+                FormBorderStyle = FormBorderStyle.FixedDialog,
+                StartPosition = FormStartPosition.CenterScreen,
+                MaximizeBox = false,
+                MinimizeBox = false
+            };
+
+            var label = new Label
+            {
+                Text = "MSFS 2020 and 2024 detected. Where would you like to install the EFB accessibility mod?",
+                Location = new Point(15, 15),
+                Size = new Size(370, 40),
+                AccessibleName = "Installation location"
+            };
+
+            var radioButtons = new List<RadioButton>();
+            int y = 60;
+            foreach (var (simLabel, _) in notInstalledFolders)
+            {
+                var rb = new RadioButton
+                {
+                    Text = simLabel,
+                    Location = new Point(20, y),
+                    Size = new Size(350, 25),
+                    AccessibleName = simLabel
+                };
+                radioButtons.Add(rb);
+                dialog.Controls.Add(rb);
+                y += 30;
             }
 
-            var installResult = EFBModPackageManager.Install(efbCommunityFolderPath, bridgeJsSource);
+            var rbBoth = new RadioButton
+            {
+                Text = "Both",
+                Location = new Point(20, y),
+                Size = new Size(350, 25),
+                AccessibleName = "Both simulators",
+                Checked = true
+            };
+            radioButtons.Add(rbBoth);
+            dialog.Controls.Add(rbBoth);
+            y += 40;
+
+            var btnOk = new Button { Text = "Install", Location = new Point(200, y), Size = new Size(80, 30), DialogResult = DialogResult.OK };
+            var btnCancel = new Button { Text = "Cancel", Location = new Point(290, y), Size = new Size(80, 30), DialogResult = DialogResult.Cancel };
+            dialog.Controls.AddRange(new Control[] { label, btnOk, btnCancel });
+            dialog.AcceptButton = btnOk;
+            dialog.CancelButton = btnCancel;
+
+            announcer.Announce("MSFS 2020 and 2024 detected. Choose where to install the EFB accessibility mod.");
+
+            if (dialog.ShowDialog(this) == DialogResult.OK)
+            {
+                if (rbBoth.Checked)
+                {
+                    installTargets.AddRange(notInstalledFolders.Select(f => f.Path));
+                }
+                else
+                {
+                    for (int i = 0; i < notInstalledFolders.Count; i++)
+                    {
+                        if (radioButtons[i].Checked)
+                        {
+                            installTargets.Add(notInstalledFolders[i].Path);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Install to selected targets
+        foreach (string folderPath in installTargets)
+        {
+            var installResult = EFBModPackageManager.Install(folderPath, bridgeJsSource);
+            string simName = notInstalledFolders.FirstOrDefault(f => f.Path == folderPath).SimLabel
+                ?? allFolders.FirstOrDefault(f => f.Path == folderPath).SimLabel ?? "MSFS";
             switch (installResult)
             {
                 case ModPackageResult.Success:
-                    MessageBox.Show("EFB accessibility mod package installed successfully. If the simulator is currently running, please restart it for changes to take effect.", "EFB Accessibility Bridge", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    MessageBox.Show($"EFB mod package installed for {simName} successfully.",
+                        "EFB Accessibility Bridge", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    break;
+                case ModPackageResult.PmdgPackageNotFound:
+                    MessageBox.Show($"Could not find the PMDG 777 in the {simName} Community folder. Skipping.",
+                        "EFB Accessibility Bridge", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     break;
                 case ModPackageResult.AlreadyInstalled:
                     break;
-                case ModPackageResult.PmdgPackageNotFound:
-                    MessageBox.Show("Could not find the PMDG 777 aircraft package in your Community folder. Please ensure the PMDG 777 is installed.", "EFB Accessibility Bridge", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    break;
                 default:
-                    MessageBox.Show($"Failed to install EFB mod package: {installResult}", "EFB Accessibility Bridge", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    MessageBox.Show($"Failed to install for {simName}: {installResult}",
+                        "EFB Accessibility Bridge", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     break;
             }
         }
@@ -2056,22 +2255,37 @@ public partial class MainForm : Form
 
     private void AnnouncementSettingsMenuItem_Click(object? sender, EventArgs e)
     {
+        var settings = MSFSBlindAssist.Settings.SettingsManager.Current;
         var currentMode = announcer.GetAnnouncementMode();
-        using (var settingsForm = new AnnouncementSettingsForm(currentMode))
+        using (var settingsForm = new AnnouncementSettingsForm(
+            currentMode,
+            settings.NearestCityAnnouncementInterval,
+            settings.WeatherAutoAnnounceEnabled,
+            settings.SigmetProximityAlertsEnabled,
+            settings.PirepProximityAlertsEnabled,
+            settings.SigmetProximityRangeNm))
         {
             if (settingsForm.ShowDialog(this) == DialogResult.OK)
             {
+                // Announcement mode
                 var newMode = settingsForm.SelectedMode;
                 announcer.SetAnnouncementMode(newMode);
 
-                string modeText = newMode == AnnouncementMode.ScreenReader ? "screen reader" : "SAPI";
-                statusLabel.Text = $"Announcement mode changed to {modeText}";
-                announcer.Announce($"Announcement mode changed to {modeText}");
+                // Nearest city interval
+                settings.NearestCityAnnouncementInterval = settingsForm.NearestCityAnnouncementInterval;
+                RestartNearestCityAnnouncementTimer();
 
-                // Diagnostic test disabled to prevent test speech
-                // Uncomment if you need to troubleshoot:
-                // System.Diagnostics.Debug.WriteLine("[MainForm] Running screen reader diagnostic test after mode change");
-                // announcer.TestScreenReaderConnection();
+                // Weather announcements
+                settings.WeatherAutoAnnounceEnabled = settingsForm.WeatherAutoAnnounceEnabled;
+                settings.SigmetProximityAlertsEnabled = settingsForm.SigmetProximityAlertsEnabled;
+                settings.PirepProximityAlertsEnabled = settingsForm.PirepProximityAlertsEnabled;
+                settings.SigmetProximityRangeNm = settingsForm.SigmetProximityRangeNm;
+
+                MSFSBlindAssist.Settings.SettingsManager.Save();
+
+                string modeText = newMode == AnnouncementMode.ScreenReader ? "screen reader" : "SAPI";
+                statusLabel.Text = $"Announcement settings saved (mode: {modeText})";
+                announcer.Announce("Announcement settings saved");
             }
         }
     }
@@ -2082,9 +2296,6 @@ public partial class MainForm : Form
         {
             if (settingsForm.ShowDialog(this) == DialogResult.OK)
             {
-                // Restart timer with new settings (handles enable/disable/interval changes)
-                RestartNearestCityAnnouncementTimer();
-
                 statusLabel.Text = "GeoNames settings saved successfully";
                 announcer.Announce("GeoNames settings saved successfully");
             }
@@ -2102,6 +2313,7 @@ public partial class MainForm : Form
             }
         }
     }
+
 
     private void GeminiSettingsMenuItem_Click(object? sender, EventArgs e)
     {
@@ -3555,6 +3767,160 @@ public partial class MainForm : Form
         AnnounceNearestCity();
     }
 
+    private void WeatherAnnouncementTimer_Tick(object? sender, EventArgs e)
+    {
+        var settings = MSFSBlindAssist.Settings.SettingsManager.Current;
+        if (!simConnectManager.IsConnected) return;
+
+        if (settings.WeatherAutoAnnounceEnabled)
+            CheckAmbientWeatherChanges();
+
+        if (settings.SigmetProximityAlertsEnabled || settings.PirepProximityAlertsEnabled)
+            _ = CheckWeatherProximityAsync(settings.SigmetProximityRangeNm,
+                    settings.SigmetProximityAlertsEnabled, settings.PirepProximityAlertsEnabled);
+    }
+
+    private void CheckAmbientWeatherChanges()
+    {
+        simConnectManager.RequestWeatherInfo(data =>
+        {
+            if (InvokeRequired) { BeginInvoke(() => AnnounceAmbientChanges(data)); return; }
+            AnnounceAmbientChanges(data);
+        });
+    }
+
+    private void AnnounceAmbientChanges(MSFSBlindAssist.SimConnect.SimConnectManager.AmbientWeatherData data)
+    {
+        // Cloud entry/exit
+        double inCloud = data.InCloud;
+        if (_prevInCloud >= 0 && Math.Abs(inCloud - _prevInCloud) > 0.5)
+            announcer.Announce(inCloud >= 0.5 ? "Entering cloud" : "Leaving cloud");
+        _prevInCloud = inCloud;
+
+        // Precipitation — announce on start, stop, and intensity tier changes
+        double precipState = data.PrecipState;
+        double precipRate = data.PrecipRate;
+        bool wasRaining = _prevPrecipState > 0.5;
+        bool isRaining = precipState > 0.5;
+
+        if (_prevPrecipState >= 0)
+        {
+            if (!wasRaining && isRaining)
+            {
+                // Started
+                announcer.Announce($"Precipitation started: {DescribePrecipIntensity(precipRate)}");
+            }
+            else if (wasRaining && !isRaining)
+            {
+                // Stopped
+                announcer.Announce("Precipitation stopped");
+            }
+            else if (isRaining && _prevPrecipRate >= 0 && IntensityTier(precipRate) != IntensityTier(_prevPrecipRate))
+            {
+                // Intensity changed tier (light → moderate, moderate → heavy, etc.)
+                announcer.Announce($"Precipitation now {DescribePrecipIntensity(precipRate)}");
+            }
+        }
+        _prevPrecipState = precipState;
+        _prevPrecipRate = precipRate;
+
+        // Visibility — announce crossing the 1500 m threshold in either direction
+        double vis = data.Visibility;
+        if (_prevVisibility >= 0)
+        {
+            bool isLow = vis < 1500;
+            if (isLow && !_prevVisLow)
+                announcer.Announce($"Visibility low: {vis / 1000.0:F1} km");
+            else if (!isLow && _prevVisLow)
+                announcer.Announce($"Visibility improving: {vis / 1000.0:F1} km");
+        }
+        _prevVisibility = vis;
+        _prevVisLow = vis < 1500;
+    }
+
+    private static int IntensityTier(double rate) => rate switch
+    {
+        < 20 => 0,   // light
+        < 50 => 1,   // moderate
+        < 80 => 2,   // heavy
+        _    => 3    // extreme
+    };
+
+    private static string DescribePrecipIntensity(double rate) => rate switch
+    {
+        < 20 => "light",
+        < 50 => "moderate",
+        < 80 => "heavy",
+        _    => "extreme"
+    };
+
+    private async Task CheckWeatherProximityAsync(int rangeNm, bool checkSigmets, bool checkPireps)
+    {
+        try
+        {
+            var lastPos = simConnectManager.LastKnownPosition;
+            if (lastPos == null) return;
+            var pos = lastPos.Value;
+            if (pos.Latitude == 0 && pos.Longitude == 0) return;
+
+            // Clear stale announced keys every 15 minutes
+            if ((DateTime.UtcNow - _sigmetKeysClearedAt).TotalMinutes > 15)
+            {
+                _announcedSigmetKeys.Clear();
+                _announcedPirepKeys.Clear();
+                _sigmetKeysClearedAt = DateTime.UtcNow;
+            }
+
+            if (!IsHandleCreated || IsDisposed) return;
+
+            if (checkSigmets)
+            {
+                var advisories = await MSFSBlindAssist.Services.WeatherService.GetNearbyAdvisoriesAsync(
+                    pos.Latitude, pos.Longitude, rangeNm);
+
+                if (!IsHandleCreated || IsDisposed) return;
+
+                foreach (var adv in advisories)
+                {
+                    string key = $"{adv.AdvisoryType}_{adv.Hazard}_{adv.ValidFrom}_{adv.ValidTo}";
+                    if (_announcedSigmetKeys.Contains(key)) continue;
+                    _announcedSigmetKeys.Add(key);
+
+                    string msg = $"{adv.AdvisoryType}: {adv.HazardLabel}";
+                    if (!string.IsNullOrEmpty(adv.AltitudeRange)) msg += $", {adv.AltitudeRange}";
+                    msg += $", bearing {adv.BearingDeg:F0} degrees, {adv.DistanceNm:F0} nautical miles";
+                    Invoke(() => announcer.Announce(msg));
+                }
+            }
+
+            if (checkPireps)
+            {
+                var pireps = await MSFSBlindAssist.Services.WeatherService.GetNearbyPirepsAsync(
+                    pos.Latitude, pos.Longitude, rangeNm);
+
+                if (!IsHandleCreated || IsDisposed) return;
+
+                foreach (var p in pireps)
+                {
+                    if (!p.IsSignificantHazard) continue;  // skip light reports
+
+                    string key = $"PIREP_{p.ObsTime}_{p.AltitudeFt}_{p.TurbulenceIntensity}_{p.IcingIntensity}";
+                    if (_announcedPirepKeys.Contains(key)) continue;
+                    _announcedPirepKeys.Add(key);
+
+                    int fl = p.AltitudeFt / 100;
+                    string msg = $"Pilot report: {p.HazardSummary} at FL{fl:D3}";
+                    msg += $", bearing {p.BearingDeg:F0} degrees, {p.DistanceNm:F0} nautical miles";
+                    Invoke(() => announcer.Announce(msg));
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[MainForm] Weather proximity check error: {ex.Message}");
+        }
+    }
+
     /// <summary>
     /// Announces the nearest city to the current aircraft position.
     /// Used by both the periodic timer and the hotkey shortcut (] then C).
@@ -3652,6 +4018,12 @@ public partial class MainForm : Form
 
         nearestCityAnnouncementTimer?.Stop();
         nearestCityAnnouncementTimer?.Dispose();
+
+        weatherAnnouncementTimer?.Stop();
+        weatherAnnouncementTimer?.Dispose();
+
+        // Clean up TCAS service
+        tcasService?.Dispose();
 
         // Clean up EFB bridge
         efbBridgeServer?.Dispose();
