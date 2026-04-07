@@ -218,7 +218,7 @@ public class TcasForm : Form
         var parts = new List<string>
         {
             id,
-            t.RelativePositionSummary,
+            t.OnGround ? t.RelativePositionSummaryNoAltitude : t.RelativePositionSummary,
             $"{(int)t.GroundSpeedKnots} knots",
         };
 
@@ -231,7 +231,10 @@ public class TcasForm : Form
             parts.Add(route);
 
         parts.Add($"heading {(int)t.HeadingMagnetic}");
-        parts.Add($"{(int)t.AltitudeFt:N0} feet");
+
+        // Altitude is irrelevant for ground traffic
+        if (!t.OnGround)
+            parts.Add($"{(int)t.AltitudeFt:N0} feet");
 
         return string.Join(" — ", parts);
     }
