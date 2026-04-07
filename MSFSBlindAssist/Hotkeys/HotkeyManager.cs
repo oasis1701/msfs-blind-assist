@@ -134,6 +134,11 @@ public class HotkeyManager : IDisposable
         // Nearest city announcement hotkey ID
         private const int HOTKEY_NEAREST_CITY = 9093;
 
+        // TCAS and Weather Radar hotkey IDs (Output mode)
+        private const int HOTKEY_TCAS_ANNOUNCE = 9104;
+        private const int HOTKEY_TCAS_WINDOW = 9105;
+        private const int HOTKEY_WEATHER_RADAR = 9106;
+
         private IntPtr windowHandle;
         private bool visualGuidanceHotkeysActive = false;
         private bool outputHotkeyModeActive = false;
@@ -387,6 +392,15 @@ public class HotkeyManager : IDisposable
                         case HOTKEY_NEAREST_CITY:
                             TriggerHotkey(HotkeyAction.ReadNearestCity);
                             break;
+                        case HOTKEY_TCAS_ANNOUNCE:
+                            TriggerHotkey(HotkeyAction.AnnounceTcasTraffic);
+                            break;
+                        case HOTKEY_TCAS_WINDOW:
+                            TriggerHotkey(HotkeyAction.ShowTcasWindow);
+                            break;
+                        case HOTKEY_WEATHER_RADAR:
+                            TriggerHotkey(HotkeyAction.ShowWeatherRadar);
+                            break;
                     }
                     DeactivateOutputHotkeyMode();
                     return true;
@@ -616,6 +630,9 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_ISIS, MOD_ALT, 0x49);        // Alt+I (Read ISIS)
             RegisterHotKey(windowHandle, HOTKEY_DESCRIBE_SCENE, MOD_ALT, 0x44);           // Alt+D (Describe Scene)
             RegisterHotKey(windowHandle, HOTKEY_NEAREST_CITY, MOD_NONE, 0x43);             // C (Nearest City)
+            RegisterHotKey(windowHandle, HOTKEY_TCAS_ANNOUNCE, MOD_NONE, 0x52);            // R (Announce Tracked TCAS Traffic)
+            RegisterHotKey(windowHandle, HOTKEY_TCAS_WINDOW, MOD_CONTROL, 0x52);           // Ctrl+R (TCAS Traffic Window)
+            RegisterHotKey(windowHandle, HOTKEY_WEATHER_RADAR, MOD_SHIFT, 0x52);           // Shift+R (Weather Radar Window)
 
             // Auto-timeout disabled - hotkey mode stays active until used or escape pressed
 
@@ -697,6 +714,9 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_ISIS);
             UnregisterHotKey(windowHandle, HOTKEY_DESCRIBE_SCENE);
             UnregisterHotKey(windowHandle, HOTKEY_NEAREST_CITY);
+            UnregisterHotKey(windowHandle, HOTKEY_TCAS_ANNOUNCE);
+            UnregisterHotKey(windowHandle, HOTKEY_TCAS_WINDOW);
+            UnregisterHotKey(windowHandle, HOTKEY_WEATHER_RADAR);
 
             OutputHotkeyModeChanged?.Invoke(this, new HotkeyModeEventArgs(wasCancelled ? HotkeyModeStatus.Cancelled : HotkeyModeStatus.Deactivated));
         }
@@ -732,7 +752,7 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_TOGGLE_AP2, MOD_CONTROL, 0x4F);      // Ctrl+O (Toggle Autopilot 2)
             RegisterHotKey(windowHandle, HOTKEY_TRACK_FIX, MOD_SHIFT, 0x46);         // Shift+F (Track Fix Window)
             RegisterHotKey(windowHandle, HOTKEY_FENIX_MCDU, MOD_SHIFT, 0x4D);       // Shift+M (Fenix MCDU)
-            RegisterHotKey(windowHandle, HOTKEY_PMDG_777_EFB, MOD_SHIFT, 0x54);  // Shift+T (PMDG 777 EFB Tablet)
+            RegisterHotKey(windowHandle, HOTKEY_PMDG_777_EFB, MOD_SHIFT, 0x54);    // Shift+T (PMDG 777 EFB Tablet)
 
             InputHotkeyModeChanged?.Invoke(this, new HotkeyModeEventArgs(HotkeyModeStatus.Activated));
         }
@@ -1072,4 +1092,7 @@ public class HotkeyManager : IDisposable
         ReadDistanceToDest,
         ToggleTrimAnnouncements,
         ReadNavRadioInfo,
+        AnnounceTcasTraffic,
+        ShowTcasWindow,
+        ShowWeatherRadar,
     }

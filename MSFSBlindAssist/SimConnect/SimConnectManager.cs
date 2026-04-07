@@ -23,7 +23,9 @@ public class SimConnectManager
     public event EventHandler<string>? SimulatorVersionDetected;
     public event EventHandler<SimVarUpdateEventArgs>? SimVarUpdated;
     public event EventHandler<AircraftPosition>? AircraftPositionReceived;
+    public event EventHandler<AiTrafficDataEventArgs>? AiTrafficReceived;
     public event EventHandler<WindData>? WindReceived;
+    public event EventHandler<AmbientWeatherData>? WeatherDataReceived;
     public event EventHandler<NavRadioData>? NavRadioReceived;
     public event EventHandler<ECAMDataEventArgs>? ECAMDataReceived;
     public event EventHandler<TakeoffRunwayReferenceEventArgs>? TakeoffRunwayReferenceSet;
@@ -102,6 +104,8 @@ public class SimConnectManager
 
     // Last known aircraft position
     private AircraftPosition? lastKnownPosition;
+    /// <summary>Returns the most recently received own-aircraft position without making a new request.</summary>
+    public AircraftPosition? LastKnownPosition => lastKnownPosition;
 
     // Aircraft identification
     private string currentAircraftAtcId = "";
@@ -132,6 +136,7 @@ public class SimConnectManager
         REQUEST_CONTINUOUS_BATCH_5 = 12,
         // Panel batch for OnRequest variables
         REQUEST_PANEL_BATCH = 13,
+        REQUEST_WEATHER_DATA = 14,
         // Hotkey readout requests (one-shot, used by aircraft definitions)
         REQUEST_HEADING = 300,
         REQUEST_SPEED = 301,
@@ -157,6 +162,7 @@ public class SimConnectManager
         REQUEST_FUEL_QUANTITY_FBW = 321,
         REQUEST_NAV_RADIO = 322,
         REQUEST_ECAM_MESSAGES = 350,
+        REQUEST_AI_TRAFFIC = 500,
         // Individual variable requests start from 1000
         INDIVIDUAL_VARIABLE_BASE = 1000
     }
@@ -181,6 +187,8 @@ public class SimConnectManager
         VISUAL_GUIDANCE_DATA = 14,
         // Takeoff assist consolidated data
         TAKEOFF_ASSIST_DATA = 15,
+        // Ambient weather data (on-request)
+        WEATHER_DATA = 16,
         // Hotkey readout definitions (one-shot, used by aircraft definitions)
         DEF_HEADING = 300,
         DEF_SPEED = 301,
@@ -206,6 +214,7 @@ public class SimConnectManager
         DEF_FUEL_QUANTITY_FBW = 321,
         DEF_NAV_RADIO = 322,
         ECAM_MESSAGES = 350,
+        DEF_AI_TRAFFIC = 500,
         // Individual variable definitions start from 1000
         INDIVIDUAL_VARIABLE_BASE = 1000
     }
@@ -258,6 +267,31 @@ public class SimConnectManager
         public uint Airspeed;
     }
 
+    /// <summary>
+    /// Data received per-object from RequestDataOnSimObjectType(AIRCRAFT).
+    /// Field order must exactly match AddToDataDefinition call order for DEF_AI_TRAFFIC.
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
+    public struct AiTrafficData
+    {
+        public double Latitude;
+        public double Longitude;
+        public double AltitudeFt;
+        public double HeadingMagnetic;
+        public double GroundSpeedKnots;
+        public double SimOnGround;        // 0.0 = airborne, 1.0 = on ground
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]
+        public string AtcId;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
+        public string AtcType;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
+        public string AtcModel;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 8)]
+        public string FromAirport;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 8)]
+        public string ToAirport;
+    }
+
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
     public struct AircraftPosition
     {
@@ -300,6 +334,18 @@ public class SimConnectManager
     {
         public double Direction;
         public double Speed;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
+    public struct AmbientWeatherData
+    {
+        public double PrecipRate;      // AMBIENT PRECIP RATE, percent (0-100)
+        public double PrecipState;     // AMBIENT PRECIP STATE, bitmask (0=none,1=rain,4=snow,8=freezing)
+        public double InCloud;         // AMBIENT IN CLOUD, bool
+        public double Visibility;      // AMBIENT VISIBILITY, meters
+        public double Temperature;     // AMBIENT TEMPERATURE, Celsius
+        public double WindDirection;   // AMBIENT WIND DIRECTION, degrees
+        public double WindSpeed;       // AMBIENT WIND VELOCITY, knots
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
@@ -510,6 +556,20 @@ public class SimConnectManager
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)6);
         sc.RegisterDataDefineStruct<AircraftPosition>(DATA_DEFINITIONS.AIRCRAFT_POSITION);
 
+        // Register AI traffic data (used by RequestDataOnSimObjectType → OnRecvSimobjectDataBytype)
+        sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_AI_TRAFFIC, "PLANE LATITUDE",  "degrees",   SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_AI_TRAFFIC, "PLANE LONGITUDE", "degrees",   SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_AI_TRAFFIC, "PLANE ALTITUDE",  "feet",      SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_AI_TRAFFIC, "PLANE HEADING DEGREES MAGNETIC", "degrees", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_AI_TRAFFIC, "GROUND VELOCITY", "knots",     SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_AI_TRAFFIC, "SIM ON GROUND",   "bool",      SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_AI_TRAFFIC, "ATC ID",          null,        SIMCONNECT_DATATYPE.STRING64, 0.0f, SIMCONNECT_UNUSED);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_AI_TRAFFIC, "ATC TYPE",        null,        SIMCONNECT_DATATYPE.STRING32, 0.0f, SIMCONNECT_UNUSED);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_AI_TRAFFIC, "ATC MODEL",       null,        SIMCONNECT_DATATYPE.STRING32, 0.0f, SIMCONNECT_UNUSED);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_AI_TRAFFIC, "AI TRAFFIC FROMAIRPORT", null, SIMCONNECT_DATATYPE.STRING8, 0.0f, SIMCONNECT_UNUSED);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_AI_TRAFFIC, "AI TRAFFIC TOAIRPORT",   null, SIMCONNECT_DATATYPE.STRING8, 0.0f, SIMCONNECT_UNUSED);
+        sc.RegisterDataDefineStruct<AiTrafficData>(DATA_DEFINITIONS.DEF_AI_TRAFFIC);
+
         // Register visual guidance data (consolidated position + AGL + ground track)
         sc.AddToDataDefinition(DATA_DEFINITIONS.VISUAL_GUIDANCE_DATA, "PLANE LATITUDE", "degrees",
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)0);
@@ -552,6 +612,23 @@ public class SimConnectManager
         sc.AddToDataDefinition(DATA_DEFINITIONS.WIND_DATA, "AMBIENT WIND VELOCITY", "knots",
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)1);
         sc.RegisterDataDefineStruct<WindData>(DATA_DEFINITIONS.WIND_DATA);
+
+        // Register ambient weather data (on-request)
+        sc.AddToDataDefinition(DATA_DEFINITIONS.WEATHER_DATA, "AMBIENT PRECIP RATE", "percent",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)0);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.WEATHER_DATA, "AMBIENT PRECIP STATE", "mask",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)1);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.WEATHER_DATA, "AMBIENT IN CLOUD", "bool",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)2);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.WEATHER_DATA, "AMBIENT VISIBILITY", "meters",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)3);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.WEATHER_DATA, "AMBIENT TEMPERATURE", "celsius",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)4);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.WEATHER_DATA, "AMBIENT WIND DIRECTION", "degrees",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)5);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.WEATHER_DATA, "AMBIENT WIND VELOCITY", "knots",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)6);
+        sc.RegisterDataDefineStruct<AmbientWeatherData>(DATA_DEFINITIONS.WEATHER_DATA);
 
         // NAV Radio data
         sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_NAV_RADIO, "NAV ACTIVE FREQUENCY:1", "MHz", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
@@ -923,6 +1000,7 @@ public class SimConnectManager
         sc.OnRecvOpen += SimConnect_OnRecvOpen;
         sc.OnRecvQuit += SimConnect_OnRecvQuit;
         sc.OnRecvSimobjectData += SimConnect_OnRecvSimobjectData;
+        sc.OnRecvSimobjectDataBytype += SimConnect_OnRecvSimobjectDataBytype;
         sc.OnRecvClientData += SimConnect_OnRecvClientData;
         sc.OnRecvException += SimConnect_OnRecvException;
     }
@@ -1142,6 +1220,11 @@ public class SimConnectManager
             case DATA_REQUESTS.REQUEST_WIND_DATA:
                 WindData windData = (WindData)data.dwData[0];
                 ProcessWindData(windData);
+                break;
+
+            case DATA_REQUESTS.REQUEST_WEATHER_DATA:
+                AmbientWeatherData weatherData = (AmbientWeatherData)data.dwData[0];
+                ProcessWeatherData(weatherData);
                 break;
 
             case DATA_REQUESTS.REQUEST_NAV_RADIO:
@@ -2384,6 +2467,18 @@ public class SimConnectManager
         }
     }
 
+    private void ProcessWeatherData(AmbientWeatherData data)
+    {
+        try
+        {
+            WeatherDataReceived?.Invoke(this, data);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error processing weather data: {ex.Message}");
+        }
+    }
+
     // ProcessECAMData method removed - now using MobiFlight WASM for string L:vars
 
     /// <summary>
@@ -2500,6 +2595,94 @@ public class SimConnectManager
         else
         {
             System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Connected to {info.title}{identification} - not FBW A32NX");
+        }
+    }
+
+    private void SimConnect_OnRecvSimobjectDataBytype(Microsoft.FlightSimulator.SimConnect.SimConnect sender, SIMCONNECT_RECV_SIMOBJECT_DATA_BYTYPE data)
+    {
+        if ((int)data.dwRequestID != (int)DATA_REQUESTS.REQUEST_AI_TRAFFIC) return;
+        try
+        {
+            var raw = (AiTrafficData)data.dwData[0];
+
+            // Filter out own aircraft (object ID 0 = SIMCONNECT_OBJECT_ID_USER)
+            if (data.dwObjectID == 0) return;
+
+            // Also filter by callsign match to own aircraft as a second guard
+            if (!string.IsNullOrEmpty(currentAircraftAtcId) &&
+                string.Equals(raw.AtcId, currentAircraftAtcId, StringComparison.OrdinalIgnoreCase))
+                return;
+
+            var eventArgs = new AiTrafficDataEventArgs
+            {
+                ObjectId         = data.dwObjectID,
+                Latitude         = raw.Latitude,
+                Longitude        = raw.Longitude,
+                AltitudeFt       = raw.AltitudeFt,
+                HeadingMagnetic  = raw.HeadingMagnetic,
+                GroundSpeedKnots = raw.GroundSpeedKnots,
+                OnGround         = raw.SimOnGround >= 0.5,
+                Callsign         = raw.AtcId?.Trim() ?? "",
+                AircraftType     = ResolveAiAircraftType(raw.AtcType, raw.AtcModel),
+                FromAirport      = raw.FromAirport?.Trim() ?? "",
+                ToAirport        = raw.ToAirport?.Trim() ?? "",
+            };
+            AiTrafficReceived?.Invoke(this, eventArgs);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] AI traffic parse error: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Resolves the best available aircraft type string for TCAS display.
+    /// vPilot/FSLTL-injected VATSIM traffic often has ATC TYPE = "ATCCONN" (a
+    /// multiplayer placeholder); in that case ATC MODEL is a better source since
+    /// FSLTL names its models with the ICAO designator (e.g. "B77W", "A20N").
+    /// </summary>
+    private static string ResolveAiAircraftType(string? atcType, string? atcModel)
+    {
+        string type  = atcType?.Trim()  ?? "";
+        string model = atcModel?.Trim() ?? "";
+
+        // If type is meaningful and not a known placeholder or file-path, use it.
+        if (!string.IsNullOrEmpty(type) &&
+            !type.Equals("ATCCONN",     StringComparison.OrdinalIgnoreCase) &&
+            !type.Equals("ATC",         StringComparison.OrdinalIgnoreCase) &&
+            !type.Contains('.',         StringComparison.Ordinal) &&   // e.g. "atcconn.atc" is a model filename
+            !type.Contains('\\',        StringComparison.Ordinal) &&
+            !type.Contains('/',         StringComparison.Ordinal))
+            return type;
+
+        // Strip any file extension from the model name (e.g. "B77W.mdl" → "B77W").
+        if (model.Contains('.', StringComparison.Ordinal))
+            model = model[..model.LastIndexOf('.')];
+
+        // Fall back to the model name — the TcasForm.ShortenAircraftType parser
+        // handles FSLTL-style names like "B77W FSLTL" or "Airbus A320 Neo".
+        return model;
+    }
+
+    /// <summary>
+    /// Requests one data snapshot for every AI/multiplayer aircraft within 150nm.
+    /// Responses arrive via AiTrafficReceived, one event per aircraft.
+    /// </summary>
+    public void RequestAiTrafficData()
+    {
+        if (!IsConnected || simConnect == null) return;
+        try
+        {
+            const uint radiusMeters = 278000; // ~150nm
+            simConnect.RequestDataOnSimObjectType(
+                DATA_REQUESTS.REQUEST_AI_TRAFFIC,
+                DATA_DEFINITIONS.DEF_AI_TRAFFIC,
+                radiusMeters,
+                SIMCONNECT_SIMOBJECT_TYPE.AIRCRAFT);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] RequestAiTrafficData error: {ex.Message}");
         }
     }
 
@@ -3675,6 +3858,7 @@ public class SimConnectManager
                 simConnect.OnRecvOpen -= SimConnect_OnRecvOpen;
                 simConnect.OnRecvQuit -= SimConnect_OnRecvQuit;
                 simConnect.OnRecvSimobjectData -= SimConnect_OnRecvSimobjectData;
+                simConnect.OnRecvSimobjectDataBytype -= SimConnect_OnRecvSimobjectDataBytype;
                 simConnect.OnRecvClientData -= SimConnect_OnRecvClientData;
                 simConnect.OnRecvException -= SimConnect_OnRecvException;
 
@@ -4071,6 +4255,32 @@ public class SimConnectManager
         }
     }
 
+    public void RequestWeatherInfo(Action<AmbientWeatherData> callback)
+    {
+        if (!IsConnected || callback == null) return;
+
+        try
+        {
+            EventHandler<AmbientWeatherData>? handler = null;
+            handler = (sender, data) =>
+            {
+                WeatherDataReceived -= handler!;
+                callback(data);
+            };
+
+            WeatherDataReceived += handler;
+
+            simConnect!.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_WEATHER_DATA,
+                DATA_DEFINITIONS.WEATHER_DATA, SIMCONNECT_OBJECT_ID_USER,
+                SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT,
+                0, 0, 0);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error requesting weather data: {ex.Message}");
+        }
+    }
+
     public void RequestDestinationRunwayDistance()
     {
         if (!IsConnected || !HasDestinationRunway()) return;
@@ -4282,6 +4492,21 @@ public class SimConnectManager
         DEFAULT = 1000000000,
         LOWEST = 4000000000
     }
+}
+
+public class AiTrafficDataEventArgs : EventArgs
+{
+    public uint   ObjectId         { get; set; }
+    public string Callsign         { get; set; } = "";
+    public string AircraftType     { get; set; } = "";
+    public double Latitude         { get; set; }
+    public double Longitude        { get; set; }
+    public double AltitudeFt       { get; set; }
+    public double HeadingMagnetic  { get; set; }
+    public double GroundSpeedKnots { get; set; }
+    public bool   OnGround         { get; set; }
+    public string FromAirport      { get; set; } = "";
+    public string ToAirport        { get; set; } = "";
 }
 
 public class SimVarUpdateEventArgs : EventArgs
