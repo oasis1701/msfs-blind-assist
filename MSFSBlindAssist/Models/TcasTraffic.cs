@@ -17,6 +17,8 @@ public class TcasTraffic
     public bool   OnGround          { get; set; }
     public string FromAirport       { get; set; } = "";
     public string ToAirport         { get; set; } = "";
+    public string Airline           { get; set; } = "";
+    public string TrafficState      { get; set; } = "";
 
     // Computed relative to own aircraft by TcasService
     public double DistanceNm        { get; set; }
@@ -26,25 +28,32 @@ public class TcasTraffic
     /// <summary>
     /// Compact description: "2.3nm, 2,000ft above, ahead" used as the tree node label.
     /// </summary>
-    public string RelativePositionSummary
+    public string RelativePositionSummary => FormatRelativePosition(includeAltitude: true);
+
+    /// <summary>
+    /// Position summary without altitude info, for ground traffic where altitude is irrelevant.
+    /// </summary>
+    public string RelativePositionSummaryNoAltitude => FormatRelativePosition(includeAltitude: false);
+
+    private string FormatRelativePosition(bool includeAltitude)
     {
-        get
-        {
-            string distStr = DistanceNm < 10.0
-                ? $"{DistanceNm:F1}nm"
-                : $"{(int)Math.Round(DistanceNm)}nm";
+        string distStr = DistanceNm < 10.0
+            ? $"{DistanceNm:F1}nm"
+            : $"{(int)Math.Round(DistanceNm)}nm";
 
-            int altDiff = (int)Math.Abs(AltitudeDiffFt);
-            string altStr = altDiff < 200
-                ? "same altitude"
-                : AltitudeDiffFt > 0
-                    ? $"{altDiff:N0}ft above"
-                    : $"{altDiff:N0}ft below";
+        string posStr = Math.Abs(RelativeBearing) <= 90.0 ? "ahead" : "behind";
 
-            string posStr = Math.Abs(RelativeBearing) <= 90.0 ? "ahead" : "behind";
+        if (!includeAltitude)
+            return $"{distStr}, {posStr}";
 
-            return $"{distStr}, {altStr}, {posStr}";
-        }
+        int altDiff = (int)Math.Abs(AltitudeDiffFt);
+        string altStr = altDiff < 200
+            ? "same altitude"
+            : AltitudeDiffFt > 0
+                ? $"{altDiff:N0}ft above"
+                : $"{altDiff:N0}ft below";
+
+        return $"{distStr}, {altStr}, {posStr}";
     }
 
     /// <summary>
