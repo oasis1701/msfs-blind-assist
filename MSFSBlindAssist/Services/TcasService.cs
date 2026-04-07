@@ -95,6 +95,18 @@ public class TcasService : IDisposable
             ? VatsimPilotDataService.GetAircraftType(e.Callsign)
             : e.AircraftType;
 
+        // SimConnect AI TRAFFIC FROMAIRPORT/TOAIRPORT are only populated for
+        // scheduled AI traffic.  For VATSIM traffic, fall back to the live feed
+        // which has departure/arrival from each pilot's filed flight plan.
+        string fromAirport = e.FromAirport;
+        string toAirport   = e.ToAirport;
+        if (string.IsNullOrEmpty(fromAirport) && string.IsNullOrEmpty(toAirport))
+        {
+            var vatsimRoute = VatsimPilotDataService.GetRoute(e.Callsign);
+            fromAirport = vatsimRoute.Departure;
+            toAirport   = vatsimRoute.Arrival;
+        }
+
         var traffic = new TcasTraffic
         {
             ObjectId         = e.ObjectId,
@@ -106,8 +118,8 @@ public class TcasService : IDisposable
             HeadingMagnetic  = e.HeadingMagnetic,
             GroundSpeedKnots = e.GroundSpeedKnots,
             OnGround         = effectivelyOnGround,
-            FromAirport      = e.FromAirport,
-            ToAirport        = e.ToAirport,
+            FromAirport      = fromAirport,
+            ToAirport        = toAirport,
             DistanceNm       = distNm,
             AltitudeDiffFt   = altDiff,
             RelativeBearing  = relBearing,
