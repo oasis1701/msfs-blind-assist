@@ -147,18 +147,24 @@ public class TcasService : IDisposable
 
     public void AddToTrackList(string callsign)
     {
-        if (!string.IsNullOrWhiteSpace(callsign))
-            _trackedCallsigns.Add(callsign.Trim());
+        if (string.IsNullOrWhiteSpace(callsign)) return;
+        lock (_lock) _trackedCallsigns.Add(callsign.Trim());
     }
 
     public void RemoveFromTrackList(string callsign)
     {
         string key = callsign.Trim();
-        _trackedCallsigns.Remove(key);
-        _lastSeenTracked.Remove(key);
+        lock (_lock)
+        {
+            _trackedCallsigns.Remove(key);
+            _lastSeenTracked.Remove(key);
+        }
     }
 
-    public bool IsTracked(string callsign) => _trackedCallsigns.Contains(callsign.Trim());
+    public bool IsTracked(string callsign)
+    {
+        lock (_lock) return _trackedCallsigns.Contains(callsign.Trim());
+    }
 
     public IReadOnlyList<string> GetTrackedAnnouncements()
     {
@@ -189,7 +195,7 @@ public class TcasService : IDisposable
         }
     }
 
-    public bool HasTracked => _trackedCallsigns.Count > 0;
+    public bool HasTracked { get { lock (_lock) return _trackedCallsigns.Count > 0; } }
 
     private static double NormalizeBearing(double b)
     {

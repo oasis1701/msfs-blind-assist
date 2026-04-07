@@ -9,7 +9,7 @@ namespace MSFSBlindAssist
         private System.Windows.Forms.ToolStripMenuItem announcementSettingsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem geoNamesSettingsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem simbriefSettingsMenuItem = null!;
-private System.Windows.Forms.ToolStripMenuItem geminiSettingsMenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem geminiSettingsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem handFlyOptionsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem hotkeyListMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem updateApplicationMenuItem = null!;
@@ -40,7 +40,7 @@ private System.Windows.Forms.ToolStripMenuItem geminiSettingsMenuItem = null!;
             this.announcementSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.geoNamesSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.simbriefSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
-this.geminiSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.geminiSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.handFlyOptionsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.hotkeyListMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.updateApplicationMenuItem = new System.Windows.Forms.ToolStripMenuItem();

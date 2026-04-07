@@ -17,6 +17,15 @@ namespace MSFSBlindAssist.Forms;
 /// </summary>
 public class TcasForm : Form
 {
+    // ── Compiled regex patterns for hot-path aircraft type parsing ────────────
+    private static readonly Regex RxCallsign       = new(@"^([A-Z]{2,4})(\d{1,4}[A-Z]?)$", RegexOptions.Compiled);
+    private static readonly Regex RxWakeSuffix     = new(@"/[LJMHSUA]$", RegexOptions.Compiled);
+    private static readonly Regex RxWhitespace     = new(@"\s+", RegexOptions.Compiled);
+    private static readonly Regex RxBareIcao       = new(@"^[A-Z]{1,3}\d{1,4}[A-Z]{0,2}$", RegexOptions.Compiled);
+    private static readonly Regex RxEmbeddedIcao   = new(@"\b([A-Z]{1,3}\d{2,4}[A-Z]{0,2})\b", RegexOptions.Compiled);
+    private static readonly Regex RxDigitModel     = new(@"\b(\d{3,4})\b", RegexOptions.Compiled);
+    private static readonly Regex RxManufacturer   = new(@"^(Airbus|Boeing|Embraer|Bombardier|ATR|Cessna|Piper|McDonnell Douglas|Dassault|Pilatus|Beechcraft|Diamond|FSLTL|Asobo)\s+", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
     private readonly TcasService           _tcas;
     private readonly ScreenReaderAnnouncer _announcer;
 
@@ -255,7 +264,7 @@ public class TcasForm : Form
         if (string.IsNullOrWhiteSpace(raw)) return raw;
         raw = raw.Trim();
         if (raw.Contains(' ') || raw.Contains('-')) return raw;
-        var m = Regex.Match(raw, @"^([A-Z]{2,4})(\d{1,4}[A-Z]?)$");
+        var m = RxCallsign.Match(raw);
         if (m.Success)
             return $"{m.Groups[1].Value} {m.Groups[2].Value}";
         return raw;
@@ -269,23 +278,23 @@ public class TcasForm : Form
         if (string.IsNullOrWhiteSpace(raw)) return "";
         raw = raw.Trim();
 
-        raw = Regex.Replace(raw, @"/[LJMHSUA]$", "").Trim();
+        raw = RxWakeSuffix.Replace(raw, "").Trim();
         raw = raw.Replace('_', ' ').Replace('-', ' ').Trim();
-        raw = Regex.Replace(raw, @"\s+", " ");
+        raw = RxWhitespace.Replace(raw, " ");
 
         string up = raw.ToUpperInvariant();
 
         // Bare ICAO code: 1-3 letters + 1-4 digits + 0-2 trailing letters (B738, B77W, A20N, MD11, CRJ9)
         if (up.Length <= 6 && !up.Contains(' ') &&
-            Regex.IsMatch(up, @"^[A-Z]{1,3}\d{1,4}[A-Z]{0,2}$"))
+            RxBareIcao.IsMatch(up))
             return up;
 
         // ICAO code embedded in a longer string ("A320" in "Airbus A320 Neo Leap")
-        var m = Regex.Match(up, @"\b([A-Z]{1,3}\d{2,4}[A-Z]{0,2})\b");
+        var m = RxEmbeddedIcao.Match(up);
         if (m.Success) return m.Value;
 
         // Pure digit model number — map to ICAO prefix
-        m = Regex.Match(up, @"\b(\d{3,4})\b");
+        m = RxDigitModel.Match(up);
         if (m.Success)
         {
             string icao = m.Value switch
@@ -306,9 +315,7 @@ public class TcasForm : Form
             return icao;
         }
 
-        string stripped = Regex.Replace(raw,
-            @"^(Airbus|Boeing|Embraer|Bombardier|ATR|Cessna|Piper|McDonnell Douglas|Dassault|Pilatus|Beechcraft|Diamond|FSLTL|Asobo)\s+",
-            "", RegexOptions.IgnoreCase).Trim();
+        string stripped = RxManufacturer.Replace(raw, "").Trim();
         if (!string.IsNullOrEmpty(stripped) && stripped.Length <= 14) return stripped;
 
         return raw.Split(' ')[0];

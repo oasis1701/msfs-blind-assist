@@ -122,6 +122,7 @@ public static class WeatherService
         { 350, 26247 }, { 300, 30000 }, { 250, 34000 }, { 200, 38624 }
     };
 
+    private static readonly object _cacheLock = new();
     private static string _isigmetJson = "";
     private static string _airsigmetJson = "";
     private static string _pirepJson = "";
@@ -150,16 +151,23 @@ public static class WeatherService
         {
             await Task.WhenAll(
                 RefreshCacheAsync(ISIGMET_URL,   forceRefresh, SIGMET_CACHE_MINUTES,
-                    s => _isigmetJson = s,   () => _isigmetCacheTime,   t => _isigmetCacheTime = t),
+                    s => { lock (_cacheLock) _isigmetJson = s; },
+                    () => { lock (_cacheLock) return _isigmetCacheTime; },
+                    t => { lock (_cacheLock) _isigmetCacheTime = t; }),
                 RefreshCacheAsync(AIRSIGMET_URL, forceRefresh, SIGMET_CACHE_MINUTES,
-                    s => _airsigmetJson = s, () => _airsigmetCacheTime, t => _airsigmetCacheTime = t)
+                    s => { lock (_cacheLock) _airsigmetJson = s; },
+                    () => { lock (_cacheLock) return _airsigmetCacheTime; },
+                    t => { lock (_cacheLock) _airsigmetCacheTime = t; })
             );
 
+            string isigmet, airsigmet;
+            lock (_cacheLock) { isigmet = _isigmetJson; airsigmet = _airsigmetJson; }
+
             var results = new List<WeatherAdvisory>();
-            if (!string.IsNullOrEmpty(_isigmetJson))
-                ParseIsigmet(_isigmetJson, lat, lon, maxRangeNm, results);
-            if (!string.IsNullOrEmpty(_airsigmetJson))
-                ParseAirsigmet(_airsigmetJson, lat, lon, maxRangeNm, results);
+            if (!string.IsNullOrEmpty(isigmet))
+                ParseIsigmet(isigmet, lat, lon, maxRangeNm, results);
+            if (!string.IsNullOrEmpty(airsigmet))
+                ParseAirsigmet(airsigmet, lat, lon, maxRangeNm, results);
 
             results.Sort((a, b) => a.DistanceNm.CompareTo(b.DistanceNm));
             return results;
@@ -179,18 +187,23 @@ public static class WeatherService
         string bbox = BuildBbox(lat, lon, maxRangeNm);
         string url  = PIREP_URL_BASE + bbox;
 
-        // Re-fetch if forced, if cache is stale, or if position moved significantly
-        bool stale = (DateTime.UtcNow - _pirepCacheTime).TotalMinutes >= PIREP_CACHE_MINUTES;
-        if (forceRefresh || stale || string.IsNullOrEmpty(_pirepJson))
+        bool needsFetch;
+        lock (_cacheLock)
         {
-            // Fetch directly so HTTP errors propagate to caller
-            string json = await httpClient.GetStringAsync(url);
-            _pirepJson = json;
-            _pirepCacheTime = DateTime.UtcNow;
+            bool stale = (DateTime.UtcNow - _pirepCacheTime).TotalMinutes >= PIREP_CACHE_MINUTES;
+            needsFetch = forceRefresh || stale || string.IsNullOrEmpty(_pirepJson);
         }
 
-        if (string.IsNullOrEmpty(_pirepJson)) return new List<WeatherPirep>();
-        return ParsePireps(_pirepJson, lat, lon, maxRangeNm);
+        if (needsFetch)
+        {
+            string json = await httpClient.GetStringAsync(url);
+            lock (_cacheLock) { _pirepJson = json; _pirepCacheTime = DateTime.UtcNow; }
+        }
+
+        string cached;
+        lock (_cacheLock) cached = _pirepJson;
+        if (string.IsNullOrEmpty(cached)) return new List<WeatherPirep>();
+        return ParsePireps(cached, lat, lon, maxRangeNm);
     }
 
     // ── Winds aloft ─────────────────────────────────────────────────────────
@@ -201,13 +214,23 @@ public static class WeatherService
         try
         {
             string url = BuildWindsUrl(lat, lon);
-            bool stale = (DateTime.UtcNow - _windsCacheTime).TotalMinutes >= WINDS_CACHE_MINUTES;
-            if (forceRefresh || stale || string.IsNullOrEmpty(_windsJson))
-                await RefreshCacheAsync(url, true, WINDS_CACHE_MINUTES,
-                    s => _windsJson = s, () => _windsCacheTime, t => _windsCacheTime = t);
+            bool needsFetch;
+            lock (_cacheLock)
+            {
+                bool stale = (DateTime.UtcNow - _windsCacheTime).TotalMinutes >= WINDS_CACHE_MINUTES;
+                needsFetch = forceRefresh || stale || string.IsNullOrEmpty(_windsJson);
+            }
 
-            if (string.IsNullOrEmpty(_windsJson)) return new List<WindAtAltitude>();
-            return ParseWindsAloft(_windsJson, aircraftAltFt);
+            if (needsFetch)
+                await RefreshCacheAsync(url, true, WINDS_CACHE_MINUTES,
+                    s => { lock (_cacheLock) _windsJson = s; },
+                    () => { lock (_cacheLock) return _windsCacheTime; },
+                    t => { lock (_cacheLock) _windsCacheTime = t; });
+
+            string cached;
+            lock (_cacheLock) cached = _windsJson;
+            if (string.IsNullOrEmpty(cached)) return new List<WindAtAltitude>();
+            return ParseWindsAloft(cached, aircraftAltFt);
         }
         catch (Exception ex)
         {

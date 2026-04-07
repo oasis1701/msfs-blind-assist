@@ -19,7 +19,7 @@ public static class VatsimPilotDataService
     private static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(60);
 
     private static volatile Dictionary<string, string> _typeByCallsign = new(StringComparer.OrdinalIgnoreCase);
-    private static DateTime _lastFetch = DateTime.MinValue;
+    private static long _lastFetchTicks = DateTime.MinValue.Ticks;
     private static int _fetchInProgress;
 
     /// <summary>
@@ -37,7 +37,7 @@ public static class VatsimPilotDataService
 
     private static void TriggerRefreshIfStale()
     {
-        if (DateTime.UtcNow - _lastFetch < RefreshInterval) return;
+        if (DateTime.UtcNow - new DateTime(Interlocked.Read(ref _lastFetchTicks)) < RefreshInterval) return;
         if (Interlocked.CompareExchange(ref _fetchInProgress, 1, 0) != 0) return;
         _ = RefreshAsync();
     }
@@ -49,7 +49,7 @@ public static class VatsimPilotDataService
             string json = await _http.GetStringAsync(FeedUrl).ConfigureAwait(false);
             var parsed = ParseFeed(json);
             Interlocked.Exchange(ref _typeByCallsign, parsed);
-            _lastFetch = DateTime.UtcNow;
+            Interlocked.Exchange(ref _lastFetchTicks, DateTime.UtcNow.Ticks);
             System.Diagnostics.Debug.WriteLine(
                 $"[VatsimPilotDataService] Refreshed — {parsed.Count} pilots with filed aircraft type.");
         }

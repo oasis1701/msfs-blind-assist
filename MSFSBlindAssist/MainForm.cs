@@ -1331,9 +1331,6 @@ public partial class MainForm : Form
     }
 
 
-
-
-
     private void OpenWeatherRadarWindow()
     {
         try
@@ -3988,6 +3985,9 @@ public partial class MainForm : Form
 
         weatherAnnouncementTimer?.Stop();
         weatherAnnouncementTimer?.Dispose();
+
+        // Clean up TCAS service
+        tcasService?.Dispose();
 
         // Clean up EFB bridge
         efbBridgeServer?.Dispose();
