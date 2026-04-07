@@ -1074,6 +1074,9 @@ public partial class MainForm : Form
             case HotkeyAction.AnnounceTcasTraffic:
                 AnnounceTrackedTcasTraffic();
                 break;
+            case HotkeyAction.ShowWeatherRadar:
+                OpenWeatherRadarWindow();
+                break;
             case HotkeyAction.SelectDestinationRunway:
                 ShowDestinationRunwayDialog();
                 break;
@@ -1328,7 +1331,7 @@ public partial class MainForm : Form
     }
 
 
-    private void WeatherRadarMenuItem_Click(object? sender, EventArgs e) => OpenWeatherRadarWindow();
+
 
 
     private void OpenWeatherRadarWindow()
@@ -1345,7 +1348,7 @@ public partial class MainForm : Form
         }
     }
 
-    private void TcasMenuItem_Click(object? sender, EventArgs e) => OpenTcasWindow();
+
 
     private void OpenTcasWindow()
     {

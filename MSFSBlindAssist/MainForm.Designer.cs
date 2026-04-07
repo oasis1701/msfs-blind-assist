@@ -13,8 +13,6 @@ private System.Windows.Forms.ToolStripMenuItem geminiSettingsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem handFlyOptionsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem hotkeyListMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem updateApplicationMenuItem = null!;
-        private System.Windows.Forms.ToolStripMenuItem tcasMenuItem = null!;
-        private System.Windows.Forms.ToolStripMenuItem weatherRadarMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem aboutMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem aircraftMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem flyByWireA320MenuItem = null!;
@@ -46,8 +44,6 @@ this.geminiSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.handFlyOptionsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.hotkeyListMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.updateApplicationMenuItem = new System.Windows.Forms.ToolStripMenuItem();
-            this.tcasMenuItem  = new System.Windows.Forms.ToolStripMenuItem();
-            this.weatherRadarMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.aboutMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.aircraftMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.flyByWireA320MenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -84,8 +80,6 @@ this.geminiSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.geminiSettingsMenuItem,
             this.handFlyOptionsMenuItem,
             this.hotkeyListMenuItem,
-            this.tcasMenuItem,
-            this.weatherRadarMenuItem,
             this.updateApplicationMenuItem,
             this.aboutMenuItem});
             this.fileMenuItem.Name = "fileMenuItem";
@@ -154,24 +148,6 @@ this.geminiSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.hotkeyListMenuItem.Size = new System.Drawing.Size(220, 26);
             this.hotkeyListMenuItem.Text = "&Hotkey List";
             this.hotkeyListMenuItem.Click += new System.EventHandler(this.HotkeyListMenuItem_Click);
-            //
-            // tcasMenuItem
-            //
-            this.tcasMenuItem.AccessibleName = "TCAS Traffic";
-            this.tcasMenuItem.AccessibleDescription = "Open TCAS traffic display showing nearby AI and multiplayer aircraft";
-            this.tcasMenuItem.Name = "tcasMenuItem";
-            this.tcasMenuItem.Size = new System.Drawing.Size(220, 26);
-            this.tcasMenuItem.Text = "&TCAS Traffic";
-            this.tcasMenuItem.Click += new System.EventHandler(this.TcasMenuItem_Click);
-            //
-            // weatherRadarMenuItem
-            //
-            this.weatherRadarMenuItem.AccessibleName = "Weather Radar";
-            this.weatherRadarMenuItem.AccessibleDescription = "Open weather radar showing current position weather and nearby SIGMETs and AIRMETs";
-            this.weatherRadarMenuItem.Name = "weatherRadarMenuItem";
-            this.weatherRadarMenuItem.Size = new System.Drawing.Size(220, 26);
-            this.weatherRadarMenuItem.Text = "&Weather Radar";
-            this.weatherRadarMenuItem.Click += new System.EventHandler(this.WeatherRadarMenuItem_Click);
             //
             // updateApplicationMenuItem
             //
