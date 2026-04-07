@@ -2189,9 +2189,6 @@ public partial class MainForm : Form
         {
             if (settingsForm.ShowDialog(this) == DialogResult.OK)
             {
-                // Restart timer with new settings (handles enable/disable/interval changes)
-                RestartNearestCityAnnouncementTimer();
-
                 statusLabel.Text = "GeoNames settings saved successfully";
                 announcer.Announce("GeoNames settings saved successfully");
             }
