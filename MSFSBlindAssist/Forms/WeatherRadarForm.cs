@@ -369,7 +369,7 @@ public class WeatherRadarForm : Form
 
         var sb = new System.Text.StringBuilder();
         sb.AppendLine($"Aircraft: {altFt:N0} ft  |  forecast winds:");
-        sb.AppendLine(new string('─', 38));
+        sb.AppendLine(new string('─', 36));
 
         foreach (var w in winds)
         {
