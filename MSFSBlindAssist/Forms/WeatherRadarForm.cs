@@ -25,6 +25,7 @@ public class WeatherRadarForm : Form
     private Label _statusLabel = null!;
     private Button _refreshButton = null!;
     private Button _closeButton = null!;
+    private CheckBox _decodeCheckBox = null!;
 
     private bool _isFetching = false;
 
@@ -45,7 +46,7 @@ public class WeatherRadarForm : Form
     private void InitializeComponent()
     {
         Text = "Weather Radar";
-        Size = new Size(600, 680);
+        Size = new Size(600, 710);
         StartPosition = FormStartPosition.CenterScreen;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -116,7 +117,7 @@ public class WeatherRadarForm : Form
         // ── Status + buttons ──────────────────────────────────────────────
         _statusLabel = new Label
         {
-            Location = new Point(12, 604),
+            Location = new Point(12, 632),
             Size = new Size(370, 20),
             Text = "",
             AccessibleName = "Status"
@@ -125,7 +126,7 @@ public class WeatherRadarForm : Form
         _refreshButton = new Button
         {
             Text = "&Refresh (F5)",
-            Location = new Point(390, 598),
+            Location = new Point(390, 626),
             Size = new Size(100, 28),
             AccessibleName = "Refresh",
             AccessibleDescription = "Fetch current weather, advisories, and winds aloft"
@@ -135,7 +136,7 @@ public class WeatherRadarForm : Form
         _closeButton = new Button
         {
             Text = "&Close",
-            Location = new Point(500, 598),
+            Location = new Point(500, 626),
             Size = new Size(78, 28),
             DialogResult = DialogResult.OK,
             AccessibleName = "Close",
@@ -143,12 +144,27 @@ public class WeatherRadarForm : Form
         };
         _closeButton.Click += CloseButton_Click;
 
+        _decodeCheckBox = new CheckBox
+        {
+            Text = "&Decode advisories into plain English",
+            Location = new Point(12, 598),
+            Size = new Size(370, 24),
+            Checked = SettingsManager.Current.DecodeWeatherAdvisories,
+            AccessibleName = "Decode advisories into plain English",
+            AccessibleDescription = "Expand aviation abbreviations in SIGMETs and PIREPs into plain language"
+        };
+        _decodeCheckBox.CheckedChanged += (_, _) =>
+        {
+            SettingsManager.Current.DecodeWeatherAdvisories = _decodeCheckBox.Checked;
+            SettingsManager.Save();
+        };
+
         Controls.AddRange(new Control[]
         {
             _currentWeatherLabel, _currentWeatherBox,
             _advisoriesLabel, _advisoriesBox,
             _windsAloftLabel, _windsAloftBox,
-            _statusLabel, _refreshButton, _closeButton
+            _decodeCheckBox, _statusLabel, _refreshButton, _closeButton
         });
 
         CancelButton = _closeButton;
@@ -159,8 +175,9 @@ public class WeatherRadarForm : Form
         _currentWeatherBox.TabIndex = 0;
         _advisoriesBox.TabIndex = 1;
         _windsAloftBox.TabIndex = 2;
-        _refreshButton.TabIndex = 3;
-        _closeButton.TabIndex = 4;
+        _decodeCheckBox.TabIndex = 3;
+        _refreshButton.TabIndex = 4;
+        _closeButton.TabIndex = 5;
 
         Load += async (s, e) =>
         {
