@@ -15,7 +15,6 @@ private System.Windows.Forms.ToolStripMenuItem geminiSettingsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem updateApplicationMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem tcasMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem weatherRadarMenuItem = null!;
-        private System.Windows.Forms.ToolStripMenuItem weatherSettingsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem aboutMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem aircraftMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem flyByWireA320MenuItem = null!;
@@ -49,7 +48,6 @@ this.geminiSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.updateApplicationMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.tcasMenuItem  = new System.Windows.Forms.ToolStripMenuItem();
             this.weatherRadarMenuItem = new System.Windows.Forms.ToolStripMenuItem();
-            this.weatherSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.aboutMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.aircraftMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.flyByWireA320MenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -88,7 +86,6 @@ this.geminiSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.hotkeyListMenuItem,
             this.tcasMenuItem,
             this.weatherRadarMenuItem,
-            this.weatherSettingsMenuItem,
             this.updateApplicationMenuItem,
             this.aboutMenuItem});
             this.fileMenuItem.Name = "fileMenuItem";
@@ -175,15 +172,6 @@ this.geminiSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.weatherRadarMenuItem.Size = new System.Drawing.Size(220, 26);
             this.weatherRadarMenuItem.Text = "&Weather Radar";
             this.weatherRadarMenuItem.Click += new System.EventHandler(this.WeatherRadarMenuItem_Click);
-            //
-            // weatherSettingsMenuItem
-            //
-            this.weatherSettingsMenuItem.AccessibleName = "Weather Settings";
-            this.weatherSettingsMenuItem.AccessibleDescription = "Configure weather auto-announcements and SIGMET proximity alerts";
-            this.weatherSettingsMenuItem.Name = "weatherSettingsMenuItem";
-            this.weatherSettingsMenuItem.Size = new System.Drawing.Size(220, 26);
-            this.weatherSettingsMenuItem.Text = "Weather &Settings";
-            this.weatherSettingsMenuItem.Click += new System.EventHandler(this.WeatherSettingsMenuItem_Click);
             //
             // updateApplicationMenuItem
             //

@@ -1330,27 +1330,6 @@ public partial class MainForm : Form
 
     private void WeatherRadarMenuItem_Click(object? sender, EventArgs e) => OpenWeatherRadarWindow();
 
-    private void WeatherSettingsMenuItem_Click(object? sender, EventArgs e)
-    {
-        var settings = MSFSBlindAssist.Settings.SettingsManager.Current;
-        using var form = new Forms.WeatherSettingsForm(
-            settings.WeatherAutoAnnounceEnabled,
-            settings.SigmetProximityAlertsEnabled,
-            settings.PirepProximityAlertsEnabled,
-            settings.SigmetProximityRangeNm,
-            settings.DecodeWeatherAdvisories);
-
-        if (form.ShowDialog(this) == DialogResult.OK)
-        {
-            settings.WeatherAutoAnnounceEnabled    = form.WeatherAutoAnnounceEnabled;
-            settings.SigmetProximityAlertsEnabled  = form.SigmetProximityAlertsEnabled;
-            settings.PirepProximityAlertsEnabled   = form.PirepProximityAlertsEnabled;
-            settings.SigmetProximityRangeNm        = form.SigmetProximityRangeNm;
-            settings.DecodeWeatherAdvisories       = form.DecodeWeatherAdvisories;
-            MSFSBlindAssist.Settings.SettingsManager.Save();
-            announcer.Announce("Weather radar settings saved");
-        }
-    }
 
     private void OpenWeatherRadarWindow()
     {
@@ -2169,22 +2148,37 @@ public partial class MainForm : Form
 
     private void AnnouncementSettingsMenuItem_Click(object? sender, EventArgs e)
     {
+        var settings = MSFSBlindAssist.Settings.SettingsManager.Current;
         var currentMode = announcer.GetAnnouncementMode();
-        using (var settingsForm = new AnnouncementSettingsForm(currentMode))
+        using (var settingsForm = new AnnouncementSettingsForm(
+            currentMode,
+            settings.NearestCityAnnouncementInterval,
+            settings.WeatherAutoAnnounceEnabled,
+            settings.SigmetProximityAlertsEnabled,
+            settings.PirepProximityAlertsEnabled,
+            settings.SigmetProximityRangeNm))
         {
             if (settingsForm.ShowDialog(this) == DialogResult.OK)
             {
+                // Announcement mode
                 var newMode = settingsForm.SelectedMode;
                 announcer.SetAnnouncementMode(newMode);
 
-                string modeText = newMode == AnnouncementMode.ScreenReader ? "screen reader" : "SAPI";
-                statusLabel.Text = $"Announcement mode changed to {modeText}";
-                announcer.Announce($"Announcement mode changed to {modeText}");
+                // Nearest city interval
+                settings.NearestCityAnnouncementInterval = settingsForm.NearestCityAnnouncementInterval;
+                RestartNearestCityAnnouncementTimer();
 
-                // Diagnostic test disabled to prevent test speech
-                // Uncomment if you need to troubleshoot:
-                // System.Diagnostics.Debug.WriteLine("[MainForm] Running screen reader diagnostic test after mode change");
-                // announcer.TestScreenReaderConnection();
+                // Weather announcements
+                settings.WeatherAutoAnnounceEnabled = settingsForm.WeatherAutoAnnounceEnabled;
+                settings.SigmetProximityAlertsEnabled = settingsForm.SigmetProximityAlertsEnabled;
+                settings.PirepProximityAlertsEnabled = settingsForm.PirepProximityAlertsEnabled;
+                settings.SigmetProximityRangeNm = settingsForm.SigmetProximityRangeNm;
+
+                MSFSBlindAssist.Settings.SettingsManager.Save();
+
+                string modeText = newMode == AnnouncementMode.ScreenReader ? "screen reader" : "SAPI";
+                statusLabel.Text = $"Announcement settings saved (mode: {modeText})";
+                announcer.Announce("Announcement settings saved");
             }
         }
     }
