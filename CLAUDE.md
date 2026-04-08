@@ -39,6 +39,19 @@ dotnet build MSFSBlindAssist.sln -c Release
 
 **CRITICAL:** In SimConnectManager.cs, set `IsConnected = true` BEFORE calling `SetupDataDefinitions()`. Required for `StartContinuousMonitoring()` to execute properly (has guard clause requiring `IsConnected == true`). See SimConnectManager.cs:251
 
+### Accessible TreeView Controls
+
+**CRITICAL:** Never use `TreeView` directly in forms. Use `NativeAccessibleTreeView` (`Controls/NativeAccessibleTreeView.cs`) instead. .NET 9's `TreeViewAccessibleObject` (UIA-based) produces incorrect navigation order in NVDA — items appear out of sequence, focus jumps between unrelated nodes. `NativeAccessibleTreeView` bypasses the .NET 9 UIA implementation and falls back to the native Win32 SysTreeView32 MSAA proxy, which works reliably.
+
+**Pattern for tree views with detail data:**
+- Parent nodes show summary text only — no child nodes pre-populated
+- Add a dummy child `new TreeNode("Loading...") { Tag = "placeholder" }` so the expand indicator (+) appears
+- Handle `BeforeExpand` to lazily populate real child nodes on demand, checking for the placeholder first
+- Store the data index in `parent.Tag` so the expand handler can look up the data
+- Leaf nodes (e.g. airport endpoints with no detail) get no placeholder and no expand indicator
+
+This lazy-loading pattern keeps the tree lightweight (fewer total nodes) and avoids accessibility edge cases.
+
 ### Multi-Aircraft Architecture
 
 **Core interfaces:**
