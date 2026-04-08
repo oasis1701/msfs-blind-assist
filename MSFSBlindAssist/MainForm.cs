@@ -3487,7 +3487,7 @@ public partial class MainForm : Form
                         }
                         else
                         {
-                            simConnectManager?.SendEvent(varKey, bcdValue);
+                            simConnectManager?.SendEvent("XPNDR_SET", bcdValue);
                             // Announcement handled by aircraft's ProcessSimVarUpdate when the SimVar changes
                         }
                     }
