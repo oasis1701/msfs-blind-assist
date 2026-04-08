@@ -161,6 +161,7 @@ public class SimConnectManager
         REQUEST_GROSS_WEIGHT_KG = 320,
         REQUEST_FUEL_QUANTITY_FBW = 321,
         REQUEST_NAV_RADIO = 322,
+        REQUEST_OUTSIDE_TEMP = 323,
         REQUEST_ECAM_MESSAGES = 350,
         REQUEST_AI_TRAFFIC = 500,
         // Individual variable requests start from 1000
@@ -213,6 +214,7 @@ public class SimConnectManager
         DEF_GROSS_WEIGHT_KG = 320,
         DEF_FUEL_QUANTITY_FBW = 321,
         DEF_NAV_RADIO = 322,
+        DEF_OUTSIDE_TEMP = 323,
         ECAM_MESSAGES = 350,
         DEF_AI_TRAFFIC = 500,
         // Individual variable definitions start from 1000
@@ -1388,6 +1390,16 @@ public class SimConnectManager
                     VarName = "PITCH_ANGLE",
                     Value = pitchInDegrees,
                     Description = pitchFormatted
+                });
+                break;
+
+            case DATA_REQUESTS.REQUEST_OUTSIDE_TEMP:
+                SingleValue oatData = (SingleValue)data.dwData[0];
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "OUTSIDE_TEMP",
+                    Value = oatData.value,
+                    Description = $"{oatData.value:0} degrees Celsius"
                 });
                 break;
 
@@ -3090,6 +3102,29 @@ public class SimConnectManager
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"Error requesting pitch: {ex.Message}");
+            }
+        }
+    }
+
+    public void RequestOutsideTemperature()
+    {
+        if (IsConnected && simConnect != null)
+        {
+            try
+            {
+                var tempDefId = DATA_DEFINITIONS.DEF_OUTSIDE_TEMP;
+                SafelyClearDataDefinition(tempDefId, requestId: null, delayMs: 50);
+                simConnect.AddToDataDefinition(tempDefId,
+                    "AMBIENT TEMPERATURE", "celsius",
+                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+                simConnect.RegisterDataDefineStruct<SingleValue>(tempDefId);
+                simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_OUTSIDE_TEMP,
+                    tempDefId, SIMCONNECT_OBJECT_ID_USER,
+                    SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error requesting outside temperature: {ex.Message}");
             }
         }
     }

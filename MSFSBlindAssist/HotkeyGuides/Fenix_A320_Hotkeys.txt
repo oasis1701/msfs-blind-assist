@@ -61,6 +61,7 @@ Vertical:
 
 Weather:
   I Wind info
+  O          Read Outside Temperature (Celsius)
 
 Location:
   C          Read Nearest City

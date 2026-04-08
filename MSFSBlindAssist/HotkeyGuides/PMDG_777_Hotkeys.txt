@@ -53,6 +53,7 @@ Vertical:
 
 Weather:
   I          Wind Info
+  O          Read Outside Temperature (Celsius)
 
 Distance:
   D          Read Distance to Destination
