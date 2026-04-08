@@ -2,6 +2,7 @@ using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Controls;
 using MSFSBlindAssist.Models;
 using MSFSBlindAssist.Services;
+using TreeView = MSFSBlindAssist.Controls.NativeAccessibleTreeView;
 
 namespace MSFSBlindAssist.Forms;
 
@@ -393,6 +394,7 @@ public class SimBriefPlannerForm : Form
             AccessibleName = "Navigation log",
             TabStop        = true
         };
+        _navLogGrid.BeforeExpand += NavLogGrid_BeforeExpand;
 
         tab.Controls.Add(_navLogGrid);
         tab.Controls.Add(hint);
@@ -825,8 +827,11 @@ public class SimBriefPlannerForm : Form
         var fixes = _ofp.NavLog;
 
         // Determine which SID/STAR fixes are SID (before first enroute) vs STAR (after last enroute).
-        int firstEnroute = fixes.FindIndex(f => !f.IsSidStar);
-        int lastEnroute  = fixes.FindLastIndex(f => !f.IsSidStar);
+        // Skip airport endpoint fixes (origin/dest) so they don't skew the boundary.
+        int firstEnroute = fixes.FindIndex(f => !f.IsSidStar
+            && !f.Type.Equals("apt", StringComparison.OrdinalIgnoreCase));
+        int lastEnroute  = fixes.FindLastIndex(f => !f.IsSidStar
+            && !f.Type.Equals("apt", StringComparison.OrdinalIgnoreCase));
 
         // Trans alt (dep) and trans level (dest) in feet for altitude display rules.
         int transAlt   = int.TryParse(_ofp.OriginTransAlt,  out int _ta) ? _ta : 0;
@@ -834,7 +839,6 @@ public class SimBriefPlannerForm : Form
         for (int i = 0; i < fixes.Count; i++)
         {
             var fix = fixes[i];
-            string u = _ofp.Units;
 
             // ── Parent node summary ──────────────────────────────────────────
             var parts = new List<string> { fix.Ident };
@@ -894,79 +898,11 @@ public class SimBriefPlannerForm : Form
 
             var parent = new TreeNode(string.Join(", ", parts));
 
-            // ── Child nodes (detail) ─────────────────────────────────────────
-            // Full name + type
-            string nameLabel = fix.VorName;
-            string typeLabel = string.IsNullOrEmpty(fix.Type) ? "" : fix.Type.ToUpperInvariant();
-            if (!string.IsNullOrEmpty(nameLabel) && !string.IsNullOrEmpty(typeLabel))
-                parent.Nodes.Add($"{nameLabel}, {typeLabel}");
-            else if (!string.IsNullOrEmpty(nameLabel))
-                parent.Nodes.Add(nameLabel);
-            else if (!string.IsNullOrEmpty(typeLabel))
-                parent.Nodes.Add(typeLabel);
-
-            if (!string.IsNullOrEmpty(fix.IcaoFir))
-                parent.Nodes.Add($"FIR: {fix.IcaoFir}");
-
-            if (!string.IsNullOrEmpty(fix.Frequency))
-                parent.Nodes.Add($"Frequency: {fix.Frequency}");
-
-            // Leg time (seconds → "Xh Ym" or "X min")
-            if (!string.IsNullOrEmpty(fix.TimeLeg) && fix.TimeLeg != "0" &&
-                int.TryParse(fix.TimeLeg, out int legSecs) && legSecs > 0)
-            {
-                int legMins = legSecs / 60;
-                string legTimeStr = legMins >= 60
-                    ? $"{legMins / 60}h {legMins % 60:D2}m"
-                    : $"{legMins} min";
-                parent.Nodes.Add($"Leg time: {legTimeStr}");
-            }
-
-            // Elapsed (seconds → "H:MM")
-            string elapsed = FormatElapsed(fix.TimeTotal);
-            if (!string.IsNullOrEmpty(elapsed))
-                parent.Nodes.Add($"Elapsed: {elapsed}");
-
-            // Wind + wind component (wind_comp: negative = headwind, positive = tailwind)
-            if (!string.IsNullOrEmpty(fix.WindDir) && !string.IsNullOrEmpty(fix.WindSpd))
-            {
-                string windStr = $"Wind: {fix.WindDir}° / {fix.WindSpd}kt";
-                if (!string.IsNullOrEmpty(fix.WindComp) &&
-                    double.TryParse(fix.WindComp,
-                        System.Globalization.NumberStyles.Any,
-                        System.Globalization.CultureInfo.InvariantCulture,
-                        out double wcd) && wcd != 0)
-                {
-                    int wcKt = (int)Math.Round(Math.Abs(wcd));
-                    string compLabel = wcd < 0 ? $"headwind {wcKt}kt" : $"tailwind {wcKt}kt";
-                    windStr += $", {compLabel}";
-                }
-                parent.Nodes.Add(windStr);
-            }
-
-            if (!string.IsNullOrEmpty(fix.Oat))
-                parent.Nodes.Add($"OAT: {fix.Oat}°C");
-
-            if (!string.IsNullOrEmpty(fix.IsaDev))
-                parent.Nodes.Add($"ISA dev: {fix.IsaDev}°C");
-
-            string mora = FormatNavAlt(fix.Mora);
-            if (mora != "-")
-                parent.Nodes.Add($"MORA: {mora}");
-
-            // Fuel: EFOB (estimated fuel on board) — prefer efob field, fall back to fuel_plan_onboard
-            string fobRaw = !string.IsNullOrEmpty(fix.Efob) ? fix.Efob : fix.FuelPlanOnboard;
-            if (!string.IsNullOrEmpty(fobRaw) && fobRaw != "0" &&
-                int.TryParse(fobRaw, out int fobVal) && fobVal > 0)
-                parent.Nodes.Add($"EFOB: {fobVal:N0} {u}");
-
-            if (!string.IsNullOrEmpty(fix.FuelLeg) && fix.FuelLeg != "0" &&
-                int.TryParse(fix.FuelLeg, out int fuelLeg) && fuelLeg > 0)
-                parent.Nodes.Add($"Leg fuel: {fuelLeg:N0} {u}");
-
-            if (!string.IsNullOrEmpty(fix.FuelTotalUsed) && fix.FuelTotalUsed != "0" &&
-                int.TryParse(fix.FuelTotalUsed, out int fuelUsed) && fuelUsed > 0)
-                parent.Nodes.Add($"Total fuel used: {fuelUsed:N0} {u}");
+            // Store the fix index so child nodes can be created on demand.
+            // Add a dummy child so the expand indicator (+) is shown.
+            parent.Tag = i;
+            if (!isEndpointApt)
+                parent.Nodes.Add(new TreeNode("Loading...") { Tag = "placeholder" });
 
             _navLogGrid.Nodes.Add(parent);
         }
@@ -975,6 +911,103 @@ public class SimBriefPlannerForm : Form
         // Focus first node
         if (_navLogGrid.Nodes.Count > 0)
             _navLogGrid.SelectedNode = _navLogGrid.Nodes[0];
+    }
+
+    /// <summary>
+    /// Lazily populates child detail nodes when a waypoint is expanded.
+    /// </summary>
+    private void NavLogGrid_BeforeExpand(object? sender, TreeViewCancelEventArgs e)
+    {
+        var node = e.Node;
+        if (node == null || _ofp == null) return;
+
+        // Already populated — placeholder has been replaced.
+        if (node.Nodes.Count != 1 || node.Nodes[0].Tag as string != "placeholder")
+            return;
+
+        node.Nodes.Clear();
+        if (node.Tag is not int fixIdx || fixIdx < 0 || fixIdx >= _ofp.NavLog.Count)
+            return;
+
+        var fix = _ofp.NavLog[fixIdx];
+        string u = _ofp.Units;
+        BuildNavLogChildNodes(node, fix, u);
+    }
+
+    private void BuildNavLogChildNodes(TreeNode parent, SimBriefNavFix fix, string units)
+    {
+        // Full name + type
+        string nameLabel = fix.VorName;
+        string typeLabel = string.IsNullOrEmpty(fix.Type) ? "" : fix.Type.ToUpperInvariant();
+        if (!string.IsNullOrEmpty(nameLabel) && !string.IsNullOrEmpty(typeLabel))
+            parent.Nodes.Add($"{nameLabel}, {typeLabel}");
+        else if (!string.IsNullOrEmpty(nameLabel))
+            parent.Nodes.Add(nameLabel);
+        else if (!string.IsNullOrEmpty(typeLabel))
+            parent.Nodes.Add(typeLabel);
+
+        if (!string.IsNullOrEmpty(fix.IcaoFir))
+            parent.Nodes.Add($"FIR: {fix.IcaoFir}");
+
+        if (!string.IsNullOrEmpty(fix.Frequency))
+            parent.Nodes.Add($"Frequency: {fix.Frequency}");
+
+        // Leg time (seconds → "Xh Ym" or "X min")
+        if (!string.IsNullOrEmpty(fix.TimeLeg) && fix.TimeLeg != "0" &&
+            int.TryParse(fix.TimeLeg, out int legSecs) && legSecs > 0)
+        {
+            int legMins = legSecs / 60;
+            string legTimeStr = legMins >= 60
+                ? $"{legMins / 60}h {legMins % 60:D2}m"
+                : $"{legMins} min";
+            parent.Nodes.Add($"Leg time: {legTimeStr}");
+        }
+
+        // Elapsed (seconds → "H:MM")
+        string elapsed = FormatElapsed(fix.TimeTotal);
+        if (!string.IsNullOrEmpty(elapsed))
+            parent.Nodes.Add($"Elapsed: {elapsed}");
+
+        // Wind + wind component (wind_comp: negative = headwind, positive = tailwind)
+        if (!string.IsNullOrEmpty(fix.WindDir) && !string.IsNullOrEmpty(fix.WindSpd))
+        {
+            string windStr = $"Wind: {fix.WindDir}° / {fix.WindSpd}kt";
+            if (!string.IsNullOrEmpty(fix.WindComp) &&
+                double.TryParse(fix.WindComp,
+                    System.Globalization.NumberStyles.Any,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out double wcd) && wcd != 0)
+            {
+                int wcKt = (int)Math.Round(Math.Abs(wcd));
+                string compLabel = wcd < 0 ? $"headwind {wcKt}kt" : $"tailwind {wcKt}kt";
+                windStr += $", {compLabel}";
+            }
+            parent.Nodes.Add(windStr);
+        }
+
+        if (!string.IsNullOrEmpty(fix.Oat))
+            parent.Nodes.Add($"OAT: {fix.Oat}°C");
+
+        if (!string.IsNullOrEmpty(fix.IsaDev))
+            parent.Nodes.Add($"ISA dev: {fix.IsaDev}°C");
+
+        string mora = FormatNavAlt(fix.Mora);
+        if (mora != "-")
+            parent.Nodes.Add($"MORA: {mora}");
+
+        // Fuel: EFOB (estimated fuel on board) — prefer efob field, fall back to fuel_plan_onboard
+        string fobRaw = !string.IsNullOrEmpty(fix.Efob) ? fix.Efob : fix.FuelPlanOnboard;
+        if (!string.IsNullOrEmpty(fobRaw) && fobRaw != "0" &&
+            int.TryParse(fobRaw, out int fobVal) && fobVal > 0)
+            parent.Nodes.Add($"EFOB: {fobVal:N0} {units}");
+
+        if (!string.IsNullOrEmpty(fix.FuelLeg) && fix.FuelLeg != "0" &&
+            int.TryParse(fix.FuelLeg, out int fuelLeg) && fuelLeg > 0)
+            parent.Nodes.Add($"Leg fuel: {fuelLeg:N0} {units}");
+
+        if (!string.IsNullOrEmpty(fix.FuelTotalUsed) && fix.FuelTotalUsed != "0" &&
+            int.TryParse(fix.FuelTotalUsed, out int fuelUsed) && fuelUsed > 0)
+            parent.Nodes.Add($"Total fuel used: {fuelUsed:N0} {units}");
     }
 
     // ─────────────────────────────────────────────────────────────────────────

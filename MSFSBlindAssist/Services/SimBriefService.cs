@@ -919,6 +919,23 @@ public class SimBriefService
                 ofp.NavLog.RemoveRange(destIdx + 1, ofp.NavLog.Count - destIdx - 1);
         }
 
+        // Normalize destination fix if already present from the XML — SimBrief marks it
+        // as is_sid_star=1 with full navlog data, but it should display as a clean airport
+        // endpoint (matching the synthetic entry we'd otherwise append).
+        // Replace it entirely so no stale flight data leaks into child nodes.
+        if (!string.IsNullOrEmpty(ofp.DestIcao) && ofp.NavLog.Count > 0 &&
+            ofp.NavLog[^1].Ident.Equals(ofp.DestIcao, StringComparison.OrdinalIgnoreCase))
+        {
+            ofp.NavLog[^1] = new SimBriefNavFix
+            {
+                Ident      = ofp.DestIcao,
+                VorName    = ofp.DestName,
+                Type       = "apt",
+                IsSidStar  = false,
+                AltitudeFt = ofp.DestElevation,
+            };
+        }
+
         // Prepend the departure airport as the first navlog entry if not already present.
         if (!string.IsNullOrEmpty(ofp.OriginIcao) &&
             (ofp.NavLog.Count == 0 ||
