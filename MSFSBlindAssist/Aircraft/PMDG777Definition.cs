@@ -5330,7 +5330,30 @@ public class PMDG777Definition : BaseAircraftDefinition
         }
 
         // ------------------------------------------------------------------
-        // 2c. Ground power switches — momentary push buttons, send parameter 1
+        // 2c. FD and AT Arm switches — require mouse flag simulation to toggle.
+        //     Unlike most PMDG switches, these ignore direct position values
+        //     and need MOUSE_FLAG_LEFTSINGLE (0x20000000) per the SDK example.
+        // ------------------------------------------------------------------
+        if (varKey == "MCP_FD_L" || varKey == "MCP_FD_R" ||
+            varKey == "MCP_ATArm_L" || varKey == "MCP_ATArm_R")
+        {
+            int target = (int)value;
+            var dm = simConnect.PMDG777DataManager;
+            if (dm != null)
+            {
+                int current = (int)dm.GetFieldValue(varDef.Name);
+                if (current == target)
+                {
+                    return true;
+                }
+            }
+            const int MOUSE_FLAG_LEFTSINGLE = 0x20000000;
+            simConnect.SendPMDGEvent(eventName, eventId, MOUSE_FLAG_LEFTSINGLE);
+            return true;
+        }
+
+        // ------------------------------------------------------------------
+        // 2e. Ground power switches — momentary push buttons, send parameter 1
         // ------------------------------------------------------------------
         if (varKey == "ELEC_ExtPwrPrim" || varKey == "ELEC_ExtPwrSec")
         {
@@ -5339,7 +5362,7 @@ public class PMDG777Definition : BaseAircraftDefinition
         }
 
         // ------------------------------------------------------------------
-        // 2d. APU Start — special: send position 2 to the APU selector event,
+        // 2f. APU Start — special: send position 2 to the APU selector event,
         //     but only when the selector is already at On (1)
         // ------------------------------------------------------------------
         if (varKey == "ELEC_APU_Start")
