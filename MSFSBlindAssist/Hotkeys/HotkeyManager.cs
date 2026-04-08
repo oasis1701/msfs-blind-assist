@@ -142,6 +142,9 @@ public class HotkeyManager : IDisposable
         // Outside temperature hotkey ID (Output mode)
         private const int HOTKEY_OUTSIDE_TEMP = 9107;
 
+        // Squawk code hotkey ID (Output mode)
+        private const int HOTKEY_SQUAWK_CODE = 9108;
+
         private IntPtr windowHandle;
         private bool visualGuidanceHotkeysActive = false;
         private bool outputHotkeyModeActive = false;
@@ -407,6 +410,9 @@ public class HotkeyManager : IDisposable
                         case HOTKEY_OUTSIDE_TEMP:
                             TriggerHotkey(HotkeyAction.ReadOutsideTemperature);
                             break;
+                        case HOTKEY_SQUAWK_CODE:
+                            TriggerHotkey(HotkeyAction.ReadSquawkCode);
+                            break;
                     }
                     DeactivateOutputHotkeyMode();
                     return true;
@@ -640,6 +646,7 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_TCAS_WINDOW, MOD_CONTROL, 0x52);           // Ctrl+R (TCAS Traffic Window)
             RegisterHotKey(windowHandle, HOTKEY_WEATHER_RADAR, MOD_SHIFT, 0x52);           // Shift+R (Weather Radar Window)
             RegisterHotKey(windowHandle, HOTKEY_OUTSIDE_TEMP, MOD_NONE, 0x4F);             // O (Outside Temperature)
+            RegisterHotKey(windowHandle, HOTKEY_SQUAWK_CODE, MOD_NONE, 0x58);             // X (Squawk Code)
 
             // Auto-timeout disabled - hotkey mode stays active until used or escape pressed
 
@@ -725,6 +732,7 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_TCAS_WINDOW);
             UnregisterHotKey(windowHandle, HOTKEY_WEATHER_RADAR);
             UnregisterHotKey(windowHandle, HOTKEY_OUTSIDE_TEMP);
+            UnregisterHotKey(windowHandle, HOTKEY_SQUAWK_CODE);
 
             OutputHotkeyModeChanged?.Invoke(this, new HotkeyModeEventArgs(wasCancelled ? HotkeyModeStatus.Cancelled : HotkeyModeStatus.Deactivated));
         }
@@ -1104,4 +1112,5 @@ public class HotkeyManager : IDisposable
         ShowTcasWindow,
         ShowWeatherRadar,
         ReadOutsideTemperature,
+        ReadSquawkCode,
     }

@@ -55,6 +55,9 @@ Weather:
   I          Wind Info
   O          Read Outside Temperature (Celsius)
 
+Transponder:
+  X          Read Squawk Code
+
 Distance:
   D          Read Distance to Destination
   Shift+D    Read Distance to Top of Descent
