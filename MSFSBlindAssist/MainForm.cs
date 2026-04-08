@@ -624,7 +624,8 @@ public partial class MainForm : Form
             e.VarName == "BANK_ANGLE" || e.VarName == "PITCH_ANGLE" ||
             e.VarName == "SPEED_GD" || e.VarName == "SPEED_S" || e.VarName == "SPEED_F" ||
             e.VarName == "SPEED_VFE" || e.VarName == "SPEED_VLS" || e.VarName == "SPEED_VS" ||
-            e.VarName == "FUEL_QUANTITY" || e.VarName == "FUEL_QUANTITY_KG" || e.VarName == "GROSS_WEIGHT" || e.VarName == "GROSS_WEIGHT_KG" || e.VarName == "FLAP_POSITION" || e.VarName == "GEAR_POSITION" || e.VarName == "WAYPOINT_INFO")
+            e.VarName == "FUEL_QUANTITY" || e.VarName == "FUEL_QUANTITY_KG" || e.VarName == "GROSS_WEIGHT" || e.VarName == "GROSS_WEIGHT_KG" || e.VarName == "FLAP_POSITION" || e.VarName == "GEAR_POSITION" || e.VarName == "WAYPOINT_INFO" ||
+            e.VarName == "OUTSIDE_TEMP")
         {
             announcer.AnnounceImmediate(e.Description);
             return true;
@@ -1075,6 +1076,9 @@ public partial class MainForm : Form
                 break;
             case HotkeyAction.ShowWeatherRadar:
                 OpenWeatherRadarWindow();
+                break;
+            case HotkeyAction.ReadOutsideTemperature:
+                simConnectManager.RequestOutsideTemperature();
                 break;
             case HotkeyAction.SelectDestinationRunway:
                 ShowDestinationRunwayDialog();

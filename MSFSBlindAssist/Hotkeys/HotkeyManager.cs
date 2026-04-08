@@ -139,6 +139,9 @@ public class HotkeyManager : IDisposable
         private const int HOTKEY_TCAS_WINDOW = 9105;
         private const int HOTKEY_WEATHER_RADAR = 9106;
 
+        // Outside temperature hotkey ID (Output mode)
+        private const int HOTKEY_OUTSIDE_TEMP = 9107;
+
         private IntPtr windowHandle;
         private bool visualGuidanceHotkeysActive = false;
         private bool outputHotkeyModeActive = false;
@@ -401,6 +404,9 @@ public class HotkeyManager : IDisposable
                         case HOTKEY_WEATHER_RADAR:
                             TriggerHotkey(HotkeyAction.ShowWeatherRadar);
                             break;
+                        case HOTKEY_OUTSIDE_TEMP:
+                            TriggerHotkey(HotkeyAction.ReadOutsideTemperature);
+                            break;
                     }
                     DeactivateOutputHotkeyMode();
                     return true;
@@ -633,6 +639,7 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_TCAS_ANNOUNCE, MOD_NONE, 0x52);            // R (Announce Tracked TCAS Traffic)
             RegisterHotKey(windowHandle, HOTKEY_TCAS_WINDOW, MOD_CONTROL, 0x52);           // Ctrl+R (TCAS Traffic Window)
             RegisterHotKey(windowHandle, HOTKEY_WEATHER_RADAR, MOD_SHIFT, 0x52);           // Shift+R (Weather Radar Window)
+            RegisterHotKey(windowHandle, HOTKEY_OUTSIDE_TEMP, MOD_NONE, 0x4F);             // O (Outside Temperature)
 
             // Auto-timeout disabled - hotkey mode stays active until used or escape pressed
 
@@ -717,6 +724,7 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_TCAS_ANNOUNCE);
             UnregisterHotKey(windowHandle, HOTKEY_TCAS_WINDOW);
             UnregisterHotKey(windowHandle, HOTKEY_WEATHER_RADAR);
+            UnregisterHotKey(windowHandle, HOTKEY_OUTSIDE_TEMP);
 
             OutputHotkeyModeChanged?.Invoke(this, new HotkeyModeEventArgs(wasCancelled ? HotkeyModeStatus.Cancelled : HotkeyModeStatus.Deactivated));
         }
@@ -1095,4 +1103,5 @@ public class HotkeyManager : IDisposable
         AnnounceTcasTraffic,
         ShowTcasWindow,
         ShowWeatherRadar,
+        ReadOutsideTemperature,
     }
