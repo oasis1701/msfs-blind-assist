@@ -5353,7 +5353,7 @@ public class PMDG777Definition : BaseAircraftDefinition
         }
 
         // ------------------------------------------------------------------
-        // 2e. Ground power switches — momentary push buttons, send parameter 1
+        // 2d. Ground power switches — momentary push buttons, send parameter 1
         // ------------------------------------------------------------------
         if (varKey == "ELEC_ExtPwrPrim" || varKey == "ELEC_ExtPwrSec")
         {
@@ -5362,7 +5362,7 @@ public class PMDG777Definition : BaseAircraftDefinition
         }
 
         // ------------------------------------------------------------------
-        // 2f. APU Start — special: send position 2 to the APU selector event,
+        // 2e. APU Start — special: send position 2 to the APU selector event,
         //     but only when the selector is already at On (1)
         // ------------------------------------------------------------------
         if (varKey == "ELEC_APU_Start")

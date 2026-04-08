@@ -162,6 +162,7 @@ public class SimConnectManager
         REQUEST_FUEL_QUANTITY_FBW = 321,
         REQUEST_NAV_RADIO = 322,
         REQUEST_OUTSIDE_TEMP = 323,
+        // 324-328 used by hardcoded takeoff assist / hand fly requests
         REQUEST_SQUAWK_CODE = 329,
         REQUEST_ECAM_MESSAGES = 350,
         REQUEST_AI_TRAFFIC = 500,
@@ -216,6 +217,7 @@ public class SimConnectManager
         DEF_FUEL_QUANTITY_FBW = 321,
         DEF_NAV_RADIO = 322,
         DEF_OUTSIDE_TEMP = 323,
+        // 324-328 used by hardcoded takeoff assist / hand fly definitions
         DEF_SQUAWK_CODE = 329,
         ECAM_MESSAGES = 350,
         DEF_AI_TRAFFIC = 500,
