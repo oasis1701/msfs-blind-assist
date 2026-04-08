@@ -36,7 +36,7 @@ Vertical:
   V          Read Vertical Speed
 
 Weather:
-  I Wind info
+  I          Wind Info
   O          Read Outside Temperature (Celsius)
 
 Location:
