@@ -39,6 +39,9 @@ Weather:
   I          Wind Info
   O          Read Outside Temperature (Celsius)
 
+Transponder:
+  X          Read Squawk Code
+
 Location:
   C          Read Nearest City
 
