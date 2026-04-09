@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Linq;
 using System.Net;
 using System.Text;
 using System.Text.Json;
@@ -24,6 +25,7 @@ namespace MSFSBlindAssist.SimConnect
         private const int HeartbeatTimeoutSeconds = 15;
         private const int CommandExpirySeconds = 30;
         private const int MaxRequestBodyBytes = 64 * 1024; // 64 KB
+        private const int MaxQueueSize = 50;
 
         private HttpListener? _listener;
         private CancellationTokenSource? _cts;
@@ -78,7 +80,19 @@ namespace MSFSBlindAssist.SimConnect
 
         public void EnqueueCommand(string command, Dictionary<string, string>? payload = null)
         {
+            while (_commandQueue.Count >= MaxQueueSize)
+            {
+                if (_commandQueue.TryDequeue(out var dropped))
+                {
+                    System.Diagnostics.Debug.WriteLine($"EFBBridgeServer: Command queue full, dropped: {dropped.Command.Command}");
+                }
+            }
             _commandQueue.Enqueue((new EFBCommand { Command = command, Payload = payload }, DateTime.UtcNow));
+        }
+
+        public bool HasPendingCommand(string commandName)
+        {
+            return _commandQueue.Any(item => item.Command.Command == commandName);
         }
 
         private async Task ListenLoop(CancellationToken ct)
