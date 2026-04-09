@@ -33,8 +33,13 @@ namespace MSFSBlindAssist.SimConnect
         private readonly SynchronizationContext? _syncContext;
         private DateTime _lastHeartbeat = DateTime.MinValue;
         private bool _disposed;
+        private readonly object _startStopLock = new();
+        private int _restartCount;
+        private const int MaxRestartAttempts = 5;
+        private const int RestartDelayMs = 2000;
 
         public event EventHandler<EFBStateUpdateEventArgs>? StateUpdated;
+        public event Action<string>? Error;
 
         public bool IsRunning => _listener?.IsListening == true;
         public bool IsBridgeConnected => (DateTime.UtcNow - _lastHeartbeat).TotalSeconds < HeartbeatTimeoutSeconds;
@@ -46,36 +51,44 @@ namespace MSFSBlindAssist.SimConnect
 
         public void Start()
         {
-            if (IsRunning) return;
-
-            _cts = new CancellationTokenSource();
-            _listener = new HttpListener();
-            _listener.Prefixes.Add(Prefix);
-
-            try
+            lock (_startStopLock)
             {
-                _listener.Start();
-                Task.Run(() => ListenLoop(_cts.Token));
-            }
-            catch (HttpListenerException ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"EFBBridgeServer: Failed to start on {Prefix}: {ex.Message}");
-                _cts.Dispose();
-                _cts = null;
-                _listener = null;
+                if (IsRunning) return;
+
+                _cts = new CancellationTokenSource();
+                _listener = new HttpListener();
+                _listener.Prefixes.Add(Prefix);
+
+                try
+                {
+                    _listener.Start();
+                    _restartCount = 0;
+                    Task.Run(() => ListenLoop(_cts.Token));
+                }
+                catch (HttpListenerException ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"EFBBridgeServer: Failed to start on {Prefix}: {ex.Message}");
+                    Error?.Invoke($"EFB server failed to start: {ex.Message}");
+                    _cts.Dispose();
+                    _cts = null;
+                    _listener = null;
+                }
             }
         }
 
         public void Stop()
         {
-            _cts?.Cancel();
-            if (_listener?.IsListening == true)
+            lock (_startStopLock)
             {
-                _listener.Stop();
+                _cts?.Cancel();
+                if (_listener?.IsListening == true)
+                {
+                    _listener.Stop();
+                }
+                _listener?.Close();
+                _listener = null;
+                _lastHeartbeat = DateTime.MinValue;
             }
-            _listener?.Close();
-            _listener = null;
-            _lastHeartbeat = DateTime.MinValue;
         }
 
         public void EnqueueCommand(string command, Dictionary<string, string>? payload = null)
@@ -97,12 +110,17 @@ namespace MSFSBlindAssist.SimConnect
 
         private async Task ListenLoop(CancellationToken ct)
         {
-            while (!ct.IsCancellationRequested && _listener?.IsListening == true)
+            while (!ct.IsCancellationRequested)
             {
                 try
                 {
-                    var context = await _listener.GetContextAsync().WaitAsync(ct);
-                    _ = Task.Run(() => HandleRequest(context), ct);
+                    while (!ct.IsCancellationRequested && _listener?.IsListening == true)
+                    {
+                        var context = await _listener.GetContextAsync().WaitAsync(ct);
+                        _ = Task.Run(() => HandleRequest(context), ct);
+                        _restartCount = 0; // Reset on successful accept
+                    }
+                    break; // Normal exit (listener stopped)
                 }
                 catch (OperationCanceledException)
                 {
@@ -110,11 +128,41 @@ namespace MSFSBlindAssist.SimConnect
                 }
                 catch (HttpListenerException)
                 {
-                    break;
+                    break; // Intentional shutdown
                 }
                 catch (Exception ex)
                 {
                     System.Diagnostics.Debug.WriteLine($"EFBBridgeServer: Listen error: {ex.Message}");
+                    if (_restartCount >= MaxRestartAttempts)
+                    {
+                        System.Diagnostics.Debug.WriteLine("EFBBridgeServer: Max restart attempts reached, stopping.");
+                        Error?.Invoke("EFB server stopped after repeated failures");
+                        break;
+                    }
+                    _restartCount++;
+                    System.Diagnostics.Debug.WriteLine($"EFBBridgeServer: Restarting listener (attempt {_restartCount}/{MaxRestartAttempts})...");
+                    try
+                    {
+                        await Task.Delay(RestartDelayMs, ct);
+                        lock (_startStopLock)
+                        {
+                            if (ct.IsCancellationRequested) break;
+                            _listener?.Close();
+                            _listener = new HttpListener();
+                            _listener.Prefixes.Add(Prefix);
+                            _listener.Start();
+                        }
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        break;
+                    }
+                    catch (Exception restartEx)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"EFBBridgeServer: Restart failed: {restartEx.Message}");
+                        Error?.Invoke("EFB server restart failed");
+                        break;
+                    }
                 }
             }
         }
