@@ -121,10 +121,10 @@ The EFB (Electronic Flight Bag) tablet is made accessible via a JavaScript bridg
 **Architecture:** A standalone MSFS Community package (`zzz-pmdg-efb-accessibility`) overrides the EFB's `PMDGTabletCA.html` to load an additional JS script. The `zzz-` prefix ensures it loads after the PMDG package alphabetically, so our HTML takes precedence. The JS bridge communicates with the C# app via HTTP on `localhost:19777`.
 
 **Key components:**
-- **`EFBBridgeServer`** (`SimConnect/EFBBridgeServer.cs`) — HttpListener with `/ping`, `/state` (POST), `/commands` (GET) endpoints. JS pushes state, C# queues commands.
-- **`EFBModPackageManager`** (`Patching/EFBModPackageManager.cs`) — Installs/updates/removes the mod package. Reads original PMDG HTML at install time (no PMDG IP in repo), appends bridge script tag. Auto-updates bridge JS on app startup.
-- **`pmdg-efb-accessibility-bridge.js`** (`Resources/`) — Runs inside MSFS Coherent GT. Hooks into EFB's `MessageService.messaging_bus` EventBus. Must be Coherent GT compatible (no `AbortSignal.timeout`, top-level try-catch, tested patterns only).
-- **`PMDG777EFBForm`** (`Forms/PMDG777/`) — Accessible form with SimBrief, Navigraph, Preferences tabs. Opened via Shift+T in input mode.
+- **`EFBBridgeServer`** (`SimConnect/EFBBridgeServer.cs`) — HttpListener with `/ping`, `/state` (POST), `/commands` (GET) endpoints. JS pushes state, C# queues commands. Command queue capped at 50 entries; `HasPendingCommand()` enables deduplication. Auto-restarts listener on unexpected failures (5 retries, 2s delay). Start/Stop protected by lock. Fires `Error` event on server failures.
+- **`EFBModPackageManager`** (`Patching/EFBModPackageManager.cs`) — Installs/updates/removes the mod package. Reads original PMDG HTML at install time (no PMDG IP in repo), appends bridge script tag with double-patch guard (checks for existing script tag before appending). Auto-updates bridge JS on app startup via `BridgeVersion` constant.
+- **`pmdg-efb-accessibility-bridge.js`** (`Resources/`) — Runs inside MSFS Coherent GT. Hooks into EFB's `MessageService.messaging_bus` EventBus. Must be Coherent GT compatible (no `AbortSignal.timeout`, top-level try-catch, `var` not `let/const`, no arrow functions, `.indexOf()` not `.includes()`). Critical state types are queued on POST failure and flushed on reconnection (max 20 pending, 3 retries per entry). `tryConnect` has a connecting guard to prevent concurrent attempts; `navigraphStateSent` flag prevents duplicate Navigraph state posts.
+- **`PMDG777EFBForm`** (`Forms/PMDG777/`) — Accessible form with SimBrief, Navigraph, Preferences tabs. Opened via Shift+T in input mode. Shows connection status (always visible above tabs, announced on transitions). Buttons disable on click and re-enable on response or timeout. SimBrief fetch: 30s timeout. Navigraph auth: 60s timeout.
 
 **JS bridge constraints (Coherent GT):**
 - No `AbortSignal.timeout()` — use manual Promise-based timeout
@@ -134,9 +134,9 @@ The EFB (Electronic Flight Bag) tablet is made accessible via a JavaScript bridg
 - The JS file is copied while the sim is closed (sim locks files while running)
 
 **Communication flow:**
-- JS → C#: `POST /state` with `{type, data}` JSON (state updates, auth codes, SimBrief data)
-- C# → JS: `GET /commands` polled every 500ms, returns JSON array of `{command, payload}`
-- Bridge connects on startup, retries every 5s if server unavailable
+- JS → C#: `POST /state` with `{type, data}` JSON (state updates, auth codes, SimBrief data). Failed POSTs for critical state types are queued and retried on reconnection.
+- C# → JS: `GET /commands` polled every 500ms, returns JSON array of `{command, payload}`. Commands expire after 30s if not polled.
+- Bridge connects on startup, retries every 5s if server unavailable. On reconnection, flushes pending states and re-sends Navigraph auth status.
 
 ## Detailed Documentation
 
