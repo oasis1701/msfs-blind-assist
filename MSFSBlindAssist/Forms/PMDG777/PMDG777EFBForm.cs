@@ -17,6 +17,10 @@ namespace MSFSBlindAssist.Forms.PMDG777
         private readonly ScreenReaderAnnouncer _announcer;
         private IntPtr _previousWindow = IntPtr.Zero;
         private bool _simbriefLoaded = false;
+        private bool _wasConnected = false;
+        private System.Windows.Forms.Timer? _connectionCheckTimer;
+        private System.Windows.Forms.Timer? _fetchTimeoutTimer;
+        private System.Windows.Forms.Timer? _authTimeoutTimer;
 
         public PMDG777EFBForm(EFBBridgeServer bridgeServer, ScreenReaderAnnouncer announcer)
         {
@@ -25,6 +29,14 @@ namespace MSFSBlindAssist.Forms.PMDG777
 
             InitializeComponent();
             SetupEventHandlers();
+
+            // Poll connection status every 3 seconds
+            _connectionCheckTimer = new System.Windows.Forms.Timer { Interval = 3000 };
+            _connectionCheckTimer.Tick += OnConnectionCheck;
+            _connectionCheckTimer.Start();
+
+            // Run initial check immediately
+            OnConnectionCheck(this, EventArgs.Empty);
         }
 
         public void ShowForm()
@@ -45,24 +57,34 @@ namespace MSFSBlindAssist.Forms.PMDG777
 
             fetchSimbriefButton!.Click += (_, _) =>
             {
+                if (_bridgeServer.HasPendingCommand("fetch_simbrief")) return;
+                fetchSimbriefButton.Enabled = false;
                 simbriefStatusText!.Text = "Fetching...";
                 _bridgeServer.EnqueueCommand("fetch_simbrief");
+                StartFetchTimeout();
             };
 
             sendToFmcButton!.Click += (_, _) =>
             {
+                if (_bridgeServer.HasPendingCommand("send_to_fmc")) return;
+                sendToFmcButton.Enabled = false;
                 _bridgeServer.EnqueueCommand("send_to_fmc");
             };
 
             navigraphSignInButton!.Click += (_, _) =>
             {
+                if (_bridgeServer.HasPendingCommand("start_navigraph_auth")) return;
+                navigraphSignInButton.Enabled = false;
                 navigraphStatusText!.Text = "Awaiting code...";
                 authCodeTextBox!.Text = "";
                 _bridgeServer.EnqueueCommand("start_navigraph_auth");
+                StartAuthTimeout();
             };
 
             navigraphSignOutButton!.Click += (_, _) =>
             {
+                if (_bridgeServer.HasPendingCommand("sign_out_navigraph")) return;
+                navigraphSignOutButton.Enabled = false;
                 _bridgeServer.EnqueueCommand("sign_out_navigraph");
             };
 
@@ -77,6 +99,88 @@ namespace MSFSBlindAssist.Forms.PMDG777
             };
         }
 
+        private void OnConnectionCheck(object? sender, EventArgs e)
+        {
+            if (IsDisposed || !IsHandleCreated) return;
+
+            bool connected = _bridgeServer.IsBridgeConnected;
+
+            connectionStatusText!.Text = connected
+                ? "Connected"
+                : "Not connected \u2014 EFB tablet must be open in simulator";
+
+            // Announce transitions only
+            if (connected && !_wasConnected)
+            {
+                _announcer.Announce("EFB bridge connected");
+                UpdateButtonStates(true);
+            }
+            else if (!connected && _wasConnected)
+            {
+                _announcer.Announce("EFB bridge disconnected");
+                UpdateButtonStates(false);
+            }
+
+            _wasConnected = connected;
+        }
+
+        private void UpdateButtonStates(bool connected)
+        {
+            fetchSimbriefButton!.Enabled = connected;
+            sendToFmcButton!.Enabled = connected && _simbriefLoaded;
+            navigraphSignInButton!.Enabled = connected;
+            navigraphSignOutButton!.Enabled = connected;
+            savePreferencesButton!.Enabled = connected;
+        }
+
+        private void StartFetchTimeout()
+        {
+            StopFetchTimeout();
+            _fetchTimeoutTimer = new System.Windows.Forms.Timer { Interval = 30000 };
+            _fetchTimeoutTimer.Tick += (_, _) =>
+            {
+                StopFetchTimeout();
+                simbriefStatusText!.Text = "Fetch timed out \u2014 try again";
+                fetchSimbriefButton!.Enabled = _bridgeServer.IsBridgeConnected;
+                _announcer.Announce("SimBrief fetch timed out");
+            };
+            _fetchTimeoutTimer.Start();
+        }
+
+        private void StopFetchTimeout()
+        {
+            if (_fetchTimeoutTimer != null)
+            {
+                _fetchTimeoutTimer.Stop();
+                _fetchTimeoutTimer.Dispose();
+                _fetchTimeoutTimer = null;
+            }
+        }
+
+        private void StartAuthTimeout()
+        {
+            StopAuthTimeout();
+            _authTimeoutTimer = new System.Windows.Forms.Timer { Interval = 60000 };
+            _authTimeoutTimer.Tick += (_, _) =>
+            {
+                StopAuthTimeout();
+                navigraphStatusText!.Text = "Sign-in timed out";
+                navigraphSignInButton!.Enabled = _bridgeServer.IsBridgeConnected;
+                _announcer.Announce("Navigraph sign-in timed out");
+            };
+            _authTimeoutTimer.Start();
+        }
+
+        private void StopAuthTimeout()
+        {
+            if (_authTimeoutTimer != null)
+            {
+                _authTimeoutTimer.Stop();
+                _authTimeoutTimer.Dispose();
+                _authTimeoutTimer = null;
+            }
+        }
+
         private void OnStateUpdated(object? sender, EFBStateUpdateEventArgs e)
         {
             if (IsDisposed || !IsHandleCreated) return;
@@ -84,14 +188,16 @@ namespace MSFSBlindAssist.Forms.PMDG777
             switch (e.Type)
             {
                 case "connected":
-                    _announcer.Announce("EFB bridge connected");
+                    // Connection announcement handled by OnConnectionCheck
                     break;
 
                 case "simbrief_loaded":
+                    StopFetchTimeout();
                     _simbriefLoaded = true;
                     UpdateFlightDetails(e.Data);
                     simbriefStatusText!.Text = "Loaded";
-                    sendToFmcButton!.Enabled = true;
+                    fetchSimbriefButton!.Enabled = _bridgeServer.IsBridgeConnected;
+                    sendToFmcButton!.Enabled = _bridgeServer.IsBridgeConnected;
                     string origin = e.Data.GetValueOrDefault("origin_icao", "");
                     string dest = e.Data.GetValueOrDefault("dest_icao", "");
                     _announcer.Announce($"SimBrief flight plan loaded: {origin} to {dest}");
@@ -100,6 +206,7 @@ namespace MSFSBlindAssist.Forms.PMDG777
                 case "simbrief_fetch_result":
                     bool success = bool.TryParse(e.Data.GetValueOrDefault("success", "false"), out var s) && s;
                     string message = e.Data.GetValueOrDefault("message", "");
+                    sendToFmcButton!.Enabled = _bridgeServer.IsBridgeConnected && _simbriefLoaded;
                     if (success)
                     {
                         _announcer.Announce($"FMC file transfer complete: {message}");
@@ -115,6 +222,7 @@ namespace MSFSBlindAssist.Forms.PMDG777
                     break;
 
                 case "navigraph_code":
+                    StopAuthTimeout();
                     string code = e.Data.GetValueOrDefault("code", "");
                     string url = e.Data.GetValueOrDefault("url", "https://navigraph.com/code");
                     authCodeTextBox!.Text = code;
@@ -127,19 +235,20 @@ namespace MSFSBlindAssist.Forms.PMDG777
                     break;
 
                 case "navigraph_auth_state":
+                    StopAuthTimeout();
                     bool authenticated = e.Data.GetValueOrDefault("authenticated", "false") == "true";
                     string username = e.Data.GetValueOrDefault("username", "");
                     if (authenticated)
                     {
                         navigraphStatusText!.Text = $"Authenticated as: {username}";
                         navigraphSignInButton!.Enabled = false;
-                        navigraphSignOutButton!.Enabled = true;
+                        navigraphSignOutButton!.Enabled = _bridgeServer.IsBridgeConnected;
                         _announcer.Announce($"Signed in to Navigraph as {username}");
                     }
                     else
                     {
                         navigraphStatusText!.Text = "Not authenticated";
-                        navigraphSignInButton!.Enabled = true;
+                        navigraphSignInButton!.Enabled = _bridgeServer.IsBridgeConnected;
                         navigraphSignOutButton!.Enabled = false;
                         authCodeTextBox!.Text = "";
                         if (!string.IsNullOrEmpty(username))
@@ -154,8 +263,10 @@ namespace MSFSBlindAssist.Forms.PMDG777
                     break;
 
                 case "error":
+                    StopFetchTimeout();
                     string errorMsg = e.Data.GetValueOrDefault("message", "Unknown error");
                     simbriefStatusText!.Text = $"Error: {errorMsg}";
+                    fetchSimbriefButton!.Enabled = _bridgeServer.IsBridgeConnected;
                     _announcer.Announce($"EFB error: {errorMsg}");
                     break;
             }
@@ -207,6 +318,10 @@ namespace MSFSBlindAssist.Forms.PMDG777
                 return;
             }
 
+            if (_bridgeServer.HasPendingCommand("save_preferences")) return;
+
+            savePreferencesButton!.Enabled = false;
+
             _bridgeServer.EnqueueCommand("set_preference", new Dictionary<string, string>
                 { { "key", "simbrief_id" }, { "value", simbriefAliasTextBox!.Text ?? "" } });
 
@@ -218,6 +333,17 @@ namespace MSFSBlindAssist.Forms.PMDG777
 
             _bridgeServer.EnqueueCommand("save_preferences");
             _announcer.Announce("Preferences saved");
+
+            // Re-enable after a short delay (preferences are fire-and-forget)
+            var reenableTimer = new System.Windows.Forms.Timer { Interval = 2000 };
+            reenableTimer.Tick += (_, _) =>
+            {
+                reenableTimer.Stop();
+                reenableTimer.Dispose();
+                if (!IsDisposed && _bridgeServer.IsBridgeConnected)
+                    savePreferencesButton!.Enabled = true;
+            };
+            reenableTimer.Start();
         }
 
         private void EnqueueComboPreference(ComboBox combo, string key)
@@ -232,6 +358,10 @@ namespace MSFSBlindAssist.Forms.PMDG777
 
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
+            _connectionCheckTimer?.Stop();
+            _connectionCheckTimer?.Dispose();
+            StopFetchTimeout();
+            StopAuthTimeout();
             _bridgeServer.StateUpdated -= OnStateUpdated;
             if (_previousWindow != IntPtr.Zero)
             {
