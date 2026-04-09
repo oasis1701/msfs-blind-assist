@@ -68,7 +68,7 @@ namespace MSFSBlindAssist.SimConnect
                 catch (HttpListenerException ex)
                 {
                     System.Diagnostics.Debug.WriteLine($"EFBBridgeServer: Failed to start on {Prefix}: {ex.Message}");
-                    Error?.Invoke($"EFB server failed to start: {ex.Message}");
+                    RaiseError($"EFB server failed to start: {ex.Message}");
                     _cts.Dispose();
                     _cts = null;
                     _listener = null;
@@ -136,7 +136,7 @@ namespace MSFSBlindAssist.SimConnect
                     if (_restartCount >= MaxRestartAttempts)
                     {
                         System.Diagnostics.Debug.WriteLine("EFBBridgeServer: Max restart attempts reached, stopping.");
-                        Error?.Invoke("EFB server stopped after repeated failures");
+                        RaiseError("EFB server stopped after repeated failures");
                         break;
                     }
                     _restartCount++;
@@ -160,10 +160,22 @@ namespace MSFSBlindAssist.SimConnect
                     catch (Exception restartEx)
                     {
                         System.Diagnostics.Debug.WriteLine($"EFBBridgeServer: Restart failed: {restartEx.Message}");
-                        Error?.Invoke("EFB server restart failed");
+                        RaiseError("EFB server restart failed");
                         break;
                     }
                 }
+            }
+        }
+
+        private void RaiseError(string message)
+        {
+            if (_syncContext != null)
+            {
+                _syncContext.Post(_ => Error?.Invoke(message), null);
+            }
+            else
+            {
+                Error?.Invoke(message);
             }
         }
 
