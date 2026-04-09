@@ -54,6 +54,7 @@ namespace MSFSBlindAssist.Forms.PMDG777
         private void SetupEventHandlers()
         {
             _bridgeServer.StateUpdated += OnStateUpdated;
+            _bridgeServer.Error += OnBridgeServerError;
 
             fetchSimbriefButton!.Click += (_, _) =>
             {
@@ -97,6 +98,12 @@ namespace MSFSBlindAssist.Forms.PMDG777
                     _bridgeServer.EnqueueCommand("get_preferences");
                 }
             };
+        }
+
+        private void OnBridgeServerError(string message)
+        {
+            if (IsDisposed || !IsHandleCreated) return;
+            _announcer.Announce(message);
         }
 
         private void OnConnectionCheck(object? sender, EventArgs e)
@@ -363,6 +370,7 @@ namespace MSFSBlindAssist.Forms.PMDG777
             StopFetchTimeout();
             StopAuthTimeout();
             _bridgeServer.StateUpdated -= OnStateUpdated;
+            _bridgeServer.Error -= OnBridgeServerError;
             if (_previousWindow != IntPtr.Zero)
             {
                 SetForegroundWindow(_previousWindow);
