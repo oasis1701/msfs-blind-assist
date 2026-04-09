@@ -291,7 +291,9 @@ namespace MSFSBlindAssist.Patching
 
                     // Write the modified HTML: original + variant-specific bridge script tag
                     string htmlPath = Path.Combine(htmlDir, HtmlFileName);
-                    string modifiedHtml = originalHtml.TrimEnd() + GetBridgeScriptTag(variantSubfolder);
+                    string modifiedHtml = originalHtml.Contains(BridgeJsFileName)
+                        ? originalHtml  // Already patched — don't double-patch
+                        : originalHtml.TrimEnd() + GetBridgeScriptTag(variantSubfolder);
                     File.WriteAllText(htmlPath, modifiedHtml);
 
                     // Copy the bridge JS into this variant's folder
@@ -360,7 +362,9 @@ namespace MSFSBlindAssist.Patching
 
                     // Re-patch HTML with variant-specific bridge script tag
                     string htmlPath = Path.Combine(htmlDir, HtmlFileName);
-                    string modifiedHtml = originalHtml.TrimEnd() + GetBridgeScriptTag(variantSubfolder);
+                    string modifiedHtml = originalHtml.Contains(BridgeJsFileName)
+                        ? originalHtml  // Already patched — don't double-patch
+                        : originalHtml.TrimEnd() + GetBridgeScriptTag(variantSubfolder);
                     File.WriteAllText(htmlPath, modifiedHtml);
 
                     // Copy latest bridge JS
