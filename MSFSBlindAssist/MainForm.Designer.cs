@@ -18,6 +18,8 @@ namespace MSFSBlindAssist
         private System.Windows.Forms.ToolStripMenuItem flyByWireA320MenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem fenixA320MenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem pmdg777MenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem pmdg777FirstOfficerMenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem foSettingsMenuItem = null!;
         private System.Windows.Forms.ListBox sectionsListBox = null!;
         private System.Windows.Forms.ListBox panelsListBox = null!;
         private System.Windows.Forms.Panel controlsContainer = null!;
@@ -49,6 +51,8 @@ namespace MSFSBlindAssist
             this.flyByWireA320MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.fenixA320MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.pmdg777MenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.pmdg777FirstOfficerMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.foSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.sectionsListBox = new System.Windows.Forms.ListBox();
             this.panelsListBox = new System.Windows.Forms.ListBox();
             this.controlsContainer = new System.Windows.Forms.Panel();
@@ -79,6 +83,8 @@ namespace MSFSBlindAssist
             this.simbriefSettingsMenuItem,
             this.geminiSettingsMenuItem,
             this.handFlyOptionsMenuItem,
+            this.pmdg777FirstOfficerMenuItem,
+            this.foSettingsMenuItem,
             this.hotkeyListMenuItem,
             this.updateApplicationMenuItem,
             this.aboutMenuItem});
@@ -166,6 +172,24 @@ namespace MSFSBlindAssist
             this.aboutMenuItem.Size = new System.Drawing.Size(220, 26);
             this.aboutMenuItem.Text = "&About";
             this.aboutMenuItem.Click += new System.EventHandler(this.AboutMenuItem_Click);
+            //
+            // pmdg777FirstOfficerMenuItem
+            //
+            this.pmdg777FirstOfficerMenuItem.AccessibleName = "PMDG 777 First Officer";
+            this.pmdg777FirstOfficerMenuItem.AccessibleDescription = "Open the PMDG 777 First Officer checklists and flows window";
+            this.pmdg777FirstOfficerMenuItem.Name = "pmdg777FirstOfficerMenuItem";
+            this.pmdg777FirstOfficerMenuItem.Size = new System.Drawing.Size(280, 26);
+            this.pmdg777FirstOfficerMenuItem.Text = "PMDG 777 &First Officer";
+            this.pmdg777FirstOfficerMenuItem.Click += new System.EventHandler(this.PMDG777FirstOfficerMenuItem_Click);
+            //
+            // foSettingsMenuItem
+            //
+            this.foSettingsMenuItem.AccessibleName = "First Officer Settings";
+            this.foSettingsMenuItem.AccessibleDescription = "Configure First Officer automation options such as auto-gear and auto-flaps";
+            this.foSettingsMenuItem.Name = "foSettingsMenuItem";
+            this.foSettingsMenuItem.Size = new System.Drawing.Size(280, 26);
+            this.foSettingsMenuItem.Text = "First Officer &Settings";
+            this.foSettingsMenuItem.Click += new System.EventHandler(this.FOSettingsMenuItem_Click);
             //
             // aircraftMenuItem
             //

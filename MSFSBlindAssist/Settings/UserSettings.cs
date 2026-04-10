@@ -105,6 +105,10 @@ public class UserSettings
         // Fenix Monitor Manager Settings
         public List<string> FenixDisabledMonitorVariables { get; set; } = new List<string>();
 
+        // First Officer (PMDG 777) automation
+        public bool FOAutoGearEnabled  { get; set; } = false;
+        public bool FOAutoFlapsEnabled { get; set; } = false;
+
         // Weather Settings
         public bool WeatherAutoAnnounceEnabled { get; set; } = false;
         public bool SigmetProximityAlertsEnabled { get; set; } = false;
@@ -168,6 +172,8 @@ public class UserSettings
             MajorCityAPIThreshold = MajorCityAPIThreshold,
             DistanceUnits = DistanceUnits,
             FenixDisabledMonitorVariables = new List<string>(FenixDisabledMonitorVariables),
+            FOAutoGearEnabled  = FOAutoGearEnabled,
+            FOAutoFlapsEnabled = FOAutoFlapsEnabled,
             WeatherAutoAnnounceEnabled = WeatherAutoAnnounceEnabled,
             SigmetProximityAlertsEnabled = SigmetProximityAlertsEnabled,
             PirepProximityAlertsEnabled = PirepProximityAlertsEnabled,

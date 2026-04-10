@@ -165,6 +165,9 @@ public class SimConnectManager
         // 324-328 used by hardcoded takeoff assist / hand fly requests
         REQUEST_SQUAWK_CODE = 329,
         REQUEST_ECAM_MESSAGES = 350,
+        // FO background data requests — NOT announced by HandleSpecialAnnouncements
+        REQUEST_FO_ALTITUDE_AGL  = 380,
+        REQUEST_FO_AIRSPEED_IAS  = 381,
         REQUEST_AI_TRAFFIC = 500,
         // Individual variable requests start from 1000
         INDIVIDUAL_VARIABLE_BASE = 1000
@@ -220,6 +223,9 @@ public class SimConnectManager
         // 324-328 used by hardcoded takeoff assist / hand fly definitions
         DEF_SQUAWK_CODE = 329,
         ECAM_MESSAGES = 350,
+        // FO background data definitions — paired with REQUEST_FO_* IDs, NOT announced
+        DEF_FO_ALTITUDE_AGL = 380,
+        DEF_FO_AIRSPEED_IAS = 381,
         DEF_AI_TRAFFIC = 500,
         // Individual variable definitions start from 1000
         INDIVIDUAL_VARIABLE_BASE = 1000
@@ -1296,6 +1302,16 @@ public class SimConnectManager
                 });
                 break;
 
+            case DATA_REQUESTS.REQUEST_FO_ALTITUDE_AGL:
+                SingleValue foAltAglData = (SingleValue)data.dwData[0];
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "FO_ALTITUDE_AGL",
+                    Value = foAltAglData.value,
+                    Description = $"{foAltAglData.value:0}"
+                });
+                break;
+
             case DATA_REQUESTS.REQUEST_AIRSPEED_IAS:
                 SingleValue iasData = (SingleValue)data.dwData[0];
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
@@ -1303,6 +1319,16 @@ public class SimConnectManager
                     VarName = "AIRSPEED_INDICATED",
                     Value = iasData.value,
                     Description = $"{iasData.value:0}"
+                });
+                break;
+
+            case DATA_REQUESTS.REQUEST_FO_AIRSPEED_IAS:
+                SingleValue foIasData = (SingleValue)data.dwData[0];
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "FO_AIRSPEED_IAS",
+                    Value = foIasData.value,
+                    Description = $"{foIasData.value:0}"
                 });
                 break;
 
@@ -2983,6 +3009,60 @@ public class SimConnectManager
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"Error requesting indicated airspeed: {ex.Message}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Request AGL altitude for the First Officer background timer.
+    /// Fires SimVarUpdated with VarName "FO_ALTITUDE_AGL" — NOT announced by HandleSpecialAnnouncements.
+    /// </summary>
+    public void RequestFOAltitudeAGL()
+    {
+        if (IsConnected && simConnect != null)
+        {
+            try
+            {
+                var tempDefId = DATA_DEFINITIONS.DEF_FO_ALTITUDE_AGL;
+                SafelyClearDataDefinition(tempDefId, requestId: null, delayMs: 50);
+                simConnect.AddToDataDefinition(tempDefId,
+                    "PLANE ALT ABOVE GROUND", "feet",
+                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+                simConnect.RegisterDataDefineStruct<SingleValue>(tempDefId);
+                simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_FO_ALTITUDE_AGL,
+                    tempDefId, SIMCONNECT_OBJECT_ID_USER,
+                    SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error requesting FO altitude AGL: {ex.Message}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Request indicated airspeed for the First Officer background timer.
+    /// Fires SimVarUpdated with VarName "FO_AIRSPEED_IAS" — NOT announced by HandleSpecialAnnouncements.
+    /// </summary>
+    public void RequestFOAirspeedIndicated()
+    {
+        if (IsConnected && simConnect != null)
+        {
+            try
+            {
+                var tempDefId = DATA_DEFINITIONS.DEF_FO_AIRSPEED_IAS;
+                SafelyClearDataDefinition(tempDefId, requestId: null, delayMs: 50);
+                simConnect.AddToDataDefinition(tempDefId,
+                    "AIRSPEED INDICATED", "knots",
+                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+                simConnect.RegisterDataDefineStruct<SingleValue>(tempDefId);
+                simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_FO_AIRSPEED_IAS,
+                    tempDefId, SIMCONNECT_OBJECT_ID_USER,
+                    SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error requesting FO airspeed IAS: {ex.Message}");
             }
         }
     }

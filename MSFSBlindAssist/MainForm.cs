@@ -33,6 +33,7 @@ public partial class MainForm : Form
     private FenixMCDUService? fenixMCDUService;
     private PMDG777CDUForm? pmdg777CDUForm;
     private PMDG777EFBForm? pmdg777EFBForm;
+    private FirstOfficerForm? pmdg777FirstOfficerForm;
     private EFBBridgeServer? efbBridgeServer;
     private TakeoffAssistManager takeoffAssistManager = null!;
     private HandFlyManager handFlyManager = null!;
@@ -270,6 +271,10 @@ public partial class MainForm : Form
                     simConnectManager.PMDG777DataManager.VariableChanged += OnPMDGVariableChanged;
                 }
             }
+
+            // Notify First Officer form so it can re-wire its data manager reference
+            if (pmdg777FirstOfficerForm != null && !pmdg777FirstOfficerForm.IsDisposed)
+                pmdg777FirstOfficerForm.OnSimConnectChanged();
 
             // Automatically switch database if simulator version doesn't match
             CheckAndSwitchDatabase();
@@ -1522,6 +1527,37 @@ public partial class MainForm : Form
         pmdg777EFBForm.ShowForm();
     }
 
+    private void PMDG777FirstOfficerMenuItem_Click(object? sender, EventArgs e)
+    {
+        ShowPMDG777FirstOfficerDialog();
+    }
+
+    private void ShowPMDG777FirstOfficerDialog()
+    {
+        if (pmdg777FirstOfficerForm == null || pmdg777FirstOfficerForm.IsDisposed)
+        {
+            pmdg777FirstOfficerForm = new FirstOfficerForm(
+                simConnectManager,
+                announcer,
+                MSFSBlindAssist.Settings.SettingsManager.Current,
+                new MSFSBlindAssist.Services.SimBriefService());
+        }
+        pmdg777FirstOfficerForm.ShowForm();
+    }
+
+    private void FOSettingsMenuItem_Click(object? sender, EventArgs e)
+    {
+        var settings = MSFSBlindAssist.Settings.SettingsManager.Current;
+        using var dlg = new FirstOfficerSettingsForm(settings);
+        if (dlg.ShowDialog(this) == DialogResult.OK)
+        {
+            MSFSBlindAssist.Settings.SettingsManager.Save();
+            // Push updated settings into the form if it's already open
+            if (pmdg777FirstOfficerForm != null && !pmdg777FirstOfficerForm.IsDisposed)
+                pmdg777FirstOfficerForm.ApplySettings();
+        }
+    }
+
     private void CheckAndOfferEFBModPackage()
     {
         var allFolders = EFBModPackageManager.FindAllCommunityFolders();
@@ -2508,6 +2544,13 @@ public partial class MainForm : Form
         {
             pmdg777EFBForm.Dispose();
             pmdg777EFBForm = null;
+        }
+
+        // Dispose PMDG 777 First Officer form when switching aircraft
+        if (pmdg777FirstOfficerForm != null && !pmdg777FirstOfficerForm.IsDisposed)
+        {
+            pmdg777FirstOfficerForm.Dispose();
+            pmdg777FirstOfficerForm = null;
         }
 
         // PMDG 777 data manager lifecycle
