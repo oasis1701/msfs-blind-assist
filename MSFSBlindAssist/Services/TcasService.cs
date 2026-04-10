@@ -121,7 +121,6 @@ public class TcasService : IDisposable
             FromAirport      = fromAirport,
             ToAirport        = toAirport,
             Airline          = e.Airline,
-            TrafficState     = e.TrafficState,
             DistanceNm       = distNm,
             AltitudeDiffFt   = altDiff,
             RelativeBearing  = relBearing,

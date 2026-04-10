@@ -1358,7 +1358,10 @@ public partial class MainForm : Form
         try
         {
             if (tcasForm == null || tcasForm.IsDisposed)
-                tcasForm = new Forms.TcasForm(tcasService!, announcer);
+            {
+                var gateResolver = new Services.GateResolver(Database.DatabaseSelector.SelectProvider());
+                tcasForm = new Forms.TcasForm(tcasService!, announcer, gateResolver);
+            }
             tcasForm.ShowForm();
         }
         catch (Exception ex)

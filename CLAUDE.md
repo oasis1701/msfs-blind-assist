@@ -17,6 +17,10 @@ dotnet build MSFSBlindAssist.sln -c Release
 
 **Prerequisites:** MSFS_SDK environment variable, .NET 9 SDK
 
+## Git Workflow
+
+The `main` branch is protected. Always create a new branch for changes and open a pull request — never commit directly to main.
+
 ## CRITICAL Rules (Always Follow)
 
 ### Screen Reader Announcements

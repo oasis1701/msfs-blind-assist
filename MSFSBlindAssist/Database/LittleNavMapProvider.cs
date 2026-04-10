@@ -276,6 +276,47 @@ public class LittleNavMapProvider : IAirportDataProvider
         }
     }
 
+    public List<string> GetNearbyAirportICAOs(double latitude, double longitude, double radiusNm)
+    {
+        var results = new List<string>();
+        if (!DatabaseExists) return results;
+
+        // Convert NM radius to approximate degree offset.
+        // 1 degree latitude ≈ 60 NM. Longitude varies by cos(lat).
+        double latDelta = radiusNm / 60.0;
+        double lonDelta = radiusNm / (60.0 * Math.Cos(latitude * Math.PI / 180.0));
+
+        using (var connection = new SqliteConnection(_connectionString))
+        {
+            connection.Open();
+
+            var sql = @"SELECT COALESCE(NULLIF(icao, ''), ident) AS code
+                        FROM airport
+                        WHERE laty BETWEEN @MinLat AND @MaxLat
+                          AND lonx BETWEEN @MinLon AND @MaxLon";
+
+            using (var command = new SqliteCommand(sql, connection))
+            {
+                command.Parameters.AddWithValue("@MinLat", latitude - latDelta);
+                command.Parameters.AddWithValue("@MaxLat", latitude + latDelta);
+                command.Parameters.AddWithValue("@MinLon", longitude - lonDelta);
+                command.Parameters.AddWithValue("@MaxLon", longitude + lonDelta);
+
+                using (var reader = command.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        string? code = reader["code"]?.ToString();
+                        if (!string.IsNullOrEmpty(code))
+                            results.Add(code);
+                    }
+                }
+            }
+        }
+
+        return results;
+    }
+
     public int GetAirportCount()
     {
         if (!DatabaseExists)
