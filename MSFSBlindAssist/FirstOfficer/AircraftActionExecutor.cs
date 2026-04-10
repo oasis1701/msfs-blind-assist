@@ -335,6 +335,9 @@ public class AircraftActionExecutor
     public bool PushLNAV() => ExecuteSingle("EVT_MCP_LNAV_SWITCH", null, false, true);
     public bool PushVNAV() => ExecuteSingle("EVT_MCP_VNAV_SWITCH", null, false, true);
 
+    // MCP — Autopilot CMD (left seat — momentary push)
+    public bool PushAPCmd() => ExecuteSingle("EVT_MCP_AP_L_SWITCH", null, false, true);
+
     // EFIS mode / range
     public bool SetEFISModeCapt(int position) => ExecuteSingle("EVT_EFIS_CPT_MODE", position, false, false);
     public bool SetEFISModeFO(int position)   => ExecuteSingle("EVT_EFIS_FO_MODE", position, false, false);

@@ -12,6 +12,7 @@ public class FirstOfficerSettingsForm : Form
 
     private CheckBox _autoGearCheck  = null!;
     private CheckBox _autoFlapsCheck = null!;
+    private CheckBox _autoApCheck    = null!;
     private Button   _saveBtn        = null!;
     private Button   _cancelBtn      = null!;
 
@@ -25,7 +26,7 @@ public class FirstOfficerSettingsForm : Form
     {
         Text           = "First Officer Settings";
         Width          = 420;
-        Height         = 220;
+        Height         = 270;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox    = false;
         MinimizeBox    = false;
@@ -36,9 +37,10 @@ public class FirstOfficerSettingsForm : Form
         {
             Dock        = DockStyle.Fill,
             ColumnCount = 1,
-            RowCount    = 4,
+            RowCount    = 5,
             Padding     = new Padding(12),
         };
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
@@ -62,6 +64,16 @@ public class FirstOfficerSettingsForm : Form
             Margin         = new Padding(0, 0, 0, 8),
             AccessibleName = "Auto-manage flaps",
             AccessibleDescription = "Automatically retract flaps on climbout and extend flaps on approach using FMC speeds",
+        };
+
+        _autoApCheck = new CheckBox
+        {
+            Text           = "Auto-engage autopilot at 500 ft AGL on climbout",
+            Checked        = _settings.FOAutoApEnabled,
+            AutoSize       = true,
+            Margin         = new Padding(0, 0, 0, 8),
+            AccessibleName = "Auto-engage autopilot",
+            AccessibleDescription = "Automatically engage autopilot when climbing through 500 feet AGL after takeoff",
         };
 
         var btnPanel = new FlowLayoutPanel
@@ -94,8 +106,9 @@ public class FirstOfficerSettingsForm : Form
 
         layout.Controls.Add(_autoGearCheck,  0, 0);
         layout.Controls.Add(_autoFlapsCheck, 0, 1);
-        layout.Controls.Add(new Panel(),     0, 2); // spacer
-        layout.Controls.Add(btnPanel,        0, 3);
+        layout.Controls.Add(_autoApCheck,    0, 2);
+        layout.Controls.Add(new Panel(),     0, 3); // spacer
+        layout.Controls.Add(btnPanel,        0, 4);
 
         Controls.Add(layout);
         AcceptButton = _saveBtn;
@@ -106,5 +119,6 @@ public class FirstOfficerSettingsForm : Form
     {
         _settings.FOAutoGearEnabled  = _autoGearCheck.Checked;
         _settings.FOAutoFlapsEnabled = _autoFlapsCheck.Checked;
+        _settings.FOAutoApEnabled    = _autoApCheck.Checked;
     }
 }

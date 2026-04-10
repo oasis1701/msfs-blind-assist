@@ -334,7 +334,7 @@ public static class PMDG777FlowDefinitions
     {
         Id = "BEFORE_TAKEOFF",
         Name = "Before Takeoff",
-        Description = "Arms lights, transponder, and FO instruments for runway lineup.",
+        Description = "Arms lights, transponder, LNAV/VNAV, and FO instruments for runway lineup.",
         RelatedChecklistGroupIds = new[] { "BEFORE_TKOF_CL" },
         Steps = new()
         {
@@ -348,6 +348,10 @@ public static class PMDG777FlowDefinitions
                // Transponder uses standard SimConnect — handled as special case below
                // Set via SendEvent("XPNDR_SET", 4) — see FirstOfficerForm
                "EVT_TCAS_XPNDR",                               4),
+            Skip(Momentary("BTKOF_LNAV", "LNAV: ARM", "EVT_MCP_LNAV_SWITCH"),
+                s => s.IsOn("MCP_annunLNAV")),
+            Skip(Momentary("BTKOF_VNAV", "VNAV: ARM", "EVT_MCP_VNAV_SWITCH"),
+                s => s.IsOn("MCP_annunVNAV")),
             Captain("BTKOF_FLAPS_CONFIRM", "Confirm flap setting for takeoff"),
         }
     };

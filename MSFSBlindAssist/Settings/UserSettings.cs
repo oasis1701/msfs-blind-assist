@@ -108,6 +108,7 @@ public class UserSettings
         // First Officer (PMDG 777) automation
         public bool FOAutoGearEnabled  { get; set; } = false;
         public bool FOAutoFlapsEnabled { get; set; } = false;
+        public bool FOAutoApEnabled    { get; set; } = false;
 
         // Weather Settings
         public bool WeatherAutoAnnounceEnabled { get; set; } = false;
@@ -174,6 +175,7 @@ public class UserSettings
             FenixDisabledMonitorVariables = new List<string>(FenixDisabledMonitorVariables),
             FOAutoGearEnabled  = FOAutoGearEnabled,
             FOAutoFlapsEnabled = FOAutoFlapsEnabled,
+            FOAutoApEnabled    = FOAutoApEnabled,
             WeatherAutoAnnounceEnabled = WeatherAutoAnnounceEnabled,
             SigmetProximityAlertsEnabled = SigmetProximityAlertsEnabled,
             PirepProximityAlertsEnabled = PirepProximityAlertsEnabled,

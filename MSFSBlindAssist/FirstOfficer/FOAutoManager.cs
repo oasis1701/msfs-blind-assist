@@ -3,7 +3,7 @@ using MSFSBlindAssist.Accessibility;
 namespace MSFSBlindAssist.FirstOfficer;
 
 /// <summary>
-/// Automatic gear and flap management for the PMDG 777.
+/// Automatic gear, flap, and autopilot management for the PMDG 777.
 ///
 /// Gear:
 ///   UP  — when positive rate (VS > 200 fpm) AND safely airborne (AGL > 50 ft) AND gear is down.
@@ -14,6 +14,10 @@ namespace MSFSBlindAssist.FirstOfficer;
 /// Flaps (requires FMC V2 / VREF to be programmed):
 ///   Retraction — one step at a time during climb when IAS exceeds V2-relative thresholds.
 ///   Extension  — one step at a time during descent when IAS drops below VREF-relative thresholds.
+///
+/// Autopilot:
+///   Engages AP CMD (left seat) when climbing through 500 ft AGL on climbout.
+///   Fires once per takeoff leg; resets on touchdown.
 ///
 /// Thread-safe: Update() can be called from any thread.
 /// </summary>
@@ -29,6 +33,7 @@ public class FOAutoManager
 
     public bool AutoGearEnabled  { get; set; }
     public bool AutoFlapsEnabled { get; set; }
+    public bool AutoApEnabled    { get; set; }
 
     // -----------------------------------------------------------------------
     // Gear state tracking
@@ -36,6 +41,7 @@ public class FOAutoManager
 
     private bool _gearRaisedThisLeg;    // prevent re-raising after initial gear-up
     private bool _gearLoweredThisLeg;   // prevent re-lowering on same approach
+    private bool _apEngagedThisLeg;     // prevent re-engaging AP after initial engagement
     private bool _wasOnGround = true;
 
     // -----------------------------------------------------------------------
@@ -67,9 +73,10 @@ public class FOAutoManager
     /// </summary>
     public void Reset()
     {
-        _gearRaisedThisLeg  = false;
-        _gearLoweredThisLeg = false;
-        _wasOnGround        = true;
+        _gearRaisedThisLeg    = false;
+        _gearLoweredThisLeg   = false;
+        _apEngagedThisLeg     = false;
+        _wasOnGround          = true;
         _lastCommandedFlapPos = -1;
     }
 
@@ -86,10 +93,11 @@ public class FOAutoManager
         // --- Ground-to-air transition resets ---
         if (onGround)
         {
-            // Touched down — allow gear to be raised again next takeoff
+            // Touched down — reset per-leg flags for next takeoff
             if (!_wasOnGround)
             {
-                _gearRaisedThisLeg  = false;
+                _gearRaisedThisLeg    = false;
+                _apEngagedThisLeg     = false;
                 _lastCommandedFlapPos = -1;
             }
             _wasOnGround = true;
@@ -112,6 +120,9 @@ public class FOAutoManager
 
         if (AutoFlapsEnabled)
             CheckFlaps(airspeedKts, climbing, descending);
+
+        if (AutoApEnabled)
+            CheckAp(altitudeAgl, climbing);
     }
 
     // -----------------------------------------------------------------------
@@ -136,6 +147,21 @@ public class FOAutoManager
             _executor.SetGearLever(1); // Down
             _announcer.AnnounceImmediate("Two thousand feet. Gear down.");
             _gearLoweredThisLeg = true;
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Autopilot logic
+    // -----------------------------------------------------------------------
+
+    private void CheckAp(double agl, bool climbing)
+    {
+        // Engage autopilot once per leg when climbing through 500 ft AGL
+        if (!_apEngagedThisLeg && climbing && agl >= 500)
+        {
+            _executor.PushAPCmd();
+            _announcer.AnnounceImmediate("Five hundred feet. Autopilot engaged.");
+            _apEngagedThisLeg = true;
         }
     }
 

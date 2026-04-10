@@ -117,6 +117,7 @@ public class FirstOfficerForm : Form
         {
             AutoGearEnabled  = settings.FOAutoGearEnabled,
             AutoFlapsEnabled = settings.FOAutoFlapsEnabled,
+            AutoApEnabled    = settings.FOAutoApEnabled,
         };
 
         // Wire services
@@ -180,6 +181,7 @@ public class FirstOfficerForm : Form
     {
         _foAutoMgr.AutoGearEnabled  = _settings.FOAutoGearEnabled;
         _foAutoMgr.AutoFlapsEnabled = _settings.FOAutoFlapsEnabled;
+        _foAutoMgr.AutoApEnabled    = _settings.FOAutoApEnabled;
     }
 
     /// <summary>Update the data manager reference when SimConnect reconnects.</summary>

@@ -18,11 +18,12 @@ namespace MSFSBlindAssist.FirstOfficer;
 ///   User manually programs SID and departure runway on DEP/ARR page.
 ///
 ///   Phase 2 — Performance programming (call ProgramAsync second time):
-///     MENU → INIT_REF (lands on PERF INIT directly — route/IRS already filled) → load ZFW
-///     THRUST LIM → set thrust rating, max climb, SEL OAT if available
-///     TAKEOFF REF → enter flaps, accept V-speeds, send CG
-///     LEGS → RTE DATA → load winds
-///     VNAV → descent page → load winds
+///     INIT_REF (lands on PERF INIT directly — route/IRS already filled from Phase 1)
+///     R5 → accept PERF INIT uplink; L3 twice → load ZFW; L3 twice → load CG
+///     THRUST LIM → set SEL OAT if available, thrust rating, max climb
+///     TAKEOFF REF → enter flaps, accept computed V-speeds, L3 twice → load CG
+///     LEGS → RTE DATA → load climb winds
+///     VNAV → descent page → load descent winds
 ///     MENU → FS ACTIONS → DOORS → close all, arm all
 ///     Return to LEGS, announce complete.
 ///
@@ -210,23 +211,17 @@ public class FmcProgrammingService
     {
         var result = new FmcProgramResult { Success = true };
 
-        // 1. MENU — start from a known state
-        progress?.Report("Navigating to menu...");
-        await SendKey("MENU", ct);
-        await Delay(PageSettle, ct);
-
-        // 2. INIT REF — goes directly to PERF INIT at this point (route/IRS already
-        //    filled in Phase 1, so the CDU opens PERF INIT rather than IDENT)
+        // 1. INIT_REF — with route already loaded from Phase 1, pressing INIT_REF opens PERF INIT directly
         progress?.Report("PERF INIT page...");
         await SendKey("INIT_REF", ct);
         await Delay(PageSettle, ct);
 
-        // 3. R5 — accept PERF INIT uplink
+        // 2. R5 — accept PERF INIT uplink
         progress?.Report("Accepting PERF INIT uplink...");
         await SendKey("R5", ct);
         await Delay(LskSettle, ct);
 
-        // 4. L3 twice with 2 s gap — set ZFW
+        // 3. L3 twice with 2 s gap — load ZFW from uplink
         progress?.Report("Setting ZFW...");
         await SendKey("L3", ct);
         await Delay(2000, ct);
@@ -234,12 +229,12 @@ public class FmcProgrammingService
         await Delay(LskSettle, ct);
         result.ProgrammedFields.Add("ZFW: loaded");
 
-        // 5. R6 — THRUST LIM page
+        // 4. R6 — THRUST LIM page
         progress?.Report("THRUST LIM page...");
         await SendKey("R6", ct);
         await Delay(PageSettle, ct);
 
-        // 6. SEL OAT — type assumed temp and send to L1 (must be before selecting rating)
+        // 5. SEL OAT — type assumed temp and send to L1 (must be before selecting rating)
         if (!string.IsNullOrWhiteSpace(ofp.TakeoffAssumedTemp))
         {
             string tempStr = FormatAssumedTemp(ofp.TakeoffAssumedTemp);
@@ -250,7 +245,7 @@ public class FmcProgrammingService
             result.ProgrammedFields.Add($"SEL OAT: {tempStr}°C");
         }
 
-        // 7. Select thrust rating: TO → L2, TO1 → L3, TO2 → L4
+        // 6. Select thrust rating: TO → L2, TO1 → L3, TO2 → L4
         string thrustKey = GetThrustRatingKey(ofp.TakeoffEngineRating);
         string ratingLabel = string.IsNullOrWhiteSpace(ofp.TakeoffEngineRating) ? "TO" : ofp.TakeoffEngineRating.Trim().ToUpperInvariant();
         progress?.Report($"Thrust rating: {ratingLabel}...");
@@ -258,17 +253,17 @@ public class FmcProgrammingService
         await Delay(LskSettle, ct);
         result.ProgrammedFields.Add($"Thrust rating: {ratingLabel}");
 
-        // 8. R2 — CLB (max climb)
+        // 7. R2 — CLB (max climb)
         progress?.Report("CLB...");
         await SendKey("R2", ct);
         await Delay(LskSettle, ct);
 
-        // 9. R6 — TAKEOFF REF page (V-speeds + CG)
+        // 8. R6 — TAKEOFF REF page (V-speeds + CG)
         progress?.Report("TAKEOFF REF page...");
         await SendKey("R6", ct);
         await Delay(PageSettle, ct);
 
-        // 10. Enter flap setting at L1
+        // 9. Enter flap setting at L1
         if (!string.IsNullOrWhiteSpace(ofp.TakeoffFlaps))
         {
             progress?.Report($"Takeoff flaps: {ofp.TakeoffFlaps}...");
@@ -278,7 +273,7 @@ public class FmcProgrammingService
             result.ProgrammedFields.Add($"Takeoff flaps: {ofp.TakeoffFlaps}");
         }
 
-        // 11. R1, R2, R3 — accept V1, Vr, V2 (2 s between each)
+        // 10. R1, R2, R3 — accept computed V1, Vr, V2 (2 s between each to allow FMC to calculate)
         progress?.Report("Accepting V1...");
         await SendKey("R1", ct);
         await Delay(2000, ct);
@@ -290,7 +285,7 @@ public class FmcProgrammingService
         await Delay(LskSettle, ct);
         result.ProgrammedFields.Add("V-speeds: accepted");
 
-        // 12. L3 twice — send CG
+        // 11. L3 twice — CG populates when you hit L3 twice
         progress?.Report("Sending CG...");
         await SendKey("L3", ct);
         await Delay(LskSettle, ct);
@@ -298,71 +293,71 @@ public class FmcProgrammingService
         await Delay(LskSettle, ct);
         result.ProgrammedFields.Add("CG: loaded");
 
-        // 13. LEGS — legs page
+        // 12. LEGS — legs page
         progress?.Report("LEGS page...");
         await SendKey("LEGS", ct);
         await Delay(PageSettle, ct);
 
-        // 15. R6 — RTE DATA page
+        // 13. R6 — RTE DATA page
         progress?.Report("RTE DATA page...");
         await SendKey("R6", ct);
         await Delay(PageSettle, ct);
 
-        // 16. R6 — load wind data
+        // 14. R6 — load wind data
         progress?.Report("Loading wind data...");
         await SendKey("R6", ct);
         await Delay(PageSettle, ct);
 
-        // 17. VNAV — VNAV page (starts at CLIMB, page 1)
+        // 15. VNAV — VNAV page (starts at CLIMB, page 1)
         progress?.Report("VNAV page...");
         await SendKey("VNAV", ct);
         await Delay(PageSettle, ct);
 
-        // 18. NEXT PAGE → CRUISE (page 2)
+        // 16. NEXT PAGE → CRUISE (page 2)
         await SendKey("NEXT_PAGE", ct);
         await Delay(PageSettle, ct);
 
-        // 19. NEXT PAGE → DESCENT (page 3 — last sub-page)
+        // 17. NEXT PAGE → DESCENT (page 3 — last sub-page)
         progress?.Report("VNAV DESCENT page...");
         await SendKey("NEXT_PAGE", ct);
         await Delay(PageSettle, ct);
 
-        // 20. R5 — open wind load option
+        // 18. R5 — open wind load option
         progress?.Report("Descent winds...");
         await SendKey("R5", ct);
         await Delay(LskSettle, ct);
 
-        // 21. L6 — load
+        // 19. L6 — load
         await SendKey("L6", ct);
         await Delay(LskSettle, ct);
         result.ProgrammedFields.Add("Descent winds: loaded");
 
-        // 22. MENU
+        // 20. MENU
         progress?.Report("Navigating to menu...");
         await SendKey("MENU", ct);
         await Delay(PageSettle, ct);
 
-        // 23. R6 — FS ACTIONS
+        // 21. R6 — FS ACTIONS
         progress?.Report("FS Actions...");
         await SendKey("R6", ct);
         await Delay(PageSettle, ct);
 
-        // 24. L3 — DOORS
+        // 22. L3 — DOORS
         progress?.Report("Doors page...");
         await SendKey("L3", ct);
         await Delay(PageSettle, ct);
 
-        // 25. L1 — close all doors
+        // 23. L1 — close all doors
         progress?.Report("Closing all doors...");
         await SendKey("L1", ct);
         await Delay(DoorWait, ct);
 
-        // 26. L2 — arm all doors
+        // 24. L2 — arm all doors
         progress?.Report("Arming all doors...");
         await SendKey("L2", ct);
         await Delay(LskSettle, ct);
 
-        // 27. LEGS — return to legs page
+        // 25. LEGS — return to legs page
         progress?.Report("Returning to LEGS page...");
         await SendKey("LEGS", ct);
         await Delay(PageSettle, ct);
