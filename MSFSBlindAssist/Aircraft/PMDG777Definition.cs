@@ -3833,7 +3833,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             },
             ["CDU_BrtKnob_C"] = new SimConnect.SimVarDefinition
             {
-                Name = "CDU_BrtKnob_1",
+                Name = "CDU_BrtKnob_2",
                 DisplayName = "CDU Brightness Center",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -3841,7 +3841,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             },
             ["CDU_BrtKnob_R"] = new SimConnect.SimVarDefinition
             {
-                Name = "CDU_BrtKnob_2",
+                Name = "CDU_BrtKnob_1",
                 DisplayName = "CDU Brightness Right",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -3860,7 +3860,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             },
             ["CDU_annunEXEC_C"] = new SimConnect.SimVarDefinition
             {
-                Name = "CDU_annunEXEC_1",
+                Name = "CDU_annunEXEC_2",
                 DisplayName = "CDU EXEC Center",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -3870,7 +3870,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             },
             ["CDU_annunEXEC_R"] = new SimConnect.SimVarDefinition
             {
-                Name = "CDU_annunEXEC_2",
+                Name = "CDU_annunEXEC_1",
                 DisplayName = "CDU EXEC Right",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -3890,7 +3890,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             },
             ["CDU_annunFAIL_C"] = new SimConnect.SimVarDefinition
             {
-                Name = "CDU_annunFAIL_1",
+                Name = "CDU_annunFAIL_2",
                 DisplayName = "CDU FAIL Center",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -3900,7 +3900,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             },
             ["CDU_annunFAIL_R"] = new SimConnect.SimVarDefinition
             {
-                Name = "CDU_annunFAIL_2",
+                Name = "CDU_annunFAIL_1",
                 DisplayName = "CDU FAIL Right",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -3920,7 +3920,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             },
             ["CDU_annunMSG_C"] = new SimConnect.SimVarDefinition
             {
-                Name = "CDU_annunMSG_1",
+                Name = "CDU_annunMSG_2",
                 DisplayName = "CDU MSG Center",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -3930,7 +3930,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             },
             ["CDU_annunMSG_R"] = new SimConnect.SimVarDefinition
             {
-                Name = "CDU_annunMSG_2",
+                Name = "CDU_annunMSG_1",
                 DisplayName = "CDU MSG Right",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -3950,7 +3950,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             },
             ["CDU_annunOFST_C"] = new SimConnect.SimVarDefinition
             {
-                Name = "CDU_annunOFST_1",
+                Name = "CDU_annunOFST_2",
                 DisplayName = "CDU OFST Center",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -3960,7 +3960,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             },
             ["CDU_annunOFST_R"] = new SimConnect.SimVarDefinition
             {
-                Name = "CDU_annunOFST_2",
+                Name = "CDU_annunOFST_1",
                 DisplayName = "CDU OFST Right",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
