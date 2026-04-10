@@ -2412,6 +2412,20 @@ public partial class MainForm : Form
         }
     }
 
+    private void SuspendHotkeysMenuItem_Click(object? sender, EventArgs e)
+    {
+        if (suspendHotkeysMenuItem.Checked)
+        {
+            hotkeyManager.Suspend();
+            announcer.AnnounceImmediate("Hotkeys suspended");
+        }
+        else
+        {
+            hotkeyManager.Resume();
+            announcer.AnnounceImmediate("Hotkeys resumed");
+        }
+    }
+
     private void FlyByWireA320MenuItem_Click(object? sender, EventArgs e)
     {
         SwitchAircraft(new FlyByWireA320Definition());

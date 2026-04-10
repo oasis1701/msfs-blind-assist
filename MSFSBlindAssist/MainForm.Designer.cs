@@ -12,6 +12,7 @@ namespace MSFSBlindAssist
         private System.Windows.Forms.ToolStripMenuItem geminiSettingsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem handFlyOptionsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem hotkeyListMenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem suspendHotkeysMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem updateApplicationMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem aboutMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem aircraftMenuItem = null!;
@@ -43,6 +44,7 @@ namespace MSFSBlindAssist
             this.geminiSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.handFlyOptionsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.hotkeyListMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.suspendHotkeysMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.updateApplicationMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.aboutMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.aircraftMenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -80,6 +82,7 @@ namespace MSFSBlindAssist
             this.geminiSettingsMenuItem,
             this.handFlyOptionsMenuItem,
             this.hotkeyListMenuItem,
+            this.suspendHotkeysMenuItem,
             this.updateApplicationMenuItem,
             this.aboutMenuItem});
             this.fileMenuItem.Name = "fileMenuItem";
@@ -148,6 +151,16 @@ namespace MSFSBlindAssist
             this.hotkeyListMenuItem.Size = new System.Drawing.Size(220, 26);
             this.hotkeyListMenuItem.Text = "&Hotkey List";
             this.hotkeyListMenuItem.Click += new System.EventHandler(this.HotkeyListMenuItem_Click);
+            //
+            // suspendHotkeysMenuItem
+            //
+            this.suspendHotkeysMenuItem.AccessibleName = "Suspend Hotkeys";
+            this.suspendHotkeysMenuItem.AccessibleDescription = "Temporarily disable bracket key hotkeys to free them for other use";
+            this.suspendHotkeysMenuItem.Name = "suspendHotkeysMenuItem";
+            this.suspendHotkeysMenuItem.Size = new System.Drawing.Size(280, 26);
+            this.suspendHotkeysMenuItem.Text = "S&uspend Hotkeys";
+            this.suspendHotkeysMenuItem.CheckOnClick = true;
+            this.suspendHotkeysMenuItem.Click += new System.EventHandler(this.SuspendHotkeysMenuItem_Click);
             //
             // updateApplicationMenuItem
             //
