@@ -3823,6 +3823,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 IsAnnounced = false,
                 RenderAsButton = true
             },
+            // CDU array index convention: 0=Captain(L), 1=F/O(R), 2=Observer(C)
             ["CDU_BrtKnob_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "CDU_BrtKnob_0",
