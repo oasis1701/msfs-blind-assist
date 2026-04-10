@@ -243,10 +243,6 @@ public class TcasForm : Form
         if (!string.IsNullOrEmpty(route))
             parts.Add(route);
 
-        string state = FormatTrafficState(t.TrafficState);
-        if (!string.IsNullOrEmpty(state))
-            parts.Add(state);
-
         parts.Add($"heading {(int)t.HeadingMagnetic}");
 
         // Altitude is irrelevant for ground traffic
@@ -257,28 +253,6 @@ public class TcasForm : Form
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Converts the raw AI TRAFFIC STATE string into a readable label.
-    /// Returns empty if the state is unknown or not useful to display.
-    /// </summary>
-    private static string FormatTrafficState(string raw)
-    {
-        if (string.IsNullOrEmpty(raw)) return "";
-        return raw switch
-        {
-            "STATE_SIMPLE_FLIGHT"       => "in flight",
-            "STATE_SIMPLE_TAXI"         => "taxiing",
-            "STATE_SIMPLE_LANDING"      => "landing",
-            "STATE_SIMPLE_TAKEOFF"      => "taking off",
-            "STATE_SIMPLE_APPROACH"     => "on approach",
-            "STATE_WAIT_INIT_CONFIRM"   => "parked",
-            "STATE_WAIT_TAXI"           => "waiting to taxi",
-            "STATE_WAIT_TAKEOFF"        => "waiting for takeoff",
-            "STATE_WAIT_LANDING"        => "waiting to land",
-            _ => "",
-        };
-    }
 
     /// <summary>
     /// Formats origin→destination route string. Returns empty if neither is available.
