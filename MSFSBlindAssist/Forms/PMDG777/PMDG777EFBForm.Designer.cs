@@ -37,6 +37,20 @@ namespace MSFSBlindAssist.Forms.PMDG777
         private TextBox? authCodeTextBox;
         private Button? navigraphSignOutButton;
 
+        // Navigation Data controls
+        private Label? navdataCycleLabel;
+        private TextBox? navdataCycleValue;
+        private Label? navdataAvailableLabel;
+        private TextBox? navdataAvailableValue;
+        private Button? checkNavdataButton;
+        private Button? downloadNavdataButton;
+        private TextBox? navdataProgressText;
+        private TextBox? pageTextDiagnostic;
+
+        // Display tab controls — WebView2 loading from local server
+        private Microsoft.Web.WebView2.WinForms.WebView2? displayWebView;
+        private Button? displayRefreshButton;
+
         private Label? simbriefAliasLabel;
         private TextBox? simbriefAliasTextBox;
         private Label? weatherSourceLabel;
@@ -148,10 +162,49 @@ namespace MSFSBlindAssist.Forms.PMDG777
             y += 40;
             authCodeLabel = new Label { Text = "Auth Code:", Location = new System.Drawing.Point(labelX, y), AutoSize = true };
             authCodeTextBox = new TextBox { Location = new System.Drawing.Point(valueX, y), Size = new System.Drawing.Size(200, 25), ReadOnly = true, AccessibleName = "Navigraph Auth Code" };
+            y += rowHeight + 15;
+
+            // --- Navigation Data Section ---
+            var navdataSeparator = new Label { Text = "Navigation Data", Location = new System.Drawing.Point(labelX, y), Size = new System.Drawing.Size(valueWidth + valueX - labelX, 20), Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont, System.Drawing.FontStyle.Bold), AccessibleName = "Navigation Data section" };
+            y += rowHeight;
+            navdataCycleLabel = new Label { Text = "Navigraph Latest:", Location = new System.Drawing.Point(labelX, y), AutoSize = true };
+            navdataCycleValue = CreateReadOnlyField("Navigraph Latest AIRAC", new System.Drawing.Point(valueX, y), new System.Drawing.Size(valueWidth, 22));
+            y += rowHeight;
+            navdataAvailableLabel = new Label { Text = "Package Detail:", Location = new System.Drawing.Point(labelX, y), AutoSize = true };
+            navdataAvailableValue = CreateReadOnlyField("Package Detail", new System.Drawing.Point(valueX, y), new System.Drawing.Size(valueWidth, 22));
+            y += rowHeight + 5;
+            checkNavdataButton = new Button { Text = "Check for Updates", Location = new System.Drawing.Point(labelX, y), Size = new System.Drawing.Size(140, 30), AccessibleName = "Check for Navigation Data Updates" };
+            downloadNavdataButton = new Button { Text = "Download Update", Location = new System.Drawing.Point(valueX, y), Size = new System.Drawing.Size(140, 30), Enabled = false, AccessibleName = "Download Navigation Data Update" };
+            y += 40;
+            navdataProgressText = CreateReadOnlyField("Update Progress", new System.Drawing.Point(labelX, y), new System.Drawing.Size(valueWidth + valueX - labelX, 22));
+            navdataProgressText.Text = "";
+            y += rowHeight + 10;
+
+            // Page text diagnostic — shows raw text visible on the EFB tablet
+            var pageTextLabel = new Label { Text = "EFB Page Text:", Location = new System.Drawing.Point(labelX, y), AutoSize = true };
+            y += 18;
+            pageTextDiagnostic = new TextBox
+            {
+                Location = new System.Drawing.Point(labelX, y),
+                Size = new System.Drawing.Size(valueWidth + valueX - labelX, 120),
+                Multiline = true,
+                ReadOnly = true,
+                ScrollBars = ScrollBars.Vertical,
+                WordWrap = true,
+                AccessibleName = "EFB Page Text",
+                AccessibleDescription = "Shows the raw text content currently visible on the EFB tablet"
+            };
+            y += 125;
+            var refreshPageTextButton = new Button { Text = "Refresh Page Text", Location = new System.Drawing.Point(labelX, y), Size = new System.Drawing.Size(160, 30), AccessibleName = "Refresh EFB Page Text" };
+            refreshPageTextButton.Click += (s, e) => _bridgeServer.EnqueueCommand("get_page_text");
 
             navigraphTab.Controls.AddRange(new Control[] {
                 navigraphStatusText, navigraphSignInButton, navigraphSignOutButton,
-                authCodeLabel, authCodeTextBox
+                authCodeLabel, authCodeTextBox,
+                navdataSeparator, navdataCycleLabel, navdataCycleValue,
+                navdataAvailableLabel, navdataAvailableValue,
+                checkNavdataButton, downloadNavdataButton, navdataProgressText,
+                pageTextLabel, pageTextDiagnostic, refreshPageTextButton
             });
 
             // === Preferences Tab ===
@@ -193,8 +246,29 @@ namespace MSFSBlindAssist.Forms.PMDG777
                 savePreferencesButton
             });
 
+            // === Display Tab — WebView2 loading accessible page from local server ===
+            var displayTab = new TabPage("Display");
+            displayTab.Padding = new Padding(10);
+
+            displayWebView = new Microsoft.Web.WebView2.WinForms.WebView2
+            {
+                Location = new System.Drawing.Point(10, 10),
+                Size = new System.Drawing.Size(460, 370),
+                AccessibleName = "EFB Display",
+                AccessibleDescription = "EFB tablet display. Tab to navigate items. Enter to click. F5 to refresh."
+            };
+            displayRefreshButton = new Button
+            {
+                Text = "Refresh Display (F5)",
+                Location = new System.Drawing.Point(10, 385),
+                Size = new System.Drawing.Size(160, 30),
+                AccessibleName = "Refresh EFB Display"
+            };
+            displayTab.Controls.AddRange(new Control[] { displayWebView, displayRefreshButton });
+
             tabControl.TabPages.Add(simbriefTab);
             tabControl.TabPages.Add(navigraphTab);
+            tabControl.TabPages.Add(displayTab);
             tabControl.TabPages.Add(preferencesTab);
             this.Controls.Add(tabControl);
 
