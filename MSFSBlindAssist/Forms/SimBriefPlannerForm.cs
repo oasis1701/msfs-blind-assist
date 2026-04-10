@@ -2,6 +2,7 @@ using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Controls;
 using MSFSBlindAssist.Models;
 using MSFSBlindAssist.Services;
+using TreeView = MSFSBlindAssist.Controls.NativeAccessibleTreeView;
 
 namespace MSFSBlindAssist.Forms;
 
@@ -43,8 +44,6 @@ public class SimBriefPlannerForm : Form
     private Label     _viewStatus     = null!;
     private TabControl _viewTabs      = null!;
     private TreeView  _overviewTree   = null!;
-    private ListBox   _overviewDetail = null!;
-    private SplitContainer _overviewSplit = null!;
     private TreeView _navLogGrid = null!;
     private ListBox   _fuelText       = null!;
     private ListBox   _weightsText    = null!;
@@ -96,8 +95,6 @@ public class SimBriefPlannerForm : Form
         // Load aircraft types asynchronously once the form handle is ready
         Load += async (_, _) => await LoadAircraftTypesAsync();
 
-        // Set SplitterDistance after the form has been fully laid out
-        Shown += OnFirstShown;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -323,43 +320,23 @@ public class SimBriefPlannerForm : Form
         var tab = new TabPage("Overview")
         {
             AccessibleName = "Overview",
-            AccessibleDescription = "Key flight plan sections. Use arrow keys to navigate sections; details appear on the right."
+            AccessibleDescription = "Key flight plan sections. Up/Down to move between sections. Right arrow to expand a section for details. Left arrow to collapse."
         };
-
-        _overviewSplit = new SplitContainer
-        {
-            Dock = DockStyle.Fill,
-            Orientation = Orientation.Vertical,
-            TabStop = false   // SplitContainer itself shouldn't receive Tab focus
-        };
-        var split = _overviewSplit;
 
         _overviewTree = new TreeView
         {
-            Dock = DockStyle.Fill,
+            Dock          = DockStyle.Fill,
+            ShowLines     = true,
+            ShowPlusMinus = true,
+            ShowRootLines = true,
+            FullRowSelect = true,
             HideSelection = false,
             AccessibleName = "Flight plan sections",
-            AccessibleDescription = "Arrow through sections; details appear on the right"
+            TabStop        = true
         };
-        _overviewTree.AfterSelect += OverviewTree_AfterSelect;
+        _overviewTree.BeforeExpand += OverviewTree_BeforeExpand;
 
-        _overviewDetail = new ListBox
-        {
-            Dock = DockStyle.Fill,
-            Font = new System.Drawing.Font("Consolas", 9.5f),
-            HorizontalScrollbar = true,
-            AccessibleName = "Section details",
-            AccessibleDescription = "Detail for the selected section"
-        };
-
-        // Prevent Tab from landing on the SplitterPanel containers themselves;
-        // NVDA would otherwise announce "pane" when tabbing between tree and detail box.
-        split.Panel1.TabStop = false;
-        split.Panel2.TabStop = false;
-
-        split.Panel1.Controls.Add(_overviewTree);
-        split.Panel2.Controls.Add(_overviewDetail);
-        tab.Controls.Add(split);
+        tab.Controls.Add(_overviewTree);
         return tab;
     }
 
@@ -393,6 +370,7 @@ public class SimBriefPlannerForm : Form
             AccessibleName = "Navigation log",
             TabStop        = true
         };
+        _navLogGrid.BeforeExpand += NavLogGrid_BeforeExpand;
 
         tab.Controls.Add(_navLogGrid);
         tab.Controls.Add(hint);
@@ -736,11 +714,20 @@ public class SimBriefPlannerForm : Form
             _ = FetchPlanAsync();   // _fetchInProgress guard inside prevents double-fetch
     }
 
-    private void OverviewTree_AfterSelect(object? sender, TreeViewEventArgs e)
+    /// <summary>
+    /// Lazily populates overview section detail when a section is expanded.
+    /// </summary>
+    private void OverviewTree_BeforeExpand(object? sender, TreeViewCancelEventArgs e)
     {
-        if (_ofp == null || e.Node == null) return;
+        var node = e.Node;
+        if (node == null || _ofp == null) return;
 
-        SetListText(_overviewDetail, e.Node.Name switch
+        // Already populated — placeholder has been replaced.
+        if (node.Nodes.Count != 1 || node.Nodes[0].Tag as string != "placeholder")
+            return;
+
+        node.Nodes.Clear();
+        string text = node.Name switch
         {
             "FlightInfo"   => BuildFlightInfoText(),
             "Departure"    => BuildDepartureText(),
@@ -749,7 +736,22 @@ public class SimBriefPlannerForm : Form
             "FuelSummary"  => BuildFuelSummaryText(),
             "WeightSummary"=> BuildWeightSummaryText(),
             _              => ""
-        });
+        };
+
+        // Each data line from the Section() builder becomes a child node.
+        // Skip the title line and separator (already represented by the parent node).
+        bool skippedTitle = false;
+        foreach (string line in text.Split('\n'))
+        {
+            string trimmed = line.TrimEnd('\r');
+            if (!trimmed.Any(char.IsLetterOrDigit))
+                continue;
+            if (trimmed.All(c => c == '─' || c == '-' || c == '=' || c == ' '))
+                continue;
+            // First text line is the section title — skip it.
+            if (!skippedTitle) { skippedTitle = true; continue; }
+            node.Nodes.Add(trimmed);
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -788,7 +790,6 @@ public class SimBriefPlannerForm : Form
     private void PopulateOverviewTree()
     {
         _overviewTree.Nodes.Clear();
-        _overviewDetail.Items.Clear();
 
         AddNode("Flight Info",     "FlightInfo");
         AddNode("Departure",       "Departure");
@@ -798,14 +799,12 @@ public class SimBriefPlannerForm : Form
         AddNode("Weight Summary",  "WeightSummary");
 
         if (_overviewTree.Nodes.Count > 0)
-        {
             _overviewTree.SelectedNode = _overviewTree.Nodes[0];
-            SetListText(_overviewDetail, BuildFlightInfoText());
-        }
 
         void AddNode(string text, string name)
         {
             var node = new TreeNode(text) { Name = name };
+            node.Nodes.Add(new TreeNode("Loading...") { Tag = "placeholder" });
             _overviewTree.Nodes.Add(node);
         }
     }
@@ -825,8 +824,11 @@ public class SimBriefPlannerForm : Form
         var fixes = _ofp.NavLog;
 
         // Determine which SID/STAR fixes are SID (before first enroute) vs STAR (after last enroute).
-        int firstEnroute = fixes.FindIndex(f => !f.IsSidStar);
-        int lastEnroute  = fixes.FindLastIndex(f => !f.IsSidStar);
+        // Skip airport endpoint fixes (origin/dest) so they don't skew the boundary.
+        int firstEnroute = fixes.FindIndex(f => !f.IsSidStar
+            && !f.Type.Equals("apt", StringComparison.OrdinalIgnoreCase));
+        int lastEnroute  = fixes.FindLastIndex(f => !f.IsSidStar
+            && !f.Type.Equals("apt", StringComparison.OrdinalIgnoreCase));
 
         // Trans alt (dep) and trans level (dest) in feet for altitude display rules.
         int transAlt   = int.TryParse(_ofp.OriginTransAlt,  out int _ta) ? _ta : 0;
@@ -834,7 +836,6 @@ public class SimBriefPlannerForm : Form
         for (int i = 0; i < fixes.Count; i++)
         {
             var fix = fixes[i];
-            string u = _ofp.Units;
 
             // ── Parent node summary ──────────────────────────────────────────
             var parts = new List<string> { fix.Ident };
@@ -894,79 +895,11 @@ public class SimBriefPlannerForm : Form
 
             var parent = new TreeNode(string.Join(", ", parts));
 
-            // ── Child nodes (detail) ─────────────────────────────────────────
-            // Full name + type
-            string nameLabel = fix.VorName;
-            string typeLabel = string.IsNullOrEmpty(fix.Type) ? "" : fix.Type.ToUpperInvariant();
-            if (!string.IsNullOrEmpty(nameLabel) && !string.IsNullOrEmpty(typeLabel))
-                parent.Nodes.Add($"{nameLabel}, {typeLabel}");
-            else if (!string.IsNullOrEmpty(nameLabel))
-                parent.Nodes.Add(nameLabel);
-            else if (!string.IsNullOrEmpty(typeLabel))
-                parent.Nodes.Add(typeLabel);
-
-            if (!string.IsNullOrEmpty(fix.IcaoFir))
-                parent.Nodes.Add($"FIR: {fix.IcaoFir}");
-
-            if (!string.IsNullOrEmpty(fix.Frequency))
-                parent.Nodes.Add($"Frequency: {fix.Frequency}");
-
-            // Leg time (seconds → "Xh Ym" or "X min")
-            if (!string.IsNullOrEmpty(fix.TimeLeg) && fix.TimeLeg != "0" &&
-                int.TryParse(fix.TimeLeg, out int legSecs) && legSecs > 0)
-            {
-                int legMins = legSecs / 60;
-                string legTimeStr = legMins >= 60
-                    ? $"{legMins / 60}h {legMins % 60:D2}m"
-                    : $"{legMins} min";
-                parent.Nodes.Add($"Leg time: {legTimeStr}");
-            }
-
-            // Elapsed (seconds → "H:MM")
-            string elapsed = FormatElapsed(fix.TimeTotal);
-            if (!string.IsNullOrEmpty(elapsed))
-                parent.Nodes.Add($"Elapsed: {elapsed}");
-
-            // Wind + wind component (wind_comp: negative = headwind, positive = tailwind)
-            if (!string.IsNullOrEmpty(fix.WindDir) && !string.IsNullOrEmpty(fix.WindSpd))
-            {
-                string windStr = $"Wind: {fix.WindDir}° / {fix.WindSpd}kt";
-                if (!string.IsNullOrEmpty(fix.WindComp) &&
-                    double.TryParse(fix.WindComp,
-                        System.Globalization.NumberStyles.Any,
-                        System.Globalization.CultureInfo.InvariantCulture,
-                        out double wcd) && wcd != 0)
-                {
-                    int wcKt = (int)Math.Round(Math.Abs(wcd));
-                    string compLabel = wcd < 0 ? $"headwind {wcKt}kt" : $"tailwind {wcKt}kt";
-                    windStr += $", {compLabel}";
-                }
-                parent.Nodes.Add(windStr);
-            }
-
-            if (!string.IsNullOrEmpty(fix.Oat))
-                parent.Nodes.Add($"OAT: {fix.Oat}°C");
-
-            if (!string.IsNullOrEmpty(fix.IsaDev))
-                parent.Nodes.Add($"ISA dev: {fix.IsaDev}°C");
-
-            string mora = FormatNavAlt(fix.Mora);
-            if (mora != "-")
-                parent.Nodes.Add($"MORA: {mora}");
-
-            // Fuel: EFOB (estimated fuel on board) — prefer efob field, fall back to fuel_plan_onboard
-            string fobRaw = !string.IsNullOrEmpty(fix.Efob) ? fix.Efob : fix.FuelPlanOnboard;
-            if (!string.IsNullOrEmpty(fobRaw) && fobRaw != "0" &&
-                int.TryParse(fobRaw, out int fobVal) && fobVal > 0)
-                parent.Nodes.Add($"EFOB: {fobVal:N0} {u}");
-
-            if (!string.IsNullOrEmpty(fix.FuelLeg) && fix.FuelLeg != "0" &&
-                int.TryParse(fix.FuelLeg, out int fuelLeg) && fuelLeg > 0)
-                parent.Nodes.Add($"Leg fuel: {fuelLeg:N0} {u}");
-
-            if (!string.IsNullOrEmpty(fix.FuelTotalUsed) && fix.FuelTotalUsed != "0" &&
-                int.TryParse(fix.FuelTotalUsed, out int fuelUsed) && fuelUsed > 0)
-                parent.Nodes.Add($"Total fuel used: {fuelUsed:N0} {u}");
+            // Store the fix index so child nodes can be created on demand.
+            // Add a dummy child so the expand indicator (+) is shown.
+            parent.Tag = i;
+            if (!isEndpointApt)
+                parent.Nodes.Add(new TreeNode("Loading...") { Tag = "placeholder" });
 
             _navLogGrid.Nodes.Add(parent);
         }
@@ -975,6 +908,103 @@ public class SimBriefPlannerForm : Form
         // Focus first node
         if (_navLogGrid.Nodes.Count > 0)
             _navLogGrid.SelectedNode = _navLogGrid.Nodes[0];
+    }
+
+    /// <summary>
+    /// Lazily populates child detail nodes when a waypoint is expanded.
+    /// </summary>
+    private void NavLogGrid_BeforeExpand(object? sender, TreeViewCancelEventArgs e)
+    {
+        var node = e.Node;
+        if (node == null || _ofp == null) return;
+
+        // Already populated — placeholder has been replaced.
+        if (node.Nodes.Count != 1 || node.Nodes[0].Tag as string != "placeholder")
+            return;
+
+        node.Nodes.Clear();
+        if (node.Tag is not int fixIdx || fixIdx < 0 || fixIdx >= _ofp.NavLog.Count)
+            return;
+
+        var fix = _ofp.NavLog[fixIdx];
+        string u = _ofp.Units;
+        BuildNavLogChildNodes(node, fix, u);
+    }
+
+    private void BuildNavLogChildNodes(TreeNode parent, SimBriefNavFix fix, string units)
+    {
+        // Full name + type
+        string nameLabel = fix.VorName;
+        string typeLabel = string.IsNullOrEmpty(fix.Type) ? "" : fix.Type.ToUpperInvariant();
+        if (!string.IsNullOrEmpty(nameLabel) && !string.IsNullOrEmpty(typeLabel))
+            parent.Nodes.Add($"{nameLabel}, {typeLabel}");
+        else if (!string.IsNullOrEmpty(nameLabel))
+            parent.Nodes.Add(nameLabel);
+        else if (!string.IsNullOrEmpty(typeLabel))
+            parent.Nodes.Add(typeLabel);
+
+        if (!string.IsNullOrEmpty(fix.IcaoFir))
+            parent.Nodes.Add($"FIR: {fix.IcaoFir}");
+
+        if (!string.IsNullOrEmpty(fix.Frequency))
+            parent.Nodes.Add($"Frequency: {fix.Frequency}");
+
+        // Leg time (seconds → "Xh Ym" or "X min")
+        if (!string.IsNullOrEmpty(fix.TimeLeg) && fix.TimeLeg != "0" &&
+            int.TryParse(fix.TimeLeg, out int legSecs) && legSecs > 0)
+        {
+            int legMins = legSecs / 60;
+            string legTimeStr = legMins >= 60
+                ? $"{legMins / 60}h {legMins % 60:D2}m"
+                : $"{legMins} min";
+            parent.Nodes.Add($"Leg time: {legTimeStr}");
+        }
+
+        // Elapsed (seconds → "H:MM")
+        string elapsed = FormatElapsed(fix.TimeTotal);
+        if (!string.IsNullOrEmpty(elapsed))
+            parent.Nodes.Add($"Elapsed: {elapsed}");
+
+        // Wind + wind component (wind_comp: negative = headwind, positive = tailwind)
+        if (!string.IsNullOrEmpty(fix.WindDir) && !string.IsNullOrEmpty(fix.WindSpd))
+        {
+            string windStr = $"Wind: {fix.WindDir}° / {fix.WindSpd}kt";
+            if (!string.IsNullOrEmpty(fix.WindComp) &&
+                double.TryParse(fix.WindComp,
+                    System.Globalization.NumberStyles.Any,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out double wcd) && wcd != 0)
+            {
+                int wcKt = (int)Math.Round(Math.Abs(wcd));
+                string compLabel = wcd < 0 ? $"headwind {wcKt}kt" : $"tailwind {wcKt}kt";
+                windStr += $", {compLabel}";
+            }
+            parent.Nodes.Add(windStr);
+        }
+
+        if (!string.IsNullOrEmpty(fix.Oat))
+            parent.Nodes.Add($"OAT: {fix.Oat}°C");
+
+        if (!string.IsNullOrEmpty(fix.IsaDev))
+            parent.Nodes.Add($"ISA dev: {fix.IsaDev}°C");
+
+        string mora = FormatNavAlt(fix.Mora);
+        if (mora != "-")
+            parent.Nodes.Add($"MORA: {mora}");
+
+        // Fuel: EFOB (estimated fuel on board) — prefer efob field, fall back to fuel_plan_onboard
+        string fobRaw = !string.IsNullOrEmpty(fix.Efob) ? fix.Efob : fix.FuelPlanOnboard;
+        if (!string.IsNullOrEmpty(fobRaw) && fobRaw != "0" &&
+            int.TryParse(fobRaw, out int fobVal) && fobVal > 0)
+            parent.Nodes.Add($"EFOB: {fobVal:N0} {units}");
+
+        if (!string.IsNullOrEmpty(fix.FuelLeg) && fix.FuelLeg != "0" &&
+            int.TryParse(fix.FuelLeg, out int fuelLeg) && fuelLeg > 0)
+            parent.Nodes.Add($"Leg fuel: {fuelLeg:N0} {units}");
+
+        if (!string.IsNullOrEmpty(fix.FuelTotalUsed) && fix.FuelTotalUsed != "0" &&
+            int.TryParse(fix.FuelTotalUsed, out int fuelUsed) && fuelUsed > 0)
+            parent.Nodes.Add($"Total fuel used: {fuelUsed:N0} {units}");
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -1826,22 +1856,6 @@ public class SimBriefPlannerForm : Form
         int h = secs / 3600;
         int m = (secs % 3600) / 60;
         return h > 0 ? $"{h}:{m:D2}" : $"{m} min";
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    private void OnFirstShown(object? sender, EventArgs e)
-    {
-        Shown -= OnFirstShown;
-        // Apply min sizes and preferred splitter position now that the control has a real width.
-        try
-        {
-            _overviewSplit.Panel1MinSize = 140;
-            _overviewSplit.Panel2MinSize = 200;
-            int max = _overviewSplit.Width - 200 - _overviewSplit.SplitterWidth;
-            if (max > 140)
-                _overviewSplit.SplitterDistance = Math.Clamp(200, 140, max);
-        }
-        catch { /* leave at default if anything goes wrong */ }
     }
 
     // Public show helper (keeps same instance across open/close like EFB form)

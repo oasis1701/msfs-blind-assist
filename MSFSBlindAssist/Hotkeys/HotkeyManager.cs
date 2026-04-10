@@ -139,12 +139,19 @@ public class HotkeyManager : IDisposable
         private const int HOTKEY_TCAS_WINDOW = 9105;
         private const int HOTKEY_WEATHER_RADAR = 9106;
 
+        // Outside temperature hotkey ID (Output mode)
+        private const int HOTKEY_OUTSIDE_TEMP = 9107;
+
+        // Squawk code hotkey ID (Output mode)
+        private const int HOTKEY_SQUAWK_CODE = 9108;
+
         private IntPtr windowHandle;
         private bool visualGuidanceHotkeysActive = false;
         private bool outputHotkeyModeActive = false;
         private bool inputHotkeyModeActive = false;
         private bool handFlyHotkeysActive = false;
         private bool disposed = false;
+        private bool suspended = false;
 
         public event EventHandler<HotkeyEventArgs>? HotkeyTriggered;
         public event EventHandler<HotkeyModeEventArgs>? OutputHotkeyModeChanged;
@@ -401,6 +408,12 @@ public class HotkeyManager : IDisposable
                         case HOTKEY_WEATHER_RADAR:
                             TriggerHotkey(HotkeyAction.ShowWeatherRadar);
                             break;
+                        case HOTKEY_OUTSIDE_TEMP:
+                            TriggerHotkey(HotkeyAction.ReadOutsideTemperature);
+                            break;
+                        case HOTKEY_SQUAWK_CODE:
+                            TriggerHotkey(HotkeyAction.ReadSquawkCode);
+                            break;
                     }
                     DeactivateOutputHotkeyMode();
                     return true;
@@ -633,6 +646,8 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_TCAS_ANNOUNCE, MOD_NONE, 0x52);            // R (Announce Tracked TCAS Traffic)
             RegisterHotKey(windowHandle, HOTKEY_TCAS_WINDOW, MOD_CONTROL, 0x52);           // Ctrl+R (TCAS Traffic Window)
             RegisterHotKey(windowHandle, HOTKEY_WEATHER_RADAR, MOD_SHIFT, 0x52);           // Shift+R (Weather Radar Window)
+            RegisterHotKey(windowHandle, HOTKEY_OUTSIDE_TEMP, MOD_NONE, 0x4F);             // O (Outside Temperature)
+            RegisterHotKey(windowHandle, HOTKEY_SQUAWK_CODE, MOD_NONE, 0x58);             // X (Squawk Code)
 
             // Auto-timeout disabled - hotkey mode stays active until used or escape pressed
 
@@ -717,6 +732,8 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_TCAS_ANNOUNCE);
             UnregisterHotKey(windowHandle, HOTKEY_TCAS_WINDOW);
             UnregisterHotKey(windowHandle, HOTKEY_WEATHER_RADAR);
+            UnregisterHotKey(windowHandle, HOTKEY_OUTSIDE_TEMP);
+            UnregisterHotKey(windowHandle, HOTKEY_SQUAWK_CODE);
 
             OutputHotkeyModeChanged?.Invoke(this, new HotkeyModeEventArgs(wasCancelled ? HotkeyModeStatus.Cancelled : HotkeyModeStatus.Deactivated));
         }
@@ -949,6 +966,36 @@ public class HotkeyManager : IDisposable
             System.Diagnostics.Debug.WriteLine("Visual guidance hotkeys: Unregistered successfully");
         }
 
+        public void Suspend()
+        {
+            if (suspended || disposed) return;
+
+            if (outputHotkeyModeActive)
+                DeactivateOutputHotkeyMode(wasCancelled: true);
+            if (inputHotkeyModeActive)
+                DeactivateInputHotkeyMode(wasCancelled: true);
+
+            UnregisterHotKey(windowHandle, HOTKEY_ACTIVATE);
+            UnregisterHotKey(windowHandle, HOTKEY_INPUT_ACTIVATE);
+            suspended = true;
+        }
+
+        public bool Resume()
+        {
+            if (!suspended || disposed) return true;
+
+            bool registered = RegisterHotKey(windowHandle, HOTKEY_ACTIVATE, MOD_NONE, VK_OEM_6);
+            bool inputRegistered = RegisterHotKey(windowHandle, HOTKEY_INPUT_ACTIVATE, MOD_NONE, VK_OEM_4);
+            suspended = false;
+
+            if (!registered || !inputRegistered)
+            {
+                System.Diagnostics.Debug.WriteLine("Failed to re-register hotkeys after resume");
+                return false;
+            }
+            return true;
+        }
+
         public void Cleanup()
         {
             Dispose();
@@ -1095,4 +1142,6 @@ public class HotkeyManager : IDisposable
         AnnounceTcasTraffic,
         ShowTcasWindow,
         ShowWeatherRadar,
+        ReadOutsideTemperature,
+        ReadSquawkCode,
     }

@@ -161,6 +161,9 @@ public class SimConnectManager
         REQUEST_GROSS_WEIGHT_KG = 320,
         REQUEST_FUEL_QUANTITY_FBW = 321,
         REQUEST_NAV_RADIO = 322,
+        REQUEST_OUTSIDE_TEMP = 323,
+        // 324-328 used by hardcoded takeoff assist / hand fly requests
+        REQUEST_SQUAWK_CODE = 329,
         REQUEST_ECAM_MESSAGES = 350,
         REQUEST_AI_TRAFFIC = 500,
         // Individual variable requests start from 1000
@@ -213,6 +216,9 @@ public class SimConnectManager
         DEF_GROSS_WEIGHT_KG = 320,
         DEF_FUEL_QUANTITY_FBW = 321,
         DEF_NAV_RADIO = 322,
+        DEF_OUTSIDE_TEMP = 323,
+        // 324-328 used by hardcoded takeoff assist / hand fly definitions
+        DEF_SQUAWK_CODE = 329,
         ECAM_MESSAGES = 350,
         DEF_AI_TRAFFIC = 500,
         // Individual variable definitions start from 1000
@@ -1388,6 +1394,31 @@ public class SimConnectManager
                     VarName = "PITCH_ANGLE",
                     Value = pitchInDegrees,
                     Description = pitchFormatted
+                });
+                break;
+
+            case DATA_REQUESTS.REQUEST_OUTSIDE_TEMP:
+                SingleValue oatData = (SingleValue)data.dwData[0];
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "OUTSIDE_TEMP",
+                    Value = oatData.value,
+                    Description = $"{oatData.value:0} degrees Celsius"
+                });
+                break;
+
+            case DATA_REQUESTS.REQUEST_SQUAWK_CODE:
+                SingleValue squawkData = (SingleValue)data.dwData[0];
+                int bcd = (int)squawkData.value;
+                int d1 = (bcd >> 12) & 0xF;
+                int d2 = (bcd >> 8) & 0xF;
+                int d3 = (bcd >> 4) & 0xF;
+                int d4 = bcd & 0xF;
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "SQUAWK_CODE",
+                    Value = squawkData.value,
+                    Description = $"Squawk {d1}{d2}{d3}{d4}"
                 });
                 break;
 
@@ -2633,7 +2664,6 @@ public class SimConnectManager
                 FromAirport      = raw.FromAirport?.Trim() ?? "",
                 ToAirport        = raw.ToAirport?.Trim() ?? "",
                 Airline          = raw.AtcAirline?.Trim() ?? "",
-                TrafficState     = raw.TrafficState?.Trim() ?? "",
             };
             AiTrafficReceived?.Invoke(this, eventArgs);
         }
@@ -3090,6 +3120,52 @@ public class SimConnectManager
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"Error requesting pitch: {ex.Message}");
+            }
+        }
+    }
+
+    public void RequestOutsideTemperature()
+    {
+        if (IsConnected && simConnect != null)
+        {
+            try
+            {
+                var tempDefId = DATA_DEFINITIONS.DEF_OUTSIDE_TEMP;
+                SafelyClearDataDefinition(tempDefId, requestId: null, delayMs: 50);
+                simConnect.AddToDataDefinition(tempDefId,
+                    "AMBIENT TEMPERATURE", "celsius",
+                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+                simConnect.RegisterDataDefineStruct<SingleValue>(tempDefId);
+                simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_OUTSIDE_TEMP,
+                    tempDefId, SIMCONNECT_OBJECT_ID_USER,
+                    SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error requesting outside temperature: {ex.Message}");
+            }
+        }
+    }
+
+    public void RequestSquawkCode()
+    {
+        if (IsConnected && simConnect != null)
+        {
+            try
+            {
+                var defId = DATA_DEFINITIONS.DEF_SQUAWK_CODE;
+                SafelyClearDataDefinition(defId, requestId: null, delayMs: 50);
+                simConnect.AddToDataDefinition(defId,
+                    "TRANSPONDER CODE:1", "BCO16",
+                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+                simConnect.RegisterDataDefineStruct<SingleValue>(defId);
+                simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_SQUAWK_CODE,
+                    defId, SIMCONNECT_OBJECT_ID_USER,
+                    SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error requesting squawk code: {ex.Message}");
             }
         }
     }
@@ -4514,7 +4590,6 @@ public class AiTrafficDataEventArgs : EventArgs
     public string FromAirport      { get; set; } = "";
     public string ToAirport        { get; set; } = "";
     public string Airline          { get; set; } = "";
-    public string TrafficState     { get; set; } = "";
 }
 
 public class SimVarUpdateEventArgs : EventArgs

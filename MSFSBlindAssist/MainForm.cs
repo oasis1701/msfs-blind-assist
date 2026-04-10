@@ -624,7 +624,8 @@ public partial class MainForm : Form
             e.VarName == "BANK_ANGLE" || e.VarName == "PITCH_ANGLE" ||
             e.VarName == "SPEED_GD" || e.VarName == "SPEED_S" || e.VarName == "SPEED_F" ||
             e.VarName == "SPEED_VFE" || e.VarName == "SPEED_VLS" || e.VarName == "SPEED_VS" ||
-            e.VarName == "FUEL_QUANTITY" || e.VarName == "FUEL_QUANTITY_KG" || e.VarName == "GROSS_WEIGHT" || e.VarName == "GROSS_WEIGHT_KG" || e.VarName == "FLAP_POSITION" || e.VarName == "GEAR_POSITION" || e.VarName == "WAYPOINT_INFO")
+            e.VarName == "FUEL_QUANTITY" || e.VarName == "FUEL_QUANTITY_KG" || e.VarName == "GROSS_WEIGHT" || e.VarName == "GROSS_WEIGHT_KG" || e.VarName == "FLAP_POSITION" || e.VarName == "GEAR_POSITION" || e.VarName == "WAYPOINT_INFO" ||
+            e.VarName == "OUTSIDE_TEMP" || e.VarName == "SQUAWK_CODE")
         {
             announcer.AnnounceImmediate(e.Description);
             return true;
@@ -1076,6 +1077,12 @@ public partial class MainForm : Form
             case HotkeyAction.ShowWeatherRadar:
                 OpenWeatherRadarWindow();
                 break;
+            case HotkeyAction.ReadOutsideTemperature:
+                simConnectManager.RequestOutsideTemperature();
+                break;
+            case HotkeyAction.ReadSquawkCode:
+                simConnectManager.RequestSquawkCode();
+                break;
             case HotkeyAction.SelectDestinationRunway:
                 ShowDestinationRunwayDialog();
                 break;
@@ -1351,7 +1358,10 @@ public partial class MainForm : Form
         try
         {
             if (tcasForm == null || tcasForm.IsDisposed)
-                tcasForm = new Forms.TcasForm(tcasService!, announcer);
+            {
+                var gateResolver = new Services.GateResolver(Database.DatabaseSelector.SelectProvider());
+                tcasForm = new Forms.TcasForm(tcasService!, announcer, gateResolver);
+            }
             tcasForm.ShowForm();
         }
         catch (Exception ex)
@@ -2402,6 +2412,26 @@ public partial class MainForm : Form
         }
     }
 
+    private void SuspendHotkeysMenuItem_Click(object? sender, EventArgs e)
+    {
+        if (suspendHotkeysMenuItem.Checked)
+        {
+            hotkeyManager.Suspend();
+            announcer.AnnounceImmediate("Hotkeys suspended");
+        }
+        else
+        {
+            if (hotkeyManager.Resume())
+            {
+                announcer.AnnounceImmediate("Hotkeys resumed");
+            }
+            else
+            {
+                announcer.AnnounceImmediate("Warning: failed to re-register hotkeys. Another application may be using the bracket keys.");
+            }
+        }
+    }
+
     private void FlyByWireA320MenuItem_Click(object? sender, EventArgs e)
     {
         SwitchAircraft(new FlyByWireA320Definition());
@@ -3412,7 +3442,7 @@ public partial class MainForm : Form
                         }
                         else
                         {
-                            simConnectManager?.SendEvent(varKey, bcdValue);
+                            simConnectManager?.SendEvent("XPNDR_SET", bcdValue);
                             // Announcement handled by aircraft's ProcessSimVarUpdate when the SimVar changes
                         }
                     }
