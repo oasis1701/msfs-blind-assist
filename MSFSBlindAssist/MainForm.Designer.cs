@@ -158,7 +158,7 @@ namespace MSFSBlindAssist
             this.suspendHotkeysMenuItem.AccessibleDescription = "Temporarily disable bracket key hotkeys to free them for other use";
             this.suspendHotkeysMenuItem.Name = "suspendHotkeysMenuItem";
             this.suspendHotkeysMenuItem.Size = new System.Drawing.Size(280, 26);
-            this.suspendHotkeysMenuItem.Text = "S&uspend Hotkeys";
+            this.suspendHotkeysMenuItem.Text = "&Suspend Hotkeys";
             this.suspendHotkeysMenuItem.CheckOnClick = true;
             this.suspendHotkeysMenuItem.Click += new System.EventHandler(this.SuspendHotkeysMenuItem_Click);
             //

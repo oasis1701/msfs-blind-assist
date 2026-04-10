@@ -153,8 +153,6 @@ public class HotkeyManager : IDisposable
         private bool disposed = false;
         private bool suspended = false;
 
-        public bool IsSuspended => suspended;
-
         public event EventHandler<HotkeyEventArgs>? HotkeyTriggered;
         public event EventHandler<HotkeyModeEventArgs>? OutputHotkeyModeChanged;
         public event EventHandler<HotkeyModeEventArgs>? InputHotkeyModeChanged;
@@ -982,13 +980,20 @@ public class HotkeyManager : IDisposable
             suspended = true;
         }
 
-        public void Resume()
+        public bool Resume()
         {
-            if (!suspended || disposed) return;
+            if (!suspended || disposed) return true;
 
-            RegisterHotKey(windowHandle, HOTKEY_ACTIVATE, MOD_NONE, VK_OEM_6);
-            RegisterHotKey(windowHandle, HOTKEY_INPUT_ACTIVATE, MOD_NONE, VK_OEM_4);
+            bool registered = RegisterHotKey(windowHandle, HOTKEY_ACTIVATE, MOD_NONE, VK_OEM_6);
+            bool inputRegistered = RegisterHotKey(windowHandle, HOTKEY_INPUT_ACTIVATE, MOD_NONE, VK_OEM_4);
             suspended = false;
+
+            if (!registered || !inputRegistered)
+            {
+                System.Diagnostics.Debug.WriteLine("Failed to re-register hotkeys after resume");
+                return false;
+            }
+            return true;
         }
 
         public void Cleanup()

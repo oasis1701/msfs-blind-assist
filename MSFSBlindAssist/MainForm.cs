@@ -2421,8 +2421,14 @@ public partial class MainForm : Form
         }
         else
         {
-            hotkeyManager.Resume();
-            announcer.AnnounceImmediate("Hotkeys resumed");
+            if (hotkeyManager.Resume())
+            {
+                announcer.AnnounceImmediate("Hotkeys resumed");
+            }
+            else
+            {
+                announcer.AnnounceImmediate("Warning: failed to re-register hotkeys. Another application may be using the bracket keys.");
+            }
         }
     }
 
