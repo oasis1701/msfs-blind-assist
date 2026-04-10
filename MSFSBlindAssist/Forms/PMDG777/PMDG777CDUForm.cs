@@ -19,6 +19,9 @@ public partial class PMDG777CDUForm : Form
     private string[]? _previousRows;
     private string _previousScratchpad = "";
     private int _selectedCDU = 0;
+    // Maps dropdown index (Left=0, Center=1, Right=2) to PMDG SDK CDU data area index.
+    // PMDG convention: 0=Captain, 1=F/O, 2=Observer — Center and Right are swapped vs UI order.
+    private int DataCDUIndex => _selectedCDU switch { 1 => 2, 2 => 1, _ => 0 };
     private IntPtr _previousWindow = IntPtr.Zero;
     private bool _typingInProgress = false;
     private bool _clearingInProgress = false;
@@ -91,8 +94,8 @@ public partial class PMDG777CDUForm : Form
 
     private void PollTimer_Tick(object? sender, EventArgs e)
     {
-        _dataManager.RequestCDUScreen(_selectedCDU);
-        var result = _dataManager.GetCDURowsWithColors(_selectedCDU);
+        _dataManager.RequestCDUScreen(DataCDUIndex);
+        var result = _dataManager.GetCDURowsWithColors(DataCDUIndex);
         if (result != null)
             UpdateDisplay(result.Value.rows, result.Value.colors, result.Value.flags);
         else
