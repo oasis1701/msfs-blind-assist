@@ -55,7 +55,7 @@ This document contains development notes, key files, and dependencies for MSFS B
 
 - **`Forms/RunwayTeleportForm.cs`**: Runway selection dialog
 - **`Forms/GateTeleportForm.cs`**: Gate selection dialog
-- **`Forms/AnnouncementSettingsForm.cs`**: Accessibility mode configuration
+- **`Forms/AnnouncementSettingsForm.cs`**: Tabbed announcement settings (mode, nearest city interval, weather/SIGMET/PIREP auto-announce)
 - **`Controls/AccessiblePanel.cs`**: Accessible navigation control
 
 ### Input Management

@@ -114,6 +114,7 @@ $RECYCLE.BIN/
 
 # Third-party binaries
 Navdatareader-win-1.2.3/
+**/navdatareader/
 
 # nul
 nul

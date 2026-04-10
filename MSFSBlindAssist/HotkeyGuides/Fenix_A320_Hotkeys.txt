@@ -60,7 +60,11 @@ Vertical:
   V          Read Vertical Speed
 
 Weather:
-  I Wind info
+  I          Wind Info
+  O          Read Outside Temperature (Celsius)
+
+Transponder:
+  X          Read Squawk Code
 
 Location:
   C          Read Nearest City
@@ -78,6 +82,11 @@ Waypoint tracking, use Fix track window or Electronic flight bag route viewer wi
 3. track slot 3
 4. track slot 4
 5. track slot 5
+
+Traffic and Weather:
+  R          Announce Tracked TCAS Traffic
+  Ctrl+R     Open TCAS Traffic Window
+  Shift+R    Open Weather Radar Window
 
 Displays and windows:
 control+m, Fenix Monitor Manager

@@ -374,7 +374,9 @@ Forms/
 │   └── FuelPayloadDisplayForm.cs  # Fuel and payload
 ├── RunwayTeleportForm.cs          # Universal (all aircraft)
 ├── GateTeleportForm.cs            # Universal (all aircraft)
-└── AnnouncementSettingsForm.cs    # Universal (all aircraft)
+├── AnnouncementSettingsForm.cs    # Universal (all aircraft)
+├── WeatherRadarForm.cs           # Weather radar, SIGMETs, winds aloft
+└── TcasForm.cs                   # TCAS traffic display
 ```
 
 ### Namespace Convention

@@ -64,6 +64,7 @@ namespace MSFSBlindAssist.Forms.PMDG777
         private Label? temperatureUnitLabel;
         private ComboBox? temperatureUnitCombo;
         private Button? savePreferencesButton;
+        private TextBox? connectionStatusText;
 
         protected override void Dispose(bool disposing)
         {
@@ -271,6 +272,20 @@ namespace MSFSBlindAssist.Forms.PMDG777
             tabControl.TabPages.Add(displayTab);
             tabControl.TabPages.Add(preferencesTab);
             this.Controls.Add(tabControl);
+
+            connectionStatusText = new TextBox
+            {
+                Text = "Not connected",
+                Dock = DockStyle.Top,
+                ReadOnly = true,
+                BorderStyle = BorderStyle.None,
+                BackColor = System.Drawing.SystemColors.Control,
+                Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont, System.Drawing.FontStyle.Bold),
+                AccessibleName = "Connection Status",
+                TabIndex = 0,
+                Height = 25
+            };
+            this.Controls.Add(connectionStatusText);
 
             // Tab order — SimBrief
             simbriefStatusText.TabIndex = 0;

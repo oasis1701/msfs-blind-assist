@@ -53,6 +53,10 @@ Vertical:
 
 Weather:
   I          Wind Info
+  O          Read Outside Temperature (Celsius)
+
+Transponder:
+  X          Read Squawk Code
 
 Distance:
   D          Read Distance to Destination
@@ -85,6 +89,11 @@ AI Display Reading (requires Gemini API key in File > Gemini Settings):
   Alt+I      Read ISFD backup instruments (use Ctrl+2 cockpit view first)
   Alt+E      Read EICAS display (use Ctrl+2 cockpit view first)
   Alt+D      Describe outside scene
+
+Traffic and Weather:
+  R          Announce Tracked TCAS Traffic
+  Ctrl+R     Open TCAS Traffic Window
+  Shift+R    Open Weather Radar Window
 
 Displays and Windows:
   Ctrl+M     PMDG Monitor Manager

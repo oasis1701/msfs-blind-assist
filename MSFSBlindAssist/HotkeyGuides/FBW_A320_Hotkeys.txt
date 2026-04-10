@@ -36,7 +36,11 @@ Vertical:
   V          Read Vertical Speed
 
 Weather:
-  I Wind info
+  I          Wind Info
+  O          Read Outside Temperature (Celsius)
+
+Transponder:
+  X          Read Squawk Code
 
 Location:
   C          Read Nearest City
@@ -54,6 +58,11 @@ CTRL+T, Takeoff Assistance
 CTRL+D, Distance to Selected Runway
 CTRL+I, ILS guidance system
 CTRL+E, Enable Engine and warning display auto announcements
+
+Traffic and Weather:
+  R          Announce Tracked TCAS Traffic
+  Ctrl+R     Open TCAS Traffic Window
+  Shift+R    Open Weather Radar Window
 
 Displays and windows:
 shift+e, Route viewer, procedure planning and airport lookup

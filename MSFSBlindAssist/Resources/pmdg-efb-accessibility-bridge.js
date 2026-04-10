@@ -19,21 +19,65 @@ var _efb = {
     heartbeatTimer: null,
     fmsTransferWxCode: null,
     fmsTransferFpCode: null,
-    fmsTransferTimeout: null
+    fmsTransferTimeout: null,
+    pendingStates: [],
+    MAX_PENDING_STATES: 20,
+    MAX_STATE_RETRIES: 3,
+    CRITICAL_STATE_TYPES: ['simbrief_loaded', 'navigraph_code', 'navigraph_auth_state', 'preferences', 'simbrief_fetch_result', 'fmc_upload_started', 'connected', 'error'],
+    connecting: false,
+    navigraphStateSent: false
 };
 
 // --- HTTP Communication ---
 
 _efb.postState = async function(type, data) {
-    if (!_efb.serverConnected) return;
+    if (!_efb.serverConnected) {
+        _efb.queueState(type, data);
+        return;
+    }
     try {
-        await fetch(_efb.SERVER_URL + '/state', {
+        var response = await fetch(_efb.SERVER_URL + '/state', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ type: type, data: data || {} })
         });
+        if (!response.ok) {
+            _efb.queueState(type, data);
+        }
     } catch (e) {
-        // Server unreachable — will be detected by heartbeat
+        _efb.queueState(type, data);
+    }
+};
+
+_efb.queueState = function(type, data) {
+    if (_efb.CRITICAL_STATE_TYPES.indexOf(type) === -1) return; // Drop non-critical
+    if (_efb.pendingStates.length >= _efb.MAX_PENDING_STATES) {
+        _efb.pendingStates.shift(); // Drop oldest
+        console.warn('[EFB Bridge] Pending state queue full, dropped oldest entry');
+    }
+    _efb.pendingStates.push({ type: type, data: data || {}, retryCount: 0 });
+};
+
+_efb.flushPendingStates = async function() {
+    var toRetry = _efb.pendingStates.slice();
+    _efb.pendingStates = [];
+    for (var i = 0; i < toRetry.length; i++) {
+        var entry = toRetry[i];
+        try {
+            var response = await fetch(_efb.SERVER_URL + '/state', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ type: entry.type, data: entry.data })
+            });
+            if (!response.ok) throw new Error('not ok');
+        } catch (e) {
+            entry.retryCount++;
+            if (entry.retryCount < _efb.MAX_STATE_RETRIES) {
+                _efb.pendingStates.push(entry);
+            } else {
+                console.warn('[EFB Bridge] Dropping state after max retries:', entry.type);
+            }
+        }
     }
 };
 
@@ -41,6 +85,7 @@ _efb.pollCommands = async function() {
     if (!_efb.serverConnected) return;
     try {
         var response = await fetch(_efb.SERVER_URL + '/commands');
+        if (!response.ok) return;
         var commands = await response.json();
         for (var i = 0; i < commands.length; i++) {
             _efb.handleCommand(commands[i].command, commands[i].payload);
@@ -65,18 +110,24 @@ _efb.fetchWithTimeout = function(url, options, timeoutMs) {
     });
 };
 
-_efb.tryConnect = async function() {
+_efb._tryConnectInner = async function() {
+    if (_efb.connecting) return _efb.serverConnected;
+    _efb.connecting = true;
     try {
         var response = await _efb.fetchWithTimeout(_efb.SERVER_URL + '/ping', {}, 2000);
         if (response.ok) {
             if (!_efb.serverConnected) {
                 _efb.serverConnected = true;
+                _efb.navigraphStateSent = false;
                 console.log('[EFB Bridge] Connected to accessibility server');
                 _efb.startPolling();
                 _efb.postState('connected');
+                // Flush any states queued while disconnected
+                await _efb.flushPendingStates();
                 // Send current state now that connection is established
                 _efb.sendCurrentNavigraphState();
             }
+            _efb.connecting = false;
             return true;
         }
     } catch (e) {
@@ -85,10 +136,21 @@ _efb.tryConnect = async function() {
 
     if (_efb.serverConnected) {
         _efb.serverConnected = false;
+        _efb.navigraphStateSent = false;
         console.log('[EFB Bridge] Lost connection to accessibility server');
         _efb.stopPolling();
     }
+    _efb.connecting = false;
     return false;
+};
+
+_efb.tryConnect = async function() {
+    try {
+        return await _efb._tryConnectInner();
+    } catch (e) {
+        _efb.connecting = false;
+        return false;
+    }
 };
 
 _efb.startPolling = function() {
@@ -278,34 +340,45 @@ _efb.cmdSignOutNavigraph = function() {
 };
 
 _efb.sendCurrentNavigraphState = function() {
-    // Navigraph SDK may not be fully initialized yet when the bridge first connects.
-    // Retry a few times with increasing delays to catch it.
-    var attempts = [0, 2000, 5000, 10000, 20000];
-    for (var i = 0; i < attempts.length; i++) {
-        (function(delay) {
-            setTimeout(function() {
-                if (typeof Navigraph !== 'undefined' && Navigraph.auth && Navigraph.auth.getUser) {
-                    Navigraph.auth.getUser(true).then(function(user) {
-                        if (user) {
-                            _efb.postState('navigraph_auth_state', {
-                                authenticated: 'true',
-                                username: user.preferred_username || user.name || 'Unknown'
-                            });
-                        }
-                        // Only send "not authenticated" on the last attempt to avoid false negatives
-                        else if (delay === 20000) {
-                            _efb.postState('navigraph_auth_state', {
-                                authenticated: 'false',
-                                username: ''
-                            });
-                        }
-                    }).catch(function(e) {
-                        console.error('[EFB Bridge] Error getting Navigraph user:', e);
+    if (_efb.navigraphStateSent) return;
+    var delays = [0, 3000, 10000];
+    var attemptIndex = 0;
+
+    function attempt() {
+        if (_efb.navigraphStateSent || !_efb.serverConnected) return;
+        if (typeof Navigraph !== 'undefined' && Navigraph.auth && Navigraph.auth.getUser) {
+            Navigraph.auth.getUser(true).then(function(user) {
+                if (_efb.navigraphStateSent) return;
+                if (user) {
+                    _efb.navigraphStateSent = true;
+                    _efb.postState('navigraph_auth_state', {
+                        authenticated: 'true',
+                        username: user.preferred_username || user.name || 'Unknown'
                     });
+                } else if (attemptIndex >= delays.length - 1) {
+                    _efb.navigraphStateSent = true;
+                    _efb.postState('navigraph_auth_state', {
+                        authenticated: 'false',
+                        username: ''
+                    });
+                } else {
+                    attemptIndex++;
+                    setTimeout(attempt, delays[attemptIndex]);
                 }
-            }, delay);
-        })(attempts[i]);
+            }).catch(function(e) {
+                console.error('[EFB Bridge] Error getting Navigraph user:', e);
+                if (attemptIndex < delays.length - 1) {
+                    attemptIndex++;
+                    setTimeout(attempt, delays[attemptIndex]);
+                }
+            });
+        } else if (attemptIndex < delays.length - 1) {
+            attemptIndex++;
+            setTimeout(attempt, delays[attemptIndex]);
+        }
     }
+
+    attempt();
 };
 
 _efb.cmdGetPreferences = function() {
