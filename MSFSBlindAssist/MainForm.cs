@@ -2412,6 +2412,26 @@ public partial class MainForm : Form
         }
     }
 
+    private void SuspendHotkeysMenuItem_Click(object? sender, EventArgs e)
+    {
+        if (suspendHotkeysMenuItem.Checked)
+        {
+            hotkeyManager.Suspend();
+            announcer.AnnounceImmediate("Hotkeys suspended");
+        }
+        else
+        {
+            if (hotkeyManager.Resume())
+            {
+                announcer.AnnounceImmediate("Hotkeys resumed");
+            }
+            else
+            {
+                announcer.AnnounceImmediate("Warning: failed to re-register hotkeys. Another application may be using the bracket keys.");
+            }
+        }
+    }
+
     private void FlyByWireA320MenuItem_Click(object? sender, EventArgs e)
     {
         SwitchAircraft(new FlyByWireA320Definition());

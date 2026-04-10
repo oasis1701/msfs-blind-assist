@@ -151,6 +151,7 @@ public class HotkeyManager : IDisposable
         private bool inputHotkeyModeActive = false;
         private bool handFlyHotkeysActive = false;
         private bool disposed = false;
+        private bool suspended = false;
 
         public event EventHandler<HotkeyEventArgs>? HotkeyTriggered;
         public event EventHandler<HotkeyModeEventArgs>? OutputHotkeyModeChanged;
@@ -963,6 +964,36 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_VISUAL_TARGET_FPM);
 
             System.Diagnostics.Debug.WriteLine("Visual guidance hotkeys: Unregistered successfully");
+        }
+
+        public void Suspend()
+        {
+            if (suspended || disposed) return;
+
+            if (outputHotkeyModeActive)
+                DeactivateOutputHotkeyMode(wasCancelled: true);
+            if (inputHotkeyModeActive)
+                DeactivateInputHotkeyMode(wasCancelled: true);
+
+            UnregisterHotKey(windowHandle, HOTKEY_ACTIVATE);
+            UnregisterHotKey(windowHandle, HOTKEY_INPUT_ACTIVATE);
+            suspended = true;
+        }
+
+        public bool Resume()
+        {
+            if (!suspended || disposed) return true;
+
+            bool registered = RegisterHotKey(windowHandle, HOTKEY_ACTIVATE, MOD_NONE, VK_OEM_6);
+            bool inputRegistered = RegisterHotKey(windowHandle, HOTKEY_INPUT_ACTIVATE, MOD_NONE, VK_OEM_4);
+            suspended = false;
+
+            if (!registered || !inputRegistered)
+            {
+                System.Diagnostics.Debug.WriteLine("Failed to re-register hotkeys after resume");
+                return false;
+            }
+            return true;
         }
 
         public void Cleanup()
