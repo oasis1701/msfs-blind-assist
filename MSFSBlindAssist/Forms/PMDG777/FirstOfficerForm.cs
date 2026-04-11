@@ -111,7 +111,7 @@ public class FirstOfficerForm : Form
         _flows       = PMDG777FlowDefinitions.Build();
         _checklistMgr = new ChecklistManager(_stateEval, _actionExec, _checklistGroups);
         _flowMgr     = new FlowManager(_stateEval, _actionExec, _checklistMgr, announcer);
-        _fmcSvc      = new FmcProgrammingService(simConnect);
+        _fmcSvc      = new FmcProgrammingService(simConnect, simConnect.PMDG777DataManager);
         _flightPhaseMon = new FlightPhaseMonitor(_actionExec, _stateEval, announcer);
         _foAutoMgr   = new FOAutoManager(_actionExec, _stateEval, announcer)
         {

@@ -39,12 +39,13 @@ public class FmcProgrammingService
 {
     private readonly SimConnectManager _simConnect;
 
-    private const int KeyDelay    = 350;
-    private const int RepeatDelay = 400;
-    private const int LskSettle   = 500;
-    private const int PageSettle  = 1500;
-    private const int UplinkWait  = 15000;
-    private const int DoorWait    = 5000;
+    private const int KeyDelay       = 350;
+    private const int RepeatDelay    = 400;
+    private const int LskSettle      = 500;
+    private const int PageSettle     = 1500;
+    private const int UplinkWait     = 15000;
+    private const int RouteLoadWait  = 20000;
+    private const int DoorWait       = 5000;
 
     // -----------------------------------------------------------------------
     // Phase tracking
@@ -59,9 +60,12 @@ public class FmcProgrammingService
     // Constructor
     // -----------------------------------------------------------------------
 
-    public FmcProgrammingService(SimConnectManager simConnect)
+    private readonly PMDG777DataManager? _cduData;
+
+    public FmcProgrammingService(SimConnectManager simConnect, PMDG777DataManager? cduData = null)
     {
         _simConnect = simConnect;
+        _cduData    = cduData;
     }
 
     // -----------------------------------------------------------------------
@@ -161,22 +165,25 @@ public class FmcProgrammingService
         await SendKey("R5", ct);
         await Delay(LskSettle, ct);
 
-        // 14. R6 — select this route
+        // 14. R6 — confirm/select route uplink
         progress?.Report("Selecting route...");
         await SendKey("R6", ct);
         await Delay(LskSettle, ct);
 
-        // 15. Wait 15 seconds for route uplink to arrive
-        progress?.Report("Waiting for route uplink (15 sec)...");
-        await Delay(UplinkWait, ct);
+        // 15. Wait 20 seconds for uplink to arrive
+        progress?.Report("Waiting for route uplink (20 sec)...");
+        await Delay(RouteLoadWait, ct);
+
+        // 15b. Clear any scratchpad message before pressing load
+        await ClearScratchpadAsync(progress, ct);
 
         // 16. L4 — load the route
         progress?.Report("Loading route...");
         await SendKey("L4", ct);
         await Delay(LskSettle, ct);
 
-        // 17. Wait 15 more seconds for route to process
-        progress?.Report("Waiting for route to load (15 sec)...");
+        // 17. Wait 15 seconds for route to process
+        progress?.Report("Waiting for route to process (15 sec)...");
         await Delay(UplinkWait, ct);
 
         // 18. R6 — activate route
@@ -370,6 +377,34 @@ public class FmcProgrammingService
     // -----------------------------------------------------------------------
     // Helpers
     // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// Polls the CDU scratchpad (row 13) and sends CLR once per second until it is blank.
+    /// Gives up after 15 attempts so a stuck message never stalls the sequence indefinitely.
+    /// No-ops if no CDU data manager was provided.
+    /// </summary>
+    private async Task ClearScratchpadAsync(IProgress<string>? progress, CancellationToken ct)
+    {
+        if (_cduData == null) return;
+
+        const int maxAttempts = 15;
+        for (int attempt = 0; attempt < maxAttempts; attempt++)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            _cduData.RequestCDUScreen(0);
+            await Delay(200, ct); // short settle so the response arrives
+            var rows = _cduData.GetCDURows(0);
+            string scratchpad = rows != null ? rows[13].Trim() : "";
+
+            if (string.IsNullOrWhiteSpace(scratchpad))
+                return; // scratchpad already clear
+
+            progress?.Report($"Clearing scratchpad: \"{scratchpad}\"...");
+            await SendKey("CLR", ct);
+            await Delay(800, ct); // 200 + 800 = ~1 s per attempt
+        }
+    }
 
     /// <summary>Strip any decimal portion from an assumed OAT string so we type a clean integer (e.g. "55.0" → "55").</summary>
     private static string FormatAssumedTemp(string raw)
