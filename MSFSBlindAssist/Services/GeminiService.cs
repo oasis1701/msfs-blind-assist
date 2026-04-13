@@ -352,20 +352,23 @@ Do not use markdown formatting. Do not explain what things mean. Just state the 
                      response.StatusCode == System.Net.HttpStatusCode.TooManyRequests) &&
                     attempt < maxAttempts - 1)
                 {
-                    int delaySeconds = (int)Math.Pow(2, attempt + 1); // 2s, 4s, 8s
+                    // Respect Retry-After header if present, otherwise use exponential backoff
+                    int delaySeconds = GetRetryDelay(response, attempt);
+                    response.Dispose();
                     await Task.Delay(TimeSpan.FromSeconds(delaySeconds));
                     continue;
                 }
 
                 // Non-retryable error or final attempt
                 string errorContent = await response.Content.ReadAsStringAsync();
+                response.Dispose();
                 throw new HttpRequestException($"Gemini API request failed with status {response.StatusCode}: {errorContent}");
             }
-            catch (TaskCanceledException)
+            catch (TaskCanceledException ex) when (!ex.CancellationToken.IsCancellationRequested)
             {
+                // HTTP timeout (not explicit cancellation) — retry with backoff
                 if (attempt < maxAttempts - 1)
                 {
-                    // Timeout - retry with backoff
                     int delaySeconds = (int)Math.Pow(2, attempt + 1);
                     await Task.Delay(TimeSpan.FromSeconds(delaySeconds));
                 }
@@ -376,6 +379,7 @@ Do not use markdown formatting. Do not explain what things mean. Just state the 
             }
         }
 
+        // Loop exits via break (success), or throws on non-retryable/final-attempt errors
         string responseJson = await response!.Content.ReadAsStringAsync();
         var result = JsonConvert.DeserializeObject<GeminiResponse>(responseJson);
 
@@ -391,6 +395,20 @@ Do not use markdown formatting. Do not explain what things mean. Just state the 
         }
 
         return candidateContent.Parts[0].Text ?? "No description available.";
+    }
+
+    private static int GetRetryDelay(HttpResponseMessage response, int attempt)
+    {
+        if (response.Headers.RetryAfter?.Delta is TimeSpan delta)
+        {
+            return Math.Min((int)delta.TotalSeconds, 30);
+        }
+        if (response.Headers.RetryAfter?.Date is DateTimeOffset date)
+        {
+            int seconds = (int)(date - DateTimeOffset.UtcNow).TotalSeconds;
+            return Math.Clamp(seconds, 1, 30);
+        }
+        return (int)Math.Pow(2, attempt + 1); // 2s, 4s, 8s
     }
 
     /// <summary>
