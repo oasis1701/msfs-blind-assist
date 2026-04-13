@@ -39,9 +39,9 @@ public class FenixA320Definition : BaseAircraftDefinition
     private bool isRequestingBaro = false;
     private bool isSettingBaro = false;
 
-    // Track last known RMP frequencies (in kHz) to suppress initial load announcement.
+    // Track last known announced values (RMP frequencies in kHz, squawk codes) to suppress initial load.
     // Value 0 means "not yet seen" — first update stores silently, subsequent updates announce.
-    private Dictionary<string, double> _lastRmpFreq = new Dictionary<string, double>();
+    private Dictionary<string, double> _lastAnnouncedValues = new Dictionary<string, double>();
 
     private Accessibility.ScreenReaderAnnouncer? lastAnnouncer = null;
 
@@ -12118,7 +12118,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             varName == "N_PED_RMP2_ACTIVE" || varName == "N_PED_RMP2_STDBY" ||
             varName == "N_PED_RMP3_ACTIVE" || varName == "N_PED_RMP3_STDBY")
         {
-            _lastRmpFreq.TryGetValue(varName, out double lastValue);
+            _lastAnnouncedValues.TryGetValue(varName, out double lastValue);
             double freqMHz = value / 1000.0;
 
             if (lastValue > 0 && Math.Abs(value - lastValue) > 0.5)
@@ -12127,7 +12127,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 string type = varName.Contains("ACTIVE") ? "active" : "standby";
                 announcer.Announce($"{rmpNum} {type} {freqMHz:F3}");
             }
-            _lastRmpFreq[varName] = value;
+            _lastAnnouncedValues[varName] = value;
             return true;
         }
 
@@ -12135,14 +12135,14 @@ public class FenixA320Definition : BaseAircraftDefinition
         // Format as 4-digit code, suppress initial load.
         if (varName == "N_FREQ_XPDR_SELECTED" || varName == "N_FREQ_STANDBY_XPDR_SELECTED")
         {
-            _lastRmpFreq.TryGetValue(varName, out double lastValue);
+            _lastAnnouncedValues.TryGetValue(varName, out double lastValue);
 
             if (lastValue > 0 && Math.Abs(value - lastValue) > 0.5)
             {
                 string label = varName == "N_FREQ_XPDR_SELECTED" ? "Squawk" : "Squawk standby";
                 announcer.Announce($"{label} {(int)value:D4}");
             }
-            _lastRmpFreq[varName] = value;
+            _lastAnnouncedValues[varName] = value;
             return true;
         }
 
