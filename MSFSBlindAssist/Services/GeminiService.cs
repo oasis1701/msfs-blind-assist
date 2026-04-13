@@ -331,10 +331,10 @@ Do not use markdown formatting. Do not explain what things mean. Just state the 
         string jsonRequest = JsonConvert.SerializeObject(requestBody);
         string url = $"{API_BASE_URL}?key={apiKey}";
 
-        const int maxRetries = 3;
+        const int maxAttempts = 4; // 1 initial + 3 retries
         HttpResponseMessage? response = null;
 
-        for (int attempt = 0; attempt <= maxRetries; attempt++)
+        for (int attempt = 0; attempt < maxAttempts; attempt++)
         {
             var content = new StringContent(jsonRequest, Encoding.UTF8, "application/json");
 
@@ -349,8 +349,8 @@ Do not use markdown formatting. Do not explain what things mean. Just state the 
 
                 // Only retry on transient server errors
                 if ((response.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable ||
-                     response.StatusCode == (System.Net.HttpStatusCode)429) &&
-                    attempt < maxRetries)
+                     response.StatusCode == System.Net.HttpStatusCode.TooManyRequests) &&
+                    attempt < maxAttempts - 1)
                 {
                     int delaySeconds = (int)Math.Pow(2, attempt + 1); // 2s, 4s, 8s
                     await Task.Delay(TimeSpan.FromSeconds(delaySeconds));
@@ -361,11 +361,18 @@ Do not use markdown formatting. Do not explain what things mean. Just state the 
                 string errorContent = await response.Content.ReadAsStringAsync();
                 throw new HttpRequestException($"Gemini API request failed with status {response.StatusCode}: {errorContent}");
             }
-            catch (TaskCanceledException) when (attempt < maxRetries)
+            catch (TaskCanceledException)
             {
-                // Timeout - retry with backoff
-                int delaySeconds = (int)Math.Pow(2, attempt + 1);
-                await Task.Delay(TimeSpan.FromSeconds(delaySeconds));
+                if (attempt < maxAttempts - 1)
+                {
+                    // Timeout - retry with backoff
+                    int delaySeconds = (int)Math.Pow(2, attempt + 1);
+                    await Task.Delay(TimeSpan.FromSeconds(delaySeconds));
+                }
+                else
+                {
+                    throw new HttpRequestException("Gemini API request timed out after all retry attempts.");
+                }
             }
         }
 
