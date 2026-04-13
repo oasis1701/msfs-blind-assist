@@ -380,7 +380,11 @@ Do not use markdown formatting. Do not explain what things mean. Just state the 
         }
 
         // Loop exits via break (success), or throws on non-retryable/final-attempt errors
-        string responseJson = await response!.Content.ReadAsStringAsync();
+        string responseJson;
+        using (response!)
+        {
+            responseJson = await response.Content.ReadAsStringAsync();
+        }
         var result = JsonConvert.DeserializeObject<GeminiResponse>(responseJson);
 
         if (result?.Candidates == null || result.Candidates.Length == 0)
