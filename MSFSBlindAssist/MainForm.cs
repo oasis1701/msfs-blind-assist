@@ -3532,7 +3532,7 @@ public partial class MainForm : Form
                             if (value >= 118.0 && value <= 136.975)
                             {
                                 // Convert MHz to Hz (simple multiplication, no BCD16 needed)
-                                uint frequencyHz = (uint)(value * 1000000);
+                                uint frequencyHz = (uint)Math.Round(value * 1000000);
 
                                 // Determine which COM radio (1, 2, or 3)
                                 string comIndex = "1"; // Default to COM1

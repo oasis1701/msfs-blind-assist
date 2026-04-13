@@ -39,6 +39,10 @@ public class FenixA320Definition : BaseAircraftDefinition
     private bool isRequestingBaro = false;
     private bool isSettingBaro = false;
 
+    // Track last known announced values (RMP frequencies in kHz, squawk codes) to suppress initial load.
+    // Value 0 means "not yet seen" — first update stores silently, subsequent updates announce.
+    private Dictionary<string, double> _lastAnnouncedValues = new Dictionary<string, double>();
+
     private Accessibility.ScreenReaderAnnouncer? lastAnnouncer = null;
 
     public override Dictionary<string, SimConnect.SimVarDefinition> GetVariables()
@@ -2277,43 +2281,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
             },
 
-            // RMP1 Frequency Buttons and Transfer
-            ["E_PED_RMP1_INNER_INC"] = new SimConnect.SimVarDefinition
-            {
-                Name = "E_PED_RMP1_INNER_INC",
-                DisplayName = "RMP1 Inner Inc",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
-            },
-            ["E_PED_RMP1_INNER_DEC"] = new SimConnect.SimVarDefinition
-            {
-                Name = "E_PED_RMP1_INNER_DEC",
-                DisplayName = "RMP1 Inner Dec",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
-            },
-            ["E_PED_RMP1_OUTER_INC"] = new SimConnect.SimVarDefinition
-            {
-                Name = "E_PED_RMP1_OUTER_INC",
-                DisplayName = "RMP1 Outer Inc",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
-            },
-            ["E_PED_RMP1_OUTER_DEC"] = new SimConnect.SimVarDefinition
-            {
-                Name = "E_PED_RMP1_OUTER_DEC",
-                DisplayName = "RMP1 Outer Dec",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
-            },
+            // RMP Transfer Buttons
             ["S_PED_RMP1_XFER"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_PED_RMP1_XFER",
@@ -2323,86 +2291,10 @@ public class FenixA320Definition : BaseAircraftDefinition
                 RenderAsButton = true,
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
             },
-
-            // RMP2 Frequency Buttons and Transfer
-            ["E_PED_RMP2_INNER_INC"] = new SimConnect.SimVarDefinition
-            {
-                Name = "E_PED_RMP2_INNER_INC",
-                DisplayName = "RMP2 Inner Inc",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
-            },
-            ["E_PED_RMP2_INNER_DEC"] = new SimConnect.SimVarDefinition
-            {
-                Name = "E_PED_RMP2_INNER_DEC",
-                DisplayName = "RMP2 Inner Dec",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
-            },
-            ["E_PED_RMP2_OUTER_INC"] = new SimConnect.SimVarDefinition
-            {
-                Name = "E_PED_RMP2_OUTER_INC",
-                DisplayName = "RMP2 Outer Inc",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
-            },
-            ["E_PED_RMP2_OUTER_DEC"] = new SimConnect.SimVarDefinition
-            {
-                Name = "E_PED_RMP2_OUTER_DEC",
-                DisplayName = "RMP2 Outer Dec",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
-            },
             ["S_PED_RMP2_XFER"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_PED_RMP2_XFER",
                 DisplayName = "RMP2 Transfer",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
-            },
-
-            // RMP3 Frequency Buttons and Transfer
-            ["E_PED_RMP3_INNER_INC"] = new SimConnect.SimVarDefinition
-            {
-                Name = "E_PED_RMP3_INNER_INC",
-                DisplayName = "RMP3 Inner Inc",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
-            },
-            ["E_PED_RMP3_INNER_DEC"] = new SimConnect.SimVarDefinition
-            {
-                Name = "E_PED_RMP3_INNER_DEC",
-                DisplayName = "RMP3 Inner Dec",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
-            },
-            ["E_PED_RMP3_OUTER_INC"] = new SimConnect.SimVarDefinition
-            {
-                Name = "E_PED_RMP3_OUTER_INC",
-                DisplayName = "RMP3 Outer Inc",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
-            },
-            ["E_PED_RMP3_OUTER_DEC"] = new SimConnect.SimVarDefinition
-            {
-                Name = "E_PED_RMP3_OUTER_DEC",
-                DisplayName = "RMP3 Outer Dec",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
@@ -5406,7 +5298,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["TRANSPONDER_CODE_SET"] = new SimConnect.SimVarDefinition
             {
                 Name = "XPNDR_SET",
-                DisplayName = "SQUAWK",
+                DisplayName = "Squawk Code",
                 Type = SimConnect.SimVarType.Event,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
             },
@@ -6020,14 +5912,6 @@ public class FenixA320Definition : BaseAircraftDefinition
             {
                 Name = "FNX2PLD_bat2",
                 DisplayName = "FNX320+FENIXQUARTZ BAT 2 VOLTAGE",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-            },
-            ["FNX2PLD_xpdr"] = new SimConnect.SimVarDefinition
-            {
-                Name = "FNX2PLD_xpdr",
-                DisplayName = "FNX320+FENIXQUARTZ XPDR CODE",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7696,34 +7580,36 @@ public class FenixA320Definition : BaseAircraftDefinition
                 IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
             },
-            ["FNX2PLD_com1Active"] = new SimConnect.SimVarDefinition
+            // ========== COM RADIO FREQUENCIES (standard SimConnect for direct tuning) ==========
+            ["COM_STANDBY_FREQUENCY_SET:1"] = new SimConnect.SimVarDefinition
             {
-                Name = "FNX2PLD_com1Active",
-                DisplayName = "FNX320+FENIXQUARTZ COM 1 Active",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
+                Name = "COM STANDBY FREQUENCY:1",
+                DisplayName = "COM1 Standby",
+                Type = SimConnect.SimVarType.SimVar,
+                Units = "MHz",
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             },
-            ["FNX2PLD_com1Standby"] = new SimConnect.SimVarDefinition
+            ["COM_STANDBY_FREQUENCY_SET:2"] = new SimConnect.SimVarDefinition
             {
-                Name = "FNX2PLD_com1Standby",
-                DisplayName = "FNX320+FENIXQUARTZ COM 1 Standby",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
+                Name = "COM STANDBY FREQUENCY:2",
+                DisplayName = "COM2 Standby",
+                Type = SimConnect.SimVarType.SimVar,
+                Units = "MHz",
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             },
-            ["FNX2PLD_com2Active"] = new SimConnect.SimVarDefinition
+            ["COM_STANDBY_FREQUENCY_SET:3"] = new SimConnect.SimVarDefinition
             {
-                Name = "FNX2PLD_com2Active",
-                DisplayName = "FNX320+FENIXQUARTZ COM 2 Active",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
+                Name = "COM STANDBY FREQUENCY:3",
+                DisplayName = "COM3 Standby",
+                Type = SimConnect.SimVarType.SimVar,
+                Units = "MHz",
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             },
+            // ========== RMP FREQUENCY INDICATORS (Fenix LVars for monitoring) ==========
             ["N_PED_RMP1_ACTIVE"] = new SimConnect.SimVarDefinition
             {
                 Name = "N_PED_RMP1_ACTIVE",
-                DisplayName = "RMP1 ACTIVE FREQ",
+                DisplayName = "RMP1 Active",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7731,7 +7617,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["N_PED_RMP1_STDBY"] = new SimConnect.SimVarDefinition
             {
                 Name = "N_PED_RMP1_STDBY",
-                DisplayName = "RMP1 STANDBY FREQ",
+                DisplayName = "RMP1 Standby",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7739,7 +7625,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["N_PED_RMP2_ACTIVE"] = new SimConnect.SimVarDefinition
             {
                 Name = "N_PED_RMP2_ACTIVE",
-                DisplayName = "RMP2 ACTIVE FREQ",
+                DisplayName = "RMP2 Active",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7747,7 +7633,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["N_PED_RMP2_STDBY"] = new SimConnect.SimVarDefinition
             {
                 Name = "N_PED_RMP2_STDBY",
-                DisplayName = "RMP2 STANDBY FREQ",
+                DisplayName = "RMP2 Standby",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7755,7 +7641,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["N_PED_RMP3_ACTIVE"] = new SimConnect.SimVarDefinition
             {
                 Name = "N_PED_RMP3_ACTIVE",
-                DisplayName = "RMP3 ACTIVE FREQ",
+                DisplayName = "RMP3 Active",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7763,7 +7649,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["N_PED_RMP3_STDBY"] = new SimConnect.SimVarDefinition
             {
                 Name = "N_PED_RMP3_STDBY",
-                DisplayName = "RMP3 STANDBY FREQ",
+                DisplayName = "RMP3 Standby",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7771,7 +7657,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["N_FREQ_STANDBY_XPDR_SELECTED"] = new SimConnect.SimVarDefinition
             {
                 Name = "N_FREQ_STANDBY_XPDR_SELECTED",
-                DisplayName = "PED XPDR STANDBY CODE",
+                DisplayName = "Squawk standby",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7779,7 +7665,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["N_FREQ_XPDR_SELECTED"] = new SimConnect.SimVarDefinition
             {
                 Name = "N_FREQ_XPDR_SELECTED",
-                DisplayName = "PED XPDR SELECTED CODE",
+                DisplayName = "Squawk",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -9042,7 +8928,12 @@ public class FenixA320Definition : BaseAircraftDefinition
 
             ["Radio Management Panel (RMP)"] = new List<string>
             {
-                // RMP1 Controls (19 controls)
+                // COM Radio Frequencies (direct tuning via SimConnect)
+                "COM_STANDBY_FREQUENCY_SET:1", "S_PED_RMP1_XFER",
+                "COM_STANDBY_FREQUENCY_SET:2", "S_PED_RMP2_XFER",
+                "COM_STANDBY_FREQUENCY_SET:3", "S_PED_RMP3_XFER",
+
+                // RMP1 Controls
                 "S_PED_RMP1_POWER",
                 "S_PED_RMP1_VHF1",
                 "S_PED_RMP1_VHF2",
@@ -9056,13 +8947,8 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "S_PED_RMP1_ADF",
                 "S_PED_RMP1_BFO",
                 "S_PED_RMP1_AM",
-                "E_PED_RMP1_INNER_DEC",
-                "E_PED_RMP1_INNER_INC",
-                "E_PED_RMP1_OUTER_DEC",
-                "E_PED_RMP1_OUTER_INC",
-                "S_PED_RMP1_XFER",
 
-                // RMP2 Controls (19 controls)
+                // RMP2 Controls
                 "S_PED_RMP2_POWER",
                 "S_PED_RMP2_VHF1",
                 "S_PED_RMP2_VHF2",
@@ -9076,13 +8962,8 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "S_PED_RMP2_ADF",
                 "S_PED_RMP2_BFO",
                 "S_PED_RMP2_AM",
-                "E_PED_RMP2_INNER_DEC",
-                "E_PED_RMP2_INNER_INC",
-                "E_PED_RMP2_OUTER_DEC",
-                "E_PED_RMP2_OUTER_INC",
-                "S_PED_RMP2_XFER",
 
-                // RMP3 Controls (19 controls)
+                // RMP3 Controls
                 "S_PED_RMP3_POWER",
                 "S_PED_RMP3_VHF1",
                 "S_PED_RMP3_VHF2",
@@ -9095,12 +8976,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "S_PED_RMP3_MLS",
                 "S_PED_RMP3_ADF",
                 "S_PED_RMP3_BFO",
-                "S_PED_RMP3_AM",
-                "E_PED_RMP3_INNER_DEC",
-                "E_PED_RMP3_INNER_INC",
-                "E_PED_RMP3_OUTER_DEC",
-                "E_PED_RMP3_OUTER_INC",
-                "S_PED_RMP3_XFER"
+                "S_PED_RMP3_AM"
             },
 
             ["Audio Control Panel (ACP)"] = new List<string>
@@ -9364,6 +9240,25 @@ public class FenixA320Definition : BaseAircraftDefinition
     {
         try
         {
+            // ========== COM RADIO FREQUENCIES (standard SimConnect) ==========
+            // COM standby frequency set — validate, convert to Hz, send via SimConnect.
+            // Return true to prevent MainForm's generic announcement.
+            if (varKey.StartsWith("COM_STANDBY_FREQUENCY_SET"))
+            {
+                if (value >= 118.0 && value <= 136.975)
+                {
+                    uint frequencyHz = (uint)Math.Round(value * 1000000);
+                    string setEvent = varKey.Contains(":3") ? "COM3_STBY_RADIO_SET_HZ" :
+                                      varKey.Contains(":2") ? "COM2_STBY_RADIO_SET_HZ" : "COM_STBY_RADIO_SET_HZ";
+                    simConnect.SendEvent(setEvent, frequencyHz);
+                }
+                else
+                {
+                    announcer.AnnounceImmediate("Invalid frequency. Range: 118.000 to 136.975");
+                }
+                return true;
+            }
+
             // ========== BATTERY SWITCHES (Combo Boxes - use SetLVar) ==========
             if (varKey == "S_OH_ELEC_BAT1")
             {
@@ -11112,32 +11007,6 @@ public class FenixA320Definition : BaseAircraftDefinition
                 return true;
             }
 
-            // RMP1 Frequency Buttons (Inc/Dec - use counter approach)
-            // These variables are counters: incrementing increases frequency, decrementing decreases it
-            if (varKey == "E_PED_RMP1_INNER_INC" && value == 1)
-            {
-                IncrementCounter("E_PED_RMP1_INNER", simConnect);
-                return true;
-            }
-
-            if (varKey == "E_PED_RMP1_INNER_DEC" && value == 1)
-            {
-                DecrementCounter("E_PED_RMP1_INNER", simConnect);
-                return true;
-            }
-
-            if (varKey == "E_PED_RMP1_OUTER_INC" && value == 1)
-            {
-                IncrementCounter("E_PED_RMP1_OUTER", simConnect);
-                return true;
-            }
-
-            if (varKey == "E_PED_RMP1_OUTER_DEC" && value == 1)
-            {
-                DecrementCounter("E_PED_RMP1_OUTER", simConnect);
-                return true;
-            }
-
             // RMP1 Transfer Button (Momentary - use ExecuteButtonTransition)
             if (varKey == "S_PED_RMP1_XFER" && value == 1)
             {
@@ -11225,32 +11094,6 @@ public class FenixA320Definition : BaseAircraftDefinition
                 return true;
             }
 
-            // RMP2 Frequency Buttons (Inc/Dec - use counter approach)
-            // These variables are counters: incrementing increases frequency, decrementing decreases it
-            if (varKey == "E_PED_RMP2_INNER_INC" && value == 1)
-            {
-                IncrementCounter("E_PED_RMP2_INNER", simConnect);
-                return true;
-            }
-
-            if (varKey == "E_PED_RMP2_INNER_DEC" && value == 1)
-            {
-                DecrementCounter("E_PED_RMP2_INNER", simConnect);
-                return true;
-            }
-
-            if (varKey == "E_PED_RMP2_OUTER_INC" && value == 1)
-            {
-                IncrementCounter("E_PED_RMP2_OUTER", simConnect);
-                return true;
-            }
-
-            if (varKey == "E_PED_RMP2_OUTER_DEC" && value == 1)
-            {
-                DecrementCounter("E_PED_RMP2_OUTER", simConnect);
-                return true;
-            }
-
             // RMP2 Transfer Button (Momentary - use ExecuteButtonTransition)
             if (varKey == "S_PED_RMP2_XFER" && value == 1)
             {
@@ -11335,32 +11178,6 @@ public class FenixA320Definition : BaseAircraftDefinition
             if (varKey == "S_PED_RMP3_AM" && value == 1)
             {
                 ExecuteButtonTransition("S_PED_RMP3_AM", "RMP3 AM", simConnect, announcer);
-                return true;
-            }
-
-            // RMP3 Frequency Buttons (Inc/Dec - use counter approach)
-            // These variables are counters: incrementing increases frequency, decrementing decreases it
-            if (varKey == "E_PED_RMP3_INNER_INC" && value == 1)
-            {
-                IncrementCounter("E_PED_RMP3_INNER", simConnect);
-                return true;
-            }
-
-            if (varKey == "E_PED_RMP3_INNER_DEC" && value == 1)
-            {
-                DecrementCounter("E_PED_RMP3_INNER", simConnect);
-                return true;
-            }
-
-            if (varKey == "E_PED_RMP3_OUTER_INC" && value == 1)
-            {
-                IncrementCounter("E_PED_RMP3_OUTER", simConnect);
-                return true;
-            }
-
-            if (varKey == "E_PED_RMP3_OUTER_DEC" && value == 1)
-            {
-                DecrementCounter("E_PED_RMP3_OUTER", simConnect);
                 return true;
             }
 
@@ -12291,6 +12108,41 @@ public class FenixA320Definition : BaseAircraftDefinition
                 pendingBaroInch = null;
                 isRequestingBaro = false;
             }
+            return true;
+        }
+
+        // ========== RMP Frequency Announcements ==========
+        // Fenix RMP LVars store frequencies in kHz (e.g., 132475 = 132.475 MHz).
+        // Format as clean MHz with 3 decimal places, suppress initial load.
+        if (varName == "N_PED_RMP1_ACTIVE" || varName == "N_PED_RMP1_STDBY" ||
+            varName == "N_PED_RMP2_ACTIVE" || varName == "N_PED_RMP2_STDBY" ||
+            varName == "N_PED_RMP3_ACTIVE" || varName == "N_PED_RMP3_STDBY")
+        {
+            _lastAnnouncedValues.TryGetValue(varName, out double lastValue);
+            double freqMHz = value / 1000.0;
+
+            if (lastValue > 0 && Math.Abs(value - lastValue) > 0.5)
+            {
+                string rmpNum = varName.Contains("RMP1") ? "RMP1" : varName.Contains("RMP2") ? "RMP2" : "RMP3";
+                string type = varName.Contains("ACTIVE") ? "active" : "standby";
+                announcer.Announce($"{rmpNum} {type} {freqMHz:F3}");
+            }
+            _lastAnnouncedValues[varName] = value;
+            return true;
+        }
+
+        // ========== Squawk Code Announcements ==========
+        // Format as 4-digit code, suppress initial load.
+        if (varName == "N_FREQ_XPDR_SELECTED" || varName == "N_FREQ_STANDBY_XPDR_SELECTED")
+        {
+            _lastAnnouncedValues.TryGetValue(varName, out double lastValue);
+
+            if (lastValue > 0 && Math.Abs(value - lastValue) > 0.5)
+            {
+                string label = varName == "N_FREQ_XPDR_SELECTED" ? "Squawk" : "Squawk standby";
+                announcer.Announce($"{label} {(int)value:D4}");
+            }
+            _lastAnnouncedValues[varName] = value;
             return true;
         }
 
