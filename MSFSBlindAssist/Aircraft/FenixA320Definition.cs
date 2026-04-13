@@ -5298,7 +5298,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["TRANSPONDER_CODE_SET"] = new SimConnect.SimVarDefinition
             {
                 Name = "XPNDR_SET",
-                DisplayName = "SQUAWK",
+                DisplayName = "Squawk Code",
                 Type = SimConnect.SimVarType.Event,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
             },
@@ -5912,14 +5912,6 @@ public class FenixA320Definition : BaseAircraftDefinition
             {
                 Name = "FNX2PLD_bat2",
                 DisplayName = "FNX320+FENIXQUARTZ BAT 2 VOLTAGE",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-            },
-            ["FNX2PLD_xpdr"] = new SimConnect.SimVarDefinition
-            {
-                Name = "FNX2PLD_xpdr",
-                DisplayName = "FNX320+FENIXQUARTZ XPDR CODE",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7665,7 +7657,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["N_FREQ_STANDBY_XPDR_SELECTED"] = new SimConnect.SimVarDefinition
             {
                 Name = "N_FREQ_STANDBY_XPDR_SELECTED",
-                DisplayName = "PED XPDR STANDBY CODE",
+                DisplayName = "Squawk standby",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7673,7 +7665,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["N_FREQ_XPDR_SELECTED"] = new SimConnect.SimVarDefinition
             {
                 Name = "N_FREQ_XPDR_SELECTED",
-                DisplayName = "PED XPDR SELECTED CODE",
+                DisplayName = "Squawk",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -12134,6 +12126,21 @@ public class FenixA320Definition : BaseAircraftDefinition
                 string rmpNum = varName.Contains("RMP1") ? "RMP1" : varName.Contains("RMP2") ? "RMP2" : "RMP3";
                 string type = varName.Contains("ACTIVE") ? "active" : "standby";
                 announcer.Announce($"{rmpNum} {type} {freqMHz:F3}");
+            }
+            _lastRmpFreq[varName] = value;
+            return true;
+        }
+
+        // ========== Squawk Code Announcements ==========
+        // Format as 4-digit code, suppress initial load.
+        if (varName == "N_FREQ_XPDR_SELECTED" || varName == "N_FREQ_STANDBY_XPDR_SELECTED")
+        {
+            _lastRmpFreq.TryGetValue(varName, out double lastValue);
+
+            if (lastValue > 0 && Math.Abs(value - lastValue) > 0.5)
+            {
+                string label = varName == "N_FREQ_XPDR_SELECTED" ? "Squawk" : "Squawk standby";
+                announcer.Announce($"{label} {(int)value:D4}");
             }
             _lastRmpFreq[varName] = value;
             return true;
