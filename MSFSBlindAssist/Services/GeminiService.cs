@@ -16,7 +16,7 @@ public class GeminiService
 
     static GeminiService()
     {
-        httpClient.Timeout = TimeSpan.FromSeconds(60);
+        httpClient.Timeout = TimeSpan.FromSeconds(120);
     }
 
     public GeminiService()
@@ -329,18 +329,47 @@ Do not use markdown formatting. Do not explain what things mean. Just state the 
         }
 
         string jsonRequest = JsonConvert.SerializeObject(requestBody);
-        var content = new StringContent(jsonRequest, Encoding.UTF8, "application/json");
-
         string url = $"{API_BASE_URL}?key={apiKey}";
-        HttpResponseMessage response = await httpClient.PostAsync(url, content);
 
-        if (!response.IsSuccessStatusCode)
+        const int maxRetries = 3;
+        HttpResponseMessage? response = null;
+
+        for (int attempt = 0; attempt <= maxRetries; attempt++)
         {
-            string errorContent = await response.Content.ReadAsStringAsync();
-            throw new HttpRequestException($"Gemini API request failed with status {response.StatusCode}: {errorContent}");
+            var content = new StringContent(jsonRequest, Encoding.UTF8, "application/json");
+
+            try
+            {
+                response = await httpClient.PostAsync(url, content);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    break;
+                }
+
+                // Only retry on transient server errors
+                if ((response.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable ||
+                     response.StatusCode == (System.Net.HttpStatusCode)429) &&
+                    attempt < maxRetries)
+                {
+                    int delaySeconds = (int)Math.Pow(2, attempt + 1); // 2s, 4s, 8s
+                    await Task.Delay(TimeSpan.FromSeconds(delaySeconds));
+                    continue;
+                }
+
+                // Non-retryable error or final attempt
+                string errorContent = await response.Content.ReadAsStringAsync();
+                throw new HttpRequestException($"Gemini API request failed with status {response.StatusCode}: {errorContent}");
+            }
+            catch (TaskCanceledException) when (attempt < maxRetries)
+            {
+                // Timeout - retry with backoff
+                int delaySeconds = (int)Math.Pow(2, attempt + 1);
+                await Task.Delay(TimeSpan.FromSeconds(delaySeconds));
+            }
         }
 
-        string responseJson = await response.Content.ReadAsStringAsync();
+        string responseJson = await response!.Content.ReadAsStringAsync();
         var result = JsonConvert.DeserializeObject<GeminiResponse>(responseJson);
 
         if (result?.Candidates == null || result.Candidates.Length == 0)
