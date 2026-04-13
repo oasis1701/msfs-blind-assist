@@ -7605,6 +7605,14 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Units = "MHz",
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             },
+            ["COM_STANDBY_FREQUENCY_SET:3"] = new SimConnect.SimVarDefinition
+            {
+                Name = "COM STANDBY FREQUENCY:3",
+                DisplayName = "COM3 Standby",
+                Type = SimConnect.SimVarType.SimVar,
+                Units = "MHz",
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            },
             // ========== RMP FREQUENCY INDICATORS (Fenix LVars for monitoring) ==========
             ["N_PED_RMP1_ACTIVE"] = new SimConnect.SimVarDefinition
             {
@@ -8931,6 +8939,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 // COM Radio Frequencies (direct tuning via SimConnect)
                 "COM_STANDBY_FREQUENCY_SET:1", "S_PED_RMP1_XFER",
                 "COM_STANDBY_FREQUENCY_SET:2", "S_PED_RMP2_XFER",
+                "COM_STANDBY_FREQUENCY_SET:3", "S_PED_RMP3_XFER",
 
                 // RMP1 Controls
                 "S_PED_RMP1_POWER",
@@ -8975,8 +8984,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "S_PED_RMP3_MLS",
                 "S_PED_RMP3_ADF",
                 "S_PED_RMP3_BFO",
-                "S_PED_RMP3_AM",
-                "S_PED_RMP3_XFER"
+                "S_PED_RMP3_AM"
             },
 
             ["Audio Control Panel (ACP)"] = new List<string>
@@ -9248,7 +9256,8 @@ public class FenixA320Definition : BaseAircraftDefinition
                 if (value >= 118.0 && value <= 136.975)
                 {
                     uint frequencyHz = (uint)(value * 1000000);
-                    string setEvent = varKey.Contains(":2") ? "COM2_STBY_RADIO_SET_HZ" : "COM_STBY_RADIO_SET_HZ";
+                    string setEvent = varKey.Contains(":3") ? "COM3_STBY_RADIO_SET_HZ" :
+                                      varKey.Contains(":2") ? "COM2_STBY_RADIO_SET_HZ" : "COM_STBY_RADIO_SET_HZ";
                     simConnect.SendEvent(setEvent, frequencyHz);
                 }
                 else
