@@ -9247,7 +9247,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             {
                 if (value >= 118.0 && value <= 136.975)
                 {
-                    uint frequencyHz = (uint)(value * 1000000);
+                    uint frequencyHz = (uint)Math.Round(value * 1000000);
                     string setEvent = varKey.Contains(":3") ? "COM3_STBY_RADIO_SET_HZ" :
                                       varKey.Contains(":2") ? "COM2_STBY_RADIO_SET_HZ" : "COM_STBY_RADIO_SET_HZ";
                     simConnect.SendEvent(setEvent, frequencyHz);
@@ -12121,7 +12121,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             _lastRmpFreq.TryGetValue(varName, out double lastValue);
             double freqMHz = value / 1000.0;
 
-            if (lastValue > 0 && Math.Abs(value - lastValue) > 1.0)
+            if (lastValue > 0 && Math.Abs(value - lastValue) > 0.5)
             {
                 string rmpNum = varName.Contains("RMP1") ? "RMP1" : varName.Contains("RMP2") ? "RMP2" : "RMP3";
                 string type = varName.Contains("ACTIVE") ? "active" : "standby";

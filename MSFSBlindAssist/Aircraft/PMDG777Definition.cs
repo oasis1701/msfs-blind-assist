@@ -5277,7 +5277,7 @@ public class PMDG777Definition : BaseAircraftDefinition
         {
             if (value >= 118.0 && value <= 136.975)
             {
-                uint frequencyHz = (uint)(value * 1000000);
+                uint frequencyHz = (uint)Math.Round(value * 1000000);
                 string setEvent = varKey.Contains(":2") ? "COM2_STBY_RADIO_SET_HZ" : "COM_STBY_RADIO_SET_HZ";
                 simConnect.SendEvent(setEvent, frequencyHz);
             }
