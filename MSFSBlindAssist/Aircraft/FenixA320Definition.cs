@@ -4936,7 +4936,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_ECAM_ENGINE"
             },
             ["S_ECAM_BLEED"] = new SimConnect.SimVarDefinition
             {
@@ -4945,7 +4945,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_ECAM_BLEED"
             },
             ["S_ECAM_CAB_PRESS"] = new SimConnect.SimVarDefinition
             {
@@ -4954,7 +4954,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_ECAM_CAB_PRESS"
             },
             ["S_ECAM_ELEC"] = new SimConnect.SimVarDefinition
             {
@@ -4963,7 +4963,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_ECAM_ELEC"
             },
             ["S_ECAM_HYD"] = new SimConnect.SimVarDefinition
             {
@@ -4972,7 +4972,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_ECAM_HYD"
             },
             ["S_ECAM_FUEL"] = new SimConnect.SimVarDefinition
             {
@@ -4981,7 +4981,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_ECAM_FUEL"
             },
             ["S_ECAM_APU"] = new SimConnect.SimVarDefinition
             {
@@ -4990,7 +4990,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_ECAM_APU"
             },
             ["S_ECAM_COND"] = new SimConnect.SimVarDefinition
             {
@@ -4999,7 +4999,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_ECAM_COND"
             },
             ["S_ECAM_DOOR"] = new SimConnect.SimVarDefinition
             {
@@ -5008,7 +5008,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_ECAM_DOOR"
             },
             ["S_ECAM_WHEEL"] = new SimConnect.SimVarDefinition
             {
@@ -5017,7 +5017,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_ECAM_WHEEL"
             },
             ["S_ECAM_FCTL"] = new SimConnect.SimVarDefinition
             {
@@ -5026,7 +5026,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_ECAM_FCTL"
             },
             ["S_ECAM_ALL"] = new SimConnect.SimVarDefinition
             {
@@ -5035,7 +5035,6 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
             },
             ["S_ECAM_STATUS"] = new SimConnect.SimVarDefinition
             {
@@ -5044,7 +5043,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_ECAM_STATUS"
             },
             ["S_ECAM_CLR_LEFT"] = new SimConnect.SimVarDefinition
             {
@@ -5053,7 +5052,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_ECAM_CLR_LEFT"
             },
             ["S_ECAM_CLR_RIGHT"] = new SimConnect.SimVarDefinition
             {
@@ -5062,7 +5061,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_ECAM_CLR_RIGHT"
             },
             ["S_ECAM_RCL"] = new SimConnect.SimVarDefinition
             {
@@ -5071,7 +5070,6 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
             },
             ["S_ECAM_TO"] = new SimConnect.SimVarDefinition
             {
@@ -5080,7 +5078,6 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
             },
             ["S_ECAM_EMER_CANCEL"] = new SimConnect.SimVarDefinition
             {
@@ -5089,7 +5086,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_ECAM_EMER_CANCEL"
             },
 
             // ========== PEDESTAL - FLIGHT CONTROLS PANEL (5 variables) ==========
