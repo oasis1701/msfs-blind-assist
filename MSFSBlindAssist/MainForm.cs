@@ -378,7 +378,10 @@ public partial class MainForm : Form
             {
                 this.Text = $"MSFS BA - {currentAircraft.CurrentFlightPhase} phase active";
             }
-            return; // Aircraft handled it completely, no further processing needed
+            // Still update UI controls — StateVariable reverse lookup needs to run
+            // so that I_ indicator updates refresh the corresponding button labels
+            UpdateControlFromSimVar(e.VarName, e.Value);
+            return;
         }
 
         // Step 3: Update display values (if this variable is used in any panel display)
