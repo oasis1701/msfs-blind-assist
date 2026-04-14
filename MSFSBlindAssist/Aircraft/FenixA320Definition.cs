@@ -2530,8 +2530,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Name = "S_ASP_INTRAD",
                 DisplayName = "ACP INTRAD Switch",
                 Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "INT", [1] = "OFF", [2] = "RAD"}
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
             },
 
             // Transmit Buttons (8 buttons - 7 momentary buttons + 1 combo box)
@@ -2542,7 +2541,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_ASP_VHF_1_SEND"
             },
             ["S_ASP_VHF_2_SEND"] = new SimConnect.SimVarDefinition
             {
@@ -2551,7 +2550,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_ASP_VHF_2_SEND"
             },
             ["S_ASP_VHF_3_SEND"] = new SimConnect.SimVarDefinition
             {
@@ -2560,7 +2559,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_ASP_VHF_3_SEND"
             },
             ["S_ASP_HF_1_SEND"] = new SimConnect.SimVarDefinition
             {
@@ -2569,7 +2568,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_ASP_HF_1_SEND"
             },
             ["S_ASP_HF_2_SEND"] = new SimConnect.SimVarDefinition
             {
@@ -2577,8 +2576,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "ACP HF 2 Transmit",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                RenderAsButton = true
             },
             ["S_ASP_CAB_SEND"] = new SimConnect.SimVarDefinition
             {
@@ -2587,7 +2585,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_ASP_CAB_SEND"
             },
             ["S_ASP_INT_SEND"] = new SimConnect.SimVarDefinition
             {
@@ -2596,7 +2594,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_ASP_INT_SEND"
             },
             ["S_ASP_PA_SEND"] = new SimConnect.SimVarDefinition
             {
@@ -2604,7 +2602,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "ACP PA Transmit",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Release", [1] = "Push"}
+                StateVariable = "I_ASP_PA_SEND"
             },
 
             // Additional Buttons (2 buttons)
@@ -2614,8 +2612,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "ACP RESET",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                RenderAsButton = true
             },
             ["S_ASP_VOICE"] = new SimConnect.SimVarDefinition
             {
@@ -2624,7 +2621,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_ASP_VOICE"
             },
 
             // Receive Toggle Controls (4 combo boxes)
@@ -2633,80 +2630,70 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Name = "S_ASP_VHF_1_REC_LATCH",
                 DisplayName = "ACP VHF 1 Receive",
                 Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
             },
             ["S_ASP_HF_1_REC_LATCH"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_ASP_HF_1_REC_LATCH",
                 DisplayName = "ACP HF 1 Receive",
                 Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
             },
             ["S_ASP_CAB_REC_LATCH"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_ASP_CAB_REC_LATCH",
                 DisplayName = "ACP CAB Receive",
                 Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
             },
             ["S_ASP_PA_REC_LATCH"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_ASP_PA_REC_LATCH",
                 DisplayName = "ACP PA Receive",
                 Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
             },
             ["S_ASP_ILS_REC_LATCH"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_ASP_ILS_REC_LATCH",
                 DisplayName = "ACP ILS Receive",
                 Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
             },
             ["S_ASP_VOR_1_REC_LATCH"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_ASP_VOR_1_REC_LATCH",
                 DisplayName = "ACP VOR 1 Receive",
                 Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
             },
             ["S_ASP_VOR_2_REC_LATCH"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_ASP_VOR_2_REC_LATCH",
                 DisplayName = "ACP VOR 2 Receive",
                 Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
             },
             ["S_ASP_MARKER_REC_LATCH"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_ASP_MARKER_REC_LATCH",
                 DisplayName = "ACP MARKER Receive",
                 Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
             },
             ["S_ASP_ADF_1_REC_LATCH"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_ASP_ADF_1_REC_LATCH",
                 DisplayName = "ACP ADF 1 Receive",
                 Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
             },
             ["S_ASP_ADF_2_REC_LATCH"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_ASP_ADF_2_REC_LATCH",
                 DisplayName = "ACP ADF 2 Receive",
                 Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
             },
 
             // ========== EFIS LEFT (16 variables) ==========
