@@ -1254,6 +1254,46 @@ public class FenixA320Definition : BaseAircraftDefinition
                 IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
             },
+            // EFIS LS/FD toggle state variables (not fault indicators — actual on/off state)
+            // These are needed as StateVariable targets for the LS/FD buttons.
+            // IsAnnounced = true is required for continuous monitoring registration;
+            // ProcessSimVarUpdate suppresses the actual announcement to avoid duplicates.
+            ["S_FCU_EFIS1_LS"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FCU_EFIS1_LS",
+                DisplayName = "EFIS 1 LS State",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_FCU_EFIS1_FD"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FCU_EFIS1_FD",
+                DisplayName = "EFIS 1 FD State",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_FCU_EFIS2_LS"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FCU_EFIS2_LS",
+                DisplayName = "EFIS 2 LS State",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
+            ["S_FCU_EFIS2_FD"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_FCU_EFIS2_FD",
+                DisplayName = "EFIS 2 FD State",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
+            },
             ["I_FCU_EFIS1_CSTR"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_FCU_EFIS1_CSTR",
@@ -1579,7 +1619,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "I_OH_ELEC_EXT_PWR_U"
+                StateVariable = "I_OH_ELEC_EXT_PWR_L"
             },
             ["S_OH_ELEC_APU_GEN"] = new SimConnect.SimVarDefinition
             {
@@ -1652,7 +1692,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "I_OH_ELEC_APU_START_U"
+                StateVariable = "I_OH_ELEC_APU_START_L"
             },
             ["S_OH_ELEC_GEN1_LINE"] = new SimConnect.SimVarDefinition
             {
@@ -1732,7 +1772,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "I_OH_NAV_ADR1_U"
+                StateVariable = "I_OH_NAV_ADR1_L"
             },
             ["S_OH_NAV_ADR2"] = new SimConnect.SimVarDefinition
             {
@@ -1741,7 +1781,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "I_OH_NAV_ADR2_U"
+                StateVariable = "I_OH_NAV_ADR2_L"
             },
             ["S_OH_NAV_ADR3"] = new SimConnect.SimVarDefinition
             {
@@ -1750,7 +1790,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "I_OH_NAV_ADR3_U"
+                StateVariable = "I_OH_NAV_ADR3_L"
             },
 
             // IR Push Buttons
@@ -1761,7 +1801,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "I_OH_NAV_IR1_SWITCH_U"
+                StateVariable = "I_OH_NAV_IR1_SWITCH_L"
             },
             ["S_OH_NAV_IR2_SWITCH"] = new SimConnect.SimVarDefinition
             {
@@ -1770,7 +1810,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "I_OH_NAV_IR2_SWITCH_U"
+                StateVariable = "I_OH_NAV_IR2_SWITCH_L"
             },
             ["S_OH_NAV_IR3_SWITCH"] = new SimConnect.SimVarDefinition
             {
@@ -1779,7 +1819,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "I_OH_NAV_IR3_SWITCH_U"
+                StateVariable = "I_OH_NAV_IR3_SWITCH_L"
             },
 
             // Display Selectors
@@ -3515,7 +3555,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "I_OH_HYD_YELLOW_ELEC_PUMP_U"
+                StateVariable = "I_OH_HYD_YELLOW_ELEC_PUMP_L"
             },
 
             // PTU and RAT
@@ -3749,7 +3789,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "I_MIP_AUTOBRAKE_LO_U"
+                StateVariable = "I_MIP_AUTOBRAKE_LO_L"
             },
             ["S_MIP_AUTOBRAKE_MED"] = new SimConnect.SimVarDefinition
             {
@@ -3758,7 +3798,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "I_MIP_AUTOBRAKE_MED_U"
+                StateVariable = "I_MIP_AUTOBRAKE_MED_L"
             },
             ["S_MIP_AUTOBRAKE_MAX"] = new SimConnect.SimVarDefinition
             {
@@ -3767,7 +3807,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "I_MIP_AUTOBRAKE_MAX_U"
+                StateVariable = "I_MIP_AUTOBRAKE_MAX_L"
             },
 
             // Landing Gear - Lever control
@@ -3886,7 +3926,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "I_MIP_GPWS_VISUAL_ALERT_CAPT_U"
+                StateVariable = "I_MIP_GPWS_VISUAL_ALERT_CAPT_L"
             },
             ["S_MIP_GPWS_VISUAL_ALERT_FO"] = new SimConnect.SimVarDefinition
             {
@@ -3960,7 +4000,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "I_MIP_ATC_MSG_CAPT_U"
+                StateVariable = "I_MIP_ATC_MSG_CAPT_L"
             },
             ["S_MIP_ATC_MSG_FO"] = new SimConnect.SimVarDefinition
             {
@@ -3969,7 +4009,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "I_MIP_ATC_MSG_FO_U"
+                StateVariable = "I_MIP_ATC_MSG_FO_L"
             },
             ["S_MIP_CHRONO_CAPT"] = new SimConnect.SimVarDefinition
             {
@@ -4466,7 +4506,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "I_OH_OXYGEN_TMR_RESET_U"
+                StateVariable = "I_OH_OXYGEN_TMR_RESET_L"
             },
             ["S_OXYGEN_MASK_1_TEST_CAPT"] = new SimConnect.SimVarDefinition
             {
@@ -11942,6 +11982,13 @@ public class FenixA320Definition : BaseAircraftDefinition
         // Only process if we have the announcer saved
         if (lastAnnouncer == null)
             lastAnnouncer = announcer;
+
+        // ========== EFIS LS/FD State Variables (suppress announcement, used only for button labels) ==========
+        if (varName == "S_FCU_EFIS1_LS" || varName == "S_FCU_EFIS1_FD" ||
+            varName == "S_FCU_EFIS2_LS" || varName == "S_FCU_EFIS2_FD")
+        {
+            return true; // Suppress announcement — state is shown on button label via StateVariable
+        }
 
         // ========== FCU Heading Readout ==========
         if (varName == "N_FCU_HEADING")
