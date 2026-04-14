@@ -737,22 +737,24 @@ public partial class MainForm : Form
                 }
             }
 
-            // Also check if this variable is a StateVariable for any button in the current panel
-            foreach (var kvp in currentControls)
+            updatingFromSim = false;
+        }
+
+        // Check if this variable is a StateVariable for any button in the current panel
+        // This runs outside the controlFound check because state variables (I_ indicators)
+        // are not panel controls themselves — they're separate variables referenced by buttons.
+        foreach (var kvp in currentControls)
+        {
+            if (kvp.Value is Button stateBtn && currentAircraft.GetVariables().ContainsKey(kvp.Key))
             {
-                if (kvp.Value is Button stateBtn && currentAircraft.GetVariables().ContainsKey(kvp.Key))
+                var btnVarDef = currentAircraft.GetVariables()[kvp.Key];
+                if (btnVarDef.StateVariable == varName)
                 {
-                    var btnVarDef = currentAircraft.GetVariables()[kvp.Key];
-                    if (btnVarDef.StateVariable == varName)
-                    {
-                        string stateLabel = $"{btnVarDef.DisplayName}: {(value != 0 ? "On" : "Off")}";
-                        stateBtn.Text = stateLabel;
-                        stateBtn.AccessibleName = stateLabel;
-                    }
+                    string stateLabel = $"{btnVarDef.DisplayName}: {(value != 0 ? "On" : "Off")}";
+                    stateBtn.Text = stateLabel;
+                    stateBtn.AccessibleName = stateLabel;
                 }
             }
-
-            updatingFromSim = false;
         }
     }
 
