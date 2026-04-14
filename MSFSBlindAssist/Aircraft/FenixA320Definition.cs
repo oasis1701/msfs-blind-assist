@@ -8529,9 +8529,9 @@ public class FenixA320Definition : BaseAircraftDefinition
 
             ["Main Instrument Panel"] = new List<string>
             {
-                "Switching",
                 "Auto Brakes",
                 "Landing Gear",
+                "Switching",
                 "Console Floor Lights",
                 "ISIS",
                 "GPWS/Terrain",
