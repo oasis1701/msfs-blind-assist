@@ -3730,6 +3730,66 @@ public class FenixA320Definition : BaseAircraftDefinition
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Auto", [1] = "On"}
             },
 
+            // ========== SWITCHING PANEL (6 variables) ==========
+
+            // ATT HDG Selector (3-position knob)
+            ["S_DISPLAY_ATT_HDG"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_DISPLAY_ATT_HDG",
+                DisplayName = "ATT HDG",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Capt on 3", [1] = "Normal", [2] = "F/O on 3"}
+            },
+            // AIR DATA Selector (3-position knob)
+            ["S_DISPLAY_AIR_DATA"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_DISPLAY_AIR_DATA",
+                DisplayName = "AIR DATA",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Capt on 3", [1] = "Normal", [2] = "F/O on 3"}
+            },
+            // EIS DMC Selector (3-position knob)
+            ["S_DISPLAY_EIS_DMC"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_DISPLAY_EIS_DMC",
+                DisplayName = "EIS DMC",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Capt on 3", [1] = "Normal", [2] = "F/O on 3"}
+            },
+            // ECAM/ND XFR Selector (3-position knob)
+            ["S_DISPLAY_ECAM_ND_XFR"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_DISPLAY_ECAM_ND_XFR",
+                DisplayName = "ECAM/ND XFR",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Capt on 3", [1] = "Normal", [2] = "F/O on 3"}
+            },
+
+            // PFD/ND Transfer Captain (momentary button)
+            ["S_DISPLAY_PFDND_XFER_CAPT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_DISPLAY_PFDND_XFER_CAPT",
+                DisplayName = "PFD/ND XFR Capt",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+            // PFD/ND Transfer F/O (momentary button)
+            ["S_DISPLAY_PFDND_XFER_FO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_DISPLAY_PFDND_XFER_FO",
+                DisplayName = "PFD/ND XFR F/O",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+            },
+
             // ========== MAIN INSTRUMENT PANEL ==========
             // Auto Brakes - 3 momentary push buttons
             ["S_MIP_AUTOBRAKE_LO"] = new SimConnect.SimVarDefinition
@@ -8471,6 +8531,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             {
                 "Auto Brakes",
                 "Landing Gear",
+                "Switching",
                 "Console Floor Lights",
                 "ISIS",
                 "GPWS/Terrain",
@@ -9210,6 +9271,19 @@ public class FenixA320Definition : BaseAircraftDefinition
             {
                 "A_MIP_LOUDSPEAKER_CAPT",
                 "A_MIP_LOUDSPEAKER_FO"
+            },
+
+            ["Switching"] = new List<string>
+            {
+                // 3-Position Knobs (4 controls)
+                "S_DISPLAY_ATT_HDG",
+                "S_DISPLAY_AIR_DATA",
+                "S_DISPLAY_EIS_DMC",
+                "S_DISPLAY_ECAM_ND_XFR",
+
+                // PFD/ND Transfer Buttons (2 controls)
+                "S_DISPLAY_PFDND_XFER_CAPT",
+                "S_DISPLAY_PFDND_XFER_FO"
             }
         };
     }
@@ -10155,6 +10229,50 @@ public class FenixA320Definition : BaseAircraftDefinition
             if (varKey == "A_MIP_LOUDSPEAKER_FO")
             {
                 simConnect.SetLVar("A_MIP_LOUDSPEAKER_FO", value);
+                return true;
+            }
+
+            // ========== SWITCHING PANEL CONTROLS ==========
+
+            // ATT HDG Selector (3-position knob - use SetLVar)
+            if (varKey == "S_DISPLAY_ATT_HDG")
+            {
+                simConnect.SetLVar("S_DISPLAY_ATT_HDG", value);
+                return true;
+            }
+
+            // AIR DATA Selector (3-position knob - use SetLVar)
+            if (varKey == "S_DISPLAY_AIR_DATA")
+            {
+                simConnect.SetLVar("S_DISPLAY_AIR_DATA", value);
+                return true;
+            }
+
+            // EIS DMC Selector (3-position knob - use SetLVar)
+            if (varKey == "S_DISPLAY_EIS_DMC")
+            {
+                simConnect.SetLVar("S_DISPLAY_EIS_DMC", value);
+                return true;
+            }
+
+            // ECAM/ND XFR Selector (3-position knob - use SetLVar)
+            if (varKey == "S_DISPLAY_ECAM_ND_XFR")
+            {
+                simConnect.SetLVar("S_DISPLAY_ECAM_ND_XFR", value);
+                return true;
+            }
+
+            // PFD/ND Transfer Captain (momentary button)
+            if (varKey == "S_DISPLAY_PFDND_XFER_CAPT" && value == 1)
+            {
+                ExecuteButtonTransition("S_DISPLAY_PFDND_XFER_CAPT", "PFD/ND XFR Capt", simConnect, announcer);
+                return true;
+            }
+
+            // PFD/ND Transfer F/O (momentary button)
+            if (varKey == "S_DISPLAY_PFDND_XFER_FO" && value == 1)
+            {
+                ExecuteButtonTransition("S_DISPLAY_PFDND_XFER_FO", "PFD/ND XFR F/O", simConnect, announcer);
                 return true;
             }
 
