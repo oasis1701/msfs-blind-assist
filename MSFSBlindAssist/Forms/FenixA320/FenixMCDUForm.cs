@@ -373,7 +373,7 @@ public class FenixMCDUForm : Form
             if (buttonName != null)
             {
                 await _service.SendButtonPress(buttonName);
-                // Small delay between presses to ensure the MCDU processes each one
+                // Delay between presses to ensure the MCDU processes each press-release cycle
                 await Task.Delay(50);
             }
         }
