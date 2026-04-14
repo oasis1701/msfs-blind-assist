@@ -378,10 +378,10 @@ public partial class MainForm : Form
             {
                 this.Text = $"MSFS BA - {currentAircraft.CurrentFlightPhase} phase active";
             }
-            // Still update UI controls — StateVariable reverse lookup needs to run
-            // so that I_ indicator updates refresh the corresponding button labels
-            UpdateControlFromSimVar(e.VarName, e.Value);
-            return;
+            // Check StateVariable reverse lookup only (don't call full UpdateControlFromSimVar
+            // which can interfere with aircraft-specific processing)
+            UpdateButtonStateFromStateVariable(e.VarName, e.Value);
+            return; // Aircraft handled it completely, no further generic processing needed
         }
 
         // Step 3: Update display values (if this variable is used in any panel display)
@@ -743,9 +743,17 @@ public partial class MainForm : Form
             updatingFromSim = false;
         }
 
-        // Check if this variable is a StateVariable for any button in the current panel
-        // This runs outside the controlFound check because state variables (I_ indicators)
-        // are not panel controls themselves — they're separate variables referenced by buttons.
+        // Also update any button labels whose StateVariable matches this variable
+        UpdateButtonStateFromStateVariable(varName, value);
+    }
+
+    /// <summary>
+    /// Updates button labels for any buttons whose StateVariable matches the given variable name.
+    /// Separated from UpdateControlFromSimVar so it can be called independently without
+    /// triggering control updates that could interfere with aircraft-specific processing.
+    /// </summary>
+    private void UpdateButtonStateFromStateVariable(string varName, double value)
+    {
         foreach (var kvp in currentControls)
         {
             if (kvp.Value is Button stateBtn && currentAircraft.GetVariables().ContainsKey(kvp.Key))
