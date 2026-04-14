@@ -1927,7 +1927,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_PED_RMP1_VHF1"
             },
             ["S_PED_RMP1_VHF2"] = new SimConnect.SimVarDefinition
             {
@@ -1936,7 +1936,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_PED_RMP1_VHF2"
             },
             ["S_PED_RMP1_VHF3"] = new SimConnect.SimVarDefinition
             {
@@ -1945,7 +1945,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_PED_RMP1_VHF3"
             },
             ["S_PED_RMP1_HF1"] = new SimConnect.SimVarDefinition
             {
@@ -1954,7 +1954,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_PED_RMP1_HF1"
             },
             ["S_PED_RMP1_HF2"] = new SimConnect.SimVarDefinition
             {
@@ -1963,7 +1963,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_PED_RMP1_HF2"
             },
             ["S_PED_RMP1_NAV"] = new SimConnect.SimVarDefinition
             {
@@ -1972,7 +1972,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_PED_RMP1_NAV"
             },
             ["S_PED_RMP1_VOR"] = new SimConnect.SimVarDefinition
             {
@@ -1981,7 +1981,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_PED_RMP1_VOR"
             },
             ["S_PED_RMP1_ILS"] = new SimConnect.SimVarDefinition
             {
@@ -1990,7 +1990,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_PED_RMP1_ILS"
             },
             ["S_PED_RMP1_MLS"] = new SimConnect.SimVarDefinition
             {
@@ -1999,7 +1999,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_PED_RMP1_MLS"
             },
             ["S_PED_RMP1_ADF"] = new SimConnect.SimVarDefinition
             {
@@ -2008,7 +2008,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_PED_RMP1_ADF"
             },
             ["S_PED_RMP1_BFO"] = new SimConnect.SimVarDefinition
             {
@@ -2017,7 +2017,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_PED_RMP1_BFO"
             },
             ["S_PED_RMP1_AM"] = new SimConnect.SimVarDefinition
             {
@@ -2026,7 +2026,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_PED_RMP1_AM"
             },
 
             // RMP2 Power Switch
@@ -2047,7 +2047,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_PED_RMP2_VHF1"
             },
             ["S_PED_RMP2_VHF2"] = new SimConnect.SimVarDefinition
             {
@@ -2056,7 +2056,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_PED_RMP2_VHF2"
             },
             ["S_PED_RMP2_VHF3"] = new SimConnect.SimVarDefinition
             {
@@ -2065,7 +2065,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_PED_RMP2_VHF3"
             },
             ["S_PED_RMP2_HF1"] = new SimConnect.SimVarDefinition
             {
@@ -2074,7 +2074,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_PED_RMP2_HF1"
             },
             ["S_PED_RMP2_HF2"] = new SimConnect.SimVarDefinition
             {
@@ -2083,7 +2083,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_PED_RMP2_HF2"
             },
             ["S_PED_RMP2_NAV"] = new SimConnect.SimVarDefinition
             {
@@ -2092,7 +2092,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_PED_RMP2_NAV"
             },
             ["S_PED_RMP2_VOR"] = new SimConnect.SimVarDefinition
             {
@@ -2101,7 +2101,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_PED_RMP2_VOR"
             },
             ["S_PED_RMP2_ILS"] = new SimConnect.SimVarDefinition
             {
@@ -2110,7 +2110,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_PED_RMP2_ILS"
             },
             ["S_PED_RMP2_MLS"] = new SimConnect.SimVarDefinition
             {
@@ -2119,7 +2119,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_PED_RMP2_MLS"
             },
             ["S_PED_RMP2_ADF"] = new SimConnect.SimVarDefinition
             {
@@ -2128,7 +2128,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_PED_RMP2_ADF"
             },
             ["S_PED_RMP2_BFO"] = new SimConnect.SimVarDefinition
             {
@@ -2137,7 +2137,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_PED_RMP2_BFO"
             },
             ["S_PED_RMP2_AM"] = new SimConnect.SimVarDefinition
             {
@@ -2146,7 +2146,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_PED_RMP2_AM"
             },
 
             // RMP3 Power Switch
@@ -2167,7 +2167,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_PED_RMP3_VHF1"
             },
             ["S_PED_RMP3_VHF2"] = new SimConnect.SimVarDefinition
             {
@@ -2176,7 +2176,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_PED_RMP3_VHF2"
             },
             ["S_PED_RMP3_VHF3"] = new SimConnect.SimVarDefinition
             {
@@ -2185,7 +2185,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_PED_RMP3_VHF3"
             },
             ["S_PED_RMP3_HF1"] = new SimConnect.SimVarDefinition
             {
@@ -2194,7 +2194,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_PED_RMP3_HF1"
             },
             ["S_PED_RMP3_HF2"] = new SimConnect.SimVarDefinition
             {
@@ -2203,7 +2203,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_PED_RMP3_HF2"
             },
             ["S_PED_RMP3_NAV"] = new SimConnect.SimVarDefinition
             {
@@ -2212,7 +2212,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_PED_RMP3_NAV"
             },
             ["S_PED_RMP3_VOR"] = new SimConnect.SimVarDefinition
             {
@@ -2221,7 +2221,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_PED_RMP3_VOR"
             },
             ["S_PED_RMP3_ILS"] = new SimConnect.SimVarDefinition
             {
@@ -2230,7 +2230,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_PED_RMP3_ILS"
             },
             ["S_PED_RMP3_MLS"] = new SimConnect.SimVarDefinition
             {
@@ -2239,7 +2239,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_PED_RMP3_MLS"
             },
             ["S_PED_RMP3_ADF"] = new SimConnect.SimVarDefinition
             {
@@ -2248,7 +2248,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_PED_RMP3_ADF"
             },
             ["S_PED_RMP3_BFO"] = new SimConnect.SimVarDefinition
             {
@@ -2257,7 +2257,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_PED_RMP3_BFO"
             },
             ["S_PED_RMP3_AM"] = new SimConnect.SimVarDefinition
             {
@@ -2266,7 +2266,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_PED_RMP3_AM"
             },
 
             // RMP Transfer Buttons
@@ -2276,8 +2276,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "RMP1 Transfer",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                RenderAsButton = true
             },
             ["S_PED_RMP2_XFER"] = new SimConnect.SimVarDefinition
             {
@@ -2285,8 +2284,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "RMP2 Transfer",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                RenderAsButton = true
             },
             ["S_PED_RMP3_XFER"] = new SimConnect.SimVarDefinition
             {
@@ -2294,8 +2292,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "RMP3 Transfer",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                RenderAsButton = true
             },
 
             // ========== AUDIO CONTROL PANEL (ACP) (36 variables) ==========
