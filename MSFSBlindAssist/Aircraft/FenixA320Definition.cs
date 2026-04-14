@@ -1588,7 +1588,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_OH_ELEC_EXT_PWR_U"
             },
             ["S_OH_ELEC_APU_GEN"] = new SimConnect.SimVarDefinition
             {
@@ -1661,7 +1661,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_OH_ELEC_APU_START_U"
             },
             ["S_OH_ELEC_GEN1_LINE"] = new SimConnect.SimVarDefinition
             {
@@ -1741,7 +1741,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_OH_NAV_ADR1_U"
             },
             ["S_OH_NAV_ADR2"] = new SimConnect.SimVarDefinition
             {
@@ -1750,7 +1750,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_OH_NAV_ADR2_U"
             },
             ["S_OH_NAV_ADR3"] = new SimConnect.SimVarDefinition
             {
@@ -1759,7 +1759,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_OH_NAV_ADR3_U"
             },
 
             // IR Push Buttons
@@ -1770,7 +1770,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_OH_NAV_IR1_SWITCH_U"
             },
             ["S_OH_NAV_IR2_SWITCH"] = new SimConnect.SimVarDefinition
             {
@@ -1779,7 +1779,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_OH_NAV_IR2_SWITCH_U"
             },
             ["S_OH_NAV_IR3_SWITCH"] = new SimConnect.SimVarDefinition
             {
@@ -1788,7 +1788,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_OH_NAV_IR3_SWITCH_U"
             },
 
             // Display Selectors
@@ -1816,8 +1816,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Key 0",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                RenderAsButton = true
             },
             ["S_OH_ADIRS_KEY_1"] = new SimConnect.SimVarDefinition
             {
@@ -1825,8 +1824,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Key 1",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                RenderAsButton = true
             },
             ["S_OH_ADIRS_KEY_2"] = new SimConnect.SimVarDefinition
             {
@@ -1834,8 +1832,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Key 2",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                RenderAsButton = true
             },
             ["S_OH_ADIRS_KEY_3"] = new SimConnect.SimVarDefinition
             {
@@ -1843,8 +1840,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Key 3",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                RenderAsButton = true
             },
             ["S_OH_ADIRS_KEY_4"] = new SimConnect.SimVarDefinition
             {
@@ -1852,8 +1848,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Key 4",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                RenderAsButton = true
             },
             ["S_OH_ADIRS_KEY_5"] = new SimConnect.SimVarDefinition
             {
@@ -1861,8 +1856,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Key 5",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                RenderAsButton = true
             },
             ["S_OH_ADIRS_KEY_6"] = new SimConnect.SimVarDefinition
             {
@@ -1870,8 +1864,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Key 6",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                RenderAsButton = true
             },
             ["S_OH_ADIRS_KEY_7"] = new SimConnect.SimVarDefinition
             {
@@ -1879,8 +1872,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Key 7",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                RenderAsButton = true
             },
             ["S_OH_ADIRS_KEY_8"] = new SimConnect.SimVarDefinition
             {
@@ -1888,8 +1880,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Key 8",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                RenderAsButton = true
             },
             ["S_OH_ADIRS_KEY_9"] = new SimConnect.SimVarDefinition
             {
@@ -1897,8 +1888,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Key 9",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                RenderAsButton = true
             },
             ["S_OH_ADIRS_KEY_CLR"] = new SimConnect.SimVarDefinition
             {
@@ -1906,8 +1896,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Key Clear",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                RenderAsButton = true
             },
             ["S_OH_ADIRS_KEY_ENT"] = new SimConnect.SimVarDefinition
             {
@@ -1915,8 +1904,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Key Enter",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                RenderAsButton = true
             },
 
             // ========== RADIO MANAGEMENT PANEL (RMP) (42 variables) ==========
@@ -3540,7 +3528,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_OH_HYD_YELLOW_ELEC_PUMP_U"
             },
 
             // PTU and RAT
@@ -4495,7 +4483,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_OH_OXYGEN_TMR_RESET_U"
             },
             ["S_OXYGEN_MASK_1_TEST_CAPT"] = new SimConnect.SimVarDefinition
             {
@@ -4503,8 +4491,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Oxygen Mask 1 Test Captain",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                RenderAsButton = true
             },
             ["S_OXYGEN_MASK_1_TEST_FO"] = new SimConnect.SimVarDefinition
             {
@@ -4512,8 +4499,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Oxygen Mask 1 Test First Officer",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                RenderAsButton = true
             },
             ["S_OXYGEN_MASK_2_TEST_CAPT"] = new SimConnect.SimVarDefinition
             {
@@ -4521,8 +4507,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Oxygen Mask 2 Test Captain",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                RenderAsButton = true
             },
             ["S_OXYGEN_MASK_2_TEST_FO"] = new SimConnect.SimVarDefinition
             {
@@ -4530,8 +4515,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Oxygen Mask 2 Test First Officer",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                RenderAsButton = true
             },
 
             // ========== EVACUATION PANEL ==========
@@ -5596,7 +5580,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_OH_RCRD_GND_CTL_L"
             },
 
             // CVR ERASE
