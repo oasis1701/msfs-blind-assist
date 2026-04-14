@@ -1254,46 +1254,6 @@ public class FenixA320Definition : BaseAircraftDefinition
                 IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
             },
-            // EFIS LS/FD toggle state variables (not fault indicators — actual on/off state)
-            // These are needed as StateVariable targets for the LS/FD buttons.
-            // IsAnnounced = true is required for continuous monitoring registration;
-            // ProcessSimVarUpdate suppresses the actual announcement to avoid duplicates.
-            ["S_FCU_EFIS1_LS"] = new SimConnect.SimVarDefinition
-            {
-                Name = "S_FCU_EFIS1_LS",
-                DisplayName = "EFIS 1 LS State",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
-            },
-            ["S_FCU_EFIS1_FD"] = new SimConnect.SimVarDefinition
-            {
-                Name = "S_FCU_EFIS1_FD",
-                DisplayName = "EFIS 1 FD State",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
-            },
-            ["S_FCU_EFIS2_LS"] = new SimConnect.SimVarDefinition
-            {
-                Name = "S_FCU_EFIS2_LS",
-                DisplayName = "EFIS 2 LS State",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
-            },
-            ["S_FCU_EFIS2_FD"] = new SimConnect.SimVarDefinition
-            {
-                Name = "S_FCU_EFIS2_FD",
-                DisplayName = "EFIS 2 FD State",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On"}
-            },
             ["I_FCU_EFIS1_CSTR"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_FCU_EFIS1_CSTR",
@@ -2862,7 +2822,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "S_FCU_EFIS1_FD"
+                StateVariable = "I_FCU_EFIS1_FD"
             },
             ["S_FCU_EFIS1_LS_PRESS"] = new SimConnect.SimVarDefinition
             {
@@ -2871,7 +2831,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "S_FCU_EFIS1_LS"
+                StateVariable = "I_FCU_EFIS1_LS"
             },
 
             // ========== EFIS RIGHT (16 variables) ==========
@@ -2997,7 +2957,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "S_FCU_EFIS2_FD"
+                StateVariable = "I_FCU_EFIS2_FD"
             },
             ["S_FCU_EFIS2_LS_PRESS"] = new SimConnect.SimVarDefinition
             {
@@ -3006,7 +2966,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "S_FCU_EFIS2_LS"
+                StateVariable = "I_FCU_EFIS2_LS"
             },
 
             // ========== FCU (23 variables) ==========
@@ -11982,13 +11942,6 @@ public class FenixA320Definition : BaseAircraftDefinition
         // Only process if we have the announcer saved
         if (lastAnnouncer == null)
             lastAnnouncer = announcer;
-
-        // ========== EFIS LS/FD State Variables (suppress announcement, used only for button labels) ==========
-        if (varName == "S_FCU_EFIS1_LS" || varName == "S_FCU_EFIS1_FD" ||
-            varName == "S_FCU_EFIS2_LS" || varName == "S_FCU_EFIS2_FD")
-        {
-            return true; // Suppress announcement — state is shown on button label via StateVariable
-        }
 
         // ========== FCU Heading Readout ==========
         if (varName == "N_FCU_HEADING")
