@@ -3883,6 +3883,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
+                StateVariable = "I_MIP_GPWS_VISUAL_ALERT_FO_L"
             },
             ["S_MIP_GPWS_TERRAIN_ON_ND_CAPT"] = new SimConnect.SimVarDefinition
             {
@@ -3900,6 +3901,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
+                StateVariable = "I_MIP_GPWS_TERRAIN_ON_ND_FO_L"
             },
 
             // Warning/Message Buttons
@@ -3919,6 +3921,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
+                StateVariable = "I_MIP_MASTER_WARNING_FO"
             },
             ["S_MIP_MASTER_CAUTION_CAPT"] = new SimConnect.SimVarDefinition
             {
@@ -3936,6 +3939,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
+                StateVariable = "I_MIP_MASTER_CAUTION_FO"
             },
             ["S_MIP_ATC_MSG_CAPT"] = new SimConnect.SimVarDefinition
             {
@@ -3989,6 +3993,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
+                StateVariable = "I_MIP_AUTOLAND_FO"
             },
 
             // Main Instrument Panel Lights
