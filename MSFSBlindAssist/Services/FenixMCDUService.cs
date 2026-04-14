@@ -174,15 +174,24 @@ public class FenixMCDUService : IDisposable
     {
         var keyName = $"system.switches.S_CDU1_KEY_{buttonName}";
 
+        // Send key press (value: 1)
+        await SendKeyWrite(keyName, 1);
+        await Task.Delay(50);
+        // Send key release (value: 0) so the MCDU recognizes subsequent presses of the same key
+        await SendKeyWrite(keyName, 0);
+    }
+
+    private async Task SendKeyWrite(string keyName, int value)
+    {
         var mutation = new
         {
-            query = @"mutation ($keyName: String!) {
+            query = @"mutation ($keyName: String!, $value: Int!) {
                 dataRef {
-                    writeInt(name: $keyName, value: 1)
+                    writeInt(name: $keyName, value: $value)
                     __typename
                 }
             }",
-            variables = new { keyName }
+            variables = new { keyName, value }
         };
 
         try
@@ -191,11 +200,11 @@ public class FenixMCDUService : IDisposable
             var content = new StringContent(json, Encoding.UTF8, "application/json");
             var response = await _httpClient.PostAsync(HTTP_URL, content);
             response.EnsureSuccessStatusCode();
-            System.Diagnostics.Debug.WriteLine($"[FenixMCDU] Button press sent: {buttonName}");
+            System.Diagnostics.Debug.WriteLine($"[FenixMCDU] Key write sent: {keyName} = {value}");
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[FenixMCDU] Button press error ({buttonName}): {ex.Message}");
+            System.Diagnostics.Debug.WriteLine($"[FenixMCDU] Key write error ({keyName} = {value}): {ex.Message}");
         }
     }
 
