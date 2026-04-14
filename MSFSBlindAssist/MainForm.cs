@@ -3109,30 +3109,16 @@ public partial class MainForm : Form
                 controlButton.Click += (s2, e2) =>
                 {
                     bool handled = currentAircraft.HandleUIVariableSet(varKey, 1, varDef, simConnectManager, announcer);
-                    if (handled)
+                    if (!handled)
                     {
-                        // Request state variable update after button transition
-                        if (!string.IsNullOrEmpty(varDef.StateVariable) && simConnectManager != null)
-                        {
-                            System.Windows.Forms.Timer stateTimer = new System.Windows.Forms.Timer();
-                            stateTimer.Interval = 500; // Wait for transition to complete
-                            stateTimer.Tick += (ts, te) =>
-                            {
-                                stateTimer.Stop();
-                                stateTimer.Dispose();
-                                simConnectManager.RequestVariable(varDef.StateVariable);
-                            };
-                            stateTimer.Start();
-                        }
-                        return;
+                        simConnectManager?.SetLVar(varDef.Name, 1);
+                        announcer.Announce($"{varDef.DisplayName} pressed");
                     }
-                    simConnectManager?.SetLVar(varDef.Name, 1);
-                    announcer.Announce($"{varDef.DisplayName} pressed");
-                    // Request state variable update for non-handled buttons too
+                    // Request state variable update after button press
                     if (!string.IsNullOrEmpty(varDef.StateVariable) && simConnectManager != null)
                     {
                         System.Windows.Forms.Timer stateTimer = new System.Windows.Forms.Timer();
-                        stateTimer.Interval = 500;
+                        stateTimer.Interval = 500; // Wait for transition to complete
                         stateTimer.Tick += (ts, te) =>
                         {
                             stateTimer.Stop();
