@@ -2763,8 +2763,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "EFIS Left Baro Inc",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                RenderAsButton = true
             },
             ["E_FCU_EFIS1_BARO_DEC"] = new SimConnect.SimVarDefinition
             {
@@ -2772,8 +2771,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "EFIS Left Baro Dec",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                RenderAsButton = true
             },
 
             // NAV Source Selectors
@@ -2802,7 +2800,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_FCU_EFIS1_ARPT"
             },
             ["S_FCU_EFIS1_CSTR"] = new SimConnect.SimVarDefinition
             {
@@ -2811,7 +2809,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_FCU_EFIS1_CSTR"
             },
             ["S_FCU_EFIS1_WPT"] = new SimConnect.SimVarDefinition
             {
@@ -2820,7 +2818,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_FCU_EFIS1_WPT"
             },
             ["S_FCU_EFIS1_VORD"] = new SimConnect.SimVarDefinition
             {
@@ -2829,7 +2827,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_FCU_EFIS1_VORD"
             },
             ["S_FCU_EFIS1_NDB"] = new SimConnect.SimVarDefinition
             {
@@ -2838,7 +2836,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_FCU_EFIS1_NDB"
             },
 
             // Flight Director & ILS Buttons
@@ -2849,7 +2847,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "S_FCU_EFIS1_FD"
             },
             ["S_FCU_EFIS1_LS_PRESS"] = new SimConnect.SimVarDefinition
             {
@@ -2858,7 +2856,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "S_FCU_EFIS1_LS"
             },
 
             // ========== EFIS RIGHT (16 variables) ==========
@@ -2900,8 +2898,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "EFIS Right Baro Inc",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                RenderAsButton = true
             },
             ["E_FCU_EFIS2_BARO_DEC"] = new SimConnect.SimVarDefinition
             {
@@ -2909,8 +2906,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "EFIS Right Baro Dec",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                RenderAsButton = true
             },
 
             // NAV Source Selectors
@@ -2939,7 +2935,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_FCU_EFIS2_ARPT"
             },
             ["S_FCU_EFIS2_CSTR"] = new SimConnect.SimVarDefinition
             {
@@ -2948,7 +2944,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_FCU_EFIS2_CSTR"
             },
             ["S_FCU_EFIS2_WPT"] = new SimConnect.SimVarDefinition
             {
@@ -2957,7 +2953,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_FCU_EFIS2_WPT"
             },
             ["S_FCU_EFIS2_VORD"] = new SimConnect.SimVarDefinition
             {
@@ -2966,7 +2962,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_FCU_EFIS2_VORD"
             },
             ["S_FCU_EFIS2_NDB"] = new SimConnect.SimVarDefinition
             {
@@ -2975,7 +2971,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_FCU_EFIS2_NDB"
             },
 
             // Flight Director & ILS Buttons
@@ -2986,7 +2982,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "S_FCU_EFIS2_FD"
             },
             ["S_FCU_EFIS2_LS_PRESS"] = new SimConnect.SimVarDefinition
             {
@@ -2995,7 +2991,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "S_FCU_EFIS2_LS"
             },
 
             // ========== FCU (23 variables) ==========
@@ -3008,7 +3004,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_FCU_AP1"
             },
             ["S_FCU_AP2"] = new SimConnect.SimVarDefinition
             {
@@ -3017,7 +3013,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_FCU_AP2"
             },
             ["S_FCU_ATHR"] = new SimConnect.SimVarDefinition
             {
@@ -3026,7 +3022,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_FCU_ATHR"
             },
 
             // Mode Buttons
@@ -3037,7 +3033,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_FCU_LOC"
             },
             ["S_FCU_APPR"] = new SimConnect.SimVarDefinition
             {
@@ -3046,7 +3042,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_FCU_APPR"
             },
             ["S_FCU_EXPED"] = new SimConnect.SimVarDefinition
             {
@@ -3055,7 +3051,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_FCU_EXPED"
             },
             ["S_FCU_HDGVS_TRKFPA"] = new SimConnect.SimVarDefinition
             {
@@ -3063,8 +3059,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "FCU HDG/VS TRK/FPA",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                RenderAsButton = true
             },
 
             // Display Mode Buttons
@@ -3074,8 +3069,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "FCU SPD/MACH",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                RenderAsButton = true
             },
             ["S_FCU_METRIC_ALT"] = new SimConnect.SimVarDefinition
             {
@@ -3083,8 +3077,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "FCU Metric Alt",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                RenderAsButton = true
             },
 
             // Altitude Controls
@@ -3094,8 +3087,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "FCU Altitude Inc",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Inc"}
+                RenderAsButton = true
             },
             ["E_FCU_ALTITUDE_DEC"] = new SimConnect.SimVarDefinition
             {
@@ -3103,8 +3095,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "FCU Altitude Dec",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Dec"}
+                RenderAsButton = true
             },
             ["S_FCU_ALTITUDE_PUSH"] = new SimConnect.SimVarDefinition
             {
@@ -3112,8 +3103,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "FCU Altitude Push",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Push"}
+                RenderAsButton = true
             },
             ["S_FCU_ALTITUDE_PULL"] = new SimConnect.SimVarDefinition
             {
@@ -3121,8 +3111,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "FCU Altitude Pull",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Pull"}
+                RenderAsButton = true
             },
             ["S_FCU_ALTITUDE_SCALE"] = new SimConnect.SimVarDefinition
             {
@@ -3140,8 +3129,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "FCU Heading Inc",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Inc"}
+                RenderAsButton = true
             },
             ["E_FCU_HEADING_DEC"] = new SimConnect.SimVarDefinition
             {
@@ -3149,8 +3137,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "FCU Heading Dec",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Dec"}
+                RenderAsButton = true
             },
             ["S_FCU_HEADING_PUSH"] = new SimConnect.SimVarDefinition
             {
@@ -3158,8 +3145,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "FCU Heading Push",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Push"}
+                RenderAsButton = true
             },
             ["S_FCU_HEADING_PULL"] = new SimConnect.SimVarDefinition
             {
@@ -3167,8 +3153,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "FCU Heading Pull",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Pull"}
+                RenderAsButton = true
             },
 
             // Speed Controls
@@ -3178,8 +3163,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "FCU Speed Inc",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Inc"}
+                RenderAsButton = true
             },
             ["E_FCU_SPEED_DEC"] = new SimConnect.SimVarDefinition
             {
@@ -3187,8 +3171,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "FCU Speed Dec",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Dec"}
+                RenderAsButton = true
             },
             ["S_FCU_SPEED_PUSH"] = new SimConnect.SimVarDefinition
             {
@@ -3196,8 +3179,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "FCU Speed Push",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Push"}
+                RenderAsButton = true
             },
             ["S_FCU_SPEED_PULL"] = new SimConnect.SimVarDefinition
             {
@@ -3205,8 +3187,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "FCU Speed Pull",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Pull"}
+                RenderAsButton = true
             },
 
             // Vertical Speed Controls
@@ -3216,8 +3197,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "FCU V/S Inc",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Inc"}
+                RenderAsButton = true
             },
             ["E_FCU_VS_DEC"] = new SimConnect.SimVarDefinition
             {
@@ -3225,8 +3205,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "FCU V/S Dec",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Dec"}
+                RenderAsButton = true
             },
             ["S_FCU_VERTICAL_SPEED_PUSH"] = new SimConnect.SimVarDefinition
             {
@@ -3234,8 +3213,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "FCU V/S Push",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Push"}
+                RenderAsButton = true
             },
             ["S_FCU_VERTICAL_SPEED_PULL"] = new SimConnect.SimVarDefinition
             {
@@ -3243,8 +3221,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "FCU V/S Pull",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Pull"}
+                RenderAsButton = true
             },
 
             // ========== AIR CONDITIONING AND PRESSURIZATION (18 variables) ==========
@@ -3799,7 +3776,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_MIP_AUTOBRAKE_LO_U"
             },
             ["S_MIP_AUTOBRAKE_MED"] = new SimConnect.SimVarDefinition
             {
@@ -3808,7 +3785,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_MIP_AUTOBRAKE_MED_U"
             },
             ["S_MIP_AUTOBRAKE_MAX"] = new SimConnect.SimVarDefinition
             {
@@ -3817,7 +3794,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_MIP_AUTOBRAKE_MAX_U"
             },
 
             // Landing Gear - Lever control
@@ -3875,8 +3852,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "ISIS Bugs",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                RenderAsButton = true
             },
             ["S_MIP_ISFD_LS"] = new SimConnect.SimVarDefinition
             {
@@ -3884,8 +3860,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "ISIS Localizer",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                RenderAsButton = true
             },
             ["S_MIP_ISFD_PLUS"] = new SimConnect.SimVarDefinition
             {
@@ -3893,8 +3868,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "ISIS Plus",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                RenderAsButton = true
             },
             ["S_MIP_ISFD_MINUS"] = new SimConnect.SimVarDefinition
             {
@@ -3902,8 +3876,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "ISIS Minus",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                RenderAsButton = true
             },
             ["S_MIP_ISFD_RST"] = new SimConnect.SimVarDefinition
             {
@@ -3911,8 +3884,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "ISIS Reset",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                RenderAsButton = true
             },
 
             // ISIS Baro Knob Inc/Dec (Counter pattern)
@@ -3943,7 +3915,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_MIP_GPWS_VISUAL_ALERT_CAPT_U"
             },
             ["S_MIP_GPWS_VISUAL_ALERT_FO"] = new SimConnect.SimVarDefinition
             {
@@ -3961,7 +3933,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_MIP_GPWS_TERRAIN_ON_ND_CAPT_L"
             },
             ["S_MIP_GPWS_TERRAIN_ON_ND_FO"] = new SimConnect.SimVarDefinition
             {
@@ -3981,7 +3953,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_MIP_MASTER_WARNING_CAPT"
             },
             ["S_MIP_MASTER_WARNING_FO"] = new SimConnect.SimVarDefinition
             {
@@ -3999,7 +3971,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_MIP_MASTER_CAUTION_CAPT"
             },
             ["S_MIP_MASTER_CAUTION_FO"] = new SimConnect.SimVarDefinition
             {
@@ -4017,7 +3989,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_MIP_ATC_MSG_CAPT_U"
             },
             ["S_MIP_ATC_MSG_FO"] = new SimConnect.SimVarDefinition
             {
@@ -4026,7 +3998,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_MIP_ATC_MSG_FO_U"
             },
             ["S_MIP_CHRONO_CAPT"] = new SimConnect.SimVarDefinition
             {
@@ -4034,8 +4006,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Chronometer Captain",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                RenderAsButton = true
             },
             ["S_MIP_CHRONO_FO"] = new SimConnect.SimVarDefinition
             {
@@ -4043,8 +4014,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "Chronometer First Officer",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                RenderAsButton = true
             },
 
             // Autoland Buttons
@@ -4055,7 +4025,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Press"}
+                StateVariable = "I_MIP_AUTOLAND_CAPT"
             },
             ["S_MIP_AUTOLAND_FO"] = new SimConnect.SimVarDefinition
             {
