@@ -58,7 +58,7 @@ public class FenixMCDUForm : Form
     {
         this.SuspendLayout();
 
-        this.Text = "Fenix MCDU";
+        this.Text = "Fenix MCDU (Left)";
         this.ClientSize = new Size(600, 700);
         this.FormBorderStyle = FormBorderStyle.FixedSingle;
         this.MaximizeBox = false;
@@ -70,7 +70,7 @@ public class FenixMCDUForm : Form
         // Connection status
         connectionStatus = new Label
         {
-            Text = "MCDU: Disconnected",
+            Text = "MCDU (Left): Disconnected",
             Location = new Point(10, y),
             Size = new Size(400, 20),
             AccessibleName = "Connection status",
@@ -513,6 +513,7 @@ public class FenixMCDUForm : Form
         Activate();
         TopMost = true;
         TopMost = false;
+        this.ActiveControl = mcduDisplay;
         mcduDisplay.Focus();
     }
 
