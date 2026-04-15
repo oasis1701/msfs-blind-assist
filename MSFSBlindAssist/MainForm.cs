@@ -378,7 +378,10 @@ public partial class MainForm : Form
             {
                 this.Text = $"MSFS BA - {currentAircraft.CurrentFlightPhase} phase active";
             }
-            return; // Aircraft handled it completely, no further processing needed
+            // Check StateVariable reverse lookup only (don't call full UpdateControlFromSimVar
+            // which can interfere with aircraft-specific processing)
+            UpdateButtonStateFromStateVariable(e.VarName, e.Value);
+            return; // Aircraft handled it completely, no further generic processing needed
         }
 
         // Step 3: Update display values (if this variable is used in any panel display)
@@ -719,11 +722,16 @@ public partial class MainForm : Form
             }
             else if (control is Button btn)
             {
-                // Update stateful button label from ValueDescriptions
+                // Update stateful button label from StateVariable or ValueDescriptions
                 if (currentAircraft.GetVariables().ContainsKey(varName))
                 {
                     var varDef = currentAircraft.GetVariables()[varName];
-                    if (varDef.ValueDescriptions != null && varDef.ValueDescriptions.TryGetValue(value, out string? stateText))
+                    if (!string.IsNullOrEmpty(varDef.StateVariable))
+                    {
+                        // This button uses a StateVariable — but this update is for the button's own variable,
+                        // not the state variable. Skip — the state variable update will handle the label.
+                    }
+                    else if (varDef.ValueDescriptions != null && varDef.ValueDescriptions.TryGetValue(value, out string? stateText))
                     {
                         string newLabel = $"{varDef.DisplayName}: {stateText}";
                         btn.Text = newLabel;
@@ -733,6 +741,31 @@ public partial class MainForm : Form
             }
 
             updatingFromSim = false;
+        }
+
+        // Also update any button labels whose StateVariable matches this variable
+        UpdateButtonStateFromStateVariable(varName, value);
+    }
+
+    /// <summary>
+    /// Updates button labels for any buttons whose StateVariable matches the given variable name.
+    /// Separated from UpdateControlFromSimVar so it can be called independently without
+    /// triggering control updates that could interfere with aircraft-specific processing.
+    /// </summary>
+    private void UpdateButtonStateFromStateVariable(string varName, double value)
+    {
+        foreach (var kvp in currentControls)
+        {
+            if (kvp.Value is Button stateBtn && currentAircraft.GetVariables().ContainsKey(kvp.Key))
+            {
+                var btnVarDef = currentAircraft.GetVariables()[kvp.Key];
+                if (btnVarDef.StateVariable == varName)
+                {
+                    string stateLabel = $"{btnVarDef.DisplayName}: {(value != 0 ? "On" : "Off")}";
+                    stateBtn.Text = stateLabel;
+                    stateBtn.AccessibleName = stateLabel;
+                }
+            }
         }
     }
 
@@ -3009,6 +3042,20 @@ public partial class MainForm : Form
             if (simConnectManager != null && simConnectManager.IsConnected)
             {
                 simConnectManager.RequestPanelVariables(panelToLoad, $"{panelToLoad} panel opened");
+
+                // Also request StateVariable LVars for buttons in this panel
+                var panelControls = currentAircraft.GetPanelControls();
+                var variables = currentAircraft.GetVariables();
+                if (panelControls.ContainsKey(panelToLoad))
+                {
+                    foreach (string varKey in panelControls[panelToLoad])
+                    {
+                        if (variables.ContainsKey(varKey) && !string.IsNullOrEmpty(variables[varKey].StateVariable))
+                        {
+                            simConnectManager.RequestVariable(variables[varKey].StateVariable);
+                        }
+                    }
+                }
             }
 
             // Clear and reload controls
@@ -3051,11 +3098,16 @@ public partial class MainForm : Form
             if (varDef.RenderAsButton)
             {
                 // Render as button (momentary pushbutton, action button, etc.)
-                // If ValueDescriptions are present, show current state in the label
-                bool hasState = varDef.ValueDescriptions != null && varDef.ValueDescriptions.Count >= 2;
+                // If StateVariable is set, show on/off state from the indicator LVar
                 string buttonText = varDef.DisplayName;
-                if (hasState && currentSimVarValues.ContainsKey(varKey))
+                if (!string.IsNullOrEmpty(varDef.StateVariable) && currentSimVarValues.ContainsKey(varDef.StateVariable))
                 {
+                    double stateVal = currentSimVarValues[varDef.StateVariable];
+                    buttonText = $"{varDef.DisplayName}: {(stateVal != 0 ? "On" : "Off")}";
+                }
+                else if (varDef.ValueDescriptions != null && varDef.ValueDescriptions.Count >= 2 && currentSimVarValues.ContainsKey(varKey))
+                {
+                    // Fallback for non-Fenix buttons that still use ValueDescriptions
                     double val = currentSimVarValues[varKey];
                     if (varDef.ValueDescriptions.TryGetValue(val, out string? stateText))
                         buttonText = $"{varDef.DisplayName}: {stateText}";
@@ -3070,12 +3122,24 @@ public partial class MainForm : Form
                 controlButton.Click += (s2, e2) =>
                 {
                     bool handled = currentAircraft.HandleUIVariableSet(varKey, 1, varDef, simConnectManager, announcer);
-                    if (handled)
+                    if (!handled)
                     {
-                        return;
+                        simConnectManager?.SetLVar(varDef.Name, 1);
+                        announcer.Announce($"{varDef.DisplayName} pressed");
                     }
-                    simConnectManager?.SetLVar(varDef.Name, 1);
-                    announcer.Announce($"{varDef.DisplayName} pressed");
+                    // Request state variable update after button press
+                    if (!string.IsNullOrEmpty(varDef.StateVariable) && simConnectManager != null)
+                    {
+                        System.Windows.Forms.Timer stateTimer = new System.Windows.Forms.Timer();
+                        stateTimer.Interval = 500; // Wait for transition to complete
+                        stateTimer.Tick += (ts, te) =>
+                        {
+                            stateTimer.Stop();
+                            stateTimer.Dispose();
+                            simConnectManager.RequestVariable(varDef.StateVariable);
+                        };
+                        stateTimer.Start();
+                    }
                 };
 
                 layout.Controls.Add(controlButton, 1, rowIndex);
