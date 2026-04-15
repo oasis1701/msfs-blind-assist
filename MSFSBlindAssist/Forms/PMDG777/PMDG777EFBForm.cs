@@ -1,6 +1,6 @@
-using System.Diagnostics;
 using System.Runtime.InteropServices;
 using MSFSBlindAssist.Accessibility;
+using MSFSBlindAssist.Forms.PMDG777.Apps;
 using MSFSBlindAssist.SimConnect;
 
 namespace MSFSBlindAssist.Forms.PMDG777
@@ -15,30 +15,26 @@ namespace MSFSBlindAssist.Forms.PMDG777
 
         private readonly EFBBridgeServer _bridgeServer;
         private readonly ScreenReaderAnnouncer _announcer;
+        private readonly EfbAppNavigator _navigator;
         private IntPtr _previousWindow = IntPtr.Zero;
-        private bool _simbriefLoaded = false;
-        private readonly Dictionary<string, string?[]> _htmlChunkBuffers = new();
-        private bool _wasConnected = false;
+        private bool _wasConnected;
         private System.Windows.Forms.Timer? _connectionCheckTimer;
-        private System.Windows.Forms.Timer? _fetchTimeoutTimer;
-        private System.Windows.Forms.Timer? _authTimeoutTimer;
-        private System.Windows.Forms.Timer? _sendToFmcTimeoutTimer;
-        private System.Windows.Forms.Timer? _signOutTimeoutTimer;
+        private readonly Dictionary<string, string?[]> _htmlChunkBuffers = new();
+        private bool _webViewInitialized;
 
         public PMDG777EFBForm(EFBBridgeServer bridgeServer, ScreenReaderAnnouncer announcer)
         {
             _bridgeServer = bridgeServer;
             _announcer = announcer;
+            _navigator = new EfbAppNavigator(bridgeServer);
+            _navigator.NavigationCompleted += OnNavigationCompleted;
 
             InitializeComponent();
-            SetupEventHandlers();
+            WireEventHandlers();
 
-            // Poll connection status every 3 seconds
             _connectionCheckTimer = new System.Windows.Forms.Timer { Interval = 3000 };
             _connectionCheckTimer.Tick += OnConnectionCheck;
             _connectionCheckTimer.Start();
-
-            // Run initial check immediately
             OnConnectionCheck(this, EventArgs.Empty);
         }
 
@@ -51,92 +47,305 @@ namespace MSFSBlindAssist.Forms.PMDG777
             TopMost = true;
             TopMost = false;
 
-            fetchSimbriefButton?.Focus();
+            dashboardPanel?.InitialFocusControl?.Focus();
         }
 
-        private void SetupEventHandlers()
+        private void WireEventHandlers()
         {
             _bridgeServer.StateUpdated += OnStateUpdated;
             _bridgeServer.Error += OnBridgeServerError;
 
-            fetchSimbriefButton!.Click += (_, _) =>
-            {
-                if (_bridgeServer.HasPendingCommand("fetch_simbrief")) return;
-                fetchSimbriefButton.Enabled = false;
-                simbriefStatusText!.Text = "Fetching...";
-                _bridgeServer.EnqueueCommand("fetch_simbrief");
-                StartFetchTimeout();
-            };
-
-            sendToFmcButton!.Click += (_, _) =>
-            {
-                if (_bridgeServer.HasPendingCommand("send_to_fmc")) return;
-                sendToFmcButton.Enabled = false;
-                _bridgeServer.EnqueueCommand("send_to_fmc");
-                StartSendToFmcTimeout();
-            };
-
-            navigraphSignInButton!.Click += (_, _) =>
-            {
-                if (_bridgeServer.HasPendingCommand("start_navigraph_auth")) return;
-                navigraphSignInButton.Enabled = false;
-                navigraphStatusText!.Text = "Awaiting code...";
-                authCodeTextBox!.Text = "";
-                _bridgeServer.EnqueueCommand("start_navigraph_auth");
-                StartAuthTimeout();
-            };
-
-            navigraphSignOutButton!.Click += (_, _) =>
-            {
-                if (_bridgeServer.HasPendingCommand("sign_out_navigraph")) return;
-                navigraphSignOutButton.Enabled = false;
-                _bridgeServer.EnqueueCommand("sign_out_navigraph");
-                StartSignOutTimeout();
-            };
-
-            checkNavdataButton!.Click += (_, _) =>
-            {
-                navdataProgressText!.Text = "Checking...";
-                _announcer.Announce("Checking for navigation data updates");
-                _bridgeServer.EnqueueCommand("get_navdata_status");
-            };
-
-            downloadNavdataButton!.Click += (_, _) =>
-            {
-                navdataProgressText!.Text = "Starting download...";
-                downloadNavdataButton.Enabled = false;
-                _announcer.Announce("Starting navigation data download");
-                _bridgeServer.EnqueueCommand("start_navdata_update");
-            };
-
-            savePreferencesButton!.Click += OnSavePreferences;
-
-            // Display tab — WebView2 loads from our local server
             displayRefreshButton!.Click += (_, _) =>
             {
                 _bridgeServer.EnqueueCommand("get_display_elements");
                 EnsureDisplayWebViewNavigated();
             };
 
-            // Hot-inject on form load, then init WebView2
             this.Load += async (_, _) =>
             {
                 HotInjectBridgeUpdates();
                 await InitializeWebViewAsync();
             };
 
-            tabControl!.SelectedIndexChanged += (_, _) =>
+            outerTabControl!.SelectedIndexChanged += (_, _) => HandleTabChanged();
+            efbInnerTabControl!.SelectedIndexChanged += (_, _) => HandleTabChanged();
+
+            this.KeyDown += OnFormKeyDown;
+        }
+
+        private void OnFormKeyDown(object? sender, KeyEventArgs e)
+        {
+            // Ctrl+Shift+C — capture current tablet page HTML from anywhere in the form.
+            if (e.Control && e.Shift && e.KeyCode == Keys.C)
             {
-                if (tabControl.SelectedTab == preferencesTab)
-                {
-                    _bridgeServer.EnqueueCommand("get_preferences");
-                }
-                else if (tabControl.SelectedTab?.Text == "Display")
-                {
-                    _bridgeServer.EnqueueCommand("get_display_elements");
-                    EnsureDisplayWebViewNavigated();
-                }
+                _bridgeServer.EnqueueCommand("get_page_html");
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                return;
+            }
+
+            // Ctrl+Shift+R — hot-reload the EFB bridge JavaScript from disk without
+            // restarting the sim. Reads the current pmdg-efb-accessibility-bridge.js
+            // from the output Resources folder, tears down the previous instance's
+            // timers, then evals the fresh script inside the running tablet.
+            if (e.Control && e.Shift && e.KeyCode == Keys.R)
+            {
+                HotReloadBridgeJs();
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                return;
+            }
+
+            // Ctrl+Shift+D — dump every Settings key PMDG exposes with its raw
+            // value and JS type, plus DOM state of each toggle, into a
+            // MessageBox. Diagnostic for preference round-trip bugs (e.g. the
+            // weight kg/lb value returned by PMDG may not be the literal string
+            // we expect).
+            if (e.Control && e.Shift && e.KeyCode == Keys.D)
+            {
+                _bridgeServer.EnqueueCommand("dump_preferences");
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                return;
+            }
+
+            // Ctrl+Shift+E — dump the structural tree of a DOM element by id.
+            // Prompts for the id and shows the result in a MessageBox.
+            // Diagnostic for runtime DOM structures that differ from captures.
+            if (e.Control && e.Shift && e.KeyCode == Keys.E)
+            {
+                PromptDumpElement();
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                return;
+            }
+        }
+
+        private void PromptDumpElement()
+        {
+            using var dialog = new Form
+            {
+                Text = "Dump DOM element",
+                Size = new System.Drawing.Size(420, 140),
+                FormBorderStyle = FormBorderStyle.FixedDialog,
+                StartPosition = FormStartPosition.CenterParent,
+                MinimizeBox = false,
+                MaximizeBox = false
             };
+            var lbl = new Label { Text = "Element id:", Location = new System.Drawing.Point(10, 15), AutoSize = true };
+            var box = new TextBox
+            {
+                Location = new System.Drawing.Point(100, 12),
+                Size = new System.Drawing.Size(290, 25),
+                Text = "opt_takeoff_runway_id",
+                AccessibleName = "Element id"
+            };
+            var ok = new Button
+            {
+                Text = "Dump",
+                Location = new System.Drawing.Point(220, 50),
+                Size = new System.Drawing.Size(80, 30),
+                DialogResult = DialogResult.OK,
+                AccessibleName = "Dump"
+            };
+            var cancel = new Button
+            {
+                Text = "Cancel",
+                Location = new System.Drawing.Point(310, 50),
+                Size = new System.Drawing.Size(80, 30),
+                DialogResult = DialogResult.Cancel,
+                AccessibleName = "Cancel"
+            };
+            dialog.Controls.AddRange(new Control[] { lbl, box, ok, cancel });
+            dialog.AcceptButton = ok;
+            dialog.CancelButton = cancel;
+            if (dialog.ShowDialog(this) == DialogResult.OK && !string.IsNullOrWhiteSpace(box.Text))
+            {
+                string id = box.Text.Trim();
+                _bridgeServer.EnqueueCommand("dump_element", new Dictionary<string, string> { ["id"] = id });
+                _announcer.Announce($"Dumping element {id}");
+                // If no response within 3s, warn the user — bridge may be stale.
+                _dumpElementTimeout?.Stop();
+                _dumpElementTimeout?.Dispose();
+                _dumpElementTimeout = new System.Windows.Forms.Timer { Interval = 3000 };
+                _dumpElementTimeout.Tick += (_, _) =>
+                {
+                    _dumpElementTimeout?.Stop();
+                    _dumpElementTimeout?.Dispose();
+                    _dumpElementTimeout = null;
+                    MessageBox.Show(this,
+                        $"No response for dump of '{id}'.\n\n" +
+                        "Most likely the bridge JS running in the tablet is older than the build " +
+                        "and doesn't know the dump_element command. Press Ctrl+Shift+R in the EFB " +
+                        "form to hot-reload the bridge, then retry.",
+                        "No dump response",
+                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                };
+                _dumpElementTimeout.Start();
+            }
+        }
+
+        private System.Windows.Forms.Timer? _dumpElementTimeout;
+
+        private void HotReloadBridgeJs()
+        {
+            string path = System.IO.Path.Combine(
+                AppDomain.CurrentDomain.BaseDirectory, "Resources", "pmdg-efb-accessibility-bridge.js");
+            if (!System.IO.File.Exists(path))
+            {
+                _announcer.Announce($"Hot-reload failed: bridge script not found at {path}");
+                return;
+            }
+            string js;
+            try
+            {
+                js = System.IO.File.ReadAllText(path);
+            }
+            catch (Exception ex)
+            {
+                _announcer.Announce($"Hot-reload failed: {ex.Message}");
+                return;
+            }
+
+            // Tear down the previous instance's timers/subscribers before re-evaluating.
+            const string teardown =
+                "try {" +
+                "  if (typeof _efb !== 'undefined' && _efb) {" +
+                "    if (_efb.commandPollTimer) clearInterval(_efb.commandPollTimer);" +
+                "    if (_efb.heartbeatTimer) clearInterval(_efb.heartbeatTimer);" +
+                "    if (_efb.fmsTransferTimeout) clearTimeout(_efb.fmsTransferTimeout);" +
+                "    console.log('[EFB Bridge] Hot-reload: previous instance timers cleared');" +
+                "  }" +
+                "} catch (e) { console.error('[EFB Bridge] Hot-reload teardown failed:', e); }\n";
+
+            string fullScript = teardown + js;
+
+            // CRITICAL: wrap in indirect eval `(0, eval)("…")` so the script
+            // runs in GLOBAL scope. Without this, `var _efb = {...}` inside
+            // the bridge would create a local _efb in handleCommand's scope
+            // (because eval inside a function is direct eval), and the global
+            // _efb would never be replaced. The pong would then keep
+            // reporting the old version forever.
+            //
+            // The script content needs to be JSON-encoded into a JS string
+            // literal so it can be passed as the argument to (0, eval)(…).
+            string jsLiteral = System.Text.Json.JsonSerializer.Serialize(fullScript);
+            string indirectEvalCode = "(0, eval)(" + jsLiteral + ");";
+
+            _bridgeServer.EnqueueCommand("eval_js", new Dictionary<string, string> { ["code"] = indirectEvalCode });
+
+            // Re-inject the Display tab's DOM scanner. HotInjectBridgeUpdates()
+            // is normally called once on form load and extends the _efb object
+            // with display-scanner helpers — but those extensions live on the
+            // old _efb and disappear when the fresh bridge JS replaces it.
+            // Without this, the Display tab degrades to rendering every
+            // element as a generic button on the next hot-reload.
+            HotInjectBridgeUpdates();
+
+            // Extract the BRIDGE_JS_VERSION marker from the source so the
+            // announcement reflects what we just shipped. No magic — just a
+            // comment the bridge itself carries near the top.
+            string versionFromSource = "?";
+            var match = System.Text.RegularExpressions.Regex.Match(
+                js, @"BRIDGE_JS_VERSION:\s*([A-Za-z0-9._\-]+)");
+            if (match.Success) versionFromSource = match.Groups[1].Value;
+
+            _announcer.Announce($"Bridge JS hot-reloaded, {js.Length / 1024} KB, source version {versionFromSource}");
+
+            // Immediately ping the running bridge so we can confirm the NEW
+            // JS is actually executing (eval may have silently failed on a
+            // syntax error). Pong arrives as a state update and gets shown.
+            _bridgeServer.EnqueueCommand("ping");
+        }
+
+        // Form-level access keys — Alt+letter jumps to a tab from anywhere,
+        // including when focus is inside a textbox on one of the panels.
+        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+        {
+            if ((keyData & Keys.Alt) == Keys.Alt)
+            {
+                Keys key = keyData & Keys.KeyCode;
+                // Outer tabs
+                switch (key)
+                {
+                    case Keys.E: outerTabControl!.SelectedTab = efbTab; return true;
+                    case Keys.P: outerTabControl!.SelectedTab = performanceTab; return true;
+                    case Keys.G: outerTabControl!.SelectedTab = groundOpsTab; return true;
+                    case Keys.W: outerTabControl!.SelectedTab = weightsBalanceTab; return true;
+                    case Keys.M: outerTabControl!.SelectedTab = manualsTab; return true;
+                    case Keys.D: outerTabControl!.SelectedTab = displayTab; return true;
+                }
+                // Inner EFB sub-tabs — only meaningful when EFB is the outer tab.
+                // Switching to them auto-switches the outer tab too.
+                switch (key)
+                {
+                    case Keys.H:
+                        outerTabControl!.SelectedTab = efbTab;
+                        efbInnerTabControl!.SelectedTab = dashboardSubTab;
+                        return true;
+                    case Keys.R:
+                        outerTabControl!.SelectedTab = efbTab;
+                        efbInnerTabControl!.SelectedTab = preferencesSubTab;
+                        return true;
+                    case Keys.N:
+                        outerTabControl!.SelectedTab = efbTab;
+                        efbInnerTabControl!.SelectedTab = navdataSubTab;
+                        return true;
+                }
+            }
+            return base.ProcessCmdKey(ref msg, keyData);
+        }
+
+        private void HandleTabChanged()
+        {
+            if (outerTabControl!.SelectedTab == displayTab)
+            {
+                // Display is a debug mirror — don't drive the tablet, just refresh.
+                _bridgeServer.EnqueueCommand("get_display_elements");
+                EnsureDisplayWebViewNavigated();
+                return;
+            }
+
+            var targetApp = GetTargetApp();
+            _navigator.NavigateAsync(targetApp);
+        }
+
+        private EfbApp GetTargetApp()
+        {
+            if (outerTabControl!.SelectedTab == efbTab)
+            {
+                if (efbInnerTabControl!.SelectedTab == dashboardSubTab) return EfbApp.Dashboard;
+                if (efbInnerTabControl.SelectedTab == preferencesSubTab) return EfbApp.Preferences;
+                if (efbInnerTabControl.SelectedTab == navdataSubTab) return EfbApp.Navdata;
+                return EfbApp.Dashboard;
+            }
+            if (outerTabControl.SelectedTab == performanceTab) return EfbApp.Performance;
+            if (outerTabControl.SelectedTab == groundOpsTab) return EfbApp.GroundOps;
+            if (outerTabControl.SelectedTab == weightsBalanceTab) return EfbApp.WeightsBalance;
+            if (outerTabControl.SelectedTab == manualsTab) return EfbApp.Manuals;
+            return EfbApp.Home;
+        }
+
+        private void OnNavigationCompleted(EfbApp app)
+        {
+            if (IsDisposed || !IsHandleCreated) return;
+            if (InvokeRequired) { try { BeginInvoke(new Action<EfbApp>(OnNavigationCompleted), app); } catch { } return; }
+            GetActivePanel()?.OnActivated();
+        }
+
+        private EfbAppPanelBase? GetActivePanel()
+        {
+            if (outerTabControl!.SelectedTab == efbTab)
+            {
+                if (efbInnerTabControl!.SelectedTab == dashboardSubTab) return dashboardPanel;
+                if (efbInnerTabControl.SelectedTab == preferencesSubTab) return prefsPanel;
+                if (efbInnerTabControl.SelectedTab == navdataSubTab) return navdataPanel;
+            }
+            if (outerTabControl.SelectedTab == performanceTab) return performancePanel;
+            if (outerTabControl.SelectedTab == groundOpsTab) return groundOpsPanel;
+            if (outerTabControl.SelectedTab == weightsBalanceTab) return weightsBalancePanel;
+            if (outerTabControl.SelectedTab == manualsTab) return manualsPanel;
+            return null;
         }
 
         private void OnBridgeServerError(string message)
@@ -155,244 +364,67 @@ namespace MSFSBlindAssist.Forms.PMDG777
                 ? "Connected"
                 : "Not connected \u2014 EFB tablet must be open in simulator";
 
-            // Announce transitions only
             if (connected && !_wasConnected)
             {
                 _announcer.Announce("EFB bridge connected");
-                UpdateButtonStates(true);
+                UpdateConnectedState(true);
+                // Prime the preferences cache so weight/unit formatting in panels
+                // like Dashboard has correct values before the user ever visits Prefs.
+                _bridgeServer.EnqueueCommand("get_preferences");
+                // Re-post any SimBrief payload already loaded on the tablet so the
+                // dashboard auto-populates without requiring Fetch.
+                _bridgeServer.EnqueueCommand("replay_simbrief");
+                // Actively probe Navigraph auth — onAuthStateChanged doesn't fire
+                // for the "already signed in at load time" case, so without this
+                // the UI shows "signed out" for a session that's actually authed.
+                _bridgeServer.EnqueueCommand("check_navigraph_auth");
             }
             else if (!connected && _wasConnected)
             {
                 _announcer.Announce("EFB bridge disconnected");
-                UpdateButtonStates(false);
+                UpdateConnectedState(false);
             }
 
             _wasConnected = connected;
         }
 
-        private void UpdateButtonStates(bool connected)
+        private void UpdateConnectedState(bool connected)
         {
-            fetchSimbriefButton!.Enabled = connected;
-            sendToFmcButton!.Enabled = connected && _simbriefLoaded;
-            navigraphSignInButton!.Enabled = connected;
-            navigraphSignOutButton!.Enabled = connected;
-            savePreferencesButton!.Enabled = connected;
+            dashboardPanel?.SetConnected(connected);
+            prefsPanel?.SetConnected(connected);
+            navdataPanel?.SetConnected(connected);
         }
 
-        private void StartFetchTimeout()
-        {
-            StopFetchTimeout();
-            _fetchTimeoutTimer = new System.Windows.Forms.Timer { Interval = 30000 };
-            _fetchTimeoutTimer.Tick += (_, _) =>
-            {
-                StopFetchTimeout();
-                simbriefStatusText!.Text = "Fetch timed out \u2014 try again";
-                fetchSimbriefButton!.Enabled = _bridgeServer.IsBridgeConnected;
-                _announcer.Announce("SimBrief fetch timed out");
-            };
-            _fetchTimeoutTimer.Start();
-        }
-
-        private void StopFetchTimeout()
-        {
-            if (_fetchTimeoutTimer != null)
-            {
-                _fetchTimeoutTimer.Stop();
-                _fetchTimeoutTimer.Dispose();
-                _fetchTimeoutTimer = null;
-            }
-        }
-
-        private void StartAuthTimeout()
-        {
-            StopAuthTimeout();
-            _authTimeoutTimer = new System.Windows.Forms.Timer { Interval = 60000 };
-            _authTimeoutTimer.Tick += (_, _) =>
-            {
-                StopAuthTimeout();
-                navigraphStatusText!.Text = "Sign-in timed out";
-                navigraphSignInButton!.Enabled = _bridgeServer.IsBridgeConnected;
-                _announcer.Announce("Navigraph sign-in timed out");
-            };
-            _authTimeoutTimer.Start();
-        }
-
-        private void StopAuthTimeout()
-        {
-            if (_authTimeoutTimer != null)
-            {
-                _authTimeoutTimer.Stop();
-                _authTimeoutTimer.Dispose();
-                _authTimeoutTimer = null;
-            }
-        }
-
-        private void StartSendToFmcTimeout()
-        {
-            StopSendToFmcTimeout();
-            _sendToFmcTimeoutTimer = new System.Windows.Forms.Timer { Interval = 30000 };
-            _sendToFmcTimeoutTimer.Tick += (_, _) =>
-            {
-                StopSendToFmcTimeout();
-                sendToFmcButton!.Enabled = _bridgeServer.IsBridgeConnected && _simbriefLoaded;
-                _announcer.Announce("FMC transfer timed out");
-            };
-            _sendToFmcTimeoutTimer.Start();
-        }
-
-        private void StopSendToFmcTimeout()
-        {
-            if (_sendToFmcTimeoutTimer != null)
-            {
-                _sendToFmcTimeoutTimer.Stop();
-                _sendToFmcTimeoutTimer.Dispose();
-                _sendToFmcTimeoutTimer = null;
-            }
-        }
-
-        private void StartSignOutTimeout()
-        {
-            StopSignOutTimeout();
-            _signOutTimeoutTimer = new System.Windows.Forms.Timer { Interval = 15000 };
-            _signOutTimeoutTimer.Tick += (_, _) =>
-            {
-                StopSignOutTimeout();
-                navigraphSignOutButton!.Enabled = _bridgeServer.IsBridgeConnected;
-                _announcer.Announce("Navigraph sign-out timed out");
-            };
-            _signOutTimeoutTimer.Start();
-        }
-
-        private void StopSignOutTimeout()
-        {
-            if (_signOutTimeoutTimer != null)
-            {
-                _signOutTimeoutTimer.Stop();
-                _signOutTimeoutTimer.Dispose();
-                _signOutTimeoutTimer = null;
-            }
-        }
-
+        /// <summary>
+        /// Main form only handles a few "chrome" state updates (display, page html
+        /// reassembly, eval results). Panel-level state flows straight to each
+        /// panel via their own subscriptions in <see cref="EfbAppPanelBase"/>.
+        /// </summary>
         private void OnStateUpdated(object? sender, EFBStateUpdateEventArgs e)
         {
             if (IsDisposed || !IsHandleCreated) return;
 
-            System.Diagnostics.Debug.WriteLine($"[EFB Form] State update: type={e.Type}, keys={string.Join(",", e.Data.Keys)}");
-            try { System.IO.File.AppendAllText(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "efb_debug.log"), $"{DateTime.Now:HH:mm:ss} type={e.Type} keys=[{string.Join(",", e.Data.Keys)}] vals=[{string.Join(",", e.Data.Values.Select(v => v?.Length > 50 ? v.Substring(0, 50) + "..." : v))}]\r\n"); } catch { }
-
             switch (e.Type)
             {
-                case "connected":
-                    // Connection announcement handled by OnConnectionCheck
-                    break;
-
-                case "simbrief_loaded":
-                    StopFetchTimeout();
-                    _simbriefLoaded = true;
-                    UpdateFlightDetails(e.Data);
-                    simbriefStatusText!.Text = "Loaded";
-                    fetchSimbriefButton!.Enabled = _bridgeServer.IsBridgeConnected;
-                    sendToFmcButton!.Enabled = _bridgeServer.IsBridgeConnected;
-                    string origin = e.Data.GetValueOrDefault("origin_icao", "");
-                    string dest = e.Data.GetValueOrDefault("dest_icao", "");
-                    _announcer.Announce($"SimBrief flight plan loaded: {origin} to {dest}");
-                    break;
-
-                case "simbrief_fetch_result":
-                    StopSendToFmcTimeout();
-                    bool success = bool.TryParse(e.Data.GetValueOrDefault("success", "false"), out var s) && s;
-                    string message = e.Data.GetValueOrDefault("message", "");
-                    sendToFmcButton!.Enabled = _bridgeServer.IsBridgeConnected && _simbriefLoaded;
-                    if (success)
-                    {
-                        _announcer.Announce($"FMC file transfer complete: {message}");
-                    }
-                    else if (!string.IsNullOrEmpty(message))
-                    {
-                        _announcer.Announce($"FMC transfer result: {message}");
-                    }
-                    break;
-
-                case "fmc_upload_started":
-                    _announcer.Announce("Flight plan sent to FMC");
-                    break;
-
-                case "navigraph_code":
-                    StopAuthTimeout();
-                    string code = e.Data.GetValueOrDefault("code", "");
-                    string url = e.Data.GetValueOrDefault("url", "https://navigraph.com/code");
-                    authCodeTextBox!.Text = code;
-                    _announcer.Announce($"Navigraph sign-in code: {code}. Opening browser.");
-                    try
-                    {
-                        Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
-                    }
-                    catch { }
-                    break;
-
-                case "navigraph_auth_state":
-                    StopAuthTimeout();
-                    StopSignOutTimeout();
-                    bool authenticated = e.Data.GetValueOrDefault("authenticated", "false") == "true";
-                    string username = e.Data.GetValueOrDefault("username", "");
-                    if (authenticated)
-                    {
-                        navigraphStatusText!.Text = $"Authenticated as: {username}";
-                        navigraphSignInButton!.Enabled = false;
-                        navigraphSignOutButton!.Enabled = _bridgeServer.IsBridgeConnected;
-                        _announcer.Announce($"Signed in to Navigraph as {username}");
-                    }
-                    else
-                    {
-                        navigraphStatusText!.Text = "Not authenticated";
-                        navigraphSignInButton!.Enabled = _bridgeServer.IsBridgeConnected;
-                        navigraphSignOutButton!.Enabled = false;
-                        authCodeTextBox!.Text = "";
-                        if (!string.IsNullOrEmpty(username))
-                        {
-                            _announcer.Announce("Signed out of Navigraph");
-                        }
-                    }
-                    break;
-
                 case "preferences":
-                    PopulatePreferences(e.Data);
+                    PreferencesCache.Update(e.Data);
                     break;
 
-                case "navdata_status":
-                    HandleNavdataStatus(e.Data);
+                case "preferences_debug":
+                    ShowPreferencesDebug(e.Data);
                     break;
 
-                case "navdata_progress":
-                    HandleNavdataProgress(e.Data);
+                case "element_dump":
+                    _dumpElementTimeout?.Stop();
+                    _dumpElementTimeout?.Dispose();
+                    _dumpElementTimeout = null;
+                    ShowElementDump(e.Data);
                     break;
 
-                case "navdata_complete":
-                    navdataProgressText!.Text = "Update complete!";
-                    downloadNavdataButton!.Enabled = false;
-                    _announcer.Announce("Navigation data update complete");
-                    // Refresh status
-                    _bridgeServer.EnqueueCommand("get_navdata_status");
-                    break;
-
-                case "navdata_error":
-                    string navError = e.Data.GetValueOrDefault("message", "Unknown error");
-                    navdataProgressText!.Text = $"Error: {navError}";
-                    downloadNavdataButton!.Enabled = true;
-                    _announcer.Announce($"Navigation data error: {navError}");
-                    break;
-
-                case "page_text":
-                    string pageText = e.Data.GetValueOrDefault("text", "(empty)");
-                    if (pageTextDiagnostic != null)
-                        pageTextDiagnostic.Text = pageText;
-                    // Fallback: if page_html hasn't arrived, render text in WebView2
-                    if (displayWebView != null && _webViewInitialized)
-                    {
-                        string textHtml = $"<html><body style='background:#1a1a2e;color:#e0e0e0;font-family:Consolas,monospace;padding:10px;white-space:pre-wrap'>{System.Net.WebUtility.HtmlEncode(pageText)}</body></html>";
-                        displayWebView.NavigateToString(textHtml);
-                    }
-                    _announcer.Announce("Display refreshed");
+                case "pong":
+                    string version = e.Data.GetValueOrDefault("version", "?");
+                    string hasDump = e.Data.GetValueOrDefault("has_dump_element", "?");
+                    _announcer.Announce($"Bridge running version {version}, dump_element: {hasDump}");
                     break;
 
                 case "display_elements":
@@ -409,611 +441,122 @@ namespace MSFSBlindAssist.Forms.PMDG777
 
                 case "eval_result":
                     string evalResult = e.Data.GetValueOrDefault("result", e.Data.GetValueOrDefault("error", ""));
-                    _announcer.Announce($"Eval: {evalResult}");
-                    break;
-
-                case "navigraph_exploration":
-                    // Discovery results — log and announce what was found
-                    string methods = e.Data.GetValueOrDefault("packageMethods", "none");
-                    bool hasPkgs = e.Data.GetValueOrDefault("hasPackages", "false") == "True";
-                    navdataProgressText!.Text = hasPkgs ? $"Packages API found: {methods}" : "Packages API not available";
-                    _announcer.Announce(navdataProgressText.Text);
-                    break;
-
-                case "error":
-                    StopFetchTimeout();
-                    StopSendToFmcTimeout();
-                    string errorMsg = e.Data.GetValueOrDefault("message", "Unknown error");
-                    simbriefStatusText!.Text = $"Error: {errorMsg}";
-                    fetchSimbriefButton!.Enabled = _bridgeServer.IsBridgeConnected;
-                    sendToFmcButton!.Enabled = _bridgeServer.IsBridgeConnected && _simbriefLoaded;
-                    _announcer.Announce($"EFB error: {errorMsg}");
+                    System.Diagnostics.Debug.WriteLine($"[EFB] eval_result: {evalResult}");
                     break;
             }
         }
 
-        private void UpdateFlightDetails(Dictionary<string, string> data)
+        private void ShowPreferencesDebug(Dictionary<string, string> data)
         {
-            callsignValue!.Text = data.GetValueOrDefault("callsign", "\u2014");
-            originValue!.Text = data.GetValueOrDefault("origin_icao", "\u2014");
-            destValue!.Text = data.GetValueOrDefault("dest_icao", "\u2014");
-            altValue!.Text = data.GetValueOrDefault("alt_icao", "\u2014");
-            cruiseAltValue!.Text = data.GetValueOrDefault("cruise_alt", "\u2014");
-            costIndexValue!.Text = data.GetValueOrDefault("cost_index", "\u2014");
-            zfwValue!.Text = data.GetValueOrDefault("zfw", "\u2014");
-            fuelValue!.Text = data.GetValueOrDefault("fuel_total", "\u2014");
-            windValue!.Text = data.GetValueOrDefault("avg_wind", "\u2014");
+            var lines = new List<string>();
+            foreach (var kvp in data.OrderBy(k => k.Key))
+                lines.Add($"{kvp.Key}: {kvp.Value}");
+            string text = string.Join(Environment.NewLine, lines);
+            MessageBox.Show(this, text, "Preferences debug dump",
+                MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
-        private int _lastAnnouncedNavdataPercent = -1;
-
-        private void HandleNavdataStatus(Dictionary<string, string> data)
+        private void ShowElementDump(Dictionary<string, string> data)
         {
-            string error = data.GetValueOrDefault("error", "");
-            if (!string.IsNullOrEmpty(error))
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine($"id: {data.GetValueOrDefault("id", "?")}");
+            if (data.TryGetValue("error", out var err))
             {
-                navdataProgressText!.Text = $"Error: {error}";
-                _announcer.Announce($"Navdata check error: {error}");
-                return;
+                sb.AppendLine($"ERROR: {err}");
             }
-
-            // Show available methods for debugging
-            string methods = data.GetValueOrDefault("availableMethods", "");
-            var infoLines = new List<string>();
-
-            // Extract available cycle
-            string availableCycle = data.GetValueOrDefault("available_cycle", "");
-            // Fallback: try old format
-            if (string.IsNullOrEmpty(availableCycle))
+            else if (data.TryGetValue("info", out var info))
             {
-                string rawPkgs = data.GetValueOrDefault("packages", "");
-                if (!string.IsNullOrEmpty(rawPkgs) && rawPkgs.StartsWith("["))
+                // New outerHTML path — the real data went to page_html_chunk
+                // and was saved to %TEMP%. Show that status plus the newest
+                // capture filename (regardless of whose timestamp it is).
+                sb.AppendLine($"info: {info}");
+                sb.AppendLine();
+                try
                 {
-                    try
+                    string tempDir = System.IO.Path.GetTempPath();
+                    var latest = new System.IO.DirectoryInfo(tempDir)
+                        .GetFiles("efb_captured_*.html")
+                        .OrderByDescending(f => f.LastWriteTime)
+                        .FirstOrDefault();
+                    if (latest != null)
                     {
-                        var pkgs = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(rawPkgs);
-                        if (pkgs.ValueKind == System.Text.Json.JsonValueKind.Array && pkgs.GetArrayLength() > 0)
-                            if (pkgs[0].TryGetProperty("cycle", out var cyc))
-                                availableCycle = cyc.GetString() ?? "";
+                        sb.AppendLine($"Latest capture: {latest.FullName}");
+                        sb.AppendLine($"Size: {latest.Length} bytes");
+                        sb.AppendLine($"Modified: {latest.LastWriteTime:HH:mm:ss}");
                     }
-                    catch { }
+                    else
+                    {
+                        sb.AppendLine("No efb_captured_*.html file found in TEMP.");
+                    }
                 }
-            }
-
-            if (!string.IsNullOrEmpty(availableCycle))
-            {
-                navdataCycleValue!.Text = $"AIRAC {availableCycle}";
-                infoLines.Add($"AIRAC {availableCycle}");
-            }
-
-            // Package count and formats
-            string pkgCount = data.GetValueOrDefault("package_count", "");
-            string formats = data.GetValueOrDefault("formats", "");
-            if (!string.IsNullOrEmpty(pkgCount))
-                infoLines.Add($"{pkgCount} packages");
-            if (!string.IsNullOrEmpty(formats))
-                infoLines.Add($"Formats: {formats}");
-
-            // Installation state detection
-            string installedFormats = data.GetValueOrDefault("installed_formats", "");
-            string notInstalledFormats = data.GetValueOrDefault("not_installed_formats", "");
-            bool needsUpdate = data.GetValueOrDefault("needs_update", "false") == "true";
-
-            if (!string.IsNullOrEmpty(installedFormats) || !string.IsNullOrEmpty(notInstalledFormats))
-            {
-                if (needsUpdate)
+                catch (Exception ex)
                 {
-                    navdataAvailableValue!.Text = "Update available — Navigraph navdata not installed";
-                    infoLines.Add($"Not installed: {notInstalledFormats}");
-                    if (installedFormats != "none")
-                        infoLines.Add($"Installed: {installedFormats}");
-                }
-                else
-                {
-                    navdataAvailableValue!.Text = $"Navigraph AIRAC {availableCycle} installed";
-                    infoLines.Add("All Navigraph packages installed");
+                    sb.AppendLine($"Could not scan TEMP: {ex.Message}");
                 }
             }
-
-            if (!string.IsNullOrEmpty(methods))
-                infoLines.Add($"Methods: {methods}");
-
-            // Enable download when update is needed
-            downloadNavdataButton!.Enabled = needsUpdate;
-
-            navdataProgressText!.Text = string.Join(" | ", infoLines);
-
-            if (needsUpdate)
-                _announcer.Announce($"Navigraph AIRAC {availableCycle} available but not installed. Press Download to install.");
-            else if (!string.IsNullOrEmpty(availableCycle))
-                _announcer.Announce($"Navigraph AIRAC {availableCycle} installed and up to date");
             else
-                _announcer.Announce("Status received");
-        }
-
-        private void HandleNavdataProgress(Dictionary<string, string> data)
-        {
-            string status = data.GetValueOrDefault("status", "");
-            string percentStr = data.GetValueOrDefault("percent", "0");
-            int.TryParse(percentStr, out int percent);
-
-            navdataProgressText!.Text = $"{status} {percent}%";
-
-            // Announce at 25% milestones
-            int milestone = (percent / 25) * 25;
-            if (milestone > _lastAnnouncedNavdataPercent && milestone > 0)
             {
-                _lastAnnouncedNavdataPercent = milestone;
-                _announcer.Announce($"{milestone} percent");
+                // Legacy tree-walk path (kept for safety).
+                sb.AppendLine($"tag: {data.GetValueOrDefault("tag", "?")}");
+                sb.AppendLine($"class: {data.GetValueOrDefault("class", "")}");
+                sb.AppendLine($"display: {data.GetValueOrDefault("computed_display", "")}");
+                sb.AppendLine();
+                sb.AppendLine("ATTRIBUTES:");
+                foreach (var kvp in data.Where(k => k.Key.StartsWith("attr_")).OrderBy(k => k.Key))
+                    sb.AppendLine($"  {kvp.Key.Substring(5)}={kvp.Value}");
+                sb.AppendLine();
+                sb.AppendLine("TREE:");
+                foreach (var kvp in data.Where(k => k.Key.StartsWith("line_")).OrderBy(k => k.Key))
+                    sb.AppendLine(kvp.Value);
+                sb.AppendLine();
+                sb.AppendLine($"line_count: {data.GetValueOrDefault("line_count", "0")}");
             }
-        }
-
-        /// <summary>
-        /// Hot-injects updated JS functions into the running bridge via eval_js.
-        /// This avoids needing a sim restart when JS bridge code changes.
-        /// </summary>
-        private void HotInjectBridgeUpdates()
-        {
-            // Hot-inject: improved display element scanner that captures ALL visible content.
-            // Also adds click_by_index handler for routing clicks to real EFB elements.
-            string injectCode = @"
-(function() {
-    _efb._hotInjectVersion = (_efb._hotInjectVersion || 0) + 1;
-
-    // Override cmdGetDisplayElements with a comprehensive scanner
-    // that captures ALL visible text and interactive elements
-    _efb.cmdGetDisplayElements = function() {
-        try {
-            var items = [];
-            _efb._displayElements = [];
-            var seen = {}; // Deduplicate by text+depth
-
-            var walk = function(el, depth) {
-                if (!el || depth > 20) return;
-                if (el.nodeType !== 1) return;
-                var tag = (el.tagName || '').toLowerCase();
-                if (tag === 'script' || tag === 'style' || tag === 'link' || tag === 'meta' || tag === 'noscript') return;
-
-                // Check visibility
-                try {
-                    var cs = window.getComputedStyle(el);
-                    if (cs.display === 'none' || cs.visibility === 'hidden' || cs.opacity === '0') return;
-                } catch(e) {}
-
-                // Get DIRECT text content (not from children)
-                var directText = '';
-                for (var n = el.firstChild; n; n = n.nextSibling) {
-                    if (n.nodeType === 3) directText += n.textContent;
-                }
-                directText = directText.trim();
-
-                // Also check aria-label, title, alt, placeholder
-                var label = el.getAttribute('aria-label') || el.getAttribute('title') || el.getAttribute('alt') || el.getAttribute('placeholder') || '';
-
-                var text = directText || label;
-
-                // For icon-only elements (FontAwesome icons with no text), derive name from element ID
-                if (!text && el.id) {
-                    var idMap = {
-                        'efb_dashboard_button': 'Dashboard',
-                        'efb_paperwork_button': 'Plan',
-                        'efb_charts_button': 'Charts',
-                        'efb_authenticate_button': 'Navigraph Auth',
-                        'efb_preferences_button': 'Preferences',
-                        'efb_navdata_update_button': 'Navigation Data',
-                        'efb_information_button': 'Information',
-                        'statusbar_home': 'Home'
-                    };
-                    text = idMap[el.id] || '';
-                    // Also check tooltip spans inside the button
-                    if (!text) {
-                        var tooltip = el.querySelector('.tooltip-text');
-                        if (tooltip) text = tooltip.textContent.trim();
-                    }
-                }
-
-                // Special handling for PMDG preferences — skip individual items,
-                // we handle them as paired label+control below
-                if (el.closest && el.closest('#efb_preferences_labels, #efb_preferences_values')) {
-                    var kids = el.children;
-                    if (kids) { for (var k = 0; k < kids.length; k++) { walk(kids[k], depth + 1); } }
-                    return;
-                }
-
-                // Performance tool — pair opt-label with its control in the same opt-col.
-                // This MUST run before any skip logic so pairing happens first.
-                if (el.className && typeof el.className === 'string' && el.className.indexOf('opt-label') >= 0 && el.className.indexOf('opt-output-label') < 0) {
-                    var labelText2 = el.textContent.trim();
-                    var parent2 = el.closest ? el.closest('.opt-col') : el.parentElement;
-                    if (!parent2) parent2 = el.parentElement;
-                    if (labelText2 && parent2) {
-                        var sibInput = parent2.querySelector('input[type=""text""], input.opt-input');
-                        var sibSelect = parent2.querySelector('.opt-select, .custom-select');
-                        var sibOutput = parent2.querySelector('.opt-output');
-                        var controlEl = sibInput || sibSelect || sibOutput;
-                        if (controlEl && controlEl !== el) {
-                            var idx2 = _efb._displayElements.length;
-                            _efb._displayElements.push(controlEl);
-                            var pItem = { index: idx2, text: labelText2, clickable: true, tag: controlEl.tagName.toLowerCase(), role: '' };
-                            if (sibInput) {
-                                pItem.controlType = 'text';
-                                pItem.controlValue = sibInput.value || '';
-                                pItem.controlId = sibInput.id || '';
-                            } else if (sibSelect) {
-                                pItem.controlType = 'select';
-                                var so = sibSelect.querySelector('.selected-option');
-                                pItem.controlValue = so ? so.textContent.trim() : '';
-                                pItem.controlId = sibSelect.id || '';
-                                var sOpts = sibSelect.querySelectorAll('.option');
-                                if (sOpts.length > 0) {
-                                    pItem.controlOptions = [];
-                                    for (var si = 0; si < sOpts.length; si++) pItem.controlOptions.push(sOpts[si].textContent.trim());
-                                }
-                            } else if (sibOutput) {
-                                var outVal = sibOutput.textContent.trim();
-                                var unitSpan = parent2.querySelector('.output-unit, [class*=""_unit""]');
-                                if (unitSpan) outVal += ' ' + unitSpan.textContent.trim();
-                                pItem.text = labelText2 + ': ' + (outVal || '--');
-                                pItem.clickable = false;
-                                delete pItem.controlType;
-                            }
-                            var key2 = labelText2 + '|perf|' + (pItem.controlType || '');
-                            if (!seen[key2]) { seen[key2] = true; items.push(pItem); }
-                            return; // Paired — don't recurse
-                        }
-                    }
-                }
-
-                // Performance output labels — pair with their output value
-                if (el.className && typeof el.className === 'string' && el.className.indexOf('opt-output-label') >= 0) {
-                    var outLabelText = el.textContent.trim();
-                    if (outLabelText) {
-                        var outParent = el.parentElement;
-                        var outSibling = outParent ? outParent.querySelector('.opt-output') : null;
-                        var outVal2 = outSibling ? outSibling.textContent.trim() : '';
-                        var unitSpan2 = outParent ? outParent.querySelector('[class*=""_unit""]') : null;
-                        if (unitSpan2) outVal2 += ' ' + unitSpan2.textContent.trim();
-                        var oidx = _efb._displayElements.length;
-                        _efb._displayElements.push(outSibling || el);
-                        var okey = outLabelText + '|perfout';
-                        if (!seen[okey]) { seen[okey] = true; items.push({ index: oidx, text: outLabelText + ': ' + (outVal2 || '--'), clickable: false, tag: 'p', role: '' }); }
-                        return;
-                    }
-                }
-
-                // Skip non-label elements inside opt-col (already captured by label pairing above)
-                if (el.closest && el.closest('.opt-col')) {
-                    var ecn = el.className || '';
-                    if (typeof ecn === 'string' && (ecn.indexOf('opt-input') >= 0)) {
-                        return;
-                    }
-                    // Also skip custom-select inside opt-col (captured via label pairing)
-                    if (typeof ecn === 'string' && ecn.indexOf('opt-select') >= 0) {
-                        return;
-                    }
-                }
-
-                // Detect form control type and capture rich data
-                var controlType = '';  // text, checkbox, select, or empty for non-controls
-                var controlValue = '';
-                var controlOptions = null;
-                var controlId = el.id || '';
-
-                if (tag === 'input') {
-                    var inputType = (el.getAttribute('type') || 'text').toLowerCase();
-                    if (inputType === 'text' || inputType === 'password' || inputType === 'email' || inputType === 'number') {
-                        controlType = 'text';
-                        controlValue = el.value || '';
-                        // Find label from preceding sibling or parent label
-                        if (!text) {
-                            var prev = el.parentElement && el.parentElement.previousElementSibling;
-                            if (prev) text = prev.textContent.trim();
-                        }
-                        if (!text) text = label || el.getAttribute('name') || 'Input';
-                    } else if (inputType === 'checkbox') {
-                        controlType = 'checkbox';
-                        controlValue = el.checked ? 'true' : 'false';
-                        if (!text) text = label || el.getAttribute('name') || 'Toggle';
-                    } else if (inputType === 'range') {
-                        controlType = 'range';
-                        controlValue = el.value || '50';
-                        if (!text) text = label || 'Slider';
-                    }
-                }
-
-                // Custom PMDG select (div.custom-select with .option children)
-                if (!controlType && el.className && typeof el.className === 'string' && el.className.indexOf('custom-select') >= 0) {
-                    controlType = 'select';
-                    var selectedOpt = el.querySelector('.selected-option');
-                    controlValue = selectedOpt ? selectedOpt.textContent.trim() : '';
-                    var optionEls = el.querySelectorAll('.option');
-                    if (optionEls.length > 0) {
-                        controlOptions = [];
-                        for (var oi = 0; oi < optionEls.length; oi++) {
-                            controlOptions.push(optionEls[oi].textContent.trim());
-                        }
-                    }
-                    if (!text) text = label || el.id || 'Select';
-                }
-
-                // For non-form elements, use original text logic
-                if (controlType && !text) {
-                    text = label || controlId || controlType;
-                }
-                if (!controlType && (tag === 'input' || tag === 'select' || tag === 'textarea')) {
-                    var val = el.value || '';
-                    var lbl = label || el.getAttribute('name') || tag;
-                    text = lbl + (val ? ': ' + val : '');
-                }
-
-                // Determine if clickable
-                var isClickable = (tag === 'button' || tag === 'a'
-                    || el.getAttribute('role') === 'button' || el.getAttribute('role') === 'tab'
-                    || el.getAttribute('role') === 'link' || el.getAttribute('role') === 'menuitem'
-                    || el.onclick != null || el.getAttribute('onclick')
-                    || (el.className && typeof el.className === 'string' && (el.className.indexOf('btn') >= 0 || el.className.indexOf('clickable') >= 0 || el.className.indexOf('nav-link') >= 0 || el.className.indexOf('icon') >= 0))
-                    || el.getAttribute('tabindex') === '0'
-                    || el.style.cursor === 'pointer');
-
-                // Form controls are always interactive
-                if (controlType) isClickable = true;
-
-                // Add this element if it has text or is a form control
-                if ((text && text.length > 0 && text.length < 300) || controlType) {
-                    if (!text) text = controlType;
-                    var key = text.substring(0, 50) + '|' + depth + '|' + controlType;
-                    if (!seen[key]) {
-                        seen[key] = true;
-                        var idx = _efb._displayElements.length;
-                        _efb._displayElements.push(el);
-                        var item = {
-                            index: idx,
-                            text: text.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 150),
-                            clickable: isClickable,
-                            tag: tag,
-                            role: el.getAttribute('role') || ''
-                        };
-                        if (controlType) {
-                            item.controlType = controlType;
-                            item.controlValue = controlValue;
-                            item.controlId = controlId;
-                            if (controlOptions) item.controlOptions = controlOptions;
-                        }
-                        items.push(item);
-                    }
-                }
-
-                // Recurse children
-                var kids = el.children;
-                if (kids) {
-                    for (var k = 0; k < kids.length; k++) {
-                        walk(kids[k], depth + 1);
-                    }
-                }
+            // Use a resizable form with a multiline textbox so the user can copy
+            // the full dump. MessageBox truncates and doesn't scroll.
+            using var dialog = new Form
+            {
+                Text = "DOM element dump",
+                Size = new System.Drawing.Size(720, 560),
+                StartPosition = FormStartPosition.CenterParent
             };
-
-            walk(document.body, 0);
-            // Special: pair PMDG preferences labels with their controls
-            var prefLabels = document.getElementById('efb_preferences_labels');
-            var prefValues = document.getElementById('efb_preferences_values');
-            if (prefLabels && prefValues) {
-                // Use direct children only — nested .row inside custom-selects must be skipped
-                var labelRows = [];
-                var valueRows = [];
-                for (var li = 0; li < prefLabels.children.length; li++) {
-                    if (prefLabels.children[li].classList && prefLabels.children[li].classList.contains('row'))
-                        labelRows.push(prefLabels.children[li]);
-                }
-                for (var vi = 0; vi < prefValues.children.length; vi++) {
-                    if (prefValues.children[vi].classList && prefValues.children[vi].classList.contains('row'))
-                        valueRows.push(prefValues.children[vi]);
-                }
-                var count = Math.min(labelRows.length, valueRows.length);
-                // Unit toggle names for checkbox→combo conversion
-                // Unit toggle mapping: [unchecked_value, checked_value]
-                // PMDG convention: unchecked = first unit, checked = second unit
-                // Swapped based on user testing — PMDG inverts some of these
-                var unitNames = {
-                    'efb_preferences_distance_unit': ['km','nm'],
-                    'efb_preferences_altitude_unit': ['m','ft'],
-                    'efb_preferences_length_unit': ['m','ft'],
-                    'efb_preferences_speed_unit': ['mph','kph'],
-                    'efb_preferences_airspeed_unit': ['kph','kts'],
-                    'efb_preferences_temperature_unit': ['F','C'],
-                    'efb_preferences_pressure_unit': ['inHg','hPa'],
-                    'efb_preferences_weight_unit': ['lb','kg']
-                };
-                for (var pi = 0; pi < count; pi++) {
-                    var labelText = labelRows[pi].textContent.trim();
-                    if (!labelText) continue;
-                    var valRow = valueRows[pi];
-                    var input = valRow.querySelector('input[type=""text""]');
-                    var checkbox = valRow.querySelector('input[type=""checkbox""]');
-                    var range = valRow.querySelector('input[type=""range""]');
-                    var customSelect = valRow.querySelector('.custom-select');
-                    var btn = valRow.querySelector('button');
-
-                    var idx = _efb._displayElements.length;
-                    var item = { index: idx, text: labelText, clickable: true, tag: 'div', role: '' };
-
-                    if (input) {
-                        _efb._displayElements.push(input);
-                        item.controlType = 'text';
-                        item.controlValue = input.value || '';
-                        item.controlId = input.id || '';
-                    } else if (customSelect) {
-                        _efb._displayElements.push(customSelect);
-                        var selOpt = customSelect.querySelector('.selected-option');
-                        item.controlType = 'select';
-                        item.controlValue = selOpt ? selOpt.textContent.trim() : '';
-                        item.controlId = customSelect.id || '';
-                        var opts = customSelect.querySelectorAll('.option');
-                        item.controlOptions = [];
-                        for (var opi = 0; opi < opts.length; opi++) {
-                            item.controlOptions.push(opts[opi].textContent.trim());
-                        }
-                    } else if (checkbox) {
-                        // Convert unit toggles to combo boxes with meaningful labels
-                        var cbId = checkbox.id || '';
-                        if (unitNames[cbId]) {
-                            _efb._displayElements.push(checkbox);
-                            item.controlType = 'select';
-                            item.controlOptions = unitNames[cbId];
-                            item.controlValue = checkbox.checked ? unitNames[cbId][1] : unitNames[cbId][0];
-                            item.controlId = cbId;
-                        } else {
-                            _efb._displayElements.push(checkbox);
-                            item.controlType = 'checkbox';
-                            item.controlValue = checkbox.checked ? 'true' : 'false';
-                            item.controlId = cbId;
-                        }
-                    } else if (range) {
-                        _efb._displayElements.push(range);
-                        item.controlType = 'text';
-                        item.controlValue = range.value || '50';
-                        item.controlId = range.id || '';
-                        item.text = labelText + ' (0-100)';
-                    } else if (btn) {
-                        _efb._displayElements.push(btn);
-                        item.text = btn.textContent.trim() || labelText;
-                        item.tag = 'button';
-                    } else {
-                        _efb._displayElements.push(valRow);
-                        item.text = labelText + ': ' + valRow.textContent.trim();
-                    }
-                    items.push(item);
-                }
-                // Also add the Save Preferences button if present
-                var saveBtn = document.getElementById('efb_preferences_save_tablet_prefs');
-                if (saveBtn) {
-                    var sIdx = _efb._displayElements.length;
-                    _efb._displayElements.push(saveBtn);
-                    items.push({ index: sIdx, text: 'Save Preferences', clickable: true, tag: 'button', role: '' });
-                }
-            }
-
-            // Capture any remaining opt-output-panel results not caught by label pairing
-            var outputPanels = document.querySelectorAll('.opt-output-panel');
-            for (var opi = 0; opi < outputPanels.length; opi++) {
-                var panel = outputPanels[opi];
-                var rows = panel.children;
-                for (var ri = 0; ri < rows.length; ri++) {
-                    var row = rows[ri];
-                    var outLabel = row.querySelector('.opt-output-label');
-                    var outValue = row.querySelector('.opt-output');
-                    if (outLabel) {
-                        var lt = outLabel.textContent.trim();
-                        var vt = outValue ? outValue.textContent.trim() : '';
-                        var ut = row.querySelector('[class*=""_unit""]');
-                        if (ut) vt += ' ' + ut.textContent.trim();
-                        var okey2 = lt + '|output-panel';
-                        if (lt && !seen[okey2]) {
-                            seen[okey2] = true;
-                            var oidx2 = _efb._displayElements.length;
-                            _efb._displayElements.push(outValue || outLabel);
-                            items.push({ index: oidx2, text: lt + ': ' + (vt || '--'), clickable: false, tag: 'p', role: '' });
-                        }
-                    }
-                }
-            }
-
-            _efb.postState('display_elements', { count: items.length, items: JSON.stringify(items) });
-        } catch(e) {
-            _efb.postState('error', { message: 'DisplayElements: ' + e.message });
-        }
-    };
-
-    // Override handleCommand to add click_by_index (for /display-click routing)
-    var origHandler = _efb.handleCommand;
-    _efb.handleCommand = function(command, payload) {
-        if (command === 'click_by_index') {
-            var idx = parseInt((payload && payload.idx) ? payload.idx : '-1');
-            if (idx >= 0) {
-                try {
-                    var allEls = document.body.querySelectorAll('*');
-                    if (idx < allEls.length) {
-                        allEls[idx].click();
-                    }
-                } catch(e) { _efb.postState('error', { message: 'Click: ' + e.message }); }
-            }
-            return;
-        }
-        origHandler.call(_efb, command, payload);
-    };
-
-    // Add set_element_value command to set form control values in the real EFB
-    var origHandler2 = _efb.handleCommand;
-    _efb.handleCommand = function(command, payload) {
-        if (command === 'set_element_value') {
-            var idx = parseInt((payload && payload.index) ? payload.index : '-1');
-            var val = (payload && payload.value) ? payload.value : '';
-            var ctype = (payload && payload.controlType) ? payload.controlType : '';
-            if (idx >= 0 && _efb._displayElements && idx < _efb._displayElements.length) {
-                try {
-                    var el = _efb._displayElements[idx];
-                    if (ctype === 'text') {
-                        // Set text input value and trigger input/change events
-                        var nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-                        nativeSetter.call(el, val);
-                        el.dispatchEvent(new Event('input', {bubbles: true}));
-                        el.dispatchEvent(new Event('change', {bubbles: true}));
-                    } else if (ctype === 'checkbox') {
-                        var wantChecked = (val === 'true');
-                        if (el.checked !== wantChecked) {
-                            el.click();
-                        }
-                    } else if (ctype === 'select') {
-                        // Check if this is actually a checkbox presented as select (unit toggles)
-                        if (el.tagName === 'INPUT' && el.type === 'checkbox') {
-                            var optIdx = parseInt((payload && payload.optionIndex) ? payload.optionIndex : '0');
-                            var wantChecked = (optIdx > 0);
-                            if (el.checked !== wantChecked) {
-                                el.click();
-                            }
-                        } else {
-                            // Custom PMDG select — find and click the matching option
-                            var options = el.querySelectorAll('.option');
-                            for (var oi = 0; oi < options.length; oi++) {
-                                if (options[oi].textContent.trim() === val) {
-                                    options[oi].click();
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                } catch(e) { _efb.postState('error', {message: 'SetValue: ' + e.message}); }
-            }
-            return;
-        }
-        if (command === 'click_by_index') {
-            var idx2 = parseInt((payload && payload.idx) ? payload.idx : '-1');
-            if (idx2 >= 0) {
-                try {
-                    var allEls = document.body.querySelectorAll('*');
-                    if (idx2 < allEls.length) { allEls[idx2].click(); }
-                } catch(e) { _efb.postState('error', {message: 'Click: ' + e.message}); }
-            }
-            return;
-        }
-        origHandler2.call(_efb, command, payload);
-    };
-
-    console.log('[EFB Hot-Inject] v' + _efb._hotInjectVersion + ' — full scanner + form controls');
-    return 'injected v' + _efb._hotInjectVersion;
-})()
-";
-            _bridgeServer.EnqueueCommand("eval_js", new Dictionary<string, string> { ["code"] = injectCode });
+            var box = new TextBox
+            {
+                Multiline = true,
+                ReadOnly = true,
+                Dock = DockStyle.Fill,
+                ScrollBars = ScrollBars.Both,
+                WordWrap = false,
+                Font = new System.Drawing.Font("Consolas", 9f),
+                Text = sb.ToString(),
+                AccessibleName = "Element dump"
+            };
+            dialog.Controls.Add(box);
+            dialog.ShowDialog(this);
         }
 
-        // Legacy HandlePageHtml — no longer renders to WebView2 (server-based display now)
         private void HandlePageHtml(Dictionary<string, string> data)
         {
-            // Page HTML is no longer rendered directly — the Display tab uses /display endpoint.
-            // Just save for debugging.
             string rawHtml = data.GetValueOrDefault("html", "");
             if (!string.IsNullOrEmpty(rawHtml))
             {
-                try { System.IO.File.WriteAllText(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "efb_captured.html"), rawHtml); } catch { }
+                SavePageHtmlCapture(rawHtml);
+            }
+        }
+
+        private void SavePageHtmlCapture(string rawHtml)
+        {
+            try
+            {
+                string stamp = DateTime.Now.ToString("HHmmss");
+                string path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"efb_captured_{stamp}.html");
+                System.IO.File.WriteAllText(path, rawHtml);
+                // Also write the latest-stable filename for ad-hoc checks.
+                System.IO.File.WriteAllText(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "efb_captured.html"), rawHtml);
+                _announcer.Announce($"Page HTML captured: efb_captured_{stamp}.html, {rawHtml.Length} characters");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[EFB] Capture save failed: {ex.Message}");
             }
         }
 
@@ -1035,19 +578,13 @@ namespace MSFSBlindAssist.Forms.PMDG777
             if (index >= 0 && index < total)
                 buffer[index] = chunk;
 
-            // Check if all chunks received
             if (buffer.All(c => c != null))
             {
                 _htmlChunkBuffers.Remove(id);
                 string fullHtml = string.Concat(buffer);
-                System.Diagnostics.Debug.WriteLine($"[EFB] Reassembled {total} chunks → {fullHtml.Length} chars");
-                // Dump to file for debugging
-                try { System.IO.File.WriteAllText(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "efb_captured.html"), fullHtml); } catch { }
-                HandlePageHtml(new Dictionary<string, string> { ["html"] = fullHtml });
+                SavePageHtmlCapture(fullHtml);
             }
         }
-
-        private bool _webViewInitialized;
 
         private async Task InitializeWebViewAsync()
         {
@@ -1056,7 +593,6 @@ namespace MSFSBlindAssist.Forms.PMDG777
             {
                 await displayWebView.EnsureCoreWebView2Async();
                 _webViewInitialized = true;
-                System.Diagnostics.Debug.WriteLine("[EFB] WebView2 initialized");
             }
             catch (Exception ex)
             {
@@ -1067,109 +603,36 @@ namespace MSFSBlindAssist.Forms.PMDG777
         private void EnsureDisplayWebViewNavigated()
         {
             if (!_webViewInitialized || displayWebView == null) return;
-
             string currentUrl = displayWebView.Source?.ToString() ?? "";
             if (!currentUrl.Contains("localhost:19777/display"))
-            {
                 displayWebView.Source = new Uri("http://localhost:19777/display");
-            }
         }
 
-        /// <summary>
-        /// Caches display elements in the server for the /display-data endpoint,
-        /// and ensures WebView2 is navigated to the display page.
-        /// </summary>
         private void HandleDisplayElements(Dictionary<string, string> data)
         {
             if (!data.TryGetValue("items", out string? itemsJson) || string.IsNullOrEmpty(itemsJson))
                 return;
-
-            // Cache in server for /display-data endpoint
             _bridgeServer.UpdateDisplayElements(itemsJson);
-
-            // Ensure WebView2 is pointed at our server
             EnsureDisplayWebViewNavigated();
         }
 
-        private void PopulatePreferences(Dictionary<string, string> data)
+        /// <summary>
+        /// Hot-injects the display scanner + set_element_value handler into the
+        /// running bridge. Kept so the Display tab keeps working until Phase 9.
+        /// </summary>
+        private void HotInjectBridgeUpdates()
         {
-            if (data.TryGetValue("simbrief_id", out string? simbriefId))
-                simbriefAliasTextBox!.Text = simbriefId;
-
-            SetComboValue(weatherSourceCombo!, data.GetValueOrDefault("weather_source", ""));
-            SetComboValue(weightUnitCombo!, data.GetValueOrDefault("weight_unit", ""));
-            SetComboValue(distanceUnitCombo!, data.GetValueOrDefault("distance_unit", ""));
-            SetComboValue(altitudeUnitCombo!, data.GetValueOrDefault("altitude_unit", ""));
-            SetComboValue(temperatureUnitCombo!, data.GetValueOrDefault("temperature_unit", ""));
-        }
-
-        private static void SetComboValue(ComboBox combo, string value)
-        {
-            if (string.IsNullOrEmpty(value)) return;
-            for (int i = 0; i < combo.Items.Count; i++)
-            {
-                if (string.Equals(combo.Items[i]?.ToString(), value, StringComparison.OrdinalIgnoreCase))
-                {
-                    combo.SelectedIndex = i;
-                    return;
-                }
-            }
-        }
-
-        private void OnSavePreferences(object? sender, EventArgs e)
-        {
-            if (!_bridgeServer.IsBridgeConnected)
-            {
-                _announcer.Announce("EFB bridge not connected. Preferences cannot be saved while the EFB tablet is not active in the simulator.");
-                return;
-            }
-
-            if (_bridgeServer.HasPendingCommand("save_preferences")) return;
-
-            savePreferencesButton!.Enabled = false;
-
-            _bridgeServer.EnqueueCommand("set_preference", new Dictionary<string, string>
-                { { "key", "simbrief_id" }, { "value", simbriefAliasTextBox!.Text ?? "" } });
-
-            EnqueueComboPreference(weatherSourceCombo!, "weather_source");
-            EnqueueComboPreference(weightUnitCombo!, "weight_unit");
-            EnqueueComboPreference(distanceUnitCombo!, "distance_unit");
-            EnqueueComboPreference(altitudeUnitCombo!, "altitude_unit");
-            EnqueueComboPreference(temperatureUnitCombo!, "temperature_unit");
-
-            _bridgeServer.EnqueueCommand("save_preferences");
-            _announcer.Announce("Preferences saved");
-
-            // Re-enable after a short delay (preferences are fire-and-forget)
-            var reenableTimer = new System.Windows.Forms.Timer { Interval = 2000 };
-            reenableTimer.Tick += (_, _) =>
-            {
-                reenableTimer.Stop();
-                reenableTimer.Dispose();
-                if (!IsDisposed && _bridgeServer.IsBridgeConnected)
-                    savePreferencesButton!.Enabled = true;
-            };
-            reenableTimer.Start();
-        }
-
-        private void EnqueueComboPreference(ComboBox combo, string key)
-        {
-            string? value = combo.SelectedItem?.ToString();
-            if (value != null)
-            {
-                _bridgeServer.EnqueueCommand("set_preference", new Dictionary<string, string>
-                    { { "key", key }, { "value", value } });
-            }
+            // Body kept verbatim from pre-refactor form — Display tab still depends on it.
+            string injectCode = HotInjectScript.Code;
+            _bridgeServer.EnqueueCommand("eval_js", new Dictionary<string, string> { ["code"] = injectCode });
         }
 
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
             _connectionCheckTimer?.Stop();
             _connectionCheckTimer?.Dispose();
-            StopFetchTimeout();
-            StopAuthTimeout();
-            StopSendToFmcTimeout();
-            StopSignOutTimeout();
+            _navigator.NavigationCompleted -= OnNavigationCompleted;
+            _navigator.Dispose();
             _bridgeServer.StateUpdated -= OnStateUpdated;
             _bridgeServer.Error -= OnBridgeServerError;
             if (_previousWindow != IntPtr.Zero)

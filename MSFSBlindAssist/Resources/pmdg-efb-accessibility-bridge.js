@@ -1,4 +1,5 @@
 // PMDG EFB Accessibility Bridge
+// BRIDGE_JS_VERSION: 35-prefclick
 // Injected into PMDGTabletCA.html via mod package override to expose EFB
 // functionality to the MSFS Blind Assist application via HTTP on localhost:19777.
 //
@@ -7,6 +8,7 @@
 try {
 
 var _efb = {
+    JS_VERSION: '35-prefclick',
     SERVER_URL: 'http://localhost:19777',
     COMMAND_POLL_INTERVAL: 500,
     HEARTBEAT_INTERVAL: 5000,
@@ -184,6 +186,37 @@ _efb.handleCommand = function(command, payload) {
             case 'fetch_simbrief':
                 _efb.cmdFetchSimbrief();
                 break;
+            case 'replay_simbrief':
+                _efb.cmdReplaySimbrief();
+                break;
+            case 'read_values':
+                _efb.cmdReadValues(payload);
+                break;
+            case 'set_input_by_id':
+                _efb.cmdSetInputById(payload);
+                break;
+            case 'set_select_by_id':
+                _efb.cmdSetSelectById(payload);
+                break;
+            case 'get_select_options':
+                _efb.cmdGetSelectOptions(payload);
+                break;
+            case 'dump_element':
+                _efb.cmdDumpElement(payload);
+                break;
+            case 'ping':
+                _efb.postState('pong', {
+                    version: String(_efb.JS_VERSION || 'unknown'),
+                    has_dump_element: String(typeof _efb.cmdDumpElement === 'function'),
+                    has_set_select_by_id: String(typeof _efb.cmdSetSelectById === 'function'),
+                    has_set_input_by_id: String(typeof _efb.cmdSetInputById === 'function'),
+                    has_get_select_options: String(typeof _efb.cmdGetSelectOptions === 'function'),
+                    has_read_values: String(typeof _efb.cmdReadValues === 'function')
+                });
+                break;
+            case 'dump_preferences':
+                _efb.cmdDumpPreferences();
+                break;
             case 'send_to_fmc':
                 _efb.cmdSendToFMC();
                 break;
@@ -192,6 +225,9 @@ _efb.handleCommand = function(command, payload) {
                 break;
             case 'sign_out_navigraph':
                 _efb.cmdSignOutNavigraph();
+                break;
+            case 'check_navigraph_auth':
+                _efb.cmdCheckNavigraphAuth();
                 break;
             case 'get_preferences':
                 _efb.cmdGetPreferences();
@@ -256,8 +292,64 @@ _efb.handleCommand = function(command, payload) {
                     }
                 }
                 break;
+            case 'click_by_id':
+                // Targeted click on a DOM element by id. Uses the full
+                // mousedown/mouseup/click sequence plus native .click() so
+                // both plain DOM listeners and React's SyntheticEvent pipeline
+                // see the interaction — bare .click() alone isn't enough for
+                // PMDG's Import buttons on the Performance Tool pages.
+                try {
+                    var cbiId = payload && payload.id ? String(payload.id) : '';
+                    var cbiEl = cbiId ? document.getElementById(cbiId) : null;
+                    if (cbiEl) {
+                        try {
+                            cbiEl.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+                            cbiEl.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+                            cbiEl.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+                        } catch (cbiMevt) { /* old Coherent GT — fall through to .click() */ }
+                        try { cbiEl.click(); } catch (cbiClk) { /* event dispatch may already have fired */ }
+                        _efb.postState('click_result', { id: cbiId, clicked: 'true' });
+                    } else {
+                        _efb.postState('click_result', { id: cbiId, clicked: 'false' });
+                    }
+                } catch (cbiErr) {
+                    _efb.postState('error', { message: 'click_by_id: ' + cbiErr.message });
+                }
+                break;
+            case 'wait_for_visible':
+                // Poll until an element with the given id is visible (offsetParent
+                // set), or timeoutMs elapses. Posts a ready state either way.
+                try {
+                    var wfvId = payload && payload.id ? String(payload.id) : '';
+                    var wfvTimeout = parseInt((payload && payload.timeoutMs) ? payload.timeoutMs : '3000');
+                    var wfvStart = Date.now();
+                    var wfvCheck = function () {
+                        var el = wfvId ? document.getElementById(wfvId) : null;
+                        var visible = false;
+                        if (el) {
+                            try {
+                                var cs = window.getComputedStyle(el);
+                                visible = (el.offsetParent !== null) && cs.display !== 'none' && cs.visibility !== 'hidden';
+                            } catch (e) { visible = el.offsetParent !== null; }
+                        }
+                        if (visible) {
+                            _efb.postState('ready', { id: wfvId, found: 'true' });
+                            return;
+                        }
+                        if (Date.now() - wfvStart >= wfvTimeout) {
+                            _efb.postState('ready', { id: wfvId, found: 'false' });
+                            return;
+                        }
+                        setTimeout(wfvCheck, 100);
+                    };
+                    wfvCheck();
+                } catch (wfvErr) {
+                    _efb.postState('error', { message: 'wait_for_visible: ' + wfvErr.message });
+                }
+                break;
             default:
                 console.warn('[EFB Bridge] Unknown command:', command);
+                _efb.postState('error', { message: 'Unknown bridge command: ' + command + ' (bridge may be stale; try Ctrl+Shift+R)' });
         }
     } catch (e) {
         console.error('[EFB Bridge] Command error:', e);
@@ -272,6 +364,145 @@ _efb.cmdFetchSimbrief = function() {
     // Click the fetch button on the dashboard
     var fetchBtn = document.getElementById('efb_dashboard_requestsimbrief');
     if (fetchBtn) fetchBtn.click();
+};
+
+// Shared transformer: SimBrief OFP JSON -> flat payload matching the
+// DashboardPanel field set. Used by both the live simbrief_data subscription
+// and the replay command.
+
+// Format a duration in seconds as "HHhMMm". Returns '' if not a positive number.
+_efb.formatDurationSeconds = function(secs) {
+    var n = parseInt(secs, 10);
+    if (!n || n <= 0) return '';
+    var h = Math.floor(n / 3600);
+    var m = Math.floor((n % 3600) / 60);
+    return h + 'h' + (m < 10 ? '0' : '') + m + 'm';
+};
+
+// Read the tablet-rendered STD/STA elements directly. The tablet renders them
+// as "HH:MM UTC / HH:MM UTC" (scheduled / estimated). Returns a two-entry
+// object {planned, estimated}; entries are empty strings when the DOM element
+// is missing or not populated yet.
+_efb.readTabletDashboardTime = function(elementId) {
+    var result = { planned: '', estimated: '' };
+    try {
+        var el = document.getElementById(elementId);
+        if (!el) return result;
+        var txt = (el.textContent || '').replace(/\u00a0/g, ' ').trim();
+        if (!txt) return result;
+        var parts = txt.split('/');
+        if (parts.length >= 1) result.planned = parts[0].trim();
+        if (parts.length >= 2) result.estimated = parts[1].trim();
+    } catch (e) {
+        console.error('[EFB Bridge] readTabletDashboardTime failed:', e);
+    }
+    return result;
+};
+
+_efb.buildSimbriefPayload = function(data) {
+    if (!data || !data.origin || !data.destination || !data.atc) return null;
+    var aircraft = data.aircraft || {};
+    var general = data.general || {};
+    var times = data.times || {};
+    var regValue = aircraft.reg || aircraft.registration || '';
+    var typeValue = aircraft.icao_code || aircraft.icaocode || aircraft.icao || aircraft.type || '';
+    var coRte = general.route_navigraph || general.coroute || general.co_route || general.route || '';
+    var routeDist = general.route_distance || general.total_distance || general.air_distance || general.gc_distance || '';
+    var ofpUnits = (data.params && data.params.units) || '';
+    // STD/STA times come straight from the tablet's own DOM elements — single
+    // source of truth, already rendered in the exact format we want to show.
+    var stdTimes = _efb.readTabletDashboardTime('efb_dashboard_std');
+    var staTimes = _efb.readTabletDashboardTime('efb_dashboard_sta');
+    var estEnroute = _efb.formatDurationSeconds(times.est_time_enroute || times.sched_time_enroute);
+    return {
+        callsign: data.atc.callsign || '',
+        origin_icao: data.origin.icao_code || '',
+        dest_icao: data.destination.icao_code || '',
+        alt_icao: (data.alternate && data.alternate.icao_code) || '',
+        cruise_alt: String(general.initial_altitude || ''),
+        cost_index: String(general.costindex || ''),
+        zfw: String((data.weights && data.weights.est_zfw) || ''),
+        fuel_total: String((data.fuel && data.fuel.plan_ramp) || ''),
+        avg_wind: String(general.avg_wind_dir || '') + '/' + String(general.avg_wind_spd || ''),
+        aircraft_reg: String(regValue),
+        aircraft_type: String(typeValue),
+        co_route: String(coRte),
+        route_dist: String(routeDist),
+        ofp_weight_unit: String(ofpUnits),
+        planned_departure: stdTimes.planned,
+        estimated_departure: stdTimes.estimated,
+        planned_arrival: staTimes.planned,
+        estimated_arrival: staTimes.estimated,
+        est_time_enroute: estEnroute
+    };
+};
+
+// Batch DOM read. Payload: {tag: "navdata", ids: ["el_a","el_b",...]}.
+// Posts back: {type: "values", data: {_tag: tag, el_a: text, el_b: text, ...}}.
+// _tag lets multiple panels share the 'values' state channel without collisions.
+// Inputs return .value; elements with aria-valuenow return that attribute
+// (useful for progress bars); everything else returns trimmed textContent.
+_efb.cmdReadValues = function(payload) {
+    try {
+        // C# passes ids as a comma-separated string because EnqueueCommand's
+        // payload dict is Dictionary<string,string>. Accept either form so the
+        // command also works when invoked directly via eval_js with an array.
+        var raw = payload && payload.ids;
+        var ids = Array.isArray(raw) ? raw : (raw ? String(raw).split(',') : []);
+        var tag = (payload && payload.tag) || '';
+        var values = { _tag: String(tag) };
+        for (var i = 0; i < ids.length; i++) {
+            var id = String(ids[i]);
+            var el = document.getElementById(id);
+            if (!el) { values[id] = ''; continue; }
+            var tagName = el.tagName;
+            if (tagName === 'INPUT' || tagName === 'SELECT' || tagName === 'TEXTAREA') {
+                values[id] = String(el.value || '');
+            } else if (el.className && typeof el.className === 'string' && el.className.indexOf('custom-select') >= 0) {
+                // PMDG custom-select: prefer the .selected-option child's text.
+                // Falls back to data-selected attribute if the child isn't there.
+                var selOpt = el.querySelector('.selected-option');
+                if (selOpt) {
+                    values[id] = (selOpt.textContent || '').replace(/\u00a0/g, ' ').trim();
+                } else {
+                    values[id] = String(el.getAttribute('data-selected') || '');
+                }
+            } else if (el.hasAttribute && el.hasAttribute('aria-valuenow')) {
+                values[id] = String(el.getAttribute('aria-valuenow') || '');
+            } else {
+                var txt = (el.textContent || '').replace(/\u00a0/g, ' ').trim();
+                values[id] = txt;
+            }
+        }
+        _efb.postState('values', values);
+    } catch (e) {
+        _efb.postState('error', { message: 'read_values failed: ' + e.message });
+    }
+};
+
+_efb.cmdReplaySimbrief = function() {
+    // Prefer a fresh rebuild from the tablet's live OFP global — this path
+    // runs on user action (form open / tab switch) so the Dashboard DOM is
+    // definitely rendered by now, meaning the DOM-sourced time fields will be
+    // populated (unlike the EventBus path which fires before React paints).
+    try {
+        if (typeof Dashboard !== 'undefined' && Dashboard.simbrief) {
+            var payload = _efb.buildSimbriefPayload(Dashboard.simbrief);
+            if (payload) {
+                _efb.lastSimbriefPayload = payload;
+                _efb.postState('simbrief_loaded', payload);
+                return;
+            }
+        }
+    } catch (e) {
+        console.error('[EFB Bridge] replay_simbrief rebuild failed:', e);
+    }
+    // Fallback: the in-session cache from a prior EventBus post.
+    if (_efb.lastSimbriefPayload) {
+        _efb.postState('simbrief_loaded', _efb.lastSimbriefPayload);
+        return;
+    }
+    _efb.postState('simbrief_not_cached', {});
 };
 
 _efb.cmdSendToFMC = function() {
@@ -381,12 +612,484 @@ _efb.sendCurrentNavigraphState = function() {
     attempt();
 };
 
+// Write a text input by simulating actual typing — focus the element, then
+// for each character: keydown → native setValue with progressive substring →
+// InputEvent → keyup. PMDG's pmdg_measurement fields seem to require this
+// per-character keyboard event sequence; bulk setValue + dispatch input gets
+// silently rejected by their validator.
+_efb.cmdSetInputById = function(payload) {
+    try {
+        var id = payload && payload.id ? String(payload.id) : '';
+        var val = payload && payload.value !== undefined ? String(payload.value) : '';
+        if (!id) return;
+        var el = document.getElementById(id);
+        if (!el) {
+            _efb.postState('error', { message: 'set_input_by_id: not found: ' + id });
+            return;
+        }
+
+        var proto = (el.tagName === 'TEXTAREA')
+            ? window.HTMLTextAreaElement.prototype
+            : window.HTMLInputElement.prototype;
+        var nativeSetter = null;
+        try {
+            nativeSetter = Object.getOwnPropertyDescriptor(proto, 'value').set;
+        } catch (descErr) { nativeSetter = null; }
+
+        // Set the .value property using the native setter, bypassing React's
+        // own setter. Updates the DOM but doesn't fire any events on its own.
+        var rawSet = function(v) {
+            if (nativeSetter) {
+                try { nativeSetter.call(el, v); return; } catch (e) {}
+            }
+            try { el.value = v; } catch (e2) {}
+        };
+
+        // Fire an InputEvent (React listens for this); fall back to Event.
+        var fireInput = function(ch, type) {
+            try {
+                el.dispatchEvent(new InputEvent('input', {
+                    bubbles: true, cancelable: true,
+                    data: ch || null,
+                    inputType: type || 'insertText'
+                }));
+                return;
+            } catch (ieErr) { /* fall through */ }
+            try { el.dispatchEvent(new Event('input', { bubbles: true })); } catch (e) {}
+        };
+
+        var fireKey = function(type, key) {
+            try {
+                el.dispatchEvent(new KeyboardEvent(type, {
+                    bubbles: true, cancelable: true,
+                    key: key, code: key.length === 1 ? 'Key' + key.toUpperCase() : key
+                }));
+            } catch (kErr) { /* old Coherent GT may not have KeyboardEvent */ }
+        };
+
+        try { el.focus(); } catch (fe) {}
+
+        // 1. Clear via tracker invalidation + raw set + delete event so
+        // anything previously in the field is cleared first.
+        try {
+            if (el._valueTracker && typeof el._valueTracker.setValue === 'function') {
+                el._valueTracker.setValue('__force_diff__');
+            }
+        } catch (e) {}
+        rawSet('');
+        fireInput('', 'deleteContentBackward');
+
+        // 2. Type each character with a full keyboard event cycle. The
+        // tracker invalidation per-character lets React see the value change
+        // every time.
+        for (var i = 0; i < val.length; i++) {
+            var ch = val.charAt(i);
+            var partial = val.substring(0, i + 1);
+            fireKey('keydown', ch);
+            fireKey('keypress', ch);
+            try {
+                if (el._valueTracker && typeof el._valueTracker.setValue === 'function') {
+                    el._valueTracker.setValue(val.substring(0, i));
+                }
+            } catch (e) {}
+            rawSet(partial);
+            fireInput(ch, 'insertText');
+            fireKey('keyup', ch);
+        }
+
+        // 3. Commit events so any blur/change validators fire.
+        try { el.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {}
+        fireKey('keydown', 'Enter');
+        fireKey('keypress', 'Enter');
+        fireKey('keyup', 'Enter');
+        try { el.blur(); } catch (be) {}
+    } catch (e) {
+        _efb.postState('error', { message: 'set_input_by_id failed: ' + e.message });
+    }
+};
+
+// Dump a structural skeleton of a DOM element. Posts an 'element_dump' state
+// with {id, tag, class, computed_display, outerHtml_preview, and up to
+// 40 lines of "depth/tag/class/text" per descendant}. Used by Ctrl+Shift+E to
+// discover runtime DOM structures we can't see in static captures.
+// Dump the full outerHTML of a DOM element, chunked via the existing
+// page_html_chunk mechanism so the C# side reassembles and saves to
+// %TEMP%\efb_captured_HHMMSS.html. The caller gets a snapshot of exactly
+// what PMDG has mounted at runtime — far more useful than a partial tree walk.
+_efb.cmdDumpElement = function(payload) {
+    var safeId = '?';
+    try {
+        var id = payload && payload.id ? String(payload.id) : '';
+        safeId = id || '?';
+        if (!id) {
+            _efb.postState('element_dump', { id: '', error: 'no id in payload' });
+            return;
+        }
+        var el = document.getElementById(id);
+        if (!el) {
+            _efb.postState('element_dump', { id: id, error: 'not found' });
+            return;
+        }
+
+        // Prefer the actual outerHTML of the live element — this is the
+        // ground truth of what PMDG's React/Coherent GT has rendered right
+        // now, including any runtime-populated options.
+        var html = '';
+        try { html = el.outerHTML || ''; } catch (hErr) { html = '<!-- outerHTML failed: ' + hErr.message + ' -->'; }
+
+        if (!html) {
+            _efb.postState('element_dump', { id: id, error: 'outerHTML was empty' });
+            return;
+        }
+
+        // Wrap in a minimal document so it opens standalone in the WebView if
+        // the user wants to inspect it there. This matches cmdGetPageHtml's
+        // structure so HandlePageHtmlChunk can save it exactly the same way.
+        var wrapped = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Element dump: '
+            + id + '</title></head><body>' + html + '</body></html>';
+
+        console.log('[EFB Bridge] element_dump (' + id + ') size: ' + wrapped.length);
+
+        // Reuse the page_html_chunk path so C# auto-saves to efb_captured_*.html.
+        // 30KB chunks per HandleGetCommands size budget.
+        var CHUNK_SIZE = 30000;
+        var totalChunks = Math.ceil(wrapped.length / CHUNK_SIZE);
+        var transferId = 'elem-' + id + '-' + Date.now().toString(36);
+        for (var ci = 0; ci < totalChunks; ci++) {
+            var ch = wrapped.substring(ci * CHUNK_SIZE, (ci + 1) * CHUNK_SIZE);
+            _efb.postState('page_html_chunk', {
+                id: transferId,
+                index: String(ci),
+                total: String(totalChunks),
+                chunk: ch
+            });
+        }
+        // Also post a small element_dump ack so the C# timeout doesn't fire.
+        _efb.postState('element_dump', {
+            id: id,
+            info: 'saved as page_html_chunk, ' + totalChunks + ' chunks, ' + wrapped.length + ' chars'
+        });
+        return;
+    } catch (e) {
+        _efb.postState('element_dump', { id: safeId, error: 'exception: ' + (e && e.message ? e.message : String(e)) });
+        return;
+    }
+};
+
+// --- legacy cmdDumpElement tree walk path below is unused; kept for the
+// one-off error/short paths above. Old tree logic removed so outerHTML is
+// the only live return. ---
+_efb._cmdDumpElement_unused = function(payload) {
+    var safeId = '?';
+    try {
+        var id = payload && payload.id ? String(payload.id) : '';
+        safeId = id || '?';
+        if (!id) {
+            _efb.postState('element_dump', { id: '', error: 'no id in payload' });
+            return;
+        }
+        var el = document.getElementById(id);
+        if (!el) {
+            _efb.postState('element_dump', { id: id, error: 'not found' });
+            return;
+        }
+        var info = { id: id };
+        info.tag = String(el.tagName || '');
+        try { info['class'] = String(el.className || ''); } catch (classErr) { info['class'] = '(err)'; }
+        try { info.computed_display = String(window.getComputedStyle(el).display); } catch (csErr) { info.computed_display = '?'; }
+
+        // Attrs (flatten to one key per attr)
+        try {
+            for (var ai = 0; ai < el.attributes.length; ai++) {
+                info['attr_' + el.attributes[ai].name] = String(el.attributes[ai].value);
+            }
+        } catch (attrErr) { info.attr_err = attrErr.message; }
+
+        // Walk descendants up to depth 4, one key per line
+        var lineIndex = 0;
+        var walk = function(node, depth) {
+            if (lineIndex >= 60) return;
+            if (!node || depth > 4) return;
+            var prefix = '';
+            for (var p = 0; p < depth; p++) prefix += '  ';
+            var childTag = String(node.tagName || '#text');
+            var childClass = '';
+            try {
+                if (node.className && typeof node.className === 'string') childClass = node.className;
+            } catch (clsErr) { childClass = ''; }
+            var childId = String(node.id || '');
+            var dv = '';
+            var ds = '';
+            try {
+                if (node.getAttribute) {
+                    dv = String(node.getAttribute('data-value') || '');
+                    ds = String(node.getAttribute('data-selected') || '');
+                }
+            } catch (attrErr2) { /* ignore */ }
+            var ownText = '';
+            try {
+                if (node.childNodes) {
+                    for (var c = 0; c < node.childNodes.length; c++) {
+                        var cn = node.childNodes[c];
+                        if (cn.nodeType === 3) ownText += (cn.textContent || '');
+                    }
+                }
+            } catch (txtErr) { /* ignore */ }
+            ownText = ownText.replace(/\s+/g, ' ').trim();
+            if (ownText.length > 80) ownText = ownText.substring(0, 80);
+
+            var line = prefix + childTag;
+            if (childId) line += ' #' + childId;
+            if (childClass) line += ' .' + childClass.replace(/\s+/g, '.');
+            if (dv) line += ' [dv=' + dv + ']';
+            if (ds) line += ' [ds=' + ds + ']';
+            if (ownText) line += ' "' + ownText + '"';
+
+            // One key per line — safer than packing newlines into a single value
+            info['line_' + ('00' + lineIndex).slice(-2)] = line;
+            lineIndex++;
+
+            try {
+                if (node.children) {
+                    for (var i = 0; i < node.children.length && lineIndex < 60; i++) {
+                        walk(node.children[i], depth + 1);
+                    }
+                }
+            } catch (walkErr) { /* ignore */ }
+        };
+        walk(el, 0);
+        info.line_count = String(lineIndex);
+        _efb.postState('element_dump', info);
+    } catch (e) {
+        // Even on total failure, post something so the C# timeout doesn't fire
+        _efb.postState('element_dump', { id: safeId, error: 'exception: ' + (e && e.message ? e.message : String(e)) });
+    }
+};
+
+// Enumerate a PMDG custom-select's options. Posts a 'select_options' state
+// with {_tag, _id, count, option_N_value, option_N_text, selected_value,
+// selected_text}. Used by TakeoffPanel to populate the runway combo after
+// PMDG fills its own dropdown in response to an ICAO entry.
+_efb.cmdGetSelectOptions = function(payload) {
+    try {
+        var id = payload && payload.id ? String(payload.id) : '';
+        var tag = payload && payload.tag ? String(payload.tag) : '';
+        if (!id) return;
+        var el = document.getElementById(id);
+        if (!el) {
+            _efb.postState('select_options', { _tag: tag, _id: id, count: '0', _error: 'not found' });
+            return;
+        }
+        var opts = el.querySelectorAll('.option');
+        var out = { _tag: tag, _id: id, count: String(opts.length) };
+        for (var i = 0; i < opts.length; i++) {
+            var dv = opts[i].getAttribute('data-value') || '';
+            var tx = (opts[i].textContent || '').replace(/\u00a0/g, ' ').trim();
+            out['option_' + i + '_value'] = String(dv);
+            out['option_' + i + '_text'] = String(tx);
+        }
+        // Also include the current .selected-option text so the caller can
+        // restore focus to whichever option was already active.
+        var selOpt = el.querySelector('.selected-option');
+        out['selected_text'] = selOpt ? (selOpt.textContent || '').replace(/\u00a0/g, ' ').trim() : '';
+        out['selected_value'] = String(el.getAttribute('data-selected') || '');
+        _efb.postState('select_options', out);
+    } catch (e) {
+        _efb.postState('error', { message: 'get_select_options failed: ' + e.message });
+    }
+};
+
+// Set a PMDG custom-select. PMDG's select components can have options that
+// aren't mounted or reactive until the select is opened, and their click
+// handlers sometimes want a full mousedown/mouseup/click sequence rather
+// than the bare .click() call. This routine:
+//   1. Finds the target option by data-value, then by text, across all
+//      descendants (not just direct .option children).
+//   2. If not found, opens the select (clicks its root) and retries after
+//      a short tick.
+//   3. Fires mousedown + mouseup + click + native .click() on the option
+//      so both DOM-event listeners and React's SyntheticEvent pipeline see
+//      the interaction.
+_efb.cmdSetSelectById = function(payload) {
+    try {
+        var id = payload && payload.id ? String(payload.id) : '';
+        var val = payload && payload.value !== undefined ? String(payload.value) : '';
+        if (!id) return;
+        var el = document.getElementById(id);
+        if (!el) {
+            _efb.postState('error', { message: 'set_select_by_id: not found: ' + id });
+            return;
+        }
+
+        var fireClick = function(target) {
+            if (!target) return false;
+            try {
+                target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+                target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+                target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+            } catch (mevtErr) { /* old Coherent GT may not like MouseEvent */ }
+            try { target.click(); } catch (clkErr) { /* already dispatched */ }
+            return true;
+        };
+
+        // PMDG hides the options container with `style="visibility: hidden"`
+        // when the dropdown is collapsed. Browsers won't dispatch click events
+        // on elements with hidden visibility. Temporarily force-show the
+        // container so the option click actually lands. PMDG's own click
+        // handler will re-hide it after selection.
+        var optionsContainer = el.querySelector('.options');
+        if (optionsContainer && optionsContainer.style) {
+            try { optionsContainer.style.visibility = 'visible'; } catch (visErr) {}
+        }
+
+        var find = function() {
+            // 1. Exact data-value match on any descendant
+            var byAttr = el.querySelectorAll('[data-value="' + val.replace(/"/g, '\\"') + '"]');
+            if (byAttr.length > 0) return byAttr[0];
+            // 2. .option children with matching text (case-insensitive)
+            var lower = val.toLowerCase();
+            var opts = el.querySelectorAll('.option');
+            for (var i = 0; i < opts.length; i++) {
+                if ((opts[i].textContent || '').trim().toLowerCase() === lower) return opts[i];
+            }
+            // 3. Any leaf descendant with matching text
+            var all = el.querySelectorAll('div, span, li, button');
+            for (var j = 0; j < all.length; j++) {
+                var node = all[j];
+                if (!node.children || node.children.length > 0) continue;
+                if ((node.textContent || '').trim().toLowerCase() === lower) return node;
+            }
+            return null;
+        };
+
+        var hit = find();
+        if (hit) {
+            fireClick(hit);
+            return;
+        }
+
+        // Not found — maybe the select needs to be opened first. Click the
+        // root (selected-option child is the usual trigger) then retry.
+        var opener = el.querySelector('.selected-option') || el;
+        fireClick(opener);
+        setTimeout(function() {
+            var retry = find();
+            if (retry) {
+                fireClick(retry);
+            } else {
+                _efb.postState('error', {
+                    message: 'set_select_by_id: no matching option "' + val + '" in #' + id
+                });
+            }
+        }, 150);
+    } catch (e) {
+        _efb.postState('error', { message: 'set_select_by_id failed: ' + e.message });
+    }
+};
+
+// Diagnostic: dump every known preference key with its raw value and JS type,
+// plus the current DOM state of each toggle checkbox (checked/value). Used by
+// the C# Ctrl+Shift+D hotkey to debug mismatches between PMDG's stored value
+// and what our combo boxes expect.
+_efb.cmdDumpPreferences = function() {
+    var out = {};
+    var keys = [
+        'simbrief_id','hoppie_id','sayintentions_id',
+        'weather_source','atc_network',
+        'weight_unit','distance_unit','altitude_unit','temperature_unit',
+        'length_unit','speed_unit','airspeed_unit','pressure_unit',
+        'on_screen_keyboard','theme_setting','start_screen_on'
+    ];
+    for (var i = 0; i < keys.length; i++) {
+        var k = keys[i];
+        var v;
+        try {
+            v = (typeof Settings !== 'undefined') ? Settings[k] : undefined;
+        } catch (e) {
+            v = '<getter threw ' + e.message + '>';
+        }
+        out[k] = (typeof v) + ':' + String(v);
+        // If the corresponding DOM element is a checkbox, append its .checked
+        var el = document.getElementById('efb_preferences_' + k);
+        if (el && el.tagName === 'INPUT' && el.type === 'checkbox') {
+            out[k] += ' [checkbox.checked=' + el.checked + ']';
+            // Read the two CSS pseudo-element labels the toggle renders on
+            // each side. PMDG uses ::before and ::after to paint the unit
+            // text via content: "...". Strip outer quotes for readability.
+            try {
+                var before = window.getComputedStyle(el, '::before').content || '';
+                var after = window.getComputedStyle(el, '::after').content || '';
+                var strip = function(s) { return s.replace(/^"|"$/g, '').replace(/^'|'$/g, ''); };
+                out[k] += ' [::before=' + strip(before) + '] [::after=' + strip(after) + ']';
+            } catch (cssErr) {
+                out[k] += ' [css: ' + cssErr.message + ']';
+            }
+        } else if (el && el.hasAttribute && el.hasAttribute('data-selected')) {
+            out[k] += ' [data-selected=' + el.getAttribute('data-selected') + ']';
+        } else if (el && el.value !== undefined) {
+            out[k] += ' [input.value=' + el.value + ']';
+        }
+    }
+    // Also list every key on the Settings object so we can find fields PMDG
+    // stores under names we didn't expect (e.g. ground speed appears to live
+    // somewhere other than speed_unit).
+    try {
+        if (typeof Settings !== 'undefined' && Settings) {
+            var all = [];
+            for (var prop in Settings) {
+                if (typeof Settings[prop] === 'function') continue;
+                all.push(prop + '=' + (typeof Settings[prop]) + ':' + String(Settings[prop]).substring(0, 60));
+            }
+            out['__ALL_SETTINGS_KEYS__'] = all.join(' | ');
+        }
+    } catch (e) {
+        out['__ALL_SETTINGS_KEYS__'] = 'enum threw: ' + e.message;
+    }
+
+    // Deep-dump the unit_set and default_units objects — the individual
+    // Settings.weight_unit etc. seem to sometimes disagree with what the
+    // tablet renders, so the real state may live inside these.
+    var dumpObj = function(label, obj) {
+        try {
+            if (!obj || typeof obj !== 'object') { out[label] = '(not an object)'; return; }
+            var parts = [];
+            for (var p in obj) {
+                var v = obj[p];
+                if (typeof v === 'function') continue;
+                if (v && typeof v === 'object') {
+                    var sub = [];
+                    for (var q in v) {
+                        if (typeof v[q] === 'function') continue;
+                        sub.push(q + '=' + String(v[q]).substring(0, 40));
+                    }
+                    parts.push(p + ':{' + sub.join(', ') + '}');
+                } else {
+                    parts.push(p + '=' + (typeof v) + ':' + String(v).substring(0, 40));
+                }
+            }
+            out[label] = parts.join(' | ');
+        } catch (dumpErr) {
+            out[label] = 'dump threw: ' + dumpErr.message;
+        }
+    };
+    try {
+        if (typeof Settings !== 'undefined' && Settings) {
+            dumpObj('__UNIT_SET__', Settings.unit_set);
+            dumpObj('__DEFAULT_UNITS__', Settings.default_units);
+        }
+    } catch (e) { /* ignore */ }
+
+    _efb.postState('preferences_debug', out);
+};
+
 _efb.cmdGetPreferences = function() {
     var prefs = {};
     var keys = [
-        'simbrief_id', 'weather_source', 'weight_unit', 'distance_unit',
-        'altitude_unit', 'temperature_unit', 'length_unit', 'speed_unit',
-        'airspeed_unit', 'pressure_unit', 'on_screen_keyboard', 'theme_setting'
+        'simbrief_id', 'hoppie_id', 'sayintentions_id',
+        'weather_source', 'atc_network',
+        'weight_unit', 'distance_unit', 'altitude_unit', 'temperature_unit',
+        'length_unit', 'speed_unit', 'airspeed_unit', 'pressure_unit',
+        'on_screen_keyboard', 'theme_setting', 'start_screen_on'
     ];
     for (var i = 0; i < keys.length; i++) {
         if (typeof Settings !== 'undefined' && Settings[keys[i]] !== undefined) {
@@ -396,14 +1099,73 @@ _efb.cmdGetPreferences = function() {
     _efb.postState('preferences', prefs);
 };
 
+// Normalize a unit string for robust comparison — lowercase, trim, strip
+// trailing 's' so "kts"/"kt" and "lbs"/"lb" both match.
+_efb._normUnit = function(s) {
+    s = String(s || '').trim().toLowerCase();
+    if (s.length > 1 && s.charAt(s.length - 1) === 's') s = s.substring(0, s.length - 1);
+    return s;
+};
+
 _efb.cmdSetPreference = function(key, value) {
-    // Use Settings.updateSetting() directly — this persists to DataStore
-    // and is the same mechanism the EFB's own save uses.
-    if (typeof Settings !== 'undefined' && Settings.updateSetting) {
-        Settings.updateSetting(key, value);
-    } else {
+    if (typeof Settings === 'undefined' || !Settings.updateSetting) {
         _efb.postState('error', { message: 'EFB Settings not available — preferences cannot be saved' });
+        return;
     }
+
+    var el = document.getElementById('efb_preferences_' + key);
+
+    // Checkbox toggle path: click the element if Settings[key] doesn't
+    // already match the target. Clicking triggers PMDG's own handler which
+    // updates Settings AND re-renders dependent unit spans across all pages
+    // (Takeoff, Dashboard, etc.) — the exact re-render path we need.
+    if (el && el.tagName === 'INPUT' && el.type === 'checkbox') {
+        var currentNorm = _efb._normUnit(Settings[key]);
+        var targetNorm = _efb._normUnit(value);
+        if (currentNorm === targetNorm) {
+            // Already in target state — no click, no write.
+            return;
+        }
+        // Flip via a realistic click sequence so both plain DOM listeners and
+        // React's SyntheticEvent pipeline see the interaction.
+        try {
+            el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+            el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+            el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        } catch (mEvtErr) { /* Coherent GT MouseEvent ctor missing */ }
+        try { el.click(); } catch (clkErr) { /* fallback */ }
+        // Belt-and-braces: direct Settings writes in case the click handler
+        // didn't fire (e.g. element hidden / React not mounted on this page).
+        try { Settings.updateSetting(key, value); } catch (setErr) {}
+        try {
+            if (Settings.unit_set) {
+                var shortKey = key.substring(0, key.length - 5);
+                Settings.unit_set[shortKey] = value;
+            }
+        } catch (usErr) {}
+        return;
+    }
+
+    // Custom-select path (atc_network, theme, weather_source, etc.) —
+    // route through the same robust set_select_by_id flow that actually
+    // clicks the matching option element, force-shows the .options
+    // container if needed, and dispatches a real mousedown/mouseup/click
+    // sequence so PMDG's React handler fires and updates internal state.
+    // Just setting data-selected and rewriting .selected-option's text is
+    // cosmetic — PMDG's React state stays stale and import flows that read
+    // that state (e.g. weather source) silently use the previous value.
+    if (el && el.className && typeof el.className === 'string'
+        && el.className.indexOf('custom-select') >= 0) {
+        _efb.cmdSetSelectById({ id: 'efb_preferences_' + key, value: value });
+        // Settings.updateSetting as belt-and-braces in case the click
+        // didn't propagate (hidden DOM, React not mounted, etc.).
+        try { Settings.updateSetting(key, value); } catch (setErr) {}
+        return;
+    }
+
+    // Text input path (simbrief_id, hoppie_id, etc.) or unknown element:
+    // fall back to updateSetting which persists to DataStore.
+    Settings.updateSetting(key, value);
 };
 
 _efb.cmdSavePreferences = function() {
@@ -464,6 +1226,34 @@ _efb.stopNavigraphCodeObserver = function() {
     if (_efb.navigraphCodeTimer) {
         clearInterval(_efb.navigraphCodeTimer);
         _efb.navigraphCodeTimer = null;
+    }
+};
+
+// Active check for current Navigraph auth state. Called on bridge-connect
+// and on Prefs tab activation so the UI reflects reality even when the user
+// was already signed in when MSFSBA launched. Without this, our UI only sees
+// auth state after explicit sign-in/out actions (onAuthStateChanged is
+// unreliable for the "already authenticated at load" case).
+_efb.cmdCheckNavigraphAuth = function() {
+    try {
+        if (typeof Navigraph === 'undefined' || !Navigraph.auth || !Navigraph.auth.getUser) {
+            _efb.postState('navigraph_auth_state', { authenticated: 'false', username: '' });
+            return;
+        }
+        Navigraph.auth.getUser(true).then(function(user) {
+            if (user) {
+                _efb.postState('navigraph_auth_state', {
+                    authenticated: 'true',
+                    username: user.preferred_username || user.name || 'Unknown'
+                });
+            } else {
+                _efb.postState('navigraph_auth_state', { authenticated: 'false', username: '' });
+            }
+        }).catch(function(e) {
+            _efb.postState('navigraph_auth_state', { authenticated: 'false', username: '' });
+        });
+    } catch (e) {
+        _efb.postState('error', { message: 'check_navigraph_auth failed: ' + e.message });
     }
 };
 
@@ -1047,21 +1837,21 @@ _efb.subscribeToBusEvents = function() {
     });
 
     subscriber.on('simbrief_data').whenChanged().handle(function(data) {
-        try {
-            _efb.postState('simbrief_loaded', {
-                callsign: data.atc.callsign || '',
-                origin_icao: data.origin.icao_code || '',
-                dest_icao: data.destination.icao_code || '',
-                alt_icao: data.alternate.icao_code || '',
-                cruise_alt: String(data.general.initial_altitude || ''),
-                cost_index: String(data.general.costindex || ''),
-                zfw: String(data.weights.est_zfw || ''),
-                fuel_total: String(data.fuel.plan_ramp || ''),
-                avg_wind: data.general.avg_wind_dir + '/' + data.general.avg_wind_spd
-            });
-        } catch (e) {
-            console.error('[EFB Bridge] Error processing simbrief_data:', e);
-        }
+        // Defer briefly so the tablet's React layer finishes rendering the
+        // Dashboard DOM. buildSimbriefPayload reads efb_dashboard_std/sta
+        // directly from the DOM for STD/STA times, and those elements still
+        // hold placeholder content at the exact moment this event fires.
+        setTimeout(function() {
+            try {
+                var payload = _efb.buildSimbriefPayload(data);
+                if (payload) {
+                    _efb.lastSimbriefPayload = payload;
+                    _efb.postState('simbrief_loaded', payload);
+                }
+            } catch (e) {
+                console.error('[EFB Bridge] Error processing simbrief_data:', e);
+            }
+        }, 750);
     });
 
     // The WASM sends two simbrief_fetch_result messages: one for WX, one for Flightplans.
