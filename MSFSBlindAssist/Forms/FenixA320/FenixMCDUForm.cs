@@ -163,9 +163,9 @@ public class FenixMCDUForm : Form
 
         // Set tab order
         int tabIdx = 0;
+        mcduSelector.TabIndex = tabIdx++;
         mcduDisplay.TabIndex = tabIdx++;
         scratchpadInput.TabIndex = tabIdx++;
-        mcduSelector.TabIndex = tabIdx++;
         btnInit.TabIndex = tabIdx++;
         btnDir.TabIndex = tabIdx++;
         btnProg.TabIndex = tabIdx++;
@@ -250,6 +250,8 @@ public class FenixMCDUForm : Form
             _lastAnnouncedScratchpad = "";
             _lastAnnouncedTitle = "";
             mcduDisplay.Items.Clear();
+            string mcduName = mcduSelector.SelectedIndex == 0 ? "Left" : "Right";
+            this.Text = $"Fenix MCDU ({mcduName})";
         };
     }
 

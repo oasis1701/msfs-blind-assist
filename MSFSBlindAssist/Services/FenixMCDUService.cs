@@ -86,6 +86,7 @@ public class FenixMCDUService : IDisposable
         if (mcduIndex < 1 || mcduIndex > 2) return;
         if (mcduIndex == _mcduIndex) return;
         _mcduIndex = mcduIndex;
+        _reconnectAttempt = 0;
 
         // Reconnect with new MCDU index
         Disconnect();
