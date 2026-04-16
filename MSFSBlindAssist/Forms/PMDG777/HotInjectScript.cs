@@ -241,11 +241,11 @@ namespace MSFSBlindAssist.Forms.PMDG777
                     'efb_preferences_distance_unit': ['km','nm'],
                     'efb_preferences_altitude_unit': ['m','ft'],
                     'efb_preferences_length_unit': ['m','ft'],
-                    'efb_preferences_speed_unit': ['mph','kph'],
+                    'efb_preferences_speed_unit': ['mps','kph'],
                     'efb_preferences_airspeed_unit': ['kph','kts'],
                     'efb_preferences_temperature_unit': ['F','C'],
-                    'efb_preferences_pressure_unit': ['inHg','hPa'],
-                    'efb_preferences_weight_unit': ['lb','kg']
+                    'efb_preferences_pressure_unit': ['hPa','inHg'],
+                    'efb_preferences_weight_unit': ['kg','lb']
                 };
                 for (var pi = 0; pi < count; pi++) {
                     var labelText = labelRows[pi].textContent.trim();

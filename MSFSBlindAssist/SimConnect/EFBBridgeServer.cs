@@ -42,6 +42,22 @@ namespace MSFSBlindAssist.SimConnect
         private string _cachedDisplayElementsJson = "[]";
         private readonly object _displayLock = new();
 
+#if DEBUG
+        // Debug: ring buffer of recent state updates keyed by type, for
+        // external test harnesses to inspect what the bridge has posted
+        // without having to hook into the UI. Accessible via
+        // GET /debug-state-last?type=<type> and GET /debug-states.
+        // Debug builds only — /debug-enqueue accepts arbitrary bridge
+        // commands with no auth, which is a local-access-only dev aid.
+        private readonly ConcurrentDictionary<string, DebugStateRecord> _debugLastState = new();
+        private class DebugStateRecord
+        {
+            public string Type { get; set; } = "";
+            public Dictionary<string, string> Data { get; set; } = new();
+            public DateTime ReceivedAt { get; set; }
+        }
+#endif
+
         /// <summary>
         /// Updates the cached display elements JSON. Called from the form when display_elements state arrives.
         /// </summary>
@@ -237,6 +253,21 @@ namespace MSFSBlindAssist.SimConnect
                     case "/display-set-value" when request.HttpMethod == "POST":
                         await HandleDisplaySetValue(request, response);
                         break;
+#if DEBUG
+                    // Debug endpoints gated to Debug builds only. /debug-enqueue
+                    // accepts arbitrary bridge commands (including eval_js) with
+                    // no auth, which is fine for local development but should
+                    // never ship in Release builds.
+                    case "/debug-enqueue" when request.HttpMethod == "POST":
+                        await HandleDebugEnqueue(request, response);
+                        break;
+                    case "/debug-state-last" when request.HttpMethod == "GET":
+                        await HandleDebugStateLast(request, response);
+                        break;
+                    case "/debug-states" when request.HttpMethod == "GET":
+                        await HandleDebugStates(response);
+                        break;
+#endif
                     default:
                         response.StatusCode = 404;
                         await WriteJson(response, new { error = "Not found" });
@@ -294,6 +325,16 @@ namespace MSFSBlindAssist.SimConnect
                 }
 
                 var args = new EFBStateUpdateEventArgs { Type = type, Data = data };
+
+#if DEBUG
+                // Record for debug introspection (external test access).
+                _debugLastState[type] = new DebugStateRecord
+                {
+                    Type = type,
+                    Data = new Dictionary<string, string>(data),
+                    ReceivedAt = DateTime.UtcNow
+                };
+#endif
 
                 if (_syncContext != null)
                 {
@@ -599,6 +640,102 @@ loadItems();
 
             await WriteJson(response, new { set = true });
         }
+
+#if DEBUG
+        // --- Debug endpoints for external test harnesses ---
+        //
+        // DEBUG BUILDS ONLY. These let tools outside the MSFSBA process
+        // (e.g. curl scripts) drive the bridge directly:
+        //
+        //   POST /debug-enqueue   body: {"command":"dump_preferences","payload":{}}
+        //   GET  /debug-state-last?type=preferences_debug
+        //   GET  /debug-states
+        //
+        // The flow is: POST a command to enqueue it, wait briefly for the
+        // JS bridge to poll/execute and post back a state update, then GET
+        // the latest state for the expected response type.
+        //
+        // Not in Release builds — /debug-enqueue has no auth and accepts
+        // arbitrary bridge commands including eval_js.
+
+        private async Task HandleDebugEnqueue(HttpListenerRequest request, HttpListenerResponse response)
+        {
+            using var reader = new StreamReader(request.InputStream, request.ContentEncoding);
+            string body = await reader.ReadToEndAsync();
+            try
+            {
+                var json = JsonDocument.Parse(body);
+                string command = json.RootElement.GetProperty("command").GetString() ?? "";
+                if (string.IsNullOrEmpty(command))
+                {
+                    response.StatusCode = 400;
+                    await WriteJson(response, new { error = "command required" });
+                    return;
+                }
+
+                Dictionary<string, string>? payload = null;
+                if (json.RootElement.TryGetProperty("payload", out var payloadEl)
+                    && payloadEl.ValueKind == JsonValueKind.Object)
+                {
+                    payload = new Dictionary<string, string>();
+                    foreach (var prop in payloadEl.EnumerateObject())
+                    {
+                        payload[prop.Name] = prop.Value.ValueKind == JsonValueKind.String
+                            ? prop.Value.GetString() ?? ""
+                            : prop.Value.ToString();
+                    }
+                }
+
+                EnqueueCommand(command, payload);
+                await WriteJson(response, new { enqueued = true, command });
+            }
+            catch (Exception ex)
+            {
+                response.StatusCode = 500;
+                await WriteJson(response, new { error = ex.Message });
+            }
+        }
+
+        private async Task HandleDebugStateLast(HttpListenerRequest request, HttpListenerResponse response)
+        {
+            string type = request.QueryString["type"] ?? "";
+            if (string.IsNullOrEmpty(type))
+            {
+                response.StatusCode = 400;
+                await WriteJson(response, new { error = "type query parameter required" });
+                return;
+            }
+
+            if (_debugLastState.TryGetValue(type, out var record))
+            {
+                await WriteJson(response, new
+                {
+                    type = record.Type,
+                    data = record.Data,
+                    receivedAt = record.ReceivedAt.ToString("O")
+                });
+            }
+            else
+            {
+                response.StatusCode = 404;
+                await WriteJson(response, new { error = "no state recorded for type: " + type });
+            }
+        }
+
+        private async Task HandleDebugStates(HttpListenerResponse response)
+        {
+            var summary = new Dictionary<string, object>();
+            foreach (var kvp in _debugLastState)
+            {
+                summary[kvp.Key] = new
+                {
+                    receivedAt = kvp.Value.ReceivedAt.ToString("O"),
+                    dataKeys = kvp.Value.Data.Keys.ToArray()
+                };
+            }
+            await WriteJson(response, new { states = summary });
+        }
+#endif
 
         private static async Task WriteJson(HttpListenerResponse response, object data)
         {

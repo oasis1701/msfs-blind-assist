@@ -57,7 +57,14 @@ namespace MSFSBlindAssist.Forms.PMDG777
         public EfbAppNavigator(EFBBridgeServer bridgeServer)
         {
             _bridgeServer = bridgeServer;
-            _sequenceTimer = new System.Windows.Forms.Timer { Interval = 250 };
+            // 600ms interval — longer than the 500ms command poll, so each
+            // click lands in its own poll cycle and PMDG's React has time to
+            // render the resulting page before the next click fires. Lower
+            // values led to flaky Preferences navigation (observed in Phase 2
+            // testing): the efb-icon click would hit home before home had
+            // fully rendered, or the preferences sub-nav click would fire
+            // before the EFB app page was mounted.
+            _sequenceTimer = new System.Windows.Forms.Timer { Interval = 600 };
             _sequenceTimer.Tick += OnSequenceTick;
         }
 

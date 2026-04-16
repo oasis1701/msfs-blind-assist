@@ -101,7 +101,7 @@ namespace MSFSBlindAssist.Forms.PMDG777.Apps
             distanceUnitCombo        = ComboRow("Distance Unit:",          "Distance Unit",          new object[] { "nm", "km" });
             altitudeUnitCombo        = ComboRow("Altitude Unit:",          "Altitude Unit",          new object[] { "ft", "m" });
             lengthUnitCombo          = ComboRow("Length Unit:",            "Length Unit",            new object[] { "ft", "m" });
-            speedUnitCombo           = ComboRow("Speed Unit:",             "Speed Unit",             new object[] { "kph", "mph" });
+            speedUnitCombo           = ComboRow("Speed Unit:",             "Speed Unit",             new object[] { "mps", "kph" });
             airspeedUnitCombo        = ComboRow("AirSpeed Unit:",          "AirSpeed Unit",          new object[] { "kts", "kph" });
             temperatureUnitCombo     = ComboRow("Temperature Unit:",       "Temperature Unit",       new object[] { "C", "F" });
             pressureUnitCombo        = ComboRow("Pressure Unit:",          "Pressure Unit",          new object[] { "hPa", "inHg" });
@@ -184,6 +184,7 @@ namespace MSFSBlindAssist.Forms.PMDG777.Apps
         public override void OnActivated()
         {
             if (!BridgeServer.IsBridgeConnected) return;
+            ArmLoadAnnouncement();
             BridgeServer.EnqueueCommand("get_preferences");
             BridgeServer.EnqueueCommand("check_navigraph_auth");
         }
@@ -197,15 +198,19 @@ namespace MSFSBlindAssist.Forms.PMDG777.Apps
             // when navigraph_auth_state arrives.
         }
 
-        private const string PopupDismissMarker = "EFB_PREF_POPUP_DISMISS";
-
         protected override void HandleStateUpdate(EFBStateUpdateEventArgs e)
         {
             switch (e.Type)
             {
                 case "preferences":
+                    AnnounceLoadedIfPending();
                     PopulatePreferences(e.Data);
                     PreferencesCache.Update(e.Data);
+                    if (_savePending)
+                    {
+                        _savePending = false;
+                        Announcer.Announce("Preferences saved");
+                    }
                     break;
 
                 case "navigraph_code":
@@ -237,11 +242,6 @@ namespace MSFSBlindAssist.Forms.PMDG777.Apps
                     }
                     break;
 
-                case "eval_result":
-                    string result = e.Data.GetValueOrDefault("result", "");
-                    if (result.Contains(PopupDismissMarker) && result.Contains("clicked"))
-                        StopPopupDismissTimer();
-                    break;
             }
         }
 
@@ -317,32 +317,41 @@ namespace MSFSBlindAssist.Forms.PMDG777.Apps
                 return;
             }
 
-            if (BridgeServer.HasPendingCommand("save_preferences")) return;
+            if (BridgeServer.HasPendingCommand("apply_preferences")) return;
 
             savePreferencesButton.Enabled = false;
 
-            EnqueueTextPreference("simbrief_id", simbriefAliasTextBox.Text);
-            EnqueueTextPreference("hoppie_id", hoppieIdTextBox.Text);
-            EnqueueTextPreference("sayintentions_id", sayIntentionsKeyTextBox.Text);
+            // Build a semicolon-separated "key=value;..." payload and send
+            // it as one atomic apply_preferences command. The JS side
+            // handles navigation to the Prefs page, waits for the page to
+            // mount, then applies each change and clicks Save — all in one
+            // sequence so we don't race with the navigator.
+            var pairs = new List<string>
+            {
+                "simbrief_id=" + EncodePair(simbriefAliasTextBox.Text),
+                "hoppie_id=" + EncodePair(hoppieIdTextBox.Text),
+                "sayintentions_id=" + EncodePair(sayIntentionsKeyTextBox.Text),
+                ComboPair(startScreenOnCombo, "start_screen_on"),
+                ComboPair(atcNetworkCombo, "atc_network"),
+                ComboPair(weatherSourceCombo, "weather_source"),
+                ComboPair(onScreenKeyboardCombo, "on_screen_keyboard"),
+                ComboPair(themeCombo, "theme_setting"),
+                ComboPair(distanceUnitCombo, "distance_unit"),
+                ComboPair(altitudeUnitCombo, "altitude_unit"),
+                ComboPair(lengthUnitCombo, "length_unit"),
+                ComboPair(speedUnitCombo, "speed_unit"),
+                ComboPair(airspeedUnitCombo, "airspeed_unit"),
+                ComboPair(temperatureUnitCombo, "temperature_unit"),
+                ComboPair(pressureUnitCombo, "pressure_unit"),
+                ComboPair(weightUnitCombo, "weight_unit")
+            };
+            pairs.RemoveAll(string.IsNullOrEmpty);
 
-            EnqueueComboPreference(startScreenOnCombo, "start_screen_on");
-            EnqueueComboPreference(atcNetworkCombo, "atc_network");
-            EnqueueComboPreference(weatherSourceCombo, "weather_source");
-            EnqueueComboPreference(onScreenKeyboardCombo, "on_screen_keyboard");
-            EnqueueComboPreference(themeCombo, "theme_setting");
-
-            EnqueueComboPreference(distanceUnitCombo, "distance_unit");
-            EnqueueComboPreference(altitudeUnitCombo, "altitude_unit");
-            EnqueueComboPreference(lengthUnitCombo, "length_unit");
-            EnqueueComboPreference(speedUnitCombo, "speed_unit");
-            EnqueueComboPreference(airspeedUnitCombo, "airspeed_unit");
-            EnqueueComboPreference(temperatureUnitCombo, "temperature_unit");
-            EnqueueComboPreference(pressureUnitCombo, "pressure_unit");
-            EnqueueComboPreference(weightUnitCombo, "weight_unit");
-
-            BridgeServer.EnqueueCommand("save_preferences");
-
-            ScheduleDismissSavePopup();
+            _savePending = true;
+            BridgeServer.EnqueueCommand("apply_preferences", new Dictionary<string, string>
+            {
+                ["pairs"] = string.Join(";", pairs)
+            });
 
             StopReenableTimer();
             _reenableTimer = new System.Windows.Forms.Timer { Interval = 2500 };
@@ -354,6 +363,14 @@ namespace MSFSBlindAssist.Forms.PMDG777.Apps
                     savePreferencesButton.Enabled = true;
             };
             _reenableTimer.Start();
+        }
+
+        private static string EncodePair(string? value) => value ?? "";
+
+        private static string ComboPair(ComboBox combo, string key)
+        {
+            string? v = combo.SelectedItem?.ToString();
+            return v == null ? "" : (key + "=" + v);
         }
 
         private void OnNavigraphSignInClick(object? sender, EventArgs e)
@@ -375,16 +392,11 @@ namespace MSFSBlindAssist.Forms.PMDG777.Apps
         }
 
         private System.Windows.Forms.Timer? _reenableTimer;
-        private System.Windows.Forms.Timer? _popupDismissTimer;
+        private bool _savePending;
 
         private void StopReenableTimer()
         {
             if (_reenableTimer != null) { _reenableTimer.Stop(); _reenableTimer.Dispose(); _reenableTimer = null; }
-        }
-
-        private void StopPopupDismissTimer()
-        {
-            if (_popupDismissTimer != null) { _popupDismissTimer.Stop(); _popupDismissTimer.Dispose(); _popupDismissTimer = null; }
         }
 
         private void StartAuthTimeout()
@@ -431,60 +443,10 @@ namespace MSFSBlindAssist.Forms.PMDG777.Apps
             if (disposing)
             {
                 StopReenableTimer();
-                StopPopupDismissTimer();
                 StopAuthTimeout();
                 StopSignOutTimeout();
             }
             base.Dispose(disposing);
-        }
-
-        private void ScheduleDismissSavePopup()
-        {
-            StopPopupDismissTimer();
-            int attempts = 0;
-            _popupDismissTimer = new System.Windows.Forms.Timer { Interval = 500 };
-            _popupDismissTimer.Tick += (_, _) =>
-            {
-                attempts++;
-                if (IsDisposed || attempts > 6)
-                {
-                    StopPopupDismissTimer();
-                    return;
-                }
-                const string js =
-                    "(function(){try{" +
-                    "var containers=document.querySelectorAll('.popup,.modal,.dialog,[class*=\"popup\"],[class*=\"modal\"],[class*=\"dialog\"],[role=\"dialog\"]');" +
-                    "for(var ci=0;ci<containers.length;ci++){" +
-                    "var c=containers[ci];" +
-                    "try{var ccs=window.getComputedStyle(c);if(ccs.display==='none'||ccs.visibility==='hidden')continue;}catch(e){}" +
-                    "var btns=c.querySelectorAll('button');" +
-                    "for(var i=0;i<btns.length;i++){" +
-                    "var b=btns[i];var t=(b.textContent||'').trim().toUpperCase();" +
-                    "if(t==='OK'||t==='CLOSE'||t==='DISMISS'){" +
-                    "try{var cs=window.getComputedStyle(b);if(cs.display==='none'||cs.visibility==='hidden')continue;}catch(e){}" +
-                    "b.click();return 'EFB_PREF_POPUP_DISMISS clicked '+t;" +
-                    "}}}" +
-                    "return 'EFB_PREF_POPUP_DISMISS no popup';" +
-                    "}catch(e){return 'EFB_PREF_POPUP_DISMISS err '+e.message;}})()";
-                BridgeServer.EnqueueCommand("eval_js", new Dictionary<string, string> { ["code"] = js });
-            };
-            _popupDismissTimer.Start();
-        }
-
-        private void EnqueueTextPreference(string key, string? value)
-        {
-            BridgeServer.EnqueueCommand("set_preference", new Dictionary<string, string>
-                { { "key", key }, { "value", value ?? "" } });
-        }
-
-        private void EnqueueComboPreference(ComboBox combo, string key)
-        {
-            string? value = combo.SelectedItem?.ToString();
-            if (value != null)
-            {
-                BridgeServer.EnqueueCommand("set_preference", new Dictionary<string, string>
-                    { { "key", key }, { "value", value } });
-            }
         }
     }
 }

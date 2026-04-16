@@ -1,5 +1,5 @@
 // PMDG EFB Accessibility Bridge
-// BRIDGE_JS_VERSION: 35-prefclick
+// BRIDGE_JS_VERSION: 45-groundops
 // Injected into PMDGTabletCA.html via mod package override to expose EFB
 // functionality to the MSFS Blind Assist application via HTTP on localhost:19777.
 //
@@ -8,7 +8,7 @@
 try {
 
 var _efb = {
-    JS_VERSION: '35-prefclick',
+    JS_VERSION: '45-groundops',
     SERVER_URL: 'http://localhost:19777',
     COMMAND_POLL_INTERVAL: 500,
     HEARTBEAT_INTERVAL: 5000,
@@ -238,6 +238,9 @@ _efb.handleCommand = function(command, payload) {
             case 'save_preferences':
                 _efb.cmdSavePreferences();
                 break;
+            case 'apply_preferences':
+                _efb.cmdApplyPreferences(payload);
+                break;
             case 'explore_navigraph':
                 _efb.cmdExploreNavigraph();
                 break;
@@ -293,27 +296,60 @@ _efb.handleCommand = function(command, payload) {
                 }
                 break;
             case 'click_by_id':
-                // Targeted click on a DOM element by id. Uses the full
-                // mousedown/mouseup/click sequence plus native .click() so
-                // both plain DOM listeners and React's SyntheticEvent pipeline
-                // see the interaction — bare .click() alone isn't enough for
-                // PMDG's Import buttons on the Performance Tool pages.
+                // Targeted click on a DOM element by id. By default uses the
+                // full mousedown/mouseup/click sequence plus native .click()
+                // so both plain DOM listeners and React's SyntheticEvent
+                // pipeline see the interaction. Pass simple:"true" to use
+                // bare .click() only — needed for Ground Ops buttons where
+                // the MouseEvent+click double-fires the addEventListener
+                // handler, toggling the state twice (= no visible change).
                 try {
                     var cbiId = payload && payload.id ? String(payload.id) : '';
+                    var cbiSimple = payload && payload.simple === 'true';
                     var cbiEl = cbiId ? document.getElementById(cbiId) : null;
                     if (cbiEl) {
-                        try {
-                            cbiEl.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
-                            cbiEl.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
-                            cbiEl.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-                        } catch (cbiMevt) { /* old Coherent GT — fall through to .click() */ }
-                        try { cbiEl.click(); } catch (cbiClk) { /* event dispatch may already have fired */ }
+                        if (!cbiSimple) {
+                            try {
+                                cbiEl.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+                                cbiEl.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+                                cbiEl.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+                            } catch (cbiMevt) { /* old Coherent GT — fall through to .click() */ }
+                        }
+                        try { cbiEl.click(); } catch (cbiClk) { /* already dispatched */ }
                         _efb.postState('click_result', { id: cbiId, clicked: 'true' });
                     } else {
                         _efb.postState('click_result', { id: cbiId, clicked: 'false' });
                     }
                 } catch (cbiErr) {
                     _efb.postState('error', { message: 'click_by_id: ' + cbiErr.message });
+                }
+                break;
+            case 'show_perf_page':
+                // Ensure a Performance Tool sub-page is visible without
+                // toggling it off. PMDG's sub-page buttons (opt_takeoff,
+                // opt_landingdispatch, opt_landinginflight) are toggles —
+                // clicking an already-active button HIDES the page. This
+                // command checks the page div first and only clicks if needed.
+                // payload: { buttonId: "opt_landinginflight", pageId: "LandingEnroute" }
+                try {
+                    var sppBtnId = payload && payload.buttonId ? String(payload.buttonId) : '';
+                    var sppPageId = payload && payload.pageId ? String(payload.pageId) : '';
+                    var sppPage = sppPageId ? document.getElementById(sppPageId) : null;
+                    var sppAlreadyVisible = sppPage && sppPage.style.display !== 'none';
+                    if (!sppAlreadyVisible && sppBtnId) {
+                        var sppBtn = document.getElementById(sppBtnId);
+                        if (sppBtn) {
+                            try {
+                                sppBtn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+                                sppBtn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+                                sppBtn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+                            } catch (_) {}
+                            try { sppBtn.click(); } catch (_) {}
+                        }
+                    }
+                    _efb.postState('click_result', { id: sppBtnId, clicked: String(!sppAlreadyVisible) });
+                } catch (sppErr) {
+                    _efb.postState('error', { message: 'show_perf_page: ' + sppErr.message });
                 }
                 break;
             case 'wait_for_visible':
@@ -442,6 +478,112 @@ _efb.buildSimbriefPayload = function(data) {
 // _tag lets multiple panels share the 'values' state channel without collisions.
 // Inputs return .value; elements with aria-valuenow return that attribute
 // (useful for progress bars); everything else returns trimmed textContent.
+_efb._fixPerfBarometers = function() {
+    // PMDG bug: the barometer ValueField is never created on any
+    // performance page. Without it, captureInputValues crashes on
+    // getImperialValue. PMDG intentionally omits it because their
+    // ValueField.setValue uses Math.round(), which destroys inHg
+    // decimal precision (29.77 → 30). We create a lightweight mock
+    // that reads the input value with full precision and converts
+    // correctly between inHg and hPa.
+    try {
+        var pressureUnit = (typeof Settings !== 'undefined' && Settings.unit_set)
+            ? (Settings.unit_set.pressure || 'inHg') : 'inHg';
+        var fixPairs = [
+            { inputId: 'opt_takeoff_barometer', map: (typeof takeOffInputs !== 'undefined') ? takeOffInputs : null },
+            { inputId: 'opt_landingdispatch_barometer', map: (typeof dispatchInputs !== 'undefined') ? dispatchInputs : null },
+            { inputId: 'opt_landingenroute_barometer', map: (typeof enrouteInputs !== 'undefined') ? enrouteInputs : null }
+        ];
+        for (var fi = 0; fi < fixPairs.length; fi++) {
+            var pair = fixPairs[fi];
+            if (!pair.map) continue;
+            // Always overwrite: a previous bridge version may have created
+            // a real ValueField (with Math.round) or an older mock. Our
+            // mock is cheap to recreate and ensures the latest conversion
+            // logic is always active.
+            var inp = document.getElementById(pair.inputId);
+            if (!inp) continue;
+            // Duck-type mock matching ValueField's interface but without
+            // the Math.round that breaks pressure decimals.
+            pair.map[pair.inputId] = {
+                _isMock: true,
+                is_wind: false,
+                valueElement: inp,
+                unitElement: null,
+                measurementType: 'pressure',
+                units: { metric: 'hpa', imperial: 'inHg' },
+                values: { metric: null, imperial: null },
+                // Detect whether a raw pressure value is in hPa or inHg.
+                // Standard atmosphere: 29.92 inHg = 1013.25 hPa.
+                // Real-world range: inHg 27-32, hPa 920-1080. No overlap.
+                _isHpa: function(n) { return n > 100; },
+                getValue: function() { return this.valueElement.value || ''; },
+                getImperialValue: function() {
+                    var raw = parseFloat(this.valueElement.value);
+                    if (isNaN(raw)) return null;
+                    return this._isHpa(raw) ? parseFloat((raw * 0.02953).toFixed(2)) : raw;
+                },
+                getMetricValue: function() {
+                    var raw = parseFloat(this.valueElement.value);
+                    if (isNaN(raw)) return null;
+                    return this._isHpa(raw) ? raw : Math.round(raw / 0.02953);
+                },
+                setValue: function(value) {
+                    var n = parseFloat(value);
+                    if (!isNaN(n)) {
+                        // Detect incoming unit and store both
+                        if (this._isHpa(n)) {
+                            this.values.metric = n;
+                            this.values.imperial = parseFloat((n * 0.02953).toFixed(2));
+                        } else {
+                            this.values.imperial = n;
+                            this.values.metric = Math.round(n / 0.02953);
+                        }
+                        // Display in the user's preferred unit
+                        var pref = (typeof Settings !== 'undefined' && Settings.unit_set)
+                            ? Settings.unit_set.pressure : 'inHg';
+                        if (pref === 'hpa' || pref === 'hPa') {
+                            this.valueElement.value = String(this.values.metric);
+                        } else {
+                            this.valueElement.value = String(this.values.imperial);
+                        }
+                    } else {
+                        this.valueElement.value = String(value);
+                    }
+                },
+                setValueInUnit: function(value) { this.setValue(value); },
+                getUnit: function() {
+                    return (typeof Settings !== 'undefined' && Settings.unit_set)
+                        ? Settings.unit_set.pressure : 'inHg';
+                },
+                setUnit: function() {},
+                clear: function() { this.valueElement.value = ''; this.values.metric = null; this.values.imperial = null; },
+                setTextValue: function(v) { this.valueElement.value = String(v); },
+                getValueAsUnit: function() { return this.getValue(); },
+                handleUnitClick: function() {},
+                wind_special_case: function() { return ''; }
+            };
+            // Ensure the unit span exists for our read_values to pick up
+            var unitSpanId = pair.inputId + '_unit';
+            if (!document.getElementById(unitSpanId)) {
+                var span = document.createElement('span');
+                span.id = unitSpanId;
+                span.className = 'input-unit';
+                span.textContent = pressureUnit;
+                inp.parentElement.insertBefore(span, inp.nextSibling);
+            }
+        }
+        // Always sync unit span text to current Settings
+        for (var si = 0; si < fixPairs.length; si++) {
+            var spanId = fixPairs[si].inputId + '_unit';
+            var existingSpan = document.getElementById(spanId);
+            if (existingSpan && existingSpan.textContent !== pressureUnit) {
+                existingSpan.textContent = pressureUnit;
+            }
+        }
+    } catch (_) {}
+};
+
 _efb.cmdReadValues = function(payload) {
     try {
         // C# passes ids as a comma-separated string because EnqueueCommand's
@@ -450,6 +592,12 @@ _efb.cmdReadValues = function(payload) {
         var raw = payload && payload.ids;
         var ids = Array.isArray(raw) ? raw : (raw ? String(raw).split(',') : []);
         var tag = (payload && payload.tag) || '';
+
+        // Fix PMDG's missing barometer ValueFields before reading perf values.
+        if (tag.indexOf('perf_') === 0) {
+            _efb._fixPerfBarometers();
+        }
+
         var values = { _tag: String(tag) };
         for (var i = 0; i < ids.length; i++) {
             var id = String(ids[i]);
@@ -776,96 +924,6 @@ _efb.cmdDumpElement = function(payload) {
     }
 };
 
-// --- legacy cmdDumpElement tree walk path below is unused; kept for the
-// one-off error/short paths above. Old tree logic removed so outerHTML is
-// the only live return. ---
-_efb._cmdDumpElement_unused = function(payload) {
-    var safeId = '?';
-    try {
-        var id = payload && payload.id ? String(payload.id) : '';
-        safeId = id || '?';
-        if (!id) {
-            _efb.postState('element_dump', { id: '', error: 'no id in payload' });
-            return;
-        }
-        var el = document.getElementById(id);
-        if (!el) {
-            _efb.postState('element_dump', { id: id, error: 'not found' });
-            return;
-        }
-        var info = { id: id };
-        info.tag = String(el.tagName || '');
-        try { info['class'] = String(el.className || ''); } catch (classErr) { info['class'] = '(err)'; }
-        try { info.computed_display = String(window.getComputedStyle(el).display); } catch (csErr) { info.computed_display = '?'; }
-
-        // Attrs (flatten to one key per attr)
-        try {
-            for (var ai = 0; ai < el.attributes.length; ai++) {
-                info['attr_' + el.attributes[ai].name] = String(el.attributes[ai].value);
-            }
-        } catch (attrErr) { info.attr_err = attrErr.message; }
-
-        // Walk descendants up to depth 4, one key per line
-        var lineIndex = 0;
-        var walk = function(node, depth) {
-            if (lineIndex >= 60) return;
-            if (!node || depth > 4) return;
-            var prefix = '';
-            for (var p = 0; p < depth; p++) prefix += '  ';
-            var childTag = String(node.tagName || '#text');
-            var childClass = '';
-            try {
-                if (node.className && typeof node.className === 'string') childClass = node.className;
-            } catch (clsErr) { childClass = ''; }
-            var childId = String(node.id || '');
-            var dv = '';
-            var ds = '';
-            try {
-                if (node.getAttribute) {
-                    dv = String(node.getAttribute('data-value') || '');
-                    ds = String(node.getAttribute('data-selected') || '');
-                }
-            } catch (attrErr2) { /* ignore */ }
-            var ownText = '';
-            try {
-                if (node.childNodes) {
-                    for (var c = 0; c < node.childNodes.length; c++) {
-                        var cn = node.childNodes[c];
-                        if (cn.nodeType === 3) ownText += (cn.textContent || '');
-                    }
-                }
-            } catch (txtErr) { /* ignore */ }
-            ownText = ownText.replace(/\s+/g, ' ').trim();
-            if (ownText.length > 80) ownText = ownText.substring(0, 80);
-
-            var line = prefix + childTag;
-            if (childId) line += ' #' + childId;
-            if (childClass) line += ' .' + childClass.replace(/\s+/g, '.');
-            if (dv) line += ' [dv=' + dv + ']';
-            if (ds) line += ' [ds=' + ds + ']';
-            if (ownText) line += ' "' + ownText + '"';
-
-            // One key per line — safer than packing newlines into a single value
-            info['line_' + ('00' + lineIndex).slice(-2)] = line;
-            lineIndex++;
-
-            try {
-                if (node.children) {
-                    for (var i = 0; i < node.children.length && lineIndex < 60; i++) {
-                        walk(node.children[i], depth + 1);
-                    }
-                }
-            } catch (walkErr) { /* ignore */ }
-        };
-        walk(el, 0);
-        info.line_count = String(lineIndex);
-        _efb.postState('element_dump', info);
-    } catch (e) {
-        // Even on total failure, post something so the C# timeout doesn't fire
-        _efb.postState('element_dump', { id: safeId, error: 'exception: ' + (e && e.message ? e.message : String(e)) });
-    }
-};
-
 // Enumerate a PMDG custom-select's options. Posts a 'select_options' state
 // with {_tag, _id, count, option_N_value, option_N_text, selected_value,
 // selected_text}. Used by TakeoffPanel to populate the runway combo after
@@ -962,9 +1020,25 @@ _efb.cmdSetSelectById = function(payload) {
             return null;
         };
 
+        // After clicking the option, PMDG's handler updates data-selected
+        // and selected-option text but does NOT re-hide the options container
+        // when the click comes from code (no user blur/focus to trigger the
+        // close logic). Leaving it visible causes PMDG to fight subsequent
+        // interactions — the dropdown appears "open" and runway combos go
+        // blank on the next refresh cycle. Hide it explicitly after a brief
+        // delay so PMDG's own handler finishes first.
+        var hideOptions = function() {
+            try {
+                if (optionsContainer && optionsContainer.style) {
+                    optionsContainer.style.visibility = 'hidden';
+                }
+            } catch (_) {}
+        };
+
         var hit = find();
         if (hit) {
             fireClick(hit);
+            setTimeout(hideOptions, 100);
             return;
         }
 
@@ -976,7 +1050,9 @@ _efb.cmdSetSelectById = function(payload) {
             var retry = find();
             if (retry) {
                 fireClick(retry);
+                setTimeout(hideOptions, 100);
             } else {
+                hideOptions();
                 _efb.postState('error', {
                     message: 'set_select_by_id: no matching option "' + val + '" in #' + id
                 });
@@ -1107,6 +1183,115 @@ _efb._normUnit = function(s) {
     return s;
 };
 
+// Walk the DOM and update every .input-unit / .output-unit span based on
+// the current Settings.unit_set values, converting the sibling value
+// element's numeric text in the process. PMDG's calculate function appears
+// to cache the output unit at calc time — even though Settings.unit_set
+// changes, clicking calculate again produces the same numeric output. So
+// we have to convert ourselves so the number matches the new unit label.
+_efb.refreshUnitSpans = function() {
+    try {
+        if (typeof Settings === 'undefined' || !Settings.unit_set) return 0;
+        var classToType = {
+            altitude: 'altitude',
+            length: 'length',
+            weight: 'weight',
+            airspeed: 'airspeed',
+            speed: 'speed',
+            temperature: 'temperature',
+            pressure: 'pressure'
+        };
+        var count = 0;
+        var spans = document.querySelectorAll('.input-unit, .output-unit');
+        for (var i = 0; i < spans.length; i++) {
+            var span = spans[i];
+            var parent = span.parentElement;
+            if (!parent) continue;
+            var measEl = parent.querySelector('.pmdg_measurement');
+            if (!measEl) continue;
+            var classes = (measEl.className || '').split(' ');
+            var type = null;
+            for (var c = 0; c < classes.length; c++) {
+                if (classToType[classes[c]]) { type = classToType[classes[c]]; break; }
+            }
+            if (!type || !Settings.unit_set[type]) continue;
+
+            var oldUnit = span.textContent;
+            var newUnit = Settings.unit_set[type];
+            if (oldUnit === newUnit) continue;
+
+            // Label-only sync: update the unit span text. We do NOT touch
+            // the numeric value in the sibling .pmdg_measurement element.
+            // PMDG's prefs_saved event (published by the Save button) is
+            // what drives dependent pages to re-read/rebuild their cached
+            // values in the new unit; doing a plain JS conversion here
+            // would double-convert on pages that already refreshed.
+            span.textContent = newUnit;
+            count++;
+        }
+        return count;
+    } catch (e) {
+        return 0;
+    }
+};
+
+// Convert a numeric string from one unit to another. Returns a string
+// formatted appropriately for the target unit, or null if the input isn't
+// a plain number or the conversion pair isn't known.
+_efb._convertUnit = function(text, fromUnit, toUnit) {
+    var trimmed = String(text).trim();
+    // Bail out on non-numeric (e.g. "190/3" wind direction/speed format)
+    var n = parseFloat(trimmed);
+    if (isNaN(n) || !isFinite(n) || !/^-?[0-9.]+$/.test(trimmed)) return null;
+
+    var from = _efb._normUnitKey(fromUnit);
+    var to = _efb._normUnitKey(toUnit);
+    if (from === to) return trimmed;
+
+    var result = null;
+    // Weight
+    if (from === 'kg' && to === 'lb') result = n * 2.20462262;
+    else if (from === 'lb' && to === 'kg') result = n / 2.20462262;
+    // Length / altitude
+    else if (from === 'ft' && to === 'm') result = n * 0.3048;
+    else if (from === 'm' && to === 'ft') result = n / 0.3048;
+    // Airspeed / speed
+    else if (from === 'kt' && to === 'kph') result = n * 1.852;
+    else if (from === 'kph' && to === 'kt') result = n / 1.852;
+    else if (from === 'kt' && to === 'mph') result = n * 1.15078;
+    else if (from === 'mph' && to === 'kt') result = n / 1.15078;
+    else if (from === 'kph' && to === 'mph') result = n * 0.621371;
+    else if (from === 'mph' && to === 'kph') result = n / 0.621371;
+    else if (from === 'mps' && to === 'kt') result = n * 1.94384;
+    else if (from === 'kt' && to === 'mps') result = n / 1.94384;
+    else if (from === 'mps' && to === 'kph') result = n * 3.6;
+    else if (from === 'kph' && to === 'mps') result = n / 3.6;
+    else if (from === 'mps' && to === 'mph') result = n * 2.23694;
+    else if (from === 'mph' && to === 'mps') result = n / 2.23694;
+    // Temperature
+    else if (from === 'c' && to === 'f') result = (n * 9 / 5) + 32;
+    else if (from === 'f' && to === 'c') result = (n - 32) * 5 / 9;
+    // Pressure
+    else if (from === 'hpa' && to === 'inhg') result = n * 0.02953;
+    else if (from === 'inhg' && to === 'hpa') result = n / 0.02953;
+
+    if (result === null) return null;
+
+    // Format: temperatures and inHg get 1-2 decimal places, everything
+    // else rounds to a whole number.
+    if (to === 'inhg') return result.toFixed(2);
+    if (to === 'c' || to === 'f') return result.toFixed(1);
+    return String(Math.round(result));
+};
+
+_efb._normUnitKey = function(u) {
+    var n = String(u || '').trim().toLowerCase();
+    if (n === 'kts') return 'kt';
+    if (n === 'lbs') return 'lb';
+    if (n === 'km/h') return 'kph';
+    return n;
+};
+
 _efb.cmdSetPreference = function(key, value) {
     if (typeof Settings === 'undefined' || !Settings.updateSetting) {
         _efb.postState('error', { message: 'EFB Settings not available — preferences cannot be saved' });
@@ -1115,34 +1300,21 @@ _efb.cmdSetPreference = function(key, value) {
 
     var el = document.getElementById('efb_preferences_' + key);
 
-    // Checkbox toggle path: click the element if Settings[key] doesn't
-    // already match the target. Clicking triggers PMDG's own handler which
-    // updates Settings AND re-renders dependent unit spans across all pages
-    // (Takeoff, Dashboard, etc.) — the exact re-render path we need.
+    // Checkbox toggle path (unit preferences): PMDG's toggle checkboxes
+    // do NOT use React — they're plain HTML checkboxes with no .onclick or
+    // .onchange handlers attached, and .click() doesn't propagate to any
+    // state update. The ONE working path we verified live on the tablet is
+    // Settings.updateSetting(key, value) — which writes to DataStore AND
+    // rebuilds Settings.unit_set atomically. After that we walk the DOM
+    // and manually re-sync every pmdg_measurement unit span, because PMDG
+    // renders those as static text and doesn't refresh on Settings change.
     if (el && el.tagName === 'INPUT' && el.type === 'checkbox') {
-        var currentNorm = _efb._normUnit(Settings[key]);
-        var targetNorm = _efb._normUnit(value);
-        if (currentNorm === targetNorm) {
-            // Already in target state — no click, no write.
-            return;
+        try { Settings.updateSetting(key, value); } catch (setErr) {
+            _efb.postState('error', { message: 'updateSetting failed for ' + key + ': ' + setErr.message });
         }
-        // Flip via a realistic click sequence so both plain DOM listeners and
-        // React's SyntheticEvent pipeline see the interaction.
-        try {
-            el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
-            el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
-            el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-        } catch (mEvtErr) { /* Coherent GT MouseEvent ctor missing */ }
-        try { el.click(); } catch (clkErr) { /* fallback */ }
-        // Belt-and-braces: direct Settings writes in case the click handler
-        // didn't fire (e.g. element hidden / React not mounted on this page).
-        try { Settings.updateSetting(key, value); } catch (setErr) {}
-        try {
-            if (Settings.unit_set) {
-                var shortKey = key.substring(0, key.length - 5);
-                Settings.unit_set[shortKey] = value;
-            }
-        } catch (usErr) {}
+        // No click, no React fiber trickery, no save-button dance — those
+        // all introduced more problems than they solved. Caller is expected
+        // to invoke _efb.refreshUnitSpans() after batching several writes.
         return;
     }
 
@@ -1168,11 +1340,117 @@ _efb.cmdSetPreference = function(key, value) {
     Settings.updateSetting(key, value);
 };
 
+// Apply a batch of preference changes by simulating the cockpit tablet
+// workflow: flip each unit-toggle checkbox whose desired value differs
+// from the live Settings value, then click the "Save Preferences" button.
+// The save button's handler calls saveCurrentPrefs() — which reads the
+// checkbox DOM state and persists via Settings.updateSetting — AND
+// publishes 'prefs_saved' on publisher_prefs. The prefs_saved event is
+// what other pages (Takeoff, Dashboard, etc.) subscribe to in order to
+// refresh their unit spans and cached values. Calling Settings.updateSetting
+// directly (our old path) bypasses that publisher, which is why Takeoff
+// v-speeds never picked up unit changes made from our native dialog.
+_efb.cmdApplyPreferences = function(payload) {
+    try {
+        var pairs = (payload && payload.pairs) ? String(payload.pairs) : '';
+        if (!pairs) {
+            _efb.postState('error', { message: 'cmdApplyPreferences: no pairs provided' });
+            return;
+        }
+
+        var togglesToFlip = [];
+        var textWrites = [];
+        var selectWrites = [];
+
+        var tokens = pairs.split(';');
+        for (var ti = 0; ti < tokens.length; ti++) {
+            var t = tokens[ti];
+            if (!t) continue;
+            var eqIdx = t.indexOf('=');
+            if (eqIdx < 0) continue;
+            var key = t.substring(0, eqIdx);
+            var value = t.substring(eqIdx + 1);
+            var el = document.getElementById('efb_preferences_' + key);
+            if (!el) continue;
+
+            if (el.tagName === 'INPUT' && el.type === 'checkbox') {
+                // Unit toggle. We don't need a hardcoded checked↔unit map:
+                // compare the desired value to the live Settings value
+                // (normalized). If they already match, the checkbox is in
+                // the right state — no flip needed. If not, click once.
+                var currentVal = '';
+                if (typeof Settings !== 'undefined' && Settings[key] != null) {
+                    currentVal = String(Settings[key]);
+                }
+                if (_efb._normUnitKey(currentVal) !== _efb._normUnitKey(value)) {
+                    togglesToFlip.push(el);
+                }
+            } else if (el.className && typeof el.className === 'string'
+                       && el.className.indexOf('custom-select') >= 0) {
+                selectWrites.push({ key: key, value: value });
+            } else {
+                textWrites.push({ el: el, value: value });
+            }
+        }
+
+        // Text inputs (simbrief_id, hoppie_id, sayintentions_id) — write
+        // value directly. saveCurrentPrefs reads .value at save time.
+        for (var wi = 0; wi < textWrites.length; wi++) {
+            try { textWrites[wi].el.value = textWrites[wi].value; } catch (_) { }
+        }
+
+        // Custom-selects (atc_network, theme, weather_source, etc.) — route
+        // through the click-based set_select_by_id so PMDG's select handler
+        // fires and updates data-selected attribute.
+        for (var ssi = 0; ssi < selectWrites.length; ssi++) {
+            try {
+                _efb.cmdSetSelectById({
+                    id: 'efb_preferences_' + selectWrites[ssi].key,
+                    value: selectWrites[ssi].value
+                });
+            } catch (_) { }
+        }
+
+        // Flip each unit-toggle checkbox whose state is wrong. A plain
+        // .click() is enough — saveCurrentPrefs reads checkbox.checked
+        // at save time, so we don't need to dispatch a change event.
+        for (var fi = 0; fi < togglesToFlip.length; fi++) {
+            try { togglesToFlip[fi].click(); } catch (_) { }
+        }
+
+        // Click the Save Preferences button. Its onclick is an arrow
+        // function captured on the prefs page controller, so `this` stays
+        // bound regardless of who invokes click(). It runs a Hoppie/Say
+        // Intentions validation promise chain, then calls
+        //   this.saveCurrentPrefs();
+        //   publisher_prefs.pub('prefs_saved', true);
+        //   PMDGAlert.setAlert('Success', ...); PMDGAlert.show();
+        // The publisher event is the critical piece that makes dependent
+        // pages re-read Settings and refresh their unit spans + v-speeds.
+        var saveBtn = document.getElementById('efb_preferences_save_tablet_prefs');
+        if (saveBtn) {
+            try { saveBtn.click(); } catch (_) { }
+        }
+
+        // The save button pops a "Tablet preferences were updated" alert
+        // as it completes — dismiss it so it doesn't linger on the tablet.
+        _efb.dismissAlertAfterDelay();
+
+        // Read the final state back so the C# form can confirm and fire
+        // its "Preferences saved" announcement. Wait long enough for the
+        // validation promise chain in the save handler to resolve.
+        setTimeout(function () { _efb.cmdGetPreferences(); }, 1500);
+    } catch (e) {
+        _efb.postState('error', { message: 'cmdApplyPreferences failed: ' + e.message });
+    }
+};
+
+// Legacy save path. cmdApplyPreferences is the preferred entry point now.
+// This just refreshes unit spans and reads back — Settings.updateSetting
+// (in cmdSetPreference) already handles DataStore persistence, so there's
+// no PMDG "save button" needed.
 _efb.cmdSavePreferences = function() {
-    // All preferences were already persisted via Settings.updateSetting() in set_preference.
-    // Auto-dismiss any alert the EFB might show after settings changes.
-    _efb.dismissAlertAfterDelay();
-    // Send back the current state so the C# form can confirm.
+    _efb.refreshUnitSpans();
     _efb.cmdGetPreferences();
 };
 

@@ -43,7 +43,10 @@ namespace MSFSBlindAssist.Forms.PMDG777.Apps
             // Ask the bridge to re-post the currently-loaded SimBrief payload, if any.
             // Populates the dashboard without requiring the user to press Fetch again.
             if (BridgeServer.IsBridgeConnected)
+            {
+                ArmLoadAnnouncement();
                 BridgeServer.EnqueueCommand("replay_simbrief");
+            }
         }
 
         protected override void BuildUi()
@@ -165,6 +168,7 @@ namespace MSFSBlindAssist.Forms.PMDG777.Apps
             switch (e.Type)
             {
                 case "simbrief_loaded":
+                    AnnounceLoadedIfPending();
                     StopFetchTimeout();
                     _simbriefLoaded = true;
                     UpdateFlightDetails(e.Data);

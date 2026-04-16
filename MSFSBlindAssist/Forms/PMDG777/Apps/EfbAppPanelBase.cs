@@ -15,6 +15,7 @@ namespace MSFSBlindAssist.Forms.PMDG777.Apps
         protected ScreenReaderAnnouncer Announcer { get; private set; } = null!;
 
         private bool _wired;
+        private bool _pendingLoadAnnouncement;
 
         public EfbAppPanelBase() { }
 
@@ -48,6 +49,25 @@ namespace MSFSBlindAssist.Forms.PMDG777.Apps
         public virtual void OnActivated() { }
 
         public virtual void OnDeactivated() { }
+
+        /// <summary>
+        /// Call in OnActivated to arm a one-shot "Loaded" announcement that
+        /// fires the next time <see cref="AnnounceLoadedIfPending"/> is called
+        /// (typically at the start of the panel's ApplyValues / state handler).
+        /// </summary>
+        protected void ArmLoadAnnouncement() => _pendingLoadAnnouncement = true;
+
+        /// <summary>
+        /// If a load announcement is armed, announce "Loaded" and disarm.
+        /// Call this at the top of the panel's data-apply method so the user
+        /// hears confirmation that the tablet page has arrived.
+        /// </summary>
+        protected void AnnounceLoadedIfPending()
+        {
+            if (!_pendingLoadAnnouncement) return;
+            _pendingLoadAnnouncement = false;
+            Announcer.Announce("Loaded");
+        }
 
         /// <summary>
         /// Panels override to indicate whether the parent form should refocus a

@@ -9,9 +9,8 @@ namespace MSFSBlindAssist.Forms.PMDG777.Apps.Performance
     /// tablet's unit — PMDG then re-renders all dependent unit spans and we
     /// read the new numbers directly. No local conversion math.
     /// </summary>
-    public class TakeoffPanel : EfbAppPanelBase
+    public class TakeoffPanel : PerformancePanelBase
     {
-        private const string ValuesTag = "perf_takeoff";
         private const string SubPageButtonId = "opt_takeoff";
 
         // --- DOM id constants ---
@@ -69,7 +68,6 @@ namespace MSFSBlindAssist.Forms.PMDG777.Apps.Performance
         private const string PrefLength = "length_unit";
         private const string PrefTemperature = "temperature_unit";
         private const string PrefPressure = "pressure_unit";
-        private const string PrefSpeed = "speed_unit";
         private const string PrefAirspeed = "airspeed_unit";
 
         // --- Unit option arrays (matched to PMDG's binary toggles) ---
@@ -77,20 +75,7 @@ namespace MSFSBlindAssist.Forms.PMDG777.Apps.Performance
         private static readonly string[] LengthOpts = { "ft", "m" };
         private static readonly string[] TempOpts = { "C", "F" };
         private static readonly string[] PressureOpts = { "hPa", "inHg" };
-        private static readonly string[] SpeedOpts = { "kph", "mph" };
         private static readonly string[] AirspeedOpts = { "kts", "kph" };
-
-        // --- Inner class holding the triplet for a unit-bearing field ---
-        private class UnitField
-        {
-            public string ValueId = "";
-            public string UnitId = "";
-            public string PrefKey = "";
-            public string[] Options = Array.Empty<string>();
-            public TextBox Box = null!;
-            public ComboBox UnitCombo = null!;
-            public bool IsOutput;
-        }
 
         // --- Plain controls (no unit) ---
         private TextBox icaoBox = null!;
@@ -133,10 +118,11 @@ namespace MSFSBlindAssist.Forms.PMDG777.Apps.Performance
         private Button clearButton = null!;
         private Button refreshButton = null!;
 
-        private bool _suppressWrites;
-        private string _lastAnnouncedV1 = "", _lastAnnouncedVr = "", _lastAnnouncedV2 = "";
-
         public override Control? InitialFocusControl => icaoBox;
+
+        protected override string ValuesTag => "perf_takeoff";
+        protected override ComboBox RunwayIdCombo => runwayIdCombo;
+        protected override string RunwayIdDomId => IdRunwayId;
 
         protected override void BuildUi()
         {
@@ -456,7 +442,7 @@ namespace MSFSBlindAssist.Forms.PMDG777.Apps.Performance
                 };
             }
 
-            WireComboSelect(runwayIdCombo, IdRunwayId, useDataValue: false);
+            WireRunwayComboDebounced(runwayIdCombo, IdRunwayId);
             WireComboSelect(runwayConditionCombo, IdRunwayCondition, useDataValue: true);
             WireComboSelect(flapsCombo, IdFlaps, useDataValue: true);
             WireComboSelect(ratingCombo, IdRating, useDataValue: true);
@@ -466,6 +452,7 @@ namespace MSFSBlindAssist.Forms.PMDG777.Apps.Performance
             // Import buttons
             importOfpRouteButton.Click += (_, _) =>
             {
+
                 BridgeServer.EnqueueCommand("click_by_id",
                     new Dictionary<string, string> { ["id"] = IdImportOfpRoute });
                 ScheduleRefreshAfter(700);
@@ -474,118 +461,56 @@ namespace MSFSBlindAssist.Forms.PMDG777.Apps.Performance
             };
             importOfpWeightButton.Click += (_, _) =>
             {
+
                 BridgeServer.EnqueueCommand("click_by_id",
                     new Dictionary<string, string> { ["id"] = IdImportOfpWeight });
                 ScheduleRefreshAfter(700);
             };
             importAircraftButton.Click += (_, _) =>
             {
+
                 BridgeServer.EnqueueCommand("click_by_id",
                     new Dictionary<string, string> { ["id"] = IdImportAircraft });
                 ScheduleRefreshAfter(700);
             };
             importWeatherButton.Click += (_, _) =>
             {
+
                 BridgeServer.EnqueueCommand("click_by_id",
                     new Dictionary<string, string> { ["id"] = IdImportWeather });
-                // Weather fetch is async — OAT/QNH land fast but wind can be
-                // slow. Triple refresh catches whichever stage it's at.
                 ScheduleRefreshAfter(700);
                 ScheduleRefreshAfter(2500);
                 ScheduleRefreshAfter(5000);
             };
             clearButton.Click += (_, _) =>
             {
+
                 BridgeServer.EnqueueCommand("click_by_id", new Dictionary<string, string> { ["id"] = IdClear });
                 ScheduleRefreshAfter(500);
             };
             calculateButton.Click += (_, _) =>
             {
+                _awaitingCalculation = true;
                 BridgeServer.EnqueueCommand("click_by_id", new Dictionary<string, string> { ["id"] = IdCalculate });
                 ScheduleRefreshAfter(800);
                 ScheduleRefreshAfter(2500);
             };
         }
 
-        private void WirePlainTextInput(TextBox box, string domId)
-        {
-            box.LostFocus += (_, _) =>
-            {
-                if (_suppressWrites || box.ReadOnly) return;
-                BridgeServer.EnqueueCommand("set_input_by_id", new Dictionary<string, string>
-                {
-                    ["id"] = domId,
-                    ["value"] = box.Text ?? ""
-                });
-            };
-            box.KeyDown += (_, e) =>
-            {
-                if (e.KeyCode == Keys.Enter && !box.ReadOnly && !_suppressWrites)
-                {
-                    BridgeServer.EnqueueCommand("set_input_by_id", new Dictionary<string, string>
-                    {
-                        ["id"] = domId,
-                        ["value"] = box.Text ?? ""
-                    });
-                    e.Handled = true;
-                    e.SuppressKeyPress = true;
-                }
-            };
-        }
-
-        private void WireComboSelect(ComboBox combo, string domId, bool useDataValue)
-        {
-            combo.SelectedIndexChanged += (_, _) =>
-            {
-                if (_suppressWrites) return;
-                if (combo.SelectedIndex < 0) return;
-                string value = useDataValue
-                    ? combo.SelectedIndex.ToString()
-                    : (combo.SelectedItem?.ToString() ?? "");
-                BridgeServer.EnqueueCommand("set_select_by_id", new Dictionary<string, string>
-                {
-                    ["id"] = domId,
-                    ["value"] = value
-                });
-                ScheduleRefreshAfter(600);
-            };
-        }
-
         public override void OnActivated()
         {
             if (!BridgeServer.IsBridgeConnected) return;
-            BridgeServer.EnqueueCommand("click_by_id", new Dictionary<string, string> { ["id"] = SubPageButtonId });
+            ArmLoadAnnouncement();
+            BridgeServer.EnqueueCommand("show_perf_page", new Dictionary<string, string>
+            {
+                ["buttonId"] = SubPageButtonId,
+                ["pageId"] = "TakeOff"
+            });
+            ScheduleRunwayRefresh();
             ScheduleRefreshAfter(1500);
         }
 
-        private void ScheduleRefreshAfter(int ms)
-        {
-            var t = new System.Windows.Forms.Timer { Interval = ms };
-            t.Tick += (_, _) =>
-            {
-                t.Stop(); t.Dispose();
-                if (!IsDisposed) RequestAllValues();
-            };
-            t.Start();
-        }
-
-        private void ScheduleRunwayRefresh()
-        {
-            var t = new System.Windows.Forms.Timer { Interval = 900 };
-            t.Tick += (_, _) =>
-            {
-                t.Stop(); t.Dispose();
-                if (IsDisposed || !BridgeServer.IsBridgeConnected) return;
-                BridgeServer.EnqueueCommand("get_select_options", new Dictionary<string, string>
-                {
-                    ["tag"] = ValuesTag,
-                    ["id"] = IdRunwayId
-                });
-            };
-            t.Start();
-        }
-
-        private void RequestAllValues()
+        protected override void RequestAllValues()
         {
             if (!BridgeServer.IsBridgeConnected) return;
             string[] ids = {
@@ -624,37 +549,14 @@ namespace MSFSBlindAssist.Forms.PMDG777.Apps.Performance
             }
         }
 
-        private void ApplyRunwayOptions(Dictionary<string, string> d)
-        {
-            if (!int.TryParse(d.GetValueOrDefault("count", "0"), out int count)) return;
-            _suppressWrites = true;
-            try
-            {
-                runwayIdCombo.Items.Clear();
-                for (int i = 0; i < count; i++)
-                {
-                    string v = d.GetValueOrDefault($"option_{i}_value", "");
-                    if (string.IsNullOrWhiteSpace(v))
-                        v = d.GetValueOrDefault($"option_{i}_text", "");
-                    if (!string.IsNullOrWhiteSpace(v))
-                        runwayIdCombo.Items.Add(v);
-                }
-                string selected = d.GetValueOrDefault("selected_text", "");
-                if (!string.IsNullOrEmpty(selected))
-                    SelectComboByText(runwayIdCombo, selected);
-                Announcer.Announce($"{count} runways loaded");
-            }
-            finally
-            {
-                _suppressWrites = false;
-            }
-        }
-
         private void ApplyValues(Dictionary<string, string> d)
         {
             _suppressWrites = true;
             try
             {
+                AnnounceLoadedIfPending();
+
+
                 // Non-unit text inputs
                 SetTextIfChanged(icaoBox, d.GetValueOrDefault(IdIcao, ""));
                 SetTextIfChanged(airportNameBox, d.GetValueOrDefault(IdAirportName, ""));
@@ -697,14 +599,14 @@ namespace MSFSBlindAssist.Forms.PMDG777.Apps.Performance
                 outTrimValue.Text = d.GetValueOrDefault(IdOutTrim, "");
 
                 // V-speed announcement on fresh calculation
-                string v1 = outV1Field.Box.Text, vr = outVrField.Box.Text, v2 = outV2Field.Box.Text;
-                if (!string.IsNullOrWhiteSpace(v1) && !string.IsNullOrWhiteSpace(vr) && !string.IsNullOrWhiteSpace(v2))
+                if (_awaitingCalculation)
                 {
-                    if (_lastAnnouncedV1 != v1 || _lastAnnouncedVr != vr || _lastAnnouncedV2 != v2)
+                    string v1 = d.GetValueOrDefault(IdOutV1, "").Trim();
+                    string vr = d.GetValueOrDefault(IdOutVr, "").Trim();
+                    string v2 = d.GetValueOrDefault(IdOutV2, "").Trim();
+                    if (!string.IsNullOrWhiteSpace(v1) && !string.IsNullOrWhiteSpace(vr) && !string.IsNullOrWhiteSpace(v2))
                     {
-                        _lastAnnouncedV1 = v1;
-                        _lastAnnouncedVr = vr;
-                        _lastAnnouncedV2 = v2;
+                        _awaitingCalculation = false;
                         Announcer.Announce($"V1 {v1}, VR {vr}, V2 {v2}");
                     }
                 }
@@ -715,49 +617,5 @@ namespace MSFSBlindAssist.Forms.PMDG777.Apps.Performance
             }
         }
 
-        /// <summary>
-        /// Match the combo selection to the tablet's currently-rendered unit
-        /// label so the user's local combo always reflects reality after a
-        /// refresh. Tolerant of case and plural (kts/kt, lbs/lb, HPA/hPa).
-        /// </summary>
-        private static void SyncComboToTabletUnit(ComboBox combo, string tabletUnit)
-        {
-            if (string.IsNullOrWhiteSpace(tabletUnit)) return;
-            string target = Normalize(tabletUnit);
-            for (int i = 0; i < combo.Items.Count; i++)
-            {
-                string item = Normalize(combo.Items[i]?.ToString() ?? "");
-                if (item == target)
-                {
-                    if (combo.SelectedIndex != i) combo.SelectedIndex = i;
-                    return;
-                }
-            }
-        }
-
-        private static string Normalize(string s)
-        {
-            string n = (s ?? "").Trim().ToLowerInvariant();
-            if (n.Length > 1 && n[n.Length - 1] == 's') n = n.Substring(0, n.Length - 1);
-            return n;
-        }
-
-        private static void SetTextIfChanged(TextBox box, string value)
-        {
-            if (box.Text != value) box.Text = value;
-        }
-
-        private static void SelectComboByText(ComboBox combo, string text)
-        {
-            if (string.IsNullOrEmpty(text)) return;
-            for (int i = 0; i < combo.Items.Count; i++)
-            {
-                if (string.Equals(combo.Items[i]?.ToString(), text, StringComparison.OrdinalIgnoreCase))
-                {
-                    if (combo.SelectedIndex != i) combo.SelectedIndex = i;
-                    return;
-                }
-            }
-        }
     }
 }

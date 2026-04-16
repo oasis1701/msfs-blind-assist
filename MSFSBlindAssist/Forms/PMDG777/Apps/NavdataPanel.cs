@@ -96,6 +96,7 @@ namespace MSFSBlindAssist.Forms.PMDG777.Apps
         public override void OnActivated()
         {
             if (!BridgeServer.IsBridgeConnected) return;
+            ArmLoadAnnouncement();
             RequestCycleRead();
         }
 
@@ -137,6 +138,7 @@ namespace MSFSBlindAssist.Forms.PMDG777.Apps
 
         private void HandleCycleValues(Dictionary<string, string> data)
         {
+            AnnounceLoadedIfPending();
             string current = data.GetValueOrDefault(IdCurrentCycle, "");
             string validity = data.GetValueOrDefault(IdValidityPeriod, "");
             string available = data.GetValueOrDefault(IdAvailableCycle, "");
