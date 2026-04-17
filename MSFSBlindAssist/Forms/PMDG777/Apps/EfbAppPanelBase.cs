@@ -36,7 +36,12 @@ namespace MSFSBlindAssist.Forms.PMDG777.Apps
         private void OnStateUpdatedInternal(object? sender, EFBStateUpdateEventArgs e)
         {
             if (IsDisposed || !IsHandleCreated) return;
-            try { HandleStateUpdate(e); } catch { /* swallow panel errors */ }
+            try { HandleStateUpdate(e); }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"[EFB] {GetType().Name}.HandleStateUpdate failed: {ex.Message}");
+            }
         }
 
         protected virtual void HandleStateUpdate(EFBStateUpdateEventArgs e) { }
@@ -48,7 +53,7 @@ namespace MSFSBlindAssist.Forms.PMDG777.Apps
         /// </summary>
         public virtual void OnActivated() { }
 
-        public virtual void OnDeactivated() { }
+        public virtual void OnDeactivated() { _pendingLoadAnnouncement = false; }
 
         /// <summary>
         /// Call in OnActivated to arm a one-shot "Loaded" announcement that

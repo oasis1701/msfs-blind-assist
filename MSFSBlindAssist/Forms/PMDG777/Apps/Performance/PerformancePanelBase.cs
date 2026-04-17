@@ -30,6 +30,7 @@ namespace MSFSBlindAssist.Forms.PMDG777.Apps.Performance
         protected bool _awaitingCalculation;
         private System.Windows.Forms.Timer? _runwayDebounce;
         private readonly HashSet<TextBox> _dirtyBoxes = new();
+        private readonly List<System.Windows.Forms.Timer> _pendingTimers = new();
 
         /// <summary>
         /// Bridge tag used by this panel for read_values and select_options
@@ -182,9 +183,12 @@ namespace MSFSBlindAssist.Forms.PMDG777.Apps.Performance
         protected void ScheduleRefreshAfter(int ms)
         {
             var t = new System.Windows.Forms.Timer { Interval = ms };
+            _pendingTimers.Add(t);
             t.Tick += (_, _) =>
             {
-                t.Stop(); t.Dispose();
+                t.Stop();
+                _pendingTimers.Remove(t);
+                t.Dispose();
                 if (!IsDisposed) RequestAllValues();
             };
             t.Start();
@@ -198,9 +202,12 @@ namespace MSFSBlindAssist.Forms.PMDG777.Apps.Performance
         protected void ScheduleRunwayRefresh()
         {
             var t = new System.Windows.Forms.Timer { Interval = 900 };
+            _pendingTimers.Add(t);
             t.Tick += (_, _) =>
             {
-                t.Stop(); t.Dispose();
+                t.Stop();
+                _pendingTimers.Remove(t);
+                t.Dispose();
                 if (IsDisposed || !BridgeServer.IsBridgeConnected) return;
                 BridgeServer.EnqueueCommand("get_select_options", new Dictionary<string, string>
                 {
@@ -302,6 +309,13 @@ namespace MSFSBlindAssist.Forms.PMDG777.Apps.Performance
                 _runwayDebounce?.Stop();
                 _runwayDebounce?.Dispose();
                 _runwayDebounce = null;
+
+                foreach (var t in _pendingTimers)
+                {
+                    t.Stop();
+                    t.Dispose();
+                }
+                _pendingTimers.Clear();
             }
             base.Dispose(disposing);
         }

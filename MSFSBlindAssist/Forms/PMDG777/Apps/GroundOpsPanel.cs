@@ -137,6 +137,7 @@ namespace MSFSBlindAssist.Forms.PMDG777.Apps
         private const int UserActionCooldownMs = 4000;
         private System.Windows.Forms.Timer? _monitor;
         private bool _targetFuelDirty;
+        private readonly List<System.Windows.Forms.Timer> _pendingTimers = new();
 
         public override Control? InitialFocusControl => innerTabs;
 
@@ -582,6 +583,7 @@ namespace MSFSBlindAssist.Forms.PMDG777.Apps
         public override void OnDeactivated()
         {
             StopMonitor();
+            _targetFuelDirty = false;
         }
 
         private void StartMonitor()
@@ -611,16 +613,29 @@ namespace MSFSBlindAssist.Forms.PMDG777.Apps
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing) StopMonitor();
+            if (disposing)
+            {
+                StopMonitor();
+
+                foreach (var t in _pendingTimers)
+                {
+                    t.Stop();
+                    t.Dispose();
+                }
+                _pendingTimers.Clear();
+            }
             base.Dispose(disposing);
         }
 
         private void ScheduleRefreshAfter(int ms)
         {
             var t = new System.Windows.Forms.Timer { Interval = ms };
+            _pendingTimers.Add(t);
             t.Tick += (_, _) =>
             {
-                t.Stop(); t.Dispose();
+                t.Stop();
+                _pendingTimers.Remove(t);
+                t.Dispose();
                 if (!IsDisposed) RequestAllValues();
             };
             t.Start();

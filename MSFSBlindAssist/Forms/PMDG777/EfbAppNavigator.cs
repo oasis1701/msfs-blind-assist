@@ -25,7 +25,7 @@ namespace MSFSBlindAssist.Forms.PMDG777
     /// race conditions appear, but in practice the tablet responds to clicks
     /// within tens of ms.
     /// </summary>
-    public class EfbAppNavigator
+    public class EfbAppNavigator : IDisposable
     {
         private readonly EFBBridgeServer _bridgeServer;
         private readonly System.Windows.Forms.Timer _sequenceTimer;
