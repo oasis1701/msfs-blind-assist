@@ -5868,11 +5868,23 @@ public class PMDG777Definition : BaseAircraftDefinition
                 if (dm == null) return false;
                 float dist = (float)dm.GetFieldValue("FMC_DistanceToTOD");
                 if (dist < 0)
+                {
                     announcer.AnnounceImmediate("Top of descent not available");
+                }
                 else if (dist < 0.1f)
+                {
                     announcer.AnnounceImmediate("Past top of descent");
+                }
                 else
-                    announcer.AnnounceImmediate($"{dist:F0} miles to top of descent");
+                {
+                    // LastKnownPosition is request-on-demand; grab a fresh
+                    // position so the ETA reflects current ground speed.
+                    simConnect.RequestAircraftPositionAsync(position =>
+                    {
+                        string eta = FormatEtaFromDistance(dist, position.GroundSpeedKnots);
+                        announcer.AnnounceImmediate($"{dist:F0} miles to top of descent{eta}");
+                    });
+                }
                 return true;
             }
 
@@ -5882,9 +5894,17 @@ public class PMDG777Definition : BaseAircraftDefinition
                 if (dm == null) return false;
                 float dist = (float)dm.GetFieldValue("FMC_DistanceToDest");
                 if (dist < 0)
+                {
                     announcer.AnnounceImmediate("Distance to destination not available");
+                }
                 else
-                    announcer.AnnounceImmediate($"{dist:F0} miles to destination");
+                {
+                    simConnect.RequestAircraftPositionAsync(position =>
+                    {
+                        string eta = FormatEtaFromDistance(dist, position.GroundSpeedKnots);
+                        announcer.AnnounceImmediate($"{dist:F0} miles to destination{eta}");
+                    });
+                }
                 return true;
             }
 
@@ -6093,6 +6113,25 @@ public class PMDG777Definition : BaseAircraftDefinition
     {
         if (EventIds.TryGetValue(eventName, out int evId))
             simConnect.SendPMDGEvent(eventName, (uint)evId, 1);
+    }
+
+    /// <summary>
+    /// Format ETA as ", ETA HH:MM:SS" given remaining distance in nautical
+    /// miles and current ground speed in knots. Returns empty string if the
+    /// ground speed is too low to give a meaningful estimate (we don't want
+    /// to read out a 99-hour ETA when taxiing).
+    /// </summary>
+    private static string FormatEtaFromDistance(double distanceNm, double groundSpeedKnots)
+    {
+        if (groundSpeedKnots < 30) return "";   // not airborne / too slow
+        if (distanceNm <= 0) return "";
+
+        double hours = distanceNm / groundSpeedKnots;
+        int totalSeconds = (int)Math.Round(hours * 3600.0);
+        int hh = totalSeconds / 3600;
+        int mm = (totalSeconds % 3600) / 60;
+        int ss = totalSeconds % 60;
+        return $": {hh:D2}:{mm:D2}:{ss:D2}";
     }
 
     private void ShowPMDGHeadingDialog(
