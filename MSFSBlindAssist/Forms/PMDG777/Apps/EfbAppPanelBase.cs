@@ -53,7 +53,7 @@ namespace MSFSBlindAssist.Forms.PMDG777.Apps
         /// </summary>
         public virtual void OnActivated() { }
 
-        public virtual void OnDeactivated() { }
+        public virtual void OnDeactivated() { _pendingLoadAnnouncement = false; }
 
         /// <summary>
         /// Call in OnActivated to arm a one-shot "Loaded" announcement that
