@@ -590,13 +590,14 @@ loadItems();
                     await Task.Delay(2000);
                     EnqueueCommand("get_display_elements");
                 });
+
+                await WriteJson(response, new { clicked = true });
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"EFBBridgeServer: Display click error: {ex.Message}");
+                await WriteJson(response, new { clicked = false, error = ex.Message });
             }
-
-            await WriteJson(response, new { clicked = true });
         }
 
         private async Task HandleDisplaySetValue(HttpListenerRequest request, HttpListenerResponse response)
@@ -632,13 +633,14 @@ loadItems();
                     await Task.Delay(400);
                     EnqueueCommand("get_display_elements");
                 });
+
+                await WriteJson(response, new { set = true });
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"EFBBridgeServer: Set value error: {ex.Message}");
+                await WriteJson(response, new { set = false, error = ex.Message });
             }
-
-            await WriteJson(response, new { set = true });
         }
 
 #if DEBUG
