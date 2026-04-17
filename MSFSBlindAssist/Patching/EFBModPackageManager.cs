@@ -21,7 +21,7 @@ namespace MSFSBlindAssist.Patching
         // Bump this version when the mod package structure or bridge JS changes.
         // On app startup, if the installed version is older, UpdateModPackage will
         // re-patch HTML for all variants, copy the latest bridge JS, and regenerate layout.json.
-        private const int BridgeVersion = 45;
+        private const int BridgeVersion = 4;
         private const string VersionFileName = "bridge-version.txt";
 
         private const string PackageFolderName = "zzz-pmdg-efb-accessibility";
