@@ -284,8 +284,12 @@ _efb.handleCommand = function(command, payload) {
                 }
                 break;
             case 'eval_js':
-                // Hot-reload: execute arbitrary JS sent from C# — allows updating
-                // bridge functions at runtime without restarting the simulator
+                // Trust boundary: this eval is only reachable via the C# app's
+                // localhost-only HTTP bridge (EFBBridgeServer on 127.0.0.1:19777).
+                // Commands are enqueued server-side; the JS bridge polls for them.
+                // No external network exposure — only the local MSFSBA process can
+                // enqueue commands. Used for hot-reload of bridge functions without
+                // restarting the simulator.
                 if (payload && payload.code) {
                     try {
                         var evalResult = eval(payload.code);
