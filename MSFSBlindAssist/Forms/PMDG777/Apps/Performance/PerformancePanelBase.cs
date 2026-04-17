@@ -29,6 +29,7 @@ namespace MSFSBlindAssist.Forms.PMDG777.Apps.Performance
         protected bool _suppressWrites;
         protected bool _awaitingCalculation;
         private System.Windows.Forms.Timer? _runwayDebounce;
+        private readonly HashSet<TextBox> _dirtyBoxes = new();
 
         /// <summary>
         /// Bridge tag used by this panel for read_values and select_options
@@ -59,35 +60,46 @@ namespace MSFSBlindAssist.Forms.PMDG777.Apps.Performance
         // ---------------------------------------------------------------
 
         /// <summary>
-        /// Plain text input that writes on LostFocus or Enter key and
-        /// schedules a refresh so the tablet's response is visible.
+        /// Plain text input that writes on LostFocus or Enter key — but only
+        /// if the user actually typed something. Tabbing through an unchanged
+        /// field must NOT re-send its value: set_input_by_id types the value
+        /// character-by-character, and PMDG's wind field rejects non-numeric
+        /// keys, so re-sending "VRB/5" would strip the letters and leave "/5",
+        /// breaking Calculate on the tablet.
         /// </summary>
         protected void WirePlainTextInput(TextBox box, string domId)
         {
+            box.TextChanged += (_, _) =>
+            {
+                if (!_suppressWrites && !box.ReadOnly) _dirtyBoxes.Add(box);
+            };
             box.LostFocus += (_, _) =>
             {
                 if (_suppressWrites || box.ReadOnly) return;
-                BridgeServer.EnqueueCommand("set_input_by_id", new Dictionary<string, string>
-                {
-                    ["id"] = domId,
-                    ["value"] = box.Text ?? ""
-                });
-                ScheduleRefreshAfter(600);
+                if (!_dirtyBoxes.Contains(box)) return;
+                CommitTextInput(box, domId);
             };
             box.KeyDown += (_, e) =>
             {
                 if (e.KeyCode == Keys.Enter && !box.ReadOnly && !_suppressWrites)
                 {
-                    BridgeServer.EnqueueCommand("set_input_by_id", new Dictionary<string, string>
-                    {
-                        ["id"] = domId,
-                        ["value"] = box.Text ?? ""
-                    });
-                    ScheduleRefreshAfter(600);
+                    if (_dirtyBoxes.Contains(box))
+                        CommitTextInput(box, domId);
                     e.Handled = true;
                     e.SuppressKeyPress = true;
                 }
             };
+        }
+
+        private void CommitTextInput(TextBox box, string domId)
+        {
+            BridgeServer.EnqueueCommand("set_input_by_id", new Dictionary<string, string>
+            {
+                ["id"] = domId,
+                ["value"] = box.Text ?? ""
+            });
+            _dirtyBoxes.Remove(box);
+            ScheduleRefreshAfter(600);
         }
 
         /// <summary>
