@@ -583,6 +583,7 @@ namespace MSFSBlindAssist.Forms.PMDG777.Apps
         public override void OnDeactivated()
         {
             StopMonitor();
+            _targetFuelDirty = false;
         }
 
         private void StartMonitor()
