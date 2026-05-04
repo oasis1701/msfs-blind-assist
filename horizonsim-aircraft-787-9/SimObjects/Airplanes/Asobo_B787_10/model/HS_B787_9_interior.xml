@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ModelInfo>
+	<LODS>
+        <LOD minSize="150" ModelFile="B787_10_interior_LOD00.gltf"/>
+        <LOD minSize="90" ModelFile="B787_10_interior_LOD01.gltf"/>
+        <LOD minSize="60" ModelFile="B787_10_interior_LOD02.gltf"/>
+        <LOD minSize="30" ModelFile="B787_10_interior_LOD03.gltf"/>
+        <LOD minSize="15" ModelFile="B787_10_interior_LOD04.gltf"/>
+        <LOD minSize="3" ModelFile="B787_10_interior_LOD05.gltf"/>
+        <LOD minSize="1" ModelFile="B787_10_interior_LOD06.gltf"/>
+	</LODS>
+
+	<Behaviors>
+		<IncludeBase RelativeFile="B787_10_interior.xml"/>
+		<Include ModelBehaviorFile="HorizonSim\HS_B787_Interactions.xml"/>
+		<Component OverrideID="TT_INOP">
+			<UseTemplate Name="HorizonSim_B789_COM_Accept_Template">
+				<ID>1</ID>
+			</UseTemplate>
+			<UseTemplate Name="HorizonSim_B789_COM_Cancel_Template">
+				<ID>1</ID>
+			</UseTemplate>
+			<UseTemplate Name="HorizonSim_B789_COM_Reject_Template">
+				<ID>1</ID>
+			</UseTemplate>
+			<UseTemplate Name="HorizonSim_B789_COM_Accept_Template">
+				<ID>2</ID>
+			</UseTemplate>
+			<UseTemplate Name="HorizonSim_B789_COM_Cancel_Template">
+				<ID>2</ID>
+			</UseTemplate>
+			<UseTemplate Name="HorizonSim_B789_COM_Reject_Template">
+				<ID>2</ID>
+			</UseTemplate>
+		</Component>
+	</Behaviors>
+</ModelInfo>

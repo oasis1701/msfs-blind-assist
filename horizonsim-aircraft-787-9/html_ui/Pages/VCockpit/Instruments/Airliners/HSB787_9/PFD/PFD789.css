@@ -1,0 +1,2891 @@
+/* Changes by Horizon Simulations:
+    -changes color codes
+*/
+
+html {
+  /*
+  This is a repository for common style parameters. Use these whenever you can, so that we can make global adjustments at just this point.
+  Use as var(--b78x-x-y-z) to replace any value in conventional notation.
+  */
+  /* Color Styling */
+  /* Keep boeing colors in sync with BoeingColors.ts */
+  --boeing-colors-black: black;
+  --boeing-colors-black-translucent: rgba(0, 0, 0, 0.2);
+  --boeing-colors-black-translucent-border: rgba(0, 0, 0, 0.5);
+  --boeing-colors-white: white;
+  --boeing-colors-gray: #89869a;
+  --boeing-colors-dark-gray: #89869a;
+  --boeing-colors-darker-gray: #646474;
+  --boeing-colors-blue: hsl(230, 100%, 51%);
+  --boeing-colors-cyan: #00ffff;
+  --boeing-colors-red: red;
+  --boeing-colors-amber: #ffd600;
+  --boeing-colors-green: #00ff00;
+  --boeing-colors-dark-green: #1d9123;
+  --boeing-colors-magenta: #ff5bff;
+
+  /* Keep B787 colors in sync with B787Colors.ts */
+  --b78x-colors-separator-gray: #89869a;
+
+  --boeing-pane-height: 1425px;
+  --boeing-pane-width-full: 1920px;
+  --boeing-pane-width-half: 954px;
+}
+
+@font-face {
+  font-family: "B787";
+  src: url("/Pages/VCockpit/Instruments/Airliners/HSB787_9/Assets/fonts/b78x.ttf") format("truetype");
+  font-weight: normal;
+  font-style: normal;
+}
+
+@keyframes screenFadeIn {
+  0% {
+    display: none;
+    opacity: 0;
+  }
+
+  1% {
+    display: block;
+    opacity: 0;
+  }
+
+  85% {
+    opacity: 0.15;
+  }
+
+  100% {
+    opacity: 1;
+  }
+}
+
+:not(.efb)>#Electricity {
+  animation: screenFadeIn 7s ease-out forwards;
+}
+
+#Electricity[state=off] {
+  display: none;
+  opacity: 0;
+}
+
+/** HINT: Don't show the white highlight since the instruments is in general not interactive */
+#vignettage {
+  display: none;
+  visibility: hidden;
+}
+
+#highlight {
+  position: absolute;
+  height: 100%;
+  width: 100%;
+  pointer-events: none;
+  z-index: 99999999;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.visibility-hidden {
+  visibility: hidden !important;
+}
+
+.fullsize {
+  width: 100%;
+  height: 100%;
+}
+.date-display {
+  display: flex;
+  flex-direction: row;
+  gap: 10px;
+}
+
+.date-display span {
+  white-space: pre;
+}
+.flight-data-block-container {
+  background: var(--boeing-colors-darker-gray);
+  font-size: 40px;
+  height: 360px;
+  border-bottom: 4px solid var(--boeing-colors-dark-gray);
+  border-top: 4px solid var(--boeing-colors-dark-gray);
+  border-left: 4px solid var(--boeing-colors-dark-gray);
+}
+
+.flight-datablock-upper-section {
+  display: flex;
+  height: 270px;
+  padding-top: 10px;
+  border-bottom: 4px solid var(--boeing-colors-dark-gray);
+}
+
+.flight-datablock-lower-section {
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  height: 100px;
+}
+
+.flight-datablock-indications {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  padding-left: 16px;
+  width: 429px;
+}
+
+.flight-datablock-row {
+  display: flex;
+  flex-direction: row;
+}
+
+.flight-datablock-row>div {
+  display: flex;
+  align-items: center;
+}
+
+.flight-datablock-flight-number {
+  font-size: 54px;
+}
+
+.flight-datablock-indications>.flight-datablock-row>.flight-datablock-mic-source {
+  display: flex;
+}
+
+.flight-datablock-mic-source.active {
+  color: var(--boeing-colors-green);
+}
+
+.flight-datablock-indications>.flight-datablock-row>.flight-datablock-mic-source>.flight-datablock-mic-source-type {
+  font-size: 28px;
+  padding-left: 20px;
+}
+
+.flight-datablock-time {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+.flight-datablock-time>div {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.flight-datablock-label {
+  min-width: 120px;
+  font-size: 28px;
+  color: var(--boeing-colors-cyan);
+}
+
+.flight-datablock-label-reg {
+  padding-left: 20px;
+}
+
+.flight-datablock-clock {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  align-items: center;
+}
+
+.flight-datablock-clockface {
+  position: relative;
+  width: 180px;
+  height: 180px;
+  border-radius: 50%;
+  background: var(--boeing-colors-black);
+  border: 5px solid var(--boeing-colors-white);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.clockface-ticks {
+  position: absolute;
+  width: 4px;
+  height: 100%;
+  background: var(--boeing-colors-white);
+}
+
+.marks2 {
+  transform: rotate3d(0, 0, 1, 30deg);
+}
+
+.marks3 {
+  transform: rotate3d(0, 0, 1, 60deg);
+}
+
+.marks4 {
+  transform: rotate3d(0, 0, 1, 90deg);
+}
+
+.marks5 {
+  transform: rotate3d(0, 0, 1, 120deg);
+}
+
+.marks6 {
+  transform: rotate3d(0, 0, 1, 150deg);
+}
+
+.clockface-tick-marks-mask {
+  position: absolute;
+  width: 150px;
+  height: 150px;
+  border-radius: 40%;
+  background: var(--boeing-colors-black);
+  z-index: 0;
+}
+
+.flight-datablock-clock-second-hand {
+  position: absolute;
+  width: 15px;
+  top: 0;
+  height: 50%;
+  background: var(--boeing-colors-white);
+  border-top-left-radius: 100%;
+  border-top-right-radius: 100%;
+  transform-origin: bottom;
+}
+
+.flight-datablock-clock-circle {
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  border: 2px solid var(--boeing-colors-white);
+  background: black;
+  z-index: 0;
+}
+.map-compass-overlay {
+  position: absolute;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.map-compass-overlay svg {
+  stroke: var(--boeing-colors-white);
+  stroke-width: var(--nav-display-path-stroke-width);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+}
+
+.map-compass-overlay .nd-path-shadow {
+  stroke: var(--boeing-colors-black) !important;
+  stroke-width: var(--nav-display-path-stroke-width-outline);
+}
+
+.inertial-heading-data-invalid .map-cross-track-error-container,
+.inertial-heading-data-invalid.map-requires-alignment .flight-plan-text-layer,
+.inertial-heading-data-invalid.map-requires-alignment .bing-map,
+.inertial-heading-data-invalid.map-requires-alignment .plan-airports-runways-canvas-layer,
+.inertial-heading-data-invalid.map-requires-alignment .nearest-waypoints,
+.inertial-heading-data-invalid.map-requires-alignment .flight-plan-layer,
+.inertial-heading-data-invalid.map-requires-alignment .tod-layer,
+.inertial-heading-data-invalid .position-trend-vector,
+.inertial-heading-data-invalid .altitude-arc,
+.inertial-heading-data-invalid .traffic,
+.inertial-heading-data-invalid .airplane-symbol-outline,
+.inertial-heading-data-invalid .compass-numbers,
+.inertial-heading-data-invalid .track-line-svg,
+.inertial-heading-data-invalid .track-line-ticks-svg,
+.inertial-heading-data-invalid .range-circles-svg,
+.inertial-heading-data-invalid .tcas-ring,
+.inertial-heading-data-invalid .bearing-pointer,
+.inertial-heading-data-invalid .selected-heading-line,
+.inertial-heading-data-invalid .selected-heading-line,
+.inertial-heading-data-invalid .selected-heading-bug,
+.inertial-heading-data-invalid .selected-track-bug,
+.inertial-heading-data-invalid .current-heading-triangle,
+.inertial-heading-data-invalid .map-rotating-overlay .range-number,
+.inertial-heading-data-invalid .map-rotating-overlay .half-range-number,
+.inertial-heading-data-invalid .map-rotating-overlay .half-range-number-2 {
+  display: none !important;
+}
+.mini-map-overlay .half-range-number {
+  text-align: right;
+  position: absolute;
+  font-size: calc(40px * var(--nd-canvas-scale));
+  top: calc(180px * var(--nd-canvas-scale));
+  padding-right: calc(114px * var(--nd-canvas-scale));
+  width: calc(200px * var(--nd-canvas-scale));
+  height: calc(50px * var(--nd-canvas-scale));
+}
+.mini-map-overlay .mini-map-mask {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.mini-map-overlay .mini-map-mask>* {
+  background-color: var(--boeing-colors-black);
+  position: absolute;
+}
+
+.mini-map-overlay .mini-map-mask .top-mask {
+  top: 0px;
+  left: 0px;
+  width: 100%;
+  height: calc(27px * var(--nd-canvas-scale));
+}
+
+.mini-map-overlay .mini-map-mask .left-mask {
+  top: 0px;
+  left: 0px;
+  width: calc(17px * var(--nd-canvas-scale));
+  height: 100%;
+}
+
+.mini-map-overlay .mini-map-mask .right-mask {
+  top: 0px;
+  right: 0px;
+  width: calc(17px * var(--nd-canvas-scale));
+  height: 100%;
+}
+
+.mini-map-overlay .mini-map-mask .bottom-mask {
+  bottom: 0px;
+  left: 0px;
+  width: 100%;
+  height: 0px;
+}
+.map-system-container {
+  position: relative;
+  margin: auto;
+  overflow: hidden;
+  paint-order: stroke;
+  -webkit-text-stroke: .06em black;
+  --nav-display-path-stroke-width: calc(4px * var(--nd-canvas-scale));
+  --nav-display-path-stroke-width-outline: calc(6px * var(--nd-canvas-scale));
+}
+
+.map-system-container .map-system {
+  transform: var(--nd-canvas-transform);
+}
+
+.tcas-advisory-status-container {
+  position: absolute;
+  right: 1%;
+  top: 32%;
+  font-size: 40px;
+}
+
+.tcas-advisory-status-container>div {
+  height: 36px;
+  min-height: 36px;
+}
+
+.map-system-canvas-half-scale svg .map-system-svg-scale {
+  transform: scale(0.5);
+}
+.active-waypoint-data-block-container {
+  position: absolute;
+  right: 0px;
+  display: flex;
+  flex-direction: column;
+  width: 144px;
+  background: var(--boeing-colors-black);
+  padding: 4px;
+}
+
+.active-waypoint-data-block-container>div {
+  height: 34px;
+}
+
+.active-waypoint-data-block-container .waypoint-ident {
+  color: var(--boeing-colors-magenta)
+}
+
+.active-waypoint-data-block-container>div>span.s-text {
+  font-size: 28px;
+}
+
+.active-waypoint-data-block-container .waypoint-distance {
+  white-space: pre;
+}
+.aircraft-track-container {
+  position: absolute;
+  top: 142px;
+  left: 352px;
+  display: flex;
+  font-size: 38px;
+}
+
+.display-pane-full .aircraft-track-container {
+  top: 109px;
+  left: 834px;
+}
+
+.map-ctr-mode .aircraft-track-container,
+.display-pane-full .map-ctr-mode .aircraft-track-container {
+  top: 322px;
+}
+
+.aircraft-track-number {
+  width: 97px;
+  text-align: center;
+  font-size: 52px;
+  margin: 0 20px;
+  height: 45px;
+  background: none;
+}
+
+.map-ctr-mode .aircraft-track-number {
+  background: var(--boeing-colors-black);
+}
+
+.track-orientation-text,
+.track-reference-text {
+  color: var(--boeing-colors-green);
+  width: 55px;
+}
+.map-failure-flags-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  pointer-events: none;
+}
+
+.map-failure-flags-container .map-failure-flag {
+  position: absolute;
+  box-sizing: content-box;
+  font-size: 48px;
+  height: 40px;
+  background: var(--boeing-colors-black);
+  border: 4px solid var(--boeing-colors-amber);
+  color: var(--boeing-colors-amber);
+  text-align: center;
+}
+
+.mfd .map-failure-flags-container .map-failure-flag {
+  top: 550px;
+}
+
+.pfd .map-failure-flags-container .map-failure-flag {
+  top: 240px;
+}
+
+.plan-mode .map-failure-flags-container .map-failure-flag {
+  display: none;
+}
+.speed-wind-range-info-block .ground-air-wind-container {
+  position: absolute;
+  top: 6px;
+  left: 13px;
+}
+
+/* GS TAS */
+
+.ground-air-speed-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  background: var(--boeing-colors-black);
+  height: 70px;
+  width: 210px;
+}
+
+.ground-air-speed-container .ground-speed {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.ground-air-speed-container .true-air-speed {
+  position: absolute;
+  top: 0;
+  left: 114px;
+}
+
+.navigation-display .ground-air-speed-container .true-air-speed {
+  left: 100px;
+}
+
+.ground-air-speed-container .s-text {
+  font-size: 28px;
+}
+
+/* WIND VECTOR */
+
+.hsi-wind-container {
+  position: absolute;
+  top: 37px;
+  left: 0px;
+  background: var(--boeing-colors-black);
+  width: 90px;
+  height: 120px;
+}
+
+.hsi-format-plan .hsi-wind-container {
+  display: none;
+}
+
+.hsi-wind-container span.hsi-wind-speed {
+  position: absolute;
+  top: 0px;
+  left: 92px;
+  width: 70px;
+  text-align: right;
+}
+
+.hsi-wind-container .hsi-wind-arrow {
+  position: absolute;
+  left: 26px;
+  top: 30px;
+  width: 30px;
+  height: 90px;
+}
+
+.hsi-wind-container .hsi-wind-arrow path {
+  stroke: var(--boeing-colors-white);
+  stroke-width: 4;
+}
+
+.hsi-wind-container .hsi-wind-arrow path.wind-arrow-outline {
+  stroke: var(--boeing-colors-black);
+  stroke-width: 6;
+}
+
+/* MAP RANGE */
+
+.map-range-container {
+  position: absolute;
+  top: -14px;
+  left: 236px;
+  display: flex;
+  flex-direction: column;
+  border: 4px solid var(--boeing-colors-white);
+  box-shadow: 0px 0px 0px 1px var(--boeing-colors-black);
+  width: 96px;
+  padding: 4px 4px 2px 4px;
+  align-items: center;
+  align-content: center;
+  justify-content: center;
+  background: var(--boeing-colors-black);
+}
+
+.map-range-container>.s-text {
+  font-size: 28px;
+  line-height: 30px;
+  height: 30px;
+}
+
+.map-range-container>.text {
+  line-height: 36px;
+  height: 30px;
+}
+.time-to-align {
+  position: absolute;
+  margin-top: 43px;
+  margin-left: 17px;
+  white-space: pre;
+}
+.vor-display {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0px;
+  padding: inherit;
+}
+
+.vor-display>.data-block-left,
+.vor-display>.data-block-right {
+  background: var(--boeing-colors-black);
+  padding: inherit;
+  position: absolute;
+  bottom: 0px;
+  width: 100px;
+  display: flex;
+  flex-direction: column;
+}
+
+.vor-display>.data-block-left {
+  left: 0;
+}
+
+.vor-display>.data-block-right {
+  right: 0;
+  align-items: flex-end;
+}
+
+.vor-display>.data-block-left>div,
+.vor-display>.data-block-right>div,
+.vor-display .fmc-pos-update-status {
+  background: var(--boeing-colors-black);
+  width: fit-content;
+  white-space: nowrap;
+  height: 33px;
+}
+
+.vor-display>.data-block-left>div {
+  text-align: start;
+  padding-right: 10px;
+}
+
+.vor-display>.data-block-right>div {
+  text-align: end;
+  padding-left: 10px;
+}
+
+.vor-display .vor-main-label {
+  min-width: 106px;
+}
+
+.vor-display .vor-data,
+.vor-display .dme-distance {
+  min-width: 134px;
+}
+
+.vor-display .s-text {
+  font-size: 28px;
+}
+
+.vor-display .dme-distance {
+  padding-bottom: 38px;
+}
+
+.vor-display .fmc-pos-update-status {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  padding-right: 160px;
+  padding-top: 4px;
+  min-width: 300px;
+  text-align: right;
+  padding-left: 2px;
+}
+.wx-terr-tfc-data-block-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  padding: inherit;
+  width: 100%;
+  height: 100%;
+  color: var(--boeing-colors-cyan);
+}
+
+.plan-mode .wx-terr-tfc-data-block-container {
+  top: -160px;
+}
+
+.mini-map-info .wx-terr-tfc-data-block-container {
+  top: 28px;
+}
+
+.wx-terr-tfc-data-block-container>div {
+  position: absolute;
+  left: 0;
+  height: 0;
+}
+
+.tcas-block-container>.tcas-mode-off,
+.terr-block-container>.terr-mode.warning {
+  color: var(--boeing-colors-amber);
+}
+
+.map-symbols-setting-block-container>div,
+.terr-block-container>div,
+.wxr-block-container div,
+.tcas-block-container>div {
+  background: var(--boeing-colors-black);
+  padding-right: 4px;
+  width: fit-content;
+  height: 35px;
+  padding-left: var(--nd-info-lower-padding);
+}
+
+.map-symbols-setting-block-container>div {
+  font-size: 28px;
+  line-height: 34px;
+  height: 27px;
+}
+
+.map-symbols-setting-block-container {
+  bottom: 351px;
+}
+
+.wxr-block-container,
+.terr-block-container {
+  bottom: 271px;
+  line-height: 40px;
+}
+
+.tcas-block-container>div.tfc-mode,
+.tcas-block-container>div.tcas-mode {
+  font-size: 28px;
+  line-height: 36px;
+}
+
+.tcas-block-container {
+  bottom: 166px;
+}
+.adf-display {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  width: 100%;
+  justify-content: space-between;
+  line-height: 33px;
+}
+
+.adf-display>.data-block-left>div {
+  text-align: start;
+}
+
+.adf-display>.data-block-right {
+  position: relative;
+  margin-left: auto;
+}
+
+.adf-display>.data-block-right>div {
+  text-align: end;
+}
+.sel-hdg-trk {
+  position: absolute;
+  width: 176px;
+  height: 50px;
+  bottom: -10px;
+  left: 416px;
+  color: var(--boeing-colors-magenta);
+  font-size: 40px;
+  background: var(--boeing-colors-black);
+}
+
+.sel-hdg-trk .sel,
+.sel-hdg-trk .mode {
+  margin-right: 10px;
+  font-size: 0.75em;
+}
+.mini-map-info {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  top: 0;
+  left: 0;
+  font-size: 38px;
+}
+
+.mini-map-info .speed-wind-range-info-block,
+.mini-map-info .time-to-align {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.mini-map-info .mini-map-info-lower-section {
+  --nd-info-lower-padding: 10px;
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  padding: 0 var(--nd-info-lower-padding);
+  color: var(--boeing-colors-cyan);
+}
+.afds-status {
+  position: absolute;
+  min-width: 16.4%;
+  height: 100%;
+  padding: 0;
+  margin: 0;
+  transform: translate(-50%, 0);
+
+  paint-order: stroke;
+  -webkit-text-stroke: 0.012em black;
+
+  font-size: 52px;
+  line-height: 0.9em;
+  text-align: center;
+  vertical-align: middle;
+
+  color: var(--boeing-colors-green);
+
+  border: 3px solid transparent;
+}
+
+.afds-status-active {
+  padding: 2px 0 0 0;
+  margin: 0;
+
+  display: inline-block;
+
+  white-space: nowrap;
+}
+
+.afds-status-alert {
+  border-color: var(--boeing-colors-green);
+}
+
+.afds-status-failed {
+  color: var(--boeing-colors-amber);
+}
+
+.afds-status-failed.afds-status-alert {
+  border-color: var(--boeing-colors-amber);
+}
+
+.afds-status-arrow {
+  position: relative;
+  top: -3px;
+  width: 24px;
+  height: 30px;
+  stroke: var(--boeing-colors-white);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+  fill: none;
+  display: inline-block;
+}
+.pfd-airspeed-container {
+  position: relative;
+  width: 124px;
+  height: 684px;
+  overflow: visible !important;
+}
+
+.airspeed-box {
+  position: absolute;
+  left: -1px;
+  top: -1px;
+  width: 124px;
+  height: 684px;
+}
+
+.airspeed-box .shadow {
+  stroke: var(--boeing-colors-black);
+}
+
+.airspeed {
+  width: 100%;
+}
+
+.airspeed-mask {
+  left: 0px;
+  width: 210px;
+}
+
+.airspeed-tape {
+  width: 100%;
+}
+
+.airspeed-tape-tick-container {
+  left: 0px;
+  width: 124px;
+}
+
+.airspeed-tape-tick {
+  box-sizing: content-box;
+  right: -2px;
+  width: 25px;
+  height: 5px;
+  background: var(--boeing-colors-white);
+  border: solid 1px var(--boeing-colors-black);
+  border-radius: 6px;
+}
+
+.airspeed-tape-label-container {
+  left: 0px;
+  width: 80px;
+  font-size: 38px;
+  color: var(--boeing-colors-white);
+  -webkit-text-stroke: 2px var(--boeing-colors-black);
+}
+
+.airspeed-tape-label {
+  height: 34px;
+}
+
+.airspeed-range-container {
+  left: 120px;
+  width: 10px;
+}
+
+.airspeed-range {
+  position: absolute;
+  left: 0px;
+  top: 0px;
+  width: 100%;
+  height: 100%;
+}
+
+.airspeed-range-container-max .airspeed-range {
+  background: linear-gradient(to top, var(--boeing-colors-red), var(--boeing-colors-red) 50%, var(--boeing-colors-black) 50%, var(--boeing-colors-black));
+  /* Zipper repeating unit is 5 knots rounded to the nearest even pixel. */
+  background-size: 100% 28px;
+}
+
+.airspeed-range-container-max .airspeed-range.shadow {
+  left: -1px;
+  width: calc(100% + 2px);
+  height: calc(100% + 1px);
+  background: linear-gradient(to top, var(--boeing-colors-black), var(--boeing-colors-black) 50%, transparent 50%, transparent);
+  /* Zipper repeating unit is 5 knots rounded to the nearest even pixel. */
+  background-size: 100% 28px;
+  border-bottom: solid 1px var(--boeing-colors-black);
+}
+
+.airspeed-range-container-min-maneuver .airspeed-range {
+  border: solid 4px var(--boeing-colors-amber);
+  border-left: none;
+  border-bottom: none;
+}
+
+.airspeed-range-container-min-maneuver .airspeed-range.shadow {
+  left: -1px;
+  top: -1px;
+  width: calc(100% + 2px);
+  border-width: 6px;
+  border-color: var(--boeing-colors-black);
+}
+
+.airspeed-range-container-min .airspeed-range {
+  background: linear-gradient(to bottom, var(--boeing-colors-red), var(--boeing-colors-red) 50%, var(--boeing-colors-black) 50%, var(--boeing-colors-black));
+  /* Zipper repeating unit is 5 knots rounded to the nearest even pixel. */
+  background-size: 100% 28px;
+}
+
+.airspeed-range-container-min .airspeed-range.shadow {
+  left: -1px;
+  top: -1px;
+  width: calc(100% + 2px);
+  height: calc(100% + 1px);
+  background: linear-gradient(to bottom, var(--boeing-colors-black), var(--boeing-colors-black) 50%, transparent 50%, transparent);
+  /* Zipper repeating unit is 5 knots rounded to the nearest even pixel. */
+  background-size: 100% 28px;
+  border-top: solid 1px var(--boeing-colors-black);
+}
+
+.airspeed-trend-vector {
+  left: 86px;
+  width: 20px;
+}
+
+.airspeed-trend-vector-svg {
+  fill: none;
+  stroke: var(--boeing-colors-green);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.airspeed-trend-vector-svg.shadow {
+  stroke: var(--boeing-colors-black);
+  stroke-width: 6px;
+}
+
+.airspeed-trend-vector-stem {
+  left: 0px;
+  width: 100%;
+  height: calc(100% - 14px);
+}
+
+.airspeed-trend-vector-pointer {
+  left: 3px;
+  width: 14px;
+  height: 14px;
+}
+
+.airspeed-bug-selected {
+  left: 102px;
+}
+
+.airspeed-bug-selected-symbol {
+  position: absolute;
+  left: 0px;
+  top: -14px;
+  width: 56px;
+  height: 28px;
+}
+
+.airspeed-bug-selected-stroke {
+  stroke-width: 4px;
+  stroke: var(--boeing-colors-magenta);
+  stroke-linejoin: round;
+  fill: none;
+}
+
+.airspeed-bug-selected-stroke.shadow {
+  stroke-width: 6px;
+}
+
+.airspeed-vnav-speed-band {
+  left: 120px;
+  width: 10px;
+}
+
+.airspeed-vnav-speed-band-stroke {
+  position: absolute;
+  left: 0px;
+  top: 0px;
+  width: 100%;
+  height: 100%;
+  border: solid 4px var(--boeing-colors-magenta);
+  border-left: none;
+}
+
+.airspeed-vnav-speed-band-stroke.shadow {
+  left: -1px;
+  top: -1px;
+  width: calc(100% + 2px);
+  height: calc(100% + 2px);
+  border-width: 6px;
+  border-color: var(--boeing-colors-black);
+}
+
+.airspeed-bug-ticklabel {
+  left: 110px;
+  width: 44px;
+  font-size: 27px;
+  color: var(--boeing-colors-green);
+  -webkit-text-stroke: 2px var(--boeing-colors-black);
+}
+
+.airspeed-bug-ticklabel-tick {
+  box-sizing: content-box;
+  position: absolute;
+  left: 0px;
+  top: 0px;
+  width: 17px;
+  height: 5px;
+  background: var(--boeing-colors-green);
+  border: solid 1px var(--boeing-colors-black);
+  border-radius: 6px;
+  transform: translateY(-50%);
+}
+
+.airspeed-bug-ticklabel-label {
+  position: absolute;
+  left: 19px;
+  top: 0px;
+  height: 21px;
+  transform: translateY(-50%) scaleX(0.9);
+  transform-origin: 0% 50%;
+  white-space: pre;
+}
+
+.airspeed-bug-vspeed-large .airspeed-bug-ticklabel-tick {
+  left: -15px;
+  width: 32px;
+}
+
+.airspeed-vspeed-readout {
+  position: absolute;
+  left: 129px;
+  font-size: 27px;
+  color: var(--boeing-colors-green);
+  -webkit-text-stroke: 2px var(--boeing-colors-black);
+  transform: scaleX(0.9);
+  transform-origin: 0% 50%;
+}
+
+.airspeed-v1-readout {
+  top: 41px;
+}
+
+.airspeed-vref-readout {
+  top: 646px;
+}
+
+.airspeed-readout {
+  position: absolute;
+  right: 26px;
+  top: 50%;
+  width: 103px;
+  height: 96px;
+  transform: translateY(-50%);
+  color: var(--boeing-colors-white);
+  font-size: 53px;
+
+  --digit-scroller-line-height: 62px;
+  --digit-scroller-line-offset-y: 7px;
+}
+
+.airspeed-readout-box {
+  position: absolute;
+  left: 0px;
+  top: 0px;
+  width: 100%;
+  height: 100%;
+  paint-order: normal;
+}
+
+.airspeed-readout-box-border {
+  fill: var(--boeing-colors-black);
+  stroke: var(--boeing-colors-white);
+  stroke-width: 4px;
+}
+
+.airspeed-readout-box-border.shadow {
+  fill: none;
+  stroke: var(--boeing-colors-black);
+  stroke-width: 6px;
+}
+
+.warning .airspeed-readout-box-border {
+  stroke: var(--boeing-colors-amber);
+  stroke-width: 6px;
+}
+
+.airspeed-digit-scroller {
+  position: absolute;
+  top: 6px;
+  width: 26px;
+  height: 84px;
+}
+
+.airspeed-hundreds-scroller {
+  left: 4px;
+}
+
+.airspeed-tens-scroller {
+  left: 30px;
+}
+
+.airspeed-ones-scroller {
+  left: 56px;
+  --digit-scroller-line-height: 42px;
+}
+.airspeed-select-box {
+  position: relative;
+  width: 115px;
+  height: 57px;
+  background-color: var(--boeing-colors-black);
+  overflow: hidden;
+}
+
+.airspeed-select-value {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  font-size: 50px;
+  color: var(--boeing-colors-magenta)
+}
+.gs-mach-readout {
+  box-sizing: content-box;
+  height: 42px;
+  padding: 2px;
+  color: var(--boeing-colors-white);
+  border: solid 3px transparent;
+  font-size: 52px;
+  -webkit-text-stroke: 2px var(--boeing-colors-black);
+}
+
+.gs-mach-readout.gs-mach-readout-alert {
+  border-color: var(--boeing-colors-white);
+}
+
+.gs-mach-readout-prefix {
+  display: none;
+}
+
+.gs-mach-readout-value {
+  display: inline-block;
+  min-width: 108px;
+  text-align: right;
+}
+.no-vspd-flag {
+  font-size: 37px;
+  color: var(--boeing-colors-amber);
+  background-color: var(--boeing-colors-black);
+  line-height: 95%;
+  text-align: center;
+  padding: 5px;
+  padding-bottom: 0px;
+}
+.pfd-altimeter-container {
+  position: relative;
+  width: 124px;
+  height: 684px;
+  overflow: visible !important;
+}
+
+.altimeter-box {
+  position: absolute;
+  left: -1px;
+  top: -1px;
+  width: 124px;
+  height: 684px;
+}
+
+.altimeter-box .shadow {
+  stroke: var(--boeing-colors-black);
+}
+
+.altimeter {
+  width: 100%;
+}
+
+.altitude-mask {
+  left: -24px;
+  width: 156px;
+}
+
+.altimeter-tape {
+  width: 100%;
+}
+
+.altimeter-tape-tick-container {
+  left: 24px;
+}
+
+.altimeter-tape-tick {
+  box-sizing: content-box;
+  left: -4px;
+  width: 25px;
+  height: 5px;
+  background: var(--boeing-colors-white);
+  border: solid 1px var(--boeing-colors-black);
+  border-radius: 6px;
+}
+
+.altimeter-tape-tick.altimeter-tape-tick-500 {
+  height: 14px;
+}
+
+.altimeter-tape-tick.altimeter-tape-tick-1000 {
+  left: -14px;
+  width: 35px;
+}
+
+.altimeter-tape-label-container {
+  right: 15px;
+  color: var(--boeing-colors-white);
+  -webkit-text-stroke: 2px var(--boeing-colors-black);
+}
+
+.altimeter-tape-label-numbers {
+  position: relative;
+  top: -1px;
+  height: 32px;
+  font-size: 38px;
+}
+
+.altimeter-tape-label-bar {
+  box-sizing: content-box;
+  display: none;
+  right: -9px;
+  width: 100px;
+  height: 6px;
+  background: var(--boeing-colors-white);
+  border: solid 1px var(--boeing-colors-black);
+  border-radius: 6px;
+}
+
+.altimeter-tape-label-bar-top {
+  top: -10px;
+}
+
+.altimeter-tape-label-bar-bottom {
+  bottom: -9px;
+}
+
+.altimeter-tape-label-big {
+  margin-right: 3px;
+  font-size: 38px;
+}
+
+.altimeter-tape-label-small {
+  font-size: 29px;
+}
+
+.altimeter-tape-label-1000 .altimeter-tape-label-bar {
+  display: block;
+}
+
+.altimeter-ground-ribbon {
+  left: 24px;
+
+  --altimeter-ground-ribbon-stem-shadow-upper-y-offset: -1px;
+  --altimeter-ground-ribbon-stem-shadow-upper-height-offset: 1px;
+  --altimeter-ground-ribbon-ground-line-shadow-y-offset: -1px;
+}
+
+.altimeter-ground-ribbon-stem {
+  left: -9px;
+  width: 11px;
+}
+
+.altimeter-ground-ribbon-stem.shadow {
+  left: -10px;
+  width: 13px;
+  border-width: 6px;
+  border-color: var(--boeing-colors-black);
+}
+
+.altimeter-ground-ribbon-stem-upper {
+  border: solid 4px var(--boeing-colors-white);
+  border-bottom-width: 2px;
+  border-right: none;
+}
+
+.altimeter-ground-ribbon-stem-upper.shadow {
+  border-bottom-width: 3px;
+}
+
+.altimeter-ground-ribbon-stem-lower {
+  border: solid 4px var(--boeing-colors-amber);
+  border-top-width: 2px;
+  border-right: none;
+  border-bottom: none;
+}
+
+.altimeter-ground-ribbon-stem-lower.shadow {
+  border-top-width: 3px;
+}
+
+.altimeter-ground-ribbon-ground-line {
+  left: -9px;
+  width: 134px;
+  height: 4px;
+  background: var(--boeing-colors-amber);
+}
+
+.altimeter-ground-ribbon-ground-line.shadow {
+  left: -10px;
+  width: 136px;
+  height: 6px;
+  background: var(--boeing-colors-black);
+}
+
+.altimeter-ground-ribbon-stripes {
+  left: 0;
+  width: 125px;
+  height: 50px;
+  fill: none;
+  stroke: var(--boeing-colors-amber);
+  stroke-width: 4px;
+  stroke-linecap: butt;
+}
+
+.altimeter-preselect-bug {
+  position: absolute;
+  left: 8%;
+  width: 63px;
+  height: 88px;
+  fill: none;
+  stroke-linejoin: round;
+}
+
+.altimeter-preselect-bug-stroke {
+  stroke-width: 4px;
+  stroke: var(--boeing-colors-magenta);
+  vector-effect: non-scaling-stroke;
+}
+
+.altimeter-preselect-bug-stroke.shadow {
+  stroke-width: 6px;
+}
+
+.altimeter-baro-mins-bug {
+  position: absolute;
+  left: 4px;
+  width: 144px;
+  height: 50px;
+  fill: none;
+  stroke-width: 5px;
+  color: var(--boeing-colors-green);
+}
+
+.altimeter-baro-mins-bug.warning {
+  color: var(--boeing-colors-amber);
+}
+
+.altimeter-trend-vector {
+  left: 37px;
+  width: 20px;
+}
+
+.altimeter-trend-vector-svg {
+  fill: none;
+  stroke: var(--boeing-colors-green);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+
+.altimeter-trend-vector-svg.shadow {
+  stroke: var(--boeing-colors-black);
+  stroke-width: 6px;
+}
+
+.altimeter-trend-vector-stem {
+  left: 0;
+  width: 100%;
+  height: calc(100% - 14px);
+}
+
+.altimeter-trend-vector-pointer {
+  left: 3px;
+  width: 14px;
+  height: 14px;
+}
+
+.altimeter-readout {
+  position: absolute;
+  top: 50%;
+  left: 23px;
+  width: 146px;
+  height: 88px;
+  transform: translateY(-50%);
+  color: var(--boeing-colors-white);
+
+  --digit-scroller-line-height: 60px;
+  --digit-scroller-line-offset-y: 8px;
+}
+
+.altimeter-readout-box {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  paint-order: normal;
+}
+
+.altimeter-readout-box-border {
+  fill: var(--boeing-colors-black);
+  stroke: var(--boeing-colors-white);
+  stroke-width: 4px;
+}
+
+.altimeter-readout-box-border.shadow {
+  fill: none;
+  stroke: var(--boeing-colors-black);
+  stroke-width: 6px;
+}
+
+.warning .altimeter-readout-box-border {
+  stroke: var(--boeing-colors-amber);
+}
+
+.bold .altimeter-readout-box-border.shadow {
+  stroke-width: 8px;
+}
+
+.bold .altimeter-readout-box-border {
+  stroke-width: 6px;
+}
+
+.alt-digit-scroller {
+  position: absolute;
+  top: 6px;
+  height: 76px;
+  width: 30px;
+}
+
+.alt-ten-thousands-scroller {
+  left: 22px;
+  font-size: 53px;
+}
+
+.alt-ten-thousands-scroller .digit-scroller-digit-12 {
+  color: var(--boeing-colors-green);
+}
+
+.alt-thousands-scroller {
+  left: 50px;
+  font-size: 53px;
+}
+
+.alt-hundreds-scroller {
+  left: 80px;
+  font-size: 40px;
+
+  --digit-scroller-line-offset-y: 6px;
+}
+
+.alt-digit-scroller.alt-tens-scroller {
+  left: 100px;
+  width: 45px;
+  font-size: 40px;
+
+  --digit-scroller-line-height: 34px;
+  --digit-scroller-line-offset-y: 6px;
+}
+
+.metric-altitude-box {
+  background: var(--boeing-colors-black);
+  position: absolute;
+  top: 262px;
+  right: -47px;
+  width: 132px;
+  height: 36px;
+  text-align: right;
+  padding-right: 3px;
+  border: 4px solid var(--boeing-colors-white);
+  border-top-left-radius: 5px;
+  border-top-right-radius: 5px;
+  border-bottom: 0;
+  box-shadow: -1px 0 var(--boeing-colors-black), 1px 0 var(--boeing-colors-black), 0 -1px var(--boeing-colors-black);
+}
+
+.metric-altitude-value-container {
+  position: relative;
+  top: 0;
+  right: 0;
+  height: 100%;
+  width: 100%;
+  padding-top: 14px;
+  letter-spacing: 2px;
+  line-height: 0;
+}
+
+.metric-altitude-value-container .value {
+  color: var(--boeing-colors-white);
+  font-size: 36px;
+}
+
+.metric-altitude-value-container .unit {
+  color: var(--boeing-colors-cyan);
+  font-size: 30px;
+}
+
+.altimeter-ldg-alt-flag {
+  position: absolute;
+  right: -110px;
+  bottom: -20px;
+  width: 100px;
+  font-size: 30px;
+  color: var(--boeing-colors-amber);
+  display: none;
+}
+
+.no-ldg-alt .altimeter-ldg-alt-flag {
+  display: block;
+}
+.pfd-alt-baro-container {
+  position: relative;
+}
+
+.alt-baro {
+  display: grid;
+  grid-template-rows: 44px 32px;
+  grid-template-columns: 1fr;
+  grid-row-gap: 12px;
+
+  font-size: var(--alt-baro-font-size-small);
+  color: var(--boeing-colors-white);
+  -webkit-text-stroke: 1px var(--boeing-colors-black);
+  white-space: nowrap;
+
+  --alt-baro-font-size-small: 30px;
+  --alt-baro-font-size-medium: 36px;
+  --alt-baro-font-size-large: 52px;
+}
+
+.alt-baro-row {
+  display: flex;
+  flex-flow: row nowrap;
+  align-items: baseline;
+}
+
+.alt-baro-source,
+.alt-baro-uplink {
+  width: 20px;
+}
+
+.alt-baro-setting {
+  margin-left: 35px;
+  width: 146px;
+}
+
+.alt-baro-setting-inner {
+  display: flex;
+  flex-flow: row nowrap;
+  align-items: baseline;
+  justify-content: center;
+}
+
+.alt-baro-value-wrapper {
+  min-width: 72px;
+  text-align: right;
+}
+
+.alt-baro-value {
+  display: inline-block;
+}
+
+.alt-baro-unit {
+  margin-left: 6px;
+}
+
+.alt-baro-reference {
+  margin-left: 16px;
+}
+
+/* This pseudo-child is here to make sure the baseline of the top row does not change as we change font sizes. */
+.alt-baro-top::before {
+  content: " ";
+  font-size: var(--alt-baro-font-size-large);
+  white-space: pre;
+  width: 0;
+}
+
+.alt-baro-top .alt-baro-value-wrapper,
+.alt-baro-top .alt-baro-reference {
+  font-size: var(--alt-baro-font-size-medium);
+}
+
+.alt-baro-std .alt-baro-top .alt-baro-value-wrapper {
+  font-size: var(--alt-baro-font-size-large);
+}
+
+.alt-baro-top .alt-baro-setting {
+  color: var(--boeing-colors-green);
+}
+
+.alt-baro-top .alt-baro-reference {
+  color: var(--boeing-colors-green);
+}
+
+/* Explicitly set the height of these divs so that boxed outline is aligned properly when shown. */
+.alt-baro-top .alt-baro-value-wrapper,
+.alt-baro-top .alt-baro-value,
+.alt-baro-top .alt-baro-unit,
+.alt-baro-top .alt-baro-reference {
+  height: 0.85em;
+}
+
+.alt-baro-alert .alt-baro-top .alt-baro-setting {
+  color: var(--boeing-colors-amber);
+}
+
+.alt-baro-alert:not(.alt-baro-std) .alt-baro-top .alt-baro-setting-inner {
+  outline: solid 2px var(--boeing-colors-amber);
+  outline-offset: 2px;
+  background-color: var(--boeing-colors-black);
+}
+
+.alt-baro-alert.alt-baro-std .alt-baro-top .alt-baro-value {
+  outline: solid 2px var(--boeing-colors-amber);
+  outline-offset: 2px;
+  padding-left: 5px;
+  padding-right: 5px;
+  background-color: var(--boeing-colors-black);
+}
+
+.alt-baro-qfe-alert .alt-baro-top .alt-baro-reference {
+  outline: solid 2px var(--boeing-colors-green);
+  outline-offset: 2px;
+}
+.alt-preselect-container {
+  width: 123px;
+  height: 94px;
+}
+
+.alt-preselect-box {
+  position: relative;
+  bottom: 0;
+  right: 0;
+  width: 100%;
+  height: 60%;
+  color: var(--boeing-colors-magenta);
+}
+
+.alt-preselect-box.metric {
+  background-color: var(--boeing-colors-black);
+  top: 0;
+  height: 40%;
+}
+
+.alt-preselect-value.approaching-alert-border {
+  text-align: right;
+  border: var(--boeing-colors-white) solid 6px;
+  height: 100%;
+  width: 100%;
+}
+
+.alt-preselect-thousands {
+  position: absolute;
+  bottom: -6px;
+  right: 64px;
+  font-size: 50px;
+}
+
+.alt-preselect-hundreds {
+  position: absolute;
+  bottom: -3px;
+  right: 7px;
+  font-size: 38px;
+}
+
+.alt-preselect-hundreds.metric {
+  bottom: -8px;
+}
+
+.alt-preselect-unit {
+  font-size: 30px;
+  color: var(--boeing-colors-cyan);
+}
+.approach-reference {
+  display: flex;
+  flex-flow: column nowrap;
+  align-items: flex-start;
+  paint-order: stroke;
+  -webkit-text-stroke: 0.012em black;
+  font-size: 28px;
+}
+
+.approach-reference-disagree {
+  position: relative;
+  color: var(--boeing-colors-amber);
+}
+
+.approach-reference-disagree::after {
+  content: "";
+  position: absolute;
+  left: 0px;
+  top: 35%;
+  width: 100%;
+  height: 4px;
+  background: var(--boeing-colors-amber);
+  transform: translateY(-50%);
+}
+.deviation-box {
+  width: 100%;
+  height: 100%;
+
+  --deviation-scale-ls-dot-radius: 5px;
+  --deviation-scale-ls-reduced-dot-width: 8px;
+  --deviation-scale-ls-reduced-dot-height: 8px;
+
+  --deviation-pointer-shadow-stroke-width: 4.5px;
+  --deviation-pointer-stroke-width: 3px;
+  --deviation-pointer-np-color: var(--boeing-colors-magenta);
+  --deviation-pointer-ian-color: var(--boeing-colors-magenta);
+  --deviation-pointer-ls-color: var(--boeing-colors-magenta);
+}
+
+.deviation-box .translatable {
+  position: absolute;
+  top: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.deviation-box .shadow {
+  stroke: var(--boeing-colors-black);
+  stroke-width: 5.5px;
+  opacity: 0.5;
+}
+
+.deviation-scale-container {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+
+  --deviation-scale-color: var(--boeing-colors-white);
+}
+
+.deviation-scale-container.alert {
+  --deviation-scale-color: var(--boeing-colors-amber);
+}
+
+.deviation-scale-container-np {
+  height: 100%;
+}
+
+.deviation-scale-container-ls {
+  height: 65%;
+}
+
+.deviation-scale {
+  stroke-width: 4px;
+  stroke: var(--deviation-scale-color);
+  fill: none;
+  stroke-linecap: round;
+  paint-order: stroke;
+}
+
+.deviation-anp-bar {
+  top: 7px;
+  height: 12px;
+  background: var(--deviation-scale-color);
+}
+
+.deviation-anp-bar-end {
+  top: 7px;
+  width: 4px;
+  height: 12px;
+  background: var(--deviation-scale-color);
+}
+
+.deviation-background-fmc,
+.deviation-background-ls {
+  position: absolute;
+  left: 50%;
+  /* allow the round endcap on the centre scale to go above the box */
+  top: 2px;
+  width: 104%;
+  transform: translateX(-50%);
+}
+
+.deviation-background-fmc {
+  /* gap above, and gap below for fmc indicator to extend outside the box */
+  height: calc(100% - 2px - 6px);
+}
+
+.deviation-background-ls {
+  /* gap above and below for centre tick to go outside box */
+  height: calc(65% - 2px - 2px);
+}
+
+.deviation-pointer path {
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.deviation-pointer-ian,
+.deviation-pointer-np {
+  position: absolute;
+  left: 50%;
+  top: 16px;
+  width: 24px;
+  height: 32px;
+  transform: translateX(-50%);
+}
+
+.deviation-pointer-ls {
+  position: absolute;
+  left: 50%;
+  top: 18px;
+  width: 34px;
+  height: 18px;
+  transform: translate(-50%, -50%);
+}
+
+.deviation-pointer-ian-subdued {
+  --deviation-pointer-ian-color: var(--boeing-colors-white);
+}
+
+.deviation-pointer-ls-subdued {
+  --deviation-pointer-ls-color: var(--boeing-colors-white);
+}
+
+.flash .deviation-pointer {
+  animation: pfd-deviation-pointer-alert-flash 0.4s 0.1s infinite step-end;
+}
+
+@keyframes pfd-deviation-pointer-alert-flash {
+  50% {
+    opacity: 0;
+  }
+}
+.lateral-deviation-box {
+  position: absolute;
+  top: 95.2%;
+  left: 25.6%;
+  width: 346px;
+  height: 54px;
+}
+.vertical-deviation-box {
+  position: absolute;
+  top: 70.2%;
+  left: 69.0%;
+  width: 346px;
+  height: 54px;
+  transform-origin: 0 0;
+  transform: rotate(270deg);
+}
+.rising-runway-box {
+  position: absolute;
+  overflow: hidden;
+  top: 51.2%;
+  left: 211px;
+  width: 422px;
+  height: 392px;
+}
+
+.rising-runway-symbol {
+  position: absolute;
+  top: 0;
+  left: 93px;
+  width: 230px;
+  height: 392px;
+}
+
+.rising-runway-symbol svg {
+  position: absolute;
+}
+
+.rising-runway-alert {
+  animation: rising-runway-flasher 0.4s 0.1s infinite step-end;
+}
+
+@keyframes rising-runway-flasher {
+  50% {
+    opacity: 0;
+  }
+}
+.marker-beacon-box {
+  position: absolute;
+  right: 27%;
+  top: 200px;
+  width: 50px;
+  line-height: 50px;
+  background: black;
+  border-radius: 50%;
+  height: 50px;
+  font-size: 36px;
+  text-align: center;
+
+  box-shadow: inset 1px 1px 2px black, 1px 1px 1px black;
+  display: none;
+}
+
+.outer-animation {
+  display: block;
+  color: var(--boeing-colors-cyan);
+  border: 3px solid var(--boeing-colors-cyan);
+  animation: flasher .8s infinite step-end;
+}
+
+.middle-animation {
+  display: block;
+  color: var(--boeing-colors-amber);
+  border: 3px solid var(--boeing-colors-amber);
+  animation: flasher .5s infinite step-end;
+}
+
+.inner-animation {
+  display: block;
+  color: var(--boeing-colors-white);
+  border: 3px solid var(--boeing-colors-white);
+  animation: flasher .33s infinite step-end;
+}
+
+@keyframes flasher {
+  50% {
+    opacity: 0;
+  }
+}
+.minimums-indicator {
+  color: var(--boeing-colors-green);
+  word-spacing: -.3ch;
+  position: absolute;
+  top: 83.4%;
+  right: 32.3%;
+  width: 100px;
+
+  --minimums-font-size-large: 40px;
+  --minimums-font-size-medium: 32px;
+}
+
+.minimums-indicator-alert {
+  color: var(--boeing-colors-amber);
+  background: black;
+}
+
+.minimums-indicator-text {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 4px 0 2px;
+  font-weight: 600;
+}
+
+.minimums-indicator-text-label {
+  font-size: var(--minimums-font-size-medium);
+  height: 32px;
+}
+
+.minimums-indicator-text-value {
+  font-size: var(--minimums-font-size-large);
+}
+
+.minimums-indicator-text div {
+  width: 100%;
+  text-align: right;
+}
+
+.minimums-indicator-flash .minimums-indicator-text {
+  animation: pfd-minimums-indicator-alert-flash 0.4s 0.1s infinite step-end;
+}
+
+@keyframes pfd-minimums-indicator-alert-flash {
+  50% {
+    opacity: 0;
+  }
+}
+.navigation-source {
+  font-size: 38px;
+  paint-order: stroke;
+  -webkit-text-stroke: 0.012em black;
+}
+
+.navigation-source.navigation-source-small {
+  font-size: 28px;
+}
+.radio-alt {
+  position: absolute;
+  top: 86.5%;
+  left: 37.9%;
+  width: 12.1%;
+  height: 5.9%;
+  margin: 1px;
+  padding: 0;
+
+  border: 3px solid transparent;
+
+  text-align: center;
+  font-size: 52px;
+  line-height: 1.2em;
+  color: var(--boeing-colors-white);
+}
+
+.radio-alt-alert {
+  border-color: var(--boeing-colors-white);
+}
+
+.radio-alt-below-minima {
+  color: var(--boeing-colors-amber);
+}
+
+.radio-alt-failed {
+  color: var(--boeing-colors-amber);
+  border: 3px solid var(--boeing-colors-amber);
+}
+.pfd-vertical-speed-container {
+  position: relative;
+  width: 84px;
+  height: 478px;
+
+  --pfd-vertical-speed-container-bg-fill: var(--boeing-colors-black-translucent);
+}
+
+.pfd-vertical-speed-background {
+  position: absolute;
+  left: 0px;
+  top: 0px;
+  width: 100%;
+  height: 100%;
+  fill: var(--pfd-vertical-speed-container-bg-fill);
+  stroke: var(--boeing-colors-black);
+  stroke-width: 0.5px;
+  overflow: visible;
+}
+
+.vertical-speed {
+  position: absolute;
+  left: 0px;
+  top: 0px;
+  width: 100%;
+  height: 100%;
+  color: var(--boeing-colors-white);
+  -webkit-text-stroke: 2px var(--boeing-colors-black);
+}
+
+.vertical-speed-coordinate-box {
+  right: 0px;
+}
+
+.vertical-speed-scale-tick {
+  stroke: var(--boeing-colors-white);
+  stroke-linecap: round;
+}
+
+.vertical-speed-scale-tick.shadow {
+  stroke: var(--boeing-colors-black);
+}
+
+.vertical-speed-scale-tick-minor {
+  stroke-width: 4px;
+}
+
+.vertical-speed-scale-tick-minor.shadow {
+  stroke-width: 6px;
+}
+
+.vertical-speed-scale-tick-major,
+.vertical-speed-scale-tick-zero {
+  stroke-width: 5px;
+}
+
+.vertical-speed-scale-tick-major.shadow,
+.vertical-speed-scale-tick-zero.shadow {
+  stroke-width: 7px;
+}
+
+.vertical-speed-scale-label {
+  left: -26px;
+  transform: translateY(-50%) translateY(3px);
+  font-size: 30px;
+}
+
+.vertical-speed-pointer {
+  stroke: var(--boeing-colors-white);
+  stroke-width: 5px;
+  stroke-linecap: round;
+}
+
+.vertical-speed-pointer.shadow {
+  stroke: var(--boeing-colors-black);
+  stroke-width: 7px;
+}
+
+.vertical-speed-bug {
+  left: -10px;
+  width: 14px;
+  height: 12px;
+}
+
+.vertical-speed-bug-bar {
+  stroke: var(--boeing-colors-magenta);
+  stroke-width: 4px;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.vertical-speed-bug-bar.shadow {
+  stroke: var(--boeing-colors-black);
+  stroke-width: 6px;
+}
+
+.vertical-speed-readout {
+  position: absolute;
+  right: 21px;
+  font-size: 35px;
+}
+
+.vertical-speed-readout-top {
+  bottom: 470px;
+}
+
+.vertical-speed-readout-bottom {
+  top: 488px;
+}
+.fma {
+  position: absolute;
+  overflow: visible;
+  left: 0;
+  width: 100%;
+  height: calc(100% - 4px);
+  top: 2px;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: 1fr 5px 1fr 5px 1fr;
+  grid-template-rows: 61% 39%;
+  grid-template-areas:
+    "at-active splitter-l lat-active splitter-r vert-active"
+    "empty splitter-l lat-armed splitter-r vert-armed";
+
+  paint-order: stroke;
+  -webkit-text-stroke: 0.012em black;
+  letter-spacing: -0.015em;
+
+  white-space: nowrap;
+
+  --fma-large-font-size: 40px;
+  --fma-large-line-height: 1em;
+  --fma-small-font-size: 28px;
+  --fma-small-line-height: 0.9em;
+
+  --fma-boxed-border-width: 3px;
+}
+
+.fma-background {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: calc(100% - 4px);
+  top: 2px;
+}
+
+.fma-splitter {
+  width: 5px;
+  stroke: var(--boeing-colors-white);
+  stroke-width: 4px;
+  stroke-linecap: round;
+  grid-row: span 2;
+  overflow: visible;
+}
+
+.fma-splitter-left {
+  grid-area: splitter-l;
+}
+
+.fma-splitter-right {
+  grid-area: splitter-r;
+}
+
+.fma-splitter-line-shadow {
+  stroke: var(--boeing-colors-black);
+  stroke-width: 5px;
+}
+
+.fma-active {
+  position: relative;
+  top: 0;
+  padding: 0;
+  margin: 1px;
+
+  color: var(--boeing-colors-green);
+
+  font-size: var(--fma-large-font-size);
+  line-height: var(--fma-large-line-height);
+  text-align: center;
+
+  border: var(--fma-boxed-border-width) solid transparent;
+}
+
+.fma-autothrottle-active {
+  grid-area: at-active;
+}
+
+.fma-lateral-active {
+  grid-area: lat-active;
+}
+
+.fma-vertical-active {
+  grid-area: vert-active;
+}
+
+.fma-armed {
+  position: relative;
+  bottom: 0;
+  padding: 0;
+  margin-top: 4px;
+
+  color: var(--boeing-colors-white);
+
+  font-size: var(--fma-small-font-size);
+  text-align: center;
+  line-height: var(--fma-small-line-height);
+}
+
+.fma-autothrottle-armed {
+  grid-area: at-armed;
+}
+
+.fma-lateral-armed {
+  grid-area: lat-armed;
+}
+
+.fma-vertical-armed {
+  grid-area: vert-armed;
+}
+
+.fma-mode-alert {
+  border-color: var(--boeing-colors-green);
+}
+
+.fma-mode-failed::after {
+  content: '';
+  border-bottom: 3px solid var(--boeing-colors-amber);
+  width: 100%;
+  position: absolute;
+  right: 0;
+  top: 45%;
+}
+.pfd-airplane-symbol {
+  width: 384px;
+  height: 60px;
+  paint-order: normal;
+}
+
+.pfd-airplane-symbol-wings {
+  fill: var(--boeing-colors-black);
+  stroke: var(--boeing-colors-white);
+  stroke-width: 5px;
+}
+
+.pfd-airplane-symbol-wings.shadow {
+  stroke: var(--boeing-colors-black);
+  stroke-width: 6px;
+}
+.pfd-bank-indicator {
+  --pfd-bank-indicator-pointer-color: var(--boeing-colors-white);
+}
+
+.pfd-bank-indicator.pfd-bank-indicator-bank-alert {
+  --pfd-bank-indicator-pointer-color: var(--boeing-colors-amber);
+}
+
+.pfd-bank-indicator-scale-pointer {
+  fill: var(--boeing-colors-white);
+  stroke: var(--boeing-colors-white);
+  stroke-width: 1px;
+}
+
+.pfd-bank-indicator-scale-pointer.shadow {
+  stroke: var(--boeing-colors-black);
+  stroke-width: 1.75px;
+}
+
+.pfd-bank-indicator-scale-ticks {
+  stroke: var(--boeing-colors-white);
+  stroke-width: 4px;
+}
+
+.pfd-bank-indicator-scale-ticks.shadow {
+  stroke: var(--boeing-colors-black);
+  stroke-width: 5.5;
+}
+
+.pfd-bank-indicator-pointer,
+.pfd-bank-indicator-slip-skid {
+  stroke: var(--pfd-bank-indicator-pointer-color);
+  stroke-width: 4px;
+  fill: none;
+}
+
+.pfd-bank-indicator-pointer.shadow,
+.pfd-bank-indicator-slip-skid.shadow {
+  stroke: var(--boeing-colors-black);
+  stroke-width: 5.5px;
+}
+
+.pfd-bank-indicator-bank-alert .pfd-bank-indicator-pointer {
+  fill: var(--pfd-bank-indicator-pointer-color);
+}
+
+.pfd-bank-indicator-slip-skid-alert .pfd-bank-indicator-slip-skid {
+  fill: var(--pfd-bank-indicator-pointer-color);
+}
+.pfd-fd-command-bar {
+  box-sizing: content-box;
+  background: var(--boeing-colors-magenta);
+  border-radius: 6px;
+  border: solid 1px var(--boeing-colors-black);
+}
+
+.pfd-fd-command-v-bar {
+  fill: var(--boeing-colors-magenta);
+  stroke: var(--boeing-colors-magenta);
+  stroke-width: 1.5px;
+}
+
+.pfd-fd-command-v-bar2 {
+  stroke: var(--boeing-colors-magenta);
+  stroke-width: 1.5px;
+  fill: none;
+}
+
+.pfd-fd-command-bar-pitch {
+  width: 282px;
+  height: 6px;
+}
+
+.pfd-fd-command-bar-bank {
+  width: 6px;
+  height: 282px;
+}
+
+.pfd-fd-reference {
+  width: 14px;
+  height: 14px;
+}
+
+.pfd-fd-reference-stroke {
+  stroke: var(--boeing-colors-white);
+  stroke-width: 5px;
+}
+
+.pfd-fd-reference-stroke.shadow {
+  stroke: var(--boeing-colors-black);
+  stroke-width: 6px;
+}
+.pfd-fpv {
+  width: 100px;
+  height: 52px;
+}
+
+.pfd-fpv-stroke {
+  stroke: var(--boeing-colors-white);
+  stroke-width: 4px;
+}
+
+.pfd-fpv-stroke.shadow {
+  stroke: var(--boeing-colors-black);
+  stroke-width: 5px;
+}
+
+.pfd-fpv-nonconformal .pfd-fpv-stroke-line-side {
+  stroke-dasharray: 15 6;
+}
+
+.pfd-fpv-nonconformal .pfd-fpv-stroke-circle {
+  stroke-dasharray: 16 6;
+  stroke-dashoffset: 8;
+}
+.pfd-horizon-line {
+  box-sizing: content-box;
+  height: 5px;
+  background: var(--boeing-colors-white);
+  border-radius: 6px;
+  border: solid 1px var(--boeing-colors-black);
+}
+.pfd-pitch-ladder-container {
+  font-size: 28px;
+}
+
+.pfd-pitch-ladder-line {
+  stroke: var(--boeing-colors-white);
+  stroke-width: 4px;
+}
+
+.pfd-pitch-ladder-line.shadow {
+  stroke: var(--boeing-colors-black);
+  stroke-width: 5.5px;
+}
+
+.pfd-pitch-ladder-label {
+  fill: var(--boeing-colors-white);
+  stroke: var(--boeing-colors-black);
+  stroke-width: 1.5px;
+}
+.pfd-pitch-limit {
+  width: 240px;
+  height: 38px;
+}
+
+.pfd-pitch-limit-stroke {
+  stroke: var(--boeing-colors-amber);
+}
+
+.pfd-pitch-limit-stroke-thick {
+  stroke-width: 6px;
+}
+
+.pfd-pitch-limit-stroke-thin {
+  stroke-width: 4px;
+}
+
+.pfd-pitch-limit-stroke.shadow {
+  stroke: var(--boeing-colors-black);
+}
+
+.pfd-pitch-limit-stroke-thick.shadow {
+  stroke-width: 7px;
+}
+
+.pfd-pitch-limit-stroke-thin.shadow {
+  stroke-width: 5px;
+}
+.pfd-sel-fpa {
+  width: 128px;
+  height: 8px;
+}
+
+.pfd-sel-fpa-stroke {
+  stroke: var(--boeing-colors-white);
+  stroke-width: 4px;
+}
+
+.pfd-sel-fpa-stroke.shadow {
+  stroke: var(--boeing-colors-black);
+  stroke-width: 5px;
+}
+.pfd-tcas-ra-pitch-nofly-stroke {
+  stroke: var(--boeing-colors-red);
+}
+
+.pfd-tcas-ra-pitch-nofly-stroke.shadow {
+  stroke: var(--boeing-colors-black);
+}
+.pfd-horizon-display {
+  position: relative;
+  width: 1279px;
+  height: 919px;
+}
+
+.pfd-horizon-failure-flag {
+  box-sizing: content-box;
+  font-size: 48px;
+  background: var(--boeing-colors-black);
+  border: 4px solid var(--boeing-colors-amber);
+  color: var(--boeing-colors-amber);
+  text-align: center;
+}
+
+.pfd-horizon-att-flag {
+  position: absolute;
+  left: 50%;
+  top: 350px;
+  width: 78px;
+  height: 38px;
+  transform: translateX(-50%);
+}
+
+.pfd-horizon-fd-flag {
+  position: absolute;
+  left: 789px;
+  top: 316px;
+  width: 78px;
+  height: 38px;
+  transform: translateX(-50%);
+}
+
+.pfd-horizon-fpv-flag {
+  position: absolute;
+  left: 490px;
+  top: 316px;
+  width: 78px;
+  height: 38px;
+  transform: translateX(-50%);
+}
+.upper-section-container .horizon-container {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  top: 0;
+  left: 0;
+  overflow: hidden;
+}
+
+.upper-section-container .pfd-horizon-display {
+  position: absolute;
+  left: 0px;
+  top: 0px;
+}
+
+.upper-section-container .flight-instrument-box {
+  position: relative;
+  margin-top: 1.3%;
+  margin-left: 17%;
+  width: 75.2%;
+  height: 96.7%;
+}
+
+.upper-section-container .fma-box {
+  position: absolute;
+  overflow: hidden;
+  top: 1.3%;
+  left: 28.6%;
+  width: 44%;
+  height: 7.1%;
+}
+
+.upper-section-container .afds-status-box {
+  top: 18.3%;
+  left: 50%;
+  width: 100%;
+  height: 4.7%;
+  position: absolute;
+}
+
+.upper-section-container .pfd-airspeed-container {
+  position: absolute;
+  left: 24px;
+  top: 105px;
+}
+
+.upper-section-container .airspeed-select-box {
+  position: absolute;
+  left: 24px;
+  top: 33px;
+}
+
+.upper-section-container .gs-mach-readout {
+  position: absolute;
+  left: 20px;
+  top: 830px;
+}
+
+.upper-section-container .pfd-vertical-speed-container {
+  position: absolute;
+  right: -8px;
+  top: 447px;
+  transform: translateY(-50%);
+}
+
+.upper-section-container.upper-section-container-att-failed .pfd-vertical-speed-container {
+  --pfd-vertical-speed-container-bg-fill: var(--boeing-colors-darker-gray);
+}
+
+.upper-section-container .pfd-altimeter-container {
+  position: absolute;
+  right: 104px;
+  top: 105px;
+}
+
+.upper-section-container .pfd-alt-baro-container {
+  position: absolute;
+  top: 90.6%;
+  left: 70.5%;
+}
+
+.upper-section-container .alt-preselect-container {
+  position: absolute;
+  top: -1.6%;
+  right: 10.9%;
+}
+
+.upper-section-container .navigation-source {
+  position: absolute;
+  top: 19%;
+  left: 21%;
+}
+
+.upper-section-container .approach-reference {
+  position: absolute;
+  top: 11%;
+  left: 21%;
+}
+
+.upper-section-container .no-vspd-flag {
+  position: absolute;
+  top: 24.5%;
+  left: 16.1%;
+}
+
+.upper-section-container .translucent-box {
+  position: absolute;
+  background-color: var(--boeing-colors-black-translucent);
+  overflow: hidden;
+}
+
+.upper-section-container .outlined-box {
+  border: 0.5px solid var(--boeing-colors-black-translucent-border);
+}
+
+.upper-section-container .black-box {
+  position: absolute;
+  background-color: var(--boeing-colors-black);
+  overflow: hidden;
+}
+
+.upper-section-container.upper-section-container-att-failed .att-failed-gray-box {
+  background-color: var(--boeing-colors-darker-gray);
+}
+
+.upper-section-container .pfd-failure-flag {
+  box-sizing: content-box;
+  height: 38px;
+  font-size: 48px;
+  color: var(--boeing-colors-amber);
+  text-align: center;
+  white-space: pre;
+}
+
+.upper-section-container .pfd-failure-flag-boxed {
+  padding: 0px 4px;
+  background: var(--boeing-colors-black);
+  border: solid 4px var(--boeing-colors-amber);
+}
+
+.upper-section-container .pfd-failure-flag-vert {
+  padding-top: 0.1em;
+  line-height: 0.9em;
+}
+
+.upper-section-container .pfd-failure-flag.pfd-failure-flag-message {
+  font-size: 37px;
+}
+
+.upper-section-container .pfd-aoa-spd-flag {
+  position: absolute;
+  left: 18px;
+  top: 814px;
+}
+
+.upper-section-container .pfd-isfd-spd-flag {
+  position: absolute;
+  left: 18px;
+  top: 814px;
+}
+
+.upper-section-container .pfd-gps-alt-flag {
+  position: absolute;
+  left: 730px;
+  top: 814px;
+}
+
+.upper-section-container .pfd-isfd-alt-flag {
+  position: absolute;
+  left: 730px;
+  top: 814px;
+}
+
+.upper-section-container .pfd-failure-flag.pfd-spd-flag {
+  position: absolute;
+  left: 86px;
+  top: 447px;
+  height: 124px;
+  transform: translate(-50%, -50%);
+}
+
+.upper-section-container .pfd-failure-flag.pfd-alt-flag {
+  position: absolute;
+  right: 166px;
+  top: 447px;
+  height: 124px;
+  transform: translate(50%, -50%);
+}
+
+.upper-section-container .pfd-failure-flag.pfd-vert-flag {
+  position: absolute;
+  right: 10px;
+  top: 447px;
+  height: 166px;
+  transform: translateY(-50%);
+}
+wtb78x-pfd {
+  font-size: 60px;
+  font-family: "B787";
+  paint-order: stroke;
+  -webkit-text-stroke: .02em black;
+}
+
+wtb78x-pfd,
+wtb78x-pfd #Mainframe,
+wtb78x-pfd #Electricity,
+.section>div {
+  width: 100%;
+  height: 100%;
+}
+
+.section {
+  position: relative;
+  overflow: hidden;
+}
+
+#LeftSection {
+  width: 33.33333%;
+  height: 100%;
+  border-right: 2px solid #fff;
+}
+
+#UpperSection {
+  position: absolute;
+  width: 66.66666%;
+  left: 33.33333%;
+  height: 64.5%;
+  top: 0;
+}
+
+#LowerSection {
+  position: absolute;
+  width: 66.66666%;
+  left: 33.33333%;
+  top: 64.5%;
+  height: 35.5%;
+}
+
+#FakeBackground {
+  height: 100%;
+  width: 66.2%;
+  position: absolute;
+  top: 0;
+  left: 33.6%;
+}
+
+#FakeBackground img {
+  width: 100%;
+  opacity: 0.5;
+  /* display: none; */
+}
+
+#Separator {
+  position: absolute;
+  top: 0px;
+  left: 635px;
+  width: 12px;
+  height: 100%;
+  background-color: var(--b78x-colors-separator-gray);
+  border-left: 1px solid black;
+  border-right: 3px solid black;
+}
+
+#FixBleed {
+  position: absolute;
+  top: 0px;
+  left: 0px;
+  width: 100%;
+  height: 100%;
+  border-left: 2px solid black;
+  border-top: 1px solid black;
+  pointer-events: none;
+}
+
+
+/* atc-uplink */
+
+.hs-atc-uplinkW {
+  text-align: center;
+  color: var(--boeing-colors-white);
+}
+.hs-atc-uplinkG {
+  text-align: center;
+  color: var(--boeing-colors-green);
+}
+.hs-atc-uplink0 {
+  position: relative;
+  font-size: 38px;
+  line-height: 33px;
+  color: var(--boeing-colors-white);
+  text-transform: uppercase;
+}
+.hs-atc-uplink1 {
+  position: absolute;
+  top: 360px;
+  left: 3.5px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+.hs-atc-uplink2 {
+  color: var(--boeing-colors-white);
+  border: 5px solid var(--boeing-colors-white);
+  border-radius: 10px;
+  display: flex;
+  justify-content: center;
+}
+.hs-atc-uplink3 {
+  margin-top: 30px;
+  width: 600px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+.hs-atc-uplinkLR {
+  display: flex;
+  justify-content: space-between;
+  word-break:break-normal;
+  margin-right: 14px;
+}
+.hs-atc-uplinkT {
+  margin-top: 4px;
+  align-items: center;
+  text-align: center;
+  word-break:break-normal;
+  white-space: pre-wrap;
+}
+.hs-atc-uplinkC {
+  align-items: center;
+  text-align: center;
+  word-break:break-normal;
+  white-space: pre-wrap;
+}
+.hs-atc-uplinkL {
+  align-items: left;
+  text-align: left;
+  word-break:break-normal;
+  white-space: pre-wrap;
+  margin: 20px 0px;
+}
+.hs-atc-uplinkR {
+  align-items: right;
+  text-align: right;
+  word-break:break-normal;
+  white-space: pre-wrap;
+}
+
+.hs-atc-green {
+  color: var(--boeing-colors-green);
+}

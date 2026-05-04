@@ -92,6 +92,9 @@
     <None Update="HotkeyGuides\PMDG_777_Hotkeys.txt">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Update="HotkeyGuides\HS787_Hotkeys.txt">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <!-- Checklist Files -->
     <None Update="Checklists\FBW_A320_Checklist.txt">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
@@ -99,8 +102,14 @@
     <None Update="Checklists\Fenix_A320_Checklist.txt">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <!-- EFB Bridge Script -->
+    <!-- Bridge Scripts -->
     <None Update="Resources\pmdg-efb-accessibility-bridge.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Resources\hs787-mfd-bridge.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Resources\hs787-efb-bridge.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>

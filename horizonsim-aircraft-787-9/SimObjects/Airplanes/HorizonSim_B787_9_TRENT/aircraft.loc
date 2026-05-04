@@ -1,0 +1,115 @@
+{
+  "LocalisationFile": {
+    "Version": 2,
+    "UUID": "c2ffc44a-8738-47b9-a464-408910227183",
+    "Languages": [
+      "en-US",
+      "fr-FR",
+      "es-ES",
+      "de-DE",
+      "it-IT",
+      "pl-PL",
+      "pt-BR",
+      "ru-RU"
+    ],
+    "Strings": {
+      "AIRCRAFT.DESCRIPTION": {
+        "UUID": "72697535-66ee-4356-b678-7849f7a5c63e",
+        "LastModifiedBy": "dmedina",
+        "LastModifiedDate": "2020-07-01 11:55:27",
+        "LocalizationStatus": "TranslationNeeded",
+        "Languages": {
+          "en-US": {
+            "Text": "During the late 1990s, as sales of the 767 and 747-400 slowed, Boeing kicked-off development for a replacement long-haul, wide-body, twin-engine jetliner. In 2003 they announced the 7E7, which would soon be dubbed 'Dreamliner' after a public naming competition, and officially re-designated as the 787 in 2005.<br><br>The first variant, the 787-8, took flight in 2009, with the longer 787-9 debuting in 2013, and the longest variant, the 787-10, in early 2017. Since launching commercial service with Singapore Airlines in April 2018, the 787-10 has orders for nearly 200 aircraft from 13 customers.<br><br>While the 787-10 accommodates more passengers than its 787 family members, the entire Dreamliner group is built on shared principles and technology -- all geared toward greater efficiency, from both a performance and production standpoint.<br><br>With an airframe constructed primarily of light-weight composite materials, engines featuring all-electrical bleedless systems, fly-by-wire controls, and a suite of aerodynamic improvements from raked wingtips to active gust alleviation, the 787 boasts lower fuel burn and emissions, with increased stability and precision. At the same time, development and assembly has required involvement from numerous suppliers across the world, making the Dreamliner a true collaboration on an unprecedented global scale.",
+            "LocalizationStatus": "TranslationNeeded"
+          },
+          "fr-FR": {
+            "Text": "À la fin des années 1990, suite au ralentissement des ventes du 767 et du 747-400, Boeing a lancé le développement d'un avion de ligne bi-moteur long-courrier à fuselage large de remplacement. En 2003, l'entreprise annonce le 7E7, rapidement surnommé « Dreamliner » suite à un concours ouvert au public, et officiellement baptisé 787 en 2005.<br><br>Le premier modèle, le 787-8, s'est envolé en 2009, tandis que le modèle plus allongé 787-9 est entré en service en 2013, et le modèle le plus long, le 787-10, début 2017. Depuis le lancement du service commercial avec Singapore Airlines en avril 2018, 13 clients ont commandé 200 avions 787-10.<br><br>Tandis que le 787-10 accueille plus de passagers que les autres avions de la gamme 787, le groupe Dreamliner entier est conçu de sorte à partager les principes et la technologie -- tous tournés vers plus d'efficacité que ce soit en matière de performances ou de production.<br><br>Le fuselage principalement en matériaux composites légers, les moteurs équipés de systèmes entièrement électriques sans purge, les commandes de vol électriques, et un ensemble d'améliorations aérodynamiques allant des saumons élancés à une atténuation active des rafales, le 787 consomme moins de carburant et émet moins de polluants, tout en augmentant la stabilité et la précision. Au même moment, le développement et le montage ont demandé l'implication de nombreux fournisseurs du monde entier, ce qui a fait du Dreamliner une véritable collaboration à une échelle mondiale sans précédent."
+          },
+          "es-ES": {
+            "Text": "A finales de los años 90, cuando se redujeron las ventas de los 767 y 747-400, Boeing inició el desarrollo de un avión sustituto de largo recorrido, de fuselaje ancho y bimotor. En 2003 anunciaron el 7E7, que pronto sería conocido como Dreamliner tras un concurso público de nombres y cuya designación oficial cambió a 787 en 2005.<br><br>La primera variante, el 787-8, despegó en 2009, el 787-9 (más largo) debutó en 2013 y el 787-10 (la variante más larga), a principios de 2017. Desde el lanzamiento del servicio comercial con Singapore Airlines en abril de 2018, se han realizado casi 200 pedidos del 787-10 de 13 clientes.<br><br>Si bien el 787-10 es la aeronave que da cabida a más pasajeros de toda la familia 787, el grupo Dreamliner al completo comparte principios y tecnología, buscan una mayor eficiencia, tanto desde el punto de vista del rendimiento como de la producción.<br><br>El 787 se jacta de un menor consumo de combustible y emisiones, con una mayor estabilidad y precisión. Lo consigue gracias a una célula construida principalmente con materiales compuestos ligeros, motores con sistemas totalmente eléctricos sin purgado, mandos de vuelo eléctricos (fly-by-wire) y un conjunto de mejoras aerodinámicas que van desde los dispositivos de punta alar hasta el desvío de las ráfagas de forma activa. Al mismo tiempo, el desarrollo y el montaje han requerido la participación de numerosos proveedores de todo el mundo, lo que hace del Dreamliner una verdadera colaboración a escala global sin precedentes."
+          },
+          "de-DE": {
+            "Text": "Gegen Ende der 1990er Jahre, als die Verkäufe der 767 und der 747-400 zurückgingen, begann Boeing mit der Entwicklung eines Jetliners für Fernreisen mit breitem Rumpf und Zwillingsmotoren. 2003 wurde schließlich die 7E7 angekündigt, die bald darauf im Rahmen eines öffentlichen Benennungswettbewerbs als „Dreamliner“ bekannt und 2005 schließlich auf den offiziellen Namen 787 getauft wurde.<br><br>Die erste Variante der 787-8 erhob sich 2009 in die Lüfte, wobei die längere 787-9 2013 und die längste Variante Anfang 2017 ihr Debut gaben. Seit der Etablierung kommerzieller Dienstleistungen mit Singapur Airlines im April 2018 wurde die 787-10 fast 200-mal von 13 verschiedenen Kunden geordert.<br><br>Obwohl in der 787-10 mehr Passagiere Platz finden als in den übrigen 787-Varianten, basiert die gesamte Dreamliner-Gruppe auf identischen Prinzipien und Technologien, die eine effizientere Leistung und Produktion gewährleisten sollen.<br><br>Die Flugzeugzelle wird primär aus leichtgewichtigen Kompositmaterialien gefertigt. Ferner verfügt die 787 über Triebwerke mit vollelektrischen Entlüftungssystemen, eine Fly-by-Wire-Steuerung, eine ganze Reihe an aerodynamischen Verbesserungen – von schrägen Flügelspitzen bis hin zu aktiver Böenminderung – sowie einen geringeren Treibstoffverbrauch. Darüber hinaus wurde die Emissionserzeugung gesenkt, die Stabilität und Präzision wurden zugleich erhöht. Die Entwicklung und die Zusammensetzung bedurften der Mithilfe unzähliger Lieferanten rund um den Globus, wodurch der Dreamliner ein wahres Kooperationsprojekt globalen Ausmaßes darstellt."
+          },
+          "it-IT": {
+            "Text": "Alla fine degli anni '90, che videro un calo delle vendite dei modelli 767 e 747-400, Boeing inizia lo sviluppo di un ampio jet di linea bimotore a lunga percorrenza che li sostituisca. Nel 2003 l'azienda annuncia il 7E7, presto soprannominato \"Dreamliner\" in seguito a un concorso pubblico indetto per trovarne il nome, e ufficialmente rinominato 787 nel 2005.<br><br>La prima variante, il 787-8, prende il volo nel 2009, il modello più lungo 787-9 debutta nel 2013, mentre l'aeromobile con la maggiore lunghezza, il 787-10, viene presentato all'inizio del 2017. Entrato in servizio per la compagnia Singapore Airlines nell'aprile 2018, il 787-10 riceve ordini da 13 clienti per quasi 200 aeromobili.<br><br>Sebbene il 787-10 accolga un maggior numero di passeggeri rispetto agli altri aeromobili della serie, l'intero gruppo Dreamliner si basa su tecnologie e principi condivisi, tutti orientati verso una maggiore efficienza, sia dal punto di vista delle prestazioni che della produzione.<br><br>Grazie alla cellula realizzata principalmente in materiali compositi leggeri, ai motori con sistemi completamente elettrici senza aria di prelievo, ai comandi fly-by-wire e a una gamma di miglioramenti aerodinamici (dalle punte delle ali inclinate alla riduzione attiva della raffica), la linea 787 vanta emissioni e consumi ridotti, nonché stabilità e precisione maggiori. Lo sviluppo e l'assemblaggio richiedono inoltre il coinvolgimento di numerosi fornitori internazionali, rendendo il Dreamliner una vera e propria collaborazione su una scala globale senza precedenti."
+          },
+          "pl-PL": {
+            "Text": "Pod koniec lat 90. XX wieku firma Boeing rozpoczęła prace and szerokokadłubowym, dwusilnikowym odrzutowcem pasażerskim, mającym zastąpić tracące popularność samoloty 767 i 747-400. W roku 2003 zapowiedziano model 7E7, któremu wkrótce nadano wybraną w publicznym konkursie nazwę „Dreamliner”, a w 2005 roku – oficjalne oznaczenie 787<br><br>Pierwszą wersję 787-8 oblatano w roku 2009, dłuższy 787-9 zadebiutował w 2013 roku, a najdłuższa wersja 787-10 – na początku roku 2017. Od rozpoczęcia komercyjnej eksploatacji w Singapore Airlines w kwietniu 2018 roku, 13 klientów zamówiło niemal 200 egzemplarzy 787-10.<br><br>Podczas gdy 787-10 mieści najwięcej pasażerów ze wszystkich wersji 787, cała rodzina samolotów Dreamliner jest zbudowana w oparciu o te same zasady i technologie, ukierunkowane na uzyskanie większej efektywności zarówno pod względem osiągów, jak i produkcji.<br><br>Mając płatowiec wykonany głównie z lekkich materiałów kompozytowych, instalacje nie wykorzystujące powietrza z upustów sprężarek silników, układ sterowania fly-by-wire i szereg usprawnień aerodynamicznych, takich jak podgięte końcówki skrzydeł oraz aktywne niwelowanie podmuchów, 787 odznacza się obniżonym zużyciem paliwa i emisją niepożądanych substancji, większą stabilnością i precyzją pilotażu. Projektowanie i produkcja wymagały zaangażowania licznych dostawców z całego świata, czyniąc z Dreamlinera prawdziwie globalne przedsięwzięcie na niespotykaną dotąd skalę."
+          },
+          "pt-BR": {
+            "Text": "No fim dos anos 90, as vendas do 767 e do 747-400 caíram, e a Boeing iniciou o desenvolvimento de um novo jato de dois motores, com corpo amplo e trajetos longos. Em 2003, eles anunciaram o 7E7, que logo seria apelidado de \"Dreamliner\" em um concurso público, e oficialmente foi renomeado como 787 em 2005.<br><br>A primeira variante, o 787-8, levantou voo em 2009, com o 787-9 mais longo estreando em 2013, e a variante mais longa, o 787-10, no início de 2017. Desde o lançamento do serviço comercial com a Singapore Airlines em abril de 2018, o 787-10 tem pedidos de quase 200 aeronaves de 13 clientes.<br><br>Enquanto o 787-10 acomoda mais passageiros do que os membros da família 787, todo o grupo Dreamliner é criado sobre princípios e tecnologias compartilhados – tudo concebido para eficiência, de um ponto de vista de desempenho e produção.<br><br>Com componentes estruturais construídos principalmente de materiais compostos leves, motores com sistemas totalmente elétricos sem sangramento, sistemas de controle não mecânico e um pacote de aprimoramentos aerodinâmicos de pontas de asa para atenuação de rajadas ativa, o 787 apresenta redução de queima e emissões de combustível, com estabilidade e precisão maiores. Ao mesmo tempo, o desenvolvimento e a montagem exigem envolvimento de vários fornecedores do mundo todo, fazendo do Dreamliner um verdadeiro projeto de colaboração em uma escala global sem precedentes."
+          },
+          "ru-RU": {
+            "Text": "В конце 1990-х годов, из-за снижения продаж 767 и 747-400, инженеры Boeing начали разработку дальнемагистрального широкофюзеляжного лайнера с двумя двигателями, способного заменить предыдущие модели. В 2003 году корпорация представила 7E7, который в ходе открытого голосования был назван Dreamliner. В 2005 году самолёт получил официальное обозначение 787.<br><br>Модель 787-8 отправилась покорять небеса в 2009 году. В 2013 году был представлен её удлинённый вариант 787-9. В начале 2017 года свет увидела самая длинная модификация этого самолёта — 787-10. В апреле 2018 года Singapore Airlines получила первые заказанные экземпляры и начала коммерческую эксплуатацию этой модели. Сейчас портфель заказов на 787-10 составляет почти 200 воздушных судов для 13 компаний-покупателей.<br><br>В основе всех модификаций модели 787 лежат одинаковые принципы и технологии. Самолёты создавались с расчётом на максимальную эффективность и экономичность как при производстве, так и при эксплуатации.<br><br>Планер самолёта на 50% изготовлен из лёгких композитных материалов, система отбора воздуха в двигателях заменена дополнительными электрогенераторами, для управления используется электродистанционная система управления, а продвинутая аэродинамика самолёта, от законцовок крыла с переменным изгибом до активной системы противодействия порывам ветра, обеспечивает низкий расход топлива и снижает количество выбросов в атмосферу, а также обеспечивает хорошую устойчивость и безопасность. В процессе производства участвуют поставщики со всего мира, благодаря чему Dreamliner можно назвать по-настоящему международным самолётом."
+          }
+        }
+      },
+      "AIRCRAFT.UI_MANUFACTURER": {
+        "UUID": "7dbb8840-4d18-4939-8480-b30725b11ad7",
+        "LastModifiedBy": "ajimeno",
+        "LastModifiedDate": "2020-03-08 15:45:12",
+        "Languages": {
+          "en-US": {
+            "Text": "Boeing"
+          },
+          "fr-FR": {
+            "Text": "Boeing"
+          },
+          "es-ES": {
+            "Text": "Boeing"
+          },
+          "de-DE": {
+            "Text": "Boeing"
+          },
+          "it-IT": {
+            "Text": "Boeing"
+          },
+          "pl-PL": {
+            "Text": "Boeing"
+          },
+          "pt-BR": {
+            "Text": "Boeing"
+          },
+          "ru-RU": {
+            "Text": "Boeing"
+          }
+        }
+      },
+      "AIRCRAFT.UI_MODEL": {
+        "UUID": "e811d848-9080-4fd8-b163-cd6ce0cb08da",
+        "LastModifiedBy": "akeyte",
+        "LastModifiedDate": "2020-03-19 18:36:39",
+        "LocalizationStatus": "TranslationNeeded",
+        "Languages": {
+          "en-US": {
+            "Text": "787-9 (RR) Dreamliner",
+            "LocalizationStatus": "TranslationNeeded"
+          },
+          "fr-FR": {
+            "Text": "787-9 (RR) Dreamliner"
+          },
+          "es-ES": {
+            "Text": "787-9 (RR) Dreamliner"
+          },
+          "de-DE": {
+            "Text": "787-9 (RR) Dreamliner"
+          },
+          "it-IT": {
+            "Text": "787-9 (RR) Dreamliner"
+          },
+          "pl-PL": {
+            "Text": "787-9 (RR) Dreamliner"
+          },
+          "pt-BR": {
+            "Text": "787-9 (RR) Dreamliner"
+          },
+          "ru-RU": {
+            "Text": "787-9 (RR) Dreamliner"
+          }
+        }
+      }
+    }
+  }
+}

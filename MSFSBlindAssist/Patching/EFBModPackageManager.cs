@@ -13,7 +13,8 @@ namespace MSFSBlindAssist.Patching
         BridgeJsSourceNotFound,
         PmdgPackageNotFound,
         InstallFailed,
-        Removed
+        Removed,
+        HS787PackageNotFound
     }
 
     public static class EFBModPackageManager

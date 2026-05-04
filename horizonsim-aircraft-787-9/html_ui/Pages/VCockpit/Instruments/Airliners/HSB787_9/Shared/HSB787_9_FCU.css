@@ -1,0 +1,87 @@
+:root {
+  --bodyHeightScale: 1;
+}
+
+@keyframes TemporaryShow {
+  0%, 100% {
+    visibility: visible;
+  }
+}
+@keyframes TemporaryHide {
+  0%, 100% {
+    visibility: hidden;
+  }
+}
+html {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+html body {
+  -webkit-user-select: none;
+  font-family: var(--font);
+  font-size: calc(var(--viewportHeightRatio) * (36px / 21.6) * var(--currentPageHeight) / 100 );
+  color: white;
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+#highlight {
+  position: absolute;
+  height: 100%;
+  width: 100%;
+  z-index: 10;
+  pointer-events: none;
+}
+
+#Electricity {
+  width: 100%;
+  height: 100%;
+}
+#Electricity[state=off] {
+  display: none;
+}
+
+@font-face {
+  font-family: "MCP-787";
+  src: url("/Fonts/MCP-787-Regular.ttf") format("truetype");
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: "MCP-Mode-787";
+  src: url("/Fonts/MCP-Mode-787-Regular.ttf") format("truetype");
+  font-weight: normal;
+  font-style: normal;
+}
+
+div {
+  position: absolute;
+  left: 0%;
+  top: 0%;
+  width: 101%;
+  height: 100%;
+  fill: white;
+  letter-spacing: 8px;
+}
+
+#value {
+  font-family: "MCP-787";
+  font-size: 120px;
+  text-align: right;
+  padding-top: 2px;
+  padding-right: 20px;
+  letter-spacing: 5px;
+}
+
+#mode {
+  font-family: "MCP-Mode-787";
+  font-size: 72px;
+  text-align: left;
+  letter-spacing: 15px;
+}
+
+/*# sourceMappingURL=B787_10_FCU.css.map */

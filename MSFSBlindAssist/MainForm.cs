@@ -7,6 +7,7 @@ using MSFSBlindAssist.Forms;
 using MSFSBlindAssist.Forms.A32NX;
 using MSFSBlindAssist.Forms.FenixA320;
 using MSFSBlindAssist.Forms.PMDG777;
+using MSFSBlindAssist.Forms.HS787;
 using MSFSBlindAssist.Hotkeys;
 using MSFSBlindAssist.Services;
 using MSFSBlindAssist.Settings;
@@ -34,6 +35,9 @@ public partial class MainForm : Form
     private PMDG777CDUForm? pmdg777CDUForm;
     private PMDG777EFBForm? pmdg777EFBForm;
     private EFBBridgeServer? efbBridgeServer;
+    private EFBBridgeServer? hs787BridgeServer;
+    private HS787FMCForm? hs787FMCForm;
+    private HS787SimBriefForm? hs787SimBriefForm;
     private TakeoffAssistManager takeoffAssistManager = null!;
     private HandFlyManager handFlyManager = null!;
     private VisualGuidanceManager visualGuidanceManager = null!;
@@ -104,7 +108,7 @@ public partial class MainForm : Form
             "A320" => new FlyByWireA320Definition(),
             "FENIX_A320CEO" => new FenixA320Definition(),
             "PMDG_777" => new PMDG777Definition(),
-            // Future aircraft will be added here
+            "HS_787" => new HorizonSim787Definition(),
             _ => new FlyByWireA320Definition() // Default to A320
         };
     }
@@ -128,6 +132,13 @@ public partial class MainForm : Form
         {
             CheckAndOfferEFBModPackage();
             StartEFBBridgeServer();
+        }
+
+        // Initialize 787 bridge if starting with HS 787
+        if (currentAircraft?.AircraftCode == "HS_787")
+        {
+            CheckAndOfferHS787ModPackage();
+            StartHS787BridgeServer();
         }
 
         // Don't set focus - let default tab order handle it for proper menu accessibility
@@ -1105,12 +1116,19 @@ public partial class MainForm : Form
                 ShowChecklistDialog();
                 break;
             case HotkeyAction.ShowElectronicFlightBag:
-                ShowElectronicFlightBagDialog();
+                if (currentAircraft?.AircraftCode == "HS_787")
+                    ShowHS787EFBDialog();
+                else
+                    ShowElectronicFlightBagDialog();
                 break;
             case HotkeyAction.ShowFenixMCDU:
                 if (currentAircraft?.AircraftCode == "PMDG_777" && simConnectManager.PMDG777DataManager != null)
                 {
                     ShowPMDG777CDUDialog();
+                }
+                else if (currentAircraft?.AircraftCode == "HS_787")
+                {
+                    ShowHS787FMCDialog();
                 }
                 else
                 {
@@ -1520,6 +1538,117 @@ public partial class MainForm : Form
         }
 
         pmdg777EFBForm.ShowForm();
+    }
+
+    private void ShowHS787FMCDialog()
+    {
+        hotkeyManager.ExitInputHotkeyMode();
+
+        if (hs787BridgeServer == null || !hs787BridgeServer.IsRunning)
+        {
+            announcer.Announce("FMC bridge server is not running. Please install the mod package and restart the flight.");
+            return;
+        }
+
+        if (hs787FMCForm == null || hs787FMCForm.IsDisposed)
+        {
+            hs787FMCForm = new HS787FMCForm(hs787BridgeServer, simConnectManager, announcer);
+        }
+
+        hs787FMCForm.ShowForm();
+    }
+
+    private void CheckAndOfferHS787ModPackage()
+    {
+        var allFolders = HS787ModPackageManager.FindAllCommunityFolders();
+        if (allFolders.Count == 0) return;
+
+        string resourcesDir = Path.Combine(Application.StartupPath, "Resources");
+
+        foreach (var (simName, communityPath) in allFolders)
+        {
+            if (HS787ModPackageManager.IsInstalled(communityPath))
+            {
+                var updateResult = HS787ModPackageManager.UpdateModPackage(communityPath, resourcesDir);
+                if (updateResult == ModPackageResult.Updated)
+                    System.Diagnostics.Debug.WriteLine($"[HS787] Bridge updated in {simName} Community folder.");
+                continue;
+            }
+
+            var answer = MessageBox.Show(
+                $"The HorizonSim 787-9 FMC and EFB accessibility bridge is not installed for {simName}.\n\n" +
+                "Would you like to install it now? This installs a small mod package into your Community folder " +
+                "that allows Blind Assist to read the FMC screen, send button presses, and read the EFB tablet.\n\n" +
+                "Note: You must restart the flight after installation for the bridge to take effect.",
+                "787-9 Accessibility Bridge",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question);
+
+            if (answer != DialogResult.Yes) continue;
+
+            var installResult = HS787ModPackageManager.Install(communityPath, resourcesDir);
+            switch (installResult)
+            {
+                case ModPackageResult.Success:
+                    MessageBox.Show($"Bridge installed successfully for {simName}. Please restart your flight for it to take effect.",
+                        "787-9 FMC Bridge", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    break;
+                case ModPackageResult.HS787PackageNotFound:
+                    MessageBox.Show($"Could not find the HorizonSim 787-9 package in your {simName} Community folder.\n\nPlease ensure the aircraft is installed and try again.",
+                        "787-9 FMC Bridge", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    break;
+                case ModPackageResult.BridgeJsSourceNotFound:
+                    MessageBox.Show("Bridge JS source file not found. Please reinstall MSFS Blind Assist.",
+                        "787-9 FMC Bridge", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    break;
+                default:
+                    MessageBox.Show($"Failed to install for {simName}: {installResult}",
+                        "787-9 FMC Bridge", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    break;
+            }
+        }
+    }
+
+    private void StartHS787BridgeServer()
+    {
+        if (hs787BridgeServer == null)
+        {
+            hs787BridgeServer = new EFBBridgeServer(port: 19778);
+        }
+
+        if (!hs787BridgeServer.IsRunning)
+        {
+            hs787BridgeServer.Start();
+        }
+    }
+
+    private void StopHS787BridgeServer()
+    {
+        if (hs787FMCForm != null && !hs787FMCForm.IsDisposed)
+        {
+            hs787FMCForm.Dispose();
+            hs787FMCForm = null;
+        }
+
+        if (hs787SimBriefForm != null && !hs787SimBriefForm.IsDisposed)
+        {
+            hs787SimBriefForm.Dispose();
+            hs787SimBriefForm = null;
+        }
+
+        hs787BridgeServer?.Stop();
+    }
+
+    private void ShowHS787EFBDialog()
+    {
+        hotkeyManager.ExitOutputHotkeyMode();
+
+        if (hs787SimBriefForm == null || hs787SimBriefForm.IsDisposed)
+        {
+            hs787SimBriefForm = new HS787SimBriefForm(hs787BridgeServer, simConnectManager, announcer);
+        }
+
+        hs787SimBriefForm.ShowForm();
     }
 
     private void CheckAndOfferEFBModPackage()
@@ -2424,6 +2553,11 @@ public partial class MainForm : Form
         SwitchAircraft(new PMDG777Definition());
     }
 
+    private void HorizonSim787MenuItem_Click(object? sender, EventArgs e)
+    {
+        SwitchAircraft(new HorizonSim787Definition());
+    }
+
     private void SwitchAircraft(IAircraftDefinition newAircraft)
     {
         // Update the aircraft instance
@@ -2510,6 +2644,19 @@ public partial class MainForm : Form
             pmdg777EFBForm = null;
         }
 
+        // Dispose HS 787 forms when switching aircraft
+        if (hs787FMCForm != null && !hs787FMCForm.IsDisposed)
+        {
+            hs787FMCForm.Dispose();
+            hs787FMCForm = null;
+        }
+
+        if (hs787SimBriefForm != null && !hs787SimBriefForm.IsDisposed)
+        {
+            hs787SimBriefForm.Dispose();
+            hs787SimBriefForm = null;
+        }
+
         // PMDG 777 data manager lifecycle
         if (newAircraft.AircraftCode == "PMDG_777" && simConnectManager.IsConnected)
         {
@@ -2538,6 +2685,17 @@ public partial class MainForm : Form
         else
         {
             StopEFBBridgeServer();
+        }
+
+        // 787 FMC bridge: mod package check and server start
+        if (newAircraft.AircraftCode == "HS_787")
+        {
+            CheckAndOfferHS787ModPackage();
+            StartHS787BridgeServer();
+        }
+        else
+        {
+            StopHS787BridgeServer();
         }
 
         // Rebuild sections from new aircraft structure
@@ -2576,6 +2734,7 @@ public partial class MainForm : Form
         flyByWireA320MenuItem.Checked = false;
         fenixA320MenuItem.Checked = false;
         pmdg777MenuItem.Checked = false;
+        horizonSim787MenuItem.Checked = false;
 
         // Set the check on the current aircraft's menu item
         if (currentAircraft is FlyByWireA320Definition)
@@ -2589,6 +2748,10 @@ public partial class MainForm : Form
         else if (currentAircraft is PMDG777Definition)
         {
             pmdg777MenuItem.Checked = true;
+        }
+        else if (currentAircraft is HorizonSim787Definition)
+        {
+            horizonSim787MenuItem.Checked = true;
         }
     }
 
@@ -4106,6 +4269,12 @@ public partial class MainForm : Form
         // Clean up EFB bridge
         efbBridgeServer?.Dispose();
         efbBridgeServer = null;
+
+        // Clean up 787 bridge and forms
+        hs787FMCForm?.Dispose();
+        hs787SimBriefForm?.Dispose();
+        hs787BridgeServer?.Dispose();
+        hs787BridgeServer = null;
 
         // Clean up managers and resources
         hotkeyManager?.Cleanup();

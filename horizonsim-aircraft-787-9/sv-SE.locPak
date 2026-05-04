@@ -1,0 +1,8 @@
+{
+  "LocalisationPackage": {
+    "Language": "sv-SE",
+    "Strings": {
+      "AIRCRAFT.DESCRIPTION": "787-9 är ett tvåmotorigt långdistansflygplan med bred kropp. Det görs av den amerikanska flygtillverkaren Boeing. Flygplanet var det andra som lanserades i Dreamliner-serien och är en utsträckt variant av den första modellen, 787-8. 787-9 gjorde sin jungfruflygning 17 september 2013 och den introducerades 8 juli 2014. Det kan rymma upp till 420 passagerare, även om det normalt har plats för 290, och det bemannas av två.\n\n787-9 har en genomgående konstruktion av kolfiberkomposit. Det är ett kännetecken för Dreamliner-serien, som var först ut med det. Det har också avancerade system för avionik och flygkontroll, vilket ger piloter optimal överblick och flygprecision. Vingen är en toppmodern design med krökta spetsar som maximerar effektiviteten genom att minska motståndet. Den har också ett ljuddämpningssystem med bullarminskande motornaceller.\n\n787-9 är 17,01 meter högt, 62,81 meter långt och har en spännvidd på 60,12 meter. Dragkraften kommer från två turbofläktmotorer med hög genomströmning, antingen General Electric GEnx-1B eller Rolls-Royce Trent 1000. Det har en räckvidd på 14 140 km, en marschfart på 904 km\/h och topphastighet på 955 km\/h.\n\nBoeing 787-9 Dreamliner är en av de djärvaste teknologiska milstolparna i luftfartens historia. Ingenjörerna kombinerade det senaste och bästa för att skapa det här planet, och kombinationen av avionik, kraft och aerodynamik ger piloten en upplevelse som inget annat flygplan ger."
+    }
+  }
+}

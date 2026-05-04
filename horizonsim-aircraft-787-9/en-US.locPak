@@ -1,0 +1,8 @@
+{
+  "LocalisationPackage": {
+    "Language": "en-US",
+    "Strings": {
+      "AIRCRAFT.DESCRIPTION": "The 787-9 is a long-distance, wide-body, twinjet airliner manufactured by American aviation producer Boeing. The airframe is the second in the Dreamliner series to be released, and it is a stretched variant of the original model in the line, the 787-8. The 787-9 took its maiden flight on September 17, 2013 and it was introduced on July 8, 2014. It can carry up to 420 passengers, although it typically seats 290, and it is crewed by two.\n\nThe 787-9 features carbon fiber composite construction throughout, a hallmark of the Dreamliner family that marked a first in aviation. It also uses advanced avionics and flight control systems, providing pilots optimal situational awareness and precision flight coordination. Its wing is a state-of-the-art design comprising raked tips to maximize efficiency through the reduction of drag. It also has a sound suppression system with noise-reducing engine nacelles.\n\nThe 787-9 stands 55 feet, 10 inches tall, measures 206 feet, 1 inch in length, and has a wingspan of 197 feet, 3 inches. Thrust is provided by two high-bypass turbofan engines, either the General Electric GEnx-1B or the Rolls-Royce Trent 1000. It has a range of 8,786 miles, cruises at 562 miles per hour, and has a top speed of 594 mph.\n\nThe Boeing 787-9 Dreamliner is one of the boldest statements of technological prowess in the history of aviation. Engineers combined the latest and greatest to create this machine, and the fusion of avionics, power, and aerodynamics gives pilots an experience like no other aircraft."
+    }
+  }
+}
