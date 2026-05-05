@@ -1116,10 +1116,7 @@ public partial class MainForm : Form
                 ShowChecklistDialog();
                 break;
             case HotkeyAction.ShowElectronicFlightBag:
-                if (currentAircraft?.AircraftCode == "HS_787")
-                    ShowHS787EFBDialog();
-                else
-                    ShowElectronicFlightBagDialog();
+                ShowElectronicFlightBagDialog();
                 break;
             case HotkeyAction.ShowFenixMCDU:
                 if (currentAircraft?.AircraftCode == "PMDG_777" && simConnectManager.PMDG777DataManager != null)

@@ -78,7 +78,7 @@ AI Display Reading (requires Gemini API key in File > Gemini Settings):
   Alt+D      Describe outside scene
 
 Displays and Windows:
-  Shift+E    Route viewer, procedure planner and airport lookup
+  Shift+E    Electronic Flight Bag (route viewer, procedure planner, airport lookup)
   Shift+L    Location Info
   Shift+M    Show VATSIM METAR Report
   Shift+B    SimBrief Briefing
@@ -137,9 +137,6 @@ Autopilot Panel:
 
 FMC / CDU Windows:
   Shift+M    Open 787 FMC Window (requires bridge mod installed)
-
-SimBrief & Fuel:
-  Shift+E    Open SimBrief fetch and fuel loading window
 
 General:
   Escape     Exit active hotkey mode

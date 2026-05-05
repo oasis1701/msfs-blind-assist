@@ -28,6 +28,17 @@ public class HorizonSim787Definition : BaseAircraftDefinition
     private bool _previousHDGHold = false;
     private bool _previousVSActive = false;
 
+    // System-setup announcement state (−1 = unset, suppresses first-poll announcement)
+    private int  _previousApuKnob     = -1;
+    private int  _previousEngState1   = -1;
+    private int  _previousEngState2   = -1;
+    private bool _previousPackL       = false;
+    private bool _previousPackR       = false;
+    private bool _previousHydDemandL  = false;
+    private bool _previousHydDemandR  = false;
+    private int  _previousEmerLights  = -1;
+    private int  _previousSeatbelts   = -1;
+
     public override string AircraftName => "HorizonSim 787-9";
     public override string AircraftCode => "HS_787";
 
@@ -178,7 +189,8 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 Name = "XMLVAR_APU_StarterKnob_Pos",
                 DisplayName = "APU Selector",
                 Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
                     [0] = "Off",
@@ -192,7 +204,8 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 Name = "XMLVAR_EMER_LIGHTS_ARMED",
                 DisplayName = "Emergency Lights",
                 Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
                     [0] = "Off",
@@ -236,7 +249,8 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 Name = "XMLVAR_HYDRAULICS_DEMAND_LEFT",
                 DisplayName = "Hydraulic Demand Left",
                 Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
                     [0] = "Off",
@@ -249,7 +263,8 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 Name = "XMLVAR_HYDRAULICS_DEMAND_RIGHT",
                 DisplayName = "Hydraulic Demand Right",
                 Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
                     [0] = "Off",
@@ -337,7 +352,8 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 Name = "XMLVAR_Packs_L_Switch",
                 DisplayName = "Pack Left",
                 Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
                     [0] = "Off",
@@ -350,7 +366,8 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 Name = "XMLVAR_Packs_R_Switch",
                 DisplayName = "Pack Right",
                 Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
                     [0] = "Off",
@@ -501,7 +518,8 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 Name = "WT_SEAT_BELTS_MODE",
                 DisplayName = "Seat Belts Sign",
                 Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
                     [0] = "Off",
@@ -552,7 +570,8 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 Name = "WT_FADEC_ENG_START_STATE_1",
                 DisplayName = "Engine 1 Start State",
                 Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
                     [0] = "Stopped",
@@ -566,7 +585,8 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 Name = "WT_FADEC_ENG_START_STATE_2",
                 DisplayName = "Engine 2 Start State",
                 Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
                     [0] = "Stopped",
@@ -1787,6 +1807,108 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             return true;
         }
 
+        // APU knob — announce transitions; suppress first poll (startup state)
+        if (variableKey == "HS787_APU_Knob")
+        {
+            int now = (int)value;
+            if (_previousApuKnob >= 0 && now != _previousApuKnob)
+            {
+                string msg = now switch { 1 => "APU On", 2 => "APU Starting", _ => "APU Off" };
+                announcer.Announce(msg);
+            }
+            _previousApuKnob = now;
+            return true;
+        }
+
+        // Engine start states
+        if (variableKey == "HS787_EngStartState1")
+        {
+            int now = (int)value;
+            if (_previousEngState1 >= 0 && now != _previousEngState1)
+            {
+                string msg = now switch { 1 => "Engine 1 Starting", 2 => "Engine 1 Running", _ => "Engine 1 Stopped" };
+                announcer.Announce(msg);
+            }
+            _previousEngState1 = now;
+            return true;
+        }
+
+        if (variableKey == "HS787_EngStartState2")
+        {
+            int now = (int)value;
+            if (_previousEngState2 >= 0 && now != _previousEngState2)
+            {
+                string msg = now switch { 1 => "Engine 2 Starting", 2 => "Engine 2 Running", _ => "Engine 2 Stopped" };
+                announcer.Announce(msg);
+            }
+            _previousEngState2 = now;
+            return true;
+        }
+
+        // Pack switches
+        if (variableKey == "HS787_PackL")
+        {
+            bool now = value > 0;
+            if (now != _previousPackL)
+                announcer.Announce(now ? "Pack Left Auto" : "Pack Left Off");
+            _previousPackL = now;
+            return true;
+        }
+
+        if (variableKey == "HS787_PackR")
+        {
+            bool now = value > 0;
+            if (now != _previousPackR)
+                announcer.Announce(now ? "Pack Right Auto" : "Pack Right Off");
+            _previousPackR = now;
+            return true;
+        }
+
+        // Hydraulic demand pumps
+        if (variableKey == "HS787_HydDemandLeft")
+        {
+            bool now = value > 0;
+            if (now != _previousHydDemandL)
+                announcer.Announce(now ? "Hydraulic Demand Left On" : "Hydraulic Demand Left Off");
+            _previousHydDemandL = now;
+            return true;
+        }
+
+        if (variableKey == "HS787_HydDemandRight")
+        {
+            bool now = value > 0;
+            if (now != _previousHydDemandR)
+                announcer.Announce(now ? "Hydraulic Demand Right On" : "Hydraulic Demand Right Off");
+            _previousHydDemandR = now;
+            return true;
+        }
+
+        // Emergency lights
+        if (variableKey == "HS787_EmerLights")
+        {
+            int now = (int)value;
+            if (_previousEmerLights >= 0 && now != _previousEmerLights)
+            {
+                string msg = now switch { 1 => "Emergency Lights Armed", 2 => "Emergency Lights On", _ => "Emergency Lights Off" };
+                announcer.Announce(msg);
+            }
+            _previousEmerLights = now;
+            return true;
+        }
+
+        // Seat belts sign
+        if (variableKey == "HS787_Seatbelts")
+        {
+            int now = (int)value;
+            if (_previousSeatbelts >= 0 && now != _previousSeatbelts)
+            {
+                string msg = now switch { 1 => "Seat Belts Auto", 2 => "Seat Belts On", _ => "Seat Belts Off" };
+                announcer.Announce(msg);
+            }
+            _previousSeatbelts = now;
+            return true;
+        }
+
         // Cache-only variables — suppress all automatic announcements.
         // These are IsAnnounced=true purely so the monitoring engine caches them;
         // hotkey readouts and dialog toggles read the cached values on demand.
@@ -1941,8 +2063,8 @@ public class HorizonSim787Definition : BaseAircraftDefinition
 
                 if (spd < 10.0)
                 {
-                    // Mach mode: AP_MACH_VAR_SET takes value × 100 (e.g. Mach 0.82 → 82)
-                    simConnect.ExecuteCalculatorCode($"{(int)Math.Round(spd * 100)} (>K:AP_MACH_VAR_SET)");
+                    // AP_MACH_VAR_SET takes value × 100 (e.g. Mach 0.82 → 82)
+                    simConnect.SendEvent("AP_MACH_VAR_SET", (uint)(int)Math.Round(spd * 100));
                 }
                 else
                 {
