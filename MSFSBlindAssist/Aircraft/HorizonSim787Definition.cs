@@ -1592,6 +1592,20 @@ public class HorizonSim787Definition : BaseAircraftDefinition
         SimConnect.SimConnectManager simConnect,
         Accessibility.ScreenReaderAnnouncer announcer)
     {
+        // AP master — toggle via K event (AUTOPILOT MASTER is a SimVar, not settable via SetLVar)
+        if (varKey == "HS787_APMaster")
+        {
+            simConnect.SendEvent("AP_MASTER");
+            return true;
+        }
+
+        // Autothrottle arm — K event (WT Boeing intercepts this and updates the LVar)
+        if (varKey == "HS787_ATStatus")
+        {
+            simConnect.SendEvent("AUTO_THROTTLE_ARM");
+            return true;
+        }
+
         // External power — toggle using K:SET_EXTERNAL_POWER via calculator code.
         // Index 1 or 2 depending on which source. Value 0=Off, 1=On.
         if (varKey == "HS787_ExtPwr1")
@@ -2111,13 +2125,15 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 return v > 0 ? "Engaged" : "Off";
             }, () => simConnect.SendEvent("AP_ALT_HOLD")),
 
-            // Alt INTV: fire via WT Boeing FMC button H-event (same BTN_ prefix used by MFD bridge).
-            // State shown from XMLVAR_AltitudeIsManuallySet if the LVar exists in this build.
             new("Alt &INTV", () =>
             {
                 double v = simConnect.GetCachedVariableValue("HS787_AltManual") ?? 0;
                 return v > 0 ? "Manual" : "FMC";
-            }, () => simConnect.ExecuteCalculatorCode("(>H:AS01B_FMC_1_BTN_ALTITUDE_INTERVENTION)"))
+            }, () =>
+            {
+                double current = simConnect.GetCachedVariableValue("HS787_AltManual") ?? 0;
+                simConnect.SetLVar("XMLVAR_AltitudeIsManuallySet", current > 0 ? 0 : 1);
+            })
         };
 
         var dialog = new ValueInputForm(
