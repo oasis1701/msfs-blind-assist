@@ -2128,12 +2128,8 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             new("Alt &INTV", () =>
             {
                 double v = simConnect.GetCachedVariableValue("HS787_AltManual") ?? 0;
-                return v > 0 ? "Manual" : "FMC";
-            }, () =>
-            {
-                double current = simConnect.GetCachedVariableValue("HS787_AltManual") ?? 0;
-                simConnect.SetLVar("XMLVAR_AltitudeIsManuallySet", current > 0 ? 0 : 1);
-            })
+                return v > 0 ? "Manual" : "FMC managed";
+            }, () => simConnect.SendHVar("AS01B_FMC_1_BTN_ALTITUDE_INTERVENTION"))
         };
 
         var dialog = new ValueInputForm(
