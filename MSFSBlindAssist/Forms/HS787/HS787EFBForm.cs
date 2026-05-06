@@ -56,6 +56,18 @@ public partial class HS787EFBForm : Form
 
         this.KeyDown += Form_KeyDown;
         refreshButton.Click += (_, _) => _bridgeServer.EnqueueCommand("read_screen");
+        groundServicesButton.Click += (_, _) => NavigateGroundServices();
+    }
+
+    private void NavigateGroundServices()
+    {
+        _bridgeServer.EnqueueCommand("navigate_ground_services");
+        // Force a fresh screen read after navigation so the form updates
+        Task.Delay(900).ContinueWith(_ =>
+        {
+            if (IsHandleCreated)
+                BeginInvoke(() => _bridgeServer.EnqueueCommand("read_screen"));
+        });
     }
 
     // ------------------------------------------------------------------
@@ -229,6 +241,14 @@ public partial class HS787EFBForm : Form
             e.Handled = true; e.SuppressKeyPress = true;
             return;
         }
+
+        // Alt+G: navigate to ground services
+        if (e.Alt && !e.Control && !e.Shift && e.KeyCode == Keys.G)
+        {
+            NavigateGroundServices();
+            e.Handled = true; e.SuppressKeyPress = true;
+            return;
+        }
     }
 
     // ------------------------------------------------------------------
@@ -244,7 +264,7 @@ public partial class HS787EFBForm : Form
         TopMost = true;
         TopMost = false;
         contentList.Focus();
-        _bridgeServer.EnqueueCommand("read_screen");
+        NavigateGroundServices();
     }
 
     // ------------------------------------------------------------------

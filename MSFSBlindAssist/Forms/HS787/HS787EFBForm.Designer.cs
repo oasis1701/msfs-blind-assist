@@ -7,6 +7,7 @@ public partial class HS787EFBForm
     private ListBox contentList = null!;
     private Panel buttonsPanel = null!;
     private Button refreshButton = null!;
+    private Button groundServicesButton = null!;
 
     private void InitializeComponent()
     {
@@ -98,11 +99,20 @@ public partial class HS787EFBForm
             AccessibleName = "Refresh EFB screen"
         };
 
+        groundServicesButton = new Button
+        {
+            Text = "Ground Services (Alt+G)",
+            Location = new Point(150, y),
+            Size = new Size(190, 28),
+            TabIndex = 1001,
+            AccessibleName = "Navigate to Ground Services page"
+        };
+
         this.Controls.AddRange(new Control[]
         {
             statusLabel, pageTitleLabel, contentLabel, contentList,
             buttonsLabel, buttonsPanel,
-            refreshButton
+            refreshButton, groundServicesButton
         });
 
         this.ResumeLayout(false);

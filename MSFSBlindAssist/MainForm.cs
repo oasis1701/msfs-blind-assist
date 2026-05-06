@@ -38,6 +38,7 @@ public partial class MainForm : Form
     private EFBBridgeServer? hs787BridgeServer;
     private HS787FMCForm? hs787FMCForm;
     private HS787SimBriefForm? hs787SimBriefForm;
+    private HS787EFBForm? hs787EFBForm;
     private TakeoffAssistManager takeoffAssistManager = null!;
     private HandFlyManager handFlyManager = null!;
     private VisualGuidanceManager visualGuidanceManager = null!;
@@ -1137,6 +1138,10 @@ public partial class MainForm : Form
                 {
                     ShowPMDG777EFBDialog();
                 }
+                else if (currentAircraft?.AircraftCode == "HS_787")
+                {
+                    ShowHS787EFBFormDialog();
+                }
                 break;
             case HotkeyAction.ShowTrackFixWindow:
                 ShowTrackFixDialog();
@@ -1537,6 +1542,22 @@ public partial class MainForm : Form
         pmdg777EFBForm.ShowForm();
     }
 
+    private void ShowHS787EFBFormDialog()
+    {
+        hotkeyManager.ExitInputHotkeyMode();
+
+        if (hs787BridgeServer == null || !hs787BridgeServer.IsRunning)
+        {
+            announcer.Announce("EFB bridge server is not running. Please install the mod package and restart the flight.");
+            return;
+        }
+
+        if (hs787EFBForm == null || hs787EFBForm.IsDisposed)
+            hs787EFBForm = new HS787EFBForm(hs787BridgeServer, announcer);
+
+        hs787EFBForm.ShowForm();
+    }
+
     private void ShowHS787FMCDialog()
     {
         hotkeyManager.ExitInputHotkeyMode();
@@ -1631,6 +1652,12 @@ public partial class MainForm : Form
         {
             hs787SimBriefForm.Dispose();
             hs787SimBriefForm = null;
+        }
+
+        if (hs787EFBForm != null && !hs787EFBForm.IsDisposed)
+        {
+            hs787EFBForm.Dispose();
+            hs787EFBForm = null;
         }
 
         hs787BridgeServer?.Stop();
@@ -2652,6 +2679,12 @@ public partial class MainForm : Form
         {
             hs787SimBriefForm.Dispose();
             hs787SimBriefForm = null;
+        }
+
+        if (hs787EFBForm != null && !hs787EFBForm.IsDisposed)
+        {
+            hs787EFBForm.Dispose();
+            hs787EFBForm = null;
         }
 
         // PMDG 777 data manager lifecycle
@@ -4270,6 +4303,7 @@ public partial class MainForm : Form
         // Clean up 787 bridge and forms
         hs787FMCForm?.Dispose();
         hs787SimBriefForm?.Dispose();
+        hs787EFBForm?.Dispose();
         hs787BridgeServer?.Dispose();
         hs787BridgeServer = null;
 

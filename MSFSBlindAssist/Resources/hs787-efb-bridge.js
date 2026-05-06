@@ -254,6 +254,71 @@ _efb.pollScreen = function() {
     _efb.postState('efb_screen', data);
 };
 
+// --- Navigation ---
+
+// Navigate the EFB to the Ground Services page.
+// The WT Boeing EFB uses a left sidebar with nav buttons (SVG icons + text labels).
+// We try several strategies because the exact class names can vary between EFB versions.
+_efb.navigateGroundServices = function() {
+    // Strategy 1: sidebar/tab nav elements containing "ground" or "gnd" text
+    var navCandidates = document.querySelectorAll(
+        'button, [role="button"], [role="tab"], ' +
+        '[class*="efb-nav"], [class*="EfbNav"], [class*="efb-tab"], [class*="EfbTab"], ' +
+        '[class*="sidebar"], [class*="Sidebar"], [class*="nav-item"], [class*="NavItem"]'
+    );
+    for (var i = 0; i < navCandidates.length; i++) {
+        var el = navCandidates[i];
+        var text = _efb.cleanText(el.textContent).toLowerCase();
+        var label = (el.getAttribute('aria-label') || '').toLowerCase();
+        var title = (el.getAttribute('title') || '').toLowerCase();
+        if (text.indexOf('ground') !== -1 || text === 'gnd' || text === 'gnd svc' || text === 'gnd srv' ||
+            label.indexOf('ground') !== -1 || title.indexOf('ground') !== -1) {
+            _efb.clickElement(el);
+            _efb.scheduleScreenRefresh(900);
+            return;
+        }
+    }
+
+    // Strategy 2: any leaf-level element whose entire text is "Ground" (case-insensitive)
+    var walker = document.createTreeWalker(document.body, 1 /* NodeFilter.SHOW_ELEMENT */);
+    var node;
+    while ((node = walker.nextNode())) {
+        if (node.childElementCount > 0) continue;
+        var nodeText = _efb.cleanText(node.textContent).toLowerCase();
+        if (nodeText === 'ground' || nodeText === 'gnd' || nodeText === 'gnd svc' || nodeText === 'gnd srv') {
+            var clickTarget = node.closest('[role="button"]') || node.parentElement || node;
+            _efb.clickElement(clickTarget);
+            _efb.scheduleScreenRefresh(900);
+            return;
+        }
+    }
+
+    // Strategy 3: data attributes
+    var dataEls = document.querySelectorAll('[data-page], [data-tab], [data-route]');
+    for (var i = 0; i < dataEls.length; i++) {
+        var val = ((dataEls[i].getAttribute('data-page') || '') +
+                   (dataEls[i].getAttribute('data-tab') || '') +
+                   (dataEls[i].getAttribute('data-route') || '')).toLowerCase();
+        if (val.indexOf('ground') !== -1 || val.indexOf('gnd') !== -1) {
+            _efb.clickElement(dataEls[i]);
+            _efb.scheduleScreenRefresh(900);
+            return;
+        }
+    }
+
+    // Navigation element not found — read current screen so the user sees what's available
+    console.warn('[EFB Bridge] Ground services nav element not found; reading current page');
+    _efb.previousScreen = null;
+    _efb.pollScreen();
+};
+
+_efb.scheduleScreenRefresh = function(delayMs) {
+    setTimeout(function() {
+        _efb.previousScreen = null;
+        _efb.pollScreen();
+    }, delayMs);
+};
+
 // --- Command Handlers ---
 
 _efb.handleCommand = function(command, payload) {
@@ -266,10 +331,7 @@ _efb.handleCommand = function(command, payload) {
             if (idx < buttons.length) {
                 _efb.clickElement(buttons[idx].el);
                 // Force fresh screen push after click so C# sees the updated state
-                setTimeout(function() {
-                    _efb.previousScreen = null;
-                    _efb.pollScreen();
-                }, 600);
+                _efb.scheduleScreenRefresh(600);
             }
             return;
         }
@@ -278,6 +340,9 @@ _efb.handleCommand = function(command, payload) {
             case 'read_screen':
                 _efb.previousScreen = null;
                 _efb.pollScreen();
+                break;
+            case 'navigate_ground_services':
+                _efb.navigateGroundServices();
                 break;
             default:
                 console.warn('[EFB Bridge] Unknown command:', command);
