@@ -142,17 +142,18 @@ _mfd.readScreen = function() {
     if (!rows || rows.length === 0) return null;
 
     // The 787 FMC renderer (screenCellHeight:13) creates rows 0-12 inside #fmc-container.
-    // Layout: row0=title, rows1/3/5/7/9/11=labels 1-6, rows2/4/6/8/10=data 1-5, row12=scratchpad.
-    // Row 12 is written by SimpleFmcRenderer at scratchpadRenderRow=12 and is not a data row.
-    // We read only rows 0-11 and read the scratchpad separately from .wt787-cdu-scratchpad.
-    // An empty placeholder is inserted at position 12 (the "data 6" slot) so the C# parser
-    // sees 14 rows: title + 6 label/data pairs + scratchpad, matching the PMDG 777 layout.
-    var screenRowCount = Math.min(rows.length - 1, 12); // rows 0..11, capped at 12
+    // Layout: row0=title, rows1/3/5/7/9/11=labels 1-6, rows2/4/6/8/10=data 1-5, row12=LSK6/scratchpad.
+    // Row 12 doubles as the LSK6 data row AND the scratchpad render row: the renderer writes
+    // the scratchpad text there when the scratchpad is active, and page prompts/options otherwise.
+    // We read all 13 DOM rows (0-12). The actual scratchpad text is read separately from
+    // .wt787-cdu-scratchpad so C# has it as a distinct field for announcement logic.
+    // Total rows sent = 14 (rows 0-12 from .fmc-row + scratchpad), matching the PMDG 777 layout.
+    var screenRowCount = Math.min(rows.length, 13); // rows 0..12
     var lines = [];
     for (var r = 0; r < screenRowCount; r++) {
         lines.push(_mfd.readLetters(rows[r]));
     }
-    lines.push(''); // empty "data 6" slot — scratchpad occupies this position in the 787 FMC
+    while (lines.length < 13) lines.push(''); // pad if DOM had fewer rows than expected
 
     // Read the scratchpad from .wt787-cdu-scratchpad (textContent set by the FMC component).
     // This element is NOT replaced by the renderer — it lives alongside #fmc-container.
@@ -163,7 +164,6 @@ _mfd.readScreen = function() {
     }
 
     // Append scratchpad as the final row so C# receives it as rows[rowCount-1].
-    // Total rows sent = 14 (rows 0-11 from .fmc-row + empty data-6 + scratchpad).
     lines.push(scratchpad);
     return lines;
 };

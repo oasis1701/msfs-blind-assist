@@ -15,7 +15,7 @@ namespace MSFSBlindAssist.Patching
     public static class HS787ModPackageManager
     {
         // Bump when bridge JS or package structure changes — triggers auto-update on app start.
-        private const int BridgeVersion = 7;
+        private const int BridgeVersion = 8;
         private const string VersionFileName = "bridge-version.txt";
 
         private const string PackageFolderName = "zzz-hs787-accessibility";
