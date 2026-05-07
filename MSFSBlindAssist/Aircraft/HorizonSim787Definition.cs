@@ -1,6 +1,7 @@
 using MSFSBlindAssist.Hotkeys;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Forms;
+using MSFSBlindAssist.SimConnect;
 
 namespace MSFSBlindAssist.Aircraft;
 
@@ -13,6 +14,10 @@ namespace MSFSBlindAssist.Aircraft;
 /// </summary>
 public class HorizonSim787Definition : BaseAircraftDefinition
 {
+    // Bridge server reference — set by MainForm after the HS787 bridge starts.
+    // Used to fire alt INTV from inside Coherent GT when the FMC bridge is connected.
+    public EFBBridgeServer? BridgeServer { get; set; }
+
     private bool _previousAppHold = false;
     private bool _previousGSActive = false;
     private bool _previousAPMaster = false;
@@ -38,6 +43,9 @@ public class HorizonSim787Definition : BaseAircraftDefinition
     private bool _previousHydDemandR  = false;
     private int  _previousEmerLights  = -1;
     private int  _previousSeatbelts   = -1;
+
+    // Altimeter change tracking — NaN suppresses the first-poll announcement
+    private double _lastAnnouncedAltimeter = double.NaN;
 
     public override string AircraftName => "HorizonSim 787-9";
     public override string AircraftCode => "HS_787";
@@ -1633,6 +1641,13 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 return true;
             }
 
+            case HotkeyAction.FCUSetBaro:
+            {
+                hotkeyManager.ExitInputHotkeyMode();
+                ShowBaroDialog(simConnect, announcer, parentForm);
+                return true;
+            }
+
             // ------------------------------------------------------------------
             // Aircraft State Readouts
             // ------------------------------------------------------------------
@@ -2191,6 +2206,28 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             return true;
         }
 
+        // Altimeter setting — announce changes, suppress first-poll value
+        if (variableKey == "HS787_Altimeter")
+        {
+            double inHg = value;
+            if (double.IsNaN(_lastAnnouncedAltimeter))
+            {
+                _lastAnnouncedAltimeter = inHg;
+                return true;
+            }
+            if (Math.Abs(inHg - _lastAnnouncedAltimeter) < 0.005)
+                return true;
+            _lastAnnouncedAltimeter = inHg;
+            if (Math.Abs(inHg - 29.92) < 0.005)
+                announcer.Announce("Altimeter standard");
+            else
+            {
+                int hpa = (int)Math.Round(inHg * 33.8639);
+                announcer.Announce($"Altimeter {hpa}");
+            }
+            return true;
+        }
+
         // Cache-only variables — suppress all automatic announcements.
         // These are IsAnnounced=true purely so the monitoring engine caches them;
         // hotkey readouts and dialog toggles read the cached values on demand.
@@ -2211,7 +2248,6 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             case "HS787_AltManual":
             case "HS787_FlapsHandle":
             case "HS787_GearHandle":
-            case "HS787_Altimeter":
             case "HS787_FuelLH":
             case "HS787_FuelRH":
             case "HS787_FuelCtr":
@@ -2394,8 +2430,16 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 return v > 0 ? "Engaged" : "Off";
             }, () => simConnect.SendEvent("AP_ALT_HOLD")),
 
-            new("Alt &INTV", () => "Momentary",
-                () => simConnect.SendHVar("AS01B_FMC_1_ALTITUDE_INTERVENTION"))
+            new("Alt &INTV", () => "Momentary", () =>
+            {
+                // Fire from inside Coherent GT via bridge when available — more reliable for
+                // WT Boeing H events that are internal to the sim's JS runtime. Fall back to
+                // MobiFlight WASM if the bridge is not connected.
+                if (BridgeServer != null && BridgeServer.IsBridgeConnected)
+                    BridgeServer.EnqueueMfdCommand("type_key:ALTITUDE_INTERVENTION");
+                else
+                    simConnect.SendHVar("AS01B_FMC_1_BTN_ALTITUDE_INTERVENTION");
+            })
         };
 
         var dialog = new ValueInputForm(
@@ -2501,6 +2545,52 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             },
             inputEnabledCheck: () => (simConnect.GetCachedVariableValue("HS787_VS_Active") ?? 0) > 0
                                   || (simConnect.GetCachedVariableValue("HS787_FPAMode") ?? 0) > 0);
+
+        dialog.ShowCancelButton = false;
+        dialog.Show(parentForm);
+    }
+
+    private void ShowBaroDialog(
+        SimConnect.SimConnectManager simConnect,
+        ScreenReaderAnnouncer announcer,
+        System.Windows.Forms.Form parentForm)
+    {
+        if (!simConnect.IsConnected)
+        {
+            announcer.AnnounceImmediate("Not connected to simulator.");
+            return;
+        }
+
+        var toggles = new List<ToggleButtonDef>
+        {
+            new("&Standard (STD)", () =>
+            {
+                double? v = simConnect.GetCachedVariableValue("HS787_Altimeter");
+                return v != null && Math.Abs(v.Value - 29.92) < 0.005 ? "Set" : "Not set";
+            }, () =>
+            {
+                // Standard pressure = 1013 HPA = 29.92 inHg
+                simConnect.SendEvent("KOHLSMAN_SET", (uint)Math.Round(29.92 * 16));
+            })
+        };
+
+        var dialog = new ValueInputForm(
+            "Altimeter", "QNH", "HPA (e.g. 1013)", announcer,
+            input =>
+            {
+                if (int.TryParse(input, out int val) && val >= 900 && val <= 1100)
+                    return (true, "");
+                return (false, "Enter QNH in HPA between 900 and 1100");
+            },
+            toggles,
+            input =>
+            {
+                if (int.TryParse(input, out int hpa))
+                {
+                    double inHg = hpa / 33.8639;
+                    simConnect.SendEvent("KOHLSMAN_SET", (uint)Math.Round(inHg * 16));
+                }
+            });
 
         dialog.ShowCancelButton = false;
         dialog.Show(parentForm);

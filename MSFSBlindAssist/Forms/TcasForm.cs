@@ -1,6 +1,8 @@
 using System.Text.RegularExpressions;
 using MSFSBlindAssist.Accessibility;
+using MSFSBlindAssist.Database;
 using MSFSBlindAssist.Models;
+using MSFSBlindAssist.Navigation;
 using MSFSBlindAssist.Services;
 
 namespace MSFSBlindAssist.Forms;
@@ -28,6 +30,7 @@ public class TcasForm : Form
 
     private readonly TcasService           _tcas;
     private readonly ScreenReaderAnnouncer _announcer;
+    private readonly IAirportDataProvider? _dataProvider;
 
     private GroupBox _airborneGroup = null!;
     private GroupBox _groundGroup   = null!;
@@ -45,8 +48,9 @@ public class TcasForm : Form
         public override string ToString() => DisplayText;
     }
 
-    public TcasForm(TcasService tcas, ScreenReaderAnnouncer announcer)
+    public TcasForm(TcasService tcas, ScreenReaderAnnouncer announcer, IAirportDataProvider? dataProvider = null)
     {
+        _dataProvider = dataProvider;
         _tcas      = tcas;
         _announcer = announcer;
         BuildUI();
@@ -182,7 +186,7 @@ public class TcasForm : Form
 
     // ── List rebuild ──────────────────────────────────────────────────────────
 
-    private static void RebuildList(ListBox list, IReadOnlyList<TcasTraffic> traffic)
+    private void RebuildList(ListBox list, IReadOnlyList<TcasTraffic> traffic)
     {
         string? selectedKey = (list.SelectedItem as AircraftItem)?.Traffic
             .Let(t => TrafficKey(t));
@@ -208,7 +212,7 @@ public class TcasForm : Form
 
     // ── Item text builder ─────────────────────────────────────────────────────
 
-    private static string BuildItemText(TcasTraffic t)
+    private string BuildItemText(TcasTraffic t)
     {
         string id   = string.IsNullOrEmpty(t.Callsign)
             ? $"unknown {t.ObjectId}"
@@ -235,7 +239,18 @@ public class TcasForm : Form
 
         string state = FormatTrafficState(t.TrafficState);
         if (!string.IsNullOrEmpty(state))
-            parts.Add(state);
+        {
+            // For parked aircraft, try to identify the specific gate from the nav database
+            if (t.TrafficState == "STATE_WAIT_INIT_CONFIRM")
+            {
+                string? gate = FindNearestGate(t);
+                parts.Add(gate != null ? $"parked at {gate}" : state);
+            }
+            else
+            {
+                parts.Add(state);
+            }
+        }
 
         parts.Add($"heading {(int)t.HeadingMagnetic}");
 
@@ -244,6 +259,53 @@ public class TcasForm : Form
             parts.Add($"{t.AltitudeFt:N0} feet");
 
         return string.Join(" — ", parts);
+    }
+
+    /// <summary>
+    /// Looks up the nearest parking spot to a parked aircraft using the nav database.
+    /// Returns a short gate label if found within 100m, or null otherwise.
+    /// </summary>
+    private string? FindNearestGate(TcasTraffic t)
+    {
+        if (_dataProvider == null || !_dataProvider.DatabaseExists) return null;
+
+        // Use ToAirport as the best guess for the current airport (destination for scheduled traffic)
+        string airport = !string.IsNullOrEmpty(t.ToAirport) ? t.ToAirport
+                       : !string.IsNullOrEmpty(t.FromAirport) ? t.FromAirport
+                       : string.Empty;
+        if (string.IsNullOrEmpty(airport)) return null;
+
+        var spots = _dataProvider.GetParkingSpots(airport);
+        if (spots.Count == 0) return null;
+
+        const double ThresholdNm = 100.0 / 1852.0; // 100 metres in nm
+        double minDist = double.MaxValue;
+        Database.Models.ParkingSpot? nearest = null;
+
+        foreach (var spot in spots)
+        {
+            double dist = NavigationCalculator.CalculateDistance(
+                t.Latitude, t.Longitude, spot.Latitude, spot.Longitude);
+            if (dist < minDist)
+            {
+                minDist = dist;
+                nearest = spot;
+            }
+        }
+
+        if (nearest == null || minDist > ThresholdNm) return null;
+
+        // Build a short label: "A12", "Gate A 12", "Ramp 3", etc.
+        string name = nearest.Name ?? "";
+        string num  = nearest.Number > 0 ? nearest.Number.ToString() : "";
+        string suffix = nearest.Suffix ?? "";
+        if (!string.IsNullOrEmpty(name) && !string.IsNullOrEmpty(num))
+            return $"{name} {num}{suffix}";
+        if (!string.IsNullOrEmpty(name))
+            return name;
+        if (!string.IsNullOrEmpty(num))
+            return $"spot {num}{suffix}";
+        return null;
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

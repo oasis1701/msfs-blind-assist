@@ -140,6 +140,8 @@ public partial class MainForm : Form
         {
             CheckAndOfferHS787ModPackage();
             StartHS787BridgeServer();
+            if (currentAircraft is HorizonSim787Definition hs787defInit)
+                hs787defInit.BridgeServer = hs787BridgeServer;
         }
 
         // Don't set focus - let default tab order handle it for proper menu accessibility
@@ -1378,7 +1380,7 @@ public partial class MainForm : Form
         try
         {
             if (tcasForm == null || tcasForm.IsDisposed)
-                tcasForm = new Forms.TcasForm(tcasService!, announcer);
+                tcasForm = new Forms.TcasForm(tcasService!, announcer, airportDataProvider);
             tcasForm.ShowForm();
         }
         catch (Exception ex)
@@ -2722,6 +2724,8 @@ public partial class MainForm : Form
         {
             CheckAndOfferHS787ModPackage();
             StartHS787BridgeServer();
+            if (newAircraft is HorizonSim787Definition hs787def)
+                hs787def.BridgeServer = hs787BridgeServer;
         }
         else
         {

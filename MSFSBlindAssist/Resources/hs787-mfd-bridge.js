@@ -111,7 +111,7 @@ _mfd.stopPolling = function() {
 
 // --- FMC Screen Reading ---
 
-_mfd.readLetters = function(container) {
+_mfd.readLetters = function(container, allowHighlight) {
     var letters = container.querySelectorAll('.fmc-letter');
     if (!letters || letters.length === 0) {
         // Fallback: some FMC content (e.g. prompts, special rows) is not wrapped in
@@ -130,8 +130,10 @@ _mfd.readLetters = function(container) {
         if (isHighlighted !== prevHighlighted) {
             markedThisRun = false;
         }
-        // Insert 'X ' before the first visible character of each highlighted run
-        if (isHighlighted && !markedThisRun && ch.trim() !== '') {
+        // Only insert 'X ' on rows that have LSK arrow prompts (< or >) — these are
+        // the selectable option rows. Other rows show active state in colour but are
+        // not toggles (e.g. active waypoint in magenta on the LEGS page).
+        if (isHighlighted && !markedThisRun && ch.trim() !== '' && allowHighlight) {
             line += 'X ';
             markedThisRun = true;
         }
@@ -167,7 +169,12 @@ _mfd.readScreen = function() {
     var screenRowCount = Math.min(rows.length, 13); // rows 0..12
     var lines = [];
     for (var r = 0; r < screenRowCount; r++) {
-        lines.push(_mfd.readLetters(rows[r]));
+        // Allow X markers only on rows that contain LSK arrow prompts (< or >).
+        // This matches option/toggle rows and avoids false X marks on active-state
+        // displays like the magenta active leg on the LEGS page.
+        var rowText = rows[r].textContent || '';
+        var hasArrow = rowText.indexOf('<') !== -1 || rowText.indexOf('>') !== -1;
+        lines.push(_mfd.readLetters(rows[r], hasArrow));
     }
     while (lines.length < 13) lines.push(''); // pad if DOM had fewer rows than expected
 
