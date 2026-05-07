@@ -1,8 +1,6 @@
 using System.Text.RegularExpressions;
 using MSFSBlindAssist.Accessibility;
-using MSFSBlindAssist.Database;
 using MSFSBlindAssist.Models;
-using MSFSBlindAssist.Navigation;
 using MSFSBlindAssist.Services;
 
 namespace MSFSBlindAssist.Forms;
@@ -30,7 +28,7 @@ public class TcasForm : Form
 
     private readonly TcasService           _tcas;
     private readonly ScreenReaderAnnouncer _announcer;
-    private readonly IAirportDataProvider? _dataProvider;
+    private readonly GateResolver          _gateResolver;
 
     private GroupBox _airborneGroup = null!;
     private GroupBox _groundGroup   = null!;
@@ -48,11 +46,11 @@ public class TcasForm : Form
         public override string ToString() => DisplayText;
     }
 
-    public TcasForm(TcasService tcas, ScreenReaderAnnouncer announcer, IAirportDataProvider? dataProvider = null)
+    public TcasForm(TcasService tcas, ScreenReaderAnnouncer announcer, GateResolver gateResolver)
     {
-        _dataProvider = dataProvider;
-        _tcas      = tcas;
-        _announcer = announcer;
+        _tcas         = tcas;
+        _announcer    = announcer;
+        _gateResolver = gateResolver;
         BuildUI();
 
         FormClosed += (_, _) => _tcas.Stop();
@@ -168,12 +166,12 @@ public class TcasForm : Form
         var airborne = _tcas.GetTraffic(onGround: false);
         var ground   = _tcas.GetTraffic(onGround: true);
 
-        RebuildList(_airborneList, airborne);
+        RebuildList(_airborneList, airborne, null);
         _airborneGroup.Text = airborne.Count == 0
             ? "Airborne Traffic — none"
             : $"Airborne Traffic — {airborne.Count} aircraft";
 
-        RebuildList(_groundList, ground);
+        RebuildList(_groundList, ground, _gateResolver);
         _groundGroup.Text = ground.Count == 0
             ? "On Ground Traffic — none"
             : $"On Ground Traffic — {ground.Count} aircraft";
@@ -186,7 +184,7 @@ public class TcasForm : Form
 
     // ── List rebuild ──────────────────────────────────────────────────────────
 
-    private void RebuildList(ListBox list, IReadOnlyList<TcasTraffic> traffic)
+    private static void RebuildList(ListBox list, IReadOnlyList<TcasTraffic> traffic, GateResolver? gateResolver)
     {
         string? selectedKey = (list.SelectedItem as AircraftItem)?.Traffic
             .Let(t => TrafficKey(t));
@@ -198,7 +196,7 @@ public class TcasForm : Form
         for (int i = 0; i < traffic.Count; i++)
         {
             var t    = traffic[i];
-            var item = new AircraftItem(t, BuildItemText(t));
+            var item = new AircraftItem(t, BuildItemText(t, gateResolver));
             list.Items.Add(item);
             if (TrafficKey(t) == selectedKey)
                 restoreIndex = i;
@@ -212,7 +210,7 @@ public class TcasForm : Form
 
     // ── Item text builder ─────────────────────────────────────────────────────
 
-    private string BuildItemText(TcasTraffic t)
+    private static string BuildItemText(TcasTraffic t, GateResolver? gateResolver)
     {
         string id   = string.IsNullOrEmpty(t.Callsign)
             ? $"unknown {t.ObjectId}"
@@ -226,6 +224,14 @@ public class TcasForm : Form
             $"{(int)t.GroundSpeedKnots} knots",
         };
 
+        // Gate/parking info for on-ground aircraft
+        if (t.OnGround && gateResolver != null)
+        {
+            string? gateLabel = gateResolver.Resolve(t);
+            if (gateLabel != null)
+                parts.Insert(2, $"at {gateLabel}");
+        }
+
         if (!string.IsNullOrEmpty(t.Airline))
             parts.Add(t.Airline);
 
@@ -237,21 +243,6 @@ public class TcasForm : Form
         if (!string.IsNullOrEmpty(route))
             parts.Add(route);
 
-        string state = FormatTrafficState(t.TrafficState);
-        if (!string.IsNullOrEmpty(state))
-        {
-            // For parked aircraft, try to identify the specific gate from the nav database
-            if (t.TrafficState == "STATE_WAIT_INIT_CONFIRM")
-            {
-                string? gate = FindNearestGate(t);
-                parts.Add(gate != null ? $"parked at {gate}" : state);
-            }
-            else
-            {
-                parts.Add(state);
-            }
-        }
-
         parts.Add($"heading {(int)t.HeadingMagnetic}");
 
         // Altitude is irrelevant for ground traffic
@@ -261,76 +252,7 @@ public class TcasForm : Form
         return string.Join(" — ", parts);
     }
 
-    /// <summary>
-    /// Looks up the nearest parking spot to a parked aircraft using the nav database.
-    /// Returns a short gate label if found within 100m, or null otherwise.
-    /// </summary>
-    private string? FindNearestGate(TcasTraffic t)
-    {
-        if (_dataProvider == null || !_dataProvider.DatabaseExists) return null;
-
-        // Use ToAirport as the best guess for the current airport (destination for scheduled traffic)
-        string airport = !string.IsNullOrEmpty(t.ToAirport) ? t.ToAirport
-                       : !string.IsNullOrEmpty(t.FromAirport) ? t.FromAirport
-                       : string.Empty;
-        if (string.IsNullOrEmpty(airport)) return null;
-
-        var spots = _dataProvider.GetParkingSpots(airport);
-        if (spots.Count == 0) return null;
-
-        const double ThresholdNm = 100.0 / 1852.0; // 100 metres in nm
-        double minDist = double.MaxValue;
-        Database.Models.ParkingSpot? nearest = null;
-
-        foreach (var spot in spots)
-        {
-            double dist = NavigationCalculator.CalculateDistance(
-                t.Latitude, t.Longitude, spot.Latitude, spot.Longitude);
-            if (dist < minDist)
-            {
-                minDist = dist;
-                nearest = spot;
-            }
-        }
-
-        if (nearest == null || minDist > ThresholdNm) return null;
-
-        // Build a short label: "A12", "Gate A 12", "Ramp 3", etc.
-        string name = nearest.Name ?? "";
-        string num  = nearest.Number > 0 ? nearest.Number.ToString() : "";
-        string suffix = nearest.Suffix ?? "";
-        if (!string.IsNullOrEmpty(name) && !string.IsNullOrEmpty(num))
-            return $"{name} {num}{suffix}";
-        if (!string.IsNullOrEmpty(name))
-            return name;
-        if (!string.IsNullOrEmpty(num))
-            return $"spot {num}{suffix}";
-        return null;
-    }
-
     // ── Helpers ───────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Converts the raw AI TRAFFIC STATE string into a readable label.
-    /// Returns empty if the state is unknown or not useful to display.
-    /// </summary>
-    private static string FormatTrafficState(string raw)
-    {
-        if (string.IsNullOrEmpty(raw)) return "";
-        return raw switch
-        {
-            "STATE_SIMPLE_FLIGHT"       => "in flight",
-            "STATE_SIMPLE_TAXI"         => "taxiing",
-            "STATE_SIMPLE_LANDING"      => "landing",
-            "STATE_SIMPLE_TAKEOFF"      => "taking off",
-            "STATE_SIMPLE_APPROACH"     => "on approach",
-            "STATE_WAIT_INIT_CONFIRM"   => "parked",
-            "STATE_WAIT_TAXI"           => "waiting to taxi",
-            "STATE_WAIT_TAKEOFF"        => "waiting for takeoff",
-            "STATE_WAIT_LANDING"        => "waiting to land",
-            _ => "",
-        };
-    }
 
     /// <summary>
     /// Formats origin→destination route string. Returns empty if neither is available.

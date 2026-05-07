@@ -102,6 +102,7 @@ $RECYCLE.BIN/
 # User-specific development notes
 *.private.md
 *.local.md
+docs/superpowers
 
 # Temporary files
 *.tmp

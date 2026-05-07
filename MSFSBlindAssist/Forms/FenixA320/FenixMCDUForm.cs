@@ -19,6 +19,7 @@ public class FenixMCDUForm : Form
     private ListBox mcduDisplay = null!;
     private TextBox scratchpadInput = null!;
     private Label connectionStatus = null!;
+    private ComboBox mcduSelector = null!;
 
     // Page buttons
     private Button btnInit = null!;
@@ -57,7 +58,7 @@ public class FenixMCDUForm : Form
     {
         this.SuspendLayout();
 
-        this.Text = "Fenix MCDU";
+        this.Text = "Fenix MCDU (Left)";
         this.ClientSize = new Size(600, 700);
         this.FormBorderStyle = FormBorderStyle.FixedSingle;
         this.MaximizeBox = false;
@@ -69,12 +70,23 @@ public class FenixMCDUForm : Form
         // Connection status
         connectionStatus = new Label
         {
-            Text = "MCDU: Disconnected",
+            Text = "MCDU (Left): Disconnected",
             Location = new Point(10, y),
-            Size = new Size(580, 20),
+            Size = new Size(400, 20),
             AccessibleName = "Connection status",
             AccessibleDescription = "Shows whether the MCDU is connected"
         };
+
+        // MCDU selector
+        mcduSelector = new ComboBox
+        {
+            Location = new Point(420, y),
+            Size = new Size(170, 25),
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            AccessibleName = "MCDU selector"
+        };
+        mcduSelector.Items.AddRange(new object[] { "Left (Captain)", "Right (First Officer)" });
+        mcduSelector.SelectedIndex = 0;
         y += 25;
 
         // MCDU Display
@@ -143,7 +155,7 @@ public class FenixMCDUForm : Form
         // Add all controls
         this.Controls.AddRange(new Control[]
         {
-            connectionStatus, mcduDisplay, scratchpadInput,
+            connectionStatus, mcduSelector, mcduDisplay, scratchpadInput,
             btnInit, btnDir, btnProg, btnFpln, btnPerf,
             btnRadNav, btnSecFpln, btnFuelPred, btnAtcCom, btnMenu,
             btnAirport, btnData, btnOverfly
@@ -151,6 +163,7 @@ public class FenixMCDUForm : Form
 
         // Set tab order
         int tabIdx = 0;
+        mcduSelector.TabIndex = tabIdx++;
         mcduDisplay.TabIndex = tabIdx++;
         scratchpadInput.TabIndex = tabIdx++;
         btnInit.TabIndex = tabIdx++;
@@ -228,6 +241,18 @@ public class FenixMCDUForm : Form
 
         // Form-level key handling
         this.KeyDown += Form_KeyDown;
+
+        mcduSelector.SelectedIndexChanged += (s, e) =>
+        {
+            int mcduIndex = mcduSelector.SelectedIndex + 1; // 0→1 (left), 1→2 (right)
+            _service.SwitchMCDU(mcduIndex);
+            _currentDisplay = null;
+            _lastAnnouncedScratchpad = "";
+            _lastAnnouncedTitle = "";
+            mcduDisplay.Items.Clear();
+            string mcduName = mcduSelector.SelectedIndex == 0 ? "Left" : "Right";
+            this.Text = $"Fenix MCDU ({mcduName})";
+        };
     }
 
     private void McduDisplay_KeyDown(object? sender, KeyEventArgs e)
@@ -373,7 +398,7 @@ public class FenixMCDUForm : Form
             if (buttonName != null)
             {
                 await _service.SendButtonPress(buttonName);
-                // Small delay between presses to ensure the MCDU processes each one
+                // Delay between presses to ensure the MCDU processes each press-release cycle
                 await Task.Delay(50);
             }
         }
@@ -475,8 +500,9 @@ public class FenixMCDUForm : Form
 
     private void OnConnectionStatusChanged(bool isConnected)
     {
-        connectionStatus.Text = isConnected ? "MCDU: Connected" : "MCDU: Disconnected";
-        _announcer.Announce(isConnected ? "MCDU connected" : "MCDU disconnected");
+        string mcduName = mcduSelector.SelectedIndex == 0 ? "Left" : "Right";
+        connectionStatus.Text = isConnected ? $"MCDU ({mcduName}): Connected" : $"MCDU ({mcduName}): Disconnected";
+        _announcer.Announce(isConnected ? $"{mcduName} MCDU connected" : $"{mcduName} MCDU disconnected");
     }
 
     public void ShowForm()
@@ -487,6 +513,7 @@ public class FenixMCDUForm : Form
         Activate();
         TopMost = true;
         TopMost = false;
+        this.ActiveControl = mcduDisplay;
         mcduDisplay.Focus();
     }
 

@@ -2664,7 +2664,6 @@ public class SimConnectManager
                 FromAirport      = raw.FromAirport?.Trim() ?? "",
                 ToAirport        = raw.ToAirport?.Trim() ?? "",
                 Airline          = raw.AtcAirline?.Trim() ?? "",
-                TrafficState     = raw.TrafficState?.Trim() ?? "",
             };
             AiTrafficReceived?.Invoke(this, eventArgs);
         }
@@ -4593,7 +4592,6 @@ public class AiTrafficDataEventArgs : EventArgs
     public string FromAirport      { get; set; } = "";
     public string ToAirport        { get; set; } = "";
     public string Airline          { get; set; } = "";
-    public string TrafficState     { get; set; } = "";
 }
 
 public class SimVarUpdateEventArgs : EventArgs

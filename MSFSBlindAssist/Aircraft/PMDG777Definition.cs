@@ -3823,6 +3823,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 IsAnnounced = false,
                 RenderAsButton = true
             },
+            // CDU array index convention: 0=Captain(L), 1=F/O(R), 2=Observer(C)
             ["CDU_BrtKnob_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "CDU_BrtKnob_0",
@@ -3833,7 +3834,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             },
             ["CDU_BrtKnob_C"] = new SimConnect.SimVarDefinition
             {
-                Name = "CDU_BrtKnob_1",
+                Name = "CDU_BrtKnob_2",
                 DisplayName = "CDU Brightness Center",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -3841,7 +3842,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             },
             ["CDU_BrtKnob_R"] = new SimConnect.SimVarDefinition
             {
-                Name = "CDU_BrtKnob_2",
+                Name = "CDU_BrtKnob_1",
                 DisplayName = "CDU Brightness Right",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -3860,7 +3861,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             },
             ["CDU_annunEXEC_C"] = new SimConnect.SimVarDefinition
             {
-                Name = "CDU_annunEXEC_1",
+                Name = "CDU_annunEXEC_2",
                 DisplayName = "CDU EXEC Center",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -3870,7 +3871,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             },
             ["CDU_annunEXEC_R"] = new SimConnect.SimVarDefinition
             {
-                Name = "CDU_annunEXEC_2",
+                Name = "CDU_annunEXEC_1",
                 DisplayName = "CDU EXEC Right",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -3890,7 +3891,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             },
             ["CDU_annunFAIL_C"] = new SimConnect.SimVarDefinition
             {
-                Name = "CDU_annunFAIL_1",
+                Name = "CDU_annunFAIL_2",
                 DisplayName = "CDU FAIL Center",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -3900,7 +3901,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             },
             ["CDU_annunFAIL_R"] = new SimConnect.SimVarDefinition
             {
-                Name = "CDU_annunFAIL_2",
+                Name = "CDU_annunFAIL_1",
                 DisplayName = "CDU FAIL Right",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -3920,7 +3921,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             },
             ["CDU_annunMSG_C"] = new SimConnect.SimVarDefinition
             {
-                Name = "CDU_annunMSG_1",
+                Name = "CDU_annunMSG_2",
                 DisplayName = "CDU MSG Center",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -3930,7 +3931,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             },
             ["CDU_annunMSG_R"] = new SimConnect.SimVarDefinition
             {
-                Name = "CDU_annunMSG_2",
+                Name = "CDU_annunMSG_1",
                 DisplayName = "CDU MSG Right",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -3950,7 +3951,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             },
             ["CDU_annunOFST_C"] = new SimConnect.SimVarDefinition
             {
-                Name = "CDU_annunOFST_1",
+                Name = "CDU_annunOFST_2",
                 DisplayName = "CDU OFST Center",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -3960,7 +3961,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             },
             ["CDU_annunOFST_R"] = new SimConnect.SimVarDefinition
             {
-                Name = "CDU_annunOFST_2",
+                Name = "CDU_annunOFST_1",
                 DisplayName = "CDU OFST Right",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -5276,7 +5277,7 @@ public class PMDG777Definition : BaseAircraftDefinition
         {
             if (value >= 118.0 && value <= 136.975)
             {
-                uint frequencyHz = (uint)(value * 1000000);
+                uint frequencyHz = (uint)Math.Round(value * 1000000);
                 string setEvent = varKey.Contains(":2") ? "COM2_STBY_RADIO_SET_HZ" : "COM_STBY_RADIO_SET_HZ";
                 simConnect.SendEvent(setEvent, frequencyHz);
             }
@@ -5867,11 +5868,23 @@ public class PMDG777Definition : BaseAircraftDefinition
                 if (dm == null) return false;
                 float dist = (float)dm.GetFieldValue("FMC_DistanceToTOD");
                 if (dist < 0)
+                {
                     announcer.AnnounceImmediate("Top of descent not available");
+                }
                 else if (dist < 0.1f)
+                {
                     announcer.AnnounceImmediate("Past top of descent");
+                }
                 else
-                    announcer.AnnounceImmediate($"{dist:F0} miles to top of descent");
+                {
+                    // LastKnownPosition is request-on-demand; grab a fresh
+                    // position so the ETA reflects current ground speed.
+                    simConnect.RequestAircraftPositionAsync(position =>
+                    {
+                        string eta = FormatEtaFromDistance(dist, position.GroundSpeedKnots);
+                        announcer.AnnounceImmediate($"{dist:F0} miles to top of descent{eta}");
+                    });
+                }
                 return true;
             }
 
@@ -5881,9 +5894,17 @@ public class PMDG777Definition : BaseAircraftDefinition
                 if (dm == null) return false;
                 float dist = (float)dm.GetFieldValue("FMC_DistanceToDest");
                 if (dist < 0)
+                {
                     announcer.AnnounceImmediate("Distance to destination not available");
+                }
                 else
-                    announcer.AnnounceImmediate($"{dist:F0} miles to destination");
+                {
+                    simConnect.RequestAircraftPositionAsync(position =>
+                    {
+                        string eta = FormatEtaFromDistance(dist, position.GroundSpeedKnots);
+                        announcer.AnnounceImmediate($"{dist:F0} miles to destination{eta}");
+                    });
+                }
                 return true;
             }
 
@@ -6092,6 +6113,25 @@ public class PMDG777Definition : BaseAircraftDefinition
     {
         if (EventIds.TryGetValue(eventName, out int evId))
             simConnect.SendPMDGEvent(eventName, (uint)evId, 1);
+    }
+
+    /// <summary>
+    /// Format ETA as ", ETA HH:MM:SS" given remaining distance in nautical
+    /// miles and current ground speed in knots. Returns empty string if the
+    /// ground speed is too low to give a meaningful estimate (we don't want
+    /// to read out a 99-hour ETA when taxiing).
+    /// </summary>
+    private static string FormatEtaFromDistance(double distanceNm, double groundSpeedKnots)
+    {
+        if (groundSpeedKnots < 30) return "";   // not airborne / too slow
+        if (distanceNm <= 0) return "";
+
+        double hours = distanceNm / groundSpeedKnots;
+        int totalSeconds = (int)Math.Round(hours * 3600.0);
+        int hh = totalSeconds / 3600;
+        int mm = (totalSeconds % 3600) / 60;
+        int ss = totalSeconds % 60;
+        return $": {hh:D2}:{mm:D2}:{ss:D2}";
     }
 
     private void ShowPMDGHeadingDialog(
