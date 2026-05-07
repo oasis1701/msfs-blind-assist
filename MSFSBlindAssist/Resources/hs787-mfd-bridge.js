@@ -119,8 +119,24 @@ _mfd.readLetters = function(container) {
         return (container.textContent || '').replace(/\s+$/, '');
     }
     var line = '';
+    var prevHighlighted = false;
+    var markedThisRun = false;
     for (var c = 0; c < letters.length; c++) {
-        line += letters[c].textContent || ' ';
+        var el = letters[c];
+        var cls = el.className || '';
+        // green = active/confirmed, magenta = FMC-managed active state
+        var isHighlighted = cls.indexOf('green') !== -1 || cls.indexOf('magenta') !== -1;
+        var ch = el.textContent || ' ';
+        if (isHighlighted !== prevHighlighted) {
+            markedThisRun = false;
+        }
+        // Insert 'X ' before the first visible character of each highlighted run
+        if (isHighlighted && !markedThisRun && ch.trim() !== '') {
+            line += 'X ';
+            markedThisRun = true;
+        }
+        prevHighlighted = isHighlighted;
+        line += ch;
     }
     // Trim trailing whitespace only (leading spaces indicate alignment)
     return line.replace(/\s+$/, '');

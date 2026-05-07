@@ -387,10 +387,19 @@ public partial class HS787FMCForm : Form
             return;
         }
 
-        // Alt+C: CLR/DEL
+        // Alt+C: CLR_Long (clear entire scratchpad at once)
         if (e.Alt && !e.Control && !e.Shift && e.KeyCode == Keys.C)
         {
-            ClearOrDelete();
+            if (!string.IsNullOrWhiteSpace(_previousScratchpad))
+            {
+                _clearingInProgress = true;
+                _clearingWatchdog = 0;
+                SendHKey("CLR_Long");
+            }
+            else
+            {
+                SendHKey("DEL");
+            }
             e.Handled = true; e.SuppressKeyPress = true;
             return;
         }

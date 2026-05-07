@@ -1156,6 +1156,16 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 IsAnnounced = true
             },
 
+            ["HS787_EteDest"] = new SimConnect.SimVarDefinition
+            {
+                Name = "GPS ETE",
+                DisplayName = "ETE to Destination",
+                Type = SimConnect.SimVarType.SimVar,
+                Units = "seconds",
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true
+            },
+
             // WT Boeing 787 FMS top-of-descent distance in meters (type Meters per WTAP VNavVars).
             // Converted to NM in the ReadDistanceToTOD handler.
             ["HS787_DistTOD"] = new SimConnect.SimVarDefinition
@@ -1169,140 +1179,151 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             },
 
             // -----------------------------------------------------------------
-            // GROUND SERVICES — Doors (INTERACTIVE POINT OPEN:N, 0-based index)
-            // HS787 uses interactive points, not AIRCRAFT EXIT OPEN.
-            // Passenger doors: 0=1L, 1=1R, 2=2L, 3=2R, 4=3L, 5=3R, 6=4L, 7=4R
-            // Cargo doors: 8=Fwd, 9=Aft
-            // Set via calculator code: 0/1 (>A:INTERACTIVE POINT OPEN:N, Number)
+            // GROUND SERVICES — Doors (INTERACTIVE POINT OPEN:N, 1-based index)
+            // HS787 uses interactive points. The EFB confirms 1-based indexing:
+            // Entry doors: 1=1L, 2=1R, 3=2L, 4=2R, 5=3L, 6=3R, 7=4L, 8=4R
+            // Cargo doors: 9=Fwd, 10=Aft
+            // Toggled via K:TOGGLE_AIRCRAFT_EXIT with the same 1-based index.
+            // SimVar returns 0 (closed) or 100 (fully open) as a percent value.
             // -----------------------------------------------------------------
 
             ["HS787_Door_1L"] = new SimConnect.SimVarDefinition
             {
-                Name = "INTERACTIVE POINT OPEN:0",
+                Name = "INTERACTIVE POINT OPEN:1",
                 DisplayName = "Door 1L (Fwd Left)",
                 Type = SimConnect.SimVarType.SimVar,
+                Units = "percent",
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 ValueDescriptions = new Dictionary<double, string>
                 {
-                    [0] = "Closed",
-                    [1] = "Open"
+                    [0]   = "Closed",
+                    [100] = "Open"
                 }
             },
 
             ["HS787_Door_1R"] = new SimConnect.SimVarDefinition
             {
-                Name = "INTERACTIVE POINT OPEN:1",
+                Name = "INTERACTIVE POINT OPEN:2",
                 DisplayName = "Door 1R (Fwd Right)",
                 Type = SimConnect.SimVarType.SimVar,
+                Units = "percent",
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 ValueDescriptions = new Dictionary<double, string>
                 {
-                    [0] = "Closed",
-                    [1] = "Open"
+                    [0]   = "Closed",
+                    [100] = "Open"
                 }
             },
 
             ["HS787_Door_2L"] = new SimConnect.SimVarDefinition
             {
-                Name = "INTERACTIVE POINT OPEN:2",
+                Name = "INTERACTIVE POINT OPEN:3",
                 DisplayName = "Door 2L (Mid Left)",
                 Type = SimConnect.SimVarType.SimVar,
+                Units = "percent",
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 ValueDescriptions = new Dictionary<double, string>
                 {
-                    [0] = "Closed",
-                    [1] = "Open"
+                    [0]   = "Closed",
+                    [100] = "Open"
                 }
             },
 
             ["HS787_Door_2R"] = new SimConnect.SimVarDefinition
             {
-                Name = "INTERACTIVE POINT OPEN:3",
+                Name = "INTERACTIVE POINT OPEN:4",
                 DisplayName = "Door 2R (Mid Right)",
                 Type = SimConnect.SimVarType.SimVar,
+                Units = "percent",
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 ValueDescriptions = new Dictionary<double, string>
                 {
-                    [0] = "Closed",
-                    [1] = "Open"
+                    [0]   = "Closed",
+                    [100] = "Open"
                 }
             },
 
             ["HS787_Door_3L"] = new SimConnect.SimVarDefinition
             {
-                Name = "INTERACTIVE POINT OPEN:4",
+                Name = "INTERACTIVE POINT OPEN:5",
                 DisplayName = "Door 3L (Rear Left)",
                 Type = SimConnect.SimVarType.SimVar,
+                Units = "percent",
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 ValueDescriptions = new Dictionary<double, string>
                 {
-                    [0] = "Closed",
-                    [1] = "Open"
+                    [0]   = "Closed",
+                    [100] = "Open"
                 }
             },
 
             ["HS787_Door_3R"] = new SimConnect.SimVarDefinition
             {
-                Name = "INTERACTIVE POINT OPEN:5",
+                Name = "INTERACTIVE POINT OPEN:6",
                 DisplayName = "Door 3R (Rear Right)",
                 Type = SimConnect.SimVarType.SimVar,
+                Units = "percent",
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 ValueDescriptions = new Dictionary<double, string>
                 {
-                    [0] = "Closed",
-                    [1] = "Open"
+                    [0]   = "Closed",
+                    [100] = "Open"
                 }
             },
 
             ["HS787_Door_4L"] = new SimConnect.SimVarDefinition
             {
-                Name = "INTERACTIVE POINT OPEN:6",
+                Name = "INTERACTIVE POINT OPEN:7",
                 DisplayName = "Door 4L (Far Rear Left)",
                 Type = SimConnect.SimVarType.SimVar,
+                Units = "percent",
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 ValueDescriptions = new Dictionary<double, string>
                 {
-                    [0] = "Closed",
-                    [1] = "Open"
+                    [0]   = "Closed",
+                    [100] = "Open"
                 }
             },
 
             ["HS787_Door_4R"] = new SimConnect.SimVarDefinition
             {
-                Name = "INTERACTIVE POINT OPEN:7",
+                Name = "INTERACTIVE POINT OPEN:8",
                 DisplayName = "Door 4R (Far Rear Right)",
                 Type = SimConnect.SimVarType.SimVar,
+                Units = "percent",
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 ValueDescriptions = new Dictionary<double, string>
                 {
-                    [0] = "Closed",
-                    [1] = "Open"
+                    [0]   = "Closed",
+                    [100] = "Open"
                 }
             },
 
             ["HS787_Door_FwdCargo"] = new SimConnect.SimVarDefinition
             {
-                Name = "INTERACTIVE POINT OPEN:8",
+                Name = "INTERACTIVE POINT OPEN:9",
                 DisplayName = "Fwd Cargo Door",
                 Type = SimConnect.SimVarType.SimVar,
+                Units = "percent",
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 ValueDescriptions = new Dictionary<double, string>
                 {
-                    [0] = "Closed",
-                    [1] = "Open"
+                    [0]   = "Closed",
+                    [100] = "Open"
                 }
             },
 
             ["HS787_Door_AftCargo"] = new SimConnect.SimVarDefinition
             {
-                Name = "INTERACTIVE POINT OPEN:9",
+                Name = "INTERACTIVE POINT OPEN:10",
                 DisplayName = "Aft Cargo Door",
                 Type = SimConnect.SimVarType.SimVar,
+                Units = "percent",
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 ValueDescriptions = new Dictionary<double, string>
                 {
-                    [0] = "Closed",
-                    [1] = "Open"
+                    [0]   = "Closed",
+                    [100] = "Open"
                 }
             },
 
@@ -1311,11 +1332,12 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 Name = "INTERACTIVE POINT OPEN:11",
                 DisplayName = "Refuel Panel Door",
                 Type = SimConnect.SimVarType.SimVar,
+                Units = "percent",
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 ValueDescriptions = new Dictionary<double, string>
                 {
-                    [0] = "Closed",
-                    [1] = "Open"
+                    [0]   = "Closed",
+                    [100] = "Open"
                 }
             },
 
@@ -1324,11 +1346,12 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 Name = "INTERACTIVE POINT OPEN:12",
                 DisplayName = "GPU Connection",
                 Type = SimConnect.SimVarType.SimVar,
+                Units = "percent",
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 ValueDescriptions = new Dictionary<double, string>
                 {
-                    [0] = "Disconnected",
-                    [1] = "Connected"
+                    [0]   = "Disconnected",
+                    [100] = "Connected"
                 }
             }
         };
@@ -1719,17 +1742,29 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             case HotkeyAction.ReadDistanceToDest:
             {
                 double? meters = simConnect.GetCachedVariableValue("HS787_DistDest");
-                if (meters == null || meters.Value <= 0)
-                {
-                    announcer.AnnounceImmediate("Distance to destination not available");
-                    return true;
-                }
-                double nm = meters.Value / 1852.0;
                 double gs = simConnect.GetCachedVariableValue("HS787_GroundSpeed") ?? 0;
-                string ete = FormatEte(nm, gs);
-                announcer.AnnounceImmediate(ete.Length > 0
-                    ? $"{(int)nm} miles to destination, {ete}"
-                    : $"{(int)nm} miles to destination");
+                var parts = new System.Collections.Generic.List<string>();
+
+                if (meters != null && meters.Value > 0)
+                {
+                    double nm = meters.Value / 1852.0;
+                    string ete = FormatEte(nm, gs);
+                    parts.Add(ete.Length > 0
+                        ? $"Next waypoint, {(int)nm} miles, {ete}"
+                        : $"Next waypoint, {(int)nm} miles");
+                }
+
+                double? eteSec = simConnect.GetCachedVariableValue("HS787_EteDest");
+                if (eteSec != null && eteSec.Value > 0 && gs >= 30)
+                {
+                    double destNm = (eteSec.Value / 3600.0) * gs;
+                    string destEte = FormatEteSeconds(eteSec.Value);
+                    parts.Add($"Destination, {(int)destNm} miles, {destEte}");
+                }
+
+                announcer.AnnounceImmediate(parts.Count > 0
+                    ? string.Join("; ", parts)
+                    : "Distance to destination not available");
                 return true;
             }
 
@@ -1747,6 +1782,22 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 announcer.AnnounceImmediate(ete.Length > 0
                     ? $"{(int)todNm} miles to top of descent, {ete}"
                     : $"{(int)todNm} miles to top of descent");
+                return true;
+            }
+
+            case HotkeyAction.ReadWaypointInfo:
+            {
+                simConnect.RequestSingleValue(
+                    (int)SimConnect.SimConnectManager.DATA_DEFINITIONS.DEF_GROSS_WEIGHT,
+                    "TOTAL WEIGHT", "pounds", "GROSS_WEIGHT");
+                return true;
+            }
+
+            case HotkeyAction.ReadGrossWeightKg:
+            {
+                simConnect.RequestSingleValue(
+                    (int)SimConnect.SimConnectManager.DATA_DEFINITIONS.DEF_GROSS_WEIGHT_KG,
+                    "TOTAL WEIGHT", "pounds", "GROSS_WEIGHT_KG");
                 return true;
             }
 
@@ -1832,29 +1883,28 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             return true;
         }
 
-        // Doors — HS787 uses INTERACTIVE POINT OPEN:N (not AIRCRAFT EXIT OPEN).
-        // Set state directly so "Open" always opens and "Closed" always closes.
-        // Passenger: 0=1L, 1=1R, 2=2L, 3=2R, 4=3L, 5=3R, 6=4L, 7=4R  Cargo: 8=Fwd, 9=Aft
+        // Doors — toggled via K:TOGGLE_AIRCRAFT_EXIT with 1-based index (matches INTERACTIVE POINT OPEN:N).
+        // The current state is checked so we only fire the toggle when a change is needed.
+        // Passenger: 1=1L, 2=1R, 3=2L, 4=2R, 5=3L, 6=3R, 7=4L, 8=4R  Cargo: 9=Fwd, 10=Aft
         int? doorIdx = varKey switch
         {
-            "HS787_Door_1L"       => 0,
-            "HS787_Door_1R"       => 1,
-            "HS787_Door_2L"       => 2,
-            "HS787_Door_2R"       => 3,
-            "HS787_Door_3L"       => 4,
-            "HS787_Door_3R"       => 5,
-            "HS787_Door_4L"       => 6,
-            "HS787_Door_4R"       => 7,
-            "HS787_Door_FwdCargo" => 8,
-            "HS787_Door_AftCargo" => 9,
+            "HS787_Door_1L"       => 1,
+            "HS787_Door_1R"       => 2,
+            "HS787_Door_2L"       => 3,
+            "HS787_Door_2R"       => 4,
+            "HS787_Door_3L"       => 5,
+            "HS787_Door_3R"       => 6,
+            "HS787_Door_4L"       => 7,
+            "HS787_Door_4R"       => 8,
+            "HS787_Door_FwdCargo" => 9,
+            "HS787_Door_AftCargo" => 10,
             "HS787_RefuelDoor"    => 11,
             "HS787_GPUPipe"       => 12,
             _                     => null
         };
         if (doorIdx.HasValue)
         {
-            int state = (int)value; // 0 = Closed, 1 = Open
-            simConnect.ExecuteCalculatorCode($"{state} (>A:INTERACTIVE POINT OPEN:{doorIdx.Value}, Number)");
+            simConnect.SendEvent("TOGGLE_AIRCRAFT_EXIT", (uint)doorIdx.Value);
             return true;
         }
 
@@ -2169,6 +2219,7 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             case "HS787_DistDest":
             case "HS787_GroundSpeed":
             case "HS787_DistTOD":
+            case "HS787_EteDest":
                 return true; // cached — no announcement
         }
 
@@ -2461,6 +2512,15 @@ public class HorizonSim787Definition : BaseAircraftDefinition
         if (gsKnots < 30 || distanceNm <= 0) return "";
         double hours = distanceNm / gsKnots;
         int totalMinutes = (int)Math.Round(hours * 60);
+        int hh = totalMinutes / 60;
+        int mm = totalMinutes % 60;
+        return hh > 0 ? $"{hh}h {mm}m" : $"{mm}m";
+    }
+
+    // Returns "Xh Ym" or "Ym" from a raw seconds value.
+    private static string FormatEteSeconds(double seconds)
+    {
+        int totalMinutes = (int)Math.Round(seconds / 60.0);
         int hh = totalMinutes / 60;
         int mm = totalMinutes % 60;
         return hh > 0 ? $"{hh}h {mm}m" : $"{mm}m";
