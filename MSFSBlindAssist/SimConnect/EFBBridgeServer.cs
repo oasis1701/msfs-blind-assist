@@ -229,6 +229,7 @@ namespace MSFSBlindAssist.SimConnect
             response.Headers.Add("Access-Control-Allow-Origin", "*");
             response.Headers.Add("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
             response.Headers.Add("Access-Control-Allow-Headers", "Content-Type");
+            response.Headers.Add("Access-Control-Allow-Private-Network", "true");
 
             try
             {

@@ -81,8 +81,11 @@ _mfd.tryConnect = async function() {
             }
             return true;
         }
+        console.warn('[MFD Bridge] /ping returned non-ok status:', response.status);
     } catch (e) {
-        // Not available yet
+        // Log the error type so we can diagnose what is blocking the connection
+        // (PNA, CSP, network error, etc.) — check MSFS console log for these lines.
+        console.error('[MFD Bridge] tryConnect failed:', e && e.name, e && e.message);
     }
 
     if (_mfd.serverConnected) {
