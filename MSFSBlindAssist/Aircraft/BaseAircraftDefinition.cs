@@ -254,13 +254,28 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
         // tz mapping); Zulu is UTC.
         if (action == HotkeyAction.ReadLocalTime)
         {
-            simConnect.RequestSingleValue(
-                (int)SimConnect.SimConnectManager.DATA_REQUESTS.REQUEST_LOCAL_TIME,
-                "LOCAL TIME", "seconds", "LOCAL_TIME_SECONDS");
+            // Refresh the aircraft position FIRST so the LOCAL_TIME response
+            // handler has fresh lat/lon to look up the correct time-zone
+            // name. simConnectManager.lastKnownPosition is mirrored only by
+            // visual guidance, taxi, and takeoff paths; during a hand-flown
+            // approach with VG off the cache can be stale (or null since
+            // startup), making the tz lookup fall back to the user's
+            // system zone — that gave "GMT Summer Time" near KJFK. Async
+            // position request first, then chain the time request in the
+            // callback. ProcessAircraftPosition writes lastKnownPosition
+            // before firing the event, so by the time the LOCAL_TIME
+            // response arrives, the cache is fresh.
+            simConnect.RequestAircraftPositionAsync(_ =>
+            {
+                simConnect.RequestSingleValue(
+                    (int)SimConnect.SimConnectManager.DATA_REQUESTS.REQUEST_LOCAL_TIME,
+                    "LOCAL TIME", "seconds", "LOCAL_TIME_SECONDS");
+            });
             return true;
         }
         if (action == HotkeyAction.ReadZuluTime)
         {
+            // Zulu doesn't depend on position — UTC is the same everywhere.
             simConnect.RequestSingleValue(
                 (int)SimConnect.SimConnectManager.DATA_REQUESTS.REQUEST_ZULU_TIME,
                 "ZULU TIME", "seconds", "ZULU_TIME_SECONDS");
