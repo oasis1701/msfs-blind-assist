@@ -100,9 +100,24 @@ public partial class HS787SimBriefForm : Form
         flightInfoList.Items.Clear();
         _ofp = null;
 
+        // 30 s UI-side timeout, matching DashboardPanel.cs:262.
+        // Note: this does not cancel the underlying HTTP request — the HttpClient
+        // default timeout (100 s) will eventually fail it. We unblock the UI so
+        // the user can retry without waiting on the slow fetch.
+        var fetchTask = _simBriefService.FetchFullOFPAsync(username);
+        var timeoutTask = Task.Delay(TimeSpan.FromSeconds(30));
+        var winner = await Task.WhenAny(fetchTask, timeoutTask);
+
         try
         {
-            _ofp = await _simBriefService.FetchFullOFPAsync(username);
+            if (winner == timeoutTask)
+            {
+                SetStatus("Fetch timed out — try again.");
+                _announcer.Announce("SimBrief fetch timed out.");
+                return;
+            }
+
+            _ofp = await fetchTask;
             PopulateFlightInfo(_ofp);
             loadFuelButton.Enabled = true;
             SetStatus("Flight plan loaded. Use Load Fuel to set fuel, or Open FMC Init to program the FMC.");
