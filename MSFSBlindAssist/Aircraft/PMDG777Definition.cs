@@ -55,7 +55,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             {
                 "Electrical", "ADIRU", "Hydraulic", "Fuel", "Engines", "Bleed Air",
                 "Air Conditioning", "Pressurization", "Anti-Ice", "Fire",
-                "Lights", "Signs", "Wipers", "Panel Lighting"
+                "Lights", "Signs", "Oxygen", "Wipers", "Panel Lighting"
             },
             ["Overhead Maintenance"] = new List<string>
             {
@@ -1813,6 +1813,24 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["OXY_TestReset_Capt"] = new SimConnect.SimVarDefinition
+            {
+                Name = "OXY_TestReset_Capt",
+                DisplayName = "Captain Oxygen Test",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Never,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
+            ["OXY_TestReset_FO"] = new SimConnect.SimVarDefinition
+            {
+                Name = "OXY_TestReset_FO",
+                DisplayName = "First Officer Oxygen Test",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Never,
+                RenderAsButton = true,
+                IsMomentary = true
             },
             // Signs annunciators
             ["OXY_annunPassOxygenON"] = new SimConnect.SimVarDefinition
@@ -4626,8 +4644,14 @@ public class PMDG777Definition : BaseAircraftDefinition
             // Overhead — Signs
             ["Signs"] = new List<string>
             {
-                "SIGNS_NoSmoking", "SIGNS_SeatBelts", "OXY_PassOxygen",
-                "OXY_Suprnmry"
+                "SIGNS_NoSmoking", "SIGNS_SeatBelts"
+            },
+
+            // Overhead — Oxygen
+            ["Oxygen"] = new List<string>
+            {
+                "OXY_PassOxygen", "OXY_Suprnmry",
+                "OXY_TestReset_Capt", "OXY_TestReset_FO"
             },
 
             // Overhead — Wipers
@@ -5000,6 +5024,8 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["SIGNS_SeatBelts"]         = "EVT_OH_FASTEN_BELTS_LIGHT_SWITCH",
             ["OXY_PassOxygen"]          = "EVT_OH_OXY_PASS_SWITCH",
             ["OXY_Suprnmry"]            = "EVT_OH_OXY_SUPRNMRY_SWITCH",
+            ["OXY_TestReset_Capt"]      = "EVT_OXY_TEST_RESET_SWITCH_L",
+            ["OXY_TestReset_FO"]        = "EVT_OXY_TEST_RESET_SWITCH_R",
 
             // --- Wipers / Comms ---
             ["WIPERS_Left"]             = "EVT_OH_WIPER_LEFT_SWITCH",
@@ -5289,13 +5315,52 @@ public class PMDG777Definition : BaseAircraftDefinition
         }
 
         // ------------------------------------------------------------------
-        // 1. Guarded switches — require guard open → toggle → guard close
+        // 0a. Emergency Lights selector — sending the SDK event via CDA
+        //     only ever cycles the lever upward, leaving Armed → Off
+        //     unreachable. TFM's PMDG 747 implementation showed that the
+        //     same SDK event accepts the absolute target position when
+        //     fired through the standard SimConnect TransmitClientEvent
+        //     path (event name "#<id>"), bypassing PMDG's CDA selector.
+        // ------------------------------------------------------------------
+        if (varKey == "LTS_EmerLights")
+        {
+            int target = (int)value;
+            var dm = simConnect.PMDG777DataManager;
+            if (dm != null && (int)dm.GetFieldValue("LTS_EmerLightsSelector") == target)
+            {
+                return true;
+            }
+            uint switchEventId = (uint)EventIds["EVT_OH_EMER_EXIT_LIGHT_SWITCH"];
+            simConnect.SendEvent("#" + switchEventId, (uint)target);
+            return true;
+        }
+
+        // ------------------------------------------------------------------
+        // 1. Guarded switches — require guard open → click switch → guard close.
+        //    For 3+ position selectors (e.g. Emergency Lights Off/Armed/On) the
+        //    plain toggle click only advances one detent and cannot reach a
+        //    non-adjacent target, so we send the absolute target position via
+        //    SendPMDGGuardedSet instead.
         // ------------------------------------------------------------------
         if (_guardedMap.TryGetValue(varKey, out var guardPair))
         {
             if (EventIds.TryGetValue(guardPair.Guard, out int gId) &&
                 EventIds.TryGetValue(guardPair.Switch, out int sId))
             {
+                if (varDef.ValueDescriptions.Count >= 3)
+                {
+                    int target = (int)value;
+                    var dm = simConnect.PMDG777DataManager;
+                    if (dm != null && (int)dm.GetFieldValue(varDef.Name) == target)
+                    {
+                        return true;
+                    }
+                    _ = simConnect.SendPMDGGuardedSet(
+                        guardPair.Guard,  (uint)gId,
+                        guardPair.Switch, (uint)sId,
+                        target);
+                    return true;
+                }
                 _ = simConnect.SendPMDGGuardedToggle(
                     guardPair.Guard,  (uint)gId,
                     guardPair.Switch, (uint)sId);
@@ -5372,6 +5437,44 @@ public class PMDG777Definition : BaseAircraftDefinition
             int current = dm != null ? (int)dm.GetFieldValue("ELEC_APU_Selector") : 0;
             if (current == 1)
                 simConnect.SendPMDGEvent(eventName, eventId, 2); // 2 = Start position
+            return true;
+        }
+
+        // ------------------------------------------------------------------
+        // 2f. Flap lever — the base EVT_CONTROL_STAND_FLAPS_LEVER is a drag
+        //     event; sending a detent index to it leaves the lever in an
+        //     invalid state and breaks subsequent flap input. Use the
+        //     per-detent EVT_CONTROL_STAND_FLAPS_LEVER_<deg> click events
+        //     defined in PMDG_777X_SDK.h. They go through the same CDA
+        //     control channel but expect MOUSE_FLAG_LEFTSINGLE as the
+        //     parameter, matching the SDK's mouse-click convention.
+        // ------------------------------------------------------------------
+        if (varKey == "FCTL_Flaps")
+        {
+            int target = (int)value;
+            var dm = simConnect.PMDG777DataManager;
+            if (dm != null && (int)dm.GetFieldValue("FCTL_Flaps_Lever") == target)
+            {
+                return true;
+            }
+            string detentSuffix = target switch
+            {
+                0 => "_0",
+                1 => "_1",
+                2 => "_5",
+                3 => "_15",
+                4 => "_20",
+                5 => "_25",
+                6 => "_30",
+                _ => string.Empty
+            };
+            if (detentSuffix.Length == 0) return true;
+            string detentEvent = "EVT_CONTROL_STAND_FLAPS_LEVER" + detentSuffix;
+            if (EventIds.TryGetValue(detentEvent, out int detentId))
+            {
+                const int MOUSE_FLAG_LEFTSINGLE = 0x20000000;
+                simConnect.SendPMDGEvent(detentEvent, (uint)detentId, MOUSE_FLAG_LEFTSINGLE);
+            }
             return true;
         }
 
@@ -6624,6 +6727,8 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["EVT_OH_OXY_PASS_GUARD"]              = 69685,
             ["EVT_OH_OXY_SUPRNMRY_SWITCH"]         = 70708,
             ["EVT_OH_OXY_SUPRNMRY_GUARD"]          = 70709,
+            ["EVT_OXY_TEST_RESET_SWITCH_L"]        = 70695,
+            ["EVT_OXY_TEST_RESET_SWITCH_R"]        = 70698,
             ["EVT_OH_APU_TEST_SWITCH"]             = 69791,
             ["EVT_OH_APU_TEST_SWITCH_GUARD"]       = 69792,
             ["EVT_OH_CVR_TEST"]                    = 69788,
