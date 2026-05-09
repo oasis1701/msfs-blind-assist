@@ -207,9 +207,9 @@ public class HS787AutopilotWindow : Form
             _simConnect.SendEvent(action);
         }
 
-        _announcer.AnnounceImmediate($"{label} pressed");
-
-        // Refresh button labels after sim has had time to update
+        // Refresh button labels after sim has had time to update.
+        // No explicit announcement here — screen readers announce the click,
+        // and RefreshButtonStates will update the label so the new state is read on focus.
         Task.Delay(300).ContinueWith(_ =>
         {
             if (!IsDisposed && IsHandleCreated)
