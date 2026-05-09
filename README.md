@@ -13,7 +13,8 @@ This application uses Windows standard controls, screen reader announcements and
 - Panels for supported aircraft that allow blind users to use their keyboard to scroll through switches, knobs, and similar controls and interact with them.
 - Global hotkeys for accessing a comprehensive set of features, such as on-demand readout of heading/speed/altitude/VS and many more
 - Continuous monitoring of aircraft systems and announcing changes, for example, Master Warning and Master Caution alerts and many more.
-- Capability to teleport to and from gates to runways. This is crucial for blind pilots because taxi operations are not possible to do right now.
+- Turn-by-turn taxi guidance with a stereo-panned audio steering tone ("taxiway localizer") and spoken announcements for turns, taxiway crossings, hold-shorts and arrivals. Enter your ATC clearance and the app routes you through the exact taxiways — works on any airport the user's database covers, not just major hubs.
+- Capability to teleport to and from gates to runways, still available for users who prefer it or for quick repositioning.
 - Additional tools to assist visually impaired pilots to fly, for example, take-off assistance which announces when the pilot is deviating from the runway, as well as pitch monitoring.
 - Aircraft-specific dedicated systems. On the FlyByWire A32NX for example, blind users can hear and read all engine and display warning messages, read fuel and payload and weight/balance details in full, hear Flight Mode Annunciator messages, get on-demand information on next waypoint, etc.
 - An extensive text-based location and map viewer. Configurable with filters, lets users read direction and distance to major and small cities, landmarks, terrain and water bodies while they fly!
@@ -93,6 +94,10 @@ In our case, a person who is totally blind or lacks the vision to interact with 
 Developed and maintained by Hadi Rezaei
 
 Navdata Reader command-line tool by Alexander Barthel to build the airport and navigation databases.
+
+## Contributors
+- Francesco Tissera ([@francescotissera1211](https://github.com/francescotissera1211)) — lead contributor: turn-by-turn taxi guidance, landing exit planner, ActiveSky weather radar integration, ActiveSky weather-update auto-announce, PMDG 777 enhancements (announcement monitor, FMC settings, alternate LSK keys, Nav Rad button, enhanced PROG-page distance), time hotkeys, hard-pan / invert-pan tone options, landing rollout phase
+- Tobias Heath ([@heath-toby](https://github.com/heath-toby), &lt;heathtobias@gmail.com&gt;) — accessibility testing and bug fixes: taxiway connectivity at KSFO and similar airports, KPHX 07R ILS spatial fallback, landing-exit activation freshness, taxi steering tone pulse / continuous transition, ground-speed announcer rounding and source-field correction, turn direction from aircraft heading, ActiveSky visibility unit preservation, PMDG PROG event-path fix
 
 ## Usage and Documentation
 MSFS Blind Assist is available to download in the releases page. It is currently in active development and a small group of testers are using it daily. A thorough documentation is in the works and a hotkey list is included in the application.

@@ -19,6 +19,7 @@ public partial class PMDG777CDUForm
     private Button btnFmcComm = null!;
     private Button btnProg = null!;
     private Button btnMenu = null!;
+    private Button btnNavRad = null!;
     private Button btnPrevPage = null!;
     private Button btnNextPage = null!;
 
@@ -105,8 +106,13 @@ public partial class PMDG777CDUForm
         btnFmcComm  = CreatePageButton("FMC Comm",   "FMCCOMM",   pageStartX + 1  * (pageBtnWidth + pageSpacing), y, pageBtnWidth, pageBtnHeight);
         btnProg     = CreatePageButton("Prog",       "PROG",      pageStartX + 2  * (pageBtnWidth + pageSpacing), y, pageBtnWidth, pageBtnHeight);
         btnMenu     = CreatePageButton("Menu",       "MENU",      pageStartX + 3  * (pageBtnWidth + pageSpacing), y, pageBtnWidth, pageBtnHeight);
-        btnPrevPage = CreatePageButton("Prev Page",  "PREV_PAGE", pageStartX + 4  * (pageBtnWidth + pageSpacing), y, pageBtnWidth, pageBtnHeight);
-        btnNextPage = CreatePageButton("Next Page",  "NEXT_PAGE", pageStartX + 5  * (pageBtnWidth + pageSpacing), y, pageBtnWidth, pageBtnHeight);
+        // &Nav Rad makes the N a real button mnemonic so Alt+N triggers it. Other
+        // page buttons don't have ampersand mnemonics yet — they only carry
+        // descriptive AccessibleNames — so the existing Alt+letter labels are
+        // largely informational. Nav Rad is wired up properly here.
+        btnNavRad   = CreatePageButton("&Nav Rad",   "NAV_RAD",   pageStartX + 4  * (pageBtnWidth + pageSpacing), y, pageBtnWidth, pageBtnHeight);
+        btnPrevPage = CreatePageButton("Prev Page",  "PREV_PAGE", pageStartX + 5  * (pageBtnWidth + pageSpacing), y, pageBtnWidth, pageBtnHeight);
+        btnNextPage = CreatePageButton("Next Page",  "NEXT_PAGE", pageStartX + 6  * (pageBtnWidth + pageSpacing), y, pageBtnWidth, pageBtnHeight);
         y += pageBtnHeight + pageSpacing + 6;
 
         // Special buttons
@@ -125,6 +131,7 @@ public partial class PMDG777CDUForm
         btnFmcComm.AccessibleName = "FMC Comm (Alt+O)";
         btnProg.AccessibleName = "Prog (Alt+P)";
         btnMenu.AccessibleName = "Menu (Alt+M)";
+        btnNavRad.AccessibleName = "Nav Rad (Alt+N)";
         btnPrevPage.AccessibleName = "Prev Page (PageUp)";
         btnNextPage.AccessibleName = "Next Page (PageDown)";
         btnExec.AccessibleName = "Execute (Alt+E)";
@@ -135,7 +142,7 @@ public partial class PMDG777CDUForm
         {
             statusLabel, cduSelector, cduDisplay, scratchpadInput,
             btnInitRef, btnRte, btnDepArr, btnAltn, btnVnav, btnFix, btnLegs,
-            btnHold, btnFmcComm, btnProg, btnMenu, btnPrevPage, btnNextPage,
+            btnHold, btnFmcComm, btnProg, btnMenu, btnNavRad, btnPrevPage, btnNextPage,
             btnExec, btnClr
         });
 
@@ -155,6 +162,7 @@ public partial class PMDG777CDUForm
         btnFmcComm.TabIndex  = tabIdx++;
         btnProg.TabIndex     = tabIdx++;
         btnMenu.TabIndex     = tabIdx++;
+        btnNavRad.TabIndex   = tabIdx++;
         btnPrevPage.TabIndex = tabIdx++;
         btnNextPage.TabIndex = tabIdx++;
         btnExec.TabIndex = tabIdx++;
