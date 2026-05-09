@@ -1444,6 +1444,14 @@ public class SimConnectManager
 
             case DATA_REQUESTS.REQUEST_LOCAL_TIME:
                 SingleValue localTimeData = (SingleValue)data.dwData[0];
+                // Pass the aircraft's last-known lat/lon so FormatTimeOfDay
+                // can look up the time-zone name at the aircraft's actual
+                // position (e.g. "Eastern Daylight Time" near KJFK), not
+                // the user's system time zone. Null when no position has
+                // been received yet — FormatTimeOfDay falls back to system
+                // tz in that case.
+                double? localLat = lastKnownPosition?.Latitude;
+                double? localLon = lastKnownPosition?.Longitude;
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
                 {
                     VarName = "LOCAL_TIME_SECONDS",
@@ -1451,8 +1459,8 @@ public class SimConnectManager
                     // FormatTimeOfDay self-suffixes (Z or tz name) and honors
                     // AnnounceTimeWithSeconds. No "Local time " prefix needed —
                     // the tz-name suffix already disambiguates from Zulu.
-                    Description =
-                        Aircraft.BaseAircraftDefinition.FormatTimeOfDay(localTimeData.value, isZulu: false)
+                    Description = Aircraft.BaseAircraftDefinition.FormatTimeOfDay(
+                        localTimeData.value, isZulu: false, localLat, localLon)
                 });
                 break;
 
