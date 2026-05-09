@@ -434,30 +434,31 @@ public class NavdataReaderBuilder
 
     /// <summary>
     /// Checks if a navdatareader-generated database exists for the specified simulator
+    /// at *either* the canonical (MSFSBlindAssist) or legacy (FBWBA) location.
     /// </summary>
     /// <param name="simulatorVersion">FS2020 or FS2024</param>
     /// <returns>True if database file exists</returns>
     public static bool DatabaseExists(string simulatorVersion)
     {
-        string databasePath = GetDefaultDatabasePath(simulatorVersion);
-        return File.Exists(databasePath);
+        return DatabasePathResolver.ExistsAnywhere(simulatorVersion);
     }
 
     /// <summary>
-    /// Gets the default database path for a simulator version
+    /// Gets the default database path for a simulator version.
+    ///
+    /// Returns the existing file location — canonical (MSFSBlindAssist) is preferred,
+    /// with fallback to the legacy FBWBA location for users who still have the DB
+    /// in the old folder. If the file doesn't exist at either location, returns the
+    /// canonical path (so error messages reference the location the user should build into).
+    ///
+    /// Note: build targets should call <see cref="DatabasePathResolver.GetCanonicalDatabasePath"/>
+    /// directly so newly-built databases always go to the canonical folder.
     /// </summary>
     /// <param name="simulatorVersion">FS2020 or FS2024</param>
     /// <returns>Full path to the database file</returns>
     public static string GetDefaultDatabasePath(string simulatorVersion)
     {
-        string appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        string databaseFolder = Path.Combine(appDataPath, "MSFSBlindAssist", "databases");
-
-        string filename = simulatorVersion?.ToUpper() == "FS2024"
-            ? "fs2024.sqlite"
-            : "fs2020.sqlite";
-
-        return Path.Combine(databaseFolder, filename);
+        return DatabasePathResolver.ResolveExistingDatabasePath(simulatorVersion);
     }
 
     /// <summary>

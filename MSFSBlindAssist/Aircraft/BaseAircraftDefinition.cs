@@ -248,8 +248,132 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
             return true;
         }
 
+        // Time-of-day readouts. Universal across all aircraft — the SimVars
+        // are world-clock fields, not aircraft-specific. Local time is the
+        // aircraft's geographic-position local time (the sim handles the
+        // tz mapping); Zulu is UTC.
+        if (action == HotkeyAction.ReadLocalTime)
+        {
+            // Refresh the aircraft position FIRST so the LOCAL_TIME response
+            // handler has fresh lat/lon to look up the correct time-zone
+            // name. simConnectManager.lastKnownPosition is mirrored only by
+            // visual guidance, taxi, and takeoff paths; during a hand-flown
+            // approach with VG off the cache can be stale (or null since
+            // startup), making the tz lookup fall back to the user's
+            // system zone — that gave "GMT Summer Time" near KJFK. Async
+            // position request first, then chain the time request in the
+            // callback. ProcessAircraftPosition writes lastKnownPosition
+            // before firing the event, so by the time the LOCAL_TIME
+            // response arrives, the cache is fresh.
+            simConnect.RequestAircraftPositionAsync(_ =>
+            {
+                simConnect.RequestSingleValue(
+                    (int)SimConnect.SimConnectManager.DATA_REQUESTS.REQUEST_LOCAL_TIME,
+                    "LOCAL TIME", "seconds", "LOCAL_TIME_SECONDS");
+            });
+            return true;
+        }
+        if (action == HotkeyAction.ReadZuluTime)
+        {
+            // Zulu doesn't depend on position — UTC is the same everywhere.
+            simConnect.RequestSingleValue(
+                (int)SimConnect.SimConnectManager.DATA_REQUESTS.REQUEST_ZULU_TIME,
+                "ZULU TIME", "seconds", "ZULU_TIME_SECONDS");
+            return true;
+        }
+
         // Not handled by simple mapping - aircraft can override to handle complex actions
         return false;
+    }
+
+    /// <summary>
+    /// Formats a "seconds since midnight" SimVar value as a spoken time.
+    /// Zulu output is suffixed with "Z" (e.g. "03:30Z" / "00:15:30Z");
+    /// local output is suffixed with the time-zone name AT THE AIRCRAFT'S
+    /// position (e.g. "16:38 Eastern Daylight Time" near New York,
+    /// "20:30:45 British Summer Time" near London), DST-aware. Seconds are
+    /// included when <see cref="UserSettings.AnnounceTimeWithSeconds"/> is on.
+    /// Negative or out-of-range inputs round to 00:00:00. Called from
+    /// <see cref="SimConnectManager"/> when the LOCAL_TIME_SECONDS /
+    /// ZULU_TIME_SECONDS responses come back.
+    /// </summary>
+    /// <param name="secondsSinceMidnight">SimVar value (LOCAL TIME or ZULU TIME).</param>
+    /// <param name="isZulu">True for Zulu/UTC output ("Z" suffix); false for local.</param>
+    /// <param name="aircraftLat">Aircraft latitude (decimal degrees). Used only when isZulu is false to look up the time-zone at the aircraft's geographic position. Pass null to fall back to the system time zone.</param>
+    /// <param name="aircraftLon">Aircraft longitude (decimal degrees). See aircraftLat.</param>
+    public static string FormatTimeOfDay(
+        double secondsSinceMidnight,
+        bool isZulu = false,
+        double? aircraftLat = null,
+        double? aircraftLon = null)
+    {
+        if (double.IsNaN(secondsSinceMidnight) || secondsSinceMidnight < 0) secondsSinceMidnight = 0;
+        // World-clock SimVars roll past midnight if the sim runs continuously;
+        // wrap into [0, 86400) for safety.
+        int total = (int)Math.Round(secondsSinceMidnight) % 86400;
+        if (total < 0) total += 86400;
+        int hh = total / 3600;
+        int mm = (total / 60) % 60;
+        int ss = total % 60;
+
+        string time = Settings.SettingsManager.Current.AnnounceTimeWithSeconds
+            ? $"{hh:D2}:{mm:D2}:{ss:D2}"
+            : $"{hh:D2}:{mm:D2}";
+
+        if (isZulu) return time + "Z";
+
+        // Local time → append the time-zone name at the aircraft's position.
+        // GeoTimeZone maps lat/lon → IANA tz id (e.g. "America/New_York");
+        // TZConvert turns the IANA id into a Windows TimeZoneInfo whose
+        // StandardName / DaylightName carry the localised spoken label
+        // (e.g. "Eastern Standard Time" / "Eastern Daylight Time"). DST
+        // selection uses the current UTC time converted into the target
+        // zone — IsDaylightSavingTime on a UTC-kind DateTime returns false
+        // unconditionally, so we have to convert first.
+        string tzName = LookupTimeZoneName(aircraftLat, aircraftLon);
+        return $"{time} {tzName}";
+    }
+
+    /// <summary>
+    /// Resolves the spoken time-zone name at a given lat/lon. Falls back to
+    /// the system's local time zone when lat/lon are missing, the
+    /// GeoTimeZone lookup fails, or no Windows mapping exists for the IANA
+    /// id. Always returns a non-null, non-empty string.
+    /// </summary>
+    private static string LookupTimeZoneName(double? lat, double? lon)
+    {
+        try
+        {
+            if (lat.HasValue && lon.HasValue)
+            {
+                string ianaId = GeoTimeZone.TimeZoneLookup.GetTimeZone(lat.Value, lon.Value).Result;
+                if (!string.IsNullOrEmpty(ianaId)
+                    && TimeZoneConverter.TZConvert.TryGetTimeZoneInfo(ianaId, out TimeZoneInfo? tz)
+                    && tz is not null)
+                {
+                    return PickDstAwareName(tz);
+                }
+            }
+        }
+        catch
+        {
+            // Defensive: any unexpected exception in the geo/tz lookup
+            // shouldn't break the time announcement. Fall through to
+            // system tz below.
+        }
+
+        return PickDstAwareName(TimeZoneInfo.Local);
+    }
+
+    private static string PickDstAwareName(TimeZoneInfo tz)
+    {
+        // IsDaylightSavingTime expects a DateTime expressed in the target
+        // zone (or Unspecified kind treated as that zone). Convert
+        // DateTime.UtcNow into the target zone and ask there.
+        DateTime nowInZone = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz);
+        return tz.IsDaylightSavingTime(nowInZone)
+            ? tz.DaylightName
+            : tz.StandardName;
     }
 
     /// <summary>
@@ -385,13 +509,13 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
             return true;
         }
 
-        // Elevator trim — announce in degrees with up/down, debounced to 0.1 degree
+        // Elevator trim — announce in degrees with up/down, debounced to 0.01 degree
         if (varName == "MON_ElevatorTrim")
         {
             if (!_trimAnnouncementsEnabled)
                 return true; // Suppress when toggled off
 
-            double rounded = Math.Round(value, 1);
+            double rounded = Math.Round(value, 2);
 
             // First update: store silently, don't announce initial value on app load
             if (double.IsNaN(_lastAnnouncedTrimDeg))
@@ -400,12 +524,12 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
                 return true;
             }
 
-            if (Math.Abs(rounded - _lastAnnouncedTrimDeg) < 0.05)
-                return true; // Debounce — skip if less than 0.1 degree change
+            if (Math.Abs(rounded - _lastAnnouncedTrimDeg) < 0.005)
+                return true; // Debounce — skip if less than 0.01 degree change
 
             _lastAnnouncedTrimDeg = rounded;
             string direction = rounded >= 0 ? "up" : "down";
-            announcer.Announce($"Trim {direction} {Math.Abs(rounded):F1}");
+            announcer.Announce($"Trim {direction} {Math.Abs(rounded):F2}");
             return true;
         }
 

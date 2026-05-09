@@ -31,7 +31,11 @@ public partial class DatabaseBuildProgressForm : Form
         this.simulatorVersion = simulatorVersion;
         this.announcer = announcer;
         this.builder = new NavdataReaderBuilder();
-        this.outputPath = NavdataReaderBuilder.GetDefaultDatabasePath(simulatorVersion);
+        // Always build to the canonical location, even if a legacy DB exists.
+        // GetDefaultDatabasePath() now falls back to the legacy folder when the
+        // canonical file is missing, which is correct for *reads* but wrong for
+        // *writes* — we want every new build to land in MSFSBlindAssist\databases.
+        this.outputPath = DatabasePathResolver.GetCanonicalDatabasePath(simulatorVersion);
         this.cancellationTokenSource = new CancellationTokenSource();
 
         InitializeComponent();

@@ -12,6 +12,16 @@ public class TakeoffAssistManager : IDisposable
     private readonly int headingToneThreshold;
     private readonly bool legacyMode;
     private readonly bool enableCallouts;
+
+    /// <summary>
+    /// When true, the centerline tone hard-pans to ±1 instead of using the
+    /// proportional headingDiff / PAN_FULL_RANGE_DEGREES curve. Speaker
+    /// users get unambiguous "left or right" — no in-between values that
+    /// could be confused with centred. Read on every position update so a
+    /// runtime toggle in Hand Fly Options applies without restarting
+    /// takeoff assist.
+    /// </summary>
+    private bool hardPanTone;
     private bool isActive = false;
 
     // Runway reference data (set by teleport or manual activation)
@@ -177,6 +187,35 @@ public class TakeoffAssistManager : IDisposable
                 string modeInfo = legacyMode ? "legacy mode" : "";
                 announcer.AnnounceImmediate($"Takeoff assist active{(legacyMode ? " legacy mode" : "")}, runway {referenceRunwayID} at {referenceAirportICAO}");
                 System.Diagnostics.Debug.WriteLine($"[TakeoffAssistManager] Activated with runway reference (legacy={legacyMode}): {referenceRunwayID} at {referenceAirportICAO}, HdgMag={referenceRunwayHeadingMagnetic:F1}");
+
+                // EXPLICIT heading sanity check at activation. The centerline tone
+                // pans on heading deviation but uses pan-only (no spoken cue), and
+                // the spoken "center" callout reflects CROSS-TRACK only — so a
+                // pilot who finishes lineup off-heading but on-CL gets "center"
+                // and starts the roll without realizing the nose is pointed
+                // off-runway. FAA AIM and standard pilot training require a
+                // pre-takeoff heading-vs-runway cross-check (sighted pilots do
+                // this visually against the heading indicator). For a blind
+                // pilot this has to be spoken. Threshold ≈ 3° matches the taxi-
+                // lineup tolerance used during alignment, so we only warn when
+                // the misalignment actually exceeds what lineup considered "good".
+                if (referenceRunwayHeadingMagnetic.HasValue)
+                {
+                    double headingDiff = currentHeadingMagnetic - referenceRunwayHeadingMagnetic.Value;
+                    while (headingDiff > 180)  headingDiff -= 360;
+                    while (headingDiff < -180) headingDiff += 360;
+
+                    const double ALIGNED_TOLERANCE_DEG = 3.0;
+                    if (Math.Abs(headingDiff) > ALIGNED_TOLERANCE_DEG)
+                    {
+                        int rwyHdg = (int)Math.Round(referenceRunwayHeadingMagnetic.Value);
+                        int curHdg = (int)Math.Round(currentHeadingMagnetic);
+                        string turn = headingDiff > 0 ? "left" : "right";
+                        announcer.AnnounceImmediate(
+                            $"Warning: heading {curHdg}, runway heading {rwyHdg}. " +
+                            $"Turn {turn} to align before rolling.");
+                    }
+                }
             }
             else
             {
@@ -262,25 +301,38 @@ public class TakeoffAssistManager : IDisposable
             if (!referenceThresholdLat.HasValue || !referenceThresholdLon.HasValue ||
                 !referenceRunwayHeadingTrue.HasValue) return;
 
-            // Calculate perpendicular distance to centerline using TRUE heading (geographic accuracy)
-            double crossTrackNM = NavigationCalculator.CalculateDistanceToLocalizer(
+            // Unified centerline math — see RunwayCenterlineTracker sign convention.
+            // We already have MAGNETIC heading here; pass TRUE via (mag + variation) isn't available so
+            // use the mag heading as an approximation for the heading-error field (we don't use that
+            // field here — pan is computed from the explicit magnetic headingDiff above).
+            var track = RunwayCenterlineTracker.Compute(
                 currentLat, currentLon,
+                currentHeadingMagnetic, // heading error not used by this caller
                 referenceThresholdLat.Value, referenceThresholdLon.Value,
                 referenceRunwayHeadingTrue.Value);
+            double crossTrackFeet = track.CrossTrackFeet; // + = left, - = right
 
-            // Get signed cross-track error to determine direction (left/right) using TRUE heading
-            double signedError = NavigationCalculator.CalculateCrossTrackError(
-                currentLat, currentLon,
-                referenceThresholdLat.Value, referenceThresholdLon.Value,
-                referenceRunwayHeadingTrue.Value);
-
-            // Convert to feet and apply sign
-            double crossTrackFeet = crossTrackNM * NM_TO_FEET;
-            if (signedError > 0) crossTrackFeet = -crossTrackFeet; // Positive signedError = left of centerline
+            // Refresh hard-pan setting each frame so a Hand Fly Options
+            // toggle takes effect immediately without recreating the
+            // manager. Cheap — single setting lookup.
+            hardPanTone = SettingsManager.Current.TakeoffAssistHardPanTone;
 
             // Audio pan based on heading deviation - centered tone = nose pointed down runway
-            // Positive headingDiff = pointed right of runway, pan right (unless inverted)
-            float pan = (float)Math.Clamp(headingDiff / PAN_FULL_RANGE_DEGREES, -1.0, 1.0);
+            // Positive headingDiff = pointed right of runway, pan right (unless inverted).
+            // Hard-pan mode forces ±1 (one speaker only) for users on stereo
+            // speakers; proportional curve otherwise.
+            float pan;
+            if (hardPanTone)
+            {
+                // Sign(0) is 0 — leave pan = 0 so the dead-on-centerline
+                // case still reads as silent / centred via the existing
+                // headingToneThreshold gate below.
+                pan = (float)Math.Sign(headingDiff);
+            }
+            else
+            {
+                pan = (float)Math.Clamp(headingDiff / PAN_FULL_RANGE_DEGREES, -1.0, 1.0);
+            }
             if (invertPanning) pan = -pan;
             centerlineTone?.SetPan(pan);
 
