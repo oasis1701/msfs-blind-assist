@@ -2357,6 +2357,32 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             return true;
         }
 
+        // Master battery switches — toggle via calc code only if target differs from current.
+        // TOGGLE_MASTER_BATTERY takes a 1-based battery index parameter.
+        if (varKey == "HS787_BatSwitch1")
+        {
+            simConnect.ExecuteCalculatorCode($"(A:ELECTRICAL MASTER BATTERY:1,Bool) {(int)value} != if{{ 1 (>K:TOGGLE_MASTER_BATTERY) }}");
+            return true;
+        }
+        if (varKey == "HS787_BatSwitch2")
+        {
+            simConnect.ExecuteCalculatorCode($"(A:ELECTRICAL MASTER BATTERY:2,Bool) {(int)value} != if{{ 2 (>K:TOGGLE_MASTER_BATTERY) }}");
+            return true;
+        }
+
+        // Engine-driven hydraulic pump switches — toggle via calc code only if target differs.
+        // HYDRAULIC_SWITCH_TOGGLE takes a 1-based engine index parameter.
+        if (varKey == "HS787_HydEngL")
+        {
+            simConnect.ExecuteCalculatorCode($"(A:HYDRAULIC SWITCH:1,Bool) {(int)value} != if{{ 1 (>K:HYDRAULIC_SWITCH_TOGGLE) }}");
+            return true;
+        }
+        if (varKey == "HS787_HydEngR")
+        {
+            simConnect.ExecuteCalculatorCode($"(A:HYDRAULIC SWITCH:2,Bool) {(int)value} != if{{ 2 (>K:HYDRAULIC_SWITCH_TOGGLE) }}");
+            return true;
+        }
+
         // Generators — toggle if target differs (TOGGLE_MASTER_ALTERNATOR:N not standard; use calc code)
         if (varKey == "HS787_Gen1")
         {
