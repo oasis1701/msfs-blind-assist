@@ -37,6 +37,8 @@ public class HorizonSim787Definition : BaseAircraftDefinition
     private int  _previousApuKnob     = -1;
     private int  _previousEngState1   = -1;
     private int  _previousEngState2   = -1;
+    // Cached autopilot window — created on first FCUSetAutopilot press, focused on subsequent presses.
+    private Forms.HS787.HS787AutopilotWindow? _autopilotWindow;
     private bool _previousPackL       = false;
     private bool _previousPackR       = false;
     private bool _previousHydDemandL  = false;
@@ -2216,15 +2218,21 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             case HotkeyAction.FCUSetAutopilot:
             {
                 hotkeyManager.ExitInputHotkeyMode();
-                if (simConnect.IsConnected)
-                {
-                    var apWindow = new Forms.HS787.HS787AutopilotWindow(simConnect, announcer);
-                    apWindow.ShowForm();
-                }
-                else
+                if (!simConnect.IsConnected)
                 {
                     announcer.AnnounceImmediate("Not connected to simulator.");
+                    return true;
                 }
+
+                if (_autopilotWindow != null && !_autopilotWindow.IsDisposed)
+                {
+                    _autopilotWindow.ShowForm();
+                    return true;
+                }
+
+                _autopilotWindow = new Forms.HS787.HS787AutopilotWindow(simConnect, announcer);
+                _autopilotWindow.FormClosed += (_, _) => _autopilotWindow = null;
+                _autopilotWindow.ShowForm();
                 return true;
             }
 
