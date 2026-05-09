@@ -333,7 +333,8 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
             {
                 string ianaId = GeoTimeZone.TimeZoneLookup.GetTimeZone(lat.Value, lon.Value).Result;
                 if (!string.IsNullOrEmpty(ianaId)
-                    && TimeZoneConverter.TZConvert.TryGetTimeZoneInfo(ianaId, out TimeZoneInfo tz))
+                    && TimeZoneConverter.TZConvert.TryGetTimeZoneInfo(ianaId, out TimeZoneInfo? tz)
+                    && tz is not null)
                 {
                     return PickDstAwareName(tz);
                 }
