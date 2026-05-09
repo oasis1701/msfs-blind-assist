@@ -107,6 +107,13 @@ public class SimConnectManager
     /// <summary>Returns the most recently received own-aircraft position without making a new request.</summary>
     public AircraftPosition? LastKnownPosition => lastKnownPosition;
 
+    // Latest SIM_ON_GROUND sample as a tri-state (null = never sampled, true =
+    // on the ground, false = airborne). MainForm caches its own copy too for
+    // the Where Am I gate; this lets components that have a SimConnectManager
+    // reference (LandingExitForm, etc.) check air/ground without taking a
+    // separate dependency on MainForm.
+    public bool? LastKnownOnGround { get; internal set; }
+
     // Aircraft identification
     private string currentAircraftAtcId = "";
     private string currentAircraftAirline = "";
@@ -164,6 +171,10 @@ public class SimConnectManager
         REQUEST_OUTSIDE_TEMP = 323,
         // 324-328 used by hardcoded takeoff assist / hand fly requests
         REQUEST_SQUAWK_CODE = 329,
+        // 330-337 used by hardcoded V-speed requests; 340-349 fuel/payload.
+        // Use the gaps at 338 / 339 for time-of-day.
+        REQUEST_LOCAL_TIME = 338,
+        REQUEST_ZULU_TIME = 339,
         REQUEST_ECAM_MESSAGES = 350,
         REQUEST_AI_TRAFFIC = 500,
         // Individual variable requests start from 1000
@@ -337,6 +348,13 @@ public class SimConnectManager
         public double HeadingMagnetic;
         public double IndicatedAirspeedKnots;
         public double MagneticVariation;
+        // Real ground velocity, separate from IAS. Required for the taxi-guidance
+        // GS announcer because at low taxi speeds (under ~30 kt) IAS reads near
+        // zero — pitot pressure differential is below the indicator's working
+        // range — so substituting IAS for GS made the announcer say "0 kt" at
+        // 5 kt actual GS and "10 kt" at 15-20 kt actual. Takeoff-assist still
+        // reads IAS for its V-speed callouts (separate field, intentional).
+        public double GroundVelocityKnots;
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
@@ -616,6 +634,8 @@ public class SimConnectManager
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)4);
         sc.AddToDataDefinition(DATA_DEFINITIONS.TAKEOFF_ASSIST_DATA, "MAGVAR", "degrees",
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)5);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.TAKEOFF_ASSIST_DATA, "GROUND VELOCITY", "knots",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)6);
         sc.RegisterDataDefineStruct<TakeoffAssistData>(DATA_DEFINITIONS.TAKEOFF_ASSIST_DATA);
 
         // Register wind data for wind information
@@ -1422,6 +1442,31 @@ public class SimConnectManager
                 });
                 break;
 
+            case DATA_REQUESTS.REQUEST_LOCAL_TIME:
+                SingleValue localTimeData = (SingleValue)data.dwData[0];
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "LOCAL_TIME_SECONDS",
+                    Value = localTimeData.value,
+                    // FormatTimeOfDay self-suffixes (Z or tz name) and honors
+                    // AnnounceTimeWithSeconds. No "Local time " prefix needed —
+                    // the tz-name suffix already disambiguates from Zulu.
+                    Description =
+                        Aircraft.BaseAircraftDefinition.FormatTimeOfDay(localTimeData.value, isZulu: false)
+                });
+                break;
+
+            case DATA_REQUESTS.REQUEST_ZULU_TIME:
+                SingleValue zuluTimeData = (SingleValue)data.dwData[0];
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "ZULU_TIME_SECONDS",
+                    Value = zuluTimeData.value,
+                    Description =
+                        Aircraft.BaseAircraftDefinition.FormatTimeOfDay(zuluTimeData.value, isZulu: true)
+                });
+                break;
+
             case DATA_REQUESTS.REQUEST_FUEL_QUANTITY: // Fenix: pounds
                 SingleValue fuelData = (SingleValue)data.dwData[0];
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
@@ -1753,6 +1798,12 @@ public class SimConnectManager
                     VerticalSpeedFPM = vgData.VerticalSpeedFPM
                 };
 
+                // Mirror to lastKnownPosition so the LandingExitPlanner has a fresh
+                // position snapshot at touchdown. Visual guidance fires throughout
+                // an ILS approach at SIM_FRAME rate, so this keeps lastKnownPosition
+                // within a frame of truth as the aircraft crosses the threshold.
+                lastKnownPosition = vgPosData;
+
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
                 {
                     VarName = "VISUAL_GUIDANCE_POSITION",
@@ -1776,8 +1827,69 @@ public class SimConnectManager
                 });
                 break;
 
+            case (DATA_REQUESTS)507: // Taxi Guidance - Position Data (reuses TakeoffAssistData struct)
+                TakeoffAssistData taxiData = (TakeoffAssistData)data.dwData[0];
+                AircraftPosition taxiPos = new AircraftPosition
+                {
+                    Latitude = taxiData.Latitude,
+                    Longitude = taxiData.Longitude,
+                    HeadingMagnetic = taxiData.HeadingMagnetic * (180.0 / Math.PI),
+                    MagneticVariation = taxiData.MagneticVariation,
+                    // Use REAL ground velocity here, not IAS. At low taxi speeds
+                    // (< ~30 kt) IAS reads near zero — pitot pressure is below
+                    // the indicator's working range — and substituting IAS for
+                    // GS made the announcer say "0 kt" at 5 kt actual and
+                    // "10 kt" at 15–20 kt actual.
+                    GroundSpeedKnots = taxiData.GroundVelocityKnots,
+                    // TakeoffAssistData has no Altitude / VerticalSpeed fields. Preserve
+                    // whatever the prior position-bearing path (case 4 / 505) put there
+                    // so cross-feature consumers (TCAS uses Altitude for altDiff,
+                    // WeatherRadarForm shows altitude) don't see a hard-zero just
+                    // because the most recent position update was a taxi sample.
+                    Altitude = lastKnownPosition?.Altitude ?? 0,
+                    VerticalSpeedFPM = lastKnownPosition?.VerticalSpeedFPM ?? 0
+                };
+
+                // Mirror to lastKnownPosition so other features (LandingExitPlanner,
+                // Where-Am-I, etc.) read a fresh snapshot regardless of which feature's
+                // continuous monitor is currently active.
+                lastKnownPosition = taxiPos;
+
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "TAXI_GUIDANCE_POSITION",
+                    Value = taxiData.IndicatedAirspeedKnots,
+                    Description = "",
+                    PositionData = taxiPos
+                });
+                break;
+
             case (DATA_REQUESTS)506: // Takeoff Assist - Consolidated Data
                 TakeoffAssistData taData = (TakeoffAssistData)data.dwData[0];
+
+                AircraftPosition taPos = new AircraftPosition
+                {
+                    Latitude = taData.Latitude,
+                    Longitude = taData.Longitude,
+                    HeadingMagnetic = taData.HeadingMagnetic * (180.0 / Math.PI), // Convert radians to degrees
+                    MagneticVariation = taData.MagneticVariation,
+                    // Real ground velocity — IAS is reported separately via TAKEOFF_ASSIST_IAS
+                    // for the V-speed callouts. This mirror is for cross-feature consumers
+                    // (TCAS, WeatherRadarForm, LandingExitPlanner) that want true GS.
+                    GroundSpeedKnots = taData.GroundVelocityKnots,
+                    // TakeoffAssistData has no Altitude / VerticalSpeed fields. Preserve
+                    // whatever the prior position-bearing path (case 4 / 505) put there
+                    // so cross-feature consumers (TCAS uses Altitude for altDiff,
+                    // WeatherRadarForm shows altitude) don't see a hard-zero just
+                    // because the most recent position update was a takeoff-assist sample.
+                    Altitude = lastKnownPosition?.Altitude ?? 0,
+                    VerticalSpeedFPM = lastKnownPosition?.VerticalSpeedFPM ?? 0
+                };
+
+                // Mirror to lastKnownPosition so cross-feature consumers read a fresh
+                // snapshot during the takeoff roll without needing the takeoff-assist
+                // monitor to be specifically active for them.
+                lastKnownPosition = taPos;
 
                 // Send position update for centerline tracking
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
@@ -1785,12 +1897,7 @@ public class SimConnectManager
                     VarName = "TAKEOFF_ASSIST_POSITION",
                     Value = 0,
                     Description = "",
-                    PositionData = new AircraftPosition
-                    {
-                        Latitude = taData.Latitude,
-                        Longitude = taData.Longitude,
-                        HeadingMagnetic = taData.HeadingMagnetic * (180.0 / Math.PI) // Convert radians to degrees
-                    }
+                    PositionData = taPos
                 });
 
                 // Send pitch update (convert radians to degrees, negate for body axis)
@@ -4034,6 +4141,47 @@ public class SimConnectManager
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error stopping takeoff assist monitoring: {ex.Message}");
+        }
+    }
+
+    // Taxi guidance monitoring (reuses TakeoffAssistData struct for lat, lon, heading)
+    public void StartTaxiGuidanceMonitoring()
+    {
+        if (!IsConnected || simConnect == null) return;
+
+        try
+        {
+            simConnect.RequestDataOnSimObject((DATA_REQUESTS)507,
+                DATA_DEFINITIONS.TAKEOFF_ASSIST_DATA,
+                SIMCONNECT_OBJECT_ID_USER,
+                SIMCONNECT_PERIOD.SIM_FRAME,
+                SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+
+            System.Diagnostics.Debug.WriteLine("[SimConnectManager] Taxi guidance monitoring started");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error starting taxi guidance monitoring: {ex.Message}");
+        }
+    }
+
+    public void StopTaxiGuidanceMonitoring()
+    {
+        if (!IsConnected || simConnect == null) return;
+
+        try
+        {
+            simConnect.RequestDataOnSimObject((DATA_REQUESTS)507,
+                DATA_DEFINITIONS.TAKEOFF_ASSIST_DATA,
+                SIMCONNECT_OBJECT_ID_USER,
+                SIMCONNECT_PERIOD.NEVER,
+                SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+
+            System.Diagnostics.Debug.WriteLine("[SimConnectManager] Taxi guidance monitoring stopped");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Error stopping taxi guidance monitoring: {ex.Message}");
         }
     }
 

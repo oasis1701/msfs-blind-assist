@@ -19,6 +19,16 @@ public class Runway
         public double ILSHeading { get; set; }
         public double ThresholdOffset { get; set; }
 
+        // Operational status flags read from runway_end. Defaults are PERMISSIVE
+        // (closed=false, can-land=true, can-takeoff=true) because most user DBs
+        // — including the test build this app was developed against — populate
+        // every row with the permissive value. Third-party scenery and some
+        // Navigraph merges DO set these, so reading + filtering on them gives
+        // broader compatibility without breaking the common case.
+        public bool IsClosed { get; set; } = false;
+        public bool IsLanding { get; set; } = true;
+        public bool IsTakeoff { get; set; } = true;
+
         public Runway()
         {
             AirportICAO = string.Empty;

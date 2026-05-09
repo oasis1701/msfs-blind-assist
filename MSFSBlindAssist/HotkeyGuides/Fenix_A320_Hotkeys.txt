@@ -63,6 +63,16 @@ Weather:
   I          Wind Info
   O          Read Outside Temperature (Celsius)
 
+Time:
+  Z          Read Local Time at aircraft position. Spoken as
+             "HH:MM <time-zone name>" (e.g. "03:30 Pacific Standard Time"),
+             or "HH:MM:SS <time-zone name>" (e.g. "20:30:45 British
+             Summer Time") if "Include seconds in time announcements"
+             is ticked in Announcement Settings. The time-zone name
+             follows your system's local zone and is DST-aware.
+  Shift+Z    Read Zulu / UTC Time. Spoken as "HH:MMZ" (e.g. "03:30Z"),
+             or "HH:MM:SSZ" (e.g. "00:15:30Z") when seconds are on.
+
 Transponder:
   X          Read Squawk Code
 
@@ -76,6 +86,12 @@ CTRL+T, activate/deactivate Takeoff Assistance
 CTRL+D, read Distance to Selected Runway
 CTRL+I, read ILS guidance system report
 
+Taxi Guidance (turn-by-turn taxi assistance with audio steering tone):
+  Y          Taxi Status (current taxiway, next turn, distance to destination)
+  Ctrl+Y     Repeat Current Taxi Instruction
+  Alt+Y      Where Am I (announces current taxiway, gate, or runway at nearest airport)
+  (Open the form with Input mode > Shift+Y)
+
 Waypoint tracking, use Fix track window or Electronic flight bag route viewer window to add:
 1. track slot 1
 2. track slot 2
@@ -86,13 +102,17 @@ Waypoint tracking, use Fix track window or Electronic flight bag route viewer wi
 Traffic and Weather:
   R          Announce Tracked TCAS Traffic
   Ctrl+R     Open TCAS Traffic Window
-  Shift+R    Open Weather Radar Window
+  Shift+R    Open Weather Radar Window (auto-detects ActiveSky and silently
+             uses richer data — surface wind+gust, ceiling, QNH, turbulence,
+             METAR-decoded precipitation — when running. Falls back to MSFS
+             SimVars when AS isn't running. Visibility shown in both km and
+             statute miles either way.)
 
 Displays and windows:
 control+m, Fenix Monitor Manager
   Shift+E, Route viewer, procedure planner and airport lookup
   Shift+L,    Location Info
-  Shift+M,    Show VATSIM METAR Report
+  Shift+M,    Show METAR Report (VATSIM, plus ActiveSky METAR if AS detected)
   Shift+T,    Toggle Trim Announcements
   Shift+B,    SimBrief Briefing
   Shift+C,    Show Checklist
@@ -137,6 +157,15 @@ FCU Set Values:
   Ctrl+A     Set Altitude Value
   Ctrl+V     Set VS Value
   Ctrl+B     Set Altimeter Value
+
+Taxi Guidance:
+  Shift+Y    Open Taxi Assist Form (enter ATC taxi clearance, start guidance)
+  Y          Continue past current hold-short point
+  Ctrl+Y     Stop Taxi Guidance
+  Shift+X    Open Landing Exit Planner (pick a runway exit taxiway before
+             touchdown; guidance auto-starts when you land — reuses the ILS
+             destination runway if one is set; announces headwind/tailwind on
+             runway selection so you can pick an exit that matches the rollout)
 
 
 General:
