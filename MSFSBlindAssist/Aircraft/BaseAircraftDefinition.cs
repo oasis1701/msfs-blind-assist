@@ -248,8 +248,71 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
             return true;
         }
 
+        // Time-of-day readouts. Universal across all aircraft — the SimVars
+        // are world-clock fields, not aircraft-specific. Local time is the
+        // aircraft's geographic-position local time (the sim handles the
+        // tz mapping); Zulu is UTC.
+        if (action == HotkeyAction.ReadLocalTime)
+        {
+            simConnect.RequestSingleValue(
+                (int)SimConnect.SimConnectManager.DATA_REQUESTS.REQUEST_LOCAL_TIME,
+                "LOCAL TIME", "seconds", "LOCAL_TIME_SECONDS");
+            return true;
+        }
+        if (action == HotkeyAction.ReadZuluTime)
+        {
+            simConnect.RequestSingleValue(
+                (int)SimConnect.SimConnectManager.DATA_REQUESTS.REQUEST_ZULU_TIME,
+                "ZULU TIME", "seconds", "ZULU_TIME_SECONDS");
+            return true;
+        }
+
         // Not handled by simple mapping - aircraft can override to handle complex actions
         return false;
+    }
+
+    /// <summary>
+    /// Formats a "seconds since midnight" SimVar value as a spoken time.
+    /// Zulu output is suffixed with "Z" (e.g. "03:30Z" / "00:15:30Z");
+    /// local output is suffixed with the system's current time-zone name
+    /// (e.g. "03:30 Pacific Standard Time" / "20:30:45 British Summer
+    /// Time"), DST-aware. Seconds are included when
+    /// <see cref="UserSettings.AnnounceTimeWithSeconds"/> is on. Negative
+    /// or out-of-range inputs round to 00:00:00. Called from
+    /// <see cref="SimConnectManager"/> when the LOCAL_TIME_SECONDS /
+    /// ZULU_TIME_SECONDS responses come back.
+    /// </summary>
+    public static string FormatTimeOfDay(double secondsSinceMidnight, bool isZulu = false)
+    {
+        if (double.IsNaN(secondsSinceMidnight) || secondsSinceMidnight < 0) secondsSinceMidnight = 0;
+        // World-clock SimVars roll past midnight if the sim runs continuously;
+        // wrap into [0, 86400) for safety.
+        int total = (int)Math.Round(secondsSinceMidnight) % 86400;
+        if (total < 0) total += 86400;
+        int hh = total / 3600;
+        int mm = (total / 60) % 60;
+        int ss = total % 60;
+
+        string time = Settings.SettingsManager.Current.AnnounceTimeWithSeconds
+            ? $"{hh:D2}:{mm:D2}:{ss:D2}"
+            : $"{hh:D2}:{mm:D2}";
+
+        if (isZulu) return time + "Z";
+
+        // Local: append the system time-zone's spoken name. DST-aware via
+        // IsDaylightSavingTime, which picks the colloquial daylight name
+        // (e.g. "British Summer Time", "Pacific Daylight Time") when the
+        // current local time is in DST. Note: the SimVar is the aircraft's
+        // geographic local time, not the user's wall clock — but MSFS
+        // doesn't expose a tz id, so we use the system tz as the spoken
+        // label. Pilots flying in their own time zone see the right name;
+        // long-haul flights crossing zones see the system name attached
+        // to the simulated wall-clock value.
+        var tz = TimeZoneInfo.Local;
+        string tzName = tz.IsDaylightSavingTime(DateTime.Now)
+            ? tz.DaylightName
+            : tz.StandardName;
+        return $"{time} {tzName}";
     }
 
     /// <summary>
@@ -385,13 +448,13 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
             return true;
         }
 
-        // Elevator trim — announce in degrees with up/down, debounced to 0.1 degree
+        // Elevator trim — announce in degrees with up/down, debounced to 0.01 degree
         if (varName == "MON_ElevatorTrim")
         {
             if (!_trimAnnouncementsEnabled)
                 return true; // Suppress when toggled off
 
-            double rounded = Math.Round(value, 1);
+            double rounded = Math.Round(value, 2);
 
             // First update: store silently, don't announce initial value on app load
             if (double.IsNaN(_lastAnnouncedTrimDeg))
@@ -400,12 +463,12 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
                 return true;
             }
 
-            if (Math.Abs(rounded - _lastAnnouncedTrimDeg) < 0.05)
-                return true; // Debounce — skip if less than 0.1 degree change
+            if (Math.Abs(rounded - _lastAnnouncedTrimDeg) < 0.005)
+                return true; // Debounce — skip if less than 0.01 degree change
 
             _lastAnnouncedTrimDeg = rounded;
             string direction = rounded >= 0 ? "up" : "down";
-            announcer.Announce($"Trim {direction} {Math.Abs(rounded):F1}");
+            announcer.Announce($"Trim {direction} {Math.Abs(rounded):F2}");
             return true;
         }
 
