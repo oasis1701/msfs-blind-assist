@@ -118,7 +118,10 @@ namespace MSFSBlindAssist.Patching
                 foreach (var (fileName, originalHtml) in mfdHtmls)
                 {
                     string htmlPath = Path.Combine(mfdDir, fileName);
-                    File.WriteAllText(htmlPath, originalHtml.TrimEnd() + MfdBridgeScriptTag);
+                    string modifiedHtml = originalHtml.Contains(MfdBridgeJsFileName)
+                        ? originalHtml  // Already patched — don't double-patch
+                        : originalHtml.TrimEnd() + MfdBridgeScriptTag;
+                    File.WriteAllText(htmlPath, modifiedHtml);
                     layoutEntries.Add(($"{MfdBasePath}/{fileName}", new FileInfo(htmlPath).Length));
                 }
 
@@ -135,7 +138,10 @@ namespace MSFSBlindAssist.Patching
                     foreach (var (fileName, originalHtml) in efbHtmls)
                     {
                         string htmlPath = Path.Combine(efbDir, fileName);
-                        File.WriteAllText(htmlPath, originalHtml.TrimEnd() + EfbBridgeScriptTag);
+                        string modifiedHtml = originalHtml.Contains(EfbBridgeJsFileName)
+                            ? originalHtml  // Already patched — don't double-patch
+                            : originalHtml.TrimEnd() + EfbBridgeScriptTag;
+                        File.WriteAllText(htmlPath, modifiedHtml);
                         layoutEntries.Add(($"{EfbBasePath}/{fileName}", new FileInfo(htmlPath).Length));
                     }
 
@@ -189,7 +195,10 @@ namespace MSFSBlindAssist.Patching
                 foreach (var (fileName, originalHtml) in mfdHtmls)
                 {
                     string htmlPath = Path.Combine(mfdDir, fileName);
-                    File.WriteAllText(htmlPath, originalHtml.TrimEnd() + MfdBridgeScriptTag);
+                    string modifiedHtml = originalHtml.Contains(MfdBridgeJsFileName)
+                        ? originalHtml  // Already patched — don't double-patch
+                        : originalHtml.TrimEnd() + MfdBridgeScriptTag;
+                    File.WriteAllText(htmlPath, modifiedHtml);
                     layoutEntries.Add(($"{MfdBasePath}/{fileName}", new FileInfo(htmlPath).Length));
                 }
 
@@ -206,7 +215,10 @@ namespace MSFSBlindAssist.Patching
                     foreach (var (fileName, originalHtml) in efbHtmls)
                     {
                         string htmlPath = Path.Combine(efbDir, fileName);
-                        File.WriteAllText(htmlPath, originalHtml.TrimEnd() + EfbBridgeScriptTag);
+                        string modifiedHtml = originalHtml.Contains(EfbBridgeJsFileName)
+                            ? originalHtml  // Already patched — don't double-patch
+                            : originalHtml.TrimEnd() + EfbBridgeScriptTag;
+                        File.WriteAllText(htmlPath, modifiedHtml);
                         layoutEntries.Add(($"{EfbBasePath}/{fileName}", new FileInfo(htmlPath).Length));
                     }
 
