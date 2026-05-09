@@ -44,6 +44,25 @@ public class HorizonSim787Definition : BaseAircraftDefinition
     private int  _previousEmerLights  = -1;
     private int  _previousSeatbelts   = -1;
 
+    // IRS
+    private int  _previousIrsKnob1    = -1;
+    private int  _previousIrsKnob2    = -1;
+    private int  _previousIrsAligned1 = -1;
+    private int  _previousIrsAligned2 = -1;
+
+    // Anti-ice, signs, lights, landing — -1 suppresses first-poll announcement
+    private int  _previousAntiIceEng1  = -1;
+    private int  _previousAntiIceEng2  = -1;
+    private int  _previousAntiIceWing  = -1;
+    private int  _previousNoSmoking    = -1;
+    private int  _previousParkBrake    = -1;
+    private int  _previousFlapsHandle  = -1;
+    private int  _previousGearHandleI  = -1;
+    private int  _previousLightBeacon  = -1;
+    private int  _previousLightStrobe  = -1;
+    private int  _previousLightNav     = -1;
+    private int  _previousLightLanding = -1;
+
     // Altimeter change tracking — NaN suppresses the first-poll announcement
     private double _lastAnnouncedAltimeter = double.NaN;
 
@@ -75,6 +94,7 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             ["Overhead"] = new List<string>
             {
                 "Electrical",
+                "IRS",
                 "Hydraulics",
                 "Fuel",
                 "Air Conditioning",
@@ -93,6 +113,7 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             {
                 "Transponder",
                 "Landing",
+                "Lighting",
                 "Options"
             },
             ["Ground Services"] = new List<string>
@@ -253,6 +274,123 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 }
             },
 
+            ["HS787_BatSwitch1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ELECTRICAL MASTER BATTERY:1",
+                DisplayName = "Battery 1",
+                Type = SimConnect.SimVarType.SimVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "Off",
+                    [1] = "On"
+                }
+            },
+
+            ["HS787_BatSwitch2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "ELECTRICAL MASTER BATTERY:2",
+                DisplayName = "Battery 2",
+                Type = SimConnect.SimVarType.SimVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "Off",
+                    [1] = "On"
+                }
+            },
+
+            ["HS787_Gen1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "GENERAL ENG GENERATOR SWITCH:1",
+                DisplayName = "Generator 1",
+                Type = SimConnect.SimVarType.SimVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "Off",
+                    [1] = "On"
+                }
+            },
+
+            ["HS787_Gen2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "GENERAL ENG GENERATOR SWITCH:2",
+                DisplayName = "Generator 2",
+                Type = SimConnect.SimVarType.SimVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "Off",
+                    [1] = "On"
+                }
+            },
+
+            // -----------------------------------------------------------------
+            // OVERHEAD — IRS
+            // B787_IRS_Knob_State:N: 0=Off, 1=On(NAV) — confirmed from MFD789.GE.js IrsKnobState enum.
+            // WT_IRS_POS_SET_N: written true when alignment completes and GPS position is accepted.
+            // Both are Continuous+Announced so knob changes and alignment are called out.
+            // -----------------------------------------------------------------
+
+            ["HS787_IRS_Knob1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "B787_IRS_Knob_State:1",
+                DisplayName = "IRS Left",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "Off",
+                    [1] = "On"
+                }
+            },
+
+            ["HS787_IRS_Knob2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "B787_IRS_Knob_State:2",
+                DisplayName = "IRS Right",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "Off",
+                    [1] = "On"
+                }
+            },
+
+            // WT_IRS_POS_SET_N becomes true when WT Boeing IRS alignment completes and
+            // GPS position has been accepted. False during alignment, true when nav-ready.
+            ["HS787_IRS_Aligned1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_IRS_POS_SET_1",
+                DisplayName = "IRS Left Aligned",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "Aligning",
+                    [1] = "Aligned"
+                }
+            },
+
+            ["HS787_IRS_Aligned2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_IRS_POS_SET_2",
+                DisplayName = "IRS Right Aligned",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "Aligning",
+                    [1] = "Aligned"
+                }
+            },
+
             // -----------------------------------------------------------------
             // OVERHEAD — Hydraulics
             // -----------------------------------------------------------------
@@ -303,6 +441,33 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 Name = "XMLVAR_HYDRAULICS_C2",
                 DisplayName = "Hydraulic Center 2",
                 Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "Off",
+                    [1] = "On"
+                }
+            },
+
+            // Engine-driven hydraulic pumps (HYDRAULIC SWITCH:N returns On when engine pump is selected)
+            ["HS787_HydEngL"] = new SimConnect.SimVarDefinition
+            {
+                Name = "HYDRAULIC SWITCH:1",
+                DisplayName = "Hydraulic Engine L",
+                Type = SimConnect.SimVarType.SimVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "Off",
+                    [1] = "On"
+                }
+            },
+
+            ["HS787_HydEngR"] = new SimConnect.SimVarDefinition
+            {
+                Name = "HYDRAULIC SWITCH:2",
+                DisplayName = "Hydraulic Engine R",
+                Type = SimConnect.SimVarType.SimVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 ValueDescriptions = new Dictionary<double, string>
                 {
@@ -522,6 +687,53 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 }
             },
 
+            // WT Boeing 787 uses dedicated LVars for anti-ice knob position.
+            // AntiIceKnobState: 0=Off, 1=Auto, 2=On (confirmed from MFD789.GE.js source).
+            ["HS787_AntiIceEng1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "B787_Engine_AntiIce_Knob_State:1",
+                DisplayName = "Engine 1 Anti-Ice",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "Off",
+                    [1] = "Auto",
+                    [2] = "On"
+                }
+            },
+
+            ["HS787_AntiIceEng2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "B787_Engine_AntiIce_Knob_State:2",
+                DisplayName = "Engine 2 Anti-Ice",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "Off",
+                    [1] = "Auto",
+                    [2] = "On"
+                }
+            },
+
+            ["HS787_AntiIceWing"] = new SimConnect.SimVarDefinition
+            {
+                Name = "B787_Wing_AntiIce_Knob_State",
+                DisplayName = "Wing Anti-Ice",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "Off",
+                    [1] = "Auto",
+                    [2] = "On"
+                }
+            },
+
             // -----------------------------------------------------------------
             // OVERHEAD — Signs
             // -----------------------------------------------------------------
@@ -530,6 +742,21 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             {
                 Name = "WT_SEAT_BELTS_MODE",
                 DisplayName = "Seat Belts Sign",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "Off",
+                    [1] = "Auto",
+                    [2] = "On"
+                }
+            },
+
+            ["HS787_NoSmoking"] = new SimConnect.SimVarDefinition
+            {
+                Name = "XMLVAR_NO_SMOKING_MODE",
+                DisplayName = "No Smoking Sign",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -1053,6 +1280,20 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 }
             },
 
+            ["HS787_ParkBrake"] = new SimConnect.SimVarDefinition
+            {
+                Name = "BRAKE PARKING INDICATOR",
+                DisplayName = "Parking Brake",
+                Type = SimConnect.SimVarType.SimVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "Released",
+                    [1] = "Set"
+                }
+            },
+
             // -----------------------------------------------------------------
             // MCP — Alt INTV: no state LVar exists (unlike speed, the WT Boeing altitude
             // intervention system delegates entirely to VNavManager with no LVar write).
@@ -1081,7 +1322,20 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 DisplayName = "Flaps Handle",
                 Type = SimConnect.SimVarType.SimVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "Up",
+                    [1] = "1",
+                    [2] = "5",
+                    [3] = "10",
+                    [4] = "15",
+                    [5] = "17",
+                    [6] = "18",
+                    [7] = "20",
+                    [8] = "25",
+                    [9] = "30"
+                }
             },
 
             ["HS787_GearHandle"] = new SimConnect.SimVarDefinition
@@ -1091,7 +1345,12 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.SimVar,
                 Units = "bool",
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "Up",
+                    [1] = "Down"
+                }
             },
 
             ["HS787_Altimeter"] = new SimConnect.SimVarDefinition
@@ -1184,6 +1443,109 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 Units = "meters",
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true
+            },
+
+            // -----------------------------------------------------------------
+            // PEDESTAL — Lighting
+            // Standard MSFS SimVars. Primary lights (beacon/strobe/nav/landing) are
+            // Continuous+Announced so changes are called out during flight.
+            // Secondary lights (taxi/logo/wing) are OnRequest for panel display only.
+            // -----------------------------------------------------------------
+
+            ["HS787_LightBeacon"] = new SimConnect.SimVarDefinition
+            {
+                Name = "LIGHT BEACON",
+                DisplayName = "Beacon",
+                Type = SimConnect.SimVarType.SimVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "Off",
+                    [1] = "On"
+                }
+            },
+
+            ["HS787_LightStrobe"] = new SimConnect.SimVarDefinition
+            {
+                Name = "LIGHT STROBE",
+                DisplayName = "Strobe",
+                Type = SimConnect.SimVarType.SimVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "Off",
+                    [1] = "On"
+                }
+            },
+
+            ["HS787_LightNav"] = new SimConnect.SimVarDefinition
+            {
+                Name = "LIGHT NAV",
+                DisplayName = "Nav Lights",
+                Type = SimConnect.SimVarType.SimVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "Off",
+                    [1] = "On"
+                }
+            },
+
+            ["HS787_LightLanding"] = new SimConnect.SimVarDefinition
+            {
+                Name = "LIGHT LANDING",
+                DisplayName = "Landing Lights",
+                Type = SimConnect.SimVarType.SimVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "Off",
+                    [1] = "On"
+                }
+            },
+
+            ["HS787_LightTaxi"] = new SimConnect.SimVarDefinition
+            {
+                Name = "LIGHT TAXI",
+                DisplayName = "Taxi Light",
+                Type = SimConnect.SimVarType.SimVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "Off",
+                    [1] = "On"
+                }
+            },
+
+            ["HS787_LightLogo"] = new SimConnect.SimVarDefinition
+            {
+                Name = "LIGHT LOGO",
+                DisplayName = "Logo Light",
+                Type = SimConnect.SimVarType.SimVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "Off",
+                    [1] = "On"
+                }
+            },
+
+            // LIGHT WING = runway turnoff lights on the 787
+            ["HS787_LightWing"] = new SimConnect.SimVarDefinition
+            {
+                Name = "LIGHT WING",
+                DisplayName = "Runway Turnoff",
+                Type = SimConnect.SimVarType.SimVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "Off",
+                    [1] = "On"
+                }
             },
 
             // -----------------------------------------------------------------
@@ -1376,17 +1738,30 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             // --- Overhead ---
             ["Electrical"] = new List<string>
             {
+                "HS787_BatSwitch1",
+                "HS787_BatSwitch2",
                 "HS787_ExtPwr1",
                 "HS787_ExtPwr2",
                 "HS787_APU_Knob",
                 "HS787_ApuGen1",
                 "HS787_ApuGen2",
+                "HS787_Gen1",
+                "HS787_Gen2",
                 "HS787_EmerLights",
                 "HS787_UtilityCabin",
                 "HS787_UtilityIfe"
             },
+            ["IRS"] = new List<string>
+            {
+                "HS787_IRS_Knob1",
+                "HS787_IRS_Knob2",
+                "HS787_IRS_Aligned1",
+                "HS787_IRS_Aligned2"
+            },
             ["Hydraulics"] = new List<string>
             {
+                "HS787_HydEngL",
+                "HS787_HydEngR",
                 "HS787_HydDemandLeft",
                 "HS787_HydDemandRight",
                 "HS787_HydC1",
@@ -1409,6 +1784,9 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             },
             ["Anti-Ice"] = new List<string>
             {
+                "HS787_AntiIceEng1",
+                "HS787_AntiIceEng2",
+                "HS787_AntiIceWing",
                 "HS787_WshldDeice1",
                 "HS787_WshldDeice2",
                 "HS787_WshldDeice3",
@@ -1416,7 +1794,8 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             },
             ["Signs"] = new List<string>
             {
-                "HS787_Seatbelts"
+                "HS787_Seatbelts",
+                "HS787_NoSmoking"
             },
             ["Flight Controls"] = new List<string>
             {
@@ -1458,7 +1837,20 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             },
             ["Landing"] = new List<string>
             {
-                "HS787_Autobrake"
+                "HS787_ParkBrake",
+                "HS787_Autobrake",
+                "HS787_FlapsHandle",
+                "HS787_GearHandle"
+            },
+            ["Lighting"] = new List<string>
+            {
+                "HS787_LightBeacon",
+                "HS787_LightStrobe",
+                "HS787_LightNav",
+                "HS787_LightLanding",
+                "HS787_LightTaxi",
+                "HS787_LightLogo",
+                "HS787_LightWing"
             },
             ["Options"] = new List<string>
             {
@@ -1898,6 +2290,114 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             return true;
         }
 
+        // IRS knob — LVar: 0=Off, 1=On. Aligned LVars are read-only (written by WT Boeing IRS system).
+        if (varKey == "HS787_IRS_Knob1")
+        {
+            simConnect.SetLVar("B787_IRS_Knob_State:1", value);
+            return true;
+        }
+        if (varKey == "HS787_IRS_Knob2")
+        {
+            simConnect.SetLVar("B787_IRS_Knob_State:2", value);
+            return true;
+        }
+
+        // Anti-ice — WT Boeing LVars, 3-state: 0=Off, 1=Auto, 2=On
+        if (varKey == "HS787_AntiIceEng1")
+        {
+            simConnect.SetLVar("B787_Engine_AntiIce_Knob_State:1", value);
+            return true;
+        }
+        if (varKey == "HS787_AntiIceEng2")
+        {
+            simConnect.SetLVar("B787_Engine_AntiIce_Knob_State:2", value);
+            return true;
+        }
+        if (varKey == "HS787_AntiIceWing")
+        {
+            simConnect.SetLVar("B787_Wing_AntiIce_Knob_State", value);
+            return true;
+        }
+
+        // No smoking sign — direct LVar set
+        if (varKey == "HS787_NoSmoking")
+        {
+            simConnect.SetLVar("XMLVAR_NO_SMOKING_MODE", value);
+            return true;
+        }
+
+        // Parking brake — toggle if target differs from current state
+        if (varKey == "HS787_ParkBrake")
+        {
+            double? current = simConnect.GetCachedVariableValue("HS787_ParkBrake");
+            if (current == null || (int)current.Value != (int)value)
+                simConnect.SendEvent("PARKING_BRAKES");
+            return true;
+        }
+
+        // Flaps — FLAPS_SET takes index 0-9
+        if (varKey == "HS787_FlapsHandle")
+        {
+            simConnect.SendEvent("FLAPS_SET", (uint)(int)value);
+            return true;
+        }
+
+        // Gear — GEAR_SET: 0=up, 1=down
+        if (varKey == "HS787_GearHandle")
+        {
+            simConnect.SendEvent("GEAR_SET", (uint)(int)value);
+            return true;
+        }
+
+        // Generators — toggle if target differs (TOGGLE_MASTER_ALTERNATOR:N not standard; use calc code)
+        if (varKey == "HS787_Gen1")
+        {
+            simConnect.ExecuteCalculatorCode($"(A:GENERAL ENG GENERATOR SWITCH:1,Bool) {(int)value} != if{{ (>K:TOGGLE_MASTER_ALTERNATOR) }}");
+            return true;
+        }
+        if (varKey == "HS787_Gen2")
+        {
+            simConnect.ExecuteCalculatorCode($"(A:GENERAL ENG GENERATOR SWITCH:2,Bool) {(int)value} != if{{ (>K:TOGGLE_MASTER_ALTERNATOR2) }}");
+            return true;
+        }
+
+        // Lights — use SET events for beacon/strobe/nav/landing/taxi; toggle approach for logo/wing
+        if (varKey == "HS787_LightBeacon")
+        {
+            simConnect.SendEvent("BEACON_LIGHTS_SET", (uint)(int)value);
+            return true;
+        }
+        if (varKey == "HS787_LightStrobe")
+        {
+            simConnect.SendEvent("STROBE_LIGHTS_SET", (uint)(int)value);
+            return true;
+        }
+        if (varKey == "HS787_LightNav")
+        {
+            simConnect.SendEvent("NAV_LIGHTS_SET", (uint)(int)value);
+            return true;
+        }
+        if (varKey == "HS787_LightLanding")
+        {
+            simConnect.SendEvent("LANDING_LIGHTS_SET", (uint)(int)value);
+            return true;
+        }
+        if (varKey == "HS787_LightTaxi")
+        {
+            simConnect.SendEvent("TAXI_LIGHTS_SET", (uint)(int)value);
+            return true;
+        }
+        if (varKey == "HS787_LightLogo")
+        {
+            simConnect.ExecuteCalculatorCode($"(A:LIGHT LOGO,Bool) {(int)value} != if{{ (>K:TOGGLE_LOGO_LIGHTS) }}");
+            return true;
+        }
+        if (varKey == "HS787_LightWing")
+        {
+            simConnect.ExecuteCalculatorCode($"(A:LIGHT WING,Bool) {(int)value} != if{{ (>K:TOGGLE_WING_LIGHTS) }}");
+            return true;
+        }
+
         // Doors — toggled via K:TOGGLE_AIRCRAFT_EXIT with 1-based index (matches INTERACTIVE POINT OPEN:N).
         // The current state is checked so we only fire the toggle when a change is needed.
         // Passenger: 1=1L, 2=1R, 3=2L, 4=2R, 5=3L, 6=3R, 7=4L, 8=4R  Cargo: 9=Fwd, 10=Aft
@@ -2206,6 +2706,162 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             return true;
         }
 
+        // IRS knobs — announce On/Off transitions, suppress first poll
+        if (variableKey == "HS787_IRS_Knob1")
+        {
+            int now = (int)value;
+            if (_previousIrsKnob1 >= 0 && now != _previousIrsKnob1)
+                announcer.Announce(now == 1 ? "IRS Left On" : "IRS Left Off");
+            _previousIrsKnob1 = now;
+            return true;
+        }
+        if (variableKey == "HS787_IRS_Knob2")
+        {
+            int now = (int)value;
+            if (_previousIrsKnob2 >= 0 && now != _previousIrsKnob2)
+                announcer.Announce(now == 1 ? "IRS Right On" : "IRS Right Off");
+            _previousIrsKnob2 = now;
+            return true;
+        }
+
+        // IRS aligned — announce when alignment completes or is lost, suppress first poll
+        if (variableKey == "HS787_IRS_Aligned1")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousIrsAligned1 >= 0 && now != _previousIrsAligned1)
+                announcer.Announce(now == 1 ? "IRS Left Aligned" : "IRS Left Alignment Lost");
+            _previousIrsAligned1 = now;
+            return true;
+        }
+        if (variableKey == "HS787_IRS_Aligned2")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousIrsAligned2 >= 0 && now != _previousIrsAligned2)
+                announcer.Announce(now == 1 ? "IRS Right Aligned" : "IRS Right Alignment Lost");
+            _previousIrsAligned2 = now;
+            return true;
+        }
+
+        // Anti-ice — 3-state (Off/Auto/On), suppress first poll
+        if (variableKey == "HS787_AntiIceEng1")
+        {
+            int now = (int)value;
+            if (_previousAntiIceEng1 >= 0 && now != _previousAntiIceEng1)
+            {
+                string msg = now switch { 1 => "Engine 1 Anti-Ice Auto", 2 => "Engine 1 Anti-Ice On", _ => "Engine 1 Anti-Ice Off" };
+                announcer.Announce(msg);
+            }
+            _previousAntiIceEng1 = now;
+            return true;
+        }
+        if (variableKey == "HS787_AntiIceEng2")
+        {
+            int now = (int)value;
+            if (_previousAntiIceEng2 >= 0 && now != _previousAntiIceEng2)
+            {
+                string msg = now switch { 1 => "Engine 2 Anti-Ice Auto", 2 => "Engine 2 Anti-Ice On", _ => "Engine 2 Anti-Ice Off" };
+                announcer.Announce(msg);
+            }
+            _previousAntiIceEng2 = now;
+            return true;
+        }
+        if (variableKey == "HS787_AntiIceWing")
+        {
+            int now = (int)value;
+            if (_previousAntiIceWing >= 0 && now != _previousAntiIceWing)
+            {
+                string msg = now switch { 1 => "Wing Anti-Ice Auto", 2 => "Wing Anti-Ice On", _ => "Wing Anti-Ice Off" };
+                announcer.Announce(msg);
+            }
+            _previousAntiIceWing = now;
+            return true;
+        }
+
+        // No smoking sign
+        if (variableKey == "HS787_NoSmoking")
+        {
+            int now = (int)value;
+            if (_previousNoSmoking >= 0 && now != _previousNoSmoking)
+            {
+                string msg = now switch { 1 => "No Smoking Auto", 2 => "No Smoking On", _ => "No Smoking Off" };
+                announcer.Announce(msg);
+            }
+            _previousNoSmoking = now;
+            return true;
+        }
+
+        // Parking brake
+        if (variableKey == "HS787_ParkBrake")
+        {
+            int now = (int)value;
+            if (_previousParkBrake >= 0 && now != _previousParkBrake)
+                announcer.Announce(now == 1 ? "Parking Brake Set" : "Parking Brake Released");
+            _previousParkBrake = now;
+            return true;
+        }
+
+        // Flaps — announce position on lever movement, suppress first poll
+        if (variableKey == "HS787_FlapsHandle")
+        {
+            int now = (int)value;
+            if (_previousFlapsHandle >= 0 && now != _previousFlapsHandle)
+            {
+                string pos = now switch
+                {
+                    0 => "Up", 1 => "1", 2 => "5", 3 => "10",
+                    4 => "15", 5 => "17", 6 => "18", 7 => "20",
+                    8 => "25", 9 => "30", _ => now.ToString()
+                };
+                announcer.Announce($"Flaps {pos}");
+            }
+            _previousFlapsHandle = now;
+            return true;
+        }
+
+        // Gear handle — announce Up/Down transitions, suppress first poll
+        if (variableKey == "HS787_GearHandle")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousGearHandleI >= 0 && now != _previousGearHandleI)
+                announcer.Announce(now == 1 ? "Gear Down" : "Gear Up");
+            _previousGearHandleI = now;
+            return true;
+        }
+
+        // Exterior lights — announce primary lights on change, suppress first poll
+        if (variableKey == "HS787_LightBeacon")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousLightBeacon >= 0 && now != _previousLightBeacon)
+                announcer.Announce(now == 1 ? "Beacon On" : "Beacon Off");
+            _previousLightBeacon = now;
+            return true;
+        }
+        if (variableKey == "HS787_LightStrobe")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousLightStrobe >= 0 && now != _previousLightStrobe)
+                announcer.Announce(now == 1 ? "Strobe On" : "Strobe Off");
+            _previousLightStrobe = now;
+            return true;
+        }
+        if (variableKey == "HS787_LightNav")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousLightNav >= 0 && now != _previousLightNav)
+                announcer.Announce(now == 1 ? "Nav Lights On" : "Nav Lights Off");
+            _previousLightNav = now;
+            return true;
+        }
+        if (variableKey == "HS787_LightLanding")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousLightLanding >= 0 && now != _previousLightLanding)
+                announcer.Announce(now == 1 ? "Landing Lights On" : "Landing Lights Off");
+            _previousLightLanding = now;
+            return true;
+        }
+
         // Altimeter setting — announce changes, suppress first-poll value
         if (variableKey == "HS787_Altimeter")
         {
@@ -2246,8 +2902,6 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             case "HS787_GS_Armed":
             case "HS787_LOC":
             case "HS787_AltManual":
-            case "HS787_FlapsHandle":
-            case "HS787_GearHandle":
             case "HS787_FuelLH":
             case "HS787_FuelRH":
             case "HS787_FuelCtr":
