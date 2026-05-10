@@ -65,11 +65,12 @@ Weather:
 
 Time:
   Z          Read Local Time at aircraft position. Spoken as
-             "HH:MM <time-zone name>" (e.g. "03:30 Pacific Standard Time"),
-             or "HH:MM:SS <time-zone name>" (e.g. "20:30:45 British
-             Summer Time") if "Include seconds in time announcements"
-             is ticked in Announcement Settings. The time-zone name
-             follows your system's local zone and is DST-aware.
+             "HH:MM <time-zone name>" (e.g. "16:38 Eastern Daylight Time"
+             near KJFK), or "HH:MM:SS <time-zone name>" (e.g.
+             "20:30:45 British Summer Time") if "Include seconds in
+             time announcements" is ticked in Announcement Settings.
+             The time-zone name is looked up from the aircraft's
+             geographic position and is DST-aware.
   Shift+Z    Read Zulu / UTC Time. Spoken as "HH:MMZ" (e.g. "03:30Z"),
              or "HH:MM:SSZ" (e.g. "00:15:30Z") when seconds are on.
 
