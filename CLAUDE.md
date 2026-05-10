@@ -200,11 +200,49 @@ The EFB (Electronic Flight Bag) tablet is made accessible via a JavaScript bridg
 - C# → JS: `GET /commands` polled every 500ms, returns JSON array of `{command, payload}`. Commands expire after 30s if not polled.
 - Bridge connects on startup, retries every 5s if server unavailable. On reconnection, flushes pending states and re-sends Navigraph auth status.
 
+### HorizonSim 787-9 FMC Bridge
+
+The WT Boeing FMC (CDU screen) is made accessible via a JavaScript bridge injected through an MSFS Community mod package override. Port 19778. **Status: working in FS2020, unresolved in FS2024** (see diagnostic below).
+
+**Architecture:** A standalone MSFS Community package (`zzz-hs787-accessibility`) overrides the HS787 MFD and EFB HTML files. Patched HTML files are generated at install time by reading the originals from the `horizonsim-aircraft-787-9` package and appending bridge script tags. The JS bridge communicates with the C# app via HTTP on `127.0.0.1:19778`. Both MFD and EFB bridges share the same server; commands are namespaced (`/commands/mfd`, `/commands/efb`).
+
+**Key components:**
+- **`EFBBridgeServer`** (`SimConnect/EFBBridgeServer.cs`) — shared HttpListener (port 19778 for 787, 19777 for PMDG). `/ping`, `/state` (POST), `/commands/mfd`, `/commands/efb` (GET). `IsBridgeConnected` checks heartbeat within 15s.
+- **`HS787ModPackageManager`** (`Patching/HS787ModPackageManager.cs`) — installs/updates/removes the mod package. Reads original HS787 HTML from `horizonsim-aircraft-787-9` (never hardcoded), appends both `import-script` and `<script src>` tags (belt-and-suspenders for FS2020/FS2024 compat). Auto-updates on app start via `BridgeVersion` constant. Bump `BridgeVersion` whenever bridge JS or script tags change.
+- **`hs787-mfd-bridge.js`** (`Resources/`) — reads WT Boeing FMC CDU rows from DOM (`.fmc-row`, `.fmc-letter`), pushes screen state, polls commands. Double-load guard (`window._mfd_bridge_loaded`) so both script tags are harmless. Uses `async/await` (confirmed Coherent GT 2.x in FS2024 supports `class` syntax → also supports async).
+- **`hs787-efb-bridge.js`** (`Resources/`) — reads Boeing EFB buttons and page text. Same guard, same server, same port.
+- **`HS787FMCForm`** (`Forms/HS787/HS787FMCForm.cs`) — displays CDU rows, scratchpad input, page buttons. `_statusTimer` (1.5s) drives `UpdateConnectionStatus`. Status label shows bridge diagnostic stage when not connected (see below).
+- **`HorizonSim787Definition`** (`Aircraft/HorizonSim787Definition.cs`) — registers `HS787_BridgeStage` (`L:MSFSBA_787_STAGE`, Continuous, IsAnnounced=true). `BridgeStage` property updated silently in `ProcessSimVarUpdate`.
+
+**Script injection — both tags required:**
+```csharp
+"\n<script type=\"text/html\" import-script=\"/Pages/VCockpit/Instruments/Airliners/HSB787_9/MFD/hs787-mfd-bridge.js\"></script>"
+"\n<script src=\"hs787-mfd-bridge.js\"></script>"
+```
+`import-script` is MSFS framework-level loading (VCockpit instruments, FS2020 confirmed). `<script src>` is Coherent GT browser-level loading. The double-load guard ensures only the first execution runs.
+
+**SimVar diagnostic (`L:MSFSBA_787_STAGE`) — added BridgeVersion 13:**
+Written by `hs787-mfd-bridge.js` via `SimVar.SetSimVarValue`; read by C# via SimConnect continuous monitoring. Displayed in `HS787FMCForm` status label when bridge is not connected.
+- **0** — L-var never written: script did not execute in this VCockpit context, OR `SimVar` API unavailable
+- **1** — Script executed: `window._mfd_bridge_loaded = true` ran and `SimVar` is available
+- **2** — Fetch blocked: `tryConnect` threw an exception (CSP, Private Network Access, or network policy)
+- **3** — Connected: HTTP fetch to `127.0.0.1:19778` succeeded (should match `IsBridgeConnected = true`)
+
+**FS2020 vs FS2024 status:**
+- FS2020 (Steam, VCockpit context): **working** — bridge connects, FMC readable
+- FS2024 (VCockpit context): **not working** — 3 HTTP-based fix attempts failed (PNA headers, script tag variants, IPv4 force). Root cause unknown pending diagnostic result. PMDG EFB bridge (port 19777, **popup/tablet** context) works in FS2024 — VCockpit context is likely more sandboxed.
+
+**Communication flow:**
+- JS → C#: `POST /state` with `{type, data}` — types: `mfd_connected`, `heartbeat`, `fmc_screen`, `cdu_visible`, `cdu_not_visible`, `efb_connected`, `efb_screen`
+- C# → JS: `GET /commands/mfd` or `/commands/efb` polled every 400ms, returns JSON array of `{command, payload}`
+- Bridge retries every 5s on failure; heartbeat every 5s when connected
+
 ## Detailed Documentation
 
 **Claude: Read these docs only when the task specifically requires them.**
 
 **When to read detailed docs:**
+- **Working on the HS787 FMC bridge (FS2024 compatibility)** → [HS787 Bridge Debugging](docs/hs787-bridge-debugging.md)
 - **Adding complex features or workflows** → [Adding Features](docs/adding-features.md), [Quick Reference](docs/QUICK-REFERENCE.md)
 - **Implementing new aircraft** → [Architecture](docs/architecture.md), [Adding Features](docs/adding-features.md)
 - **Working with FCU/MCP/display systems** → [Architecture](docs/architecture.md)
