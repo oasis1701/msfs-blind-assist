@@ -1459,49 +1459,48 @@ public class TaxiGuidanceManager : IDisposable
         if ((DateTime.Now - _lastRecalculationTime).TotalSeconds < RECALCULATION_COOLDOWN_SEC)
             return;
 
-        // If we're already on the final segment of the route, there's nothing left
-        // to recalculate — the destination hold-short or gate is meters away. The
-        // off-route detector can spuriously fire here when the aircraft is stopped
-        // at a hold-short with a small lateral drift (or when the pilot in a
-        // synced-cockpit setup is "there" but their copilot's position is still
-        // approaching). Recalcing from this state can produce wildly different
-        // shortest-path routes — observed at LEPA where a recalc at the H2
-        // hold-short to runway 24R routed the aircraft on a big loop via H1.
+        // Final-segment guard. At the destination hold-short there's nothing
+        // left to recalculate — the runway / gate is meters away. The off-route
+        // detector can spuriously fire here when the aircraft is stopped at a
+        // hold-short with a small lateral drift (synced-cockpit "you're there
+        // but your copilot isn't yet" desync). Recalcing from this state can
+        // produce wildly different routes.
         if (_route != null && _currentSegmentIndex >= _route.Segments.Count - 1)
             return;
 
         _lastRecalculationTime = DateTime.Now;
 
-        // Compute the remaining ATC sequence BEFORE picking the start node so we
-        // can prefer a node ON the next-cleared taxiway over a heading-aware
-        // pick. Without this trim, after the pilot has already completed taxiways
-        // A, B and is now on K, a recalc would try to re-include A and B in the
-        // remaining route — which either fails outright or produces a weird
-        // back-track. With the trim, the remaining sequence is just the taxiways
-        // ahead of us.
-        List<string>? remainingSequence = null;
-        if (_originalTaxiwaySequence != null && _originalTaxiwaySequence.Count > 0 && _route != null)
-        {
-            remainingSequence = BuildRemainingSequence(_originalTaxiwaySequence, _route, _currentSegmentIndex);
-        }
+        // Position-aware sequence trim. Walk the original ATC sequence from
+        // the LAST taxiway backwards, asking "is there a node on this taxiway
+        // within 50 m of the aircraft?" — the first hit is the latest sequence
+        // taxiway the aircraft is physically on. Anything before it is behind
+        // us and should be dropped from the remaining sequence.
+        //
+        // Why not BuildRemainingSequence here: that function trims based on
+        // route.Segments[currentSegmentIndex].TaxiwayName, i.e. what the
+        // ROUTE says we're on. After a recalc resets currentSegmentIndex to
+        // 0, the route says we're on LE (first segment) even though the
+        // aircraft is actually at H2 hold-short. Trimming from the route
+        // state would re-include LE, D, NORTH and produce a constrained
+        // path that physically starts way back at LE — the aircraft then
+        // has to navigate the whole airport in reverse to follow it. This
+        // is the LEPA "big loop" bug.
+        //
+        // Driving the trim from aircraft position instead means: if you're
+        // at H2, the remaining sequence is just ["H2"]; the route is a few
+        // meters; no loop.
+        (List<string>? remainingSequence, TaxiNode? nearestNode) =
+            FindRemainingSequenceByPosition(lat, lon);
 
-        // Start-node selection mirrors LoadRoute: try the next-cleared taxiway
-        // first via FindNearestNodeOnTaxiway, fall back to the heading-aware
-        // picker only when no node on that taxiway is nearby. Heading-aware
-        // alone can pick a non-clearance node "ahead" of the aircraft (apron
-        // edge, or an adjacent taxiway), which then makes FindConstrainedPath
-        // fail and bail to shortest path. Observed at LEPA on resume from a
-        // hold-short stop: the heading picker grabbed a node not on H2, the
-        // constrained search for ["H2"] failed, shortest-path went via H1
-        // and looped around the airport.
-        var sequenceForStart = (remainingSequence != null && remainingSequence.Count > 0)
-            ? remainingSequence
-            : _originalTaxiwaySequence;
-        TaxiNode? nearestNode = null;
-        if (sequenceForStart != null && sequenceForStart.Count > 0)
-            nearestNode = _graph.FindNearestNodeOnTaxiway(lat, lon, sequenceForStart[0]);
-        nearestNode ??= _graph.FindNearestNodeInDirection(lat, lon, headingTrue);
-        if (nearestNode == null) return;
+        // If no sequence taxiway is near the aircraft, fall back to the
+        // heading-aware picker. The constrained path will likely fail and
+        // bail to shortest — that's the right behaviour when the aircraft
+        // has drifted off every cleared taxiway.
+        if (nearestNode == null)
+        {
+            nearestNode = _graph.FindNearestNodeInDirection(lat, lon, headingTrue);
+            if (nearestNode == null) return;
+        }
 
         var router = new TaxiRouter(_graph);
 
@@ -1574,39 +1573,29 @@ public class TaxiGuidanceManager : IDisposable
     }
 
     /// <summary>
-    /// Derives the portion of the ATC-cleared taxiway sequence that lies AHEAD
-    /// of the current segment. If the pilot has completed taxiways A and B and
-    /// is currently on K, the remaining sequence is [K, rest…]. Returning the
-    /// full original sequence during a recalc tells the router to re-traverse
-    /// taxiways the pilot has already completed — guaranteeing a bad recalc.
+    /// Walks the original ATC taxiway sequence from latest to earliest, returning
+    /// the suffix starting at the first taxiway whose nearest graph node is within
+    /// NEAR_TAXIWAY_M of the aircraft. Returns (null, null) if no sequence taxiway
+    /// is near the aircraft — caller should fall back to shortest path.
     /// </summary>
-    private static List<string> BuildRemainingSequence(
-        List<string> originalSequence, TaxiRoute route, int currentSegmentIndex)
+    private (List<string>?, TaxiNode?) FindRemainingSequenceByPosition(double lat, double lon)
     {
-        // Identify the taxiway the aircraft is currently on. The segment's
-        // TaxiwayName is the authoritative mapping from route -> sequence.
-        if (currentSegmentIndex < 0 || currentSegmentIndex >= route.Segments.Count)
-            return new List<string>(originalSequence);
+        const double NEAR_TAXIWAY_M = 50.0;
+        if (_graph == null || _originalTaxiwaySequence == null || _originalTaxiwaySequence.Count == 0)
+            return (null, null);
 
-        string currentTaxiway = route.Segments[currentSegmentIndex].TaxiwayName ?? "";
-
-        // Walk the original sequence, skipping entries the aircraft has already
-        // passed. Entry match is case-insensitive to tolerate user-input case.
-        int startIdx = 0;
-        for (int i = 0; i < originalSequence.Count; i++)
+        for (int i = _originalTaxiwaySequence.Count - 1; i >= 0; i--)
         {
-            if (originalSequence[i].Equals(currentTaxiway, StringComparison.OrdinalIgnoreCase))
+            var node = _graph.FindNearestNodeOnTaxiway(lat, lon, _originalTaxiwaySequence[i], NEAR_TAXIWAY_M);
+            if (node != null)
             {
-                startIdx = i;
-                break;
+                var remaining = new List<string>();
+                for (int j = i; j < _originalTaxiwaySequence.Count; j++)
+                    remaining.Add(_originalTaxiwaySequence[j]);
+                return (remaining, node);
             }
         }
-
-        var remaining = new List<string>();
-        for (int i = startIdx; i < originalSequence.Count; i++)
-            remaining.Add(originalSequence[i]);
-
-        return remaining;
+        return (null, null);
     }
 
     private void AdvanceSegment()
