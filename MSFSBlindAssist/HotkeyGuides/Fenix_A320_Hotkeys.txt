@@ -107,6 +107,9 @@ Traffic and Weather:
              METAR-decoded precipitation — when running. Falls back to MSFS
              SimVars when AS isn't running. Visibility shown in both km and
              statute miles either way.)
+  Alt+G      Announce nearest ground traffic (up to 3 aircraft on ground with
+             direction and distance; auto-alerts also fire at 500/250/100 ft
+             zone transitions while taxiing)
 
 Displays and windows:
 control+m, Fenix Monitor Manager

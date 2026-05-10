@@ -53,6 +53,7 @@ public partial class MainForm : Form
     private TaxiGuidanceManager taxiGuidanceManager = null!;
     private TaxiAssistForm? taxiAssistForm;
     private LandingExitPlanner landingExitPlanner = null!;
+    private GroundTrafficMonitor groundTrafficMonitor = null!;
 
     // Latest SIM_ON_GROUND sample. Cached unconditionally from the SIM_ON_GROUND
     // event so any feature that needs to know "on ground vs airborne" right now
@@ -221,6 +222,10 @@ public partial class MainForm : Form
         // Landing exit planner — watches for touchdown and auto-activates taxi guidance
         // to the pre-selected exit taxiway. Opens via MainForm menu / hotkey.
         landingExitPlanner = new LandingExitPlanner(announcer, taxiGuidanceManager);
+
+        // Ground traffic monitor — proximity alerts for on-ground AI/multiplayer traffic.
+        // Starts its own 3-second poll timer; gates on LastKnownOnGround each tick.
+        groundTrafficMonitor = new GroundTrafficMonitor(announcer, simConnectManager);
 
         // Initialize airport database provider (optional - can be null if database not built yet)
         airportDataProvider = DatabaseSelector.SelectProvider();
@@ -1410,6 +1415,9 @@ public partial class MainForm : Form
                 break;
             case HotkeyAction.TaxiWhereAmI:
                 AnnounceWhereAmI();
+                break;
+            case HotkeyAction.AnnounceGroundTraffic:
+                announcer.AnnounceImmediate(groundTrafficMonitor.GetNearestTrafficSummary());
                 break;
             case HotkeyAction.LandingExitPlanner:
                 ShowLandingExitForm();
@@ -4740,8 +4748,9 @@ public partial class MainForm : Form
         weatherAnnouncementTimer?.Stop();
         weatherAnnouncementTimer?.Dispose();
 
-        // Clean up taxi guidance
+        // Clean up taxi guidance and ground traffic monitor
         taxiGuidanceManager?.Dispose();
+        groundTrafficMonitor?.Dispose();
 
         // Clean up the PROG-page monitor (owns a Windows-Forms timer; if not
         // disposed, the timer keeps a reference to OnTick and prevents the
