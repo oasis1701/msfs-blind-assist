@@ -52,6 +52,7 @@ public class FenixMCDUService : IDisposable
     private bool _isConnected;
     private bool _disposed;
     private int _reconnectAttempt;
+    private int _mcduIndex = 1; // 1 = Captain (left), 2 = F/O (right)
     private static readonly int[] ReconnectDelays = { 3000, 6000, 12000, 30000 };
 
     public event Action<MCDUDisplayData>? DisplayUpdated;
@@ -78,6 +79,18 @@ public class FenixMCDUService : IDisposable
         _cts?.Cancel();
         CloseWebSocket();
         SetConnected(false);
+    }
+
+    public void SwitchMCDU(int mcduIndex)
+    {
+        if (mcduIndex < 1 || mcduIndex > 2) return;
+        if (mcduIndex == _mcduIndex) return;
+        _mcduIndex = mcduIndex;
+        _reconnectAttempt = 0;
+
+        // Reconnect with new MCDU index
+        Disconnect();
+        Connect();
     }
 
     private async Task ConnectLoop(CancellationToken ct)
@@ -131,7 +144,7 @@ public class FenixMCDUService : IDisposable
             payload = new
             {
                 query = "subscription ($names: [String!]!) { dataRefs(names: $names) { name value } }",
-                variables = new { names = new[] { "aircraft.mcdu1.display" } }
+                variables = new { names = new[] { $"aircraft.mcdu{_mcduIndex}.display" } }
             }
         }, ct);
 
@@ -172,17 +185,26 @@ public class FenixMCDUService : IDisposable
 
     public async Task SendButtonPress(string buttonName)
     {
-        var keyName = $"system.switches.S_CDU1_KEY_{buttonName}";
+        var keyName = $"system.switches.S_CDU{_mcduIndex}_KEY_{buttonName}";
 
+        // Send key press (value: 1)
+        await SendKeyWrite(keyName, 1);
+        await Task.Delay(50);
+        // Send key release (value: 0) so the MCDU recognizes subsequent presses of the same key
+        await SendKeyWrite(keyName, 0);
+    }
+
+    private async Task SendKeyWrite(string keyName, int value)
+    {
         var mutation = new
         {
-            query = @"mutation ($keyName: String!) {
+            query = @"mutation ($keyName: String!, $value: Int!) {
                 dataRef {
-                    writeInt(name: $keyName, value: 1)
+                    writeInt(name: $keyName, value: $value)
                     __typename
                 }
             }",
-            variables = new { keyName }
+            variables = new { keyName, value }
         };
 
         try
@@ -191,11 +213,11 @@ public class FenixMCDUService : IDisposable
             var content = new StringContent(json, Encoding.UTF8, "application/json");
             var response = await _httpClient.PostAsync(HTTP_URL, content);
             response.EnsureSuccessStatusCode();
-            System.Diagnostics.Debug.WriteLine($"[FenixMCDU] Button press sent: {buttonName}");
+            System.Diagnostics.Debug.WriteLine($"[FenixMCDU] Key write sent: {keyName} = {value}");
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[FenixMCDU] Button press error ({buttonName}): {ex.Message}");
+            System.Diagnostics.Debug.WriteLine($"[FenixMCDU] Key write error ({keyName} = {value}): {ex.Message}");
         }
     }
 

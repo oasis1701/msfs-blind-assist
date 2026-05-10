@@ -11,7 +11,10 @@ namespace MSFSBlindAssist
         private System.Windows.Forms.ToolStripMenuItem simbriefSettingsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem geminiSettingsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem handFlyOptionsMenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem taxiGuidanceOptionsMenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem fmcSettingsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem hotkeyListMenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem suspendHotkeysMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem updateApplicationMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem aboutMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem aircraftMenuItem = null!;
@@ -44,7 +47,10 @@ namespace MSFSBlindAssist
             this.simbriefSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.geminiSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.handFlyOptionsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.taxiGuidanceOptionsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.fmcSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.hotkeyListMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.suspendHotkeysMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.updateApplicationMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.aboutMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.aircraftMenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -85,7 +91,10 @@ namespace MSFSBlindAssist
             this.handFlyOptionsMenuItem,
             this.pmdg777FirstOfficerMenuItem,
             this.foSettingsMenuItem,
+            this.taxiGuidanceOptionsMenuItem,
+            this.fmcSettingsMenuItem,
             this.hotkeyListMenuItem,
+            this.suspendHotkeysMenuItem,
             this.updateApplicationMenuItem,
             this.aboutMenuItem});
             this.fileMenuItem.Name = "fileMenuItem";
@@ -146,6 +155,29 @@ namespace MSFSBlindAssist
             this.handFlyOptionsMenuItem.Text = "&Hand Fly Options";
             this.handFlyOptionsMenuItem.Click += new System.EventHandler(this.HandFlyOptionsMenuItem_Click);
             //
+            // taxiGuidanceOptionsMenuItem
+            //
+            this.taxiGuidanceOptionsMenuItem.AccessibleName = "Taxi Guidance Options";
+            this.taxiGuidanceOptionsMenuItem.AccessibleDescription = "Configure taxi guidance steering tone settings";
+            this.taxiGuidanceOptionsMenuItem.Name = "taxiGuidanceOptionsMenuItem";
+            this.taxiGuidanceOptionsMenuItem.Size = new System.Drawing.Size(280, 26);
+            this.taxiGuidanceOptionsMenuItem.Text = "&Taxi Guidance Options";
+            this.taxiGuidanceOptionsMenuItem.Click += new System.EventHandler(this.TaxiGuidanceOptionsMenuItem_Click);
+            //
+            // fmcSettingsMenuItem
+            //
+            // PMDG-only: shown when AircraftCode starts with "PMDG_". Visibility
+            // is toggled in MainForm.UpdateAircraftSpecificMenuItems() each time
+            // the loaded aircraft changes; the item is invisible (and so
+            // unreachable by the screen reader) when an A320 is loaded.
+            this.fmcSettingsMenuItem.AccessibleName = "F M C Settings";
+            this.fmcSettingsMenuItem.AccessibleDescription = "PMDG FMC settings: alternate line select keys and enhanced distance announcements";
+            this.fmcSettingsMenuItem.Name = "fmcSettingsMenuItem";
+            this.fmcSettingsMenuItem.Size = new System.Drawing.Size(280, 26);
+            this.fmcSettingsMenuItem.Text = "F&MC Settings";
+            this.fmcSettingsMenuItem.Visible = false;
+            this.fmcSettingsMenuItem.Click += new System.EventHandler(this.FMCSettingsMenuItem_Click);
+            //
             // hotkeyListMenuItem
             //
             this.hotkeyListMenuItem.AccessibleName = "Hotkey List";
@@ -154,6 +186,16 @@ namespace MSFSBlindAssist
             this.hotkeyListMenuItem.Size = new System.Drawing.Size(220, 26);
             this.hotkeyListMenuItem.Text = "&Hotkey List";
             this.hotkeyListMenuItem.Click += new System.EventHandler(this.HotkeyListMenuItem_Click);
+            //
+            // suspendHotkeysMenuItem
+            //
+            this.suspendHotkeysMenuItem.AccessibleName = "Suspend Hotkeys";
+            this.suspendHotkeysMenuItem.AccessibleDescription = "Temporarily disable bracket key hotkeys to free them for other use";
+            this.suspendHotkeysMenuItem.Name = "suspendHotkeysMenuItem";
+            this.suspendHotkeysMenuItem.Size = new System.Drawing.Size(280, 26);
+            this.suspendHotkeysMenuItem.Text = "&Suspend Hotkeys";
+            this.suspendHotkeysMenuItem.CheckOnClick = true;
+            this.suspendHotkeysMenuItem.Click += new System.EventHandler(this.SuspendHotkeysMenuItem_Click);
             //
             // updateApplicationMenuItem
             //

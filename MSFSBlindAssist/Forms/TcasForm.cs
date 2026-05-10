@@ -28,6 +28,7 @@ public class TcasForm : Form
 
     private readonly TcasService           _tcas;
     private readonly ScreenReaderAnnouncer _announcer;
+    private readonly GateResolver          _gateResolver;
 
     private GroupBox _airborneGroup = null!;
     private GroupBox _groundGroup   = null!;
@@ -45,10 +46,11 @@ public class TcasForm : Form
         public override string ToString() => DisplayText;
     }
 
-    public TcasForm(TcasService tcas, ScreenReaderAnnouncer announcer)
+    public TcasForm(TcasService tcas, ScreenReaderAnnouncer announcer, GateResolver gateResolver)
     {
-        _tcas      = tcas;
-        _announcer = announcer;
+        _tcas         = tcas;
+        _announcer    = announcer;
+        _gateResolver = gateResolver;
         BuildUI();
 
         FormClosed += (_, _) => _tcas.Stop();
@@ -164,12 +166,12 @@ public class TcasForm : Form
         var airborne = _tcas.GetTraffic(onGround: false);
         var ground   = _tcas.GetTraffic(onGround: true);
 
-        RebuildList(_airborneList, airborne);
+        RebuildList(_airborneList, airborne, null);
         _airborneGroup.Text = airborne.Count == 0
             ? "Airborne Traffic — none"
             : $"Airborne Traffic — {airborne.Count} aircraft";
 
-        RebuildList(_groundList, ground);
+        RebuildList(_groundList, ground, _gateResolver);
         _groundGroup.Text = ground.Count == 0
             ? "On Ground Traffic — none"
             : $"On Ground Traffic — {ground.Count} aircraft";
@@ -182,7 +184,7 @@ public class TcasForm : Form
 
     // ── List rebuild ──────────────────────────────────────────────────────────
 
-    private static void RebuildList(ListBox list, IReadOnlyList<TcasTraffic> traffic)
+    private static void RebuildList(ListBox list, IReadOnlyList<TcasTraffic> traffic, GateResolver? gateResolver)
     {
         string? selectedKey = (list.SelectedItem as AircraftItem)?.Traffic
             .Let(t => TrafficKey(t));
@@ -194,7 +196,7 @@ public class TcasForm : Form
         for (int i = 0; i < traffic.Count; i++)
         {
             var t    = traffic[i];
-            var item = new AircraftItem(t, BuildItemText(t));
+            var item = new AircraftItem(t, BuildItemText(t, gateResolver));
             list.Items.Add(item);
             if (TrafficKey(t) == selectedKey)
                 restoreIndex = i;
@@ -208,7 +210,7 @@ public class TcasForm : Form
 
     // ── Item text builder ─────────────────────────────────────────────────────
 
-    private static string BuildItemText(TcasTraffic t)
+    private static string BuildItemText(TcasTraffic t, GateResolver? gateResolver)
     {
         string id   = string.IsNullOrEmpty(t.Callsign)
             ? $"unknown {t.ObjectId}"
@@ -222,6 +224,14 @@ public class TcasForm : Form
             $"{(int)t.GroundSpeedKnots} knots",
         };
 
+        // Gate/parking info for on-ground aircraft
+        if (t.OnGround && gateResolver != null)
+        {
+            string? gateLabel = gateResolver.Resolve(t);
+            if (gateLabel != null)
+                parts.Insert(2, $"at {gateLabel}");
+        }
+
         if (!string.IsNullOrEmpty(t.Airline))
             parts.Add(t.Airline);
 
@@ -233,10 +243,6 @@ public class TcasForm : Form
         if (!string.IsNullOrEmpty(route))
             parts.Add(route);
 
-        string state = FormatTrafficState(t.TrafficState);
-        if (!string.IsNullOrEmpty(state))
-            parts.Add(state);
-
         parts.Add($"heading {(int)t.HeadingMagnetic}");
 
         // Altitude is irrelevant for ground traffic
@@ -247,28 +253,6 @@ public class TcasForm : Form
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Converts the raw AI TRAFFIC STATE string into a readable label.
-    /// Returns empty if the state is unknown or not useful to display.
-    /// </summary>
-    private static string FormatTrafficState(string raw)
-    {
-        if (string.IsNullOrEmpty(raw)) return "";
-        return raw switch
-        {
-            "STATE_SIMPLE_FLIGHT"       => "in flight",
-            "STATE_SIMPLE_TAXI"         => "taxiing",
-            "STATE_SIMPLE_LANDING"      => "landing",
-            "STATE_SIMPLE_TAKEOFF"      => "taking off",
-            "STATE_SIMPLE_APPROACH"     => "on approach",
-            "STATE_WAIT_INIT_CONFIRM"   => "parked",
-            "STATE_WAIT_TAXI"           => "waiting to taxi",
-            "STATE_WAIT_TAKEOFF"        => "waiting for takeoff",
-            "STATE_WAIT_LANDING"        => "waiting to land",
-            _ => "",
-        };
-    }
 
     /// <summary>
     /// Formats origin→destination route string. Returns empty if neither is available.

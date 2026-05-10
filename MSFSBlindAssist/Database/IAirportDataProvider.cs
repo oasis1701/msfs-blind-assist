@@ -81,4 +81,22 @@ public interface IAirportDataProvider
     /// </summary>
     /// <returns>HashSet of ICAO codes</returns>
     HashSet<string> GetAllAirportICAOs();
+
+    /// <summary>
+    /// Returns ICAO codes of airports within a bounding box around the given position.
+    /// Used to identify which airport a ground aircraft is at when route data is unavailable.
+    /// </summary>
+    List<string> GetNearbyAirportICAOs(double latitude, double longitude, double radiusNm);
+
+    /// <summary>
+    /// Gets all taxi path segments for a specific airport.
+    /// Each path represents a centerline segment with width.
+    /// </summary>
+    List<TaxiPath> GetTaxiPaths(string icao);
+
+    /// <summary>
+    /// Gets all runway start positions for a specific airport.
+    /// Used to find nearest graph node for runway destinations.
+    /// </summary>
+    List<StartPosition> GetRunwayStarts(string icao);
 }

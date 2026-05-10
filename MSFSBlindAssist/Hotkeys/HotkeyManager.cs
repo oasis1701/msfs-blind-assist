@@ -145,12 +145,28 @@ public class HotkeyManager : IDisposable
         // Squawk code hotkey ID (Output mode)
         private const int HOTKEY_SQUAWK_CODE = 9108;
 
+        // Taxi guidance hotkey IDs
+        private const int HOTKEY_TAXI_STATUS = 9200;        // Output mode: Y (Taxi status)
+        private const int HOTKEY_TAXI_REPEAT = 9201;        // Output mode: Ctrl+Y (Repeat instruction)
+        private const int HOTKEY_TAXI_FORM = 9202;          // Input mode: Shift+Y (Open taxi form)
+        private const int HOTKEY_TAXI_CONTINUE = 9203;      // Input mode: Y (Continue past hold-short)
+        private const int HOTKEY_TAXI_STOP = 9204;          // Input mode: Ctrl+Y (Stop guidance)
+        private const int HOTKEY_TAXI_WHERE_AM_I = 9205;    // Output mode: Alt+Y (Describe current location)
+        private const int HOTKEY_LANDING_EXIT = 9206;       // Input mode: Shift+X (Landing Exit Planner)
+
+        // Time-of-day hotkey IDs (Output mode). Local time = aircraft position
+        // local time (sim handles tz mapping); Zulu = UTC. HH:MM by default,
+        // HH:MM:SS when AnnounceTimeWithSeconds is on.
+        private const int HOTKEY_LOCAL_TIME = 9210;
+        private const int HOTKEY_ZULU_TIME = 9211;
+
         private IntPtr windowHandle;
         private bool visualGuidanceHotkeysActive = false;
         private bool outputHotkeyModeActive = false;
         private bool inputHotkeyModeActive = false;
         private bool handFlyHotkeysActive = false;
         private bool disposed = false;
+        private bool suspended = false;
 
         public event EventHandler<HotkeyEventArgs>? HotkeyTriggered;
         public event EventHandler<HotkeyModeEventArgs>? OutputHotkeyModeChanged;
@@ -253,6 +269,12 @@ public class HotkeyManager : IDisposable
                             break;
                         case HOTKEY_HEADING_TRUE:
                             TriggerHotkey(HotkeyAction.ReadHeadingTrue);
+                            break;
+                        case HOTKEY_LOCAL_TIME:
+                            TriggerHotkey(HotkeyAction.ReadLocalTime);
+                            break;
+                        case HOTKEY_ZULU_TIME:
+                            TriggerHotkey(HotkeyAction.ReadZuluTime);
                             break;
                         case HOTKEY_DESTINATION_RUNWAY_DISTANCE:
                             TriggerHotkey(HotkeyAction.ReadDestinationRunwayDistance);
@@ -413,6 +435,15 @@ public class HotkeyManager : IDisposable
                         case HOTKEY_SQUAWK_CODE:
                             TriggerHotkey(HotkeyAction.ReadSquawkCode);
                             break;
+                        case HOTKEY_TAXI_STATUS:
+                            TriggerHotkey(HotkeyAction.TaxiStatus);
+                            break;
+                        case HOTKEY_TAXI_REPEAT:
+                            TriggerHotkey(HotkeyAction.TaxiRepeat);
+                            break;
+                        case HOTKEY_TAXI_WHERE_AM_I:
+                            TriggerHotkey(HotkeyAction.TaxiWhereAmI);
+                            break;
                     }
                     DeactivateOutputHotkeyMode();
                     return true;
@@ -489,6 +520,18 @@ public class HotkeyManager : IDisposable
                             break;
                         case HOTKEY_PMDG_777_EFB:
                             TriggerHotkey(HotkeyAction.ShowPMDG777EFB);
+                            break;
+                        case HOTKEY_TAXI_FORM:
+                            TriggerHotkey(HotkeyAction.TaxiAssistForm);
+                            break;
+                        case HOTKEY_TAXI_CONTINUE:
+                            TriggerHotkey(HotkeyAction.TaxiContinue);
+                            break;
+                        case HOTKEY_TAXI_STOP:
+                            TriggerHotkey(HotkeyAction.TaxiStop);
+                            break;
+                        case HOTKEY_LANDING_EXIT:
+                            TriggerHotkey(HotkeyAction.LandingExitPlanner);
                             break;
                     }
                     DeactivateInputHotkeyMode();
@@ -648,6 +691,25 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_OUTSIDE_TEMP, MOD_NONE, 0x4F);             // O (Outside Temperature)
             RegisterHotKey(windowHandle, HOTKEY_SQUAWK_CODE, MOD_NONE, 0x58);             // X (Squawk Code)
 
+            // Time-of-day hotkeys (Output mode).
+            //   Z       → local time at aircraft position (sim's LOCAL TIME SimVar)
+            //   Shift+Z → Zulu / UTC time (sim's ZULU TIME SimVar)
+            // HH:MM by default; HH:MM:SS when UserSettings.AnnounceTimeWithSeconds is on.
+            // VK code 0x5A = 'Z'. Both registrations use the same key with
+            // different modifier flags so they coexist without collision.
+            RegisterHotKey(windowHandle, HOTKEY_LOCAL_TIME, MOD_NONE, 0x5A);              // Z (Local Time)
+            RegisterHotKey(windowHandle, HOTKEY_ZULU_TIME, MOD_SHIFT, 0x5A);              // Shift+Z (Zulu Time)
+
+            // Taxi guidance hotkeys (Output mode)
+            RegisterHotKey(windowHandle, HOTKEY_TAXI_STATUS, MOD_NONE, 0x59);             // Y (Taxi Status)
+            RegisterHotKey(windowHandle, HOTKEY_TAXI_REPEAT, MOD_CONTROL, 0x59);          // Ctrl+Y (Repeat Instruction)
+            // Where Am I lives on Alt+Y (output). Shift+Y is already taken by HOTKEY_STATUS_DISPLAY
+            // earlier in this same activation block — Win32 RegisterHotKey silently rejects the
+            // second registration of the same chord, which made Where Am I a dead key. We can't
+            // give up Shift+Y for STATUS Display (it's a long-standing FBW/Fenix display hotkey),
+            // so Where Am I moves to Alt+Y. Stays on the same physical key — easy to remember.
+            RegisterHotKey(windowHandle, HOTKEY_TAXI_WHERE_AM_I, MOD_ALT, 0x59);          // Alt+Y (Where Am I)
+
             // Auto-timeout disabled - hotkey mode stays active until used or escape pressed
 
             OutputHotkeyModeChanged?.Invoke(this, new HotkeyModeEventArgs(HotkeyModeStatus.Activated));
@@ -734,6 +796,15 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_OUTSIDE_TEMP);
             UnregisterHotKey(windowHandle, HOTKEY_SQUAWK_CODE);
 
+            // Time-of-day hotkeys
+            UnregisterHotKey(windowHandle, HOTKEY_LOCAL_TIME);
+            UnregisterHotKey(windowHandle, HOTKEY_ZULU_TIME);
+
+            // Taxi guidance hotkeys
+            UnregisterHotKey(windowHandle, HOTKEY_TAXI_STATUS);
+            UnregisterHotKey(windowHandle, HOTKEY_TAXI_REPEAT);
+            UnregisterHotKey(windowHandle, HOTKEY_TAXI_WHERE_AM_I);
+
             OutputHotkeyModeChanged?.Invoke(this, new HotkeyModeEventArgs(wasCancelled ? HotkeyModeStatus.Cancelled : HotkeyModeStatus.Deactivated));
         }
 
@@ -769,6 +840,12 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_TRACK_FIX, MOD_SHIFT, 0x46);         // Shift+F (Track Fix Window)
             RegisterHotKey(windowHandle, HOTKEY_FENIX_MCDU, MOD_SHIFT, 0x4D);       // Shift+M (Fenix MCDU)
             RegisterHotKey(windowHandle, HOTKEY_PMDG_777_EFB, MOD_SHIFT, 0x54);    // Shift+T (PMDG 777 EFB Tablet)
+
+            // Taxi guidance hotkeys (Input mode)
+            RegisterHotKey(windowHandle, HOTKEY_TAXI_FORM, MOD_SHIFT, 0x59);            // Shift+Y (Open Taxi Form)
+            RegisterHotKey(windowHandle, HOTKEY_TAXI_CONTINUE, MOD_NONE, 0x59);         // Y (Continue past hold-short)
+            RegisterHotKey(windowHandle, HOTKEY_TAXI_STOP, MOD_CONTROL, 0x59);          // Ctrl+Y (Stop guidance)
+            RegisterHotKey(windowHandle, HOTKEY_LANDING_EXIT, MOD_SHIFT, 0x58);         // Shift+X (Landing Exit Planner)
 
             InputHotkeyModeChanged?.Invoke(this, new HotkeyModeEventArgs(HotkeyModeStatus.Activated));
         }
@@ -807,6 +884,12 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_TRACK_FIX);
             UnregisterHotKey(windowHandle, HOTKEY_FENIX_MCDU);
             UnregisterHotKey(windowHandle, HOTKEY_PMDG_777_EFB);
+
+            // Taxi guidance hotkeys
+            UnregisterHotKey(windowHandle, HOTKEY_TAXI_FORM);
+            UnregisterHotKey(windowHandle, HOTKEY_TAXI_CONTINUE);
+            UnregisterHotKey(windowHandle, HOTKEY_TAXI_STOP);
+            UnregisterHotKey(windowHandle, HOTKEY_LANDING_EXIT);
 
             InputHotkeyModeChanged?.Invoke(this, new HotkeyModeEventArgs(wasCancelled ? HotkeyModeStatus.Cancelled : HotkeyModeStatus.Deactivated));
         }
@@ -965,6 +1048,36 @@ public class HotkeyManager : IDisposable
             System.Diagnostics.Debug.WriteLine("Visual guidance hotkeys: Unregistered successfully");
         }
 
+        public void Suspend()
+        {
+            if (suspended || disposed) return;
+
+            if (outputHotkeyModeActive)
+                DeactivateOutputHotkeyMode(wasCancelled: true);
+            if (inputHotkeyModeActive)
+                DeactivateInputHotkeyMode(wasCancelled: true);
+
+            UnregisterHotKey(windowHandle, HOTKEY_ACTIVATE);
+            UnregisterHotKey(windowHandle, HOTKEY_INPUT_ACTIVATE);
+            suspended = true;
+        }
+
+        public bool Resume()
+        {
+            if (!suspended || disposed) return true;
+
+            bool registered = RegisterHotKey(windowHandle, HOTKEY_ACTIVATE, MOD_NONE, VK_OEM_6);
+            bool inputRegistered = RegisterHotKey(windowHandle, HOTKEY_INPUT_ACTIVATE, MOD_NONE, VK_OEM_4);
+            suspended = false;
+
+            if (!registered || !inputRegistered)
+            {
+                System.Diagnostics.Debug.WriteLine("Failed to re-register hotkeys after resume");
+                return false;
+            }
+            return true;
+        }
+
         public void Cleanup()
         {
             Dispose();
@@ -1034,6 +1147,8 @@ public class HotkeyManager : IDisposable
         ReadVerticalSpeed,
         ReadHeadingMagnetic,
         ReadHeadingTrue,
+        ReadLocalTime,
+        ReadZuluTime,
         SelectDestinationRunway,
         ReadDestinationRunwayDistance,
         ReadILSGuidance,
@@ -1113,4 +1228,11 @@ public class HotkeyManager : IDisposable
         ShowWeatherRadar,
         ReadOutsideTemperature,
         ReadSquawkCode,
+        TaxiAssistForm,
+        TaxiStatus,
+        TaxiRepeat,
+        TaxiContinue,
+        TaxiStop,
+        TaxiWhereAmI,
+        LandingExitPlanner,
     }

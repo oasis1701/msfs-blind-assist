@@ -39,6 +39,13 @@ public class UserSettings
         // Accessibility Settings
         public string AnnouncementMode { get; set; } = "ScreenReader";
 
+        /// <summary>
+        /// When true, the Output Z (local time) and Output Shift+Z (Zulu
+        /// time) hotkeys speak HH:MM:SS instead of the default HH:MM.
+        /// Configurable in Announcement Settings.
+        /// </summary>
+        public bool AnnounceTimeWithSeconds { get; set; } = false;
+
         // Hand Fly Settings
         public HandFlyFeedbackMode HandFlyFeedbackMode { get; set; } = HandFlyFeedbackMode.TonesOnly;
         public double HandFlyToneVolume { get; set; } = 0.05; // 0.0 to 1.0 (default 5%)
@@ -56,6 +63,13 @@ public class UserSettings
         public double TakeoffAssistToneVolume { get; set; } = 0.05; // 0.0 to 1.0 (default 5%)
         public bool TakeoffAssistMuteCenterlineAnnouncements { get; set; } = false; // Mute centerline deviation announcements
         public bool TakeoffAssistInvertPanning { get; set; } = false; // Invert panning direction
+        /// <summary>
+        /// When true, the takeoff-assist centerline tone hard-pans to full
+        /// ±1 instead of the proportional headingDiff / 5° curve. Useful
+        /// for stereo-speaker users where partial pan is hard to tell from
+        /// centred. Default off.
+        /// </summary>
+        public bool TakeoffAssistHardPanTone { get; set; } = false;
         public bool TakeoffAssistLegacyMode { get; set; } = false; // Legacy mode: heading-based instead of centerline tracking
         public int TakeoffAssistHeadingToneThreshold { get; set; } = 0; // 0 = Always, 1-5 = degrees threshold
         public bool TakeoffAssistEnableCallouts { get; set; } = true; // Enable speed callouts (80kt, 100kt, V1, rotate)
@@ -110,6 +124,73 @@ public class UserSettings
         public bool FOAutoFlapsEnabled { get; set; } = false;
         public bool FOAutoApEnabled    { get; set; } = false;
 
+        // PMDG Announcement Monitor Settings — variable keys that the user has
+        // unticked in PMDGAnnouncementMonitorForm. The MainForm continuous-
+        // monitoring branch consults this list when the loaded aircraft's
+        // AircraftCode starts with "PMDG_" and skips the announcement for any
+        // variable whose key is here. Persisted across sessions so the user
+        // doesn't have to re-tick on every launch.
+        public List<string> PMDGDisabledMonitorVariables { get; set; } = new List<string>();
+
+        // FMC settings — only meaningful when a PMDG aircraft is loaded; the
+        // FMC Settings menu item is gated on AircraftCode.StartsWith("PMDG_").
+
+        /// <summary>
+        /// When true, the PMDG CDU form remaps the line-select keys from the
+        /// default Ctrl+1..6 (L) / Alt+1..6 (R) to F1..F6 (L) / F7..F12 (R).
+        /// Frees Ctrl/Alt for other shortcuts; matches TFM's "alternate
+        /// keys" layout, which many returning TFM users prefer.
+        /// </summary>
+        public bool PMDGUseAlternateLSKKeys { get; set; } = false;
+
+        /// <summary>
+        /// When true, the Output D / Shift+D distance keys read the PMDG PROG
+        /// page on the right CDU instead of the SimConnect/PMDG SDK FMC fields.
+        /// Gives ETA in Z time and landing fuel for the destination key, plus
+        /// distance/ETA to TOC, step climb, or TOD for the descent key. Falls
+        /// back to the default offset-based readout when the PROG page can't be
+        /// activated (e.g. CDU power off — retried every 30 s in the background).
+        /// </summary>
+        public bool PMDGEnhancedDistanceMode { get; set; } = false;
+
+        // Taxi Guidance Settings
+        public HandFlyWaveType TaxiGuidanceToneWaveform { get; set; } = HandFlyWaveType.Sine;
+        public double TaxiGuidanceToneVolume { get; set; } = 0.05;
+
+        /// <summary>
+        /// When true, inverts the steering tone's stereo pan: a tone in the
+        /// right ear means steer LEFT to centre it (rather than right).
+        /// Mirrors <see cref="TakeoffAssistInvertPanning"/>. Default off
+        /// (existing behaviour: pan in the direction the pilot should turn).
+        /// </summary>
+        public bool TaxiGuidanceInvertSteeringTone { get; set; } = false;
+
+        /// <summary>
+        /// When true, the steering tone hard-pans to full left (-1) or full
+        /// right (+1) — no intermediate magnitudes. Speaker users hear the
+        /// tone come out of exactly one speaker so there's no ambiguity
+        /// between "slightly off" and "centred". Default off (proportional
+        /// pan with the sqrt curve).
+        /// </summary>
+        public bool TaxiGuidanceHardPanTone { get; set; } = false;
+        /// <summary>
+        /// When true, taxi guidance announces named taxiways being crossed at intersections
+        /// (e.g. "Crossing taxiway Link 53"). Default on; users can disable for quieter taxis.
+        /// </summary>
+        public bool TaxiGuidanceAnnounceCrossings { get; set; } = true;
+
+        /// <summary>
+        /// Ground-speed announcement interval, in knots. 0 disables the feature.
+        /// When non-zero, the screen reader announces the current ground speed each
+        /// time it crosses a multiple of this value (rising or falling). Useful for
+        /// blind pilots monitoring taxi speed against the FAA / SOP caps (30 kt
+        /// straight, 10 kt turns) and for the takeoff roll. Suggested values: 5 or
+        /// 10 kt. Active during BOTH taxi guidance and takeoff assist phases — the
+        /// callouts complement each other (10/20/30 kt taxi → 80/100/V1/rotate
+        /// takeoff). Default 0 (off) so existing users see no behaviour change.
+        /// </summary>
+        public int TaxiGuidanceGroundSpeedAnnounceInterval { get; set; } = 0;
+
         // Weather Settings
         public bool WeatherAutoAnnounceEnabled { get; set; } = false;
         public bool SigmetProximityAlertsEnabled { get; set; } = false;
@@ -133,6 +214,7 @@ public class UserSettings
         return new UserSettings
         {
             AnnouncementMode = AnnouncementMode,
+            AnnounceTimeWithSeconds = AnnounceTimeWithSeconds,
             HandFlyFeedbackMode = HandFlyFeedbackMode,
             HandFlyToneVolume = HandFlyToneVolume,
             HandFlyWaveType = HandFlyWaveType,
@@ -145,6 +227,7 @@ public class UserSettings
             TakeoffAssistToneVolume = TakeoffAssistToneVolume,
             TakeoffAssistMuteCenterlineAnnouncements = TakeoffAssistMuteCenterlineAnnouncements,
             TakeoffAssistInvertPanning = TakeoffAssistInvertPanning,
+            TakeoffAssistHardPanTone = TakeoffAssistHardPanTone,
             TakeoffAssistLegacyMode = TakeoffAssistLegacyMode,
             TakeoffAssistHeadingToneThreshold = TakeoffAssistHeadingToneThreshold,
             TakeoffAssistEnableCallouts = TakeoffAssistEnableCallouts,
@@ -176,11 +259,20 @@ public class UserSettings
             FOAutoGearEnabled  = FOAutoGearEnabled,
             FOAutoFlapsEnabled = FOAutoFlapsEnabled,
             FOAutoApEnabled    = FOAutoApEnabled,
+            PMDGDisabledMonitorVariables = new List<string>(PMDGDisabledMonitorVariables),
+            PMDGUseAlternateLSKKeys = PMDGUseAlternateLSKKeys,
+            PMDGEnhancedDistanceMode = PMDGEnhancedDistanceMode,
             WeatherAutoAnnounceEnabled = WeatherAutoAnnounceEnabled,
             SigmetProximityAlertsEnabled = SigmetProximityAlertsEnabled,
             PirepProximityAlertsEnabled = PirepProximityAlertsEnabled,
             SigmetProximityRangeNm = SigmetProximityRangeNm,
-            DecodeWeatherAdvisories = DecodeWeatherAdvisories
+            DecodeWeatherAdvisories = DecodeWeatherAdvisories,
+            TaxiGuidanceToneWaveform = TaxiGuidanceToneWaveform,
+            TaxiGuidanceToneVolume = TaxiGuidanceToneVolume,
+            TaxiGuidanceInvertSteeringTone = TaxiGuidanceInvertSteeringTone,
+            TaxiGuidanceHardPanTone = TaxiGuidanceHardPanTone,
+            TaxiGuidanceAnnounceCrossings = TaxiGuidanceAnnounceCrossings,
+            TaxiGuidanceGroundSpeedAnnounceInterval = TaxiGuidanceGroundSpeedAnnounceInterval
         };
     }
 }

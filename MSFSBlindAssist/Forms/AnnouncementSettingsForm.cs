@@ -11,6 +11,7 @@ public partial class AnnouncementSettingsForm : Form
     private RadioButton _sapiRadio = null!;
     private Label _statusLabel = null!;
     private ComboBox _nearestCityIntervalCombo = null!;
+    private CheckBox _timeWithSecondsCheck = null!;
 
     // ── Weather tab controls ────────────────────────────────────────────────
     private CheckBox _weatherAutoAnnounce = null!;
@@ -29,6 +30,7 @@ public partial class AnnouncementSettingsForm : Form
     public bool SigmetProximityAlertsEnabled { get; private set; }
     public bool PirepProximityAlertsEnabled { get; private set; }
     public int SigmetProximityRangeNm { get; private set; }
+    public bool AnnounceTimeWithSeconds { get; private set; }
 
     public AnnouncementSettingsForm(
         AnnouncementMode currentMode,
@@ -36,7 +38,8 @@ public partial class AnnouncementSettingsForm : Form
         bool weatherAutoAnnounce,
         bool sigmetAlerts,
         bool pirepAlerts,
-        int proximityRangeNm)
+        int proximityRangeNm,
+        bool announceTimeWithSeconds)
     {
         SelectedMode = currentMode;
         NearestCityAnnouncementInterval = nearestCityInterval;
@@ -44,6 +47,7 @@ public partial class AnnouncementSettingsForm : Form
         SigmetProximityAlertsEnabled = sigmetAlerts;
         PirepProximityAlertsEnabled = pirepAlerts;
         SigmetProximityRangeNm = proximityRangeNm;
+        AnnounceTimeWithSeconds = announceTimeWithSeconds;
         InitializeComponent();
         SetupAccessibility();
         UpdateScreenReaderStatus();
@@ -177,10 +181,24 @@ public partial class AnnouncementSettingsForm : Form
         });
         _nearestCityIntervalCombo.SelectedIndex = IntervalToIndex(NearestCityAnnouncementInterval);
 
+        // Time-of-day seconds toggle (controls Output Z / Output Shift+Z format).
+        _timeWithSecondsCheck = new CheckBox
+        {
+            Text = "Include seconds in time announcements (Output Z / Shift+Z)",
+            Location = new Point(12, 195),
+            Size = new Size(420, 25),
+            Checked = AnnounceTimeWithSeconds,
+            AccessibleName = "Include seconds in time announcements",
+            AccessibleDescription = "When checked, the local-time and Zulu-time hotkeys speak hours, minutes, and seconds. Default is hours and minutes only."
+        };
+        _timeWithSecondsCheck.CheckedChanged += (s, e) =>
+            AnnounceTimeWithSeconds = _timeWithSecondsCheck.Checked;
+
         tab.Controls.AddRange(new Control[]
         {
             modeLabel, _screenReaderRadio, _sapiRadio, _statusLabel,
-            intervalLabel, _nearestCityIntervalCombo
+            intervalLabel, _nearestCityIntervalCombo,
+            _timeWithSecondsCheck
         });
 
         return tab;
