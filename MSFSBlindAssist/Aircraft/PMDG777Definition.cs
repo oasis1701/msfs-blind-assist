@@ -23,21 +23,6 @@ public class PMDG777Definition : BaseAircraftDefinition
     // without re-allocating GetVariables() on every call.
     private HashSet<string>? _suppressedButtonKeys;
 
-    // Boris Audio Works combo-box state cache. The switch_NNN_a LVars are
-    // PMDG mouse-click input handles, not state vars — writing a value to
-    // them fires a *toggle* on the underlying audio engine rather than
-    // setting a state. We mirror the user's intent here and only fire a
-    // click when the requested value differs from what we last sent. Null
-    // sentinel = "unknown" (first action always fires a click). The real
-    // Boris state vars aren't publicly documented; if a future LVar dump
-    // identifies them, this cache can be seeded from there instead.
-    private readonly Dictionary<string, double?> _borisIntentState = new()
-    {
-        ["switch_622_a"] = null,
-        ["switch_49_a"] = null,
-        ["switch_319_a"] = null,
-    };
-
     private HashSet<string> SuppressedButtonKeys =>
         _suppressedButtonKeys ??= BuildSuppressedButtonKeys();
 
@@ -4525,6 +4510,22 @@ public class PMDG777Definition : BaseAircraftDefinition
 
             // =================================================================
             // BORIS AUDIO WORKS SOUNDPACK
+            // -----------------------------------------------------------------
+            // KNOWN ISSUE: these switch_NNN_a LVars do NOT behave as state
+            // variables. Writing 0 or 100 produces only a momentary (~100 ms)
+            // change in the underlying Boris audio engine before snapping back
+            // to whatever the persistent state was. The real Boris state vars
+            // are not documented publicly. A live LVar capture session (e.g.
+            // via MobiFlight's variable browser, or an in-app LVar dump
+            // utility) is needed to identify the actual state vars before
+            // these combos can produce a real persistent toggle.
+            //
+            // We tried writing the PMDG mouse-flag value (0x20000000 =
+            // MOUSE_FLAG_LEFTSINGLE) on the theory that switch_NNN_a is a
+            // mouse-click input handle per PMDG's VC mouse-behaviour XML
+            // convention, but that produced no audible effect at all — worse
+            // than the 100 ms blip from a raw value write. Reverted; left
+            // as-is until proper state vars are identified.
             // =================================================================
             ["switch_622_a"] = new SimConnect.SimVarDefinition
             {
@@ -5325,47 +5326,6 @@ public class PMDG777Definition : BaseAircraftDefinition
             else
             {
                 announcer.AnnounceImmediate("Invalid frequency. Range: 118.000 to 136.975");
-            }
-            return true;
-        }
-
-        // ------------------------------------------------------------------
-        // 0a-pre. Boris Audio Works combo handlers — switch_622_a /
-        //         switch_49_a / switch_319_a are PMDG mouse-click input
-        //         handles (per PMDG's VC mouse-behaviour XML), not state
-        //         LVars. Writing 0 or 100 is interpreted by PMDG's panel
-        //         script as a *data event* which toggles the underlying
-        //         Boris audio state and then resets the handle — that's
-        //         the user-reported "On for 100 ms, snaps back" bug.
-        //
-        //         Fix: write the PMDG mouse-flag value 0x20000000
-        //         (MOUSE_FLAG_LEFTSINGLE) to fire a single click on the
-        //         control, which the audio engine treats as a real toggle.
-        //         Optimistic mirror via _borisIntentState — only click when
-        //         the requested value differs from the cached intent, so
-        //         picking "On" twice in a row doesn't accidentally flip
-        //         back to Off. First action on any var always fires (cache
-        //         is null) because we don't know the real Boris state at
-        //         startup; the combo's visible value is whatever the user
-        //         picked. If the real underlying state ever diverges (e.g.
-        //         another mod toggles Boris externally) the combo will
-        //         lie until the user toggles it back.
-        //
-        //         The real Boris state LVar names aren't published — a
-        //         live LVar capture session could identify them and let
-        //         us promote this from an optimistic mirror to a real
-        //         state mirror.
-        if (_borisIntentState.ContainsKey(varKey))
-        {
-            // Round to the nearest known position (0 or 100) so the cache
-            // comparison is robust against floating-point inputs.
-            double snapped = value >= 50.0 ? 100.0 : 0.0;
-            double? cached = _borisIntentState[varKey];
-            if (!cached.HasValue || Math.Abs(cached.Value - snapped) > 0.5)
-            {
-                const uint MOUSE_FLAG_LEFTSINGLE = 0x20000000;
-                simConnect.SetLVar(varDef.Name, MOUSE_FLAG_LEFTSINGLE);
-                _borisIntentState[varKey] = snapped;
             }
             return true;
         }
