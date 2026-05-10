@@ -208,18 +208,17 @@ The WT Boeing FMC (CDU screen) is made accessible via a JavaScript bridge inject
 
 **Key components:**
 - **`EFBBridgeServer`** (`SimConnect/EFBBridgeServer.cs`) — shared HttpListener (port 19778 for 787, 19777 for PMDG). `/ping`, `/state` (POST), `/commands/mfd`, `/commands/efb` (GET). `IsBridgeConnected` checks heartbeat within 15s.
-- **`HS787ModPackageManager`** (`Patching/HS787ModPackageManager.cs`) — installs/updates/removes the mod package. Reads original HS787 HTML from `horizonsim-aircraft-787-9` (never hardcoded), appends both `import-script` and `<script src>` tags (belt-and-suspenders for FS2020/FS2024 compat). Auto-updates on app start via `BridgeVersion` constant. Bump `BridgeVersion` whenever bridge JS or script tags change.
-- **`hs787-mfd-bridge.js`** (`Resources/`) — reads WT Boeing FMC CDU rows from DOM (`.fmc-row`, `.fmc-letter`), pushes screen state, polls commands. Double-load guard (`window._mfd_bridge_loaded`) so both script tags are harmless. Uses `async/await` (confirmed Coherent GT 2.x in FS2024 supports `class` syntax → also supports async).
+- **`HS787ModPackageManager`** (`Patching/HS787ModPackageManager.cs`) — installs/updates/removes the mod package. Reads original HS787 HTML from `horizonsim-aircraft-787-9` (never hardcoded), appends bridge script tag. Auto-updates on app start via `BridgeVersion` constant. Bump `BridgeVersion` whenever bridge JS or script tags change.
+- **`hs787-mfd-bridge.js`** (`Resources/`) — reads WT Boeing FMC CDU rows from DOM (`.fmc-row`, `.fmc-letter`), pushes screen state, polls commands. Double-load guard (`window._mfd_bridge_loaded`). Uses `async/await` (confirmed Coherent GT 2.x in FS2024 supports `class` syntax → also supports async).
 - **`hs787-efb-bridge.js`** (`Resources/`) — reads Boeing EFB buttons and page text. Same guard, same server, same port.
 - **`HS787FMCForm`** (`Forms/HS787/HS787FMCForm.cs`) — displays CDU rows, scratchpad input, page buttons. `_statusTimer` (1.5s) drives `UpdateConnectionStatus`. Status label shows bridge diagnostic stage when not connected (see below).
 - **`HorizonSim787Definition`** (`Aircraft/HorizonSim787Definition.cs`) — registers `HS787_BridgeStage` (`L:MSFSBA_787_STAGE`, Continuous, IsAnnounced=true). `BridgeStage` property updated silently in `ProcessSimVarUpdate`.
 
-**Script injection — both tags required:**
+**Script injection — current approach (`<script src>`, FS2020 only):**
 ```csharp
-"\n<script type=\"text/html\" import-script=\"/Pages/VCockpit/Instruments/Airliners/HSB787_9/MFD/hs787-mfd-bridge.js\"></script>"
 "\n<script src=\"hs787-mfd-bridge.js\"></script>"
 ```
-`import-script` is MSFS framework-level loading (VCockpit instruments, FS2020 confirmed). `<script src>` is Coherent GT browser-level loading. The double-load guard ensures only the first execution runs.
+`<script src>` is Coherent GT browser-level loading. Works in FS2020 VCockpit. Does NOT work in FS2024 VCockpit (Stage 0 — script never executes). See FS2024 status below before changing the injection approach.
 
 **SimVar diagnostic (`L:MSFSBA_787_STAGE`) — added BridgeVersion 13:**
 Written by `hs787-mfd-bridge.js` via `SimVar.SetSimVarValue`; read by C# via SimConnect continuous monitoring. Displayed in `HS787FMCForm` status label when bridge is not connected.
@@ -229,8 +228,16 @@ Written by `hs787-mfd-bridge.js` via `SimVar.SetSimVarValue`; read by C# via Sim
 - **3** — Connected: HTTP fetch to `127.0.0.1:19778` succeeded (should match `IsBridgeConnected = true`)
 
 **FS2020 vs FS2024 status:**
-- FS2020 (Steam, VCockpit context): **working** — bridge connects, FMC readable
-- FS2024 (VCockpit context): **not working** — 3 HTTP-based fix attempts failed (PNA headers, script tag variants, IPv4 force). Root cause unknown pending diagnostic result. PMDG EFB bridge (port 19777, **popup/tablet** context) works in FS2024 — VCockpit context is likely more sandboxed.
+- FS2020 (VCockpit context): **working** — bridge connects, FMC readable
+- FS2024 (VCockpit context): **fully sandboxed — all script injection methods fail (Stage 0)**
+
+**FS2024 VCockpit sandboxing — confirmed exhausted approaches (do not retry these):**
+- `import-script` + `<script src>` together (BridgeVersion 12) — Stage 0, bridge never connected
+- `<script src>` alone (BridgeVersion 15–16) — Stage 0 confirmed via diagnostic L-var
+- Inline `<script>` block embedded directly in HTML (BridgeVersion 17) — Stage 0 confirmed
+- PNA headers (`Access-Control-Allow-Private-Network`), IPv4 force (`127.0.0.1`), script path variants — all ruled out; the script itself never runs, so HTTP is not the issue
+
+The PMDG EFB bridge (port 19777, **popup/tablet** context) works in FS2024 — FS2024 only locks down VCockpit instrument contexts, not popup contexts. Remaining options: SimVar-based IPC (no HTTP, but requires encoding FMC screen data into L-vars — high cost), WASM module intermediary (very high cost), or checking whether the HS787 exposes FMC screen content as L-vars natively (would bypass injection entirely).
 
 **Communication flow:**
 - JS → C#: `POST /state` with `{type, data}` — types: `mfd_connected`, `heartbeat`, `fmc_screen`, `cdu_visible`, `cdu_not_visible`, `efb_connected`, `efb_screen`
