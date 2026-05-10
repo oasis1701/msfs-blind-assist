@@ -3166,9 +3166,9 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 // WT Boeing H events that are internal to the sim's JS runtime. Fall back to
                 // MobiFlight WASM if the bridge is not connected.
                 if (BridgeServer != null && BridgeServer.IsBridgeConnected)
-                    BridgeServer.EnqueueMfdCommand("type_key:ALTITUDE_INTERVENTION");
+                    BridgeServer.EnqueueMfdCommand("fcu_key:ALTITUDE_INTERVENTION");
                 else
-                    simConnect.SendHVar("AS01B_FMC_1_BTN_ALTITUDE_INTERVENTION");
+                    simConnect.SendHVar("AS01B_FMC_1_ALTITUDE_INTERVENTION");
             })
         };
 

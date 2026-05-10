@@ -325,15 +325,25 @@ _mfd.handleCommand = function(command, payload) {
         var lskRightMatch = command.match(/^lsk_R(\d)$/);
         if (lskRightMatch) { _mfd.clickLskRight(parseInt(lskRightMatch[1])); return; }
 
-        // type_key:{KEY} — fire an FMC button H-event from inside Coherent GT.
-        // This avoids the MobiFlight WASM dependency for text input.
-        // Keys must match AS01B_FMC_1_BTN_{KEY} event names.
+        // type_key:{KEY} — fire an FMC CDU button H-event (AS01B_FMC_1_BTN_ prefix).
         var typeKeyMatch = command.match(/^type_key:(.+)$/);
         if (typeKeyMatch) {
             try {
                 SimVar.SetSimVarValue('H:AS01B_FMC_1_BTN_' + typeKeyMatch[1], 'number', 1);
             } catch (e) {
                 console.error('[MFD Bridge] type_key error:', e);
+            }
+            return;
+        }
+
+        // fcu_key:{KEY} — fire an FCU/MCP H-event (AS01B_FMC_1_ prefix, no BTN_).
+        // Used for MCP buttons like ALTITUDE_INTERVENTION that route through onFcuEvent.
+        var fcuKeyMatch = command.match(/^fcu_key:(.+)$/);
+        if (fcuKeyMatch) {
+            try {
+                SimVar.SetSimVarValue('H:AS01B_FMC_1_' + fcuKeyMatch[1], 'number', 1);
+            } catch (e) {
+                console.error('[MFD Bridge] fcu_key error:', e);
             }
             return;
         }
