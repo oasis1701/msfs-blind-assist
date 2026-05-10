@@ -7,8 +7,14 @@
 // Top-level try-catch ensures errors here never break the EFB.
 try {
 
+// Guard against double-load: both import-script and <script src> tags may execute.
+// Whichever fires first wins; the second is a no-op.
+if (window._efb_bridge_loaded) {
+    console.log('[EFB Bridge] Already loaded, skipping (double-load guard)');
+} else { window._efb_bridge_loaded = true;
+
 var _efb = {
-    SERVER_URL: 'http://localhost:19778',
+    SERVER_URL: 'http://127.0.0.1:19778',
     SCREEN_POLL_INTERVAL: 500,
     COMMAND_POLL_INTERVAL: 400,
     HEARTBEAT_INTERVAL: 5000,
@@ -367,6 +373,8 @@ console.log('[EFB Bridge] Accessibility bridge loaded, connecting...');
 setTimeout(function() {
     _efb.startConnectionLoop();
 }, 3000);
+
+} // end double-init guard
 
 } catch (e) {
     console.error('[EFB Bridge] Fatal error during initialization:', e);

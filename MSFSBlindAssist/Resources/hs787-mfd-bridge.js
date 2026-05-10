@@ -7,8 +7,14 @@
 // Top-level try-catch ensures errors here never break the FMC.
 try {
 
+// Guard against double-load: both import-script and <script src> tags may execute.
+// Whichever fires first wins; the second is a no-op.
+if (window._mfd_bridge_loaded) {
+    console.log('[MFD Bridge] Already loaded, skipping (double-load guard)');
+} else { window._mfd_bridge_loaded = true;
+
 var _mfd = {
-    SERVER_URL: 'http://localhost:19778',
+    SERVER_URL: 'http://127.0.0.1:19778',
     SCREEN_POLL_INTERVAL: 300,
     COMMAND_POLL_INTERVAL: 400,
     HEARTBEAT_INTERVAL: 5000,
@@ -18,7 +24,21 @@ var _mfd = {
     heartbeatTimer: null,
     screenPollTimer: null,
     previousScreen: null,
-    previousCduVisible: null  // null = unknown, true/false after first poll
+    previousCduVisible: null,  // null = unknown, true/false after first poll
+    stageReached: 0            // SimVar diagnostic: 1=loaded, 2=fetch failed, 3=connected
+};
+
+// Write L:MSFSBA_787_STAGE so the C# app can read bridge execution state without MSFS dev mode.
+// Stages: 1=script loaded, 2=fetch blocked/failed, 3=connected.
+// Never downgrades from 3 (connected) so a transient reconnect doesn't erase the good result.
+_mfd.setStage = function(stage) {
+    if (_mfd.stageReached >= 3 && stage < 3) return;
+    _mfd.stageReached = stage;
+    try {
+        if (typeof SimVar !== 'undefined' && typeof SimVar.SetSimVarValue === 'function') {
+            SimVar.SetSimVarValue('L:MSFSBA_787_STAGE', 'number', stage);
+        }
+    } catch (e) { }
 };
 
 // --- HTTP Communication ---
@@ -76,6 +96,7 @@ _mfd.tryConnect = async function() {
             if (!_mfd.serverConnected) {
                 _mfd.serverConnected = true;
                 console.log('[MFD Bridge] Connected to accessibility server');
+                _mfd.setStage(3); // Stage 3: fetch succeeded, bridge connected
                 _mfd.startPolling();
                 _mfd.postState('mfd_connected');
             }
@@ -86,6 +107,7 @@ _mfd.tryConnect = async function() {
         // Log the error type so we can diagnose what is blocking the connection
         // (PNA, CSP, network error, etc.) — check MSFS console log for these lines.
         console.error('[MFD Bridge] tryConnect failed:', e && e.name, e && e.message);
+        _mfd.setStage(2); // Stage 2: fetch threw — likely CSP or network policy blocking localhost
     }
 
     if (_mfd.serverConnected) {
@@ -355,9 +377,12 @@ _mfd.startConnectionLoop = function() {
 };
 
 console.log('[MFD Bridge] Accessibility bridge loaded, connecting...');
+_mfd.setStage(1); // Stage 1: script executed in this VCockpit context
 setTimeout(function() {
     _mfd.startConnectionLoop();
 }, 3000);
+
+} // end double-init guard
 
 } catch (e) {
     console.error('[MFD Bridge] Fatal error during initialization:', e);

@@ -18,6 +18,10 @@ public class HorizonSim787Definition : BaseAircraftDefinition
     // Used to fire alt INTV from inside Coherent GT when the FMC bridge is connected.
     public EFBBridgeServer? BridgeServer { get; set; }
 
+    // SimVar diagnostic: 0=unknown, 1=script loaded, 2=fetch failed, 3=connected.
+    // Written by L:MSFSBA_787_STAGE from hs787-mfd-bridge.js; read here via SimConnect.
+    public int BridgeStage { get; private set; } = 0;
+
     private bool _previousAppHold = false;
     private bool _previousGSActive = false;
     private bool _previousAPMaster = false;
@@ -1725,6 +1729,17 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                     [0]   = "Disconnected",
                     [100] = "Connected"
                 }
+            },
+
+            // Bridge diagnostic: written by L:MSFSBA_787_STAGE in hs787-mfd-bridge.js.
+            // IsAnnounced = true puts it in the continuous batch; ProcessSimVarUpdate handles it silently.
+            ["HS787_BridgeStage"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MSFSBA_787_STAGE",
+                DisplayName = "Bridge Stage",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true
             }
         };
 
@@ -2474,6 +2489,13 @@ public class HorizonSim787Definition : BaseAircraftDefinition
     {
         if (base.ProcessSimVarUpdate(variableKey, value, announcer))
             return true;
+
+        // Bridge diagnostic L-var — store silently, no announcement.
+        if (variableKey == "HS787_BridgeStage")
+        {
+            BridgeStage = (int)value;
+            return true;
+        }
 
         // FuelBalanceFault: only announce when it turns ON (value = 1)
         if (variableKey == "HS787_FuelBalanceFault")

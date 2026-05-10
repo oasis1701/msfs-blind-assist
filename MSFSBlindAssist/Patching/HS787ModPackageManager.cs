@@ -15,7 +15,7 @@ namespace MSFSBlindAssist.Patching
     public static class HS787ModPackageManager
     {
         // Bump when bridge JS or package structure changes — triggers auto-update on app start.
-        private const int BridgeVersion = 11;
+        private const int BridgeVersion = 13;
         private const string VersionFileName = "bridge-version.txt";
 
         private const string PackageFolderName = "zzz-hs787-accessibility";
@@ -30,14 +30,16 @@ namespace MSFSBlindAssist.Patching
         private static readonly string[] MfdHtmlFileNames = { "HSB789_MFD.GE.html", "HSB789_MFD.RR.html" };
         private static readonly string[] EfbHtmlFileNames = { "HSB789_EFB.GE.html", "HSB789_EFB.RR.html" };
 
-        // Use standard <script src> with a relative path so Coherent GT 2.x (FS2024) loads the
-        // script. The import-script attribute is Coherent GT 1.x-specific and is ignored by the
-        // newer Chromium base in FS2024. Relative path works in both versions because our JS file
-        // lives in the same VFS directory as the HTML override.
+        // Use both import-script (processed by MSFS framework, works in both FS2020/FS2024 VCockpit
+        // instruments) and <script src> (processed by Coherent GT browser, belt-and-suspenders).
+        // The bridge JS contains a double-load guard so whichever fires first wins.
+        // Absolute VFS paths for import-script must match where the file lands in our mod package.
         private const string MfdBridgeScriptTag =
+            "\n<script type=\"text/html\" import-script=\"/Pages/VCockpit/Instruments/Airliners/HSB787_9/MFD/hs787-mfd-bridge.js\"></script>" +
             "\n<script src=\"hs787-mfd-bridge.js\"></script>";
 
         private const string EfbBridgeScriptTag =
+            "\n<script type=\"text/html\" import-script=\"/Pages/VCockpit/Instruments/Airliners/HSB787_9/EFB/hs787-efb-bridge.js\"></script>" +
             "\n<script src=\"hs787-efb-bridge.js\"></script>";
 
         // Keep the old name for backwards compat with IsInstalled check

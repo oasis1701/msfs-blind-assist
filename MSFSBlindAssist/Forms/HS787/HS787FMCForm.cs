@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using MSFSBlindAssist.Accessibility;
+using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.SimConnect;
 
 namespace MSFSBlindAssist.Forms.HS787;
@@ -150,7 +151,18 @@ public partial class HS787FMCForm : Form
     {
         string desired;
         if (!_mfdConnected)
-            desired = "FMC Bridge Not Connected — install mod package and restart MSFS";
+        {
+            int stage = (_simConnect.CurrentAircraft as HorizonSim787Definition)?.BridgeStage ?? 0;
+            string stageInfo = stage switch
+            {
+                0 => "Script: not executing",
+                1 => "Script: loaded, connecting...",
+                2 => "Script: loaded, fetch blocked",
+                3 => "Script: connected (race?)",
+                _ => $"Script: stage {stage}"
+            };
+            desired = $"FMC Bridge Not Connected [{stageInfo}]";
+        }
         else if (!_cduVisible)
             desired = "FMC Bridge Connected — open CDU view on an MFD screen";
         else
