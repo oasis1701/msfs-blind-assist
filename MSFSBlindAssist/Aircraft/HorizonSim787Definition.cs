@@ -2284,18 +2284,30 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             return true;
         }
 
-        // External power — toggle using K:SET_EXTERNAL_POWER via calculator code.
-        // Index 1 or 2 depending on which source. Value 0=Off, 1=On.
+        // External power — write EXT_PWR_COMMANDED LVar directly; the WT Boeing 787
+        // avionics system reads this LVar to determine the switch state.
         if (varKey == "HS787_ExtPwr1")
         {
-            int state = (int)value;
-            simConnect.ExecuteCalculatorCode($"1 {state} (>K:2:SET_EXTERNAL_POWER)");
+            simConnect.SetLVar("EXT_PWR_COMMANDED:1", value);
             return true;
         }
         if (varKey == "HS787_ExtPwr2")
         {
-            int state = (int)value;
-            simConnect.ExecuteCalculatorCode($"2 {state} (>K:2:SET_EXTERNAL_POWER)");
+            simConnect.SetLVar("EXT_PWR_COMMANDED:2", value);
+            return true;
+        }
+
+        // APU knob — use K:events to drive the WT Boeing APU state machine.
+        // Direct LVar writes to XMLVAR_APU_StarterKnob_Pos are ignored by the WT system.
+        if (varKey == "HS787_APU_Knob")
+        {
+            string apuEvent = (int)value switch
+            {
+                2 => "APU_STARTER",
+                1 => "APU_ON_SWITCH",
+                _ => "APU_OFF_SWITCH"
+            };
+            simConnect.SendEvent(apuEvent);
             return true;
         }
 
