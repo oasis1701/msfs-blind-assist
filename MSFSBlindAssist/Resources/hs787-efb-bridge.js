@@ -14,7 +14,7 @@ if (window._efb_bridge_loaded) {
 } else { window._efb_bridge_loaded = true;
 
 var _efb = {
-    SERVER_URL: 'http://127.0.0.1:19778',
+    SERVER_URL: 'http://localhost:19778',
     SCREEN_POLL_INTERVAL: 500,
     COMMAND_POLL_INTERVAL: 400,
     HEARTBEAT_INTERVAL: 5000,
