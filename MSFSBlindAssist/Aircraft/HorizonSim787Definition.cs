@@ -2472,6 +2472,9 @@ public class HorizonSim787Definition : BaseAircraftDefinition
     public override bool ProcessSimVarUpdate(string variableKey, double value,
         ScreenReaderAnnouncer announcer)
     {
+        if (base.ProcessSimVarUpdate(variableKey, value, announcer))
+            return true;
+
         // FuelBalanceFault: only announce when it turns ON (value = 1)
         if (variableKey == "HS787_FuelBalanceFault")
         {
