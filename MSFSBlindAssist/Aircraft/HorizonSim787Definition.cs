@@ -132,7 +132,7 @@ public class HorizonSim787Definition : BaseAircraftDefinition
 
     public override Dictionary<string, SimConnect.SimVarDefinition> GetVariables()
     {
-        return new Dictionary<string, SimConnect.SimVarDefinition>
+        var aircraftVariables = new Dictionary<string, SimConnect.SimVarDefinition>
         {
             // -----------------------------------------------------------------
             // OVERHEAD — Electrical
@@ -1727,6 +1727,11 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 }
             }
         };
+
+        var variables = GetBaseVariables();
+        foreach (var kvp in aircraftVariables)
+            variables[kvp.Key] = kvp.Value;
+        return variables;
     }
 
     // =========================================================================
