@@ -127,14 +127,16 @@ public class UserSettings
         // doesn't have to re-tick on every launch.
         public List<string> PMDGDisabledMonitorVariables { get; set; } = new List<string>();
 
-        // FMC settings — only meaningful when a PMDG aircraft is loaded; the
-        // FMC Settings menu item is gated on AircraftCode.StartsWith("PMDG_").
+        // FMC settings — meaningful when a PMDG aircraft or the Fenix A320 is
+        // loaded; the FMC Settings menu item is gated on
+        // AircraftCode.StartsWith("PMDG_") || AircraftCode.StartsWith("FENIX_").
 
         /// <summary>
-        /// When true, the PMDG CDU form remaps the line-select keys from the
-        /// default Ctrl+1..6 (L) / Alt+1..6 (R) to F1..F6 (L) / F7..F12 (R).
-        /// Frees Ctrl/Alt for other shortcuts; matches TFM's "alternate
-        /// keys" layout, which many returning TFM users prefer.
+        /// When true, both the PMDG 777 CDU form and the Fenix A320 MCDU form
+        /// remap their line-select keys from the default Ctrl+1..6 (L) /
+        /// Alt+1..6 (R) to F1..F6 (L) / F7..F12 (R). Frees Ctrl/Alt for other
+        /// shortcuts; matches TFM's "alternate keys" layout, which many
+        /// returning TFM users prefer.
         /// </summary>
         public bool MCDUUseAlternateLSKKeys { get; set; } = false;
 
