@@ -100,17 +100,13 @@ namespace MSFSBlindAssist.Patching
   ""total_package_size"": ""0000000000000001000""
 }";
 
-        private static string GetManifestJson(string communityFolderPath)
-        {
-            return communityFolderPath.Contains("Limitless", StringComparison.OrdinalIgnoreCase)
-                ? Fs2024ManifestJson
-                : Fs2020ManifestJson;
-        }
+        private static string GetManifestJson(string communityFolderPath) =>
+            IsFs2024(communityFolderPath) ? Fs2024ManifestJson : Fs2020ManifestJson;
 
-        // FS2024 detection: the MS Store package name for FS2024 is Microsoft.Limitless_8wekyb3d8bbwe.
-        // Every FS2024 community folder path contains "Limitless"; FS2020 paths contain "FlightSimulator".
+        // FS2024 detection: delegates to EFBModPackageManager.IsPathFromFs2024() which checks UserCfg.opt
+        // and falls back to "Limitless" (MS Store) and "Microsoft Flight Simulator 2024" (Steam) substrings.
         private static bool IsFs2024(string communityFolderPath) =>
-            communityFolderPath.Contains("Limitless", StringComparison.OrdinalIgnoreCase);
+            EFBModPackageManager.IsPathFromFs2024(communityFolderPath);
 
         // ------------------------------------------------------------------ //
         //  FS2024 in-place patching                                            //
