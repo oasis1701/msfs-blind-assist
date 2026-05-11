@@ -5349,7 +5349,10 @@ public class PMDG777Definition : BaseAircraftDefinition
             {
                 return true;
             }
-            uint switchEventId = (uint)EventIds["EVT_OH_EMER_EXIT_LIGHT_SWITCH"];
+            if (!EventIds.TryGetValue("EVT_OH_EMER_EXIT_LIGHT_SWITCH", out int switchEventId))
+            {
+                return false;
+            }
             simConnect.SendEvent("#" + switchEventId, (uint)target);
             return true;
         }
