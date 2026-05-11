@@ -72,6 +72,22 @@ public class HorizonSim787Definition : BaseAircraftDefinition
     // Altimeter change tracking — NaN suppresses the first-poll announcement
     private double _lastAnnouncedAltimeter = double.NaN;
 
+    // BridgeVersion 18+ additions — annunciators / status / overhead extras.
+    // -1 / unset suppresses the first-poll announcement (only transitions are spoken).
+    private int  _previousMasterCaution    = -1;
+    private int  _previousMasterWarning    = -1;
+    private int  _previousStallWarning     = -1;
+    private int  _previousIrsOnBat         = -1;
+    private int  _previousLightMaster      = -1;
+    private int  _previousEmerLightsCover  = -1;
+    private int  _previousEfbPower         = -1;
+    private int  _previousFlightComputerAuto = -1;
+    private int  _previousPacksAuto        = -1;
+    private int  _previousFdDoorPower      = -1;
+    private int  _previousCoolingAft       = -1;
+    private int  _previousEquipFwd         = -1;
+    private int  _previousPressManAltOn    = -1;
+
     public override string AircraftName => "HorizonSim 787-9";
     public override string AircraftCode => "HS_787";
 
@@ -104,6 +120,8 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 "Hydraulics",
                 "Fuel",
                 "Air Conditioning",
+                "Pressurization",
+                "Cooling",
                 "Anti-Ice",
                 "Signs",
                 "Flight Controls",
@@ -113,7 +131,8 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             {
                 "EFIS",
                 "MCP",
-                "FMC Status"
+                "FMC Status",
+                "Annunciators"
             },
             ["Pedestal"] = new List<string>
             {
@@ -1731,6 +1750,235 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 }
             },
 
+            // =====================================================================
+            // BridgeVersion 18+ — additions discovered via live L-var probing
+            // against running FS2024 + grep of horizonsim-aircraft-787-9 instrument
+            // JS. Each variable below was confirmed to return sensible values in
+            // cold-and-dark at the gate. All work on FS2020 too (same WT Boeing
+            // base avionics).
+            // =====================================================================
+
+            // --- Annunciators (cockpit alert lights) ---
+            ["HS787_MasterCaution"] = new SimConnect.SimVarDefinition
+            {
+                Name = "Generic_Master_Caution_Active",
+                DisplayName = "Master Caution",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "Off",
+                    [1] = "On"
+                }
+            },
+
+            ["HS787_MasterWarning"] = new SimConnect.SimVarDefinition
+            {
+                Name = "Generic_Master_Warning_Active",
+                DisplayName = "Master Warning",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "Off",
+                    [1] = "On"
+                }
+            },
+
+            ["HS787_StallWarning"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_787_STALL_WARNING",
+                DisplayName = "Stall Warning",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "Inactive",
+                    [1] = "STALL"
+                }
+            },
+
+            ["HS787_IrsOnBat"] = new SimConnect.SimVarDefinition
+            {
+                Name = "B787_Irs_On_Bat",
+                DisplayName = "IRS On Battery",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "Normal",
+                    [1] = "IRS on battery"
+                }
+            },
+
+            ["HS787_AcBusEnergized"] = new SimConnect.SimVarDefinition
+            {
+                Name = "B78_AC_BUS_ENERGIZED",
+                DisplayName = "AC Bus Energized",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "Off",
+                    [1] = "On"
+                }
+            },
+
+            // --- Overhead extras (cooling, emer lights cover, light master, EFB power) ---
+            ["HS787_CoolingAft"] = new SimConnect.SimVarDefinition
+            {
+                Name = "XMLVAR_Cooling_Aft",
+                DisplayName = "Aft Equipment Cooling",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "Off",
+                    [1] = "Auto"
+                }
+            },
+
+            ["HS787_EquipFwd"] = new SimConnect.SimVarDefinition
+            {
+                Name = "XMLVAR_Equip_Fwd",
+                DisplayName = "Fwd Equipment Cooling",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "Off",
+                    [1] = "Auto"
+                }
+            },
+
+            ["HS787_EmerLightsCover"] = new SimConnect.SimVarDefinition
+            {
+                Name = "XMLVAR_ELECTRICAL_EmerLights_Cover_Opened",
+                DisplayName = "Emergency Lights Cover",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "Closed",
+                    [1] = "Open"
+                }
+            },
+
+            ["HS787_LightMaster"] = new SimConnect.SimVarDefinition
+            {
+                Name = "XMLVAR_LightMasterActive",
+                DisplayName = "Light Master",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "Off",
+                    [1] = "On"
+                }
+            },
+
+            ["HS787_EfbPower"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_EFB_POWER",
+                DisplayName = "EFB Power",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "Off",
+                    [1] = "On"
+                }
+            },
+
+            ["HS787_FlightComputerAuto"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_78_FLIGHT_COMPUTER_AUTO",
+                DisplayName = "Flight Computer",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "Manual",
+                    [1] = "Auto"
+                }
+            },
+
+            ["HS787_PacksAuto"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_78_PACKS_ON",
+                DisplayName = "Packs Master",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "Off",
+                    [1] = "On"
+                }
+            },
+
+            ["HS787_FdDoorPower"] = new SimConnect.SimVarDefinition
+            {
+                Name = "XMLVAR_FdDoor_Power",
+                DisplayName = "Flight Deck Door Power",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "Off",
+                    [1] = "On"
+                }
+            },
+
+            // --- Pressurization ---
+            ["HS787_PressLdgAlt"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_PRESS_LDG_ALT",
+                DisplayName = "Landing Altitude",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                Units = "feet"
+            },
+
+            ["HS787_PressManAltOn"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_PRESS_MAN_ALT_ON",
+                DisplayName = "Manual Pressurization",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "Auto",
+                    [1] = "Manual"
+                }
+            },
+
+            // --- Status / background (no announcement, useful for hotkey reads) ---
+            ["HS787_FlightStarted"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_Flight_Started",
+                DisplayName = "Flight Started",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "No",
+                    [1] = "Yes"
+                }
+            },
+
             // Bridge diagnostic: written by L:MSFSBA_787_STAGE in hs787-mfd-bridge.js.
             // IsAnnounced = true puts it in the continuous batch; ProcessSimVarUpdate handles it silently.
             ["HS787_BridgeStage"] = new SimConnect.SimVarDefinition
@@ -1799,10 +2047,22 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             {
                 "HS787_PackL",
                 "HS787_PackR",
+                "HS787_PacksAuto",
                 "HS787_TrimAirL",
                 "HS787_TrimAirR",
                 "HS787_RecircUpper",
                 "HS787_RecircLower"
+            },
+            ["Pressurization"] = new List<string>
+            {
+                "HS787_PressLdgAlt",
+                "HS787_PressManAltOn"
+            },
+            ["Cooling"] = new List<string>
+            {
+                "HS787_CoolingAft",
+                "HS787_EquipFwd",
+                "HS787_EmerLightsCover"
             },
             ["Anti-Ice"] = new List<string>
             {
@@ -1822,7 +2082,8 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             ["Flight Controls"] = new List<string>
             {
                 "HS787_AltnFlapsArmed",
-                "HS787_AltnFlapsSelector"
+                "HS787_AltnFlapsSelector",
+                "HS787_FlightComputerAuto"
             },
             ["Engines"] = new List<string>
             {
@@ -1851,6 +2112,14 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 "HS787_TOGA",
                 "HS787_FmsPhase"
             },
+            ["Annunciators"] = new List<string>
+            {
+                "HS787_MasterCaution",
+                "HS787_MasterWarning",
+                "HS787_StallWarning",
+                "HS787_IrsOnBat",
+                "HS787_AcBusEnergized"
+            },
 
             // --- Pedestal ---
             ["Transponder"] = new List<string>
@@ -1866,6 +2135,7 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             },
             ["Lighting"] = new List<string>
             {
+                "HS787_LightMaster",
                 "HS787_LightBeacon",
                 "HS787_LightStrobe",
                 "HS787_LightNav",
@@ -1877,7 +2147,8 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             ["Options"] = new List<string>
             {
                 "HS787_SATCOM",
-                "HS787_VBar"
+                "HS787_VBar",
+                "HS787_EfbPower"
             },
 
             // --- Ground Services ---
@@ -1892,7 +2163,8 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 "HS787_Door_4L",
                 "HS787_Door_4R",
                 "HS787_Door_FwdCargo",
-                "HS787_Door_AftCargo"
+                "HS787_Door_AftCargo",
+                "HS787_FdDoorPower"
             },
             ["Services"] = new List<string>
             {
@@ -2506,6 +2778,129 @@ public class HorizonSim787Definition : BaseAircraftDefinition
         if (variableKey == "HS787_BridgeStage")
         {
             BridgeStage = (int)value;
+            return true;
+        }
+
+        // =====================================================================
+        // BridgeVersion 18+ — new annunciators / status. All use the same pattern:
+        // track previous value (-1 = unset → suppresses first-poll), announce only
+        // on transitions, optionally distinguish on→off vs off→on phrasing.
+        // =====================================================================
+
+        if (variableKey == "HS787_MasterCaution")
+        {
+            int now = (int)value;
+            if (_previousMasterCaution >= 0 && now != _previousMasterCaution)
+                announcer.Announce(now == 1 ? "Master Caution" : "Master Caution clear");
+            _previousMasterCaution = now;
+            return true;
+        }
+
+        if (variableKey == "HS787_MasterWarning")
+        {
+            int now = (int)value;
+            if (_previousMasterWarning >= 0 && now != _previousMasterWarning)
+                announcer.Announce(now == 1 ? "Master Warning" : "Master Warning clear");
+            _previousMasterWarning = now;
+            return true;
+        }
+
+        if (variableKey == "HS787_StallWarning")
+        {
+            int now = (int)value;
+            if (_previousStallWarning >= 0 && now != _previousStallWarning && now == 1)
+                announcer.Announce("STALL");
+            _previousStallWarning = now;
+            return true;
+        }
+
+        if (variableKey == "HS787_IrsOnBat")
+        {
+            int now = (int)value;
+            if (_previousIrsOnBat >= 0 && now != _previousIrsOnBat)
+                announcer.Announce(now == 1 ? "IRS on battery" : "IRS on aircraft power");
+            _previousIrsOnBat = now;
+            return true;
+        }
+
+        if (variableKey == "HS787_LightMaster")
+        {
+            int now = (int)value;
+            if (_previousLightMaster >= 0 && now != _previousLightMaster)
+                announcer.Announce(now == 1 ? "Light Master on" : "Light Master off");
+            _previousLightMaster = now;
+            return true;
+        }
+
+        if (variableKey == "HS787_EmerLightsCover")
+        {
+            int now = (int)value;
+            if (_previousEmerLightsCover >= 0 && now != _previousEmerLightsCover)
+                announcer.Announce(now == 1 ? "Emergency Lights cover open" : "Emergency Lights cover closed");
+            _previousEmerLightsCover = now;
+            return true;
+        }
+
+        if (variableKey == "HS787_EfbPower")
+        {
+            int now = (int)value;
+            if (_previousEfbPower >= 0 && now != _previousEfbPower)
+                announcer.Announce(now == 1 ? "EFB on" : "EFB off");
+            _previousEfbPower = now;
+            return true;
+        }
+
+        if (variableKey == "HS787_FlightComputerAuto")
+        {
+            int now = (int)value;
+            if (_previousFlightComputerAuto >= 0 && now != _previousFlightComputerAuto)
+                announcer.Announce(now == 1 ? "Flight Computer Auto" : "Flight Computer Manual");
+            _previousFlightComputerAuto = now;
+            return true;
+        }
+
+        if (variableKey == "HS787_PacksAuto")
+        {
+            int now = (int)value;
+            if (_previousPacksAuto >= 0 && now != _previousPacksAuto)
+                announcer.Announce(now == 1 ? "Packs on" : "Packs off");
+            _previousPacksAuto = now;
+            return true;
+        }
+
+        if (variableKey == "HS787_FdDoorPower")
+        {
+            int now = (int)value;
+            if (_previousFdDoorPower >= 0 && now != _previousFdDoorPower)
+                announcer.Announce(now == 1 ? "Flight Deck Door power on" : "Flight Deck Door power off");
+            _previousFdDoorPower = now;
+            return true;
+        }
+
+        if (variableKey == "HS787_CoolingAft")
+        {
+            int now = (int)value;
+            if (_previousCoolingAft >= 0 && now != _previousCoolingAft)
+                announcer.Announce(now == 1 ? "Aft Equipment Cooling auto" : "Aft Equipment Cooling off");
+            _previousCoolingAft = now;
+            return true;
+        }
+
+        if (variableKey == "HS787_EquipFwd")
+        {
+            int now = (int)value;
+            if (_previousEquipFwd >= 0 && now != _previousEquipFwd)
+                announcer.Announce(now == 1 ? "Forward Equipment Cooling auto" : "Forward Equipment Cooling off");
+            _previousEquipFwd = now;
+            return true;
+        }
+
+        if (variableKey == "HS787_PressManAltOn")
+        {
+            int now = (int)value;
+            if (_previousPressManAltOn >= 0 && now != _previousPressManAltOn)
+                announcer.Announce(now == 1 ? "Pressurization manual" : "Pressurization auto");
+            _previousPressManAltOn = now;
             return true;
         }
 
