@@ -163,11 +163,12 @@ public class TaxiGuidanceManager : IDisposable
 
     // Last actionable instruction announced (for the Ctrl+Y "Repeat" hotkey).
     // Only TACTICAL announcements update this — turn callouts, hold-shorts,
-    // taxiway changes, lineup, arrival, distance countdowns. Peripheral alerts
-    // (speed warnings, runway-crossing alerts, off-route notices, "lined up"
-    // confirmations) stay on plain _announcer.Announce so a fading "slow
-    // down" doesn't overwrite the actionable "in 300 feet, turn left onto
-    // taxiway B" the pilot actually wants to repeat. Cleared on StopGuidance.
+    // taxiway changes, lineup, arrival, distance countdowns. Three peripheral
+    // sites still call _announcer.Announce directly (without recording to
+    // _lastInstruction) so the Repeat-Last buffer keeps the actionable callout:
+    // (a) the LoadRoute route summary at start of guidance, (b) the ground-
+    // speed bucket announcer, (c) the "Taxi speed, X knots" follow-up after a
+    // speed warning. Cleared on StopGuidance.
     private string _lastInstruction = "";
 
     // Periodic ground-speed announcer state. The "last announced bucket"
@@ -1248,12 +1249,12 @@ public class TaxiGuidanceManager : IDisposable
 
         if (sharpTurnComing && _lastGroundSpeedKts > MAX_TAXI_SPEED_SHARP_TURN_KTS)
         {
-            _announcer.Announce("Slow for sharp turn.");
+            _announcer.AnnounceImmediate("Slow for sharp turn.");
             _lastSpeedWarningTime = DateTime.Now;
         }
         else if (normalTurnComing && _lastGroundSpeedKts > MAX_TAXI_SPEED_TURN_KTS)
         {
-            _announcer.Announce("Slow for turn.");
+            _announcer.AnnounceImmediate("Slow for turn.");
             _lastSpeedWarningTime = DateTime.Now;
         }
         else if (!normalTurnComing && !sharpTurnComing && _lastGroundSpeedKts > MAX_TAXI_SPEED_STRAIGHT_KTS)
@@ -1327,11 +1328,11 @@ public class TaxiGuidanceManager : IDisposable
         if (onRouteHsNodes.Contains(nearestHs.NodeId))
         {
             // Planned crossing — informational, not a warning
-            _announcer.Announce($"Crossing {rwy}.");
+            _announcer.AnnounceImmediate($"Crossing {rwy}.");
         }
         else
         {
-            _announcer.Announce($"Warning: approaching {rwy}, off route.");
+            _announcer.AnnounceImmediate($"Warning: approaching {rwy}, off route.");
         }
 
         _lastIncursionWarnedNodeId = nearestHs.NodeId;
@@ -1519,7 +1520,7 @@ public class TaxiGuidanceManager : IDisposable
 
         if (newRoute == null || newRoute.Segments.Count == 0)
         {
-            _announcer.Announce("Off route. Unable to recalculate.");
+            _announcer.AnnounceImmediate("Off route. Unable to recalculate.");
             return;
         }
 
@@ -1536,7 +1537,7 @@ public class TaxiGuidanceManager : IDisposable
             // almost certainly routing around the world. Keep the old route.
             if (oldRemaining > 0 && newRoute.TotalDistanceMeters > oldRemaining * 2.0 + 500.0)
             {
-                _announcer.Announce(
+                _announcer.AnnounceImmediate(
                     $"Off route. Could not follow clearance. {newRoute.ConstrainedFallbackReason}. Continuing on original route.");
                 return;
             }
@@ -1813,7 +1814,7 @@ public class TaxiGuidanceManager : IDisposable
             ? $"Crossing taxiway {freshNames[0]}."
             : $"Crossing taxiways {string.Join(", ", freshNames)}.";
 
-        _announcer.Announce(label);
+        _announcer.AnnounceImmediate(label);
         _crossingAnnounced = true;
         _lastCrossingNodeId = junctionNode.NodeId;
 
@@ -2194,7 +2195,7 @@ public class TaxiGuidanceManager : IDisposable
                 // This matches what runway-teleport puts you at (20 m back
                 // from the threshold, aligned), so taxi guidance and teleport
                 // converge on the same final state.
-                _announcer.Announce($"Lined up, {_destinationName}. Hold position.");
+                _announcer.AnnounceImmediate($"Lined up, {_destinationName}. Hold position.");
             }
             else if (_lineupAnnouncedAligned && !stillAligned)
             {
@@ -2254,7 +2255,7 @@ public class TaxiGuidanceManager : IDisposable
             {
                 _lineupAnnouncedAligned = true;
                 _steeringTone.Pause();
-                _announcer.Announce($"Aligned with {_destinationName}. Parking brake.");
+                _announcer.AnnounceImmediate($"Aligned with {_destinationName}. Parking brake.");
             }
             else if (_lineupAnnouncedAligned && !stillAligned)
             {
