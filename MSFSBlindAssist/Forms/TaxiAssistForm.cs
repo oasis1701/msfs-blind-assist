@@ -717,16 +717,25 @@ public class TaxiAssistForm : Form
         // router's `FindRunwayBridge` and constrained-path logic still
         // resolve the actual route — this is purely UX so the user can match
         // what ATC said even when the heuristic doesn't surface it.
+        //
+        // Duplicate taxiways are allowed: ATC clearances like "via C, hold
+        // short 04L, C" at KBOS need to re-use a taxiway across a runway
+        // crossing. The router handles consecutive duplicates as a benign
+        // no-op step (FindBestIntersection resolves to the current node and
+        // the currentNode == targetNode short-circuit at TaxiRouter.cs skips
+        // the redundant step); the per-row user hold-short on the first
+        // occurrence still tags the correct segment via
+        // ApplyUserRunwayHoldShorts. The only name we hide is the
+        // immediately-previous taxiway — picking it again as the very next
+        // slot is a no-op click error, not a meaningful clearance pattern.
         var connected = _graph.GetConnectedTaxiwayNames(previousTaxiway);
-        var usedTaxiways = GetSelectedTaxiwayNames();
 
         var connectedAvailable = connected
-            .Where(n => !usedTaxiways.Contains(n, StringComparer.OrdinalIgnoreCase))
+            .Where(n => !n.Equals(previousTaxiway, StringComparison.OrdinalIgnoreCase))
             .ToList();
 
         var connectedSet = new HashSet<string>(connectedAvailable, StringComparer.OrdinalIgnoreCase);
         var otherAirportTaxiways = _graph.GetAllTaxiwayNames()
-            .Where(n => !usedTaxiways.Contains(n, StringComparer.OrdinalIgnoreCase))
             .Where(n => !connectedSet.Contains(n))
             .Where(n => !n.Equals(previousTaxiway, StringComparison.OrdinalIgnoreCase))
             .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)

@@ -294,7 +294,7 @@ public partial class PMDG777CDUForm : Form
         // The alternate layout frees Ctrl/Alt for other hotkeys; many TFM
         // users prefer it. Setting is read every keypress so a runtime
         // change in the FMC Settings dialog takes effect immediately.
-        bool useAltKeys = MSFSBlindAssist.Settings.SettingsManager.Current.PMDGUseAlternateLSKKeys;
+        bool useAltKeys = MSFSBlindAssist.Settings.SettingsManager.Current.MCDUUseAlternateLSKKeys;
 
         if (useAltKeys)
         {

@@ -160,12 +160,12 @@ namespace MSFSBlindAssist
             //
             // fmcSettingsMenuItem
             //
-            // PMDG-only: shown when AircraftCode starts with "PMDG_". Visibility
+            // Shown when AircraftCode starts with "PMDG_" or "FENIX_". Visibility
             // is toggled in MainForm.UpdateAircraftSpecificMenuItems() each time
             // the loaded aircraft changes; the item is invisible (and so
-            // unreachable by the screen reader) when an A320 is loaded.
-            this.fmcSettingsMenuItem.AccessibleName = "F M C Settings";
-            this.fmcSettingsMenuItem.AccessibleDescription = "PMDG FMC settings: alternate line select keys and enhanced distance announcements";
+            // unreachable by the screen reader) when another aircraft is loaded.
+            this.fmcSettingsMenuItem.AccessibleName = "FMC Settings";
+            this.fmcSettingsMenuItem.AccessibleDescription = "FMC settings: alternate line select keys (PMDG and Fenix) and enhanced distance announcements (PMDG only)";
             this.fmcSettingsMenuItem.Name = "fmcSettingsMenuItem";
             this.fmcSettingsMenuItem.Size = new System.Drawing.Size(280, 26);
             this.fmcSettingsMenuItem.Text = "F&MC Settings";
