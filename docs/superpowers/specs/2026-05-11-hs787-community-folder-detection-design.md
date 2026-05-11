@@ -6,7 +6,10 @@
 
 ## Problem
 
-`HS787ModPackageManager.IsFs2024(communityFolderPath)` detects FS2024 by checking whether the path string contains "Limitless". This only works when the community folder lives inside the MS Store package's default LocalCache location (`%LocalAppData%\Packages\Microsoft.Limitless_8wekyb3d8bbwe\LocalCache\Packages\Community`). Users who have moved their MSFS packages folder to an external drive get a path like `F:\MSFS2024\Community` — no "Limitless" — so `IsFs2024` returns false, the FS2020 override-package approach is used, and the bridge never loads.
+`HS787ModPackageManager.IsFs2024(communityFolderPath)` detects FS2024 by checking whether the path string contains "Limitless". This only works for the MS Store default path (`%LocalAppData%\Packages\Microsoft.Limitless_8wekyb3d8bbwe\LocalCache\Packages\Community`). Two classes of users are broken:
+
+1. **External drive users (any edition):** community folder moved to e.g. `F:\MSFS2024\Community` — no "Limitless" in the path, so `IsFs2024` returns false, the FS2020 override-package approach is used, and the bridge never loads.
+2. **Steam FS2024 users (default install):** Steam stores the community folder at `%AppData%\Microsoft Flight Simulator 2024\Packages\Community` — also no "Limitless". Same failure mode. Additionally, the Steam default path is absent from `DefaultMSStoreCommunityPaths` entirely, so even auto-detection via `FindAllCommunityFolders()` misses these users if their `UserCfg.opt` hasn't been written yet (sim never launched after install).
 
 Additionally, `FindAllCommunityFolders()` returns an empty list when no standard path exists, and `CheckAndOfferHS787ModPackage()` silently returns in that case — offering no path to the user to fix it.
 
@@ -23,20 +26,26 @@ Two independent fixes applied together:
 
 ### Change
 
-Add `IsPathFromFs2024(string communityFolderPath)` to `EFBModPackageManager`. It:
+Add `IsPathFromFs2024(string communityFolderPath)` to `EFBModPackageManager`. It uses a three-tier fallback chain:
 
-1. Reads both FS2024 `UserCfg.opt` candidate files:
-   - `%AppData%\Microsoft Flight Simulator 2024\UserCfg.opt`
-   - `%LocalAppData%\Packages\Microsoft.Limitless_8wekyb3d8bbwe\LocalCache\UserCfg.opt`
-2. Parses `InstalledPackagesPath` from each (reusing the existing `TryParseInstalledPackagesPath` helper).
-3. Returns `true` if `InstalledPackagesPath\Community` matches the given path (case-insensitive, path-normalized).
-4. Falls back to the existing "Limitless" substring check as a last resort (covers the default MS Store path that was never moved and whose `UserCfg.opt` may not be present on first install).
+1. **UserCfg.opt lookup (primary):** Reads both FS2024 `UserCfg.opt` candidate files:
+   - `%AppData%\Microsoft Flight Simulator 2024\UserCfg.opt` — Steam / standalone
+   - `%LocalAppData%\Packages\Microsoft.Limitless_8wekyb3d8bbwe\LocalCache\UserCfg.opt` — MS Store
+   
+   Parses `InstalledPackagesPath` from each (reusing the existing `TryParseInstalledPackagesPath` helper). Returns `true` if `InstalledPackagesPath\Community` matches the given path (case-insensitive, path-normalized). This handles all users who have run the sim at least once — including external drive installs of both Steam and MS Store editions.
+
+2. **"Limitless" substring (MS Store fallback):** Catches the default MS Store path when `UserCfg.opt` doesn't exist yet (sim installed but never launched).
+
+3. **"Microsoft Flight Simulator 2024" substring (Steam fallback):** Catches the Steam default path (`%AppData%\Microsoft Flight Simulator 2024\Packages\Community`) when `UserCfg.opt` doesn't exist yet. Safe: FS2020's Steam folder is named "Microsoft Flight Simulator" (no year), so there is no false-match risk.
 
 `HS787ModPackageManager.IsFs2024(string communityFolderPath)` delegates to `EFBModPackageManager.IsPathFromFs2024(communityFolderPath)`.
 
-### Why the fallback substring check is kept
+### Steam default path added to fallback discovery
 
-If the sim was never launched after a fresh MS Store install, `UserCfg.opt` may not yet exist. The "Limitless" substring is still a valid signal for the default unmodified path.
+`DefaultMSStoreCommunityPaths` (or a parallel `DefaultSteamCommunityPaths` array) gains:
+- `%AppData%\Microsoft Flight Simulator 2024\Packages\Community`
+
+This ensures `FindAllCommunityFolders()` returns a result for Steam FS2024 users even before their `UserCfg.opt` exists, so the install offer is shown rather than silently skipped.
 
 ### Public API
 
@@ -133,7 +142,7 @@ No changes to `HS787ModPackageManager` public API. No changes to `EFBModPackageM
 
 | File | Change |
 |---|---|
-| `MSFSBlindAssist/Patching/EFBModPackageManager.cs` | Add `IsPathFromFs2024(string communityFolderPath)` helper |
+| `MSFSBlindAssist/Patching/EFBModPackageManager.cs` | Add `IsPathFromFs2024(string communityFolderPath)` helper; add Steam FS2024 default path to fallback discovery arrays |
 | `MSFSBlindAssist/Patching/HS787ModPackageManager.cs` | Update `IsFs2024()` to delegate to `EFBModPackageManager.IsPathFromFs2024` |
 | `MSFSBlindAssist/Settings/UserSettings.cs` | Add `Hs787CommunityFolderOverride` and `Hs787SimVersionOverride` fields |
 | `MSFSBlindAssist/Forms/HS787/HS787CommunityFolderForm.cs` | New form (code + designer) |
