@@ -214,7 +214,14 @@ The WT Boeing FMC (CDU screen) is made accessible via a JavaScript bridge inject
 | Originals safe-keeping | N/A (originals never modified) | `*.msfsba_backup` files saved alongside originals |
 | Version tracking | `bridge-version.txt` inside override package | `msfsba-bridge-version.txt` inside `horizonsim-aircraft-787-9/` |
 | Layout.json | Generated for override package | `horizonsim-aircraft-787-9/layout.json` patched in place (sizes updated for 4 HTMLs, 2 new entries for bridge JS); `layout.json.msfsba_backup` saved |
-| Detection (`IsFs2024`) | `!Limitless` in community path | `"Limitless"` in community path (MS Store FS2024 package name) |
+| Detection (`IsFs2024`) | delegates to `EFBModPackageManager.IsPathFromFs2024()` → returns false | delegates to `EFBModPackageManager.IsPathFromFs2024()` → returns true |
+
+**`EFBModPackageManager.IsPathFromFs2024(path)` — 3-tier detection chain:**
+1. **UserCfg.opt lookup (primary):** reads `%AppData%\Microsoft Flight Simulator 2024\UserCfg.opt` (Steam/standalone) and `%LocalAppData%\Packages\Microsoft.Limitless_8wekyb3d8bbwe\LocalCache\UserCfg.opt` (MS Store), parses `InstalledPackagesPath`, compares `InstalledPackagesPath\Community` to the given path (`Path.GetFullPath` + `OrdinalIgnoreCase`). Covers all users who have run the sim at least once, including external-drive installs.
+2. **"Limitless" substring fallback:** catches the MS Store default path when UserCfg.opt doesn't exist yet (sim installed but never launched).
+3. **"Microsoft Flight Simulator 2024" substring fallback:** catches Steam default path (`%AppData%\Microsoft Flight Simulator 2024\Packages\Community`) before UserCfg.opt exists. Safe: FS2020 Steam folder is "Microsoft Flight Simulator" with no year.
+
+`HS787ModPackageManager.IsFs2024()` delegates to this helper. `GetManifestJson()` delegates to `IsFs2024()`. `FindAllCommunityFolders()` and `FindCommunityFolderPath()` also include the Steam FS2024 default path as a discovery fallback — this benefits both the HS787 bridge and the PMDG EFB bridge. When auto-detection finds no community folders at all, `CheckAndOfferHS787ModPackage()` shows `HS787CommunityFolderForm` (Browse + sim-version combo) and persists the result to `UserSettings.Hs787CommunityFolderOverride` / `Hs787SimVersionOverride`.
 
 **Why FS2024 needs a different approach (do NOT revert to override-package on FS2024):**
 1. **FS2024 VFS doesn't honor community-on-community overrides under `html_ui/Pages/VCockpit/Instruments/Airliners/`** — the Airliners namespace is protected. Modified HTML in an override package is silently dropped (verified: `document.documentElement.outerHTML.indexOf('hs787-mfd-bridge')` returns `-1` in the loaded MFD webview). PMDG EFB's same-architecture mod (`zzz-pmdg-efb-accessibility`) DOES work on FS2024 because it targets `PMDGTablet/`, a non-Airliners path. The `globally_overriden_base_sim_files` manifest field (panel-raas-style) is base-sim-files-only and won't accept community-package paths.
