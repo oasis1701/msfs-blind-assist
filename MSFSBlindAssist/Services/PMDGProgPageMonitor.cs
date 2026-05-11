@@ -112,15 +112,18 @@ public class PMDGProgPageMonitor : IDisposable
         if (_disposed) return;
         try
         {
+            // Prime the request before reading so this tick sees fresh data,
+            // not a stale cache carried over from a prior session.
+            _dataManager.RequestCDUScreen(RIGHT_CDU);
+
             var rows = _dataManager.GetCDURows(RIGHT_CDU);
 
             if (rows == null)
             {
                 // Powered off (or no snapshot received yet) — slow the retry
-                // to 30 s and re-request. The next tick will retry.
+                // to 30 s. The next tick will retry.
                 LastError = "Right CDU not powered yet";
                 _initTimer.Interval = InitRetryMs;
-                _dataManager.RequestCDUScreen(RIGHT_CDU);
                 return;
             }
 

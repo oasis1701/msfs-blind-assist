@@ -163,11 +163,12 @@ public class TaxiGuidanceManager : IDisposable
 
     // Last actionable instruction announced (for the Ctrl+Y "Repeat" hotkey).
     // Only TACTICAL announcements update this — turn callouts, hold-shorts,
-    // taxiway changes, lineup, arrival, distance countdowns. Peripheral alerts
-    // (speed warnings, runway-crossing alerts, off-route notices, "lined up"
-    // confirmations) stay on plain _announcer.Announce so a fading "slow
-    // down" doesn't overwrite the actionable "in 300 feet, turn left onto
-    // taxiway B" the pilot actually wants to repeat. Cleared on StopGuidance.
+    // taxiway changes, lineup, arrival, distance countdowns. Two peripheral
+    // sites still call _announcer.Announce directly (without recording to
+    // _lastInstruction) so the Repeat-Last buffer keeps the actionable callout:
+    // (a) the LoadRoute route summary at start of guidance, (b) the periodic
+    // ground-speed bucket announcer (per CLAUDE.md, must not displace the
+    // Repeat-Last buffer). Cleared on StopGuidance.
     private string _lastInstruction = "";
 
     // Periodic ground-speed announcer state. The "last announced bucket"
@@ -1248,17 +1249,17 @@ public class TaxiGuidanceManager : IDisposable
 
         if (sharpTurnComing && _lastGroundSpeedKts > MAX_TAXI_SPEED_SHARP_TURN_KTS)
         {
-            _announcer.Announce("Slow for sharp turn.");
+            _announcer.AnnounceImmediate("Slow for sharp turn.");
             _lastSpeedWarningTime = DateTime.Now;
         }
         else if (normalTurnComing && _lastGroundSpeedKts > MAX_TAXI_SPEED_TURN_KTS)
         {
-            _announcer.Announce("Slow for turn.");
+            _announcer.AnnounceImmediate("Slow for turn.");
             _lastSpeedWarningTime = DateTime.Now;
         }
         else if (!normalTurnComing && !sharpTurnComing && _lastGroundSpeedKts > MAX_TAXI_SPEED_STRAIGHT_KTS)
         {
-            _announcer.Announce($"Taxi speed, {(int)_lastGroundSpeedKts} knots.");
+            _announcer.AnnounceImmediate($"Taxi speed, {(int)_lastGroundSpeedKts} knots.");
             _lastSpeedWarningTime = DateTime.Now;
         }
     }
@@ -1327,11 +1328,11 @@ public class TaxiGuidanceManager : IDisposable
         if (onRouteHsNodes.Contains(nearestHs.NodeId))
         {
             // Planned crossing — informational, not a warning
-            _announcer.Announce($"Crossing {rwy}.");
+            _announcer.AnnounceImmediate($"Crossing {rwy}.");
         }
         else
         {
-            _announcer.Announce($"Warning: approaching {rwy}, off route.");
+            _announcer.AnnounceImmediate($"Warning: approaching {rwy}, off route.");
         }
 
         _lastIncursionWarnedNodeId = nearestHs.NodeId;
@@ -1459,23 +1460,50 @@ public class TaxiGuidanceManager : IDisposable
         if ((DateTime.Now - _lastRecalculationTime).TotalSeconds < RECALCULATION_COOLDOWN_SEC)
             return;
 
+        // Final-segment guard. At the destination hold-short there's nothing
+        // left to recalculate — the runway / gate is meters away. The off-route
+        // detector can spuriously fire here when the aircraft is stopped at a
+        // hold-short with a small lateral drift (synced-cockpit "you're there
+        // but your copilot isn't yet" desync). Recalcing from this state can
+        // produce wildly different routes.
+        if (_route != null && _currentSegmentIndex >= _route.Segments.Count - 1)
+            return;
+
         _lastRecalculationTime = DateTime.Now;
 
-        var nearestNode = _graph.FindNearestNodeInDirection(lat, lon, headingTrue);
-        if (nearestNode == null) return;
+        // Position-aware sequence trim. Walk the original ATC sequence from
+        // the LAST taxiway backwards, asking "is there a node on this taxiway
+        // within 50 m of the aircraft?" — the first hit is the latest sequence
+        // taxiway the aircraft is physically on. Anything before it is behind
+        // us and should be dropped from the remaining sequence.
+        //
+        // Why not BuildRemainingSequence here: that function trims based on
+        // route.Segments[currentSegmentIndex].TaxiwayName, i.e. what the
+        // ROUTE says we're on. After a recalc resets currentSegmentIndex to
+        // 0, the route says we're on LE (first segment) even though the
+        // aircraft is actually at H2 hold-short. Trimming from the route
+        // state would re-include LE, D, NORTH and produce a constrained
+        // path that physically starts way back at LE — the aircraft then
+        // has to navigate the whole airport in reverse to follow it. This
+        // is the LEPA "big loop" bug.
+        //
+        // Driving the trim from aircraft position instead means: if you're
+        // at H2, the remaining sequence is just ["H2"]; the route is a few
+        // meters; no loop.
+        (List<string>? remainingSequence, TaxiNode? nearestNode) =
+            FindRemainingSequenceByPosition(lat, lon);
+
+        // If no sequence taxiway is near the aircraft, fall back to the
+        // heading-aware picker. The constrained path will likely fail and
+        // bail to shortest — that's the right behaviour when the aircraft
+        // has drifted off every cleared taxiway.
+        if (nearestNode == null)
+        {
+            nearestNode = _graph.FindNearestNodeInDirection(lat, lon, headingTrue);
+            if (nearestNode == null) return;
+        }
 
         var router = new TaxiRouter(_graph);
-
-        // Trim the ATC sequence to the portion we haven't passed yet. Without this
-        // trim, after the pilot has already completed taxiways A, B and is now on
-        // K, a recalc would try to re-include A and B in the remaining route —
-        // which either fails outright or produces a weird back-track. With the
-        // trim, the remaining sequence is just the taxiways ahead of us.
-        List<string>? remainingSequence = null;
-        if (_originalTaxiwaySequence != null && _originalTaxiwaySequence.Count > 0 && _route != null)
-        {
-            remainingSequence = BuildRemainingSequence(_originalTaxiwaySequence, _route, _currentSegmentIndex);
-        }
 
         // Prefer getting back onto the ATC-cleared taxiway sequence when possible —
         // only fall back to shortest path if the constrained route fails. This honors
@@ -1492,7 +1520,7 @@ public class TaxiGuidanceManager : IDisposable
 
         if (newRoute == null || newRoute.Segments.Count == 0)
         {
-            _announcer.Announce("Off route. Unable to recalculate.");
+            _announcer.AnnounceImmediate("Off route. Unable to recalculate.");
             return;
         }
 
@@ -1509,7 +1537,7 @@ public class TaxiGuidanceManager : IDisposable
             // almost certainly routing around the world. Keep the old route.
             if (oldRemaining > 0 && newRoute.TotalDistanceMeters > oldRemaining * 2.0 + 500.0)
             {
-                _announcer.Announce(
+                _announcer.AnnounceImmediate(
                     $"Off route. Could not follow clearance. {newRoute.ConstrainedFallbackReason}. Continuing on original route.");
                 return;
             }
@@ -1546,39 +1574,29 @@ public class TaxiGuidanceManager : IDisposable
     }
 
     /// <summary>
-    /// Derives the portion of the ATC-cleared taxiway sequence that lies AHEAD
-    /// of the current segment. If the pilot has completed taxiways A and B and
-    /// is currently on K, the remaining sequence is [K, rest…]. Returning the
-    /// full original sequence during a recalc tells the router to re-traverse
-    /// taxiways the pilot has already completed — guaranteeing a bad recalc.
+    /// Walks the original ATC taxiway sequence from latest to earliest, returning
+    /// the suffix starting at the first taxiway whose nearest graph node is within
+    /// NEAR_TAXIWAY_M of the aircraft. Returns (null, null) if no sequence taxiway
+    /// is near the aircraft — caller should fall back to shortest path.
     /// </summary>
-    private static List<string> BuildRemainingSequence(
-        List<string> originalSequence, TaxiRoute route, int currentSegmentIndex)
+    private (List<string>?, TaxiNode?) FindRemainingSequenceByPosition(double lat, double lon)
     {
-        // Identify the taxiway the aircraft is currently on. The segment's
-        // TaxiwayName is the authoritative mapping from route -> sequence.
-        if (currentSegmentIndex < 0 || currentSegmentIndex >= route.Segments.Count)
-            return new List<string>(originalSequence);
+        const double NEAR_TAXIWAY_M = 50.0;
+        if (_graph == null || _originalTaxiwaySequence == null || _originalTaxiwaySequence.Count == 0)
+            return (null, null);
 
-        string currentTaxiway = route.Segments[currentSegmentIndex].TaxiwayName ?? "";
-
-        // Walk the original sequence, skipping entries the aircraft has already
-        // passed. Entry match is case-insensitive to tolerate user-input case.
-        int startIdx = 0;
-        for (int i = 0; i < originalSequence.Count; i++)
+        for (int i = _originalTaxiwaySequence.Count - 1; i >= 0; i--)
         {
-            if (originalSequence[i].Equals(currentTaxiway, StringComparison.OrdinalIgnoreCase))
+            var node = _graph.FindNearestNodeOnTaxiway(lat, lon, _originalTaxiwaySequence[i], NEAR_TAXIWAY_M);
+            if (node != null)
             {
-                startIdx = i;
-                break;
+                var remaining = new List<string>();
+                for (int j = i; j < _originalTaxiwaySequence.Count; j++)
+                    remaining.Add(_originalTaxiwaySequence[j]);
+                return (remaining, node);
             }
         }
-
-        var remaining = new List<string>();
-        for (int i = startIdx; i < originalSequence.Count; i++)
-            remaining.Add(originalSequence[i]);
-
-        return remaining;
+        return (null, null);
     }
 
     private void AdvanceSegment()
@@ -1796,7 +1814,7 @@ public class TaxiGuidanceManager : IDisposable
             ? $"Crossing taxiway {freshNames[0]}."
             : $"Crossing taxiways {string.Join(", ", freshNames)}.";
 
-        _announcer.Announce(label);
+        _announcer.AnnounceImmediate(label);
         _crossingAnnounced = true;
         _lastCrossingNodeId = junctionNode.NodeId;
 
@@ -2177,7 +2195,7 @@ public class TaxiGuidanceManager : IDisposable
                 // This matches what runway-teleport puts you at (20 m back
                 // from the threshold, aligned), so taxi guidance and teleport
                 // converge on the same final state.
-                _announcer.Announce($"Lined up, {_destinationName}. Hold position.");
+                _announcer.AnnounceImmediate($"Lined up, {_destinationName}. Hold position.");
             }
             else if (_lineupAnnouncedAligned && !stillAligned)
             {
@@ -2237,7 +2255,7 @@ public class TaxiGuidanceManager : IDisposable
             {
                 _lineupAnnouncedAligned = true;
                 _steeringTone.Pause();
-                _announcer.Announce($"Aligned with {_destinationName}. Parking brake.");
+                _announcer.AnnounceImmediate($"Aligned with {_destinationName}. Parking brake.");
             }
             else if (_lineupAnnouncedAligned && !stillAligned)
             {
@@ -2575,17 +2593,23 @@ public class TaxiGuidanceManager : IDisposable
     }
 
     /// <summary>
-    /// Announces a tactical instruction AND records it as the last instruction
-    /// for the Ctrl+Y repeat hotkey. Use this for anything the pilot must act
-    /// on (turn callouts, hold-shorts, taxiway changes, lineup, arrivals,
-    /// distance countdowns). Use plain _announcer.Announce for peripheral
-    /// alerts (speed warnings, crossings, off-route, lineup-aligned) that
-    /// shouldn't displace the most recent actionable instruction.
+    /// Speaks a tactical taxi instruction (turns, hold-shorts, taxiway
+    /// changes, lineup, arrival, distance countdowns) and stores it in
+    /// _lastInstruction for the Repeat-Last hotkey. Uses AnnounceImmediate
+    /// (interrupts queued speech) because tactical callouts are time-critical:
+    /// the pilot needs to act on "in 300 feet, turn left onto B" right now,
+    /// not after a fading "10 knots" GS callout finishes speaking. The
+    /// Repeat-Last buffer is updated even though the speech interrupts —
+    /// the buffer is the user's "what did you just say?" recall.
+    ///
+    /// Use plain _announcer.Announce for peripheral, non-time-critical alerts
+    /// (route summary at LoadRoute, ground-speed callouts) so they don't
+    /// step on each other when stacked.
     /// </summary>
     private void AnnounceInstruction(string text)
     {
         _lastInstruction = text;
-        _announcer.Announce(text);
+        _announcer.AnnounceImmediate(text);
     }
 
     /// <summary>
