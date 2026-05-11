@@ -163,12 +163,12 @@ public class TaxiGuidanceManager : IDisposable
 
     // Last actionable instruction announced (for the Ctrl+Y "Repeat" hotkey).
     // Only TACTICAL announcements update this — turn callouts, hold-shorts,
-    // taxiway changes, lineup, arrival, distance countdowns. Three peripheral
+    // taxiway changes, lineup, arrival, distance countdowns. Two peripheral
     // sites still call _announcer.Announce directly (without recording to
     // _lastInstruction) so the Repeat-Last buffer keeps the actionable callout:
-    // (a) the LoadRoute route summary at start of guidance, (b) the ground-
-    // speed bucket announcer, (c) the "Taxi speed, X knots" follow-up after a
-    // speed warning. Cleared on StopGuidance.
+    // (a) the LoadRoute route summary at start of guidance, (b) the periodic
+    // ground-speed bucket announcer (per CLAUDE.md, must not displace the
+    // Repeat-Last buffer). Cleared on StopGuidance.
     private string _lastInstruction = "";
 
     // Periodic ground-speed announcer state. The "last announced bucket"
@@ -1259,7 +1259,7 @@ public class TaxiGuidanceManager : IDisposable
         }
         else if (!normalTurnComing && !sharpTurnComing && _lastGroundSpeedKts > MAX_TAXI_SPEED_STRAIGHT_KTS)
         {
-            _announcer.Announce($"Taxi speed, {(int)_lastGroundSpeedKts} knots.");
+            _announcer.AnnounceImmediate($"Taxi speed, {(int)_lastGroundSpeedKts} knots.");
             _lastSpeedWarningTime = DateTime.Now;
         }
     }
