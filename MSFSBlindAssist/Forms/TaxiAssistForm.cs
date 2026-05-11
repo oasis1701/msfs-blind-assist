@@ -33,6 +33,7 @@ public class TaxiAssistForm : Form
     // route is computed from the gate, the post-pushback aircraft is already
     // off that route, and off-route detection recalcs immediately.
     private readonly MSFSBlindAssist.SimConnect.SimConnectManager? _simConnectManager;
+    private readonly TcasService? _tcasService;
 
     // Form controls
     private Label lblAirport = null!;
@@ -96,12 +97,14 @@ public class TaxiAssistForm : Form
         IAirportDataProvider dataProvider,
         ScreenReaderAnnouncer announcer,
         TaxiGuidanceManager guidanceManager,
-        MSFSBlindAssist.SimConnect.SimConnectManager? simConnectManager = null)
+        MSFSBlindAssist.SimConnect.SimConnectManager? simConnectManager = null,
+        TcasService? tcasService = null)
     {
         _dataProvider = dataProvider;
         _announcer = announcer;
         _guidanceManager = guidanceManager;
         _simConnectManager = simConnectManager;
+        _tcasService = tcasService;
         InitializeFormControls();
     }
 
@@ -1164,11 +1167,33 @@ public class TaxiAssistForm : Form
         txtRouteSummary.Text = _guidanceManager.LastRouteSummary;
         lblStatus.Text = "Route loaded. Guidance active.";
 
+        CheckGateOccupancy(isRunwayDest, thresholdLat, thresholdLon);
+
         _guidanceManager.StartGuidance(settings);
         // Form stays open so the user can read the summary box while
         // guidance is active. They close it manually with Escape / window-X
         // or by switching focus elsewhere; Stop Guidance button is also
         // available without re-opening.
+    }
+
+    private void CheckGateOccupancy(bool isRunwayDest, double? gateLat, double? gateLon)
+    {
+        if (isRunwayDest || _tcasService == null || gateLat == null || gateLon == null) return;
+
+        // ~55 m — tight enough to distinguish adjacent gates but large enough
+        // to catch an aircraft that has stopped just short of the spot centre.
+        const double GATE_OCCUPIED_NM = 0.030;
+
+        var occupying = _tcasService.GetTraffic(onGround: true)
+            .FirstOrDefault(t => NavigationCalculator.CalculateDistance(
+                gateLat.Value, gateLon.Value, t.Latitude, t.Longitude) <= GATE_OCCUPIED_NM);
+
+        if (occupying == null) return;
+
+        string who = string.IsNullOrWhiteSpace(occupying.Callsign)
+            ? "an aircraft"
+            : occupying.Callsign;
+        _announcer.Announce($"Warning: {who} is at the destination gate.");
     }
 
     private void OnStopClicked(object? sender, EventArgs e)

@@ -2129,7 +2129,7 @@ public partial class MainForm : Form
         if (taxiAssistForm == null || taxiAssistForm.IsDisposed)
         {
             taxiAssistForm = new TaxiAssistForm(
-                airportDataProvider!, announcer, taxiGuidanceManager, simConnectManager);
+                airportDataProvider!, announcer, taxiGuidanceManager, simConnectManager, tcasService);
         }
 
         // Find nearest airport. Filter to 4-char canonical ICAO at the call site —
