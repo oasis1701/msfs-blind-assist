@@ -1814,18 +1814,18 @@ public class PMDG777Definition : BaseAircraftDefinition
                 IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
             },
-            ["OXY_TestReset_Capt"] = new SimConnect.SimVarDefinition
+            ["OXY_TestReset_L"] = new SimConnect.SimVarDefinition
             {
-                Name = "OXY_TestReset_Capt",
+                Name = "OXY_TestReset_L",
                 DisplayName = "Captain Oxygen Test",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Never,
                 RenderAsButton = true,
                 IsMomentary = true
             },
-            ["OXY_TestReset_FO"] = new SimConnect.SimVarDefinition
+            ["OXY_TestReset_R"] = new SimConnect.SimVarDefinition
             {
-                Name = "OXY_TestReset_FO",
+                Name = "OXY_TestReset_R",
                 DisplayName = "First Officer Oxygen Test",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Never,
@@ -4510,6 +4510,22 @@ public class PMDG777Definition : BaseAircraftDefinition
 
             // =================================================================
             // BORIS AUDIO WORKS SOUNDPACK
+            // -----------------------------------------------------------------
+            // KNOWN ISSUE: these switch_NNN_a LVars do NOT behave as state
+            // variables. Writing 0 or 100 produces only a momentary (~100 ms)
+            // change in the underlying Boris audio engine before snapping back
+            // to whatever the persistent state was. The real Boris state vars
+            // are not documented publicly. A live LVar capture session (e.g.
+            // via MobiFlight's variable browser, or an in-app LVar dump
+            // utility) is needed to identify the actual state vars before
+            // these combos can produce a real persistent toggle.
+            //
+            // We tried writing the PMDG mouse-flag value (0x20000000 =
+            // MOUSE_FLAG_LEFTSINGLE) on the theory that switch_NNN_a is a
+            // mouse-click input handle per PMDG's VC mouse-behaviour XML
+            // convention, but that produced no audible effect at all — worse
+            // than the 100 ms blip from a raw value write. Reverted; left
+            // as-is until proper state vars are identified.
             // =================================================================
             ["switch_622_a"] = new SimConnect.SimVarDefinition
             {
@@ -4651,7 +4667,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["Oxygen"] = new List<string>
             {
                 "OXY_PassOxygen", "OXY_Suprnmry",
-                "OXY_TestReset_Capt", "OXY_TestReset_FO"
+                "OXY_TestReset_L", "OXY_TestReset_R"
             },
 
             // Overhead — Wipers
@@ -5024,8 +5040,8 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["SIGNS_SeatBelts"]         = "EVT_OH_FASTEN_BELTS_LIGHT_SWITCH",
             ["OXY_PassOxygen"]          = "EVT_OH_OXY_PASS_SWITCH",
             ["OXY_Suprnmry"]            = "EVT_OH_OXY_SUPRNMRY_SWITCH",
-            ["OXY_TestReset_Capt"]      = "EVT_OXY_TEST_RESET_SWITCH_L",
-            ["OXY_TestReset_FO"]        = "EVT_OXY_TEST_RESET_SWITCH_R",
+            ["OXY_TestReset_L"]         = "EVT_OXY_TEST_RESET_SWITCH_L",
+            ["OXY_TestReset_R"]         = "EVT_OXY_TEST_RESET_SWITCH_R",
 
             // --- Wipers / Comms ---
             ["WIPERS_Left"]             = "EVT_OH_WIPER_LEFT_SWITCH",
@@ -5333,7 +5349,10 @@ public class PMDG777Definition : BaseAircraftDefinition
             {
                 return true;
             }
-            uint switchEventId = (uint)EventIds["EVT_OH_EMER_EXIT_LIGHT_SWITCH"];
+            if (!EventIds.TryGetValue("EVT_OH_EMER_EXIT_LIGHT_SWITCH", out int switchEventId))
+            {
+                return false;
+            }
             simConnect.SendEvent("#" + switchEventId, (uint)target);
             return true;
         }

@@ -2975,12 +2975,12 @@ public partial class MainForm : Form
     {
         var s = SettingsManager.Current;
         using (var settingsForm = new Forms.FMCSettingsForm(
-            s.PMDGUseAlternateLSKKeys,
+            s.MCDUUseAlternateLSKKeys,
             s.PMDGEnhancedDistanceMode))
         {
             if (settingsForm.ShowDialog(this) == DialogResult.OK)
             {
-                s.PMDGUseAlternateLSKKeys = settingsForm.UseAlternateLSKKeys;
+                s.MCDUUseAlternateLSKKeys = settingsForm.UseAlternateLSKKeys;
                 s.PMDGEnhancedDistanceMode = settingsForm.EnhancedDistanceMode;
                 SettingsManager.Save();
 
@@ -3208,15 +3208,18 @@ public partial class MainForm : Form
     /// <summary>
     /// Toggles visibility of menu items that are only meaningful for specific
     /// aircraft. Called whenever the loaded aircraft changes (and at initial
-    /// MainForm_Load). Currently gates the PMDG FMC Settings item — it's
-    /// hidden for non-PMDG aircraft so the screen reader doesn't surface a
-    /// settings option the user can't act on.
+    /// MainForm_Load). Gates the FMC Settings item — it's hidden for any
+    /// aircraft that doesn't have an MCDU/CDU the dialog applies to (PMDG
+    /// or Fenix), so the screen reader doesn't surface a settings option
+    /// the user can't act on.
     /// </summary>
     private void UpdateAircraftSpecificMenuItems()
     {
         bool isPmdg = currentAircraft != null &&
                       currentAircraft.AircraftCode.StartsWith("PMDG_", StringComparison.Ordinal);
-        fmcSettingsMenuItem.Visible = isPmdg;
+        bool isFenix = currentAircraft != null &&
+                       currentAircraft.AircraftCode.StartsWith("FENIX_", StringComparison.Ordinal);
+        fmcSettingsMenuItem.Visible = isPmdg || isFenix;
     }
 
     /// <summary>

@@ -181,9 +181,13 @@ Navigation:
   PageDown     MCDU scroll down
   Backspace    Clear scratchpad
 
-Line Select Keys:
+Line Select Keys (default):
   Ctrl+1-6     Left LSK 1-6
   Alt+1-6      Right LSK 1-6
+
+Alternate line select keys (enable via Settings > FMC Settings):
+  F1-F6        Left LSK 1-6
+  F7-F12       Right LSK 1-6
 
 Text Input:
   Alt+S        Focus scratchpad input field

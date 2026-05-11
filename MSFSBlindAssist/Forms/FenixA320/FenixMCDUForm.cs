@@ -291,22 +291,55 @@ public class FenixMCDUForm : Form
 
     private void Form_KeyDown(object? sender, KeyEventArgs e)
     {
-        // LSK shortcuts: Ctrl+1..6 for left, Alt+1..6 for right
-        if (e.Control && !e.Alt && e.KeyCode >= Keys.D1 && e.KeyCode <= Keys.D6)
+        // Line-select keys — two layouts, switchable in FMC Settings:
+        //   Default: Ctrl+1..6 = LSK1L..LSK6L, Alt+1..6 = LSK1R..LSK6R
+        //   Alternate: F1..F6 = LSK1L..LSK6L, F7..F12 = LSK1R..LSK6R
+        // The alternate layout frees Ctrl/Alt for other hotkeys; many TFM
+        // users prefer it. Setting is read every keypress so a runtime
+        // change in the FMC Settings dialog takes effect immediately.
+        bool useAltKeys = MSFSBlindAssist.Settings.SettingsManager.Current.MCDUUseAlternateLSKKeys;
+
+        if (useAltKeys)
         {
-            int lsk = e.KeyCode - Keys.D1 + 1;
-            _ = _service.SendButtonPress($"LSK{lsk}L");
-            e.Handled = true;
-            e.SuppressKeyPress = true;
-            return;
+            // F1..F6 = LSK1L..LSK6L
+            if (!e.Control && !e.Alt && e.KeyCode >= Keys.F1 && e.KeyCode <= Keys.F6)
+            {
+                int lsk = e.KeyCode - Keys.F1 + 1;
+                _ = _service.SendButtonPress($"LSK{lsk}L");
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                return;
+            }
+            // F7..F12 = LSK1R..LSK6R
+            if (!e.Control && !e.Alt && e.KeyCode >= Keys.F7 && e.KeyCode <= Keys.F12)
+            {
+                int lsk = e.KeyCode - Keys.F7 + 1;
+                _ = _service.SendButtonPress($"LSK{lsk}R");
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                return;
+            }
         }
-        if (e.Alt && !e.Control && e.KeyCode >= Keys.D1 && e.KeyCode <= Keys.D6)
+        else
         {
-            int lsk = e.KeyCode - Keys.D1 + 1;
-            _ = _service.SendButtonPress($"LSK{lsk}R");
-            e.Handled = true;
-            e.SuppressKeyPress = true;
-            return;
+            // Ctrl+1..6: left line select L1..L6
+            if (e.Control && !e.Alt && e.KeyCode >= Keys.D1 && e.KeyCode <= Keys.D6)
+            {
+                int lsk = e.KeyCode - Keys.D1 + 1;
+                _ = _service.SendButtonPress($"LSK{lsk}L");
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                return;
+            }
+            // Alt+1..6: right line select R1..R6
+            if (e.Alt && !e.Control && e.KeyCode >= Keys.D1 && e.KeyCode <= Keys.D6)
+            {
+                int lsk = e.KeyCode - Keys.D1 + 1;
+                _ = _service.SendButtonPress($"LSK{lsk}R");
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                return;
+            }
         }
 
         // Alt+Arrow keys for navigation
