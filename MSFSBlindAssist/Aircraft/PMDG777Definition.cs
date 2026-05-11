@@ -1814,18 +1814,18 @@ public class PMDG777Definition : BaseAircraftDefinition
                 IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
             },
-            ["OXY_TestReset_Capt"] = new SimConnect.SimVarDefinition
+            ["OXY_TestReset_L"] = new SimConnect.SimVarDefinition
             {
-                Name = "OXY_TestReset_Capt",
+                Name = "OXY_TestReset_L",
                 DisplayName = "Captain Oxygen Test",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Never,
                 RenderAsButton = true,
                 IsMomentary = true
             },
-            ["OXY_TestReset_FO"] = new SimConnect.SimVarDefinition
+            ["OXY_TestReset_R"] = new SimConnect.SimVarDefinition
             {
-                Name = "OXY_TestReset_FO",
+                Name = "OXY_TestReset_R",
                 DisplayName = "First Officer Oxygen Test",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Never,
@@ -4667,7 +4667,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["Oxygen"] = new List<string>
             {
                 "OXY_PassOxygen", "OXY_Suprnmry",
-                "OXY_TestReset_Capt", "OXY_TestReset_FO"
+                "OXY_TestReset_L", "OXY_TestReset_R"
             },
 
             // Overhead — Wipers
@@ -5040,8 +5040,8 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["SIGNS_SeatBelts"]         = "EVT_OH_FASTEN_BELTS_LIGHT_SWITCH",
             ["OXY_PassOxygen"]          = "EVT_OH_OXY_PASS_SWITCH",
             ["OXY_Suprnmry"]            = "EVT_OH_OXY_SUPRNMRY_SWITCH",
-            ["OXY_TestReset_Capt"]      = "EVT_OXY_TEST_RESET_SWITCH_L",
-            ["OXY_TestReset_FO"]        = "EVT_OXY_TEST_RESET_SWITCH_R",
+            ["OXY_TestReset_L"]         = "EVT_OXY_TEST_RESET_SWITCH_L",
+            ["OXY_TestReset_R"]         = "EVT_OXY_TEST_RESET_SWITCH_R",
 
             // --- Wipers / Comms ---
             ["WIPERS_Left"]             = "EVT_OH_WIPER_LEFT_SWITCH",
