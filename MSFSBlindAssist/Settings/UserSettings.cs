@@ -193,6 +193,11 @@ public class UserSettings
         public int SigmetProximityRangeNm { get; set; } = 100;
         public bool DecodeWeatherAdvisories { get; set; } = false;
 
+        // HS787 bridge — community folder override for non-standard installs
+        public string? Hs787CommunityFolderOverride { get; set; } = null;
+        // "FS2024" or "FS2020" — set when Hs787CommunityFolderOverride was entered manually
+        public string? Hs787SimVersionOverride { get; set; } = null;
+
         /// <summary>
         /// Creates a new UserSettings instance with default values.
         /// </summary>
@@ -264,7 +269,9 @@ public class UserSettings
             TaxiGuidanceInvertSteeringTone = TaxiGuidanceInvertSteeringTone,
             TaxiGuidanceHardPanTone = TaxiGuidanceHardPanTone,
             TaxiGuidanceAnnounceCrossings = TaxiGuidanceAnnounceCrossings,
-            TaxiGuidanceGroundSpeedAnnounceInterval = TaxiGuidanceGroundSpeedAnnounceInterval
+            TaxiGuidanceGroundSpeedAnnounceInterval = TaxiGuidanceGroundSpeedAnnounceInterval,
+            Hs787CommunityFolderOverride = Hs787CommunityFolderOverride,
+            Hs787SimVersionOverride = Hs787SimVersionOverride
         };
     }
 }
