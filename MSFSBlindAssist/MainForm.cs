@@ -2939,12 +2939,12 @@ public partial class MainForm : Form
     {
         var s = SettingsManager.Current;
         using (var settingsForm = new Forms.FMCSettingsForm(
-            s.PMDGUseAlternateLSKKeys,
+            s.MCDUUseAlternateLSKKeys,
             s.PMDGEnhancedDistanceMode))
         {
             if (settingsForm.ShowDialog(this) == DialogResult.OK)
             {
-                s.PMDGUseAlternateLSKKeys = settingsForm.UseAlternateLSKKeys;
+                s.MCDUUseAlternateLSKKeys = settingsForm.UseAlternateLSKKeys;
                 s.PMDGEnhancedDistanceMode = settingsForm.EnhancedDistanceMode;
                 SettingsManager.Save();
 

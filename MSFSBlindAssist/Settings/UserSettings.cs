@@ -136,7 +136,7 @@ public class UserSettings
         /// Frees Ctrl/Alt for other shortcuts; matches TFM's "alternate
         /// keys" layout, which many returning TFM users prefer.
         /// </summary>
-        public bool PMDGUseAlternateLSKKeys { get; set; } = false;
+        public bool MCDUUseAlternateLSKKeys { get; set; } = false;
 
         /// <summary>
         /// When true, the Output D / Shift+D distance keys read the PMDG PROG
@@ -252,7 +252,7 @@ public class UserSettings
             DistanceUnits = DistanceUnits,
             FenixDisabledMonitorVariables = new List<string>(FenixDisabledMonitorVariables),
             PMDGDisabledMonitorVariables = new List<string>(PMDGDisabledMonitorVariables),
-            PMDGUseAlternateLSKKeys = PMDGUseAlternateLSKKeys,
+            MCDUUseAlternateLSKKeys = MCDUUseAlternateLSKKeys,
             PMDGEnhancedDistanceMode = PMDGEnhancedDistanceMode,
             WeatherAutoAnnounceEnabled = WeatherAutoAnnounceEnabled,
             SigmetProximityAlertsEnabled = SigmetProximityAlertsEnabled,
