@@ -1961,6 +1961,7 @@ public partial class MainForm : Form
             var installResult = HS787ModPackageManager.Install(communityPath, resourcesDir);
 
             // CommunityFolderNotFound means the saved/detected path is wrong — let the user correct it.
+            string displayName = simName;
             if (installResult == ModPackageResult.CommunityFolderNotFound)
             {
                 MessageBox.Show(
@@ -1972,6 +1973,7 @@ public partial class MainForm : Form
                 if (fixDlg.ShowDialog(this) != DialogResult.OK) continue;
 
                 SaveHS787FolderOverride(fixDlg.SelectedPath, fixDlg.SelectedSimVersion);
+                displayName = fixDlg.SelectedSimVersion == "FS2024" ? "MSFS 2024" : "MSFS 2020";
                 installResult = HS787ModPackageManager.Install(fixDlg.SelectedPath, resourcesDir);
             }
 
@@ -1979,12 +1981,12 @@ public partial class MainForm : Form
             {
                 case ModPackageResult.Success:
                     MessageBox.Show(
-                        $"Bridge installed successfully for {simName}. Please restart your flight for it to take effect.",
+                        $"Bridge installed successfully for {displayName}. Please restart your flight for it to take effect.",
                         "787-9 FMC Bridge", MessageBoxButtons.OK, MessageBoxIcon.Information);
                     break;
                 case ModPackageResult.HS787PackageNotFound:
                     MessageBox.Show(
-                        $"Could not find the HorizonSim 787-9 package in your {simName} Community folder.\n\nPlease ensure the aircraft is installed and try again.",
+                        $"Could not find the HorizonSim 787-9 package in your {displayName} Community folder.\n\nPlease ensure the aircraft is installed and try again.",
                         "787-9 FMC Bridge", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     break;
                 case ModPackageResult.BridgeJsSourceNotFound:
@@ -1992,8 +1994,13 @@ public partial class MainForm : Form
                         "Bridge JS source file not found. Please reinstall MSFS Blind Assist.",
                         "787-9 FMC Bridge", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     break;
+                case ModPackageResult.CommunityFolderNotFound:
+                    MessageBox.Show(
+                        "The Community folder path could not be found. Please verify or update it.",
+                        "787-9 FMC Bridge", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    break;
                 default:
-                    MessageBox.Show($"Failed to install for {simName}: {installResult}",
+                    MessageBox.Show($"Failed to install for {displayName}: {installResult}",
                         "787-9 FMC Bridge", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     break;
             }
