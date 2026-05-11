@@ -2592,17 +2592,23 @@ public class TaxiGuidanceManager : IDisposable
     }
 
     /// <summary>
-    /// Announces a tactical instruction AND records it as the last instruction
-    /// for the Ctrl+Y repeat hotkey. Use this for anything the pilot must act
-    /// on (turn callouts, hold-shorts, taxiway changes, lineup, arrivals,
-    /// distance countdowns). Use plain _announcer.Announce for peripheral
-    /// alerts (speed warnings, crossings, off-route, lineup-aligned) that
-    /// shouldn't displace the most recent actionable instruction.
+    /// Speaks a tactical taxi instruction (turns, hold-shorts, taxiway
+    /// changes, lineup, arrival, distance countdowns) and stores it in
+    /// _lastInstruction for the Repeat-Last hotkey. Uses AnnounceImmediate
+    /// (interrupts queued speech) because tactical callouts are time-critical:
+    /// the pilot needs to act on "in 300 feet, turn left onto B" right now,
+    /// not after a fading "10 knots" GS callout finishes speaking. The
+    /// Repeat-Last buffer is updated even though the speech interrupts —
+    /// the buffer is the user's "what did you just say?" recall.
+    ///
+    /// Use plain _announcer.Announce for peripheral, non-time-critical alerts
+    /// (route summary at LoadRoute, ground-speed callouts) so they don't
+    /// step on each other when stacked.
     /// </summary>
     private void AnnounceInstruction(string text)
     {
         _lastInstruction = text;
-        _announcer.Announce(text);
+        _announcer.AnnounceImmediate(text);
     }
 
     /// <summary>
