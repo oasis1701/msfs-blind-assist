@@ -1884,12 +1884,58 @@ public partial class MainForm : Form
         hs787FMCForm.ShowForm();
     }
 
+    /// <summary>
+    /// Builds the list of (simLabel, communityPath) tuples to try for the HS787 bridge.
+    /// Saved override comes first (if the directory still exists); auto-detected paths follow,
+    /// deduplicated by normalized path.
+    /// </summary>
+    private static List<(string SimLabel, string Path)> BuildHS787FolderList()
+    {
+        var list = new List<(string SimLabel, string Path)>();
+        var settings = SettingsManager.Current;
+
+        if (!string.IsNullOrEmpty(settings.Hs787CommunityFolderOverride) &&
+            Directory.Exists(settings.Hs787CommunityFolderOverride))
+        {
+            string label = settings.Hs787SimVersionOverride == "FS2024" ? "MSFS 2024" : "MSFS 2020";
+            list.Add((label, settings.Hs787CommunityFolderOverride));
+        }
+
+        foreach (var folder in HS787ModPackageManager.FindAllCommunityFolders())
+        {
+            bool duplicate = list.Any(f =>
+            {
+                try { return string.Equals(System.IO.Path.GetFullPath(f.Path), System.IO.Path.GetFullPath(folder.Path), StringComparison.OrdinalIgnoreCase); }
+                catch (ArgumentException) { return false; }
+            });
+            if (!duplicate)
+                list.Add(folder);
+        }
+
+        return list;
+    }
+
+    private static void SaveHS787FolderOverride(string path, string simVersion)
+    {
+        var settings = SettingsManager.Current;
+        settings.Hs787CommunityFolderOverride = path;
+        settings.Hs787SimVersionOverride = simVersion;
+        SettingsManager.Save(settings);
+    }
+
     private void CheckAndOfferHS787ModPackage()
     {
-        var allFolders = HS787ModPackageManager.FindAllCommunityFolders();
-        if (allFolders.Count == 0) return;
-
         string resourcesDir = Path.Combine(Application.StartupPath, "Resources");
+        var allFolders = BuildHS787FolderList();
+
+        // Nothing auto-detected and no saved override — ask the user.
+        if (allFolders.Count == 0)
+        {
+            using var dlg = new HS787CommunityFolderForm();
+            if (dlg.ShowDialog(this) != DialogResult.OK) return;
+            SaveHS787FolderOverride(dlg.SelectedPath, dlg.SelectedSimVersion);
+            allFolders.Add((dlg.SelectedSimVersion == "FS2024" ? "MSFS 2024" : "MSFS 2020", dlg.SelectedPath));
+        }
 
         foreach (var (simName, communityPath) in allFolders)
         {
@@ -1913,18 +1959,37 @@ public partial class MainForm : Form
             if (answer != DialogResult.Yes) continue;
 
             var installResult = HS787ModPackageManager.Install(communityPath, resourcesDir);
+
+            // CommunityFolderNotFound means the saved/detected path is wrong — let the user correct it.
+            if (installResult == ModPackageResult.CommunityFolderNotFound)
+            {
+                MessageBox.Show(
+                    "The Community folder path could not be found. Please verify or update it.",
+                    "787-9 FMC Bridge", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+
+                string currentSimVersion = simName.Contains("2024") ? "FS2024" : "FS2020";
+                using var fixDlg = new HS787CommunityFolderForm(communityPath, currentSimVersion);
+                if (fixDlg.ShowDialog(this) != DialogResult.OK) continue;
+
+                SaveHS787FolderOverride(fixDlg.SelectedPath, fixDlg.SelectedSimVersion);
+                installResult = HS787ModPackageManager.Install(fixDlg.SelectedPath, resourcesDir);
+            }
+
             switch (installResult)
             {
                 case ModPackageResult.Success:
-                    MessageBox.Show($"Bridge installed successfully for {simName}. Please restart your flight for it to take effect.",
+                    MessageBox.Show(
+                        $"Bridge installed successfully for {simName}. Please restart your flight for it to take effect.",
                         "787-9 FMC Bridge", MessageBoxButtons.OK, MessageBoxIcon.Information);
                     break;
                 case ModPackageResult.HS787PackageNotFound:
-                    MessageBox.Show($"Could not find the HorizonSim 787-9 package in your {simName} Community folder.\n\nPlease ensure the aircraft is installed and try again.",
+                    MessageBox.Show(
+                        $"Could not find the HorizonSim 787-9 package in your {simName} Community folder.\n\nPlease ensure the aircraft is installed and try again.",
                         "787-9 FMC Bridge", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     break;
                 case ModPackageResult.BridgeJsSourceNotFound:
-                    MessageBox.Show("Bridge JS source file not found. Please reinstall MSFS Blind Assist.",
+                    MessageBox.Show(
+                        "Bridge JS source file not found. Please reinstall MSFS Blind Assist.",
                         "787-9 FMC Bridge", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     break;
                 default:
