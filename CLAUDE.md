@@ -223,6 +223,20 @@ The WT Boeing FMC (CDU screen) is made accessible via a JavaScript bridge inject
 
 `HS787ModPackageManager.IsFs2024()` delegates to this helper. `GetManifestJson()` delegates to `IsFs2024()`. `FindAllCommunityFolders()` and `FindCommunityFolderPath()` also include the Steam FS2024 default path as a discovery fallback — this benefits both the HS787 bridge and the PMDG EFB bridge. When auto-detection finds no community folders at all, `CheckAndOfferHS787ModPackage()` shows `HS787CommunityFolderForm` (Browse + sim-version combo) and persists the result to `UserSettings.Hs787CommunityFolderOverride` / `Hs787SimVersionOverride`.
 
+**Adding a bridge for a new aircraft — what's shared vs. per-aircraft:**
+
+The community folder detection layer in `EFBModPackageManager` is shared infrastructure. A new aircraft mod manager gets the following for free just by delegating to it:
+- `EFBModPackageManager.IsPathFromFs2024(communityFolderPath)` — correct FS2024 detection for MS Store, Steam, and external-drive installs
+- `EFBModPackageManager.FindAllCommunityFolders()` — discovers community folders for both sims via UserCfg.opt + hardcoded fallbacks (already includes Steam FS2024)
+- `EFBModPackageManager.FindCommunityFolderPath()` — single-path variant, same coverage
+
+The manual fallback layer is **per-aircraft** and must be added separately for each new aircraft:
+- `UserSettings` needs its own override fields (e.g. `Xyz123CommunityFolderOverride` / `Xyz123SimVersionOverride`)
+- A new dialog (copy-adapt `HS787CommunityFolderForm`) or generalize it into a shared `CommunityFolderPickerForm` if three or more aircraft need it
+- `MainForm` needs its own `BuildXyz123FolderList()` / `SaveXyz123FolderOverride()` helpers and an updated `CheckAndOfferXyz123ModPackage()` that uses them
+
+**When to generalize:** Two aircraft needed this pattern → YAGNI says duplicate. If a third aircraft needs the same treatment, that's the right moment to extract a shared `CommunityFolderPickerForm` and a generic `UserSettings` override mechanism.
+
 **Why FS2024 needs a different approach (do NOT revert to override-package on FS2024):**
 1. **FS2024 VFS doesn't honor community-on-community overrides under `html_ui/Pages/VCockpit/Instruments/Airliners/`** — the Airliners namespace is protected. Modified HTML in an override package is silently dropped (verified: `document.documentElement.outerHTML.indexOf('hs787-mfd-bridge')` returns `-1` in the loaded MFD webview). PMDG EFB's same-architecture mod (`zzz-pmdg-efb-accessibility`) DOES work on FS2024 because it targets `PMDGTablet/`, a non-Airliners path. The `globally_overriden_base_sim_files` manifest field (panel-raas-style) is base-sim-files-only and won't accept community-package paths.
 2. **`<script src>` doesn't execute inside template-loaded HTML on Coherent GT 2.x.** The original HSB789_MFD.RR.html loads MFD789.RR.js via `<script type="text/html" import-script="...">`, and FS2024's Coherent only honors that style inside templates. FS2020's Coherent GT 1.x was lenient and ran both. Our injection must match the original style.
