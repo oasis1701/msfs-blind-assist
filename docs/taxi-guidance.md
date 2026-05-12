@@ -383,6 +383,11 @@ Before touchdown (during cruise or descent), the pilot picks a runway-exit taxiw
 4. `LandingExitPlanner.ProcessGroundState(onGround, gs, lat, lon, headingTrue)` is fed from every `SIM_ON_GROUND` update in `MainForm.OnSimVarUpdated`. It edge-detects the airborne→on-ground transition and requires ground speed ≥ 40 kt (`LANDING_MIN_GS_KNOTS`) to count as a real touchdown — a teleport or reload at low speed won't trigger it.
 5. On touchdown it calls `TaxiGuidanceManager.LoadRoute(...)` with the exit node id as the destination, `isRunwayDestination: false`, and the pre-built graph as `prebuiltGraph`. Then `StartGuidance(SettingsManager.Current)`. The route snaps from the aircraft's current (post-touchdown) position through the exit's graph node — shortest path, so it naturally follows the runway centerline until the chosen exit.
 6. Announcement: "Touchdown. Guiding to taxiway K2, 5800 feet remaining."
+7. **Rollout phase (`TaxiGuidanceState.LandingRollout`).** Steering tone is muted during the deceleration phase. Voice callouts at 1500 ft / 500 ft / turn-now mark approach to the chosen exit. Two transitions out of this phase:
+
+   - **Normal handoff to `Taxiing`** when EITHER the pilot has begun the turn off the runway (heading deviation ≥ `ROLLOUT_TURN_BEGAN_HDG_DEG` (15°) off runway centerline), OR BOTH (a) the aircraft is at taxi speed (`< 30 kt`) AND (b) is within 500 ft (`ROLLOUT_NEAR_EXIT_FT`) of the exit. The conjunctive gate on `nearExit` prevents the tone from resuming early on long runways where GS drops below 30 kt thousands of feet upfield of the planned exit.
+
+   - **Overshoot retarget.** If the aircraft has rolled past the chosen exit by ≥ 100 ft (`ROLLOUT_OVERSHOOT_FT`) along the runway centerline without starting the turn, `TaxiGuidanceManager` scans the precomputed exit list for the next downfield exit and `LoadRoute`s to it in place via `RetargetLandingExit`. Approach callouts re-arm for the new exit. Announcement: *"Missed taxiway A6. Retargeting taxiway A7, N feet ahead."* If no downfield exit remains, `EndRolloutToIdleTaxiing` clears the route and falls through to idle `Taxiing` (steering tone silent, no recalc) and announces *"Missed last exit on runway X."* The pilot can then open the Landing Exit form to replan or use normal taxi guidance.
 
 ### Exit detection math (TaxiGraph.GetLandingExits)
 
@@ -566,6 +571,15 @@ Constants live at the top of `TaxiGuidanceManager.cs` and `TaxiSteeringTone.cs`.
 | High-speed angle | ≤ 50° | RET-geometry exit angle |
 | Normal angle | ≤ 110° | Perpendicular exit |
 | End-of-runway ratio | ≥ 0.85 | Nodes in last 15% of runway length classify as `End` |
+
+### TaxiGuidanceManager — Landing Rollout
+
+| Constant | Value | Purpose |
+|---|---|---|
+| `ROLLOUT_TAXI_GS_KTS` | 30.0 | Below this GS the aircraft is at taxi speed for handoff purposes. Conjunctive with `nearExit` — speed alone does not trigger handoff |
+| `ROLLOUT_TURN_BEGAN_HDG_DEG` | 15.0 | Heading deviation from runway centerline that signals the pilot has begun the turn off — triggers immediate handoff regardless of speed or proximity |
+| `ROLLOUT_NEAR_EXIT_FT` | 500.0 | Proximity to the chosen exit at which the speed-based handoff is allowed to fire. Matches the existing "500 ft slow down" callout — by the time the pilot hears that, they're committed to the turn |
+| `ROLLOUT_OVERSHOOT_FT` | 100.0 | Along-runway distance past the chosen exit at which an overshoot is declared, triggering retarget to the next downfield exit (or graceful end if none remain) |
 
 ## Related Documentation
 
