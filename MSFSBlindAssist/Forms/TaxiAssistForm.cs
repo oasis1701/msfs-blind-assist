@@ -555,6 +555,40 @@ public class TaxiAssistForm : Form
 
         if (isRunway)
         {
+            // Build a runway-name → StartPosition lookup so we can anchor the
+            // route destination and the lineup target at the actual painted
+            // lineup point, not the physical pavement edge.
+            //
+            // Runway.StartLat/StartLon comes from runway_end.lonx/laty in the
+            // navdatareader DB — i.e., the physical pavement edge of the
+            // runway end. For runways with a displaced threshold (e.g., KLAS
+            // 26R has a 1407 ft displacement), the painted lineup point sits
+            // hundreds of meters from that edge. Using the physical edge
+            // would cause FindNearestNode to resolve to an adjacent-taxiway
+            // node instead of a runway-threshold node, and _destinationThresholdMap
+            // would feed a wrong _lineupTargetLat/Lon into LiningUp's cross-track
+            // math.
+            //
+            // The `start` table is navdatareader's curated "where MSFS spawns an
+            // aircraft if you select runway X" value, which correctly accounts
+            // for displaced thresholds. It is ALSO the source TaxiGraph builds
+            // RunwayCenterlines from (see TaxiGraph.Build, around line 170),
+            // and TakeoffAssist's cross-track math reads those centerlines.
+            // Anchoring the route destination and lineup target here on the
+            // same source means taxi-lineup centerline math and TakeoffAssist
+            // centerline math reference the same physical position; otherwise
+            // the two systems disagree on where the runway "begins" by hundreds
+            // of meters at displaced-threshold airports.
+            //
+            // Fall back to Runway.StartLat/StartLon only when the start table
+            // has no entry for a given runway name. That preserves the current
+            // behavior for runways the start table doesn't cover (rare; covers
+            // DBs/scenery where start-table data is incomplete).
+            var startsByRunway = _dataProvider.GetRunwayStarts(_currentIcao)
+                .Where(s => !string.IsNullOrEmpty(s.RunwayName))
+                .GroupBy(s => s.RunwayName, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+
             var runways = _dataProvider.GetRunways(_currentIcao);
 
             foreach (var rwy in runways)
@@ -569,9 +603,23 @@ public class TaxiAssistForm : Form
                 if (rwy.IsClosed) continue;
                 if (!rwy.IsTakeoff) continue;
 
-                // Find the nearest graph node to the runway threshold.
-                // The graph includes holding position nodes (NB1, NB2E, etc.) near the threshold.
-                var nearNode = _graph.FindNearestNode(rwy.StartLat, rwy.StartLon);
+                // Prefer the start-table lineup point (handles displaced
+                // thresholds correctly). Fall back to the physical pavement
+                // edge when no start row exists for this runway name.
+                double lineupLat;
+                double lineupLon;
+                if (startsByRunway.TryGetValue(rwy.RunwayID, out var start))
+                {
+                    lineupLat = start.Latitude;
+                    lineupLon = start.Longitude;
+                }
+                else
+                {
+                    lineupLat = rwy.StartLat;
+                    lineupLon = rwy.StartLon;
+                }
+
+                var nearNode = _graph.FindNearestNode(lineupLat, lineupLon);
                 if (nearNode != null)
                 {
                     string name = $"Runway {rwy.RunwayID}";
@@ -581,7 +629,7 @@ public class TaxiAssistForm : Form
                         _destinationNodeMap[name] = nearNode.NodeId;
                         _destinationHeadingMap[name] = rwy.HeadingMag;
                         _destinationHeadingTrueMap[name] = rwy.Heading;
-                        _destinationThresholdMap[name] = (rwy.StartLat, rwy.StartLon);
+                        _destinationThresholdMap[name] = (lineupLat, lineupLon);
                         cmbDestination.Items.Add(name);
                     }
                 }
@@ -725,19 +773,52 @@ public class TaxiAssistForm : Form
         // the currentNode == targetNode short-circuit at TaxiRouter.cs skips
         // the redundant step); the per-row user hold-short on the first
         // occurrence still tags the correct segment via
-        // ApplyUserRunwayHoldShorts. The only name we hide is the
-        // immediately-previous taxiway — picking it again as the very next
-        // slot is a no-op click error, not a meaningful clearance pattern.
+        // ApplyUserRunwayHoldShorts.
+        //
+        // The immediately-previous taxiway is hidden ONLY when the previous
+        // slot has no hold-short configured. Without a hold-short, picking
+        // the same taxiway twice in a row is a no-op click error. With a
+        // hold-short (either the "Hold short" checkbox OR a runway selected
+        // in the per-row "Hold short of runway" combo), the same-taxiway
+        // duplicate is a legitimate clearance pattern: taxi to the
+        // hold-short line, hold until ATC clears the crossing, resume on
+        // the same taxiway on the far side. Without this conditional
+        // relaxation, KBOS clearances like "K, B, N, hold short 15R, N,
+        // hold short 22R, N" cannot be entered literally — the second and
+        // third N never appear in the dropdown.
+        bool prevHasHoldShort;
+        if (_additionalTaxiways.Count == 0)
+        {
+            string? firstRwy = cmbFirstHoldShortRunway.SelectedItem?.ToString();
+            prevHasHoldShort =
+                chkFirstHoldShort.Checked ||
+                (!string.IsNullOrEmpty(firstRwy) && firstRwy != NO_RUNWAY_HOLDSHORT);
+        }
+        else
+        {
+            var (_, _, hsChk, hsRwy, _) = _additionalTaxiways[^1];
+            string? rwy = hsRwy.SelectedItem?.ToString();
+            prevHasHoldShort =
+                hsChk.Checked ||
+                (!string.IsNullOrEmpty(rwy) && rwy != NO_RUNWAY_HOLDSHORT);
+        }
+
+        // Single predicate used in both filter sites below so a future
+        // edit can't drift one site out of sync with the other.
+        bool ShouldKeep(string n) =>
+            prevHasHoldShort ||
+            !n.Equals(previousTaxiway, StringComparison.OrdinalIgnoreCase);
+
         var connected = _graph.GetConnectedTaxiwayNames(previousTaxiway);
 
         var connectedAvailable = connected
-            .Where(n => !n.Equals(previousTaxiway, StringComparison.OrdinalIgnoreCase))
+            .Where(ShouldKeep)
             .ToList();
 
         var connectedSet = new HashSet<string>(connectedAvailable, StringComparer.OrdinalIgnoreCase);
         var otherAirportTaxiways = _graph.GetAllTaxiwayNames()
             .Where(n => !connectedSet.Contains(n))
-            .Where(n => !n.Equals(previousTaxiway, StringComparison.OrdinalIgnoreCase))
+            .Where(ShouldKeep)
             .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
