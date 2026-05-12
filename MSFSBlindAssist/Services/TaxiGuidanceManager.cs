@@ -2056,21 +2056,31 @@ public class TaxiGuidanceManager : IDisposable
         double hdgDelta = NormalizeAngle(headingTrue - _rolloutRunwayHeadingTrue);
         double hdgDeltaAbs = Math.Abs(hdgDelta);
 
-        // Transition to Taxiing if the pilot has slowed to taxi speed or
-        // has clearly begun the turn off the runway. Either condition
-        // indicates the rollout is over and the normal taxi-tone path
-        // should take it from here.
+        // Compute along-runway projection up front — both the handoff gate
+        // and the overshoot detector below need it. Positive means the
+        // aircraft has moved past the exit in the runway heading direction;
+        // negative means still upfield.
+        double signedAlongPastM = SignedAlongRunwayMeters(
+            lat, lon,
+            _rolloutExit.Latitude, _rolloutExit.Longitude,
+            _rolloutRunwayHeadingTrue);
+        double signedAlongPastFt = signedAlongPastM * METERS_TO_FEET;
+
         bool atTaxiSpeed = groundSpeedKts < ROLLOUT_TAXI_GS_KTS;
         bool nearExit = distToExitFeet < ROLLOUT_NEAR_EXIT_FT;
+        bool pastExit = signedAlongPastFt > 0.0;
         bool turnBegun = hdgDeltaAbs >= ROLLOUT_TURN_BEGAN_HDG_DEG;
         // Transition to Taxiing once EITHER (a) the pilot has actually begun
         // the turn off the runway, OR (b) the pilot has decelerated to taxi
-        // speed AND is within ROLLOUT_NEAR_EXIT_FT of the chosen exit. The
-        // near-exit gate is what keeps the steering tone muted during the
-        // long deceleration phase — on a 10,000 ft+ runway, GS often drops
-        // below 30 kt thousands of feet upfield of the planned exit, and
-        // resuming the tone there falsely suggests "turn now."
-        if (turnBegun || (atTaxiSpeed && nearExit))
+        // speed AND is within ROLLOUT_NEAR_EXIT_FT of the chosen exit AND
+        // has not yet crossed it. The !pastExit guard is critical: without
+        // it, a pilot who decelerates to taxi speed and then drifts past
+        // the exit on centerline (0-to-100 ft post-exit window) would hit
+        // the handoff and enter Taxiing with _destinationNodeId still
+        // pointing at the just-missed exit — the off-route recalc would
+        // then route back across the runway. The overshoot detector below
+        // handles any case where the aircraft IS past the exit.
+        if (turnBegun || (atTaxiSpeed && nearExit && !pastExit))
         {
             SetState(TaxiGuidanceState.Taxiing);
             _steeringTone.Resume();
@@ -2087,11 +2097,6 @@ public class TaxiGuidanceManager : IDisposable
         // runway, end the rollout gracefully so the off-route recalc path
         // can't route back across the runway to the now-passed exit (which
         // was the original bug this work fixes).
-        double signedAlongPastM = SignedAlongRunwayMeters(
-            lat, lon,
-            _rolloutExit.Latitude, _rolloutExit.Longitude,
-            _rolloutRunwayHeadingTrue);
-        double signedAlongPastFt = signedAlongPastM * METERS_TO_FEET;
         if (signedAlongPastFt >= ROLLOUT_OVERSHOOT_FT && hdgDeltaAbs < ROLLOUT_TURN_BEGAN_HDG_DEG)
         {
             // Sorted list — first exit further downfield than the current one
@@ -2776,6 +2781,18 @@ public class TaxiGuidanceManager : IDisposable
         // Drop the cached last-instruction so a stale callout from a prior
         // route can't be replayed via Ctrl+Y after StopGuidance.
         _lastInstruction = "";
+        // Rollout caches — matches the spec's edge-case row "StopGuidance
+        // clears all state including the new rollout caches." Practically
+        // harmless because UpdateLandingRollout cannot fire in Inactive
+        // state, but keeps state-reset semantics symmetric and lets a
+        // subsequent BeginLandingRollout caller assume a clean baseline
+        // without depending on its own field assignments to overwrite.
+        _rolloutExit = null;
+        _rolloutRunway = null;
+        _rolloutAllExits = new List<Navigation.LandingExit>();
+        _rolloutApproach1500Announced = false;
+        _rolloutApproach500Announced = false;
+        _rolloutTurnNowAnnounced = false;
         SetState(TaxiGuidanceState.Inactive);
         } // end lock(_stateLock)
     }
