@@ -4628,7 +4628,7 @@ public partial class MainForm : Form
             displayTextBox.ReadOnly = true;
             displayTextBox.Size = new Size(240, 30);
             displayTextBox.Location = new Point(0, 0);
-            displayTextBox.AccessibleName = "Status display";
+            displayTextBox.AccessibleName = "Status display (press F5 to refresh)";
             displayTextBox.Text = "";  // Empty by default
 
             // Refresh button
@@ -4637,6 +4637,17 @@ public partial class MainForm : Form
             refreshButton.Size = new Size(80, 23);
             refreshButton.Location = new Point(0, 32);
             refreshButton.AccessibleName = "Refresh status";
+
+            // F5 on the read-only display triggers the same refresh action as the
+            // button — convenient for blind users who don't want to tab to the button.
+            displayTextBox.KeyDown += (s2, e2) =>
+            {
+                if (e2.KeyCode == Keys.F5)
+                {
+                    e2.SuppressKeyPress = true;
+                    refreshButton.PerformClick();
+                }
+            };
 
             refreshButton.Click += async (s2, e2) =>
             {
