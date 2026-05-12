@@ -714,18 +714,60 @@ public class TaxiAssistForm : Form
         // router's `FindRunwayBridge` and constrained-path logic still
         // resolve the actual route — this is purely UX so the user can match
         // what ATC said even when the heuristic doesn't surface it.
+        //
+        // Duplicate taxiways are allowed: ATC clearances like "via C, hold
+        // short 04L, C" at KBOS need to re-use a taxiway across a runway
+        // crossing. The router handles consecutive duplicates as a benign
+        // no-op step (FindBestIntersection resolves to the current node and
+        // the currentNode == targetNode short-circuit at TaxiRouter.cs skips
+        // the redundant step); the per-row user hold-short on the first
+        // occurrence still tags the correct segment via
+        // ApplyUserRunwayHoldShorts.
+        //
+        // The immediately-previous taxiway is hidden ONLY when the previous
+        // slot has no hold-short configured. Without a hold-short, picking
+        // the same taxiway twice in a row is a no-op click error. With a
+        // hold-short (either the "Hold short" checkbox OR a runway selected
+        // in the per-row "Hold short of runway" combo), the same-taxiway
+        // duplicate is a legitimate clearance pattern: taxi to the
+        // hold-short line, hold until ATC clears the crossing, resume on
+        // the same taxiway on the far side. Without this conditional
+        // relaxation, KBOS clearances like "K, B, N, hold short 15R, N,
+        // hold short 22R, N" cannot be entered literally — the second and
+        // third N never appear in the dropdown.
+        bool prevHasHoldShort;
+        if (_additionalTaxiways.Count == 0)
+        {
+            string? firstRwy = cmbFirstHoldShortRunway.SelectedItem?.ToString();
+            prevHasHoldShort =
+                chkFirstHoldShort.Checked ||
+                (!string.IsNullOrEmpty(firstRwy) && firstRwy != NO_RUNWAY_HOLDSHORT);
+        }
+        else
+        {
+            var (_, _, hsChk, hsRwy, _) = _additionalTaxiways[^1];
+            string? rwy = hsRwy.SelectedItem?.ToString();
+            prevHasHoldShort =
+                hsChk.Checked ||
+                (!string.IsNullOrEmpty(rwy) && rwy != NO_RUNWAY_HOLDSHORT);
+        }
+
+        // Single predicate used in both filter sites below so a future
+        // edit can't drift one site out of sync with the other.
+        bool ShouldKeep(string n) =>
+            prevHasHoldShort ||
+            !n.Equals(previousTaxiway, StringComparison.OrdinalIgnoreCase);
+
         var connected = _graph.GetConnectedTaxiwayNames(previousTaxiway);
-        var usedTaxiways = GetSelectedTaxiwayNames();
 
         var connectedAvailable = connected
-            .Where(n => !usedTaxiways.Contains(n, StringComparer.OrdinalIgnoreCase))
+            .Where(ShouldKeep)
             .ToList();
 
         var connectedSet = new HashSet<string>(connectedAvailable, StringComparer.OrdinalIgnoreCase);
         var otherAirportTaxiways = _graph.GetAllTaxiwayNames()
-            .Where(n => !usedTaxiways.Contains(n, StringComparer.OrdinalIgnoreCase))
             .Where(n => !connectedSet.Contains(n))
-            .Where(n => !n.Equals(previousTaxiway, StringComparison.OrdinalIgnoreCase))
+            .Where(ShouldKeep)
             .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
             .ToList();
 

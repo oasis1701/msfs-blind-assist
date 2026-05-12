@@ -115,7 +115,7 @@ Raw "perpendicular cross-track >50 m for >3 s" alone caused a cascade during the
 
 When a recalc does fire, two additional safeguards keep the new route honest to the original ATC clearance:
 
-1. **Remaining-sequence trimming (`BuildRemainingSequence`).** The ATC taxiway sequence is stored in `_originalTaxiwaySequence`. On recalc, the manager finds the current segment's taxiway name in that list and passes **only the tail** (current taxiway onward) to the router's `FindConstrainedPath`. The aircraft never gets re-routed back through taxiways it has already cleared.
+1. **Position-aware sequence trimming (`FindRemainingSequenceByPosition`).** The ATC taxiway sequence is stored in `_originalTaxiwaySequence`. On recalc the manager walks the sequence from **last to first**, asking the graph "is there a node on this taxiway within 50 m of the aircraft?" The first hit is the latest taxiway the aircraft is physically on; everything before it is dropped before passing to `FindConstrainedPath`. Driving the trim from aircraft position (rather than from the recorded `_currentSegmentIndex`) handles the case where a previous recalc reset the segment index to 0 even though the aircraft is far along the route — observed at LEPA where a recalc near the H2 hold-short produced a route that physically started back at LE, sending the aircraft on a big loop. Aircraft drifted entirely off the cleared route → no sequence-taxiway hit → caller falls back to `FindNearestNodeInDirection` + shortest path.
 2. **Diversion guard.** If the router fell back to unconstrained shortest path (`ConstrainedFallbackReason` is non-empty) and the new total distance exceeds `2 × oldRemaining + 500 m`, the manager **rejects the recalc** and announces: `"Off route. Could not follow clearance. <reason>. Continuing on original route."` This prevents a bad recalc from sending the aircraft across the field just because a single intersection node has no bridging edge on the expected taxiway.
 
 ## Concurrency
@@ -197,7 +197,7 @@ toneHeadingError = NormalizeAngle(desiredHeading − aircraftHeadingTrue)
 | Speed warning | >30 kt straight / >12 kt turn | `Slow down.` (8 s cooldown) |
 | Runway incursion | non-route hold-short within 40 m | `Runway crossing ahead. Hold short.` (10 s cooldown) |
 | On-demand status | Output > `Y` | `Taxiway Bravo. In 400 feet turn right onto Kilo. 0.8 miles to destination.` |
-| Repeat last | Output > `Ctrl+Y` | Replays the most recent **actionable instruction** verbatim (turn callout, hold-short, taxiway change, lineup, arrival, distance countdown). Distinct from `Y` (status), which recomputes a snapshot from current position. Useful when the announcement was clipped by another sound. Returns `"No taxi instruction yet."` if guidance is active but nothing has fired; `"No taxi guidance active."` otherwise. Implemented via `TaxiGuidanceManager._lastInstruction`, populated only by `AnnounceInstruction()` — peripheral alerts (speed warnings, runway crossings, off-route notices, lineup-aligned confirmations) stay on plain `_announcer.Announce` so they don't displace the most recent actionable callout. |
+| Repeat last | Output > `Ctrl+Y` | Replays the most recent **actionable instruction** verbatim (turn callout, hold-short, taxiway change, lineup, arrival, distance countdown). Distinct from `Y` (status), which recomputes a snapshot from current position. Useful when the announcement was clipped by another sound. Returns `"No taxi instruction yet."` if guidance is active but nothing has fired; `"No taxi guidance active."` otherwise. Implemented via `TaxiGuidanceManager._lastInstruction`, populated only by `AnnounceInstruction()` — two peripheral sites still call plain `_announcer.Announce` without populating `_lastInstruction`: (a) the LoadRoute route summary, (b) the periodic ground-speed bucket announcer — so the Repeat-Last buffer keeps the most recent actionable callout. |
 | Where am I | Output > `Alt+Y` | `Taxiway Bravo at KJFK.` / `Gate A25 at KJFK.` / `Runway 22L at KJFK.` Works with or without active guidance. |
 
 ### Verbal turn direction (heading-based, not route-static)
@@ -383,6 +383,13 @@ Before touchdown (during cruise or descent), the pilot picks a runway-exit taxiw
 4. `LandingExitPlanner.ProcessGroundState(onGround, gs, lat, lon, headingTrue)` is fed from every `SIM_ON_GROUND` update in `MainForm.OnSimVarUpdated`. It edge-detects the airborne→on-ground transition and requires ground speed ≥ 40 kt (`LANDING_MIN_GS_KNOTS`) to count as a real touchdown — a teleport or reload at low speed won't trigger it.
 5. On touchdown it calls `TaxiGuidanceManager.LoadRoute(...)` with the exit node id as the destination, `isRunwayDestination: false`, and the pre-built graph as `prebuiltGraph`. Then `StartGuidance(SettingsManager.Current)`. The route snaps from the aircraft's current (post-touchdown) position through the exit's graph node — shortest path, so it naturally follows the runway centerline until the chosen exit.
 6. Announcement: "Touchdown. Guiding to taxiway K2, 5800 feet remaining."
+7. **Rollout phase (`TaxiGuidanceState.LandingRollout`).** Steering tone is muted during the deceleration phase. Voice callouts at 1500 ft / 500 ft / turn-now mark approach to the chosen exit. Two transitions out of this phase:
+
+   - **Normal handoff to `Taxiing`** when EITHER the pilot has begun the turn off the runway (heading deviation ≥ `ROLLOUT_TURN_BEGAN_HDG_DEG` (15°) off runway centerline), OR BOTH (a) the aircraft is at taxi speed (`< 30 kt`) AND (b) is within 500 ft (`ROLLOUT_NEAR_EXIT_FT`) of the exit. The conjunctive gate on `nearExit` prevents the tone from resuming early on long runways where GS drops below 30 kt thousands of feet upfield of the planned exit.
+
+   - **Overshoot retarget.** If the aircraft has rolled past the chosen exit by ≥ 100 ft (`ROLLOUT_OVERSHOOT_FT`) along the runway centerline without starting the turn, `TaxiGuidanceManager` scans the precomputed exit list for the next downfield exit and `LoadRoute`s to it in place via `RetargetLandingExit`. Approach callouts re-arm for the new exit. Announcement: *"Missed taxiway A6. Retargeting taxiway A7, N feet ahead."* If no downfield exit remains, `EnterRunwayEndCountdown` clears the route (steering tone silent, no recalc) and announces *"Missed last exit on runway X."* before handing off to the runway-end countdown described below.
+
+   - **Runway-end countdown.** When the overshoot path finds no downfield exit (or the retarget itself fails), state stays in `LandingRollout` and `UpdateRunwayEndCountdown` drives three voice callouts as the aircraft approaches the physical end of the runway: *"Runway end in 1500 feet."* / *"Runway end in 500 feet. Slow down."* (suffix suppressed when GS ≤ 30 kt) / *"Runway end in 100 feet. Stop."* (suffix suppressed when GS ≤ 1 kt). Tone stays silent — the pilot is on rudder/brakes alone. Transition to `Taxiing` (with `_route = null` — no recalc target) when GS drops below `ROLLOUT_NO_EXIT_STOPPED_GS_KTS = 3 kt` or heading deviates ≥ 15° (backtaxi turn). Replaces the previous "full silence" behavior so a blind pilot rolling toward the end of an active runway gets real braking information instead of being left to query Where-Am-I repeatedly.
 
 ### Exit detection math (TaxiGraph.GetLandingExits)
 
@@ -566,6 +573,16 @@ Constants live at the top of `TaxiGuidanceManager.cs` and `TaxiSteeringTone.cs`.
 | High-speed angle | ≤ 50° | RET-geometry exit angle |
 | Normal angle | ≤ 110° | Perpendicular exit |
 | End-of-runway ratio | ≥ 0.85 | Nodes in last 15% of runway length classify as `End` |
+
+### TaxiGuidanceManager — Landing Rollout
+
+| Constant | Value | Purpose |
+|---|---|---|
+| `ROLLOUT_TAXI_GS_KTS` | 30.0 | Below this GS the aircraft is at taxi speed for handoff purposes. Conjunctive with `nearExit` — speed alone does not trigger handoff |
+| `ROLLOUT_TURN_BEGAN_HDG_DEG` | 15.0 | Heading deviation from runway centerline that signals the pilot has begun the turn off — triggers immediate handoff regardless of speed or proximity |
+| `ROLLOUT_NEAR_EXIT_FT` | 500.0 | Proximity to the chosen exit at which the speed-based handoff is allowed to fire. Matches the existing "500 ft slow down" callout — by the time the pilot hears that, they're committed to the turn |
+| `ROLLOUT_OVERSHOOT_FT` | 100.0 | Along-runway distance past the chosen exit at which an overshoot is declared, triggering retarget to the next downfield exit (or graceful end if none remain) |
+| `ROLLOUT_NO_EXIT_STOPPED_GS_KTS` | 3.0 | Ground-speed threshold at which the runway-end countdown mode considers the aircraft effectively stopped and hands off to plain `Taxiing`. Lower than `ROLLOUT_TAXI_GS_KTS` (30) because the countdown has no more useful callouts to make once the pilot is at a crawl |
 
 ## Related Documentation
 

@@ -258,9 +258,14 @@ public class ActiveSkyWeatherMonitor : IDisposable
             parts.Add($"Visibility: {decoded.VisibilityText}.");
         else if (conditions.SurfaceVisibility > 0)
         {
-            string vis = conditions.SurfaceVisibility >= 6
-                ? "10 kilometres or more"
-                : $"{(int)Math.Round(conditions.SurfaceVisibility * 1.609)} kilometres";
+            // SurfaceVisibility is in statute miles per the AS JSON API.
+            // CLAUDE.md requires both km and SM in both source paths, so
+            // speak SM verbatim with the km equivalent alongside.
+            double sm = conditions.SurfaceVisibility;
+            int km = (int)Math.Round(sm * 1.609);
+            string vis = sm >= 6
+                ? "10 statute miles or more (16 kilometres or more)"
+                : $"{(int)Math.Round(sm)} statute miles ({km} kilometres)";
             parts.Add($"Visibility: {vis}.");
         }
 

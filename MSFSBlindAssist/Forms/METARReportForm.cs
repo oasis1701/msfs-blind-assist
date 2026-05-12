@@ -257,6 +257,8 @@ public partial class METARReportForm : Form
 
                 string metar = await vatsimTask;
 
+                if (IsDisposed) return;
+
                 if (string.IsNullOrEmpty(metar) || metar.Trim().Length == 0)
                 {
                     statusLabel.Text = "No METAR data available";
@@ -276,6 +278,9 @@ public partial class METARReportForm : Form
                 if (asMetarTextBox.Visible)
                 {
                     string? asMetar = await asTask;
+
+                    if (IsDisposed) return;
+
                     if (string.IsNullOrWhiteSpace(asMetar))
                     {
                         asMetarTextBox.Text =
@@ -295,9 +300,13 @@ public partial class METARReportForm : Form
             }
             finally
             {
-                // Re-enable controls
-                icaoTextBox.Enabled = true;
-                closeButton.Enabled = true;
+                // Re-enable controls only if the form is still alive — the
+                // user may have closed it during the fetch.
+                if (!IsDisposed)
+                {
+                    icaoTextBox.Enabled = true;
+                    closeButton.Enabled = true;
+                }
             }
         }
 

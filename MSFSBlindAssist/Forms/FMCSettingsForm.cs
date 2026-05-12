@@ -3,23 +3,21 @@ using MSFSBlindAssist.Settings;
 namespace MSFSBlindAssist.Forms;
 
 /// <summary>
-/// PMDG FMC settings dialog. Only ever opened when a PMDG aircraft is loaded
-/// (the menu item that invokes it is gated on AircraftCode.StartsWith("PMDG_")).
-/// Hosts two toggles:
+/// FMC settings dialog. Opened from the menu when either a PMDG aircraft
+/// or the Fenix A320 is loaded (gated in MainForm). Hosts two toggles:
 ///
-/// 1. Alternate LSK keys — switches the CDU form's line-select bindings
-///    from the default <c>Ctrl+1..6</c> / <c>Alt+1..6</c> to <c>F1..F6</c> /
-///    <c>F7..F12</c>. Frees Ctrl/Alt for other shortcuts; matches TFM's
-///    layout for users who prefer it.
+/// 1. Alternate LSK keys (applies to both PMDG 777 and Fenix A320) —
+///    switches each aircraft's MCDU form line-select bindings from the
+///    default <c>Ctrl+1..6</c> / <c>Alt+1..6</c> to <c>F1..F6</c> /
+///    <c>F7..F12</c>. Frees Ctrl/Alt for other shortcuts.
 ///
-/// 2. Enhanced distance announcement — when on, the Output D / Shift+D
-///    distance keys parse the PMDG PROG page (right CDU) for distance,
-///    ETA in Z time, landing fuel, TOC and step-climb data. Falls back to
-///    the default offset-based readout when the PROG page can't be read
-///    (e.g. CDU power off).
+/// 2. Enhanced distance announcement (PMDG only) — when on, the Output
+///    <c>D</c> / <c>Shift+D</c> keys parse the PMDG PROG page for distance,
+///    ETA in Z time, landing fuel, TOC and step-climb data. No effect on
+///    the Fenix A320.
 ///
-/// The form mirrors <see cref="TaxiGuidanceOptionsForm"/>'s pattern: caller
-/// reads the public properties after <c>ShowDialog() == DialogResult.OK</c>
+/// The form mirrors <see cref="TaxiGuidanceOptionsForm"/>'s pattern:
+/// caller reads the public properties after <c>ShowDialog() == DialogResult.OK</c>
 /// and writes them back to <see cref="UserSettings"/>. The form does not
 /// touch settings storage itself — that's the caller's responsibility.
 /// </summary>
@@ -44,7 +42,7 @@ public class FMCSettingsForm : Form
 
     private void InitializeComponent()
     {
-        Text = "PMDG FMC Settings";
+        Text = "FMC Settings";
         Size = new Size(560, 340);
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -56,7 +54,7 @@ public class FMCSettingsForm : Form
 
         var titleLabel = new Label
         {
-            Text = "Configure PMDG FMC behaviour:",
+            Text = "Configure FMC behaviour:",
             Location = new Point(20, 20),
             Size = new Size(500, 22),
             AccessibleName = "FMC settings title"
@@ -88,20 +86,20 @@ public class FMCSettingsForm : Form
         // ---- Enhanced distance announcement ----
         enhancedDistanceCheckBox = new CheckBox
         {
-            Text = "&Enhanced distance announcements (PROG page)",
+            Text = "&Enhanced distance announcements (PMDG only)",
             Location = new Point(20, 130),
             Size = new Size(480, 22),
             Checked = EnhancedDistanceMode,
-            AccessibleName = "Enhanced distance announcements",
-            AccessibleDescription = "When checked, the Output D and Shift+D distance keys read the FMC progress page " +
+            AccessibleName = "Enhanced distance announcements, PMDG only",
+            AccessibleDescription = "PMDG aircraft only. When checked, the Output D and Shift+D distance keys read the FMC progress page " +
                                     "to give distance to destination with E T A in Z time and landing fuel, " +
                                     "and distance to top of climb, step climb, or top of descent for Shift+D. " +
-                                    "Falls back to the default readout if the progress page can't be activated."
+                                    "Falls back to the default readout if the progress page can't be activated. Has no effect on the Fenix A320."
         };
 
         enhancedDistanceDescription = new Label
         {
-            Text = "Reads the PROG page on the right CDU. Requires the CDU to be powered. " +
+            Text = "PMDG only. Reads the PROG page on the right CDU. Requires the CDU to be powered. " +
                    "Output D = distance + ETA Z + landing fuel; Shift+D = T O C / step climb / T O D in NM + ETA Z.",
             Location = new Point(40, 155),
             Size = new Size(490, 50),
