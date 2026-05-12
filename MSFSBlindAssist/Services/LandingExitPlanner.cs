@@ -237,20 +237,27 @@ public class LandingExitPlanner
         _activatedThisLanding = true;
         _guidanceManager.StartGuidance(SettingsManager.Current);
 
+        // Compute the full exit list for the chosen runway so the
+        // TaxiGuidanceManager can retarget on overshoot without rebuilding
+        // the graph or querying the DB per frame. GetLandingExits returns
+        // the list sorted by DistanceFromThresholdFeet ascending, which is
+        // exactly what the overshoot scan expects.
+        var allExits = _graph.GetLandingExits(_runway);
+
         // Switch into landing-rollout mode: tone is paused, distance-based
         // callouts ("approaching high-speed exit Sierra-5, 1500 feet" /
         // "...500 feet, slow down" / "turn left now, taxiway Sierra-5")
         // fire on the rollout. State transitions to normal Taxiing once
-        // the aircraft decelerates to taxi speed or begins the actual
-        // turn off the runway. The previous "Touchdown. Guiding to
-        // taxiway X, N feet remaining." line was a single bare
-        // announcement that didn't communicate the turn direction or the
-        // exit class; BeginLandingRollout speaks a richer touchdown
-        // callout itself.
+        // the aircraft decelerates to taxi speed AND is within
+        // ROLLOUT_NEAR_EXIT_FT of the chosen exit, or once the pilot
+        // begins the actual turn off the runway. On overshoot the
+        // manager retargets to the next downfield exit (or falls through
+        // to idle Taxiing if none remain) using the allExits list passed
+        // through here.
         // Runway.Heading is true heading per the DB schema; pass it
         // through so the rollout can detect when the pilot starts the
         // turn off centerline.
-        _guidanceManager.BeginLandingRollout(_exit, _runway.Heading);
+        _guidanceManager.BeginLandingRollout(_exit, _runway.Heading, _runway, allExits);
         return true;
     }
 }
