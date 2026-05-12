@@ -260,12 +260,31 @@ public class TaxiGuidanceManager : IDisposable
     // pilot has begun the actual turn onto the exit).
     private Navigation.LandingExit? _rolloutExit;
     private double _rolloutRunwayHeadingTrue;
+    // Runway and full exit list captured at BeginLandingRollout time, so the
+    // overshoot-retarget path can pick the next downfield exit without rebuilding
+    // the graph or querying the DB on the per-frame loop. _rolloutAllExits is
+    // sorted by DistanceFromThresholdFeet ascending (the order returned by
+    // TaxiGraph.GetLandingExits), so finding the next downfield exit is a linear
+    // scan terminating at the first match.
+    private Database.Models.Runway? _rolloutRunway;
+    private List<Navigation.LandingExit> _rolloutAllExits = new();
     // Touchdown is announced unconditionally inside BeginLandingRollout (a one-shot
     // entry event), so no per-rollout flag is needed for it. The three flags below
     // gate per-rollout-once distance callouts in UpdateLandingRollout.
     private bool _rolloutApproach1500Announced = false;
     private bool _rolloutApproach500Announced = false;
     private bool _rolloutTurnNowAnnounced = false;
+    // Runway-end countdown mode. Entered when the overshoot detector finds
+    // no downfield exit remaining (or RetargetLandingExit's LoadRoute call
+    // fails). Drives a distance-to-runway-end countdown (1500 / 500 / 100 ft)
+    // so the blind pilot knows how much pavement is left for braking instead
+    // of falling silent. State stays in LandingRollout so UpdatePosition
+    // continues to feed the per-frame loop; transitions to Taxiing only
+    // when the pilot is effectively stopped or has begun a backtaxi turn.
+    private bool _rolloutNoExitMode;
+    private bool _rolloutEnd1500Announced;
+    private bool _rolloutEnd500Announced;
+    private bool _rolloutEnd100Announced;
     // Below this GS the aircraft is at taxi speed — graduate to normal taxi
     // guidance even if we haven't started the turn yet. 30 kt is a typical
     // taxi-fast cap (real-world SOPs cap straight-taxi at 30 kt; turns
@@ -276,6 +295,31 @@ public class TaxiGuidanceManager : IDisposable
     // over to normal taxi guidance even if speed is still high (a
     // high-speed exit at 60 kt is plausible on Code-E rapid exits).
     private const double ROLLOUT_TURN_BEGAN_HDG_DEG = 15.0;
+
+    // Speed-based handoff is now gated on proximity to the chosen exit. On long
+    // runways the aircraft routinely decelerates below ROLLOUT_TAXI_GS_KTS
+    // (30 kt) thousands of feet upfield of the planned exit; without this gate
+    // the steering tone resumed at 30 kt and started panning toward the next
+    // route waypoint while the pilot was still on the runway centerline,
+    // implying "turn now" far too early. 500 ft matches the existing
+    // "500 ft slow down" approach callout — by the time the pilot hears that,
+    // they're committed to the turn.
+    private const double ROLLOUT_NEAR_EXIT_FT = 500.0;
+
+    // Along-runway distance past the planned exit at which we declare an
+    // overshoot. Must be tight enough to react quickly while loose enough to
+    // ride out GPS jitter and the moment between "passing the exit marker"
+    // and "starting the turn" on a normal exit. 100 ft @ 30 kt = ~2 s — the
+    // tone resume / turn-began handoff has already fired by then in the
+    // normal case, so an actual overshoot is unambiguous when this fires.
+    private const double ROLLOUT_OVERSHOOT_FT = 100.0;
+
+    // Below this ground speed, runway-end countdown mode considers the
+    // aircraft effectively stopped and hands off to plain Taxiing. Lower
+    // than ROLLOUT_TAXI_GS_KTS (30) because the pilot in this mode is
+    // braking hard with no further callouts coming; once they're at a
+    // crawl the countdown has nothing more useful to say.
+    private const double ROLLOUT_NO_EXIT_STOPPED_GS_KTS = 3.0;
 
     // Lineup thresholds — runway needs degree-level precision because takeoff roll
     // amplifies any heading error; gate is more forgiving since there's no roll.
@@ -743,7 +787,11 @@ public class TaxiGuidanceManager : IDisposable
     /// route already being loaded and the tone generator already alive
     /// (so Pause/Resume do the right thing).
     /// </summary>
-    public void BeginLandingRollout(Navigation.LandingExit exit, double runwayHeadingTrue)
+    public void BeginLandingRollout(
+        Navigation.LandingExit exit,
+        double runwayHeadingTrue,
+        Database.Models.Runway runway,
+        List<Navigation.LandingExit> allExits)
     {
         lock (_stateLock)
         {
@@ -751,6 +799,8 @@ public class TaxiGuidanceManager : IDisposable
 
             _rolloutExit = exit;
             _rolloutRunwayHeadingTrue = runwayHeadingTrue;
+            _rolloutRunway = runway;
+            _rolloutAllExits = allExits;
             _rolloutApproach1500Announced = false;
             _rolloutApproach500Announced = false;
             _rolloutTurnNowAnnounced = false;
@@ -2004,6 +2054,12 @@ public class TaxiGuidanceManager : IDisposable
     /// </summary>
     private void UpdateLandingRollout(double lat, double lon, double headingTrue, double groundSpeedKts)
     {
+        if (_rolloutNoExitMode)
+        {
+            UpdateRunwayEndCountdown(lat, lon, headingTrue, groundSpeedKts);
+            return;
+        }
+
         if (_rolloutExit == null)
         {
             // Defensive — should never happen because BeginLandingRollout
@@ -2024,13 +2080,31 @@ public class TaxiGuidanceManager : IDisposable
         double hdgDelta = NormalizeAngle(headingTrue - _rolloutRunwayHeadingTrue);
         double hdgDeltaAbs = Math.Abs(hdgDelta);
 
-        // Transition to Taxiing if the pilot has slowed to taxi speed or
-        // has clearly begun the turn off the runway. Either condition
-        // indicates the rollout is over and the normal taxi-tone path
-        // should take it from here.
+        // Compute along-runway projection up front — both the handoff gate
+        // and the overshoot detector below need it. Positive means the
+        // aircraft has moved past the exit in the runway heading direction;
+        // negative means still upfield.
+        double signedAlongPastM = SignedAlongRunwayMeters(
+            lat, lon,
+            _rolloutExit.Latitude, _rolloutExit.Longitude,
+            _rolloutRunwayHeadingTrue);
+        double signedAlongPastFt = signedAlongPastM * METERS_TO_FEET;
+
         bool atTaxiSpeed = groundSpeedKts < ROLLOUT_TAXI_GS_KTS;
+        bool nearExit = distToExitFeet < ROLLOUT_NEAR_EXIT_FT;
+        bool pastExit = signedAlongPastFt > 0.0;
         bool turnBegun = hdgDeltaAbs >= ROLLOUT_TURN_BEGAN_HDG_DEG;
-        if (atTaxiSpeed || turnBegun)
+        // Transition to Taxiing once EITHER (a) the pilot has actually begun
+        // the turn off the runway, OR (b) the pilot has decelerated to taxi
+        // speed AND is within ROLLOUT_NEAR_EXIT_FT of the chosen exit AND
+        // has not yet crossed it. The !pastExit guard is critical: without
+        // it, a pilot who decelerates to taxi speed and then drifts past
+        // the exit on centerline (0-to-100 ft post-exit window) would hit
+        // the handoff and enter Taxiing with _destinationNodeId still
+        // pointing at the just-missed exit — the off-route recalc would
+        // then route back across the runway. The overshoot detector below
+        // handles any case where the aircraft IS past the exit.
+        if (turnBegun || (atTaxiSpeed && nearExit && !pastExit))
         {
             SetState(TaxiGuidanceState.Taxiing);
             _steeringTone.Resume();
@@ -2038,6 +2112,43 @@ public class TaxiGuidanceManager : IDisposable
             // branch, AdvanceToNearestSegment will pick the route segment
             // closest to current position, and the tone will guide the
             // pilot down the exit taxiway as normal.
+            return;
+        }
+
+        // Overshoot detection. If the aircraft has rolled past the chosen
+        // exit along the runway centerline WITHOUT starting the turn, pick
+        // the next downfield exit and retarget. If no exits remain on the
+        // runway, end the rollout gracefully so the off-route recalc path
+        // can't route back across the runway to the now-passed exit (which
+        // was the original bug this work fixes).
+        if (signedAlongPastFt >= ROLLOUT_OVERSHOOT_FT && hdgDeltaAbs < ROLLOUT_TURN_BEGAN_HDG_DEG)
+        {
+            // Sorted list — first exit further downfield than the current one
+            // (with ROLLOUT_OVERSHOOT_FT sentinel to skip the current one and
+            // any near-duplicates) is the next exit.
+            Navigation.LandingExit? nextExit = null;
+            foreach (var e in _rolloutAllExits)
+            {
+                if (e.DistanceFromThresholdFeet > _rolloutExit.DistanceFromThresholdFeet + ROLLOUT_OVERSHOOT_FT)
+                {
+                    nextExit = e;
+                    break;
+                }
+            }
+
+            if (nextExit != null)
+            {
+                RetargetLandingExit(nextExit, lat, lon, headingTrue);
+                return;
+            }
+
+            // No downfield exit. Announce, clear the route so the off-route
+            // recalc has nothing to chase, fall through to idle Taxiing.
+            string rwyLabel = _rolloutRunway != null && !string.IsNullOrEmpty(_rolloutRunway.RunwayID)
+                ? _rolloutRunway.RunwayID
+                : "this runway";
+            AnnounceInstruction($"Missed last exit on runway {rwyLabel}.");
+            EnterRunwayEndCountdown();
             return;
         }
 
@@ -2079,6 +2190,215 @@ public class TaxiGuidanceManager : IDisposable
             AnnounceInstruction($"Turn {dir} now, {name}.");
             _rolloutTurnNowAnnounced = true;
         }
+    }
+
+    /// <summary>
+    /// Per-frame logic while in runway-end countdown mode (set by
+    /// <see cref="EnterRunwayEndCountdown"/>). Drives three voice
+    /// callouts as the aircraft approaches the physical end of the
+    /// runway, then transitions to Taxiing once the pilot has stopped
+    /// or begun turning.
+    ///
+    /// Distance to end is computed by projecting the aircraft position
+    /// onto the runway centerline relative to <c>_rolloutRunway.StartLat/Lon</c>,
+    /// then subtracting from the runway length. Sign convention: along-axis
+    /// distance from start is positive in the runway heading direction;
+    /// distToEnd = length - alongFromStart.
+    ///
+    /// Transitions out to Taxiing when EITHER ground speed drops below
+    /// ROLLOUT_NO_EXIT_STOPPED_GS_KTS (3 kt — effectively stopped) OR
+    /// heading deviation reaches ROLLOUT_TURN_BEGAN_HDG_DEG (15° — pilot
+    /// is maneuvering, typically a backtaxi turn). On exit, _route stays
+    /// null so the Taxiing branch's off-route recalc has nothing to chase.
+    /// </summary>
+    private void UpdateRunwayEndCountdown(double lat, double lon, double headingTrue, double groundSpeedKts)
+    {
+        if (_rolloutRunway == null)
+        {
+            // Defensive — without runway data we can't compute the end-distance.
+            // Fall through to plain Taxiing; pilot can use Where Am I and other tools.
+            _rolloutNoExitMode = false;
+            SetState(TaxiGuidanceState.Taxiing);
+            return;
+        }
+
+        // Distance from runway start to current position, along the runway heading.
+        double alongFromStartM = SignedAlongRunwayMeters(
+            lat, lon,
+            _rolloutRunway.StartLat, _rolloutRunway.StartLon,
+            _rolloutRunwayHeadingTrue);
+        double lengthM = _rolloutRunway.Length * 0.3048; // Length is feet
+        double distToEndM = lengthM - alongFromStartM;
+        double distToEndFt = distToEndM * METERS_TO_FEET;
+
+        // Heading deviation from runway centerline.
+        double hdgDelta = NormalizeAngle(headingTrue - _rolloutRunwayHeadingTrue);
+        double hdgDeltaAbs = Math.Abs(hdgDelta);
+
+        // Transition out: effectively stopped, OR pilot is turning (likely
+        // beginning a backtaxi). After transitioning, _route is still null
+        // so Taxiing's off-route recalc cannot fire.
+        bool effectivelyStopped = groundSpeedKts < ROLLOUT_NO_EXIT_STOPPED_GS_KTS;
+        bool turnBegun = hdgDeltaAbs >= ROLLOUT_TURN_BEGAN_HDG_DEG;
+        if (effectivelyStopped || turnBegun)
+        {
+            _rolloutNoExitMode = false;
+            SetState(TaxiGuidanceState.Taxiing);
+            // Tone stays paused — no route to steer toward.
+            return;
+        }
+
+        // Past the runway end already (overrun / off the pavement). The
+        // three countdown callouts have either fired or been skipped past;
+        // stay quiet here and rely on the stopped/turn transitions above
+        // to retire the countdown when the pilot stops or maneuvers.
+        if (distToEndFt <= 0) return;
+
+        if (!_rolloutEnd1500Announced && distToEndFt <= 1500.0 && distToEndFt > 500.0)
+        {
+            AnnounceInstruction("Runway end in 1500 feet.");
+            _rolloutEnd1500Announced = true;
+        }
+
+        if (!_rolloutEnd500Announced && distToEndFt <= 500.0 && distToEndFt > 100.0)
+        {
+            // "Slow down" is added only when the pilot still has real speed
+            // to bleed off — mirrors the hold-short countdown's speed-aware
+            // suffix rule. ROLLOUT_TAXI_GS_KTS (30) is the threshold below
+            // which the aircraft is at normal taxi speed and the suffix is
+            // patronising noise.
+            string slowSuffix = groundSpeedKts > ROLLOUT_TAXI_GS_KTS ? " Slow down." : "";
+            AnnounceInstruction($"Runway end in 500 feet.{slowSuffix}");
+            _rolloutEnd500Announced = true;
+        }
+
+        if (!_rolloutEnd100Announced && distToEndFt <= 100.0)
+        {
+            // "Stop" is added only when the pilot still has speed to lose.
+            // ≤ 1 kt is the threshold the hold-short countdown uses for the
+            // same wording rule — at that point the aircraft is crawling
+            // and the directive is redundant.
+            string stopSuffix = groundSpeedKts > 1.0 ? " Stop." : "";
+            AnnounceInstruction($"Runway end in 100 feet.{stopSuffix}");
+            _rolloutEnd100Announced = true;
+        }
+    }
+
+    /// <summary>
+    /// Re-routes the active landing rollout to a new exit. Called by
+    /// UpdateLandingRollout when the aircraft has overshot the previously
+    /// chosen exit and there is a downfield exit available.
+    ///
+    /// Calls LoadRoute (re-entrant on _stateLock, safe from inside
+    /// UpdateLandingRollout) to build a new route from the current position
+    /// to <paramref name="newExit"/>'s node. LoadRoute transitions the
+    /// manager to RouteLoaded; we force it back to LandingRollout afterward
+    /// so the per-frame loop keeps invoking UpdateLandingRollout with the
+    /// new exit. Approach callouts (1500 / 500 / turn-now) are re-armed
+    /// for the new exit.
+    ///
+    /// On LoadRoute failure, falls through to EnterRunwayEndCountdown so
+    /// the off-route recalc cannot fire back to the just-passed exit.
+    /// </summary>
+    private void RetargetLandingExit(Navigation.LandingExit newExit, double lat, double lon, double headingTrue)
+    {
+        if (_rolloutExit == null || _dataProvider == null || _graph == null)
+        {
+            EnterRunwayEndCountdown();
+            return;
+        }
+
+        string prevName = string.IsNullOrEmpty(_rolloutExit.TaxiwayName)
+            ? "exit"
+            : $"taxiway {_rolloutExit.TaxiwayName}";
+        string newName = string.IsNullOrEmpty(newExit.TaxiwayName)
+            ? "next exit"
+            : $"taxiway {newExit.TaxiwayName}";
+        int distAheadFt = (int)Math.Round(
+            TaxiGraph.FastDistanceMeters(lat, lon, newExit.Latitude, newExit.Longitude)
+            * METERS_TO_FEET);
+
+        string destNameForRoute = newExit.TaxiwayName.Length > 0
+            ? $"Taxiway {newExit.TaxiwayName}"
+            : "Exit";
+
+        // LoadRoute acquires _stateLock; same-thread reentrancy is safe.
+        // announceSummary:false suppresses the "Route to X via Y" callout so
+        // the only spoken line from this transition is our retarget message
+        // below.
+        string? error = LoadRoute(
+            _dataProvider, _icao,
+            lat, lon, headingTrue,
+            newExit.NodeId,
+            destNameForRoute,
+            taxiwaySequence: null,
+            prebuiltGraph: _graph,
+            announceSummary: false,
+            isRunwayDestination: false);
+
+        if (error != null)
+        {
+            AnnounceInstruction($"Missed {prevName}. Could not retarget: {error}.");
+            EnterRunwayEndCountdown();
+            return;
+        }
+
+        _rolloutExit = newExit;
+        _rolloutApproach1500Announced = false;
+        _rolloutApproach500Announced = false;
+        _rolloutTurnNowAnnounced = false;
+
+        // LoadRoute set state to RouteLoaded. Re-enter LandingRollout so the
+        // next UpdatePosition frame re-runs UpdateLandingRollout (tone stays
+        // paused, approach callouts re-armed, overshoot detector active for
+        // the new exit).
+        SetState(TaxiGuidanceState.LandingRollout);
+
+        AnnounceInstruction($"Missed {prevName}. Retargeting {newName}, {distAheadFt} feet ahead.");
+    }
+
+    /// <summary>
+    /// Switches the active rollout into runway-end countdown mode after an
+    /// overshoot with no downfield exit available (or after a retarget
+    /// failure mid-rollout). Clears `_route` and `_destinationNodeId` so
+    /// the off-route detector in the Taxiing branch has nothing to chase
+    /// — without that, a route still pointing at the now-passed exit
+    /// would trigger TryRecalculateRoute and shortest-path back across
+    /// the runway (the original bug).
+    ///
+    /// Keeps `_rolloutRunway` and `_rolloutRunwayHeadingTrue` because
+    /// UpdateRunwayEndCountdown needs them for the distance-to-end
+    /// projection. State stays in LandingRollout so UpdatePosition keeps
+    /// feeding the per-frame loop (MainForm's position-update gate
+    /// includes LandingRollout); UpdateLandingRollout dispatches to
+    /// UpdateRunwayEndCountdown when `_rolloutNoExitMode` is set.
+    ///
+    /// Tone is paused — no steering target. Voice callouts at 1500/500/100
+    /// ft to the runway end give the pilot real braking information; full
+    /// silence would leave a blind pilot rolling toward the end of an
+    /// active runway with no audio cues.
+    /// </summary>
+    private void EnterRunwayEndCountdown()
+    {
+        _route = null;
+        _destinationNodeId = 0;
+        _currentSegmentIndex = 0;
+        _originalTaxiwaySequence = null;
+        _rolloutExit = null;
+        // KEEP _rolloutRunway and _rolloutRunwayHeadingTrue — countdown needs them.
+        _rolloutAllExits = new List<Navigation.LandingExit>();
+        _rolloutApproach1500Announced = false;
+        _rolloutApproach500Announced = false;
+        _rolloutTurnNowAnnounced = false;
+        _rolloutEnd1500Announced = false;
+        _rolloutEnd500Announced = false;
+        _rolloutEnd100Announced = false;
+        _rolloutNoExitMode = true;
+        _offRouteSince = DateTime.MinValue;
+        _steeringTone.Pause();
+        // Stay in LandingRollout so UpdateLandingRollout (→ UpdateRunwayEndCountdown)
+        // runs each frame.
+        SetState(TaxiGuidanceState.LandingRollout);
     }
 
     /// <summary>
@@ -2588,6 +2908,22 @@ public class TaxiGuidanceManager : IDisposable
         // Drop the cached last-instruction so a stale callout from a prior
         // route can't be replayed via Ctrl+Y after StopGuidance.
         _lastInstruction = "";
+        // Rollout caches — matches the spec's edge-case row "StopGuidance
+        // clears all state including the new rollout caches." Practically
+        // harmless because UpdateLandingRollout cannot fire in Inactive
+        // state, but keeps state-reset semantics symmetric and lets a
+        // subsequent BeginLandingRollout caller assume a clean baseline
+        // without depending on its own field assignments to overwrite.
+        _rolloutExit = null;
+        _rolloutRunway = null;
+        _rolloutAllExits = new List<Navigation.LandingExit>();
+        _rolloutApproach1500Announced = false;
+        _rolloutApproach500Announced = false;
+        _rolloutTurnNowAnnounced = false;
+        _rolloutNoExitMode = false;
+        _rolloutEnd1500Announced = false;
+        _rolloutEnd500Announced = false;
+        _rolloutEnd100Announced = false;
         SetState(TaxiGuidanceState.Inactive);
         } // end lock(_stateLock)
     }
@@ -2859,6 +3195,31 @@ public class TaxiGuidanceManager : IDisposable
         if (absTurn < 20) return "continue";
         if (absTurn < 60) return turn < 0 ? "slight left" : "slight right";
         return turn < 0 ? "left" : "right";
+    }
+
+    /// <summary>
+    /// Returns the signed along-runway distance in meters from (refLat, refLon)
+    /// to (pointLat, pointLon), measured along the runway heading. Positive
+    /// values mean `point` lies past `ref` in the direction of flight; negative
+    /// values mean `point` is still upfield of `ref`. Equirectangular projection
+    /// — sub-cm accuracy at runway scale.
+    ///
+    /// Runway heading is measured clockwise from true north, so the unit vector
+    /// along the runway in (east, north) coordinates is (sin H, cos H). The
+    /// signed projection is the dot product of (dE, dN) with that unit vector.
+    /// </summary>
+    private static double SignedAlongRunwayMeters(
+        double pointLat, double pointLon,
+        double refLat, double refLon,
+        double runwayHeadingTrueDeg)
+    {
+        const double METERS_PER_DEG_LAT = 111132.0;
+        double latMidRad = (pointLat + refLat) * 0.5 * Math.PI / 180.0;
+        double metersPerDegLon = METERS_PER_DEG_LAT * Math.Cos(latMidRad);
+        double dN = (pointLat - refLat) * METERS_PER_DEG_LAT;
+        double dE = (pointLon - refLon) * metersPerDegLon;
+        double hdgRad = runwayHeadingTrueDeg * Math.PI / 180.0;
+        return dE * Math.Sin(hdgRad) + dN * Math.Cos(hdgRad);
     }
 
     /// <summary>
