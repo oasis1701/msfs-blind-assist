@@ -299,7 +299,55 @@ public class TaxiGraph
             }
         }
 
+        // Compute connected components so start-node selectors can filter by
+        // reachability to a known destination. Runs after all edges and node
+        // upgrades are in place.
+        graph.AssignConnectedComponents();
+
         return graph;
+    }
+
+    /// <summary>
+    /// Assigns each node a ComponentId so callers can filter start-node candidates
+    /// by reachability. Runs once at Build time after all edges are added. BFS over
+    /// Adjacency; nodes in the same connected component share an integer ID
+    /// starting at 0.
+    ///
+    /// Motivating defect: fs2024 navdata at GCLP models taxiway S5 as a 13-node
+    /// island with no connection to any other taxiway at either terminus. A pilot
+    /// touching down on 03L near S5 would have the start-node picker snap to an
+    /// S5 node, and A* could never reach the chosen exit (in the main 1075-node
+    /// component). With component IDs, the caller filters the start-node search
+    /// to nodes co-component with the destination — the picker skips S5 and finds
+    /// a reachable node on R3 instead.
+    /// </summary>
+    private void AssignConnectedComponents()
+    {
+        int nextComponentId = 0;
+        var queue = new Queue<int>();
+
+        foreach (var startNode in Nodes.Values)
+        {
+            if (startNode.ComponentId != -1) continue;
+            int componentId = nextComponentId++;
+            startNode.ComponentId = componentId;
+            queue.Enqueue(startNode.NodeId);
+
+            while (queue.Count > 0)
+            {
+                int currentId = queue.Dequeue();
+                if (!Adjacency.TryGetValue(currentId, out var edges)) continue;
+                foreach (var edge in edges)
+                {
+                    var neighbor = Nodes[edge.ToNodeId];
+                    if (neighbor.ComponentId == -1)
+                    {
+                        neighbor.ComponentId = componentId;
+                        queue.Enqueue(neighbor.NodeId);
+                    }
+                }
+            }
+        }
     }
 
     /// <summary>

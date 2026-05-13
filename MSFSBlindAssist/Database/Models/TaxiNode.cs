@@ -19,6 +19,14 @@ public class TaxiNode
 
     /// <summary>If this is a hold-short node, the name of what to hold short of (runway or taxiway)</summary>
     public string? HoldShortName { get; set; }
+
+    /// <summary>
+    /// Connected-component ID of this node in the taxi graph. Two nodes can only be
+    /// pathfound between each other if they share a ComponentId. Assigned at
+    /// TaxiGraph.Build time via BFS over Adjacency. -1 means "not yet assigned"
+    /// (a freshly-constructed node before Build's component pass runs).
+    /// </summary>
+    public int ComponentId { get; set; } = -1;
 }
 
 public enum TaxiNodeType
