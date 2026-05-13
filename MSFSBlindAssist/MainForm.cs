@@ -101,6 +101,12 @@ public partial class MainForm : Form
     private Dictionary<string, Control> currentControls = new Dictionary<string, Control>();
     private Dictionary<string, double> currentSimVarValues = new Dictionary<string, double>();
     private bool updatingFromSim = false;
+    // Set true for the entire duration of panel-build code (PanelLoadTimer_Tick body, including
+    // its BeginInvoke continuation). All combo selection-change handlers gate writes on this
+    // being false. This blocks ANY phantom user-action fire that originates from panel
+    // construction — including the WinForms deferred handle-creation replay that surfaces a
+    // buffered SelectedIndex value through the SIC handler regardless of how it was set.
+    private bool _buildingPanel = false;
     private Dictionary<string, double> displayValues = new Dictionary<string, double>();  // Store display values
     private Dictionary<string, TaskCompletionSource<bool>>? pendingDisplayRequests = null;  // Track pending display requests
     private ConcurrentDictionary<string, bool> pendingStateAnnouncements = new ConcurrentDictionary<string, bool>();  // Track state announcement requests
@@ -459,7 +465,9 @@ public partial class MainForm : Form
                 this.Text = $"MSFS BA - {currentAircraft.CurrentFlightPhase} phase active";
             }
             // Check StateVariable reverse lookup only (don't call full UpdateControlFromSimVar
-            // which can interfere with aircraft-specific processing)
+            // which can interfere with aircraft-specific processing — we tried it and combo
+            // programmatic updates appear to trigger the user-action SIC handler despite the
+            // updatingFromSim flag for HS787 vars whose write handler toggles state).
             UpdateButtonStateFromStateVariable(e.VarName, e.Value);
             return; // Aircraft handled it completely, no further generic processing needed
         }
@@ -3863,6 +3871,12 @@ public partial class MainForm : Form
         {
             System.Diagnostics.Debug.WriteLine($"[Panel Load] Loading controls and requesting variables for '{panelToLoad}' panel");
 
+            // Gate all combo selection-change handlers off for the duration of this build.
+            // Also schedule a post-build clear so that any deferred SIC events that WinForms
+            // queues during handle creation (which run after this method returns, on the
+            // message loop) still see the flag set.
+            _buildingPanel = true;
+
             // Request variables first
             if (simConnectManager != null && simConnectManager.IsConnected)
             {
@@ -4034,9 +4048,15 @@ public partial class MainForm : Form
                     }
 
                     // Handle selection change - set both engines
-                    combo.SelectedIndexChanged += (s2, e2) =>
+                    // SelectionChangeCommitted fires only on user-initiated changes (mouse click,
+                    // arrow key commit, Enter). SelectedIndexChanged ALSO fires on programmatic
+                    // assignment AND on the deferred replay that happens when the combo is
+                    // parented and its native handle is created — which was firing phantom user-
+                    // action writes during panel build, toggling state-sensing SimVars (battery,
+                    // generator, ext-pwr, avionics master) and cascading the WT 787 electrical bus.
+                    combo.SelectionChangeCommitted += (s2, e2) =>
                     {
-                        if (!updatingFromSim && combo.SelectedIndex >= 0)
+                        if (!updatingFromSim && !_buildingPanel && combo.SelectedIndex >= 0)
                         {
                             uint mode = (uint)combo.SelectedIndex;
                             // Set both engines to the same mode
@@ -4115,9 +4135,15 @@ public partial class MainForm : Form
                     // Handle selection change - send multiple events
                     // Capture varKey to avoid nullable reference warnings in closure
                     string capturedVarKey = varKey;
-                    combo.SelectedIndexChanged += (s2, e2) =>
+                    // SelectionChangeCommitted fires only on user-initiated changes (mouse click,
+                    // arrow key commit, Enter). SelectedIndexChanged ALSO fires on programmatic
+                    // assignment AND on the deferred replay that happens when the combo is
+                    // parented and its native handle is created — which was firing phantom user-
+                    // action writes during panel build, toggling state-sensing SimVars (battery,
+                    // generator, ext-pwr, avionics master) and cascading the WT 787 electrical bus.
+                    combo.SelectionChangeCommitted += (s2, e2) =>
                     {
-                        if (!updatingFromSim && combo.SelectedIndex >= 0)
+                        if (!updatingFromSim && !_buildingPanel && combo.SelectedIndex >= 0)
                         {
                             var selectedValue = sortedValues[combo.SelectedIndex].Key;
 
@@ -4310,9 +4336,15 @@ public partial class MainForm : Form
                     }
 
                     // Handle selection change
-                    combo.SelectedIndexChanged += (s2, e2) =>
+                    // SelectionChangeCommitted fires only on user-initiated changes (mouse click,
+                    // arrow key commit, Enter). SelectedIndexChanged ALSO fires on programmatic
+                    // assignment AND on the deferred replay that happens when the combo is
+                    // parented and its native handle is created — which was firing phantom user-
+                    // action writes during panel build, toggling state-sensing SimVars (battery,
+                    // generator, ext-pwr, avionics master) and cascading the WT 787 electrical bus.
+                    combo.SelectionChangeCommitted += (s2, e2) =>
                     {
-                        if (!updatingFromSim && combo.SelectedIndex >= 0)
+                        if (!updatingFromSim && !_buildingPanel && combo.SelectedIndex >= 0)
                         {
                             var selectedValue = sortedValues[combo.SelectedIndex].Key;
 
@@ -4715,6 +4747,22 @@ public partial class MainForm : Form
                     UpdateControlFromSimVar(varKey, value);
                 }
             }
+            // Note: a previous attempt to "force-refresh" all panel variables here caused
+            // duplicate-announce oscillation (on, then off) for HS787 vars whose
+            // ProcessSimVarUpdate handler announces on transitions. Reverted; rely on the
+            // initial-value read at combo creation (line 4297-4314) plus continuous
+            // monitoring to keep combo state in sync with the sim.
+            // Clear the flag asynchronously so any handle-creation-replay SIC events that
+            // got queued while we built controls also see _buildingPanel = true. 200 ms is
+            // generous; the actual replay window is sub-frame on a modern machine.
+            var clearTimer = new System.Windows.Forms.Timer { Interval = 200 };
+            clearTimer.Tick += (_, __) =>
+            {
+                clearTimer.Stop();
+                clearTimer.Dispose();
+                _buildingPanel = false;
+            };
+            clearTimer.Start();
         })); // End BeginInvoke - deferred control creation
     } // End PanelLoadTimer_Tick
 

@@ -128,9 +128,6 @@ public class HorizonSim787Definition : BaseAircraftDefinition
     private int  _previousApHdgSel         = -1;
     private int  _previousApClbCon         = -1;
     private int  _previousApproachIls      = -1;
-    private int  _previousFltTimerMode     = -1;
-    private int  _previousFltTimerRunning  = -1;
-    private int  _previousChecklistPhase   = -1;
     private int  _previousHudSymbology1    = -1;
     private int  _previousHudSymbology2    = -1;
     private int  _previousHudDecInhibit1   = -1;
@@ -141,8 +138,155 @@ public class HorizonSim787Definition : BaseAircraftDefinition
     private int  _previousFireBottleDisch1 = -1;
     private int  _previousFireBottleDisch2 = -1;
 
+    // Batch 7 — panel switches promoted from OnRequest to Continuous so they
+    // auto-announce on background changes (e.g. external set, ground crew, scripts).
+    // First poll silent via -1 tri-state init.
+    private int  _previousBatSwitch1       = -1;
+    private int  _previousBatSwitch2       = -1;
+    private int  _previousGen1             = -1;
+    private int  _previousGen2             = -1;
+    private int  _previousApuGen1          = -1;
+    private int  _previousApuGen2          = -1;
+    private int  _previousUtilityCabin     = -1;
+    private int  _previousUtilityIfe       = -1;
+    private int  _previousHydEngL          = -1;
+    private int  _previousHydEngR          = -1;
+    private int  _previousHydC1            = -1;
+    private int  _previousHydC2            = -1;
+    private int  _previousFuelBalance      = -1;
+    private int  _previousFuelBalanceActive = -1;
+    private int  _previousTrimAirL         = -1;
+    private int  _previousTrimAirR         = -1;
+    private int  _previousRecircUpper      = -1;
+    private int  _previousRecircLower      = -1;
+    private int  _previousWshldDeice1      = -1;
+    private int  _previousWshldDeice2      = -1;
+    private int  _previousWshldDeice3      = -1;
+    private int  _previousWshldDeice4      = -1;
+    private int  _previousAltnFlapsArmed   = -1;
+    private int  _previousBaroSelector     = -1;
+    private int  _previousMinsMode         = -1;
+    private int  _previousFPVMode          = -1;
+    private int  _previousTransponderMode  = -1;
+    private int  _previousSATCOM           = -1;
+    private int  _previousVBar             = -1;
+    private int  _previousAutobrake        = -1;
+    private int  _previousLightTaxi        = -1;
+    private int  _previousLightLogo        = -1;
+    private int  _previousLightWing        = -1;
+
+    // Batch 8 — Fuel pumps, bleeds, fire system, cargo fire, standby power
+    private int  _previousFuelPump_LFwd    = -1;
+    private int  _previousFuelPump_LAft    = -1;
+    private int  _previousFuelPump_RFwd    = -1;
+    private int  _previousFuelPump_RAft    = -1;
+    private int  _previousFuelPump_CtrL    = -1;
+    private int  _previousFuelPump_CtrR    = -1;
+    private int  _previousFuelPump_APU     = -1;
+    private int  _previousFuelXfeedFwd     = -1;
+    private int  _previousBleedEng1        = -1;
+    private int  _previousBleedEng2        = -1;
+    private int  _previousBleedAPU         = -1;
+    private int  _previousBleedIso         = -1;
+    private int  _previousFireTest         = -1;
+    private int  _previousEngFireHandle1   = -1;
+    private int  _previousEngFireHandle2   = -1;
+    private int  _previousAPUFireHandle    = -1;
+    private int  _previousCargoFireFwd     = -1;
+    private int  _previousCargoFireAft     = -1;
+    private int  _previousCargoFireDisch   = -1;
+    private int  _previousStandbyPower     = -1;
+    private int  _previousFuelControl1     = -1;
+    private int  _previousFuelControl2     = -1;
+    private int  _previousBaroSTD          = -1;
+    private int  _previousGPUPipe          = -1;
+    private int  _previousRefuelDoor       = -1;
+    // Passenger + cargo doors (open ≥ 50 %, closed below). First-poll silent via −1.
+    private int  _previousDoor1L           = -1;
+    private int  _previousDoor1R           = -1;
+    private int  _previousDoor2L           = -1;
+    private int  _previousDoor2R           = -1;
+    private int  _previousDoor3L           = -1;
+    private int  _previousDoor3R           = -1;
+    private int  _previousDoor4L           = -1;
+    private int  _previousDoor4R           = -1;
+    private int  _previousDoorFwdCargo     = -1;
+    private int  _previousDoorAftCargo     = -1;
+
     public override string AircraftName => "HorizonSim 787-9";
     public override string AircraftCode => "HS_787";
+
+    // ---- WT/Asobo Boeing 787 InputEvent (B:) name table -------------------------
+    // Several switches on the WT/Asobo B787 panel are wired through B: InputEvents,
+    // not K events or L: vars — so K-event writes succeed silently without flipping the
+    // real subsystem. Names verified against the runtime catalog dumped to
+    // %LocalAppData%\MSFSBlindAssist\logs\input_events.txt on every aircraft load.
+    //
+    // The map below routes HS787 panel var keys to InputEvent names so HandleUIVariableSet
+    // can prefer the InputEvent and fall back to the existing K-event / SetLVar branches
+    // when the InputEvent isn't in the catalog (e.g. base Asobo plane or older HS787).
+    private static readonly Dictionary<string, string[]> HS787_INPUT_EVENT_MAP = new()
+    {
+        // Autothrottle arm — paired captain/FO switches. Firing either arms the AT.
+        ["HS787_ATStatus"]      = new[] { "AUTOPILOT_AUTOTHROTTLE_ARM_1", "AUTOPILOT_AUTOTHROTTLE_ARM_2" },
+
+        // Engine autostart — single button fires the WT/Asobo 787's full automatic
+        // start procedure for both engines (cockpit "AUTO START" button equivalent).
+        ["HS787_EngineAutoStart"] = new[] { "PROCEDURE_AUTOSTART" },
+
+        // Per-engine start selector rotaries — write target position (0/1/2).
+        ["HS787_EngineStart1"]    = new[] { "ENGINE_STARTER_1" },
+        ["HS787_EngineStart2"]    = new[] { "ENGINE_STARTER_2" },
+
+        // MCP Approach + Localizer buttons. K-event AP_APR_HOLD updates the L-var
+        // displayed in the cockpit but the WT 787 doesn't actually arm the approach
+        // director from it — the InputEvent does.
+        ["HS787_APP"]           = new[] { "AUTOPILOT_APPROACH_BUTTON" },
+        ["HS787_LOC"]           = new[] { "AUTOPILOT_LOCALIZER_BUTTON" },
+
+        // Engine fuel control switches (Run / Cutoff). The WT 787's fuel valve is
+        // an InputEvent; the standard MIXTUREn_RICH/LEAN K events don't reach it,
+        // so the cockpit switch stays in RUN and the engines keep burning.
+        ["HS787_FuelControl1"]  = new[] { "FUEL_VALVE_L" },
+        ["HS787_FuelControl2"]  = new[] { "FUEL_VALVE_R" },
+
+        // External power: AIRLINER_EXT_PWR_N is a MOMENTARY pushbutton (press = 1,
+        // release = 0; each press toggles state). Not safe to route through the generic
+        // first-pass dispatch — would toggle on every combo value change. Handled
+        // separately in HandleUIVariableSet with state-aware press+release logic.
+
+        // Battery master.
+        ["HS787_Battery"]       = new[] { "ELECTRICAL_BATTERY_SWITCH" },
+
+        // Fuel pumps — the WT model accepts the InputEvent directly with 0/1 values.
+        ["HS787_FuelPump_LFwd"] = new[] { "FUEL_PUMP_FWD_L" },
+        ["HS787_FuelPump_LAft"] = new[] { "FUEL_PUMP_AFT_L" },
+        ["HS787_FuelPump_RFwd"] = new[] { "FUEL_PUMP_FWD_R" },
+        ["HS787_FuelPump_RAft"] = new[] { "FUEL_PUMP_AFT_R" },
+        ["HS787_FuelPump_CtrL"] = new[] { "FUEL_PUMP_CENTER_L" },
+        ["HS787_FuelPump_CtrR"] = new[] { "FUEL_PUMP_CENTER_R" },
+
+        // Fuel crossfeed — single valve in the WT model (panel exposes 3 logical
+        // groupings but the model only has one valve; all three combos drive it).
+        // Single crossfeed valve in the WT 787 model. The cockpit panel may show three
+        // logical switches (Fwd/Aft/Ctr) but all drive the same B:FUEL_VALVE_XFEED.
+        ["HS787_FuelXfeed"]     = new[] { "FUEL_VALVE_XFEED" },
+    };
+
+    /// <summary>
+    /// Tries each candidate InputEvent name in order; fires the first one present in the
+    /// catalog and returns true. Returns false if none match — caller should fall back.
+    /// </summary>
+    private static bool TryFireInputEvent(
+        SimConnect.SimConnectManager simConnect, double value, string[] candidates)
+    {
+        foreach (var name in candidates)
+        {
+            if (simConnect.HasInputEvent(name) && simConnect.TrySetInputEvent(name, value))
+                return true;
+        }
+        return false;
+    }
 
     // 787 MCP uses direct-set dialogs (same as PMDG 777)
     public override FCUControlType GetAltitudeControlType()       => FCUControlType.SetValue;
@@ -206,13 +350,16 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 "IRS",
                 "Hydraulics",
                 "Fuel",
+                "Bleed Air",
                 "Air Conditioning",
                 "Pressurization",
                 "Cooling",
                 "Anti-Ice",
                 "Signs",
                 "Flight Controls",
-                "Engines"
+                "Engines",
+                "Fire Protection",
+                "Cargo Fire"
             },
             ["Glareshield"] = new List<string>
             {
@@ -221,6 +368,7 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 "HUD",
                 "FMC Status",
                 "Annunciators",
+                "Warnings",
                 "Fire"
             },
             ["Pedestal"] = new List<string>
@@ -251,30 +399,35 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             // OVERHEAD — Electrical
             // -----------------------------------------------------------------
 
+            // Now that AIRLINER_EXT_PWR_N InputEvents drive the real switch state,
+            // these are On/Off combo boxes that READ the actual delivered-power SimVar
+            // (EXTERNAL POWER ON:N) directly. Writes route through the InputEvent map
+            // (HS787_INPUT_EVENT_MAP) — no momentary press hack needed.
+            // IsAnnounced = false here because the dedicated state vars HS787_ExtPwrOn1/2
+            // (below) already publish "External Power N On/Off" through ProcessSimVarUpdate.
+            // IsAnnounced=true is required for the monitoring engine to keep these in
+            // the continuous batch, so the combo's displayed value tracks the sim from
+            // the moment MSFSBA connects. Announcements are suppressed in the cache-only
+            // switch at the bottom of ProcessSimVarUpdate — HS787_ExtPwrOn1/2 already
+            // publishes "External Power N On/Off" so duplicating that here would double-talk.
             ["HS787_ExtPwr1"] = new SimConnect.SimVarDefinition
             {
-                Name = "EXT_PWR_COMMANDED:1",
-                DisplayName = "Ext Power 1",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string>
-                {
-                    [0] = "Off",
-                    [1] = "On"
-                }
+                Name = "EXTERNAL POWER ON:1",
+                DisplayName = "Ground Power 1",
+                Type = SimConnect.SimVarType.SimVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
             },
 
             ["HS787_ExtPwr2"] = new SimConnect.SimVarDefinition
             {
-                Name = "EXT_PWR_COMMANDED:2",
-                DisplayName = "Ext Power 2",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string>
-                {
-                    [0] = "Off",
-                    [1] = "On"
-                }
+                Name = "EXTERNAL POWER ON:2",
+                DisplayName = "Ground Power 2",
+                Type = SimConnect.SimVarType.SimVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
             },
 
             ["HS787_ExtPwrOn1"] = new SimConnect.SimVarDefinition
@@ -312,7 +465,8 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 Name = "APU GENERATOR SWITCH:1",
                 DisplayName = "APU Generator 1",
                 Type = SimConnect.SimVarType.SimVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
                     [0] = "Off",
@@ -325,7 +479,8 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 Name = "APU GENERATOR SWITCH:2",
                 DisplayName = "APU Generator 2",
                 Type = SimConnect.SimVarType.SimVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
                     [0] = "Off",
@@ -368,7 +523,8 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 Name = "XMLVAR_Utility_Cabin",
                 DisplayName = "Utility Power Cabin",
                 Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
                     [0] = "Off",
@@ -381,7 +537,8 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 Name = "XMLVAR_Utility_Ife",
                 DisplayName = "Utility Power IFE",
                 Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
                     [0] = "Off",
@@ -389,12 +546,19 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 }
             },
 
+            // Note: ExcludeFromBatch = true routes these through per-var continuous
+            // subscriptions instead of the shared GenericBatch struct. Required because
+            // the batched read was delivering wrong/oscillating values for these specific
+            // vars (likely batch-struct alignment drift), producing the spurious
+            // On→Off cascade announce.
             ["HS787_BatSwitch1"] = new SimConnect.SimVarDefinition
             {
                 Name = "ELECTRICAL MASTER BATTERY:1",
                 DisplayName = "Battery 1",
                 Type = SimConnect.SimVarType.SimVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ExcludeFromBatch = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
                     [0] = "Off",
@@ -407,7 +571,9 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 Name = "ELECTRICAL MASTER BATTERY:2",
                 DisplayName = "Battery 2",
                 Type = SimConnect.SimVarType.SimVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ExcludeFromBatch = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
                     [0] = "Off",
@@ -420,7 +586,9 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 Name = "GENERAL ENG GENERATOR SWITCH:1",
                 DisplayName = "Generator 1",
                 Type = SimConnect.SimVarType.SimVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ExcludeFromBatch = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
                     [0] = "Off",
@@ -433,7 +601,9 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 Name = "GENERAL ENG GENERATOR SWITCH:2",
                 DisplayName = "Generator 2",
                 Type = SimConnect.SimVarType.SimVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ExcludeFromBatch = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
                     [0] = "Off",
@@ -543,7 +713,8 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 Name = "XMLVAR_HYDRAULICS_C1",
                 DisplayName = "Hydraulic Center 1",
                 Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
                     [0] = "Off",
@@ -556,7 +727,8 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 Name = "XMLVAR_HYDRAULICS_C2",
                 DisplayName = "Hydraulic Center 2",
                 Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
                     [0] = "Off",
@@ -570,7 +742,8 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 Name = "HYDRAULIC SWITCH:1",
                 DisplayName = "Hydraulic Engine L",
                 Type = SimConnect.SimVarType.SimVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
                     [0] = "Off",
@@ -583,7 +756,8 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 Name = "HYDRAULIC SWITCH:2",
                 DisplayName = "Hydraulic Engine R",
                 Type = SimConnect.SimVarType.SimVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
                     [0] = "Off",
@@ -600,7 +774,8 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 Name = "XMLVAR_FuelBalance_Switch_On",
                 DisplayName = "Fuel Balance",
                 Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
                     [0] = "Off",
@@ -613,7 +788,8 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 Name = "XMLVAR_FuelBalance_Active",
                 DisplayName = "Fuel Balance Active",
                 Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
                     [0] = "Inactive",
@@ -673,7 +849,8 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 Name = "XMLVAR_TrimAir_L",
                 DisplayName = "Trim Air Left",
                 Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
                     [0] = "Off",
@@ -686,7 +863,8 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 Name = "XMLVAR_TrimAir_R",
                 DisplayName = "Trim Air Right",
                 Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
                     [0] = "Off",
@@ -699,7 +877,8 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 Name = "XMLVAR_RecircUpper",
                 DisplayName = "Upper Recirc Fan",
                 Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
                     [0] = "Off",
@@ -712,7 +891,8 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 Name = "XMLVAR_FansLower",
                 DisplayName = "Lower Recirc Fan",
                 Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
                     [0] = "Off",
@@ -753,9 +933,10 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             ["HS787_WshldDeice1"] = new SimConnect.SimVarDefinition
             {
                 Name = "XMLVAR_DeiceWindshield:1",
-                DisplayName = "Windshield Deice 1",
+                DisplayName = "Window Heat 1",
                 Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
                     [0] = "Off",
@@ -766,9 +947,10 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             ["HS787_WshldDeice2"] = new SimConnect.SimVarDefinition
             {
                 Name = "XMLVAR_DeiceWindshield:2",
-                DisplayName = "Windshield Deice 2",
+                DisplayName = "Window Heat 2",
                 Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
                     [0] = "Off",
@@ -779,9 +961,10 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             ["HS787_WshldDeice3"] = new SimConnect.SimVarDefinition
             {
                 Name = "XMLVAR_DeiceWindshield:3",
-                DisplayName = "Windshield Deice 3",
+                DisplayName = "Window Heat 3",
                 Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
                     [0] = "Off",
@@ -792,9 +975,10 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             ["HS787_WshldDeice4"] = new SimConnect.SimVarDefinition
             {
                 Name = "XMLVAR_DeiceWindshield:4",
-                DisplayName = "Windshield Deice 4",
+                DisplayName = "Window Heat 4",
                 Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
                     [0] = "Off",
@@ -892,7 +1076,8 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 Name = "XMLVAR_ALTN_FLAPS_ARMED",
                 DisplayName = "Alternate Flaps Armed",
                 Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
                     [0] = "Off",
@@ -919,6 +1104,55 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             // -----------------------------------------------------------------
             // OVERHEAD — Engines (FADEC)
             // -----------------------------------------------------------------
+
+            // Engine autostart procedure — the WT/Asobo 787 exposes a single B:PROCEDURE_AUTOSTART
+            // InputEvent that runs the full automatic start sequence for both engines
+            // (the cockpit "AUTO START" button on the engine panel). FADEC walks both
+            // engines through the start states and brings them to running. This is the
+            // accessible equivalent of MSFS Ctrl+E.
+            ["HS787_EngineAutoStart"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_FADEC_ENG_START_STATE_1",  // read-only mirror; write path = InputEvent
+                DisplayName = "Auto Start Both Engines",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                RenderAsButton = true,
+                StateVariable = "HS787_EngStartState1"
+            },
+
+            // Per-engine start selectors. The WT 787's start switch is a rotary
+            // InputEvent (B:ENGINE_STARTER_N) that accepts a position value. Combined
+            // with fuel control set to Run, putting the selector in Auto or Ground arms
+            // FADEC to walk the engine to running state. Values:
+            //   0 = Off, 1 = Auto, 2 = Ground (start)
+            // Exact value semantics aren't documented; user can pick between Auto and
+            // Ground depending on what the loaded model accepts.
+            ["HS787_EngineStart1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_FADEC_ENG_START_STATE_1",  // read-only mirror; write path = InputEvent
+                DisplayName = "Engine 1 Start Selector",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "Off",
+                    [1] = "Auto",
+                    [2] = "Ground"
+                }
+            },
+            ["HS787_EngineStart2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WT_FADEC_ENG_START_STATE_2",
+                DisplayName = "Engine 2 Start Selector",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "Off",
+                    [1] = "Auto",
+                    [2] = "Ground"
+                }
+            },
 
             ["HS787_EngStartState1"] = new SimConnect.SimVarDefinition
             {
@@ -959,7 +1193,8 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 Name = "XMLVAR_Baro_Selector_HPA_1",
                 DisplayName = "Barometer Selector",
                 Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
                     [0] = "inHg",
@@ -972,7 +1207,8 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 Name = "XMLVAR_Mins_Selector_Baro",
                 DisplayName = "Minimums Mode",
                 Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
                     [0] = "Radio",
@@ -985,7 +1221,8 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 Name = "XMLVAR_FPV_MODE_ACTIVE",
                 DisplayName = "FPV Mode",
                 Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
                     [0] = "Off",
@@ -1216,13 +1453,20 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             },
 
             // WT Boeing intercepts AP_APR_HOLD and writes L:AP_APR_ARMED (not AUTOPILOT APPROACH HOLD).
+            // Writable via the AUTOPILOT_APPROACH_BUTTON InputEvent (see HS787_INPUT_EVENT_MAP);
+            // the K-event AP_APR_HOLD is the fallback for non-WT models.
             ["HS787_APP"] = new SimConnect.SimVarDefinition
             {
                 Name = "AP_APR_ARMED",
                 DisplayName = "Approach",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "Off",
+                    [1] = "Armed"
+                }
             },
 
             // Approach mode progression: Armed → LOC captured → GS captured
@@ -1239,13 +1483,19 @@ public class HorizonSim787Definition : BaseAircraftDefinition
 
             // WT Boeing writes L:AP_LOC_ARMED (=1 when LOC is armed/active but approach not yet full).
             // AUTOPILOT LOC HOLD (SimVar) is never written by WT.
+            // Writable via the AUTOPILOT_LOCALIZER_BUTTON InputEvent (see HS787_INPUT_EVENT_MAP).
             ["HS787_LOC"] = new SimConnect.SimVarDefinition
             {
                 Name = "AP_LOC_ARMED",
-                DisplayName = "LOC Active",
+                DisplayName = "LOC",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "Off",
+                    [1] = "Active"
+                }
             },
 
             ["HS787_GS_Active"] = new SimConnect.SimVarDefinition
@@ -1319,12 +1569,17 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 Name = "XMLVAR_Transponder_Mode",
                 DisplayName = "Transponder Mode",
                 Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                // Boeing TCAS/transponder mode positions: STBY, ALT OFF, XPNDR, TA, TA/RA.
+                // Matches the spoken phrasing in ProcessSimVarUpdate (line ~5325).
                 ValueDescriptions = new Dictionary<double, string>
                 {
                     [0] = "Standby",
-                    [1] = "TA Only",
-                    [2] = "TA/RA"
+                    [1] = "Alt Off",
+                    [2] = "XPNDR",
+                    [3] = "TA",
+                    [4] = "TA/RA"
                 }
             },
 
@@ -1352,7 +1607,8 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 Name = "B789_SATCOM_ENABLED",
                 DisplayName = "SATCOM",
                 Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
                     [0] = "Disabled",
@@ -1365,7 +1621,8 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 Name = "B789_VBAR_ENABLED",
                 DisplayName = "V-Bar",
                 Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
                     [0] = "Disabled",
@@ -1383,7 +1640,8 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 Name = "AUTOBRAKE CONTROL SWITCH POSITION",
                 DisplayName = "Autobrakes",
                 Type = SimConnect.SimVarType.SimVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
                     [0] = "Off",
@@ -1628,7 +1886,8 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 Name = "LIGHT TAXI",
                 DisplayName = "Taxi Light",
                 Type = SimConnect.SimVarType.SimVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
                     [0] = "Off",
@@ -1641,7 +1900,8 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 Name = "LIGHT LOGO",
                 DisplayName = "Logo Light",
                 Type = SimConnect.SimVarType.SimVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
                     [0] = "Off",
@@ -1655,7 +1915,8 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 Name = "LIGHT WING",
                 DisplayName = "Runway Turnoff",
                 Type = SimConnect.SimVarType.SimVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
                     [0] = "Off",
@@ -1674,11 +1935,12 @@ public class HorizonSim787Definition : BaseAircraftDefinition
 
             ["HS787_Door_1L"] = new SimConnect.SimVarDefinition
             {
-                Name = "INTERACTIVE POINT OPEN:1",
+                Name = "EXIT OPEN:0",
                 DisplayName = "Door 1L (Fwd Left)",
                 Type = SimConnect.SimVarType.SimVar,
                 Units = "percent",
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
                     [0]   = "Closed",
@@ -1688,11 +1950,12 @@ public class HorizonSim787Definition : BaseAircraftDefinition
 
             ["HS787_Door_1R"] = new SimConnect.SimVarDefinition
             {
-                Name = "INTERACTIVE POINT OPEN:2",
+                Name = "EXIT OPEN:1",
                 DisplayName = "Door 1R (Fwd Right)",
                 Type = SimConnect.SimVarType.SimVar,
                 Units = "percent",
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
                     [0]   = "Closed",
@@ -1702,11 +1965,12 @@ public class HorizonSim787Definition : BaseAircraftDefinition
 
             ["HS787_Door_2L"] = new SimConnect.SimVarDefinition
             {
-                Name = "INTERACTIVE POINT OPEN:3",
+                Name = "EXIT OPEN:2",
                 DisplayName = "Door 2L (Mid Left)",
                 Type = SimConnect.SimVarType.SimVar,
                 Units = "percent",
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
                     [0]   = "Closed",
@@ -1716,11 +1980,12 @@ public class HorizonSim787Definition : BaseAircraftDefinition
 
             ["HS787_Door_2R"] = new SimConnect.SimVarDefinition
             {
-                Name = "INTERACTIVE POINT OPEN:4",
+                Name = "EXIT OPEN:3",
                 DisplayName = "Door 2R (Mid Right)",
                 Type = SimConnect.SimVarType.SimVar,
                 Units = "percent",
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
                     [0]   = "Closed",
@@ -1730,11 +1995,12 @@ public class HorizonSim787Definition : BaseAircraftDefinition
 
             ["HS787_Door_3L"] = new SimConnect.SimVarDefinition
             {
-                Name = "INTERACTIVE POINT OPEN:5",
+                Name = "EXIT OPEN:4",
                 DisplayName = "Door 3L (Rear Left)",
                 Type = SimConnect.SimVarType.SimVar,
                 Units = "percent",
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
                     [0]   = "Closed",
@@ -1744,11 +2010,12 @@ public class HorizonSim787Definition : BaseAircraftDefinition
 
             ["HS787_Door_3R"] = new SimConnect.SimVarDefinition
             {
-                Name = "INTERACTIVE POINT OPEN:6",
+                Name = "EXIT OPEN:5",
                 DisplayName = "Door 3R (Rear Right)",
                 Type = SimConnect.SimVarType.SimVar,
                 Units = "percent",
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
                     [0]   = "Closed",
@@ -1758,11 +2025,12 @@ public class HorizonSim787Definition : BaseAircraftDefinition
 
             ["HS787_Door_4L"] = new SimConnect.SimVarDefinition
             {
-                Name = "INTERACTIVE POINT OPEN:7",
+                Name = "EXIT OPEN:6",
                 DisplayName = "Door 4L (Far Rear Left)",
                 Type = SimConnect.SimVarType.SimVar,
                 Units = "percent",
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
                     [0]   = "Closed",
@@ -1772,11 +2040,12 @@ public class HorizonSim787Definition : BaseAircraftDefinition
 
             ["HS787_Door_4R"] = new SimConnect.SimVarDefinition
             {
-                Name = "INTERACTIVE POINT OPEN:8",
+                Name = "EXIT OPEN:7",
                 DisplayName = "Door 4R (Far Rear Right)",
                 Type = SimConnect.SimVarType.SimVar,
                 Units = "percent",
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
                     [0]   = "Closed",
@@ -1786,11 +2055,12 @@ public class HorizonSim787Definition : BaseAircraftDefinition
 
             ["HS787_Door_FwdCargo"] = new SimConnect.SimVarDefinition
             {
-                Name = "INTERACTIVE POINT OPEN:9",
+                Name = "EXIT OPEN:8",
                 DisplayName = "Fwd Cargo Door",
                 Type = SimConnect.SimVarType.SimVar,
                 Units = "percent",
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
                     [0]   = "Closed",
@@ -1800,11 +2070,12 @@ public class HorizonSim787Definition : BaseAircraftDefinition
 
             ["HS787_Door_AftCargo"] = new SimConnect.SimVarDefinition
             {
-                Name = "INTERACTIVE POINT OPEN:10",
+                Name = "EXIT OPEN:9",
                 DisplayName = "Aft Cargo Door",
                 Type = SimConnect.SimVarType.SimVar,
                 Units = "percent",
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
                     [0]   = "Closed",
@@ -1818,7 +2089,8 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 DisplayName = "Refuel Panel Door",
                 Type = SimConnect.SimVarType.SimVar,
                 Units = "percent",
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
                     [0]   = "Closed",
@@ -1829,10 +2101,11 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             ["HS787_GPUPipe"] = new SimConnect.SimVarDefinition
             {
                 Name = "INTERACTIVE POINT OPEN:12",
-                DisplayName = "GPU Connection",
+                DisplayName = "GPU Cable",
                 Type = SimConnect.SimVarType.SimVar,
                 Units = "percent",
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
                     [0]   = "Disconnected",
@@ -2619,6 +2892,7 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.SimVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
+                ExcludeFromBatch = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
                     [0] = "Off",
@@ -2739,6 +3013,32 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 IsAnnounced = true
             },
 
+            // Warnings panel — momentary reset buttons for Master Caution / Master Warning.
+            // K:MASTER_CAUTION_ACKNOWLEDGE drives L:Generic_Master_Caution_Active to 0;
+            // K:MASTER_WARNING_ACKNOWLEDGE does the same for the warning. Name is a synthetic
+            // marker L-var (the var is write-only from a panel-UI standpoint — never read).
+            // StateVariable points at the underlying caution/warning so the button's label
+            // reflects whether there's actually anything to acknowledge ("Master Caution Reset:
+            // On" when caution is lit, "...: Off" when clear).
+            ["HS787_MasterCautionReset"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MSFSBA_HS787_MASTER_CAUTION_RESET_SYNTH",
+                DisplayName = "Master Caution Reset",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Never,
+                RenderAsButton = true,
+                StateVariable = "HS787_MasterCaution"
+            },
+            ["HS787_MasterWarningReset"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MSFSBA_HS787_MASTER_WARNING_RESET_SYNTH",
+                DisplayName = "Master Warning Reset",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Never,
+                RenderAsButton = true,
+                StateVariable = "HS787_MasterWarning"
+            },
+
             // Bridge diagnostic: written by L:MSFSBA_787_STAGE in hs787-mfd-bridge.js.
             // IsAnnounced = true puts it in the continuous batch; ProcessSimVarUpdate handles it silently.
             ["HS787_BridgeStage"] = new SimConnect.SimVarDefinition
@@ -2748,12 +3048,302 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true
+            },
+
+            // =====================================================================
+            // Batch 8 — Fuel pumps, crossfeeds, bleed air, fire test, cargo fire,
+            // engine/APU fire handles, standby power. Standard MSFS SimVars are
+            // used where available (FUELSYSTEM PUMP SWITCH:N, BLEED AIR ENGINE:N,
+            // APU BLEED AIR SWITCH) so the write path uses confirmed-working K
+            // events (FUELSYSTEM_PUMP_TOGGLE, etc.). L-vars used for items the
+            // standard SimVar layer doesn't expose (fire handles, fire test).
+            // =====================================================================
+
+            // ---- Fuel pumps (FUELSYSTEM PUMP SWITCH:N, K:FUELSYSTEM_PUMP_TOGGLE) ----
+            // WT/Asobo 787 FUELSYSTEM PUMP SWITCH indices (verified empirically by firing
+            // each FUEL_PUMP_* InputEvent and observing which SimVar index flipped):
+            //   1: Center L   2: Center R   3: L Aft   4: L Fwd   5: R Aft   6: R Fwd   7: APU DC
+            // Unusual order (not the generic-jet systems.cfg layout), so an obvious-looking
+            // 1=LFwd ... 6=CtrR assumption gets the labels crossed.
+            ["HS787_FuelPump_CtrL"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FUELSYSTEM PUMP SWITCH:1",
+                DisplayName = "Left Center Fuel Pump",
+                Type = SimConnect.SimVarType.SimVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["HS787_FuelPump_CtrR"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FUELSYSTEM PUMP SWITCH:2",
+                DisplayName = "Right Center Fuel Pump",
+                Type = SimConnect.SimVarType.SimVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["HS787_FuelPump_LAft"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FUELSYSTEM PUMP SWITCH:3",
+                DisplayName = "Left Aft Fuel Pump",
+                Type = SimConnect.SimVarType.SimVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["HS787_FuelPump_LFwd"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FUELSYSTEM PUMP SWITCH:4",
+                DisplayName = "Left Forward Fuel Pump",
+                Type = SimConnect.SimVarType.SimVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["HS787_FuelPump_RAft"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FUELSYSTEM PUMP SWITCH:5",
+                DisplayName = "Right Aft Fuel Pump",
+                Type = SimConnect.SimVarType.SimVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["HS787_FuelPump_RFwd"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FUELSYSTEM PUMP SWITCH:6",
+                DisplayName = "Right Forward Fuel Pump",
+                Type = SimConnect.SimVarType.SimVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["HS787_FuelPump_APU"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FUELSYSTEM PUMP SWITCH:7",
+                DisplayName = "APU Fuel Pump",
+                Type = SimConnect.SimVarType.SimVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+
+            // ---- Fuel crossfeed valve ----
+            // The WT 787 model has a single crossfeed valve. The legacy panel exposed
+            // three combos (Fwd / Aft / Ctr) but only one ever moved the valve and the
+            // other two became permanently desynced. Collapsed to one combo reading the
+            // truth SimVar; writes go through B:FUEL_VALVE_XFEED via HS787_INPUT_EVENT_MAP.
+            ["HS787_FuelXfeed"] = new SimConnect.SimVarDefinition
+            {
+                Name = "XMLVAR_Fuel_XFEED_Fwd",
+                DisplayName = "Fuel Crossfeed",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+            },
+
+            // ---- Bleed Air ----
+            ["HS787_BleedEng1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "BLEED AIR ENGINE:1",
+                DisplayName = "Engine 1 Bleed",
+                Type = SimConnect.SimVarType.SimVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["HS787_BleedEng2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "BLEED AIR ENGINE:2",
+                DisplayName = "Engine 2 Bleed",
+                Type = SimConnect.SimVarType.SimVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["HS787_BleedAPU"] = new SimConnect.SimVarDefinition
+            {
+                Name = "APU BLEED AIR SWITCH",
+                DisplayName = "APU Bleed",
+                Type = SimConnect.SimVarType.SimVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["HS787_BleedIso"] = new SimConnect.SimVarDefinition
+            {
+                Name = "XMLVAR_Bleed_Air_Isolation",
+                DisplayName = "Bleed Isolation Valve",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+            },
+
+            // ---- Fire system ----
+            // Fire/OVHT Test — render-as-button momentary press: click runs the test
+            // (HandleUIVariableSet writes the L-var to 1 then auto-releases to 0 after
+            // ~4 seconds so the user gets the "in progress" → "complete" announce pair
+            // without having to manually release. ValueDescriptions omitted so the
+            // button label is just "Fire/Overheat Test".
+            ["HS787_FireTest"] = new SimConnect.SimVarDefinition
+            {
+                Name = "XMLVAR_Fire_Test_Pushed",
+                DisplayName = "Fire/Overheat Test",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true
+            },
+            // Engine fire handles — pulled to arm fuel cutoff + arm extinguisher bottles.
+            ["HS787_EngFireHandle1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "XMLVAR_Eng_Fire_Pulled_1",
+                DisplayName = "Engine 1 Fire Handle",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Stowed", [1] = "Pulled" }
+            },
+            ["HS787_EngFireHandle2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "XMLVAR_Eng_Fire_Pulled_2",
+                DisplayName = "Engine 2 Fire Handle",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Stowed", [1] = "Pulled" }
+            },
+            ["HS787_APUFireHandle"] = new SimConnect.SimVarDefinition
+            {
+                Name = "XMLVAR_APU_Fire_Pulled",
+                DisplayName = "APU Fire Handle",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Stowed", [1] = "Pulled" }
+            },
+
+            // ---- Cargo Fire ----
+            ["HS787_CargoFireFwd"] = new SimConnect.SimVarDefinition
+            {
+                Name = "XMLVAR_Cargo_Fire_Arm_Fwd",
+                DisplayName = "Cargo Fire Arm Fwd",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Armed" }
+            },
+            ["HS787_CargoFireAft"] = new SimConnect.SimVarDefinition
+            {
+                Name = "XMLVAR_Cargo_Fire_Arm_Aft",
+                DisplayName = "Cargo Fire Arm Aft",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Armed" }
+            },
+            ["HS787_CargoFireDisch"] = new SimConnect.SimVarDefinition
+            {
+                Name = "XMLVAR_Cargo_Fire_Discharge",
+                DisplayName = "Cargo Fire Discharge",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Discharged" }
+            },
+
+            // ---- Standby Power Selector ----
+            // Position 0 = Off, 1 = Auto, 2 = Battery
+            ["HS787_StandbyPower"] = new SimConnect.SimVarDefinition
+            {
+                Name = "XMLVAR_StandbyPower",
+                DisplayName = "Standby Power",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "Off",
+                    [1] = "Auto",
+                    [2] = "Battery"
+                }
+            },
+
+            // ---- Baro STD pushbutton (EFIS) ----
+            // Real-aircraft behaviour: momentary push. Press once → engage STD (altimeter
+            // jumps to 29.92 inHg / 1013.25 hPa, "STD" indicator lights). Press again →
+            // return to QNH (the altimeter restores to whatever value was set before STD
+            // was engaged; WT cockpit logic handles the restore via the L-var transition).
+            // Rendered as a button (RenderAsButton=true) — click toggles. ValueDescriptions
+            // give the button its state-suffixed label ("Baro STD: QNH" / "Baro STD: STD").
+            ["HS787_BaroSTD"] = new SimConnect.SimVarDefinition
+            {
+                Name = "XMLVAR_Baro_Selector_STD_1",
+                DisplayName = "Baro STD",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                RenderAsButton = true,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "QNH",
+                    [1] = "STD"
+                }
+            },
+
+            // ---- Engine Fuel Control switches (RUN / CUTOFF) ----
+            // Read from FUELSYSTEM VALVE OPEN:N — the WT 787's actual fuel valve state.
+            // The more obvious-looking GENERAL ENG FUEL VALVE:N is unreliable on this
+            // model: it sits at 1 even with the cockpit switch in Cutoff and the engines
+            // shut down, so the combo would default to "Run" at cold-and-dark and mislead
+            // the user. Write path = B:FUEL_VALVE_L / FUEL_VALVE_R InputEvent (see
+            // HS787_INPUT_EVENT_MAP); MIXTUREn_RICH/LEAN is the K-event fallback only.
+            ["HS787_FuelControl1"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FUELSYSTEM VALVE OPEN:1",
+                DisplayName = "Engine 1 Fuel Control",
+                Type = SimConnect.SimVarType.SimVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Cutoff", [1] = "Run" }
+            },
+            ["HS787_FuelControl2"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FUELSYSTEM VALVE OPEN:2",
+                DisplayName = "Engine 2 Fuel Control",
+                Type = SimConnect.SimVarType.SimVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Cutoff", [1] = "Run" }
             }
         };
 
         var variables = GetBaseVariables();
         foreach (var kvp in aircraftVariables)
             variables[kvp.Key] = kvp.Value;
+
+        // Force ALL HS787 Continuous+IsAnnounced variables onto per-var continuous
+        // subscriptions (ExcludeFromBatch = true) rather than the shared GenericBatch
+        // struct. The batched read was observed to deliver wrong/oscillating values for
+        // certain slots in the HS787 var list under FS2024, producing the spurious
+        // On→Off cascade for batteries/generators/avionics master. Likely cause: a
+        // silent AddToDataDefinition failure earlier in the alphabetic sort, shifting
+        // subsequent vars' SimConnect-side slots out of sync with MSFSBA's
+        // continuousVariableIndexMap. Per-var subscriptions use each var's own
+        // SingleValue data def — no struct alignment to worry about. Performance cost
+        // is small (~135 individual SECOND-period subscriptions vs 2 batch reads). The
+        // batch system still works fine for other aircraft (FBW, Fenix, PMDG); this
+        // bypass is HS787-specific.
+        foreach (var kvp in aircraftVariables)
+        {
+            var v = kvp.Value;
+            if (v.UpdateFrequency == SimConnect.UpdateFrequency.Continuous && v.IsAnnounced)
+                v.ExcludeFromBatch = true;
+        }
+
         return variables;
     }
 
@@ -2778,6 +3368,7 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 "HS787_Gen1",
                 "HS787_Gen2",
                 "HS787_AvionicsMaster",
+                "HS787_StandbyPower",
                 "HS787_EmerLights",
                 "HS787_UtilityCabin",
                 "HS787_UtilityIfe"
@@ -2802,9 +3393,37 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             },
             ["Fuel"] = new List<string>
             {
+                "HS787_FuelPump_LFwd",
+                "HS787_FuelPump_RFwd",
+                "HS787_FuelPump_LAft",
+                "HS787_FuelPump_RAft",
+                "HS787_FuelPump_CtrL",
+                "HS787_FuelPump_CtrR",
+                "HS787_FuelPump_APU",
+                "HS787_FuelXfeed",
                 "HS787_FuelBalance",
                 "HS787_FuelBalanceActive",
                 "HS787_FuelBalanceFault"
+            },
+            ["Bleed Air"] = new List<string>
+            {
+                "HS787_BleedEng1",
+                "HS787_BleedEng2",
+                "HS787_BleedAPU",
+                "HS787_BleedIso"
+            },
+            ["Fire Protection"] = new List<string>
+            {
+                "HS787_FireTest",
+                "HS787_EngFireHandle1",
+                "HS787_EngFireHandle2",
+                "HS787_APUFireHandle"
+            },
+            ["Cargo Fire"] = new List<string>
+            {
+                "HS787_CargoFireFwd",
+                "HS787_CargoFireAft",
+                "HS787_CargoFireDisch"
             },
             ["Air Conditioning"] = new List<string>
             {
@@ -2850,14 +3469,18 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             },
             ["Engines"] = new List<string>
             {
-                "HS787_EngStartState1",
-                "HS787_EngStartState2"
+                "HS787_EngineAutoStart",
+                "HS787_EngineStart1",
+                "HS787_EngineStart2",
+                "HS787_FuelControl1",
+                "HS787_FuelControl2"
             },
 
             // --- Glareshield ---
             ["EFIS"] = new List<string>
             {
                 "HS787_BaroSelector",
+                "HS787_BaroSTD",
                 "HS787_MinsMode",
                 "HS787_FPVMode"
             },
@@ -2868,7 +3491,9 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 "HS787_YawDamper",
                 "HS787_FPAMode",
                 "HS787_TRKMode",
-                "HS787_VNAV"
+                "HS787_VNAV",
+                "HS787_LOC",
+                "HS787_APP"
             },
             ["HUD"] = new List<string>
             {
@@ -2891,6 +3516,14 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             // section visible in the section nav.
             ["Annunciators"] = new List<string>(),
             ["Fire"] = new List<string>(),
+            // Warnings: momentary reset buttons for the Master Caution / Master Warning.
+            // Each button's label is suffixed with the current state (On / Off) so the
+            // user can tell at a glance whether there is anything to acknowledge.
+            ["Warnings"] = new List<string>
+            {
+                "HS787_MasterCautionReset",
+                "HS787_MasterWarningReset"
+            },
 
             // --- Pedestal ---
             // PMDG layout: per radio, [Active display button], [Standby textbox], [Swap button].
@@ -3325,6 +3958,17 @@ public class HorizonSim787Definition : BaseAircraftDefinition
         SimConnect.SimConnectManager simConnect,
         Accessibility.ScreenReaderAnnouncer announcer)
     {
+        // InputEvent (B:) first-pass — for switches whose real subsystem is wired through
+        // InputEvents in the WT/Asobo 787 model (AT arm, ext power, battery, fuel pumps).
+        // If the mapped name is in the catalog we win immediately; otherwise fall through
+        // to the per-var K-event/SetLVar branches below so older models (or base sim
+        // without HS787 loaded) keep working.
+        if (HS787_INPUT_EVENT_MAP.TryGetValue(varKey, out var candidates) &&
+            TryFireInputEvent(simConnect, value, candidates))
+        {
+            return true;
+        }
+
         // AP master — toggle via K event (AUTOPILOT MASTER is a SimVar, not settable via SetLVar)
         if (varKey == "HS787_APMaster")
         {
@@ -3332,34 +3976,86 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             return true;
         }
 
-        // Autothrottle arm — K event (WT Boeing intercepts this and updates the LVar)
+        // Autothrottle arm — fallback when the InputEvent path above didn't match.
         if (varKey == "HS787_ATStatus")
         {
             simConnect.SendEvent("AUTO_THROTTLE_ARM");
             return true;
         }
 
-        // External power — write EXT_PWR_COMMANDED LVar directly; the WT Boeing 787
-        // avionics system reads this LVar to determine the switch state.
-        if (varKey == "HS787_ExtPwr1")
+        // Engine autostart fallback — if PROCEDURE_AUTOSTART isn't in the catalog,
+        // fire the standard MSFS ENGINE_AUTO_START K event (the Ctrl+E binding).
+        // Works on any aircraft, including the base Asobo 787-10.
+        if (varKey == "HS787_EngineAutoStart")
         {
-            simConnect.SetLVar("EXT_PWR_COMMANDED:1", value);
+            simConnect.SendEvent("ENGINE_AUTO_START");
             return true;
         }
-        if (varKey == "HS787_ExtPwr2")
+
+        // Approach + Localizer fallback — K events for non-WT aircraft.
+        if (varKey == "HS787_APP")
         {
-            simConnect.SetLVar("EXT_PWR_COMMANDED:2", value);
+            simConnect.SendEvent("AP_APR_HOLD");
+            return true;
+        }
+        if (varKey == "HS787_LOC")
+        {
+            simConnect.SendEvent("AP_LOC_HOLD");
+            return true;
+        }
+
+        // External power — state-aware toggle. AIRLINER_EXT_PWR_N is a momentary
+        // pushbutton on the WT 787 (press = 1, release = 0; each press flips state).
+        // Combo passes target value (0/1); we read current state from EXTERNAL POWER
+        // ON:N and only fire the press+release cycle when state needs to change. Falls
+        // back to the legacy EXT_PWR_COMMANDED L-var pulse if the InputEvent isn't in
+        // the catalog (older models or base Asobo 787). The 200 ms release delay gives
+        // the cockpit avionics time to latch the press before we drop it back to 0.
+        if (varKey == "HS787_ExtPwr1" || varKey == "HS787_ExtPwr2")
+        {
+            string stateVar = varKey == "HS787_ExtPwr1" ? "HS787_ExtPwrOn1" : "HS787_ExtPwrOn2";
+            int currentState = (int)(simConnect.GetCachedVariableValue(stateVar) ?? 0);
+            int targetState  = (int)value;
+            if (currentState == targetState)
+                return true; // no-op — state already matches request
+
+            string eventName = varKey == "HS787_ExtPwr1" ? "AIRLINER_EXT_PWR_1" : "AIRLINER_EXT_PWR_2";
+            bool usedInputEvent = simConnect.HasInputEvent(eventName) &&
+                                  simConnect.TrySetInputEvent(eventName, 1);
+            if (!usedInputEvent)
+            {
+                // Fallback path for non-WT models.
+                string lvarName = varKey == "HS787_ExtPwr1" ? "EXT_PWR_COMMANDED:1" : "EXT_PWR_COMMANDED:2";
+                simConnect.SetLVar(lvarName, 1);
+            }
+
+            var releaseTimer = new System.Windows.Forms.Timer { Interval = 200 };
+            releaseTimer.Tick += (_, __) =>
+            {
+                releaseTimer.Stop();
+                releaseTimer.Dispose();
+                if (usedInputEvent)
+                    simConnect.TrySetInputEvent(eventName, 0);
+                else
+                {
+                    string lvarName = varKey == "HS787_ExtPwr1" ? "EXT_PWR_COMMANDED:1" : "EXT_PWR_COMMANDED:2";
+                    simConnect.SetLVar(lvarName, 0);
+                }
+            };
+            releaseTimer.Start();
             return true;
         }
 
         // APU knob — use K:events to drive the WT Boeing APU state machine.
         // Direct LVar writes to XMLVAR_APU_StarterKnob_Pos are ignored by the WT system.
+        // K:APU_ON_SWITCH doesn't exist in standard MSFS — the knob's "On" position
+        // is reached by firing APU_STARTER (knob goes Start→On after spring release).
         if (varKey == "HS787_APU_Knob")
         {
             string apuEvent = (int)value switch
             {
                 2 => "APU_STARTER",
-                1 => "APU_ON_SWITCH",
+                1 => "APU_STARTER",
                 _ => "APU_OFF_SWITCH"
             };
             simConnect.SendEvent(apuEvent);
@@ -3591,8 +4287,8 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             return true;
         }
 
-        // Doors — toggled via K:TOGGLE_AIRCRAFT_EXIT with 1-based index (matches INTERACTIVE POINT OPEN:N).
-        // The current state is checked so we only fire the toggle when a change is needed.
+        // Doors — toggled via K:TOGGLE_AIRCRAFT_EXIT with 1-based index. Internally this
+        // operates on EXIT OPEN:N-1 (zero-based) which is what HS787_Door_* now reads.
         // Passenger: 1=1L, 2=1R, 3=2L, 4=2R, 5=3L, 6=3R, 7=4L, 8=4R  Cargo: 9=Fwd, 10=Aft
         int? doorIdx = varKey switch
         {
@@ -3606,13 +4302,162 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             "HS787_Door_4R"       => 8,
             "HS787_Door_FwdCargo" => 9,
             "HS787_Door_AftCargo" => 10,
-            "HS787_RefuelDoor"    => 11,
-            "HS787_GPUPipe"       => 12,
             _                     => null
         };
         if (doorIdx.HasValue)
         {
             simConnect.SendEvent("TOGGLE_AIRCRAFT_EXIT", (uint)doorIdx.Value);
+            return true;
+        }
+
+        // Interactive points (refuel cable @ 11, GPU cable @ 12) — these are NOT exits.
+        // K:TOGGLE_AIRCRAFT_EXIT silently ignores parameters > 10. K:2:SET_INTERACTIVE_POINT
+        // works for CONNECT (0→100) but not for DISCONNECT in our testing — direct SimVar
+        // write `<percent> (>A:INTERACTIVE POINT OPEN:N, percent)` works in both directions
+        // (the cockpit animates the value from current to target over ~1 second).
+        int? interactivePointIdx = varKey switch
+        {
+            "HS787_RefuelDoor" => 11,
+            "HS787_GPUPipe"    => 12,
+            _                  => null
+        };
+        if (interactivePointIdx.HasValue)
+        {
+            int percent = (int)value > 0 ? 100 : 0;
+            simConnect.ExecuteCalculatorCode($"{percent} (>A:INTERACTIVE POINT OPEN:{interactivePointIdx.Value}, percent)");
+            return true;
+        }
+
+        // ===== Fuel pumps — FUELSYSTEM_PUMP_TOGGLE is param-indexed. WT/Asobo 787
+        //       has an unusual order: 1=CtrL, 2=CtrR, 3=LAft, 4=LFwd, 5=RAft,
+        //       6=RFwd, 7=APU. Verified empirically. TOGGLE flips state, so we
+        //       check the current SimVar value and only fire if a flip is needed.
+        int? fuelPumpIdx = varKey switch
+        {
+            "HS787_FuelPump_CtrL" => 1,
+            "HS787_FuelPump_CtrR" => 2,
+            "HS787_FuelPump_LAft" => 3,
+            "HS787_FuelPump_LFwd" => 4,
+            "HS787_FuelPump_RAft" => 5,
+            "HS787_FuelPump_RFwd" => 6,
+            "HS787_FuelPump_APU"  => 7,
+            _                     => null
+        };
+        if (fuelPumpIdx.HasValue)
+        {
+            double? current = simConnect.GetCachedVariableValue(varKey);
+            if (current == null || (int)current.Value != (int)value)
+                simConnect.SendEvent("FUELSYSTEM_PUMP_TOGGLE", (uint)fuelPumpIdx.Value);
+            return true;
+        }
+
+        // ===== Bleed valves =====
+        if (varKey == "HS787_BleedEng1")
+        {
+            simConnect.ExecuteCalculatorCode($"(A:BLEED AIR ENGINE:1,Bool) {(int)value} != if{{ 1 (>K:TOGGLE_BLEED_AIR_SOURCE) }}");
+            return true;
+        }
+        if (varKey == "HS787_BleedEng2")
+        {
+            simConnect.ExecuteCalculatorCode($"(A:BLEED AIR ENGINE:2,Bool) {(int)value} != if{{ 2 (>K:TOGGLE_BLEED_AIR_SOURCE) }}");
+            return true;
+        }
+        if (varKey == "HS787_BleedAPU")
+        {
+            simConnect.ExecuteCalculatorCode($"(A:APU BLEED AIR SWITCH,Bool) {(int)value} != if{{ (>K:APU_BLEED_AIR_SOURCE_TOGGLE) }}");
+            return true;
+        }
+        if (varKey == "HS787_BleedIso")
+        {
+            simConnect.SetLVar("XMLVAR_Bleed_Air_Isolation", value);
+            return true;
+        }
+
+        // ===== Fuel crossfeed valves — L-var direct write =====
+        // Crossfeed fallback for non-WT models — directly write the mirror L-var.
+        if (varKey == "HS787_FuelXfeed") { simConnect.SetLVar("XMLVAR_Fuel_XFEED_Fwd", value); return true; }
+
+        // ===== Fire/OVHT Test — momentary push: write 1, auto-release to 0 after 4 s =====
+        // Click engages the test; the cockpit runs its fire-test sequence and lights up
+        // the appropriate indicators for the duration. Auto-releasing the L-var after
+        // ~4 s lets ProcessSimVarUpdate fire both "in progress" and "complete" announces
+        // without the user having to manually release. Note: the test ANIMATION/AUDIO is
+        // the WT cockpit's responsibility — if no chime fires in your sim, the WT B787
+        // model just doesn't implement that audio (we can verify the L-var is set, but
+        // we can't synthesize a cockpit sound from MSFSBA).
+        if (varKey == "HS787_FireTest")
+        {
+            simConnect.SetLVar("XMLVAR_Fire_Test_Pushed", 1);
+            var releaseTimer = new System.Windows.Forms.Timer { Interval = 4000 };
+            releaseTimer.Tick += (_, __) =>
+            {
+                releaseTimer.Stop();
+                releaseTimer.Dispose();
+                simConnect.SetLVar("XMLVAR_Fire_Test_Pushed", 0);
+            };
+            releaseTimer.Start();
+            return true;
+        }
+
+        // ===== Engine + APU fire handles (pulled = armed for discharge) =====
+        if (varKey == "HS787_EngFireHandle1") { simConnect.SetLVar("XMLVAR_Eng_Fire_Pulled_1", value); return true; }
+        if (varKey == "HS787_EngFireHandle2") { simConnect.SetLVar("XMLVAR_Eng_Fire_Pulled_2", value); return true; }
+        if (varKey == "HS787_APUFireHandle")  { simConnect.SetLVar("XMLVAR_APU_Fire_Pulled",   value); return true; }
+
+        // ===== Cargo Fire =====
+        if (varKey == "HS787_CargoFireFwd")   { simConnect.SetLVar("XMLVAR_Cargo_Fire_Arm_Fwd",   value); return true; }
+        if (varKey == "HS787_CargoFireAft")   { simConnect.SetLVar("XMLVAR_Cargo_Fire_Arm_Aft",   value); return true; }
+        if (varKey == "HS787_CargoFireDisch") { simConnect.SetLVar("XMLVAR_Cargo_Fire_Discharge", value); return true; }
+
+        // ===== Standby Power Selector =====
+        if (varKey == "HS787_StandbyPower")
+        {
+            simConnect.SetLVar("XMLVAR_StandbyPower", value);
+            return true;
+        }
+
+        // ===== Baro STD pushbutton =====
+        // Momentary push: toggle STD ↔ QNH. MainForm's button-click path always passes
+        // value=1, so we compute the new state ourselves by inverting the current cached
+        // state. Going to STD: write the L-var flag AND fire K:BAROMETRIC_STD_PRESSURE
+        // (jumps the altimeter to 29.92). Going to QNH: just clear the L-var flag; the
+        // WT cockpit's panel logic restores the previously-set baro value when the flag
+        // drops to 0. K event is NOT fired on QNH return — it only sets 29.92, never QNH.
+        if (varKey == "HS787_BaroSTD")
+        {
+            double? cur = simConnect.GetCachedVariableValue("HS787_BaroSTD");
+            int newState = (cur.HasValue && (int)cur.Value == 1) ? 0 : 1;
+            simConnect.SetLVar("XMLVAR_Baro_Selector_STD_1", newState);
+            if (newState == 1)
+                simConnect.SendEvent("BAROMETRIC_STD_PRESSURE");
+            return true;
+        }
+
+        // ===== Master Caution / Master Warning reset buttons =====
+        // Momentary push: fire the standard MSFS acknowledge K event. Driving the
+        // L:Generic_Master_*_Active L-var to 0 happens via the K event's internal
+        // path — we don't have to write the L-var ourselves.
+        if (varKey == "HS787_MasterCautionReset")
+        {
+            simConnect.SendEvent("MASTER_CAUTION_ACKNOWLEDGE");
+            return true;
+        }
+        if (varKey == "HS787_MasterWarningReset")
+        {
+            simConnect.SendEvent("MASTER_WARNING_ACKNOWLEDGE");
+            return true;
+        }
+
+        // ===== Engine fuel control switches (RUN / CUTOFF) =====
+        // MIXTUREn_RICH = RUN (value 1), MIXTUREn_LEAN = CUTOFF (value 0).
+        if (varKey == "HS787_FuelControl1")
+        {
+            simConnect.SendEvent((int)value == 1 ? "MIXTURE1_RICH" : "MIXTURE1_LEAN");
+            return true;
+        }
+        if (varKey == "HS787_FuelControl2")
+        {
+            simConnect.SendEvent((int)value == 1 ? "MIXTURE2_RICH" : "MIXTURE2_LEAN");
             return true;
         }
 
@@ -4011,40 +4856,14 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             return true;
         }
 
-        if (variableKey == "HS787_FltTimerMode")
-        {
-            int now = (int)value;
-            if (_previousFltTimerMode >= 0 && now != _previousFltTimerMode)
-            {
-                string mode = now switch
-                {
-                    1 => "count down",
-                    2 => "E T",
-                    _ => "count up"
-                };
-                announcer.Announce("Flight Timer " + mode);
-            }
-            _previousFltTimerMode = now;
-            return true;
-        }
-
-        if (variableKey == "HS787_FltTimerRunning")
-        {
-            int now = (int)value;
-            if (_previousFltTimerRunning >= 0 && now != _previousFltTimerRunning)
-                announcer.Announce(now == 1 ? "Flight Timer running" : "Flight Timer stopped");
-            _previousFltTimerRunning = now;
-            return true;
-        }
-
-        if (variableKey == "HS787_ChecklistPhase")
-        {
-            int now = (int)value;
-            if (_previousChecklistPhase >= 0 && now != _previousChecklistPhase)
-                announcer.Announce("Checklist phase " + now);
-            _previousChecklistPhase = now;
-            return true;
-        }
+        // Flight Timer mode/running and Checklist phase: silently cached so the FMC Status
+        // display panel can read them, but no auto-announce. The WT 787 writes these L-vars
+        // during FMS phase transitions (engine start, takeoff, climb, etc.) — auto-announcing
+        // every transition produces noise the pilot doesn't need. The user reads them on
+        // demand from the FMC Status panel display field.
+        if (variableKey == "HS787_FltTimerMode")    return true;
+        if (variableKey == "HS787_FltTimerRunning") return true;
+        if (variableKey == "HS787_ChecklistPhase")  return true;
 
         if (variableKey == "HS787_HudSymbology1")
         {
@@ -4558,6 +5377,596 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             return true;
         }
 
+        // ----- Batch 7 — panel switches promoted to Continuous+Announced -----
+
+        if (variableKey == "HS787_BatSwitch1")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousBatSwitch1 >= 0 && now != _previousBatSwitch1)
+                announcer.Announce(now == 1 ? "Battery 1 On" : "Battery 1 Off");
+            _previousBatSwitch1 = now;
+            return true;
+        }
+        if (variableKey == "HS787_BatSwitch2")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousBatSwitch2 >= 0 && now != _previousBatSwitch2)
+                announcer.Announce(now == 1 ? "Battery 2 On" : "Battery 2 Off");
+            _previousBatSwitch2 = now;
+            return true;
+        }
+        if (variableKey == "HS787_Gen1")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousGen1 >= 0 && now != _previousGen1)
+                announcer.Announce(now == 1 ? "Generator 1 On" : "Generator 1 Off");
+            _previousGen1 = now;
+            return true;
+        }
+        if (variableKey == "HS787_Gen2")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousGen2 >= 0 && now != _previousGen2)
+                announcer.Announce(now == 1 ? "Generator 2 On" : "Generator 2 Off");
+            _previousGen2 = now;
+            return true;
+        }
+        if (variableKey == "HS787_ApuGen1")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousApuGen1 >= 0 && now != _previousApuGen1)
+                announcer.Announce(now == 1 ? "APU Generator 1 On" : "APU Generator 1 Off");
+            _previousApuGen1 = now;
+            return true;
+        }
+        if (variableKey == "HS787_ApuGen2")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousApuGen2 >= 0 && now != _previousApuGen2)
+                announcer.Announce(now == 1 ? "APU Generator 2 On" : "APU Generator 2 Off");
+            _previousApuGen2 = now;
+            return true;
+        }
+        // HS787_ExtPwr1/2 announcements are suppressed via the cache-only switch at the
+        // bottom of ProcessSimVarUpdate. HS787_ExtPwrOn1/2 (delivered-power SimVar) owns
+        // the user-facing "External Power N On/Off" callout, so handling these here would
+        // double-talk.
+        if (variableKey == "HS787_UtilityCabin")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousUtilityCabin >= 0 && now != _previousUtilityCabin)
+                announcer.Announce(now == 1 ? "Cabin Utility On" : "Cabin Utility Off");
+            _previousUtilityCabin = now;
+            return true;
+        }
+        if (variableKey == "HS787_UtilityIfe")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousUtilityIfe >= 0 && now != _previousUtilityIfe)
+                announcer.Announce(now == 1 ? "IFE Utility On" : "IFE Utility Off");
+            _previousUtilityIfe = now;
+            return true;
+        }
+        if (variableKey == "HS787_HydEngL")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousHydEngL >= 0 && now != _previousHydEngL)
+                announcer.Announce(now == 1 ? "Hydraulic Engine Left On" : "Hydraulic Engine Left Off");
+            _previousHydEngL = now;
+            return true;
+        }
+        if (variableKey == "HS787_HydEngR")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousHydEngR >= 0 && now != _previousHydEngR)
+                announcer.Announce(now == 1 ? "Hydraulic Engine Right On" : "Hydraulic Engine Right Off");
+            _previousHydEngR = now;
+            return true;
+        }
+        if (variableKey == "HS787_HydC1")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousHydC1 >= 0 && now != _previousHydC1)
+                announcer.Announce(now == 1 ? "Hydraulic Center 1 On" : "Hydraulic Center 1 Off");
+            _previousHydC1 = now;
+            return true;
+        }
+        if (variableKey == "HS787_HydC2")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousHydC2 >= 0 && now != _previousHydC2)
+                announcer.Announce(now == 1 ? "Hydraulic Center 2 On" : "Hydraulic Center 2 Off");
+            _previousHydC2 = now;
+            return true;
+        }
+        if (variableKey == "HS787_FuelBalance")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousFuelBalance >= 0 && now != _previousFuelBalance)
+                announcer.Announce(now == 1 ? "Fuel Balance On" : "Fuel Balance Off");
+            _previousFuelBalance = now;
+            return true;
+        }
+        if (variableKey == "HS787_FuelBalanceActive")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousFuelBalanceActive >= 0 && now != _previousFuelBalanceActive)
+                announcer.Announce(now == 1 ? "Fuel Balance Active" : "Fuel Balance Inactive");
+            _previousFuelBalanceActive = now;
+            return true;
+        }
+        if (variableKey == "HS787_TrimAirL")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousTrimAirL >= 0 && now != _previousTrimAirL)
+                announcer.Announce(now == 1 ? "Trim Air Left On" : "Trim Air Left Off");
+            _previousTrimAirL = now;
+            return true;
+        }
+        if (variableKey == "HS787_TrimAirR")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousTrimAirR >= 0 && now != _previousTrimAirR)
+                announcer.Announce(now == 1 ? "Trim Air Right On" : "Trim Air Right Off");
+            _previousTrimAirR = now;
+            return true;
+        }
+        if (variableKey == "HS787_RecircUpper")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousRecircUpper >= 0 && now != _previousRecircUpper)
+                announcer.Announce(now == 1 ? "Upper Recirc Fan On" : "Upper Recirc Fan Off");
+            _previousRecircUpper = now;
+            return true;
+        }
+        if (variableKey == "HS787_RecircLower")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousRecircLower >= 0 && now != _previousRecircLower)
+                announcer.Announce(now == 1 ? "Lower Recirc Fan On" : "Lower Recirc Fan Off");
+            _previousRecircLower = now;
+            return true;
+        }
+        if (variableKey == "HS787_WshldDeice1")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousWshldDeice1 >= 0 && now != _previousWshldDeice1)
+                announcer.Announce(now == 1 ? "Window Heat 1 On" : "Window Heat 1 Off");
+            _previousWshldDeice1 = now;
+            return true;
+        }
+        if (variableKey == "HS787_WshldDeice2")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousWshldDeice2 >= 0 && now != _previousWshldDeice2)
+                announcer.Announce(now == 1 ? "Window Heat 2 On" : "Window Heat 2 Off");
+            _previousWshldDeice2 = now;
+            return true;
+        }
+        if (variableKey == "HS787_WshldDeice3")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousWshldDeice3 >= 0 && now != _previousWshldDeice3)
+                announcer.Announce(now == 1 ? "Window Heat 3 On" : "Window Heat 3 Off");
+            _previousWshldDeice3 = now;
+            return true;
+        }
+        if (variableKey == "HS787_WshldDeice4")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousWshldDeice4 >= 0 && now != _previousWshldDeice4)
+                announcer.Announce(now == 1 ? "Window Heat 4 On" : "Window Heat 4 Off");
+            _previousWshldDeice4 = now;
+            return true;
+        }
+        if (variableKey == "HS787_AltnFlapsArmed")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousAltnFlapsArmed >= 0 && now != _previousAltnFlapsArmed)
+                announcer.Announce(now == 1 ? "Alternate Flaps Armed" : "Alternate Flaps Disarmed");
+            _previousAltnFlapsArmed = now;
+            return true;
+        }
+        if (variableKey == "HS787_BaroSelector")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousBaroSelector >= 0 && now != _previousBaroSelector)
+                announcer.Announce(now == 1 ? "Baro Selector HPa" : "Baro Selector Inches");
+            _previousBaroSelector = now;
+            return true;
+        }
+        if (variableKey == "HS787_MinsMode")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousMinsMode >= 0 && now != _previousMinsMode)
+                announcer.Announce(now == 1 ? "Minimums Baro" : "Minimums Radio");
+            _previousMinsMode = now;
+            return true;
+        }
+        if (variableKey == "HS787_FPVMode")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousFPVMode >= 0 && now != _previousFPVMode)
+                announcer.Announce(now == 1 ? "FPV On" : "FPV Off");
+            _previousFPVMode = now;
+            return true;
+        }
+        if (variableKey == "HS787_TransponderMode")
+        {
+            int now = (int)value;
+            if (_previousTransponderMode >= 0 && now != _previousTransponderMode)
+            {
+                string msg = now switch
+                {
+                    0 => "Transponder Standby",
+                    1 => "Transponder Alt Off",
+                    2 => "Transponder XPNDR",
+                    3 => "Transponder TA",
+                    4 => "Transponder TA/RA",
+                    _ => $"Transponder Mode {now}"
+                };
+                announcer.Announce(msg);
+            }
+            _previousTransponderMode = now;
+            return true;
+        }
+        if (variableKey == "HS787_SATCOM")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousSATCOM >= 0 && now != _previousSATCOM)
+                announcer.Announce(now == 1 ? "SATCOM On" : "SATCOM Off");
+            _previousSATCOM = now;
+            return true;
+        }
+        if (variableKey == "HS787_VBar")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousVBar >= 0 && now != _previousVBar)
+                announcer.Announce(now == 1 ? "V-Bar On" : "V-Bar Off");
+            _previousVBar = now;
+            return true;
+        }
+        if (variableKey == "HS787_Autobrake")
+        {
+            int now = (int)value;
+            if (_previousAutobrake >= 0 && now != _previousAutobrake)
+            {
+                string msg = now switch
+                {
+                    0 => "Autobrakes RTO",
+                    1 => "Autobrakes Disarmed",
+                    2 => "Autobrakes 1",
+                    3 => "Autobrakes 2",
+                    4 => "Autobrakes 3",
+                    5 => "Autobrakes Max",
+                    _ => $"Autobrakes {now}"
+                };
+                announcer.Announce(msg);
+            }
+            _previousAutobrake = now;
+            return true;
+        }
+        if (variableKey == "HS787_LightTaxi")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousLightTaxi >= 0 && now != _previousLightTaxi)
+                announcer.Announce(now == 1 ? "Taxi Light On" : "Taxi Light Off");
+            _previousLightTaxi = now;
+            return true;
+        }
+        if (variableKey == "HS787_LightLogo")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousLightLogo >= 0 && now != _previousLightLogo)
+                announcer.Announce(now == 1 ? "Logo Light On" : "Logo Light Off");
+            _previousLightLogo = now;
+            return true;
+        }
+        if (variableKey == "HS787_LightWing")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousLightWing >= 0 && now != _previousLightWing)
+                announcer.Announce(now == 1 ? "Runway Turnoff On" : "Runway Turnoff Off");
+            _previousLightWing = now;
+            return true;
+        }
+
+        // ----- Batch 8 — fuel pumps, bleeds, fire, cargo, standby, fuel control -----
+
+        if (variableKey == "HS787_FuelPump_LFwd")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousFuelPump_LFwd >= 0 && now != _previousFuelPump_LFwd)
+                announcer.Announce(now == 1 ? "Left Forward Fuel Pump On" : "Left Forward Fuel Pump Off");
+            _previousFuelPump_LFwd = now;
+            return true;
+        }
+        if (variableKey == "HS787_FuelPump_LAft")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousFuelPump_LAft >= 0 && now != _previousFuelPump_LAft)
+                announcer.Announce(now == 1 ? "Left Aft Fuel Pump On" : "Left Aft Fuel Pump Off");
+            _previousFuelPump_LAft = now;
+            return true;
+        }
+        if (variableKey == "HS787_FuelPump_RFwd")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousFuelPump_RFwd >= 0 && now != _previousFuelPump_RFwd)
+                announcer.Announce(now == 1 ? "Right Forward Fuel Pump On" : "Right Forward Fuel Pump Off");
+            _previousFuelPump_RFwd = now;
+            return true;
+        }
+        if (variableKey == "HS787_FuelPump_RAft")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousFuelPump_RAft >= 0 && now != _previousFuelPump_RAft)
+                announcer.Announce(now == 1 ? "Right Aft Fuel Pump On" : "Right Aft Fuel Pump Off");
+            _previousFuelPump_RAft = now;
+            return true;
+        }
+        if (variableKey == "HS787_FuelPump_CtrL")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousFuelPump_CtrL >= 0 && now != _previousFuelPump_CtrL)
+                announcer.Announce(now == 1 ? "Left Center Fuel Pump On" : "Left Center Fuel Pump Off");
+            _previousFuelPump_CtrL = now;
+            return true;
+        }
+        if (variableKey == "HS787_FuelPump_CtrR")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousFuelPump_CtrR >= 0 && now != _previousFuelPump_CtrR)
+                announcer.Announce(now == 1 ? "Right Center Fuel Pump On" : "Right Center Fuel Pump Off");
+            _previousFuelPump_CtrR = now;
+            return true;
+        }
+        if (variableKey == "HS787_FuelPump_APU")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousFuelPump_APU >= 0 && now != _previousFuelPump_APU)
+                announcer.Announce(now == 1 ? "APU Fuel Pump On" : "APU Fuel Pump Off");
+            _previousFuelPump_APU = now;
+            return true;
+        }
+        if (variableKey == "HS787_FuelXfeed")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousFuelXfeedFwd >= 0 && now != _previousFuelXfeedFwd)
+                announcer.Announce(now == 1 ? "Fuel Crossfeed Open" : "Fuel Crossfeed Closed");
+            _previousFuelXfeedFwd = now;
+            return true;
+        }
+        if (variableKey == "HS787_BleedEng1")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousBleedEng1 >= 0 && now != _previousBleedEng1)
+                announcer.Announce(now == 1 ? "Engine 1 Bleed On" : "Engine 1 Bleed Off");
+            _previousBleedEng1 = now;
+            return true;
+        }
+        if (variableKey == "HS787_BleedEng2")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousBleedEng2 >= 0 && now != _previousBleedEng2)
+                announcer.Announce(now == 1 ? "Engine 2 Bleed On" : "Engine 2 Bleed Off");
+            _previousBleedEng2 = now;
+            return true;
+        }
+        if (variableKey == "HS787_BleedAPU")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousBleedAPU >= 0 && now != _previousBleedAPU)
+                announcer.Announce(now == 1 ? "APU Bleed On" : "APU Bleed Off");
+            _previousBleedAPU = now;
+            return true;
+        }
+        if (variableKey == "HS787_BleedIso")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousBleedIso >= 0 && now != _previousBleedIso)
+                announcer.Announce(now == 1 ? "Bleed Isolation Open" : "Bleed Isolation Closed");
+            _previousBleedIso = now;
+            return true;
+        }
+        if (variableKey == "HS787_FireTest")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousFireTest >= 0 && now != _previousFireTest)
+                announcer.Announce(now == 1 ? "Fire and overheat test in progress" : "Fire and overheat test complete");
+            _previousFireTest = now;
+            return true;
+        }
+        if (variableKey == "HS787_EngFireHandle1")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousEngFireHandle1 >= 0 && now != _previousEngFireHandle1)
+                announcer.Announce(now == 1 ? "Engine 1 Fire Handle Pulled" : "Engine 1 Fire Handle Stowed");
+            _previousEngFireHandle1 = now;
+            return true;
+        }
+        if (variableKey == "HS787_EngFireHandle2")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousEngFireHandle2 >= 0 && now != _previousEngFireHandle2)
+                announcer.Announce(now == 1 ? "Engine 2 Fire Handle Pulled" : "Engine 2 Fire Handle Stowed");
+            _previousEngFireHandle2 = now;
+            return true;
+        }
+        if (variableKey == "HS787_APUFireHandle")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousAPUFireHandle >= 0 && now != _previousAPUFireHandle)
+                announcer.Announce(now == 1 ? "APU Fire Handle Pulled" : "APU Fire Handle Stowed");
+            _previousAPUFireHandle = now;
+            return true;
+        }
+        if (variableKey == "HS787_CargoFireFwd")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousCargoFireFwd >= 0 && now != _previousCargoFireFwd)
+                announcer.Announce(now == 1 ? "Cargo Fire Arm Forward On" : "Cargo Fire Arm Forward Off");
+            _previousCargoFireFwd = now;
+            return true;
+        }
+        if (variableKey == "HS787_CargoFireAft")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousCargoFireAft >= 0 && now != _previousCargoFireAft)
+                announcer.Announce(now == 1 ? "Cargo Fire Arm Aft On" : "Cargo Fire Arm Aft Off");
+            _previousCargoFireAft = now;
+            return true;
+        }
+        if (variableKey == "HS787_CargoFireDisch")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousCargoFireDisch >= 0 && now != _previousCargoFireDisch && now == 1)
+                announcer.Announce("Cargo Fire Discharged");
+            _previousCargoFireDisch = now;
+            return true;
+        }
+        if (variableKey == "HS787_StandbyPower")
+        {
+            int now = (int)value;
+            if (_previousStandbyPower >= 0 && now != _previousStandbyPower)
+            {
+                string msg = now switch
+                {
+                    1 => "Standby Power Auto",
+                    2 => "Standby Power Battery",
+                    _ => "Standby Power Off"
+                };
+                announcer.Announce(msg);
+            }
+            _previousStandbyPower = now;
+            return true;
+        }
+        if (variableKey == "HS787_BaroSTD")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousBaroSTD >= 0 && now != _previousBaroSTD)
+                announcer.Announce(now == 1 ? "Baro Standard" : "Baro QNH");
+            _previousBaroSTD = now;
+            return true;
+        }
+        // INTERACTIVE POINT OPEN:N is a 0/100 percent value, so anything above 50 = open/connected.
+        if (variableKey == "HS787_GPUPipe")
+        {
+            int now = value > 50 ? 1 : 0;
+            if (_previousGPUPipe >= 0 && now != _previousGPUPipe)
+                announcer.Announce(now == 1 ? "GPU Cable Connected" : "GPU Cable Disconnected");
+            _previousGPUPipe = now;
+            return true;
+        }
+        if (variableKey == "HS787_RefuelDoor")
+        {
+            int now = value > 50 ? 1 : 0;
+            if (_previousRefuelDoor >= 0 && now != _previousRefuelDoor)
+                announcer.Announce(now == 1 ? "Refuel Door Open" : "Refuel Door Closed");
+            _previousRefuelDoor = now;
+            return true;
+        }
+        // Passenger + cargo doors (EXIT OPEN:0-9). Open ≥ 50 % is announced as "Open";
+        // below as "Closed". The HS787 doesn't simulate door arming / slide deployment —
+        // doors are just open/closed; no arm/disarm cycle required before takeoff or
+        // disembark for this aircraft.
+        if (variableKey == "HS787_Door_1L")
+        {
+            int now = value > 50 ? 1 : 0;
+            if (_previousDoor1L >= 0 && now != _previousDoor1L)
+                announcer.Announce(now == 1 ? "Door 1 left open" : "Door 1 left closed");
+            _previousDoor1L = now;
+            return true;
+        }
+        if (variableKey == "HS787_Door_1R")
+        {
+            int now = value > 50 ? 1 : 0;
+            if (_previousDoor1R >= 0 && now != _previousDoor1R)
+                announcer.Announce(now == 1 ? "Door 1 right open" : "Door 1 right closed");
+            _previousDoor1R = now;
+            return true;
+        }
+        if (variableKey == "HS787_Door_2L")
+        {
+            int now = value > 50 ? 1 : 0;
+            if (_previousDoor2L >= 0 && now != _previousDoor2L)
+                announcer.Announce(now == 1 ? "Door 2 left open" : "Door 2 left closed");
+            _previousDoor2L = now;
+            return true;
+        }
+        if (variableKey == "HS787_Door_2R")
+        {
+            int now = value > 50 ? 1 : 0;
+            if (_previousDoor2R >= 0 && now != _previousDoor2R)
+                announcer.Announce(now == 1 ? "Door 2 right open" : "Door 2 right closed");
+            _previousDoor2R = now;
+            return true;
+        }
+        if (variableKey == "HS787_Door_3L")
+        {
+            int now = value > 50 ? 1 : 0;
+            if (_previousDoor3L >= 0 && now != _previousDoor3L)
+                announcer.Announce(now == 1 ? "Door 3 left open" : "Door 3 left closed");
+            _previousDoor3L = now;
+            return true;
+        }
+        if (variableKey == "HS787_Door_3R")
+        {
+            int now = value > 50 ? 1 : 0;
+            if (_previousDoor3R >= 0 && now != _previousDoor3R)
+                announcer.Announce(now == 1 ? "Door 3 right open" : "Door 3 right closed");
+            _previousDoor3R = now;
+            return true;
+        }
+        if (variableKey == "HS787_Door_4L")
+        {
+            int now = value > 50 ? 1 : 0;
+            if (_previousDoor4L >= 0 && now != _previousDoor4L)
+                announcer.Announce(now == 1 ? "Door 4 left open" : "Door 4 left closed");
+            _previousDoor4L = now;
+            return true;
+        }
+        if (variableKey == "HS787_Door_4R")
+        {
+            int now = value > 50 ? 1 : 0;
+            if (_previousDoor4R >= 0 && now != _previousDoor4R)
+                announcer.Announce(now == 1 ? "Door 4 right open" : "Door 4 right closed");
+            _previousDoor4R = now;
+            return true;
+        }
+        if (variableKey == "HS787_Door_FwdCargo")
+        {
+            int now = value > 50 ? 1 : 0;
+            if (_previousDoorFwdCargo >= 0 && now != _previousDoorFwdCargo)
+                announcer.Announce(now == 1 ? "Forward cargo door open" : "Forward cargo door closed");
+            _previousDoorFwdCargo = now;
+            return true;
+        }
+        if (variableKey == "HS787_Door_AftCargo")
+        {
+            int now = value > 50 ? 1 : 0;
+            if (_previousDoorAftCargo >= 0 && now != _previousDoorAftCargo)
+                announcer.Announce(now == 1 ? "Aft cargo door open" : "Aft cargo door closed");
+            _previousDoorAftCargo = now;
+            return true;
+        }
+        if (variableKey == "HS787_FuelControl1")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousFuelControl1 >= 0 && now != _previousFuelControl1)
+                announcer.Announce(now == 1 ? "Engine 1 Fuel Control Run" : "Engine 1 Fuel Control Cutoff");
+            _previousFuelControl1 = now;
+            return true;
+        }
+        if (variableKey == "HS787_FuelControl2")
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_previousFuelControl2 >= 0 && now != _previousFuelControl2)
+                announcer.Announce(now == 1 ? "Engine 2 Fuel Control Run" : "Engine 2 Fuel Control Cutoff");
+            _previousFuelControl2 = now;
+            return true;
+        }
+
         // Altimeter setting — announce changes, suppress first-poll value
         if (variableKey == "HS787_Altimeter")
         {
@@ -4606,6 +6015,11 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             case "HS787_GroundSpeed":
             case "HS787_DistTOD":
             case "HS787_EteDest":
+            // Ground-power combos: monitored continuously so the combo's displayed
+            // state matches reality from MSFSBA connect; HS787_ExtPwrOn1/2 owns the
+            // user-facing announcement, so suppress here to avoid duplicate speech.
+            case "HS787_ExtPwr1":
+            case "HS787_ExtPwr2":
                 return true; // cached — no announcement
         }
 
