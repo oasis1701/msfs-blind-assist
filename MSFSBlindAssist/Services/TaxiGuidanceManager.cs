@@ -841,6 +841,32 @@ public class TaxiGuidanceManager : IDisposable
     }
 
     /// <summary>
+    /// Enters runway-end countdown mode directly, without a taxi route. Used by
+    /// LandingExitPlanner as a safety net when LoadRoute fails at touchdown —
+    /// e.g., at an airport with navdata defects that leave no valid path from
+    /// touchdown to the chosen exit. Keeps the per-frame distance callouts
+    /// ("Runway end in 1500 feet" → "...500 feet, slow down" → "...100 feet,
+    /// stop") active so a blind pilot has audio cues during rollout even when
+    /// turn-by-turn taxi guidance is unavailable.
+    /// </summary>
+    public void BeginLandingRolloutNoRoute(Database.Models.Runway runway)
+    {
+        lock (_stateLock)
+        {
+            _rolloutExit = null;
+            _rolloutRunway = runway;
+            _rolloutRunwayHeadingTrue = runway.Heading;
+            _rolloutApproach1500Announced = false;
+            _rolloutApproach500Announced = false;
+            _rolloutTurnNowAnnounced = false;
+
+            // EnterRunwayEndCountdown handles route/state cleanup, flag resets,
+            // tone pause, and SetState(LandingRollout). Reuse it directly.
+            EnterRunwayEndCountdown();
+        }
+    }
+
+    /// <summary>
     /// Called every position update (~30Hz from SimConnect SIM_FRAME).
     /// headingMag is MAGNETIC heading in degrees; magVariation converts to true heading.
     /// </summary>

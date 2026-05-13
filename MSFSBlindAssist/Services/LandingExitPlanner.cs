@@ -228,9 +228,24 @@ public class LandingExitPlanner
 
         if (error != null)
         {
-            DiagLog($"ActivateGuidance LoadRoute failed: {error}");
-            _announcer.Announce($"Landing exit guidance failed: {error}");
-            return false;  // _activatedThisLanding stays false → bounce/retry allowed
+            DiagLog($"ActivateGuidance LoadRoute failed: {error} — falling back to runway-end countdown");
+
+            // Engage the runway-end countdown so a blind pilot still gets
+            // distance callouts during the rollout. This path fires when the
+            // taxi graph is too defective to route from touchdown to the chosen
+            // exit (e.g. orphaned-taxiway data, exit in a tiny isolated graph
+            // component). The pilot loses the taxi-tone guidance to the exit
+            // but keeps the "Runway end in 1500 feet / 500 feet, slow down /
+            // 100 feet, stop" callouts driven from runway geometry.
+            _announcer.Announce(
+                $"Landing exit guidance unavailable: {error.TrimEnd('.')}. " +
+                $"Runway end distance callouts active.");
+            _guidanceManager.BeginLandingRolloutNoRoute(_runway);
+
+            // Mark as activated so we don't retry on subsequent ground-state
+            // events for this landing — the fallback is the final state.
+            _activatedThisLanding = true;
+            return true;
         }
 
         DiagLog($"ActivateGuidance LoadRoute OK, calling StartGuidance");
