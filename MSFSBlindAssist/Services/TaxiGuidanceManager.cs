@@ -856,12 +856,11 @@ public class TaxiGuidanceManager : IDisposable
             _rolloutExit = null;
             _rolloutRunway = runway;
             _rolloutRunwayHeadingTrue = runway.Heading;
-            _rolloutApproach1500Announced = false;
-            _rolloutApproach500Announced = false;
-            _rolloutTurnNowAnnounced = false;
 
-            // EnterRunwayEndCountdown handles route/state cleanup, flag resets,
-            // tone pause, and SetState(LandingRollout). Reuse it directly.
+            // EnterRunwayEndCountdown handles everything else: clears _route /
+            // _destinationNodeId, sets _rolloutNoExitMode, resets the approach
+            // and end-countdown announce flags, pauses the tone, and enters
+            // LandingRollout state.
             EnterRunwayEndCountdown();
         }
     }
