@@ -53,7 +53,12 @@ public class TaxiGraph
     }
     public List<RunwayCenterline> RunwayCenterlines { get; } = new();
 
-    private int _nextNodeId = 0;
+    // Start at 1 so node ID 0 is a permanent "not set" sentinel. TaxiGuidanceManager
+    // uses _destinationNodeId = 0 to mark a cleared route (e.g. after
+    // EnterRunwayEndCountdown). If _nextNodeId were 0, the first real node would
+    // collide with that sentinel — ContainsKey(0) would return true and the
+    // recalc path could try to route to it.
+    private int _nextNodeId = 1;
     private readonly Dictionary<string, List<int>> _spatialHash = new();
     private readonly Dictionary<string, List<int>> _taxiwayNodeIndex = new(StringComparer.OrdinalIgnoreCase);
 
