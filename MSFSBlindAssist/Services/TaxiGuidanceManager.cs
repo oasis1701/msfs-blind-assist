@@ -1576,10 +1576,14 @@ public class TaxiGuidanceManager : IDisposable
         // meters; no loop.
         // Same component-filter invariant as LoadRoute: the recalculated start
         // node must be co-component with the existing destination, otherwise
-        // FindConstrainedPath / FindShortestPath will return null.
-        int destComponentId = _graph.Nodes.ContainsKey(_destinationNodeId)
+        // FindConstrainedPath / FindShortestPath will return null. When the
+        // destination isn't in the graph (shouldn't happen during Taxiing, but
+        // be defensive), fall back to no filter rather than blocking every
+        // candidate — a silent recalc bailout would suppress the legitimate
+        // "Off route" announcement.
+        int? destComponentId = _graph.Nodes.ContainsKey(_destinationNodeId)
             ? _graph.Nodes[_destinationNodeId].ComponentId
-            : -1;
+            : (int?)null;
 
         (List<string>? remainingSequence, TaxiNode? nearestNode) =
             FindRemainingSequenceByPosition(lat, lon, destComponentId);
@@ -1672,7 +1676,7 @@ public class TaxiGuidanceManager : IDisposable
     /// is near the aircraft — caller should fall back to shortest path.
     /// </summary>
     private (List<string>?, TaxiNode?) FindRemainingSequenceByPosition(
-        double lat, double lon, int requiredComponentId)
+        double lat, double lon, int? requiredComponentId)
     {
         const double NEAR_TAXIWAY_M = 50.0;
         if (_graph == null || _originalTaxiwaySequence == null || _originalTaxiwaySequence.Count == 0)
