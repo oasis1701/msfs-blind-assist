@@ -571,22 +571,31 @@ public class TaxiGuidanceManager : IDisposable
             // Snapping directly to the requested first taxiway lets the
             // route start where it's supposed to, regardless of the aircraft's
             // current orientation.
+            if (!_graph.Nodes.ContainsKey(destinationNodeId))
+                return "Destination node not found in taxi graph.";
+
+            // Restrict start-node candidates to the destination's connected
+            // component. Defends against navdata defects where a closer
+            // taxiway is modelled as an isolated island (e.g. GCLP S5 in
+            // fs2024) — without this filter, FindNearestNodeInDirection
+            // would snap to the island and A* would fail with no path.
+            int destComponentId = _graph.Nodes[destinationNodeId].ComponentId;
+
             TaxiNode? startNode = null;
             if (taxiwaySequence != null && taxiwaySequence.Count > 0)
             {
                 startNode = _graph.FindNearestNodeOnTaxiway(
-                    aircraftLat, aircraftLon, taxiwaySequence[0]);
+                    aircraftLat, aircraftLon, taxiwaySequence[0],
+                    requiredComponentId: destComponentId);
             }
             if (startNode == null)
             {
                 startNode = _graph.FindNearestNodeInDirection(
-                    aircraftLat, aircraftLon, aircraftHeading);
+                    aircraftLat, aircraftLon, aircraftHeading,
+                    requiredComponentId: destComponentId);
             }
             if (startNode == null)
                 return "Could not find a nearby taxiway node.";
-
-            if (!_graph.Nodes.ContainsKey(destinationNodeId))
-                return "Destination node not found in taxi graph.";
 
             // Calculate route
             var router = new TaxiRouter(_graph);
@@ -828,6 +837,31 @@ public class TaxiGuidanceManager : IDisposable
                 AnnounceInstruction($"Touchdown. {exitClass} {name} in {distFt} feet.");
             else
                 AnnounceInstruction($"Touchdown. {exitClass} {name}.");
+        }
+    }
+
+    /// <summary>
+    /// Enters runway-end countdown mode directly, without a taxi route. Used by
+    /// LandingExitPlanner as a safety net when LoadRoute fails at touchdown —
+    /// e.g., at an airport with navdata defects that leave no valid path from
+    /// touchdown to the chosen exit. Keeps the per-frame distance callouts
+    /// ("Runway end in 1500 feet" → "...500 feet, slow down" → "...100 feet,
+    /// stop") active so a blind pilot has audio cues during rollout even when
+    /// turn-by-turn taxi guidance is unavailable.
+    /// </summary>
+    public void BeginLandingRolloutNoRoute(Database.Models.Runway runway)
+    {
+        lock (_stateLock)
+        {
+            _rolloutExit = null;
+            _rolloutRunway = runway;
+            _rolloutRunwayHeadingTrue = runway.Heading;
+
+            // EnterRunwayEndCountdown handles everything else: clears _route /
+            // _destinationNodeId, sets _rolloutNoExitMode, resets the approach
+            // and end-countdown announce flags, pauses the tone, and enters
+            // LandingRollout state.
+            EnterRunwayEndCountdown();
         }
     }
 
@@ -1540,8 +1574,19 @@ public class TaxiGuidanceManager : IDisposable
         // Driving the trim from aircraft position instead means: if you're
         // at H2, the remaining sequence is just ["H2"]; the route is a few
         // meters; no loop.
+        // Same component-filter invariant as LoadRoute: the recalculated start
+        // node must be co-component with the existing destination, otherwise
+        // FindConstrainedPath / FindShortestPath will return null. When the
+        // destination isn't in the graph (shouldn't happen during Taxiing, but
+        // be defensive), fall back to no filter rather than blocking every
+        // candidate — a silent recalc bailout would suppress the legitimate
+        // "Off route" announcement.
+        int? destComponentId = _graph.Nodes.ContainsKey(_destinationNodeId)
+            ? _graph.Nodes[_destinationNodeId].ComponentId
+            : (int?)null;
+
         (List<string>? remainingSequence, TaxiNode? nearestNode) =
-            FindRemainingSequenceByPosition(lat, lon);
+            FindRemainingSequenceByPosition(lat, lon, destComponentId);
 
         // If no sequence taxiway is near the aircraft, fall back to the
         // heading-aware picker. The constrained path will likely fail and
@@ -1549,7 +1594,8 @@ public class TaxiGuidanceManager : IDisposable
         // has drifted off every cleared taxiway.
         if (nearestNode == null)
         {
-            nearestNode = _graph.FindNearestNodeInDirection(lat, lon, headingTrue);
+            nearestNode = _graph.FindNearestNodeInDirection(
+                lat, lon, headingTrue, requiredComponentId: destComponentId);
             if (nearestNode == null) return;
         }
 
@@ -1629,7 +1675,8 @@ public class TaxiGuidanceManager : IDisposable
     /// NEAR_TAXIWAY_M of the aircraft. Returns (null, null) if no sequence taxiway
     /// is near the aircraft — caller should fall back to shortest path.
     /// </summary>
-    private (List<string>?, TaxiNode?) FindRemainingSequenceByPosition(double lat, double lon)
+    private (List<string>?, TaxiNode?) FindRemainingSequenceByPosition(
+        double lat, double lon, int? requiredComponentId)
     {
         const double NEAR_TAXIWAY_M = 50.0;
         if (_graph == null || _originalTaxiwaySequence == null || _originalTaxiwaySequence.Count == 0)
@@ -1637,7 +1684,9 @@ public class TaxiGuidanceManager : IDisposable
 
         for (int i = _originalTaxiwaySequence.Count - 1; i >= 0; i--)
         {
-            var node = _graph.FindNearestNodeOnTaxiway(lat, lon, _originalTaxiwaySequence[i], NEAR_TAXIWAY_M);
+            var node = _graph.FindNearestNodeOnTaxiway(
+                lat, lon, _originalTaxiwaySequence[i], NEAR_TAXIWAY_M,
+                requiredComponentId: requiredComponentId);
             if (node != null)
             {
                 var remaining = new List<string>();
