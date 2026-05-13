@@ -312,6 +312,7 @@ public class TaxiRouter
     private int FindNearestNodeOnTaxiway(int fromNodeId, string taxiwayName)
     {
         var fromNode = _graph.Nodes[fromNodeId];
+        int fromComponent = fromNode.ComponentId;
         int bestNode = -1;
         double bestDist = double.MaxValue;
 
@@ -324,6 +325,8 @@ public class TaxiRouter
             if (!onTaxiway) continue;
 
             var node = _graph.Nodes[nodeId];
+            if (node.ComponentId != fromComponent) continue;
+
             double dist = TaxiGraph.CalculateDistanceMeters(
                 fromNode.Latitude, fromNode.Longitude, node.Latitude, node.Longitude);
 
@@ -343,6 +346,7 @@ public class TaxiRouter
     private List<int> FindNearestNodesOnTaxiway(int fromNodeId, string taxiwayName, int maxResults)
     {
         var fromNode = _graph.Nodes[fromNodeId];
+        int fromComponent = fromNode.ComponentId;
         var candidates = new List<(int nodeId, double dist)>();
 
         foreach (var kvp in _graph.Adjacency)
@@ -354,6 +358,8 @@ public class TaxiRouter
             if (!onTaxiway) continue;
 
             var node = _graph.Nodes[nodeId];
+            if (node.ComponentId != fromComponent) continue;
+
             double dist = TaxiGraph.CalculateDistanceMeters(
                 fromNode.Latitude, fromNode.Longitude, node.Latitude, node.Longitude);
 
@@ -373,6 +379,7 @@ public class TaxiRouter
     private int FindNearestNodeOnTaxiwayToTarget(int targetNodeId, string taxiwayName)
     {
         var targetNode = _graph.Nodes[targetNodeId];
+        int targetComponent = targetNode.ComponentId;
         int bestNode = -1;
         double bestDist = double.MaxValue;
 
@@ -385,6 +392,8 @@ public class TaxiRouter
             if (!onTaxiway) continue;
 
             var node = _graph.Nodes[nodeId];
+            if (node.ComponentId != targetComponent) continue;
+
             double dist = TaxiGraph.CalculateDistanceMeters(
                 targetNode.Latitude, targetNode.Longitude, node.Latitude, node.Longitude);
 
