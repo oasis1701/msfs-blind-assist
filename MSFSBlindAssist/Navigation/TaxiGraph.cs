@@ -514,6 +514,18 @@ public class TaxiGraph
         return best;
     }
 
+    /// <summary>
+    /// Finds the nearest graph node in the direction the aircraft is facing.
+    /// Returns the closest node that is roughly ahead (within ±90° of heading),
+    /// bounded by MAX_START_NODE_DISTANCE_M — if nothing ahead is within range,
+    /// falls back to the overall nearest node (also distance-bounded), otherwise
+    /// returns null. A null return means "no taxiway node near this position" —
+    /// caller should report "no nearby taxiway" rather than silently snap to
+    /// something far away. Caller can pass <paramref name="requiredComponentId"/>
+    /// to restrict candidates (including the fallback) to a connected component
+    /// (typically the destination's) so isolated-island taxiways are skipped —
+    /// see <see cref="FindNearestNodeOnTaxiway"/>.
+    /// </summary>
     public TaxiNode? FindNearestNodeInDirection(
         double lat, double lon, double headingDeg,
         int? requiredComponentId = null)
