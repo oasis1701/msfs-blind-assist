@@ -80,6 +80,7 @@ public partial class PMDG777CDUForm : Form
         btnFmcComm.Click  += (s, e) => SendCDUKey("FMCCOMM");
         btnProg.Click     += (s, e) => SendCDUKey("PROG");
         btnMenu.Click     += (s, e) => SendCDUKey("MENU");
+        btnNavRad.Click   += (s, e) => SendCDUKey("NAV_RAD");
         btnPrevPage.Click += (s, e) => SendCDUKey("PREV_PAGE");
         btnNextPage.Click += (s, e) => SendCDUKey("NEXT_PAGE");
 
@@ -240,6 +241,25 @@ public partial class PMDG777CDUForm : Form
                 return;
         }
 
+        // FMCCOMM and HOLD are special: the PMDG 777 SDK's CDA path that the
+        // rest of the CDU uses doesn't actually open these two pages —
+        // observed in GitHub issue #46 ("FMC com and Hold pages don't work
+        // after taking off"). FMCCOMM was bolted on after the original CDU
+        // event range (note its 4-digit 3471 offset versus the consecutive
+        // 340-353 used by the other page keys), and HOLD shares its quirk.
+        // TFM uses TransmitClientEvent with MOUSE_FLAG_LEFTSINGLE for all CDU
+        // keys and never hit this; we keep CDA as the default for everything
+        // else (it's faster) and only divert these two through the legacy
+        // path. Pre-takeoff success without this fix was likely the user
+        // operating the CDU through other means (mouse / cockpit clicks)
+        // and only realizing MSFSBA's path was broken once airborne.
+        if (eventSuffix == "FMCCOMM" || eventSuffix == "HOLD")
+        {
+            const uint MOUSE_FLAG_LEFTSINGLE = 0x20000000;
+            _dataManager.SendEventViaTransmit(eventName, (uint)eventId, MOUSE_FLAG_LEFTSINGLE);
+            return;
+        }
+
         _dataManager.SendEvent(eventName, (uint)eventId, 1);
     }
 
@@ -268,24 +288,56 @@ public partial class PMDG777CDUForm : Form
 
     private void Form_KeyDown(object? sender, KeyEventArgs e)
     {
-        // Ctrl+1-6: left line select L1-L6
-        if (e.Control && !e.Alt && e.KeyCode >= Keys.D1 && e.KeyCode <= Keys.D6)
-        {
-            int num = e.KeyCode - Keys.D1 + 1;
-            OnLineSelect($"L{num}", num);
-            e.Handled = true;
-            e.SuppressKeyPress = true;
-            return;
-        }
+        // Line-select keys — two layouts, switchable in FMC Settings:
+        //   Default: Ctrl+1..6 = L1..L6, Alt+1..6 = R1..R6
+        //   Alternate: F1..F6 = L1..L6, F7..F12 = R1..R6
+        // The alternate layout frees Ctrl/Alt for other hotkeys; many TFM
+        // users prefer it. Setting is read every keypress so a runtime
+        // change in the FMC Settings dialog takes effect immediately.
+        bool useAltKeys = MSFSBlindAssist.Settings.SettingsManager.Current.MCDUUseAlternateLSKKeys;
 
-        // Alt+1-6: right line select R1-R6
-        if (e.Alt && !e.Control && e.KeyCode >= Keys.D1 && e.KeyCode <= Keys.D6)
+        if (useAltKeys)
         {
-            int num = e.KeyCode - Keys.D1 + 1;
-            OnLineSelect($"R{num}", num);
-            e.Handled = true;
-            e.SuppressKeyPress = true;
-            return;
+            // F1..F6 = L1..L6
+            if (!e.Control && !e.Alt && e.KeyCode >= Keys.F1 && e.KeyCode <= Keys.F6)
+            {
+                int num = e.KeyCode - Keys.F1 + 1;
+                OnLineSelect($"L{num}", num);
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                return;
+            }
+            // F7..F12 = R1..R6
+            if (!e.Control && !e.Alt && e.KeyCode >= Keys.F7 && e.KeyCode <= Keys.F12)
+            {
+                int num = e.KeyCode - Keys.F7 + 1;
+                OnLineSelect($"R{num}", num);
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                return;
+            }
+        }
+        else
+        {
+            // Ctrl+1-6: left line select L1-L6
+            if (e.Control && !e.Alt && e.KeyCode >= Keys.D1 && e.KeyCode <= Keys.D6)
+            {
+                int num = e.KeyCode - Keys.D1 + 1;
+                OnLineSelect($"L{num}", num);
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                return;
+            }
+
+            // Alt+1-6: right line select R1-R6
+            if (e.Alt && !e.Control && e.KeyCode >= Keys.D1 && e.KeyCode <= Keys.D6)
+            {
+                int num = e.KeyCode - Keys.D1 + 1;
+                OnLineSelect($"R{num}", num);
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                return;
+            }
         }
 
         // PageUp / Alt+Up → PREV_PAGE

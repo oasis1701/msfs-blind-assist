@@ -14,13 +14,21 @@ public partial class METARReportForm : Form
 
         private TextBox icaoTextBox = null!;
         private TextBox metarTextBox = null!;
+        private TextBox asMetarTextBox = null!;
         private Button closeButton = null!;
         private Label icaoLabel = null!;
         private Label metarLabel = null!;
+        private Label asMetarLabel = null!;
         private Label statusLabel = null!;
 
         private readonly ScreenReaderAnnouncer _announcer;
         private readonly IntPtr previousWindow;
+        // Per-form AS client. Each form does its own parallel-probe detection
+        // on first fetch (~1.2 s worst case when AS isn't running). We don't
+        // share a singleton because the existing WeatherRadarForm also keeps
+        // its own instance, and they don't conflict — the underlying HttpClient
+        // is static-shared.
+        private readonly ActiveSkyClient _activeSky = new();
 
         public METARReportForm(ScreenReaderAnnouncer announcer)
         {
@@ -41,6 +49,11 @@ public partial class METARReportForm : Form
         private void InitializeComponent()
         {
             Text = "METAR Report";
+            // Default (compact) size — used when ActiveSky is NOT detected.
+            // Form silently grows to 580px tall on Load if AS detection
+            // succeeds, revealing the AS METAR section. User-invisible
+            // fallback: when AS isn't running we look identical to the
+            // pre-AS form.
             Size = new Size(500, 400);
             StartPosition = FormStartPosition.CenterScreen;
             FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -78,30 +91,63 @@ public partial class METARReportForm : Form
                 AccessibleName = "Status"
             };
 
-            // METAR Label
+            // VATSIM METAR Label
             metarLabel = new Label
             {
-                Text = "METAR Report:",
+                Text = "VATSIM METAR:",
                 Location = new Point(20, 85),
-                Size = new Size(120, 20),
-                AccessibleName = "METAR Report Label"
+                Size = new Size(200, 20),
+                AccessibleName = "VATSIM METAR Label"
             };
 
-            // METAR TextBox (read-only, multiline)
+            // VATSIM METAR TextBox (read-only, multiline)
             metarTextBox = new TextBox
             {
                 Location = new Point(20, 110),
-                Size = new Size(440, 180),
+                Size = new Size(440, 160),
                 Multiline = true,
                 ReadOnly = true,
                 ScrollBars = ScrollBars.Vertical,
-                AccessibleName = "METAR Report",
+                AccessibleName = "VATSIM METAR",
                 AccessibleDescription = "Raw METAR data from VATSIM",
                 Font = new Font("Consolas", 9, FontStyle.Regular),
                 Text = "Enter an ICAO code above and press Enter to fetch METAR data."
             };
 
-            // Close Button
+            // ActiveSky METAR Label (shown only when AS is detected; label
+            // text updates on fetch to indicate status — we leave it visible
+            // either way so the user can tab to the box and read the status
+            // message there too).
+            // ActiveSky METAR section — invisible by default. Revealed in
+            // SetupAccessibility's async Load handler IF ActiveSky is detected.
+            // When AS isn't running, the user sees the original VATSIM-only
+            // form unchanged.
+            asMetarLabel = new Label
+            {
+                Text = "ActiveSky METAR:",
+                Location = new Point(20, 285),
+                Size = new Size(440, 20),
+                AccessibleName = "ActiveSky METAR Label",
+                Visible = false
+            };
+
+            asMetarTextBox = new TextBox
+            {
+                Location = new Point(20, 310),
+                Size = new Size(440, 160),
+                Multiline = true,
+                ReadOnly = true,
+                ScrollBars = ScrollBars.Vertical,
+                AccessibleName = "ActiveSky METAR",
+                AccessibleDescription = "Raw METAR data from HiFi ActiveSky",
+                Font = new Font("Consolas", 9, FontStyle.Regular),
+                Text = "Enter an ICAO code above and press Enter to fetch ActiveSky METAR.",
+                Visible = false
+            };
+
+            // Close Button — positioned for compact form (AS hidden). When
+            // AS detection succeeds in Load, we shift it down to y=490 so it
+            // sits below the AS section.
             closeButton = new Button
             {
                 Text = "&Close",
@@ -117,7 +163,9 @@ public partial class METARReportForm : Form
             Controls.AddRange(new Control[]
             {
                 icaoLabel, icaoTextBox, statusLabel,
-                metarLabel, metarTextBox, closeButton
+                metarLabel, metarTextBox,
+                asMetarLabel, asMetarTextBox,
+                closeButton
             });
 
             CancelButton = closeButton;
@@ -125,19 +173,39 @@ public partial class METARReportForm : Form
 
         private void SetupAccessibility()
         {
-            // Set tab order for logical navigation
+            // Set tab order for logical navigation. AS textbox sits between
+            // VATSIM METAR and Close — when AS is hidden, the OS skips it
+            // automatically because TabStop honours Visible.
             icaoTextBox.TabIndex = 0;
             metarTextBox.TabIndex = 1;
-            closeButton.TabIndex = 2;
+            asMetarTextBox.TabIndex = 2;
+            closeButton.TabIndex = 3;
 
-            // Focus and bring window to front when opened
-            Load += (sender, e) =>
+            // Focus + bring to front, then async-detect ActiveSky. If AS is
+            // running, reveal the AS section and grow the form. If not, the
+            // form stays compact and the user sees the original VATSIM-only
+            // layout — silent fallback by design.
+            Load += async (sender, e) =>
             {
                 BringToFront();
                 Activate();
                 TopMost = true;
                 TopMost = false; // Flash to bring to front
                 icaoTextBox.Focus();
+
+                bool asAvailable = await _activeSky.IsRunningAsync();
+                if (asAvailable && IsHandleCreated && !IsDisposed)
+                {
+                    asMetarLabel.Visible = true;
+                    asMetarTextBox.Visible = true;
+                    closeButton.Location = new Point(385, 490);
+                    Size = new Size(500, 580);
+                    // Re-center after grow — StartPosition.CenterScreen ran
+                    // against the original 400px form, so without this the
+                    // bottom of the grown form can fall below the screen on
+                    // smaller displays (1366×768 etc.).
+                    CenterToScreen();
+                }
             };
         }
 
@@ -172,12 +240,24 @@ public partial class METARReportForm : Form
             {
                 statusLabel.Text = "Fetching METAR...";
                 metarTextBox.Text = "Loading METAR data from VATSIM...";
+                if (asMetarTextBox.Visible)
+                    asMetarTextBox.Text = "Loading METAR data from ActiveSky...";
 
                 // Disable input during fetch
                 icaoTextBox.Enabled = false;
                 closeButton.Enabled = false;
 
-                string metar = await VATSIMService.GetMETARAsync(icao);
+                // Fetch VATSIM and AS METARs in parallel when AS is active.
+                // When AS isn't detected, we don't even kick off the AS task
+                // — keeps things silent on systems without ActiveSky.
+                Task<string> vatsimTask = VATSIMService.GetMETARAsync(icao);
+                Task<string?> asTask = asMetarTextBox.Visible
+                    ? _activeSky.GetMetarAsync(icao)
+                    : Task.FromResult<string?>(null);
+
+                string metar = await vatsimTask;
+
+                if (IsDisposed) return;
 
                 if (string.IsNullOrEmpty(metar) || metar.Trim().Length == 0)
                 {
@@ -193,6 +273,24 @@ public partial class METARReportForm : Form
                     metarTextBox.Focus();
                     metarTextBox.SelectAll();
                 }
+
+                // ActiveSky METAR — only when the AS section is visible.
+                if (asMetarTextBox.Visible)
+                {
+                    string? asMetar = await asTask;
+
+                    if (IsDisposed) return;
+
+                    if (string.IsNullOrWhiteSpace(asMetar))
+                    {
+                        asMetarTextBox.Text =
+                            $"No ActiveSky METAR found for {icao}. The airport may not be in AS's station list, or AS may have stopped responding.";
+                    }
+                    else
+                    {
+                        asMetarTextBox.Text = asMetar.Trim();
+                    }
+                }
             }
             catch (Exception ex)
             {
@@ -202,9 +300,13 @@ public partial class METARReportForm : Form
             }
             finally
             {
-                // Re-enable controls
-                icaoTextBox.Enabled = true;
-                closeButton.Enabled = true;
+                // Re-enable controls only if the form is still alive — the
+                // user may have closed it during the fetch.
+                if (!IsDisposed)
+                {
+                    icaoTextBox.Enabled = true;
+                    closeButton.Enabled = true;
+                }
             }
         }
 

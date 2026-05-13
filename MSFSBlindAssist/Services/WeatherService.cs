@@ -665,8 +665,14 @@ public static class WeatherService
         var sb = new System.Text.StringBuilder();
         sb.AppendLine($"Wind: {w.WindDirection:F0}° at {w.WindSpeed:F0} knots");
 
+        // Show both km and SM — US pilots think in statute miles, ICAO/rest-
+        // of-world in km. Same format as the ActiveSky path so the screen
+        // reader output is consistent regardless of weather source.
         double visKm = w.Visibility / 1000.0;
-        sb.AppendLine(visKm >= 9.9 ? "Visibility: 10+ km" : $"Visibility: {visKm:F1} km");
+        double visSm = visKm / 1.609344;
+        sb.AppendLine(visKm >= 9.9
+            ? "Visibility: 10+ km (6+ statute miles)"
+            : $"Visibility: {visKm:F1} km ({visSm:F1} statute miles)");
 
         sb.AppendLine($"Temperature: {w.Temperature:F0}°C");
         sb.AppendLine($"In cloud: {(w.InCloud >= 0.5 ? "Yes" : "No")}");

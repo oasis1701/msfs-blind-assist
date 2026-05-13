@@ -55,7 +55,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             {
                 "Electrical", "ADIRU", "Hydraulic", "Fuel", "Engines", "Bleed Air",
                 "Air Conditioning", "Pressurization", "Anti-Ice", "Fire",
-                "Lights", "Signs", "Wipers", "Panel Lighting"
+                "Lights", "Signs", "Oxygen", "Wipers", "Panel Lighting"
             },
             ["Overhead Maintenance"] = new List<string>
             {
@@ -1813,6 +1813,24 @@ public class PMDG777Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            },
+            ["OXY_TestReset_L"] = new SimConnect.SimVarDefinition
+            {
+                Name = "OXY_TestReset_L",
+                DisplayName = "Captain Oxygen Test",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Never,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
+            ["OXY_TestReset_R"] = new SimConnect.SimVarDefinition
+            {
+                Name = "OXY_TestReset_R",
+                DisplayName = "First Officer Oxygen Test",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Never,
+                RenderAsButton = true,
+                IsMomentary = true
             },
             // Signs annunciators
             ["OXY_annunPassOxygenON"] = new SimConnect.SimVarDefinition
@@ -4492,6 +4510,22 @@ public class PMDG777Definition : BaseAircraftDefinition
 
             // =================================================================
             // BORIS AUDIO WORKS SOUNDPACK
+            // -----------------------------------------------------------------
+            // KNOWN ISSUE: these switch_NNN_a LVars do NOT behave as state
+            // variables. Writing 0 or 100 produces only a momentary (~100 ms)
+            // change in the underlying Boris audio engine before snapping back
+            // to whatever the persistent state was. The real Boris state vars
+            // are not documented publicly. A live LVar capture session (e.g.
+            // via MobiFlight's variable browser, or an in-app LVar dump
+            // utility) is needed to identify the actual state vars before
+            // these combos can produce a real persistent toggle.
+            //
+            // We tried writing the PMDG mouse-flag value (0x20000000 =
+            // MOUSE_FLAG_LEFTSINGLE) on the theory that switch_NNN_a is a
+            // mouse-click input handle per PMDG's VC mouse-behaviour XML
+            // convention, but that produced no audible effect at all — worse
+            // than the 100 ms blip from a raw value write. Reverted; left
+            // as-is until proper state vars are identified.
             // =================================================================
             ["switch_622_a"] = new SimConnect.SimVarDefinition
             {
@@ -4626,8 +4660,14 @@ public class PMDG777Definition : BaseAircraftDefinition
             // Overhead — Signs
             ["Signs"] = new List<string>
             {
-                "SIGNS_NoSmoking", "SIGNS_SeatBelts", "OXY_PassOxygen",
-                "OXY_Suprnmry"
+                "SIGNS_NoSmoking", "SIGNS_SeatBelts"
+            },
+
+            // Overhead — Oxygen
+            ["Oxygen"] = new List<string>
+            {
+                "OXY_PassOxygen", "OXY_Suprnmry",
+                "OXY_TestReset_L", "OXY_TestReset_R"
             },
 
             // Overhead — Wipers
@@ -5000,6 +5040,8 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["SIGNS_SeatBelts"]         = "EVT_OH_FASTEN_BELTS_LIGHT_SWITCH",
             ["OXY_PassOxygen"]          = "EVT_OH_OXY_PASS_SWITCH",
             ["OXY_Suprnmry"]            = "EVT_OH_OXY_SUPRNMRY_SWITCH",
+            ["OXY_TestReset_L"]         = "EVT_OXY_TEST_RESET_SWITCH_L",
+            ["OXY_TestReset_R"]         = "EVT_OXY_TEST_RESET_SWITCH_R",
 
             // --- Wipers / Comms ---
             ["WIPERS_Left"]             = "EVT_OH_WIPER_LEFT_SWITCH",
@@ -5289,6 +5331,33 @@ public class PMDG777Definition : BaseAircraftDefinition
         }
 
         // ------------------------------------------------------------------
+        // 0a. Emergency Lights selector — sending the SDK event via CDA
+        //     only ever cycles the lever upward, leaving Armed → Off
+        //     unreachable. TFM's PMDG 747 implementation showed that the
+        //     same SDK event accepts the absolute target position when
+        //     fired through the standard SimConnect TransmitClientEvent
+        //     path (event name "#<id>"), bypassing PMDG's CDA selector.
+        //     Must run BEFORE the guarded-switch block below — LTS_EmerLights
+        //     is in `_guardedMap`, so without this early-return the guarded
+        //     toggle would intercept and only step one detent.
+        // ------------------------------------------------------------------
+        if (varKey == "LTS_EmerLights")
+        {
+            int target = (int)value;
+            var dm = simConnect.PMDG777DataManager;
+            if (dm != null && (int)dm.GetFieldValue("LTS_EmerLightsSelector") == target)
+            {
+                return true;
+            }
+            if (!EventIds.TryGetValue("EVT_OH_EMER_EXIT_LIGHT_SWITCH", out int switchEventId))
+            {
+                return false;
+            }
+            simConnect.SendEvent("#" + switchEventId, (uint)target);
+            return true;
+        }
+
+        // ------------------------------------------------------------------
         // 1. Guarded switches — require guard open → toggle → guard close
         // ------------------------------------------------------------------
         if (_guardedMap.TryGetValue(varKey, out var guardPair))
@@ -5372,6 +5441,44 @@ public class PMDG777Definition : BaseAircraftDefinition
             int current = dm != null ? (int)dm.GetFieldValue("ELEC_APU_Selector") : 0;
             if (current == 1)
                 simConnect.SendPMDGEvent(eventName, eventId, 2); // 2 = Start position
+            return true;
+        }
+
+        // ------------------------------------------------------------------
+        // 2f. Flap lever — the base EVT_CONTROL_STAND_FLAPS_LEVER is a drag
+        //     event; sending a detent index to it leaves the lever in an
+        //     invalid state and breaks subsequent flap input. Use the
+        //     per-detent EVT_CONTROL_STAND_FLAPS_LEVER_<deg> click events
+        //     defined in PMDG_777X_SDK.h. They go through the same CDA
+        //     control channel but expect MOUSE_FLAG_LEFTSINGLE as the
+        //     parameter, matching the SDK's mouse-click convention.
+        // ------------------------------------------------------------------
+        if (varKey == "FCTL_Flaps")
+        {
+            int target = (int)value;
+            var dm = simConnect.PMDG777DataManager;
+            if (dm != null && (int)dm.GetFieldValue("FCTL_Flaps_Lever") == target)
+            {
+                return true;
+            }
+            string detentSuffix = target switch
+            {
+                0 => "_0",
+                1 => "_1",
+                2 => "_5",
+                3 => "_15",
+                4 => "_20",
+                5 => "_25",
+                6 => "_30",
+                _ => string.Empty
+            };
+            if (detentSuffix.Length == 0) return true;
+            string detentEvent = "EVT_CONTROL_STAND_FLAPS_LEVER" + detentSuffix;
+            if (EventIds.TryGetValue(detentEvent, out int detentId))
+            {
+                const int MOUSE_FLAG_LEFTSINGLE = 0x20000000;
+                simConnect.SendPMDGEvent(detentEvent, (uint)detentId, MOUSE_FLAG_LEFTSINGLE);
+            }
             return true;
         }
 
@@ -5866,25 +5973,59 @@ public class PMDG777Definition : BaseAircraftDefinition
             {
                 var dm = simConnect.PMDG777DataManager;
                 if (dm == null) return false;
-                float dist = (float)dm.GetFieldValue("FMC_DistanceToTOD");
-                if (dist < 0)
+
+                // Enhanced mode: probe the PROG page on demand. The monitor
+                // primed the right CDU at startup but doesn't poll between
+                // presses — see PMDGProgPageMonitor.ReadProgPageAsync.
+                // Fallback chain mirrors TFM's PhaseAwareDescent: TOC if
+                // not yet passed → step climb if not "NONE" → TOD →
+                // SDK FMC_DistanceToTOD as last resort.
+                if (Settings.SettingsManager.Current.PMDGEnhancedDistanceMode &&
+                    parentForm is MainForm pfTod)
                 {
-                    announcer.AnnounceImmediate("Top of descent not available");
-                }
-                else if (dist < 0.1f)
-                {
-                    announcer.AnnounceImmediate("Past top of descent");
-                }
-                else
-                {
-                    // LastKnownPosition is request-on-demand; grab a fresh
-                    // position so the ETA reflects current ground speed.
-                    simConnect.RequestAircraftPositionAsync(position =>
+                    var monitor = pfTod.GetPMDGProgPageMonitor();
+                    if (monitor != null)
                     {
-                        string eta = FormatEtaFromDistance(dist, position.GroundSpeedKnots);
-                        announcer.AnnounceImmediate($"{dist:F0} miles to top of descent{eta}");
-                    });
+                        // Fire-and-forget. The probe takes ~100-500 ms in the
+                        // worst case (off-PROG cold cache); during that
+                        // window the user hears nothing, then the
+                        // announcement arrives. Subsequent presses within
+                        // 30 s reuse the cache and announce instantly.
+                        _ = Task.Run(async () =>
+                        {
+                            var prog = await monitor.ReadProgPageAsync();
+                            if (prog != null && prog.IsValid)
+                            {
+                                if (!prog.TOCPassed && prog.DistanceToTOC > 0)
+                                {
+                                    string eta = !string.IsNullOrEmpty(prog.ETAToTOC) ? $", {prog.ETAToTOC}" : "";
+                                    announcer.AnnounceImmediate(
+                                        $"Distance to T O C: {Math.Round(prog.DistanceToTOC)}{eta}");
+                                    return;
+                                }
+                                if (!prog.StepClimbIsNone && prog.DistanceToStepClimb > 0)
+                                {
+                                    string eta = !string.IsNullOrEmpty(prog.ETAToStepClimb) ? $", {prog.ETAToStepClimb}" : "";
+                                    announcer.AnnounceImmediate(
+                                        $"Distance to step climb: {Math.Round(prog.DistanceToStepClimb)}{eta}");
+                                    return;
+                                }
+                                if (prog.DistanceToTOD > 0)
+                                {
+                                    string eta = !string.IsNullOrEmpty(prog.ETAToTOD) ? $", {prog.ETAToTOD}" : "";
+                                    announcer.AnnounceImmediate(
+                                        $"Distance to T O D: {Math.Round(prog.DistanceToTOD)}{eta}");
+                                    return;
+                                }
+                                // PROG showed none of those phases — fall through to SDK.
+                            }
+                            AnnounceTODFromSDK(simConnect, dm, announcer);
+                        });
+                        return true;
+                    }
                 }
+
+                AnnounceTODFromSDK(simConnect, dm, announcer);
                 return true;
             }
 
@@ -5892,19 +6033,36 @@ public class PMDG777Definition : BaseAircraftDefinition
             {
                 var dm = simConnect.PMDG777DataManager;
                 if (dm == null) return false;
-                float dist = (float)dm.GetFieldValue("FMC_DistanceToDest");
-                if (dist < 0)
+
+                // Enhanced mode: probe the PROG DEST line on demand.
+                if (Settings.SettingsManager.Current.PMDGEnhancedDistanceMode &&
+                    parentForm is MainForm pfd)
                 {
-                    announcer.AnnounceImmediate("Distance to destination not available");
-                }
-                else
-                {
-                    simConnect.RequestAircraftPositionAsync(position =>
+                    var monitor = pfd.GetPMDGProgPageMonitor();
+                    if (monitor != null)
                     {
-                        string eta = FormatEtaFromDistance(dist, position.GroundSpeedKnots);
-                        announcer.AnnounceImmediate($"{dist:F0} miles to destination{eta}");
-                    });
+                        _ = Task.Run(async () =>
+                        {
+                            var prog = await monitor.ReadProgPageAsync();
+                            if (prog != null && prog.IsValid && prog.DistanceToDest >= 0)
+                            {
+                                string distStr = Math.Round(prog.DistanceToDest)
+                                    .ToString(System.Globalization.CultureInfo.InvariantCulture);
+                                string etaStr = !string.IsNullOrEmpty(prog.ETAToDest) ? $" {prog.ETAToDest}" : "";
+                                string fuelStr = prog.LandingFuel >= 0
+                                    ? $", landing fuel {prog.LandingFuel:F1}"
+                                    : "";
+                                announcer.AnnounceImmediate(
+                                    $"Distance to destination: {distStr}{etaStr}{fuelStr}");
+                                return;
+                            }
+                            AnnounceDestFromSDK(simConnect, dm, announcer);
+                        });
+                        return true;
+                    }
                 }
+
+                AnnounceDestFromSDK(simConnect, dm, announcer);
                 return true;
             }
 
@@ -5991,6 +6149,19 @@ public class PMDG777Definition : BaseAircraftDefinition
                     "TOTAL WEIGHT", "pounds", "GROSS_WEIGHT_KG");
                 return true;
             }
+
+            case HotkeyAction.MonitorManager:
+                // PMDG announcement monitor (Input + Ctrl+M). Hotkey arrives in
+                // Output mode through the global Ctrl+M handler; if the user
+                // happens to be in input-mode chord, that path also dispatches
+                // here. Either way we want the form, not the alt-aircraft
+                // path.
+                hotkeyManager.ExitOutputHotkeyMode();
+                if (parentForm is MainForm pf)
+                {
+                    pf.ShowPMDGAnnouncementMonitorDialog();
+                }
+                return true;
 
             default:
                 return base.HandleHotkeyAction(action, simConnect, announcer, parentForm, hotkeyManager);
@@ -6132,6 +6303,59 @@ public class PMDG777Definition : BaseAircraftDefinition
         int mm = (totalSeconds % 3600) / 60;
         int ss = totalSeconds % 60;
         return $": {hh:D2}:{mm:D2}:{ss:D2}";
+    }
+
+    /// <summary>
+    /// SDK-offset readout for distance to top of descent. Used both as the
+    /// non-Enhanced-mode default and as the Enhanced-mode fallback when the
+    /// PROG-page probe couldn't return data (CDU off, page didn't render in
+    /// time, etc.).
+    /// </summary>
+    private static void AnnounceTODFromSDK(
+        SimConnect.SimConnectManager simConnect,
+        SimConnect.PMDG777DataManager dm,
+        ScreenReaderAnnouncer announcer)
+    {
+        float dist = (float)dm.GetFieldValue("FMC_DistanceToTOD");
+        if (dist < 0)
+        {
+            announcer.AnnounceImmediate("Top of descent not available");
+            return;
+        }
+        if (dist < 0.1f)
+        {
+            announcer.AnnounceImmediate("Past top of descent");
+            return;
+        }
+        // LastKnownPosition is request-on-demand; grab a fresh position so
+        // the ETA reflects current ground speed.
+        simConnect.RequestAircraftPositionAsync(position =>
+        {
+            string eta = FormatEtaFromDistance(dist, position.GroundSpeedKnots);
+            announcer.AnnounceImmediate($"{dist:F0} miles to top of descent{eta}");
+        });
+    }
+
+    /// <summary>
+    /// SDK-offset readout for distance to destination. Used both as the
+    /// non-Enhanced-mode default and as the Enhanced-mode fallback.
+    /// </summary>
+    private static void AnnounceDestFromSDK(
+        SimConnect.SimConnectManager simConnect,
+        SimConnect.PMDG777DataManager dm,
+        ScreenReaderAnnouncer announcer)
+    {
+        float dist = (float)dm.GetFieldValue("FMC_DistanceToDest");
+        if (dist < 0)
+        {
+            announcer.AnnounceImmediate("Distance to destination not available");
+            return;
+        }
+        simConnect.RequestAircraftPositionAsync(position =>
+        {
+            string eta = FormatEtaFromDistance(dist, position.GroundSpeedKnots);
+            announcer.AnnounceImmediate($"{dist:F0} miles to destination{eta}");
+        });
     }
 
     private void ShowPMDGHeadingDialog(
@@ -6624,6 +6848,8 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["EVT_OH_OXY_PASS_GUARD"]              = 69685,
             ["EVT_OH_OXY_SUPRNMRY_SWITCH"]         = 70708,
             ["EVT_OH_OXY_SUPRNMRY_GUARD"]          = 70709,
+            ["EVT_OXY_TEST_RESET_SWITCH_L"]        = 70695,
+            ["EVT_OXY_TEST_RESET_SWITCH_R"]        = 70698,
             ["EVT_OH_APU_TEST_SWITCH"]             = 69791,
             ["EVT_OH_APU_TEST_SWITCH_GUARD"]       = 69792,
             ["EVT_OH_CVR_TEST"]                    = 69788,
