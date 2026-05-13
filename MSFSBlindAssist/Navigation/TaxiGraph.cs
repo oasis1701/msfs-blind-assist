@@ -431,6 +431,8 @@ public class TaxiGraph
     /// Finds the nearest graph node to a given position.
     /// Uses the spatial hash for fast local lookup (expanding ring if needed),
     /// falling back to a full scan only if no node is found within ~1km.
+    /// Component-unaware: callers needing component filtering must inspect
+    /// the result's <see cref="TaxiNode.ComponentId"/> themselves.
     /// </summary>
     public TaxiNode? FindNearestNode(double lat, double lon)
     {
@@ -486,7 +488,10 @@ public class TaxiGraph
     /// regardless of aircraft orientation (e.g. immediately after pushback). Caller
     /// can pass <paramref name="requiredComponentId"/> to restrict candidates to a
     /// connected component (typically the destination's) so isolated-island
-    /// taxiways are skipped — see <see cref="FindNearestNodeInDirection"/>.
+    /// taxiways are skipped — see <see cref="FindNearestNodeInDirection"/>. Returns
+    /// null if no node on <paramref name="taxiwayName"/> lies within
+    /// <paramref name="maxDistanceM"/> of the position (and within the requested
+    /// component if set).
     /// </summary>
     public TaxiNode? FindNearestNodeOnTaxiway(
         double lat, double lon, string taxiwayName,
