@@ -552,6 +552,40 @@ public class TaxiAssistForm : Form
 
         if (isRunway)
         {
+            // Build a runway-name → StartPosition lookup so we can anchor the
+            // route destination and the lineup target at the actual painted
+            // lineup point, not the physical pavement edge.
+            //
+            // Runway.StartLat/StartLon comes from runway_end.lonx/laty in the
+            // navdatareader DB — i.e., the physical pavement edge of the
+            // runway end. For runways with a displaced threshold (e.g., KLAS
+            // 26R has a 1407 ft displacement), the painted lineup point sits
+            // hundreds of meters from that edge. Using the physical edge
+            // would cause FindNearestNode to resolve to an adjacent-taxiway
+            // node instead of a runway-threshold node, and _destinationThresholdMap
+            // would feed a wrong _lineupTargetLat/Lon into LiningUp's cross-track
+            // math.
+            //
+            // The `start` table is navdatareader's curated "where MSFS spawns an
+            // aircraft if you select runway X" value, which correctly accounts
+            // for displaced thresholds. It is ALSO the source TaxiGraph builds
+            // RunwayCenterlines from (see TaxiGraph.Build, around line 170),
+            // and TakeoffAssist's cross-track math reads those centerlines.
+            // Anchoring the route destination and lineup target here on the
+            // same source means taxi-lineup centerline math and TakeoffAssist
+            // centerline math reference the same physical position; otherwise
+            // the two systems disagree on where the runway "begins" by hundreds
+            // of meters at displaced-threshold airports.
+            //
+            // Fall back to Runway.StartLat/StartLon only when the start table
+            // has no entry for a given runway name. That preserves the current
+            // behavior for runways the start table doesn't cover (rare; covers
+            // DBs/scenery where start-table data is incomplete).
+            var startsByRunway = _dataProvider.GetRunwayStarts(_currentIcao)
+                .Where(s => !string.IsNullOrEmpty(s.RunwayName))
+                .GroupBy(s => s.RunwayName, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+
             var runways = _dataProvider.GetRunways(_currentIcao);
 
             foreach (var rwy in runways)
@@ -566,9 +600,23 @@ public class TaxiAssistForm : Form
                 if (rwy.IsClosed) continue;
                 if (!rwy.IsTakeoff) continue;
 
-                // Find the nearest graph node to the runway threshold.
-                // The graph includes holding position nodes (NB1, NB2E, etc.) near the threshold.
-                var nearNode = _graph.FindNearestNode(rwy.StartLat, rwy.StartLon);
+                // Prefer the start-table lineup point (handles displaced
+                // thresholds correctly). Fall back to the physical pavement
+                // edge when no start row exists for this runway name.
+                double lineupLat;
+                double lineupLon;
+                if (startsByRunway.TryGetValue(rwy.RunwayID, out var start))
+                {
+                    lineupLat = start.Latitude;
+                    lineupLon = start.Longitude;
+                }
+                else
+                {
+                    lineupLat = rwy.StartLat;
+                    lineupLon = rwy.StartLon;
+                }
+
+                var nearNode = _graph.FindNearestNode(lineupLat, lineupLon);
                 if (nearNode != null)
                 {
                     string name = $"Runway {rwy.RunwayID}";
@@ -578,7 +626,7 @@ public class TaxiAssistForm : Form
                         _destinationNodeMap[name] = nearNode.NodeId;
                         _destinationHeadingMap[name] = rwy.HeadingMag;
                         _destinationHeadingTrueMap[name] = rwy.Heading;
-                        _destinationThresholdMap[name] = (rwy.StartLat, rwy.StartLon);
+                        _destinationThresholdMap[name] = (lineupLat, lineupLon);
                         cmbDestination.Items.Add(name);
                     }
                 }
