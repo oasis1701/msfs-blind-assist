@@ -53,7 +53,12 @@ public class TaxiGraph
     }
     public List<RunwayCenterline> RunwayCenterlines { get; } = new();
 
-    private int _nextNodeId = 0;
+    // Start at 1 so node ID 0 is a permanent "not set" sentinel. TaxiGuidanceManager
+    // uses _destinationNodeId = 0 to mark a cleared route (e.g. after
+    // EnterRunwayEndCountdown). If _nextNodeId were 0, the first real node would
+    // collide with that sentinel — ContainsKey(0) would return true and the
+    // recalc path could try to route to it.
+    private int _nextNodeId = 1;
     private readonly Dictionary<string, List<int>> _spatialHash = new();
     private readonly Dictionary<string, List<int>> _taxiwayNodeIndex = new(StringComparer.OrdinalIgnoreCase);
 
@@ -299,7 +304,55 @@ public class TaxiGraph
             }
         }
 
+        // Compute connected components so start-node selectors can filter by
+        // reachability to a known destination. Runs after all edges and node
+        // upgrades are in place.
+        graph.AssignConnectedComponents();
+
         return graph;
+    }
+
+    /// <summary>
+    /// Assigns each node a ComponentId so callers can filter start-node candidates
+    /// by reachability. Runs once at Build time after all edges are added. BFS over
+    /// Adjacency; nodes in the same connected component share an integer ID
+    /// starting at 0.
+    ///
+    /// Motivating defect: fs2024 navdata at GCLP models taxiway S5 as a 13-node
+    /// island with no connection to any other taxiway at either terminus. A pilot
+    /// touching down on 03L near S5 would have the start-node picker snap to an
+    /// S5 node, and A* could never reach the chosen exit (in the main 1075-node
+    /// component). With component IDs, the caller filters the start-node search
+    /// to nodes co-component with the destination — the picker skips S5 and finds
+    /// a reachable node on R3 instead.
+    /// </summary>
+    private void AssignConnectedComponents()
+    {
+        int nextComponentId = 0;
+        var queue = new Queue<int>();
+
+        foreach (var startNode in Nodes.Values)
+        {
+            if (startNode.ComponentId != -1) continue;
+            int componentId = nextComponentId++;
+            startNode.ComponentId = componentId;
+            queue.Enqueue(startNode.NodeId);
+
+            while (queue.Count > 0)
+            {
+                int currentId = queue.Dequeue();
+                if (!Adjacency.TryGetValue(currentId, out var edges)) continue;
+                foreach (var edge in edges)
+                {
+                    var neighbor = Nodes[edge.ToNodeId];
+                    if (neighbor.ComponentId == -1)
+                    {
+                        neighbor.ComponentId = componentId;
+                        queue.Enqueue(neighbor.NodeId);
+                    }
+                }
+            }
+        }
     }
 
     /// <summary>
@@ -383,6 +436,8 @@ public class TaxiGraph
     /// Finds the nearest graph node to a given position.
     /// Uses the spatial hash for fast local lookup (expanding ring if needed),
     /// falling back to a full scan only if no node is found within ~1km.
+    /// Component-unaware: callers needing component filtering must inspect
+    /// the result's <see cref="TaxiNode.ComponentId"/> themselves.
     /// </summary>
     public TaxiNode? FindNearestNode(double lat, double lon)
     {
@@ -433,25 +488,20 @@ public class TaxiGraph
     }
 
     /// <summary>
-    /// Finds the nearest graph node in the direction the aircraft is facing.
-    /// Returns the closest node that is roughly ahead (within ±90 degrees of heading).
-    /// Bounded by MAX_START_NODE_DISTANCE_M — if nothing ahead is within range,
-    /// falls back to the overall nearest node (also distance-bounded), otherwise returns null.
-    /// A null return means "no taxiway node near this position" — caller should
-    /// report "no nearby taxiway" rather than silently snap to something far away.
+    /// Finds the nearest graph node lying on a named taxiway. Heading-independent.
+    /// Use case: snapping a route start onto the user's first ATC-cleared taxiway
+    /// regardless of aircraft orientation (e.g. immediately after pushback). Caller
+    /// can pass <paramref name="requiredComponentId"/> to restrict candidates to a
+    /// connected component (typically the destination's) so isolated-island
+    /// taxiways are skipped — see <see cref="FindNearestNodeInDirection"/>. Returns
+    /// null if no node on <paramref name="taxiwayName"/> lies within
+    /// <paramref name="maxDistanceM"/> of the position (and within the requested
+    /// component if set).
     /// </summary>
-    /// <summary>
-    /// Returns the nearest graph node that has the given taxiway in its
-    /// TaxiwayNames set, ignoring aircraft heading. Used when the pilot has
-    /// specified a constrained taxiway sequence — even if the aircraft is
-    /// pointed AWAY from the first taxiway after pushback, we want the
-    /// route to start on that taxiway. The pilot will turn after pushback;
-    /// route plotting shouldn't reject the taxiway because of the current
-    /// transient heading. Returns null if no node within `maxDistanceM` has
-    /// the named taxiway, in which case caller should fall back to the
-    /// heading-aware FindNearestNodeInDirection.
-    /// </summary>
-    public TaxiNode? FindNearestNodeOnTaxiway(double lat, double lon, string taxiwayName, double maxDistanceM = 800.0)
+    public TaxiNode? FindNearestNodeOnTaxiway(
+        double lat, double lon, string taxiwayName,
+        double maxDistanceM = 800.0,
+        int? requiredComponentId = null)
     {
         if (string.IsNullOrEmpty(taxiwayName)) return null;
 
@@ -460,6 +510,8 @@ public class TaxiGraph
 
         foreach (var node in Nodes.Values)
         {
+            if (requiredComponentId.HasValue && node.ComponentId != requiredComponentId.Value)
+                continue;
             if (!node.TaxiwayNames.Contains(taxiwayName)) continue;
             double d = FastDistanceMeters(lat, lon, node.Latitude, node.Longitude);
             if (d < bestDist)
@@ -472,7 +524,21 @@ public class TaxiGraph
         return best;
     }
 
-    public TaxiNode? FindNearestNodeInDirection(double lat, double lon, double headingDeg)
+    /// <summary>
+    /// Finds the nearest graph node in the direction the aircraft is facing.
+    /// Returns the closest node that is roughly ahead (within ±90° of heading),
+    /// bounded by MAX_START_NODE_DISTANCE_M — if nothing ahead is within range,
+    /// falls back to the overall nearest node (also distance-bounded), otherwise
+    /// returns null. A null return means "no taxiway node near this position" —
+    /// caller should report "no nearby taxiway" rather than silently snap to
+    /// something far away. Caller can pass <paramref name="requiredComponentId"/>
+    /// to restrict candidates (including the fallback) to a connected component
+    /// (typically the destination's) so isolated-island taxiways are skipped —
+    /// see <see cref="FindNearestNodeOnTaxiway"/>.
+    /// </summary>
+    public TaxiNode? FindNearestNodeInDirection(
+        double lat, double lon, double headingDeg,
+        int? requiredComponentId = null)
     {
         // Tiered caps: prefer ahead-of-aircraft nodes within 300m (the common case at
         // a gate pushback), widen to 800m before giving up. Small airports with a large
@@ -486,6 +552,13 @@ public class TaxiGraph
 
         foreach (var node in Nodes.Values)
         {
+            // Component filter: when a destination is known, candidate start nodes
+            // must be in the same connected component or A* will fail. Defends
+            // against navdata defects where a nearby taxiway is an isolated island
+            // (e.g. GCLP S5 in fs2024 — 13 nodes, 0 external connections).
+            if (requiredComponentId.HasValue && node.ComponentId != requiredComponentId.Value)
+                continue;
+
             double dist = FastDistanceMeters(lat, lon, node.Latitude, node.Longitude);
             if (dist < 5) continue;                         // skip nodes right under us
             if (dist > MAX_START_NODE_DISTANCE_M) continue; // too far to be "at" the airport
@@ -517,8 +590,11 @@ public class TaxiGraph
         if (extended != null) return extended;
 
         // Nothing ahead — try the overall nearest, but only if within the extended range
+        // AND (when filtering) in the requested component.
         var fallback = FindNearestNode(lat, lon);
         if (fallback == null) return null;
+        if (requiredComponentId.HasValue && fallback.ComponentId != requiredComponentId.Value)
+            return null;
         double fallbackDist = FastDistanceMeters(lat, lon, fallback.Latitude, fallback.Longitude);
         return fallbackDist <= MAX_START_NODE_DISTANCE_M ? fallback : null;
     }
