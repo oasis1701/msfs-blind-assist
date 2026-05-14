@@ -403,24 +403,6 @@ public class PMDG777DataManager : IDisposable
         SendEvent(guardEventName,  guardEventId,  null);
     }
 
-    /// <summary>
-    /// Guarded set: open guard → set switch to absolute target position → close guard.
-    /// Required for multi-position selectors behind a guard (e.g. Emergency Lights),
-    /// where a plain toggle click only advances one detent and cannot reach a
-    /// non-adjacent target.
-    /// </summary>
-    public async Task SendGuardedSet(
-        string guardEventName, uint guardEventId,
-        string switchEventName, uint switchEventId,
-        int targetPosition)
-    {
-        SendEvent(guardEventName,  guardEventId,  null);
-        await Task.Delay(150);
-        SendEvent(switchEventName, switchEventId, targetPosition);
-        await Task.Delay(150);
-        SendEvent(guardEventName,  guardEventId,  null);
-    }
-
     // ------------------------------------------------------------------
     // CDU screen reading
     // ------------------------------------------------------------------
