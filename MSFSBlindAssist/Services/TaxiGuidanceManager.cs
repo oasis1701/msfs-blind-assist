@@ -285,6 +285,13 @@ public class TaxiGuidanceManager : IDisposable
     private bool _rolloutEnd1500Announced;
     private bool _rolloutEnd500Announced;
     private bool _rolloutEnd100Announced;
+
+    // --- DIAGNOSTIC LOGGING (debug/landing-rollout-instrumentation branch) ---
+    // Captures rollout-phase state to landing_exit.log so we can see why
+    // UpdateLandingRollout silently fails to fire approach callouts at some
+    // airports. Removed after the root cause is identified.
+    private bool _rolloutDiagFirstCallDone;
+    private DateTime _rolloutDiagLastPeriodic = DateTime.MinValue;
     // Below this GS the aircraft is at taxi speed — graduate to normal taxi
     // guidance even if we haven't started the turn yet. 30 kt is a typical
     // taxi-fast cap (real-world SOPs cap straight-taxi at 30 kt; turns
@@ -804,7 +811,20 @@ public class TaxiGuidanceManager : IDisposable
     {
         lock (_stateLock)
         {
-            if (_route == null || _route.Segments.Count == 0) return;
+            // DIAGNOSTIC: capture entry state to landing_exit.log
+            RolloutDiag($"BeginLandingRollout entry: state={_state} " +
+                $"prior _rolloutNoExitMode={_rolloutNoExitMode} " +
+                $"_route={(_route == null ? "null" : $"segs={_route.Segments.Count}")} " +
+                $"exit.Lat={exit.Latitude:F6} exit.Lon={exit.Longitude:F6} " +
+                $"exit.TaxiwayName='{exit.TaxiwayName}' exit.NodeId={exit.NodeId} " +
+                $"runway.RunwayID='{runway.RunwayID}' runway.Length={runway.Length:F0} " +
+                $"runwayHeadingTrue={runwayHeadingTrue:F2} allExits.Count={allExits.Count}");
+
+            if (_route == null || _route.Segments.Count == 0)
+            {
+                RolloutDiag("BeginLandingRollout EARLY-RETURN: _route null or empty");
+                return;
+            }
 
             _rolloutExit = exit;
             _rolloutRunwayHeadingTrue = runwayHeadingTrue;
@@ -813,6 +833,19 @@ public class TaxiGuidanceManager : IDisposable
             _rolloutApproach1500Announced = false;
             _rolloutApproach500Announced = false;
             _rolloutTurnNowAnnounced = false;
+            // Defense in depth: clear no-exit/runway-end state from any prior
+            // rollout. StopGuidance does this; matching the pattern here
+            // ensures we never inherit stale flags when starting a fresh
+            // landing-exit flow. Currently no known path leaks these to the
+            // next BeginLandingRollout (StopGuidance fires on takeoff via
+            // OnTakeoffAssistActiveChanged), but defensive is cheap.
+            _rolloutNoExitMode = false;
+            _rolloutEnd1500Announced = false;
+            _rolloutEnd500Announced = false;
+            _rolloutEnd100Announced = false;
+            // DIAGNOSTIC: reset per-rollout instrumentation gates
+            _rolloutDiagFirstCallDone = false;
+            _rolloutDiagLastPeriodic = DateTime.MinValue;
 
             // Pause the tone — UpdateLandingRollout's per-frame logic
             // explicitly leaves it paused. When we transition to Taxiing it
@@ -821,6 +854,9 @@ public class TaxiGuidanceManager : IDisposable
             _steeringTone.Pause();
 
             SetState(TaxiGuidanceState.LandingRollout);
+
+            RolloutDiag($"BeginLandingRollout DONE: state -> LandingRollout, " +
+                $"tone paused, touchdown callout queued");
 
             // Touchdown callout. Distance-from-touchdown is what the user
             // cares about (not from-threshold) — the pilot needs to know
@@ -2103,6 +2139,19 @@ public class TaxiGuidanceManager : IDisposable
     /// </summary>
     private void UpdateLandingRollout(double lat, double lon, double headingTrue, double groundSpeedKts)
     {
+        // DIAGNOSTIC: first-call snapshot per rollout
+        if (!_rolloutDiagFirstCallDone)
+        {
+            _rolloutDiagFirstCallDone = true;
+            RolloutDiag($"UpdateLandingRollout FIRST: state={_state} " +
+                $"_rolloutNoExitMode={_rolloutNoExitMode} " +
+                $"_rolloutExit={(_rolloutExit == null ? "null" : $"lat={_rolloutExit.Latitude:F6} lon={_rolloutExit.Longitude:F6} name='{_rolloutExit.TaxiwayName}'")} " +
+                $"_rolloutRunway={(_rolloutRunway == null ? "null" : $"id='{_rolloutRunway.RunwayID}' len={_rolloutRunway.Length:F0}")} " +
+                $"_rolloutRunwayHeadingTrue={_rolloutRunwayHeadingTrue:F2} " +
+                $"_rolloutAllExits.Count={_rolloutAllExits.Count} " +
+                $"acft.lat={lat:F6} acft.lon={lon:F6} hdg={headingTrue:F2} gs={groundSpeedKts:F1}");
+        }
+
         if (_rolloutNoExitMode)
         {
             UpdateRunwayEndCountdown(lat, lon, headingTrue, groundSpeedKts);
@@ -2111,6 +2160,7 @@ public class TaxiGuidanceManager : IDisposable
 
         if (_rolloutExit == null)
         {
+            RolloutDiag("UpdateLandingRollout: _rolloutExit NULL, switching to Taxiing");
             // Defensive — should never happen because BeginLandingRollout
             // populates this. If it does, fall back to normal Taxiing.
             SetState(TaxiGuidanceState.Taxiing);
@@ -2143,6 +2193,22 @@ public class TaxiGuidanceManager : IDisposable
         bool nearExit = distToExitFeet < ROLLOUT_NEAR_EXIT_FT;
         bool pastExit = signedAlongPastFt > 0.0;
         bool turnBegun = hdgDeltaAbs >= ROLLOUT_TURN_BEGAN_HDG_DEG;
+
+        // DIAGNOSTIC: periodic snapshot (every ~3s) of rollout state.
+        // Captures the moment the per-frame loop is or isn't seeing the
+        // distance threshold approach.
+        if ((DateTime.Now - _rolloutDiagLastPeriodic).TotalSeconds >= 3.0)
+        {
+            _rolloutDiagLastPeriodic = DateTime.Now;
+            RolloutDiag($"UpdateLandingRollout periodic: " +
+                $"distToExit={distToExitFeet:F0}ft signedAlongPast={signedAlongPastFt:F0}ft " +
+                $"hdgDelta={hdgDeltaAbs:F1}deg gs={groundSpeedKts:F1}kt " +
+                $"atTaxiSpeed={atTaxiSpeed} nearExit={nearExit} pastExit={pastExit} turnBegun={turnBegun} " +
+                $"approach1500Done={_rolloutApproach1500Announced} " +
+                $"approach500Done={_rolloutApproach500Announced} " +
+                $"turnNowDone={_rolloutTurnNowAnnounced}");
+        }
+
         // Transition to Taxiing once EITHER (a) the pilot has actually begun
         // the turn off the runway, OR (b) the pilot has decelerated to taxi
         // speed AND is within ROLLOUT_NEAR_EXIT_FT of the chosen exit AND
@@ -2155,6 +2221,8 @@ public class TaxiGuidanceManager : IDisposable
         // handles any case where the aircraft IS past the exit.
         if (turnBegun || (atTaxiSpeed && nearExit && !pastExit))
         {
+            RolloutDiag($"UpdateLandingRollout HANDOFF -> Taxiing: " +
+                $"turnBegun={turnBegun} atTaxiSpeed={atTaxiSpeed} nearExit={nearExit} pastExit={pastExit}");
             SetState(TaxiGuidanceState.Taxiing);
             _steeringTone.Resume();
             // The next UpdatePosition tick will re-enter via the Taxiing
@@ -2172,6 +2240,8 @@ public class TaxiGuidanceManager : IDisposable
         // was the original bug this work fixes).
         if (signedAlongPastFt >= ROLLOUT_OVERSHOOT_FT && hdgDeltaAbs < ROLLOUT_TURN_BEGAN_HDG_DEG)
         {
+            RolloutDiag($"OVERSHOOT detected: signedAlongPast={signedAlongPastFt:F0}ft hdgDelta={hdgDeltaAbs:F1}deg");
+
             // Sorted list — first exit further downfield than the current one
             // (with ROLLOUT_OVERSHOOT_FT sentinel to skip the current one and
             // any near-duplicates) is the next exit.
@@ -2187,9 +2257,12 @@ public class TaxiGuidanceManager : IDisposable
 
             if (nextExit != null)
             {
+                RolloutDiag($"OVERSHOOT retarget to next exit: name='{nextExit.TaxiwayName}' distFromThr={nextExit.DistanceFromThresholdFeet:F0}ft");
                 RetargetLandingExit(nextExit, lat, lon, headingTrue);
                 return;
             }
+
+            RolloutDiag("OVERSHOOT no downfield exit -> EnterRunwayEndCountdown");
 
             // No downfield exit. Announce, clear the route so the off-route
             // recalc has nothing to chase, fall through to idle Taxiing.
@@ -2217,12 +2290,14 @@ public class TaxiGuidanceManager : IDisposable
 
         if (!_rolloutApproach1500Announced && distToExitFeet <= 1500.0 && distToExitFeet > 500.0)
         {
+            RolloutDiag($"1500-ft approach callout firing: distToExit={distToExitFeet:F0}ft");
             AnnounceInstruction($"Approaching {exitClass} {name}, 1500 feet.");
             _rolloutApproach1500Announced = true;
         }
 
         if (!_rolloutApproach500Announced && distToExitFeet <= 500.0 && distToExitFeet > 150.0)
         {
+            RolloutDiag($"500-ft approach callout firing: distToExit={distToExitFeet:F0}ft gs={groundSpeedKts:F1}");
             string slowSuffix = groundSpeedKts > ROLLOUT_TAXI_GS_KTS ? " Slow down." : "";
             AnnounceInstruction($"{CapFirst(name)}, 500 feet.{slowSuffix}");
             _rolloutApproach500Announced = true;
@@ -2230,6 +2305,7 @@ public class TaxiGuidanceManager : IDisposable
 
         if (!_rolloutTurnNowAnnounced && distToExitFeet <= 150.0)
         {
+            RolloutDiag($"Turn-now callout firing: distToExit={distToExitFeet:F0}ft");
             // Direction = bearing-from-aircraft-to-exit minus aircraft heading.
             // Sign tells us turn left vs right; magnitude is unused here.
             double bearingToExit = NavigationCalculator.CalculateBearing(
@@ -3199,8 +3275,30 @@ public class TaxiGuidanceManager : IDisposable
     private void SetState(TaxiGuidanceState newState)
     {
         if (_state == newState) return;
+        var prev = _state;
         _state = newState;
+        // DIAGNOSTIC: state transitions during landing-exit / rollout flow.
+        RolloutDiag($"SetState: {prev} -> {newState}");
         StateChanged?.Invoke(this, newState);
+    }
+
+    // --- DIAGNOSTIC LOGGING HELPER (debug/landing-rollout-instrumentation branch) ---
+    // Writes to landing_exit.log alongside LandingExitPlanner.DiagLog so the
+    // rollout-phase per-frame loop is interleaved with the planner's touchdown
+    // events. Cheap (one File.AppendAllText per ~few seconds during rollout);
+    // entirely removed once we've identified the root cause of the RJAA bug.
+    private static readonly string _rolloutDiagPath = System.IO.Path.Combine(
+        System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData),
+        "MSFSBlindAssist", "landing_exit.log");
+
+    private static void RolloutDiag(string msg)
+    {
+        try
+        {
+            System.IO.File.AppendAllText(_rolloutDiagPath,
+                $"[{System.DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [TGM] {msg}{System.Environment.NewLine}");
+        }
+        catch { /* never fail on diag */ }
     }
 
     private static string CapFirst(string s)
