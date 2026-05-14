@@ -5358,31 +5358,13 @@ public class PMDG777Definition : BaseAircraftDefinition
         }
 
         // ------------------------------------------------------------------
-        // 1. Guarded switches — require guard open → click switch → guard close.
-        //    For 3+ position selectors (e.g. Emergency Lights Off/Armed/On) the
-        //    plain toggle click only advances one detent and cannot reach a
-        //    non-adjacent target, so we send the absolute target position via
-        //    SendPMDGGuardedSet instead.
+        // 1. Guarded switches — require guard open → toggle → guard close
         // ------------------------------------------------------------------
         if (_guardedMap.TryGetValue(varKey, out var guardPair))
         {
             if (EventIds.TryGetValue(guardPair.Guard, out int gId) &&
                 EventIds.TryGetValue(guardPair.Switch, out int sId))
             {
-                if (varDef.ValueDescriptions.Count >= 3)
-                {
-                    int target = (int)value;
-                    var dm = simConnect.PMDG777DataManager;
-                    if (dm != null && (int)dm.GetFieldValue(varDef.Name) == target)
-                    {
-                        return true;
-                    }
-                    _ = simConnect.SendPMDGGuardedSet(
-                        guardPair.Guard,  (uint)gId,
-                        guardPair.Switch, (uint)sId,
-                        target);
-                    return true;
-                }
                 _ = simConnect.SendPMDGGuardedToggle(
                     guardPair.Guard,  (uint)gId,
                     guardPair.Switch, (uint)sId);
