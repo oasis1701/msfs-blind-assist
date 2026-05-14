@@ -11,6 +11,8 @@ namespace MSFSBlindAssist
         private System.Windows.Forms.ToolStripMenuItem simbriefSettingsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem geminiSettingsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem handFlyOptionsMenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem taxiGuidanceOptionsMenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem fmcSettingsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem hotkeyListMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem suspendHotkeysMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem updateApplicationMenuItem = null!;
@@ -43,6 +45,8 @@ namespace MSFSBlindAssist
             this.simbriefSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.geminiSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.handFlyOptionsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.taxiGuidanceOptionsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.fmcSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.hotkeyListMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.suspendHotkeysMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.updateApplicationMenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -81,6 +85,8 @@ namespace MSFSBlindAssist
             this.simbriefSettingsMenuItem,
             this.geminiSettingsMenuItem,
             this.handFlyOptionsMenuItem,
+            this.taxiGuidanceOptionsMenuItem,
+            this.fmcSettingsMenuItem,
             this.hotkeyListMenuItem,
             this.suspendHotkeysMenuItem,
             this.updateApplicationMenuItem,
@@ -142,6 +148,29 @@ namespace MSFSBlindAssist
             this.handFlyOptionsMenuItem.Size = new System.Drawing.Size(280, 26);
             this.handFlyOptionsMenuItem.Text = "&Hand Fly Options";
             this.handFlyOptionsMenuItem.Click += new System.EventHandler(this.HandFlyOptionsMenuItem_Click);
+            //
+            // taxiGuidanceOptionsMenuItem
+            //
+            this.taxiGuidanceOptionsMenuItem.AccessibleName = "Taxi Guidance Options";
+            this.taxiGuidanceOptionsMenuItem.AccessibleDescription = "Configure taxi guidance steering tone settings";
+            this.taxiGuidanceOptionsMenuItem.Name = "taxiGuidanceOptionsMenuItem";
+            this.taxiGuidanceOptionsMenuItem.Size = new System.Drawing.Size(280, 26);
+            this.taxiGuidanceOptionsMenuItem.Text = "&Taxi Guidance Options";
+            this.taxiGuidanceOptionsMenuItem.Click += new System.EventHandler(this.TaxiGuidanceOptionsMenuItem_Click);
+            //
+            // fmcSettingsMenuItem
+            //
+            // Shown when AircraftCode starts with "PMDG_" or "FENIX_". Visibility
+            // is toggled in MainForm.UpdateAircraftSpecificMenuItems() each time
+            // the loaded aircraft changes; the item is invisible (and so
+            // unreachable by the screen reader) when another aircraft is loaded.
+            this.fmcSettingsMenuItem.AccessibleName = "FMC Settings";
+            this.fmcSettingsMenuItem.AccessibleDescription = "FMC settings: alternate line select keys (PMDG and Fenix) and enhanced distance announcements (PMDG only)";
+            this.fmcSettingsMenuItem.Name = "fmcSettingsMenuItem";
+            this.fmcSettingsMenuItem.Size = new System.Drawing.Size(280, 26);
+            this.fmcSettingsMenuItem.Text = "F&MC Settings";
+            this.fmcSettingsMenuItem.Visible = false;
+            this.fmcSettingsMenuItem.Click += new System.EventHandler(this.FMCSettingsMenuItem_Click);
             //
             // hotkeyListMenuItem
             //

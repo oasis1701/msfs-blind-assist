@@ -29,6 +29,8 @@ public partial class MainForm : Form
     private IAirportDataProvider? airportDataProvider;
     private ChecklistForm? checklistForm;
     private FenixMonitorManagerForm? fenixMonitorManagerForm;
+    private PMDGAnnouncementMonitorForm? pmdgAnnouncementMonitorForm;
+    private MSFSBlindAssist.Services.PMDGProgPageMonitor? pmdgProgPageMonitor;
     private FenixMCDUForm? fenixMCDUForm;
     private FenixMCDUService? fenixMCDUService;
     private PMDG777CDUForm? pmdg777CDUForm;
@@ -41,9 +43,32 @@ public partial class MainForm : Form
     private TrackFixForm? trackFixForm;
     private TcasForm? tcasForm;
     private MSFSBlindAssist.Services.TcasService? tcasService;
+    // Background monitor that announces ActiveSky weather updates as they
+    // come in. Runs unconditionally — it self-skips when AS isn't detected
+    // (silent fallback), so users without AS see/hear no change.
+    private MSFSBlindAssist.Services.ActiveSkyWeatherMonitor? activeSkyWeatherMonitor;
     private Forms.WeatherRadarForm? weatherRadarForm;
     private MSFSBlindAssist.Navigation.FlightPlanManager flightPlanManager = null!;
     private MSFSBlindAssist.Navigation.WaypointTracker waypointTracker = null!;
+    private TaxiGuidanceManager taxiGuidanceManager = null!;
+    private TaxiAssistForm? taxiAssistForm;
+    private LandingExitPlanner landingExitPlanner = null!;
+
+    // Latest SIM_ON_GROUND sample. Cached unconditionally from the SIM_ON_GROUND
+    // event so any feature that needs to know "on ground vs airborne" right now
+    // can read it without making a fresh SimConnect request. Defaults to true
+    // (assume on ground) so a query before the first sample doesn't claim the
+    // aircraft is in flight at startup. Used by AnnounceWhereAmI to gate the
+    // ground-only Where-Am-I lookup so it doesn't report a phantom "Taxiway B"
+    // while cruising over the airport.
+    private bool _lastOnGround = true;
+    private LandingExitForm? landingExitForm;
+
+    // DIAGNOSTIC (debug/landing-rollout-instrumentation): one-shot flag for
+    // logging the first TAXI_GUIDANCE_POSITION event we receive while taxi
+    // guidance is in LandingRollout state. Reset on every transition out of
+    // LandingRollout so a subsequent landing gets fresh instrumentation.
+    private bool _diagLoggedFirstRolloutPos;
 
     // Event batching infrastructure for high-volume variable updates
     // Producer-consumer pattern: SimConnect thread produces → UI timer consumes
@@ -114,6 +139,15 @@ public partial class MainForm : Form
         // Set window title
         this.Text = "MSFS Blind Assist";
 
+        // Initial menu visibility for aircraft-conditional items (e.g., the
+        // PMDG-only FMC Settings entry). Subsequent aircraft swaps re-call
+        // UpdateAircraftSpecificMenuItems via SwitchAircraft.
+        UpdateAircraftSpecificMenuItems();
+
+        // Start the PROG-page monitor if the current aircraft is PMDG and
+        // Enhanced distance mode is on. No-op for other configurations.
+        EnsurePMDGProgPageMonitor();
+
         // Populate sections dynamically from aircraft definition
         foreach (var section in currentAircraft.GetPanelStructure().Keys)
         {
@@ -176,6 +210,24 @@ public partial class MainForm : Form
         visualGuidanceManager = new VisualGuidanceManager(announcer);
         visualGuidanceManager.VisualGuidanceActiveChanged += OnVisualGuidanceActiveChanged;
 
+        // Initialize taxi guidance manager
+        taxiGuidanceManager = new TaxiGuidanceManager(announcer);
+
+        // Subscribe to taxi guidance state changes ONCE, here at construction time.
+        // This wires SimConnect taxi-position monitoring on/off (see
+        // OnTaxiGuidanceStateChanged). Previously the subscription only happened
+        // inside OpenTaxiForm, which meant the Landing Exit Planner flow
+        // (Shift+X → auto-activate on touchdown) had a silent state machine: the
+        // route loaded, the state advanced, but no SimConnect position feed
+        // ever started. Subscribing here ensures every entry point — manual
+        // taxi form, landing-exit auto-activation, future entry points — gets
+        // monitoring wired up automatically.
+        taxiGuidanceManager.StateChanged += OnTaxiGuidanceStateChanged;
+
+        // Landing exit planner — watches for touchdown and auto-activates taxi guidance
+        // to the pre-selected exit taxiway. Opens via MainForm menu / hotkey.
+        landingExitPlanner = new LandingExitPlanner(announcer, taxiGuidanceManager);
+
         // Initialize airport database provider (optional - can be null if database not built yet)
         airportDataProvider = DatabaseSelector.SelectProvider();
 
@@ -189,6 +241,15 @@ public partial class MainForm : Form
 
         // Initialize TCAS service (polls for AI/multiplayer traffic via SimConnect)
         tcasService = new MSFSBlindAssist.Services.TcasService(simConnectManager);
+
+        // ActiveSky weather-update announcer. Started unconditionally — when
+        // AS isn't running each poll is just a ~1.2 s parallel-probe timeout
+        // and nothing is announced. When AS IS running and pushes new
+        // weather, the user hears "Weather update. Surface wind X at Y …"
+        // within ~1 minute. Silent for non-AS users.
+        activeSkyWeatherMonitor = new MSFSBlindAssist.Services.ActiveSkyWeatherMonitor(
+            new MSFSBlindAssist.Services.ActiveSkyClient(), announcer);
+        activeSkyWeatherMonitor.Start();
 
         // Initialize event batching timer for high-volume variable updates
         // Timer runs on UI thread, draining the event queue in controlled batches
@@ -269,6 +330,17 @@ public partial class MainForm : Form
                 {
                     simConnectManager.PMDG777DataManager.VariableChanged += OnPMDGVariableChanged;
                 }
+                // Dispose any existing PROG monitor — it holds a reference
+                // to the previous data-manager instance (which is now
+                // disposed if this is a reconnect, or never existed if
+                // this is the first connect). EnsurePMDGProgPageMonitor
+                // will recreate against the fresh data manager.
+                if (pmdgProgPageMonitor != null)
+                {
+                    pmdgProgPageMonitor.Dispose();
+                    pmdgProgPageMonitor = null;
+                }
+                EnsurePMDGProgPageMonitor();
             }
 
             // Automatically switch database if simulator version doesn't match
@@ -378,7 +450,10 @@ public partial class MainForm : Form
             {
                 this.Text = $"MSFS BA - {currentAircraft.CurrentFlightPhase} phase active";
             }
-            return; // Aircraft handled it completely, no further processing needed
+            // Check StateVariable reverse lookup only (don't call full UpdateControlFromSimVar
+            // which can interfere with aircraft-specific processing)
+            UpdateButtonStateFromStateVariable(e.VarName, e.Value);
+            return; // Aircraft handled it completely, no further generic processing needed
         }
 
         // Step 3: Update display values (if this variable is used in any panel display)
@@ -426,6 +501,16 @@ public partial class MainForm : Form
                 // Check if disabled in Fenix Monitor Manager
                 if (currentAircraft.AircraftCode == "FENIX_A320CEO" &&
                     Settings.SettingsManager.Current.FenixDisabledMonitorVariables.Contains(e.VarName))
+                {
+                    return; // Skip announcement for disabled variable
+                }
+
+                // Check if disabled in PMDG Announcement Monitor. AircraftCode
+                // for PMDG aircraft starts with "PMDG_" (e.g. "PMDG_777") so
+                // a single prefix check covers any future PMDG additions
+                // sharing the same disabled-variables list.
+                if (currentAircraft.AircraftCode.StartsWith("PMDG_", StringComparison.Ordinal) &&
+                    Settings.SettingsManager.Current.PMDGDisabledMonitorVariables.Contains(e.VarName))
                 {
                     return; // Skip announcement for disabled variable
                 }
@@ -498,6 +583,27 @@ public partial class MainForm : Form
             if (e.PositionData.HasValue)
             {
                 var pos = e.PositionData.Value;
+
+                // If taxi guidance has an active runway lineup reference AND takeoff assist
+                // doesn't already have a reference, seed it from taxi guidance. This is the
+                // common case: pilot taxied to the runway via taxi guidance, then pressed
+                // takeoff assist. Without this they'd get "no runway selected" despite
+                // literally being lined up on the runway.
+                if (!takeoffAssistManager.IsActive && !takeoffAssistManager.HasRunwayReference)
+                {
+                    if (taxiGuidanceManager.TryGetRunwayLineupReference(
+                        out double rwyLat, out double rwyLon,
+                        out double rwyHdgTrue, out double rwyHdgMag,
+                        out string rwyId, out string rwyIcao))
+                    {
+                        if (!string.IsNullOrEmpty(rwyId))
+                        {
+                            takeoffAssistManager.SetRunwayReference(
+                                rwyLat, rwyLon, rwyHdgTrue, rwyHdgMag, rwyId, rwyIcao);
+                        }
+                    }
+                }
+
                 takeoffAssistManager.Toggle(pos.Latitude, pos.Longitude, pos.HeadingMagnetic, pos.MagneticVariation);
             }
             return true;
@@ -523,6 +629,107 @@ public partial class MainForm : Form
         if (e.VarName == "TAKEOFF_ASSIST_IAS" && takeoffAssistManager.IsActive)
         {
             takeoffAssistManager.ProcessSpeedUpdate(e.Value);
+        }
+
+        // Handle taxi guidance position updates (active during Taxiing, LiningUp,
+        // AND LandingRollout phases). LandingRollout is critical: BeginLandingRollout
+        // sets state=LandingRollout and UpdateLandingRollout's per-frame logic (auto-
+        // transition to Taxiing on slowdown, distance-based callouts) only runs if
+        // UpdatePosition is fed every frame. Without LandingRollout in this gate, the
+        // touchdown announcement fires once and then the state-machine is silent
+        // until StopGuidance.
+        if (e.VarName == "TAXI_GUIDANCE_POSITION" &&
+            (taxiGuidanceManager.State == TaxiGuidanceState.Taxiing ||
+             taxiGuidanceManager.State == TaxiGuidanceState.LiningUp ||
+             taxiGuidanceManager.State == TaxiGuidanceState.LandingRollout))
+        {
+            if (e.PositionData.HasValue)
+            {
+                var pos = e.PositionData.Value;
+                // DIAGNOSTIC: log the first TAXI_GUIDANCE_POSITION event we
+                // dispatch while in LandingRollout, so we can tell whether the
+                // per-frame data is actually flowing during the rollout phase.
+                if (taxiGuidanceManager.State == TaxiGuidanceState.LandingRollout &&
+                    !_diagLoggedFirstRolloutPos)
+                {
+                    _diagLoggedFirstRolloutPos = true;
+                    try
+                    {
+                        string diagPath = System.IO.Path.Combine(
+                            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                            "MSFSBlindAssist", "landing_exit.log");
+                        System.IO.File.AppendAllText(diagPath,
+                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [MF] First TAXI_GUIDANCE_POSITION in LandingRollout: " +
+                            $"lat={pos.Latitude:F6} lon={pos.Longitude:F6} hdgMag={pos.HeadingMagnetic:F1} " +
+                            $"magVar={pos.MagneticVariation:F2} gs={pos.GroundSpeedKnots:F1}{Environment.NewLine}");
+                    }
+                    catch { }
+                }
+                taxiGuidanceManager.UpdatePosition(
+                    pos.Latitude, pos.Longitude,
+                    pos.HeadingMagnetic, pos.MagneticVariation,
+                    pos.GroundSpeedKnots);
+            }
+        }
+
+        // Cache SIM_ON_GROUND on every update, regardless of which features are
+        // currently active. AnnounceWhereAmI uses this to silence itself in
+        // flight (it's a ground-only feature — there's a separate location/city
+        // hotkey for airborne queries). The landing-exit planner forwarding is
+        // gated separately on HasPendingExit, but the cache must always run.
+        if (e.VarName == "SIM_ON_GROUND")
+        {
+            bool onGround = e.Value >= 0.5;
+            _lastOnGround = onGround;
+            // Mirror to SimConnectManager so other components (LandingExitForm,
+            // etc.) that have a SimConnectManager reference can read the latest
+            // air/ground state without a separate MainForm dependency.
+            simConnectManager.LastKnownOnGround = onGround;
+
+            // Feed SIM_ON_GROUND transitions to the landing-exit planner so it
+            // can detect touchdown and auto-activate taxi guidance to the
+            // pre-selected exit. ALWAYS request a fresh aircraft position at
+            // this moment — do NOT trust SimConnectManager.LastKnownPosition.
+            //
+            // Why: lastKnownPosition is only updated by VISUAL_GUIDANCE,
+            // TAXI_GUIDANCE, and TAKEOFF_ASSIST data paths. None of those
+            // fire during a hand-flown approach without visual guidance
+            // enabled. In that case the cached position is whatever the
+            // last active path left there — typically the departure-airport
+            // taxi-out at GS ~10 kts. Feeding that to ProcessGroundState
+            // fails the planner's GS≥40 kt "real landing" gate and the
+            // activation is silently skipped at touchdown. Always going
+            // through RequestAircraftPositionAsync costs one SimConnect
+            // roundtrip (~33 ms at 30 Hz) — negligible inside the rollout
+            // window — and guarantees fresh GS / lat / lon at the moment
+            // the planner needs them.
+            //
+            // _activatedThisLanding inside ActivateGuidance + a
+            // HasPendingExit recheck inside the callback together prevent
+            // double-fire if SIM_ON_GROUND bounces (oleo flicker on hard
+            // landings).
+            if (landingExitPlanner.HasPendingExit)
+            {
+                bool capturedOnGround = onGround;
+                simConnectManager.RequestAircraftPositionAsync(p =>
+                {
+                    if (!landingExitPlanner.HasPendingExit) return;
+                    double hdgTrue = p.HeadingMagnetic + p.MagneticVariation;
+                    landingExitPlanner.ProcessGroundState(
+                        capturedOnGround, p.GroundSpeedKnots, p.Latitude, p.Longitude, hdgTrue);
+                });
+            }
+        }
+
+        // Keep the open Taxi Assist form's cached position fresh so that
+        // when the user presses Calculate (especially during a mid-taxi
+        // route amendment), the route starts from the CURRENT position.
+        if (e.VarName == "TAXI_GUIDANCE_POSITION" &&
+            taxiAssistForm != null && !taxiAssistForm.IsDisposed && taxiAssistForm.Visible &&
+            e.PositionData.HasValue)
+        {
+            var pos = e.PositionData.Value;
+            taxiAssistForm.UpdateAircraftPosition(pos.Latitude, pos.Longitude, pos.HeadingMagnetic);
         }
 
         // Handle hand fly mode pitch updates
@@ -625,7 +832,8 @@ public partial class MainForm : Form
             e.VarName == "SPEED_GD" || e.VarName == "SPEED_S" || e.VarName == "SPEED_F" ||
             e.VarName == "SPEED_VFE" || e.VarName == "SPEED_VLS" || e.VarName == "SPEED_VS" ||
             e.VarName == "FUEL_QUANTITY" || e.VarName == "FUEL_QUANTITY_KG" || e.VarName == "GROSS_WEIGHT" || e.VarName == "GROSS_WEIGHT_KG" || e.VarName == "FLAP_POSITION" || e.VarName == "GEAR_POSITION" || e.VarName == "WAYPOINT_INFO" ||
-            e.VarName == "OUTSIDE_TEMP" || e.VarName == "SQUAWK_CODE")
+            e.VarName == "OUTSIDE_TEMP" || e.VarName == "SQUAWK_CODE" ||
+            e.VarName == "LOCAL_TIME_SECONDS" || e.VarName == "ZULU_TIME_SECONDS")
         {
             announcer.AnnounceImmediate(e.Description);
             return true;
@@ -719,11 +927,16 @@ public partial class MainForm : Form
             }
             else if (control is Button btn)
             {
-                // Update stateful button label from ValueDescriptions
+                // Update stateful button label from StateVariable or ValueDescriptions
                 if (currentAircraft.GetVariables().ContainsKey(varName))
                 {
                     var varDef = currentAircraft.GetVariables()[varName];
-                    if (varDef.ValueDescriptions != null && varDef.ValueDescriptions.TryGetValue(value, out string? stateText))
+                    if (!string.IsNullOrEmpty(varDef.StateVariable))
+                    {
+                        // This button uses a StateVariable — but this update is for the button's own variable,
+                        // not the state variable. Skip — the state variable update will handle the label.
+                    }
+                    else if (varDef.ValueDescriptions != null && varDef.ValueDescriptions.TryGetValue(value, out string? stateText))
                     {
                         string newLabel = $"{varDef.DisplayName}: {stateText}";
                         btn.Text = newLabel;
@@ -733,6 +946,31 @@ public partial class MainForm : Form
             }
 
             updatingFromSim = false;
+        }
+
+        // Also update any button labels whose StateVariable matches this variable
+        UpdateButtonStateFromStateVariable(varName, value);
+    }
+
+    /// <summary>
+    /// Updates button labels for any buttons whose StateVariable matches the given variable name.
+    /// Separated from UpdateControlFromSimVar so it can be called independently without
+    /// triggering control updates that could interfere with aircraft-specific processing.
+    /// </summary>
+    private void UpdateButtonStateFromStateVariable(string varName, double value)
+    {
+        foreach (var kvp in currentControls)
+        {
+            if (kvp.Value is Button stateBtn && currentAircraft.GetVariables().ContainsKey(kvp.Key))
+            {
+                var btnVarDef = currentAircraft.GetVariables()[kvp.Key];
+                if (btnVarDef.StateVariable == varName)
+                {
+                    string stateLabel = $"{btnVarDef.DisplayName}: {(value != 0 ? "On" : "Off")}";
+                    stateBtn.Text = stateLabel;
+                    stateBtn.AccessibleName = stateLabel;
+                }
+            }
         }
     }
 
@@ -984,7 +1222,8 @@ public partial class MainForm : Form
             HotkeyAction.ShowMETARReport,
             HotkeyAction.SimBriefBriefing,
             HotkeyAction.ShowElectronicFlightBag,
-            HotkeyAction.ShowFenixMCDU
+            HotkeyAction.ShowFenixMCDU,
+            HotkeyAction.TaxiStatus
         };
 
         // Guard clause: Block SimConnect-dependent actions if not fully connected
@@ -1170,6 +1409,35 @@ public partial class MainForm : Form
                 break;
             case HotkeyAction.DescribeScene:
                 DescribeSceneAsync();
+                break;
+            case HotkeyAction.TaxiAssistForm:
+                ShowTaxiAssistForm();
+                break;
+            case HotkeyAction.TaxiStatus:
+                // Y — rolling current status from live position (current taxiway, next turn,
+                // distance to destination). Recomputed on every press from the route + position.
+                announcer.AnnounceImmediate(taxiGuidanceManager.GetStatusAnnouncement());
+                break;
+            case HotkeyAction.TaxiRepeat:
+                // Ctrl+Y — replays the most recent actionable instruction (turn callout,
+                // hold-short, taxiway change, lineup, arrival, etc.) verbatim. Distinct from
+                // TaxiStatus: that recomputes a snapshot; this gives back exactly what the
+                // pilot just heard, useful when the announcement was clipped by another sound.
+                announcer.AnnounceImmediate(taxiGuidanceManager.RepeatLastInstruction());
+                break;
+            case HotkeyAction.TaxiContinue:
+                taxiGuidanceManager.ContinuePastHoldShort();
+                break;
+            case HotkeyAction.TaxiStop:
+                taxiGuidanceManager.StopGuidance();
+                simConnectManager.StopTaxiGuidanceMonitoring();
+                announcer.AnnounceImmediate("Taxi guidance stopped.");
+                break;
+            case HotkeyAction.TaxiWhereAmI:
+                AnnounceWhereAmI();
+                break;
+            case HotkeyAction.LandingExitPlanner:
+                ShowLandingExitForm();
                 break;
             // Note: FCU push/pull, autopilot toggles, FCU set value dialogs, and A32NX-specific hotkeys
             // are now handled by the aircraft definition via HandleHotkeyAction()
@@ -1470,6 +1738,66 @@ public partial class MainForm : Form
         fenixMonitorManagerForm.ShowForm();
     }
 
+    /// <summary>
+    /// Public accessor for the PROG-page monitor. PMDG777Definition's distance
+    /// handlers read its <see cref="PMDGProgPageMonitor.LastProgData"/> when
+    /// Enhanced distance mode is on. Returns null when the monitor isn't
+    /// running (non-PMDG aircraft or Enhanced mode off).
+    /// </summary>
+    public MSFSBlindAssist.Services.PMDGProgPageMonitor? GetPMDGProgPageMonitor() => pmdgProgPageMonitor;
+
+    /// <summary>
+    /// Starts or stops the PROG-page monitor to match current state. Called
+    /// at startup, on aircraft swap, and after the FMC Settings dialog
+    /// closes with OK. The monitor only runs when both conditions hold:
+    /// (a) a PMDG aircraft is loaded, (b) Enhanced distance mode is on.
+    /// </summary>
+    private void EnsurePMDGProgPageMonitor()
+    {
+        bool wantRunning = currentAircraft != null
+            && currentAircraft.AircraftCode.StartsWith("PMDG_", StringComparison.Ordinal)
+            && Settings.SettingsManager.Current.PMDGEnhancedDistanceMode;
+
+        if (wantRunning)
+        {
+            // Lazy-create on first need. Recreated whenever the
+            // PMDG777DataManager changes (e.g., after aircraft swap)
+            // because the monitor holds a reference to a specific
+            // data-manager instance.
+            var dm = simConnectManager?.PMDG777DataManager;
+            if (dm == null) return;
+            if (pmdgProgPageMonitor == null)
+            {
+                pmdgProgPageMonitor = new MSFSBlindAssist.Services.PMDGProgPageMonitor(dm);
+            }
+            if (!pmdgProgPageMonitor.IsRunning)
+            {
+                pmdgProgPageMonitor.Start();
+            }
+        }
+        else if (pmdgProgPageMonitor != null)
+        {
+            pmdgProgPageMonitor.Stop();
+        }
+    }
+
+    public void ShowPMDGAnnouncementMonitorDialog()
+    {
+        // Deactivate output hotkey mode before showing dialog
+        hotkeyManager.ExitOutputHotkeyMode();
+
+        // The form snapshots the variables dictionary at construction time,
+        // so we recreate it whenever the loaded aircraft might have changed.
+        // CleanupAircraftSpecificForms() disposes this on aircraft swap, so
+        // a stale instance from the previous aircraft never lingers.
+        if (pmdgAnnouncementMonitorForm == null || pmdgAnnouncementMonitorForm.IsDisposed)
+        {
+            pmdgAnnouncementMonitorForm = new PMDGAnnouncementMonitorForm(announcer, currentAircraft.GetVariables());
+        }
+
+        pmdgAnnouncementMonitorForm.ShowForm();
+    }
+
     private void ShowFenixMCDUDialog()
     {
         // Deactivate input hotkey mode before showing dialog
@@ -1723,6 +2051,202 @@ public partial class MainForm : Form
 
         // Show the form (reuses same instance to preserve flight plan data)
         electronicFlightBagForm.ShowForm();
+    }
+
+    /// <summary>
+    /// "Where Am I" — tells the pilot which taxiway/runway/gate they're currently on at
+    /// the nearest airport. Works whether or not taxi guidance is active. Format:
+    /// "Taxiway Bravo at KJFK." / "Gate A25 at KJFK." / "Runway 22L at KJFK."
+    /// </summary>
+    private void AnnounceWhereAmI()
+    {
+        if (airportDataProvider == null)
+        {
+            announcer.AnnounceImmediate("Airport database not available.");
+            return;
+        }
+
+        // Where Am I is GROUND-ONLY by design: it tells the pilot which gate /
+        // taxiway / runway they're sitting on. In flight there's a separate
+        // location/city hotkey for that — Where Am I would otherwise just pick
+        // the nearest taxiway 4000 ft below, which is misleading. Silence it
+        // when airborne. Default _lastOnGround = true means a startup-time
+        // query before any SIM_ON_GROUND sample still works on the ramp.
+        if (!_lastOnGround)
+        {
+            announcer.AnnounceImmediate("In flight.");
+            return;
+        }
+
+        simConnectManager.RequestAircraftPositionAsync(position =>
+        {
+            string announcement;
+            try
+            {
+                // GetNearbyAirportICAOs may return 3-char idents for small fields with
+                // no canonical ICAO (kept for the GateResolver TCAS-gate use case). The
+                // taxi-graph lookup needs canonical 4-char ICAOs, so filter here at the
+                // call site — do NOT add the filter to the SQL or it breaks GateResolver.
+                var nearby = airportDataProvider.GetNearbyAirportICAOs(position.Latitude, position.Longitude, 5.0)
+                    .Where(c => c != null && c.Length == 4)
+                    .ToList();
+                if (nearby == null || nearby.Count == 0)
+                {
+                    announcement = "No airport nearby.";
+                }
+                else
+                {
+                    announcement = taxiGuidanceManager.DescribeCurrentLocation(
+                        airportDataProvider,
+                        nearby[0],
+                        position.Latitude,
+                        position.Longitude);
+                }
+            }
+            catch (Exception ex)
+            {
+                announcement = $"Location lookup failed. {ex.Message}";
+            }
+
+            if (this.InvokeRequired)
+                this.Invoke(() => announcer.AnnounceImmediate(announcement));
+            else
+                announcer.AnnounceImmediate(announcement);
+        });
+    }
+
+    private void ShowTaxiAssistForm()
+    {
+        if (airportDataProvider == null)
+        {
+            announcer.AnnounceImmediate("Airport database not available. Configure database in settings.");
+            return;
+        }
+
+        // Ensure input and output hotkey modes are deactivated before showing dialog
+        hotkeyManager.ExitInputHotkeyMode();
+        hotkeyManager.ExitOutputHotkeyMode();
+
+        // Get current aircraft position
+        simConnectManager.RequestAircraftPositionAsync(position =>
+        {
+            if (this.InvokeRequired)
+            {
+                this.Invoke(() => OpenTaxiForm(position));
+            }
+            else
+            {
+                OpenTaxiForm(position);
+            }
+        });
+    }
+
+    private void OpenTaxiForm(SimConnectManager.AircraftPosition position)
+    {
+        if (taxiAssistForm == null || taxiAssistForm.IsDisposed)
+        {
+            taxiAssistForm = new TaxiAssistForm(
+                airportDataProvider!, announcer, taxiGuidanceManager, simConnectManager);
+        }
+
+        // Find nearest airport. Filter to 4-char canonical ICAO at the call site —
+        // GetNearbyAirportICAOs may return 3-char idents (used by GateResolver's
+        // TCAS lookup). The taxi-graph builder needs canonical ICAOs.
+        string nearestIcao = "";
+        var nearbyAirports = airportDataProvider!.GetNearbyAirportICAOs(position.Latitude, position.Longitude, 5.0)
+            .Where(c => c != null && c.Length == 4)
+            .ToList();
+        if (nearbyAirports.Count > 0)
+            nearestIcao = nearbyAirports[0];
+
+        taxiAssistForm.SetAircraftPosition(position.Latitude, position.Longitude, position.HeadingMagnetic, nearestIcao);
+
+        // (StateChanged is subscribed once in InitializeManagers. We deliberately do NOT
+        // re-subscribe here — re-subscribing on every form open would either double-fire
+        // the handler or, with the -=/+= pattern previously used here, hide the fact
+        // that other entry points like the Landing Exit Planner were never wired up.)
+
+        taxiAssistForm.Show();
+        taxiAssistForm.BringToFront();
+    }
+
+    /// <summary>
+    /// Opens the Landing Exit Planner form. Pre-fills the airport + runway from the
+    /// pilot's existing ILS destination selection (SimConnectManager.GetDestinationRunway)
+    /// so there's no duplicate UI for picking the destination — the pilot only picks the
+    /// exit taxiway here.
+    /// </summary>
+    private void ShowLandingExitForm()
+    {
+        if (airportDataProvider == null)
+        {
+            announcer.AnnounceImmediate("Airport database not available. Configure database in settings.");
+            return;
+        }
+
+        hotkeyManager.ExitInputHotkeyMode();
+        hotkeyManager.ExitOutputHotkeyMode();
+
+        // Reuse the existing ILS destination selection (already settable via the
+        // "select runway as destination" hotkey). If nothing is set, the form still
+        // opens empty so the pilot can type an ICAO + pick a runway manually.
+        string? presetIcao = null;
+        Database.Models.Runway? presetRunway = null;
+        if (simConnectManager.HasDestinationRunway())
+        {
+            presetRunway = simConnectManager.GetDestinationRunway();
+            var destAp = simConnectManager.GetDestinationAirport();
+            presetIcao = destAp?.ICAO;
+        }
+
+        // Always rebuild the form so the preset (ICAO + runway from the current
+        // ILS destination selection) is fresh. The preset is only consumed by
+        // the constructor/Load handler; reusing a prior instance would show
+        // stale values if the user changed ILS destination between opens.
+        if (landingExitForm != null && !landingExitForm.IsDisposed)
+        {
+            landingExitForm.Close();
+            landingExitForm.Dispose();
+        }
+
+        landingExitForm = new LandingExitForm(
+            airportDataProvider, announcer, landingExitPlanner, presetIcao, presetRunway,
+            simConnectManager);
+
+        landingExitForm.Show();
+        landingExitForm.BringToFront();
+        landingExitForm.Activate();
+    }
+
+    private void OnTaxiGuidanceStateChanged(object? sender, TaxiGuidanceState newState)
+    {
+        // DIAGNOSTIC: log state transitions to landing_exit.log so we can correlate
+        // them with the rollout-phase per-frame log entries.
+        try
+        {
+            string diagPath = System.IO.Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "MSFSBlindAssist", "landing_exit.log");
+            System.IO.File.AppendAllText(diagPath,
+                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [MF] OnTaxiGuidanceStateChanged newState={newState}{Environment.NewLine}");
+        }
+        catch { }
+
+        // DIAGNOSTIC: reset the first-rollout-pos one-shot whenever we ENTER
+        // LandingRollout so each rollout gets its own fresh log entry.
+        if (newState == TaxiGuidanceState.LandingRollout)
+            _diagLoggedFirstRolloutPos = false;
+
+        switch (newState)
+        {
+            case TaxiGuidanceState.Taxiing:
+                simConnectManager.StartTaxiGuidanceMonitoring();
+                break;
+            case TaxiGuidanceState.Arrived:
+            case TaxiGuidanceState.Inactive:
+                simConnectManager.StopTaxiGuidanceMonitoring();
+                break;
+        }
     }
 
     private void ShowTrackFixDialog()
@@ -2113,6 +2637,14 @@ public partial class MainForm : Form
     {
         if (isActive)
         {
+            // If taxi guidance is still running (e.g. pilot stayed in LiningUp state after
+            // reaching the runway), stop it now — otherwise both systems compete for the
+            // steering tone channel during takeoff roll and the pilot hears two tones.
+            if (taxiGuidanceManager.State != TaxiGuidanceState.Inactive)
+            {
+                taxiGuidanceManager.StopGuidance();
+            }
+
             // Start monitoring position, pitch, and IAS for takeoff assist
             simConnectManager.StartTakeoffAssistMonitoring();
 
@@ -2273,7 +2805,8 @@ public partial class MainForm : Form
             settings.WeatherAutoAnnounceEnabled,
             settings.SigmetProximityAlertsEnabled,
             settings.PirepProximityAlertsEnabled,
-            settings.SigmetProximityRangeNm))
+            settings.SigmetProximityRangeNm,
+            settings.AnnounceTimeWithSeconds))
         {
             if (settingsForm.ShowDialog(this) == DialogResult.OK)
             {
@@ -2290,6 +2823,9 @@ public partial class MainForm : Form
                 settings.SigmetProximityAlertsEnabled = settingsForm.SigmetProximityAlertsEnabled;
                 settings.PirepProximityAlertsEnabled = settingsForm.PirepProximityAlertsEnabled;
                 settings.SigmetProximityRangeNm = settingsForm.SigmetProximityRangeNm;
+
+                // Time-of-day format toggle (Output Z / Shift+Z).
+                settings.AnnounceTimeWithSeconds = settingsForm.AnnounceTimeWithSeconds;
 
                 MSFSBlindAssist.Settings.SettingsManager.Save();
 
@@ -2352,6 +2888,7 @@ public partial class MainForm : Form
             currentSettings.TakeoffAssistToneVolume,
             currentSettings.TakeoffAssistMuteCenterlineAnnouncements,
             currentSettings.TakeoffAssistInvertPanning,
+            currentSettings.TakeoffAssistHardPanTone,
             currentSettings.TakeoffAssistHeadingToneThreshold,
             currentSettings.TakeoffAssistLegacyMode,
             currentSettings.TakeoffAssistEnableCallouts))
@@ -2370,6 +2907,7 @@ public partial class MainForm : Form
                 currentSettings.TakeoffAssistToneVolume = settingsForm.TakeoffToneVolume;
                 currentSettings.TakeoffAssistMuteCenterlineAnnouncements = settingsForm.TakeoffAssistMuteCenterlineAnnouncements;
                 currentSettings.TakeoffAssistInvertPanning = settingsForm.TakeoffAssistInvertPanning;
+                currentSettings.TakeoffAssistHardPanTone = settingsForm.TakeoffAssistHardPanTone;
                 currentSettings.TakeoffAssistHeadingToneThreshold = settingsForm.TakeoffAssistHeadingToneThreshold;
                 currentSettings.TakeoffAssistLegacyMode = settingsForm.TakeoffAssistLegacyMode;
                 currentSettings.TakeoffAssistEnableCallouts = settingsForm.TakeoffAssistEnableCallouts;
@@ -2404,11 +2942,62 @@ public partial class MainForm : Form
         }
     }
 
+    private void TaxiGuidanceOptionsMenuItem_Click(object? sender, EventArgs e)
+    {
+        var currentSettings = SettingsManager.Current;
+        using (var settingsForm = new Forms.TaxiGuidanceOptionsForm(
+            currentSettings.TaxiGuidanceToneWaveform,
+            currentSettings.TaxiGuidanceToneVolume,
+            currentSettings.TaxiGuidanceInvertSteeringTone,
+            currentSettings.TaxiGuidanceHardPanTone,
+            currentSettings.TaxiGuidanceAnnounceCrossings,
+            currentSettings.TaxiGuidanceGroundSpeedAnnounceInterval))
+        {
+            if (settingsForm.ShowDialog(this) == DialogResult.OK)
+            {
+                currentSettings.TaxiGuidanceToneWaveform = settingsForm.SelectedToneWaveform;
+                currentSettings.TaxiGuidanceToneVolume = settingsForm.SelectedVolume;
+                currentSettings.TaxiGuidanceInvertSteeringTone = settingsForm.InvertSteeringTone;
+                currentSettings.TaxiGuidanceHardPanTone = settingsForm.HardPanSteeringTone;
+                currentSettings.TaxiGuidanceAnnounceCrossings = settingsForm.AnnounceCrossings;
+                currentSettings.TaxiGuidanceGroundSpeedAnnounceInterval = settingsForm.GroundSpeedAnnounceInterval;
+                SettingsManager.Save();
+
+                statusLabel.Text = "Taxi guidance options saved successfully";
+                announcer.Announce("Taxi guidance options saved successfully");
+            }
+        }
+    }
+
     private void HotkeyListMenuItem_Click(object? sender, EventArgs e)
     {
         using (var hotkeyListForm = new HotkeyListForm(currentAircraft.AircraftCode))
         {
             hotkeyListForm.ShowDialog(this);
+        }
+    }
+
+    private void FMCSettingsMenuItem_Click(object? sender, EventArgs e)
+    {
+        var s = SettingsManager.Current;
+        using (var settingsForm = new Forms.FMCSettingsForm(
+            s.MCDUUseAlternateLSKKeys,
+            s.PMDGEnhancedDistanceMode))
+        {
+            if (settingsForm.ShowDialog(this) == DialogResult.OK)
+            {
+                s.MCDUUseAlternateLSKKeys = settingsForm.UseAlternateLSKKeys;
+                s.PMDGEnhancedDistanceMode = settingsForm.EnhancedDistanceMode;
+                SettingsManager.Save();
+
+                // Toggle the PROG-page monitor in/out of running state to
+                // match the new Enhanced-distance setting. Effect is
+                // immediate — no app restart needed.
+                EnsurePMDGProgPageMonitor();
+
+                statusLabel.Text = "FMC settings saved";
+                announcer.Announce("FMC settings saved");
+            }
         }
     }
 
@@ -2451,6 +3040,21 @@ public partial class MainForm : Form
     {
         // Update the aircraft instance
         currentAircraft = newAircraft;
+
+        // Refresh aircraft-conditional menu items (FMC Settings is PMDG-only).
+        UpdateAircraftSpecificMenuItems();
+
+        // Dispose the old PROG-page monitor — it references the previous
+        // aircraft's data manager. Recreation happens later, AFTER
+        // InitializePMDG777() has produced a fresh data manager for the new
+        // aircraft (see EnsurePMDGProgPageMonitor call near the end of this
+        // method). Calling EnsurePMDGProgPageMonitor here would no-op for a
+        // PMDG-to-PMDG swap because the new data manager doesn't yet exist.
+        if (pmdgProgPageMonitor != null)
+        {
+            pmdgProgPageMonitor.Dispose();
+            pmdgProgPageMonitor = null;
+        }
 
         // Invalidate PMDG field map so it rebuilds for the new aircraft
         _pmdgFieldToKeyMap = null;
@@ -2507,6 +3111,15 @@ public partial class MainForm : Form
             fenixMonitorManagerForm = null;
         }
 
+        // Same for PMDGAnnouncementMonitorForm — its variable list is
+        // snapshotted at construction time, so a stale instance would show
+        // the previous aircraft's variables after a swap.
+        if (pmdgAnnouncementMonitorForm != null && !pmdgAnnouncementMonitorForm.IsDisposed)
+        {
+            pmdgAnnouncementMonitorForm.Dispose();
+            pmdgAnnouncementMonitorForm = null;
+        }
+
         // Dispose Fenix MCDU form and service when switching aircraft
         if (fenixMCDUForm != null && !fenixMCDUForm.IsDisposed)
         {
@@ -2552,6 +3165,13 @@ public partial class MainForm : Form
             simConnectManager.DisposePMDG777();
         }
 
+        // Start the PROG-page monitor now that the new aircraft's data
+        // manager exists (or stop it cleanly if we just left PMDG). This
+        // must happen AFTER InitializePMDG777 so EnsurePMDGProgPageMonitor
+        // can see the freshly-created data manager — calling it before the
+        // init would silently no-op (see comment above the dispose block).
+        EnsurePMDGProgPageMonitor();
+
         // EFB bridge: mod package check and server start
         if (newAircraft.AircraftCode == "PMDG_777")
         {
@@ -2584,10 +3204,21 @@ public partial class MainForm : Form
         UpdateAircraftSpecificMenuItems();
     }
 
+    /// <summary>
+    /// Toggles visibility of menu items that are only meaningful for specific
+    /// aircraft. Called whenever the loaded aircraft changes (and at initial
+    /// MainForm_Load). Gates the FMC Settings item — it's hidden for any
+    /// aircraft that doesn't have an MCDU/CDU the dialog applies to (PMDG
+    /// or Fenix), so the screen reader doesn't surface a settings option
+    /// the user can't act on.
+    /// </summary>
     private void UpdateAircraftSpecificMenuItems()
     {
-        // Reserved for future menu-based aircraft-specific window launching
-        // Currently all display windows are launched via hotkeys handled by aircraft definitions
+        bool isPmdg = currentAircraft != null &&
+                      currentAircraft.AircraftCode.StartsWith("PMDG_", StringComparison.Ordinal);
+        bool isFenix = currentAircraft != null &&
+                       currentAircraft.AircraftCode.StartsWith("FENIX_", StringComparison.Ordinal);
+        fmcSettingsMenuItem.Visible = isPmdg || isFenix;
     }
 
     /// <summary>
@@ -3009,6 +3640,20 @@ public partial class MainForm : Form
             if (simConnectManager != null && simConnectManager.IsConnected)
             {
                 simConnectManager.RequestPanelVariables(panelToLoad, $"{panelToLoad} panel opened");
+
+                // Also request StateVariable LVars for buttons in this panel
+                var panelControls = currentAircraft.GetPanelControls();
+                var variables = currentAircraft.GetVariables();
+                if (panelControls.ContainsKey(panelToLoad))
+                {
+                    foreach (string varKey in panelControls[panelToLoad])
+                    {
+                        if (variables.ContainsKey(varKey) && !string.IsNullOrEmpty(variables[varKey].StateVariable))
+                        {
+                            simConnectManager.RequestVariable(variables[varKey].StateVariable);
+                        }
+                    }
+                }
             }
 
             // Clear and reload controls
@@ -3051,11 +3696,16 @@ public partial class MainForm : Form
             if (varDef.RenderAsButton)
             {
                 // Render as button (momentary pushbutton, action button, etc.)
-                // If ValueDescriptions are present, show current state in the label
-                bool hasState = varDef.ValueDescriptions != null && varDef.ValueDescriptions.Count >= 2;
+                // If StateVariable is set, show on/off state from the indicator LVar
                 string buttonText = varDef.DisplayName;
-                if (hasState && currentSimVarValues.ContainsKey(varKey))
+                if (!string.IsNullOrEmpty(varDef.StateVariable) && currentSimVarValues.ContainsKey(varDef.StateVariable))
                 {
+                    double stateVal = currentSimVarValues[varDef.StateVariable];
+                    buttonText = $"{varDef.DisplayName}: {(stateVal != 0 ? "On" : "Off")}";
+                }
+                else if (varDef.ValueDescriptions != null && varDef.ValueDescriptions.Count >= 2 && currentSimVarValues.ContainsKey(varKey))
+                {
+                    // Fallback for non-Fenix buttons that still use ValueDescriptions
                     double val = currentSimVarValues[varKey];
                     if (varDef.ValueDescriptions.TryGetValue(val, out string? stateText))
                         buttonText = $"{varDef.DisplayName}: {stateText}";
@@ -3070,12 +3720,24 @@ public partial class MainForm : Form
                 controlButton.Click += (s2, e2) =>
                 {
                     bool handled = currentAircraft.HandleUIVariableSet(varKey, 1, varDef, simConnectManager, announcer);
-                    if (handled)
+                    if (!handled)
                     {
-                        return;
+                        simConnectManager?.SetLVar(varDef.Name, 1);
+                        announcer.Announce($"{varDef.DisplayName} pressed");
                     }
-                    simConnectManager?.SetLVar(varDef.Name, 1);
-                    announcer.Announce($"{varDef.DisplayName} pressed");
+                    // Request state variable update after button press
+                    if (!string.IsNullOrEmpty(varDef.StateVariable) && simConnectManager != null)
+                    {
+                        System.Windows.Forms.Timer stateTimer = new System.Windows.Forms.Timer();
+                        stateTimer.Interval = 500; // Wait for transition to complete
+                        stateTimer.Tick += (ts, te) =>
+                        {
+                            stateTimer.Stop();
+                            stateTimer.Dispose();
+                            simConnectManager.RequestVariable(varDef.StateVariable);
+                        };
+                        stateTimer.Start();
+                    }
                 };
 
                 layout.Controls.Add(controlButton, 1, rowIndex);
@@ -3532,7 +4194,7 @@ public partial class MainForm : Form
                             if (value >= 118.0 && value <= 136.975)
                             {
                                 // Convert MHz to Hz (simple multiplication, no BCD16 needed)
-                                uint frequencyHz = (uint)(value * 1000000);
+                                uint frequencyHz = (uint)Math.Round(value * 1000000);
 
                                 // Determine which COM radio (1, 2, or 3)
                                 string comIndex = "1"; // Default to COM1
@@ -4123,8 +4785,21 @@ public partial class MainForm : Form
         weatherAnnouncementTimer?.Stop();
         weatherAnnouncementTimer?.Dispose();
 
+        // Clean up taxi guidance
+        taxiGuidanceManager?.Dispose();
+
+        // Clean up the PROG-page monitor (owns a Windows-Forms timer; if not
+        // disposed, the timer keeps a reference to OnTick and prevents the
+        // monitor from being collected, and on shutdown the timer can fire
+        // one more time against a half-torn-down data manager).
+        pmdgProgPageMonitor?.Dispose();
+        pmdgProgPageMonitor = null;
+
         // Clean up TCAS service
         tcasService?.Dispose();
+
+        // Clean up ActiveSky weather-update monitor
+        activeSkyWeatherMonitor?.Dispose();
 
         // Clean up EFB bridge
         efbBridgeServer?.Dispose();

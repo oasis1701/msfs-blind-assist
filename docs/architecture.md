@@ -525,6 +525,19 @@ Dual-mode hotkey system:
 - ICAO code input with autocomplete runway/gate selection
 - Integration with SimConnect for aircraft positioning
 
+### TaxiGuidance subsystem
+**Files:** `Services/TaxiGuidanceManager.cs`, `Services/TaxiSteeringTone.cs`, `Navigation/TaxiGraph.cs`, `Navigation/TaxiRouter.cs`, `Database/Models/TaxiPath.cs` + `TaxiNode.cs` + `TaxiRoute.cs` + `StartPosition.cs`, `Forms/TaxiAssistForm.cs`, `Forms/TaxiGuidanceOptionsForm.cs`
+
+- Turn-by-turn taxi assistance using the navdatareader `taxi_path` / `start` / `parking` tables
+- `TaxiGraph` merges path endpoints within ~1 m into shared nodes, indexes edges by taxiway name
+- `TaxiRouter` performs ATC-constrained A*: the route **must** follow the taxiway sequence the user entered, falling back to shortest path only on disconnected inputs
+- `TaxiGuidanceManager` drives the state machine (`Inactive → RouteLoaded → Taxiing → HoldShort → LiningUp → Arrived`), fed by SimConnect position updates via `UpdatePosition()`
+- `TaxiSteeringTone` provides a stereo-panned audio steering cue — silent when on-track, pans toward the correction direction. Hysteresis (3° / 6°) + 400 ms min sustain + 1-pole low-pass on heading error kill jitter-induced flapping
+- Integrates with takeoff assist: when the taxi reaches `LiningUp` on a runway and the aircraft has arrived, a reference is exposed via `TryGetRunwayLineupReference()`; MainForm seeds `TakeoffAssistManager` **only** when it isn't already configured (the teleport-dialog path always wins if used first)
+- Universal airport support: no hardcoded taxiway / parking / runway names; everything comes from the user's DB
+
+See [Taxi Guidance](taxi-guidance.md) for the full reference.
+
 ## Key Design Patterns
 
 1. **Individual Variable System**: All 220+ variables are registered individually

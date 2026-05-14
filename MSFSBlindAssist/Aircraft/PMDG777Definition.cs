@@ -1814,18 +1814,18 @@ public class PMDG777Definition : BaseAircraftDefinition
                 IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
             },
-            ["OXY_TestReset_Capt"] = new SimConnect.SimVarDefinition
+            ["OXY_TestReset_L"] = new SimConnect.SimVarDefinition
             {
-                Name = "OXY_TestReset_Capt",
+                Name = "OXY_TestReset_L",
                 DisplayName = "Captain Oxygen Test",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Never,
                 RenderAsButton = true,
                 IsMomentary = true
             },
-            ["OXY_TestReset_FO"] = new SimConnect.SimVarDefinition
+            ["OXY_TestReset_R"] = new SimConnect.SimVarDefinition
             {
-                Name = "OXY_TestReset_FO",
+                Name = "OXY_TestReset_R",
                 DisplayName = "First Officer Oxygen Test",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Never,
@@ -3841,6 +3841,7 @@ public class PMDG777Definition : BaseAircraftDefinition
                 IsAnnounced = false,
                 RenderAsButton = true
             },
+            // CDU array index convention: 0=Captain(L), 1=F/O(R), 2=Observer(C)
             ["CDU_BrtKnob_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "CDU_BrtKnob_0",
@@ -3851,7 +3852,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             },
             ["CDU_BrtKnob_C"] = new SimConnect.SimVarDefinition
             {
-                Name = "CDU_BrtKnob_1",
+                Name = "CDU_BrtKnob_2",
                 DisplayName = "CDU Brightness Center",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -3859,7 +3860,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             },
             ["CDU_BrtKnob_R"] = new SimConnect.SimVarDefinition
             {
-                Name = "CDU_BrtKnob_2",
+                Name = "CDU_BrtKnob_1",
                 DisplayName = "CDU Brightness Right",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -3878,7 +3879,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             },
             ["CDU_annunEXEC_C"] = new SimConnect.SimVarDefinition
             {
-                Name = "CDU_annunEXEC_1",
+                Name = "CDU_annunEXEC_2",
                 DisplayName = "CDU EXEC Center",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -3888,7 +3889,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             },
             ["CDU_annunEXEC_R"] = new SimConnect.SimVarDefinition
             {
-                Name = "CDU_annunEXEC_2",
+                Name = "CDU_annunEXEC_1",
                 DisplayName = "CDU EXEC Right",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -3908,7 +3909,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             },
             ["CDU_annunFAIL_C"] = new SimConnect.SimVarDefinition
             {
-                Name = "CDU_annunFAIL_1",
+                Name = "CDU_annunFAIL_2",
                 DisplayName = "CDU FAIL Center",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -3918,7 +3919,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             },
             ["CDU_annunFAIL_R"] = new SimConnect.SimVarDefinition
             {
-                Name = "CDU_annunFAIL_2",
+                Name = "CDU_annunFAIL_1",
                 DisplayName = "CDU FAIL Right",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -3938,7 +3939,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             },
             ["CDU_annunMSG_C"] = new SimConnect.SimVarDefinition
             {
-                Name = "CDU_annunMSG_1",
+                Name = "CDU_annunMSG_2",
                 DisplayName = "CDU MSG Center",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -3948,7 +3949,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             },
             ["CDU_annunMSG_R"] = new SimConnect.SimVarDefinition
             {
-                Name = "CDU_annunMSG_2",
+                Name = "CDU_annunMSG_1",
                 DisplayName = "CDU MSG Right",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -3968,7 +3969,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             },
             ["CDU_annunOFST_C"] = new SimConnect.SimVarDefinition
             {
-                Name = "CDU_annunOFST_1",
+                Name = "CDU_annunOFST_2",
                 DisplayName = "CDU OFST Center",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -3978,7 +3979,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             },
             ["CDU_annunOFST_R"] = new SimConnect.SimVarDefinition
             {
-                Name = "CDU_annunOFST_2",
+                Name = "CDU_annunOFST_1",
                 DisplayName = "CDU OFST Right",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -4509,6 +4510,22 @@ public class PMDG777Definition : BaseAircraftDefinition
 
             // =================================================================
             // BORIS AUDIO WORKS SOUNDPACK
+            // -----------------------------------------------------------------
+            // KNOWN ISSUE: these switch_NNN_a LVars do NOT behave as state
+            // variables. Writing 0 or 100 produces only a momentary (~100 ms)
+            // change in the underlying Boris audio engine before snapping back
+            // to whatever the persistent state was. The real Boris state vars
+            // are not documented publicly. A live LVar capture session (e.g.
+            // via MobiFlight's variable browser, or an in-app LVar dump
+            // utility) is needed to identify the actual state vars before
+            // these combos can produce a real persistent toggle.
+            //
+            // We tried writing the PMDG mouse-flag value (0x20000000 =
+            // MOUSE_FLAG_LEFTSINGLE) on the theory that switch_NNN_a is a
+            // mouse-click input handle per PMDG's VC mouse-behaviour XML
+            // convention, but that produced no audible effect at all — worse
+            // than the 100 ms blip from a raw value write. Reverted; left
+            // as-is until proper state vars are identified.
             // =================================================================
             ["switch_622_a"] = new SimConnect.SimVarDefinition
             {
@@ -4650,7 +4667,7 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["Oxygen"] = new List<string>
             {
                 "OXY_PassOxygen", "OXY_Suprnmry",
-                "OXY_TestReset_Capt", "OXY_TestReset_FO"
+                "OXY_TestReset_L", "OXY_TestReset_R"
             },
 
             // Overhead — Wipers
@@ -5023,8 +5040,8 @@ public class PMDG777Definition : BaseAircraftDefinition
             ["SIGNS_SeatBelts"]         = "EVT_OH_FASTEN_BELTS_LIGHT_SWITCH",
             ["OXY_PassOxygen"]          = "EVT_OH_OXY_PASS_SWITCH",
             ["OXY_Suprnmry"]            = "EVT_OH_OXY_SUPRNMRY_SWITCH",
-            ["OXY_TestReset_Capt"]      = "EVT_OXY_TEST_RESET_SWITCH_L",
-            ["OXY_TestReset_FO"]        = "EVT_OXY_TEST_RESET_SWITCH_R",
+            ["OXY_TestReset_L"]         = "EVT_OXY_TEST_RESET_SWITCH_L",
+            ["OXY_TestReset_R"]         = "EVT_OXY_TEST_RESET_SWITCH_R",
 
             // --- Wipers / Comms ---
             ["WIPERS_Left"]             = "EVT_OH_WIPER_LEFT_SWITCH",
@@ -5302,7 +5319,7 @@ public class PMDG777Definition : BaseAircraftDefinition
         {
             if (value >= 118.0 && value <= 136.975)
             {
-                uint frequencyHz = (uint)(value * 1000000);
+                uint frequencyHz = (uint)Math.Round(value * 1000000);
                 string setEvent = varKey.Contains(":2") ? "COM2_STBY_RADIO_SET_HZ" : "COM_STBY_RADIO_SET_HZ";
                 simConnect.SendEvent(setEvent, frequencyHz);
             }
@@ -5320,6 +5337,9 @@ public class PMDG777Definition : BaseAircraftDefinition
         //     same SDK event accepts the absolute target position when
         //     fired through the standard SimConnect TransmitClientEvent
         //     path (event name "#<id>"), bypassing PMDG's CDA selector.
+        //     Must run BEFORE the guarded-switch block below — LTS_EmerLights
+        //     is in `_guardedMap`, so without this early-return the guarded
+        //     toggle would intercept and only step one detent.
         // ------------------------------------------------------------------
         if (varKey == "LTS_EmerLights")
         {
@@ -5329,7 +5349,10 @@ public class PMDG777Definition : BaseAircraftDefinition
             {
                 return true;
             }
-            uint switchEventId = (uint)EventIds["EVT_OH_EMER_EXIT_LIGHT_SWITCH"];
+            if (!EventIds.TryGetValue("EVT_OH_EMER_EXIT_LIGHT_SWITCH", out int switchEventId))
+            {
+                return false;
+            }
             simConnect.SendEvent("#" + switchEventId, (uint)target);
             return true;
         }
@@ -5950,13 +5973,59 @@ public class PMDG777Definition : BaseAircraftDefinition
             {
                 var dm = simConnect.PMDG777DataManager;
                 if (dm == null) return false;
-                float dist = (float)dm.GetFieldValue("FMC_DistanceToTOD");
-                if (dist < 0)
-                    announcer.AnnounceImmediate("Top of descent not available");
-                else if (dist < 0.1f)
-                    announcer.AnnounceImmediate("Past top of descent");
-                else
-                    announcer.AnnounceImmediate($"{dist:F0} miles to top of descent");
+
+                // Enhanced mode: probe the PROG page on demand. The monitor
+                // primed the right CDU at startup but doesn't poll between
+                // presses — see PMDGProgPageMonitor.ReadProgPageAsync.
+                // Fallback chain mirrors TFM's PhaseAwareDescent: TOC if
+                // not yet passed → step climb if not "NONE" → TOD →
+                // SDK FMC_DistanceToTOD as last resort.
+                if (Settings.SettingsManager.Current.PMDGEnhancedDistanceMode &&
+                    parentForm is MainForm pfTod)
+                {
+                    var monitor = pfTod.GetPMDGProgPageMonitor();
+                    if (monitor != null)
+                    {
+                        // Fire-and-forget. The probe takes ~100-500 ms in the
+                        // worst case (off-PROG cold cache); during that
+                        // window the user hears nothing, then the
+                        // announcement arrives. Subsequent presses within
+                        // 30 s reuse the cache and announce instantly.
+                        _ = Task.Run(async () =>
+                        {
+                            var prog = await monitor.ReadProgPageAsync();
+                            if (prog != null && prog.IsValid)
+                            {
+                                if (!prog.TOCPassed && prog.DistanceToTOC > 0)
+                                {
+                                    string eta = !string.IsNullOrEmpty(prog.ETAToTOC) ? $", {prog.ETAToTOC}" : "";
+                                    announcer.AnnounceImmediate(
+                                        $"Distance to T O C: {Math.Round(prog.DistanceToTOC)}{eta}");
+                                    return;
+                                }
+                                if (!prog.StepClimbIsNone && prog.DistanceToStepClimb > 0)
+                                {
+                                    string eta = !string.IsNullOrEmpty(prog.ETAToStepClimb) ? $", {prog.ETAToStepClimb}" : "";
+                                    announcer.AnnounceImmediate(
+                                        $"Distance to step climb: {Math.Round(prog.DistanceToStepClimb)}{eta}");
+                                    return;
+                                }
+                                if (prog.DistanceToTOD > 0)
+                                {
+                                    string eta = !string.IsNullOrEmpty(prog.ETAToTOD) ? $", {prog.ETAToTOD}" : "";
+                                    announcer.AnnounceImmediate(
+                                        $"Distance to T O D: {Math.Round(prog.DistanceToTOD)}{eta}");
+                                    return;
+                                }
+                                // PROG showed none of those phases — fall through to SDK.
+                            }
+                            AnnounceTODFromSDK(simConnect, dm, announcer);
+                        });
+                        return true;
+                    }
+                }
+
+                AnnounceTODFromSDK(simConnect, dm, announcer);
                 return true;
             }
 
@@ -5964,11 +6033,36 @@ public class PMDG777Definition : BaseAircraftDefinition
             {
                 var dm = simConnect.PMDG777DataManager;
                 if (dm == null) return false;
-                float dist = (float)dm.GetFieldValue("FMC_DistanceToDest");
-                if (dist < 0)
-                    announcer.AnnounceImmediate("Distance to destination not available");
-                else
-                    announcer.AnnounceImmediate($"{dist:F0} miles to destination");
+
+                // Enhanced mode: probe the PROG DEST line on demand.
+                if (Settings.SettingsManager.Current.PMDGEnhancedDistanceMode &&
+                    parentForm is MainForm pfd)
+                {
+                    var monitor = pfd.GetPMDGProgPageMonitor();
+                    if (monitor != null)
+                    {
+                        _ = Task.Run(async () =>
+                        {
+                            var prog = await monitor.ReadProgPageAsync();
+                            if (prog != null && prog.IsValid && prog.DistanceToDest >= 0)
+                            {
+                                string distStr = Math.Round(prog.DistanceToDest)
+                                    .ToString(System.Globalization.CultureInfo.InvariantCulture);
+                                string etaStr = !string.IsNullOrEmpty(prog.ETAToDest) ? $" {prog.ETAToDest}" : "";
+                                string fuelStr = prog.LandingFuel >= 0
+                                    ? $", landing fuel {prog.LandingFuel:F1}"
+                                    : "";
+                                announcer.AnnounceImmediate(
+                                    $"Distance to destination: {distStr}{etaStr}{fuelStr}");
+                                return;
+                            }
+                            AnnounceDestFromSDK(simConnect, dm, announcer);
+                        });
+                        return true;
+                    }
+                }
+
+                AnnounceDestFromSDK(simConnect, dm, announcer);
                 return true;
             }
 
@@ -6055,6 +6149,19 @@ public class PMDG777Definition : BaseAircraftDefinition
                     "TOTAL WEIGHT", "pounds", "GROSS_WEIGHT_KG");
                 return true;
             }
+
+            case HotkeyAction.MonitorManager:
+                // PMDG announcement monitor (Input + Ctrl+M). Hotkey arrives in
+                // Output mode through the global Ctrl+M handler; if the user
+                // happens to be in input-mode chord, that path also dispatches
+                // here. Either way we want the form, not the alt-aircraft
+                // path.
+                hotkeyManager.ExitOutputHotkeyMode();
+                if (parentForm is MainForm pf)
+                {
+                    pf.ShowPMDGAnnouncementMonitorDialog();
+                }
+                return true;
 
             default:
                 return base.HandleHotkeyAction(action, simConnect, announcer, parentForm, hotkeyManager);
@@ -6177,6 +6284,78 @@ public class PMDG777Definition : BaseAircraftDefinition
     {
         if (EventIds.TryGetValue(eventName, out int evId))
             simConnect.SendPMDGEvent(eventName, (uint)evId, 1);
+    }
+
+    /// <summary>
+    /// Format ETA as ", ETA HH:MM:SS" given remaining distance in nautical
+    /// miles and current ground speed in knots. Returns empty string if the
+    /// ground speed is too low to give a meaningful estimate (we don't want
+    /// to read out a 99-hour ETA when taxiing).
+    /// </summary>
+    private static string FormatEtaFromDistance(double distanceNm, double groundSpeedKnots)
+    {
+        if (groundSpeedKnots < 30) return "";   // not airborne / too slow
+        if (distanceNm <= 0) return "";
+
+        double hours = distanceNm / groundSpeedKnots;
+        int totalSeconds = (int)Math.Round(hours * 3600.0);
+        int hh = totalSeconds / 3600;
+        int mm = (totalSeconds % 3600) / 60;
+        int ss = totalSeconds % 60;
+        return $": {hh:D2}:{mm:D2}:{ss:D2}";
+    }
+
+    /// <summary>
+    /// SDK-offset readout for distance to top of descent. Used both as the
+    /// non-Enhanced-mode default and as the Enhanced-mode fallback when the
+    /// PROG-page probe couldn't return data (CDU off, page didn't render in
+    /// time, etc.).
+    /// </summary>
+    private static void AnnounceTODFromSDK(
+        SimConnect.SimConnectManager simConnect,
+        SimConnect.PMDG777DataManager dm,
+        ScreenReaderAnnouncer announcer)
+    {
+        float dist = (float)dm.GetFieldValue("FMC_DistanceToTOD");
+        if (dist < 0)
+        {
+            announcer.AnnounceImmediate("Top of descent not available");
+            return;
+        }
+        if (dist < 0.1f)
+        {
+            announcer.AnnounceImmediate("Past top of descent");
+            return;
+        }
+        // LastKnownPosition is request-on-demand; grab a fresh position so
+        // the ETA reflects current ground speed.
+        simConnect.RequestAircraftPositionAsync(position =>
+        {
+            string eta = FormatEtaFromDistance(dist, position.GroundSpeedKnots);
+            announcer.AnnounceImmediate($"{dist:F0} miles to top of descent{eta}");
+        });
+    }
+
+    /// <summary>
+    /// SDK-offset readout for distance to destination. Used both as the
+    /// non-Enhanced-mode default and as the Enhanced-mode fallback.
+    /// </summary>
+    private static void AnnounceDestFromSDK(
+        SimConnect.SimConnectManager simConnect,
+        SimConnect.PMDG777DataManager dm,
+        ScreenReaderAnnouncer announcer)
+    {
+        float dist = (float)dm.GetFieldValue("FMC_DistanceToDest");
+        if (dist < 0)
+        {
+            announcer.AnnounceImmediate("Distance to destination not available");
+            return;
+        }
+        simConnect.RequestAircraftPositionAsync(position =>
+        {
+            string eta = FormatEtaFromDistance(dist, position.GroundSpeedKnots);
+            announcer.AnnounceImmediate($"{dist:F0} miles to destination{eta}");
+        });
     }
 
     private void ShowPMDGHeadingDialog(

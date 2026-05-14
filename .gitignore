@@ -6,6 +6,9 @@ obj/
 *.pdb
 *.cache
 
+# Local diagnostic tools (not part of the shipped solution)
+/tools/
+
 # Visual Studio user-specific files
 .vs/
 *.user
@@ -102,6 +105,7 @@ $RECYCLE.BIN/
 # User-specific development notes
 *.private.md
 *.local.md
+docs/superpowers
 
 # Temporary files
 *.tmp
