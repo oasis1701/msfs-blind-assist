@@ -146,12 +146,8 @@ public class PMDGProgPageMonitor : IDisposable
                 // press D before PMDG renders the page, ReadProgPageAsync's
                 // own retry-with-delay handles it.
                 //
-                // Use the CDA path (SendEvent with parameter 1 = pressed) —
-                // that's what PMDG777CDUForm uses for all standard page keys
-                // and it's confirmed to navigate the page. The legacy
-                // TransmitClientEvent path only works for FMCCOMM/HOLD (per
-                // GitHub issue #46) and produces an audible click for PROG
-                // without actually advancing the page.
+                // CDA path (SendEvent with parameter 1 = pressed) — same
+                // mechanism PMDG777CDUForm uses for every CDU page key.
                 if (PMDG777Definition.EventIds.TryGetValue("EVT_CDU_R_PROG", out int progEventId))
                 {
                     _dataManager.SendEvent("EVT_CDU_R_PROG", (uint)progEventId, 1);
@@ -217,8 +213,7 @@ public class PMDGProgPageMonitor : IDisposable
                 return null;
             }
             // CDA path (parameter 1 = pressed) — same as PMDG777CDUForm's
-            // working PROG button. TransmitClientEvent doesn't navigate this
-            // page; see init-tick comment.
+            // PROG button. See init-tick comment.
             _dataManager.SendEvent("EVT_CDU_R_PROG", (uint)progEventId, 1);
             await Task.Delay(PageRenderDelayMs);
             _dataManager.RequestCDUScreen(RIGHT_CDU);
