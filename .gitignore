@@ -6,6 +6,9 @@ obj/
 *.pdb
 *.cache
 
+# Local diagnostic tools (not part of the shipped solution)
+/tools/
+
 # Visual Studio user-specific files
 .vs/
 *.user

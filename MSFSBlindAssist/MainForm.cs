@@ -69,6 +69,12 @@ public partial class MainForm : Form
     private bool _lastOnGround = true;
     private LandingExitForm? landingExitForm;
 
+    // DIAGNOSTIC (debug/landing-rollout-instrumentation): one-shot flag for
+    // logging the first TAXI_GUIDANCE_POSITION event we receive while taxi
+    // guidance is in LandingRollout state. Reset on every transition out of
+    // LandingRollout so a subsequent landing gets fresh instrumentation.
+    private bool _diagLoggedFirstRolloutPos;
+
     // Event batching infrastructure for high-volume variable updates
     // Producer-consumer pattern: SimConnect thread produces → UI timer consumes
     private readonly ConcurrentQueue<SimVarUpdateEventArgs> eventQueue = new ConcurrentQueue<SimVarUpdateEventArgs>();
@@ -662,6 +668,25 @@ public partial class MainForm : Form
             if (e.PositionData.HasValue)
             {
                 var pos = e.PositionData.Value;
+                // DIAGNOSTIC: log the first TAXI_GUIDANCE_POSITION event we
+                // dispatch while in LandingRollout, so we can tell whether the
+                // per-frame data is actually flowing during the rollout phase.
+                if (taxiGuidanceManager.State == TaxiGuidanceState.LandingRollout &&
+                    !_diagLoggedFirstRolloutPos)
+                {
+                    _diagLoggedFirstRolloutPos = true;
+                    try
+                    {
+                        string diagPath = System.IO.Path.Combine(
+                            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                            "MSFSBlindAssist", "landing_exit.log");
+                        System.IO.File.AppendAllText(diagPath,
+                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [MF] First TAXI_GUIDANCE_POSITION in LandingRollout: " +
+                            $"lat={pos.Latitude:F6} lon={pos.Longitude:F6} hdgMag={pos.HeadingMagnetic:F1} " +
+                            $"magVar={pos.MagneticVariation:F2} gs={pos.GroundSpeedKnots:F1}{Environment.NewLine}");
+                    }
+                    catch { }
+                }
                 taxiGuidanceManager.UpdatePosition(
                     pos.Latitude, pos.Longitude,
                     pos.HeadingMagnetic, pos.MagneticVariation,
@@ -2430,6 +2455,23 @@ public partial class MainForm : Form
 
     private void OnTaxiGuidanceStateChanged(object? sender, TaxiGuidanceState newState)
     {
+        // DIAGNOSTIC: log state transitions to landing_exit.log so we can correlate
+        // them with the rollout-phase per-frame log entries.
+        try
+        {
+            string diagPath = System.IO.Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "MSFSBlindAssist", "landing_exit.log");
+            System.IO.File.AppendAllText(diagPath,
+                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [MF] OnTaxiGuidanceStateChanged newState={newState}{Environment.NewLine}");
+        }
+        catch { }
+
+        // DIAGNOSTIC: reset the first-rollout-pos one-shot whenever we ENTER
+        // LandingRollout so each rollout gets its own fresh log entry.
+        if (newState == TaxiGuidanceState.LandingRollout)
+            _diagLoggedFirstRolloutPos = false;
+
         switch (newState)
         {
             case TaxiGuidanceState.Taxiing:

@@ -241,25 +241,6 @@ public partial class PMDG777CDUForm : Form
                 return;
         }
 
-        // FMCCOMM and HOLD are special: the PMDG 777 SDK's CDA path that the
-        // rest of the CDU uses doesn't actually open these two pages —
-        // observed in GitHub issue #46 ("FMC com and Hold pages don't work
-        // after taking off"). FMCCOMM was bolted on after the original CDU
-        // event range (note its 4-digit 3471 offset versus the consecutive
-        // 340-353 used by the other page keys), and HOLD shares its quirk.
-        // TFM uses TransmitClientEvent with MOUSE_FLAG_LEFTSINGLE for all CDU
-        // keys and never hit this; we keep CDA as the default for everything
-        // else (it's faster) and only divert these two through the legacy
-        // path. Pre-takeoff success without this fix was likely the user
-        // operating the CDU through other means (mouse / cockpit clicks)
-        // and only realizing MSFSBA's path was broken once airborne.
-        if (eventSuffix == "FMCCOMM" || eventSuffix == "HOLD")
-        {
-            const uint MOUSE_FLAG_LEFTSINGLE = 0x20000000;
-            _dataManager.SendEventViaTransmit(eventName, (uint)eventId, MOUSE_FLAG_LEFTSINGLE);
-            return;
-        }
-
         _dataManager.SendEvent(eventName, (uint)eventId, 1);
     }
 
@@ -421,6 +402,7 @@ public partial class PMDG777CDUForm : Form
                 Keys.P => "PROG",
                 Keys.E => "EXEC",
                 Keys.M => "MENU",
+                Keys.N => "NAV_RAD",
                 Keys.O => "FMCCOMM",
                 _ => null
             };
