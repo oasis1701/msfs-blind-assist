@@ -699,7 +699,7 @@ public class SimConnectManager
         {
             var varDef = kvp.Value;
 
-            // Skip write-only variables (Never frequency), H-variables, AND PMDG variables (handled by PMDG777DataManager)
+            // Skip write-only variables (Never frequency), H-variables, AND PMDG variables (handled by IPMDGDataManager)
             if (varDef.UpdateFrequency == UpdateFrequency.Never || varDef.Type == SimVarType.HVar || varDef.Type == SimVarType.PMDGVar)
                 continue;
 
@@ -781,7 +781,7 @@ public class SimConnectManager
             if (kvp.Value.UpdateFrequency == UpdateFrequency.Continuous &&
                 kvp.Value.IsAnnounced)
             {
-                // Skip PMDGVar - these are monitored by PMDG777DataManager, not SimConnect batches
+                // Skip PMDGVar - these are monitored by IPMDGDataManager, not SimConnect batches
                 if (kvp.Value.Type == SimVarType.PMDGVar)
                     continue;
 

@@ -33,8 +33,8 @@ public partial class MainForm : Form
     private MSFSBlindAssist.Services.PMDGProgPageMonitor? pmdgProgPageMonitor;
     private FenixMCDUForm? fenixMCDUForm;
     private FenixMCDUService? fenixMCDUService;
-    private PMDG777CDUForm? pmdg777CDUForm;
-    private PMDG777EFBForm? pmdg777EFBForm;
+    private System.Windows.Forms.Form? pmdgCDUForm;
+    private System.Windows.Forms.Form? pmdgEFBForm;
     private EFBBridgeServer? efbBridgeServer;
     private TakeoffAssistManager takeoffAssistManager = null!;
     private HandFlyManager handFlyManager = null!;
@@ -158,8 +158,8 @@ public partial class MainForm : Form
         // Sync menu items with the loaded aircraft (fixes first-launch menu mismatch)
         UpdateAircraftMenuItems();
 
-        // Initialize EFB bridge if starting with PMDG 777
-        if (currentAircraft?.AircraftCode == "PMDG_777")
+        // Initialize EFB bridge if starting with a PMDG aircraft
+        if (currentAircraft is IPMDGAircraft)
         {
             CheckAndOfferEFBModPackage();
             StartEFBBridgeServer();
@@ -328,13 +328,13 @@ public partial class MainForm : Form
             announcer.Announce(status);
             announcer.Announce($"{currentAircraft.AircraftName} Profile and panels active");
 
-            // After SimConnect connects, if current aircraft is PMDG 777, initialize data manager
-            if (currentAircraft?.AircraftCode == "PMDG_777")
+            // After SimConnect connects, if current aircraft is a PMDG type, initialize data manager
+            if (currentAircraft is IPMDGAircraft)
             {
-                simConnectManager.InitializePMDG777();
-                if (simConnectManager.PMDG777DataManager != null)
+                simConnectManager.InitializePMDG(currentAircraft);
+                if (simConnectManager.PMDGDataManager != null)
                 {
-                    simConnectManager.PMDG777DataManager.VariableChanged += OnPMDGVariableChanged;
+                    simConnectManager.PMDGDataManager.VariableChanged += OnPMDGVariableChanged;
                 }
                 // Dispose any existing PROG monitor — it holds a reference
                 // to the previous data-manager instance (which is now
@@ -1211,7 +1211,7 @@ public partial class MainForm : Form
         // For PMDG aircraft, IsInitialValue is always true on first change because the
         // simVarMonitor has never seen the variable before. But PMDG data manager already
         // suppresses the initial snapshot, so any change that reaches here IS a real change.
-        bool isPMDG = currentAircraft?.AircraftCode == "PMDG_777";
+        bool isPMDG = currentAircraft is IPMDGAircraft;
         bool shouldAnnounce = isPMDG ? !updatingFromSim : (!e.IsInitialValue && !updatingFromSim);
 
         if (shouldAnnounce && !string.IsNullOrEmpty(e.Description))
@@ -1386,9 +1386,9 @@ public partial class MainForm : Form
                 ShowElectronicFlightBagDialog();
                 break;
             case HotkeyAction.ShowFenixMCDU:
-                if (currentAircraft?.AircraftCode == "PMDG_777" && simConnectManager.PMDG777DataManager != null)
+                if (currentAircraft is IPMDGAircraft && simConnectManager.PMDGDataManager != null)
                 {
-                    ShowPMDG777CDUDialog();
+                    ShowPMDGCDUDialog();
                 }
                 else
                 {
@@ -1396,9 +1396,9 @@ public partial class MainForm : Form
                 }
                 break;
             case HotkeyAction.ShowPMDG777EFB:
-                if (currentAircraft?.AircraftCode == "PMDG_777")
+                if (currentAircraft is IPMDGAircraft)
                 {
-                    ShowPMDG777EFBDialog();
+                    ShowPMDGEFBDialog();
                 }
                 break;
             case HotkeyAction.ShowTrackFixWindow:
@@ -1803,10 +1803,13 @@ public partial class MainForm : Form
         if (wantRunning)
         {
             // Lazy-create on first need. Recreated whenever the
-            // PMDG777DataManager changes (e.g., after aircraft swap)
+            // PMDG data manager changes (e.g., after aircraft swap)
             // because the monitor holds a reference to a specific
             // data-manager instance.
-            var dm = simConnectManager?.PMDG777DataManager;
+            // The PROG-page monitor is currently 777-specific; cast
+            // through the interface slot. Non-777 PMDG aircraft will
+            // need their own monitor wiring (Phase D).
+            var dm = simConnectManager?.PMDGDataManager as PMDG777DataManager;
             if (dm == null) return;
             if (pmdgProgPageMonitor == null)
             {
@@ -1862,22 +1865,24 @@ public partial class MainForm : Form
         fenixMCDUForm.ShowForm();
     }
 
-    private void ShowPMDG777CDUDialog()
+    private void ShowPMDGCDUDialog()
     {
         // Deactivate input hotkey mode before showing dialog
         hotkeyManager.ExitInputHotkeyMode();
 
-        // Create form if it doesn't exist or has been disposed
-        if (pmdg777CDUForm == null || pmdg777CDUForm.IsDisposed)
+        // Create form if it doesn't exist or has been disposed.
+        // The 777 form takes a concrete PMDG777DataManager; cast through
+        // the abstraction. Phase D will add a 737 case here.
+        if (pmdgCDUForm == null || pmdgCDUForm.IsDisposed)
         {
-            pmdg777CDUForm = new PMDG777CDUForm(simConnectManager.PMDG777DataManager!, announcer);
+            pmdgCDUForm = new PMDG777CDUForm((PMDG777DataManager)simConnectManager.PMDGDataManager!, announcer);
         }
 
         // Show the form (reuses same instance to preserve state)
-        pmdg777CDUForm.ShowForm();
+        ((PMDG777CDUForm)pmdgCDUForm).ShowForm();
     }
 
-    private void ShowPMDG777EFBDialog()
+    private void ShowPMDGEFBDialog()
     {
         hotkeyManager.ExitInputHotkeyMode();
 
@@ -1887,12 +1892,13 @@ public partial class MainForm : Form
             return;
         }
 
-        if (pmdg777EFBForm == null || pmdg777EFBForm.IsDisposed)
+        // Phase E will add a 737 case here.
+        if (pmdgEFBForm == null || pmdgEFBForm.IsDisposed)
         {
-            pmdg777EFBForm = new PMDG777EFBForm(efbBridgeServer, announcer);
+            pmdgEFBForm = new PMDG777EFBForm(efbBridgeServer, announcer);
         }
 
-        pmdg777EFBForm.ShowForm();
+        ((PMDG777EFBForm)pmdgEFBForm).ShowForm();
     }
 
     private void CheckAndOfferEFBModPackage()
@@ -2070,10 +2076,10 @@ public partial class MainForm : Form
 
     private void StopEFBBridgeServer()
     {
-        if (pmdg777EFBForm != null && !pmdg777EFBForm.IsDisposed)
+        if (pmdgEFBForm != null && !pmdgEFBForm.IsDisposed)
         {
-            pmdg777EFBForm.Dispose();
-            pmdg777EFBForm = null;
+            pmdgEFBForm.Dispose();
+            pmdgEFBForm = null;
         }
 
         efbBridgeServer?.Stop();
@@ -3132,7 +3138,7 @@ public partial class MainForm : Form
 
         // Dispose the old PROG-page monitor — it references the previous
         // aircraft's data manager. Recreation happens later, AFTER
-        // InitializePMDG777() has produced a fresh data manager for the new
+        // InitializePMDG() has produced a fresh data manager for the new
         // aircraft (see EnsurePMDGProgPageMonitor call near the end of this
         // method). Calling EnsurePMDGProgPageMonitor here would no-op for a
         // PMDG-to-PMDG swap because the new data manager doesn't yet exist.
@@ -3218,48 +3224,48 @@ public partial class MainForm : Form
             fenixMCDUService = null;
         }
 
-        // Dispose PMDG 777 CDU form when switching aircraft
-        if (pmdg777CDUForm != null && !pmdg777CDUForm.IsDisposed)
+        // Dispose PMDG CDU form when switching aircraft
+        if (pmdgCDUForm != null && !pmdgCDUForm.IsDisposed)
         {
-            pmdg777CDUForm.Dispose();
-            pmdg777CDUForm = null;
+            pmdgCDUForm.Dispose();
+            pmdgCDUForm = null;
         }
 
-        // Dispose PMDG 777 EFB form when switching aircraft
-        if (pmdg777EFBForm != null && !pmdg777EFBForm.IsDisposed)
+        // Dispose PMDG EFB form when switching aircraft
+        if (pmdgEFBForm != null && !pmdgEFBForm.IsDisposed)
         {
-            pmdg777EFBForm.Dispose();
-            pmdg777EFBForm = null;
+            pmdgEFBForm.Dispose();
+            pmdgEFBForm = null;
         }
 
-        // PMDG 777 data manager lifecycle
-        if (newAircraft.AircraftCode == "PMDG_777" && simConnectManager.IsConnected)
+        // PMDG data manager lifecycle
+        if (newAircraft is IPMDGAircraft && simConnectManager.IsConnected)
         {
-            simConnectManager.InitializePMDG777();
-            if (simConnectManager.PMDG777DataManager != null)
+            simConnectManager.InitializePMDG(newAircraft);
+            if (simConnectManager.PMDGDataManager != null)
             {
-                simConnectManager.PMDG777DataManager.VariableChanged += OnPMDGVariableChanged;
+                simConnectManager.PMDGDataManager.VariableChanged += OnPMDGVariableChanged;
             }
         }
         else
         {
             // Unwire events before disposing
-            if (simConnectManager.PMDG777DataManager != null)
+            if (simConnectManager.PMDGDataManager != null)
             {
-                simConnectManager.PMDG777DataManager.VariableChanged -= OnPMDGVariableChanged;
+                simConnectManager.PMDGDataManager.VariableChanged -= OnPMDGVariableChanged;
             }
-            simConnectManager.DisposePMDG777();
+            simConnectManager.DisposePMDG();
         }
 
         // Start the PROG-page monitor now that the new aircraft's data
         // manager exists (or stop it cleanly if we just left PMDG). This
-        // must happen AFTER InitializePMDG777 so EnsurePMDGProgPageMonitor
+        // must happen AFTER InitializePMDG so EnsurePMDGProgPageMonitor
         // can see the freshly-created data manager — calling it before the
         // init would silently no-op (see comment above the dispose block).
         EnsurePMDGProgPageMonitor();
 
         // EFB bridge: mod package check and server start
-        if (newAircraft.AircraftCode == "PMDG_777")
+        if (newAircraft is IPMDGAircraft)
         {
             CheckAndOfferEFBModPackage();
             StartEFBBridgeServer();
@@ -4547,9 +4553,9 @@ public partial class MainForm : Form
             controlsContainer.Controls.Add(layout);
 
             // For PMDG aircraft, populate controls with current data from the data manager
-            if (currentAircraft?.AircraftCode == "PMDG_777" && simConnectManager?.PMDG777DataManager != null)
+            if (currentAircraft is IPMDGAircraft && simConnectManager?.PMDGDataManager != null)
             {
-                var dm = simConnectManager.PMDG777DataManager;
+                var dm = simConnectManager.PMDGDataManager;
                 foreach (var varKey in currentAircraft.GetPanelControls()[currentPanel])
                 {
                     if (!currentAircraft.GetVariables().ContainsKey(varKey)) continue;
