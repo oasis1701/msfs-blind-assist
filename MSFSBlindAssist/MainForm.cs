@@ -1395,7 +1395,7 @@ public partial class MainForm : Form
                     ShowFenixMCDUDialog();
                 }
                 break;
-            case HotkeyAction.ShowPMDG777EFB:
+            case HotkeyAction.ShowPMDGEFB:
                 if (currentAircraft is IPMDGAircraft)
                 {
                     ShowPMDGEFBDialog();

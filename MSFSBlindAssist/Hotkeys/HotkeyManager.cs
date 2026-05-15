@@ -128,8 +128,8 @@ public class HotkeyManager : IDisposable
         // Fenix MCDU hotkey ID
         private const int HOTKEY_FENIX_MCDU = 9092;
 
-        // PMDG 777 EFB hotkey ID
-        private const int HOTKEY_PMDG_777_EFB = 9094;
+        // PMDG EFB hotkey ID
+        private const int HOTKEY_PMDG_EFB = 9094;
 
         // Nearest city announcement hotkey ID
         private const int HOTKEY_NEAREST_CITY = 9093;
@@ -522,8 +522,8 @@ public class HotkeyManager : IDisposable
                         case HOTKEY_FENIX_MCDU:
                             TriggerHotkey(HotkeyAction.ShowFenixMCDU);
                             break;
-                        case HOTKEY_PMDG_777_EFB:
-                            TriggerHotkey(HotkeyAction.ShowPMDG777EFB);
+                        case HOTKEY_PMDG_EFB:
+                            TriggerHotkey(HotkeyAction.ShowPMDGEFB);
                             break;
                         case HOTKEY_TAXI_FORM:
                             TriggerHotkey(HotkeyAction.TaxiAssistForm);
@@ -845,7 +845,7 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_TOGGLE_AP2, MOD_CONTROL, 0x4F);      // Ctrl+O (Toggle Autopilot 2)
             RegisterHotKey(windowHandle, HOTKEY_TRACK_FIX, MOD_SHIFT, 0x46);         // Shift+F (Track Fix Window)
             RegisterHotKey(windowHandle, HOTKEY_FENIX_MCDU, MOD_SHIFT, 0x4D);       // Shift+M (Fenix MCDU)
-            RegisterHotKey(windowHandle, HOTKEY_PMDG_777_EFB, MOD_SHIFT, 0x54);    // Shift+T (PMDG 777 EFB Tablet)
+            RegisterHotKey(windowHandle, HOTKEY_PMDG_EFB, MOD_SHIFT, 0x54);        // Shift+T (PMDG EFB Tablet)
 
             // Taxi guidance hotkeys (Input mode)
             RegisterHotKey(windowHandle, HOTKEY_TAXI_FORM, MOD_SHIFT, 0x59);            // Shift+Y (Open Taxi Form)
@@ -889,7 +889,7 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_TOGGLE_AP2);
             UnregisterHotKey(windowHandle, HOTKEY_TRACK_FIX);
             UnregisterHotKey(windowHandle, HOTKEY_FENIX_MCDU);
-            UnregisterHotKey(windowHandle, HOTKEY_PMDG_777_EFB);
+            UnregisterHotKey(windowHandle, HOTKEY_PMDG_EFB);
 
             // Taxi guidance hotkeys
             UnregisterHotKey(windowHandle, HOTKEY_TAXI_FORM);
@@ -1223,7 +1223,7 @@ public class HotkeyManager : IDisposable
         ReadPitch,
         ReadTargetFPM,
         ShowFenixMCDU,
-        ShowPMDG777EFB,
+        ShowPMDGEFB,
         ReadNearestCity,
         ReadDistanceToTOD,
         ReadDistanceToDest,
