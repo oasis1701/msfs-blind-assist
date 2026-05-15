@@ -1,4 +1,5 @@
 using MSFSBlindAssist.Accessibility;
+using MSFSBlindAssist.Navigation;
 using MSFSBlindAssist.SimConnect;
 
 namespace MSFSBlindAssist.Services;
@@ -48,6 +49,7 @@ public sealed class GroundTrafficMonitor : IDisposable
     private const int SUMMARY_MAX_AIRCRAFT = 3;
 
     private const int POLL_INTERVAL_MS = 3000;
+    private const double NM_TO_FEET = 6076.12;
 
     private readonly ScreenReaderAnnouncer _announcer;
     private readonly SimConnectManager _sim;
@@ -108,7 +110,8 @@ public sealed class GroundTrafficMonitor : IDisposable
         var pos = _sim.LastKnownPosition;
         if (pos != null)
         {
-            double d = DistanceFeet(pos.Value.Latitude, pos.Value.Longitude, e.Latitude, e.Longitude);
+            double d = NavigationCalculator.CalculateDistance(
+                pos.Value.Latitude, pos.Value.Longitude, e.Latitude, e.Longitude) * NM_TO_FEET;
             if (d > TRACK_RANGE_FT) return;
         }
 
@@ -161,8 +164,10 @@ public sealed class GroundTrafficMonitor : IDisposable
 
             foreach (var ac in _tracked.Values)
             {
-                double distFt = DistanceFeet(ownLat, ownLon, ac.Lat, ac.Lon);
-                double bearing = BearingDeg(ownLat, ownLon, ac.Lat, ac.Lon);
+                double distFt = NavigationCalculator.CalculateDistance(
+                    ownLat, ownLon, ac.Lat, ac.Lon) * NM_TO_FEET;
+                double bearing = NavigationCalculator.CalculateBearing(
+                    ownLat, ownLon, ac.Lat, ac.Lon);
                 double relBearing = NormalizeDeg(bearing - ownHdg);
 
                 // Update closing-rate history
@@ -258,8 +263,10 @@ public sealed class GroundTrafficMonitor : IDisposable
             list = _tracked.Values
                 .Select(ac =>
                 {
-                    double d = DistanceFeet(ownLat, ownLon, ac.Lat, ac.Lon);
-                    double b = BearingDeg(ownLat, ownLon, ac.Lat, ac.Lon);
+                    double d = NavigationCalculator.CalculateDistance(
+                        ownLat, ownLon, ac.Lat, ac.Lon) * NM_TO_FEET;
+                    double b = NavigationCalculator.CalculateBearing(
+                        ownLat, ownLon, ac.Lat, ac.Lon);
                     double rel = NormalizeDeg(b - hdgTrue);
                     return (d, ac, rel);
                 })
@@ -297,26 +304,6 @@ public sealed class GroundTrafficMonitor : IDisposable
         if (abs <= 110.0) return right ? "to the right" : "to the left";
         if (abs <= 160.0) return right ? "behind and to the right" : "behind and to the left";
         return "behind";
-    }
-
-    private static double DistanceFeet(double lat1, double lon1, double lat2, double lon2)
-    {
-        const double R = 6371000.0;
-        double dLat = (lat2 - lat1) * (Math.PI / 180.0);
-        double dLon = (lon2 - lon1) * (Math.PI / 180.0);
-        double cosLat1 = Math.Cos(lat1 * (Math.PI / 180.0));
-        double cosLat2 = Math.Cos(lat2 * (Math.PI / 180.0));
-        double a = dLat * dLat + cosLat1 * cosLat2 * dLon * dLon;
-        return Math.Sqrt(a) * R * 3.28084;
-    }
-
-    private static double BearingDeg(double lat1, double lon1, double lat2, double lon2)
-    {
-        double dLon = (lon2 - lon1) * (Math.PI / 180.0);
-        double y = Math.Sin(dLon) * Math.Cos(lat2 * (Math.PI / 180.0));
-        double x = Math.Cos(lat1 * (Math.PI / 180.0)) * Math.Sin(lat2 * (Math.PI / 180.0))
-                 - Math.Sin(lat1 * (Math.PI / 180.0)) * Math.Cos(lat2 * (Math.PI / 180.0)) * Math.Cos(dLon);
-        return NormalizeDeg(Math.Atan2(y, x) * (180.0 / Math.PI));
     }
 
     private static double NormalizeDeg(double d) => ((d % 360.0) + 360.0) % 360.0;
