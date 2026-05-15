@@ -175,7 +175,7 @@ public sealed class GroundTrafficMonitor : IDisposable
                 if (ac.PreviousGS <= QUEUE_STOPPED_GS && ac.GS >= QUEUE_MOVING_GS && !ac.QueueMovingAlertSent)
                 {
                     ac.QueueMovingAlertSent = true;
-                    _announcer.Announce("Traffic ahead is moving.");
+                    _announcer.AnnounceImmediate("Traffic ahead is moving.");
                 }
                 // Reset the flag once the aircraft stops again so the next departure fires a fresh alert
                 if (ac.GS <= QUEUE_STOPPED_GS)
@@ -220,7 +220,7 @@ public sealed class GroundTrafficMonitor : IDisposable
                 _                   => $"Traffic, {dir}, {d} feet."
             };
 
-            _announcer.Announce(announcement);
+            _announcer.AnnounceImmediate(announcement);
         }
     }
 
