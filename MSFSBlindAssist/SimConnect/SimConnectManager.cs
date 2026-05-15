@@ -3928,7 +3928,7 @@ public class SimConnectManager
         pmdgDataManager = aircraft.AircraftCode switch
         {
             "PMDG_777" => new PMDG777DataManager(),
-            // "PMDG_737" case added in Task B5 — leave out for now
+            "PMDG_737" => new PMDGNG3DataManager(),
             _ => null
         };
         pmdgDataManager?.Initialize(simConnect, mobiFlightWasm);
