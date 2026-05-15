@@ -6,6 +6,7 @@ using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Forms;
 using MSFSBlindAssist.Forms.A32NX;
 using MSFSBlindAssist.Forms.FenixA320;
+using MSFSBlindAssist.Forms.PMDG737;
 using MSFSBlindAssist.Forms.PMDG777;
 using MSFSBlindAssist.Hotkeys;
 using MSFSBlindAssist.Services;
@@ -1871,16 +1872,30 @@ public partial class MainForm : Form
         // Deactivate input hotkey mode before showing dialog
         hotkeyManager.ExitInputHotkeyMode();
 
+        if (simConnectManager?.PMDGDataManager == null) return;
+
         // Create form if it doesn't exist or has been disposed.
-        // The 777 form takes a concrete PMDG777DataManager; cast through
-        // the abstraction. Phase D will add a 737 case here.
+        // Dispatch by aircraft code: the 777 form takes a concrete
+        // PMDG777DataManager (cast through the abstraction); the 737
+        // form accepts IPMDGDataManager directly.
         if (pmdgCDUForm == null || pmdgCDUForm.IsDisposed)
         {
-            pmdgCDUForm = new PMDG777CDUForm((PMDG777DataManager)simConnectManager.PMDGDataManager!, announcer);
+            if (currentAircraft?.AircraftCode == "PMDG_737")
+            {
+                pmdgCDUForm = new PMDG737CDUForm(simConnectManager.PMDGDataManager, announcer);
+            }
+            else
+            {
+                pmdgCDUForm = new PMDG777CDUForm((PMDG777DataManager)simConnectManager.PMDGDataManager, announcer);
+            }
         }
 
         // Show the form (reuses same instance to preserve state)
-        ((PMDG777CDUForm)pmdgCDUForm).ShowForm();
+        switch (pmdgCDUForm)
+        {
+            case PMDG737CDUForm f737: f737.ShowForm(); break;
+            case PMDG777CDUForm f777: f777.ShowForm(); break;
+        }
     }
 
     private void ShowPMDGEFBDialog()
