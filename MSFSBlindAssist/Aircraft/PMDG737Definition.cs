@@ -1303,22 +1303,284 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
 
     // =========================================================================
     // Variable → event name mapping (simple toggle and momentary controls)
-    // Populated in Task C3
+    //
+    // Key format:
+    //   - Scalar field "Foo" → key "Foo"
+    //   - Array field "Foo[i]" → key "Foo_{i}"
+    //
+    // Cross-referenced against EventIds at write-time; every event name here
+    // must be a key in EventIds.
     // =========================================================================
     private static readonly IReadOnlyDictionary<string, string> _simpleEventMap =
         new Dictionary<string, string>
         {
-            // Populated in Task C3
+            // --- Aft overhead: ADIRU (IRS) ---
+            ["IRS_DisplaySelector"]        = "EVT_ISDU_DSPL_SEL",
+            ["IRS_SysDisplay_R"]           = "EVT_ISDU_SYS_DSPL",
+            ["IRS_ModeSelector_0"]         = "EVT_IRU_MSU_LEFT",
+            ["IRS_ModeSelector_1"]         = "EVT_IRU_MSU_RIGHT",
+
+            // --- Aft overhead: Service Interphone / Dome ---
+            ["COMM_ServiceInterphoneSw"]   = "EVT_OH_SERVICE_INTERPHONE_SWITCH",
+            ["LTS_DomeWhiteSw"]            = "EVT_OH_DOME_SWITCH",
+
+            // --- Aft overhead: Engine EEC (guarded — see _guardedMap) ---
+            // (no simple entries; ENG_EECSwitch[0/1] is guarded)
+
+            // --- Aft overhead: Oxygen (guarded — see _guardedMap) ---
+            // OXY_SwNormal is guarded
+
+            // --- Aft overhead: Flight Recorder (guarded — see _guardedMap) ---
+            // FLTREC_SwNormal is guarded
+
+            // --- Forward overhead: Flight Controls ---
+            ["FCTL_YawDamper_Sw"]          = "EVT_OH_YAW_DAMPER",
+            ["FCTL_AltnFlaps_Control_Sw"]  = "EVT_OH_ALT_FLAPS_POS_SWITCH",
+            // FCTL_FltControl_Sw_0/1, FCTL_Spoiler_Sw_0/1, FCTL_AltnFlaps_Sw_ARM
+            // are all guarded — see _guardedMap
+
+            // --- Forward overhead: Navigation/Displays selectors ---
+            ["NAVDIS_VHFNavSelector"]      = "EVT_OH_NAVDSP_VHF_NAV_SEL",
+            ["NAVDIS_IRSSelector"]         = "EVT_OH_NAVDSP_IRS_SEL",
+            ["NAVDIS_FMCSelector"]         = "EVT_OH_NAVDSP_FMC_SEL",
+            ["NAVDIS_SourceSelector"]      = "EVT_OH_NAVDSP_DISPLAYS_SOURCE_SEL",
+            ["NAVDIS_ControlPaneSelector"] = "EVT_OH_NAVDSP_CONTROL_PANEL_SEL",
+
+            // --- Forward overhead: Fuel pumps & crossfeed ---
+            ["FUEL_PumpFwdSw_0"]           = "EVT_OH_FUEL_PUMP_1_FORWARD",
+            ["FUEL_PumpFwdSw_1"]           = "EVT_OH_FUEL_PUMP_2_FORWARD",
+            ["FUEL_PumpAftSw_0"]           = "EVT_OH_FUEL_PUMP_1_AFT",
+            ["FUEL_PumpAftSw_1"]           = "EVT_OH_FUEL_PUMP_2_AFT",
+            ["FUEL_PumpCtrSw_0"]           = "EVT_OH_FUEL_PUMP_L_CENTER",
+            ["FUEL_PumpCtrSw_1"]           = "EVT_OH_FUEL_PUMP_R_CENTER",
+            ["FUEL_CrossFeedSw"]           = "EVT_OH_FUEL_CROSSFEED",
+            ["FUEL_AuxFwd_0"]              = "EVT_OH_FUEL_AUX_FWD_A",
+            ["FUEL_AuxFwd_1"]              = "EVT_OH_FUEL_AUX_FWD_B",
+            ["FUEL_AuxAft_0"]              = "EVT_OH_FUEL_AUX_AFT_A",
+            ["FUEL_AuxAft_1"]              = "EVT_OH_FUEL_AUX_AFT_B",
+            ["FUEL_FWDBleed"]              = "EVT_OH_FUEL_FWD_BLD",
+            ["FUEL_AFTBleed"]              = "EVT_OH_FUEL_AFT_BLD",
+            // FUEL_GNDXfr is guarded — see _guardedMap
+
+            // --- Forward overhead: Electrical (non-guarded) ---
+            ["ELEC_DCMeterSelector"]       = "EVT_OH_ELEC_DC_METER",
+            ["ELEC_ACMeterSelector"]       = "EVT_OH_ELEC_AC_METER",
+            ["ELEC_CabUtilSw"]             = "EVT_OH_ELEC_CAB_UTIL",
+            ["ELEC_IFEPassSeatSw"]         = "EVT_OH_ELEC_IFE",
+            ["ELEC_GrdPwrSw"]              = "EVT_OH_ELEC_GRD_PWR_SWITCH",
+            ["ELEC_GenSw_0"]               = "EVT_OH_ELEC_GEN1_SWITCH",
+            ["ELEC_GenSw_1"]               = "EVT_OH_ELEC_GEN2_SWITCH",
+            ["ELEC_APUGenSw_0"]            = "EVT_OH_ELEC_APU_GEN1_SWITCH",
+            ["ELEC_APUGenSw_1"]            = "EVT_OH_ELEC_APU_GEN2_SWITCH",
+            // ELEC_BatSelector, ELEC_StandbyPowerSelector, ELEC_BusTransSw_AUTO,
+            // ELEC_IDGDisconnectSw_0/1 are guarded — see _guardedMap.
+
+            // --- Forward overhead: Wipers ---
+            ["OH_WiperLSelector"]          = "EVT_OH_WIPER_LEFT_CONTROL",
+            ["OH_WiperRSelector"]          = "EVT_OH_WIPER_RIGHT_CONTROL",
+
+            // --- Center overhead: Equipment cooling / pax signs ---
+            ["AIR_EquipCoolingSupplyNORM"] = "EVT_OH_EC_SUPPLY_SWITCH",
+            ["AIR_EquipCoolingExhaustNORM"]= "EVT_OH_EC_EXHAUST_SWITCH",
+            ["COMM_NoSmokingSelector"]     = "EVT_OH_NO_SMOKING_LIGHT_SWITCH",
+            ["COMM_FastenBeltsSelector"]   = "EVT_OH_FASTEN_BELTS_LIGHT_SWITCH",
+            // LTS_EmerExitSelector is guarded — see _guardedMap
+
+            // --- Anti-ice ---
+            ["ICE_WindowHeatSw_0"]         = "EVT_OH_ICE_WINDOW_HEAT_1",
+            ["ICE_WindowHeatSw_1"]         = "EVT_OH_ICE_WINDOW_HEAT_2",
+            ["ICE_WindowHeatSw_2"]         = "EVT_OH_ICE_WINDOW_HEAT_3",
+            ["ICE_WindowHeatSw_3"]         = "EVT_OH_ICE_WINDOW_HEAT_4",
+            ["ICE_WindowHeatTestSw"]       = "EVT_OH_ICE_WINDOW_HEAT_TEST",
+            ["ICE_ProbeHeatSw_0"]          = "EVT_OH_ICE_PROBE_HEAT_1",
+            ["ICE_ProbeHeatSw_1"]          = "EVT_OH_ICE_PROBE_HEAT_2",
+            ["ICE_WingAntiIceSw"]          = "EVT_OH_ICE_WING_ANTIICE",
+            ["ICE_EngAntiIceSw_0"]         = "EVT_OH_ICE_ENGINE_ANTIICE_1",
+            ["ICE_EngAntiIceSw_1"]         = "EVT_OH_ICE_ENGINE_ANTIICE_2",
+
+            // --- Hydraulics ---
+            ["HYD_PumpSw_eng_0"]           = "EVT_OH_HYD_ENG1",
+            ["HYD_PumpSw_eng_1"]           = "EVT_OH_HYD_ENG2",
+            ["HYD_PumpSw_elec_0"]          = "EVT_OH_HYD_ELEC1",
+            ["HYD_PumpSw_elec_1"]          = "EVT_OH_HYD_ELEC2",
+
+            // --- Air conditioning / bleed / pack ---
+            ["AIR_TempSourceSelector"]     = "EVT_OH_AIRCOND_TEMP_SOURCE_SELECTOR_800",
+            ["AIR_TrimAirSwitch"]          = "EVT_OH_AIRCOND_TRIM_AIR_SWITCH_800",
+            ["AIR_RecircFanSwitch_0"]      = "EVT_OH_BLEED_RECIRC_FAN_L_SWITCH",
+            ["AIR_RecircFanSwitch_1"]      = "EVT_OH_BLEED_RECIRC_FAN_R_SWITCH",
+            ["AIR_PackSwitch_0"]           = "EVT_OH_BLEED_PACK_L_SWITCH",
+            ["AIR_PackSwitch_1"]           = "EVT_OH_BLEED_PACK_R_SWITCH",
+            ["AIR_BleedAirSwitch_0"]       = "EVT_OH_BLEED_ENG_1_SWITCH",
+            ["AIR_BleedAirSwitch_1"]       = "EVT_OH_BLEED_ENG_2_SWITCH",
+            ["AIR_APUBleedAirSwitch"]      = "EVT_OH_BLEED_APU_SWITCH",
+            ["AIR_IsolationValveSwitch"]   = "EVT_OH_BLEED_ISOLATION_VALVE_SWITCH",
+            ["AIR_OutflowValveSwitch"]     = "EVT_OH_PRESS_VALVE_SWITCH",
+            ["AIR_PressurizationModeSelector"] = "EVT_OH_PRESS_SELECTOR",
+
+            // --- Bottom overhead: Lights ---
+            ["LTS_LandingLtRetractableSw_0"] = "EVT_OH_LIGHTS_L_RETRACT",
+            ["LTS_LandingLtRetractableSw_1"] = "EVT_OH_LIGHTS_R_RETRACT",
+            ["LTS_LandingLtFixedSw_0"]     = "EVT_OH_LIGHTS_L_FIXED",
+            ["LTS_LandingLtFixedSw_1"]     = "EVT_OH_LIGHTS_R_FIXED",
+            ["LTS_RunwayTurnoffSw_0"]      = "EVT_OH_LIGHTS_L_TURNOFF",
+            ["LTS_RunwayTurnoffSw_1"]      = "EVT_OH_LIGHTS_R_TURNOFF",
+            ["LTS_TaxiSw"]                 = "EVT_OH_LIGHTS_TAXI",
+            ["LTS_LogoSw"]                 = "EVT_OH_LIGHTS_LOGO",
+            ["LTS_PositionSw"]             = "EVT_OH_LIGHTS_POS_STROBE",
+            ["LTS_AntiCollisionSw"]        = "EVT_OH_LIGHTS_ANT_COL",
+            ["LTS_WingSw"]                 = "EVT_OH_LIGHTS_WING",
+            ["LTS_WheelWellSw"]            = "EVT_OH_LIGHTS_WHEEL_WELL",
+
+            // --- Bottom overhead: Engine start / APU / ignition ---
+            ["APU_Selector"]               = "EVT_OH_LIGHTS_APU_START",
+            ["ENG_StartSelector_0"]        = "EVT_OH_LIGHTS_L_ENGINE_START",
+            ["ENG_StartSelector_1"]        = "EVT_OH_LIGHTS_R_ENGINE_START",
+            ["ENG_IgnitionSelector"]       = "EVT_OH_LIGHTS_IGN_SEL",
+
+            // --- Glareshield: EFIS Captain ---
+            ["EFIS_MinsSelBARO_0"]         = "EVT_EFIS_CPT_MINIMUMS_RADIO_BARO",
+            ["EFIS_BaroSelHPA_0"]          = "EVT_EFIS_CPT_BARO_IN_HPA",
+            ["EFIS_VORADFSel1_0"]          = "EVT_EFIS_CPT_VOR_ADF_SELECTOR_L",
+            ["EFIS_VORADFSel2_0"]          = "EVT_EFIS_CPT_VOR_ADF_SELECTOR_R",
+            ["EFIS_ModeSel_0"]             = "EVT_EFIS_CPT_MODE",
+            ["EFIS_RangeSel_0"]            = "EVT_EFIS_CPT_RANGE",
+
+            // --- Glareshield: EFIS First Officer ---
+            ["EFIS_MinsSelBARO_1"]         = "EVT_EFIS_FO_MINIMUMS_RADIO_BARO",
+            ["EFIS_BaroSelHPA_1"]          = "EVT_EFIS_FO_BARO_IN_HPA",
+            ["EFIS_VORADFSel1_1"]          = "EVT_EFIS_FO_VOR_ADF_SELECTOR_L",
+            ["EFIS_VORADFSel2_1"]          = "EVT_EFIS_FO_VOR_ADF_SELECTOR_R",
+            ["EFIS_ModeSel_1"]             = "EVT_EFIS_FO_MODE",
+            ["EFIS_RangeSel_1"]            = "EVT_EFIS_FO_RANGE",
+
+            // --- Glareshield: MCP (non-knob switches) ---
+            ["MCP_FDSw_0"]                 = "EVT_MCP_FD_SWITCH_L",
+            ["MCP_FDSw_1"]                 = "EVT_MCP_FD_SWITCH_R",
+            ["MCP_ATArmSw"]                = "EVT_MCP_AT_ARM_SWITCH",
+            ["MCP_N1_Sw"]                  = "EVT_MCP_N1_SWITCH",
+            ["MCP_SPEED_Sw"]               = "EVT_MCP_SPEED_SWITCH",
+            ["MCP_VNAV_Sw"]                = "EVT_MCP_VNAV_SWITCH",
+            ["MCP_LVL_CHG_Sw"]             = "EVT_MCP_LVL_CHG_SWITCH",
+            ["MCP_HDG_SEL_Sw"]             = "EVT_MCP_HDG_SEL_SWITCH",
+            ["MCP_APP_Sw"]                 = "EVT_MCP_APP_SWITCH",
+            ["MCP_ALT_HOLD_Sw"]            = "EVT_MCP_ALT_HOLD_SWITCH",
+            ["MCP_VS_Sw"]                  = "EVT_MCP_VS_SWITCH",
+            ["MCP_VOR_LOC_Sw"]             = "EVT_MCP_VOR_LOC_SWITCH",
+            ["MCP_LNAV_Sw"]                = "EVT_MCP_LNAV_SWITCH",
+            ["MCP_CMD_A_Sw"]               = "EVT_MCP_CMD_A_SWITCH",
+            ["MCP_CMD_B_Sw"]               = "EVT_MCP_CMD_B_SWITCH",
+            ["MCP_CWS_A_Sw"]               = "EVT_MCP_CWS_A_SWITCH",
+            ["MCP_CWS_B_Sw"]               = "EVT_MCP_CWS_B_SWITCH",
+            ["MCP_BankLimitSel"]           = "EVT_MCP_BANK_ANGLE_SELECTOR",
+            ["MCP_DisengageBar"]           = "EVT_MCP_DISENGAGE_BAR",
+            ["MCP_CO_Sw"]                  = "EVT_MCP_CO_SWITCH",
+            ["MCP_SPD_INTV_Sw"]            = "EVT_MCP_SPD_INTV_SWITCH",
+            ["MCP_ALT_INTV_Sw"]            = "EVT_MCP_ALT_INTV_SWITCH",
+
+            // --- Forward panel: NWS / displays / disengage test / lights ---
+            // MAIN_NoseWheelSteeringSwNORM is guarded — see _guardedMap
+            ["MAIN_MainPanelDUSel_0"]      = "EVT_DSP_CPT_MAIN_DU_SELECTOR",
+            ["MAIN_MainPanelDUSel_1"]      = "EVT_DSP_FO_MAIN_DU_SELECTOR",
+            ["MAIN_LowerDUSel_0"]          = "EVT_DSP_CPT_LOWER_DU_SELECTOR",
+            ["MAIN_LowerDUSel_1"]          = "EVT_DSP_FO_LOWER_DU_SELECTOR",
+            ["MAIN_DisengageTestSelector_0"] = "EVT_DSP_CPT_DISENGAGE_TEST_SWITCH",
+            ["MAIN_DisengageTestSelector_1"] = "EVT_DSP_FO_DISENGAGE_TEST_SWITCH",
+            ["MAIN_LightsSelector"]        = "EVT_DSP_CPT_MASTER_LIGHTS_SWITCH",
+            ["MAIN_annunBELOW_GS_0"]       = "EVT_DSP_CPT_BELOW_GS_INHIBIT_SWITCH",
+            ["MAIN_annunBELOW_GS_1"]       = "EVT_DSP_FO_BELOW_GS_INHIBIT_SWITCH",
+
+            // --- Forward panel: RMI / autobrake / spd ref / N1 set / fuel flow ---
+            ["MAIN_RMISelector1_VOR"]      = "EVT_RMI_LEFT_SELECTOR",
+            ["MAIN_RMISelector2_VOR"]      = "EVT_RMI_RIGHT_SELECTOR",
+            ["MAIN_AutobrakeSelector"]     = "EVT_MPM_AUTOBRAKE_SELECTOR",
+            ["MAIN_SpdRefSelector"]        = "EVT_MPM_SPEED_REFERENCE_SELECTOR",
+            ["MAIN_N1SetSelector"]         = "EVT_MPM_N1SET_SELECTOR",
+            ["MAIN_FuelFlowSelector"]      = "EVT_MPM_FUEL_FLOW_SWITCH",
+            ["MAIN_GearLever"]             = "EVT_GEAR_LEVER",
+
+            // --- Lower forward panel: GPWS (all guarded — see _guardedMap) ---
+            // GPWS_FlapInhibitSw_NORM, GPWS_GearInhibitSw_NORM, GPWS_TerrInhibitSw_NORM
+            // are all guarded.
+
+            // --- Control Stand: stab trim / parking / fire / xpdr ---
+            ["TRIM_StabTrimMainElecSw_NORMAL"] = "EVT_CONTROL_STAND_STABTRIM_ELEC_SWITCH",
+            ["TRIM_StabTrimAutoPilotSw_NORMAL"] = "EVT_CONTROL_STAND_STABTRIM_AP_SWITCH",
+            ["TRIM_StabTrimSw_NORMAL"]     = "EVT_STAB_TRIM_OVRD_SWITCH",
+            ["FCTL_Flaps"]                 = "EVT_CONTROL_STAND_FLAPS_LEVER",
+            ["FIRE_OvhtDetSw_0"]           = "EVT_FIRE_OVHT_DET_SWITCH_1",
+            ["FIRE_OvhtDetSw_1"]           = "EVT_FIRE_OVHT_DET_SWITCH_2",
+            ["FIRE_DetTestSw"]             = "EVT_FIRE_DETECTION_TEST_SWITCH",
+            ["FIRE_ExtinguisherTestSw"]    = "EVT_FIRE_EXTINGUISHER_TEST_SWITCH",
+            ["CARGO_DetSelect_0"]          = "EVT_CARGO_FIRE_DET_SEL_SWITCH_FWD",
+            ["CARGO_DetSelect_1"]          = "EVT_CARGO_FIRE_DET_SEL_SWITCH_AFT",
+            // CARGO_ArmedSw_0/1 are guarded — see _guardedMap
+            ["XPDR_XpndrSelector_2"]       = "EVT_TCAS_XPNDR",
+            ["XPDR_AltSourceSel_2"]        = "EVT_TCAS_ALTSOURCE",
+            ["XPDR_ModeSel"]               = "EVT_TCAS_MODE",
+            ["PED_FltDkDoorSel"]           = "EVT_FLT_DK_DOOR_KNOB",
         };
 
     // =========================================================================
     // Guarded switch table: varKey → (guardEvent, switchEvent)
-    // Populated in Task C4
+    //
+    // The UI layer fires the guard event first (open the guard), then the
+    // switch event (move the switch), then the guard event again (close the
+    // guard) when toggling a guarded switch. This dict supplies the two event
+    // names for each guarded variable.
+    //
+    // Fire handles (FIRE_HandlePos[3]) are NOT here — they are 5-state and
+    // handled with a dedicated branch in HandleUIVariableSet (Task C10).
     // =========================================================================
     private static readonly IReadOnlyDictionary<string, (string Guard, string Switch)> _guardedMap =
         new Dictionary<string, (string, string)>
         {
-            // Populated in Task C4
+            // --- Electrical ---
+            ["ELEC_BatSelector"]           = ("EVT_OH_ELEC_BATTERY_GUARD",      "EVT_OH_ELEC_BATTERY_SWITCH"),
+            ["ELEC_IDGDisconnectSw_0"]     = ("EVT_OH_ELEC_DISCONNECT_1_GUARD", "EVT_OH_ELEC_DISCONNECT_1_SWITCH"),
+            ["ELEC_IDGDisconnectSw_1"]     = ("EVT_OH_ELEC_DISCONNECT_2_GUARD", "EVT_OH_ELEC_DISCONNECT_2_SWITCH"),
+            ["ELEC_StandbyPowerSelector"]  = ("EVT_OH_ELEC_STBY_PWR_GUARD",     "EVT_OH_ELEC_STBY_PWR_SWITCH"),
+            ["ELEC_BusTransSw_AUTO"]       = ("EVT_OH_ELEC_BUS_TRANSFER_GUARD", "EVT_OH_ELEC_BUS_TRANSFER_SWITCH"),
+
+            // --- Fuel ---
+            ["FUEL_GNDXfr"]                = ("EVT_OH_FUEL_GND_XFR_GUARD",      "EVT_OH_FUEL_GND_XFR_SW"),
+
+            // --- Flight Controls ---
+            ["FCTL_FltControl_Sw_0"]       = ("EVT_OH_FCTL_A_GUARD",            "EVT_OH_FCTL_A_SWITCH"),
+            ["FCTL_FltControl_Sw_1"]       = ("EVT_OH_FCTL_B_GUARD",            "EVT_OH_FCTL_B_SWITCH"),
+            ["FCTL_Spoiler_Sw_0"]          = ("EVT_OH_SPOILER_A_GUARD",         "EVT_OH_SPOILER_A_SWITCH"),
+            ["FCTL_Spoiler_Sw_1"]          = ("EVT_OH_SPOILER_B_GUARD",         "EVT_OH_SPOILER_B_SWITCH"),
+            ["FCTL_AltnFlaps_Sw_ARM"]      = ("EVT_OH_ALT_FLAPS_MASTER_GUARD",  "EVT_OH_ALT_FLAPS_MASTER_SWITCH"),
+
+            // --- Engine EEC ---
+            ["ENG_EECSwitch_0"]            = ("EVT_OH_EEC_L_GUARD",             "EVT_OH_EEC_L_SWITCH"),
+            ["ENG_EECSwitch_1"]            = ("EVT_OH_EEC_R_GUARD",             "EVT_OH_EEC_R_SWITCH"),
+
+            // --- Oxygen / Flight Recorder / Emergency exit lights ---
+            ["OXY_SwNormal"]               = ("EVT_OH_OXY_PASS_GUARD",          "EVT_OH_OXY_PASS_SWITCH"),
+            ["FLTREC_SwNormal"]            = ("EVT_OH_FLTREC_GUARD",            "EVT_OH_FLTREC_SWITCH"),
+            ["LTS_EmerExitSelector"]       = ("EVT_OH_EMER_EXIT_LIGHT_GUARD",   "EVT_OH_EMER_EXIT_LIGHT_SWITCH"),
+
+            // --- GPWS inhibits ---
+            ["GPWS_FlapInhibitSw_NORM"]    = ("EVT_GPWS_FLAP_INHIBIT_GUARD",    "EVT_GPWS_FLAP_INHIBIT_SWITCH"),
+            ["GPWS_GearInhibitSw_NORM"]    = ("EVT_GPWS_GEAR_INHIBIT_GUARD",    "EVT_GPWS_GEAR_INHIBIT_SWITCH"),
+            ["GPWS_TerrInhibitSw_NORM"]    = ("EVT_GPWS_TERR_INHIBIT_GUARD",    "EVT_GPWS_TERR_INHIBIT_SWITCH"),
+
+            // --- Nose wheel steering ---
+            ["MAIN_NoseWheelSteeringSwNORM"] = ("EVT_NOSE_WHEEL_STEERING_SWITCH_GUARD", "EVT_NOSE_WHEEL_STEERING_SWITCH"),
+
+            // --- Cargo fire arm switches ---
+            // EVT_CARGO_FIRE_DISC_SWITCH_GUARD covers the discharge switch — the
+            // arm switches themselves don't have explicit guard events in the SDK,
+            // so they're treated as simple switches (see _simpleEventMap above
+            // for the DET sel; the arm switches go here only if guarded). The
+            // 737 cargo fire arm switches sit under the cargo fire disch guard
+            // — model them as guarded by the disch guard for parity with the
+            // pilot mental model (the guard physically covers the entire
+            // arm/disch group). If this turns out to be wrong in-sim, the entry
+            // can move down to _simpleEventMap.
+            ["CARGO_ArmedSw_0"]            = ("EVT_CARGO_FIRE_DISC_SWITCH_GUARD", "EVT_CARGO_FIRE_ARM_SWITCH_FWD"),
+            ["CARGO_ArmedSw_1"]            = ("EVT_CARGO_FIRE_DISC_SWITCH_GUARD", "EVT_CARGO_FIRE_ARM_SWITCH_AFT"),
         };
 
     // =========================================================================
