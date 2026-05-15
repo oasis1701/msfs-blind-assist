@@ -2578,14 +2578,225 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     // Behavior overrides — scaffold (populated in Tasks C10–C12)
     // =========================================================================
 
+    // Per-detent flaps lever events. The base EVT_CONTROL_STAND_FLAPS_LEVER is a
+    // drag event; sending a detent index to it leaves the lever in an invalid
+    // state. The per-detent EVT_CONTROL_STAND_FLAPS_LEVER_<deg> click events go
+    // through the same CDA control channel but expect MOUSE_FLAG_LEFTSINGLE as
+    // the parameter, matching the SDK's mouse-click convention.
+    // NG3 detent map: 0=UP, 1=Flaps 1, 2=Flaps 2, 3=Flaps 5, 4=Flaps 10,
+    // 5=Flaps 15, 6=Flaps 25, 7=Flaps 30, 8=Flaps 40.
+    private static readonly Dictionary<int, string> _flapsDetentSuffix = new()
+    {
+        { 0, "_0" }, { 1, "_1" }, { 2, "_2" }, { 3, "_5" },
+        { 4, "_10" }, { 5, "_15" }, { 6, "_25" }, { 7, "_30" },
+        { 8, "_40" }
+    };
+
     public override bool HandleUIVariableSet(
         string varKey, double value,
         SimConnect.SimVarDefinition varDef,
         SimConnect.SimConnectManager simConnect,
         ScreenReaderAnnouncer announcer)
     {
-        // Populated in Task C10
-        return base.HandleUIVariableSet(varKey, value, varDef, simConnect, announcer);
+        // ------------------------------------------------------------------
+        // 0. Standard SimConnect events
+        //    Handled here to prevent MainForm's redundant announcements.
+        // ------------------------------------------------------------------
+        if (varDef.Type == SimConnect.SimVarType.Event)
+        {
+            simConnect.SendEvent(varDef.Name);
+            return true;
+        }
+
+        // ------------------------------------------------------------------
+        // 0a. COM standby frequency set — validate, convert MHz → Hz, send via
+        //     standard SimConnect event. Return true to prevent MainForm's
+        //     redundant "Standby frequency set to xxx" announcement.
+        // ------------------------------------------------------------------
+        if (varKey.StartsWith("COM_STANDBY_FREQUENCY_SET"))
+        {
+            if (value >= 118.0 && value <= 136.975)
+            {
+                uint frequencyHz = (uint)Math.Round(value * 1000000);
+                string setEvent = varKey.Contains(":2") ? "COM2_STBY_RADIO_SET_HZ" : "COM_STBY_RADIO_SET_HZ";
+                simConnect.SendEvent(setEvent, frequencyHz);
+            }
+            else
+            {
+                announcer.AnnounceImmediate("Invalid frequency. Range: 118.000 to 136.975");
+            }
+            return true;
+        }
+
+        // ------------------------------------------------------------------
+        // 1. Guarded switches — guard open → toggle → guard close (async,
+        //    fire-and-forget; UI doesn't need to await).
+        // ------------------------------------------------------------------
+        if (_guardedMap.TryGetValue(varKey, out var guardPair))
+        {
+            if (EventIds.TryGetValue(guardPair.Guard, out int gId) &&
+                EventIds.TryGetValue(guardPair.Switch, out int sId))
+            {
+                _ = simConnect.SendPMDGGuardedToggle(
+                    guardPair.Guard,  (uint)gId,
+                    guardPair.Switch, (uint)sId);
+                return true;
+            }
+        }
+
+        // ------------------------------------------------------------------
+        // 2. Engine fuel-cutoff (start) levers — defensive handler. The NG3
+        //    data struct has no readable start-lever-position field, so the
+        //    panel UI does not currently expose these via a dropdown; this
+        //    case is unreachable today but kept here so a future UI hookup
+        //    (synthetic var-key or dedicated dialog) lands on the correct
+        //    event path without further plumbing.
+        //
+        //    TODO (Task C14 sim test): verify parameter direction. The PMDG
+        //    777 SDK requires INVERTED parameter for its analogous
+        //    EVT_CONTROL_STAND_ENG*_FUEL_CONTROL events (1=Cutoff, 0=Run);
+        //    NG3's EVT_CONTROL_STAND_ENG*_START_LEVER may behave the same or
+        //    may take direct passthrough. Initial implementation uses direct
+        //    passthrough; if the in-sim test shows it's inverted, change to
+        //    `(int)value == 0 ? 1 : 0`.
+        // ------------------------------------------------------------------
+        if (varKey == "ENG_StartLever_0" || varKey == "ENG_StartLever_1")
+        {
+            string leverEvent = varKey == "ENG_StartLever_0"
+                ? "EVT_CONTROL_STAND_ENG1_START_LEVER"
+                : "EVT_CONTROL_STAND_ENG2_START_LEVER";
+            if (EventIds.TryGetValue(leverEvent, out int leverId))
+            {
+                simConnect.SendPMDGEvent(leverEvent, (uint)leverId, (int)value);
+            }
+            return true;
+        }
+
+        // ------------------------------------------------------------------
+        // 3. MCP FD switches and AT Arm — require MOUSE_FLAG_LEFTSINGLE.
+        //    Unlike most PMDG switches, these ignore direct position values
+        //    and need the mouse-click flag per the SDK example.
+        // ------------------------------------------------------------------
+        if (varKey == "MCP_FDSw_0" || varKey == "MCP_FDSw_1" || varKey == "MCP_ATArmSw")
+        {
+            string mcpEvent = varKey switch
+            {
+                "MCP_FDSw_0" => "EVT_MCP_FD_SWITCH_L",
+                "MCP_FDSw_1" => "EVT_MCP_FD_SWITCH_R",
+                _            => "EVT_MCP_AT_ARM_SWITCH"
+            };
+            if (EventIds.TryGetValue(mcpEvent, out int mcpId))
+            {
+                int target = (int)value;
+                var dm = simConnect.PMDGDataManager;
+                if (dm != null && (int)dm.GetFieldValue(varDef.Name) == target)
+                {
+                    return true; // already at target — no-op
+                }
+                const int MOUSE_FLAG_LEFTSINGLE = unchecked((int)0x20000000);
+                simConnect.SendPMDGEvent(mcpEvent, (uint)mcpId, MOUSE_FLAG_LEFTSINGLE);
+            }
+            return true;
+        }
+
+        // ------------------------------------------------------------------
+        // 4. Ground power switch — momentary push button, always send 1.
+        // ------------------------------------------------------------------
+        if (varKey == "ELEC_GrdPwrSw")
+        {
+            if (EventIds.TryGetValue("EVT_OH_ELEC_GRD_PWR_SWITCH", out int gpId))
+            {
+                simConnect.SendPMDGEvent("EVT_OH_ELEC_GRD_PWR_SWITCH", (uint)gpId, 1);
+            }
+            return true;
+        }
+
+        // ------------------------------------------------------------------
+        // 5. Flaps lever — per-detent click event with MOUSE_FLAG_LEFTSINGLE
+        //    (see _flapsDetentSuffix above). Currently unreachable since the
+        //    UI doesn't expose FCTL_Flaps as a settable key (no struct field),
+        //    but the handler is in place for a future synthetic UI hookup.
+        // ------------------------------------------------------------------
+        if (varKey == "FCTL_Flaps")
+        {
+            int detent = (int)value;
+            if (_flapsDetentSuffix.TryGetValue(detent, out string? suffix))
+            {
+                string detentEvent = "EVT_CONTROL_STAND_FLAPS_LEVER" + suffix;
+                if (EventIds.TryGetValue(detentEvent, out int detentId))
+                {
+                    const int MOUSE_FLAG_LEFTSINGLE = unchecked((int)0x20000000);
+                    simConnect.SendPMDGEvent(detentEvent, (uint)detentId, MOUSE_FLAG_LEFTSINGLE);
+                }
+            }
+            return true;
+        }
+
+        // ------------------------------------------------------------------
+        // 6. Fire handles — multi-state direct position. NG3 indices:
+        //    0 = Engine 1, 1 = Engine 2, 2 = APU (per PMDGNG3DataStruct
+        //    comments and the var defs in this file). Values 0..4 are
+        //    In / Blocked / Out / Turned Left / Turned Right.
+        // ------------------------------------------------------------------
+        if (varKey.StartsWith("FIRE_HandlePos_"))
+        {
+            string? fireEvent = varKey switch
+            {
+                "FIRE_HandlePos_0" => "EVT_FIRE_HANDLE_ENGINE_1_TOP",
+                "FIRE_HandlePos_1" => "EVT_FIRE_HANDLE_ENGINE_2_TOP",
+                "FIRE_HandlePos_2" => "EVT_FIRE_HANDLE_APU_TOP",
+                _                  => null
+            };
+            if (fireEvent != null && EventIds.TryGetValue(fireEvent, out int hId))
+            {
+                simConnect.SendPMDGEvent(fireEvent, (uint)hId, (int)value);
+            }
+            return true;
+        }
+
+        // ------------------------------------------------------------------
+        // 7. Generic _simpleEventMap lookup — covers every remaining mapped
+        //    var-key. The parameter shape is determined by the var def:
+        //
+        //    - RenderAsButton && IsMomentary  → parameter = 1 (press)
+        //    - ValueDescriptions.Count >= 2   → parameter = (int)value
+        //                                        (toggle or multi-position
+        //                                        selector — direct position)
+        //    - otherwise                      → parameter = (int)value
+        //                                        (single-state toggle)
+        //
+        //    For ValueDescriptions cases we additionally short-circuit when
+        //    the cached struct already shows the switch at the target
+        //    position, matching the 777 pattern's no-op guard.
+        // ------------------------------------------------------------------
+        if (_simpleEventMap.TryGetValue(varKey, out string? eventName) &&
+            EventIds.TryGetValue(eventName, out int evId))
+        {
+            uint eventId = (uint)evId;
+
+            if (varDef.RenderAsButton && varDef.IsMomentary)
+            {
+                simConnect.SendPMDGEvent(eventName, eventId, 1);
+                return true;
+            }
+
+            int target = (int)value;
+            if (varDef.ValueDescriptions.Count >= 2)
+            {
+                var dm = simConnect.PMDGDataManager;
+                if (dm != null && (int)dm.GetFieldValue(varDef.Name) == target)
+                {
+                    return true; // already at target — no-op
+                }
+            }
+            simConnect.SendPMDGEvent(eventName, eventId, target);
+            return true;
+        }
+
+        // ------------------------------------------------------------------
+        // Default: not handled — delegate to MainForm's generic fallback.
+        // ------------------------------------------------------------------
+        return false;
     }
 
     public override bool ProcessSimVarUpdate(string varName, double value, ScreenReaderAnnouncer announcer)
