@@ -37,6 +37,24 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         return set;
     }
 
+    // ---------------------------------------------------------------------
+    // Suppression state for ProcessSimVarUpdate (Task C11).
+    //
+    // For variables whose initial value should be absorbed silently (so we
+    // don't shout a flood of baseline announcements on connect), the NaN
+    // sentinel means "no baseline captured yet". For press counters, the
+    // 0 sentinel doubles as "no baseline yet" — the press counters are
+    // unsigned bytes the panel never sets to 0 deliberately.
+    // ---------------------------------------------------------------------
+    private double _lastAnnouncedAltimeter = double.NaN;
+    private double _lastCom1Active = double.NaN;
+    private double _lastCom2Active = double.NaN;
+    private double _lastCom1Standby = double.NaN;
+    private double _lastCom2Standby = double.NaN;
+    private double _lastSquawkCode = double.NaN;
+    private byte _lastAttendPressCount;
+    private byte _lastGrdCallPressCount;
+
     // PMDG 737 MCP supports direct SetValue events for SPD/HDG/ALT/VS (NG3 SDK
     // exposes EVT_*_SET style events just like the 777).
     public override FCUControlType GetAltitudeControlType() => FCUControlType.SetValue;
@@ -2801,8 +2819,332 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
 
     public override bool ProcessSimVarUpdate(string varName, double value, ScreenReaderAnnouncer announcer)
     {
-        // Populated in Task C11
-        return base.ProcessSimVarUpdate(varName, value, announcer);
+        // Generic handling first (altitude thousand-foot crossings, etc.).
+        if (base.ProcessSimVarUpdate(varName, value, announcer))
+            return true;
+
+        // Swallow momentary button chatter — buttons briefly go to 1 then back
+        // to 0. The actual effect is reflected through annunciator lights,
+        // which are excluded from SuppressedButtonKeys and have explicit cases
+        // below.
+        if (SuppressedButtonKeys.Contains(varName))
+            return true;
+
+        switch (varName)
+        {
+            // -------------------------------------------------------------
+            // Altimeter setting (inHg). 29.92 = "Altimeter standard".
+            // Otherwise announce both hPa and inches. Suppress the initial
+            // baseline value and debounce micro-changes.
+            // -------------------------------------------------------------
+            case "KOHLSMAN SETTING HG":
+            {
+                if (double.IsNaN(_lastAnnouncedAltimeter))
+                {
+                    _lastAnnouncedAltimeter = value;
+                    return true;
+                }
+                if (Math.Abs(value - _lastAnnouncedAltimeter) < 0.005)
+                    return true;
+                _lastAnnouncedAltimeter = value;
+                if (Math.Abs(value - 29.92) < 0.005)
+                    announcer.Announce("Altimeter standard");
+                else
+                {
+                    int hpa = (int)Math.Round(value * 33.8639);
+                    announcer.Announce($"Altimeter {hpa} hectopascals, {value:0.00} inches");
+                }
+                return true;
+            }
+
+            // -------------------------------------------------------------
+            // MCP display values. IASBlank/VertSpeedBlank are flags that
+            // other handlers consult; we absorb their own announcements
+            // silently here. MCP_IASMach below 10 is Mach, otherwise knots.
+            // -------------------------------------------------------------
+            case "MCP_IASMach":
+                if (value < 10)
+                    announcer.Announce($"Mach {value:F2}");
+                else
+                    announcer.Announce($"Speed {(int)Math.Round(value)} knots");
+                return true;
+
+            case "MCP_Heading":
+                announcer.Announce($"Heading {(int)Math.Round(value)}");
+                return true;
+
+            case "MCP_Altitude":
+                announcer.Announce($"{(int)Math.Round(value)} feet");
+                return true;
+
+            case "MCP_VertSpeed":
+                announcer.Announce($"VS {(int)Math.Round(value)} feet per minute");
+                return true;
+
+            case "MCP_IASBlank":
+            case "MCP_VertSpeedBlank":
+                // Flags consumed by other handlers — absorb silently.
+                return true;
+
+            // -------------------------------------------------------------
+            // MCP mode annunciators.
+            // -------------------------------------------------------------
+            case "MCP_annunVNAV":
+                announcer.Announce(value > 0 ? "VNAV engaged" : "VNAV disengaged");
+                return true;
+            case "MCP_annunLVL_CHG":
+                announcer.Announce(value > 0 ? "Level Change engaged" : "Level Change disengaged");
+                return true;
+            case "MCP_annunHDG_SEL":
+                announcer.Announce(value > 0 ? "Heading Select engaged" : "Heading Select disengaged");
+                return true;
+            case "MCP_annunLNAV":
+                announcer.Announce(value > 0 ? "LNAV engaged" : "LNAV disengaged");
+                return true;
+            case "MCP_annunVOR_LOC":
+                announcer.Announce(value > 0 ? "VOR/LOC armed" : "VOR/LOC disengaged");
+                return true;
+            case "MCP_annunAPP":
+                announcer.Announce(value > 0 ? "Approach armed" : "Approach disengaged");
+                return true;
+            case "MCP_annunALT_HOLD":
+                announcer.Announce(value > 0 ? "Altitude Hold engaged" : "Altitude Hold disengaged");
+                return true;
+            case "MCP_annunVS":
+                announcer.Announce(value > 0 ? "Vertical Speed engaged" : "Vertical Speed disengaged");
+                return true;
+            case "MCP_annunCMD_A":
+                announcer.Announce(value > 0 ? "Command A engaged" : "Command A disengaged");
+                return true;
+            case "MCP_annunCMD_B":
+                announcer.Announce(value > 0 ? "Command B engaged" : "Command B disengaged");
+                return true;
+            case "MCP_annunCWS_A":
+                announcer.Announce(value > 0 ? "CWS A engaged" : "CWS A disengaged");
+                return true;
+            case "MCP_annunCWS_B":
+                announcer.Announce(value > 0 ? "CWS B engaged" : "CWS B disengaged");
+                return true;
+            case "MCP_annunN1":
+                announcer.Announce(value > 0 ? "N1 armed" : "N1 disengaged");
+                return true;
+            case "MCP_annunSPEED":
+                announcer.Announce(value > 0 ? "Speed armed" : "Speed disengaged");
+                return true;
+            case "MCP_annunATArm":
+                announcer.Announce(value > 0 ? "A/T armed" : "A/T disengaged");
+                return true;
+            case "MCP_annunFD_0":
+                announcer.Announce(value > 0 ? "FD Captain engaged" : "FD Captain disengaged");
+                return true;
+            case "MCP_annunFD_1":
+                announcer.Announce(value > 0 ? "FD First Officer engaged" : "FD First Officer disengaged");
+                return true;
+
+            // -------------------------------------------------------------
+            // Fire warnings + master caution — these are time-critical and
+            // must interrupt queued speech. Only announce on the rising
+            // edge (value > 0).
+            // -------------------------------------------------------------
+            case "WARN_annunFIRE_WARN_0":
+                if (value > 0.5) announcer.AnnounceImmediate("Fire warning Captain");
+                return true;
+            case "WARN_annunFIRE_WARN_1":
+                if (value > 0.5) announcer.AnnounceImmediate("Fire warning First Officer");
+                return true;
+            case "WARN_annunMASTER_CAUTION_0":
+            case "WARN_annunMASTER_CAUTION_1":
+                if (value > 0.5) announcer.AnnounceImmediate("Master Caution");
+                return true;
+
+            // -------------------------------------------------------------
+            // System cautions — rising-edge announcements (no off-state).
+            // -------------------------------------------------------------
+            case "WARN_annunFLT_CONT":
+                if (value > 0.5) announcer.Announce("Flight Controls caution");
+                return true;
+            case "WARN_annunIRS":
+                if (value > 0.5) announcer.Announce("IRS caution");
+                return true;
+            case "WARN_annunFUEL":
+                if (value > 0.5) announcer.Announce("Fuel caution");
+                return true;
+            case "WARN_annunELEC":
+                if (value > 0.5) announcer.Announce("Electrical caution");
+                return true;
+            case "WARN_annunAPU":
+                if (value > 0.5) announcer.Announce("APU caution");
+                return true;
+            case "WARN_annunOVHT_DET":
+                if (value > 0.5) announcer.Announce("Overheat/Detection caution");
+                return true;
+            case "WARN_annunANTI_ICE":
+                if (value > 0.5) announcer.Announce("Anti-Ice caution");
+                return true;
+            case "WARN_annunHYD":
+                if (value > 0.5) announcer.Announce("Hydraulics caution");
+                return true;
+            case "WARN_annunDOORS":
+                if (value > 0.5) announcer.Announce("Doors caution");
+                return true;
+            case "WARN_annunENG":
+                if (value > 0.5) announcer.Announce("Engine caution");
+                return true;
+            case "WARN_annunOVERHEAD":
+                if (value > 0.5) announcer.Announce("Overhead caution");
+                return true;
+            case "WARN_annunAIR_COND":
+                if (value > 0.5) announcer.Announce("Air-conditioning caution");
+                return true;
+
+            // -------------------------------------------------------------
+            // FMC speeds and cruise altitude — suppress when 0 (not set).
+            // -------------------------------------------------------------
+            case "FMC_V1":
+                if (value > 0) announcer.Announce($"V1 {(int)Math.Round(value)}");
+                return true;
+            case "FMC_VR":
+                if (value > 0) announcer.Announce($"VR {(int)Math.Round(value)}");
+                return true;
+            case "FMC_V2":
+                if (value > 0) announcer.Announce($"V2 {(int)Math.Round(value)}");
+                return true;
+            case "FMC_CruiseAlt":
+                if (value > 0) announcer.Announce($"Cruise altitude {(int)Math.Round(value)} feet");
+                return true;
+
+            // -------------------------------------------------------------
+            // APU selector (0=OFF / 1=ON / 2=START).
+            // -------------------------------------------------------------
+            case "APU_Selector":
+            {
+                string apuStr = (int)value switch
+                {
+                    0 => "APU off",
+                    1 => "APU on",
+                    2 => "APU starting",
+                    _ => "APU state unknown"
+                };
+                announcer.Announce(apuStr);
+                return true;
+            }
+
+            // -------------------------------------------------------------
+            // COM frequencies — suppress the initial baseline value and
+            // skip micro-deltas, otherwise announce.
+            // -------------------------------------------------------------
+            case "COM1_ActiveFreq":
+                if (double.IsNaN(_lastCom1Active))
+                {
+                    _lastCom1Active = value;
+                    return true;
+                }
+                if (Math.Abs(value - _lastCom1Active) < 0.0001) return true;
+                _lastCom1Active = value;
+                announcer.Announce($"COM 1 active {value:F3}");
+                return true;
+
+            case "COM2_ActiveFreq":
+                if (double.IsNaN(_lastCom2Active))
+                {
+                    _lastCom2Active = value;
+                    return true;
+                }
+                if (Math.Abs(value - _lastCom2Active) < 0.0001) return true;
+                _lastCom2Active = value;
+                announcer.Announce($"COM 2 active {value:F3}");
+                return true;
+
+            case "COM_STANDBY_FREQUENCY_SET:1":
+                if (double.IsNaN(_lastCom1Standby))
+                {
+                    _lastCom1Standby = value;
+                    return true;
+                }
+                if (Math.Abs(value - _lastCom1Standby) < 0.0001) return true;
+                _lastCom1Standby = value;
+                announcer.Announce($"COM 1 standby {value:F3}");
+                return true;
+
+            case "COM_STANDBY_FREQUENCY_SET:2":
+                if (double.IsNaN(_lastCom2Standby))
+                {
+                    _lastCom2Standby = value;
+                    return true;
+                }
+                if (Math.Abs(value - _lastCom2Standby) < 0.0001) return true;
+                _lastCom2Standby = value;
+                announcer.Announce($"COM 2 standby {value:F3}");
+                return true;
+
+            // -------------------------------------------------------------
+            // Transponder code — BCD16. Suppress initial baseline, then
+            // announce changes as a 4-digit string.
+            // -------------------------------------------------------------
+            case "TRANSPONDER_CODE_SET":
+            {
+                if (double.IsNaN(_lastSquawkCode))
+                {
+                    _lastSquawkCode = value;
+                    return true;
+                }
+                if (Math.Abs(value - _lastSquawkCode) < 0.5) return true;
+                _lastSquawkCode = value;
+                int bcd = (int)value;
+                int d1 = (bcd >> 12) & 0xF;
+                int d2 = (bcd >> 8) & 0xF;
+                int d3 = (bcd >> 4) & 0xF;
+                int d4 = bcd & 0xF;
+                announcer.Announce($"Squawk {d1}{d2}{d3}{d4}");
+                return true;
+            }
+
+            // -------------------------------------------------------------
+            // Press counters — call buttons. Wrapping byte delta tells us
+            // whether the button has been pressed since the last sample.
+            // The _last != 0 guard suppresses the initial baseline.
+            // -------------------------------------------------------------
+            case "COMM_Attend_PressCount":
+            {
+                byte cur = (byte)(int)value;
+                byte delta = (byte)(cur - _lastAttendPressCount);
+                bool wasInitialized = _lastAttendPressCount != 0;
+                _lastAttendPressCount = cur;
+                if (delta > 0 && wasInitialized)
+                    announcer.Announce("Attend call");
+                return true;
+            }
+            case "COMM_GrdCall_PressCount":
+            {
+                byte cur = (byte)(int)value;
+                byte delta = (byte)(cur - _lastGrdCallPressCount);
+                bool wasInitialized = _lastGrdCallPressCount != 0;
+                _lastGrdCallPressCount = cur;
+                if (delta > 0 && wasInitialized)
+                    announcer.Announce("Ground call");
+                return true;
+            }
+
+            // -------------------------------------------------------------
+            // String displays. The data manager raises VariableChanged with
+            // a numeric placeholder when these change; the actual text is
+            // not available here because ProcessSimVarUpdate has no
+            // SimConnectManager reference. Hooking these up to spoken
+            // announcements has to happen at MainForm's
+            // OnPMDGVariableChanged layer (TODO — separate task).
+            // -------------------------------------------------------------
+            case "IRS_DisplayLeft":
+            case "IRS_DisplayRight":
+            case "ELEC_MeterDisplayTop":
+            case "ELEC_MeterDisplayBottom":
+            case "AIR_DisplayFltAlt":
+            case "AIR_DisplayLandAlt":
+            case "FMC_flightNumber":
+                return true;
+
+            default:
+                return false;
+        }
     }
 
     public override bool HandleHotkeyAction(
