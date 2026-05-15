@@ -46,9 +46,9 @@ public class SimConnectManager
     public bool CanSendHVars => mobiFlightWasm?.CanSendHVars == true;
     public string MobiFlightStatus => mobiFlightWasm?.ConnectionStatus ?? "Not Available";
 
-    // PMDG 777 data manager
-    private PMDG777DataManager? pmdg777DataManager;
-    public PMDG777DataManager? PMDG777DataManager => pmdg777DataManager;
+    // PMDG data manager (generic slot; populated by InitializePMDG factory)
+    private IPMDGDataManager? pmdgDataManager;
+    public IPMDGDataManager? PMDGDataManager => pmdgDataManager;
 
     // ECAM data collection via MobiFlight
     private Dictionary<string, string> ecamStringData = new Dictionary<string, string>();
@@ -2896,10 +2896,10 @@ public class SimConnectManager
             mobiFlightWasm.ProcessClientDataResponse(data);
         }
 
-        // Forward client data to PMDG 777 data manager
-        if (pmdg777DataManager != null)
+        // Forward client data to PMDG data manager
+        if (pmdgDataManager != null)
         {
-            pmdg777DataManager.ProcessClientData(data);
+            pmdgDataManager.ProcessClientData(data);
         }
     }
 
@@ -3921,29 +3921,35 @@ public class SimConnectManager
         }
     }
 
-    public void InitializePMDG777()
+    public void InitializePMDG(IAircraftDefinition aircraft)
     {
         if (simConnect == null || !IsConnected) return;
-        pmdg777DataManager = new PMDG777DataManager();
-        pmdg777DataManager.Initialize(simConnect, mobiFlightWasm);
+        DisposePMDG();
+        pmdgDataManager = aircraft.AircraftCode switch
+        {
+            "PMDG_777" => new PMDG777DataManager(),
+            // "PMDG_737" case added in Task B5 — leave out for now
+            _ => null
+        };
+        pmdgDataManager?.Initialize(simConnect, mobiFlightWasm);
     }
 
-    public void DisposePMDG777()
+    public void DisposePMDG()
     {
-        pmdg777DataManager?.Dispose();
-        pmdg777DataManager = null;
+        pmdgDataManager?.Dispose();
+        pmdgDataManager = null;
     }
 
     public void SendPMDGEvent(string eventName, uint eventId, int? parameter = null)
     {
-        pmdg777DataManager?.SendEvent(eventName, eventId, parameter);
+        pmdgDataManager?.SendEvent(eventName, eventId, parameter);
     }
 
     public async Task SendPMDGGuardedToggle(string guardEventName, uint guardEventId,
                                               string switchEventName, uint switchEventId)
     {
-        if (pmdg777DataManager != null)
-            await pmdg777DataManager.SendGuardedToggle(guardEventName, guardEventId, switchEventName, switchEventId);
+        if (pmdgDataManager != null)
+            await pmdgDataManager.SendGuardedToggle(guardEventName, guardEventId, switchEventName, switchEventId);
     }
 
     public void Disconnect()
