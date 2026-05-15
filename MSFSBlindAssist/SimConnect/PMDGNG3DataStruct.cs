@@ -65,7 +65,7 @@ public enum PMDGNG3CDUFlag : byte
 /// CDU screen broadcast struct — 24 columns × 14 rows = 336 cells column-major
 /// + Powered flag. Matches PMDG_NG3_CDU_Screen from the SDK header.
 /// </summary>
-[StructLayout(LayoutKind.Sequential)]
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct PMDGNG3CDUScreen
 {
     [MarshalAs(UnmanagedType.ByValArray, SizeConst = PMDGNG3Constants.CDU_CELL_COUNT)]
