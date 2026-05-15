@@ -145,18 +145,22 @@ public sealed class GroundTrafficMonitor : IDisposable
 
     private void EvaluateAlerts()
     {
-        double ownLat, ownLon, ownHdg, ownGS;
-        TrackedGroundAircraft[] snapshot;
-
+        // Hold _lock for the whole loop. EvaluateAlerts mutates per-aircraft
+        // state (PreviousDistance, CurrentDistance, CurrentZone, LastAlertTime,
+        // QueueMovingAlertSent) while OnAiTrafficReceived writes Lat/Lon/GS on
+        // the same objects under the lock. SimConnect callbacks currently land
+        // on the WinForms UI thread so this is single-threaded today, but the
+        // dictionary stores references to mutable objects — taking the lock
+        // for the loop body closes the torn-read window without needing to
+        // pin the UI-thread assumption. N is bounded by TRACK_RANGE_FT so
+        // contention is trivial.
         lock (_lock)
         {
             if (!_positionValid || _tracked.Count == 0) return;
-            ownLat = _ownLat; ownLon = _ownLon; ownHdg = _ownHeadingTrue; ownGS = _ownGS;
-            snapshot = _tracked.Values.ToArray();
-        }
+            double ownLat = _ownLat, ownLon = _ownLon, ownHdg = _ownHeadingTrue, ownGS = _ownGS;
 
-        foreach (var ac in snapshot)
-        {
+            foreach (var ac in _tracked.Values)
+            {
             double distFt = DistanceFeet(ownLat, ownLon, ac.Lat, ac.Lon);
             double bearing = BearingDeg(ownLat, ownLon, ac.Lat, ac.Lon);
             double relBearing = NormalizeDeg(bearing - ownHdg);
@@ -221,6 +225,7 @@ public sealed class GroundTrafficMonitor : IDisposable
             };
 
             _announcer.AnnounceImmediate(announcement);
+            }
         }
     }
 
