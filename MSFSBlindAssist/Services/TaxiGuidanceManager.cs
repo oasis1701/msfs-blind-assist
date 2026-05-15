@@ -104,6 +104,14 @@ public class TaxiGuidanceManager : IDisposable
     private const double ARRIVAL_RADIUS_M = 12.0;
     private const double RECALCULATION_COOLDOWN_SEC = 15.0;
     private const double GUIDANCE_LOOK_AHEAD_M = 50.0;           // Min distance for heading target
+    // If the aircraft is within this distance of the destination, suppress off-route
+    // recalculation entirely. Navdata gaps between the last taxiway and the runway/gate
+    // node (e.g., J1 terminus → K1 junction at VHHH is 67 m from 07R), combined with
+    // a wide-arc runway entry, can push the aircraft off the virtual bridge segment and
+    // trigger a constrained recalc that routes BACKWARDS around the taxiway loop. When
+    // this close to the destination the steering tone handles the remaining metres; no
+    // recalc is needed or useful.
+    private const double NEAR_DESTINATION_SUPPRESS_RECALC_M = 200.0;
 
     // Sharp-turn threshold (ICAO Annex 14: >90° requires significantly wider radius).
     // Beyond this we add an explicit angle callout and push "slow for turn" earlier
@@ -1588,6 +1596,23 @@ public class TaxiGuidanceManager : IDisposable
         // produce wildly different routes.
         if (_route != null && _currentSegmentIndex >= _route.Segments.Count - 1)
             return;
+
+        // Near-destination guard. Some navdata has a gap between the last taxiway
+        // node and the runway/gate node (the route bridges this with a virtual
+        // straight-line segment). When the aircraft makes a curved entry into the
+        // runway or gate from that bridge it can drift off the virtual centerline
+        // and trigger a constrained recalc that snaps to the last taxiway dead-end
+        // and routes backwards around the taxiway loop (VHHH J1 → K1 → backwards
+        // 563 m instead of the remaining 67 m). Within 200 m of the destination
+        // the tone already guides the pilot; no recalc is needed.
+        if (_destinationNodeId != 0 && _graph != null &&
+            _graph.Nodes.TryGetValue(_destinationNodeId, out var destNodeForGuard))
+        {
+            if (TaxiGraph.FastDistanceMeters(lat, lon,
+                    destNodeForGuard.Latitude, destNodeForGuard.Longitude)
+                < NEAR_DESTINATION_SUPPRESS_RECALC_M)
+                return;
+        }
 
         _lastRecalculationTime = DateTime.Now;
 
