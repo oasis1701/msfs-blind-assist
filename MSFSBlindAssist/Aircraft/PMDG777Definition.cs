@@ -9,7 +9,7 @@ namespace MSFSBlindAssist.Aircraft;
 /// Panel structure and event ID dictionary are defined here.
 /// Variables and panel controls will be populated in subsequent tasks.
 /// </summary>
-public class PMDG777Definition : BaseAircraftDefinition
+public class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
 {
     public override string AircraftName => "PMDG 777";
     public override string AircraftCode => "PMDG_777";
