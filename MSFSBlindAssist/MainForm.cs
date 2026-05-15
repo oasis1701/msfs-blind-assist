@@ -130,6 +130,7 @@ public partial class MainForm : Form
             "A320" => new FlyByWireA320Definition(),
             "FENIX_A320CEO" => new FenixA320Definition(),
             "PMDG_777" => new PMDG777Definition(),
+            "PMDG_737" => new PMDG737Definition(),
             // Future aircraft will be added here
             _ => new FlyByWireA320Definition() // Default to A320
         };
@@ -3128,6 +3129,11 @@ public partial class MainForm : Form
         SwitchAircraft(new PMDG777Definition());
     }
 
+    private void PMDG737MenuItem_Click(object? sender, EventArgs e)
+    {
+        SwitchAircraft(new PMDG737Definition());
+    }
+
     private void SwitchAircraft(IAircraftDefinition newAircraft)
     {
         // Update the aircraft instance
@@ -3322,6 +3328,7 @@ public partial class MainForm : Form
         flyByWireA320MenuItem.Checked = false;
         fenixA320MenuItem.Checked = false;
         pmdg777MenuItem.Checked = false;
+        pmdg737MenuItem.Checked = false;
 
         // Set the check on the current aircraft's menu item
         if (currentAircraft is FlyByWireA320Definition)
@@ -3335,6 +3342,10 @@ public partial class MainForm : Form
         else if (currentAircraft is PMDG777Definition)
         {
             pmdg777MenuItem.Checked = true;
+        }
+        else if (currentAircraft is PMDG737Definition)
+        {
+            pmdg737MenuItem.Checked = true;
         }
     }
 
