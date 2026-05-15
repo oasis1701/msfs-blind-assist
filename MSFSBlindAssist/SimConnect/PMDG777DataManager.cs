@@ -586,15 +586,3 @@ public class PMDG777DataManager : IDisposable
     }
 }
 
-// ------------------------------------------------------------------
-// Event args
-// ------------------------------------------------------------------
-
-/// <summary>
-/// Carries a single PMDG 777X variable change notification.
-/// </summary>
-public class PMDGVarUpdateEventArgs : EventArgs
-{
-    public string FieldName { get; set; } = string.Empty;
-    public double Value     { get; set; }
-}
