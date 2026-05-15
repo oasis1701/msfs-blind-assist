@@ -186,7 +186,14 @@ public sealed class GroundTrafficMonitor : IDisposable
                         ac.QueueMovingAlertSent = true;
                         _announcer.AnnounceImmediate("Traffic ahead is moving.");
                     }
-                    // Reset the flag once the aircraft stops again so the next departure fires a fresh alert
+                    // Reset the flag once the aircraft stops again so the next departure
+                    // fires a fresh alert. Intentionally inside the outer queue-guard
+                    // (directlyAhead && distFt <= AWARENESS_FT && ownGS <= OWN_QUEUE_GS):
+                    // if our own GS rises above OWN_QUEUE_GS while the lead stops the flag
+                    // stays armed, but by then we are no longer in the queue and the next
+                    // stop+go cycle re-arms it through the same path anyway. The benign
+                    // case is leaving the flag set on a stale aircraft until pruning;
+                    // PRUNE_AGE_MS evicts it within 12 s.
                     if (ac.GS <= QUEUE_STOPPED_GS)
                         ac.QueueMovingAlertSent = false;
                 }
