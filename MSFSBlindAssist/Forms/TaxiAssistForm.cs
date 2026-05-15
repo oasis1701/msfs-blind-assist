@@ -1274,6 +1274,15 @@ public class TaxiAssistForm : Form
         // to catch an aircraft that has stopped just short of the spot centre.
         const double GATE_OCCUPIED_NM = 0.030;
 
+        // Force a fresh SimConnect traffic request before reading the snapshot.
+        // TcasService's own 3-second poll timer may have just ticked; without
+        // PollNow() the snapshot could be up to ~3 s stale when the user clicks
+        // Calculate, and an aircraft that just spawned at the gate would be missed.
+        // The request is asynchronous so a brand-new occupant within the last
+        // few hundred ms can still slip through, but the staleness window
+        // shrinks from "up to 3 s" to "one SimConnect roundtrip ≈ 33 ms".
+        _tcasService.PollNow();
+
         var occupying = _tcasService.GetTraffic(onGround: true)
             .FirstOrDefault(t => NavigationCalculator.CalculateDistance(
                 gateLat.Value, gateLon.Value, t.Latitude, t.Longitude) <= GATE_OCCUPIED_NM);
@@ -1283,7 +1292,10 @@ public class TaxiAssistForm : Form
         string who = string.IsNullOrWhiteSpace(occupying.Callsign)
             ? "an aircraft"
             : occupying.Callsign;
-        _announcer.Announce($"Warning: {who} is at the destination gate.");
+        // AnnounceImmediate — the very next line in OnCalculateClicked is
+        // StartGuidance, which announces the (long) route summary. A queued
+        // gate warning would be drowned out behind it.
+        _announcer.AnnounceImmediate($"Warning: {who} is at the destination gate.");
     }
 
     private void OnStopClicked(object? sender, EventArgs e)
