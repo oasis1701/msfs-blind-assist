@@ -95,7 +95,792 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
 
     private Dictionary<string, SimConnect.SimVarDefinition> GetPMDGVariables()
     {
-        return new Dictionary<string, SimConnect.SimVarDefinition>();
+        // Local helper builders to keep the dictionary literal terse.
+        static SimConnect.SimVarDefinition Toggle(string name, string display, string off = "Off", string on = "On") =>
+            new SimConnect.SimVarDefinition
+            {
+                Name = name,
+                DisplayName = display,
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = off, [1] = on }
+            };
+        static SimConnect.SimVarDefinition Selector(string name, string display, params string[] positions)
+        {
+            var dict = new Dictionary<double, string>();
+            for (int i = 0; i < positions.Length; i++) dict[i] = positions[i];
+            return new SimConnect.SimVarDefinition
+            {
+                Name = name,
+                DisplayName = display,
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = dict
+            };
+        }
+        static SimConnect.SimVarDefinition Annun(string name, string display) =>
+            new SimConnect.SimVarDefinition
+            {
+                Name = name,
+                DisplayName = display,
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
+            };
+        static SimConnect.SimVarDefinition Numeric(string name, string display) =>
+            new SimConnect.SimVarDefinition
+            {
+                Name = name,
+                DisplayName = display,
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                PreventTextInput = true
+            };
+        static SimConnect.SimVarDefinition Display(string name, string display) =>
+            new SimConnect.SimVarDefinition
+            {
+                Name = name,
+                DisplayName = display,
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true
+            };
+        static SimConnect.SimVarDefinition Quantity(string name, string display) =>
+            new SimConnect.SimVarDefinition
+            {
+                Name = name,
+                DisplayName = display,
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = false
+            };
+        static SimConnect.SimVarDefinition Momentary(string name, string display) =>
+            new SimConnect.SimVarDefinition
+            {
+                Name = name,
+                DisplayName = display,
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Never,
+                RenderAsButton = true,
+                IsMomentary = true
+            };
+
+        var d = new Dictionary<string, SimConnect.SimVarDefinition>();
+
+        // =================================================================
+        // AFT OVERHEAD — ADIRU (IRS)
+        // =================================================================
+        d["IRS_DisplaySelector"] = Selector("IRS_DisplaySelector", "ISDU Display Selector",
+            "TK/GS", "PPOS", "WIND", "HDG/STS", "SYS");
+        d["IRS_SysDisplay_R"]    = Toggle("IRS_SysDisplay_R", "IRS Sys Display", "Left", "Right");
+        d["IRS_annunGPS"]        = Annun("IRS_annunGPS", "GPS");
+        d["IRS_annunALIGN_0"]    = Annun("IRS_annunALIGN_0", "IRS Left ALIGN");
+        d["IRS_annunALIGN_1"]    = Annun("IRS_annunALIGN_1", "IRS Right ALIGN");
+        d["IRS_annunON_DC_0"]    = Annun("IRS_annunON_DC_0", "IRS Left ON DC");
+        d["IRS_annunON_DC_1"]    = Annun("IRS_annunON_DC_1", "IRS Right ON DC");
+        d["IRS_annunFAULT_0"]    = Annun("IRS_annunFAULT_0", "IRS Left FAULT");
+        d["IRS_annunFAULT_1"]    = Annun("IRS_annunFAULT_1", "IRS Right FAULT");
+        d["IRS_annunDC_FAIL_0"]  = Annun("IRS_annunDC_FAIL_0", "IRS Left DC FAIL");
+        d["IRS_annunDC_FAIL_1"]  = Annun("IRS_annunDC_FAIL_1", "IRS Right DC FAIL");
+        d["IRS_ModeSelector_0"]  = Selector("IRS_ModeSelector_0", "IRS Left Mode", "OFF", "ALIGN", "NAV", "ATT");
+        d["IRS_ModeSelector_1"]  = Selector("IRS_ModeSelector_1", "IRS Right Mode", "OFF", "ALIGN", "NAV", "ATT");
+        d["IRS_DisplayLeft"]     = Display("IRS_DisplayLeft", "ISDU Left Display");
+        d["IRS_DisplayRight"]    = Display("IRS_DisplayRight", "ISDU Right Display");
+
+        // AFS
+        d["AFS_AutothrottleServosConnected"] = Annun("AFS_AutothrottleServosConnected", "Autothrottle Servos");
+        d["AFS_ControlsPitch"]               = Annun("AFS_ControlsPitch", "Autopilot Controls Pitch");
+        d["AFS_ControlsRoll"]                = Annun("AFS_ControlsRoll", "Autopilot Controls Roll");
+
+        // PSEU
+        d["WARN_annunPSEU"] = Annun("WARN_annunPSEU", "PSEU");
+
+        // Service interphone
+        d["COMM_ServiceInterphoneSw"] = Toggle("COMM_ServiceInterphoneSw", "Service Interphone");
+
+        // Dome light
+        d["LTS_DomeWhiteSw"] = Selector("LTS_DomeWhiteSw", "Dome Light", "DIM", "OFF", "BRIGHT");
+
+        // Engine aft overhead
+        d["ENG_EECSwitch_0"]            = Toggle("ENG_EECSwitch_0", "EEC Left", "OFF", "ON");
+        d["ENG_EECSwitch_1"]            = Toggle("ENG_EECSwitch_1", "EEC Right", "OFF", "ON");
+        d["ENG_annunREVERSER_0"]        = Annun("ENG_annunREVERSER_0", "Engine 1 REVERSER");
+        d["ENG_annunREVERSER_1"]        = Annun("ENG_annunREVERSER_1", "Engine 2 REVERSER");
+        d["ENG_annunENGINE_CONTROL_0"]  = Annun("ENG_annunENGINE_CONTROL_0", "Engine 1 ENGINE CONTROL");
+        d["ENG_annunENGINE_CONTROL_1"]  = Annun("ENG_annunENGINE_CONTROL_1", "Engine 2 ENGINE CONTROL");
+        d["ENG_annunALTN_0"]            = Annun("ENG_annunALTN_0", "Engine 1 ALTN");
+        d["ENG_annunALTN_1"]            = Annun("ENG_annunALTN_1", "Engine 2 ALTN");
+        d["ENG_StartValve_0"]           = new SimConnect.SimVarDefinition
+        {
+            Name = "ENG_StartValve_0", DisplayName = "Engine 1 Start Valve",
+            Type = SimConnect.SimVarType.PMDGVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+        };
+        d["ENG_StartValve_1"]           = new SimConnect.SimVarDefinition
+        {
+            Name = "ENG_StartValve_1", DisplayName = "Engine 2 Start Valve",
+            Type = SimConnect.SimVarType.PMDGVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+        };
+
+        // Oxygen
+        d["OXY_SwNormal"]         = Toggle("OXY_SwNormal", "Passenger Oxygen", "ON", "Normal");
+        d["OXY_annunPASS_OXY_ON"] = Annun("OXY_annunPASS_OXY_ON", "PASS OXY ON");
+
+        // Gear overhead annunciators
+        d["GEAR_annunOvhdLEFT"]  = Annun("GEAR_annunOvhdLEFT", "Gear Left");
+        d["GEAR_annunOvhdNOSE"]  = Annun("GEAR_annunOvhdNOSE", "Gear Nose");
+        d["GEAR_annunOvhdRIGHT"] = Annun("GEAR_annunOvhdRIGHT", "Gear Right");
+
+        // Flight recorder / CVR
+        d["FLTREC_SwNormal"]   = Toggle("FLTREC_SwNormal", "Flight Recorder", "TEST", "Normal");
+        d["FLTREC_annunOFF"]   = Annun("FLTREC_annunOFF", "Flight Recorder OFF");
+        d["CVR_annunTEST"]     = Annun("CVR_annunTEST", "CVR TEST");
+
+        // =================================================================
+        // FORWARD OVERHEAD — Flight Controls
+        // =================================================================
+        d["FCTL_FltControl_Sw_0"] = Selector("FCTL_FltControl_Sw_0", "Flight Control A", "STBY/RUD", "OFF", "ON");
+        d["FCTL_FltControl_Sw_1"] = Selector("FCTL_FltControl_Sw_1", "Flight Control B", "STBY/RUD", "OFF", "ON");
+        d["FCTL_Spoiler_Sw_0"]    = Toggle("FCTL_Spoiler_Sw_0", "Spoiler A");
+        d["FCTL_Spoiler_Sw_1"]    = Toggle("FCTL_Spoiler_Sw_1", "Spoiler B");
+        d["FCTL_YawDamper_Sw"]    = Toggle("FCTL_YawDamper_Sw", "Yaw Damper");
+        d["FCTL_AltnFlaps_Sw_ARM"] = Toggle("FCTL_AltnFlaps_Sw_ARM", "Alternate Flaps Arm", "OFF", "ARM");
+        d["FCTL_AltnFlaps_Control_Sw"] = Selector("FCTL_AltnFlaps_Control_Sw", "Alternate Flaps Control",
+            "UP", "OFF", "DOWN");
+        d["FCTL_annunFC_LOW_PRESSURE_0"] = Annun("FCTL_annunFC_LOW_PRESSURE_0", "Flight Control A LOW PRESSURE");
+        d["FCTL_annunFC_LOW_PRESSURE_1"] = Annun("FCTL_annunFC_LOW_PRESSURE_1", "Flight Control B LOW PRESSURE");
+        d["FCTL_annunYAW_DAMPER"]        = Annun("FCTL_annunYAW_DAMPER", "YAW DAMPER");
+        d["FCTL_annunLOW_QUANTITY"]      = Annun("FCTL_annunLOW_QUANTITY", "LOW QUANTITY");
+        d["FCTL_annunLOW_PRESSURE"]      = Annun("FCTL_annunLOW_PRESSURE", "Flight Control LOW PRESSURE");
+        d["FCTL_annunLOW_STBY_RUD_ON"]   = Annun("FCTL_annunLOW_STBY_RUD_ON", "STBY RUD ON");
+        d["FCTL_annunFEEL_DIFF_PRESS"]   = Annun("FCTL_annunFEEL_DIFF_PRESS", "FEEL DIFF PRESS");
+        d["FCTL_annunSPEED_TRIM_FAIL"]   = Annun("FCTL_annunSPEED_TRIM_FAIL", "SPEED TRIM FAIL");
+        d["FCTL_annunMACH_TRIM_FAIL"]    = Annun("FCTL_annunMACH_TRIM_FAIL", "MACH TRIM FAIL");
+        d["FCTL_annunAUTO_SLAT_FAIL"]    = Annun("FCTL_annunAUTO_SLAT_FAIL", "AUTO SLAT FAIL");
+
+        // Navigation / Displays
+        d["NAVDIS_VHFNavSelector"]      = Selector("NAVDIS_VHFNavSelector", "VHF NAV Source",
+            "BOTH ON 1", "NORMAL", "BOTH ON 2");
+        d["NAVDIS_IRSSelector"]         = Selector("NAVDIS_IRSSelector", "IRS Source",
+            "BOTH ON L", "NORMAL", "BOTH ON R");
+        d["NAVDIS_FMCSelector"]         = Selector("NAVDIS_FMCSelector", "FMC Source",
+            "BOTH ON L", "NORMAL", "BOTH ON R");
+        d["NAVDIS_SourceSelector"]      = Selector("NAVDIS_SourceSelector", "Displays Source",
+            "ALL ON 1", "AUTO", "ALL ON 2");
+        d["NAVDIS_ControlPaneSelector"] = Selector("NAVDIS_ControlPaneSelector", "Control Panel Source",
+            "BOTH ON 1", "NORMAL", "BOTH ON 2");
+
+        // Fuel
+        d["FUEL_CrossFeedSw"]       = Toggle("FUEL_CrossFeedSw", "Fuel Crossfeed", "Closed", "Open");
+        d["FUEL_PumpFwdSw_0"]       = Toggle("FUEL_PumpFwdSw_0", "Fuel Pump 1 Forward");
+        d["FUEL_PumpFwdSw_1"]       = Toggle("FUEL_PumpFwdSw_1", "Fuel Pump 2 Forward");
+        d["FUEL_PumpAftSw_0"]       = Toggle("FUEL_PumpAftSw_0", "Fuel Pump 1 Aft");
+        d["FUEL_PumpAftSw_1"]       = Toggle("FUEL_PumpAftSw_1", "Fuel Pump 2 Aft");
+        d["FUEL_PumpCtrSw_0"]       = Toggle("FUEL_PumpCtrSw_0", "Fuel Pump Center Left");
+        d["FUEL_PumpCtrSw_1"]       = Toggle("FUEL_PumpCtrSw_1", "Fuel Pump Center Right");
+        d["FUEL_AuxFwd_0"]          = Toggle("FUEL_AuxFwd_0", "Aux Fuel Forward A");
+        d["FUEL_AuxFwd_1"]          = Toggle("FUEL_AuxFwd_1", "Aux Fuel Forward B");
+        d["FUEL_AuxAft_0"]          = Toggle("FUEL_AuxAft_0", "Aux Fuel Aft A");
+        d["FUEL_AuxAft_1"]          = Toggle("FUEL_AuxAft_1", "Aux Fuel Aft B");
+        d["FUEL_FWDBleed"]          = Toggle("FUEL_FWDBleed", "Aux Fuel Forward Bleed");
+        d["FUEL_AFTBleed"]          = Toggle("FUEL_AFTBleed", "Aux Fuel Aft Bleed");
+        d["FUEL_GNDXfr"]            = Toggle("FUEL_GNDXfr", "Ground Transfer");
+        d["FUEL_annunENG_VALVE_CLOSED_0"]  = Annun("FUEL_annunENG_VALVE_CLOSED_0", "Engine 1 Valve Closed");
+        d["FUEL_annunENG_VALVE_CLOSED_1"]  = Annun("FUEL_annunENG_VALVE_CLOSED_1", "Engine 2 Valve Closed");
+        d["FUEL_annunSPAR_VALVE_CLOSED_0"] = Annun("FUEL_annunSPAR_VALVE_CLOSED_0", "Spar Valve 1 Closed");
+        d["FUEL_annunSPAR_VALVE_CLOSED_1"] = Annun("FUEL_annunSPAR_VALVE_CLOSED_1", "Spar Valve 2 Closed");
+        d["FUEL_annunFILTER_BYPASS_0"]     = Annun("FUEL_annunFILTER_BYPASS_0", "Fuel Filter 1 Bypass");
+        d["FUEL_annunFILTER_BYPASS_1"]     = Annun("FUEL_annunFILTER_BYPASS_1", "Fuel Filter 2 Bypass");
+        d["FUEL_annunXFEED_VALVE_OPEN"]    = Annun("FUEL_annunXFEED_VALVE_OPEN", "Crossfeed Valve Open");
+        d["FUEL_annunLOWPRESS_Fwd_0"]      = Annun("FUEL_annunLOWPRESS_Fwd_0", "Fuel Pump 1 Forward Low Press");
+        d["FUEL_annunLOWPRESS_Fwd_1"]      = Annun("FUEL_annunLOWPRESS_Fwd_1", "Fuel Pump 2 Forward Low Press");
+        d["FUEL_annunLOWPRESS_Aft_0"]      = Annun("FUEL_annunLOWPRESS_Aft_0", "Fuel Pump 1 Aft Low Press");
+        d["FUEL_annunLOWPRESS_Aft_1"]      = Annun("FUEL_annunLOWPRESS_Aft_1", "Fuel Pump 2 Aft Low Press");
+        d["FUEL_annunLOWPRESS_Ctr_0"]      = Annun("FUEL_annunLOWPRESS_Ctr_0", "Fuel Pump Center Left Low Press");
+        d["FUEL_annunLOWPRESS_Ctr_1"]      = Annun("FUEL_annunLOWPRESS_Ctr_1", "Fuel Pump Center Right Low Press");
+        d["FUEL_QtyCenter"] = Quantity("FUEL_QtyCenter", "Fuel Center Tank");
+        d["FUEL_QtyLeft"]   = Quantity("FUEL_QtyLeft",   "Fuel Left Tank");
+        d["FUEL_QtyRight"]  = Quantity("FUEL_QtyRight",  "Fuel Right Tank");
+
+        // Electrical
+        d["ELEC_annunBAT_DISCHARGE"] = Annun("ELEC_annunBAT_DISCHARGE", "Battery Discharge");
+        d["ELEC_annunTR_UNIT"]       = Annun("ELEC_annunTR_UNIT", "TR Unit");
+        d["ELEC_annunELEC"]          = Annun("ELEC_annunELEC", "ELEC");
+        d["ELEC_DCMeterSelector"]    = Selector("ELEC_DCMeterSelector", "DC Meter",
+            "STBY PWR", "BAT BUS", "BAT", "AUX BAT", "TR1", "TR2", "TR3", "TEST");
+        d["ELEC_ACMeterSelector"]    = Selector("ELEC_ACMeterSelector", "AC Meter",
+            "STBY PWR", "GRD PWR", "GEN 1", "APU GEN", "GEN 2", "INV", "TEST");
+        d["ELEC_BatSelector"]        = Selector("ELEC_BatSelector", "Battery", "OFF", "BAT", "ON");
+        d["ELEC_CabUtilSw"]          = Toggle("ELEC_CabUtilSw", "Cabin Utility");
+        d["ELEC_IFEPassSeatSw"]      = Toggle("ELEC_IFEPassSeatSw", "IFE Pass Seats");
+        d["ELEC_annunDRIVE_0"]       = Annun("ELEC_annunDRIVE_0", "Drive 1");
+        d["ELEC_annunDRIVE_1"]       = Annun("ELEC_annunDRIVE_1", "Drive 2");
+        d["ELEC_annunSTANDBY_POWER_OFF"] = Annun("ELEC_annunSTANDBY_POWER_OFF", "Standby Power Off");
+        d["ELEC_IDGDisconnectSw_0"]  = new SimConnect.SimVarDefinition
+        {
+            Name = "ELEC_IDGDisconnectSw_0", DisplayName = "IDG 1 Disconnect",
+            Type = SimConnect.SimVarType.PMDGVar, UpdateFrequency = SimConnect.UpdateFrequency.Never,
+            RenderAsButton = true, IsMomentary = true
+        };
+        d["ELEC_IDGDisconnectSw_1"]  = new SimConnect.SimVarDefinition
+        {
+            Name = "ELEC_IDGDisconnectSw_1", DisplayName = "IDG 2 Disconnect",
+            Type = SimConnect.SimVarType.PMDGVar, UpdateFrequency = SimConnect.UpdateFrequency.Never,
+            RenderAsButton = true, IsMomentary = true
+        };
+        d["ELEC_StandbyPowerSelector"] = Selector("ELEC_StandbyPowerSelector", "Standby Power",
+            "BAT", "OFF", "AUTO");
+        d["ELEC_annunGRD_POWER_AVAILABLE"] = Annun("ELEC_annunGRD_POWER_AVAILABLE", "Ground Power Available");
+        d["ELEC_GrdPwrSw"]           = Toggle("ELEC_GrdPwrSw", "Ground Power");
+        d["ELEC_BusTransSw_AUTO"]    = Toggle("ELEC_BusTransSw_AUTO", "Bus Transfer", "OFF", "AUTO");
+        d["ELEC_GenSw_0"]            = Toggle("ELEC_GenSw_0", "Generator 1");
+        d["ELEC_GenSw_1"]            = Toggle("ELEC_GenSw_1", "Generator 2");
+        d["ELEC_APUGenSw_0"]         = Toggle("ELEC_APUGenSw_0", "APU Generator 1");
+        d["ELEC_APUGenSw_1"]         = Toggle("ELEC_APUGenSw_1", "APU Generator 2");
+        d["ELEC_annunTRANSFER_BUS_OFF_0"] = Annun("ELEC_annunTRANSFER_BUS_OFF_0", "Transfer Bus 1 Off");
+        d["ELEC_annunTRANSFER_BUS_OFF_1"] = Annun("ELEC_annunTRANSFER_BUS_OFF_1", "Transfer Bus 2 Off");
+        d["ELEC_annunSOURCE_OFF_0"]  = Annun("ELEC_annunSOURCE_OFF_0", "Source 1 Off");
+        d["ELEC_annunSOURCE_OFF_1"]  = Annun("ELEC_annunSOURCE_OFF_1", "Source 2 Off");
+        d["ELEC_annunGEN_BUS_OFF_0"] = Annun("ELEC_annunGEN_BUS_OFF_0", "Gen Bus 1 Off");
+        d["ELEC_annunGEN_BUS_OFF_1"] = Annun("ELEC_annunGEN_BUS_OFF_1", "Gen Bus 2 Off");
+        d["ELEC_annunAPU_GEN_OFF_BUS"] = Annun("ELEC_annunAPU_GEN_OFF_BUS", "APU Gen Off Bus");
+        d["ELEC_MeterDisplayTop"]    = Display("ELEC_MeterDisplayTop", "Electrical Meter Top Display");
+        d["ELEC_MeterDisplayBottom"] = Display("ELEC_MeterDisplayBottom", "Electrical Meter Bottom Display");
+
+        // APU
+        d["APU_annunMAINT"]            = Annun("APU_annunMAINT", "APU MAINT");
+        d["APU_annunLOW_OIL_PRESSURE"] = Annun("APU_annunLOW_OIL_PRESSURE", "APU LOW OIL PRESSURE");
+        d["APU_annunFAULT"]            = Annun("APU_annunFAULT", "APU FAULT");
+        d["APU_annunOVERSPEED"]        = Annun("APU_annunOVERSPEED", "APU OVERSPEED");
+
+        // Wipers
+        d["OH_WiperLSelector"] = Selector("OH_WiperLSelector", "Wiper Left", "PARK", "INT", "LOW", "HIGH");
+        d["OH_WiperRSelector"] = Selector("OH_WiperRSelector", "Wiper Right", "PARK", "INT", "LOW", "HIGH");
+
+        // Center overhead
+        d["AIR_EquipCoolingSupplyNORM"]  = Toggle("AIR_EquipCoolingSupplyNORM", "Equip Cooling Supply", "ALTERNATE", "Normal");
+        d["AIR_EquipCoolingExhaustNORM"] = Toggle("AIR_EquipCoolingExhaustNORM", "Equip Cooling Exhaust", "ALTERNATE", "Normal");
+        d["AIR_annunEquipCoolingSupplyOFF"]  = Annun("AIR_annunEquipCoolingSupplyOFF", "Equip Cooling Supply Off");
+        d["AIR_annunEquipCoolingExhaustOFF"] = Annun("AIR_annunEquipCoolingExhaustOFF", "Equip Cooling Exhaust Off");
+        d["LTS_annunEmerNOT_ARMED"]      = Annun("LTS_annunEmerNOT_ARMED", "Emergency Lights NOT ARMED");
+        d["LTS_EmerExitSelector"]        = Selector("LTS_EmerExitSelector", "Emergency Exit Lights",
+            "OFF", "ARMED", "ON");
+        d["COMM_NoSmokingSelector"]      = Selector("COMM_NoSmokingSelector", "No Smoking", "OFF", "AUTO", "ON");
+        d["COMM_FastenBeltsSelector"]    = Selector("COMM_FastenBeltsSelector", "Fasten Seat Belts", "OFF", "AUTO", "ON");
+        d["COMM_annunCALL"]              = Annun("COMM_annunCALL", "Cabin Call");
+        d["COMM_annunPA_IN_USE"]         = Annun("COMM_annunPA_IN_USE", "PA In Use");
+
+        // Anti-Ice — Window heat (4 windows: 1=L FWD, 2=L SIDE, 3=R FWD, 4=R SIDE per SDK ordering)
+        d["ICE_annunOVERHEAT_0"]  = Annun("ICE_annunOVERHEAT_0", "Window 1 Overheat");
+        d["ICE_annunOVERHEAT_1"]  = Annun("ICE_annunOVERHEAT_1", "Window 2 Overheat");
+        d["ICE_annunOVERHEAT_2"]  = Annun("ICE_annunOVERHEAT_2", "Window 3 Overheat");
+        d["ICE_annunOVERHEAT_3"]  = Annun("ICE_annunOVERHEAT_3", "Window 4 Overheat");
+        d["ICE_annunON_0"]        = Annun("ICE_annunON_0", "Window 1 Heat On");
+        d["ICE_annunON_1"]        = Annun("ICE_annunON_1", "Window 2 Heat On");
+        d["ICE_annunON_2"]        = Annun("ICE_annunON_2", "Window 3 Heat On");
+        d["ICE_annunON_3"]        = Annun("ICE_annunON_3", "Window 4 Heat On");
+        d["ICE_WindowHeatSw_0"]   = Toggle("ICE_WindowHeatSw_0", "Window 1 Heat");
+        d["ICE_WindowHeatSw_1"]   = Toggle("ICE_WindowHeatSw_1", "Window 2 Heat");
+        d["ICE_WindowHeatSw_2"]   = Toggle("ICE_WindowHeatSw_2", "Window 3 Heat");
+        d["ICE_WindowHeatSw_3"]   = Toggle("ICE_WindowHeatSw_3", "Window 4 Heat");
+        d["ICE_annunCAPT_PITOT"]      = Annun("ICE_annunCAPT_PITOT", "Captain Pitot");
+        d["ICE_annunL_ELEV_PITOT"]    = Annun("ICE_annunL_ELEV_PITOT", "Left Elevator Pitot");
+        d["ICE_annunL_ALPHA_VANE"]    = Annun("ICE_annunL_ALPHA_VANE", "Left Alpha Vane");
+        d["ICE_annunL_TEMP_PROBE"]    = Annun("ICE_annunL_TEMP_PROBE", "Left Temp Probe");
+        d["ICE_annunFO_PITOT"]        = Annun("ICE_annunFO_PITOT", "First Officer Pitot");
+        d["ICE_annunR_ELEV_PITOT"]    = Annun("ICE_annunR_ELEV_PITOT", "Right Elevator Pitot");
+        d["ICE_annunR_ALPHA_VANE"]    = Annun("ICE_annunR_ALPHA_VANE", "Right Alpha Vane");
+        d["ICE_annunAUX_PITOT"]       = Annun("ICE_annunAUX_PITOT", "Aux Pitot");
+        d["ICE_ProbeHeatSw_0"]        = Toggle("ICE_ProbeHeatSw_0", "Probe Heat 1");
+        d["ICE_ProbeHeatSw_1"]        = Toggle("ICE_ProbeHeatSw_1", "Probe Heat 2");
+        d["ICE_annunVALVE_OPEN_0"]    = Annun("ICE_annunVALVE_OPEN_0", "Wing Anti-Ice Valve 1 Open");
+        d["ICE_annunVALVE_OPEN_1"]    = Annun("ICE_annunVALVE_OPEN_1", "Wing Anti-Ice Valve 2 Open");
+        d["ICE_annunCOWL_ANTI_ICE_0"] = Annun("ICE_annunCOWL_ANTI_ICE_0", "Cowl 1 Anti-Ice");
+        d["ICE_annunCOWL_ANTI_ICE_1"] = Annun("ICE_annunCOWL_ANTI_ICE_1", "Cowl 2 Anti-Ice");
+        d["ICE_annunCOWL_VALVE_OPEN_0"] = Annun("ICE_annunCOWL_VALVE_OPEN_0", "Cowl 1 Valve Open");
+        d["ICE_annunCOWL_VALVE_OPEN_1"] = Annun("ICE_annunCOWL_VALVE_OPEN_1", "Cowl 2 Valve Open");
+        d["ICE_WingAntiIceSw"]        = Toggle("ICE_WingAntiIceSw", "Wing Anti-Ice");
+        d["ICE_EngAntiIceSw_0"]       = Toggle("ICE_EngAntiIceSw_0", "Engine 1 Anti-Ice");
+        d["ICE_EngAntiIceSw_1"]       = Toggle("ICE_EngAntiIceSw_1", "Engine 2 Anti-Ice");
+        d["ICE_WindowHeatTestSw"]     = Selector("ICE_WindowHeatTestSw", "Window Heat Test",
+            "OVHT", "Neutral", "PWR TEST");
+
+        // Hydraulics
+        d["HYD_annunLOW_PRESS_eng_0"]   = Annun("HYD_annunLOW_PRESS_eng_0", "Eng 1 Hyd Low Pressure");
+        d["HYD_annunLOW_PRESS_eng_1"]   = Annun("HYD_annunLOW_PRESS_eng_1", "Eng 2 Hyd Low Pressure");
+        d["HYD_annunLOW_PRESS_elec_0"]  = Annun("HYD_annunLOW_PRESS_elec_0", "Elec 1 Hyd Low Pressure");
+        d["HYD_annunLOW_PRESS_elec_1"]  = Annun("HYD_annunLOW_PRESS_elec_1", "Elec 2 Hyd Low Pressure");
+        d["HYD_annunOVERHEAT_elec_0"]   = Annun("HYD_annunOVERHEAT_elec_0", "Elec 1 Hyd Overheat");
+        d["HYD_annunOVERHEAT_elec_1"]   = Annun("HYD_annunOVERHEAT_elec_1", "Elec 2 Hyd Overheat");
+        d["HYD_PumpSw_eng_0"]           = Toggle("HYD_PumpSw_eng_0", "Eng 1 Hyd Pump");
+        d["HYD_PumpSw_eng_1"]           = Toggle("HYD_PumpSw_eng_1", "Eng 2 Hyd Pump");
+        d["HYD_PumpSw_elec_0"]          = Toggle("HYD_PumpSw_elec_0", "Elec 1 Hyd Pump");
+        d["HYD_PumpSw_elec_1"]          = Toggle("HYD_PumpSw_elec_1", "Elec 2 Hyd Pump");
+
+        // Air systems
+        d["AIR_TempSourceSelector"]     = Selector("AIR_TempSourceSelector", "Temperature Source",
+            "SUPPLY DUCT", "PASS CAB", "CONT CAB", "PACK L", "PACK R", "RAM A", "RAM B");
+        d["AIR_TrimAirSwitch"]          = Toggle("AIR_TrimAirSwitch", "Trim Air");
+        d["AIR_annunZoneTemp_0"]        = Annun("AIR_annunZoneTemp_0", "Forward Zone Temp");
+        d["AIR_annunZoneTemp_1"]        = Annun("AIR_annunZoneTemp_1", "Cabin Zone Temp");
+        d["AIR_annunZoneTemp_2"]        = Annun("AIR_annunZoneTemp_2", "Aft Zone Temp");
+        d["AIR_annunDualBleed"]         = Annun("AIR_annunDualBleed", "Dual Bleed");
+        d["AIR_annunRamDoorL"]          = Annun("AIR_annunRamDoorL", "Ram Door Left");
+        d["AIR_annunRamDoorR"]          = Annun("AIR_annunRamDoorR", "Ram Door Right");
+        d["AIR_RecircFanSwitch_0"]      = Toggle("AIR_RecircFanSwitch_0", "Recirc Fan Left");
+        d["AIR_RecircFanSwitch_1"]      = Toggle("AIR_RecircFanSwitch_1", "Recirc Fan Right");
+        d["AIR_PackSwitch_0"]           = Selector("AIR_PackSwitch_0", "Pack Left", "OFF", "AUTO", "HIGH");
+        d["AIR_PackSwitch_1"]           = Selector("AIR_PackSwitch_1", "Pack Right", "OFF", "AUTO", "HIGH");
+        d["AIR_BleedAirSwitch_0"]       = Toggle("AIR_BleedAirSwitch_0", "Engine 1 Bleed");
+        d["AIR_BleedAirSwitch_1"]       = Toggle("AIR_BleedAirSwitch_1", "Engine 2 Bleed");
+        d["AIR_APUBleedAirSwitch"]      = Toggle("AIR_APUBleedAirSwitch", "APU Bleed");
+        d["AIR_IsolationValveSwitch"]   = Selector("AIR_IsolationValveSwitch", "Isolation Valve",
+            "CLOSE", "AUTO", "OPEN");
+        d["AIR_annunPackTripOff_0"]     = Annun("AIR_annunPackTripOff_0", "Pack Left Trip Off");
+        d["AIR_annunPackTripOff_1"]     = Annun("AIR_annunPackTripOff_1", "Pack Right Trip Off");
+        d["AIR_annunWingBodyOverheat_0"]= Annun("AIR_annunWingBodyOverheat_0", "Wing Body Overheat Left");
+        d["AIR_annunWingBodyOverheat_1"]= Annun("AIR_annunWingBodyOverheat_1", "Wing Body Overheat Right");
+        d["AIR_annunBleedTripOff_0"]    = Annun("AIR_annunBleedTripOff_0", "Bleed Trip Off Left");
+        d["AIR_annunBleedTripOff_1"]    = Annun("AIR_annunBleedTripOff_1", "Bleed Trip Off Right");
+        d["AIR_annunAUTO_FAIL"]         = Annun("AIR_annunAUTO_FAIL", "Pressurization Auto Fail");
+        d["AIR_annunOFFSCHED_DESCENT"]  = Annun("AIR_annunOFFSCHED_DESCENT", "Off Schedule Descent");
+        d["AIR_annunALTN"]              = Annun("AIR_annunALTN", "Pressurization ALTN");
+        d["AIR_annunMANUAL"]            = Annun("AIR_annunMANUAL", "Pressurization MANUAL");
+        d["AIR_DisplayFltAlt"]          = Display("AIR_DisplayFltAlt", "Flight Altitude Display");
+        d["AIR_DisplayLandAlt"]         = Display("AIR_DisplayLandAlt", "Landing Altitude Display");
+        d["AIR_OutflowValveSwitch"]     = Selector("AIR_OutflowValveSwitch", "Outflow Valve",
+            "CLOSE", "Neutral", "OPEN");
+        d["AIR_PressurizationModeSelector"] = Selector("AIR_PressurizationModeSelector",
+            "Pressurization Mode", "AUTO", "ALTN", "MAN");
+
+        // Doors
+        d["DOOR_annunFWD_ENTRY"]          = Annun("DOOR_annunFWD_ENTRY", "Forward Entry Door");
+        d["DOOR_annunFWD_SERVICE"]        = Annun("DOOR_annunFWD_SERVICE", "Forward Service Door");
+        d["DOOR_annunAIRSTAIR"]           = Annun("DOOR_annunAIRSTAIR", "Airstair Door");
+        d["DOOR_annunLEFT_FWD_OVERWING"]  = Annun("DOOR_annunLEFT_FWD_OVERWING", "Left Forward Overwing");
+        d["DOOR_annunRIGHT_FWD_OVERWING"] = Annun("DOOR_annunRIGHT_FWD_OVERWING", "Right Forward Overwing");
+        d["DOOR_annunFWD_CARGO"]          = Annun("DOOR_annunFWD_CARGO", "Forward Cargo");
+        d["DOOR_annunEQUIP"]              = Annun("DOOR_annunEQUIP", "Equipment Hatch");
+        d["DOOR_annunLEFT_AFT_OVERWING"]  = Annun("DOOR_annunLEFT_AFT_OVERWING", "Left Aft Overwing");
+        d["DOOR_annunRIGHT_AFT_OVERWING"] = Annun("DOOR_annunRIGHT_AFT_OVERWING", "Right Aft Overwing");
+        d["DOOR_annunAFT_CARGO"]          = Annun("DOOR_annunAFT_CARGO", "Aft Cargo");
+        d["DOOR_annunAFT_ENTRY"]          = Annun("DOOR_annunAFT_ENTRY", "Aft Entry Door");
+        d["DOOR_annunAFT_SERVICE"]        = Annun("DOOR_annunAFT_SERVICE", "Aft Service Door");
+
+        // =================================================================
+        // BOTTOM OVERHEAD — Landing lights, APU, engine start, ignition, exterior
+        // =================================================================
+        d["LTS_LandingLtRetractableSw_0"] = Selector("LTS_LandingLtRetractableSw_0",
+            "Landing Light Left Retractable", "RETRACT", "EXTEND", "ON");
+        d["LTS_LandingLtRetractableSw_1"] = Selector("LTS_LandingLtRetractableSw_1",
+            "Landing Light Right Retractable", "RETRACT", "EXTEND", "ON");
+        d["LTS_LandingLtFixedSw_0"]       = Toggle("LTS_LandingLtFixedSw_0", "Landing Light Left Fixed");
+        d["LTS_LandingLtFixedSw_1"]       = Toggle("LTS_LandingLtFixedSw_1", "Landing Light Right Fixed");
+        d["LTS_RunwayTurnoffSw_0"]        = Toggle("LTS_RunwayTurnoffSw_0", "Runway Turnoff Left");
+        d["LTS_RunwayTurnoffSw_1"]        = Toggle("LTS_RunwayTurnoffSw_1", "Runway Turnoff Right");
+        d["LTS_TaxiSw"]                   = Toggle("LTS_TaxiSw", "Taxi Lights");
+        d["APU_Selector"]                 = Selector("APU_Selector", "APU", "OFF", "ON", "START");
+        d["ENG_StartSelector_0"]          = Selector("ENG_StartSelector_0", "Engine 1 Start",
+            "GRD", "OFF", "CONT", "FLT");
+        d["ENG_StartSelector_1"]          = Selector("ENG_StartSelector_1", "Engine 2 Start",
+            "GRD", "OFF", "CONT", "FLT");
+        d["ENG_IgnitionSelector"]         = Selector("ENG_IgnitionSelector", "Ignition",
+            "IGN L", "BOTH", "IGN R");
+        d["LTS_LogoSw"]                   = Toggle("LTS_LogoSw", "Logo Lights");
+        d["LTS_PositionSw"]               = Selector("LTS_PositionSw", "Position Lights",
+            "STEADY", "OFF", "STROBE & STEADY");
+        d["LTS_AntiCollisionSw"]          = Toggle("LTS_AntiCollisionSw", "Anti-Collision");
+        d["LTS_WingSw"]                   = Toggle("LTS_WingSw", "Wing Lights");
+        d["LTS_WheelWellSw"]              = Toggle("LTS_WheelWellSw", "Wheel Well Lights");
+
+        // =================================================================
+        // GLARESHIELD — Warnings
+        // =================================================================
+        d["WARN_annunFIRE_WARN_0"]      = Annun("WARN_annunFIRE_WARN_0", "Fire Warning Captain");
+        d["WARN_annunFIRE_WARN_1"]      = Annun("WARN_annunFIRE_WARN_1", "Fire Warning First Officer");
+        d["WARN_annunMASTER_CAUTION_0"] = Annun("WARN_annunMASTER_CAUTION_0", "Master Caution Captain");
+        d["WARN_annunMASTER_CAUTION_1"] = Annun("WARN_annunMASTER_CAUTION_1", "Master Caution First Officer");
+        d["WARN_annunFLT_CONT"]   = Annun("WARN_annunFLT_CONT", "FLT CONT");
+        d["WARN_annunIRS"]        = Annun("WARN_annunIRS", "IRS Warning");
+        d["WARN_annunFUEL"]       = Annun("WARN_annunFUEL", "Fuel Warning");
+        d["WARN_annunELEC"]       = Annun("WARN_annunELEC", "Electrical Warning");
+        d["WARN_annunAPU"]        = Annun("WARN_annunAPU", "APU Warning");
+        d["WARN_annunOVHT_DET"]   = Annun("WARN_annunOVHT_DET", "Overheat / Detection");
+        d["WARN_annunANTI_ICE"]   = Annun("WARN_annunANTI_ICE", "Anti-Ice Warning");
+        d["WARN_annunHYD"]        = Annun("WARN_annunHYD", "Hydraulics Warning");
+        d["WARN_annunDOORS"]      = Annun("WARN_annunDOORS", "Doors Warning");
+        d["WARN_annunENG"]        = Annun("WARN_annunENG", "Engine Warning");
+        d["WARN_annunOVERHEAD"]   = Annun("WARN_annunOVERHEAD", "Overhead Warning");
+        d["WARN_annunAIR_COND"]   = Annun("WARN_annunAIR_COND", "Air Conditioning Warning");
+
+        // =================================================================
+        // GLARESHIELD — EFIS Captain / First Officer
+        // =================================================================
+        d["EFIS_MinsSelBARO_0"]  = Toggle("EFIS_MinsSelBARO_0", "Captain Mins Mode", "RADIO", "BARO");
+        d["EFIS_MinsSelBARO_1"]  = Toggle("EFIS_MinsSelBARO_1", "First Officer Mins Mode", "RADIO", "BARO");
+        d["EFIS_BaroSelHPA_0"]   = Toggle("EFIS_BaroSelHPA_0", "Captain Baro Units", "inHg", "hPa");
+        d["EFIS_BaroSelHPA_1"]   = Toggle("EFIS_BaroSelHPA_1", "First Officer Baro Units", "inHg", "hPa");
+        d["EFIS_VORADFSel1_0"]   = Selector("EFIS_VORADFSel1_0", "Captain Bearing Pointer 1",
+            "VOR", "OFF", "ADF");
+        d["EFIS_VORADFSel1_1"]   = Selector("EFIS_VORADFSel1_1", "First Officer Bearing Pointer 1",
+            "VOR", "OFF", "ADF");
+        d["EFIS_VORADFSel2_0"]   = Selector("EFIS_VORADFSel2_0", "Captain Bearing Pointer 2",
+            "VOR", "OFF", "ADF");
+        d["EFIS_VORADFSel2_1"]   = Selector("EFIS_VORADFSel2_1", "First Officer Bearing Pointer 2",
+            "VOR", "OFF", "ADF");
+        d["EFIS_ModeSel_0"]      = Selector("EFIS_ModeSel_0", "Captain ND Mode",
+            "APP", "VOR", "MAP", "PLAN");
+        d["EFIS_ModeSel_1"]      = Selector("EFIS_ModeSel_1", "First Officer ND Mode",
+            "APP", "VOR", "MAP", "PLAN");
+        d["EFIS_RangeSel_0"]     = Selector("EFIS_RangeSel_0", "Captain ND Range",
+            "5", "10", "20", "40", "80", "160", "320", "640");
+        d["EFIS_RangeSel_1"]     = Selector("EFIS_RangeSel_1", "First Officer ND Range",
+            "5", "10", "20", "40", "80", "160", "320", "640");
+
+        // =================================================================
+        // GLARESHIELD — Mode Control Panel (MCP)
+        // =================================================================
+        d["MCP_Course_0"]   = Numeric("MCP_Course_0", "Course Captain");
+        d["MCP_Course_1"]   = Numeric("MCP_Course_1", "Course First Officer");
+        d["MCP_IASMach"]    = Numeric("MCP_IASMach", "Speed");
+        d["MCP_IASBlank"]   = Annun("MCP_IASBlank", "Speed Window Blank");
+        d["MCP_Heading"]    = Numeric("MCP_Heading", "Heading");
+        d["MCP_Altitude"]   = Numeric("MCP_Altitude", "Altitude");
+        d["MCP_VertSpeed"]  = Numeric("MCP_VertSpeed", "Vertical Speed");
+        d["MCP_VertSpeedBlank"] = Annun("MCP_VertSpeedBlank", "VS Window Blank");
+        d["MCP_FDSw_0"]     = Toggle("MCP_FDSw_0", "Flight Director Captain");
+        d["MCP_FDSw_1"]     = Toggle("MCP_FDSw_1", "Flight Director First Officer");
+        d["MCP_ATArmSw"]    = Toggle("MCP_ATArmSw", "Autothrottle Arm", "OFF", "ARM");
+        d["MCP_BankLimitSel"] = Selector("MCP_BankLimitSel", "Bank Limit",
+            "10", "15", "20", "25", "30");
+        d["MCP_DisengageBar"] = Toggle("MCP_DisengageBar", "AP Disengage Bar", "Up", "Down");
+        d["MCP_annunFD_0"]   = Annun("MCP_annunFD_0", "FD Captain Master");
+        d["MCP_annunFD_1"]   = Annun("MCP_annunFD_1", "FD First Officer Master");
+        d["MCP_annunATArm"]  = Annun("MCP_annunATArm", "AT Arm");
+        d["MCP_annunN1"]     = Annun("MCP_annunN1", "N1");
+        d["MCP_annunSPEED"]  = Annun("MCP_annunSPEED", "Speed");
+        d["MCP_annunVNAV"]   = Annun("MCP_annunVNAV", "VNAV");
+        d["MCP_annunLVL_CHG"] = Annun("MCP_annunLVL_CHG", "Level Change");
+        d["MCP_annunHDG_SEL"] = Annun("MCP_annunHDG_SEL", "Heading Select");
+        d["MCP_annunLNAV"]   = Annun("MCP_annunLNAV", "LNAV");
+        d["MCP_annunVOR_LOC"] = Annun("MCP_annunVOR_LOC", "VOR LOC");
+        d["MCP_annunAPP"]    = Annun("MCP_annunAPP", "Approach");
+        d["MCP_annunALT_HOLD"] = Annun("MCP_annunALT_HOLD", "Altitude Hold");
+        d["MCP_annunVS"]     = Annun("MCP_annunVS", "Vertical Speed");
+        d["MCP_annunCMD_A"]  = Annun("MCP_annunCMD_A", "CMD A");
+        d["MCP_annunCWS_A"]  = Annun("MCP_annunCWS_A", "CWS A");
+        d["MCP_annunCMD_B"]  = Annun("MCP_annunCMD_B", "CMD B");
+        d["MCP_annunCWS_B"]  = Annun("MCP_annunCWS_B", "CWS B");
+
+        // =================================================================
+        // FORWARD PANEL — NWS, AP/AT annunciators, DU selectors, autobrake, etc.
+        // =================================================================
+        d["MAIN_NoseWheelSteeringSwNORM"] = Toggle("MAIN_NoseWheelSteeringSwNORM",
+            "Nose Wheel Steering", "ALT", "Normal");
+        d["MAIN_annunBELOW_GS_0"] = Annun("MAIN_annunBELOW_GS_0", "Below G/S Captain");
+        d["MAIN_annunBELOW_GS_1"] = Annun("MAIN_annunBELOW_GS_1", "Below G/S First Officer");
+        d["MAIN_MainPanelDUSel_0"] = Selector("MAIN_MainPanelDUSel_0", "Main Panel DU Captain",
+            "NORMAL", "OUTBD PFD", "INBD PFD", "INBD ND");
+        d["MAIN_MainPanelDUSel_1"] = Selector("MAIN_MainPanelDUSel_1", "Main Panel DU First Officer",
+            "NORMAL", "OUTBD PFD", "INBD PFD", "INBD ND");
+        d["MAIN_LowerDUSel_0"]    = Selector("MAIN_LowerDUSel_0", "Lower DU Captain",
+            "NORMAL", "ENG PRI", "ENG SEC");
+        d["MAIN_LowerDUSel_1"]    = Selector("MAIN_LowerDUSel_1", "Lower DU First Officer",
+            "NORMAL", "ENG PRI", "ENG SEC");
+        d["MAIN_annunAP_0"]       = Annun("MAIN_annunAP_0", "AP Disengage Captain");
+        d["MAIN_annunAP_1"]       = Annun("MAIN_annunAP_1", "AP Disengage First Officer");
+        d["MAIN_annunAP_Amber_0"] = Annun("MAIN_annunAP_Amber_0", "AP Disengage Amber Captain");
+        d["MAIN_annunAP_Amber_1"] = Annun("MAIN_annunAP_Amber_1", "AP Disengage Amber First Officer");
+        d["MAIN_annunAT_0"]       = Annun("MAIN_annunAT_0", "AT Disengage Captain");
+        d["MAIN_annunAT_1"]       = Annun("MAIN_annunAT_1", "AT Disengage First Officer");
+        d["MAIN_annunAT_Amber_0"] = Annun("MAIN_annunAT_Amber_0", "AT Disengage Amber Captain");
+        d["MAIN_annunAT_Amber_1"] = Annun("MAIN_annunAT_Amber_1", "AT Disengage Amber First Officer");
+        d["MAIN_annunFMC_0"]      = Annun("MAIN_annunFMC_0", "FMC Caution Captain");
+        d["MAIN_annunFMC_1"]      = Annun("MAIN_annunFMC_1", "FMC Caution First Officer");
+        d["MAIN_DisengageTestSelector_0"] = Selector("MAIN_DisengageTestSelector_0",
+            "Disengage Test Captain", "1", "OFF", "2");
+        d["MAIN_DisengageTestSelector_1"] = Selector("MAIN_DisengageTestSelector_1",
+            "Disengage Test First Officer", "1", "OFF", "2");
+        d["MAIN_annunSPEEDBRAKE_ARMED"]      = Annun("MAIN_annunSPEEDBRAKE_ARMED", "Speedbrake Armed");
+        d["MAIN_annunSPEEDBRAKE_DO_NOT_ARM"] = Annun("MAIN_annunSPEEDBRAKE_DO_NOT_ARM", "Speedbrake Do Not Arm");
+        d["MAIN_annunSPEEDBRAKE_EXTENDED"]   = Annun("MAIN_annunSPEEDBRAKE_EXTENDED", "Speedbrake Extended");
+        d["MAIN_annunSTAB_OUT_OF_TRIM"]      = Annun("MAIN_annunSTAB_OUT_OF_TRIM", "Stab Out of Trim");
+        d["MAIN_LightsSelector"]  = Selector("MAIN_LightsSelector", "Indicator Lights",
+            "TEST", "BRT", "DIM");
+        d["MAIN_RMISelector1_VOR"] = Toggle("MAIN_RMISelector1_VOR", "RMI 1", "ADF", "VOR");
+        d["MAIN_RMISelector2_VOR"] = Toggle("MAIN_RMISelector2_VOR", "RMI 2", "ADF", "VOR");
+        d["MAIN_N1SetSelector"]    = Selector("MAIN_N1SetSelector", "N1 Set", "1", "AUTO", "2", "BOTH");
+        d["MAIN_SpdRefSelector"]   = Selector("MAIN_SpdRefSelector", "Speed Reference",
+            "AUTO", "V1", "VR", "WT", "VREF", "BUG", "SET");
+        d["MAIN_FuelFlowSelector"] = Selector("MAIN_FuelFlowSelector", "Fuel Flow",
+            "RATE", "USED", "RESET");
+        d["MAIN_AutobrakeSelector"] = new SimConnect.SimVarDefinition
+        {
+            Name = "MAIN_AutobrakeSelector",
+            DisplayName = "Autobrake",
+            Type = SimConnect.SimVarType.PMDGVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            PreventTextInput = true,
+            ValueDescriptions = new Dictionary<double, string>
+            {
+                [0] = "RTO", [1] = "OFF", [2] = "1", [3] = "2", [4] = "3", [5] = "MAX"
+            }
+        };
+        d["MAIN_annunANTI_SKID_INOP"]    = Annun("MAIN_annunANTI_SKID_INOP", "Anti-Skid Inop");
+        d["MAIN_annunAUTO_BRAKE_DISARM"] = Annun("MAIN_annunAUTO_BRAKE_DISARM", "Auto Brake Disarm");
+        d["MAIN_annunLE_FLAPS_TRANSIT"]  = Annun("MAIN_annunLE_FLAPS_TRANSIT", "LE Flaps Transit");
+        d["MAIN_annunLE_FLAPS_EXT"]      = Annun("MAIN_annunLE_FLAPS_EXT", "LE Flaps Ext");
+        d["MAIN_annunGEAR_transit_0"]    = Annun("MAIN_annunGEAR_transit_0", "Left Gear Transit");
+        d["MAIN_annunGEAR_transit_1"]    = Annun("MAIN_annunGEAR_transit_1", "Nose Gear Transit");
+        d["MAIN_annunGEAR_transit_2"]    = Annun("MAIN_annunGEAR_transit_2", "Right Gear Transit");
+        d["MAIN_annunGEAR_locked_0"]     = Annun("MAIN_annunGEAR_locked_0", "Left Gear Locked Down");
+        d["MAIN_annunGEAR_locked_1"]     = Annun("MAIN_annunGEAR_locked_1", "Nose Gear Locked Down");
+        d["MAIN_annunGEAR_locked_2"]     = Annun("MAIN_annunGEAR_locked_2", "Right Gear Locked Down");
+        d["MAIN_GearLever"]              = Selector("MAIN_GearLever", "Gear Lever", "UP", "OFF", "DOWN");
+        d["MAIN_annunCABIN_ALTITUDE"]    = Annun("MAIN_annunCABIN_ALTITUDE", "Cabin Altitude");
+        d["MAIN_annunTAKEOFF_CONFIG"]    = Annun("MAIN_annunTAKEOFF_CONFIG", "Takeoff Config");
+
+        // HGS forward annunciators
+        d["HGS_annun_AIII"]    = Annun("HGS_annun_AIII", "HGS AIII");
+        d["HGS_annun_NO_AIII"] = Annun("HGS_annun_NO_AIII", "HGS NO AIII");
+        d["HGS_annun_FLARE"]   = Annun("HGS_annun_FLARE", "HGS FLARE");
+        d["HGS_annun_RO"]      = Annun("HGS_annun_RO", "HGS RO");
+        d["HGS_annun_RO_CTN"]  = Annun("HGS_annun_RO_CTN", "HGS RO CTN");
+        d["HGS_annun_RO_ARM"]  = Annun("HGS_annun_RO_ARM", "HGS RO ARM");
+        d["HGS_annun_TO"]      = Annun("HGS_annun_TO", "HGS TO");
+        d["HGS_annun_TO_CTN"]  = Annun("HGS_annun_TO_CTN", "HGS TO CTN");
+        d["HGS_annun_APCH"]    = Annun("HGS_annun_APCH", "HGS APCH");
+        d["HGS_annun_TO_WARN"] = Annun("HGS_annun_TO_WARN", "HGS TO WARN");
+        d["HGS_annun_Bar"]     = Annun("HGS_annun_Bar", "HGS Bar");
+        d["HGS_annun_FAIL"]    = Annun("HGS_annun_FAIL", "HGS Fail");
+
+        // Lower forward panel — GPWS
+        d["GPWS_annunINOP"]            = Annun("GPWS_annunINOP", "GPWS Inop");
+        d["GPWS_FlapInhibitSw_NORM"]   = Toggle("GPWS_FlapInhibitSw_NORM", "Flap Inhibit", "INHIBIT", "Normal");
+        d["GPWS_GearInhibitSw_NORM"]   = Toggle("GPWS_GearInhibitSw_NORM", "Gear Inhibit", "INHIBIT", "Normal");
+        d["GPWS_TerrInhibitSw_NORM"]   = Toggle("GPWS_TerrInhibitSw_NORM", "Terrain Inhibit", "INHIBIT", "Normal");
+
+        // =================================================================
+        // CONTROL STAND — CDU annunciators, COMM counters, ACP, stab trim, fire, xpdr, etc.
+        // =================================================================
+        // CDU annunciators — NG3 SDK has only 2 CDUs (Captain=0, F/O=1)
+        d["CDU_annunEXEC_0"]  = Annun("CDU_annunEXEC_0", "CDU Captain EXEC");
+        d["CDU_annunEXEC_1"]  = Annun("CDU_annunEXEC_1", "CDU First Officer EXEC");
+        d["CDU_annunCALL_0"]  = Annun("CDU_annunCALL_0", "CDU Captain Call");
+        d["CDU_annunCALL_1"]  = Annun("CDU_annunCALL_1", "CDU First Officer Call");
+        d["CDU_annunFAIL_0"]  = Annun("CDU_annunFAIL_0", "CDU Captain Fail");
+        d["CDU_annunFAIL_1"]  = Annun("CDU_annunFAIL_1", "CDU First Officer Fail");
+        d["CDU_annunMSG_0"]   = Annun("CDU_annunMSG_0", "CDU Captain Message");
+        d["CDU_annunMSG_1"]   = Annun("CDU_annunMSG_1", "CDU First Officer Message");
+        d["CDU_annunOFST_0"]  = Annun("CDU_annunOFST_0", "CDU Captain Offset");
+        d["CDU_annunOFST_1"]  = Annun("CDU_annunOFST_1", "CDU First Officer Offset");
+
+        // COMM press counters
+        d["COMM_Attend_PressCount"]  = new SimConnect.SimVarDefinition
+        {
+            Name = "COMM_Attend_PressCount",
+            DisplayName = "Attendant Call",
+            Type = SimConnect.SimVarType.PMDGVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true
+        };
+        d["COMM_GrdCall_PressCount"] = new SimConnect.SimVarDefinition
+        {
+            Name = "COMM_GrdCall_PressCount",
+            DisplayName = "Ground Call",
+            Type = SimConnect.SimVarType.PMDGVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true
+        };
+
+        // ACP selected mic & receivers (read-only state cache)
+        d["COMM_SelectedMic_0"] = Display("COMM_SelectedMic_0", "Captain Selected Mic");
+        d["COMM_SelectedMic_1"] = Display("COMM_SelectedMic_1", "First Officer Selected Mic");
+        d["COMM_SelectedMic_2"] = Display("COMM_SelectedMic_2", "Observer Selected Mic");
+
+        // Stab trim
+        d["TRIM_StabTrimMainElecSw_NORMAL"] = Toggle("TRIM_StabTrimMainElecSw_NORMAL",
+            "Main Elec Stab Trim", "CUTOUT", "Normal");
+        d["TRIM_StabTrimAutoPilotSw_NORMAL"] = Toggle("TRIM_StabTrimAutoPilotSw_NORMAL",
+            "AP Stab Trim", "CUTOUT", "Normal");
+        d["TRIM_StabTrimSw_NORMAL"] = Toggle("TRIM_StabTrimSw_NORMAL",
+            "Stab Trim Override", "OVERRIDE", "Normal");
+        d["PED_annunParkingBrake"]  = Annun("PED_annunParkingBrake", "Parking Brake");
+
+        // Fire protection
+        d["FIRE_OvhtDetSw_0"] = Selector("FIRE_OvhtDetSw_0", "Engine 1 Overheat Detect", "A", "NORMAL", "B");
+        d["FIRE_OvhtDetSw_1"] = Selector("FIRE_OvhtDetSw_1", "Engine 2 Overheat Detect", "A", "NORMAL", "B");
+        d["FIRE_annunENG_OVERHEAT_0"] = Annun("FIRE_annunENG_OVERHEAT_0", "Engine 1 Overheat");
+        d["FIRE_annunENG_OVERHEAT_1"] = Annun("FIRE_annunENG_OVERHEAT_1", "Engine 2 Overheat");
+        d["FIRE_DetTestSw"] = new SimConnect.SimVarDefinition
+        {
+            Name = "FIRE_DetTestSw", DisplayName = "Fire Detection Test",
+            Type = SimConnect.SimVarType.PMDGVar, UpdateFrequency = SimConnect.UpdateFrequency.Never,
+            RenderAsButton = true, IsMomentary = true
+        };
+        d["FIRE_HandlePos_0"] = Selector("FIRE_HandlePos_0", "Engine 1 Fire Handle",
+            "In", "Blocked", "Out", "Turned Left", "Turned Right");
+        d["FIRE_HandlePos_1"] = Selector("FIRE_HandlePos_1", "Engine 2 Fire Handle",
+            "In", "Blocked", "Out", "Turned Left", "Turned Right");
+        d["FIRE_HandlePos_2"] = Selector("FIRE_HandlePos_2", "APU Fire Handle",
+            "In", "Blocked", "Out", "Turned Left", "Turned Right");
+        d["FIRE_HandleIlluminated_0"] = Annun("FIRE_HandleIlluminated_0", "Engine 1 Fire Handle Illuminated");
+        d["FIRE_HandleIlluminated_1"] = Annun("FIRE_HandleIlluminated_1", "Engine 2 Fire Handle Illuminated");
+        d["FIRE_HandleIlluminated_2"] = Annun("FIRE_HandleIlluminated_2", "APU Fire Handle Illuminated");
+        d["FIRE_annunWHEEL_WELL"]         = Annun("FIRE_annunWHEEL_WELL", "Wheel Well Fire");
+        d["FIRE_annunFAULT"]              = Annun("FIRE_annunFAULT", "Fire Fault");
+        d["FIRE_annunAPU_DET_INOP"]       = Annun("FIRE_annunAPU_DET_INOP", "APU Detection Inop");
+        d["FIRE_annunAPU_BOTTLE_DISCHARGE"] = Annun("FIRE_annunAPU_BOTTLE_DISCHARGE", "APU Bottle Discharge");
+        d["FIRE_annunBOTTLE_DISCHARGE_0"] = Annun("FIRE_annunBOTTLE_DISCHARGE_0", "Engine 1 Bottle Discharge");
+        d["FIRE_annunBOTTLE_DISCHARGE_1"] = Annun("FIRE_annunBOTTLE_DISCHARGE_1", "Engine 2 Bottle Discharge");
+        d["FIRE_ExtinguisherTestSw"] = Selector("FIRE_ExtinguisherTestSw", "Extinguisher Test",
+            "1", "Neutral", "2");
+        d["FIRE_annunExtinguisherTest_0"] = Annun("FIRE_annunExtinguisherTest_0", "Extinguisher Test Left");
+        d["FIRE_annunExtinguisherTest_1"] = Annun("FIRE_annunExtinguisherTest_1", "Extinguisher Test Right");
+        d["FIRE_annunExtinguisherTest_2"] = Annun("FIRE_annunExtinguisherTest_2", "Extinguisher Test APU");
+
+        // Cargo fire
+        d["CARGO_annunExtTest_0"] = Annun("CARGO_annunExtTest_0", "Cargo Fwd Ext Test");
+        d["CARGO_annunExtTest_1"] = Annun("CARGO_annunExtTest_1", "Cargo Aft Ext Test");
+        d["CARGO_DetSelect_0"]    = Selector("CARGO_DetSelect_0", "Cargo Fwd Det Select", "A", "NORM", "B");
+        d["CARGO_DetSelect_1"]    = Selector("CARGO_DetSelect_1", "Cargo Aft Det Select", "A", "NORM", "B");
+        d["CARGO_ArmedSw_0"]      = Toggle("CARGO_ArmedSw_0", "Cargo Fwd Arm", "OFF", "ARM");
+        d["CARGO_ArmedSw_1"]      = Toggle("CARGO_ArmedSw_1", "Cargo Aft Arm", "OFF", "ARM");
+        d["CARGO_annunFWD"]       = Annun("CARGO_annunFWD", "Cargo Forward Fire");
+        d["CARGO_annunAFT"]       = Annun("CARGO_annunAFT", "Cargo Aft Fire");
+        d["CARGO_annunDETECTOR_FAULT"] = Annun("CARGO_annunDETECTOR_FAULT", "Cargo Detector Fault");
+        d["CARGO_annunDISCH"]     = Annun("CARGO_annunDISCH", "Cargo Bottle Discharge");
+
+        // HGS pedestal annunciators
+        d["HGS_annunRWY"]   = Annun("HGS_annunRWY", "HGS Runway");
+        d["HGS_annunGS"]    = Annun("HGS_annunGS", "HGS Glideslope");
+        d["HGS_annunFAULT"] = Annun("HGS_annunFAULT", "HGS Pedestal Fault");
+        d["HGS_annunCLR"]   = Annun("HGS_annunCLR", "HGS Clear");
+
+        // Transponder
+        d["XPDR_XpndrSelector_2"] = Toggle("XPDR_XpndrSelector_2", "Transponder", "1", "2");
+        d["XPDR_AltSourceSel_2"]  = Toggle("XPDR_AltSourceSel_2", "Transponder Alt Source", "1", "2");
+        d["XPDR_ModeSel"]         = Selector("XPDR_ModeSel", "Transponder Mode",
+            "STBY", "ALT RPTG OFF", "XPNDR", "TA", "TA/RA");
+        d["XPDR_annunFAIL"]       = Annun("XPDR_annunFAIL", "Transponder Fail");
+
+        // Flight deck door
+        d["PED_annunLOCK_FAIL"]   = Annun("PED_annunLOCK_FAIL", "Door Lock Fail");
+        d["PED_annunAUTO_UNLK"]   = Annun("PED_annunAUTO_UNLK", "Door Auto Unlock");
+        d["PED_FltDkDoorSel"]     = Selector("PED_FltDkDoorSel", "Flight Deck Door",
+            "UNLKD", "AUTO Pushed In", "AUTO", "DENY");
+
+        // =================================================================
+        // FMS — V-speeds, flaps, cruise / landing alt, transition, perf
+        // =================================================================
+        d["FMC_TakeoffFlaps"]      = Numeric("FMC_TakeoffFlaps", "Takeoff Flaps");
+        d["FMC_V1"]                = Numeric("FMC_V1", "V1");
+        d["FMC_VR"]                = Numeric("FMC_VR", "VR");
+        d["FMC_V2"]                = Numeric("FMC_V2", "V2");
+        d["FMC_LandingFlaps"]      = Numeric("FMC_LandingFlaps", "Landing Flaps");
+        d["FMC_LandingVREF"]       = Numeric("FMC_LandingVREF", "VREF");
+        d["FMC_CruiseAlt"]         = Numeric("FMC_CruiseAlt", "Cruise Altitude");
+        d["FMC_LandingAltitude"]   = Numeric("FMC_LandingAltitude", "Landing Altitude");
+        d["FMC_TransitionAlt"]     = Numeric("FMC_TransitionAlt", "Transition Altitude");
+        d["FMC_TransitionLevel"]   = Numeric("FMC_TransitionLevel", "Transition Level");
+        d["FMC_PerfInputComplete"] = Toggle("FMC_PerfInputComplete", "Performance Input Complete", "Incomplete", "Complete");
+        d["FMC_DistanceToTOD"]     = Quantity("FMC_DistanceToTOD", "Distance To Top of Descent");
+        d["FMC_DistanceToDest"]    = Quantity("FMC_DistanceToDest", "Distance To Destination");
+        d["FMC_flightNumber"]      = Display("FMC_flightNumber", "Flight Number");
+
+        // General / misc
+        d["WeightInKg"]          = Toggle("WeightInKg", "Weight Units", "Pounds", "Kilograms");
+        d["GPWS_V1CallEnabled"]  = Toggle("GPWS_V1CallEnabled", "GPWS V1 Call");
+        d["GroundConnAvailable"] = Toggle("GroundConnAvailable", "Ground Connections", "Not Available", "Available");
+
+        // =================================================================
+        // STANDARD SIMVARS (NOT PMDG SDK)
+        // =================================================================
+        d["ALTIMETER_SETTING"] = new SimConnect.SimVarDefinition
+        {
+            Name = "KOHLSMAN SETTING HG",
+            DisplayName = "Altimeter Setting",
+            Type = SimConnect.SimVarType.SimVar,
+            Units = "inHg",
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true
+        };
+        d["TRANSPONDER_CODE_SET"] = new SimConnect.SimVarDefinition
+        {
+            Name = "TRANSPONDER CODE:1",
+            DisplayName = "Squawk Code",
+            Type = SimConnect.SimVarType.SimVar,
+            Units = "BCO16",
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true
+        };
+        d["COM1_ActiveFreq"] = new SimConnect.SimVarDefinition
+        {
+            Name = "COM ACTIVE FREQUENCY:1",
+            DisplayName = "COM1 Active",
+            Type = SimConnect.SimVarType.SimVar,
+            Units = "MHz",
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            PreventTextInput = true
+        };
+        d["COM_STANDBY_FREQUENCY_SET:1"] = new SimConnect.SimVarDefinition
+        {
+            Name = "COM STANDBY FREQUENCY:1",
+            DisplayName = "COM1 Standby",
+            Type = SimConnect.SimVarType.SimVar,
+            Units = "MHz",
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true
+        };
+        d["COM1_RADIO_SWAP"] = new SimConnect.SimVarDefinition
+        {
+            Name = "COM_STBY_RADIO_SWAP",
+            DisplayName = "COM1 Swap",
+            Type = SimConnect.SimVarType.Event,
+            RenderAsButton = true,
+            IsMomentary = true,
+            HelpText = "Swap COM1 active and standby frequencies"
+        };
+        d["COM2_ActiveFreq"] = new SimConnect.SimVarDefinition
+        {
+            Name = "COM ACTIVE FREQUENCY:2",
+            DisplayName = "COM2 Active",
+            Type = SimConnect.SimVarType.SimVar,
+            Units = "MHz",
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            PreventTextInput = true
+        };
+        d["COM_STANDBY_FREQUENCY_SET:2"] = new SimConnect.SimVarDefinition
+        {
+            Name = "COM STANDBY FREQUENCY:2",
+            DisplayName = "COM2 Standby",
+            Type = SimConnect.SimVarType.SimVar,
+            Units = "MHz",
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true
+        };
+        d["COM2_RADIO_SWAP"] = new SimConnect.SimVarDefinition
+        {
+            Name = "COM2_RADIO_SWAP",
+            DisplayName = "COM2 Swap",
+            Type = SimConnect.SimVarType.Event,
+            RenderAsButton = true,
+            IsMomentary = true,
+            HelpText = "Swap COM2 active and standby frequencies"
+        };
+
+        return d;
     }
 
     // =========================================================================
@@ -104,7 +889,231 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
 
     protected override Dictionary<string, List<string>> BuildPanelControls()
     {
-        return new Dictionary<string, List<string>>();
+        return new Dictionary<string, List<string>>
+        {
+            // ===== Overhead — Aft =====
+            ["ADIRU"] = new List<string>
+            {
+                "IRS_DisplaySelector", "IRS_SysDisplay_R",
+                "IRS_ModeSelector_0", "IRS_ModeSelector_1",
+                "IRS_DisplayLeft", "IRS_DisplayRight"
+            },
+            ["Service Interphone"] = new List<string>
+            {
+                "COMM_ServiceInterphoneSw", "LTS_DomeWhiteSw"
+            },
+            ["Engine (Aft)"] = new List<string>
+            {
+                "ENG_EECSwitch_0", "ENG_EECSwitch_1"
+            },
+            ["Oxygen"] = new List<string>
+            {
+                "OXY_SwNormal"
+            },
+            ["Flight Recorder"] = new List<string>
+            {
+                "FLTREC_SwNormal"
+            },
+
+            // ===== Overhead — Forward =====
+            ["Flight Controls"] = new List<string>
+            {
+                "FCTL_FltControl_Sw_0", "FCTL_FltControl_Sw_1",
+                "FCTL_Spoiler_Sw_0", "FCTL_Spoiler_Sw_1",
+                "FCTL_YawDamper_Sw",
+                "FCTL_AltnFlaps_Sw_ARM", "FCTL_AltnFlaps_Control_Sw"
+            },
+            ["NAVDIS"] = new List<string>
+            {
+                "NAVDIS_VHFNavSelector", "NAVDIS_IRSSelector", "NAVDIS_FMCSelector",
+                "NAVDIS_SourceSelector", "NAVDIS_ControlPaneSelector"
+            },
+            ["Fuel"] = new List<string>
+            {
+                "FUEL_CrossFeedSw",
+                "FUEL_PumpFwdSw_0", "FUEL_PumpFwdSw_1",
+                "FUEL_PumpAftSw_0", "FUEL_PumpAftSw_1",
+                "FUEL_PumpCtrSw_0", "FUEL_PumpCtrSw_1",
+                "FUEL_AuxFwd_0", "FUEL_AuxFwd_1",
+                "FUEL_AuxAft_0", "FUEL_AuxAft_1",
+                "FUEL_FWDBleed", "FUEL_AFTBleed", "FUEL_GNDXfr"
+            },
+            ["Electrical"] = new List<string>
+            {
+                "ELEC_BatSelector", "ELEC_StandbyPowerSelector",
+                "ELEC_DCMeterSelector", "ELEC_ACMeterSelector",
+                "ELEC_GenSw_0", "ELEC_GenSw_1",
+                "ELEC_APUGenSw_0", "ELEC_APUGenSw_1",
+                "ELEC_BusTransSw_AUTO",
+                "ELEC_GrdPwrSw",
+                "ELEC_IDGDisconnectSw_0", "ELEC_IDGDisconnectSw_1",
+                "ELEC_CabUtilSw", "ELEC_IFEPassSeatSw"
+            },
+            ["APU"] = new List<string>
+            {
+                "APU_Selector"
+            },
+            ["Wipers"] = new List<string>
+            {
+                "OH_WiperLSelector", "OH_WiperRSelector"
+            },
+            ["Center Overhead"] = new List<string>
+            {
+                "AIR_EquipCoolingSupplyNORM", "AIR_EquipCoolingExhaustNORM",
+                "LTS_EmerExitSelector",
+                "COMM_NoSmokingSelector", "COMM_FastenBeltsSelector"
+            },
+            ["Anti-Ice"] = new List<string>
+            {
+                "ICE_WingAntiIceSw",
+                "ICE_EngAntiIceSw_0", "ICE_EngAntiIceSw_1",
+                "ICE_WindowHeatSw_0", "ICE_WindowHeatSw_1",
+                "ICE_WindowHeatSw_2", "ICE_WindowHeatSw_3",
+                "ICE_WindowHeatTestSw",
+                "ICE_ProbeHeatSw_0", "ICE_ProbeHeatSw_1"
+            },
+            ["Hydraulics"] = new List<string>
+            {
+                "HYD_PumpSw_eng_0", "HYD_PumpSw_eng_1",
+                "HYD_PumpSw_elec_0", "HYD_PumpSw_elec_1"
+            },
+            ["Air Systems"] = new List<string>
+            {
+                "AIR_TempSourceSelector", "AIR_TrimAirSwitch",
+                "AIR_RecircFanSwitch_0", "AIR_RecircFanSwitch_1",
+                "AIR_PackSwitch_0", "AIR_PackSwitch_1",
+                "AIR_BleedAirSwitch_0", "AIR_BleedAirSwitch_1", "AIR_APUBleedAirSwitch",
+                "AIR_IsolationValveSwitch",
+                "AIR_OutflowValveSwitch", "AIR_PressurizationModeSelector",
+                "AIR_DisplayFltAlt", "AIR_DisplayLandAlt"
+            },
+            ["Doors"] = new List<string>
+            {
+                // Read-only annunciators — exposed here so users can query door state.
+                "DOOR_annunFWD_ENTRY", "DOOR_annunFWD_SERVICE", "DOOR_annunAIRSTAIR",
+                "DOOR_annunLEFT_FWD_OVERWING", "DOOR_annunRIGHT_FWD_OVERWING",
+                "DOOR_annunFWD_CARGO", "DOOR_annunEQUIP",
+                "DOOR_annunLEFT_AFT_OVERWING", "DOOR_annunRIGHT_AFT_OVERWING",
+                "DOOR_annunAFT_CARGO", "DOOR_annunAFT_ENTRY", "DOOR_annunAFT_SERVICE"
+            },
+
+            // ===== Overhead — Bottom =====
+            ["Bottom Overhead"] = new List<string>
+            {
+                "LTS_LandingLtRetractableSw_0", "LTS_LandingLtRetractableSw_1",
+                "LTS_LandingLtFixedSw_0", "LTS_LandingLtFixedSw_1",
+                "LTS_RunwayTurnoffSw_0", "LTS_RunwayTurnoffSw_1",
+                "LTS_TaxiSw",
+                "ENG_StartSelector_0", "ENG_StartSelector_1", "ENG_IgnitionSelector",
+                "LTS_LogoSw", "LTS_PositionSw", "LTS_AntiCollisionSw",
+                "LTS_WingSw", "LTS_WheelWellSw"
+            },
+
+            // ===== Glareshield =====
+            ["Warnings"] = new List<string>
+            {
+                // Annunciators only — Fire / Master Caution lights queried here.
+                "WARN_annunFIRE_WARN_0", "WARN_annunFIRE_WARN_1",
+                "WARN_annunMASTER_CAUTION_0", "WARN_annunMASTER_CAUTION_1"
+            },
+            ["EFIS Captain"] = new List<string>
+            {
+                "EFIS_MinsSelBARO_0", "EFIS_BaroSelHPA_0",
+                "EFIS_VORADFSel1_0", "EFIS_VORADFSel2_0",
+                "EFIS_ModeSel_0", "EFIS_RangeSel_0"
+            },
+            ["EFIS First Officer"] = new List<string>
+            {
+                "EFIS_MinsSelBARO_1", "EFIS_BaroSelHPA_1",
+                "EFIS_VORADFSel1_1", "EFIS_VORADFSel2_1",
+                "EFIS_ModeSel_1", "EFIS_RangeSel_1"
+            },
+            ["MCP"] = new List<string>
+            {
+                "MCP_Course_0", "MCP_Course_1",
+                "MCP_IASMach", "MCP_Heading", "MCP_Altitude", "MCP_VertSpeed",
+                "MCP_FDSw_0", "MCP_FDSw_1",
+                "MCP_ATArmSw", "MCP_BankLimitSel", "MCP_DisengageBar"
+            },
+
+            // ===== Forward Panel =====
+            ["Landing Gear"] = new List<string>
+            {
+                "MAIN_GearLever"
+            },
+            ["Autobrake"] = new List<string>
+            {
+                "MAIN_AutobrakeSelector"
+            },
+            ["Display Select"] = new List<string>
+            {
+                "MAIN_MainPanelDUSel_0", "MAIN_MainPanelDUSel_1",
+                "MAIN_LowerDUSel_0", "MAIN_LowerDUSel_1",
+                "MAIN_DisengageTestSelector_0", "MAIN_DisengageTestSelector_1",
+                "MAIN_LightsSelector",
+                "MAIN_RMISelector1_VOR", "MAIN_RMISelector2_VOR",
+                "MAIN_NoseWheelSteeringSwNORM"
+            },
+            ["GPWS"] = new List<string>
+            {
+                "GPWS_FlapInhibitSw_NORM", "GPWS_GearInhibitSw_NORM", "GPWS_TerrInhibitSw_NORM"
+            },
+            ["Speed Reference"] = new List<string>
+            {
+                "MAIN_N1SetSelector", "MAIN_SpdRefSelector", "MAIN_FuelFlowSelector"
+            },
+            ["Brightness"] = new List<string>
+            {
+                // Brightness knobs on NG3 are continuous and not settable via SDK — leave panel
+                // empty for now (panel still appears in tree for parity with overhead structure).
+            },
+
+            // ===== Pedestal =====
+            ["Control Stand"] = new List<string>
+            {
+                "COMM_Attend_PressCount", "COMM_GrdCall_PressCount",
+                "FMC_TakeoffFlaps", "FMC_V1", "FMC_VR", "FMC_V2",
+                "FMC_LandingFlaps", "FMC_LandingVREF",
+                "FMC_CruiseAlt", "FMC_LandingAltitude",
+                "FMC_TransitionAlt", "FMC_TransitionLevel",
+                "FMC_PerfInputComplete", "FMC_flightNumber",
+                "ALTIMETER_SETTING"
+            },
+            ["Fire Protection"] = new List<string>
+            {
+                "FIRE_OvhtDetSw_0", "FIRE_OvhtDetSw_1",
+                "FIRE_DetTestSw", "FIRE_ExtinguisherTestSw",
+                "FIRE_HandlePos_0", "FIRE_HandlePos_1", "FIRE_HandlePos_2"
+            },
+            ["Cargo Fire"] = new List<string>
+            {
+                "CARGO_DetSelect_0", "CARGO_DetSelect_1",
+                "CARGO_ArmedSw_0", "CARGO_ArmedSw_1"
+            },
+            ["Transponder"] = new List<string>
+            {
+                "XPDR_XpndrSelector_2", "XPDR_AltSourceSel_2", "XPDR_ModeSel",
+                "TRANSPONDER_CODE_SET"
+            },
+            ["Pedestal Lights"] = new List<string>
+            {
+                // Pedestal flood / panel brightness knobs are continuous and not SDK-settable.
+            },
+            ["FltDk Door"] = new List<string>
+            {
+                "PED_FltDkDoorSel"
+            },
+            ["Trim"] = new List<string>
+            {
+                "TRIM_StabTrimMainElecSw_NORMAL", "TRIM_StabTrimAutoPilotSw_NORMAL",
+                "TRIM_StabTrimSw_NORMAL"
+            },
+            ["Communication"] = new List<string>
+            {
+                "COM1_ActiveFreq", "COM_STANDBY_FREQUENCY_SET:1", "COM1_RADIO_SWAP",
+                "COM2_ActiveFreq", "COM_STANDBY_FREQUENCY_SET:2", "COM2_RADIO_SWAP"
+            },
+        };
     }
 
     public override Dictionary<string, List<string>> GetPanelDisplayVariables() => new();
