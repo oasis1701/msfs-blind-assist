@@ -3154,10 +3154,635 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         Form parentForm,
         HotkeyManager hotkeyManager)
     {
-        // Populated in Task C12
-        return base.HandleHotkeyAction(action, simConnect, announcer, parentForm, hotkeyManager);
+        switch (action)
+        {
+            // ------------------------------------------------------------------
+            // MCP Readouts
+            // ------------------------------------------------------------------
+
+            case HotkeyAction.ReadHeading:
+            {
+                var dm = simConnect.PMDGDataManager;
+                if (dm == null) return false;
+                int heading = (int)dm.GetFieldValue("MCP_Heading");
+                string lateralMode = "";
+                if ((int)dm.GetFieldValue("MCP_annunHDG_SEL") > 0) lateralMode = ", HDG SEL";
+                else if ((int)dm.GetFieldValue("MCP_annunLNAV") > 0) lateralMode = ", LNAV";
+                announcer.AnnounceImmediate($"Heading {heading}{lateralMode}");
+                return true;
+            }
+
+            case HotkeyAction.ReadSpeed:
+            {
+                var dm = simConnect.PMDGDataManager;
+                if (dm == null) return false;
+                bool isBlank = (int)dm.GetFieldValue("MCP_IASBlank") > 0;
+                if (isBlank)
+                {
+                    announcer.AnnounceImmediate("Speed managed by FMC");
+                }
+                else
+                {
+                    float speed = (float)dm.GetFieldValue("MCP_IASMach");
+                    string speedText = speed < 10f
+                        ? $"M{speed:F2}"
+                        : $"{(int)Math.Round(speed)} knots";
+                    string speedMode = "";
+                    if ((int)dm.GetFieldValue("MCP_annunLVL_CHG") > 0) speedMode = ", LVL CHG";
+                    announcer.AnnounceImmediate($"{speedText}{speedMode}");
+                }
+                return true;
+            }
+
+            case HotkeyAction.ReadAltitude:
+            {
+                var dm = simConnect.PMDGDataManager;
+                if (dm == null) return false;
+                int altitude = (int)dm.GetFieldValue("MCP_Altitude");
+                string altMode = "";
+                if ((int)dm.GetFieldValue("MCP_annunVNAV") > 0) altMode = ", VNAV";
+                else if ((int)dm.GetFieldValue("MCP_annunLVL_CHG") > 0) altMode = ", LVL CHG";
+                else if ((int)dm.GetFieldValue("MCP_annunALT_HOLD") > 0) altMode = ", ALT HOLD";
+                announcer.AnnounceImmediate($"Altitude {altitude}{altMode}");
+                return true;
+            }
+
+            case HotkeyAction.ReadFCUVerticalSpeedFPA:
+            {
+                // NG3 has no FPA mode — V/S only.
+                var dm = simConnect.PMDGDataManager;
+                if (dm == null) return false;
+                bool isBlank = (int)dm.GetFieldValue("MCP_VertSpeedBlank") > 0;
+                if (isBlank)
+                {
+                    announcer.AnnounceImmediate("Vertical Speed window blank");
+                }
+                else
+                {
+                    int vs = (int)dm.GetFieldValue("MCP_VertSpeed");
+                    string vsEngaged = (int)dm.GetFieldValue("MCP_annunVS") > 0 ? ", engaged" : "";
+                    announcer.AnnounceImmediate($"VS {vs} feet per minute{vsEngaged}");
+                }
+                return true;
+            }
+
+            // ------------------------------------------------------------------
+            // Fuel Readouts
+            // ------------------------------------------------------------------
+
+            case HotkeyAction.ReadFuelInfo:
+            {
+                // R key — total + per-tank fuel in kilograms (NG3 has no aux tank).
+                var dm = simConnect.PMDGDataManager;
+                if (dm == null) return false;
+                int leftKg   = (int)Math.Round(dm.GetFieldValue("FUEL_QtyLeft")   * 0.453592);
+                int centerKg = (int)Math.Round(dm.GetFieldValue("FUEL_QtyCenter") * 0.453592);
+                int rightKg  = (int)Math.Round(dm.GetFieldValue("FUEL_QtyRight")  * 0.453592);
+                int totalKg  = leftKg + centerKg + rightKg;
+                announcer.AnnounceImmediate(
+                    $"Total {totalKg} kilograms, left {leftKg}, center {centerKg}, right {rightKg}");
+                return true;
+            }
+
+            case HotkeyAction.ReadFuelQuantity:
+            {
+                // F key — total + per-tank fuel in pounds (NG3 has no aux tank).
+                var dm = simConnect.PMDGDataManager;
+                if (dm == null) return false;
+                int left   = (int)Math.Round(dm.GetFieldValue("FUEL_QtyLeft"));
+                int center = (int)Math.Round(dm.GetFieldValue("FUEL_QtyCenter"));
+                int right  = (int)Math.Round(dm.GetFieldValue("FUEL_QtyRight"));
+                int total  = left + center + right;
+                announcer.AnnounceImmediate(
+                    $"Total {total} pounds, left {left}, center {center}, right {right}");
+                return true;
+            }
+
+            // ------------------------------------------------------------------
+            // Flaps and Gear
+            // ------------------------------------------------------------------
+
+            case HotkeyAction.ReadFlaps:
+            {
+                // No FCTL_Flaps_Lever / TEFlapsNeedle defined in the NG3 PMDG
+                // SDK data block exposed to us — delegate to MainForm's
+                // generic flaps handler which reads the standard SimVar.
+                return false;
+            }
+
+            case HotkeyAction.ReadGear:
+            {
+                var dm = simConnect.PMDGDataManager;
+                if (dm == null) return false;
+
+                // NG3 MAIN_GearLever: 0 = UP, 1 = OFF, 2 = DOWN.
+                int lever = (int)dm.GetFieldValue("MAIN_GearLever");
+                string leverText = lever switch
+                {
+                    0 => "Gear lever up",
+                    1 => "Gear lever off",
+                    2 => "Gear lever down",
+                    _ => $"Gear lever position {lever}"
+                };
+
+                // GEAR_locked[3] indices per the SDK's gear-panel convention:
+                // 0 = Left, 1 = Nose, 2 = Right.
+                bool leftLocked  = (int)dm.GetFieldValue("MAIN_annunGEAR_locked_0") > 0;
+                bool noseLocked  = (int)dm.GetFieldValue("MAIN_annunGEAR_locked_1") > 0;
+                bool rightLocked = (int)dm.GetFieldValue("MAIN_annunGEAR_locked_2") > 0;
+
+                string leftText  = leftLocked  ? "left locked"  : "left unlocked";
+                string noseText  = noseLocked  ? "nose locked"  : "nose unlocked";
+                string rightText = rightLocked ? "right locked" : "right unlocked";
+
+                announcer.AnnounceImmediate($"{leverText}; {leftText}, {noseText}, {rightText}");
+                return true;
+            }
+
+            // ------------------------------------------------------------------
+            // Altimeter — delegate to MainForm (standard SimVar)
+            // ------------------------------------------------------------------
+
+            case HotkeyAction.ReadAltimeter:
+                return false;
+
+            // ------------------------------------------------------------------
+            // Distance Readouts
+            // ------------------------------------------------------------------
+
+            case HotkeyAction.ReadDistanceToTOD:
+            {
+                var dm = simConnect.PMDGDataManager;
+                if (dm == null) return false;
+                AnnounceTODFromSDK(simConnect, dm, announcer);
+                return true;
+            }
+
+            case HotkeyAction.ReadDistanceToDest:
+            {
+                var dm = simConnect.PMDGDataManager;
+                if (dm == null) return false;
+                AnnounceDestFromSDK(simConnect, dm, announcer);
+                return true;
+            }
+
+            // ------------------------------------------------------------------
+            // Gross Weight Readouts (W key + Shift+W key, both via SimVar)
+            // ------------------------------------------------------------------
+
+            case HotkeyAction.ReadWaypointInfo:
+            {
+                // W key — PMDG 737 repurposes waypoint-info key for gross weight (lbs).
+                simConnect.RequestSingleValue(
+                    (int)SimConnect.SimConnectManager.DATA_DEFINITIONS.DEF_GROSS_WEIGHT,
+                    "TOTAL WEIGHT", "pounds", "GROSS_WEIGHT");
+                return true;
+            }
+
+            case HotkeyAction.ReadGrossWeightKg:
+            {
+                simConnect.RequestSingleValue(
+                    (int)SimConnect.SimConnectManager.DATA_DEFINITIONS.DEF_GROSS_WEIGHT_KG,
+                    "TOTAL WEIGHT", "pounds", "GROSS_WEIGHT_KG");
+                return true;
+            }
+
+            // ------------------------------------------------------------------
+            // MCP Direct-Set Input Dialogs
+            // ------------------------------------------------------------------
+
+            case HotkeyAction.FCUSetHeading:
+            {
+                hotkeyManager.ExitInputHotkeyMode();
+                ShowPMDGHeadingDialog(simConnect, announcer, parentForm);
+                return true;
+            }
+
+            case HotkeyAction.FCUSetSpeed:
+            {
+                hotkeyManager.ExitInputHotkeyMode();
+                ShowPMDGSpeedDialog(simConnect, announcer, parentForm);
+                return true;
+            }
+
+            case HotkeyAction.FCUSetAltitude:
+            {
+                hotkeyManager.ExitInputHotkeyMode();
+                ShowPMDGAltitudeDialog(simConnect, announcer, parentForm);
+                return true;
+            }
+
+            case HotkeyAction.FCUSetVS:
+            {
+                hotkeyManager.ExitInputHotkeyMode();
+                ShowPMDGVSDialog(simConnect, announcer, parentForm);
+                return true;
+            }
+
+            // ------------------------------------------------------------------
+            // CDU/EFB form dispatch — MainForm handles these by AircraftCode.
+            // ------------------------------------------------------------------
+
+            case HotkeyAction.ShowFenixMCDU:
+                return false;
+
+            case HotkeyAction.ShowPMDGEFB:
+                return false;
+
+            // ------------------------------------------------------------------
+            // Announcement Monitor — shared dialog with the 777.
+            // ------------------------------------------------------------------
+
+            case HotkeyAction.MonitorManager:
+                hotkeyManager.ExitOutputHotkeyMode();
+                if (parentForm is MainForm pf)
+                {
+                    pf.ShowPMDGAnnouncementMonitorDialog();
+                }
+                return true;
+
+            // ------------------------------------------------------------------
+            // Display OCR — out of scope for the 737 in this PR; delegate.
+            // ------------------------------------------------------------------
+
+            case HotkeyAction.ReadDisplayPFD:
+            case HotkeyAction.ReadDisplayND:
+            case HotkeyAction.ReadDisplayISIS:
+            case HotkeyAction.ReadDisplayUpperECAM:
+            case HotkeyAction.ReadDisplayLowerECAM:
+                return false;
+
+            default:
+                return base.HandleHotkeyAction(action, simConnect, announcer, parentForm, hotkeyManager);
+        }
     }
 
-    // RequestFCUHeading / RequestFCUSpeed / RequestFCUAltitude /
-    // RequestFCUVerticalSpeed overrides are added in Task C13.
+    // =========================================================================
+    // FCU Request Override Methods
+    // =========================================================================
+
+    public override void RequestFCUHeading(SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
+    {
+        var dm = simConnect.PMDGDataManager;
+        if (dm == null) return;
+        int heading = (int)dm.GetFieldValue("MCP_Heading");
+        announcer.AnnounceImmediate($"Heading {heading}");
+    }
+
+    public override void RequestFCUSpeed(SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
+    {
+        var dm = simConnect.PMDGDataManager;
+        if (dm == null) return;
+        if ((int)dm.GetFieldValue("MCP_IASBlank") > 0)
+        {
+            announcer.AnnounceImmediate("Speed managed by FMC");
+            return;
+        }
+        float speed = (float)dm.GetFieldValue("MCP_IASMach");
+        string speedText = speed < 10f
+            ? $"M{speed:F2}"
+            : $"{(int)Math.Round(speed)} knots";
+        announcer.AnnounceImmediate(speedText);
+    }
+
+    public override void RequestFCUAltitude(SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
+    {
+        var dm = simConnect.PMDGDataManager;
+        if (dm == null) return;
+        int altitude = (int)dm.GetFieldValue("MCP_Altitude");
+        announcer.AnnounceImmediate($"Altitude {altitude}");
+    }
+
+    public override void RequestFCUVerticalSpeed(SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
+    {
+        var dm = simConnect.PMDGDataManager;
+        if (dm == null) return;
+        if ((int)dm.GetFieldValue("MCP_VertSpeedBlank") > 0)
+        {
+            announcer.AnnounceImmediate("Vertical Speed window blank");
+            return;
+        }
+        int vs = (int)dm.GetFieldValue("MCP_VertSpeed");
+        announcer.AnnounceImmediate($"VS {vs} feet per minute");
+    }
+
+    // =========================================================================
+    // MCP Direct-Set Dialog Helpers
+    // =========================================================================
+
+    private void SendPMDGMomentary(SimConnect.SimConnectManager simConnect, string eventName)
+    {
+        if (EventIds.TryGetValue(eventName, out int evId))
+            simConnect.SendPMDGEvent(eventName, (uint)evId, 1);
+    }
+
+    /// <summary>
+    /// Format ETA as ": HH:MM:SS" given remaining distance in nautical miles
+    /// and current ground speed in knots. Returns empty string at low ground
+    /// speed (taxi / ground) where the estimate is meaningless.
+    /// </summary>
+    private static string FormatEtaFromDistance(double distanceNm, double groundSpeedKnots)
+    {
+        if (groundSpeedKnots < 30) return "";   // not airborne / too slow
+        if (distanceNm <= 0) return "";
+
+        double hours = distanceNm / groundSpeedKnots;
+        int totalSeconds = (int)Math.Round(hours * 3600.0);
+        int hh = totalSeconds / 3600;
+        int mm = (totalSeconds % 3600) / 60;
+        int ss = totalSeconds % 60;
+        return $": {hh:D2}:{mm:D2}:{ss:D2}";
+    }
+
+    /// <summary>
+    /// SDK-offset readout for distance to top of descent on the NG3.
+    /// </summary>
+    private static void AnnounceTODFromSDK(
+        SimConnect.SimConnectManager simConnect,
+        SimConnect.IPMDGDataManager dm,
+        ScreenReaderAnnouncer announcer)
+    {
+        float dist = (float)dm.GetFieldValue("FMC_DistanceToTOD");
+        if (dist < 0)
+        {
+            announcer.AnnounceImmediate("Top of descent not available");
+            return;
+        }
+        if (dist < 0.1f)
+        {
+            announcer.AnnounceImmediate("Past top of descent");
+            return;
+        }
+        simConnect.RequestAircraftPositionAsync(position =>
+        {
+            string eta = FormatEtaFromDistance(dist, position.GroundSpeedKnots);
+            announcer.AnnounceImmediate($"{dist:F0} miles to top of descent{eta}");
+        });
+    }
+
+    /// <summary>
+    /// SDK-offset readout for distance to destination on the NG3.
+    /// </summary>
+    private static void AnnounceDestFromSDK(
+        SimConnect.SimConnectManager simConnect,
+        SimConnect.IPMDGDataManager dm,
+        ScreenReaderAnnouncer announcer)
+    {
+        float dist = (float)dm.GetFieldValue("FMC_DistanceToDest");
+        if (dist < 0)
+        {
+            announcer.AnnounceImmediate("Distance to destination not available");
+            return;
+        }
+        simConnect.RequestAircraftPositionAsync(position =>
+        {
+            string eta = FormatEtaFromDistance(dist, position.GroundSpeedKnots);
+            announcer.AnnounceImmediate($"{dist:F0} miles to destination{eta}");
+        });
+    }
+
+    private void ShowPMDGHeadingDialog(
+        SimConnect.SimConnectManager simConnect,
+        ScreenReaderAnnouncer announcer,
+        Form parentForm)
+    {
+        if (!simConnect.IsConnected)
+        {
+            announcer.AnnounceImmediate("Not connected to simulator.");
+            return;
+        }
+
+        var dm = simConnect.PMDGDataManager;
+
+        var toggles = new List<ToggleButtonDef>
+        {
+            new("&Heading Select", () =>
+            {
+                if (dm == null) return "?";
+                return (int)dm.GetFieldValue("MCP_annunHDG_SEL") > 0 ? "Engaged" : "Off";
+            }, () => SendPMDGMomentary(simConnect, "EVT_MCP_HDG_SEL_SWITCH")),
+            new("&LNAV", () =>
+            {
+                if (dm == null) return "?";
+                return (int)dm.GetFieldValue("MCP_annunLNAV") > 0 ? "Engaged" : "Off";
+            }, () => SendPMDGMomentary(simConnect, "EVT_MCP_LNAV_SWITCH")),
+            new("&Approach", () =>
+            {
+                if (dm == null) return "?";
+                return (int)dm.GetFieldValue("MCP_annunAPP") > 0 ? "Engaged" : "Off";
+            }, () => SendPMDGMomentary(simConnect, "EVT_MCP_APP_SWITCH")),
+            new("&VOR LOC", () =>
+            {
+                if (dm == null) return "?";
+                return (int)dm.GetFieldValue("MCP_annunVOR_LOC") > 0 ? "Engaged" : "Off";
+            }, () => SendPMDGMomentary(simConnect, "EVT_MCP_VOR_LOC_SWITCH")),
+        };
+
+        var dialog = new ValueInputForm(
+            "MCP Heading", "heading", "0-359", announcer,
+            input =>
+            {
+                if (int.TryParse(input, out int val) && val >= 0 && val <= 359)
+                    return (true, "");
+                return (false, "Enter a heading between 0 and 359");
+            },
+            toggles,
+            input =>
+            {
+                if (int.TryParse(input, out int hdg))
+                {
+                    if (EventIds.TryGetValue("EVT_MCP_HDG_SET", out int evId))
+                        simConnect.SendPMDGEvent("EVT_MCP_HDG_SET", (uint)evId, hdg);
+                }
+            });
+
+        dialog.ShowCancelButton = false;
+        dialog.Show(parentForm);
+    }
+
+    private void ShowPMDGSpeedDialog(
+        SimConnect.SimConnectManager simConnect,
+        ScreenReaderAnnouncer announcer,
+        Form parentForm)
+    {
+        if (!simConnect.IsConnected)
+        {
+            announcer.AnnounceImmediate("Not connected to simulator.");
+            return;
+        }
+
+        var dm = simConnect.PMDGDataManager;
+
+        var toggles = new List<ToggleButtonDef>
+        {
+            new("&Level Change", () =>
+            {
+                if (dm == null) return "?";
+                return (int)dm.GetFieldValue("MCP_annunLVL_CHG") > 0 ? "Engaged" : "Off";
+            }, () => SendPMDGMomentary(simConnect, "EVT_MCP_LVL_CHG_SWITCH")),
+            new("Speed &Intervene", () => "",
+                () => SendPMDGMomentary(simConnect, "EVT_MCP_SPD_INTV_SWITCH")),
+            new("&Speed", () =>
+            {
+                if (dm == null) return "?";
+                return (int)dm.GetFieldValue("MCP_annunSPEED") > 0 ? "Engaged" : "Off";
+            }, () => SendPMDGMomentary(simConnect, "EVT_MCP_SPEED_SWITCH")),
+        };
+
+        var dialog = new ValueInputForm(
+            "MCP Speed", "speed", "IAS: 100-399 / Mach: M0.40-M0.95", announcer,
+            input =>
+            {
+                if (TryParseSpeedInput(input, out bool isMach, out double val))
+                {
+                    if (isMach && val >= 0.40 && val <= 0.95) return (true, "");
+                    if (!isMach && val >= 100 && val <= 399) return (true, "");
+                }
+                return (false, "Enter knots (100-399) or Mach (M0.40-M0.95)");
+            },
+            toggles,
+            input =>
+            {
+                if (!TryParseSpeedInput(input, out bool isMach, out double val))
+                    return;
+                if (isMach)
+                {
+                    int machVal = (int)Math.Round(val * 100);   // SDK: param = mach * 100
+                    if (EventIds.TryGetValue("EVT_MCP_MACH_SET", out int evId))
+                        simConnect.SendPMDGEvent("EVT_MCP_MACH_SET", (uint)evId, machVal);
+                }
+                else
+                {
+                    int iasVal = (int)Math.Round(val);
+                    if (EventIds.TryGetValue("EVT_MCP_IAS_SET", out int evId))
+                        simConnect.SendPMDGEvent("EVT_MCP_IAS_SET", (uint)evId, iasVal);
+                }
+            },
+            inputEnabledCheck: () => dm == null || (int)dm.GetFieldValue("MCP_IASBlank") == 0);
+
+        dialog.ShowCancelButton = false;
+        dialog.Show(parentForm);
+    }
+
+    /// <summary>
+    /// Parse the speed dialog input. Accepts "M0.85" / "m0.85" / ".85" / "0.85"
+    /// as Mach, or "250" as IAS. Anything in [0..10) is treated as Mach.
+    /// </summary>
+    private static bool TryParseSpeedInput(string input, out bool isMach, out double value)
+    {
+        isMach = false;
+        value = 0;
+        if (string.IsNullOrWhiteSpace(input)) return false;
+
+        string trimmed = input.Trim();
+        bool hasMachPrefix = trimmed.StartsWith("M", StringComparison.OrdinalIgnoreCase);
+        if (hasMachPrefix) trimmed = trimmed.Substring(1);
+
+        if (!double.TryParse(trimmed, System.Globalization.NumberStyles.Any,
+                System.Globalization.CultureInfo.InvariantCulture, out value))
+            return false;
+
+        // Either explicit M prefix, or a value < 10 (interpreted as Mach).
+        isMach = hasMachPrefix || value < 10.0;
+        return true;
+    }
+
+    private void ShowPMDGAltitudeDialog(
+        SimConnect.SimConnectManager simConnect,
+        ScreenReaderAnnouncer announcer,
+        Form parentForm)
+    {
+        if (!simConnect.IsConnected)
+        {
+            announcer.AnnounceImmediate("Not connected to simulator.");
+            return;
+        }
+
+        var dm = simConnect.PMDGDataManager;
+
+        var toggles = new List<ToggleButtonDef>
+        {
+            new("Altitude &Hold", () =>
+            {
+                if (dm == null) return "?";
+                return (int)dm.GetFieldValue("MCP_annunALT_HOLD") > 0 ? "Engaged" : "Off";
+            }, () => SendPMDGMomentary(simConnect, "EVT_MCP_ALT_HOLD_SWITCH")),
+            new("Altitude &Intervene", () => "",
+                () => SendPMDGMomentary(simConnect, "EVT_MCP_ALT_INTV_SWITCH")),
+            new("&VNAV", () =>
+            {
+                if (dm == null) return "?";
+                return (int)dm.GetFieldValue("MCP_annunVNAV") > 0 ? "Engaged" : "Off";
+            }, () => SendPMDGMomentary(simConnect, "EVT_MCP_VNAV_SWITCH")),
+        };
+
+        var dialog = new ValueInputForm(
+            "MCP Altitude", "altitude", "0-50000 (100-foot steps)", announcer,
+            input =>
+            {
+                if (int.TryParse(input, out int val) && val >= 0 && val <= 50000 && val % 100 == 0)
+                    return (true, "");
+                return (false, "Enter an altitude between 0 and 50000 in 100-foot steps");
+            },
+            toggles,
+            input =>
+            {
+                if (int.TryParse(input, out int alt))
+                {
+                    if (EventIds.TryGetValue("EVT_MCP_ALT_SET", out int evId))
+                        simConnect.SendPMDGEvent("EVT_MCP_ALT_SET", (uint)evId, alt);
+                }
+            });
+
+        dialog.ShowCancelButton = false;
+        dialog.Show(parentForm);
+    }
+
+    private void ShowPMDGVSDialog(
+        SimConnect.SimConnectManager simConnect,
+        ScreenReaderAnnouncer announcer,
+        Form parentForm)
+    {
+        // NG3 has no FPA mode — V/S only.
+        if (!simConnect.IsConnected)
+        {
+            announcer.AnnounceImmediate("Not connected to simulator.");
+            return;
+        }
+
+        var dm = simConnect.PMDGDataManager;
+
+        var toggles = new List<ToggleButtonDef>
+        {
+            new("&Engage V/S", () =>
+            {
+                if (dm == null) return "?";
+                return (int)dm.GetFieldValue("MCP_annunVS") > 0 ? "Engaged" : "Off";
+            }, () => SendPMDGMomentary(simConnect, "EVT_MCP_VS_SWITCH")),
+        };
+
+        var dialog = new ValueInputForm(
+            "MCP Vertical Speed", "V/S", "-9000 to +9000 fpm", announcer,
+            input =>
+            {
+                if (int.TryParse(input, out int val) && val >= -9000 && val <= 9000)
+                    return (true, "");
+                return (false, "Enter V/S between -9000 and 9000 fpm");
+            },
+            toggles,
+            input =>
+            {
+                if (int.TryParse(input, out int vs))
+                {
+                    // SDK: parameter = vs + 10000.
+                    int encoded = vs + 10000;
+                    if (EventIds.TryGetValue("EVT_MCP_VS_SET", out int evId))
+                        simConnect.SendPMDGEvent("EVT_MCP_VS_SET", (uint)evId, encoded);
+                }
+            },
+            inputEnabledCheck: () => dm != null && (int)dm.GetFieldValue("MCP_annunVS") > 0);
+
+        dialog.ShowCancelButton = false;
+        dialog.Show(parentForm);
+    }
 }
