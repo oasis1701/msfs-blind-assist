@@ -4913,6 +4913,13 @@ public class PMDG777Definition : BaseAircraftDefinition
     // Altimeter announcement suppression (initial value)
     private double _lastAnnouncedAltimeter = double.NaN;
 
+    // Headphone-simulation (switch_622_a / LOCALVAR_A20) announce tracker.
+    // -1 = unseen (first poll suppressed). Declared 2-state (0 / 100), but
+    // PMDG can transiently land on a mid-detent during a ROTOR_BRAKE click —
+    // explicit handler so the generic exact-key ValueDescriptions path can't
+    // speak a raw "50.0" at that intermediate value. Any positive reads as On.
+    private int _prevHeadphoneSimOn = -1;
+
     // Passenger-chatter (switch_623_a / CAB AUDIO SELECTOR) announce tracker.
     // -1 = unseen (first poll suppressed). State is binary by gate semantics:
     // chatter audible when the selector is <= 0, muted when > 0 (ANY positive,
@@ -5645,6 +5652,20 @@ public class PMDG777Definition : BaseAircraftDefinition
         if (SuppressedButtonKeys.Contains(varName))
         {
             return true; // Suppress — not an annunciator light
+        }
+
+        // Headphone Simulation (switch_622_a / LOCALVAR_A20). Declared 2-state
+        // (0 = Off, 100 = On), but PMDG can momentarily report a mid-detent
+        // during a ROTOR_BRAKE click — without an explicit handler the generic
+        // exact-key ValueDescriptions path would speak a raw "50.0" before
+        // settling. Any positive value reads as On; first poll cached silently.
+        if (varName == "switch_622_a")
+        {
+            int now = value <= 0 ? 0 : 1;
+            if (_prevHeadphoneSimOn >= 0 && now != _prevHeadphoneSimOn)
+                announcer.Announce(now == 1 ? "Headphone Simulation: On" : "Headphone Simulation: Off");
+            _prevHeadphoneSimOn = now;
+            return true;
         }
 
         // Passenger chatter (switch_623_a / CAB AUDIO SELECTOR). Gate semantics:
