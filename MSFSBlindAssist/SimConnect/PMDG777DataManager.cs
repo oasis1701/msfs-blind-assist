@@ -10,8 +10,11 @@ namespace MSFSBlindAssist.SimConnect;
 /// Owned by SimConnectManager; used by PMDG777Definition to read cockpit
 /// state and send control events.
 /// </summary>
-public class PMDG777DataManager : IDisposable
+public class PMDG777DataManager : IPMDGDataManager
 {
+    public string AircraftCode => "PMDG_777";
+    public int CDUSideCount => 3;
+
     private static readonly FieldInfo[] s_dataFields =
         typeof(PMDG777XDataStruct).GetFields(BindingFlags.Public | BindingFlags.Instance);
     // ------------------------------------------------------------------
