@@ -161,70 +161,70 @@ public sealed class GroundTrafficMonitor : IDisposable
 
             foreach (var ac in _tracked.Values)
             {
-            double distFt = DistanceFeet(ownLat, ownLon, ac.Lat, ac.Lon);
-            double bearing = BearingDeg(ownLat, ownLon, ac.Lat, ac.Lon);
-            double relBearing = NormalizeDeg(bearing - ownHdg);
+                double distFt = DistanceFeet(ownLat, ownLon, ac.Lat, ac.Lon);
+                double bearing = BearingDeg(ownLat, ownLon, ac.Lat, ac.Lon);
+                double relBearing = NormalizeDeg(bearing - ownHdg);
 
-            // Update closing-rate history
-            ac.PreviousDistance = ac.CurrentDistance;
-            ac.CurrentDistance = distFt;
-            bool movingAway = ac.PreviousDistance < double.MaxValue
-                              && ac.CurrentDistance > ac.PreviousDistance + MOVING_AWAY_HYSTERESIS_FT;
+                // Update closing-rate history
+                ac.PreviousDistance = ac.CurrentDistance;
+                ac.CurrentDistance = distFt;
+                bool movingAway = ac.PreviousDistance < double.MaxValue
+                                  && ac.CurrentDistance > ac.PreviousDistance + MOVING_AWAY_HYSTERESIS_FT;
 
-            // Queue-moving alert: aircraft directly ahead was stopped and just started moving.
-            // Only fires when we are also near-stationary (in the queue behind them).
-            bool directlyAhead = relBearing <= QUEUE_AHEAD_DEG || relBearing >= (360.0 - QUEUE_AHEAD_DEG);
-            if (directlyAhead && distFt <= AWARENESS_FT && ownGS <= OWN_QUEUE_GS)
-            {
-                if (ac.PreviousGS <= QUEUE_STOPPED_GS && ac.GS >= QUEUE_MOVING_GS && !ac.QueueMovingAlertSent)
+                // Queue-moving alert: aircraft directly ahead was stopped and just started moving.
+                // Only fires when we are also near-stationary (in the queue behind them).
+                bool directlyAhead = relBearing <= QUEUE_AHEAD_DEG || relBearing >= (360.0 - QUEUE_AHEAD_DEG);
+                if (directlyAhead && distFt <= AWARENESS_FT && ownGS <= OWN_QUEUE_GS)
                 {
-                    ac.QueueMovingAlertSent = true;
-                    _announcer.AnnounceImmediate("Traffic ahead is moving.");
+                    if (ac.PreviousGS <= QUEUE_STOPPED_GS && ac.GS >= QUEUE_MOVING_GS && !ac.QueueMovingAlertSent)
+                    {
+                        ac.QueueMovingAlertSent = true;
+                        _announcer.AnnounceImmediate("Traffic ahead is moving.");
+                    }
+                    // Reset the flag once the aircraft stops again so the next departure fires a fresh alert
+                    if (ac.GS <= QUEUE_STOPPED_GS)
+                        ac.QueueMovingAlertSent = false;
                 }
-                // Reset the flag once the aircraft stops again so the next departure fires a fresh alert
-                if (ac.GS <= QUEUE_STOPPED_GS)
-                    ac.QueueMovingAlertSent = false;
-            }
 
-            // Determine new zone
-            GroundZone newZone;
-            if (distFt > AWARENESS_FT)       newZone = GroundZone.None;
-            else if (distFt <= WARNING_FT)   newZone = GroundZone.Warning;
-            else if (distFt <= CAUTION_FT)   newZone = GroundZone.Caution;
-            else                             newZone = GroundZone.Awareness;
+                // Determine new zone
+                GroundZone newZone;
+                if (distFt > AWARENESS_FT)       newZone = GroundZone.None;
+                else if (distFt <= WARNING_FT)   newZone = GroundZone.Warning;
+                else if (distFt <= CAUTION_FT)   newZone = GroundZone.Caution;
+                else                             newZone = GroundZone.Awareness;
 
-            if (newZone == GroundZone.None)  { ac.CurrentZone = GroundZone.None; continue; }
+                if (newZone == GroundZone.None)  { ac.CurrentZone = GroundZone.None; continue; }
 
-            // Awareness alerts only fire for traffic in the forward arc
-            bool inForwardArc = relBearing <= FORWARD_ARC_DEG || relBearing >= (360.0 - FORWARD_ARC_DEG);
-            if (!inForwardArc && newZone == GroundZone.Awareness) { ac.CurrentZone = newZone; continue; }
+                // Awareness alerts only fire for traffic in the forward arc
+                bool inForwardArc = relBearing <= FORWARD_ARC_DEG || relBearing >= (360.0 - FORWARD_ARC_DEG);
+                if (!inForwardArc && newZone == GroundZone.Awareness) { ac.CurrentZone = newZone; continue; }
 
-            // Don't escalate for moving-away aircraft
-            if (movingAway) { ac.CurrentZone = newZone; continue; }
+                // Don't escalate for moving-away aircraft
+                if (movingAway) { ac.CurrentZone = newZone; continue; }
 
-            // Only announce on zone escalation (entering a closer zone)
-            if (newZone <= ac.CurrentZone) { ac.CurrentZone = newZone; continue; }
+                // Only announce on zone escalation (entering a closer zone)
+                if (newZone <= ac.CurrentZone) { ac.CurrentZone = newZone; continue; }
 
-            // Suppress if this aircraft was announced recently
-            if ((DateTime.UtcNow - ac.LastAlertTime).TotalMilliseconds < REANNOUNCE_SUPPRESS_MS)
-            { ac.CurrentZone = newZone; continue; }
+                // Suppress if this aircraft was announced recently
+                if ((DateTime.UtcNow - ac.LastAlertTime).TotalMilliseconds < REANNOUNCE_SUPPRESS_MS)
+                { ac.CurrentZone = newZone; continue; }
 
-            // Fire the alert
-            ac.CurrentZone = newZone;
-            ac.LastAlertTime = DateTime.UtcNow;
+                // Fire the alert
+                ac.CurrentZone = newZone;
+                ac.LastAlertTime = DateTime.UtcNow;
 
-            string dir = DescribeDirection(relBearing);
-            int d = RoundFeet(distFt);
+                string dir = DescribeDirection(relBearing);
+                int d = RoundFeet(distFt);
 
-            string announcement = newZone switch
-            {
-                GroundZone.Warning  => $"Stop, traffic very close, {dir}, {d} feet.",
-                GroundZone.Caution when ownGS >= SLOW_DOWN_GS_KTS
-                                    => $"Slow down, traffic {dir}, {d} feet.",
-                _                   => $"Traffic, {dir}, {d} feet."
-            };
+                string announcement = newZone switch
+                {
+                    GroundZone.Warning  => $"Stop, traffic very close, {dir}, {d} feet.",
+                    GroundZone.Caution when ownGS >= SLOW_DOWN_GS_KTS
+                                        => $"Slow down, traffic {dir}, {d} feet.",
+                    _                   => $"Traffic, {dir}, {d} feet."
+                };
 
-            _announcer.AnnounceImmediate(announcement);
+                _announcer.AnnounceImmediate(announcement);
             }
         }
     }
