@@ -2565,11 +2565,10 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             ["FIRE_OvhtDetSw_1"]           = "EVT_FIRE_OVHT_DET_SWITCH_2",
             ["FIRE_DetTestSw"]             = "EVT_FIRE_DETECTION_TEST_SWITCH",
             ["FIRE_ExtinguisherTestSw"]    = "EVT_FIRE_EXTINGUISHER_TEST_SWITCH",
-            // Fire handle momentary presses — TOP / BOTTOM both advance the
-            // handle one state per press; PMDG ignores the parameter.
-            ["FIRE_EngineHandle_1_Press"]       = "EVT_FIRE_HANDLE_ENGINE_1_TOP",
-            ["FIRE_EngineHandle_2_Press"]       = "EVT_FIRE_HANDLE_ENGINE_2_TOP",
-            ["FIRE_APUHandle_Press"]            = "EVT_FIRE_HANDLE_APU_TOP",
+            // Fire handle TOP momentary presses are guarded — see _guardedMap
+            // (the UNLOCK switch must fire before TOP, or the handle stays
+            // locked in the In position). BOTTOM presses don't need unlock
+            // because they discharge bottles after the handle is out.
             ["FIRE_EngineHandle_1_PressBottom"] = "EVT_FIRE_HANDLE_ENGINE_1_BOTTOM",
             ["FIRE_EngineHandle_2_PressBottom"] = "EVT_FIRE_HANDLE_ENGINE_2_BOTTOM",
             ["FIRE_APUHandle_PressBottom"]      = "EVT_FIRE_HANDLE_APU_BOTTOM",
@@ -2644,6 +2643,17 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             // can move down to _simpleEventMap.
             ["CARGO_ArmedSw_0"]            = ("EVT_CARGO_FIRE_DISC_SWITCH_GUARD", "EVT_CARGO_FIRE_ARM_SWITCH_FWD"),
             ["CARGO_ArmedSw_1"]            = ("EVT_CARGO_FIRE_DISC_SWITCH_GUARD", "EVT_CARGO_FIRE_ARM_SWITCH_AFT"),
+
+            // --- Fire handle TOP press (UNLOCK + TOP) ---
+            // The fire handle is mechanically locked in the "In" position
+            // until either (a) a fire warning is active for that engine/APU,
+            // which auto-unlocks the handle, or (b) the UNLOCK switch is
+            // pressed first. Outside an active fire scenario the handle won't
+            // move even with this sequence — PMDG enforces realism. Without
+            // an active fire, this press sequence is a no-op.
+            ["FIRE_EngineHandle_1_Press"]  = ("EVT_FIRE_UNLOCK_SWITCH_ENGINE_1", "EVT_FIRE_HANDLE_ENGINE_1_TOP"),
+            ["FIRE_EngineHandle_2_Press"]  = ("EVT_FIRE_UNLOCK_SWITCH_ENGINE_2", "EVT_FIRE_HANDLE_ENGINE_2_TOP"),
+            ["FIRE_APUHandle_Press"]       = ("EVT_FIRE_UNLOCK_SWITCH_APU",      "EVT_FIRE_HANDLE_APU_TOP"),
         };
 
     // =========================================================================
