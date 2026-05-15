@@ -169,6 +169,18 @@ public class TaxiGuidanceManager : IDisposable
     private bool _headingErrorInitialized = false;
     private const double HEADING_ERROR_FILTER_ALPHA = 0.25;  // 0 = no smoothing, 1 = max smoothing
 
+    // Diagnostic per-frame trace for steering-tone troubleshooting. Captures the inputs
+    // and outputs of the heading-error pipeline so erratic L/R tone flipping can be
+    // analysed post-hoc. Truncated and re-headered on every LoadRoute. Rate-limited
+    // to ~10 Hz to keep the file under ~100 KB for a typical 5-10 min taxi.
+    // Always on while Taxiing — cheap (one File.AppendAllText per ~100 ms) and the
+    // log is overwritten each new route, so no growth across sessions.
+    private static readonly string GuidanceLogPath = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        "MSFSBlindAssist", "taxi_guidance.log");
+    private DateTime _lastGuidanceLogTime = DateTime.MinValue;
+    private const double GUIDANCE_LOG_INTERVAL_MS = 100.0;
+
     // Last actionable instruction announced (for the Ctrl+Y "Repeat" hotkey).
     // Only TACTICAL announcements update this — turn callouts, hold-shorts,
     // taxiway changes, lineup, arrival, distance countdowns. Two peripheral
@@ -695,6 +707,18 @@ public class TaxiGuidanceManager : IDisposable
             _lastSegmentAdvanceTime = DateTime.MinValue;
             _holdShortAtDestination = false;
 
+            // Reset diagnostic frame trace. Each LoadRoute starts a fresh file
+            // headed with route metadata + CSV column names so the file is
+            // self-describing for post-flight analysis.
+            try
+            {
+                File.WriteAllText(GuidanceLogPath,
+                    $"=== Guidance {DateTime.Now:yyyy-MM-dd HH:mm:ss} icao={_icao} dest={_destinationName} segments={_route.Segments.Count} totalM={_route.TotalDistanceMeters:F0} ===" + Environment.NewLine
+                    + "time,lat,lon,hdg,gs,seg,segBrg,w,nxtTurn,tLat,tLon,raw,smooth" + Environment.NewLine);
+            }
+            catch { /* diagnostic only */ }
+            _lastGuidanceLogTime = DateTime.MinValue;
+
             SetState(TaxiGuidanceState.RouteLoaded);
 
             // Always build the summary so the form can show it in its
@@ -1078,6 +1102,25 @@ public class TaxiGuidanceManager : IDisposable
         // and runway-aligned phases.
         _steeringTone.Resume();
         _steeringTone.UpdateHeadingError(_smoothedHeadingError, currentSeg.PathWidth);
+
+        // Diagnostic trace — captures raw and smoothed inputs to the steering
+        // tone so post-hoc analysis can pinpoint where erratic L/R flipping
+        // originates (target jumps vs heading transients vs smoothing residue).
+        // Rate-limited inside LogGuidanceFrame; no behavioural effect.
+        {
+            bool nextIsTurnDiag = false;
+            if (_currentSegmentIndex + 1 < _route.Segments.Count)
+            {
+                var nsDiag = _route.Segments[_currentSegmentIndex + 1];
+                nextIsTurnDiag = nsDiag.TurnDirection != "straight" ||
+                    Math.Abs(NormalizeAngle(nsDiag.BearingDegrees - currentSeg.BearingDegrees)) > 25.0;
+            }
+            LogGuidanceFrame(
+                lat, lon, headingTrue, groundSpeedKts,
+                _currentSegmentIndex, currentSeg.BearingDegrees, currentSeg.PathWidth,
+                nextIsTurnDiag, targetLat, targetLon,
+                headingError, _smoothedHeadingError);
+        }
 
         // Check for upcoming announcements
         CheckUpcomingAnnouncements(distToTarget, currentSeg);
@@ -3479,6 +3522,37 @@ public class TaxiGuidanceManager : IDisposable
         double ex = px - fx;
         double ey = py - fy;
         return Math.Sqrt(ex * ex + ey * ey);
+    }
+
+    /// <summary>
+    /// Diagnostic frame logger for steering-tone troubleshooting. Captures the
+    /// raw and smoothed heading-error inputs plus the geometric inputs that
+    /// produce them, rate-limited to roughly 10 Hz. Silent on I/O errors —
+    /// must never affect guidance behaviour. The companion `taxi_router.log`
+    /// captures route construction; this file captures the per-frame tone-driving
+    /// data needed to diagnose erratic L/R flipping.
+    /// </summary>
+    private void LogGuidanceFrame(
+        double lat, double lon, double headingTrue, double groundSpeedKts,
+        int segIdx, double segBearing, double pathWidthFeet,
+        bool nextIsTurn, double targetLat, double targetLon,
+        double rawHeadingError, double smoothedHeadingError)
+    {
+        var now = DateTime.UtcNow;
+        if ((now - _lastGuidanceLogTime).TotalMilliseconds < GUIDANCE_LOG_INTERVAL_MS) return;
+        _lastGuidanceLogTime = now;
+        try
+        {
+            string line = string.Format(
+                System.Globalization.CultureInfo.InvariantCulture,
+                "{0:HH:mm:ss.fff},lat={1:F7},lon={2:F7},hdg={3:F1},gs={4:F1},seg={5},segBrg={6:F1},w={7:F0},nxtTurn={8},tLat={9:F7},tLon={10:F7},raw={11:F2},smooth={12:F2}",
+                DateTime.Now, lat, lon, headingTrue, groundSpeedKts,
+                segIdx, segBearing, pathWidthFeet,
+                nextIsTurn ? 1 : 0, targetLat, targetLon,
+                rawHeadingError, smoothedHeadingError);
+            File.AppendAllText(GuidanceLogPath, line + Environment.NewLine);
+        }
+        catch { /* diagnostic only — never crash guidance for a log failure */ }
     }
 
     public void Dispose()
