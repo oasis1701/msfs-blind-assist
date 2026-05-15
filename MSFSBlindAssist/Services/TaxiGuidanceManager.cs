@@ -1835,6 +1835,17 @@ public class TaxiGuidanceManager : IDisposable
         // Suppressed when a turn/taxiway change is happening (that announcement carries the info).
         TryAnnounceCrossing(distToTargetM, currentSeg, nextSeg, taxiwayChanging, hasTurn);
 
+        // Final segment onto a runway: the lineup logic (intercept-to-centerline
+        // tone + "Lined up" callout + the LiningUp status readout) owns guidance
+        // here. The route's STATIC turn onto the runway is computed from the
+        // segment bearing, while the lineup tone pans toward the intercept-
+        // corrected centerline — these can point OPPOSITE ways at the taxi->
+        // lineup boundary ("turn right" spoken while the tone pans left, which
+        // is exactly the reported confusion). Don't emit the segment-bearing
+        // turn/approach callout for that last hop; let the tone steer it.
+        if (_isRunwayLineup && nextIdx == _route.Segments.Count - 1)
+            return;
+
         if (!hasTurn && !taxiwayChanging)
             return;
 
@@ -3145,7 +3156,28 @@ public class TaxiGuidanceManager : IDisposable
         if (_state == TaxiGuidanceState.LiningUp)
         {
             string what = _isRunwayLineup ? "runway" : "gate";
-            return $"Lining up {_destinationName}. Follow the tone to align with {what} heading {(int)Math.Round(_lineupHeadingMag)}.";
+            int hdg = (int)Math.Round(_lineupHeadingMag);
+
+            // Aligned: the tone is intentionally muted (we paused it on
+            // alignment). Say so explicitly so a silent tone reads as
+            // "done, hold position" rather than "lost / broken".
+            if (_lineupAnnouncedAligned)
+                return $"Lined up {_destinationName}, heading {hdg}. Aligned — hold position.";
+
+            // Not yet aligned: surface distance-to-go so a silent tone
+            // (between hysteresis pulses, or while the system is busy) still
+            // has a progress readout the pilot can query on demand. No
+            // cross-track feet — the tone is the cross-track instrument
+            // (see the blind-pilot-cue rule); distance-remaining + heading
+            // are the numbers a pilot can actually use.
+            string lineupDistStr = "";
+            if (_hasLineupTarget && _positionInitialized)
+            {
+                double dM = TaxiGraph.FastDistanceMeters(
+                    _lastLat, _lastLon, _lineupTargetLat, _lineupTargetLon);
+                lineupDistStr = $" {FormatDistance(dM)} to go.";
+            }
+            return $"Lining up {_destinationName}, {what} heading {hdg}. Follow the tone.{lineupDistStr}";
         }
 
         if (_state == TaxiGuidanceState.Arrived)
@@ -3304,6 +3336,24 @@ public class TaxiGuidanceManager : IDisposable
         _state = newState;
         // DIAGNOSTIC: state transitions during landing-exit / rollout flow.
         RolloutDiag($"SetState: {prev} -> {newState}");
+
+        // Lineup must never end in silence. The lineup tone is the pilot's only
+        // alignment instrument; if a route reload / recalc (LiningUp ->
+        // RouteLoaded) or any non-aligned exit tears it down, the tone just
+        // stops with no explanation — the pilot can't tell "aligned, hold" from
+        // "system gave up", and then hears a "crossing <other runway>" callout
+        // from the freshly-loaded route that makes no sense ("I was lining up
+        // 31L, why 22R?"). Announce the interruption explicitly. The aligned
+        // case does NOT come through here (it keeps state in LiningUp and
+        // pauses the tone), so this only fires on a genuine interruption.
+        if (prev == TaxiGuidanceState.LiningUp &&
+            newState != TaxiGuidanceState.Arrived &&
+            newState != TaxiGuidanceState.Inactive)
+        {
+            _announcer.AnnounceImmediate(
+                "Lineup interrupted: route recalculated. No longer aligning with the runway.");
+        }
+
         StateChanged?.Invoke(this, newState);
     }
 

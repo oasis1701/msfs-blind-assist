@@ -146,8 +146,11 @@ public class PMDGProgPageMonitor : IDisposable
                 // press D before PMDG renders the page, ReadProgPageAsync's
                 // own retry-with-delay handles it.
                 //
-                // CDA path (SendEvent with parameter 1 = pressed) — same
-                // mechanism PMDG777CDUForm uses for every CDU page key.
+                // CDA path (SendEvent with parameter 1 = pressed). PROG
+                // navigates correctly via CDA. NOTE: this is NOT universal —
+                // FMCCOMM/HOLD must use TransmitClientEvent + a single-click
+                // flag (they go dead on the second press via CDA; issue #46).
+                // Don't generalize "CDA works" to those keys.
                 if (PMDG777Definition.EventIds.TryGetValue("EVT_CDU_R_PROG", out int progEventId))
                 {
                     _dataManager.SendEvent("EVT_CDU_R_PROG", (uint)progEventId, 1);

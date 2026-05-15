@@ -369,6 +369,68 @@ public class PMDG777DataManager : IDisposable
         }
     }
 
+    /// <summary>
+    /// Sends a PMDG control event via the legacy TransmitClientEvent path (the
+    /// event is mapped under a numeric "#eventId" alias and dispatched with
+    /// the given mouse-click parameter — typically MOUSE_FLAG_LEFTSINGLE
+    /// = 0x20000000, a complete press+release single click).
+    ///
+    /// Why this exists alongside <see cref="SendEvent"/>: the CDA path writes
+    /// {EventId, Parameter=1} (a button-DOWN that is never released). The PMDG
+    /// SDK opens a CDU page on the down-edge but will not re-trigger the same
+    /// key until it sees a release — so FMCCOMM and HOLD work exactly once,
+    /// then go dead (no sound, page never refreshes) when the user navigates
+    /// away and presses the same key again. TransmitClientEvent with
+    /// MOUSE_FLAG_LEFTSINGLE delivers a self-contained click every call, so
+    /// repeated presses register. TFM uses TransmitClientEvent for every CDU
+    /// key and never sees this. GitHub issue #46 (and the repeat-press
+    /// regression after the CDA-only "fix" in f55d157).
+    /// </summary>
+    public void SendEventViaTransmit(string eventName, uint eventId, uint mouseFlag)
+    {
+        if (_simConnect == null) return;
+        try
+        {
+            // Register the event under the "#<id>" name on first use. PMDG's
+            // SDK header recommends this convention for any TransmitClientEvent
+            // dispatch of an event whose name isn't in the standard SimConnect
+            // event registry.
+            string aliasName = "#" + eventId;
+            if (!_transmitEventIds.ContainsKey(aliasName))
+            {
+                uint mappedId = _nextTransmitEventId++;
+                _transmitEventIds[aliasName] = mappedId;
+                _simConnect.MapClientEventToSimEvent(
+                    (TRANSMIT_EVENT_GROUP)mappedId, aliasName);
+            }
+            uint id = _transmitEventIds[aliasName];
+            _simConnect.TransmitClientEvent(
+                SIMCONNECT_OBJECT_ID_USER,
+                (TRANSMIT_EVENT_GROUP)id,
+                mouseFlag,
+                (TRANSMIT_GROUP_PRIORITY)1, // HIGHEST priority — same value SimConnectManager uses
+                SIMCONNECT_EVENT_FLAG.GROUPID_IS_PRIORITY);
+
+            System.Diagnostics.Debug.WriteLine(
+                $"[PMDG777DataManager] SendEventViaTransmit: '{eventName}' eventId=0x{eventId:X} mouseFlag=0x{mouseFlag:X8}");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"[PMDG777DataManager] SendEventViaTransmit '{eventName}' failed: {ex.Message}");
+        }
+    }
+
+    // Local registry for events mapped through TransmitClientEvent. Distinct
+    // from SimConnectManager.eventIds so we don't collide with the global
+    // event-name table; PMDG's "#id" alias is purely numeric and would clash
+    // with normal event-name semantics there. _nextTransmitEventId starts
+    // high enough to leave room for the standard ranges.
+    private readonly Dictionary<string, uint> _transmitEventIds = new();
+    private uint _nextTransmitEventId = 90000;
+    private enum TRANSMIT_EVENT_GROUP : uint { }
+    private enum TRANSMIT_GROUP_PRIORITY : uint { HIGHEST = 1 }
+
     private void SendViaCDA(uint eventId, uint parameter)
     {
         if (_simConnect == null)
