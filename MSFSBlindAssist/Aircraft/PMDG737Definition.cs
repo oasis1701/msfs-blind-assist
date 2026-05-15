@@ -745,12 +745,54 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             Type = SimConnect.SimVarType.PMDGVar, UpdateFrequency = SimConnect.UpdateFrequency.Never,
             RenderAsButton = true, IsMomentary = true
         };
-        d["FIRE_HandlePos_0"] = Selector("FIRE_HandlePos_0", "Engine 1 Fire Handle",
-            "In", "Blocked", "Out", "Turned Left", "Turned Right");
-        d["FIRE_HandlePos_1"] = Selector("FIRE_HandlePos_1", "Engine 2 Fire Handle",
-            "In", "Blocked", "Out", "Turned Left", "Turned Right");
-        d["FIRE_HandlePos_2"] = Selector("FIRE_HandlePos_2", "APU Fire Handle",
-            "In", "Blocked", "Out", "Turned Left", "Turned Right");
+        // Fire handle positions (read-only state; pressed via momentary buttons below).
+        // NG3 index labeling: 0 = Engine 1, 1 = Engine 2, 2 = APU (best-guess; see CLAUDE.md).
+        // Values 0..4: In / Blocked / Out / Turned Left / Turned Right.
+        d["FIRE_HandlePos_0"] = new SimConnect.SimVarDefinition
+        {
+            Name = "FIRE_HandlePos_0",
+            DisplayName = "Engine 1 fire handle position",
+            Type = SimConnect.SimVarType.PMDGVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            ValueDescriptions = new Dictionary<double, string>
+            {
+                { 0, "in" }, { 1, "blocked" }, { 2, "out" }, { 3, "turned left" }, { 4, "turned right" }
+            }
+        };
+        d["FIRE_HandlePos_1"] = new SimConnect.SimVarDefinition
+        {
+            Name = "FIRE_HandlePos_1",
+            DisplayName = "Engine 2 fire handle position",
+            Type = SimConnect.SimVarType.PMDGVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            ValueDescriptions = new Dictionary<double, string>
+            {
+                { 0, "in" }, { 1, "blocked" }, { 2, "out" }, { 3, "turned left" }, { 4, "turned right" }
+            }
+        };
+        d["FIRE_HandlePos_2"] = new SimConnect.SimVarDefinition
+        {
+            Name = "FIRE_HandlePos_2",
+            DisplayName = "APU fire handle position",
+            Type = SimConnect.SimVarType.PMDGVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            ValueDescriptions = new Dictionary<double, string>
+            {
+                { 0, "in" }, { 1, "blocked" }, { 2, "out" }, { 3, "turned left" }, { 4, "turned right" }
+            }
+        };
+        // Synthetic momentary press buttons for fire handles.
+        // TOP = primary press (advances handle state); BOTTOM = secondary press.
+        // PMDG events are momentary — parameter is ignored, each press advances by one position.
+        d["FIRE_EngineHandle_1_Press"]       = Momentary("FIRE_EngineHandle_1_Press",       "Press engine 1 fire handle (top)");
+        d["FIRE_EngineHandle_2_Press"]       = Momentary("FIRE_EngineHandle_2_Press",       "Press engine 2 fire handle (top)");
+        d["FIRE_APUHandle_Press"]            = Momentary("FIRE_APUHandle_Press",            "Press APU fire handle (top)");
+        d["FIRE_EngineHandle_1_PressBottom"] = Momentary("FIRE_EngineHandle_1_PressBottom", "Press engine 1 fire handle (bottom)");
+        d["FIRE_EngineHandle_2_PressBottom"] = Momentary("FIRE_EngineHandle_2_PressBottom", "Press engine 2 fire handle (bottom)");
+        d["FIRE_APUHandle_PressBottom"]      = Momentary("FIRE_APUHandle_PressBottom",      "Press APU fire handle (bottom)");
         d["FIRE_HandleIlluminated_0"] = Annun("FIRE_HandleIlluminated_0", "Engine 1 Fire Handle Illuminated");
         d["FIRE_HandleIlluminated_1"] = Annun("FIRE_HandleIlluminated_1", "Engine 2 Fire Handle Illuminated");
         d["FIRE_HandleIlluminated_2"] = Annun("FIRE_HandleIlluminated_2", "APU Fire Handle Illuminated");
@@ -1101,7 +1143,9 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             {
                 "FIRE_OvhtDetSw_0", "FIRE_OvhtDetSw_1",
                 "FIRE_DetTestSw", "FIRE_ExtinguisherTestSw",
-                "FIRE_HandlePos_0", "FIRE_HandlePos_1", "FIRE_HandlePos_2"
+                "FIRE_HandlePos_0", "FIRE_EngineHandle_1_Press", "FIRE_EngineHandle_1_PressBottom",
+                "FIRE_HandlePos_1", "FIRE_EngineHandle_2_Press", "FIRE_EngineHandle_2_PressBottom",
+                "FIRE_HandlePos_2", "FIRE_APUHandle_Press",      "FIRE_APUHandle_PressBottom"
             },
             ["Cargo Fire"] = new List<string>
             {
@@ -2521,6 +2565,14 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             ["FIRE_OvhtDetSw_1"]           = "EVT_FIRE_OVHT_DET_SWITCH_2",
             ["FIRE_DetTestSw"]             = "EVT_FIRE_DETECTION_TEST_SWITCH",
             ["FIRE_ExtinguisherTestSw"]    = "EVT_FIRE_EXTINGUISHER_TEST_SWITCH",
+            // Fire handle momentary presses — TOP / BOTTOM both advance the
+            // handle one state per press; PMDG ignores the parameter.
+            ["FIRE_EngineHandle_1_Press"]       = "EVT_FIRE_HANDLE_ENGINE_1_TOP",
+            ["FIRE_EngineHandle_2_Press"]       = "EVT_FIRE_HANDLE_ENGINE_2_TOP",
+            ["FIRE_APUHandle_Press"]            = "EVT_FIRE_HANDLE_APU_TOP",
+            ["FIRE_EngineHandle_1_PressBottom"] = "EVT_FIRE_HANDLE_ENGINE_1_BOTTOM",
+            ["FIRE_EngineHandle_2_PressBottom"] = "EVT_FIRE_HANDLE_ENGINE_2_BOTTOM",
+            ["FIRE_APUHandle_PressBottom"]      = "EVT_FIRE_HANDLE_APU_BOTTOM",
             ["CARGO_DetSelect_0"]          = "EVT_CARGO_FIRE_DET_SEL_SWITCH_FWD",
             ["CARGO_DetSelect_1"]          = "EVT_CARGO_FIRE_DET_SEL_SWITCH_AFT",
             // CARGO_ArmedSw_0/1 are guarded — see _guardedMap
@@ -2538,8 +2590,10 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     // guard) when toggling a guarded switch. This dict supplies the two event
     // names for each guarded variable.
     //
-    // Fire handles (FIRE_HandlePos[3]) are NOT here — they are 5-state and
-    // handled with a dedicated branch in HandleUIVariableSet (Task C10).
+    // Fire handles (FIRE_HandlePos[3]) are NOT here — the read-only state
+    // vars announce position changes, and the actual pulls are driven by
+    // synthetic momentary press buttons (FIRE_EngineHandle_{1,2}_Press[Bottom],
+    // FIRE_APUHandle_Press[Bottom]) that route through _simpleEventMap.
     // =========================================================================
     private static readonly IReadOnlyDictionary<string, (string Guard, string Switch)> _guardedMap =
         new Dictionary<string, (string, string)>
@@ -2751,26 +2805,13 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         }
 
         // ------------------------------------------------------------------
-        // 6. Fire handles — multi-state direct position. NG3 indices:
-        //    0 = Engine 1, 1 = Engine 2, 2 = APU (per PMDGNG3DataStruct
-        //    comments and the var defs in this file). Values 0..4 are
-        //    In / Blocked / Out / Turned Left / Turned Right.
+        // 6. Fire handles — handled as synthetic momentary press buttons
+        //    (FIRE_EngineHandle_1_Press / FIRE_APUHandle_Press / etc.) which
+        //    route through _simpleEventMap below. Per the PMDG SDK each
+        //    EVT_FIRE_HANDLE_*_TOP / _BOTTOM press is momentary and advances
+        //    the handle one state position — the parameter is ignored. The
+        //    read-only FIRE_HandlePos_0/1/2 state vars are NOT user-settable.
         // ------------------------------------------------------------------
-        if (varKey.StartsWith("FIRE_HandlePos_"))
-        {
-            string? fireEvent = varKey switch
-            {
-                "FIRE_HandlePos_0" => "EVT_FIRE_HANDLE_ENGINE_1_TOP",
-                "FIRE_HandlePos_1" => "EVT_FIRE_HANDLE_ENGINE_2_TOP",
-                "FIRE_HandlePos_2" => "EVT_FIRE_HANDLE_APU_TOP",
-                _                  => null
-            };
-            if (fireEvent != null && EventIds.TryGetValue(fireEvent, out int hId))
-            {
-                simConnect.SendPMDGEvent(fireEvent, (uint)hId, (int)value);
-            }
-            return true;
-        }
 
         // ------------------------------------------------------------------
         // 7. Generic _simpleEventMap lookup — covers every remaining mapped
