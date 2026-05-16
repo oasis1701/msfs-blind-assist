@@ -224,6 +224,7 @@ public partial class MainForm : Form
         // taxi form, landing-exit auto-activation, future entry points — gets
         // monitoring wired up automatically.
         taxiGuidanceManager.StateChanged += OnTaxiGuidanceStateChanged;
+        taxiGuidanceManager.RequestTakeoffAssistAutoActivate += OnTaxiGuidanceRequestTakeoffAssistAutoActivate;
 
         // Landing exit planner — watches for touchdown and auto-activates taxi guidance
         // to the pre-selected exit taxiway. Opens via MainForm menu / hotkey.
@@ -2719,6 +2720,42 @@ public partial class MainForm : Form
         takeoffAssistManager.SetRunwayReference(e.ThresholdLat, e.ThresholdLon,
             e.RunwayHeadingTrue, e.RunwayHeadingMagnetic,
             e.RunwayID, e.AirportICAO);
+    }
+
+    /// <summary>
+    /// Fires when TaxiGuidanceManager detects the aircraft has become lined up
+    /// on its destination runway (one-shot per route). Auto-activates Takeoff
+    /// Assist when the user setting permits, via the standard CTRL+T flow.
+    /// </summary>
+    private void OnTaxiGuidanceRequestTakeoffAssistAutoActivate(
+        object? sender, TakeoffAssistAutoActivateEventArgs e)
+    {
+        // Marshal to the UI thread — the event is raised from a SimConnect-
+        // thread UpdatePosition callback (inside _stateLock), but we touch
+        // takeoffAssistManager / announcer / SettingsManager.Current here.
+        if (InvokeRequired)
+        {
+            BeginInvoke(new Action(() =>
+                OnTaxiGuidanceRequestTakeoffAssistAutoActivate(sender, e)));
+            return;
+        }
+
+        if (!SettingsManager.Current.TakeoffAssistAutoActivateOnLineup) return;
+        if (takeoffAssistManager.IsActive) return;
+        if (!_lastOnGround) return;
+
+        // Tell the pilot WHY takeoff assist is coming on — they didn't press
+        // a key, and a sudden system-initiated activation needs a verbal
+        // breadcrumb. The standard "Takeoff assist active, runway X at Y"
+        // callout follows from Toggle() once the position request returns.
+        announcer.AnnounceImmediate("Lined up. Activating takeoff assist.");
+
+        // Re-uses the same path as CTRL+T: the POSITION_FOR_TAKEOFF_ASSIST
+        // reply handler will see takeoffAssistManager.HasRunwayReference == false,
+        // probe TryGetRunwayLineupReference (which succeeds because the event
+        // fires AT the lineup-aligned moment), seed the reference, and call
+        // Toggle. No special-case wiring needed.
+        simConnectManager.RequestPositionForTakeoffAssist();
     }
 
     private void ToggleHandFlyMode()
