@@ -153,6 +153,7 @@ public class HotkeyManager : IDisposable
         private const int HOTKEY_TAXI_STOP = 9204;          // Input mode: Ctrl+Y (Stop guidance)
         private const int HOTKEY_TAXI_WHERE_AM_I = 9205;    // Output mode: Alt+Y (Describe current location)
         private const int HOTKEY_LANDING_EXIT = 9206;       // Input mode: Shift+X (Landing Exit Planner)
+        private const int HOTKEY_GROUND_TRAFFIC = 9207;     // Output mode: Alt+G (Nearest ground traffic)
 
         // Time-of-day hotkey IDs (Output mode). Local time = aircraft position
         // local time (sim handles tz mapping); Zulu = UTC. HH:MM by default,
@@ -444,6 +445,9 @@ public class HotkeyManager : IDisposable
                         case HOTKEY_TAXI_WHERE_AM_I:
                             TriggerHotkey(HotkeyAction.TaxiWhereAmI);
                             break;
+                        case HOTKEY_GROUND_TRAFFIC:
+                            TriggerHotkey(HotkeyAction.AnnounceGroundTraffic);
+                            break;
                     }
                     DeactivateOutputHotkeyMode();
                     return true;
@@ -709,6 +713,7 @@ public class HotkeyManager : IDisposable
             // give up Shift+Y for STATUS Display (it's a long-standing FBW/Fenix display hotkey),
             // so Where Am I moves to Alt+Y. Stays on the same physical key — easy to remember.
             RegisterHotKey(windowHandle, HOTKEY_TAXI_WHERE_AM_I, MOD_ALT, 0x59);          // Alt+Y (Where Am I)
+            RegisterHotKey(windowHandle, HOTKEY_GROUND_TRAFFIC, MOD_ALT, 0x47);           // Alt+G (Nearest ground traffic)
 
             // Auto-timeout disabled - hotkey mode stays active until used or escape pressed
 
@@ -804,6 +809,7 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_TAXI_STATUS);
             UnregisterHotKey(windowHandle, HOTKEY_TAXI_REPEAT);
             UnregisterHotKey(windowHandle, HOTKEY_TAXI_WHERE_AM_I);
+            UnregisterHotKey(windowHandle, HOTKEY_GROUND_TRAFFIC);
 
             OutputHotkeyModeChanged?.Invoke(this, new HotkeyModeEventArgs(wasCancelled ? HotkeyModeStatus.Cancelled : HotkeyModeStatus.Deactivated));
         }
@@ -1235,4 +1241,5 @@ public class HotkeyManager : IDisposable
         TaxiStop,
         TaxiWhereAmI,
         LandingExitPlanner,
+        AnnounceGroundTraffic,
     }
