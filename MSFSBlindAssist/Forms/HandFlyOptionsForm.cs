@@ -44,6 +44,7 @@ public partial class HandFlyOptionsForm : Form
     private ComboBox headingToneThresholdCombo = null!;
     private CheckBox legacyTakeoffCheckBox = null!;
     private CheckBox enableCalloutsCheckBox = null!;
+    private CheckBox autoActivateOnLineupCheckBox = null!;
 
     private Button okButton = null!;
     private Button cancelButton = null!;
@@ -65,6 +66,7 @@ public partial class HandFlyOptionsForm : Form
     public int TakeoffAssistHeadingToneThreshold { get; private set; }
     public bool TakeoffAssistLegacyMode { get; private set; }
     public bool TakeoffAssistEnableCallouts { get; private set; }
+    public bool TakeoffAssistAutoActivateOnLineup { get; private set; }
 
     public HandFlyOptionsForm(HandFlyFeedbackMode currentMode, HandFlyWaveType currentWaveType, double currentVolume,
         bool monitorHeading, bool monitorVerticalSpeed, HandFlyWaveType guidanceToneWaveform,
@@ -72,7 +74,8 @@ public partial class HandFlyOptionsForm : Form
         bool takeoffAssistMuteCenterlineAnnouncements, bool takeoffAssistInvertPanning,
         bool takeoffAssistHardPanTone,
         int takeoffAssistHeadingToneThreshold, bool takeoffAssistLegacyMode,
-        bool takeoffAssistEnableCallouts)
+        bool takeoffAssistEnableCallouts,
+        bool takeoffAssistAutoActivateOnLineup)
     {
         SelectedFeedbackMode = currentMode;
         SelectedWaveType = currentWaveType;
@@ -89,6 +92,7 @@ public partial class HandFlyOptionsForm : Form
         TakeoffAssistHeadingToneThreshold = takeoffAssistHeadingToneThreshold;
         TakeoffAssistLegacyMode = takeoffAssistLegacyMode;
         TakeoffAssistEnableCallouts = takeoffAssistEnableCallouts;
+        TakeoffAssistAutoActivateOnLineup = takeoffAssistAutoActivateOnLineup;
         InitializeComponent();
         SetupAccessibility();
     }
@@ -96,7 +100,7 @@ public partial class HandFlyOptionsForm : Form
     private void InitializeComponent()
     {
         Text = "Hand Fly Options";
-        Size = new Size(500, 835);
+        Size = new Size(500, 865);
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -469,11 +473,23 @@ public partial class HandFlyOptionsForm : Form
         };
         enableCalloutsCheckBox.CheckedChanged += EnableCalloutsCheckBox_CheckedChanged;
 
+        // Auto-Activate on Lineup Checkbox
+        autoActivateOnLineupCheckBox = new CheckBox
+        {
+            Text = "Auto-activate Takeoff Assist on lineup",
+            Location = new Point(20, 750),
+            Size = new Size(450, 25),
+            Checked = TakeoffAssistAutoActivateOnLineup,
+            AccessibleName = "Auto-activate Takeoff Assist on lineup",
+            AccessibleDescription = "When enabled, Takeoff Assist activates automatically when taxi guidance reaches a stable runway lineup, so you don't have to press control T. One-shot per route: if you disable Takeoff Assist after it auto-activates, it won't re-engage until the next taxi route."
+        };
+        autoActivateOnLineupCheckBox.CheckedChanged += AutoActivateOnLineupCheckBox_CheckedChanged;
+
         // OK Button
         okButton = new Button
         {
             Text = "OK",
-            Location = new Point(310, 765),
+            Location = new Point(310, 795),
             Size = new Size(75, 30),
             DialogResult = DialogResult.OK,
             AccessibleName = "Apply Settings",
@@ -485,7 +501,7 @@ public partial class HandFlyOptionsForm : Form
         cancelButton = new Button
         {
             Text = "Cancel",
-            Location = new Point(395, 765),
+            Location = new Point(395, 795),
             Size = new Size(75, 30),
             DialogResult = DialogResult.Cancel,
             AccessibleName = "Cancel",
@@ -504,7 +520,7 @@ public partial class HandFlyOptionsForm : Form
             takeoffVolumeLabel, takeoffVolumeTrackBar, takeoffVolumeValueLabel,
             muteCenterlineCheckBox, invertPanningCheckBox, hardPanCheckBox,
             headingToneThresholdLabel, headingToneThresholdCombo,
-            legacyTakeoffCheckBox, enableCalloutsCheckBox,
+            legacyTakeoffCheckBox, enableCalloutsCheckBox, autoActivateOnLineupCheckBox,
             okButton, cancelButton
         });
 
@@ -544,8 +560,10 @@ public partial class HandFlyOptionsForm : Form
         headingToneThresholdLabel.TabIndex = 23;
         headingToneThresholdCombo.TabIndex = 24;
         legacyTakeoffCheckBox.TabIndex = 25;
-        okButton.TabIndex = 26;
-        cancelButton.TabIndex = 27;
+        enableCalloutsCheckBox.TabIndex = 26;
+        autoActivateOnLineupCheckBox.TabIndex = 27;
+        okButton.TabIndex = 28;
+        cancelButton.TabIndex = 29;
 
         // Focus and bring window to front when opened
         Load += (sender, e) =>
@@ -656,6 +674,11 @@ public partial class HandFlyOptionsForm : Form
     private void EnableCalloutsCheckBox_CheckedChanged(object? sender, EventArgs e)
     {
         TakeoffAssistEnableCallouts = enableCalloutsCheckBox.Checked;
+    }
+
+    private void AutoActivateOnLineupCheckBox_CheckedChanged(object? sender, EventArgs e)
+    {
+        TakeoffAssistAutoActivateOnLineup = autoActivateOnLineupCheckBox.Checked;
     }
 
     private void TestToneButton_Click(object? sender, EventArgs e)

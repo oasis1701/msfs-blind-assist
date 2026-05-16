@@ -791,6 +791,115 @@ public class TaxiGraph
     }
 
     /// <summary>
+    /// Detects which runway the aircraft is sitting on, using the same half-width
+    /// tolerance as DescribeLocation but exposing structured data for callers that
+    /// need geometry (threshold lat/lon, true heading, designator) rather than a
+    /// spoken string. Uses the aircraft's true heading to pick the correct
+    /// reciprocal designator (e.g. 27L vs 09R) — the "threshold" is the upwind
+    /// end of the runway, i.e. the end the aircraft is taking off FROM.
+    /// </summary>
+    /// <param name="lat">Aircraft latitude (degrees).</param>
+    /// <param name="lon">Aircraft longitude (degrees).</param>
+    /// <param name="aircraftHeadingTrue">
+    /// Aircraft true heading in degrees. Used to pick the reciprocal designator.
+    /// </param>
+    /// <param name="runwayId">
+    /// Out: runway designator (e.g. "27L"), no "Runway " prefix.
+    /// </param>
+    /// <param name="thresholdLat">Out: latitude of the upwind threshold.</param>
+    /// <param name="thresholdLon">Out: longitude of the upwind threshold.</param>
+    /// <param name="runwayHeadingTrue">
+    /// Out: true heading of the runway in the takeoff direction (degrees, 0..360).
+    /// </param>
+    /// <returns>
+    /// True if the aircraft is within half-width of a runway centerline. False
+    /// if the aircraft is not on any runway in this graph's RunwayCenterlines list.
+    /// </returns>
+    public bool TryGetRunwayAtPosition(
+        double lat, double lon, double aircraftHeadingTrue,
+        out string runwayId,
+        out double thresholdLat, out double thresholdLon,
+        out double runwayHeadingTrue)
+    {
+        runwayId = "";
+        thresholdLat = 0; thresholdLon = 0;
+        runwayHeadingTrue = 0;
+
+        foreach (var rwy in RunwayCenterlines)
+        {
+            double perp = PerpendicularDistanceMeters(
+                lat, lon, rwy.Lat1, rwy.Lon1, rwy.Lat2, rwy.Lon2);
+            // Strict half-width (no +5 m tolerance). Stricter than DescribeLocation
+            // because takeoff-assist centerline math depends on the chosen runway
+            // actually being the one under the aircraft — a 5 m fudge could
+            // mis-attribute when the aircraft is sitting on a high-speed exit
+            // immediately adjacent to a runway.
+            if (perp > rwy.HalfWidthMeters) continue;
+
+            // Pick the end whose takeoff heading is closer to the aircraft's
+            // heading. End 1's takeoff heading is HeadingDeg1; end 2's is
+            // HeadingDeg1 + 180 (mod 360).
+            double hdg1 = NormalizeHeading(rwy.HeadingDeg1);
+            double hdg2 = NormalizeHeading(rwy.HeadingDeg1 + 180.0);
+            double diff1 = Math.Abs(NormalizeAngle(aircraftHeadingTrue - hdg1));
+            double diff2 = Math.Abs(NormalizeAngle(aircraftHeadingTrue - hdg2));
+
+            if (diff1 <= diff2)
+            {
+                runwayId = rwy.Name1;
+                thresholdLat = rwy.Lat1;
+                thresholdLon = rwy.Lon1;
+                runwayHeadingTrue = hdg1;
+            }
+            else
+            {
+                runwayId = rwy.Name2;
+                thresholdLat = rwy.Lat2;
+                thresholdLon = rwy.Lon2;
+                runwayHeadingTrue = hdg2;
+            }
+
+            // Fallback if the chosen end has an empty Name (shouldn't happen
+            // in well-formed navdata, but defensive — an empty designator
+            // would propagate into the spoken callout). When we fall over to
+            // the other end's name, also re-point the threshold + heading to
+            // that other end so the geometry stays consistent with the name.
+            // If both names are empty, leave the geometry on the originally
+            // chosen end — the empty runwayId will be the caller's signal
+            // that data is malformed, but threshold + heading remain valid
+            // approximations.
+            if (string.IsNullOrEmpty(runwayId))
+            {
+                if (rwy.Name1.Length > 0)
+                {
+                    runwayId = rwy.Name1;
+                    thresholdLat = rwy.Lat1;
+                    thresholdLon = rwy.Lon1;
+                    runwayHeadingTrue = hdg1;
+                }
+                else if (rwy.Name2.Length > 0)
+                {
+                    runwayId = rwy.Name2;
+                    thresholdLat = rwy.Lat2;
+                    thresholdLon = rwy.Lon2;
+                    runwayHeadingTrue = hdg2;
+                }
+            }
+
+            return true;
+        }
+
+        return false;
+    }
+
+    private static double NormalizeHeading(double deg)
+    {
+        deg = deg % 360.0;
+        if (deg < 0) deg += 360.0;
+        return deg;
+    }
+
+    /// <summary>
     /// Perpendicular distance (meters) from point (plat, plon) to segment (a→b).
     /// Uses equirectangular projection — accurate for taxiway-scale distances.
     /// Returns the distance to the nearest point on the segment (not the infinite line),
