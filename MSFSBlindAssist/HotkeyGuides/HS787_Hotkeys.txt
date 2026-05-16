@@ -171,6 +171,10 @@ FMC Line Select Keys:
   Ctrl+1-6       Left LSK 1-6
   Alt+1-6        Right LSK 1-6
 
+Note: in FMC Settings (File > FMC Settings) you can switch to alternate
+line-select keys: F1-F6 for L1-L6 and F7-F12 for R1-R6. With this on,
+the default Ctrl+1-6 / Alt+1-6 chords are disabled.
+
 FMC Text Input:
   Alt+S          Focus scratchpad input field
   Enter          Submit typed text to FMC scratchpad

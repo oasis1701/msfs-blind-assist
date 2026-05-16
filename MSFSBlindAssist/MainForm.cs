@@ -3574,7 +3574,9 @@ public partial class MainForm : Form
                       currentAircraft.AircraftCode.StartsWith("PMDG_", StringComparison.Ordinal);
         bool isFenix = currentAircraft != null &&
                        currentAircraft.AircraftCode.StartsWith("FENIX_", StringComparison.Ordinal);
-        fmcSettingsMenuItem.Visible = isPmdg || isFenix;
+        bool isHs787 = currentAircraft != null &&
+                       currentAircraft.AircraftCode.StartsWith("HS_", StringComparison.Ordinal);
+        fmcSettingsMenuItem.Visible = isPmdg || isFenix || isHs787;
     }
 
     /// <summary>

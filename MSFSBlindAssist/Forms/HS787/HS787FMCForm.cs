@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Aircraft;
+using MSFSBlindAssist.Settings;
 using MSFSBlindAssist.SimConnect;
 
 namespace MSFSBlindAssist.Forms.HS787;
@@ -323,20 +324,46 @@ public partial class HS787FMCForm : Form
 
     private void Form_KeyDown(object? sender, KeyEventArgs e)
     {
-        // Ctrl+1-6: left LSK
-        if (e.Control && !e.Alt && e.KeyCode >= Keys.D1 && e.KeyCode <= Keys.D6)
-        {
-            SendLskLeft(e.KeyCode - Keys.D1 + 1);
-            e.Handled = true; e.SuppressKeyPress = true;
-            return;
-        }
+        // Line-select keys — two layouts, switchable in FMC Settings:
+        //   Default: Ctrl+1..6 = L1..L6, Alt+1..6 = R1..R6
+        //   Alternate: F1..F6 = L1..L6, F7..F12 = R1..R6
+        // Setting is read every keypress so a runtime change takes effect immediately.
+        bool useAltKeys = SettingsManager.Current.MCDUUseAlternateLSKKeys;
 
-        // Alt+1-6: right LSK
-        if (e.Alt && !e.Control && e.KeyCode >= Keys.D1 && e.KeyCode <= Keys.D6)
+        if (useAltKeys)
         {
-            SendLskRight(e.KeyCode - Keys.D1 + 1);
-            e.Handled = true; e.SuppressKeyPress = true;
-            return;
+            // F1..F6 = L1..L6
+            if (!e.Control && !e.Alt && e.KeyCode >= Keys.F1 && e.KeyCode <= Keys.F6)
+            {
+                SendLskLeft(e.KeyCode - Keys.F1 + 1);
+                e.Handled = true; e.SuppressKeyPress = true;
+                return;
+            }
+            // F7..F12 = R1..R6
+            if (!e.Control && !e.Alt && e.KeyCode >= Keys.F7 && e.KeyCode <= Keys.F12)
+            {
+                SendLskRight(e.KeyCode - Keys.F7 + 1);
+                e.Handled = true; e.SuppressKeyPress = true;
+                return;
+            }
+        }
+        else
+        {
+            // Ctrl+1-6: left LSK
+            if (e.Control && !e.Alt && e.KeyCode >= Keys.D1 && e.KeyCode <= Keys.D6)
+            {
+                SendLskLeft(e.KeyCode - Keys.D1 + 1);
+                e.Handled = true; e.SuppressKeyPress = true;
+                return;
+            }
+
+            // Alt+1-6: right LSK
+            if (e.Alt && !e.Control && e.KeyCode >= Keys.D1 && e.KeyCode <= Keys.D6)
+            {
+                SendLskRight(e.KeyCode - Keys.D1 + 1);
+                e.Handled = true; e.SuppressKeyPress = true;
+                return;
+            }
         }
 
         // PageUp / Alt+Up → PREV PAGE
