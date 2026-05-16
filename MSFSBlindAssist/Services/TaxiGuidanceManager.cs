@@ -104,6 +104,14 @@ public class TaxiGuidanceManager : IDisposable
     private const double ARRIVAL_RADIUS_M = 12.0;
     private const double RECALCULATION_COOLDOWN_SEC = 15.0;
     private const double GUIDANCE_LOOK_AHEAD_M = 50.0;           // Min distance for heading target
+    // If the aircraft is within this distance of the destination, suppress off-route
+    // recalculation entirely. Navdata gaps between the last taxiway and the runway/gate
+    // node (e.g., J1 terminus → K1 junction at VHHH is 67 m from 07R), combined with
+    // a wide-arc runway entry, can push the aircraft off the virtual bridge segment and
+    // trigger a constrained recalc that routes BACKWARDS around the taxiway loop. When
+    // this close to the destination the steering tone handles the remaining metres; no
+    // recalc is needed or useful.
+    private const double NEAR_DESTINATION_SUPPRESS_RECALC_M = 200.0;
 
     // Sharp-turn threshold (ICAO Annex 14: >90° requires significantly wider radius).
     // Beyond this we add an explicit angle callout and push "slow for turn" earlier
@@ -1589,6 +1597,23 @@ public class TaxiGuidanceManager : IDisposable
         if (_route != null && _currentSegmentIndex >= _route.Segments.Count - 1)
             return;
 
+        // Near-destination guard. Some navdata has a gap between the last taxiway
+        // node and the runway/gate node (the route bridges this with a virtual
+        // straight-line segment). When the aircraft makes a curved entry into the
+        // runway or gate from that bridge it can drift off the virtual centerline
+        // and trigger a constrained recalc that snaps to the last taxiway dead-end
+        // and routes backwards around the taxiway loop (VHHH J1 → K1 → backwards
+        // 563 m instead of the remaining 67 m). Within 200 m of the destination
+        // the tone already guides the pilot; no recalc is needed.
+        if (_destinationNodeId != 0 && _graph != null &&
+            _graph.Nodes.TryGetValue(_destinationNodeId, out var destNodeForGuard))
+        {
+            if (TaxiGraph.FastDistanceMeters(lat, lon,
+                    destNodeForGuard.Latitude, destNodeForGuard.Longitude)
+                < NEAR_DESTINATION_SUPPRESS_RECALC_M)
+                return;
+        }
+
         _lastRecalculationTime = DateTime.Now;
 
         // Position-aware sequence trim. Walk the original ATC sequence from
@@ -1809,6 +1834,17 @@ public class TaxiGuidanceManager : IDisposable
         // Announce ~150ft out so the pilot has awareness of intersection layout without clutter.
         // Suppressed when a turn/taxiway change is happening (that announcement carries the info).
         TryAnnounceCrossing(distToTargetM, currentSeg, nextSeg, taxiwayChanging, hasTurn);
+
+        // Final segment onto a runway: the lineup logic (intercept-to-centerline
+        // tone + "Lined up" callout + the LiningUp status readout) owns guidance
+        // here. The route's STATIC turn onto the runway is computed from the
+        // segment bearing, while the lineup tone pans toward the intercept-
+        // corrected centerline — these can point OPPOSITE ways at the taxi->
+        // lineup boundary ("turn right" spoken while the tone pans left, which
+        // is exactly the reported confusion). Don't emit the segment-bearing
+        // turn/approach callout for that last hop; let the tone steer it.
+        if (_isRunwayLineup && nextIdx == _route.Segments.Count - 1)
+            return;
 
         if (!hasTurn && !taxiwayChanging)
             return;
@@ -3120,7 +3156,28 @@ public class TaxiGuidanceManager : IDisposable
         if (_state == TaxiGuidanceState.LiningUp)
         {
             string what = _isRunwayLineup ? "runway" : "gate";
-            return $"Lining up {_destinationName}. Follow the tone to align with {what} heading {(int)Math.Round(_lineupHeadingMag)}.";
+            int hdg = (int)Math.Round(_lineupHeadingMag);
+
+            // Aligned: the tone is intentionally muted (we paused it on
+            // alignment). Say so explicitly so a silent tone reads as
+            // "done, hold position" rather than "lost / broken".
+            if (_lineupAnnouncedAligned)
+                return $"Lined up {_destinationName}, heading {hdg}. Aligned — hold position.";
+
+            // Not yet aligned: surface distance-to-go so a silent tone
+            // (between hysteresis pulses, or while the system is busy) still
+            // has a progress readout the pilot can query on demand. No
+            // cross-track feet — the tone is the cross-track instrument
+            // (see the blind-pilot-cue rule); distance-remaining + heading
+            // are the numbers a pilot can actually use.
+            string lineupDistStr = "";
+            if (_hasLineupTarget && _positionInitialized)
+            {
+                double dM = TaxiGraph.FastDistanceMeters(
+                    _lastLat, _lastLon, _lineupTargetLat, _lineupTargetLon);
+                lineupDistStr = $" {FormatDistance(dM)} to go.";
+            }
+            return $"Lining up {_destinationName}, {what} heading {hdg}. Follow the tone.{lineupDistStr}";
         }
 
         if (_state == TaxiGuidanceState.Arrived)
@@ -3279,6 +3336,27 @@ public class TaxiGuidanceManager : IDisposable
         _state = newState;
         // DIAGNOSTIC: state transitions during landing-exit / rollout flow.
         RolloutDiag($"SetState: {prev} -> {newState}");
+
+        // Lineup must never end in silence. The lineup tone is the pilot's only
+        // alignment instrument; if a route reload / recalc (LiningUp ->
+        // RouteLoaded) or any non-aligned exit tears it down, the tone just
+        // stops with no explanation — the pilot can't tell "aligned, hold" from
+        // "system gave up", and then hears a "crossing <other runway>" callout
+        // from the freshly-loaded route that makes no sense ("I was lining up
+        // 31L, why 22R?"). Announce the interruption explicitly. The aligned
+        // case does NOT come through here (it keeps state in LiningUp and
+        // pauses the tone), so this only fires on a genuine interruption.
+        // The guard catches ANY non-aligned exit from LiningUp (route reload is
+        // the only one today, but keep the message generic so a future
+        // transition can't make it lie).
+        if (prev == TaxiGuidanceState.LiningUp &&
+            newState != TaxiGuidanceState.Arrived &&
+            newState != TaxiGuidanceState.Inactive)
+        {
+            _announcer.AnnounceImmediate(
+                "Lineup interrupted. No longer aligning with the runway.");
+        }
+
         StateChanged?.Invoke(this, newState);
     }
 

@@ -4509,46 +4509,82 @@ public class PMDG777Definition : BaseAircraftDefinition
             },
 
             // =================================================================
-            // BORIS AUDIO WORKS SOUNDPACK
+            // BORIS / xBAW AUDIO WORKS SOUNDPACK
             // -----------------------------------------------------------------
-            // KNOWN ISSUE: these switch_NNN_a LVars do NOT behave as state
-            // variables. Writing 0 or 100 produces only a momentary (~100 ms)
-            // change in the underlying Boris audio engine before snapping back
-            // to whatever the persistent state was. The real Boris state vars
-            // are not documented publicly. A live LVar capture session (e.g.
-            // via MobiFlight's variable browser, or an in-app LVar dump
-            // utility) is needed to identify the actual state vars before
-            // these combos can produce a real persistent toggle.
-            //
-            // We tried writing the PMDG mouse-flag value (0x20000000 =
-            // MOUSE_FLAG_LEFTSINGLE) on the theory that switch_NNN_a is a
-            // mouse-click input handle per PMDG's VC mouse-behaviour XML
-            // convention, but that produced no audible effect at all — worse
-            // than the 100 ms blip from a raw value write. Reverted; left
-            // as-is until proper state vars are identified.
+            // RESOLVED: the ~100 ms blink-then-revert was diagnosed via live
+            // SimConnect testing — these switch_NNN_a L-vars are PMDG SDK-owned
+            // read-back mirrors. PMDG rewrites them from the real switch state
+            // every frame, so a raw SetLVar never sticks (confirmed: writing
+            // switch_622_a = 0 read back as 100 the same frame). They are
+            // driven correctly via K:ROTOR_BRAKE with PMDG's <index><action>
+            // encoding — see the xBAW handler block in HandleUIVariableSet
+            // (search "1b. xBAW"). Encodings cross-checked against the
+            // FSCopilot PMDG 777 profile. The earlier MOUSE_FLAG_LEFTSINGLE
+            // attempt failed because it was still a direct write, not a
+            // ROTOR_BRAKE event. Keep these as LVar reads (the combo reflects
+            // PMDG's authoritative state); the write path is the event.
             // =================================================================
+            // Continuous + IsAnnounced: the actual state is PMDG-owned and can
+            // change without a direct combo interaction (the ROTOR_BRAKE click
+            // landing, FSCopilot re-syncing it in shared cockpit, or PMDG
+            // reverting a stale write). Auto-announce confirms what the switch
+            // actually did — "Headphone Simulation: On/Off" — rather than
+            // leaving the pilot guessing whether the toggle stuck.
             ["switch_622_a"] = new SimConnect.SimVarDefinition
             {
                 Name = "switch_622_a",
                 DisplayName = "Headphone Simulation",
                 Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [100] = "On" }
             },
-            ["switch_49_a"] = new SimConnect.SimVarDefinition
+            // Passenger chatter — controlled via switch_623_a (CAB AUDIO
+            // SELECTOR), NOT switch_49_a. The soundset gates paxchatter_2024 on
+            // THREE conditions (verified across every passenger variant: 200ER
+            // GE/PW/RR, 200LR, 300ER; 777F is cargo, no chatter):
+            //   <Requires switch_49_a  >= 50>   emergency-exit-lights index
+            //   <Requires switch_623_a <= 0>    CAB AUDIO SELECTOR
+            //   PAYLOAD STATION WEIGHT:2 >= 100 (pax loaded)
+            // switch_49_a is the emergency-exit-lights switch — its NORMAL
+            // flight position is ARMED (>= 50), so that gate is satisfied
+            // without action. MSFSBA must NOT drive switch_49_a: it's a safety
+            // system, and moving it (the previous "Passenger Ambience" control,
+            // via ROTOR_BRAKE 4907/4908) toggled the real emergency exit lights
+            // as a side effect — never the intended chatter lever. The clean,
+            // safety-neutral lever is switch_623_a: <= 0 → chatter audible,
+            // > 0 → chatter muted (it's just a flight-deck audio listening
+            // selector). So we present "Passenger Chatter" backed by
+            // switch_623_a with INVERTED semantics: selector 0 = chatter On,
+            // selector 100 = chatter Off (muted). Driven via K:ROTOR_BRAKE
+            // 62301 (FSCopilot encoding, same single-click family as 622),
+            // because switch_623_a is also a PMDG SDK-owned read-back that
+            // reverts a raw SetLVar within a frame.
+            ["switch_623_a"] = new SimConnect.SimVarDefinition
             {
-                Name = "switch_49_a",
-                DisplayName = "Passenger Ambience",
+                Name = "switch_623_a",
+                DisplayName = "Passenger Chatter",
                 Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [100] = "On" }
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                // 0 = chatter audible (On), >0 = muted (Off). Combo sorts by
+                // key, so {0:On,100:Off} would list On first. ReverseDisplayOrder
+                // flips it to Off-then-On so the combo matches every other
+                // MSFSBA on/off combo (Off at the top), despite On being the
+                // default/zero value here.
+                ReverseDisplayOrder = true,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "On", [100] = "Off"
+                }
             },
             ["switch_319_a"] = new SimConnect.SimVarDefinition
             {
                 Name = "switch_319_a",
                 DisplayName = "Hydraulic Pump Model",
                 Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "Vickers 1", [100] = "Vickers 2" }
             },
         };
@@ -4844,9 +4880,20 @@ public class PMDG777Definition : BaseAircraftDefinition
             },
 
             // Pedestal — Boris Audio Works Soundpack
+            // Verified against the soundset's preset sound.xml. xBAW can't
+            // declare its own L-vars, so it repurposes three existing PMDG
+            // switches as soundpack config gates:
+            //   switch_622_a -> RTPC LOCALVAR_A20      : headset/cockpit-muffle
+            //   switch_319_a -> RTPC HYD_OPTION        : hydraulic pump sound model
+            //   switch_623_a -> chatter <Requires> <=0 : passenger chatter (CAB AUDIO SEL)
+            // switch_49_a (emergency-exit-lights) is the OTHER chatter gate but
+            // is deliberately NOT exposed — its normal flight position (ARMED)
+            // already satisfies the gate and it must not be driven (safety
+            // system). The chatter lever is switch_623_a, which is safety-
+            // neutral. See the switch_623_a definition for the full gate logic.
             ["Boris Audio Works"] = new List<string>
             {
-                "switch_622_a", "switch_49_a", "switch_319_a"
+                "switch_622_a", "switch_623_a", "switch_319_a"
             },
 
         };
@@ -4865,6 +4912,30 @@ public class PMDG777Definition : BaseAircraftDefinition
 
     // Altimeter announcement suppression (initial value)
     private double _lastAnnouncedAltimeter = double.NaN;
+
+    // Headphone-simulation (switch_622_a / LOCALVAR_A20) announce tracker.
+    // -1 = unseen (first poll suppressed). Declared 2-state (0 / 100), but
+    // PMDG can transiently land on a mid-detent during a ROTOR_BRAKE click —
+    // explicit handler so the generic exact-key ValueDescriptions path can't
+    // speak a raw "50.0" at that intermediate value. Any positive reads as On.
+    private int _prevHeadphoneSimOn = -1;
+
+    // Passenger-chatter (switch_623_a / CAB AUDIO SELECTOR) announce tracker.
+    // -1 = unseen (first poll suppressed). State is binary by gate semantics:
+    // chatter audible when the selector is <= 0, muted when > 0 (ANY positive,
+    // not just 100 — a mid-detent must still read "Off"). Explicit handler so
+    // the generic ValueDescriptions path (exact-key match only) can't announce
+    // a raw "50.0" for an intermediate selector position.
+    private int _prevPaxChatterOn = -1;
+
+    // Hydraulic-pump-model (switch_319_a / HYD_OPTION) announce tracker.
+    // -1 = unseen (first poll suppressed). The PMDG knob it repurposes is
+    // 3-position (0 / 50 / 100); xBAW only cares about Vickers 1 vs 2, so
+    // value 0 = "Vickers 1", any positive (50 mid-detent or 100) = "Vickers 2".
+    // Explicit handler so the generic exact-key path can't announce "50.0",
+    // and so the combo stays a clean 2-item list (adding [50] to
+    // ValueDescriptions would duplicate the "Vickers 2" combo entry).
+    private int _prevHydVickers2 = -1;
 
     // Track last known radio/squawk values to suppress initial load announcement.
     // Value 0 means "not yet seen" — first update stores silently, subsequent updates announce.
@@ -5373,6 +5444,53 @@ public class PMDG777Definition : BaseAircraftDefinition
         }
 
         // ------------------------------------------------------------------
+        // 1b. xBAW / Boris soundpack switches (Headphone Simulation,
+        //     Passenger Chatter, Hydraulic Pump Model). xBAW repurposes three
+        //     existing PMDG switch_NNN_a L-vars as soundpack config gates.
+        //     These are PMDG SDK-owned: PMDG rewrites them from the real switch
+        //     state every frame, so a raw SetLVar (the fall-through when these
+        //     aren't in _simpleEventMap) is reverted within ~1 frame — the
+        //     "headset blinks off for 100 ms then snaps back on" symptom. They
+        //     must be driven through K:ROTOR_BRAKE with PMDG's <index><action>
+        //     encoding, exactly as the FSCopilot profile does:
+        //       switch_622 (FLT AUDIO SELECTOR / LOCALVAR_A20)        -> 62201 toggle
+        //       switch_623 (CAB AUDIO SELECTOR / chatter Requires<=0) -> 62301 toggle
+        //       switch_319 (FEET HEATER idx    / HYD_OPTION)          -> 31907 up / 31908 down
+        //     switch_49_a (emergency exit lights) is the soundset's other
+        //     chatter gate but is NOT driven here — its normal flight position
+        //     (ARMED) already satisfies the gate and it's a safety system.
+        //     Direction is taken from the requested target, not the (PMDG-owned,
+        //     possibly stale) current value. The cached value only gates a
+        //     redundant no-op. 622/623 are single-click toggles (62x01, like
+        //     the confirmed-working headset). switch_319 is a 3-position PMDG
+        //     knob (0/50/100): a single up-click from 0 lands at 50; reaching
+        //     100 or fully OFF from 100 may need a second click — the live
+        //     announce reports the true state so the pilot can re-toggle.
+        // ------------------------------------------------------------------
+        if (varKey == "switch_622_a" || varKey == "switch_623_a" || varKey == "switch_319_a")
+        {
+            int target = (int)value;
+            double? cached = simConnect.GetCachedVariableValue(varKey);
+            if (cached.HasValue && (int)cached.Value == target)
+                return true; // already in the requested state — no click
+
+            // toB is only consumed by the 319 arm (a 3-position knob needing a
+            // directional up/down click). 622/623 are single-click toggles and
+            // ignore it.
+            bool toB = target >= 50; // 319 only: raising toward the higher detent
+            uint code = varKey switch
+            {
+                "switch_622_a" => 62201u,            // single click toggles the 2-state
+                "switch_623_a" => 62301u,            // single click toggles (CAB AUDIO SEL)
+                "switch_319_a" => toB ? 31907u : 31908u,
+                _              => 0u
+            };
+            if (code != 0)
+                simConnect.SendEvent("ROTOR_BRAKE", code);
+            return true;
+        }
+
+        // ------------------------------------------------------------------
         // 2. Look up the event name for this variable key
         // ------------------------------------------------------------------
         if (!_simpleEventMap.TryGetValue(varKey, out string? eventName))
@@ -5534,6 +5652,50 @@ public class PMDG777Definition : BaseAircraftDefinition
         if (SuppressedButtonKeys.Contains(varName))
         {
             return true; // Suppress — not an annunciator light
+        }
+
+        // Headphone Simulation (switch_622_a / LOCALVAR_A20). Declared 2-state
+        // (0 = Off, 100 = On), but PMDG can momentarily report a mid-detent
+        // during a ROTOR_BRAKE click — without an explicit handler the generic
+        // exact-key ValueDescriptions path would speak a raw "50.0" before
+        // settling. Any positive value reads as On; first poll cached silently.
+        if (varName == "switch_622_a")
+        {
+            int now = value <= 0 ? 0 : 1;
+            if (_prevHeadphoneSimOn >= 0 && now != _prevHeadphoneSimOn)
+                announcer.Announce(now == 1 ? "Headphone Simulation: On" : "Headphone Simulation: Off");
+            _prevHeadphoneSimOn = now;
+            return true;
+        }
+
+        // Passenger chatter (switch_623_a / CAB AUDIO SELECTOR). Gate semantics:
+        // chatter plays when the selector is <= 0, muted when > 0 (any positive
+        // value, including mid-detents). Announce "Passenger Chatter: On/Off"
+        // on a real state change; first poll is cached silently. Return true to
+        // suppress the generic exact-key announce (which would say "50.0" for an
+        // intermediate selector position).
+        if (varName == "switch_623_a")
+        {
+            int now = value <= 0 ? 1 : 0; // 1 = chatter audible (On)
+            if (_prevPaxChatterOn >= 0 && now != _prevPaxChatterOn)
+                announcer.Announce(now == 1 ? "Passenger Chatter: On" : "Passenger Chatter: Off");
+            _prevPaxChatterOn = now;
+            return true;
+        }
+
+        // Hydraulic pump model (switch_319_a / HYD_OPTION). 0 = Vickers 1,
+        // any positive (mid-detent 50 or 100) = Vickers 2. Announce on real
+        // change; first poll cached silently. Return true so the generic
+        // exact-key path can't speak a raw "50.0" at the mid-detent.
+        if (varName == "switch_319_a")
+        {
+            int now = value <= 0 ? 0 : 1; // 1 = Vickers 2
+            if (_prevHydVickers2 >= 0 && now != _prevHydVickers2)
+                announcer.Announce(now == 1
+                    ? "Hydraulic Pump Model: Vickers 2"
+                    : "Hydraulic Pump Model: Vickers 1");
+            _prevHydVickers2 = now;
+            return true;
         }
 
         // Altimeter setting — announce changes, suppress initial value
