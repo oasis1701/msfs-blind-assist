@@ -334,6 +334,11 @@ public class TaxiGuidanceManager : IDisposable
     // over to normal taxi guidance even if speed is still high (a
     // high-speed exit at 60 kt is plausible on Code-E rapid exits).
     private const double ROLLOUT_TURN_BEGAN_HDG_DEG = 15.0;
+    // Above this GS a heading deviation is NOT treated as a deliberate exit
+    // turn. Category E rapid-exit taxiways top out at ~90 kt; at higher speeds
+    // the deviation is touchdown yaw, crosswind crab alignment, or sim physics
+    // at wheel contact — not a real runway exit maneuver.
+    private const double ROLLOUT_TURN_MAX_GS_KTS = 90.0;
 
     // Speed-based handoff is now gated on proximity to the chosen exit. On long
     // runways the aircraft routinely decelerates below ROLLOUT_TAXI_GS_KTS
@@ -2330,7 +2335,10 @@ public class TaxiGuidanceManager : IDisposable
         bool atTaxiSpeed = groundSpeedKts < ROLLOUT_TAXI_GS_KTS;
         bool nearExit = distToExitFeet < ROLLOUT_NEAR_EXIT_FT;
         bool pastExit = signedAlongPastFt > 0.0;
-        bool turnBegun = hdgDeltaAbs >= ROLLOUT_TURN_BEGAN_HDG_DEG;
+        // Speed-gated: above ROLLOUT_TURN_MAX_GS_KTS a heading deviation is
+        // touchdown yaw / crab alignment, not a deliberate runway exit turn.
+        bool turnBegun = hdgDeltaAbs >= ROLLOUT_TURN_BEGAN_HDG_DEG
+                         && groundSpeedKts < ROLLOUT_TURN_MAX_GS_KTS;
 
         // DIAGNOSTIC: periodic snapshot (every ~3s) of rollout state.
         // Captures the moment the per-frame loop is or isn't seeing the
@@ -2502,7 +2510,8 @@ public class TaxiGuidanceManager : IDisposable
         // beginning a backtaxi). After transitioning, _route is still null
         // so Taxiing's off-route recalc cannot fire.
         bool effectivelyStopped = groundSpeedKts < ROLLOUT_NO_EXIT_STOPPED_GS_KTS;
-        bool turnBegun = hdgDeltaAbs >= ROLLOUT_TURN_BEGAN_HDG_DEG;
+        bool turnBegun = hdgDeltaAbs >= ROLLOUT_TURN_BEGAN_HDG_DEG
+                         && groundSpeedKts < ROLLOUT_TURN_MAX_GS_KTS;
         if (effectivelyStopped || turnBegun)
         {
             _rolloutNoExitMode = false;
