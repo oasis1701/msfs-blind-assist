@@ -151,6 +151,18 @@ public class TaxiGuidanceManager : IDisposable
     // hopping curb on an intersection) without false triggers.
     private const double OFF_ROUTE_PERSISTENCE_SEC = 3.0;
 
+    // Post-recalc sanity gate thresholds. Two indicators reject a recalc:
+    //   A. Length blow-up: new route > ratio·oldRemaining + pad meters.
+    //   B. First-segment-heads-backwards: bearing delta from destination > deg.
+    // Tuned together in TryRecalculateRoute. See the comment block there for
+    // motivation. Promoted to named constants from inline values so they're
+    // discoverable from outside TryRecalculateRoute (and tunable without
+    // hunting for them) — matches the file-style convention of every other
+    // gate threshold above.
+    private const double RECALC_LENGTH_BLOWUP_RATIO = 2.0;
+    private const double RECALC_LENGTH_BLOWUP_PAD_M = 500.0;
+    private const double RECALC_BACKWARDS_DELTA_DEG = 120.0;
+
     // Position tracking
     private double _lastLat, _lastLon, _lastHeading;
     private double _lastGroundSpeedKts;
@@ -1757,7 +1769,7 @@ public class TaxiGuidanceManager : IDisposable
 
             // --- Indicator A: length blow-up ---
             bool lengthBlowUp = oldRemaining > 0
-                && newRoute.TotalDistanceMeters > oldRemaining * 2.0 + 500.0;
+                && newRoute.TotalDistanceMeters > oldRemaining * RECALC_LENGTH_BLOWUP_RATIO + RECALC_LENGTH_BLOWUP_PAD_M;
 
             // --- Indicator B: first segment heads away from destination ---
             // Bearing of the new route's first segment (true degrees) vs the
@@ -1766,13 +1778,13 @@ public class TaxiGuidanceManager : IDisposable
             // starting by moving away from the destination.
             bool firstSegHeadsBackwards = false;
             if (_destinationNodeId != 0 && _graph != null &&
-                _graph.Nodes.TryGetValue(_destinationNodeId, out var destNodeForBrg))
+                _graph.Nodes.TryGetValue(_destinationNodeId, out var destNodeForBearing))
             {
                 double bearingToDest = NavigationCalculator.CalculateBearing(
-                    lat, lon, destNodeForBrg.Latitude, destNodeForBrg.Longitude);
+                    lat, lon, destNodeForBearing.Latitude, destNodeForBearing.Longitude);
                 double firstSegBearing = newRoute.Segments[0].BearingDegrees;
                 double delta = Math.Abs(NormalizeAngle(firstSegBearing - bearingToDest));
-                firstSegHeadsBackwards = delta > 120.0;
+                firstSegHeadsBackwards = delta > RECALC_BACKWARDS_DELTA_DEG;
             }
 
             // Reject if EITHER indicator fires. Either condition alone is a
