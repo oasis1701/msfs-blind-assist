@@ -151,6 +151,18 @@ public class TaxiGuidanceManager : IDisposable
     // hopping curb on an intersection) without false triggers.
     private const double OFF_ROUTE_PERSISTENCE_SEC = 3.0;
 
+    // Post-recalc sanity gate thresholds. Two indicators reject a recalc:
+    //   A. Length blow-up: new route > ratio·oldRemaining + pad meters.
+    //   B. First-segment-heads-backwards: bearing delta from destination > deg.
+    // Tuned together in TryRecalculateRoute. See the comment block there for
+    // motivation. Promoted to named constants from inline values so they're
+    // discoverable from outside TryRecalculateRoute (and tunable without
+    // hunting for them) — matches the file-style convention of every other
+    // gate threshold above.
+    private const double RECALC_LENGTH_BLOWUP_RATIO = 2.0;
+    private const double RECALC_LENGTH_BLOWUP_PAD_M = 500.0;
+    private const double RECALC_BACKWARDS_DELTA_DEG = 120.0;
+
     // Position tracking
     private double _lastLat, _lastLon, _lastHeading;
     private double _lastGroundSpeedKts;
@@ -168,6 +180,18 @@ public class TaxiGuidanceManager : IDisposable
     private double _smoothedHeadingError = 0.0;
     private bool _headingErrorInitialized = false;
     private const double HEADING_ERROR_FILTER_ALPHA = 0.25;  // 0 = no smoothing, 1 = max smoothing
+
+    // Diagnostic per-frame trace for steering-tone troubleshooting. Captures the inputs
+    // and outputs of the heading-error pipeline so erratic L/R tone flipping can be
+    // analysed post-hoc. Truncated and re-headered on every LoadRoute. Rate-limited
+    // to ~10 Hz to keep the file under ~100 KB for a typical 5-10 min taxi.
+    // Always on while Taxiing — cheap (one File.AppendAllText per ~100 ms) and the
+    // log is overwritten each new route, so no growth across sessions.
+    private static readonly string GuidanceLogPath = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        "MSFSBlindAssist", "taxi_guidance.log");
+    private DateTime _lastGuidanceLogTime = DateTime.MinValue;
+    private const double GUIDANCE_LOG_INTERVAL_MS = 100.0;
 
     // Last actionable instruction announced (for the Ctrl+Y "Repeat" hotkey).
     // Only TACTICAL announcements update this — turn callouts, hold-shorts,
@@ -695,6 +719,18 @@ public class TaxiGuidanceManager : IDisposable
             _lastSegmentAdvanceTime = DateTime.MinValue;
             _holdShortAtDestination = false;
 
+            // Reset diagnostic frame trace. Each LoadRoute starts a fresh file
+            // headed with route metadata + CSV column names so the file is
+            // self-describing for post-flight analysis.
+            try
+            {
+                File.WriteAllText(GuidanceLogPath,
+                    $"=== Guidance {DateTime.Now:yyyy-MM-dd HH:mm:ss} icao={_icao} dest={_destinationName} segments={_route.Segments.Count} totalM={_route.TotalDistanceMeters:F0} ===" + Environment.NewLine
+                    + "time,lat,lon,hdg,gs,seg,segBrg,w,nxtTurn,tLat,tLon,raw,smooth" + Environment.NewLine);
+            }
+            catch { /* diagnostic only */ }
+            _lastGuidanceLogTime = DateTime.MinValue;
+
             SetState(TaxiGuidanceState.RouteLoaded);
 
             // Always build the summary so the form can show it in its
@@ -1078,6 +1114,25 @@ public class TaxiGuidanceManager : IDisposable
         // and runway-aligned phases.
         _steeringTone.Resume();
         _steeringTone.UpdateHeadingError(_smoothedHeadingError, currentSeg.PathWidth);
+
+        // Diagnostic trace — captures raw and smoothed inputs to the steering
+        // tone so post-hoc analysis can pinpoint where erratic L/R flipping
+        // originates (target jumps vs heading transients vs smoothing residue).
+        // Rate-limited inside LogGuidanceFrame; no behavioural effect.
+        {
+            bool nextIsTurnDiag = false;
+            if (_currentSegmentIndex + 1 < _route.Segments.Count)
+            {
+                var nsDiag = _route.Segments[_currentSegmentIndex + 1];
+                nextIsTurnDiag = nsDiag.TurnDirection != "straight" ||
+                    Math.Abs(NormalizeAngle(nsDiag.BearingDegrees - currentSeg.BearingDegrees)) > 25.0;
+            }
+            LogGuidanceFrame(
+                lat, lon, headingTrue, groundSpeedKts,
+                _currentSegmentIndex, currentSeg.BearingDegrees, currentSeg.PathWidth,
+                nextIsTurnDiag, targetLat, targetLon,
+                headingError, _smoothedHeadingError);
+        }
 
         // Check for upcoming announcements
         CheckUpcomingAnnouncements(distToTarget, currentSeg);
@@ -1681,21 +1736,68 @@ public class TaxiGuidanceManager : IDisposable
             return;
         }
 
-        // If the constrained recalc collapsed to shortest path AND the diversion
-        // is large relative to what's left of the original route, prefer to keep
-        // the current route and quietly warn — a wildly different shortest path
-        // is almost always wrong (tower cleared a specific route for a reason).
-        if (_route != null && !string.IsNullOrEmpty(newRoute.ConstrainedFallbackReason))
+        // Post-recalc sanity gate. Two failure modes are rejected here:
+        //
+        //  A. Length blow-up: the new route is dramatically longer than what
+        //     the aircraft was about to taxi anyway. This catches the
+        //     constrained-router-picks-dead-end-exit bug (KDEN gate A 60 via
+        //     M4: recalc produced a 2960 m loop when the remaining route was
+        //     ~200 m). Previously gated on ConstrainedFallbackReason because
+        //     a successful-but-bad constrained route slipped through; now
+        //     gated only on length + a heading sanity check, so the same
+        //     class of failure can no longer hide behind the fallback flag.
+        //
+        //  B. Reverse-from-the-start: the new route's first segment points
+        //     opposite the straight-line bearing to the destination. A real
+        //     recovery route never starts by moving away from where it's
+        //     going (a legitimate detour reaches a junction and turns), so
+        //     a first-segment bearing within ±60° of the *opposite* of the
+        //     destination bearing is a clear router bug — the dead-end
+        //     backtrack signature.
+        //
+        // Either guard, on its own, would have caught the KDEN bug. Both
+        // present together produces a high-precision gate: a long recalc is
+        // accepted as long as it at least heads in the right general
+        // direction (i.e., the pilot really has wandered far off course),
+        // and a backwards recalc is rejected even if its total length is
+        // similar to the old route.
+        if (_route != null && newRoute.Segments.Count > 0)
         {
             double oldRemaining = 0;
             for (int i = _currentSegmentIndex; i < _route.Segments.Count; i++)
                 oldRemaining += _route.Segments[i].DistanceMeters;
-            // Threshold: if recalc is >2x the straight-line remaining distance, it's
-            // almost certainly routing around the world. Keep the old route.
-            if (oldRemaining > 0 && newRoute.TotalDistanceMeters > oldRemaining * 2.0 + 500.0)
+
+            // --- Indicator A: length blow-up ---
+            bool lengthBlowUp = oldRemaining > 0
+                && newRoute.TotalDistanceMeters > oldRemaining * RECALC_LENGTH_BLOWUP_RATIO + RECALC_LENGTH_BLOWUP_PAD_M;
+
+            // --- Indicator B: first segment heads away from destination ---
+            // Bearing of the new route's first segment (true degrees) vs the
+            // straight-line bearing from the aircraft's current position to
+            // the destination. A difference of ≥ 120° means the route is
+            // starting by moving away from the destination.
+            bool firstSegHeadsBackwards = false;
+            if (_destinationNodeId != 0 && _graph != null &&
+                _graph.Nodes.TryGetValue(_destinationNodeId, out var destNodeForBearing))
             {
+                double bearingToDest = NavigationCalculator.CalculateBearing(
+                    lat, lon, destNodeForBearing.Latitude, destNodeForBearing.Longitude);
+                double firstSegBearing = newRoute.Segments[0].BearingDegrees;
+                double delta = Math.Abs(NormalizeAngle(firstSegBearing - bearingToDest));
+                firstSegHeadsBackwards = delta > RECALC_BACKWARDS_DELTA_DEG;
+            }
+
+            // Reject if EITHER indicator fires. Either condition alone is a
+            // strong signal of router malfunction; requiring both would let
+            // the KDEN case through (length blew up cleanly, first-seg
+            // delta was ~144° which is over 120°, both fire here).
+            if (lengthBlowUp || firstSegHeadsBackwards)
+            {
+                string reasonStr = !string.IsNullOrEmpty(newRoute.ConstrainedFallbackReason)
+                    ? newRoute.ConstrainedFallbackReason
+                    : (lengthBlowUp ? "recalculated route too long" : "recalculated route heads backwards");
                 _announcer.AnnounceImmediate(
-                    $"Off route. Could not follow clearance. {newRoute.ConstrainedFallbackReason}. Continuing on original route.");
+                    $"Off route. Could not follow clearance. {reasonStr}. Continuing on original route.");
                 return;
             }
         }
@@ -3479,6 +3581,40 @@ public class TaxiGuidanceManager : IDisposable
         double ex = px - fx;
         double ey = py - fy;
         return Math.Sqrt(ex * ex + ey * ey);
+    }
+
+    /// <summary>
+    /// Diagnostic frame logger for steering-tone troubleshooting. Captures the
+    /// raw and smoothed heading-error inputs plus the geometric inputs that
+    /// produce them, rate-limited to roughly 10 Hz. Silent on I/O errors —
+    /// must never affect guidance behaviour. The companion `taxi_router.log`
+    /// captures route construction; this file captures the per-frame tone-driving
+    /// data needed to diagnose erratic L/R flipping.
+    /// </summary>
+    private void LogGuidanceFrame(
+        double lat, double lon, double headingTrue, double groundSpeedKts,
+        int segIdx, double segBearing, double pathWidthFeet,
+        bool nextIsTurn, double targetLat, double targetLon,
+        double rawHeadingError, double smoothedHeadingError)
+    {
+        // UTC for rate-limit math (monotonic, immune to DST / clock-change
+        // discontinuities); DateTime.Now is used below for the human-readable
+        // printed timestamp because users reading the file expect local time.
+        var now = DateTime.UtcNow;
+        if ((now - _lastGuidanceLogTime).TotalMilliseconds < GUIDANCE_LOG_INTERVAL_MS) return;
+        _lastGuidanceLogTime = now;
+        try
+        {
+            string line = string.Format(
+                System.Globalization.CultureInfo.InvariantCulture,
+                "{0:HH:mm:ss.fff},lat={1:F7},lon={2:F7},hdg={3:F1},gs={4:F1},seg={5},segBrg={6:F1},w={7:F0},nxtTurn={8},tLat={9:F7},tLon={10:F7},raw={11:F2},smooth={12:F2}",
+                DateTime.Now, lat, lon, headingTrue, groundSpeedKts,
+                segIdx, segBearing, pathWidthFeet,
+                nextIsTurn ? 1 : 0, targetLat, targetLon,
+                rawHeadingError, smoothedHeadingError);
+            File.AppendAllText(GuidanceLogPath, line + Environment.NewLine);
+        }
+        catch { /* diagnostic only — never crash guidance for a log failure */ }
     }
 
     public void Dispose()
