@@ -74,6 +74,18 @@ public class UserSettings
         public int TakeoffAssistHeadingToneThreshold { get; set; } = 0; // 0 = Always, 1-5 = degrees threshold
         public bool TakeoffAssistEnableCallouts { get; set; } = true; // Enable speed callouts (80kt, 100kt, V1, rotate)
 
+        /// <summary>
+        /// When true (default), taxi guidance will automatically activate
+        /// Takeoff Assist when the aircraft becomes lined up on the destination
+        /// runway (lineup hysteresis met: heading less than 1 degree off,
+        /// cross-track less than 10 feet). Opt-out — pilots who prefer to engage
+        /// Takeoff Assist manually can disable this in Hand Fly Options.
+        /// One-shot per route: if the pilot disables Takeoff Assist after
+        /// auto-activation and stays lined up, it does not re-engage until the
+        /// next taxi route is loaded.
+        /// </summary>
+        public bool TakeoffAssistAutoActivateOnLineup { get; set; } = true;
+
         // Simulator Settings
         public string SimulatorVersion { get; set; } = "FS2020";
 
@@ -233,6 +245,7 @@ public class UserSettings
             TakeoffAssistLegacyMode = TakeoffAssistLegacyMode,
             TakeoffAssistHeadingToneThreshold = TakeoffAssistHeadingToneThreshold,
             TakeoffAssistEnableCallouts = TakeoffAssistEnableCallouts,
+            TakeoffAssistAutoActivateOnLineup = TakeoffAssistAutoActivateOnLineup,
             SimulatorVersion = SimulatorVersion,
             LastAircraft = LastAircraft,
             GeoNamesApiUsername = GeoNamesApiUsername,
