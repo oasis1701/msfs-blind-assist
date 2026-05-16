@@ -112,7 +112,7 @@ public class TaxiRouter
         }
         else
         {
-            firstTarget = FindNearestNodeOnTaxiwayToTarget(endNodeId, taxiwaySequence[0]);
+            firstTarget = FindNearestNodeOnTaxiwayToTarget(endNodeId, taxiwaySequence[0], distFromFinalDest);
             if (firstTarget == -1) firstTarget = endNodeId;
         }
 
@@ -230,7 +230,7 @@ public class TaxiRouter
             }
             else
             {
-                targetNode = FindNearestNodeOnTaxiwayToTarget(endNodeId, currentTaxiway);
+                targetNode = FindNearestNodeOnTaxiwayToTarget(endNodeId, currentTaxiway, distFromFinalDest);
                 if (targetNode == -1) targetNode = endNodeId;
             }
 
@@ -396,17 +396,23 @@ public class TaxiRouter
     /// component — both shouldn't happen during normal operation but keep
     /// the helper defensive.
     /// </summary>
-    private int FindNearestNodeOnTaxiwayToTarget(int targetNodeId, string taxiwayName)
+    private int FindNearestNodeOnTaxiwayToTarget(
+        int targetNodeId, string taxiwayName,
+        Dictionary<int, double>? precomputedDistFromTarget = null)
     {
         var targetNode = _graph.Nodes[targetNodeId];
         int targetComponent = targetNode.ComponentId;
         int bestNode = -1;
         double bestDist = double.MaxValue;
 
-        // Run Dijkstra once from the destination. Costs are valid for every
-        // node in the same connected component; cross-component nodes are
-        // unreachable and absent from the map.
-        var distFromTarget = ComputeGraphDistancesFrom(targetNodeId);
+        // When the caller has already run Dijkstra-from-target (e.g. the
+        // FindConstrainedPath's hoisted distFromFinalDest for the same
+        // endNodeId), reuse it. Each Dijkstra is ~50 ms on a 2-3k-node
+        // airport graph; on the constrained-routing single-taxiway and
+        // last-step paths this avoids running it 1-2 redundant times per
+        // route build.
+        var distFromTarget = precomputedDistFromTarget
+            ?? ComputeGraphDistancesFrom(targetNodeId);
 
         foreach (var kvp in _graph.Adjacency)
         {
