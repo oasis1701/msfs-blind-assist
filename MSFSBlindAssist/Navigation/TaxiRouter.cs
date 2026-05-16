@@ -504,9 +504,6 @@ public class TaxiRouter
     /// </summary>
     private int FindBestIntersection(int currentNodeId, int finalDestId, string taxiway1, string taxiway2)
     {
-        var currentNode = _graph.Nodes[currentNodeId];
-        var destNode = _graph.Nodes[finalDestId];
-
         var intersections = new List<int>();
         foreach (var kvp in _graph.Adjacency)
         {
@@ -533,17 +530,23 @@ public class TaxiRouter
         if (intersections.Count == 0)
             return -1;
 
+        // Graph-distance lookups from entry and destination. Same motivation as
+        // FindNearestNodeOnTaxiwayToTarget — dead-end candidate intersections
+        // are rejected because their graph cost to the destination round-trips
+        // back through the only neighbour. Computed once per call; cheap.
+        var distFromEntry = ComputeGraphDistancesFrom(currentNodeId);
+        var distFromDest = ComputeGraphDistancesFrom(finalDestId);
+
         int bestNode = -1;
         double bestScore = double.MaxValue;
 
         foreach (int nodeId in intersections)
         {
-            var node = _graph.Nodes[nodeId];
-            double distFromCurrent = TaxiGraph.CalculateDistanceMeters(
-                currentNode.Latitude, currentNode.Longitude, node.Latitude, node.Longitude);
-            double distToDest = TaxiGraph.CalculateDistanceMeters(
-                node.Latitude, node.Longitude, destNode.Latitude, destNode.Longitude);
-            double score = distFromCurrent + distToDest;
+            if (!distFromEntry.TryGetValue(nodeId, out double entryDist))
+                continue; // unreachable from entry
+            if (!distFromDest.TryGetValue(nodeId, out double destDist))
+                continue; // unreachable from destination
+            double score = entryDist + destDist;
 
             if (score < bestScore)
             {
