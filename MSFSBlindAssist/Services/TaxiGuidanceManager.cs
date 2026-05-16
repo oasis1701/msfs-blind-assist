@@ -506,6 +506,98 @@ public class TaxiGuidanceManager : IDisposable
         return true;
     }
 
+    /// <summary>
+    /// Detects the runway under the aircraft using the airport's taxi graph and
+    /// fills in everything needed to seed TakeoffAssistManager's runway reference
+    /// (threshold lat/lon, true and magnetic runway heading, designator, ICAO).
+    /// Mirrors the graph-caching policy of DescribeCurrentLocation: reuses the
+    /// active guidance graph if its ICAO matches, otherwise the Where-Am-I cached
+    /// graph, otherwise builds and caches a fresh graph for this ICAO.
+    ///
+    /// Does NOT mutate any guidance state. Pure query. Caller is responsible for
+    /// gating on `_lastOnGround` (no callsite should ever ask this airborne).
+    /// </summary>
+    /// <param name="dataProvider">Airport data provider for graph rebuilds.</param>
+    /// <param name="icao">Airport ICAO (4-char canonical).</param>
+    /// <param name="lat">Aircraft latitude (degrees).</param>
+    /// <param name="lon">Aircraft longitude (degrees).</param>
+    /// <param name="aircraftHeadingMag">Aircraft magnetic heading (degrees).</param>
+    /// <param name="magVar">Magnetic variation (degrees, east positive).</param>
+    /// <param name="thresholdLat">Out: upwind threshold latitude.</param>
+    /// <param name="thresholdLon">Out: upwind threshold longitude.</param>
+    /// <param name="headingTrue">Out: runway true heading (degrees).</param>
+    /// <param name="headingMag">Out: runway magnetic heading (degrees).</param>
+    /// <param name="runwayId">Out: runway designator (e.g. "27L").</param>
+    /// <param name="airportIcao">Out: airport ICAO (echoes the input).</param>
+    /// <returns>True if a runway was detected; false otherwise.</returns>
+    public bool TryDetectRunwayUnderAircraft(
+        IAirportDataProvider dataProvider,
+        string icao,
+        double lat, double lon, double aircraftHeadingMag, double magVar,
+        out double thresholdLat, out double thresholdLon,
+        out double headingTrue, out double headingMag,
+        out string runwayId, out string airportIcao)
+    {
+        thresholdLat = 0; thresholdLon = 0;
+        headingTrue = 0; headingMag = 0;
+        runwayId = ""; airportIcao = icao ?? "";
+
+        if (string.IsNullOrWhiteSpace(icao)) return false;
+
+        lock (_stateLock)
+        {
+            TaxiGraph? graph = null;
+
+            // Prefer the active guidance graph if it's for this airport
+            if (_graph != null && string.Equals(_icao, icao, StringComparison.OrdinalIgnoreCase))
+                graph = _graph;
+            else if (_whereAmICachedGraph != null &&
+                     string.Equals(_whereAmICachedIcao, icao, StringComparison.OrdinalIgnoreCase))
+                graph = _whereAmICachedGraph;
+
+            if (graph == null)
+            {
+                try
+                {
+                    var paths = dataProvider.GetTaxiPaths(icao) ?? new List<TaxiPath>();
+                    if (paths.Count == 0) return false;
+
+                    var parking = dataProvider.GetParkingSpots(icao) ?? new List<ParkingSpot>();
+                    var runwayStarts = dataProvider.GetRunwayStarts(icao) ?? new List<StartPosition>();
+
+                    graph = TaxiGraph.Build(paths, parking, runwayStarts);
+                    _whereAmICachedGraph = graph;
+                    _whereAmICachedIcao = icao;
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[TaxiGuidanceManager] TryDetectRunwayUnderAircraft graph build failed for {icao}: {ex.Message}");
+                    return false;
+                }
+            }
+
+            // Convert aircraft magnetic heading to true: True = Magnetic + MagVar
+            // (east positive, matching the convention used elsewhere in the codebase
+            // — see TakeoffAssistManager.Toggle()).
+            double aircraftHeadingTrue = aircraftHeadingMag + magVar;
+
+            if (!graph.TryGetRunwayAtPosition(
+                    lat, lon, aircraftHeadingTrue,
+                    out runwayId, out thresholdLat, out thresholdLon, out headingTrue))
+            {
+                return false;
+            }
+
+            // Return the runway's magnetic heading too — TakeoffAssistManager
+            // uses it for the centerline pan comparison.
+            headingMag = headingTrue - magVar;
+            airportIcao = icao;
+
+            return true;
+        }
+    }
+
     public event EventHandler<TaxiGuidanceState>? StateChanged;
 
     public TaxiGuidanceManager(ScreenReaderAnnouncer announcer)
