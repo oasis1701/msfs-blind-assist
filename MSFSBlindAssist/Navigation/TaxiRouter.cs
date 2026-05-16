@@ -58,6 +58,15 @@ public class TaxiRouter
         if (taxiwaySequence == null || taxiwaySequence.Count == 0)
             return FindShortestPath(startNodeId, endNodeId);
 
+        // Precompute graph distances from the final destination once per
+        // FindConstrainedPath run. Used by FindBestIntersection at every
+        // taxiway-transition step to score candidate intersection nodes
+        // by their graph cost to the destination (not Euclidean, which
+        // silently picks dead-ends). Hoisted out of the per-call site
+        // because finalDestId is invariant across the entire run — saves
+        // O(N) Dijkstra runs on long clearances.
+        var distFromFinalDest = ComputeGraphDistancesFrom(endNodeId);
+
         var fullPath = new List<int>();
         int currentNode = startNodeId;
 
@@ -77,7 +86,7 @@ public class TaxiRouter
         int firstBridgeEntryOnSecond = -1;
         if (secondTaxiway != null)
         {
-            firstTarget = FindBestIntersection(startNodeId, endNodeId, taxiwaySequence[0], secondTaxiway);
+            firstTarget = FindBestIntersection(startNodeId, endNodeId, distFromFinalDest, taxiwaySequence[0], secondTaxiway);
             if (firstTarget == -1)
             {
                 // Same fallback as the inner loop: try a runway bridge before
@@ -103,7 +112,7 @@ public class TaxiRouter
         }
         else
         {
-            firstTarget = FindNearestNodeOnTaxiwayToTarget(endNodeId, taxiwaySequence[0]);
+            firstTarget = FindNearestNodeOnTaxiwayToTarget(endNodeId, taxiwaySequence[0], distFromFinalDest);
             if (firstTarget == -1) firstTarget = endNodeId;
         }
 
@@ -191,7 +200,7 @@ public class TaxiRouter
             int bridgeEntryOnNext = -1;
             if (nextTaxiway != null)
             {
-                targetNode = FindBestIntersection(currentNode, endNodeId, currentTaxiway, nextTaxiway);
+                targetNode = FindBestIntersection(currentNode, endNodeId, distFromFinalDest, currentTaxiway, nextTaxiway);
                 if (targetNode == -1)
                 {
                     // No shared node. Common cause: an ATC clearance like
@@ -221,7 +230,7 @@ public class TaxiRouter
             }
             else
             {
-                targetNode = FindNearestNodeOnTaxiwayToTarget(endNodeId, currentTaxiway);
+                targetNode = FindNearestNodeOnTaxiwayToTarget(endNodeId, currentTaxiway, distFromFinalDest);
                 if (targetNode == -1) targetNode = endNodeId;
             }
 
@@ -374,14 +383,36 @@ public class TaxiRouter
     }
 
     /// <summary>
-    /// Finds the nearest node on a taxiway to a target destination node.
+    /// Finds the node on a named taxiway whose shortest graph path to the
+    /// destination is minimal. Uses Dijkstra cost-from-destination rather
+    /// than Euclidean distance to dodge the dead-end-endpoint trap (KDEN
+    /// M4 northern endpoint sits closer to gate A 60 in a straight line,
+    /// but is a graph dead-end: the path forward from it round-trips back
+    /// down M4 plus the real route around the airport, ~1 km longer than
+    /// picking the southern endpoint).
+    ///
+    /// Falls back to Euclidean distance only when the target is unreachable
+    /// in the graph or no taxiway node sits in the destination's connected
+    /// component — both shouldn't happen during normal operation but keep
+    /// the helper defensive.
     /// </summary>
-    private int FindNearestNodeOnTaxiwayToTarget(int targetNodeId, string taxiwayName)
+    private int FindNearestNodeOnTaxiwayToTarget(
+        int targetNodeId, string taxiwayName,
+        Dictionary<int, double>? precomputedDistFromTarget = null)
     {
         var targetNode = _graph.Nodes[targetNodeId];
         int targetComponent = targetNode.ComponentId;
         int bestNode = -1;
         double bestDist = double.MaxValue;
+
+        // When the caller has already run Dijkstra-from-target (e.g. the
+        // FindConstrainedPath's hoisted distFromFinalDest for the same
+        // endNodeId), reuse it. Each Dijkstra is ~50 ms on a 2-3k-node
+        // airport graph; on the constrained-routing single-taxiway and
+        // last-step paths this avoids running it 1-2 redundant times per
+        // route build.
+        var distFromTarget = precomputedDistFromTarget
+            ?? ComputeGraphDistancesFrom(targetNodeId);
 
         foreach (var kvp in _graph.Adjacency)
         {
@@ -394,21 +425,47 @@ public class TaxiRouter
             var node = _graph.Nodes[nodeId];
             if (node.ComponentId != targetComponent) continue;
 
-            double dist = TaxiGraph.CalculateDistanceMeters(
-                targetNode.Latitude, targetNode.Longitude, node.Latitude, node.Longitude);
+            if (!distFromTarget.TryGetValue(nodeId, out double gDist))
+                continue; // unreachable from destination (shouldn't happen given component filter, but defensive)
 
-            if (dist < bestDist)
+            if (gDist < bestDist)
             {
-                bestDist = dist;
+                bestDist = gDist;
                 bestNode = nodeId;
+            }
+        }
+
+        // Defensive fallback: if Dijkstra found no taxiway node (e.g., the
+        // taxiway exists in the graph but every one of its nodes is across
+        // a component split that the ComponentId filter missed), retry with
+        // Euclidean. This is the pre-fix behaviour and keeps the old "any
+        // answer is better than no answer" property on malformed graphs.
+        if (bestNode == -1)
+        {
+            foreach (var kvp in _graph.Adjacency)
+            {
+                int nodeId = kvp.Key;
+                bool onTaxiway = kvp.Value.Any(e =>
+                    e.TaxiwayName.Equals(taxiwayName, StringComparison.OrdinalIgnoreCase));
+                if (!onTaxiway) continue;
+
+                var node = _graph.Nodes[nodeId];
+                if (node.ComponentId != targetComponent) continue;
+
+                double euclid = TaxiGraph.CalculateDistanceMeters(
+                    targetNode.Latitude, targetNode.Longitude, node.Latitude, node.Longitude);
+
+                if (euclid < bestDist)
+                {
+                    bestDist = euclid;
+                    bestNode = nodeId;
+                }
             }
         }
 
         return bestNode;
     }
 
-    /// <summary>
-    /// Finds the best intersection node between two taxiways.
     /// <summary>
     /// When two consecutive taxiways in an ATC clearance don't share a graph
     /// node (typically because they sit on opposite sides of a runway crossing —
@@ -456,13 +513,18 @@ public class TaxiRouter
         return (bestExit, bestEntry);
     }
 
-    /// Picks the one that minimizes total path (current→intersection + intersection→dest).
+    /// <summary>
+    /// Finds the best intersection node between two taxiways.
+    /// Picks the candidate that minimizes total GRAPH distance:
+    /// dist_from_entry[candidate] + dist_from_destination[candidate].
+    /// Uses Dijkstra-based costs (precomputed in FindConstrainedPath for the
+    /// destination side; computed per call for the entry side) rather than
+    /// Euclidean — see FindNearestNodeOnTaxiwayToTarget for why (dead-end
+    /// intersection nodes that are closer in straight-line distance to
+    /// either endpoint can require a long graph backtrack to escape).
     /// </summary>
-    private int FindBestIntersection(int currentNodeId, int finalDestId, string taxiway1, string taxiway2)
+    private int FindBestIntersection(int currentNodeId, int finalDestId, Dictionary<int, double> distFromFinalDest, string taxiway1, string taxiway2)
     {
-        var currentNode = _graph.Nodes[currentNodeId];
-        var destNode = _graph.Nodes[finalDestId];
-
         var intersections = new List<int>();
         foreach (var kvp in _graph.Adjacency)
         {
@@ -489,17 +551,24 @@ public class TaxiRouter
         if (intersections.Count == 0)
             return -1;
 
+        // Graph-distance lookup from entry. Same motivation as
+        // FindNearestNodeOnTaxiwayToTarget — dead-end candidate intersections
+        // are rejected because their graph cost round-trips back through the
+        // only neighbour. The destination-side Dijkstra is precomputed once
+        // per FindConstrainedPath run and passed in via distFromFinalDest;
+        // the entry side advances along the route, so it's per-call here.
+        var distFromEntry = ComputeGraphDistancesFrom(currentNodeId);
+
         int bestNode = -1;
         double bestScore = double.MaxValue;
 
         foreach (int nodeId in intersections)
         {
-            var node = _graph.Nodes[nodeId];
-            double distFromCurrent = TaxiGraph.CalculateDistanceMeters(
-                currentNode.Latitude, currentNode.Longitude, node.Latitude, node.Longitude);
-            double distToDest = TaxiGraph.CalculateDistanceMeters(
-                node.Latitude, node.Longitude, destNode.Latitude, destNode.Longitude);
-            double score = distFromCurrent + distToDest;
+            if (!distFromEntry.TryGetValue(nodeId, out double entryDist))
+                continue; // unreachable from entry
+            if (!distFromFinalDest.TryGetValue(nodeId, out double destDist))
+                continue; // unreachable from destination
+            double score = entryDist + destDist;
 
             if (score < bestScore)
             {
@@ -508,6 +577,12 @@ public class TaxiRouter
             }
         }
 
+        // Returning -1 when every candidate is graph-unreachable from
+        // entry or destination is intentional — unlike FindNearestNodeOnTaxiwayToTarget,
+        // we do NOT fall back to Euclidean here. The old Euclidean picker
+        // would return a node A* then couldn't reach, producing a silently
+        // wrong constrained path. Callers' -1 path (FindRunwayBridge then
+        // shortest-path fallback) is the correct recovery.
         return bestNode;
     }
 
@@ -771,6 +846,64 @@ public class TaxiRouter
         }
 
         return visited;
+    }
+
+    /// <summary>
+    /// Single-source shortest-paths via Dijkstra. Returns a map of node IDs to
+    /// the shortest graph distance (in metres) from <paramref name="sourceId"/>
+    /// to that node. Unreachable nodes are absent from the map; the source
+    /// itself has cost 0. The graph is treated as undirected because every
+    /// taxi_path is inserted as two reverse edges in TaxiGraph.Build, so
+    /// forward Dijkstra from the destination yields cost-to-destination for
+    /// every node in the same connected component.
+    ///
+    /// Used by FindNearestNodeOnTaxiwayToTarget to pick the taxiway exit
+    /// that actually leads to the destination by the shortest graph path,
+    /// not by straight-line distance. The Euclidean version silently picked
+    /// dead-end endpoints (KDEN M4 northern endpoint: closer to gate A 60
+    /// in a straight line, but a graph dead-end requiring 1+ km of backtrack
+    /// to escape).
+    ///
+    /// Cost: O((V + E) log V). Typical airport graph: 2k-3k nodes, 5k-8k
+    /// edges — runs in well under 50 ms on warm CPU. Called once per recalc,
+    /// so the cost is dwarfed by the recalc cooldown (15 s).
+    /// </summary>
+    private Dictionary<int, double> ComputeGraphDistancesFrom(int sourceId)
+    {
+        var dist = new Dictionary<int, double>();
+        if (!_graph.Nodes.ContainsKey(sourceId)) return dist;
+
+        var visited = new HashSet<int>();
+        var pq = new PriorityQueue<int, double>();
+        dist[sourceId] = 0.0;
+        pq.Enqueue(sourceId, 0.0);
+
+        int iterations = 0;
+        const int MAX_ITERATIONS = 200000;
+
+        while (pq.Count > 0 && iterations < MAX_ITERATIONS)
+        {
+            iterations++;
+            int current = pq.Dequeue();
+            if (!visited.Add(current)) continue;
+
+            double currentDist = dist[current];
+
+            if (!_graph.Adjacency.TryGetValue(current, out var edges)) continue;
+
+            foreach (var edge in edges)
+            {
+                if (visited.Contains(edge.ToNodeId)) continue;
+                double tentative = currentDist + edge.DistanceMeters;
+                if (tentative < dist.GetValueOrDefault(edge.ToNodeId, double.MaxValue))
+                {
+                    dist[edge.ToNodeId] = tentative;
+                    pq.Enqueue(edge.ToNodeId, tentative);
+                }
+            }
+        }
+
+        return dist;
     }
 
     /// <summary>
