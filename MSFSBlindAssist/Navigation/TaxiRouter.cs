@@ -774,6 +774,64 @@ public class TaxiRouter
     }
 
     /// <summary>
+    /// Single-source shortest-paths via Dijkstra. Returns a map of node IDs to
+    /// the shortest graph distance (in metres) from <paramref name="sourceId"/>
+    /// to that node. Unreachable nodes are absent from the map; the source
+    /// itself has cost 0. The graph is treated as undirected because every
+    /// taxi_path is inserted as two reverse edges in TaxiGraph.Build, so
+    /// forward Dijkstra from the destination yields cost-to-destination for
+    /// every node in the same connected component.
+    ///
+    /// Used by FindNearestNodeOnTaxiwayToTarget to pick the taxiway exit
+    /// that actually leads to the destination by the shortest graph path,
+    /// not by straight-line distance. The Euclidean version silently picked
+    /// dead-end endpoints (KDEN M4 northern endpoint: closer to gate A 60
+    /// in a straight line, but a graph dead-end requiring 1+ km of backtrack
+    /// to escape).
+    ///
+    /// Cost: O((V + E) log V). Typical airport graph: 2k-3k nodes, 5k-8k
+    /// edges — runs in well under 50 ms on warm CPU. Called once per recalc,
+    /// so the cost is dwarfed by the recalc cooldown (15 s).
+    /// </summary>
+    private Dictionary<int, double> ComputeGraphDistancesFrom(int sourceId)
+    {
+        var dist = new Dictionary<int, double>();
+        if (!_graph.Nodes.ContainsKey(sourceId)) return dist;
+
+        var visited = new HashSet<int>();
+        var pq = new PriorityQueue<int, double>();
+        dist[sourceId] = 0.0;
+        pq.Enqueue(sourceId, 0.0);
+
+        int iterations = 0;
+        const int MAX_ITERATIONS = 200000;
+
+        while (pq.Count > 0 && iterations < MAX_ITERATIONS)
+        {
+            iterations++;
+            int current = pq.Dequeue();
+            if (!visited.Add(current)) continue;
+
+            double currentDist = dist[current];
+
+            if (!_graph.Adjacency.TryGetValue(current, out var edges)) continue;
+
+            foreach (var edge in edges)
+            {
+                if (visited.Contains(edge.ToNodeId)) continue;
+                double tentative = currentDist + edge.DistanceMeters;
+                if (tentative < dist.GetValueOrDefault(edge.ToNodeId, double.MaxValue))
+                {
+                    dist[edge.ToNodeId] = tentative;
+                    pq.Enqueue(edge.ToNodeId, tentative);
+                }
+            }
+        }
+
+        return dist;
+    }
+
+    /// <summary>
     /// A* search with optional taxiway preference (soft constraint).
     /// When preferredTaxiway is set, non-preferred edges cost 10x more.
     /// </summary>
