@@ -241,6 +241,24 @@ public partial class PMDG777CDUForm : Form
                 return;
         }
 
+        // FMCCOMM and HOLD must go through TransmitClientEvent with a complete
+        // single-click flag, NOT the CDA button-down path. The CDA path
+        // (param=1, never released) opens the page on the first press but the
+        // PMDG SDK won't re-trigger the same page key without a release edge —
+        // so after the user navigates away and presses FMCCOMM/HOLD again it
+        // is silently dead (no sound, page never refreshes). This was the
+        // original issue #46 behavior; a CDA-only "fix" (commit f55d157)
+        // regressed it because it was only verified opening the page once.
+        // MOUSE_FLAG_LEFTSINGLE delivers a self-contained click each call so
+        // repeated presses always register. Other CDU keys keep the faster
+        // CDA path (a stray double-press there would double-enter text).
+        if (eventSuffix == "FMCCOMM" || eventSuffix == "HOLD")
+        {
+            const uint MOUSE_FLAG_LEFTSINGLE = 0x20000000;
+            _dataManager.SendEventViaTransmit(eventName, (uint)eventId, MOUSE_FLAG_LEFTSINGLE);
+            return;
+        }
+
         _dataManager.SendEvent(eventName, (uint)eventId, 1);
     }
 
