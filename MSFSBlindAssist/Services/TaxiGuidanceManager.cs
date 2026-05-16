@@ -251,6 +251,15 @@ public class TaxiGuidanceManager : IDisposable
     private double _lineupTargetLat, _lineupTargetLon;
     private double _lineupHeadingTrue, _lineupHeadingMag;
     private bool _lineupAnnouncedAligned = false;
+    /// <summary>
+    /// One-shot latch for auto-activate. Set to true when
+    /// RequestTakeoffAssistAutoActivate is raised; reset to false on every
+    /// LoadRoute and StopGuidance. Prevents re-fire on drift-and-re-align,
+    /// which is intentional — if the pilot manually deactivates Takeoff
+    /// Assist after auto-activation, they should not be surprised by it
+    /// coming back on after a small drift.
+    /// </summary>
+    private bool _autoActivateFired = false;
     // Thresholds for the lineup-pulse cue: when the pilot is essentially
     // stopped (≤ MAX_GS_KTS) AND still meaningfully misaligned (heading or
     // cross-track), the steering tone PULSES on/off instead of playing
@@ -600,6 +609,15 @@ public class TaxiGuidanceManager : IDisposable
 
     public event EventHandler<TaxiGuidanceState>? StateChanged;
 
+    /// <summary>
+    /// Fires once per route when the aircraft becomes lined up on the
+    /// destination runway (lineup hysteresis met). Subscribed by MainForm
+    /// to auto-activate Takeoff Assist when the user's setting permits.
+    /// One-shot — gated by _autoActivateFired, which is reset on LoadRoute
+    /// and StopGuidance.
+    /// </summary>
+    public event EventHandler<TakeoffAssistAutoActivateEventArgs>? RequestTakeoffAssistAutoActivate;
+
     public TaxiGuidanceManager(ScreenReaderAnnouncer announcer)
     {
         _announcer = announcer;
@@ -666,6 +684,11 @@ public class TaxiGuidanceManager : IDisposable
                 _lineupHeadingTrue = 0;
                 _hasLineupTarget = false;
             }
+
+            // Reset the one-shot auto-activate latch so this new route can
+            // fire RequestTakeoffAssistAutoActivate on its first lineup-aligned
+            // transition.
+            _autoActivateFired = false;
 
             // Use pre-built graph if provided (avoids a 200-500ms rebuild stall at large
             // airports when the form already ran BuildAsync). Otherwise build from the DB —
@@ -2871,6 +2894,29 @@ public class TaxiGuidanceManager : IDisposable
                 // from the threshold, aligned), so taxi guidance and teleport
                 // converge on the same final state.
                 _announcer.AnnounceImmediate($"Lined up, {_destinationName}. Hold position.");
+
+                // Fire auto-activate request — ONE-SHOT per route, gated by
+                // _isRunwayLineup (gates lineup-aligned auto-activate to
+                // runway destinations, not gates). MainForm's handler decides
+                // whether to actually toggle based on the user setting and
+                // current takeoff-assist state.
+                if (_isRunwayLineup && !_autoActivateFired)
+                {
+                    _autoActivateFired = true;
+                    // Strip "Runway " prefix from _destinationName so the
+                    // event payload's RunwayId is just the designator,
+                    // matching what TakeoffAssistManager.SetRunwayReference
+                    // expects (e.g. "27L", not "Runway 27L").
+                    string rwyId = _destinationName ?? "";
+                    if (rwyId.StartsWith("Runway ", StringComparison.OrdinalIgnoreCase))
+                        rwyId = rwyId.Substring(7).Trim();
+                    RequestTakeoffAssistAutoActivate?.Invoke(this,
+                        new TakeoffAssistAutoActivateEventArgs
+                        {
+                            RunwayId = rwyId,
+                            AirportIcao = _icao
+                        });
+                }
             }
             else if (_lineupAnnouncedAligned && !stillAligned)
             {
@@ -3241,6 +3287,7 @@ public class TaxiGuidanceManager : IDisposable
         _lastAnnouncedGsBucket = -1;
         _hasLineupTarget = false;
         _lineupAnnouncedAligned = false;
+        _autoActivateFired = false;
         // Reset all announcement latches — defense in depth; LoadRoute resets them too
         // but StopGuidance can be called independently (hotkey, takeoff-assist takeover).
         _approachAnnounced = false;
@@ -3715,5 +3762,17 @@ public class TaxiGuidanceManager : IDisposable
         _steeringTone.Dispose();
         GC.SuppressFinalize(this);
     }
+}
+
+/// <summary>
+/// Payload for TaxiGuidanceManager.RequestTakeoffAssistAutoActivate.
+/// Identifies the runway the aircraft has just lined up on so the handler
+/// can announce / log; the actual reference seeding is done by the
+/// MainForm POSITION_FOR_TAKEOFF_ASSIST handler reading TryGetRunwayLineupReference.
+/// </summary>
+public class TakeoffAssistAutoActivateEventArgs : EventArgs
+{
+    public required string RunwayId { get; init; }
+    public required string AirportIcao { get; init; }
 }
 
