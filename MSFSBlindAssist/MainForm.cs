@@ -589,13 +589,21 @@ public partial class MainForm : Form
             {
                 var pos = e.PositionData.Value;
 
-                // If taxi guidance has an active runway lineup reference AND takeoff assist
-                // doesn't already have a reference, seed it from taxi guidance. This is the
-                // common case: pilot taxied to the runway via taxi guidance, then pressed
-                // takeoff assist. Without this they'd get "no runway selected" despite
-                // literally being lined up on the runway.
+                // If takeoff assist isn't already active AND doesn't already have a
+                // reference, try to seed one. Probe order:
+                //   (1) taxi-guidance lineup reference (the common case — pilot taxied
+                //       to the runway via taxi guidance)
+                //   (2) under-aircraft runway detection (pilot taxied manually; the
+                //       runway centerline geometry is available from the airport's
+                //       taxi graph, so we can identify the runway from position +
+                //       heading alone — same geometry Where-Am-I uses)
+                //   (3) (no fallback here — TakeoffAssistManager.Toggle's no-reference
+                //       branch will create a synthetic centerline from current
+                //       position and heading)
                 if (!takeoffAssistManager.IsActive && !takeoffAssistManager.HasRunwayReference)
                 {
+                    // (1) Taxi-guidance lineup
+                    bool seeded = false;
                     if (taxiGuidanceManager.TryGetRunwayLineupReference(
                         out double rwyLat, out double rwyLon,
                         out double rwyHdgTrue, out double rwyHdgMag,
@@ -605,6 +613,31 @@ public partial class MainForm : Form
                         {
                             takeoffAssistManager.SetRunwayReference(
                                 rwyLat, rwyLon, rwyHdgTrue, rwyHdgMag, rwyId, rwyIcao);
+                            seeded = true;
+                        }
+                    }
+
+                    // (2) Under-aircraft detection — only when on the ground. Same
+                    //     ICAO-resolution pattern as Where-Am-I (canonical 4-char
+                    //     ICAOs only; the 3-char idents the DB also returns are for
+                    //     fields the taxi-graph layer can't load).
+                    if (!seeded && _lastOnGround)
+                    {
+                        var nearby = airportDataProvider
+                            .GetNearbyAirportICAOs(pos.Latitude, pos.Longitude, 5.0)
+                            .Where(c => c != null && c.Length == 4)
+                            .ToList();
+                        if (nearby.Count > 0 &&
+                            taxiGuidanceManager.TryDetectRunwayUnderAircraft(
+                                airportDataProvider, nearby[0],
+                                pos.Latitude, pos.Longitude,
+                                pos.HeadingMagnetic, pos.MagneticVariation,
+                                out double detLat, out double detLon,
+                                out double detHdgTrue, out double detHdgMag,
+                                out string detRwyId, out string detIcao))
+                        {
+                            takeoffAssistManager.SetRunwayReference(
+                                detLat, detLon, detHdgTrue, detHdgMag, detRwyId, detIcao);
                         }
                     }
                 }
