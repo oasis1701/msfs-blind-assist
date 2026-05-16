@@ -622,7 +622,7 @@ public partial class MainForm : Form
                     //     ICAO-resolution pattern as Where-Am-I (canonical 4-char
                     //     ICAOs only; the 3-char idents the DB also returns are for
                     //     fields the taxi-graph layer can't load).
-                    if (!seeded && _lastOnGround)
+                    if (!seeded && _lastOnGround && airportDataProvider != null)
                     {
                         var nearby = airportDataProvider
                             .GetNearbyAirportICAOs(pos.Latitude, pos.Longitude, 5.0)
@@ -2743,6 +2743,10 @@ public partial class MainForm : Form
         if (!SettingsManager.Current.TakeoffAssistAutoActivateOnLineup) return;
         if (takeoffAssistManager.IsActive) return;
         if (!_lastOnGround) return;
+
+        // e.RunwayId / e.AirportIcao are informational only; the actual
+        // reference seeding goes through TryGetRunwayLineupReference in the
+        // POSITION_FOR_TAKEOFF_ASSIST reply handler.
 
         // Tell the pilot WHY takeoff assist is coming on — they didn't press
         // a key, and a sudden system-initiated activation needs a verbal
