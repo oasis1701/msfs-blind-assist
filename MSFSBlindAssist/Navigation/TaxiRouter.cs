@@ -374,7 +374,18 @@ public class TaxiRouter
     }
 
     /// <summary>
-    /// Finds the nearest node on a taxiway to a target destination node.
+    /// Finds the node on a named taxiway whose shortest graph path to the
+    /// destination is minimal. Uses Dijkstra cost-from-destination rather
+    /// than Euclidean distance to dodge the dead-end-endpoint trap (KDEN
+    /// M4 northern endpoint sits closer to gate A 60 in a straight line,
+    /// but is a graph dead-end: the path forward from it round-trips back
+    /// down M4 plus the real route around the airport, ~1 km longer than
+    /// picking the southern endpoint).
+    ///
+    /// Falls back to Euclidean distance only when the target is unreachable
+    /// in the graph or no taxiway node sits in the destination's connected
+    /// component — both shouldn't happen during normal operation but keep
+    /// the helper defensive.
     /// </summary>
     private int FindNearestNodeOnTaxiwayToTarget(int targetNodeId, string taxiwayName)
     {
@@ -382,6 +393,11 @@ public class TaxiRouter
         int targetComponent = targetNode.ComponentId;
         int bestNode = -1;
         double bestDist = double.MaxValue;
+
+        // Run Dijkstra once from the destination. Costs are valid for every
+        // node in the same connected component; cross-component nodes are
+        // unreachable and absent from the map.
+        var distFromTarget = ComputeGraphDistancesFrom(targetNodeId);
 
         foreach (var kvp in _graph.Adjacency)
         {
@@ -394,13 +410,41 @@ public class TaxiRouter
             var node = _graph.Nodes[nodeId];
             if (node.ComponentId != targetComponent) continue;
 
-            double dist = TaxiGraph.CalculateDistanceMeters(
-                targetNode.Latitude, targetNode.Longitude, node.Latitude, node.Longitude);
+            if (!distFromTarget.TryGetValue(nodeId, out double gDist))
+                continue; // unreachable from destination (shouldn't happen given component filter, but defensive)
 
-            if (dist < bestDist)
+            if (gDist < bestDist)
             {
-                bestDist = dist;
+                bestDist = gDist;
                 bestNode = nodeId;
+            }
+        }
+
+        // Defensive fallback: if Dijkstra found no taxiway node (e.g., the
+        // taxiway exists in the graph but every one of its nodes is across
+        // a component split that the ComponentId filter missed), retry with
+        // Euclidean. This is the pre-fix behaviour and keeps the old "any
+        // answer is better than no answer" property on malformed graphs.
+        if (bestNode == -1)
+        {
+            foreach (var kvp in _graph.Adjacency)
+            {
+                int nodeId = kvp.Key;
+                bool onTaxiway = kvp.Value.Any(e =>
+                    e.TaxiwayName.Equals(taxiwayName, StringComparison.OrdinalIgnoreCase));
+                if (!onTaxiway) continue;
+
+                var node = _graph.Nodes[nodeId];
+                if (node.ComponentId != targetComponent) continue;
+
+                double euclid = TaxiGraph.CalculateDistanceMeters(
+                    targetNode.Latitude, targetNode.Longitude, node.Latitude, node.Longitude);
+
+                if (euclid < bestDist)
+                {
+                    bestDist = euclid;
+                    bestNode = nodeId;
+                }
             }
         }
 
