@@ -1724,21 +1724,68 @@ public class TaxiGuidanceManager : IDisposable
             return;
         }
 
-        // If the constrained recalc collapsed to shortest path AND the diversion
-        // is large relative to what's left of the original route, prefer to keep
-        // the current route and quietly warn — a wildly different shortest path
-        // is almost always wrong (tower cleared a specific route for a reason).
-        if (_route != null && !string.IsNullOrEmpty(newRoute.ConstrainedFallbackReason))
+        // Post-recalc sanity gate. Two failure modes are rejected here:
+        //
+        //  A. Length blow-up: the new route is dramatically longer than what
+        //     the aircraft was about to taxi anyway. This catches the
+        //     constrained-router-picks-dead-end-exit bug (KDEN gate A 60 via
+        //     M4: recalc produced a 2960 m loop when the remaining route was
+        //     ~200 m). Previously gated on ConstrainedFallbackReason because
+        //     a successful-but-bad constrained route slipped through; now
+        //     gated only on length + a heading sanity check, so the same
+        //     class of failure can no longer hide behind the fallback flag.
+        //
+        //  B. Reverse-from-the-start: the new route's first segment points
+        //     opposite the straight-line bearing to the destination. A real
+        //     recovery route never starts by moving away from where it's
+        //     going (a legitimate detour reaches a junction and turns), so
+        //     a first-segment bearing within ±60° of the *opposite* of the
+        //     destination bearing is a clear router bug — the dead-end
+        //     backtrack signature.
+        //
+        // Either guard, on its own, would have caught the KDEN bug. Both
+        // present together produces a high-precision gate: a long recalc is
+        // accepted as long as it at least heads in the right general
+        // direction (i.e., the pilot really has wandered far off course),
+        // and a backwards recalc is rejected even if its total length is
+        // similar to the old route.
+        if (_route != null && newRoute.Segments.Count > 0)
         {
             double oldRemaining = 0;
             for (int i = _currentSegmentIndex; i < _route.Segments.Count; i++)
                 oldRemaining += _route.Segments[i].DistanceMeters;
-            // Threshold: if recalc is >2x the straight-line remaining distance, it's
-            // almost certainly routing around the world. Keep the old route.
-            if (oldRemaining > 0 && newRoute.TotalDistanceMeters > oldRemaining * 2.0 + 500.0)
+
+            // --- Indicator A: length blow-up ---
+            bool lengthBlowUp = oldRemaining > 0
+                && newRoute.TotalDistanceMeters > oldRemaining * 2.0 + 500.0;
+
+            // --- Indicator B: first segment heads away from destination ---
+            // Bearing of the new route's first segment (true degrees) vs the
+            // straight-line bearing from the aircraft's current position to
+            // the destination. A difference of ≥ 120° means the route is
+            // starting by moving away from the destination.
+            bool firstSegHeadsBackwards = false;
+            if (_destinationNodeId != 0 && _graph != null &&
+                _graph.Nodes.TryGetValue(_destinationNodeId, out var destNodeForBrg))
             {
+                double bearingToDest = NavigationCalculator.CalculateBearing(
+                    lat, lon, destNodeForBrg.Latitude, destNodeForBrg.Longitude);
+                double firstSegBearing = newRoute.Segments[0].BearingDegrees;
+                double delta = Math.Abs(NormalizeAngle(firstSegBearing - bearingToDest));
+                firstSegHeadsBackwards = delta > 120.0;
+            }
+
+            // Reject if EITHER indicator fires. Either condition alone is a
+            // strong signal of router malfunction; requiring both would let
+            // the KDEN case through (length blew up cleanly, first-seg
+            // delta was ~144° which is over 120°, both fire here).
+            if (lengthBlowUp || firstSegHeadsBackwards)
+            {
+                string reasonStr = !string.IsNullOrEmpty(newRoute.ConstrainedFallbackReason)
+                    ? newRoute.ConstrainedFallbackReason
+                    : (lengthBlowUp ? "recalculated route too long" : "recalculated route heads backwards");
                 _announcer.AnnounceImmediate(
-                    $"Off route. Could not follow clearance. {newRoute.ConstrainedFallbackReason}. Continuing on original route.");
+                    $"Off route. Could not follow clearance. {reasonStr}. Continuing on original route.");
                 return;
             }
         }
