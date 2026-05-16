@@ -3597,6 +3597,9 @@ public class TaxiGuidanceManager : IDisposable
         bool nextIsTurn, double targetLat, double targetLon,
         double rawHeadingError, double smoothedHeadingError)
     {
+        // UTC for rate-limit math (monotonic, immune to DST / clock-change
+        // discontinuities); DateTime.Now is used below for the human-readable
+        // printed timestamp because users reading the file expect local time.
         var now = DateTime.UtcNow;
         if ((now - _lastGuidanceLogTime).TotalMilliseconds < GUIDANCE_LOG_INTERVAL_MS) return;
         _lastGuidanceLogTime = now;
