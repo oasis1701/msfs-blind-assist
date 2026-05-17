@@ -3035,7 +3035,8 @@ public partial class MainForm : Form
             currentSettings.TaxiGuidanceInvertSteeringTone,
             currentSettings.TaxiGuidanceHardPanTone,
             currentSettings.TaxiGuidanceAnnounceCrossings,
-            currentSettings.TaxiGuidanceGroundSpeedAnnounceInterval))
+            currentSettings.TaxiGuidanceGroundSpeedAnnounceInterval,
+            currentSettings.GroundTrafficUseMetres))
         {
             if (settingsForm.ShowDialog(this) == DialogResult.OK)
             {
@@ -3045,6 +3046,7 @@ public partial class MainForm : Form
                 currentSettings.TaxiGuidanceHardPanTone = settingsForm.HardPanSteeringTone;
                 currentSettings.TaxiGuidanceAnnounceCrossings = settingsForm.AnnounceCrossings;
                 currentSettings.TaxiGuidanceGroundSpeedAnnounceInterval = settingsForm.GroundSpeedAnnounceInterval;
+                currentSettings.GroundTrafficUseMetres = settingsForm.GroundTrafficUseMetres;
                 SettingsManager.Save();
 
                 statusLabel.Text = "Taxi guidance options saved successfully";

@@ -269,12 +269,11 @@ Active during normal taxiing, lineup, and the takeoff roll — complements the t
 
 ### Speed-aware directives
 
-The user principle: only fire an action directive when actually needed. Telling a pilot already at 5 kt to "slow down" is noise; telling a stopped pilot to "stop" is patronising. The pattern is applied to every directive suffix:
+Most action directives ("Slow down.", "Stop.") fire **unconditionally** alongside the distance callout — the pilot needs the action cue regardless of current speed, and a stopped-in-zone fallback fires "Stop." when the aircraft has parked between the slow-down and stop tiers. The one remaining speed-aware suffix:
 
-- **Hold-short at 150 ft → "Slow down."** suffix only added if `_lastGroundSpeedKts > 10` kt (`SLOW_DOWN_GS_THRESHOLD_KTS`).
-- **Hold-short at 50 ft → "Stop."** suffix only added if `_lastGroundSpeedKts > 1` kt (`STOP_GS_THRESHOLD_KTS`).
-- **Gate countdown at 10 ft → "Stop."** suffix only added if `_lastGroundSpeedKts > 1` kt.
-- The base distance callout always fires (e.g. `"Hold short runway 13 Left in 150 feet."`) — only the action verb is conditional.
+- **Rollout runway-end at 500 ft → "Slow down."** suffix only added if `groundSpeedKts > ROLLOUT_TAXI_GS_KTS` (30 kt). Below taxi speed the directive is noise.
+
+Hold-short (slow-down + stop tiers), parking-arrival ("10 feet. Stop."), and the rollout 100 ft "Stop" callout all fire their action suffix unconditionally — even when the aircraft is already at low / zero ground speed. The previous speed gating tended to leave blind pilots without confirmation of the required action; making the action suffix unconditional matches the safety-critical nature of those callouts. The base distance callout always fires (e.g. `"Hold short runway 13 Left in 150 feet."`) — only the rollout 500 ft "Slow down" remains conditional.
 
 **The lineup tone itself is intentionally NOT speed-dependent.** The user's principle: alignment cues must work regardless of how slowly you're maneuvering. The runway-lineup tone (silent 0.5° / activation 1° / max-pan 15°) and the "Lined up" announcement fire purely on heading + cross-track error, never gated on ground speed. The pulse-mode cue (`SetPulse(true)` at ≤3 kt + ≥5° error) is an *extra* "you're stopped and stuck" signal, not a substitute for the always-on tone.
 
@@ -389,7 +388,7 @@ Before touchdown (during cruise or descent), the pilot picks a runway-exit taxiw
 
    - **Overshoot retarget.** If the aircraft has rolled past the chosen exit by ≥ 100 ft (`ROLLOUT_OVERSHOOT_FT`) along the runway centerline without starting the turn, `TaxiGuidanceManager` scans the precomputed exit list for the next downfield exit and `LoadRoute`s to it in place via `RetargetLandingExit`. Approach callouts re-arm for the new exit. Announcement: *"Missed taxiway A6. Retargeting taxiway A7, N feet ahead."* If no downfield exit remains, `EnterRunwayEndCountdown` clears the route (steering tone silent, no recalc) and announces *"Missed last exit on runway X."* before handing off to the runway-end countdown described below.
 
-   - **Runway-end countdown.** When the overshoot path finds no downfield exit (or the retarget itself fails), state stays in `LandingRollout` and `UpdateRunwayEndCountdown` drives three voice callouts as the aircraft approaches the physical end of the runway: *"Runway end in 1500 feet."* / *"Runway end in 500 feet. Slow down."* (suffix suppressed when GS ≤ 30 kt) / *"Runway end in 100 feet. Stop."* (suffix suppressed when GS ≤ 1 kt). Tone stays silent — the pilot is on rudder/brakes alone. Transition to `Taxiing` (with `_route = null` — no recalc target) when GS drops below `ROLLOUT_NO_EXIT_STOPPED_GS_KTS = 3 kt` or heading deviates ≥ 15° (backtaxi turn). Replaces the previous "full silence" behavior so a blind pilot rolling toward the end of an active runway gets real braking information instead of being left to query Where-Am-I repeatedly.
+   - **Runway-end countdown.** When the overshoot path finds no downfield exit (or the retarget itself fails), state stays in `LandingRollout` and `UpdateRunwayEndCountdown` drives three voice callouts as the aircraft approaches the physical end of the runway: *"Runway end in 1500 feet."* / *"Runway end in 500 feet. Slow down."* (suffix suppressed when GS ≤ 30 kt) / *"Runway end in 100 feet. Stop."* (suffix unconditional — the action cue fires regardless of current GS). Tone stays silent — the pilot is on rudder/brakes alone. Transition to `Taxiing` (with `_route = null` — no recalc target) when GS drops below `ROLLOUT_NO_EXIT_STOPPED_GS_KTS = 3 kt` or heading deviates ≥ 15° (backtaxi turn). Replaces the previous "full silence" behavior so a blind pilot rolling toward the end of an active runway gets real braking information instead of being left to query Where-Am-I repeatedly.
 
 ### Exit detection math (TaxiGraph.GetLandingExits)
 
