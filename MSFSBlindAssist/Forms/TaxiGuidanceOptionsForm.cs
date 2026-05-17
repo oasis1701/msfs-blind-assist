@@ -20,6 +20,7 @@ public class TaxiGuidanceOptionsForm : Form
     private CheckBox announceCrossingsCheckBox = null!;
     private Label gsAnnounceLabel = null!;
     private ComboBox gsAnnounceCombo = null!;
+    private CheckBox useMetresCheckBox = null!;
 
     private Button okButton = null!;
     private Button cancelButton = null!;
@@ -32,6 +33,7 @@ public class TaxiGuidanceOptionsForm : Form
     public bool HardPanSteeringTone { get; private set; }
     public bool AnnounceCrossings { get; private set; }
     public int GroundSpeedAnnounceInterval { get; private set; }
+    public bool GroundTrafficUseMetres { get; private set; }
 
     public TaxiGuidanceOptionsForm(
         HandFlyWaveType currentWaveform,
@@ -39,7 +41,8 @@ public class TaxiGuidanceOptionsForm : Form
         bool invertSteeringTone,
         bool hardPanSteeringTone,
         bool announceCrossings,
-        int groundSpeedAnnounceInterval)
+        int groundSpeedAnnounceInterval,
+        bool groundTrafficUseMetres)
     {
         SelectedToneWaveform = currentWaveform;
         SelectedVolume = currentVolume;
@@ -47,6 +50,7 @@ public class TaxiGuidanceOptionsForm : Form
         HardPanSteeringTone = hardPanSteeringTone;
         AnnounceCrossings = announceCrossings;
         GroundSpeedAnnounceInterval = groundSpeedAnnounceInterval;
+        GroundTrafficUseMetres = groundTrafficUseMetres;
         InitializeComponent();
         SetupAccessibility();
     }
@@ -54,7 +58,7 @@ public class TaxiGuidanceOptionsForm : Form
     private void InitializeComponent()
     {
         Text = "Taxi Guidance Options";
-        Size = new Size(500, 440);
+        Size = new Size(500, 475);
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -237,11 +241,24 @@ public class TaxiGuidanceOptionsForm : Form
             };
         };
 
+        // Ground traffic distance unit: metres or feet
+        useMetresCheckBox = new CheckBox
+        {
+            Text = "Show ground traffic distances in metres (default: feet)",
+            Location = new Point(20, 320),
+            Size = new Size(450, 25),
+            Checked = GroundTrafficUseMetres,
+            AccessibleName = "Show ground traffic distances in metres",
+            AccessibleDescription = "When enabled, proximity alert distances (e.g. 'Traffic ahead, 100 metres') are in metres. Default is feet, which matches aviation conventions."
+        };
+        useMetresCheckBox.CheckedChanged += (s, e) =>
+            GroundTrafficUseMetres = useMetresCheckBox.Checked;
+
         // OK Button
         okButton = new Button
         {
             Text = "OK",
-            Location = new Point(310, 355),
+            Location = new Point(310, 390),
             Size = new Size(75, 30),
             DialogResult = DialogResult.OK,
             AccessibleName = "Apply Settings",
@@ -258,7 +275,7 @@ public class TaxiGuidanceOptionsForm : Form
         cancelButton = new Button
         {
             Text = "Cancel",
-            Location = new Point(395, 355),
+            Location = new Point(395, 390),
             Size = new Size(75, 30),
             DialogResult = DialogResult.Cancel,
             AccessibleName = "Cancel",
@@ -274,6 +291,7 @@ public class TaxiGuidanceOptionsForm : Form
             hardPanToneCheckBox,
             announceCrossingsCheckBox,
             gsAnnounceLabel, gsAnnounceCombo,
+            useMetresCheckBox,
             okButton, cancelButton
         });
 
@@ -291,6 +309,7 @@ public class TaxiGuidanceOptionsForm : Form
         hardPanToneCheckBox.TabIndex = tabIdx++;
         announceCrossingsCheckBox.TabIndex = tabIdx++;
         gsAnnounceCombo.TabIndex = tabIdx++;
+        useMetresCheckBox.TabIndex = tabIdx++;
         okButton.TabIndex = tabIdx++;
         cancelButton.TabIndex = tabIdx++;
 

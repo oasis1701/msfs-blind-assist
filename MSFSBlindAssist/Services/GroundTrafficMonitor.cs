@@ -1,5 +1,6 @@
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Navigation;
+using MSFSBlindAssist.Settings;
 using MSFSBlindAssist.SimConnect;
 
 namespace MSFSBlindAssist.Services;
@@ -11,17 +12,20 @@ namespace MSFSBlindAssist.Services;
 /// </summary>
 public sealed class GroundTrafficMonitor : IDisposable
 {
-    // Alert zone thresholds in feet (aviation basis: 500 ft ≈ 30s at 10 kt)
-    private const double AWARENESS_FT = 500.0;
-    private const double CAUTION_FT   = 250.0;
-    private const double WARNING_FT   = 100.0;
+    // Alert zone thresholds in feet — sized for widebody datum-to-datum measurement.
+    // SimConnect gives center-to-center distance; two 787s have ~203 ft of combined
+    // half-fuselage, so each threshold is the desired nose-to-tail gap plus ~200 ft.
+    private const double AWARENESS_FT = 600.0;  // ~120m gap for two widebodies
+    private const double CAUTION_FT   = 400.0;  // ~60m gap  — meaningful slow-down
+    private const double WARNING_FT   = 250.0;  // ~15m gap  — genuinely very close
 
     // Forward arc for zone-based auto-alerts (±degrees from own nose)
     // Aircraft outside this range only appear in the hotkey summary, not auto-alerts
     private const double FORWARD_ARC_DEG = 120.0;
 
-    // Minimum own GS before a caution-zone alert becomes "Slow down" rather than plain "Traffic"
-    private const double SLOW_DOWN_GS_KTS = 5.0;
+    // Minimum own GS before a caution-zone alert becomes "Slow down" rather than plain "Traffic".
+    // Low threshold: at 2+ kts you're moving toward something at 250 ft — slow down is warranted.
+    private const double SLOW_DOWN_GS_KTS = 2.0;
 
     // Traffic with GS above this is taking off or landing — not a taxi concern
     private const double MAX_TRAFFIC_GS_KTS = 60.0;
@@ -43,7 +47,7 @@ public sealed class GroundTrafficMonitor : IDisposable
     private const double QUEUE_AHEAD_DEG  = 30.0;  // ±30° — must be directly ahead to count as queue
     private const double QUEUE_STOPPED_GS = 1.5;   // aircraft considered stopped below this kt
     private const double QUEUE_MOVING_GS  = 3.0;   // aircraft considered moving above this kt
-    private const double OWN_QUEUE_GS     = 3.0;   // we must be near-stationary to be "in a queue"
+    private const double OWN_QUEUE_GS     = 5.0;   // we must be near-stationary to be "in a queue"
 
     // Hotkey summary: announce this many nearest aircraft
     private const int SUMMARY_MAX_AIRCRAFT = 3;
@@ -79,6 +83,10 @@ public sealed class GroundTrafficMonitor : IDisposable
     {
         bool onGround = _sim.LastKnownOnGround ?? false;
         if (!onGround || !_sim.IsConnected) return;
+
+        // Proactively refresh own position so the distance measurements stay
+        // accurate even when no other guidance system (visual / taxi) is active.
+        _sim.RequestAircraftPosition();
 
         var pos = _sim.LastKnownPosition;
         if (pos == null) return;
@@ -124,7 +132,9 @@ public sealed class GroundTrafficMonitor : IDisposable
             }
             ac.Lat = e.Latitude;
             ac.Lon = e.Longitude;
-            ac.PreviousGS = ac.GS;
+            // On the very first receipt GS is the sentinel -1; copy the actual
+            // GS as PreviousGS so we never see a fake 0→X "start moving" transition.
+            ac.PreviousGS = ac.GS < 0 ? e.GroundSpeedKnots : ac.GS;
             ac.GS = e.GroundSpeedKnots;
             ac.Callsign = e.Callsign;
             ac.AircraftType = e.AircraftType;
@@ -162,41 +172,59 @@ public sealed class GroundTrafficMonitor : IDisposable
             if (!_positionValid || _tracked.Count == 0) return;
             double ownLat = _ownLat, ownLon = _ownLon, ownHdg = _ownHeadingTrue, ownGS = _ownGS;
 
-            foreach (var ac in _tracked.Values)
-            {
-                double distFt = NavigationCalculator.CalculateDistance(
-                    ownLat, ownLon, ac.Lat, ac.Lon) * NM_TO_FEET;
-                double bearing = NavigationCalculator.CalculateBearing(
-                    ownLat, ownLon, ac.Lat, ac.Lon);
-                double relBearing = NormalizeDeg(bearing - ownHdg);
+            // Pre-compute distance and relative bearing for every tracked aircraft.
+            // Sort FARTHEST-first: when multiple zone alerts fire via AnnounceImmediate
+            // in the same cycle, the last call (closest aircraft) is the one heard.
+            var sorted = _tracked.Values
+                .Select(ac =>
+                {
+                    double d = NavigationCalculator.CalculateDistance(ownLat, ownLon, ac.Lat, ac.Lon) * NM_TO_FEET;
+                    double b = NavigationCalculator.CalculateBearing(ownLat, ownLon, ac.Lat, ac.Lon);
+                    double rel = NormalizeDeg(b - ownHdg);
+                    return (ac, d, rel);
+                })
+                .OrderByDescending(t => t.d)  // farthest first
+                .ToList();
 
+            // --- Queue-moving pass ---
+            // "Traffic ahead is moving" fires only for the single closest qualifying
+            // aircraft. Multiple callouts in one cycle would be confusing and the
+            // pilot only needs to know about the one immediately ahead.
+            TrackedGroundAircraft? closestQueueMover = null;
+            double closestQueueDist = double.MaxValue;
+            foreach (var (ac, distFt, relBearing) in sorted)
+            {
+                bool directlyAhead = relBearing <= QUEUE_AHEAD_DEG || relBearing >= 360.0 - QUEUE_AHEAD_DEG;
+                if (directlyAhead && distFt <= AWARENESS_FT && ownGS <= OWN_QUEUE_GS)
+                {
+                    if (ac.PreviousGS <= QUEUE_STOPPED_GS && ac.GS >= QUEUE_MOVING_GS
+                        && !ac.QueueMovingAlertSent && distFt < closestQueueDist)
+                    {
+                        closestQueueDist = distFt;
+                        closestQueueMover = ac;
+                    }
+                    // Reset the flag once the aircraft stops again so the next departure
+                    // fires a fresh alert. Intentionally inside the outer queue-guard:
+                    // if our own GS rises above OWN_QUEUE_GS while the lead stops, the
+                    // flag stays armed; when we stop again the next departure re-triggers.
+                    if (ac.GS <= QUEUE_STOPPED_GS)
+                        ac.QueueMovingAlertSent = false;
+                }
+            }
+            if (closestQueueMover != null)
+            {
+                closestQueueMover.QueueMovingAlertSent = true;
+                _announcer.AnnounceImmediate("Traffic ahead is moving.");
+            }
+
+            // --- Zone alert pass (farthest first → closest announcement heard last) ---
+            foreach (var (ac, distFt, relBearing) in sorted)
+            {
                 // Update closing-rate history
                 ac.PreviousDistance = ac.CurrentDistance;
                 ac.CurrentDistance = distFt;
                 bool movingAway = ac.PreviousDistance < double.MaxValue
                                   && ac.CurrentDistance > ac.PreviousDistance + MOVING_AWAY_HYSTERESIS_FT;
-
-                // Queue-moving alert: aircraft directly ahead was stopped and just started moving.
-                // Only fires when we are also near-stationary (in the queue behind them).
-                bool directlyAhead = relBearing <= QUEUE_AHEAD_DEG || relBearing >= (360.0 - QUEUE_AHEAD_DEG);
-                if (directlyAhead && distFt <= AWARENESS_FT && ownGS <= OWN_QUEUE_GS)
-                {
-                    if (ac.PreviousGS <= QUEUE_STOPPED_GS && ac.GS >= QUEUE_MOVING_GS && !ac.QueueMovingAlertSent)
-                    {
-                        ac.QueueMovingAlertSent = true;
-                        _announcer.AnnounceImmediate("Traffic ahead is moving.");
-                    }
-                    // Reset the flag once the aircraft stops again so the next departure
-                    // fires a fresh alert. Intentionally inside the outer queue-guard
-                    // (directlyAhead && distFt <= AWARENESS_FT && ownGS <= OWN_QUEUE_GS):
-                    // if our own GS rises above OWN_QUEUE_GS while the lead stops the flag
-                    // stays armed, but by then we are no longer in the queue and the next
-                    // stop+go cycle re-arms it through the same path anyway. The benign
-                    // case is leaving the flag set on a stale aircraft until pruning;
-                    // PRUNE_AGE_MS evicts it within 12 s.
-                    if (ac.GS <= QUEUE_STOPPED_GS)
-                        ac.QueueMovingAlertSent = false;
-                }
 
                 // Determine new zone
                 GroundZone newZone;
@@ -208,7 +236,7 @@ public sealed class GroundTrafficMonitor : IDisposable
                 if (newZone == GroundZone.None)  { ac.CurrentZone = GroundZone.None; continue; }
 
                 // Awareness alerts only fire for traffic in the forward arc
-                bool inForwardArc = relBearing <= FORWARD_ARC_DEG || relBearing >= (360.0 - FORWARD_ARC_DEG);
+                bool inForwardArc = relBearing <= FORWARD_ARC_DEG || relBearing >= 360.0 - FORWARD_ARC_DEG;
                 if (!inForwardArc && newZone == GroundZone.Awareness) { ac.CurrentZone = newZone; continue; }
 
                 // Don't escalate for moving-away aircraft
@@ -226,14 +254,14 @@ public sealed class GroundTrafficMonitor : IDisposable
                 ac.LastAlertTime = DateTime.UtcNow;
 
                 string dir = DescribeDirection(relBearing);
-                int d = RoundFeet(distFt);
+                string distStr = FormatDistance(distFt);
 
                 string announcement = newZone switch
                 {
-                    GroundZone.Warning  => $"Stop, traffic very close, {dir}, {d} feet.",
+                    GroundZone.Warning  => $"Stop, traffic very close, {dir}, {distStr}.",
                     GroundZone.Caution when ownGS >= SLOW_DOWN_GS_KTS
-                                        => $"Slow down, traffic {dir}, {d} feet.",
-                    _                   => $"Traffic, {dir}, {d} feet."
+                                        => $"Slow down, traffic {dir}, {distStr}.",
+                    _                   => $"Traffic, {dir}, {distStr}."
                 };
 
                 _announcer.AnnounceImmediate(announcement);
@@ -290,15 +318,27 @@ public sealed class GroundTrafficMonitor : IDisposable
         foreach (var (distFt, ac, relBearing) in list)
         {
             string dir = DescribeDirection(relBearing);
-            int d = RoundFeet(distFt);
+            string distStr = FormatDistance(distFt);
             string label = !string.IsNullOrEmpty(ac.Callsign) ? ac.Callsign : "traffic";
-            sb.Append($"{label}, {dir}, {d} feet. ");
+            sb.Append($"{label}, {dir}, {distStr}. ");
         }
         return sb.ToString().TrimEnd();
     }
 
     // ──────────────────────────────────────────────────────────────────────────
     // Geometry helpers
+
+    private static string FormatDistance(double feet)
+    {
+        if (SettingsManager.Current.GroundTrafficUseMetres)
+        {
+            double metres = feet * 0.3048;
+            double step = metres < 100.0 ? 5.0 : 10.0;
+            int rounded = (int)(Math.Round(metres / step) * step);
+            return $"{rounded} metres";
+        }
+        return $"{RoundFeet(feet)} feet";
+    }
 
     private static string DescribeDirection(double relBearing)
     {
@@ -336,7 +376,9 @@ internal enum GroundZone { None = 0, Awareness = 1, Caution = 2, Warning = 3 }
 internal sealed class TrackedGroundAircraft
 {
     public uint ObjectId;
-    public double Lat, Lon, GS, PreviousGS;
+    public double Lat, Lon;
+    public double GS = -1;        // sentinel: -1 means no data received yet
+    public double PreviousGS = 0;
     public string Callsign    = "";
     public string AircraftType = "";
     public GroundZone CurrentZone      = GroundZone.None;
