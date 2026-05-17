@@ -200,6 +200,10 @@ public class UserSettings
         /// </summary>
         public int TaxiGuidanceGroundSpeedAnnounceInterval { get; set; } = 0;
 
+        // Ground traffic proximity distances in metres instead of feet.
+        // Default false (feet) — aviation uses feet for taxiway spacing.
+        public bool GroundTrafficUseMetres { get; set; } = false;
+
         // Weather Settings
         public bool WeatherAutoAnnounceEnabled { get; set; } = false;
         public bool SigmetProximityAlertsEnabled { get; set; } = false;
@@ -285,6 +289,7 @@ public class UserSettings
             TaxiGuidanceHardPanTone = TaxiGuidanceHardPanTone,
             TaxiGuidanceAnnounceCrossings = TaxiGuidanceAnnounceCrossings,
             TaxiGuidanceGroundSpeedAnnounceInterval = TaxiGuidanceGroundSpeedAnnounceInterval,
+            GroundTrafficUseMetres = GroundTrafficUseMetres,
             Hs787CommunityFolderOverride = Hs787CommunityFolderOverride,
             Hs787SimVersionOverride = Hs787SimVersionOverride
         };
