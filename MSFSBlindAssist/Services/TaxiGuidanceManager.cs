@@ -3198,33 +3198,89 @@ public class TaxiGuidanceManager : IDisposable
             if (seqIdx < 0 || seqIdx >= taxiwaySequence.Count) continue;
             string taxiwayName = taxiwaySequence[seqIdx];
 
-            // Find the last segment of taxiway[seqIdx]; the runway hold-short
-            // we tag must come AFTER this point in the route. Search forward
-            // from there for the first segment whose endpoint sits on the
-            // requested runway's centerline.
-            int lastSegOnTaxiway = -1;
+            // Pre-resolve the RunwayCenterline whose designators include the
+            // user's runwayId. The user types ONE of two reciprocal designators
+            // (e.g. "10R" / "28L") but both name the same physical pavement.
+            // Testing point-on-runway against this centerline's geometry
+            // directly avoids the WhichRunwayContains pitfall where a crossing
+            // closer to the OTHER threshold would return the reciprocal name
+            // and silently miss the user's pick.
+            TaxiGraph.RunwayCenterline? targetRwy = null;
+            foreach (var rwy in _graph.RunwayCenterlines)
+            {
+                if (rwy.Name1.Equals(runwayId, StringComparison.OrdinalIgnoreCase) ||
+                    rwy.Name2.Equals(runwayId, StringComparison.OrdinalIgnoreCase))
+                {
+                    targetRwy = rwy;
+                    break;
+                }
+            }
+            if (targetRwy == null)
+            {
+                unmatched.Add($"runway {runwayId} (not in airport runway data)");
+                continue;
+            }
+
+            // For duplicate-taxiway clearances ("via N, hold short 15R, N,
+            // hold short 22R, N" — KBOS style), each sequence entry refers to a
+            // distinct run of that taxiway in the route. Count prior
+            // occurrences in the sequence so we anchor the scan at the right
+            // run instead of always starting at the first one.
+            int priorOccurrences = 0;
+            for (int k = 0; k < seqIdx; k++)
+            {
+                if (taxiwaySequence[k].Equals(taxiwayName, StringComparison.OrdinalIgnoreCase))
+                    priorOccurrences++;
+            }
+
+            // Locate the start of the (priorOccurrences+1)-th maximal run of
+            // route segments tagged with this taxiway. Scanning from the START
+            // of the run — not the end — finds runway crossings INTERNAL to the
+            // named taxiway. Example: KSFO taxiway D crosses 10R/28L mid-way
+            // while keeping the same name on both sides; with the previous
+            // last-segment anchor the scan started past the runway and the
+            // user's correct "hold short 10R" pick was silently rejected as
+            // "route does not cross 10R".
+            int runStart = -1;
+            int runsSeen = 0;
+            bool inRun = false;
             for (int i = 0; i < route.Segments.Count; i++)
             {
-                if (route.Segments[i].TaxiwayName.Equals(taxiwayName, StringComparison.OrdinalIgnoreCase))
-                    lastSegOnTaxiway = i;
+                bool matches = route.Segments[i].TaxiwayName.Equals(
+                    taxiwayName, StringComparison.OrdinalIgnoreCase);
+                if (matches && !inRun)
+                {
+                    inRun = true;
+                    if (runsSeen == priorOccurrences)
+                    {
+                        runStart = i;
+                        break;
+                    }
+                }
+                else if (!matches && inRun)
+                {
+                    inRun = false;
+                    runsSeen++;
+                }
             }
-            if (lastSegOnTaxiway < 0)
+            if (runStart < 0)
             {
                 unmatched.Add($"runway {runwayId} (taxiway {taxiwayName} not on route)");
                 continue;
             }
 
-            // Look for the first segment after lastSegOnTaxiway whose ToNode
-            // sits on runway runwayId. Use the same WhichRunwayContains helper
-            // the auto-detect path uses so the geometric tolerance matches.
+            // Forward scan from the run start for the first segment whose
+            // endpoint lies within the target runway's half-width tolerance
+            // (+5 m, matching WhichRunwayContains).
             int matchSeg = -1;
-            for (int i = lastSegOnTaxiway; i < route.Segments.Count; i++)
+            for (int i = runStart; i < route.Segments.Count; i++)
             {
                 var seg = route.Segments[i];
                 if (seg.ToNode == null) continue;
-                string rwy = WhichRunwayContains(seg.ToNode.Latitude, seg.ToNode.Longitude);
-                if (!string.IsNullOrEmpty(rwy) &&
-                    rwy.Equals(runwayId, StringComparison.OrdinalIgnoreCase))
+                double perp = TaxiGraph.PerpendicularDistanceMetersStatic(
+                    seg.ToNode.Latitude, seg.ToNode.Longitude,
+                    targetRwy.Lat1, targetRwy.Lon1, targetRwy.Lat2, targetRwy.Lon2);
+                if (perp <= targetRwy.HalfWidthMeters + 5.0)
                 {
                     matchSeg = i;
                     break;
@@ -3239,7 +3295,7 @@ public class TaxiGuidanceManager : IDisposable
 
             // Tag the segment immediately BEFORE the runway pavement (so the
             // aircraft stops at the hold-short line, not on the runway).
-            int holdSegIdx = Math.Max(matchSeg - 1, lastSegOnTaxiway);
+            int holdSegIdx = Math.Max(matchSeg - 1, runStart);
             var holdSeg = route.Segments[holdSegIdx];
             holdSeg.IsHoldShortPoint = true;
             // User intent wins on the label.
