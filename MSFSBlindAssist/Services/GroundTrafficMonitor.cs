@@ -105,6 +105,10 @@ public sealed class GroundTrafficMonitor : IDisposable
         // accurate even when no other guidance system (visual / taxi) is active.
         _sim.RequestAircraftPosition();
 
+        // Proactively refresh own position so the distance measurements stay
+        // accurate even when no other guidance system (visual / taxi) is active.
+        _sim.RequestAircraftPosition();
+
         var pos = _sim.LastKnownPosition;
         if (pos == null) return;
 
@@ -210,6 +214,7 @@ public sealed class GroundTrafficMonitor : IDisposable
             double warnDistFt  = WARNING_FT  + lead;
             double cautDistFt  = CAUTION_FT  + lead;
             double awareDistFt = Math.Max(AWARENESS_FT, cautDistFt + 150.0);
+
 
             // --- Queue-moving pass ---
             // "Traffic ahead is moving" fires only for the single closest qualifying
