@@ -15,9 +15,20 @@ public sealed class GroundTrafficMonitor : IDisposable
     // Alert zone thresholds in feet — sized for widebody datum-to-datum measurement.
     // SimConnect gives center-to-center distance; two 787s have ~203 ft of combined
     // half-fuselage, so each threshold is the desired nose-to-tail gap plus ~200 ft.
+    // These are the MINIMUM (stopped-aircraft) thresholds; EvaluateAlerts adds a
+    // speed-based lead allowance so the pilot is actually stopped at these distances
+    // when the brake application completes. See ZONE_LEAD_SEC below.
     private const double AWARENESS_FT = 600.0;  // ~120m gap for two widebodies
     private const double CAUTION_FT   = 400.0;  // ~60m gap  — meaningful slow-down
-    private const double WARNING_FT   = 250.0;  // ~15m gap  — genuinely very close
+    private const double WARNING_FT   = 250.0;  // ~80m c-t-c — need to be stopped here
+
+    // Lead time (seconds) added to each zone boundary to account for reaction time +
+    // braking + the 3-second poll interval. At speed v (kt), the effective zone
+    // boundary = fixed_ft + v × ktsToFps × ZONE_LEAD_SEC, so that after hearing the
+    // callout and stopping, the pilot arrives at the fixed boundary (not past it).
+    // 7 s = ~1 s reaction + ~3 s braking + 3 s worst-case poll lag at normal taxi speeds.
+    private const double ZONE_LEAD_SEC = 7.0;
+    private const double ZONE_LEAD_KTSFPS = 1.6878; // ft/s per knot
 
     // Forward arc for zone-based auto-alerts (±degrees from own nose)
     // Aircraft outside this range only appear in the hotkey summary, not auto-alerts
@@ -186,6 +197,14 @@ public sealed class GroundTrafficMonitor : IDisposable
                 .OrderByDescending(t => t.d)  // farthest first
                 .ToList();
 
+            // Speed-based zone boundaries. Add a lead-time allowance to each fixed
+            // threshold so that after the callout fires, the pilot stops AT the fixed
+            // boundary (not past it) even accounting for reaction + braking + poll lag.
+            double lead = ownGS * ZONE_LEAD_KTSFPS * ZONE_LEAD_SEC;
+            double warnDistFt  = WARNING_FT  + lead;
+            double cautDistFt  = CAUTION_FT  + lead;
+            double awareDistFt = Math.Max(AWARENESS_FT, cautDistFt + 150.0);
+
             // --- Queue-moving pass ---
             // "Traffic ahead is moving" fires only for the single closest qualifying
             // aircraft. Multiple callouts in one cycle would be confusing and the
@@ -226,11 +245,11 @@ public sealed class GroundTrafficMonitor : IDisposable
                 bool movingAway = ac.PreviousDistance < double.MaxValue
                                   && ac.CurrentDistance > ac.PreviousDistance + MOVING_AWAY_HYSTERESIS_FT;
 
-                // Determine new zone
+                // Determine new zone using speed-adjusted boundaries
                 GroundZone newZone;
-                if (distFt > AWARENESS_FT)       newZone = GroundZone.None;
-                else if (distFt <= WARNING_FT)   newZone = GroundZone.Warning;
-                else if (distFt <= CAUTION_FT)   newZone = GroundZone.Caution;
+                if (distFt > awareDistFt)        newZone = GroundZone.None;
+                else if (distFt <= warnDistFt)   newZone = GroundZone.Warning;
+                else if (distFt <= cautDistFt)   newZone = GroundZone.Caution;
                 else                             newZone = GroundZone.Awareness;
 
                 if (newZone == GroundZone.None)  { ac.CurrentZone = GroundZone.None; continue; }

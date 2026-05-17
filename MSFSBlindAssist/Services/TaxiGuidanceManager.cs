@@ -1473,42 +1473,50 @@ public class TaxiGuidanceManager : IDisposable
             ? currentSeg.HoldShortRunway
             : "hold short";
 
-        // Fire thresholds in natural countdown order (300 → 150 → 50). Independent
-        // `if` blocks so a fast approach that first samples inside 50 ft still fires
-        // the earlier callouts the pilot "missed" — safety-critical for runway
-        // incursion prevention. One announce per frame keeps cadence tight without
-        // stacking three simultaneous utterances on one speak call.
-        // Speed-aware callout suffixes. The user's principle: every directive
-        // ("slow down", "stop") should fire only when actually needed. Telling
-        // a pilot already at 5 kt to "slow down" is noise; telling a stopped
-        // pilot to "stop" is patronising. Thresholds picked from typical
-        // braking distances:
-        //   At 150 ft, 10 kt → ~9 s to hold line: comfortable, no slow-down
-        //   needed. At >10 kt, slow-down is genuine.
-        //   At 50 ft, ≤1 kt → already at a crawl, "Stop" is redundant; > 1 kt
-        //   → real stopping action required.
-        const double SLOW_DOWN_GS_THRESHOLD_KTS = 10.0;
-        const double STOP_GS_THRESHOLD_KTS = 1.0;
+        // Speed-based thresholds with fixed minimums and caps. Each tier gives the
+        // pilot a fixed lead time (in seconds at current speed), floored so slow/
+        // stopped aircraft always get full coverage. Caps prevent excessively-early
+        // callouts on long taxiways.
+        //   Outer      (300 ft min, 600 ft cap) — heads-up:   15 s lead
+        //   Slow-down  (150 ft min, 400 ft cap) — brake cue:   8 s lead
+        //   Stop        (50 ft min, 200 ft cap) — stop cue:    4 s lead
+        // "Slow down." and "Stop." are unconditional — fire regardless of current
+        // speed so the pilot always gets the directive, even at very low taxi speeds.
+        const double ktsToFps = 1852.0 * 3.28084 / 3600.0;
+        double outerDistFt    = Math.Clamp(_lastGroundSpeedKts * ktsToFps * 15.0, 300.0, 600.0);
+        double slowDownDistFt = Math.Clamp(_lastGroundSpeedKts * ktsToFps *  8.0, 150.0, 400.0);
+        double stopDistFt     = Math.Clamp(_lastGroundSpeedKts * ktsToFps *  4.0,  50.0, 200.0);
 
-        if (distFeet < 300 && !_holdShortAnnounce300)
+        // Fire in natural countdown order. Each block returns after announcing so
+        // only one callout fires per frame — no stacking.
+        if (distFeet < outerDistFt && !_holdShortAnnounce300)
         {
-            AnnounceInstruction($"Hold short {what} in 300 feet.");
+            int ft = (int)(Math.Round(distFeet / 50.0) * 50);
+            AnnounceInstruction($"Hold short {what} in {ft} feet.");
             _holdShortAnnounce300 = true;
             return;
         }
-        if (distFeet < 150 && !_holdShortAnnounce150)
+        if (distFeet < slowDownDistFt && !_holdShortAnnounce150)
         {
-            string msg = $"Hold short {what} in 150 feet.";
-            if (_lastGroundSpeedKts > SLOW_DOWN_GS_THRESHOLD_KTS) msg += " Slow down.";
-            AnnounceInstruction(msg);
+            int ft = (int)(Math.Round(distFeet / 50.0) * 50);
+            AnnounceInstruction($"Hold short {what} in {ft} feet. Slow down.");
             _holdShortAnnounce150 = true;
             return;
         }
-        if (distFeet < 50 && !_holdShortAnnounce50)
+        if (distFeet < stopDistFt && !_holdShortAnnounce50)
         {
-            string msg = $"Hold short {what} in 50 feet.";
-            if (_lastGroundSpeedKts > STOP_GS_THRESHOLD_KTS) msg += " Stop.";
-            AnnounceInstruction(msg);
+            int ft = (int)(Math.Round(distFeet / 50.0) * 50);
+            AnnounceInstruction($"Hold short {what} in {ft} feet. Stop.");
+            _holdShortAnnounce50 = true;
+            return;
+        }
+        // Stopped-in-zone fallback: pilot slowed to a stop between the slow-down
+        // and stop thresholds — "slow down" fired but stop never triggered because
+        // the aircraft parked above the stop-distance floor. Fire stop so the pilot
+        // knows to hold position and await clearance.
+        if (_holdShortAnnounce150 && !_holdShortAnnounce50 && _lastGroundSpeedKts < 1.0)
+        {
+            AnnounceInstruction($"Hold short {what}. Stop.");
             _holdShortAnnounce50 = true;
         }
     }
@@ -1685,9 +1693,15 @@ public class TaxiGuidanceManager : IDisposable
         }
         if (feet < 10 && !_parkingAnnounce10)
         {
-            // Speed-aware: skip "Stop" if already essentially stopped (≤1 kt).
-            string msg = _lastGroundSpeedKts > 1.0 ? "10 feet. Stop." : "10 feet.";
-            AnnounceInstruction(msg);
+            AnnounceInstruction("10 feet. Stop.");
+            _parkingAnnounce10 = true;
+            return;
+        }
+        // Stopped-in-zone: pilot slowed to a stop between 10 ft and the gate.
+        // Fire stop so they know to hold position.
+        if (_parkingAnnounce50 && !_parkingAnnounce10 && _lastGroundSpeedKts < 1.0)
+        {
+            AnnounceInstruction($"{_destinationName}. Stop.");
             _parkingAnnounce10 = true;
         }
     }
@@ -2661,12 +2675,7 @@ public class TaxiGuidanceManager : IDisposable
 
         if (!_rolloutEnd100Announced && distToEndFt <= 100.0)
         {
-            // "Stop" is added only when the pilot still has speed to lose.
-            // ≤ 1 kt is the threshold the hold-short countdown uses for the
-            // same wording rule — at that point the aircraft is crawling
-            // and the directive is redundant.
-            string stopSuffix = groundSpeedKts > 1.0 ? " Stop." : "";
-            AnnounceInstruction($"Runway end in 100 feet.{stopSuffix}");
+            AnnounceInstruction("Runway end in 100 feet. Stop.");
             _rolloutEnd100Announced = true;
         }
     }
