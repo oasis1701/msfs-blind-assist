@@ -216,6 +216,7 @@ public sealed class GroundTrafficMonitor : IDisposable
             double awareDistFt = Math.Max(AWARENESS_FT, cautDistFt + 150.0);
 
 
+
             // --- Queue-moving pass ---
             // "Traffic ahead is moving" fires only for the single closest qualifying
             // aircraft. Multiple callouts in one cycle would be confusing and the
