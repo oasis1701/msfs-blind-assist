@@ -20,8 +20,8 @@ namespace MSFSBlindAssist.SimConnect
 
     public class EFBBridgeServer : IDisposable
     {
-        private const int Port = 19777;
-        private const string Prefix = "http://localhost:19777/";
+        private readonly int _port;
+        private string Prefix => $"http://localhost:{_port}/";
         private const int HeartbeatTimeoutSeconds = 15;
         private const int CommandExpirySeconds = 30;
         private const int MaxRequestBodyBytes = 512 * 1024; // 512 KB — raised for page_html which can be 200-500 KB
@@ -29,7 +29,10 @@ namespace MSFSBlindAssist.SimConnect
 
         private HttpListener? _listener;
         private CancellationTokenSource? _cts;
+        // Default queue — used by PMDG EFB bridge (polls /commands) and 787 EFB bridge (polls /commands/efb)
         private readonly ConcurrentQueue<(EFBCommand Command, DateTime EnqueuedAt)> _commandQueue = new();
+        // MFD-specific queue — used by 787 MFD bridge (polls /commands/mfd)
+        private readonly ConcurrentQueue<(EFBCommand Command, DateTime EnqueuedAt)> _mfdCommandQueue = new();
         private readonly SynchronizationContext? _syncContext;
         private DateTime _lastHeartbeat = DateTime.MinValue;
         private bool _disposed;
@@ -75,8 +78,9 @@ namespace MSFSBlindAssist.SimConnect
         public bool IsRunning => _listener?.IsListening == true;
         public bool IsBridgeConnected => (DateTime.UtcNow - _lastHeartbeat).TotalSeconds < HeartbeatTimeoutSeconds;
 
-        public EFBBridgeServer()
+        public EFBBridgeServer(int port = 19777)
         {
+            _port = port;
             _syncContext = SynchronizationContext.Current;
         }
 
@@ -122,6 +126,7 @@ namespace MSFSBlindAssist.SimConnect
             }
         }
 
+        /// <summary>Enqueue a command for the EFB bridge (or PMDG EFB). Polled at /commands.</summary>
         public void EnqueueCommand(string command, Dictionary<string, string>? payload = null)
         {
             while (_commandQueue.Count >= MaxQueueSize)
@@ -132,6 +137,12 @@ namespace MSFSBlindAssist.SimConnect
                 }
             }
             _commandQueue.Enqueue((new EFBCommand { Command = command, Payload = payload }, DateTime.UtcNow));
+        }
+
+        /// <summary>Enqueue a command exclusively for the 787 MFD bridge. Polled at /commands/mfd.</summary>
+        public void EnqueueMfdCommand(string command, Dictionary<string, string>? payload = null)
+        {
+            _mfdCommandQueue.Enqueue((new EFBCommand { Command = command, Payload = payload }, DateTime.UtcNow));
         }
 
         public bool HasPendingCommand(string commandName)
@@ -218,6 +229,7 @@ namespace MSFSBlindAssist.SimConnect
             response.Headers.Add("Access-Control-Allow-Origin", "*");
             response.Headers.Add("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
             response.Headers.Add("Access-Control-Allow-Headers", "Content-Type");
+            response.Headers.Add("Access-Control-Allow-Private-Network", "true");
 
             try
             {
@@ -239,7 +251,13 @@ namespace MSFSBlindAssist.SimConnect
                         await HandleStateUpdate(request, response);
                         break;
                     case "/commands" when request.HttpMethod == "GET":
-                        await HandleGetCommands(response);
+                        await HandleGetCommands(response, _commandQueue);
+                        break;
+                    case "/commands/mfd" when request.HttpMethod == "GET":
+                        await HandleGetCommands(response, _mfdCommandQueue);
+                        break;
+                    case "/commands/efb" when request.HttpMethod == "GET":
+                        await HandleGetCommands(response, _commandQueue);
                         break;
                     case "/display":
                         await ServeDisplayPage(response);
@@ -353,14 +371,15 @@ namespace MSFSBlindAssist.SimConnect
             await WriteJson(response, new { received = true });
         }
 
-        private async Task HandleGetCommands(HttpListenerResponse response)
+        private async Task HandleGetCommands(HttpListenerResponse response,
+            ConcurrentQueue<(EFBCommand Command, DateTime EnqueuedAt)> queue)
         {
             _lastHeartbeat = DateTime.UtcNow;
 
             var commands = new List<object>();
             var now = DateTime.UtcNow;
 
-            while (_commandQueue.TryDequeue(out var item))
+            while (queue.TryDequeue(out var item))
             {
                 if ((now - item.EnqueuedAt).TotalSeconds > CommandExpirySeconds)
                     continue;

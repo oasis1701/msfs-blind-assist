@@ -200,12 +200,21 @@ public class UserSettings
         /// </summary>
         public int TaxiGuidanceGroundSpeedAnnounceInterval { get; set; } = 0;
 
+        // Ground traffic proximity distances in metres instead of feet.
+        // Default false (feet) — aviation uses feet for taxiway spacing.
+        public bool GroundTrafficUseMetres { get; set; } = false;
+
         // Weather Settings
         public bool WeatherAutoAnnounceEnabled { get; set; } = false;
         public bool SigmetProximityAlertsEnabled { get; set; } = false;
         public bool PirepProximityAlertsEnabled { get; set; } = false;
         public int SigmetProximityRangeNm { get; set; } = 100;
         public bool DecodeWeatherAdvisories { get; set; } = false;
+
+        // HS787 bridge — community folder override for non-standard installs
+        public string? Hs787CommunityFolderOverride { get; set; } = null;
+        // "FS2024" or "FS2020" — set when Hs787CommunityFolderOverride was entered manually
+        public string? Hs787SimVersionOverride { get; set; } = null;
 
         /// <summary>
         /// Creates a new UserSettings instance with default values.
@@ -279,7 +288,10 @@ public class UserSettings
             TaxiGuidanceInvertSteeringTone = TaxiGuidanceInvertSteeringTone,
             TaxiGuidanceHardPanTone = TaxiGuidanceHardPanTone,
             TaxiGuidanceAnnounceCrossings = TaxiGuidanceAnnounceCrossings,
-            TaxiGuidanceGroundSpeedAnnounceInterval = TaxiGuidanceGroundSpeedAnnounceInterval
+            TaxiGuidanceGroundSpeedAnnounceInterval = TaxiGuidanceGroundSpeedAnnounceInterval,
+            GroundTrafficUseMetres = GroundTrafficUseMetres,
+            Hs787CommunityFolderOverride = Hs787CommunityFolderOverride,
+            Hs787SimVersionOverride = Hs787SimVersionOverride
         };
     }
 }

@@ -2,11 +2,12 @@
 namespace MSFSBlindAssist.SimConnect;
 public enum SimVarType
 {
-    LVar,      // Local variable (L:varname)
-    Event,     // SimConnect Event
-    SimVar,    // Standard SimVar
-    HVar,      // H-variable (requires MobiFlight WASM)
-    PMDGVar    // PMDG SDK variable (read via Client Data Area)
+    LVar,        // Local variable (L:varname)
+    Event,       // SimConnect Event
+    SimVar,      // Standard SimVar
+    HVar,        // H-variable (requires MobiFlight WASM)
+    PMDGVar,     // PMDG SDK variable (read via Client Data Area)
+    InputEvent   // B: InputEvent (write via SimConnect SetInputEvent API)
 }
 
 public enum UpdateFrequency
@@ -28,8 +29,29 @@ public class SimVarDefinition
     public bool ReverseDisplayOrder { get; set; }  // True to display combo box items in reverse order
     public Dictionary<double, string> ValueDescriptions { get; set; } = new Dictionary<double, string>();
     public bool OnlyAnnounceValueDescriptionMatches { get; set; }  // True to only announce when value matches a ValueDescriptions key (within tolerance), skip intermediate values
+
+    /// <summary>
+    /// When true, exclude this variable from the batched continuous monitoring (GenericBatch1..5)
+    /// and register it as its own per-second continuous subscription. Used when the batched read
+    /// has been observed to deliver wrong/oscillating values due to data-definition position
+    /// drift (silent AddToDataDefinition failures shifting subsequent vars' SimConnect-side
+    /// struct slots out of sync with MSFSBA's continuousVariableIndexMap). Individual subscriptions
+    /// use each var's own SingleValue data def — no struct alignment to worry about.
+    /// Only meaningful when UpdateFrequency == Continuous.
+    /// </summary>
+    public bool ExcludeFromBatch { get; set; }
     public uint EventParam { get; set; }  // Parameter for events (like pump index)
     public bool IsMomentary { get; set; }  // True for momentary buttons that need auto-reset
+
+    /// <summary>
+    /// Optional B: InputEvent name for the WRITE path. When set, HandleUIVariableSet (or
+    /// callers using SimConnectManager.TrySetInputEvent) can route a write through the
+    /// SimConnect SetInputEvent API instead of K-events/SetLVar. Used for switches whose
+    /// real subsystem state is driven by an InputEvent (WT Boeing 787 AT arm, bleed air,
+    /// engine start rotaries, etc.) while the READ may still come from a separate L-var.
+    /// Independent of <see cref="Type"/> — any var type can opt into InputEvent writes.
+    /// </summary>
+    public string? InputEventName { get; set; }
 
     // UI customization properties (aircraft-specific)
     public bool RenderAsButton { get; set; }  // True to render as button instead of combo box (e.g., APU Start)

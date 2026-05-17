@@ -21,6 +21,7 @@ namespace MSFSBlindAssist
         private System.Windows.Forms.ToolStripMenuItem flyByWireA320MenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem fenixA320MenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem pmdg777MenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem horizonSim787MenuItem = null!;
         private System.Windows.Forms.ListBox sectionsListBox = null!;
         private System.Windows.Forms.ListBox panelsListBox = null!;
         private System.Windows.Forms.Panel controlsContainer = null!;
@@ -55,6 +56,7 @@ namespace MSFSBlindAssist
             this.flyByWireA320MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.fenixA320MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.pmdg777MenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.horizonSim787MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.sectionsListBox = new System.Windows.Forms.ListBox();
             this.panelsListBox = new System.Windows.Forms.ListBox();
             this.controlsContainer = new System.Windows.Forms.Panel();
@@ -216,7 +218,8 @@ namespace MSFSBlindAssist
             this.aircraftMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.flyByWireA320MenuItem,
             this.fenixA320MenuItem,
-            this.pmdg777MenuItem});
+            this.pmdg777MenuItem,
+            this.horizonSim787MenuItem});
             this.aircraftMenuItem.Name = "aircraftMenuItem";
             this.aircraftMenuItem.Size = new System.Drawing.Size(75, 24);
             this.aircraftMenuItem.Text = "&Aircraft";
@@ -250,6 +253,16 @@ namespace MSFSBlindAssist
             this.pmdg777MenuItem.Text = "PMDG Boeing &777";
             this.pmdg777MenuItem.Checked = false;
             this.pmdg777MenuItem.Click += new System.EventHandler(this.PMDG777MenuItem_Click);
+            //
+            // horizonSim787MenuItem
+            //
+            this.horizonSim787MenuItem.AccessibleName = "HorizonSim Boeing 787-9";
+            this.horizonSim787MenuItem.AccessibleDescription = "Switch to HorizonSim Boeing 787-9";
+            this.horizonSim787MenuItem.Name = "horizonSim787MenuItem";
+            this.horizonSim787MenuItem.Size = new System.Drawing.Size(240, 26);
+            this.horizonSim787MenuItem.Text = "HorizonSim Boeing &787-9";
+            this.horizonSim787MenuItem.Checked = false;
+            this.horizonSim787MenuItem.Click += new System.EventHandler(this.HorizonSim787MenuItem_Click);
             //
             // sectionsListBox
             // 
