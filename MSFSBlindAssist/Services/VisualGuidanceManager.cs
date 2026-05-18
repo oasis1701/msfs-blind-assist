@@ -176,16 +176,22 @@ public class VisualGuidanceManager : IDisposable
     }
 
     /// <summary>
-    /// Toggles visual guidance mode on/off
+    /// Toggles visual guidance mode on/off. On activation, flips isActive=true and fires the
+    /// event so MainForm's handler can validate state + call <see cref="Initialize"/>. On
+    /// deactivation, delegates fully to <see cref="Stop"/> which owns the entire teardown
+    /// sequence (tones, state, event, announcement) — keeping the active→inactive transition
+    /// identical regardless of trigger (hotkey, on-ground auto-deactivate, HandFly disable).
     /// </summary>
     public void Toggle()
     {
-        isActive = !isActive;
-        VisualGuidanceActiveChanged?.Invoke(this, isActive);
-
-        if (!isActive)
+        if (isActive)
         {
-            Stop();
+            Stop();  // performs the flip, event, announce in one place
+        }
+        else
+        {
+            isActive = true;
+            VisualGuidanceActiveChanged?.Invoke(this, true);
         }
     }
 
@@ -288,20 +294,36 @@ public class VisualGuidanceManager : IDisposable
     }
 
     /// <summary>
-    /// Stops visual guidance: tears down both tones, clears runway state, announces "off".
-    /// Use <see cref="DisposeTones"/> directly for silent internal cleanup that should not
-    /// touch the public lifecycle (announcement, isActive, runway reference).
+    /// Stops visual guidance: tears down both tones, clears runway state, fires the
+    /// <see cref="VisualGuidanceActiveChanged"/> event with <c>false</c>, and (by default)
+    /// announces "off". Idempotent — calling when already inactive is a no-op (no spurious
+    /// event, no double announce). Always fires the event when a real transition happens, so
+    /// every caller — hotkey toggle, on-ground auto-deactivate, HandFly disable, validation
+    /// failure — gets MainForm's monitoring cleanup automatically.
+    ///
+    /// Pass <paramref name="announce"/> = false for activation-failure paths (validation errors
+    /// in the event handler). Toggle has already flipped isActive=true but no guidance ever
+    /// actually ran, so the misleading "Visual guidance off" callout is suppressed; the event
+    /// still fires so MainForm can clean up any monitoring it queued.
+    ///
+    /// Internal callers that need silent tone-only teardown (e.g. the defensive re-init path
+    /// in <see cref="Initialize"/>) should use <see cref="DisposeTones"/> directly.
     /// </summary>
-    public void Stop()
+    public void Stop(bool announce = true)
     {
+        if (!isActive)
+            return;  // idempotent — no double-event, no double-announce
+
         DisposeTones();
 
         runway = null;
         airport = null;
         isActive = false;
 
-        announcer.Announce("Visual guidance off");
-        System.Diagnostics.Debug.WriteLine("[VisualGuidanceManager] Stopped");
+        VisualGuidanceActiveChanged?.Invoke(this, false);
+        if (announce)
+            announcer.Announce("Visual guidance off");
+        System.Diagnostics.Debug.WriteLine($"[VisualGuidanceManager] Stopped (announce={announce})");
     }
 
     /// <summary>

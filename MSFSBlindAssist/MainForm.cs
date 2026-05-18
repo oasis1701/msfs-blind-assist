@@ -2938,11 +2938,14 @@ public partial class MainForm : Form
     {
         if (isActive)
         {
-            // Validation checks
+            // Validation checks. Use Stop(announce: false) — Toggle has already flipped
+            // isActive=true but the user never actually had a running guidance session, so
+            // the public "Visual guidance off" callout would be misleading after the error.
+            // The event still fires so any monitoring that was queued cleans up.
             if (!handFlyManager.IsActive)
             {
                 announcer.Announce("Hand fly mode must be active first");
-                visualGuidanceManager.Stop();
+                visualGuidanceManager.Stop(announce: false);
                 return;
             }
 
@@ -2951,7 +2954,7 @@ public partial class MainForm : Form
             if (runway == null)
             {
                 announcer.Announce("No destination runway selected");
-                visualGuidanceManager.Stop();
+                visualGuidanceManager.Stop(announce: false);
                 return;
             }
 
