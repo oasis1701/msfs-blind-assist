@@ -8,11 +8,12 @@ namespace MSFSBlindAssist.Services;
 
 /// <summary>
 /// Manages visual landing guidance using dual audio tones.
-/// The DESIRED tone encodes the PID-commanded pitch (frequency 200–800 Hz over ±10°) and
-/// commanded bank (stereo pan over ±10°). The CURRENT tone (optional, on by default) mirrors
+/// The DESIRED tone encodes the PID-commanded pitch (frequency, default 200–800 Hz over ±10°) and
+/// commanded bank (stereo pan over ±10°). The CURRENT tone always plays alongside it, mirroring
 /// the same mapping against the aircraft's *actual* pitch and bank, so frequency match
 /// (zero-beat) means correct pitch attitude / vertical speed and pan match means correct bank.
-/// Aircraft-specific tunables (approach AoA, Vref, rate caps) come from <see cref="VisualGuidanceProfile"/>.
+/// Aircraft-specific tunables (approach AoA, Vref, rate caps, tone frequency range) come from
+/// <see cref="VisualGuidanceProfile"/>.
 /// </summary>
 public class VisualGuidanceManager : IDisposable
 {
@@ -203,13 +204,13 @@ public class VisualGuidanceManager : IDisposable
     {
         // Defensive: if Initialize is called twice without an intervening Stop
         // (Toggle's flow guarantees Stop runs first today, but a future caller
-        // might not), tear down any existing tones so we don't leak audio
-        // resources. Safe no-op when both tones are already null.
-        if (desiredAttitudeTone != null || currentAttitudeTone != null)
-        {
-            Stop();
-            isActive = true;  // Stop() flips isActive false; restore for the new session
-        }
+        // might not), dispose any existing tones so we don't leak audio handles.
+        // Do NOT call Stop() — Stop announces "Visual guidance off", which would
+        // be followed immediately by Initialize's "Visual guidance active"
+        // announcement, and that confusing sequence is exactly what defensive
+        // re-init should avoid. Stop also nulls isActive / runway / airport
+        // which are about to be re-set below.
+        DisposeTones();
 
         runway = destinationRunway;
         airport = destinationAirport;
@@ -287,9 +288,29 @@ public class VisualGuidanceManager : IDisposable
     }
 
     /// <summary>
-    /// Stops visual guidance
+    /// Stops visual guidance: tears down both tones, clears runway state, announces "off".
+    /// Use <see cref="DisposeTones"/> directly for silent internal cleanup that should not
+    /// touch the public lifecycle (announcement, isActive, runway reference).
     /// </summary>
     public void Stop()
+    {
+        DisposeTones();
+
+        runway = null;
+        airport = null;
+        isActive = false;
+
+        announcer.Announce("Visual guidance off");
+        System.Diagnostics.Debug.WriteLine("[VisualGuidanceManager] Stopped");
+    }
+
+    /// <summary>
+    /// Silently dispose both tones and clear the deferred-Start flag. Used by <see cref="Stop"/>
+    /// (which adds the public-facing announcement + lifecycle bits) and by the defensive path
+    /// in <see cref="Initialize"/> (which should NOT announce because the next line announces
+    /// "Visual guidance active").
+    /// </summary>
+    private void DisposeTones()
     {
         if (desiredAttitudeTone != null)
         {
@@ -297,21 +318,13 @@ public class VisualGuidanceManager : IDisposable
             desiredAttitudeTone.Dispose();
             desiredAttitudeTone = null;
         }
-
         if (currentAttitudeTone != null)
         {
             currentAttitudeTone.Stop();
             currentAttitudeTone.Dispose();
             currentAttitudeTone = null;
         }
-
-        runway = null;
-        airport = null;
-        isActive = false;
-        tonesNeedStart = false;  // next Initialize will rearm it
-
-        announcer.Announce("Visual guidance off");
-        System.Diagnostics.Debug.WriteLine("[VisualGuidanceManager] Stopped");
+        tonesNeedStart = false;  // re-armed by next Initialize
     }
 
     /// <summary>
