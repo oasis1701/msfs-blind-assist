@@ -34,6 +34,7 @@ public class TaxiAssistForm : Form
     // off that route, and off-route detection recalcs immediately.
     private readonly MSFSBlindAssist.SimConnect.SimConnectManager? _simConnectManager;
     private readonly TcasService? _tcasService;
+    private readonly double _aircraftWingspan;
 
     // Form controls
     private Label lblAirport = null!;
@@ -41,6 +42,7 @@ public class TaxiAssistForm : Form
     private Label lblDestType = null!;
     private ComboBox cmbDestType = null!;
     private Label lblDestination = null!;
+    private CheckBox chkFitFilter = null!;
     private ComboBox cmbDestination = null!;
     private Label lblFirstTaxiway = null!;
     private ComboBox cmbFirstTaxiway = null!;
@@ -98,13 +100,15 @@ public class TaxiAssistForm : Form
         ScreenReaderAnnouncer announcer,
         TaxiGuidanceManager guidanceManager,
         MSFSBlindAssist.SimConnect.SimConnectManager? simConnectManager = null,
-        TcasService? tcasService = null)
+        TcasService? tcasService = null,
+        double aircraftWingspan = 0)
     {
         _dataProvider = dataProvider;
         _announcer = announcer;
         _guidanceManager = guidanceManager;
         _simConnectManager = simConnectManager;
         _tcasService = tcasService;
+        _aircraftWingspan = aircraftWingspan;
         InitializeFormControls();
     }
 
@@ -225,6 +229,18 @@ public class TaxiAssistForm : Form
             AutoSize = true,
             AccessibleName = "Destination Label"
         };
+        chkFitFilter = new CheckBox
+        {
+            Text = "Show &fitting only",
+            Location = new System.Drawing.Point(200, y),
+            AutoSize = true,
+            Visible = false,
+            Checked = _aircraftWingspan > 0,
+            Enabled = _aircraftWingspan > 0,
+            AccessibleName = "Show only fitting stands",
+            AccessibleDescription = "When checked, only shows parking spots large enough for your aircraft wingspan"
+        };
+        chkFitFilter.CheckedChanged += (s, e) => { if (cmbDestType.SelectedIndex != 0) PopulateDestinations(); };
         y += 20;
         cmbDestination = new ComboBox
         {
@@ -397,6 +413,7 @@ public class TaxiAssistForm : Form
         this.Controls.Add(lblDestType);
         this.Controls.Add(cmbDestType);
         this.Controls.Add(lblDestination);
+        this.Controls.Add(chkFitFilter);
         this.Controls.Add(cmbDestination);
         this.Controls.Add(lblFirstTaxiway);
         this.Controls.Add(cmbFirstTaxiway);
@@ -425,6 +442,7 @@ public class TaxiAssistForm : Form
         txtAirport.TabIndex = tabIdx++;
         cmbDestType.TabIndex = tabIdx++;
         cmbDestination.TabIndex = tabIdx++;
+        chkFitFilter.TabIndex = tabIdx++;
         cmbFirstTaxiway.TabIndex = tabIdx++;
         chkFirstHoldShort.TabIndex = tabIdx++;
         cmbFirstHoldShortRunway.TabIndex = tabIdx++;
@@ -658,9 +676,27 @@ public class TaxiAssistForm : Form
             // radius, the spot is dropped — there's no way to taxi there.
             const double MAX_PARKING_TO_GRAPH_M = 100.0;
 
-            var parkingSpots = _dataProvider.GetParkingSpots(_currentIcao)
-                .OrderBy(p => TaxiGraph.CalculateDistanceMeters(
-                    _aircraftLat, _aircraftLon, p.Latitude, p.Longitude))
+            // Category display order matching GateTeleportForm: gates first
+            // (small → extra), then ramp types, then dock/other.
+            var categoryOrder = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["Gate Small"] = 1, ["Gate Medium"] = 2, ["Gate Large"] = 3,
+                ["Gate Heavy"] = 4, ["Gate Extra"] = 5,
+                ["Ramp GA"] = 6, ["Ramp Cargo"] = 7, ["Ramp Military"] = 8,
+                ["Dock"] = 9, ["Other"] = 10
+            };
+
+            var allSpots = _dataProvider.GetParkingSpots(_currentIcao);
+
+            // Wingspan filter: spot must be large enough for the aircraft.
+            // Radius is centre-to-edge; half-wingspan must fit within it.
+            if (chkFitFilter.Checked && _aircraftWingspan > 0)
+                allSpots = allSpots.Where(p => p.Radius >= _aircraftWingspan / 2.0).ToList();
+
+            var parkingSpots = allSpots
+                .OrderBy(p => categoryOrder.TryGetValue(p.GetFilterCategory(), out int o) ? o : 99)
+                .ThenBy(p => p.Number > 0 ? p.Number : int.MaxValue)
+                .ThenBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
             foreach (var spot in parkingSpots)
@@ -721,6 +757,7 @@ public class TaxiAssistForm : Form
 
     private void OnDestTypeChanged(object? sender, EventArgs e)
     {
+        chkFitFilter.Visible = cmbDestType.SelectedIndex != 0 && _aircraftWingspan > 0;
         PopulateDestinations();
     }
 

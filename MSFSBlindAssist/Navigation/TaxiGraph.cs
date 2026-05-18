@@ -1377,6 +1377,15 @@ public class TaxiGraph
                     if (off >= MIN_FALLBACK_EXIT_ANGLE_DEG)
                     { hasOffAxisNamedEdge = true; break; }
                 }
+                // Secondary gate: some scenery packages (e.g. LVFR LEMD) model RETs as
+                // smooth curves whose individual PT-type path segments all run nearly
+                // parallel to the runway (< 20° off-axis), so the angle test above
+                // misses them. A truly parallel holding taxiway stays within the lateral
+                // corridor for its entire length; a real RET must eventually leave the
+                // corridor to reach the apron. Follow named edges up to 600 m and accept
+                // the node if the path demonstrably exits the runway strip.
+                if (!hasOffAxisNamedEdge)
+                    hasOffAxisNamedEdge = ExitPathLeavesCorridor(node.NodeId, rwy.StartLat, rwy.StartLon, cosH, sinH, lateralToleranceM);
                 if (!hasOffAxisNamedEdge) continue;
                 isImplicitExitNode = true;
             }
@@ -1539,6 +1548,78 @@ public class TaxiGraph
             if (char.IsLetter(c)) hasL = true;
             else if (char.IsDigit(c)) hasD = true;
             if (hasL && hasD) return true;
+        }
+        return false;
+    }
+
+    // BFS from startNodeId. Returns true if any reachable node lies outside the runway
+    // lateral corridor (|lateral| > lateralToleranceM) within MAX_RET_SEARCH_M metres.
+    // Used to detect smooth-curve RETs whose individual segments each fall below the
+    // MIN_FALLBACK_EXIT_ANGLE_DEG threshold yet still exit the runway.
+    //
+    // Seeding: only named-taxiway edges from the start node (the node must be a real
+    // taxiway junction, not just an unnamed runway surface waypoint).
+    // Traversal: all edges — named and unnamed — so the BFS can cross unnamed connector
+    // segments that some scenery packages insert between the named RET portions.
+    //
+    // A truly parallel taxiway that never leaves the runway strip returns false. A real
+    // RET — however shallow the departure angle — returns true once the path clears the
+    // corridor width.
+    private bool ExitPathLeavesCorridor(
+        int startNodeId,
+        double rwyStartLat, double rwyStartLon,
+        double cosH, double sinH,
+        double lateralToleranceM)
+    {
+        const double MAX_RET_SEARCH_M = 600.0;
+        const double METERS_PER_DEG_LAT = 111132.0;
+
+        if (!Adjacency.TryGetValue(startNodeId, out var initEdges)) return false;
+
+        // Require at least one named adjacent edge — node must be a taxiway junction.
+        bool hasNamedStart = false;
+        foreach (var e in initEdges)
+            if (!string.IsNullOrEmpty(e.TaxiwayName)) { hasNamedStart = true; break; }
+        if (!hasNamedStart) return false;
+
+        var visited = new HashSet<int> { startNodeId };
+        var queue = new Queue<(int nodeId, double dist)>();
+
+        // Seed from named edges only.
+        foreach (var e in initEdges)
+        {
+            if (!string.IsNullOrEmpty(e.TaxiwayName))
+                queue.Enqueue((e.ToNodeId, e.DistanceMeters));
+        }
+
+        while (queue.Count > 0)
+        {
+            var (nodeId, dist) = queue.Dequeue();
+            if (visited.Contains(nodeId)) continue;
+            visited.Add(nodeId);
+
+            if (!Nodes.TryGetValue(nodeId, out var node)) continue;
+
+            double latR = (rwyStartLat + node.Latitude) * 0.5 * Math.PI / 180.0;
+            double mPerLon = METERS_PER_DEG_LAT * Math.Cos(latR);
+            double dN = (node.Latitude - rwyStartLat) * METERS_PER_DEG_LAT;
+            double dE = (node.Longitude - rwyStartLon) * mPerLon;
+            double lateralM = Math.Abs(dE * cosH - dN * sinH);
+
+            if (lateralM > lateralToleranceM) return true;
+
+            if (dist >= MAX_RET_SEARCH_M) continue;
+
+            if (!Adjacency.TryGetValue(nodeId, out var edges)) continue;
+            foreach (var e in edges)
+            {
+                // Follow all edges (named and unnamed) so unnamed connector segments
+                // between the named portions of a RET don't break the chain.
+                if (visited.Contains(e.ToNodeId)) continue;
+                double newDist = dist + e.DistanceMeters;
+                if (newDist <= MAX_RET_SEARCH_M)
+                    queue.Enqueue((e.ToNodeId, newDist));
+            }
         }
         return false;
     }

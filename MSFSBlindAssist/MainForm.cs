@@ -2188,7 +2188,8 @@ public partial class MainForm : Form
         if (taxiAssistForm == null || taxiAssistForm.IsDisposed)
         {
             taxiAssistForm = new TaxiAssistForm(
-                airportDataProvider!, announcer, taxiGuidanceManager, simConnectManager, tcasService);
+                airportDataProvider!, announcer, taxiGuidanceManager, simConnectManager, tcasService,
+                simConnectManager.AircraftWingSpan);
         }
 
         // Find nearest airport. Filter to 4-char canonical ICAO at the call site —
