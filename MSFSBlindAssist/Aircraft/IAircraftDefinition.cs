@@ -49,12 +49,14 @@ public sealed class VisualGuidanceProfile
     public float ToneMaxFrequencyHz { get; init; } = 800f;
 
     /// <summary>Pitch (degrees) at which the tone frequency saturates to the min/max. Default
-    /// is ±8°, which covers the transport-jet approach envelope (-3° glideslope + 6° flare
-    /// AoA + headroom) and gives a 37.5 Hz/° matching slope (vs the old 30 Hz/° at ±10°) so
-    /// sub-degree pitch errors are easier to detect by ear. Wider envelopes (aerobatic,
-    /// fighter) should raise this; tighter envelopes can lower it for even finer resolution
-    /// near zero (at the cost of earlier saturation).</summary>
-    public double TonePitchRangeDeg { get; init; } = 8.0;
+    /// is ±6°, which covers the transport-jet approach envelope (-3° glideslope, +6° flare
+    /// AoA at the saturation edge) and gives a **50 Hz/° matching slope** — 67% more sensitive
+    /// than the AudioToneGenerator's native ±10° default (30 Hz/°). At this slope a 0.1° pitch
+    /// error produces a 5 Hz beat (slow audible wobble); 0.5° produces a 25 Hz beat (clear
+    /// fluttering). Wider envelopes (aerobatic, fighter) should raise this; tighter envelopes
+    /// can lower it further for even finer resolution near zero (at the cost of earlier
+    /// saturation outside the approach phase).</summary>
+    public double TonePitchRangeDeg { get; init; } = 6.0;
 
     /// <summary>Bank (degrees) at which the tone pan saturates to ±1.0. Default is ±5°, which
     /// covers a stabilized approach (banks rarely exceed 5° once on centerline) and gives a

@@ -24,6 +24,12 @@ public class HandFlyManager : IDisposable
     private HandFlyWaveType waveType;
     private double volume;
 
+    // When visual guidance is active, its dual tones use the same Hz/pan mappings as HandFly's
+    // single tone; playing all three at once was reported as confusing by pilots ("which tone
+    // do I follow?"). This flag tells HandFly to stay audio-silent while VG is running.
+    // Announcements (if feedback mode includes them) still fire — only the tone is muted.
+    private bool audioSuppressedByVG = false;
+
     // Heading and VS monitoring settings
     private bool monitorHeading;
     private bool monitorVerticalSpeed;
@@ -74,9 +80,14 @@ public class HandFlyManager : IDisposable
             lastHeadingAnnouncement = DateTime.MinValue;
             lastVSAnnouncement = DateTime.MinValue;
 
-            // Start audio if tones are enabled
-            if (feedbackMode == HandFlyFeedbackMode.TonesOnly ||
-                feedbackMode == HandFlyFeedbackMode.Both)
+            // Start audio if tones are enabled — unless visual guidance has asked us to stay
+            // silent. VG's two tones conflict audibly with HandFly's single tone (same Hz/pan
+            // mappings, hard to tell which to follow), so when VG is active it suppresses
+            // HandFly audio for the duration. Announcements still fire if the feedback mode
+            // includes them; only the tone is muted.
+            if ((feedbackMode == HandFlyFeedbackMode.TonesOnly ||
+                 feedbackMode == HandFlyFeedbackMode.Both) &&
+                !audioSuppressedByVG)
             {
                 try
                 {
@@ -400,6 +411,48 @@ public class HandFlyManager : IDisposable
             audioGenerator.Dispose();
             audioGenerator = null;
             System.Diagnostics.Debug.WriteLine("[HandFlyManager] Audio tone stopped");
+        }
+    }
+
+    /// <summary>
+    /// Mute the HandFly tone for the duration of a visual-guidance session. Visual guidance
+    /// runs two tones with the same Hz/pan mapping as HandFly's single tone; playing all three
+    /// confused pilots about which tone to follow. While suppressed, HandFly's announcements
+    /// (if its feedback mode includes them) continue to fire — only the audio tone is muted.
+    /// Idempotent; safe to call when no audio is playing.
+    /// </summary>
+    public void SuppressAudio()
+    {
+        audioSuppressedByVG = true;
+        StopAudio();
+        System.Diagnostics.Debug.WriteLine("[HandFlyManager] Audio suppressed by visual guidance");
+    }
+
+    /// <summary>
+    /// Counterpart to <see cref="SuppressAudio"/>. If HandFly is still active and its feedback
+    /// mode wants tones, restart the audio generator. Idempotent; safe to call when audio was
+    /// never suppressed.
+    /// </summary>
+    public void ResumeAudio()
+    {
+        audioSuppressedByVG = false;
+        if (isActive &&
+            (feedbackMode == HandFlyFeedbackMode.TonesOnly ||
+             feedbackMode == HandFlyFeedbackMode.Both) &&
+            audioGenerator == null)
+        {
+            try
+            {
+                audioGenerator = new AudioToneGenerator();
+                audioGenerator.Start(waveType, volume);
+                System.Diagnostics.Debug.WriteLine("[HandFlyManager] Audio resumed after visual guidance");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[HandFlyManager] Failed to resume audio: {ex.Message}");
+                audioGenerator?.Dispose();
+                audioGenerator = null;
+            }
         }
     }
 

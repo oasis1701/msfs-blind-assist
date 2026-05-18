@@ -21,10 +21,17 @@ Two `AudioToneGenerator` instances always run side-by-side while visual guidance
 
 | Tone | Frequency source | Pan source | Default waveform |
 |------|------------------|------------|------------------|
-| **Desired** | PID-commanded pitch (200–800 Hz over ±8°) | PID-commanded bank (±1.0 over ±5°) | Triangle |
+| **Desired** | PID-commanded pitch (200–800 Hz over ±6°) | PID-commanded bank (±1.0 over ±5°) | Triangle |
 | **Current** | Aircraft's *actual* pitch | Aircraft's *actual* bank | Sine |
 
-The default ranges are deliberately **tighter than `AudioToneGenerator`'s own defaults** (±10° / ±10°). The narrowing gives **37.5 Hz of beat per ° of pitch error** (vs 30 Hz/° at ±10° — +25% precision) and **0.20 pan delta per ° of bank error** (vs 0.10 pan/° at ±10° — +100% precision), making sub-degree errors clearly audible. The trade-off is earlier saturation: the PID can command up to 25° bank during intercept, which saturates the desired tone at full pan. That's fine because the spoken bank-guidance announcements ("3 left", "matched", etc.) already cover the large-error regime — the tones own the precise near-matched-state cue, spoken cues own the gross corrections.
+The default ranges are deliberately **tighter than `AudioToneGenerator`'s own defaults** (±10° / ±10°). The narrowing gives **50 Hz of beat per ° of pitch error** (vs 30 Hz/° at the native ±10° default — +67% precision) and **0.20 pan delta per ° of bank error** (vs 0.10 pan/° at ±10° — +100% precision), making sub-degree errors clearly audible. At 0.1° pitch error a pilot hears a 5 Hz beat (slow wobble); at 0.5° they hear a 25 Hz beat (clear fluttering). The trade-off is earlier saturation: the PID can command up to 25° bank during intercept, which saturates the desired tone at full pan. That's fine because the spoken bank-guidance announcements ("3 left", "matched", etc.) already cover the large-error regime — the tones own the precise near-matched-state cue, spoken cues own the gross corrections.
+
+### Independence from HandFly mode
+
+Visual guidance **does not require HandFly mode to be active**. It monitors its own attitude (pitch + bank) via `VISUAL_GUIDANCE_PITCH` and `VISUAL_GUIDANCE_BANK` events emitted from `SimConnectManager`'s `VISUAL_GUIDANCE_DATA` callback, alongside the existing position / altitude / ground-track data. When the pilot activates visual guidance:
+
+- If HandFly mode is *also* active, **HandFly's single tone is automatically muted** via `HandFlyManager.SuppressAudio()`. Reason: HandFly's tone uses the same Hz/pan mapping as VG's tones (it shares `AudioToneGenerator`'s native defaults), so all three tones playing simultaneously gives pilots no way to tell which tone they should be following. Muting HandFly while VG is active leaves a clean two-tone matching exercise. HandFly's announcements (if its feedback mode includes them) continue to fire — only the audio is suppressed.
+- When VG deactivates, HandFly's tone is automatically resumed (`HandFlyManager.ResumeAudio()`) if HandFly is still active and its feedback mode wants tones.
 
 Both tones use the *same* pitch→Hz and bank→pan mappings, so the rules are:
 
@@ -69,7 +76,7 @@ For aircraft with attitude envelopes very different from a transport jet (aeroba
 |---|---|---|
 | `ToneMinFrequencyHz` | 200 | Frequency at full nose-down. |
 | `ToneMaxFrequencyHz` | 800 | Frequency at full nose-up. Centre = (min + max) / 2 = 500 Hz. |
-| `TonePitchRangeDeg` | **8** | Pitch (degrees) at which frequency saturates. Tighter than `AudioToneGenerator`'s native 10° default → 37.5 Hz/° matching slope (+25% precision). Headroom for the -3° glideslope, +6° flare command, and small overshoots. |
+| `TonePitchRangeDeg` | **6** | Pitch (degrees) at which frequency saturates. Tighter than `AudioToneGenerator`'s native 10° default → **50 Hz/° matching slope** (+67% precision). Covers the -3° glideslope + 6° flare command (saturating at the edge). |
 | `ToneBankRangeDeg` | **5** | Bank (degrees) at which pan saturates. Tighter than the 10° native default → 0.20 pan/° (+100% precision). Saturates during ≥5° commanded bank (intercept) — spoken bank-guidance covers that regime. |
 
 A320, Fenix A320, and PMDG 777 all keep these visual-guidance defaults. Override per airframe via `VisualGuidanceProfile`; behaviour is unchanged for aircraft that don't override. HandFly mode's own `AudioToneGenerator` instance never calls `Configure` and so keeps the native 10°/10° defaults — VG's tighter precision is scoped to its two tones only.

@@ -897,24 +897,25 @@ public partial class MainForm : Form
             return true;
         }
 
-        // Share pitch/bank/heading with visual guidance when both modes active
-        if (visualGuidanceManager.IsActive)
+        // Visual guidance attitude (pitch / bank) now comes from VG's own SimConnect
+        // monitoring batch — no longer dependent on HandFly being active. Heading is
+        // already populated by the VG position update above.
+        if (e.VarName == "VISUAL_GUIDANCE_PITCH" && visualGuidanceManager.IsActive)
         {
-            if (e.VarName == "PLANE_PITCH_DEGREES")
-            {
-                double pitchDegrees = -(e.Value * (180.0 / Math.PI));
-                visualGuidanceManager.UpdatePitch(pitchDegrees);
-            }
-            else if (e.VarName == "PLANE_BANK_DEGREES")
-            {
-                double bankDegrees = e.Value * (180.0 / Math.PI);
-                visualGuidanceManager.UpdateBank(bankDegrees);
-            }
-            else if (e.VarName == "PLANE_HEADING_DEGREES_MAGNETIC")
-            {
-                double headingDegrees = e.Value * (180.0 / Math.PI);
-                visualGuidanceManager.UpdateHeading(headingDegrees);
-            }
+            // SimConnect pitch is positive=nose down (Euler convention); negate to
+            // standard right-handed convention (positive=nose up).
+            double pitchDegrees = -(e.Value * (180.0 / Math.PI));
+            visualGuidanceManager.UpdatePitch(pitchDegrees);
+            return true;
+        }
+        if (e.VarName == "VISUAL_GUIDANCE_BANK" && visualGuidanceManager.IsActive)
+        {
+            // SimConnect bank is left-positive; VisualGuidanceManager.StandardBank() applies
+            // the sign conversion at the consumer side, so we pass the raw SimConnect value
+            // (just converted from radians to degrees).
+            double bankDegrees = e.Value * (180.0 / Math.PI);
+            visualGuidanceManager.UpdateBank(bankDegrees);
+            return true;
         }
 
         // Handle aircraft variable hotkey announcements
@@ -2915,11 +2916,11 @@ public partial class MainForm : Form
             // Unregister global H, V, Q hotkeys
             hotkeyManager.UnregisterHandFlyHotkeys();
 
-            // Stop visual guidance if active (requires hand fly mode)
-            if (visualGuidanceManager.IsActive)
-            {
-                visualGuidanceManager.Stop();
-            }
+            // Visual guidance is now independent of HandFly mode — do NOT stop it just
+            // because HandFly is being toggled off. VG runs its own attitude monitoring
+            // (VISUAL_GUIDANCE_PITCH / VISUAL_GUIDANCE_BANK) and has nothing to lose from
+            // HandFly going inactive. If anything, HandFly turning off makes VG audio
+            // cleaner because there are now only two tones playing instead of three.
         }
     }
 
@@ -2938,17 +2939,14 @@ public partial class MainForm : Form
     {
         if (isActive)
         {
-            // Validation checks. Use Stop(announce: false) — Toggle has already flipped
-            // isActive=true but the user never actually had a running guidance session, so
-            // the public "Visual guidance off" callout would be misleading after the error.
-            // The event still fires so any monitoring that was queued cleans up.
-            if (!handFlyManager.IsActive)
-            {
-                announcer.Announce("Hand fly mode must be active first");
-                visualGuidanceManager.Stop(announce: false);
-                return;
-            }
-
+            // Validation: visual guidance no longer requires HandFly mode — it monitors its
+            // own pitch/bank/heading via VISUAL_GUIDANCE_DATA. Decoupled per pilot feedback that
+            // HandFly's single tone interfered with VG's dual tones, making it hard to tell
+            // which tone to follow. If HandFly happens to also be active, its tone is paused
+            // for the duration of VG (see HandFlyManager.SuppressAudio).
+            // Use Stop(announce: false) — Toggle has already flipped isActive=true but the user
+            // never actually had a running guidance session, so the public "Visual guidance off"
+            // callout would be misleading after a validation error.
             var runway = simConnectManager.GetDestinationRunway();
             var airport = simConnectManager.GetDestinationAirport();
             if (runway == null)
@@ -2975,11 +2973,21 @@ public partial class MainForm : Form
 
             // Start monitoring position variables at 1 Hz
             simConnectManager.StartVisualGuidanceMonitoring();
+
+            // Silence HandFly's tone if it's also active — VG's two tones use the same
+            // Hz/pan mapping as HandFly's single tone, and pilots reported the three tones
+            // together were impossible to follow. Announcements (if HandFly's feedback mode
+            // includes them) still fire. Idempotent — no-op if HandFly was already silent.
+            handFlyManager.SuppressAudio();
         }
         else
         {
             // Stop monitoring
             simConnectManager.StopVisualGuidanceMonitoring();
+
+            // Resume HandFly's tone if HandFly is still active and its feedback mode wants
+            // tones. Idempotent — no-op if HandFly is off or in announcements-only mode.
+            handFlyManager.ResumeAudio();
         }
     }
 
