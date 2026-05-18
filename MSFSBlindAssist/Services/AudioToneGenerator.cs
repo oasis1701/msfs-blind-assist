@@ -35,12 +35,13 @@ public class AudioToneGenerator : IDisposable
     /// Optional per-instance configuration for both axes of the attitude→audio mapping. Call
     /// BEFORE <see cref="Start"/> (config is captured at Start time).
     ///
-    /// Defaults are 200–800 Hz over ±10° pitch and pan saturation at ±10° bank — appropriate for
-    /// transport jets. Tightening the ranges (e.g., visual landing guidance uses ±8° pitch and
-    /// ±5° bank by default) increases the matching slope: more Hz of beat per degree of pitch
-    /// error, more pan delta per degree of bank error. The trade-off is earlier saturation
-    /// outside the approach envelope. Widen the ranges for aircraft with larger attitude
-    /// envelopes (aerobatic, fighter) via the aircraft's <c>VisualGuidanceProfile</c>.
+    /// The class-level defaults are 200–800 Hz over ±10° pitch and pan saturation at ±10° bank
+    /// — appropriate for hand-fly mode's tone (which never calls Configure). Tightening the
+    /// ranges increases the matching slope: more Hz of beat per degree of pitch error, more
+    /// pan delta per degree of bank error. Visual landing guidance currently uses ±6° pitch
+    /// (50 Hz/°) and ±5° bank (0.20 pan/°) by default — see <c>VisualGuidanceProfile</c>. The
+    /// trade-off is earlier saturation outside the approach envelope. Widen the ranges for
+    /// aircraft with larger attitude envelopes (aerobatic, fighter) via the profile.
     /// </summary>
     public void Configure(float minFrequencyHz, float maxFrequencyHz, double pitchRangeDegrees, double bankRangeDegrees)
     {

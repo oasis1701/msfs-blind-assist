@@ -361,37 +361,57 @@ public class VisualGuidanceManager : IDisposable
         if (!tonesNeedStart) return;
         tonesNeedStart = false;
 
+        // AudioToneGenerator.Start catches its own exceptions and leaves the instance in a
+        // no-op state (isPlaying=false, internal providers nulled by Cleanup). It does NOT
+        // throw, so the outer try/catch here is defensive against future changes only —
+        // the meaningful signal is the IsPlaying property after Start returns.
         try
         {
             desiredAttitudeTone?.Start(guidanceWaveType, guidanceVolume);
-            System.Diagnostics.Debug.WriteLine("[VisualGuidanceManager] Desired-attitude tone started");
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[VisualGuidanceManager] Failed to start desired-attitude tone: {ex.Message}");
-            desiredAttitudeTone?.Dispose();
-            desiredAttitudeTone = null;
+            System.Diagnostics.Debug.WriteLine($"[VisualGuidanceManager] Desired-attitude tone Start threw (unexpected): {ex.Message}");
         }
 
-        if (desiredAttitudeTone != null && currentAttitudeTone != null)
+        // If the desired tone failed to actually start (audio device error, driver issue),
+        // dispose it AND skip starting the follower — a current-tone-only setup is useless
+        // (nothing to match against) and would just play a constant 500 Hz background drone.
+        if (desiredAttitudeTone == null || !desiredAttitudeTone.IsPlaying)
+        {
+            System.Diagnostics.Debug.WriteLine("[VisualGuidanceManager] Desired-attitude tone did not start (or failed); tearing both down");
+            desiredAttitudeTone?.Dispose();
+            desiredAttitudeTone = null;
+            currentAttitudeTone?.Dispose();
+            currentAttitudeTone = null;
+            return;
+        }
+
+        System.Diagnostics.Debug.WriteLine("[VisualGuidanceManager] Desired-attitude tone started");
+
+        if (currentAttitudeTone != null)
         {
             try
             {
                 currentAttitudeTone.Start(currentToneWaveType, currentToneVolume);
-                System.Diagnostics.Debug.WriteLine("[VisualGuidanceManager] Current-attitude tone started");
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[VisualGuidanceManager] Failed to start current-attitude tone: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"[VisualGuidanceManager] Current-attitude tone Start threw (unexpected): {ex.Message}");
+            }
+
+            if (currentAttitudeTone.IsPlaying)
+            {
+                System.Diagnostics.Debug.WriteLine("[VisualGuidanceManager] Current-attitude tone started");
+            }
+            else
+            {
+                // Follower failed to start — desired tone still plays alone, which is at least
+                // useful (pilot has the PID commands; just no current-attitude reference).
+                System.Diagnostics.Debug.WriteLine("[VisualGuidanceManager] Current-attitude tone did not start; desired tone running alone");
                 currentAttitudeTone.Dispose();
                 currentAttitudeTone = null;
             }
-        }
-        else
-        {
-            // Reference failed → the follower would play a useless constant tone; tear it down.
-            currentAttitudeTone?.Dispose();
-            currentAttitudeTone = null;
         }
     }
 
@@ -488,11 +508,17 @@ public class VisualGuidanceManager : IDisposable
             // phase-continuous oscillator's portamento has reached the target frequency
             // (~0.23 ms at 44.1 kHz), so the very first audible note already reflects the
             // commanded / actual attitude. No fused-tone glitch at session start.
+            // NOTE: StartTonesIfNeeded can null out desiredAttitudeTone if WaveOut.Init throws
+            // (bad audio device, driver issue). Re-check both tones after this point — the
+            // early-out at the top of ProcessUpdate only proves they were non-null on entry.
             StartTonesIfNeeded();
 
             // Update desired (PID-commanded) attitude tone
-            desiredAttitudeTone.UpdatePitch(desiredPitch);
-            ApplyBank(desiredAttitudeTone, desiredBank);
+            if (desiredAttitudeTone != null)
+            {
+                desiredAttitudeTone.UpdatePitch(desiredPitch);
+                ApplyBank(desiredAttitudeTone, desiredBank);
+            }
 
             // Update current (actual) attitude tone — same Hz / pan mappings, so frequency match
             // ⇒ correct pitch attitude (and thus correct VS for the glideslope), pan match ⇒

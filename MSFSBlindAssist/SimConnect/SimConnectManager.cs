@@ -1824,19 +1824,17 @@ public class SimConnectManager
                 // within a frame of truth as the aircraft crosses the threshold.
                 lastKnownPosition = vgPosData;
 
+                // Event emission order matters: MainForm's VISUAL_GUIDANCE_AGL handler calls
+                // visualGuidanceManager.ProcessUpdate(), which consumes everything cached so
+                // far. Emit AGL LAST so position / ground-track / pitch / bank are already
+                // up-to-date for THIS frame when ProcessUpdate runs (otherwise the controller
+                // would use one-frame-stale attitude data on every tick).
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
                 {
                     VarName = "VISUAL_GUIDANCE_POSITION",
                     Value = 0,
                     Description = "",
                     PositionData = vgPosData
-                });
-
-                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
-                {
-                    VarName = "VISUAL_GUIDANCE_AGL",
-                    Value = vgData.AGL,
-                    Description = ""
                 });
 
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
@@ -1859,6 +1857,15 @@ public class SimConnectManager
                 {
                     VarName = "VISUAL_GUIDANCE_BANK",
                     Value = vgData.BankRadians,
+                    Description = ""
+                });
+
+                // AGL last — its handler triggers ProcessUpdate() with all the above already
+                // applied to this frame's caches.
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "VISUAL_GUIDANCE_AGL",
+                    Value = vgData.AGL,
                     Description = ""
                 });
                 break;

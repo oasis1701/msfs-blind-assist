@@ -2997,7 +2997,9 @@ public partial class MainForm : Form
             // Stop monitoring
             simConnectManager.StopVisualGuidanceMonitoring();
 
-            // Release the F quick-access hotkey.
+            // Release VG's claim on the quick-access hotkey set. If HandFly is still active,
+            // its claim keeps the keys registered; if not, this drops the ref count to zero
+            // and unregisters all 9 keys.
             hotkeyManager.UnregisterVisualGuidanceHotkeys();
 
             // Resume HandFly's tone if HandFly is still active and its feedback mode wants

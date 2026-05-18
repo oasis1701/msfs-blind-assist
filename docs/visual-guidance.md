@@ -8,7 +8,7 @@ The visual guidance system uses a **PID controller** to generate pitch and bank 
 
 **Key files:**
 - `MSFSBlindAssist/Services/VisualGuidanceManager.cs` — PID, phase machine, tone modulation, `StandardBank` helper, on-ground auto-deactivation hook
-- `MSFSBlindAssist/Services/AudioToneGenerator.cs` — default 200–800 Hz pitch→Hz / ±10° bank→pan; per-instance `Configure(min, max, pitchRangeDeg)` for aircraft-specific ranges
+- `MSFSBlindAssist/Services/AudioToneGenerator.cs` — default 200–800 Hz pitch→Hz / ±10° pitch / ±10° bank→pan; per-instance `Configure(minHz, maxHz, pitchRangeDeg, bankRangeDeg)` for aircraft-specific ranges
 - `MSFSBlindAssist/Aircraft/IAircraftDefinition.cs` — `VisualGuidanceProfile` (per-aircraft tunables incl. tone frequency range)
 - `MSFSBlindAssist/Aircraft/BaseAircraftDefinition.cs` — default A320 profile
 - `MSFSBlindAssist/Settings/UserSettings.cs` — `VisualGuidanceToneWaveform/Volume`, `VisualGuidanceCurrentToneWaveform/Volume`, `VisualGuidanceHardPanTone`
