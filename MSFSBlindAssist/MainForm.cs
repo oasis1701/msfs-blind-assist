@@ -2979,11 +2979,25 @@ public partial class MainForm : Form
             // together were impossible to follow. Announcements (if HandFly's feedback mode
             // includes them) still fire. Idempotent — no-op if HandFly was already silent.
             handFlyManager.SuppressAudio();
+
+            // Register the F quick-access hotkey for "read target FPM". Previously F was
+            // registered only as part of the HandFly hotkey set, which meant a pilot running
+            // VG without HandFly couldn't query target FPM with a single keypress. VG now
+            // owns its own F registration. If HandFly is also active, the WM_HOTKEY dispatch
+            // routes F through HandFly's branch as a passthrough — both flows reach ReadTargetFPM.
+            bool fpmRegistered = hotkeyManager.RegisterVisualGuidanceHotkeys();
+            if (!fpmRegistered)
+            {
+                announcer.Announce("Visual guidance active. Target FPM quick key unavailable; use output mode.");
+            }
         }
         else
         {
             // Stop monitoring
             simConnectManager.StopVisualGuidanceMonitoring();
+
+            // Release the F quick-access hotkey.
+            hotkeyManager.UnregisterVisualGuidanceHotkeys();
 
             // Resume HandFly's tone if HandFly is still active and its feedback mode wants
             // tones. Idempotent — no-op if HandFly is off or in announcements-only mode.

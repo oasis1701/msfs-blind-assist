@@ -589,7 +589,11 @@ public class HotkeyManager : IDisposable
                             TriggerHotkey(HotkeyAction.ReadAltitudeMSL);
                             break;
                         case HOTKEY_VISUAL_TARGET_FPM:
-                            System.Diagnostics.Debug.WriteLine("Hand fly hotkeys: Triggering ReadTargetFPM for visual guidance");
+                            // F is owned by RegisterVisualGuidanceHotkeys now (not HandFly),
+                            // but if BOTH modes are active the dispatch enters HandFly's
+                            // branch first (it's an if/else-if), so we still need to handle
+                            // F here as a passthrough to VG's ReadTargetFPM action.
+                            System.Diagnostics.Debug.WriteLine("Hand fly hotkeys: Passthrough ReadTargetFPM (F registered by VG)");
                             TriggerHotkey(HotkeyAction.ReadTargetFPM);
                             break;
                         default:
@@ -959,7 +963,11 @@ public class HotkeyManager : IDisposable
 
             System.Diagnostics.Debug.WriteLine("Hand fly hotkeys: Attempting registration...");
 
-            // Register H, V, Q, S, D, B, P, A without modifiers for global access
+            // Register H, V, Q, S, D, B, P, A without modifiers for global access.
+            // NOTE: F (Target FPM) used to be registered here too, but visual guidance is now
+            // independent of HandFly — F is registered separately via RegisterVisualGuidanceHotkeys
+            // when VG activates. Keeping F here would double-register and fail when the user runs
+            // both modes simultaneously.
             bool hRegistered = RegisterHotKey(windowHandle, HOTKEY_HANDFLY_HEADING, MOD_NONE, 0x48);         // H (Heading)
             bool vRegistered = RegisterHotKey(windowHandle, HOTKEY_HANDFLY_VERTICAL_SPEED, MOD_NONE, 0x56); // V (Vertical Speed)
             bool qRegistered = RegisterHotKey(windowHandle, HOTKEY_HANDFLY_ALTITUDE_AGL, MOD_NONE, 0x51);   // Q (Altitude AGL)
@@ -968,12 +976,11 @@ public class HotkeyManager : IDisposable
             bool bRegistered = RegisterHotKey(windowHandle, HOTKEY_HANDFLY_BANK_ANGLE, MOD_NONE, 0x42);     // B (Bank Angle)
             bool pRegistered = RegisterHotKey(windowHandle, HOTKEY_HANDFLY_PITCH, MOD_NONE, 0x50);          // P (Pitch)
             bool aRegistered = RegisterHotKey(windowHandle, HOTKEY_HANDFLY_ALTITUDE_MSL, MOD_NONE, 0x41);   // A (Altitude MSL)
-            bool fRegistered = RegisterHotKey(windowHandle, HOTKEY_VISUAL_TARGET_FPM, MOD_NONE, 0x46);    // F (Target FPM for visual guidance)
 
-            System.Diagnostics.Debug.WriteLine($"Hand fly hotkeys: H={hRegistered}, V={vRegistered}, Q={qRegistered}, S={sRegistered}, D={dRegistered}, B={bRegistered}, P={pRegistered}, A={aRegistered}, F={fRegistered}");
+            System.Diagnostics.Debug.WriteLine($"Hand fly hotkeys: H={hRegistered}, V={vRegistered}, Q={qRegistered}, S={sRegistered}, D={dRegistered}, B={bRegistered}, P={pRegistered}, A={aRegistered}");
 
             // Only mark as active if ALL registrations succeeded
-            if (hRegistered && vRegistered && qRegistered && sRegistered && dRegistered && bRegistered && pRegistered && aRegistered && fRegistered)
+            if (hRegistered && vRegistered && qRegistered && sRegistered && dRegistered && bRegistered && pRegistered && aRegistered)
             {
                 handFlyHotkeysActive = true;
                 System.Diagnostics.Debug.WriteLine("Hand fly hotkeys: All registered successfully");
@@ -991,7 +998,6 @@ public class HotkeyManager : IDisposable
                 if (bRegistered) UnregisterHotKey(windowHandle, HOTKEY_HANDFLY_BANK_ANGLE);
                 if (pRegistered) UnregisterHotKey(windowHandle, HOTKEY_HANDFLY_PITCH);
                 if (aRegistered) UnregisterHotKey(windowHandle, HOTKEY_HANDFLY_ALTITUDE_MSL);
-                if (fRegistered) UnregisterHotKey(windowHandle, HOTKEY_VISUAL_TARGET_FPM);
                 return false;
             }
         }
@@ -1016,7 +1022,9 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_HANDFLY_BANK_ANGLE);
             UnregisterHotKey(windowHandle, HOTKEY_HANDFLY_PITCH);
             UnregisterHotKey(windowHandle, HOTKEY_HANDFLY_ALTITUDE_MSL);
-            UnregisterHotKey(windowHandle, HOTKEY_VISUAL_TARGET_FPM);
+            // F (HOTKEY_VISUAL_TARGET_FPM) is owned by RegisterVisualGuidanceHotkeys now —
+            // don't unregister it here or we'd kill VG's hotkey when HandFly is toggled off
+            // while VG is still active.
 
             System.Diagnostics.Debug.WriteLine("Hand fly hotkeys: Unregistered successfully");
         }
