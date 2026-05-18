@@ -2980,15 +2980,16 @@ public partial class MainForm : Form
             // includes them) still fire. Idempotent — no-op if HandFly was already silent.
             handFlyManager.SuppressAudio();
 
-            // Register the F quick-access hotkey for "read target FPM". Previously F was
-            // registered only as part of the HandFly hotkey set, which meant a pilot running
-            // VG without HandFly couldn't query target FPM with a single keypress. VG now
-            // owns its own F registration. If HandFly is also active, the WM_HOTKEY dispatch
-            // routes F through HandFly's branch as a passthrough — both flows reach ReadTargetFPM.
-            bool fpmRegistered = hotkeyManager.RegisterVisualGuidanceHotkeys();
-            if (!fpmRegistered)
+            // Register the quick-access hotkey set (H, V, Q, S, D, B, P, A, F). The set is
+            // shared with HandFly — VG is a hand-flying scenario with extra audio guidance, so
+            // the same per-key readouts apply. The shared registration is reference-counted
+            // inside HotkeyManager, so activating both modes is conflict-free; whichever
+            // deactivates last releases the keys. If a key fails to register (some other app
+            // is holding it globally), the user is told to fall back to output mode.
+            bool allQuickKeysRegistered = hotkeyManager.RegisterVisualGuidanceHotkeys();
+            if (!allQuickKeysRegistered)
             {
-                announcer.Announce("Visual guidance active. Target FPM quick key unavailable; use output mode.");
+                announcer.Announce("Visual guidance active. Some quick-access keys unavailable; use output mode.");
             }
         }
         else
