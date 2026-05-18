@@ -33,6 +33,24 @@ Visual guidance **does not require HandFly mode to be active**. It monitors its 
 - If HandFly mode is *also* active, **HandFly's single tone is automatically muted** via `HandFlyManager.SuppressAudio()`. Reason: HandFly's tone uses the same Hz/pan mapping as VG's tones (it shares `AudioToneGenerator`'s native defaults), so all three tones playing simultaneously gives pilots no way to tell which tone they should be following. Muting HandFly while VG is active leaves a clean two-tone matching exercise. HandFly's announcements (if its feedback mode includes them) continue to fire — only the audio is suppressed.
 - When VG deactivates, HandFly's tone is automatically resumed (`HandFlyManager.ResumeAudio()`) if HandFly is still active and its feedback mode wants tones.
 
+### Quick-access hotkeys (H, V, Q, S, D, B, P, A, F)
+
+The single-letter no-modifier hotkeys are **shared** between HandFly and visual guidance — VG is hand-flying with extra audio guidance, so the same in-flight readouts apply:
+
+| Key | Action |
+|---|---|
+| H | Read heading (magnetic) |
+| V | Read vertical speed |
+| Q | Read altitude AGL |
+| S | Read airspeed (indicated) |
+| D | Read destination-runway distance |
+| B | Read bank angle |
+| P | Read pitch |
+| A | Read altitude (MSL) |
+| F | Read target FPM (visual guidance) |
+
+Registration is reference-counted inside `HotkeyManager.AcquireQuickAccessHotkeys` / `ReleaseQuickAccessHotkeys`: the first mode (HandFly or VG) to activate registers all 9 keys; the second mode bumps the ref count without re-registering; whichever mode deactivates last releases the keys. Per-key partial-failure tracking means a key that was unavailable on first try (some other app holding it) will be retried on the next acquire. WM_HOTKEY dispatch is unified — same `case` for each key regardless of which mode is active. Pressing F in HandFly-only mode triggers `ReadTargetFPM`, whose handler self-gates on `visualGuidanceManager.IsActive` and announces *"Visual guidance not active"* if appropriate.
+
 Both tones use the *same* pitch→Hz and bank→pan mappings, so the rules are:
 
 - **Frequency match (zero-beat)** ⇒ actual pitch attitude = commanded pitch attitude ⇒ aircraft is flying the commanded vertical speed for the 3° glideslope.
