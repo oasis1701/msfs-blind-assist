@@ -274,10 +274,12 @@ public class VisualGuidanceManager : IDisposable
         {
             desiredAttitudeTone = new AudioToneGenerator();
             currentAttitudeTone = new AudioToneGenerator();
-            desiredAttitudeTone.Configure(profile.ToneMinFrequencyHz, profile.ToneMaxFrequencyHz, profile.TonePitchRangeDeg);
-            currentAttitudeTone.Configure(profile.ToneMinFrequencyHz, profile.ToneMaxFrequencyHz, profile.TonePitchRangeDeg);
+            desiredAttitudeTone.Configure(profile.ToneMinFrequencyHz, profile.ToneMaxFrequencyHz,
+                                          profile.TonePitchRangeDeg, profile.ToneBankRangeDeg);
+            currentAttitudeTone.Configure(profile.ToneMinFrequencyHz, profile.ToneMaxFrequencyHz,
+                                          profile.TonePitchRangeDeg, profile.ToneBankRangeDeg);
             tonesNeedStart = true;
-            System.Diagnostics.Debug.WriteLine($"[VisualGuidanceManager] Tones instantiated ({profile.ToneMinFrequencyHz}–{profile.ToneMaxFrequencyHz} Hz over ±{profile.TonePitchRangeDeg}°); deferring Start until first ProcessUpdate");
+            System.Diagnostics.Debug.WriteLine($"[VisualGuidanceManager] Tones instantiated ({profile.ToneMinFrequencyHz}–{profile.ToneMaxFrequencyHz} Hz over ±{profile.TonePitchRangeDeg}° pitch, pan ±{profile.ToneBankRangeDeg}° bank); deferring Start until first ProcessUpdate");
         }
         catch (Exception ex)
         {

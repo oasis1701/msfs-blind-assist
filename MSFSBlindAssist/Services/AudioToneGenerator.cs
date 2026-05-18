@@ -21,33 +21,37 @@ public class AudioToneGenerator : IDisposable
     // center = level flight. Per-instance overrides via Configure(...) before Start().
     private const float DEFAULT_MIN_FREQUENCY = 200f;
     private const float DEFAULT_MAX_FREQUENCY = 800f;
-    private const double DEFAULT_PITCH_RANGE_DEG = 10.0;  // Pitch (degrees) at which frequency saturates
-
-    // Bank angle (degrees) at which pan saturates to ±1.0. ±10° → full left / full right.
-    private const double BANK_FULL_RANGE = 10.0;
+    private const double DEFAULT_PITCH_RANGE_DEG = 10.0;
+    private const double DEFAULT_BANK_RANGE_DEG = 10.0;  // bank (degrees) at which pan saturates to ±1.0
 
     // Effective mapping (defaults preserved when Configure is not called).
     private float minFrequency = DEFAULT_MIN_FREQUENCY;
     private float maxFrequency = DEFAULT_MAX_FREQUENCY;
     private double pitchRangeDeg = DEFAULT_PITCH_RANGE_DEG;
+    private double bankRangeDeg = DEFAULT_BANK_RANGE_DEG;
     private float CenterFrequency => (minFrequency + maxFrequency) / 2f;
 
     /// <summary>
-    /// Optional per-instance configuration for the pitch→frequency mapping. Call BEFORE
-    /// <see cref="Start"/>. Defaults are 200–800 Hz over ±10° pitch — appropriate for transport
-    /// jets. Light aircraft or fighters with wider attitude envelopes may want a different
-    /// pitch range so the tone doesn't saturate in normal manoeuvring; supply that via the
-    /// aircraft's <c>VisualGuidanceProfile</c>.
+    /// Optional per-instance configuration for both axes of the attitude→audio mapping. Call
+    /// BEFORE <see cref="Start"/> (config is captured at Start time).
+    ///
+    /// Defaults are 200–800 Hz over ±10° pitch and pan saturation at ±10° bank — appropriate for
+    /// transport jets. Tightening the ranges (e.g., visual landing guidance uses ±8° pitch and
+    /// ±5° bank by default) increases the matching slope: more Hz of beat per degree of pitch
+    /// error, more pan delta per degree of bank error. The trade-off is earlier saturation
+    /// outside the approach envelope. Widen the ranges for aircraft with larger attitude
+    /// envelopes (aerobatic, fighter) via the aircraft's <c>VisualGuidanceProfile</c>.
     /// </summary>
-    public void Configure(float minFrequencyHz, float maxFrequencyHz, double pitchRangeDegrees)
+    public void Configure(float minFrequencyHz, float maxFrequencyHz, double pitchRangeDegrees, double bankRangeDegrees)
     {
         if (isPlaying)
             return;  // mapping is captured at Start(); change before starting
-        if (minFrequencyHz > 0 && maxFrequencyHz > minFrequencyHz && pitchRangeDegrees > 0)
+        if (minFrequencyHz > 0 && maxFrequencyHz > minFrequencyHz && pitchRangeDegrees > 0 && bankRangeDegrees > 0)
         {
             minFrequency = minFrequencyHz;
             maxFrequency = maxFrequencyHz;
             pitchRangeDeg = pitchRangeDegrees;
+            bankRangeDeg = bankRangeDegrees;
         }
     }
 
@@ -167,13 +171,14 @@ public class AudioToneGenerator : IDisposable
             return;
 
         // Map bank angle to stereo pan using standard right-positive convention:
-        //   ±BANK_FULL_RANGE° (currently ±10°) → ±1.0 (full left / full right).
-        // Positive bank (right wing down) → positive pan (right speaker).
+        //   ±bankRangeDeg → ±1.0 (full left / full right). Default ±10°; Configure() may narrow
+        //   it (visual landing guidance defaults to ±5° for tighter pan precision near matched
+        //   state). Positive bank (right wing down) → positive pan (right speaker).
         // NOTE: SimConnect's PLANE_BANK_DEGREES is left-positive; callers must negate before
         // passing in (VisualGuidanceManager does this via its StandardBank helper; HandFlyManager
         // negates inline). The PID's bank command output is already right-positive.
-        double clampedBank = Math.Clamp(bankDegrees, -BANK_FULL_RANGE, BANK_FULL_RANGE);
-        float pan = (float)(clampedBank / BANK_FULL_RANGE);
+        double clampedBank = Math.Clamp(bankDegrees, -bankRangeDeg, bankRangeDeg);
+        float pan = (float)(clampedBank / bankRangeDeg);
 
         panningSampleProvider.Pan = pan;
     }

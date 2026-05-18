@@ -21,8 +21,10 @@ Two `AudioToneGenerator` instances always run side-by-side while visual guidance
 
 | Tone | Frequency source | Pan source | Default waveform |
 |------|------------------|------------|------------------|
-| **Desired** | PID-commanded pitch (200–800 Hz over ±10°) | PID-commanded bank (±1.0 over ±10°) | Triangle |
+| **Desired** | PID-commanded pitch (200–800 Hz over ±8°) | PID-commanded bank (±1.0 over ±5°) | Triangle |
 | **Current** | Aircraft's *actual* pitch | Aircraft's *actual* bank | Sine |
+
+The default ranges are deliberately **tighter than `AudioToneGenerator`'s own defaults** (±10° / ±10°). The narrowing gives **37.5 Hz of beat per ° of pitch error** (vs 30 Hz/° at ±10° — +25% precision) and **0.20 pan delta per ° of bank error** (vs 0.10 pan/° at ±10° — +100% precision), making sub-degree errors clearly audible. The trade-off is earlier saturation: the PID can command up to 25° bank during intercept, which saturates the desired tone at full pan. That's fine because the spoken bank-guidance announcements ("3 left", "matched", etc.) already cover the large-error regime — the tones own the precise near-matched-state cue, spoken cues own the gross corrections.
 
 Both tones use the *same* pitch→Hz and bank→pan mappings, so the rules are:
 
@@ -59,17 +61,18 @@ Both tones always play when visual guidance is active; there is no single-tone m
 - **Deferred Start:** Initialize() instantiates both `AudioToneGenerator` instances but does NOT call `Start()`. The first ProcessUpdate computes real attitude commands and then starts both tones at the correct initial frequencies via `StartTonesIfNeeded`. The phase-continuous oscillator's portamento (~0.23 ms at 44.1 kHz) is well under WaveOut's 150 ms buffer, so the first *audible* note already reflects the airplane's state — no fused-tone glitch at session start.
 - **Idempotent Initialize:** if Initialize is called while existing tones are still running (defensive against future callers that bypass `Stop`), Initialize tears them down first before creating new instances. Today's Toggle flow always Stops first, but the guard prevents future leaks.
 
-### Aircraft-specific tone frequency range
+### Aircraft-specific tone frequency / attitude range
 
-For aircraft with attitude envelopes very different from a transport jet (light aircraft with greater pitch travel, fighters, gliders), the default 200–800 Hz over ±10° pitch may saturate too easily or feel coarse near zero. `VisualGuidanceProfile` exposes three optional fields read at Initialize time:
+For aircraft with attitude envelopes very different from a transport jet (aerobatic, fighter, glider), the defaults below may saturate too easily or feel coarse near zero. `VisualGuidanceProfile` exposes four optional fields read at Initialize time, all passed to `AudioToneGenerator.Configure(...)` before the deferred `Start`:
 
-| Field | Default | Notes |
+| Field | Visual-guidance default | Notes |
 |---|---|---|
 | `ToneMinFrequencyHz` | 200 | Frequency at full nose-down. |
-| `ToneMaxFrequencyHz` | 800 | Frequency at full nose-up. Centre = (min + max) / 2. |
-| `TonePitchRangeDeg` | 10 | Pitch at which the tone saturates to min/max. Wider for aerobatic; narrower for finer resolution near zero. |
+| `ToneMaxFrequencyHz` | 800 | Frequency at full nose-up. Centre = (min + max) / 2 = 500 Hz. |
+| `TonePitchRangeDeg` | **8** | Pitch (degrees) at which frequency saturates. Tighter than `AudioToneGenerator`'s native 10° default → 37.5 Hz/° matching slope (+25% precision). Headroom for the -3° glideslope, +6° flare command, and small overshoots. |
+| `ToneBankRangeDeg` | **5** | Bank (degrees) at which pan saturates. Tighter than the 10° native default → 0.20 pan/° (+100% precision). Saturates during ≥5° commanded bank (intercept) — spoken bank-guidance covers that regime. |
 
-A320 and PMDG 777 keep all three defaults — the comfortable middle of the range works for transport-jet attitude envelopes. Override per airframe via `VisualGuidanceProfile`; behaviour is unchanged for aircraft that don't override.
+A320, Fenix A320, and PMDG 777 all keep these visual-guidance defaults. Override per airframe via `VisualGuidanceProfile`; behaviour is unchanged for aircraft that don't override. HandFly mode's own `AudioToneGenerator` instance never calls `Configure` and so keeps the native 10°/10° defaults — VG's tighter precision is scoped to its two tones only.
 
 ## Aircraft Profile (per-airframe tunables)
 

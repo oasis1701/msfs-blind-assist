@@ -49,10 +49,21 @@ public sealed class VisualGuidanceProfile
     public float ToneMaxFrequencyHz { get; init; } = 800f;
 
     /// <summary>Pitch (degrees) at which the tone frequency saturates to the min/max. Default
-    /// is ±10°, comfortable for transport jets that fly inside roughly ±5° on approach. Wider
-    /// envelopes (aerobatic, fighter) should raise this; tighter envelopes can lower it for
-    /// finer resolution near zero.</summary>
-    public double TonePitchRangeDeg { get; init; } = 10.0;
+    /// is ±8°, which covers the transport-jet approach envelope (-3° glideslope + 6° flare
+    /// AoA + headroom) and gives a 37.5 Hz/° matching slope (vs the old 30 Hz/° at ±10°) so
+    /// sub-degree pitch errors are easier to detect by ear. Wider envelopes (aerobatic,
+    /// fighter) should raise this; tighter envelopes can lower it for even finer resolution
+    /// near zero (at the cost of earlier saturation).</summary>
+    public double TonePitchRangeDeg { get; init; } = 8.0;
+
+    /// <summary>Bank (degrees) at which the tone pan saturates to ±1.0. Default is ±5°, which
+    /// covers a stabilized approach (banks rarely exceed 5° once on centerline) and gives a
+    /// 0.20 pan/° matching slope (vs the old 0.10 pan/° at ±10°) so small bank errors produce
+    /// clearly noticeable stereo deltas. The PID can command up to 25° bank during intercept
+    /// — that saturates the desired tone, but the spoken bank-guidance announcements
+    /// ("3 left", "2 right", etc.) already handle the large-error regime where matching by
+    /// ear is unnecessary. Raise for aircraft with wider habitual bank envelopes.</summary>
+    public double ToneBankRangeDeg { get; init; } = 5.0;
 }
 
 /// <summary>
