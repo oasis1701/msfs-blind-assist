@@ -361,13 +361,16 @@ public class HandFlyManager : IDisposable
         monitorHeading = newMonitorHeading;
         monitorVerticalSpeed = newMonitorVerticalSpeed;
 
-        // If active, update or restart audio based on new settings
+        // If active, update or restart audio based on new settings — but honour the VG
+        // suppression flag. If VG is currently muting our tone, settings changes update the
+        // stored mode/wave/volume (so ResumeAudio uses the new values when VG ends) without
+        // resurrecting the audio generator.
         if (isActive)
         {
             bool needsAudio = feedbackMode == HandFlyFeedbackMode.TonesOnly ||
                             feedbackMode == HandFlyFeedbackMode.Both;
 
-            if (needsAudio)
+            if (needsAudio && !audioSuppressedByVG)
             {
                 // Update existing audio or start if not running
                 if (audioGenerator != null)
@@ -392,7 +395,8 @@ public class HandFlyManager : IDisposable
             }
             else
             {
-                // Stop audio if no longer needed
+                // Either feedback mode no longer wants tones, or VG is currently suppressing
+                // our audio. Either way, ensure no leftover generator is running.
                 StopAudio();
             }
         }
