@@ -1,4 +1,5 @@
 using MSFSBlindAssist.Accessibility;
+using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation;
 using MSFSBlindAssist.Settings;
@@ -7,7 +8,11 @@ namespace MSFSBlindAssist.Services;
 
 /// <summary>
 /// Manages visual landing guidance using dual audio tones.
-/// Provides real-time guidance from intercept through touchdown using current and desired attitude tones.
+/// The DESIRED tone encodes the PID-commanded pitch (frequency 200–800 Hz over ±10°) and
+/// commanded bank (stereo pan over ±10°). The CURRENT tone (optional, on by default) mirrors
+/// the same mapping against the aircraft's *actual* pitch and bank, so frequency match
+/// (zero-beat) means correct pitch attitude / vertical speed and pan match means correct bank.
+/// Aircraft-specific tunables (approach AoA, Vref, rate caps) come from <see cref="VisualGuidanceProfile"/>.
 /// </summary>
 public class VisualGuidanceManager : IDisposable
 {
@@ -21,10 +26,23 @@ public class VisualGuidanceManager : IDisposable
     private double magneticVariation = 0.0;
     private double thresholdElevationMSL = 0.0;
 
-    // Audio generators
-    private AudioToneGenerator? desiredAttitudeTone;  // Guidance tone
+    // Audio generators — both always run while guidance is active.
+    private AudioToneGenerator? desiredAttitudeTone;  // PID-commanded attitude
+    private AudioToneGenerator? currentAttitudeTone;  // Aircraft's actual attitude (follower; matched by ear)
     private HandFlyWaveType guidanceWaveType = HandFlyWaveType.Triangle;
     private double guidanceVolume = 0.05; // Default 5%
+    private HandFlyWaveType currentToneWaveType = HandFlyWaveType.Sine;
+    private double currentToneVolume = 0.05;
+    private bool hardPanTone = false;  // see VisualGuidanceHardPanTone setting
+    // Defer audible Start() until the first ProcessUpdate computes real pitch/bank — otherwise
+    // the user hears ~33 ms of fused 500 Hz center-pan tone that represents nothing. Both tones
+    // are instantiated in Initialize so disposal/lifecycle stays simple; this flag controls
+    // when WaveOut actually fires up.
+    private bool tonesNeedStart = false;
+
+    // Bank (degrees, standard convention) at which hard-pan mode snaps to full left / right.
+    // Below this magnitude the tone stays centered, avoiding twitchy flips around 0°.
+    private const double HARD_PAN_DEADBAND_DEG = 1.0;
 
     // Position tracking
     private double? cachedLatitude;
@@ -100,8 +118,10 @@ public class VisualGuidanceManager : IDisposable
     private const double LATERAL_GAIN_TRACKING = 120.0;    // Cross-track error (NM) to bank for tracking (increased for faster convergence)
     private const double LATERAL_RATE_DAMPING = 12.0;    // Cross-track rate damping
     private const double LATERAL_HEADING_GAIN = 1.0;     // Track/heading error to bank for alignment (Boeing 747: 1.0-2.8)
-    private const double AIRSPEED_REFERENCE_KNOTS = 140.0;  // Reference speed for gain scaling
-    private const double MAX_BANK_RATE_DEG_PER_SEC = 3.0;   // Maximum bank command change rate (reduced from 5.0 to prevent oscillations)
+    // Aircraft-specific tunables — populated from IAircraftDefinition.GetVisualGuidanceProfile() in Initialize().
+    // Defaults below are the A320 numbers used historically (preserved when no profile is supplied).
+    private double airspeedReferenceKnots = 140.0;       // Reference Vref for sqrt(GS/Vref) lateral gain scaling
+    private double maxBankRateDegPerSec = 3.0;           // Cap on commanded bank change rate (deg/sec)
 
     // Arc mode guidance constants (replaces problematic P/H balance in CAPTURE mode)
     private const double ARC_MODE_ENTRY_NM = 1.5;           // Start arc capture at 1.5 NM (matches INTERCEPT_45 angle)
@@ -111,9 +131,9 @@ public class VisualGuidanceManager : IDisposable
     private const double ARC_RATE_DAMPING = 12.0;           // Damping to prevent overshoot if pilot overbanks
     private const double ARC_BANK_LIMIT = 15.0;             // Gentle bank limit for comfort during arc
 
-    // Vertical guidance constants
-    private const double TYPICAL_APPROACH_AOA = 6.0;     // Typical angle of attack for A320 approach configuration
-    private const double MAX_PITCH_RATE_DEG_PER_SEC = 2.5;  // Maximum pitch command change rate
+    // Vertical guidance — aircraft-specific (set from VisualGuidanceProfile in Initialize).
+    private double typicalApproachAoaDeg = 6.0;          // A320 baseline; biases nominal pitch = -3° + AoA
+    private double maxPitchRateDegPerSec = 2.5;          // Cap on commanded pitch change rate (deg/sec)
     private const double CROSS_TRACK_RATE_SMOOTHING_FACTOR = 0.85;  // Exponential smoothing for cross-track rate (0.85 = strong filtering to prevent noise spikes)
 
     // FPM-based vertical guidance constants
@@ -169,17 +189,43 @@ public class VisualGuidanceManager : IDisposable
     }
 
     /// <summary>
-    /// Initializes visual guidance with runway and preferences
+    /// Initializes visual guidance with runway, audio preferences, and aircraft-specific tunables.
+    /// Two tones always play: the desired tone encodes PID-commanded attitude (frequency = pitch
+    /// command, pan = bank command); the current tone mirrors the same mapping against the
+    /// aircraft's actual attitude. The pilot matches pans (lateral) and zero-beats frequencies
+    /// (vertical) by ear.
     /// </summary>
     public void Initialize(Runway destinationRunway, Airport destinationAirport,
-                          HandFlyWaveType guidanceToneWaveform, double toneVolume)
+                          HandFlyWaveType guidanceToneWaveform, double toneVolume,
+                          HandFlyWaveType currentToneWaveform, double currentToneVol,
+                          bool hardPan,
+                          VisualGuidanceProfile profile)
     {
+        // Defensive: if Initialize is called twice without an intervening Stop
+        // (Toggle's flow guarantees Stop runs first today, but a future caller
+        // might not), tear down any existing tones so we don't leak audio
+        // resources. Safe no-op when both tones are already null.
+        if (desiredAttitudeTone != null || currentAttitudeTone != null)
+        {
+            Stop();
+            isActive = true;  // Stop() flips isActive false; restore for the new session
+        }
+
         runway = destinationRunway;
         airport = destinationAirport;
         guidanceWaveType = guidanceToneWaveform;
         guidanceVolume = toneVolume;
+        currentToneWaveType = currentToneWaveform;
+        currentToneVolume = currentToneVol;
+        hardPanTone = hardPan;
         magneticVariation = destinationAirport.MagVar;
         thresholdElevationMSL = destinationAirport.Altitude;
+
+        // Apply aircraft-specific tunables (preserves A320 defaults if profile is the base instance).
+        typicalApproachAoaDeg = profile.TypicalApproachAoaDeg;
+        airspeedReferenceKnots = profile.ReferenceVrefKnots;
+        maxPitchRateDegPerSec = profile.MaxPitchRateDegPerSec;
+        maxBankRateDegPerSec = profile.MaxBankRateDegPerSec;
 
         // Reset state
         currentPhase = GuidancePhase.NotStarted;
@@ -212,18 +258,28 @@ public class VisualGuidanceManager : IDisposable
         // Reset flare state
         lastFlarePitch = 3.0;
 
-        // Start desired attitude tone
+        // Instantiate both generators and apply the aircraft's pitch→frequency mapping. We do
+        // NOT Start() them yet — the first ProcessUpdate call kicks off audio output once real
+        // pitch/bank values exist, avoiding ~33 ms of meaningless fused-tone playback at the
+        // default center frequency / center pan. Configure() must run before Start(), so we
+        // call it here even though Start is deferred.
         try
         {
             desiredAttitudeTone = new AudioToneGenerator();
-            desiredAttitudeTone.Start(guidanceWaveType, guidanceVolume);
-            System.Diagnostics.Debug.WriteLine("[VisualGuidanceManager] Guidance tone started");
+            currentAttitudeTone = new AudioToneGenerator();
+            desiredAttitudeTone.Configure(profile.ToneMinFrequencyHz, profile.ToneMaxFrequencyHz, profile.TonePitchRangeDeg);
+            currentAttitudeTone.Configure(profile.ToneMinFrequencyHz, profile.ToneMaxFrequencyHz, profile.TonePitchRangeDeg);
+            tonesNeedStart = true;
+            System.Diagnostics.Debug.WriteLine($"[VisualGuidanceManager] Tones instantiated ({profile.ToneMinFrequencyHz}–{profile.ToneMaxFrequencyHz} Hz over ±{profile.TonePitchRangeDeg}°); deferring Start until first ProcessUpdate");
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[VisualGuidanceManager] Failed to start guidance tone: {ex.Message}");
+            System.Diagnostics.Debug.WriteLine($"[VisualGuidanceManager] Failed to instantiate tones: {ex.Message}");
             desiredAttitudeTone?.Dispose();
             desiredAttitudeTone = null;
+            currentAttitudeTone?.Dispose();
+            currentAttitudeTone = null;
+            tonesNeedStart = false;
         }
 
         announcer.AnnounceImmediate($"Visual guidance active, runway {runway.RunwayID}");
@@ -242,12 +298,92 @@ public class VisualGuidanceManager : IDisposable
             desiredAttitudeTone = null;
         }
 
+        if (currentAttitudeTone != null)
+        {
+            currentAttitudeTone.Stop();
+            currentAttitudeTone.Dispose();
+            currentAttitudeTone = null;
+        }
+
         runway = null;
         airport = null;
         isActive = false;
+        tonesNeedStart = false;  // next Initialize will rearm it
 
         announcer.Announce("Visual guidance off");
         System.Diagnostics.Debug.WriteLine("[VisualGuidanceManager] Stopped");
+    }
+
+    /// <summary>
+    /// First-call audible-Start for both tones. Honors the "follower starts only if reference
+    /// started" rule from Initialize. After this returns, both tones are either playing (and
+    /// ready to be modulated by UpdatePitch/UpdateBank in the same frame) or null (init failure).
+    /// </summary>
+    private void StartTonesIfNeeded()
+    {
+        if (!tonesNeedStart) return;
+        tonesNeedStart = false;
+
+        try
+        {
+            desiredAttitudeTone?.Start(guidanceWaveType, guidanceVolume);
+            System.Diagnostics.Debug.WriteLine("[VisualGuidanceManager] Desired-attitude tone started");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[VisualGuidanceManager] Failed to start desired-attitude tone: {ex.Message}");
+            desiredAttitudeTone?.Dispose();
+            desiredAttitudeTone = null;
+        }
+
+        if (desiredAttitudeTone != null && currentAttitudeTone != null)
+        {
+            try
+            {
+                currentAttitudeTone.Start(currentToneWaveType, currentToneVolume);
+                System.Diagnostics.Debug.WriteLine("[VisualGuidanceManager] Current-attitude tone started");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[VisualGuidanceManager] Failed to start current-attitude tone: {ex.Message}");
+                currentAttitudeTone.Dispose();
+                currentAttitudeTone = null;
+            }
+        }
+        else
+        {
+            // Reference failed → the follower would play a useless constant tone; tear it down.
+            currentAttitudeTone?.Dispose();
+            currentAttitudeTone = null;
+        }
+    }
+
+    /// <summary>
+    /// Converts a SimConnect bank reading (positive = left wing down) into the standard
+    /// right-positive convention <see cref="AudioToneGenerator.UpdateBank"/> expects. Centralizes
+    /// the sign flip so every consumer of <see cref="cachedBank"/> can use the same name and
+    /// reviewers immediately see when the conversion is missing.
+    /// </summary>
+    private static double StandardBank(double simConnectBank) => -simConnectBank;
+
+    /// <summary>
+    /// Applies a bank command to a tone, honoring the hard-pan setting. In hard-pan mode the
+    /// pan snaps to ±1.0 once bank magnitude exceeds <see cref="HARD_PAN_DEADBAND_DEG"/> — useful
+    /// for stereo-speaker setups where partial pan is hard to distinguish from centred.
+    /// </summary>
+    private void ApplyBank(AudioToneGenerator tone, double bankDegreesStandard)
+    {
+        if (hardPanTone)
+        {
+            float pan = Math.Abs(bankDegreesStandard) < HARD_PAN_DEADBAND_DEG
+                ? 0f
+                : (bankDegreesStandard > 0 ? 1f : -1f);
+            tone.SetPan(pan);
+        }
+        else
+        {
+            tone.UpdateBank(bankDegreesStandard);
+        }
     }
 
     /// <summary>
@@ -309,10 +445,26 @@ public class VisualGuidanceManager : IDisposable
             // Calculate guidance
             double desiredBank = CalculateDesiredBank(lat, lon, heading);
             double desiredPitch = CalculateDesiredPitch(lat, lon, agl, altMSL);
+            double currentBankStandard = StandardBank(cachedBank ?? 0.0);
 
-            // Update guidance tone
+            // First-frame deferred Start — by the time WaveOut's 150 ms buffer fills, the
+            // phase-continuous oscillator's portamento has reached the target frequency
+            // (~0.23 ms at 44.1 kHz), so the very first audible note already reflects the
+            // commanded / actual attitude. No fused-tone glitch at session start.
+            StartTonesIfNeeded();
+
+            // Update desired (PID-commanded) attitude tone
             desiredAttitudeTone.UpdatePitch(desiredPitch);
-            desiredAttitudeTone.UpdateBank(desiredBank);
+            ApplyBank(desiredAttitudeTone, desiredBank);
+
+            // Update current (actual) attitude tone — same Hz / pan mappings, so frequency match
+            // ⇒ correct pitch attitude (and thus correct VS for the glideslope), pan match ⇒
+            // correct bank. Pilot zero-beats the two by ear.
+            if (currentAttitudeTone != null)
+            {
+                currentAttitudeTone.UpdatePitch(currentPitch);
+                ApplyBank(currentAttitudeTone, currentBankStandard);
+            }
 
             // Announce commanded bank angle
             AnnounceBankGuidance(desiredBank);
@@ -522,7 +674,7 @@ public class VisualGuidanceManager : IDisposable
 
             // Airspeed compensation scaling
             // Higher speeds need stronger corrections (compensates for larger turn radius)
-            double speedFactor = Math.Sqrt(Math.Max(currentGroundSpeedKnots, 80.0) / AIRSPEED_REFERENCE_KNOTS);
+            double speedFactor = Math.Sqrt(Math.Max(currentGroundSpeedKnots, 80.0) / airspeedReferenceKnots);
 
             // **TARGET HEADING INTERCEPT LOGIC**
             // Phase-based approach matching real autopilot behavior
@@ -589,7 +741,7 @@ public class VisualGuidanceManager : IDisposable
                 double rawDesiredBank = headingError * LATERAL_HEADING_GAIN * speedFactor;
 
                 // Apply bank rate limiting
-                double maxBankChange = MAX_BANK_RATE_DEG_PER_SEC * 1.0;
+                double maxBankChange = maxBankRateDegPerSec * 1.0;
                 double bankChange = rawDesiredBank - previousDesiredBank;
                 if (Math.Abs(bankChange) > maxBankChange)
                 {
@@ -631,7 +783,7 @@ public class VisualGuidanceManager : IDisposable
                 double rawDesiredBank = proportionalTerm + derivativeTerm + headingTerm;
 
                 // Apply bank rate limiting
-                double maxBankChange = MAX_BANK_RATE_DEG_PER_SEC * 1.0;
+                double maxBankChange = maxBankRateDegPerSec * 1.0;
                 double bankChange = rawDesiredBank - previousDesiredBank;
                 if (Math.Abs(bankChange) > maxBankChange)
                 {
@@ -695,7 +847,7 @@ public class VisualGuidanceManager : IDisposable
         double desiredBank = Math.Clamp(baseBank, -25.0, 25.0);
 
         // Apply bank rate limiting to prevent sudden changes
-        double maxBankChange = MAX_BANK_RATE_DEG_PER_SEC * 1.0;  // 1 second update rate
+        double maxBankChange = maxBankRateDegPerSec * 1.0;  // 1 second update rate
         double bankChange = desiredBank - previousDesiredBank;
         if (Math.Abs(bankChange) > maxBankChange)
         {
@@ -828,7 +980,7 @@ public class VisualGuidanceManager : IDisposable
             previousGlideslopeTimestamp = DateTime.Now;
 
             // Calculate nominal pitch for descent
-            double nominalPitch = -GLIDESLOPE_ANGLE_DEG + TYPICAL_APPROACH_AOA;  // ≈ +3°
+            double nominalPitch = -GLIDESLOPE_ANGLE_DEG + typicalApproachAoaDeg;  // A320 default ≈ +3°; 777 ≈ +1.5°
 
             // PD controller on FPM error:
             // Proportional: Correct based on FPM error
@@ -839,7 +991,7 @@ public class VisualGuidanceManager : IDisposable
             double rawDesiredPitch = nominalPitch + proportionalTerm + derivativeTerm;
 
             // Pitch rate limiting - prevent sudden tone frequency jumps
-            double maxPitchChange = MAX_PITCH_RATE_DEG_PER_SEC * 1.0;  // 1 second update rate
+            double maxPitchChange = maxPitchRateDegPerSec * 1.0;  // 1 second update rate
             double pitchChange = rawDesiredPitch - previousDesiredPitch;
             if (Math.Abs(pitchChange) > maxPitchChange)
             {
@@ -1026,9 +1178,9 @@ public class VisualGuidanceManager : IDisposable
         // If actual bank angle is available, use error-based announcements
         if (cachedBank.HasValue)
         {
-            // Calculate bank error: positive means need to bank right, negative means need to bank left
-            // Note: cachedBank is in SimConnect convention (pos=left), so we add to negate it to standard convention
-            double bankError = desiredBankDegrees + cachedBank.Value;
+            // Bank error: positive ⇒ need to roll right, negative ⇒ need to roll left.
+            // Both operands now in the same (right-positive standard) convention via StandardBank().
+            double bankError = desiredBankDegrees - StandardBank(cachedBank.Value);
             roundedError = (int)Math.Round(bankError);
 
             // Round commanded bank to check if on correct path

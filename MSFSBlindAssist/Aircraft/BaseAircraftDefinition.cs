@@ -580,4 +580,9 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     {
         // Default: do nothing (aircraft has no display system)
     }
+
+    /// <summary>
+    /// Default visual-guidance profile (A320 numbers). Override on heavier or smaller airframes.
+    /// </summary>
+    public virtual VisualGuidanceProfile GetVisualGuidanceProfile() => new();
 }

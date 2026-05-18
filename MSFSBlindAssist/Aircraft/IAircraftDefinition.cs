@@ -18,6 +18,44 @@ public enum FCUControlType
 }
 
 /// <summary>
+/// Per-aircraft tunables for visual landing guidance. Defaults are A320 numbers; heavier
+/// or smaller airframes should override <see cref="IAircraftDefinition.GetVisualGuidanceProfile"/>.
+/// </summary>
+public sealed class VisualGuidanceProfile
+{
+    /// <summary>Typical pitch attitude (degrees) the airframe sits at during a stabilized approach.
+    /// Used to bias the commanded nominal pitch: nominalPitch = -3 (glideslope) + AoA.</summary>
+    public double TypicalApproachAoaDeg { get; init; } = 6.0;
+
+    /// <summary>Reference Vref (knots) used as the denominator in the lateral airspeed-compensation
+    /// scaler sqrt(GS / Vref). Only matters when an airframe's approach speed differs markedly from A320.</summary>
+    public double ReferenceVrefKnots { get; init; } = 140.0;
+
+    /// <summary>Cap on commanded-pitch change rate (deg/sec). Heavier aircraft have slower pitch
+    /// authority and benefit from a tighter cap so the audio tone does not chase impossible attitudes.</summary>
+    public double MaxPitchRateDegPerSec { get; init; } = 2.5;
+
+    /// <summary>Cap on commanded-bank change rate (deg/sec). Same rationale as the pitch cap.</summary>
+    public double MaxBankRateDegPerSec { get; init; } = 3.0;
+
+    /// <summary>Minimum frequency (Hz) of the dual-tone pitch mapping. Saturates here at full
+    /// nose-down. Defaults match a transport-jet attitude envelope (200 Hz). Light aircraft or
+    /// fighters with wider attitude envelopes may want a different range so the tone does not
+    /// saturate during normal manoeuvring.</summary>
+    public float ToneMinFrequencyHz { get; init; } = 200f;
+
+    /// <summary>Maximum frequency (Hz) of the dual-tone pitch mapping. Saturates here at full
+    /// nose-up. Centre frequency is computed as the midpoint of min and max.</summary>
+    public float ToneMaxFrequencyHz { get; init; } = 800f;
+
+    /// <summary>Pitch (degrees) at which the tone frequency saturates to the min/max. Default
+    /// is ±10°, comfortable for transport jets that fly inside roughly ±5° on approach. Wider
+    /// envelopes (aerobatic, fighter) should raise this; tighter envelopes can lower it for
+    /// finer resolution near zero.</summary>
+    public double TonePitchRangeDeg { get; init; } = 10.0;
+}
+
+/// <summary>
 /// Interface for aircraft-specific definitions including variables, panels, and behavior.
 /// Each supported aircraft should implement this interface to provide its configuration.
 /// </summary>
@@ -186,4 +224,13 @@ public interface IAircraftDefinition
     /// Aircraft without display systems should use the default implementation (does nothing).
     /// </summary>
     void StopDisplayMonitoring(SimConnect.SimConnectManager simConnect);
+
+    // Visual Landing Guidance Profile
+
+    /// <summary>
+    /// Returns the per-aircraft visual-guidance tunables (approach AoA, reference Vref, pitch/bank rate caps).
+    /// Default implementation in <c>BaseAircraftDefinition</c> returns A320 numbers; override on heavier
+    /// or smaller airframes (e.g., 777, 747) to bias the nominal commanded pitch and rate limits.
+    /// </summary>
+    VisualGuidanceProfile GetVisualGuidanceProfile();
 }

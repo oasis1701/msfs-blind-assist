@@ -17,22 +17,52 @@ public class AudioToneGenerator : IDisposable
     private volatile bool isPlaying;
     private readonly object startStopLock = new(); // Only for Start/Stop, not audio updates
 
-    // Frequency range for pitch indication
-    private const float MIN_FREQUENCY = 200f;  // Dive (negative pitch)
-    private const float MAX_FREQUENCY = 800f;  // Climb (positive pitch)
-    private const float CENTER_FREQUENCY = 500f; // Level flight
+    // Default pitch→frequency mapping. Min = dive (negative pitch), max = climb (positive pitch),
+    // center = level flight. Per-instance overrides via Configure(...) before Start().
+    private const float DEFAULT_MIN_FREQUENCY = 200f;
+    private const float DEFAULT_MAX_FREQUENCY = 800f;
+    private const double DEFAULT_PITCH_RANGE_DEG = 10.0;  // Pitch (degrees) at which frequency saturates
 
-    // Bank angle range for full stereo panning
-    private const double BANK_FULL_RANGE = 10.0; // ±10 degrees
+    // Bank angle (degrees) at which pan saturates to ±1.0. ±10° → full left / full right.
+    private const double BANK_FULL_RANGE = 10.0;
+
+    // Effective mapping (defaults preserved when Configure is not called).
+    private float minFrequency = DEFAULT_MIN_FREQUENCY;
+    private float maxFrequency = DEFAULT_MAX_FREQUENCY;
+    private double pitchRangeDeg = DEFAULT_PITCH_RANGE_DEG;
+    private float CenterFrequency => (minFrequency + maxFrequency) / 2f;
 
     /// <summary>
-    /// Starts continuous tone playback with initial frequency and panning.
+    /// Optional per-instance configuration for the pitch→frequency mapping. Call BEFORE
+    /// <see cref="Start"/>. Defaults are 200–800 Hz over ±10° pitch — appropriate for transport
+    /// jets. Light aircraft or fighters with wider attitude envelopes may want a different
+    /// pitch range so the tone doesn't saturate in normal manoeuvring; supply that via the
+    /// aircraft's <c>VisualGuidanceProfile</c>.
+    /// </summary>
+    public void Configure(float minFrequencyHz, float maxFrequencyHz, double pitchRangeDegrees)
+    {
+        if (isPlaying)
+            return;  // mapping is captured at Start(); change before starting
+        if (minFrequencyHz > 0 && maxFrequencyHz > minFrequencyHz && pitchRangeDegrees > 0)
+        {
+            minFrequency = minFrequencyHz;
+            maxFrequency = maxFrequencyHz;
+            pitchRangeDeg = pitchRangeDegrees;
+        }
+    }
+
+    /// <summary>
+    /// Starts continuous tone playback with initial frequency and panning. Call
+    /// <see cref="Configure"/> first if a non-default pitch→frequency mapping is needed.
     /// </summary>
     /// <param name="waveType">Wave type for tone generation.</param>
     /// <param name="volume">Volume level (0.0 to 1.0).</param>
-    /// <param name="frequency">Initial frequency in Hz (defaults to CENTER_FREQUENCY = 500 Hz).</param>
-    public void Start(HandFlyWaveType waveType = HandFlyWaveType.Sine, double volume = 0.5, double frequency = CENTER_FREQUENCY)
+    /// <param name="frequency">Initial frequency in Hz. Pass a negative value (the default) to use
+    ///   the configured centre frequency, which honours any prior <see cref="Configure"/> call.</param>
+    public void Start(HandFlyWaveType waveType = HandFlyWaveType.Sine, double volume = 0.5, double frequency = -1.0)
     {
+        if (frequency < 0)
+            frequency = CenterFrequency;
         lock (startStopLock)
         {
             if (isPlaying)
@@ -103,15 +133,11 @@ public class AudioToneGenerator : IDisposable
         if (oscillator == null || !isPlaying)
             return;
 
-        // Map pitch to frequency
-        // -10° to +10° maps to 200-800 Hz (500 Hz center)
-        // Clamp to reasonable pitch range
-        double clampedPitch = Math.Clamp(pitchDegrees, -10.0, 10.0);
-
-        // Linear mapping: pitch -> frequency
-        // Formula: frequency = center + (pitch * range/20)
-        double frequencyRange = (MAX_FREQUENCY - MIN_FREQUENCY) / 2.0; // 300 Hz
-        double targetFrequency = CENTER_FREQUENCY + (clampedPitch * (frequencyRange / 10.0));
+        // Map pitch (degrees) to frequency (Hz). ±pitchRangeDeg saturates to min/max frequency;
+        // 0° pitch sits at the centre frequency. Default mapping: ±10° → 200–800 Hz (500 Hz centre).
+        double clampedPitch = Math.Clamp(pitchDegrees, -pitchRangeDeg, pitchRangeDeg);
+        double halfFrequencyRange = (maxFrequency - minFrequency) / 2.0;
+        double targetFrequency = CenterFrequency + (clampedPitch * (halfFrequencyRange / pitchRangeDeg));
 
         // Phase-continuous oscillator smoothly transitions to new frequency (no clicks/pops)
         oscillator.SetFrequency(targetFrequency);
@@ -140,10 +166,12 @@ public class AudioToneGenerator : IDisposable
         if (panningSampleProvider == null || !isPlaying)
             return;
 
-        // Map bank angle to stereo pan using standard convention
-        // -20° to +20° maps to -1.0 (full left) to +1.0 (full right)
-        // Positive bank (right) → positive pan (right speaker)
-        // NOTE: SimConnect data must be negated before calling this method
+        // Map bank angle to stereo pan using standard right-positive convention:
+        //   ±BANK_FULL_RANGE° (currently ±10°) → ±1.0 (full left / full right).
+        // Positive bank (right wing down) → positive pan (right speaker).
+        // NOTE: SimConnect's PLANE_BANK_DEGREES is left-positive; callers must negate before
+        // passing in (VisualGuidanceManager does this via its StandardBank helper; HandFlyManager
+        // negates inline). The PID's bank command output is already right-positive.
         double clampedBank = Math.Clamp(bankDegrees, -BANK_FULL_RANGE, BANK_FULL_RANGE);
         float pan = (float)(clampedBank / BANK_FULL_RANGE);
 

@@ -760,11 +760,24 @@ public partial class MainForm : Form
         if (e.VarName == "SIM_ON_GROUND")
         {
             bool onGround = e.Value >= 0.5;
+            bool justTouchedDown = onGround && !_lastOnGround;
             _lastOnGround = onGround;
             // Mirror to SimConnectManager so other components (LandingExitForm,
             // etc.) that have a SimConnectManager reference can read the latest
             // air/ground state without a separate MainForm dependency.
             simConnectManager.LastKnownOnGround = onGround;
+
+            // Auto-deactivate visual guidance on touchdown: from this moment on,
+            // the landing-exit planner / taxi guidance take over the rollout and
+            // taxi guidance respectively, so the dual-tone guidance no longer
+            // has a useful job. Keeping it running would compete with the taxi
+            // steering tone audibly. Only fires on the airborne→on-ground edge,
+            // so a user who manually engages visual guidance on the ramp for any
+            // reason (preflight test, etc.) is not surprised by auto-deactivation.
+            if (justTouchedDown && visualGuidanceManager.IsActive)
+            {
+                visualGuidanceManager.Toggle();
+            }
 
             // Feed SIM_ON_GROUND transitions to the landing-exit planner so it
             // can detect touchdown and auto-activate taxi guidance to the
@@ -2947,8 +2960,15 @@ public partial class MainForm : Form
             var guidanceToneWaveform = settings.VisualGuidanceToneWaveform;
             var guidanceVolume = settings.VisualGuidanceToneVolume;
 
-            // Initialize visual guidance with runway and preferences
-            visualGuidanceManager.Initialize(runway, airport, guidanceToneWaveform, guidanceVolume);
+            // Initialize visual guidance with runway, audio preferences (desired + optional follower tone),
+            // and aircraft-specific tunables from the current aircraft definition.
+            visualGuidanceManager.Initialize(
+                runway, airport,
+                guidanceToneWaveform, guidanceVolume,
+                settings.VisualGuidanceCurrentToneWaveform,
+                settings.VisualGuidanceCurrentToneVolume,
+                settings.VisualGuidanceHardPanTone,
+                currentAircraft.GetVisualGuidanceProfile());
 
             // Start monitoring position variables at 1 Hz
             simConnectManager.StartVisualGuidanceMonitoring();
@@ -3089,6 +3109,9 @@ public partial class MainForm : Form
             currentSettings.HandFlyMonitorVerticalSpeed,
             currentSettings.VisualGuidanceToneWaveform,
             currentSettings.VisualGuidanceToneVolume,
+            currentSettings.VisualGuidanceCurrentToneWaveform,
+            currentSettings.VisualGuidanceCurrentToneVolume,
+            currentSettings.VisualGuidanceHardPanTone,
             currentSettings.TakeoffAssistToneWaveform,
             currentSettings.TakeoffAssistToneVolume,
             currentSettings.TakeoffAssistMuteCenterlineAnnouncements,
@@ -3109,6 +3132,9 @@ public partial class MainForm : Form
                 currentSettings.HandFlyMonitorVerticalSpeed = settingsForm.MonitorVerticalSpeed;
                 currentSettings.VisualGuidanceToneWaveform = settingsForm.GuidanceToneWaveform;
                 currentSettings.VisualGuidanceToneVolume = settingsForm.SelectedGuidanceVolume;
+                currentSettings.VisualGuidanceCurrentToneWaveform = settingsForm.VisualGuidanceCurrentToneWaveform;
+                currentSettings.VisualGuidanceCurrentToneVolume = settingsForm.VisualGuidanceCurrentToneVolume;
+                currentSettings.VisualGuidanceHardPanTone = settingsForm.VisualGuidanceHardPanTone;
                 currentSettings.TakeoffAssistToneWaveform = settingsForm.TakeoffToneWaveform;
                 currentSettings.TakeoffAssistToneVolume = settingsForm.TakeoffToneVolume;
                 currentSettings.TakeoffAssistMuteCenterlineAnnouncements = settingsForm.TakeoffAssistMuteCenterlineAnnouncements;

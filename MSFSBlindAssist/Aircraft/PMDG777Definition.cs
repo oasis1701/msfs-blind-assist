@@ -43,6 +43,15 @@ public class PMDG777Definition : BaseAircraftDefinition
     public override FCUControlType GetSpeedControlType() => FCUControlType.SetValue;
     public override FCUControlType GetVerticalSpeedControlType() => FCUControlType.SetValue;
 
+    // Heavy widebody — lower approach AoA, slightly higher Vref, slower pitch authority than A320.
+    public override VisualGuidanceProfile GetVisualGuidanceProfile() => new()
+    {
+        TypicalApproachAoaDeg = 4.5,
+        ReferenceVrefKnots = 145.0,
+        MaxPitchRateDegPerSec = 2.0,
+        MaxBankRateDegPerSec = 3.0
+    };
+
     // =========================================================================
     // Panel Structure
     // =========================================================================
