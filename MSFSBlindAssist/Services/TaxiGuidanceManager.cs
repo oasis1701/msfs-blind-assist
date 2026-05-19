@@ -3571,6 +3571,41 @@ public class TaxiGuidanceManager : IDisposable
         if (_state == TaxiGuidanceState.Inactive)
             return "No taxi guidance active.";
 
+        if (_state == TaxiGuidanceState.LandingRollout)
+        {
+            string gsStr = _positionInitialized
+                ? $" Ground speed {(int)Math.Round(_lastGroundSpeedKts)} knots."
+                : "";
+
+            if (_rolloutNoExitMode)
+            {
+                if (_rolloutRunway != null && _positionInitialized)
+                {
+                    double alongFromStartM = SignedAlongRunwayMeters(
+                        _lastLat, _lastLon,
+                        _rolloutRunway.StartLat, _rolloutRunway.StartLon,
+                        _rolloutRunwayHeadingTrue);
+                    double distToEndFt = (_rolloutRunway.Length * 0.3048 - alongFromStartM) * METERS_TO_FEET;
+                    int distFt = (int)Math.Max(0, Math.Round(distToEndFt));
+                    return $"Rolling out. No exit. Runway end in {distFt} feet.{gsStr}";
+                }
+                return $"Rolling out. No exit planned.{gsStr}";
+            }
+
+            if (_rolloutExit != null && _positionInitialized)
+            {
+                double distToExitM = TaxiGraph.FastDistanceMeters(
+                    _lastLat, _lastLon, _rolloutExit.Latitude, _rolloutExit.Longitude);
+                int distFt = (int)Math.Max(0, Math.Round(distToExitM * METERS_TO_FEET));
+                string exitName = string.IsNullOrEmpty(_rolloutExit.TaxiwayName)
+                    ? "unnamed exit"
+                    : $"taxiway {_rolloutExit.TaxiwayName}";
+                return $"Rolling out. {_rolloutExit.ExitType} exit {exitName} in {distFt} feet.{gsStr}";
+            }
+
+            return $"Rolling out.{gsStr}";
+        }
+
         if (_route == null || _route.Segments.Count == 0)
             return "No route loaded.";
 
