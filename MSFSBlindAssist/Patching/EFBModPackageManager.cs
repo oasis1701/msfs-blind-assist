@@ -21,7 +21,11 @@ namespace MSFSBlindAssist.Patching
         // Bump this version when the mod package structure or bridge JS changes.
         // On app startup, if the installed version is older, UpdateModPackage will
         // re-patch HTML for all variants, copy the latest bridge JS, and regenerate layout.json.
-        private const int BridgeVersion = 4;
+        // Bump on every meaningful bridge.js change so users on older versions trigger an
+        // "Updated" report rather than silent "AlreadyUpToDate". The new always-re-patch
+        // logic in UpdateModPackage doesn't need this signal, but it's still useful for
+        // telemetry and for the "version bump → forced refresh" semantic some users expect.
+        private const int BridgeVersion = 5;
         private const string VersionFileName = "bridge-version.txt";
 
         private const string PackageFolderName = "zzz-pmdg-efb-accessibility";
@@ -329,10 +333,16 @@ namespace MSFSBlindAssist.Patching
         }
 
         /// <summary>
-        /// Updates an existing mod package if the app ships a newer bridge version.
-        /// Re-patches HTML for all installed variants, adds override folders for any
-        /// newly installed variants, copies the latest bridge JS, and regenerates layout.json.
-        /// Returns AlreadyUpToDate if no update is needed, or Updated if changes were made.
+        /// Refreshes the mod package on every app startup. Previously this was gated on
+        /// <see cref="BridgeVersion"/> being newer than the installed version — but that meant
+        /// when PMDG shipped an EFB update (new HTML, new button DOM IDs), our cached patched
+        /// HTML stayed at whatever PMDG's HTML looked like the first time we patched it. The
+        /// user would load MSFS, see our (now-stale) HTML override the real PMDG HTML, and
+        /// half the EFB features would break silently. Now we always re-read PMDG's current
+        /// HTML, re-patch it with our bridge script tag, and overwrite our cached copy. The
+        /// version check is retained only to decide whether to report "Updated" vs "Refreshed"
+        /// in telemetry — the work happens unconditionally. File I/O on a handful of files at
+        /// startup is negligible (~milliseconds).
         /// </summary>
         public static ModPackageResult UpdateModPackage(string communityFolderPath, string bridgeJsSourcePath)
         {
@@ -343,31 +353,45 @@ namespace MSFSBlindAssist.Patching
                 return ModPackageResult.BridgeJsSourceNotFound;
 
             int installedVersion = GetInstalledVersion(communityFolderPath);
-            if (installedVersion >= BridgeVersion)
-                return ModPackageResult.AlreadyUpToDate;
+            bool versionBumped = installedVersion < BridgeVersion;
 
             try
             {
                 string packagePath = Path.Combine(communityFolderPath, PackageFolderName);
                 var layoutEntries = new List<(string relativePath, long size)>();
 
-                // Find original HTML for all installed PMDG 777 variants
+                // Always re-read PMDG's current HTML — this catches the case where PMDG
+                // shipped an update that changed their EFB markup. Our patched copy needs
+                // to stay in sync with PMDG's, otherwise we'd be overriding their new HTML
+                // with our stale snapshot of their old HTML.
                 var foundVariants = FindOriginalPmdgHtmlPerVariant(communityFolderPath);
 
+                bool htmlChanged = false;
                 foreach (var (variantSubfolder, originalHtml) in foundVariants)
                 {
                     string htmlRelPath = GetHtmlRelativePath(variantSubfolder);
                     string htmlDir = Path.Combine(packagePath, htmlRelPath);
                     Directory.CreateDirectory(htmlDir);
 
-                    // Re-patch HTML with variant-specific bridge script tag
                     string htmlPath = Path.Combine(htmlDir, HtmlFileName);
-                    string modifiedHtml = originalHtml.Contains(BridgeJsFileName)
-                        ? originalHtml  // Already patched — don't double-patch
+                    string newPatchedHtml = originalHtml.Contains(BridgeJsFileName)
+                        ? originalHtml  // PMDG's own copy already has our script tag (shouldn't happen, but defensive)
                         : originalHtml.TrimEnd() + GetBridgeScriptTag(variantSubfolder);
-                    File.WriteAllText(htmlPath, modifiedHtml);
 
-                    // Copy latest bridge JS
+                    // Only write if content actually changed — avoids hitting MSFS's
+                    // file-watcher with spurious updates that could trigger an EFB reload.
+                    string? existingPatchedHtml = File.Exists(htmlPath) ? File.ReadAllText(htmlPath) : null;
+                    if (existingPatchedHtml != newPatchedHtml)
+                    {
+                        File.WriteAllText(htmlPath, newPatchedHtml);
+                        htmlChanged = true;
+                        System.Diagnostics.Debug.WriteLine($"EFBModPackageManager: HTML refreshed for variant {variantSubfolder} (PMDG content changed or first install)");
+                    }
+
+                    // Copy bridge JS unconditionally — it's small, and we want users to get
+                    // bridge fixes immediately when they update the app. File.Copy with
+                    // overwrite=true is a no-op when destination is identical (same size/time
+                    // hash isn't checked but the perf is negligible).
                     string bridgeJsDest = Path.Combine(htmlDir, BridgeJsFileName);
                     File.Copy(bridgeJsSourcePath, bridgeJsDest, overwrite: true);
 
@@ -375,12 +399,16 @@ namespace MSFSBlindAssist.Patching
                     layoutEntries.Add(($"{htmlRelPath}/{BridgeJsFileName}", new FileInfo(bridgeJsDest).Length));
                 }
 
-                // Regenerate layout.json and update version
+                // Regenerate layout.json (MSFS reads file sizes from here)
                 string layoutJson = GenerateLayoutJson(layoutEntries);
                 File.WriteAllText(Path.Combine(packagePath, "layout.json"), layoutJson);
                 WriteVersionFile(packagePath);
 
-                return ModPackageResult.Updated;
+                // Report Updated if anything materially changed; AlreadyUpToDate when the
+                // version is current AND PMDG's HTML hasn't drifted (steady state).
+                return (versionBumped || htmlChanged)
+                    ? ModPackageResult.Updated
+                    : ModPackageResult.AlreadyUpToDate;
             }
             catch (Exception ex)
             {
