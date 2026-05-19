@@ -1341,4 +1341,15 @@ public class TaxiAssistForm : Form
         _announcer.Announce("Taxi guidance stopped.");
         lblStatus.Text = "Guidance stopped.";
     }
+
+    protected override void OnFormClosing(FormClosingEventArgs e)
+    {
+        if (e.CloseReason == CloseReason.UserClosing)
+        {
+            e.Cancel = true;
+            Hide();
+            return;
+        }
+        base.OnFormClosing(e);
+    }
 }

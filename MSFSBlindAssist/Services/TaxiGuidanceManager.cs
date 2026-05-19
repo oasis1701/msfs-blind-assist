@@ -367,6 +367,15 @@ public class TaxiGuidanceManager : IDisposable
     // normal case, so an actual overshoot is unambiguous when this fires.
     private const double ROLLOUT_OVERSHOOT_FT = 100.0;
 
+    // Ground speed below which the steering tone activates during rollout.
+    // Above this speed the tone is silent — at 80+ kt a pan cue is useless
+    // because the pilot can't react and a high-speed exit is still many
+    // seconds away. Below this (roughly approach-speed walk-down final
+    // phase), the tone behaves like taxi-assist: centred = silent, deviated
+    // = pans toward the exit so the pilot steers to keep it centred and
+    // naturally turns onto the exit.
+    private const double ROLLOUT_TONE_ACTIVE_BELOW_GS_KTS = 40.0;
+
     // Below this ground speed, runway-end countdown mode considers the
     // aircraft effectively stopped and hands off to plain Taxiing. Lower
     // than ROLLOUT_TAXI_GS_KTS (30) because the pilot in this mode is
@@ -1011,16 +1020,18 @@ public class TaxiGuidanceManager : IDisposable
             _rolloutDiagFirstCallDone = false;
             _rolloutDiagLastPeriodic = DateTime.MinValue;
 
-            // Pause the tone — UpdateLandingRollout's per-frame logic
-            // explicitly leaves it paused. When we transition to Taxiing it
-            // calls Resume so the existing taxi-tone behaviour kicks in
-            // without restart.
-            _steeringTone.Pause();
+            // Reset the heading-error smoother so any taxi-phase residual doesn't
+            // bleed into the rollout tone and steer the pilot off-axis at the worst
+            // possible moment (high speed, on runway). UpdateLandingRollout drives
+            // the tone every frame using bearing-to-exit as the desired heading.
+            _smoothedHeadingError = 0.0;
+            _headingErrorInitialized = false;
+            _steeringTone.SetPulse(false);
 
             SetState(TaxiGuidanceState.LandingRollout);
 
             RolloutDiag($"BeginLandingRollout DONE: state -> LandingRollout, " +
-                $"tone paused, touchdown callout queued");
+                $"tone active (bearing-to-exit), touchdown callout queued");
 
             // Touchdown callout. Distance-from-touchdown is what the user
             // cares about (not from-threshold) — the pilot needs to know
@@ -2502,12 +2513,46 @@ public class TaxiGuidanceManager : IDisposable
         {
             RolloutDiag($"UpdateLandingRollout HANDOFF -> Taxiing: " +
                 $"turnBegun={turnBegun} atTaxiSpeed={atTaxiSpeed} nearExit={nearExit} pastExit={pastExit}");
+
+            // For curved-RET exits (LVFR-style scenery with no HS/IHS nodes on the
+            // runway), the original route was built at touchdown from the nearest graph
+            // node to the apron — it routes through L7 or another exit to the apron,
+            // then back to the chosen exit's on-runway entry node. None of those segments
+            // are near the pilot who has just turned onto the curve, so AdvanceToNearest
+            // Segment can't find them and off-route fires 3 s later.
+            //
+            // Fix: re-route from the pilot's LIVE position to ApronNodeId — the first
+            // graph node outside the runway corridor on this exit's path (set by the BFS
+            // in GetLandingExits). A* now starts from wherever the pilot actually is on
+            // the curve and routes to the corridor-exit node, giving segments that are
+            // on the actual curve the tone can steer through.
+            //
+            // For regular HS/IHS exits ApronNodeId == NodeId, so the condition is false
+            // and the original route (which worked fine for those exits) is kept.
+            if (_rolloutExit != null &&
+                _rolloutExit.ApronNodeId > 0 &&
+                _rolloutExit.ApronNodeId != _rolloutExit.NodeId &&
+                _dataProvider != null &&
+                _graph != null)
+            {
+                string exitName = _rolloutExit.TaxiwayName.Length > 0
+                    ? $"Taxiway {_rolloutExit.TaxiwayName}"
+                    : "exit taxiway";
+                string? rerouteErr = LoadRoute(
+                    _dataProvider, _icao,
+                    lat, lon, headingTrue,
+                    _rolloutExit.ApronNodeId,
+                    exitName,
+                    taxiwaySequence: null,
+                    prebuiltGraph: _graph,
+                    announceSummary: false);
+                RolloutDiag(rerouteErr == null
+                    ? $"Handoff re-route OK: lat={lat:F6} lon={lon:F6} → apronNode={_rolloutExit.ApronNodeId}"
+                    : $"Handoff re-route failed ({rerouteErr}), continuing with original route");
+            }
+
             SetState(TaxiGuidanceState.Taxiing);
             _steeringTone.Resume();
-            // The next UpdatePosition tick will re-enter via the Taxiing
-            // branch, AdvanceToNearestSegment will pick the route segment
-            // closest to current position, and the tone will guide the
-            // pilot down the exit taxiway as normal.
             return;
         }
 
@@ -2591,8 +2636,77 @@ public class TaxiGuidanceManager : IDisposable
                 lat, lon, _rolloutExit.Latitude, _rolloutExit.Longitude);
             double turnDelta = NormalizeAngle(bearingToExit - headingTrue);
             string dir = turnDelta < 0 ? "left" : "right";
-            AnnounceInstruction($"Turn {dir} now, {name}.");
+            // < 20°: chord taxiways and shallow curved-RET entries need a small
+            // initial input, not a committed turn — "gentle" prevents over-rotation.
+            // ≥ 20°: genuine RETs and normal exits warrant a deliberate turn input.
+            string turnWord = _rolloutExit.ExitAngleDegrees < 20.0 ? "Gentle" : "Turn";
+            AnnounceInstruction($"{turnWord} {dir} now, {name}.");
             _rolloutTurnNowAnnounced = true;
+        }
+
+        // Rollout steering tone — taxi-assist style, speed-gated.
+        //
+        // Above ROLLOUT_TONE_ACTIVE_BELOW_GS_KTS: tone silent. At 80+ kt the
+        // pilot can't react to a pan cue and the exit is still far ahead.
+        //
+        // Below the threshold: tone behaves like taxi-assist —
+        //   centred (within deadband) = silent   → "you're on track"
+        //   panning left/right       = deviation → steer that way to re-centre
+        //
+        // Panning only begins when it's time to turn. For normal off-centre exits
+        // bearing-to-exit-node gives a natural pan that builds as you approach
+        // (it stays near-zero far out and increases geometrically as you close in).
+        // For near-centreline exits (node ≈ runway axis) bearing-to-node stays silent
+        // throughout — ExitBearingTrue supplements it inside a speed-scaled lead
+        // distance (~5 s of rollout at current GS, capped at 200 ft) so the tone
+        // only pans when the turn is actually imminent.
+        // If ExitBearingTrue == 0 (not populated), falls back to bearing-to-node only.
+        if (groundSpeedKts > ROLLOUT_TONE_ACTIVE_BELOW_GS_KTS)
+        {
+            // High speed — stay silent and reset smoother so the first active
+            // frame below the gate reflects the real current deviation, not
+            // any accumulated residual from high-speed slalom or crosswind.
+            _steeringTone.Pause();
+            _headingErrorInitialized = false;
+        }
+        else
+        {
+            // Baseline desired heading is the runway heading, not bearing-to-exit-node.
+            // On rollout the pilot should track straight — pulling toward the exit node
+            // early would cause sideways drift before the turn is needed. Runway heading
+            // keeps the tone silent when tracking correctly and pans only if the pilot
+            // drifts off the runway axis.
+            // Within a speed-scaled lead distance the desired heading blends toward
+            // ExitBearingTrue (the actual taxiway direction), giving a clear pan cue
+            // exactly when it's time to initiate the turn — and not before.
+            double desiredHeading = _rolloutRunwayHeadingTrue;
+            double exitBrg = _rolloutExit.ExitBearingTrue;
+            if (exitBrg != 0.0)
+            {
+                // Lead distance ≈ 10 s of rollout at current GS, capped at 500 ft.
+                // At 30 kt → 300 ft; at 40 kt → 400 ft; at 15 kt → 150 ft (floor).
+                // Wider lead gives meaningful pan at the "turn now" callout (150 ft) for
+                // shallow RETs (15-50°). The activation threshold (4.2° for wide runway)
+                // acts as a natural safety net: the tone only starts when the blend has
+                // built up enough directional signal, typically 100-200 ft before "turn now"
+                // depending on exit angle — not early enough to prompt an early turn.
+                double blendStartFt = Math.Clamp(groundSpeedKts * 10.0, 150.0, 500.0);
+                if (distToExitFeet <= blendStartFt)
+                {
+                    double blend = Math.Clamp(1.0 - distToExitFeet / blendStartFt, 0.0, 1.0);
+                    double exitBrgDelta = NormalizeAngle(exitBrg - _rolloutRunwayHeadingTrue);
+                    desiredHeading = _rolloutRunwayHeadingTrue + exitBrgDelta * blend;
+                }
+            }
+
+            double rawError = NormalizeAngle(desiredHeading - headingTrue);
+            _smoothedHeadingError = _headingErrorInitialized
+                ? _smoothedHeadingError * (1 - HEADING_ERROR_FILTER_ALPHA) + rawError * HEADING_ERROR_FILTER_ALPHA
+                : rawError;
+            _headingErrorInitialized = true;
+            double rwyWidthFt = _rolloutRunway?.Width > 0 ? _rolloutRunway.Width : 200.0;
+            _steeringTone.Resume();
+            _steeringTone.UpdateHeadingError(_smoothedHeadingError, rwyWidthFt);
         }
     }
 
