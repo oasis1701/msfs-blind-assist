@@ -261,6 +261,23 @@ namespace MSFSBlindAssist.Patching
         }
 
         /// <summary>
+        /// Byte-by-byte equality for small files. Used by <see cref="UpdateModPackage"/> to
+        /// decide whether the bridge JS on disk already matches the resource bytes — so we
+        /// can skip the write (and avoid bumping the file's modification time) when nothing
+        /// has changed. Returns true if both arrays are the same length and contain identical
+        /// bytes; false otherwise.
+        /// </summary>
+        private static bool BytesEqual(byte[] a, byte[] b)
+        {
+            if (a.Length != b.Length) return false;
+            for (int i = 0; i < a.Length; i++)
+            {
+                if (a[i] != b[i]) return false;
+            }
+            return true;
+        }
+
+        /// <summary>
         /// Installs the mod package into the MSFS Community folder.
         /// Creates the package directory with manifest.json, layout.json,
         /// the modified HTML file, and the bridge JS file.
@@ -366,47 +383,73 @@ namespace MSFSBlindAssist.Patching
                 // with our stale snapshot of their old HTML.
                 var foundVariants = FindOriginalPmdgHtmlPerVariant(communityFolderPath);
 
-                bool htmlChanged = false;
+                // Every write below is content-conditional: we only touch the filesystem when
+                // the destination is actually different from what's there. Steady-state (PMDG
+                // hasn't updated, our bridge hasn't updated) hits zero writes per app startup.
+                // This avoids triggering any file-watcher MSFS might have on community packages,
+                // and avoids churning the package's modification time for no reason.
+                bool anythingChanged = false;
+                byte[] sourceBridgeJsBytes = File.ReadAllBytes(bridgeJsSourcePath);
+
                 foreach (var (variantSubfolder, originalHtml) in foundVariants)
                 {
                     string htmlRelPath = GetHtmlRelativePath(variantSubfolder);
                     string htmlDir = Path.Combine(packagePath, htmlRelPath);
                     Directory.CreateDirectory(htmlDir);
 
+                    // HTML — write only if PMDG's content changed or our cache is missing.
                     string htmlPath = Path.Combine(htmlDir, HtmlFileName);
                     string newPatchedHtml = originalHtml.Contains(BridgeJsFileName)
-                        ? originalHtml  // PMDG's own copy already has our script tag (shouldn't happen, but defensive)
+                        ? originalHtml  // PMDG's own copy already has our script tag (defensive)
                         : originalHtml.TrimEnd() + GetBridgeScriptTag(variantSubfolder);
-
-                    // Only write if content actually changed — avoids hitting MSFS's
-                    // file-watcher with spurious updates that could trigger an EFB reload.
                     string? existingPatchedHtml = File.Exists(htmlPath) ? File.ReadAllText(htmlPath) : null;
                     if (existingPatchedHtml != newPatchedHtml)
                     {
                         File.WriteAllText(htmlPath, newPatchedHtml);
-                        htmlChanged = true;
-                        System.Diagnostics.Debug.WriteLine($"EFBModPackageManager: HTML refreshed for variant {variantSubfolder} (PMDG content changed or first install)");
+                        anythingChanged = true;
+                        System.Diagnostics.Debug.WriteLine($"EFBModPackageManager: HTML refreshed for variant {variantSubfolder}");
                     }
 
-                    // Copy bridge JS unconditionally — it's small, and we want users to get
-                    // bridge fixes immediately when they update the app. File.Copy with
-                    // overwrite=true is a no-op when destination is identical (same size/time
-                    // hash isn't checked but the perf is negligible).
+                    // Bridge JS — content-compare before writing. The previous version of this
+                    // method called File.Copy unconditionally; that always rewrites the file
+                    // (overwriting modification time) even when bytes are identical. Now we
+                    // hash-compare via raw bytes and only write on a real change.
                     string bridgeJsDest = Path.Combine(htmlDir, BridgeJsFileName);
-                    File.Copy(bridgeJsSourcePath, bridgeJsDest, overwrite: true);
+                    if (!File.Exists(bridgeJsDest) || !BytesEqual(sourceBridgeJsBytes, File.ReadAllBytes(bridgeJsDest)))
+                    {
+                        File.WriteAllBytes(bridgeJsDest, sourceBridgeJsBytes);
+                        anythingChanged = true;
+                        System.Diagnostics.Debug.WriteLine($"EFBModPackageManager: bridge JS refreshed for variant {variantSubfolder}");
+                    }
 
                     layoutEntries.Add(($"{htmlRelPath}/{HtmlFileName}", new FileInfo(htmlPath).Length));
                     layoutEntries.Add(($"{htmlRelPath}/{BridgeJsFileName}", new FileInfo(bridgeJsDest).Length));
                 }
 
-                // Regenerate layout.json (MSFS reads file sizes from here)
+                // layout.json — content-compare. MSFS reads file sizes from here, so it MUST be
+                // current with the actual file sizes; but rewriting an identical layout.json on
+                // every startup is wasteful.
                 string layoutJson = GenerateLayoutJson(layoutEntries);
-                File.WriteAllText(Path.Combine(packagePath, "layout.json"), layoutJson);
-                WriteVersionFile(packagePath);
+                string layoutPath = Path.Combine(packagePath, "layout.json");
+                string? existingLayout = File.Exists(layoutPath) ? File.ReadAllText(layoutPath) : null;
+                if (existingLayout != layoutJson)
+                {
+                    File.WriteAllText(layoutPath, layoutJson);
+                    anythingChanged = true;
+                }
 
-                // Report Updated if anything materially changed; AlreadyUpToDate when the
-                // version is current AND PMDG's HTML hasn't drifted (steady state).
-                return (versionBumped || htmlChanged)
+                // Version file — content-compare. Only touches disk on actual version bump.
+                string versionPath = Path.Combine(packagePath, VersionFileName);
+                string newVersion = BridgeVersion.ToString();
+                string? existingVersion = File.Exists(versionPath) ? File.ReadAllText(versionPath) : null;
+                if (existingVersion != newVersion)
+                {
+                    File.WriteAllText(versionPath, newVersion);
+                    anythingChanged = true;
+                }
+
+                // Report Updated if any file changed; AlreadyUpToDate when steady state.
+                return (versionBumped || anythingChanged)
                     ? ModPackageResult.Updated
                     : ModPackageResult.AlreadyUpToDate;
             }
