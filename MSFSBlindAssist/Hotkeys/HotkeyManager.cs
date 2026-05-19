@@ -402,8 +402,15 @@ public class HotkeyManager : IDisposable
                             TriggerHotkey(HotkeyAction.ToggleHandFlyMode);
                             return true;  // Return immediately, mode already deactivated
                         case HOTKEY_VISUAL_GUIDANCE:
+                            // Visual guidance now registers the same quick-access keys HandFly
+                            // does (H/V/Q/S/D/B/P/A/F), and RegisterVisualGuidanceHotkeys is
+                            // gated on `!outputHotkeyModeActive`. If we don't deactivate output
+                            // mode before triggering, RegisterVisualGuidanceHotkeys silently
+                            // returns false and the user has VG running with NO quick-access
+                            // hotkeys. Same fix pattern as HOTKEY_HAND_FLY_MODE above.
+                            DeactivateOutputHotkeyMode();
                             TriggerHotkey(HotkeyAction.ToggleVisualGuidance);
-                            break;
+                            return true;
                         case HOTKEY_EFB:
                             TriggerHotkey(HotkeyAction.ShowElectronicFlightBag);
                             break;
