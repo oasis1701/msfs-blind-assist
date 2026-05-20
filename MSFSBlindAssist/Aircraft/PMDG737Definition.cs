@@ -2725,9 +2725,21 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             if (EventIds.TryGetValue(guardPair.Guard, out int gId) &&
                 EventIds.TryGetValue(guardPair.Switch, out int sId))
             {
-                _ = simConnect.SendPMDGGuardedToggle(
-                    guardPair.Guard,  (uint)gId,
-                    guardPair.Switch, (uint)sId);
+                // Guarded multi-position selector — must carry target position to land
+                // on the correct detent. ValueDescriptions.Count > 2 means ≥3 positions.
+                if (varDef.ValueDescriptions != null && varDef.ValueDescriptions.Count > 2)
+                {
+                    _ = simConnect.SendPMDGGuardedSelector(
+                        guardPair.Guard,  (uint)gId,
+                        guardPair.Switch, (uint)sId,
+                        (int)value);
+                }
+                else
+                {
+                    _ = simConnect.SendPMDGGuardedToggle(
+                        guardPair.Guard,  (uint)gId,
+                        guardPair.Switch, (uint)sId);
+                }
                 return true;
             }
         }
