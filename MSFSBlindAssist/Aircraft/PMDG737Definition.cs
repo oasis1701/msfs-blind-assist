@@ -3289,11 +3289,40 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             }
 
             // ------------------------------------------------------------------
-            // Altimeter — delegate to MainForm (standard SimVar)
+            // Altimeter (EFIS baro) — PMDG 737 has no SDK control of the baro
+            // knob, so we read/write the standard MSFS KOHLSMAN simvar. Format
+            // mirrors PMDG 777 / Fenix: STD detected at 29.92 inHg, otherwise
+            // dual-unit announcement "Altimeter: <hpa>, <inhg>".
             // ------------------------------------------------------------------
 
             case HotkeyAction.ReadAltimeter:
-                return false;
+            {
+                double? inHgRaw = simConnect.GetCachedVariableValue("ALTIMETER_SETTING");
+                if (inHgRaw == null)
+                {
+                    announcer.AnnounceImmediate("Altimeter not available");
+                    return true;
+                }
+
+                double inHg = inHgRaw.Value;
+
+                if (Math.Abs(inHg - 29.92) < 0.005)
+                {
+                    announcer.AnnounceImmediate("Altimeter standard");
+                    return true;
+                }
+
+                int hpa = (int)Math.Round(inHg * 33.8639);
+                announcer.AnnounceImmediate($"Altimeter: {hpa}, {inHg:0.00}");
+                return true;
+            }
+
+            case HotkeyAction.FCUSetBaro:
+            {
+                hotkeyManager.ExitInputHotkeyMode();
+                ShowPMDGBaroDialog(simConnect, announcer, parentForm);
+                return true;
+            }
 
             // ------------------------------------------------------------------
             // Distance Readouts
@@ -3770,6 +3799,72 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 }
             },
             inputEnabledCheck: () => dm != null && (int)dm.GetFieldValue("MCP_annunVS") > 0);
+
+        dialog.ShowCancelButton = false;
+        dialog.Show(parentForm);
+    }
+
+    /// <summary>
+    /// PMDG 737 has no SDK-exposed baro knob control, so this dialog writes the
+    /// standard MSFS KOHLSMAN SETTING HG simvar directly. Accepts either hPa
+    /// (whole numbers ~950–1050) or inHg (decimal ~28.00–31.00); the validator
+    /// picks the unit based on input shape.
+    /// </summary>
+    private void ShowPMDGBaroDialog(
+        SimConnect.SimConnectManager simConnect,
+        ScreenReaderAnnouncer announcer,
+        Form parentForm)
+    {
+        if (!simConnect.IsConnected)
+        {
+            announcer.AnnounceImmediate("Not connected to simulator.");
+            return;
+        }
+
+        var dialog = new ValueInputForm(
+            "Altimeter", "altimeter", "950-1050 hPa or 28.00-31.00 inHg", announcer,
+            input =>
+            {
+                if (string.IsNullOrWhiteSpace(input))
+                    return (false, "Enter a value in hPa or inHg");
+
+                // Decimal point → treat as inHg
+                if (input.Contains('.') || input.Contains(','))
+                {
+                    if (double.TryParse(input.Replace(',', '.'),
+                            System.Globalization.NumberStyles.Float,
+                            System.Globalization.CultureInfo.InvariantCulture,
+                            out double inHg) &&
+                        inHg >= 28.00 && inHg <= 31.00)
+                        return (true, "");
+                    return (false, "Enter inHg between 28.00 and 31.00");
+                }
+
+                // Whole number → treat as hPa
+                if (int.TryParse(input, out int hpa) && hpa >= 950 && hpa <= 1050)
+                    return (true, "");
+                return (false, "Enter hPa between 950 and 1050");
+            },
+            new List<ToggleButtonDef>(),
+            input =>
+            {
+                double inHg;
+                if (input.Contains('.') || input.Contains(','))
+                {
+                    if (!double.TryParse(input.Replace(',', '.'),
+                            System.Globalization.NumberStyles.Float,
+                            System.Globalization.CultureInfo.InvariantCulture,
+                            out inHg))
+                        return;
+                }
+                else
+                {
+                    if (!int.TryParse(input, out int hpa)) return;
+                    inHg = hpa / 33.8639;
+                }
+
+                simConnect.SetSimVar("KOHLSMAN SETTING HG", inHg, "inHg");
+            });
 
         dialog.ShowCancelButton = false;
         dialog.Show(parentForm);
