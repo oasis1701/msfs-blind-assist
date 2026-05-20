@@ -88,6 +88,17 @@ public class VisualGuidanceManager : IDisposable
     private const int ANNOUNCEMENT_INTERVAL_MS = 1000;
     private const int EXTENDING_PROGRESS_INTERVAL_MS = 10000;  // 10 seconds
 
+    // Manual-query grace window. When the pilot fires a readout hotkey (F target FPM,
+    // P pitch, S speed, etc.) while VG is active, the per-second bank-guidance and
+    // centerline-deviation callouts — both AnnounceImmediate — would cut the readout
+    // off mid-sentence. NotifyManualQuery() sets this timestamp; the two chatty
+    // callouts skip while DateTime.Now is before it. Skipped callouts lose nothing:
+    // both always reflect CURRENT state, so the next un-suppressed one carries fresh
+    // data. One-shot announcements (phase changes, distance callouts) are NOT
+    // suppressed — they're rare and important enough to let through.
+    private DateTime routineAnnouncementsSuppressedUntil = DateTime.MinValue;
+    private const double MANUAL_QUERY_GRACE_SECONDS = 3.0;
+
     // Debouncing for behind threshold detection
     private DateTime lastBehindStateChange = DateTime.MinValue;
     private bool wasBehindLastCheck = false;
@@ -196,6 +207,22 @@ public class VisualGuidanceManager : IDisposable
     }
 
     /// <summary>
+    /// Called by MainForm when the pilot fires a manual readout hotkey (F target FPM, P pitch,
+    /// S airspeed, etc.) while VG is active. Opens a short grace window during which the
+    /// per-second bank-guidance and centerline-deviation callouts are suppressed, so the
+    /// readout the pilot asked for plays to completion instead of being cut off. No-op when
+    /// VG is inactive.
+    /// </summary>
+    public void NotifyManualQuery()
+    {
+        if (!isActive) return;
+        routineAnnouncementsSuppressedUntil = DateTime.Now.AddSeconds(MANUAL_QUERY_GRACE_SECONDS);
+    }
+
+    /// <summary>True while a manual-query grace window is open (see <see cref="NotifyManualQuery"/>).</summary>
+    private bool RoutineAnnouncementsSuppressed => DateTime.Now < routineAnnouncementsSuppressedUntil;
+
+    /// <summary>
     /// Initializes visual guidance with runway, audio preferences, and aircraft-specific tunables.
     /// Two tones always play: the desired tone encodes PID-commanded attitude (frequency = pitch
     /// command, pan = bank command); the current tone mirrors the same mapping against the
@@ -241,6 +268,7 @@ public class VisualGuidanceManager : IDisposable
         lastAnnouncedDistance = double.MaxValue;
         lastExtendingProgressAnnouncement = DateTime.MinValue;
         lastAnnouncedBankError = null;
+        routineAnnouncementsSuppressedUntil = DateTime.MinValue;
         cachedLatitude = null;
         cachedLongitude = null;
         cachedAGL = null;
@@ -1235,6 +1263,14 @@ public class VisualGuidanceManager : IDisposable
     /// </summary>
     private void AnnounceBankGuidance(double desiredBankDegrees)
     {
+        // Skip during a manual-query grace window so the pilot's readout isn't cut off.
+        // lastAnnouncedBankError is intentionally NOT updated here — once the window
+        // closes, the next call compares current error against the pre-window value
+        // and announces immediately if it drifted, so the pilot gets fresh data right
+        // after their query finishes.
+        if (RoutineAnnouncementsSuppressed)
+            return;
+
         string announcement;
         int roundedError;
 
@@ -1307,6 +1343,10 @@ public class VisualGuidanceManager : IDisposable
     private void AnnounceCenterlineDeviation(double lat, double lon)
     {
         if (runway == null) return;
+
+        // Skip during a manual-query grace window (see AnnounceBankGuidance).
+        if (RoutineAnnouncementsSuppressed)
+            return;
 
         // Calculate cross-track error (distance from centerline)
         double crossTrackErrorNM = NavigationCalculator.CalculateDistanceToLocalizer(

@@ -39,6 +39,7 @@ public partial class MainForm : Form
     private TakeoffAssistManager takeoffAssistManager = null!;
     private HandFlyManager handFlyManager = null!;
     private VisualGuidanceManager visualGuidanceManager = null!;
+    private MSFSBlindAssist.Services.GroundSpeedAnnouncer groundSpeedAnnouncer = null!;
     private ElectronicFlightBagForm? electronicFlightBagForm;
     private TrackFixForm? trackFixForm;
     private TcasForm? tcasForm;
@@ -225,6 +226,11 @@ public partial class MainForm : Form
         // Initialize visual guidance manager
         visualGuidanceManager = new VisualGuidanceManager(announcer);
         visualGuidanceManager.VisualGuidanceActiveChanged += OnVisualGuidanceActiveChanged;
+
+        // Global ground-speed announcer — fed by the always-on GROUND_VELOCITY continuous
+        // variable, so callouts work in every phase (takeoff roll, landing rollout, taxi),
+        // not just while taxi guidance is active.
+        groundSpeedAnnouncer = new MSFSBlindAssist.Services.GroundSpeedAnnouncer(announcer);
 
         // Initialize taxi guidance manager
         taxiGuidanceManager = new TaxiGuidanceManager(announcer);
@@ -621,6 +627,16 @@ public partial class MainForm : Form
             e.VarName == "FCU_ALTITUDE_WITH_STATUS" || e.VarName == "FCU_VSFPA_VALUE")
         {
             announcer.AnnounceImmediate(e.Description);
+            return true;
+        }
+
+        // Global ground-speed announcer. GROUND_VELOCITY is a continuous base variable
+        // (always monitored while connected). Route it to the dedicated announcer's
+        // bucket/hysteresis logic and return true so the generic "value changed"
+        // announcement is suppressed — the announcer self-gates on the interval setting.
+        if (e.VarName == "GROUND_VELOCITY")
+        {
+            groundSpeedAnnouncer.ProcessGroundSpeed(e.Value);
             return true;
         }
 
@@ -1307,6 +1323,26 @@ public partial class MainForm : Form
         OnSimVarUpdated(this, simVarEvent);
     }
 
+    /// <summary>
+    /// True for the quick-access readout hotkeys (the H/V/Q/S/D/B/P/A/F set) — single
+    /// keypresses whose whole purpose is to speak a value. When one of these fires during
+    /// an active visual-guidance session, VG opens a grace window so its per-second
+    /// bank/centerline callouts don't talk over the readout.
+    /// </summary>
+    private static bool IsManualReadoutAction(HotkeyAction action) => action switch
+    {
+        HotkeyAction.ReadTargetFPM
+            or HotkeyAction.ReadPitch
+            or HotkeyAction.ReadBankAngle
+            or HotkeyAction.ReadVerticalSpeed
+            or HotkeyAction.ReadAltitudeAGL
+            or HotkeyAction.ReadAltitudeMSL
+            or HotkeyAction.ReadAirspeedIndicated
+            or HotkeyAction.ReadDestinationRunwayDistance
+            or HotkeyAction.ReadHeadingMagnetic => true,
+        _ => false
+    };
+
     private void OnHotkeyTriggered(object? sender, HotkeyEventArgs e)
     {
         // Actions that don't require SimConnect connection (can be used offline)
@@ -1325,6 +1361,14 @@ public partial class MainForm : Form
         {
             announcer.Announce("Not connected to simulator, please wait");
             return;
+        }
+
+        // If the pilot fired a manual readout query while visual guidance is active, open a
+        // short grace window so VG's per-second bank/centerline callouts don't interrupt the
+        // readout mid-sentence. See VisualGuidanceManager.NotifyManualQuery.
+        if (visualGuidanceManager.IsActive && IsManualReadoutAction(e.Action))
+        {
+            visualGuidanceManager.NotifyManualQuery();
         }
 
         // Try aircraft-specific handler first
