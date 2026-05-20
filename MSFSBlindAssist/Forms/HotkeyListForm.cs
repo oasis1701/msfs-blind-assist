@@ -2,6 +2,8 @@
 namespace MSFSBlindAssist.Forms;
 public partial class HotkeyListForm : Form
 {
+    private const string AllCategoriesLabel = "All Categories";
+
     private ComboBox categoryComboBox = null!;
     private TextBox hotkeyTextBox = null!;
     private Button okButton = null!;
@@ -39,7 +41,7 @@ public partial class HotkeyListForm : Form
             AccessibleName = "Hotkey Category Search",
             AccessibleDescription = "Type or choose a hotkey category to filter the list"
         };
-        categoryComboBox.Items.Add("All Categories");
+        categoryComboBox.Items.Add(AllCategoriesLabel);
         foreach (var section in categorySections
             .OrderBy(section => section.ModeOrder)
             .ThenBy(section => section.CategoryName))
@@ -47,7 +49,9 @@ public partial class HotkeyListForm : Form
             categoryComboBox.Items.Add(section.DisplayName);
         }
         categoryComboBox.SelectedIndex = 0;
-        categoryComboBox.SelectedIndexChanged += CategoryComboBox_SelectionChanged;
+        // TextChanged fires for both typing and dropdown selections (Text is
+        // updated when SelectedIndex changes), so a single subscription covers
+        // both paths without filtering twice on dropdown picks.
         categoryComboBox.TextChanged += CategoryComboBox_TextChanged;
         categoryComboBox.KeyDown += CategoryComboBox_KeyDown;
 
@@ -172,11 +176,6 @@ public partial class HotkeyListForm : Form
         return base.ProcessDialogKey(keyData);
     }
 
-    private void CategoryComboBox_SelectionChanged(object? sender, EventArgs e)
-    {
-        ApplyCategoryFilter(categoryComboBox.Text);
-    }
-
     private void CategoryComboBox_TextChanged(object? sender, EventArgs e)
     {
         ApplyCategoryFilter(categoryComboBox.Text);
@@ -197,9 +196,21 @@ public partial class HotkeyListForm : Form
     {
         string category = categoryText.Trim();
 
-        if (string.IsNullOrEmpty(category) || category.Equals("All Categories", StringComparison.OrdinalIgnoreCase))
+        // Empty, exact match, or any case-insensitive prefix of "All Categories"
+        // at least 3 chars long (covers "all", "all c", "All Categ", etc.).
+        // The 3-char floor prevents "a"/"al" from short-circuiting filters
+        // for categories that start with those letters (e.g. Altitude, Airspeed).
+        bool isAllCategoriesSentinel =
+            string.IsNullOrEmpty(category)
+            || (category.Length >= 3
+                && AllCategoriesLabel.StartsWith(category, StringComparison.OrdinalIgnoreCase));
+
+        if (isAllCategoriesSentinel)
         {
             hotkeyTextBox.Text = fullHotkeyListText;
+            hotkeyTextBox.SelectionStart = 0;
+            hotkeyTextBox.SelectionLength = 0;
+            hotkeyTextBox.ScrollToCaret();
             return;
         }
 
@@ -215,13 +226,13 @@ public partial class HotkeyListForm : Form
             return;
         }
 
-        var filteredSections = new List<string>();
-        foreach (var matchingSection in matchingSections)
-        {
-            filteredSections.Add($"{matchingSection.DisplayName}\r\n{matchingSection.SectionText}");
-        }
-
-        hotkeyTextBox.Text = string.Join("\r\n\r\n", filteredSections);
+        // SectionText already starts with the category heading line (e.g.
+        // "FCU Controls:"). The dropdown shows the activation-mode prefix
+        // (Output ] / Input [) when the user picks, so prepending DisplayName
+        // here would duplicate the heading in the text body.
+        hotkeyTextBox.Text = string.Join(
+            "\r\n\r\n",
+            matchingSections.Select(section => section.SectionText));
         hotkeyTextBox.SelectionStart = 0;
         hotkeyTextBox.SelectionLength = 0;
         hotkeyTextBox.ScrollToCaret();
@@ -233,7 +244,7 @@ public partial class HotkeyListForm : Form
 
         string[] lines = hotkeyText.Replace("\r\n", "\n").Split('\n');
         string? currentCategory = null;
-        HotkeyMode currentMode = HotkeyMode.Other;
+        HotkeyMode currentMode = HotkeyMode.General;
         var currentSectionLines = new List<string>();
 
         foreach (string line in lines)
@@ -285,12 +296,18 @@ public partial class HotkeyListForm : Form
 
     private static bool IsCategoryHeading(string line)
     {
-        string trimmedLine = line.Trim();
+        // Real categories start at column 0. The Fenix guide contains indented
+        // sub-section headings ending in ':' (e.g. "  Right Side (Alt + number):")
+        // that would otherwise be promoted to top-level categories.
+        if (line.Length == 0 || char.IsWhiteSpace(line[0]))
+        {
+            return false;
+        }
 
-        return trimmedLine.Length > 1
-            && trimmedLine.EndsWith(':')
-            && !trimmedLine.StartsWith('-')
-            && !char.IsDigit(trimmedLine[0]);
+        return line.Length > 1
+            && line.EndsWith(':')
+            && !line.StartsWith('-')
+            && !char.IsDigit(line[0]);
     }
 
     private static bool IsOutputModeMarker(string line)
@@ -312,7 +329,7 @@ public partial class HotkeyListForm : Form
     {
         Output,
         Input,
-        Other
+        General
     }
 
     private sealed class CategorySection
@@ -339,7 +356,7 @@ public partial class HotkeyListForm : Form
         {
             HotkeyMode.Output => $"Output ] - {CategoryName}",
             HotkeyMode.Input => $"Input [ - {CategoryName}",
-            _ => $"Other - {CategoryName}"
+            _ => $"General - {CategoryName}"
         };
 
         public string SearchText => $"{DisplayName} {CategoryName}";
