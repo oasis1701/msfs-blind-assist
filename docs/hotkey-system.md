@@ -8,9 +8,13 @@ Two hotkey modes with three-tier delegation architecture for multi-aircraft supp
 - Read out values (altitude, heading, fuel, etc.)
 - Examples: Shift+H (FCU heading), A (altitude MSL), F (fuel)
 
+### Read Mode (Activated with `]`) — Ground Services
+- Output → Ctrl+G — Read latest GSX tooltip (no need to open the Access GSX window)
+
 ### Input Mode (Activated with `[`)
 - Execute functions (teleportation, aircraft controls)
 - Examples: Shift+R (runway teleport), Shift+1 (push heading knob), Ctrl+A (set altitude)
+- Input → Alt+G — Open Access GSX window (accessible GSX Ground Services Pro menu)
 
 ### Usage Flow
 1. Press `]` or `[` to activate mode
