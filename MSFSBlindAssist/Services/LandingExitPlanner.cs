@@ -272,7 +272,7 @@ public class LandingExitPlanner
         // Runway.Heading is true heading per the DB schema; pass it
         // through so the rollout can detect when the pilot starts the
         // turn off centerline.
-        _guidanceManager.BeginLandingRollout(_exit, _runway.Heading, _runway, allExits);
+        _guidanceManager.BeginLandingRollout(_exit, _runway.Heading, _runway, allExits, lat, lon);
         return true;
     }
 }

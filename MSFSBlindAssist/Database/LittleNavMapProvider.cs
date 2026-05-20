@@ -635,7 +635,7 @@ public class LittleNavMapProvider : IAirportDataProvider
 
         if (!string.IsNullOrEmpty(ilsIdent))
         {
-            var ilsData = GetILSData(connection, ilsIdent);
+            var ilsData = GetILSData(connection, ilsIdent, icao);
             ilsFreq = ilsData.Item1;
             ilsHeading = ilsData.Item2;
         }
@@ -711,19 +711,41 @@ public class LittleNavMapProvider : IAirportDataProvider
         }
     }
 
-    private (double, double) GetILSData(SqliteConnection connection, string ilsIdent)
+    private (double, double) GetILSData(SqliteConnection connection, string ilsIdent, string? icao = null)
     {
-        var sql = "SELECT frequency, loc_heading FROM ils WHERE ident = @Ident LIMIT 1";
+        // Airport-scoped lookup first: multiple airports can share the same ILS ident
+        // (e.g. 'IDE' exists at EIDW, OTHH, and ZUUU). Without the airport filter,
+        // LIMIT 1 returns whichever row has the lowest row-id — typically a different
+        // airport — giving the wrong heading and frequency for the actual runway.
+        if (!string.IsNullOrEmpty(icao))
+        {
+            var scopedSql = "SELECT frequency, loc_heading FROM ils WHERE ident = @Ident AND loc_airport_ident = @ICAO LIMIT 1";
+            using (var cmd = new SqliteCommand(scopedSql, connection))
+            {
+                cmd.Parameters.AddWithValue("@Ident", ilsIdent);
+                cmd.Parameters.AddWithValue("@ICAO", icao);
+                using (var rdr = cmd.ExecuteReader())
+                {
+                    if (rdr.Read())
+                    {
+                        double freq = Convert.ToDouble(rdr["frequency"] ?? 0.0) / 1000.0;
+                        double heading = Convert.ToDouble(rdr["loc_heading"] ?? 0.0);
+                        return (freq, heading);
+                    }
+                }
+            }
+        }
 
+        // Fallback: no airport match (e.g. loc_airport_ident unpopulated in this DB build).
+        var sql = "SELECT frequency, loc_heading FROM ils WHERE ident = @Ident LIMIT 1";
         using (var command = new SqliteCommand(sql, connection))
         {
             command.Parameters.AddWithValue("@Ident", ilsIdent);
-
             using (var reader = command.ExecuteReader())
             {
                 if (reader.Read())
                 {
-                    double freq = Convert.ToDouble(reader["frequency"] ?? 0.0) / 1000.0; // Convert kHz to MHz
+                    double freq = Convert.ToDouble(reader["frequency"] ?? 0.0) / 1000.0;
                     double heading = Convert.ToDouble(reader["loc_heading"] ?? 0.0);
                     return (freq, heading);
                 }

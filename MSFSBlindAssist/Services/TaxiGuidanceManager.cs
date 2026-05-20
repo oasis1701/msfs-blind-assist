@@ -315,6 +315,20 @@ public class TaxiGuidanceManager : IDisposable
     private bool _rolloutApproach1500Announced = false;
     private bool _rolloutApproach500Announced = false;
     private bool _rolloutTurnNowAnnounced = false;
+    // Latches true when distToExitFeet first drops below ROLLOUT_EXIT_TONE_ARM_FT.
+    // Used to reset the heading-error smoother exactly once at that point so the
+    // exit-bearing tone fires immediately rather than lagging the transition.
+    private bool _rolloutExitToneArmed = false;
+    // Latches true after the one-shot TryEarlyExitHandoff attempt so we don't
+    // retry on every subsequent frame. The attempt happens once: at the first
+    // frame where GS ≤ ROLLOUT_TONE_ACTIVE_BELOW_GS_KTS and dist ≤ ROLLOUT_EXIT_TONE_ARM_FT.
+    // If it succeeds, state moves to Taxiing and we never return here. If it fails,
+    // the bearing-to-junction fallback tone below takes over for the remainder.
+    private bool _rolloutEarlyHandoffDone = false;
+    // Timestamp of the last undershoot retarget. DateTime.MinValue = no retarget
+    // yet this rollout. Guards against rapid cascade retargeting when multiple
+    // earlier exits are within ROLLOUT_UNDERSHOOT_RANGE_FT.
+    private DateTime _lastUndershootRetargetTime = DateTime.MinValue;
     // Runway-end countdown mode. Entered when the overshoot detector finds
     // no downfield exit remaining (or RetargetLandingExit's LoadRoute call
     // fails). Drives a distance-to-runway-end countdown (1500 / 500 / 100 ft)
@@ -338,6 +352,7 @@ public class TaxiGuidanceManager : IDisposable
     // taxi-fast cap (real-world SOPs cap straight-taxi at 30 kt; turns
     // get ~10-15 kt limits).
     private const double ROLLOUT_TAXI_GS_KTS = 30.0;
+
     // Heading deviation from the runway centerline that signals "the
     // pilot has started the turn onto the exit". Once we see this, hand
     // over to normal taxi guidance even if speed is still high (a
@@ -367,14 +382,47 @@ public class TaxiGuidanceManager : IDisposable
     // normal case, so an actual overshoot is unambiguous when this fires.
     private const double ROLLOUT_OVERSHOOT_FT = 100.0;
 
+    // If the aircraft is within this distance of an earlier exit while below
+    // the undershoot speed threshold, retarget to minimise runway occupancy.
+    // 1000 ft gives ~15 s at 40 kt to hear the callout and react.
+    private const double ROLLOUT_UNDERSHOOT_RANGE_FT = 1000.0;
+    // Outer speed threshold for the undershoot scan. Below this speed any
+    // earlier shallow or high-speed exit is viable.
+    private const double ROLLOUT_UNDERSHOOT_ENTRY_GS_KTS = 50.0;
+    // Steep exits need the aircraft to be slower — the tighter turn demands
+    // more braking margin. Only included in the undershoot scan below this speed.
+    private const double ROLLOUT_UNDERSHOOT_STEEP_ANGLE_DEG = 45.0;
+    private const double ROLLOUT_UNDERSHOOT_STEEP_GS_KTS = 20.0;
+    // Minimum gap between consecutive undershoot retargets. Prevents rapid
+    // cascade when multiple earlier exits fall within the range window.
+    private const double ROLLOUT_UNDERSHOOT_COOLDOWN_SEC = 8.0;
+
+    // Distance from the chosen exit at which the rollout tone snaps from
+    // runway-heading guidance (centreline tracking) to exit-bearing guidance.
+    // Chosen to give the pilot ~2 s of directional preview before the
+    // "turn now" speech fires at 150 ft — unambiguous "this direction" cue
+    // without the premature-action risk of a long gradual build-up.
+    private const double ROLLOUT_EXIT_TONE_ARM_FT = 300.0;
+
+    // Explicit thresholds used in the exit-guidance zone (dist ≤ ARM_FT).
+    // Tighter than the width-scaled runway values (4.2° activation on a wide
+    // runway) so the tone gives fine steering on shallow exits (3–5°) where
+    // the heading correction is tiny. Silent at 1.5° covers GPS jitter;
+    // activation at 2.5° catches any exit ≥ 3° while keeping truly
+    // straight-ahead exits (< 2.5°) silent. Max pan matches runway lineup.
+    private const double ROLLOUT_EXIT_TONE_SILENT_DEG = 1.5;
+    private const double ROLLOUT_EXIT_TONE_ACTIVATION_DEG = 2.5;
+    private const double ROLLOUT_EXIT_TONE_MAX_PAN_DEG = 15.0;
+
     // Ground speed below which the steering tone activates during rollout.
     // Above this speed the tone is silent — at 80+ kt a pan cue is useless
     // because the pilot can't react and a high-speed exit is still many
     // seconds away. Below this (roughly approach-speed walk-down final
     // phase), the tone behaves like taxi-assist: centred = silent, deviated
     // = pans toward the exit so the pilot steers to keep it centred and
-    // naturally turns onto the exit.
-    private const double ROLLOUT_TONE_ACTIVE_BELOW_GS_KTS = 40.0;
+    // naturally turns onto the exit. 50 kt gives ~10 s more lead time than
+    // 40 kt at typical deceleration — meaningful for high-speed RETs (40–60 kt).
+    private const double ROLLOUT_TONE_ACTIVE_BELOW_GS_KTS = 50.0;
 
     // Below this ground speed, runway-end countdown mode considers the
     // aircraft effectively stopped and hands off to plain Taxiing. Lower
@@ -980,7 +1028,9 @@ public class TaxiGuidanceManager : IDisposable
         Navigation.LandingExit exit,
         double runwayHeadingTrue,
         Database.Models.Runway runway,
-        List<Navigation.LandingExit> allExits)
+        List<Navigation.LandingExit> allExits,
+        double touchdownLat = 0,
+        double touchdownLon = 0)
     {
         lock (_stateLock)
         {
@@ -1006,6 +1056,9 @@ public class TaxiGuidanceManager : IDisposable
             _rolloutApproach1500Announced = false;
             _rolloutApproach500Announced = false;
             _rolloutTurnNowAnnounced = false;
+            _rolloutExitToneArmed = false;
+            _rolloutEarlyHandoffDone = false;
+            _lastUndershootRetargetTime = DateTime.MinValue;
             // Defense in depth: clear no-exit/runway-end state from any prior
             // rollout. StopGuidance does this; matching the pattern here
             // ensures we never inherit stale flags when starting a fresh
@@ -1033,9 +1086,10 @@ public class TaxiGuidanceManager : IDisposable
             RolloutDiag($"BeginLandingRollout DONE: state -> LandingRollout, " +
                 $"tone active (bearing-to-exit), touchdown callout queued");
 
-            // Touchdown callout. Distance-from-touchdown is what the user
-            // cares about (not from-threshold) — the pilot needs to know
-            // how much rollout they have to decelerate.
+            // Touchdown callout. Use the actual aircraft-to-exit distance when the
+            // caller provides touchdown coordinates — this accounts for short or long
+            // landings. Fall back to the precomputed DistanceFromTouchdownFeet only
+            // when coordinates are unavailable (shouldn't happen in normal flow).
             string exitClass = exit.ExitType switch
             {
                 "High-speed" => "high-speed exit",
@@ -1043,7 +1097,9 @@ public class TaxiGuidanceManager : IDisposable
                 _            => "exit"
             };
             string name = string.IsNullOrEmpty(exit.TaxiwayName) ? "exit" : $"taxiway {exit.TaxiwayName}";
-            int distFt = (int)Math.Round(exit.DistanceFromTouchdownFeet);
+            int distFt = touchdownLat != 0 && touchdownLon != 0
+                ? (int)Math.Round(TaxiGraph.FastDistanceMeters(touchdownLat, touchdownLon, exit.Latitude, exit.Longitude) * METERS_TO_FEET)
+                : (int)Math.Round(exit.DistanceFromTouchdownFeet);
             if (distFt > 0)
                 AnnounceInstruction($"Touchdown. {exitClass} {name} in {distFt} feet.");
             else
@@ -1410,25 +1466,33 @@ public class TaxiGuidanceManager : IDisposable
 
         var currentSeg = _route.Segments[_currentSegmentIndex];
 
-        // If the NEXT segment is a turn, never look past this segment's end (no corner cutting)
-        bool nextIsTurn = false;
+        // Check whether the next segment is a turn (bearing change > 25°).
+        TaxiRouteSegment? nextTurnSeg = null;
         if (_currentSegmentIndex + 1 < _route.Segments.Count)
         {
-            var nextSeg = _route.Segments[_currentSegmentIndex + 1];
-            nextIsTurn = nextSeg.TurnDirection != "straight" ||
-                         Math.Abs(NormalizeAngle(nextSeg.BearingDegrees - currentSeg.BearingDegrees)) > 25.0;
+            var ns = _route.Segments[_currentSegmentIndex + 1];
+            bool isTurn = ns.TurnDirection != "straight" ||
+                          Math.Abs(NormalizeAngle(ns.BearingDegrees - currentSeg.BearingDegrees)) > 25.0;
+            if (isTurn) nextTurnSeg = ns;
         }
 
-        // Start from current segment's ToNode
+        // Distance from aircraft to the current segment's end node (the junction).
         double accumulatedDist = TaxiGraph.FastDistanceMeters(
             aircraftLat, aircraftLon,
             currentSeg.ToNode.Latitude,
             currentSeg.ToNode.Longitude);
 
-        // Before a turn: always aim at this segment's endpoint
-        if (nextIsTurn)
+        // Approaching a turn junction: if we're still outside the look-ahead window,
+        // aim at the junction (keep pointing straight ahead). Once we're inside the
+        // window, wrap the remaining distance past the junction along the next segment
+        // so the tone begins panning toward the turn direction before we arrive.
+        if (nextTurnSeg != null)
         {
-            return (currentSeg.ToNode.Latitude, currentSeg.ToNode.Longitude);
+            if (accumulatedDist >= GUIDANCE_LOOK_AHEAD_M)
+                return (currentSeg.ToNode.Latitude, currentSeg.ToNode.Longitude);
+            double remaining = GUIDANCE_LOOK_AHEAD_M - accumulatedDist;
+            return GeoProjectPoint(currentSeg.ToNode.Latitude, currentSeg.ToNode.Longitude,
+                                   nextTurnSeg.BearingDegrees, remaining);
         }
 
         // If the immediate ToNode is already far enough, use it
@@ -2509,10 +2573,55 @@ public class TaxiGuidanceManager : IDisposable
         // pointing at the just-missed exit — the off-route recalc would
         // then route back across the runway. The overshoot detector below
         // handles any case where the aircraft IS past the exit.
-        if (turnBegun || (atTaxiSpeed && nearExit && !pastExit))
+        // Lateral-exit handoff: aircraft has moved off the runway sideways far
+        // enough to be on the exit taxiway, but heading deviation never reached
+        // ROLLOUT_TURN_BEGAN_HDG_DEG (true for any shallow RET < 15°). Treat
+        // this the same as turnBegun — the exit has been taken.
+        // halfRunwayWidthFt + 30 ft is computed below for the overshoot gate
+        // but we need the values before that block, so compute them here.
+        double halfRunwayWidthFt = (_rolloutRunway?.Width > 0 ? _rolloutRunway.Width : 200.0) * 0.5;
+        // Use the runway start as the reference point for lateral measurement, NOT
+        // the exit node. Exit nodes (especially HS/IHS hold-short markers) can be
+        // positioned up to halfWidth+15 m from the actual centerline — e.g. EIDW N4
+        // hold-short nodes sit ~40 m off-center. Using the exit node as the reference
+        // means AbsLateralFromRunwayMeters returns ~40 m (131 ft) for an aircraft on
+        // the centerline, which immediately exceeds halfRunwayWidthFt+30 (≈128 ft) and
+        // fires exitedLaterally at touchdown before the pilot has moved at all. Any
+        // point on the actual centerline (the runway start) gives the correct 0 ft
+        // reading for a centered aircraft, growing only as the pilot turns off-runway.
+        double lateralFromCenterlineFt = AbsLateralFromRunwayMeters(
+            lat, lon,
+            _rolloutRunway!.StartLat, _rolloutRunway.StartLon,
+            _rolloutRunwayHeadingTrue) * METERS_TO_FEET;
+        bool exitedLaterally = lateralFromCenterlineFt >= halfRunwayWidthFt + 30.0;
+
+        // Heading-aligned-with-exit handoff for shallow RETs whose angle is
+        // below ROLLOUT_TURN_BEGAN_HDG_DEG (15°), so turnBegun never fires.
+        // Fires when the aircraft heading is within 5° of ExitBearingTrue AND
+        // has deviated at least 70% of the exit angle from runway heading.
+        //
+        // The 70% floor is the key overshoot guard: a pilot holding a crosswind
+        // correction equal to, say, 2° while rolling past a 3° exit would need
+        // hdgDelta ≥ 2.1° to satisfy both conditions simultaneously — the exact
+        // runway-heading case (0° deviation, genuine missed exit) can never fire.
+        // ExitAngleDegrees < 3° exits are excluded: they are geometrically
+        // indistinguishable from "rolled straight" and aren't actionable anyway.
+        double exitBrgErr = _rolloutExit.ExitBearingTrue != 0.0
+            ? Math.Abs(NormalizeAngle(headingTrue - _rolloutExit.ExitBearingTrue))
+            : double.MaxValue;
+        bool alignedWithExit = _rolloutExit.ExitBearingTrue != 0.0
+            && _rolloutExit.ExitAngleDegrees >= 3.0
+            && exitBrgErr <= 5.0
+            && hdgDeltaAbs >= Math.Max(2.0, _rolloutExit.ExitAngleDegrees * 0.7)
+            && groundSpeedKts < ROLLOUT_TURN_MAX_GS_KTS
+            && pastExit;
+
+        if (turnBegun || exitedLaterally || alignedWithExit || (atTaxiSpeed && nearExit && !pastExit))
         {
             RolloutDiag($"UpdateLandingRollout HANDOFF -> Taxiing: " +
-                $"turnBegun={turnBegun} atTaxiSpeed={atTaxiSpeed} nearExit={nearExit} pastExit={pastExit}");
+                $"turnBegun={turnBegun} exitedLaterally={exitedLaterally} alignedWithExit={alignedWithExit} " +
+                $"exitBrgErr={exitBrgErr:F1}deg lateral={lateralFromCenterlineFt:F0}ft " +
+                $"atTaxiSpeed={atTaxiSpeed} nearExit={nearExit} pastExit={pastExit}");
 
             // For curved-RET exits (LVFR-style scenery with no HS/IHS nodes on the
             // runway), the original route was built at touchdown from the nearest graph
@@ -2562,21 +2671,34 @@ public class TaxiGuidanceManager : IDisposable
         // runway, end the rollout gracefully so the off-route recalc path
         // can't route back across the runway to the now-passed exit (which
         // was the original bug this work fixes).
-        if (signedAlongPastFt >= ROLLOUT_OVERSHOOT_FT && hdgDeltaAbs < ROLLOUT_TURN_BEGAN_HDG_DEG)
-        {
-            RolloutDiag($"OVERSHOOT detected: signedAlongPast={signedAlongPastFt:F0}ft hdgDelta={hdgDeltaAbs:F1}deg");
+        //
+        // stillOnRunway and !alignedWithExit together protect against misfiring
+        // on a completed shallow exit. stillOnRunway handles exits ≥ ~8° (lateral
+        // buildup is fast enough). alignedWithExit handles exits 3–8° (lateral
+        // buildup is too slow but heading alignment with ExitBearingTrue is clear).
+        bool stillOnRunway = !exitedLaterally;
 
-            // Sorted list — first exit further downfield than the current one
-            // (with ROLLOUT_OVERSHOOT_FT sentinel to skip the current one and
-            // any near-duplicates) is the next exit.
+        if (signedAlongPastFt >= ROLLOUT_OVERSHOOT_FT
+            && hdgDeltaAbs < ROLLOUT_TURN_BEGAN_HDG_DEG
+            && stillOnRunway
+            && !alignedWithExit)
+        {
+            RolloutDiag($"OVERSHOOT detected: signedAlongPast={signedAlongPastFt:F0}ft hdgDelta={hdgDeltaAbs:F1}deg " +
+                $"lateral={lateralFromCenterlineFt:F0}ft halfWidth={halfRunwayWidthFt:F0}ft exitBrgErr={exitBrgErr:F1}deg");
+
+            // Sorted list — first suitable exit further downfield than the current
+            // one (with ROLLOUT_OVERSHOOT_FT sentinel to skip the current one and
+            // any near-duplicates). Exits requiring a turn > 90° are skipped —
+            // same suitability rule as undershoot protection.
             Navigation.LandingExit? nextExit = null;
             foreach (var e in _rolloutAllExits)
             {
-                if (e.DistanceFromThresholdFeet > _rolloutExit.DistanceFromThresholdFeet + ROLLOUT_OVERSHOOT_FT)
-                {
-                    nextExit = e;
-                    break;
-                }
+                if (e.DistanceFromThresholdFeet <= _rolloutExit.DistanceFromThresholdFeet + ROLLOUT_OVERSHOOT_FT)
+                    continue;
+                if (e.ExitAngleDegrees > 0.0 && e.ExitAngleDegrees > 90.0)
+                    continue;
+                nextExit = e;
+                break;
             }
 
             if (nextExit != null)
@@ -2596,6 +2718,73 @@ public class TaxiGuidanceManager : IDisposable
             AnnounceInstruction($"Missed last exit on runway {rwyLabel}.");
             EnterRunwayEndCountdown();
             return;
+        }
+
+        // Undershoot protection. Checked on every frame when below the exit-type
+        // speed threshold — not one-shot. Previous one-shot latch fired when GS
+        // first crossed 50 kt, at which point the earlier exit was often still
+        // outside the 1000 ft window; by the time the aircraft reached it the latch
+        // had already fired and the pilot had to roll all the way to the original exit.
+        //
+        // High-speed exits: threshold is 50 kt — below that speed the exit can no
+        // longer be used at proper approach speed, so retarget to an earlier normal exit.
+        // Normal/End exits: threshold is 20 kt — the aircraft has decelerated much
+        // earlier than planned; take the nearest earlier exit instead.
+        //
+        // ROLLOUT_UNDERSHOOT_COOLDOWN_SEC between retargets prevents rapid cascade
+        // when multiple earlier exits are within ROLLOUT_UNDERSHOOT_RANGE_FT.
+        if (!_rolloutNoExitMode && !pastExit)
+        {
+            bool cooldownOk = (DateTime.Now - _lastUndershootRetargetTime).TotalSeconds >= ROLLOUT_UNDERSHOOT_COOLDOWN_SEC;
+
+            if (groundSpeedKts < ROLLOUT_UNDERSHOOT_ENTRY_GS_KTS && cooldownOk)
+            {
+                Navigation.LandingExit? earlierExit = null;
+                double earlierExitDistFt = double.MaxValue;
+
+                foreach (var e in _rolloutAllExits)
+                {
+                    // Only consider exits clearly before the planned exit.
+                    if (e.DistanceFromThresholdFeet >= _rolloutExit.DistanceFromThresholdFeet - ROLLOUT_OVERSHOOT_FT)
+                        break;
+
+                    // Skip exits requiring a turn greater than 90° — physically unsuitable.
+                    if (e.ExitAngleDegrees > 0.0 && e.ExitAngleDegrees > 90.0)
+                        continue;
+
+                    // Steep exits need more braking margin — only include them when
+                    // the aircraft is slow enough to make the tighter turn safely.
+                    if (e.ExitAngleDegrees >= ROLLOUT_UNDERSHOOT_STEEP_ANGLE_DEG
+                        && groundSpeedKts >= ROLLOUT_UNDERSHOOT_STEEP_GS_KTS)
+                        continue;
+
+                    // Skip exits the aircraft has already rolled past.
+                    double signedAlongM = SignedAlongRunwayMeters(
+                        lat, lon, e.Latitude, e.Longitude, _rolloutRunwayHeadingTrue);
+                    if (signedAlongM >= 0.0)
+                        continue;
+
+                    double distFt2 = TaxiGraph.FastDistanceMeters(lat, lon, e.Latitude, e.Longitude) * METERS_TO_FEET;
+                    if (distFt2 <= ROLLOUT_UNDERSHOOT_RANGE_FT && distFt2 < earlierExitDistFt)
+                    {
+                        earlierExit = e;
+                        earlierExitDistFt = distFt2;
+                    }
+                }
+
+                if (earlierExit != null)
+                {
+                    _lastUndershootRetargetTime = DateTime.Now;
+                    string newName = string.IsNullOrEmpty(earlierExit.TaxiwayName)
+                        ? "earlier exit"
+                        : $"taxiway {earlierExit.TaxiwayName}";
+                    string msg = $"Taking earlier exit, {newName}, {(int)Math.Round(earlierExitDistFt)} feet ahead.";
+                    RolloutDiag($"UNDERSHOOT: retargeting to '{earlierExit.TaxiwayName}' at {earlierExitDistFt:F0}ft " +
+                        $"(planned was '{_rolloutExit.TaxiwayName}')");
+                    RetargetLandingExit(earlierExit, lat, lon, headingTrue, overrideAnnouncement: msg);
+                    return;
+                }
+            }
         }
 
         // Approach callouts. Each fires once per rollout (flags are reset
@@ -2622,7 +2811,11 @@ public class TaxiGuidanceManager : IDisposable
         if (!_rolloutApproach500Announced && distToExitFeet <= 500.0 && distToExitFeet > 150.0)
         {
             RolloutDiag($"500-ft approach callout firing: distToExit={distToExitFeet:F0}ft gs={groundSpeedKts:F1}");
-            string slowSuffix = groundSpeedKts > ROLLOUT_TAXI_GS_KTS ? " Slow down." : "";
+            // Suppress "Slow down" for high-speed exits — 40–80 kt is the correct
+            // approach speed for those exits; telling the pilot to slow down contradicts
+            // the reason they picked one.
+            bool isHighSpeed = _rolloutExit.ExitType == "High-speed";
+            string slowSuffix = !isHighSpeed && groundSpeedKts > ROLLOUT_TAXI_GS_KTS ? " Slow down." : "";
             AnnounceInstruction($"{CapFirst(name)}, 500 feet.{slowSuffix}");
             _rolloutApproach500Announced = true;
         }
@@ -2644,70 +2837,268 @@ public class TaxiGuidanceManager : IDisposable
             _rolloutTurnNowAnnounced = true;
         }
 
-        // Rollout steering tone — taxi-assist style, speed-gated.
+        // Early handoff to live taxi look-ahead guidance.
+        // One-shot: attempted at the first frame where GS ≤ 50 kt AND within
+        // ROLLOUT_EXIT_TONE_ARM_FT (300 ft) of the exit. Firing at 300 ft lets the
+        // Taxiing state's speed-scaled "turn now" announcement reach its full lead
+        // distance (e.g. ~267 ft at 40 kt, scaling up for sharp turns). Firing at
+        // 150 ft was too late — the speed-scaled window had already closed by the
+        // time live guidance kicked in.
+        // If LoadRoute succeeds and the first segment isn't backwards, we move
+        // directly to Taxiing. If it fails (bad node snap, A* error, or first
+        // segment >120° off runway heading), the bearing-to-junction fallback tone
+        // below takes over unchanged, and the rollout's own 150 ft "turn now"
+        // callout fires as the verbal backstop.
+        if (!_rolloutEarlyHandoffDone
+            && !pastExit
+            && groundSpeedKts <= ROLLOUT_TONE_ACTIVE_BELOW_GS_KTS
+            && distToExitFeet <= ROLLOUT_EXIT_TONE_ARM_FT)
+        {
+            _rolloutEarlyHandoffDone = true;
+            if (TryEarlyExitHandoff(lat, lon, headingTrue))
+            {
+                _steeringTone.Resume();
+                return;
+            }
+            // Fall through — bearing-to-junction tone below acts as the fallback.
+        }
+
+        // Rollout steering tone — exit-only design:
         //
-        // Above ROLLOUT_TONE_ACTIVE_BELOW_GS_KTS: tone silent. At 80+ kt the
-        // pilot can't react to a pan cue and the exit is still far ahead.
+        // Tone is silent until the aircraft is within ROLLOUT_EXIT_TONE_ARM_FT (300 ft)
+        // of the chosen exit AND below ROLLOUT_TONE_ACTIVE_BELOW_GS_KTS (50 kt).
+        // Before 300 ft the tone stays off — no centreline steering during high-speed
+        // rollout; autopilot crab / crosswind alignment would cause confusing pan.
         //
-        // Below the threshold: tone behaves like taxi-assist —
-        //   centred (within deadband) = silent   → "you're on track"
-        //   panning left/right       = deviation → steer that way to re-centre
-        //
-        // Panning only begins when it's time to turn. For normal off-centre exits
-        // bearing-to-exit-node gives a natural pan that builds as you approach
-        // (it stays near-zero far out and increases geometrically as you close in).
-        // For near-centreline exits (node ≈ runway axis) bearing-to-node stays silent
-        // throughout — ExitBearingTrue supplements it inside a speed-scaled lead
-        // distance (~5 s of rollout at current GS, capped at 200 ft) so the tone
-        // only pans when the turn is actually imminent.
-        // If ExitBearingTrue == 0 (not populated), falls back to bearing-to-node only.
+        // At 300 ft (≤50 kt): desired heading = bearing to the exit junction node.
+        //   When the junction is on the centreline this is ≈ runway heading → tone stays
+        //   silent; when the junction is off-axis (RET, angled exit) the bearing deviates
+        //   naturally as the aircraft approaches → appropriate directional pan.
+        //   The verbal "turn now" at 150 ft and the Taxiing handoff with ApronNodeId
+        //   re-route together handle the actual exit turn.
+        //   NOTE: ExitBearingTrue is NOT used here. For near-parallel exits (< 5°) the
+        //   apron-bearing override stores a bearing ~90° off the runway (pointing toward
+        //   the apron rather than along the approach path), which caused premature hard
+        //   panning 300 ft before the junction on shallow high-speed exits like EIDW S5.
         if (groundSpeedKts > ROLLOUT_TONE_ACTIVE_BELOW_GS_KTS)
         {
-            // High speed — stay silent and reset smoother so the first active
-            // frame below the gate reflects the real current deviation, not
-            // any accumulated residual from high-speed slalom or crosswind.
             _steeringTone.Pause();
             _headingErrorInitialized = false;
+            _rolloutExitToneArmed = false;
         }
-        else
+        else if (distToExitFeet <= ROLLOUT_EXIT_TONE_ARM_FT)
         {
-            // Baseline desired heading is the runway heading, not bearing-to-exit-node.
-            // On rollout the pilot should track straight — pulling toward the exit node
-            // early would cause sideways drift before the turn is needed. Runway heading
-            // keeps the tone silent when tracking correctly and pans only if the pilot
-            // drifts off the runway axis.
-            // Within a speed-scaled lead distance the desired heading blends toward
-            // ExitBearingTrue (the actual taxiway direction), giving a clear pan cue
-            // exactly when it's time to initiate the turn — and not before.
-            double desiredHeading = _rolloutRunwayHeadingTrue;
-            double exitBrg = _rolloutExit.ExitBearingTrue;
-            if (exitBrg != 0.0)
+            // First entry into exit-bearing zone: reset smoother so the pan
+            // is sharp and immediate rather than ramping up from a near-zero residual.
+            if (!_rolloutExitToneArmed)
             {
-                // Lead distance ≈ 10 s of rollout at current GS, capped at 500 ft.
-                // At 30 kt → 300 ft; at 40 kt → 400 ft; at 15 kt → 150 ft (floor).
-                // Wider lead gives meaningful pan at the "turn now" callout (150 ft) for
-                // shallow RETs (15-50°). The activation threshold (4.2° for wide runway)
-                // acts as a natural safety net: the tone only starts when the blend has
-                // built up enough directional signal, typically 100-200 ft before "turn now"
-                // depending on exit angle — not early enough to prompt an early turn.
-                double blendStartFt = Math.Clamp(groundSpeedKts * 10.0, 150.0, 500.0);
-                if (distToExitFeet <= blendStartFt)
-                {
-                    double blend = Math.Clamp(1.0 - distToExitFeet / blendStartFt, 0.0, 1.0);
-                    double exitBrgDelta = NormalizeAngle(exitBrg - _rolloutRunwayHeadingTrue);
-                    desiredHeading = _rolloutRunwayHeadingTrue + exitBrgDelta * blend;
-                }
+                _rolloutExitToneArmed = true;
+                _headingErrorInitialized = false;
             }
 
+            // Desired heading = bearing from current position to the exit node.
+            // This is ≈runway heading when the junction is on the centreline,
+            // and deviates toward the exit only as the aircraft nears an off-axis
+            // junction. "Guide me to the junction" rather than "point at the apron."
+            double desiredHeading;
+            {
+                const double MPD = 111132.0;
+                double midLatRad = (lat + _rolloutExit.Latitude) * 0.5 * Math.PI / 180.0;
+                double bN = (_rolloutExit.Latitude - lat) * MPD;
+                double bE = (_rolloutExit.Longitude - lon) * MPD * Math.Cos(midLatRad);
+                desiredHeading = (Math.Atan2(bE, bN) * 180.0 / Math.PI + 360.0) % 360.0;
+            }
             double rawError = NormalizeAngle(desiredHeading - headingTrue);
             _smoothedHeadingError = _headingErrorInitialized
                 ? _smoothedHeadingError * (1 - HEADING_ERROR_FILTER_ALPHA) + rawError * HEADING_ERROR_FILTER_ALPHA
                 : rawError;
             _headingErrorInitialized = true;
-            double rwyWidthFt = _rolloutRunway?.Width > 0 ? _rolloutRunway.Width : 200.0;
             _steeringTone.Resume();
-            _steeringTone.UpdateHeadingError(_smoothedHeadingError, rwyWidthFt);
+            // Tight explicit thresholds so the tone gives fine steering even on
+            // shallow exits (3–5°). Silent on-bearing, pans with any meaningful deviation.
+            _steeringTone.UpdateHeadingErrorWithThresholds(
+                _smoothedHeadingError,
+                ROLLOUT_EXIT_TONE_SILENT_DEG,
+                ROLLOUT_EXIT_TONE_ACTIVATION_DEG,
+                ROLLOUT_EXIT_TONE_MAX_PAN_DEG);
         }
+        else
+        {
+            // Outside 300 ft arm distance — tone silent. Smoother resets on
+            // exit-tone arming so the pan is sharp when it does start.
+            _steeringTone.Pause();
+        }
+    }
+
+    /// <summary>
+    /// Attempts to hand off from the static bearing-to-junction rollout tone to
+    /// live taxi look-ahead guidance. Called once when GS drops to or below
+    /// ROLLOUT_TONE_ACTIVE_BELOW_GS_KTS and the aircraft is within
+    /// ROLLOUT_EXIT_TONE_ARM_FT of the chosen exit.
+    ///
+    /// Uses ApronNodeId (first graph node outside the runway corridor) as the
+    /// route destination when available, otherwise falls back to NodeId (the
+    /// junction itself). This ensures A* follows the actual exit curve rather
+    /// than stopping at the runway edge.
+    ///
+    /// Returns true and transitions to Taxiing on success; returns false and
+    /// leaves state in LandingRollout on any failure so the caller's
+    /// bearing-to-junction fallback tone can take over.
+    /// </summary>
+    private bool TryEarlyExitHandoff(double lat, double lon, double headingTrue)
+    {
+        if (_rolloutExit == null || _dataProvider == null || _graph == null)
+            return false;
+
+        // Pick the best destination node for A* to route toward:
+        //
+        // (a) ApronNodeId — set for shallow exits (< 5°): first node outside the runway
+        //     corridor, computed by ExitPathLeavesCorridor BFS in GetLandingExits.
+        //     Gives guidance through the full exit curve for nearly-straight exits.
+        //
+        // (b) Furthest same-named non-End node in _rolloutAllExits — for multi-segment
+        //     angled exits (e.g. LEMD L5 modelled as 3 nodes at 6340/6528/6672 ft).
+        //     Routing to the full arc end lets A* traverse every segment of the curve.
+        //
+        // (c) Extension node adjacent to the junction in the exit direction — for single-
+        //     junction exits at any angle (15°, 45°, 90° etc.). Gives the route a second
+        //     segment so GetGuidanceTarget wraps the look-ahead past the junction and pans
+        //     the tone toward the exit direction before the aircraft arrives.
+        //
+        // (d) NodeId — last resort if graph has no adjacent exit node (dead-end junction).
+        int destNodeId;
+        if (_rolloutExit.ApronNodeId > 0 && _rolloutExit.ApronNodeId != _rolloutExit.NodeId)
+        {
+            destNodeId = _rolloutExit.ApronNodeId;
+        }
+        else
+        {
+            // Try furthest same-named node for multi-segment RETs.
+            int furthestSameNamed = -1;
+            if (!string.IsNullOrEmpty(_rolloutExit.TaxiwayName))
+            {
+                var furtherExit = _rolloutAllExits
+                    .Where(e => string.Equals(e.TaxiwayName, _rolloutExit.TaxiwayName,
+                                              StringComparison.OrdinalIgnoreCase)
+                                && e.NodeId != _rolloutExit.NodeId
+                                && e.DistanceFromThresholdFeet > _rolloutExit.DistanceFromThresholdFeet
+                                && e.ExitType != "End")
+                    .OrderByDescending(e => e.DistanceFromThresholdFeet)
+                    .FirstOrDefault();
+                furthestSameNamed = furtherExit?.NodeId ?? -1;
+            }
+
+            if (furthestSameNamed > 0)
+            {
+                destNodeId = furthestSameNamed;
+            }
+            else
+            {
+                // Single-junction exit: find adjacent node in exit direction.
+                int extNode = FindExitExtensionNode(_rolloutExit.NodeId, _rolloutExit.ExitBearingTrue);
+                destNodeId = extNode > 0 ? extNode : _rolloutExit.NodeId;
+            }
+        }
+
+        string exitName = string.IsNullOrEmpty(_rolloutExit.TaxiwayName)
+            ? "exit taxiway"
+            : $"Taxiway {_rolloutExit.TaxiwayName}";
+
+        string? err = LoadRoute(
+            _dataProvider, _icao,
+            lat, lon, headingTrue,
+            destNodeId, exitName,
+            taxiwaySequence: null,
+            prebuiltGraph: _graph,
+            announceSummary: false);
+
+        if (err != null)
+        {
+            RolloutDiag($"TryEarlyExitHandoff: LoadRoute failed — {err}");
+            return false;
+        }
+
+        if (_route == null || _route.Segments.Count == 0)
+        {
+            RolloutDiag("TryEarlyExitHandoff: route empty after LoadRoute");
+            return false;
+        }
+
+        // Sanity check: reject if the first segment is inconsistent with the
+        // chosen exit. Two acceptance conditions (either is sufficient):
+        //
+        // (a) First segment is within ExitAngleDegrees + 10° of runway heading.
+        //     This is the normal case: A* started at a runway-centreline node and
+        //     the first segment runs along (or just into) the exit curve. The +10°
+        //     margin absorbs navdata rounding and slight curve overshoot.
+        //     Tighter than the old 120° "not backwards" check — prevents a diagonal
+        //     shortcut segment from panning the pilot toward the exit too early
+        //     while they are still upfield (the diagonal would be more off-axis than
+        //     the exit itself, which is wrong). ExitAngleDegrees is accurate after
+        //     the off-axis edge-picker fix; defaults to 90° when no named edge was
+        //     found, giving a permissive 100° threshold in the degenerate case.
+        //
+        // (b) First segment is within 60° of ExitBearingTrue — handles the case
+        //     where A* snapped directly to the exit junction or ApronNodeId and the
+        //     first segment immediately heads onto the exit taxiway. End exits
+        //     (backtrack) land here: the first segment heads ~150° from runway
+        //     heading (correct) and aligns with ExitBearingTrue. ExitBearingTrue = 0
+        //     means the bearing was not computed; condition (b) is skipped entirely.
+        double firstBearing = _route.Segments[0].BearingDegrees;
+        double bearingDeltaFromRunway = Math.Abs(NormalizeAngle(firstBearing - _rolloutRunwayHeadingTrue));
+        double firstSegThreshold = _rolloutExit.ExitAngleDegrees + 10.0;
+        bool alignedWithRunway = bearingDeltaFromRunway <= firstSegThreshold;
+        bool alignedWithExit = _rolloutExit.ExitBearingTrue > 0.0
+            && Math.Abs(NormalizeAngle(firstBearing - _rolloutExit.ExitBearingTrue)) <= 60.0;
+        if (!alignedWithRunway && !alignedWithExit)
+        {
+            RolloutDiag($"TryEarlyExitHandoff: first segment {firstBearing:F1}° is " +
+                $"{bearingDeltaFromRunway:F1}° from runway (threshold {firstSegThreshold:F0}°) " +
+                $"and doesn't align with exit bearing {_rolloutExit.ExitBearingTrue:F1}° — rejecting");
+            _route = null;
+            _destinationNodeId = 0;
+            return false;
+        }
+
+        string destSrc = destNodeId == _rolloutExit.ApronNodeId ? "apron"
+                       : destNodeId == _rolloutExit.NodeId     ? "junction-only"
+                       : $"ext:{destNodeId}";
+        RolloutDiag($"TryEarlyExitHandoff OK: destNodeId={destNodeId} ({destSrc}) " +
+            $"firstSeg={firstBearing:F1}° segs={_route.Segments.Count}");
+
+        // Reset the heading-error smoother so the taxi tone starts clean rather
+        // than inheriting the rollout's near-zero centreline residual.
+        _smoothedHeadingError = 0.0;
+        _headingErrorInitialized = false;
+
+        SetState(TaxiGuidanceState.Taxiing);
+        return true;
+    }
+
+    /// <summary>
+    /// Finds the first graph node adjacent to <paramref name="junctionNodeId"/> in
+    /// approximately the exit direction. Used to extend landing-exit routes by one
+    /// segment past the junction so <see cref="GetGuidanceTarget"/> can wrap the
+    /// look-ahead around the corner and start panning the tone before the junction.
+    /// Returns -1 if no suitable node is found.
+    /// </summary>
+    private int FindExitExtensionNode(int junctionNodeId, double exitBearingTrue)
+    {
+        if (_graph == null) return -1;
+        if (!_graph.Adjacency.TryGetValue(junctionNodeId, out var edges)) return -1;
+        int best = -1;
+        double bestDiff = 60.0; // must be within 60° of exit bearing
+        foreach (var e in edges)
+        {
+            if (e.PathType == "R") continue; // skip runway edges
+            double diff = Math.Abs(NormalizeAngle(e.BearingDegrees - exitBearingTrue));
+            if (diff < bestDiff)
+            {
+                bestDiff = diff;
+                best = e.ToNodeId;
+            }
+        }
+        return best;
     }
 
     /// <summary>
@@ -2815,7 +3206,8 @@ public class TaxiGuidanceManager : IDisposable
     /// On LoadRoute failure, falls through to EnterRunwayEndCountdown so
     /// the off-route recalc cannot fire back to the just-passed exit.
     /// </summary>
-    private void RetargetLandingExit(Navigation.LandingExit newExit, double lat, double lon, double headingTrue)
+    private void RetargetLandingExit(Navigation.LandingExit newExit, double lat, double lon, double headingTrue,
+        string? overrideAnnouncement = null)
     {
         if (_rolloutExit == null || _dataProvider == null || _graph == null)
         {
@@ -2862,6 +3254,9 @@ public class TaxiGuidanceManager : IDisposable
         _rolloutApproach1500Announced = false;
         _rolloutApproach500Announced = false;
         _rolloutTurnNowAnnounced = false;
+        _rolloutExitToneArmed = false;
+        // Allow TryEarlyExitHandoff to fire for the newly targeted exit.
+        _rolloutEarlyHandoffDone = false;
 
         // LoadRoute set state to RouteLoaded. Re-enter LandingRollout so the
         // next UpdatePosition frame re-runs UpdateLandingRollout (tone stays
@@ -2869,7 +3264,9 @@ public class TaxiGuidanceManager : IDisposable
         // the new exit).
         SetState(TaxiGuidanceState.LandingRollout);
 
-        AnnounceInstruction($"Missed {prevName}. Retargeting {newName}, {distAheadFt} feet ahead.");
+        string announcement = overrideAnnouncement
+            ?? $"Missed {prevName}. Retargeting {newName}, {distAheadFt} feet ahead.";
+        AnnounceInstruction(announcement);
     }
 
     /// <summary>
@@ -2905,6 +3302,7 @@ public class TaxiGuidanceManager : IDisposable
         _rolloutApproach1500Announced = false;
         _rolloutApproach500Announced = false;
         _rolloutTurnNowAnnounced = false;
+        _rolloutExitToneArmed = false;
         _rolloutEnd1500Announced = false;
         _rolloutEnd500Announced = false;
         _rolloutEnd100Announced = false;
@@ -3515,6 +3913,7 @@ public class TaxiGuidanceManager : IDisposable
         _rolloutApproach1500Announced = false;
         _rolloutApproach500Announced = false;
         _rolloutTurnNowAnnounced = false;
+        _rolloutExitToneArmed = false;
         _rolloutNoExitMode = false;
         _rolloutEnd1500Announced = false;
         _rolloutEnd500Announced = false;
@@ -3917,6 +4316,27 @@ public class TaxiGuidanceManager : IDisposable
     }
 
     /// <summary>
+    /// Absolute lateral (cross-runway) offset in meters of <paramref name="pointLat/Lon"/>
+    /// from the runway centerline. The centerline passes through
+    /// <paramref name="refLat/Lon"/> in direction <paramref name="runwayHeadingTrueDeg"/>.
+    /// Companion to <see cref="SignedAlongRunwayMeters"/> — uses the perpendicular
+    /// component of the same equirectangular projection.
+    /// </summary>
+    private static double AbsLateralFromRunwayMeters(
+        double pointLat, double pointLon,
+        double refLat, double refLon,
+        double runwayHeadingTrueDeg)
+    {
+        const double METERS_PER_DEG_LAT = 111132.0;
+        double latMidRad = (pointLat + refLat) * 0.5 * Math.PI / 180.0;
+        double metersPerDegLon = METERS_PER_DEG_LAT * Math.Cos(latMidRad);
+        double dN = (pointLat - refLat) * METERS_PER_DEG_LAT;
+        double dE = (pointLon - refLon) * metersPerDegLon;
+        double hdgRad = runwayHeadingTrueDeg * Math.PI / 180.0;
+        return Math.Abs(dE * Math.Cos(hdgRad) - dN * Math.Sin(hdgRad));
+    }
+
+    /// <summary>
     /// Perpendicular (cross-track) distance in meters from (plat, plon) to the segment
     /// (a→b), clamped to endpoints so points beyond either end use the nearest endpoint.
     /// Uses equirectangular projection — sub-cm accuracy at taxi scale.
@@ -3948,6 +4368,20 @@ public class TaxiGuidanceManager : IDisposable
         double ex = px - fx;
         double ey = py - fy;
         return Math.Sqrt(ex * ex + ey * ey);
+    }
+
+    /// <summary>
+    /// Projects a point `distM` metres from (lat, lon) along `bearingDeg` (true,
+    /// clockwise from north). Equirectangular — accurate at taxi/runway scales.
+    /// </summary>
+    private static (double lat, double lon) GeoProjectPoint(
+        double lat, double lon, double bearingDeg, double distM)
+    {
+        const double MPD = 111132.0;
+        double rad = bearingDeg * Math.PI / 180.0;
+        double cosLat = Math.Cos(lat * Math.PI / 180.0);
+        return (lat + distM * Math.Cos(rad) / MPD,
+                lon + distM * Math.Sin(rad) / (MPD * cosLat));
     }
 
     /// <summary>

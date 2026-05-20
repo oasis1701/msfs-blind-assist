@@ -1297,10 +1297,12 @@ public class TaxiGraph
         // Cutoffs: usable exits lie past the jet touchdown zone and before the runway end.
         // MIN_DIST_FT is a conservative floor (still captures very-early RETs at some
         // airports and "reject take-off" spots; also avoids false positives from
-        // threshold hold-short lines). END_BUFFER_FT cuts off the last stretch so we
-        // don't list turnoffs that require full-length backtrack.
+        // threshold hold-short lines). END_BUFFER_FT is a small margin against nodes
+        // literally on the runway-end markings; the geometric corridor + named-edge
+        // filters are the real protection, so 50 ft is enough (200 ft was excluding
+        // legitimate end-of-runway vacate exits like S7 at EIDW 28L).
         const double MIN_DIST_FT = 500.0;
-        const double END_BUFFER_FT = 200.0;
+        const double END_BUFFER_FT = 50.0;
         const double TOUCHDOWN_AIM_FT = 1000.0;  // typical jet aim point past landing threshold
 
         // Classification thresholds (angle between exit edge and runway axis).
@@ -1472,7 +1474,23 @@ public class TaxiGraph
                     bool bestHasDigit = HasLetterAndDigit(best.TaxiwayName);
                     bool curHasDigit  = HasLetterAndDigit(e.TaxiwayName);
                     if (curHasDigit && !bestHasDigit)
+                    {
                         best = e;
+                    }
+                    else if (curHasDigit == bestHasDigit)
+                    {
+                        // Same name priority — prefer the edge that turns most off-axis
+                        // from the runway. Adjacency-list ordering is not guaranteed, so
+                        // without this tie-break a parallel-running named edge can be
+                        // chosen over the actual perpendicular exit edge, producing an
+                        // exit angle of ~0° for exits like EGCC AF/AG on 23R.
+                        double bestRel = Math.Abs(NormalizeAngle(best.BearingDegrees - rwyHeadingTrue));
+                        double bestOff = bestRel > 90.0 ? 180.0 - bestRel : bestRel;
+                        double curRel  = Math.Abs(NormalizeAngle(e.BearingDegrees - rwyHeadingTrue));
+                        double curOff  = curRel > 90.0 ? 180.0 - curRel : curRel;
+                        if (curOff > bestOff)
+                            best = e;
+                    }
                 }
 
                 if (best != null)
@@ -1637,6 +1655,27 @@ public class TaxiGraph
             if (!merged) deduped.Add(e);
         }
 
+        // High-speed RET dedup: a curved RET whose navdata has multiple HS/IHS nodes
+        // along its arc (common in third-party scenery) generates one High-speed entry
+        // per node, all more than 50 ft apart — the window above doesn't catch them.
+        // The threshold-nearest node is the RET entry point; interior curve nodes are not
+        // meaningful separate choices. Normal and End exits keep the 50 ft window only —
+        // a Normal taxiway crossing the runway at 90° twice is a legitimate pair.
+        {
+            var hsSeenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var hsDedupedList = new List<LandingExit>(deduped.Count);
+            foreach (var e in deduped)
+            {
+                if (e.ExitType != "High-speed" || string.IsNullOrEmpty(e.TaxiwayName))
+                {
+                    hsDedupedList.Add(e);
+                    continue;
+                }
+                if (hsSeenNames.Add(e.TaxiwayName)) hsDedupedList.Add(e);
+            }
+            deduped = hsDedupedList;
+        }
+
         // Fallback-mode extra dedup: curved RETs (e.g. LVFR LEMD) generate many Normal
         // nodes along the same exit curve — all pass ExitPathLeavesCorridor but span
         // hundreds of feet of runway, far beyond the 50 ft window above. When no
@@ -1707,8 +1746,20 @@ public class TaxiGraph
                         if (string.Equals(e.PathType, "R", StringComparison.OrdinalIgnoreCase)
                             || string.IsNullOrEmpty(e.TaxiwayName)) continue;
                         if (best2 == null) { best2 = e; continue; }
-                        if (HasLetterAndDigit(e.TaxiwayName) && !HasLetterAndDigit(best2.TaxiwayName))
+                        bool b2hd = HasLetterAndDigit(best2.TaxiwayName);
+                        bool ehd  = HasLetterAndDigit(e.TaxiwayName);
+                        if (ehd && !b2hd)
+                        {
                             best2 = e;
+                        }
+                        else if (ehd == b2hd)
+                        {
+                            double b2r = Math.Abs(NormalizeAngle(best2.BearingDegrees - rwyHeadingTrue));
+                            double b2o = b2r > 90.0 ? 180.0 - b2r : b2r;
+                            double er  = Math.Abs(NormalizeAngle(e.BearingDegrees - rwyHeadingTrue));
+                            double eo  = er > 90.0 ? 180.0 - er : er;
+                            if (eo > b2o) best2 = e;
+                        }
                     }
                     if (best2 != null)
                     {
