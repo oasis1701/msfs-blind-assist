@@ -749,12 +749,12 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         d["FIRE_OvhtDetSw_1"] = Selector("FIRE_OvhtDetSw_1", "Engine 2 Overheat Detect", "A", "NORMAL", "B");
         d["FIRE_annunENG_OVERHEAT_0"] = Annun("FIRE_annunENG_OVERHEAT_0", "Engine 1 Overheat");
         d["FIRE_annunENG_OVERHEAT_1"] = Annun("FIRE_annunENG_OVERHEAT_1", "Engine 2 Overheat");
-        d["FIRE_DetTestSw"] = new SimConnect.SimVarDefinition
-        {
-            Name = "FIRE_DetTestSw", DisplayName = "Fire Detection Test",
-            Type = SimConnect.SimVarType.PMDGVar, UpdateFrequency = SimConnect.UpdateFrequency.Never,
-            RenderAsButton = true, IsMomentary = true
-        };
+        // SDK 459: unsigned char FIRE_DetTestSw — "0: FAULT/INOP  1: neutral  2: OVHT/FIRE".
+        // Spring-loaded 3-position selector, NOT a momentary push button. Treating it as
+        // momentary made every press snap to position 1 ("neutral") regardless of the
+        // dropdown choice; selector dispatch via _simpleEventMap sends (int)value as target.
+        d["FIRE_DetTestSw"] = Selector("FIRE_DetTestSw", "Fire Detection Test",
+            "FAULT/INOP", "Neutral", "OVHT/FIRE");
         // Fire handle positions (read-only state; pressed via momentary buttons below).
         // NG3 index labeling: 0 = Engine 1, 1 = APU, 2 = Engine 2. Inferred from sequential
         // SDK event-ID ordering (EVT_FIRE_HANDLE_ENGINE_1_TOP=697, _APU_TOP=698, _ENGINE_2_TOP=699;
