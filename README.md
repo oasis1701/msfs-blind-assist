@@ -46,16 +46,9 @@ MSFS Blind Assist now supports the Fenix A320. It allows totally blind individua
 - Comes with a hotkey list guide that shows all the global hotkeys that are currently supported through the input and output modes.
 - Work in progress checklist viewer, easily editable and readable by screen readers.
 
-#### Fenix A320 web MCDU accessibility browser extension
+#### Fenix A320 MCDU access
 
-The Fenix A320 comes with a web remote MCDU, but it is totally unreadable by screen readers. I've made an extension for chromium based browsers that completely transforms the interface for screen reader users, allowing to fully read the display of the MCDU and to control it with hotkeys.
-Please follow the instructions below to install the extension
-1. In your browser, go to about://extensions or  from the menu,  go to Extensions > Manage extensions
-2. Toggle developer mode on
-3. Press enter on "Load unpacked"
-4. When it asks you for a folder, select the "Fenix MCDU" folder inside your MSFS Blind Assist directory
-5. Enjoy! Now go to localhost:8083 when the aircraft is running, and through the tablet, access MCDU then left, to start using it!
-6. To know what hotkeys to use, read the hotkey guide either inside MSFS Blind Assist file menu > Hotkey List Guide, or see the text file inside the "hotkey guides" folder in your MSFS Blind Assist directory.
+The Fenix A320 MCDU is accessible directly through MSFS Blind Assist. See the Fenix hotkey guide (File menu > Hotkey List Guide inside the app, or the text file in the "hotkey guides" folder) for the relevant shortcuts. A standalone Chrome extension previously offered this functionality; the native integration supersedes it and is the recommended way to interact with the MCDU.
 
 #### How to read Fenix's displays with our AI-powered describer
 Please switch to the 8th instrument camera view by pressing Ctrl+8 on MSFS2020 or Shift+8 on MSFS2024, then:

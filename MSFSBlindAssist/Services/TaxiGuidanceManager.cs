@@ -232,9 +232,9 @@ public class TaxiGuidanceManager : IDisposable
     private const double TURN_SPEED_WARN_MAX_M = 150.0;
 
     // Hold-short countdown announcements (track which threshold has fired)
-    private bool _holdShortAnnounce300 = false;
-    private bool _holdShortAnnounce150 = false;
-    private bool _holdShortAnnounce50 = false;
+    private bool _holdShortOuterAnnounced = false;
+    private bool _holdShortSlowDownAnnounced = false;
+    private bool _holdShortStopAnnounced = false;
 
     // Parking countdown announcements
     private bool _parkingAnnounce50 = false;
@@ -822,7 +822,7 @@ public class TaxiGuidanceManager : IDisposable
             _headingErrorInitialized = false;
             _smoothedHeadingError = 0;
             _lastIncursionWarnedNodeId = -1;
-            _holdShortAnnounce300 = _holdShortAnnounce150 = _holdShortAnnounce50 = false;
+            _holdShortOuterAnnounced = _holdShortSlowDownAnnounced = _holdShortStopAnnounced = false;
             _parkingAnnounce50 = _parkingAnnounce20 = _parkingAnnounce10 = false;
             // Reset GS announcer bucket so the first sample after a fresh
             // route load establishes baseline silently (no spurious "10 knots"
@@ -1462,9 +1462,9 @@ public class TaxiGuidanceManager : IDisposable
         if (!currentSeg.IsHoldShortPoint)
         {
             // Reset flags when not on a hold-short-ending segment
-            _holdShortAnnounce300 = false;
-            _holdShortAnnounce150 = false;
-            _holdShortAnnounce50 = false;
+            _holdShortOuterAnnounced = false;
+            _holdShortSlowDownAnnounced = false;
+            _holdShortStopAnnounced = false;
             return;
         }
 
@@ -1489,35 +1489,35 @@ public class TaxiGuidanceManager : IDisposable
 
         // Fire in natural countdown order. Each block returns after announcing so
         // only one callout fires per frame — no stacking.
-        if (distFeet < outerDistFt && !_holdShortAnnounce300)
+        if (distFeet < outerDistFt && !_holdShortOuterAnnounced)
         {
             int ft = (int)(Math.Round(distFeet / 50.0) * 50);
             AnnounceInstruction($"Hold short {what} in {ft} feet.");
-            _holdShortAnnounce300 = true;
+            _holdShortOuterAnnounced = true;
             return;
         }
-        if (distFeet < slowDownDistFt && !_holdShortAnnounce150)
+        if (distFeet < slowDownDistFt && !_holdShortSlowDownAnnounced)
         {
             int ft = (int)(Math.Round(distFeet / 50.0) * 50);
             AnnounceInstruction($"Hold short {what} in {ft} feet. Slow down.");
-            _holdShortAnnounce150 = true;
+            _holdShortSlowDownAnnounced = true;
             return;
         }
-        if (distFeet < stopDistFt && !_holdShortAnnounce50)
+        if (distFeet < stopDistFt && !_holdShortStopAnnounced)
         {
             int ft = (int)(Math.Round(distFeet / 50.0) * 50);
             AnnounceInstruction($"Hold short {what} in {ft} feet. Stop.");
-            _holdShortAnnounce50 = true;
+            _holdShortStopAnnounced = true;
             return;
         }
         // Stopped-in-zone fallback: pilot slowed to a stop between the slow-down
         // and stop thresholds — "slow down" fired but stop never triggered because
         // the aircraft parked above the stop-distance floor. Fire stop so the pilot
         // knows to hold position and await clearance.
-        if (_holdShortAnnounce150 && !_holdShortAnnounce50 && _lastGroundSpeedKts < 1.0)
+        if (_holdShortSlowDownAnnounced && !_holdShortStopAnnounced && _lastGroundSpeedKts < 1.0)
         {
             AnnounceInstruction($"Hold short {what}. Stop.");
-            _holdShortAnnounce50 = true;
+            _holdShortStopAnnounced = true;
         }
     }
 
@@ -1698,10 +1698,14 @@ public class TaxiGuidanceManager : IDisposable
             return;
         }
         // Stopped-in-zone: pilot slowed to a stop between 10 ft and the gate.
-        // Fire stop so they know to hold position.
+        // Fire a generic "hold position" cue rather than naming the gate — the
+        // aircraft hasn't actually arrived, so a `"{gate}. Stop."` callout reads
+        // misleadingly like an arrival announcement. The dedicated arrival
+        // announcement fires separately when the aircraft is within the
+        // arrival radius.
         if (_parkingAnnounce50 && !_parkingAnnounce10 && _lastGroundSpeedKts < 1.0)
         {
-            AnnounceInstruction($"{_destinationName}. Stop.");
+            AnnounceInstruction("Stop. Hold position.");
             _parkingAnnounce10 = true;
         }
     }
@@ -1953,7 +1957,7 @@ public class TaxiGuidanceManager : IDisposable
         // Reset countdown latches — otherwise stale flags from the OLD route
         // will suppress the 300/150/50ft hold-short and 50/20/10ft parking
         // callouts on the NEW route. Safety-critical.
-        _holdShortAnnounce300 = _holdShortAnnounce150 = _holdShortAnnounce50 = false;
+        _holdShortOuterAnnounced = _holdShortSlowDownAnnounced = _holdShortStopAnnounced = false;
         _parkingAnnounce50 = _parkingAnnounce20 = _parkingAnnounce10 = false;
         _lastIncursionWarnedNodeId = -1;
         _headingErrorInitialized = false;
@@ -2310,7 +2314,7 @@ public class TaxiGuidanceManager : IDisposable
         _turnImminentAnnounced = false;
         _crossingAnnounced = false;
         _lastCrossingNodeId = -1;
-        _holdShortAnnounce300 = _holdShortAnnounce150 = _holdShortAnnounce50 = false;
+        _holdShortOuterAnnounced = _holdShortSlowDownAnnounced = _holdShortStopAnnounced = false;
 
         if (_currentSegmentIndex < _route.Segments.Count)
         {
@@ -2664,10 +2668,11 @@ public class TaxiGuidanceManager : IDisposable
         if (!_rolloutEnd500Announced && distToEndFt <= 500.0 && distToEndFt > 100.0)
         {
             // "Slow down" is added only when the pilot still has real speed
-            // to bleed off — mirrors the hold-short countdown's speed-aware
-            // suffix rule. ROLLOUT_TAXI_GS_KTS (30) is the threshold below
+            // to bleed off. ROLLOUT_TAXI_GS_KTS (30) is the threshold below
             // which the aircraft is at normal taxi speed and the suffix is
-            // patronising noise.
+            // patronising noise. The 100 ft "Stop" callout below is
+            // unconditional by contrast — at 100 ft from the end the pilot
+            // needs the directive regardless of current speed.
             string slowSuffix = groundSpeedKts > ROLLOUT_TAXI_GS_KTS ? " Slow down." : "";
             AnnounceInstruction($"Runway end in 500 feet.{slowSuffix}");
             _rolloutEnd500Announced = true;
@@ -3369,7 +3374,7 @@ public class TaxiGuidanceManager : IDisposable
         _crossingAnnounced = false;
         _lastCrossingNodeId = -1;
         _lastAnnouncedTaxiway = "";
-        _holdShortAnnounce300 = _holdShortAnnounce150 = _holdShortAnnounce50 = false;
+        _holdShortOuterAnnounced = _holdShortSlowDownAnnounced = _holdShortStopAnnounced = false;
         _parkingAnnounce50 = _parkingAnnounce20 = _parkingAnnounce10 = false;
         _lastIncursionWarnedNodeId = -1;
         // Reset cooldowns so a freshly-loaded route after Stop gets prompt warnings
