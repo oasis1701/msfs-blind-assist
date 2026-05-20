@@ -72,24 +72,22 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         {
             ["Overhead"] = new List<string>
             {
-                "ADIRU", "Service Interphone", "Engine (Aft)", "Oxygen", "Flight Recorder",
-                "Flight Controls", "NAVDIS", "Fuel", "Electrical", "APU", "Wipers",
-                "Center Overhead", "Anti-Ice", "Hydraulics", "Air Systems", "Doors",
-                "Bottom Overhead"
+                "Electrical", "ADIRU", "Hydraulics", "Fuel", "Engines",
+                "Anti-Ice", "Air Systems", "Lights", "Signs", "Oxygen",
+                "Wipers", "Flight Controls", "Flight Recorder"
             },
             ["Glareshield"] = new List<string>
             {
-                "Warnings", "EFIS Captain", "EFIS First Officer", "MCP"
+                "Warnings", "EFIS Captain", "EFIS First Officer", "MCP", "Display Select"
             },
             ["Forward Panel"] = new List<string>
             {
-                "Landing Gear", "Autobrake", "Display Select", "GPWS", "Speed Reference",
-                "Brightness"
+                "Landing Gear", "Autobrake", "GPWS", "Instruments"
             },
             ["Pedestal"] = new List<string>
             {
-                "Control Stand", "Fire Protection", "Cargo Fire", "Transponder",
-                "Pedestal Lights", "FltDk Door", "Trim", "Communication"
+                "Control Stand", "Transponder", "Fire Protection", "Cargo Fire",
+                "Communication", "Flight Deck Door", "Trim"
             },
         };
     }
@@ -969,42 +967,29 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     {
         return new Dictionary<string, List<string>>
         {
-            // ===== Overhead — Aft =====
+            // ===== Overhead =====
+            ["Electrical"] = new List<string>
+            {
+                "ELEC_BatSelector", "ELEC_StandbyPowerSelector",
+                "ELEC_DCMeterSelector", "ELEC_ACMeterSelector",
+                "ELEC_GenSw_0", "ELEC_GenSw_1",
+                "ELEC_APUGenSw_0", "ELEC_APUGenSw_1",
+                "ELEC_BusTransSw_AUTO",
+                "ELEC_GrdPwrSw",
+                "ELEC_IDGDisconnectSw_0", "ELEC_IDGDisconnectSw_1",
+                "ELEC_CabUtilSw", "ELEC_IFEPassSeatSw",
+                "APU_Selector"
+            },
             ["ADIRU"] = new List<string>
             {
                 "IRS_DisplaySelector", "IRS_SysDisplay_R",
                 "IRS_ModeSelector_0", "IRS_ModeSelector_1",
                 "IRS_DisplayLeft", "IRS_DisplayRight"
             },
-            ["Service Interphone"] = new List<string>
+            ["Hydraulics"] = new List<string>
             {
-                "COMM_ServiceInterphoneSw", "LTS_DomeWhiteSw"
-            },
-            ["Engine (Aft)"] = new List<string>
-            {
-                "ENG_EECSwitch_0", "ENG_EECSwitch_1"
-            },
-            ["Oxygen"] = new List<string>
-            {
-                "OXY_SwNormal"
-            },
-            ["Flight Recorder"] = new List<string>
-            {
-                "FLTREC_SwNormal"
-            },
-
-            // ===== Overhead — Forward =====
-            ["Flight Controls"] = new List<string>
-            {
-                "FCTL_FltControl_Sw_0", "FCTL_FltControl_Sw_1",
-                "FCTL_Spoiler_Sw_0", "FCTL_Spoiler_Sw_1",
-                "FCTL_YawDamper_Sw",
-                "FCTL_AltnFlaps_Sw_ARM", "FCTL_AltnFlaps_Control_Sw"
-            },
-            ["NAVDIS"] = new List<string>
-            {
-                "NAVDIS_VHFNavSelector", "NAVDIS_IRSSelector", "NAVDIS_FMCSelector",
-                "NAVDIS_SourceSelector", "NAVDIS_ControlPaneSelector"
+                "HYD_PumpSw_eng_0", "HYD_PumpSw_eng_1",
+                "HYD_PumpSw_elec_0", "HYD_PumpSw_elec_1"
             },
             ["Fuel"] = new List<string>
             {
@@ -1016,30 +1001,11 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 "FUEL_AuxAft_0", "FUEL_AuxAft_1",
                 "FUEL_FWDBleed", "FUEL_AFTBleed", "FUEL_GNDXfr"
             },
-            ["Electrical"] = new List<string>
+            ["Engines"] = new List<string>
             {
-                "ELEC_BatSelector", "ELEC_StandbyPowerSelector",
-                "ELEC_DCMeterSelector", "ELEC_ACMeterSelector",
-                "ELEC_GenSw_0", "ELEC_GenSw_1",
-                "ELEC_APUGenSw_0", "ELEC_APUGenSw_1",
-                "ELEC_BusTransSw_AUTO",
-                "ELEC_GrdPwrSw",
-                "ELEC_IDGDisconnectSw_0", "ELEC_IDGDisconnectSw_1",
-                "ELEC_CabUtilSw", "ELEC_IFEPassSeatSw"
-            },
-            ["APU"] = new List<string>
-            {
-                "APU_Selector"
-            },
-            ["Wipers"] = new List<string>
-            {
-                "OH_WiperLSelector", "OH_WiperRSelector"
-            },
-            ["Center Overhead"] = new List<string>
-            {
-                "AIR_EquipCoolingSupplyNORM", "AIR_EquipCoolingExhaustNORM",
-                "LTS_EmerExitSelector",
-                "COMM_NoSmokingSelector", "COMM_FastenBeltsSelector"
+                "ENG_EECSwitch_0", "ENG_EECSwitch_1",
+                "ENG_StartSelector_0", "ENG_StartSelector_1",
+                "ENG_IgnitionSelector"
             },
             ["Anti-Ice"] = new List<string>
             {
@@ -1050,11 +1016,6 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 "ICE_WindowHeatTestSw",
                 "ICE_ProbeHeatSw_0", "ICE_ProbeHeatSw_1"
             },
-            ["Hydraulics"] = new List<string>
-            {
-                "HYD_PumpSw_eng_0", "HYD_PumpSw_eng_1",
-                "HYD_PumpSw_elec_0", "HYD_PumpSw_elec_1"
-            },
             ["Air Systems"] = new List<string>
             {
                 "AIR_TempSourceSelector", "AIR_TrimAirSwitch",
@@ -1063,34 +1024,47 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 "AIR_BleedAirSwitch_0", "AIR_BleedAirSwitch_1", "AIR_APUBleedAirSwitch",
                 "AIR_IsolationValveSwitch",
                 "AIR_OutflowValveSwitch", "AIR_PressurizationModeSelector",
-                "AIR_DisplayFltAlt", "AIR_DisplayLandAlt"
+                "AIR_DisplayFltAlt", "AIR_DisplayLandAlt",
+                "AIR_EquipCoolingSupplyNORM", "AIR_EquipCoolingExhaustNORM"
             },
-            ["Doors"] = new List<string>
-            {
-                // Read-only annunciators — exposed here so users can query door state.
-                "DOOR_annunFWD_ENTRY", "DOOR_annunFWD_SERVICE", "DOOR_annunAIRSTAIR",
-                "DOOR_annunLEFT_FWD_OVERWING", "DOOR_annunRIGHT_FWD_OVERWING",
-                "DOOR_annunFWD_CARGO", "DOOR_annunEQUIP",
-                "DOOR_annunLEFT_AFT_OVERWING", "DOOR_annunRIGHT_AFT_OVERWING",
-                "DOOR_annunAFT_CARGO", "DOOR_annunAFT_ENTRY", "DOOR_annunAFT_SERVICE"
-            },
-
-            // ===== Overhead — Bottom =====
-            ["Bottom Overhead"] = new List<string>
+            ["Lights"] = new List<string>
             {
                 "LTS_LandingLtRetractableSw_0", "LTS_LandingLtRetractableSw_1",
                 "LTS_LandingLtFixedSw_0", "LTS_LandingLtFixedSw_1",
                 "LTS_RunwayTurnoffSw_0", "LTS_RunwayTurnoffSw_1",
                 "LTS_TaxiSw",
-                "ENG_StartSelector_0", "ENG_StartSelector_1", "ENG_IgnitionSelector",
                 "LTS_LogoSw", "LTS_PositionSw", "LTS_AntiCollisionSw",
-                "LTS_WingSw", "LTS_WheelWellSw"
+                "LTS_WingSw", "LTS_WheelWellSw",
+                "LTS_DomeWhiteSw"
+            },
+            ["Signs"] = new List<string>
+            {
+                "LTS_EmerExitSelector",
+                "COMM_NoSmokingSelector", "COMM_FastenBeltsSelector"
+            },
+            ["Oxygen"] = new List<string>
+            {
+                "OXY_SwNormal"
+            },
+            ["Wipers"] = new List<string>
+            {
+                "OH_WiperLSelector", "OH_WiperRSelector"
+            },
+            ["Flight Controls"] = new List<string>
+            {
+                "FCTL_FltControl_Sw_0", "FCTL_FltControl_Sw_1",
+                "FCTL_Spoiler_Sw_0", "FCTL_Spoiler_Sw_1",
+                "FCTL_YawDamper_Sw",
+                "FCTL_AltnFlaps_Sw_ARM", "FCTL_AltnFlaps_Control_Sw"
+            },
+            ["Flight Recorder"] = new List<string>
+            {
+                "FLTREC_SwNormal"
             },
 
             // ===== Glareshield =====
             ["Warnings"] = new List<string>
             {
-                // Annunciators only — Fire / Master Caution lights queried here.
                 "WARN_annunFIRE_WARN_0", "WARN_annunFIRE_WARN_1",
                 "WARN_annunMASTER_CAUTION_0", "WARN_annunMASTER_CAUTION_1"
             },
@@ -1113,6 +1087,13 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 "MCP_FDSw_0", "MCP_FDSw_1",
                 "MCP_ATArmSw", "MCP_BankLimitSel", "MCP_DisengageBar"
             },
+            ["Display Select"] = new List<string>
+            {
+                "MAIN_MainPanelDUSel_0", "MAIN_MainPanelDUSel_1",
+                "MAIN_LowerDUSel_0", "MAIN_LowerDUSel_1",
+                "NAVDIS_VHFNavSelector", "NAVDIS_IRSSelector", "NAVDIS_FMCSelector",
+                "NAVDIS_SourceSelector", "NAVDIS_ControlPaneSelector"
+            },
 
             // ===== Forward Panel =====
             ["Landing Gear"] = new List<string>
@@ -1123,39 +1104,32 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             {
                 "MAIN_AutobrakeSelector"
             },
-            ["Display Select"] = new List<string>
-            {
-                "MAIN_MainPanelDUSel_0", "MAIN_MainPanelDUSel_1",
-                "MAIN_LowerDUSel_0", "MAIN_LowerDUSel_1",
-                "MAIN_DisengageTestSelector_0", "MAIN_DisengageTestSelector_1",
-                "MAIN_LightsSelector",
-                "MAIN_RMISelector1_VOR", "MAIN_RMISelector2_VOR",
-                "MAIN_NoseWheelSteeringSwNORM"
-            },
             ["GPWS"] = new List<string>
             {
                 "GPWS_FlapInhibitSw_NORM", "GPWS_GearInhibitSw_NORM", "GPWS_TerrInhibitSw_NORM"
             },
-            ["Speed Reference"] = new List<string>
+            ["Instruments"] = new List<string>
             {
+                "MAIN_DisengageTestSelector_0", "MAIN_DisengageTestSelector_1",
+                "MAIN_LightsSelector",
+                "MAIN_RMISelector1_VOR", "MAIN_RMISelector2_VOR",
+                "MAIN_NoseWheelSteeringSwNORM",
                 "MAIN_N1SetSelector", "MAIN_SpdRefSelector", "MAIN_FuelFlowSelector"
-            },
-            ["Brightness"] = new List<string>
-            {
-                // Brightness knobs on NG3 are continuous and not settable via SDK — leave panel
-                // empty for now (panel still appears in tree for parity with overhead structure).
             },
 
             // ===== Pedestal =====
             ["Control Stand"] = new List<string>
             {
-                "COMM_Attend_PressCount", "COMM_GrdCall_PressCount",
                 "FMC_TakeoffFlaps", "FMC_V1", "FMC_VR", "FMC_V2",
                 "FMC_LandingFlaps", "FMC_LandingVREF",
                 "FMC_CruiseAlt", "FMC_LandingAltitude",
                 "FMC_TransitionAlt", "FMC_TransitionLevel",
-                "FMC_PerfInputComplete", "FMC_flightNumber",
-                "ALTIMETER_SETTING"
+                "FMC_PerfInputComplete", "FMC_flightNumber"
+            },
+            ["Transponder"] = new List<string>
+            {
+                "XPDR_XpndrSelector_2", "XPDR_AltSourceSel_2", "XPDR_ModeSel",
+                "TRANSPONDER_CODE_SET"
             },
             ["Fire Protection"] = new List<string>
             {
@@ -1171,28 +1145,23 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 "CARGO_DetSelect_0", "CARGO_DetSelect_1",
                 "CARGO_ArmedSw_0", "CARGO_ArmedSw_1"
             },
-            ["Transponder"] = new List<string>
+            ["Communication"] = new List<string>
             {
-                "XPDR_XpndrSelector_2", "XPDR_AltSourceSel_2", "XPDR_ModeSel",
-                "TRANSPONDER_CODE_SET"
+                "COM1_ActiveFreq", "COM_STANDBY_FREQUENCY_SET:1", "COM1_RADIO_SWAP",
+                "COM2_ActiveFreq", "COM_STANDBY_FREQUENCY_SET:2", "COM2_RADIO_SWAP",
+                "COMM_ServiceInterphoneSw",
+                "COMM_Attend_PressCount", "COMM_GrdCall_PressCount",
+                "COMM_SelectedMic_0", "COMM_SelectedMic_1"
             },
-            ["Pedestal Lights"] = new List<string>
+            ["Flight Deck Door"] = new List<string>
             {
-                // Pedestal flood / panel brightness knobs are continuous and not SDK-settable.
-            },
-            ["FltDk Door"] = new List<string>
-            {
-                "PED_FltDkDoorSel"
+                "PED_FltDkDoorSel",
+                "PED_annunLOCK_FAIL", "PED_annunAUTO_UNLK"
             },
             ["Trim"] = new List<string>
             {
                 "TRIM_StabTrimMainElecSw_NORMAL", "TRIM_StabTrimAutoPilotSw_NORMAL",
                 "TRIM_StabTrimSw_NORMAL"
-            },
-            ["Communication"] = new List<string>
-            {
-                "COM1_ActiveFreq", "COM_STANDBY_FREQUENCY_SET:1", "COM1_RADIO_SWAP",
-                "COM2_ActiveFreq", "COM_STANDBY_FREQUENCY_SET:2", "COM2_RADIO_SWAP"
             },
         };
     }
