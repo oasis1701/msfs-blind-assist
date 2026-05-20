@@ -191,46 +191,7 @@ Details: [docs/taxi-guidance.md](docs/taxi-guidance.md).
 
 ### PMDG 737-800 NG3 Specific Patterns
 
-**Variant scope:** Only 737-800 BW HD currently supported. `EFBModPackageManager.Variants` is the extensibility seam for future -700 / -900 variants (when EFB lands).
-
-**SDK CDA names:** `PMDG_NG3_Data` / `PMDG_NG3_Control` / `PMDG_NG3_CDU_0` / `PMDG_NG3_CDU_1`. Event base offset: `THIRD_PARTY_EVENT_ID_MIN = 69632` (same as 777X).
-
-**Two CDUs, not three:** All CDU-side arrays are `[2]` (Captain = 0, F/O = 1). No observer CDU. `PMDG737CDUForm` uses the raw 0/1 ordering — no L/C/R dropdown swap like the 777 form has.
-
-**No FPA mode:** NG3 has no `MCP_FPA` field, no `MCP_annunVS_FPA`, and the VS dialog drops the FPA toggle the 777 dialog has.
-
-**Annunciator naming differs from 777:** `MCP_annunLVL_CHG` (not FLCH), `MCP_annunHDG_SEL` (not HDG_HOLD), `MCP_annunVOR_LOC` (not LOC). Read fields verbatim from the SDK header — do NOT translate names from the 777 conventions.
-
-**MCP value entry is dialog-based, not inline.** `MCP_Heading`, `MCP_Altitude`, `MCP_IASMach`, `MCP_VertSpeed` are declared with `PreventTextInput = true` in `GetPMDGVariables()` (same pattern as the 777). The panel UI shows these as read-only readouts; values are set via the four MCP dialogs accessed by Shift+H / Shift+S / Shift+A / Shift+V. This matches the 777 UX exactly. Do not add inline text inputs.
-
-**String display fields:** `IRS_DisplayLeft[7]`, `IRS_DisplayRight[8]`, `ELEC_MeterDisplayTop[13]`, `ELEC_MeterDisplayBottom[13]`, `AIR_DisplayFltAlt[6]`, `AIR_DisplayLandAlt[6]`, `FMC_flightNumber[9]`. `PMDGNG3DataManager` exposes a non-interface `GetStringFieldValue(string)` method for ASCII decoding — callers needing string content must cast `IPMDGDataManager` to `PMDGNG3DataManager`.
-
-**Doors as annunciators:** 12 individual `DOOR_annun*` bools (FWD_ENTRY, FWD_SERVICE, AIRSTAIR, …) plus a 4-state `PED_FltDkDoorSel` enum. No 16-byte `DOOR_state[16]` array like the 777.
-
-**Press-counter fields:** `COMM_Attend_PressCount` and `COMM_GrdCall_PressCount` are byte counters that increment on each press. `ProcessSimVarUpdate` detects edge via signed-wrapping delta against the last known counter value (instance fields `_lastAttendPressCount` / `_lastGrdCallPressCount`).
-
-**Variant-specific events (_600 vs _800):** SDK ships separate event constants for some overhead switches (galley, cab-util, air-cond temp source/selector). For the 738 the `_800` events are wired; the `AircraftModel` byte (now `ushort`) discriminates if -700 / -900 support is added later. Both `_600` and `_800` entries are in `EventIds` so adding variant support is a one-line `_simpleEventMap` change.
-
-**Options.ini requirement:** `737NG3_Options.ini` lives at:
-`%LOCALAPPDATA%\Packages\Microsoft.Limitless_8wekyb3d8bbwe\LocalCache\Packages\Community\pmdg-aircraft-738\work\737NG3_Options.ini`
-
-Must contain:
-```ini
-[SDK]
-EnableDataBroadcast=1
-EnableCDUBroadcast.0=1
-EnableCDUBroadcast.1=1
-```
-
-User-managed (same as the 777's options.ini workflow today).
-
-**Fire handles need active fire to test:** PMDG NG3 mechanically locks fire handles in the "In" position unless a fire warning is active for the corresponding engine/APU. The `_guardedMap` entries for `FIRE_EngineHandle_1_Press`/`_2_Press`/`FIRE_APUHandle_Press` chain `EVT_FIRE_UNLOCK_SWITCH_*` → `EVT_FIRE_HANDLE_*_TOP`, which mirrors the 777 pattern, but the SDK enforces the lock so presses are no-ops outside an active fire scenario. The `FIRE_HandlePos_0/1/2` index→handle labeling (currently 0=Eng1, 1=Eng2, 2=APU per the var defs) is best-guess; an active fire scenario is needed to confirm. If a future tester reports the wrong handle moves on a fire press, swap the `DisplayName` strings on `FIRE_HandlePos_*` to match true indexing.
-
-**Reserved tail size:** `PMDGNG3DataStruct` ends with `byte[255]` (not 84 like the 777). Do not reuse the 777 number — SimConnect silently truncates on size mismatch.
-
-**EFB deferred:** EFB tablet bridge support for the 737-800 is not in this PR — it will land in a follow-up. The `EFBModPackageManager.Variants` array does NOT include `pmdg-aircraft-738` yet; the EFB bridge stays disabled for 737 aircraft until the follow-up PR. The `Shift+T` hotkey is not wired for the 737 in this release.
-
-**Engine start-lever cutoff direction:** `EVT_CONTROL_STAND_ENG{1,2}_START_LEVER` is currently dispatched in `HandleUIVariableSet` with direct passthrough (target value 0 → param 0, target 1 → param 1). The 777 SDK uses inverted parameters for analogous events. This is **unverified in sim** for the NG3 because the data struct exposes no readable lever-position field for round-trip testing. If a future tester finds the direction is inverted, add an inversion at the case body (mirror the 777's pattern in `PMDG777Definition.HandleUIVariableSet`).
+Details: [docs/pmdg-737.md](docs/pmdg-737.md). Key gotchas: two CDUs (no observer), no FPA mode, annunciator names differ from 777 (LVL_CHG / HDG_SEL / VOR_LOC), DU selectors have "reverse sequence for FO", fire handles need an active fire to test, EFB support is gated on `IPMDGAircraft.HasEFBSupport` (false for 737 until the follow-up PR).
 
 ### PMDG 777 EFB Bridge
 
@@ -268,6 +229,7 @@ The EFB (Electronic Flight Bag) tablet is made accessible via a JavaScript bridg
 - **Fenix rotary encoders (RMP, FCU)** → [Fenix Increment/Decrement](docs/fenix-increment-decrement.md)
 - **Tuning visual guidance PID controller** → [Visual Guidance](docs/visual-guidance.md)
 - **Working on taxi guidance (graph, router, tone, form)** → [Taxi Guidance](docs/taxi-guidance.md)
+- **Working on PMDG 737-800 panels, CDU, NG3 data struct** → [PMDG 737-800](docs/pmdg-737.md)
 - **Understanding variable patterns** → [Variable System](docs/variable-system.md)
 - **API reference** → [Aircraft Definitions](docs/aircraft-definitions.md)
 - **Dependencies and key files** → [Development](docs/development.md)
@@ -280,6 +242,7 @@ The EFB (Electronic Flight Bag) tablet is made accessible via a JavaScript bridg
 - **[Fenix Increment/Decrement](docs/fenix-increment-decrement.md)** - Counter-based pattern for Fenix rotary encoders
 - **[Visual Guidance](docs/visual-guidance.md)** - PID controller tuning and ground track monitoring
 - **[Taxi Guidance](docs/taxi-guidance.md)** - Turn-by-turn taxi assistance, steering tone, ATC-constrained routing
+- **[PMDG 737-800](docs/pmdg-737.md)** - NG3 SDK patterns, two-CDU convention, FIRE_HandlePos ordering, EFB gating
 - **[Aircraft Definitions](docs/aircraft-definitions.md)** - Multi-aircraft dictionary system API reference
 - **[Hotkey System](docs/hotkey-system.md)** - Dual-mode hotkeys and multi-aircraft routing
 - **[Development](docs/development.md)** - Dependencies, key files, development notes

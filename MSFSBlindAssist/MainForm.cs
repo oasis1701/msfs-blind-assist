@@ -160,8 +160,8 @@ public partial class MainForm : Form
         // Sync menu items with the loaded aircraft (fixes first-launch menu mismatch)
         UpdateAircraftMenuItems();
 
-        // Initialize EFB bridge if starting with a PMDG aircraft
-        if (currentAircraft is IPMDGAircraft)
+        // Initialize EFB bridge if starting with a PMDG aircraft that has EFB support wired up
+        if (currentAircraft is IPMDGAircraft pmdgStartup && pmdgStartup.HasEFBSupport)
         {
             CheckAndOfferEFBModPackage();
             StartEFBBridgeServer();
@@ -1398,7 +1398,7 @@ public partial class MainForm : Form
                 }
                 break;
             case HotkeyAction.ShowPMDGEFB:
-                if (currentAircraft is IPMDGAircraft)
+                if (currentAircraft is IPMDGAircraft pmdgEFB && pmdgEFB.HasEFBSupport)
                 {
                     ShowPMDGEFBDialog();
                 }
@@ -3285,8 +3285,8 @@ public partial class MainForm : Form
         // init would silently no-op (see comment above the dispose block).
         EnsurePMDGProgPageMonitor();
 
-        // EFB bridge: mod package check and server start
-        if (newAircraft is IPMDGAircraft)
+        // EFB bridge: mod package check and server start (only for aircraft that have EFB support wired up)
+        if (newAircraft is IPMDGAircraft pmdgChange && pmdgChange.HasEFBSupport)
         {
             CheckAndOfferEFBModPackage();
             StartEFBBridgeServer();

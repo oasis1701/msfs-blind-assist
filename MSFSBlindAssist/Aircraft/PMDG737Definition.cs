@@ -605,14 +605,21 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             "Nose Wheel Steering", "ALT", "Normal");
         d["MAIN_annunBELOW_GS_0"] = Annun("MAIN_annunBELOW_GS_0", "Below G/S Captain");
         d["MAIN_annunBELOW_GS_1"] = Annun("MAIN_annunBELOW_GS_1", "Below G/S First Officer");
+        // SDK: MAIN_MainPanelDUSel — "0: OUTBD PFD ... 4 MFD for Capt; reverse sequence for FO".
+        // Captain enum 0..4: OUTBD PFD, OUTBD ND, INBD PFD, INBD ND, MFD.
+        // FO selector reads the same physical positions in reverse enum order, so the FO list
+        // is the captain list reversed. Middle positions (OUTBD ND / INBD PFD / INBD ND) are
+        // inferred from the standard 737NG-800 cockpit layout — verify in sim.
         d["MAIN_MainPanelDUSel_0"] = Selector("MAIN_MainPanelDUSel_0", "Main Panel DU Captain",
-            "NORMAL", "OUTBD PFD", "INBD PFD", "INBD ND");
+            "OUTBD PFD", "OUTBD ND", "INBD PFD", "INBD ND", "MFD");
         d["MAIN_MainPanelDUSel_1"] = Selector("MAIN_MainPanelDUSel_1", "Main Panel DU First Officer",
-            "NORMAL", "OUTBD PFD", "INBD PFD", "INBD ND");
+            "MFD", "INBD ND", "INBD PFD", "OUTBD ND", "OUTBD PFD");
+        // SDK: MAIN_LowerDUSel — "0: ENG PRI ... 2 ND for Capt; reverse sequence for FO".
+        // Middle position (NORM) inferred from the standard 737NG-800 cockpit layout — verify in sim.
         d["MAIN_LowerDUSel_0"]    = Selector("MAIN_LowerDUSel_0", "Lower DU Captain",
-            "NORMAL", "ENG PRI", "ENG SEC");
+            "ENG PRI", "NORM", "ND");
         d["MAIN_LowerDUSel_1"]    = Selector("MAIN_LowerDUSel_1", "Lower DU First Officer",
-            "NORMAL", "ENG PRI", "ENG SEC");
+            "ND", "NORM", "ENG PRI");
         d["MAIN_annunAP_0"]       = Annun("MAIN_annunAP_0", "AP Disengage Captain");
         d["MAIN_annunAP_1"]       = Annun("MAIN_annunAP_1", "AP Disengage First Officer");
         d["MAIN_annunAP_Amber_0"] = Annun("MAIN_annunAP_Amber_0", "AP Disengage Amber Captain");
@@ -635,11 +642,15 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             "TEST", "BRT", "DIM");
         d["MAIN_RMISelector1_VOR"] = Toggle("MAIN_RMISelector1_VOR", "RMI 1", "ADF", "VOR");
         d["MAIN_RMISelector2_VOR"] = Toggle("MAIN_RMISelector2_VOR", "RMI 2", "ADF", "VOR");
-        d["MAIN_N1SetSelector"]    = Selector("MAIN_N1SetSelector", "N1 Set", "1", "AUTO", "2", "BOTH");
+        // SDK enum positions must match the order below verbatim — dropdown index becomes
+        // the position parameter dispatched to the sim, so any reorder silently maps the
+        // user's pick to the wrong physical selector position.
+        d["MAIN_N1SetSelector"]    = Selector("MAIN_N1SetSelector", "N1 Set",
+            "2", "1", "AUTO", "BOTH");                                  // SDK 391: 0:2 1:1 2:AUTO 3:BOTH
         d["MAIN_SpdRefSelector"]   = Selector("MAIN_SpdRefSelector", "Speed Reference",
-            "AUTO", "V1", "VR", "WT", "VREF", "BUG", "SET");
+            "SET", "AUTO", "V1", "VR", "WT", "VREF", "BUG");            // SDK 392: 0:SET 1:AUTO 2:V1 3:VR 4:WT 5:VREF 6:Bug
         d["MAIN_FuelFlowSelector"] = Selector("MAIN_FuelFlowSelector", "Fuel Flow",
-            "RATE", "USED", "RESET");
+            "RESET", "RATE", "USED");                                   // SDK 393: 0:RESET 1:RATE 2:USED
         d["MAIN_AutobrakeSelector"] = new SimConnect.SimVarDefinition
         {
             Name = "MAIN_AutobrakeSelector",
@@ -720,10 +731,11 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             IsAnnounced = true
         };
 
-        // ACP selected mic & receivers (read-only state cache)
+        // ACP selected mic & receivers (read-only state cache).
+        // The SDK array is 3-wide for binary compatibility, but the 737 cockpit has no
+        // observer ACP — index 2 always reads as 0 and is not exposed in the panel.
         d["COMM_SelectedMic_0"] = Display("COMM_SelectedMic_0", "Captain Selected Mic");
         d["COMM_SelectedMic_1"] = Display("COMM_SelectedMic_1", "First Officer Selected Mic");
-        d["COMM_SelectedMic_2"] = Display("COMM_SelectedMic_2", "Observer Selected Mic");
 
         // Stab trim
         d["TRIM_StabTrimMainElecSw_NORMAL"] = Toggle("TRIM_StabTrimMainElecSw_NORMAL",
@@ -746,8 +758,11 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             RenderAsButton = true, IsMomentary = true
         };
         // Fire handle positions (read-only state; pressed via momentary buttons below).
-        // NG3 index labeling: 0 = Engine 1, 1 = Engine 2, 2 = APU (best-guess; see CLAUDE.md).
-        // Values 0..4: In / Blocked / Out / Turned Left / Turned Right.
+        // NG3 index labeling: 0 = Engine 1, 1 = APU, 2 = Engine 2. Inferred from sequential
+        // SDK event-ID ordering (EVT_FIRE_HANDLE_ENGINE_1_TOP=697, _APU_TOP=698, _ENGINE_2_TOP=699;
+        // EVT_FIRE_UNLOCK_SWITCH_ENGINE_1=976, _APU=977, _ENGINE_2=978). Requires an active
+        // fire scenario to verify in sim — handles are mechanically locked otherwise.
+        // Values 0..4 per SDK: In / Blocked / Out / Turned Left / Turned Right.
         d["FIRE_HandlePos_0"] = new SimConnect.SimVarDefinition
         {
             Name = "FIRE_HandlePos_0",
@@ -763,7 +778,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         d["FIRE_HandlePos_1"] = new SimConnect.SimVarDefinition
         {
             Name = "FIRE_HandlePos_1",
-            DisplayName = "Engine 2 fire handle position",
+            DisplayName = "APU fire handle position",
             Type = SimConnect.SimVarType.PMDGVar,
             UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
             IsAnnounced = true,
@@ -775,7 +790,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         d["FIRE_HandlePos_2"] = new SimConnect.SimVarDefinition
         {
             Name = "FIRE_HandlePos_2",
-            DisplayName = "APU fire handle position",
+            DisplayName = "Engine 2 fire handle position",
             Type = SimConnect.SimVarType.PMDGVar,
             UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
             IsAnnounced = true,
@@ -793,9 +808,10 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         d["FIRE_EngineHandle_1_PressBottom"] = Momentary("FIRE_EngineHandle_1_PressBottom", "Press engine 1 fire handle (bottom)");
         d["FIRE_EngineHandle_2_PressBottom"] = Momentary("FIRE_EngineHandle_2_PressBottom", "Press engine 2 fire handle (bottom)");
         d["FIRE_APUHandle_PressBottom"]      = Momentary("FIRE_APUHandle_PressBottom",      "Press APU fire handle (bottom)");
+        // Same array convention as FIRE_HandlePos: [0]=Eng1, [1]=APU, [2]=Eng2.
         d["FIRE_HandleIlluminated_0"] = Annun("FIRE_HandleIlluminated_0", "Engine 1 Fire Handle Illuminated");
-        d["FIRE_HandleIlluminated_1"] = Annun("FIRE_HandleIlluminated_1", "Engine 2 Fire Handle Illuminated");
-        d["FIRE_HandleIlluminated_2"] = Annun("FIRE_HandleIlluminated_2", "APU Fire Handle Illuminated");
+        d["FIRE_HandleIlluminated_1"] = Annun("FIRE_HandleIlluminated_1", "APU Fire Handle Illuminated");
+        d["FIRE_HandleIlluminated_2"] = Annun("FIRE_HandleIlluminated_2", "Engine 2 Fire Handle Illuminated");
         d["FIRE_annunWHEEL_WELL"]         = Annun("FIRE_annunWHEEL_WELL", "Wheel Well Fire");
         d["FIRE_annunFAULT"]              = Annun("FIRE_annunFAULT", "Fire Fault");
         d["FIRE_annunAPU_DET_INOP"]       = Annun("FIRE_annunAPU_DET_INOP", "APU Detection Inop");
@@ -829,8 +845,10 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         // Transponder
         d["XPDR_XpndrSelector_2"] = Toggle("XPDR_XpndrSelector_2", "Transponder", "1", "2");
         d["XPDR_AltSourceSel_2"]  = Toggle("XPDR_AltSourceSel_2", "Transponder Alt Source", "1", "2");
+        // SDK 485: "0: STBY  1: ALT RPTG OFF ... 4: TA/RA". Positions 2/3 inferred as the
+        // standard 737NG-800 transponder mode labels; aligned with PMDG777Definition's wording.
         d["XPDR_ModeSel"]         = Selector("XPDR_ModeSel", "Transponder Mode",
-            "STBY", "ALT RPTG OFF", "XPNDR", "TA", "TA/RA");
+            "Stby", "Alt Rptg Off", "Xpndr", "TA Only", "TA/RA");
         d["XPDR_annunFAIL"]       = Annun("XPDR_annunFAIL", "Transponder Fail");
 
         // Flight deck door
@@ -1143,9 +1161,10 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             {
                 "FIRE_OvhtDetSw_0", "FIRE_OvhtDetSw_1",
                 "FIRE_DetTestSw", "FIRE_ExtinguisherTestSw",
+                // FIRE_HandlePos_N pairs with each handle's press buttons: [0]=Eng1, [1]=APU, [2]=Eng2.
                 "FIRE_HandlePos_0", "FIRE_EngineHandle_1_Press", "FIRE_EngineHandle_1_PressBottom",
-                "FIRE_HandlePos_1", "FIRE_EngineHandle_2_Press", "FIRE_EngineHandle_2_PressBottom",
-                "FIRE_HandlePos_2", "FIRE_APUHandle_Press",      "FIRE_APUHandle_PressBottom"
+                "FIRE_HandlePos_1", "FIRE_APUHandle_Press",      "FIRE_APUHandle_PressBottom",
+                "FIRE_HandlePos_2", "FIRE_EngineHandle_2_Press", "FIRE_EngineHandle_2_PressBottom"
             },
             ["Cargo Fire"] = new List<string>
             {
@@ -2661,19 +2680,6 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     // =========================================================================
 
     // Per-detent flaps lever events. The base EVT_CONTROL_STAND_FLAPS_LEVER is a
-    // drag event; sending a detent index to it leaves the lever in an invalid
-    // state. The per-detent EVT_CONTROL_STAND_FLAPS_LEVER_<deg> click events go
-    // through the same CDA control channel but expect MOUSE_FLAG_LEFTSINGLE as
-    // the parameter, matching the SDK's mouse-click convention.
-    // NG3 detent map: 0=UP, 1=Flaps 1, 2=Flaps 2, 3=Flaps 5, 4=Flaps 10,
-    // 5=Flaps 15, 6=Flaps 25, 7=Flaps 30, 8=Flaps 40.
-    private static readonly Dictionary<int, string> _flapsDetentSuffix = new()
-    {
-        { 0, "_0" }, { 1, "_1" }, { 2, "_2" }, { 3, "_5" },
-        { 4, "_10" }, { 5, "_15" }, { 6, "_25" }, { 7, "_30" },
-        { 8, "_40" }
-    };
-
     public override bool HandleUIVariableSet(
         string varKey, double value,
         SimConnect.SimVarDefinition varDef,
@@ -2727,35 +2733,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         }
 
         // ------------------------------------------------------------------
-        // 2. Engine fuel-cutoff (start) levers — defensive handler. The NG3
-        //    data struct has no readable start-lever-position field, so the
-        //    panel UI does not currently expose these via a dropdown; this
-        //    case is unreachable today but kept here so a future UI hookup
-        //    (synthetic var-key or dedicated dialog) lands on the correct
-        //    event path without further plumbing.
-        //
-        //    TODO (Task C14 sim test): verify parameter direction. The PMDG
-        //    777 SDK requires INVERTED parameter for its analogous
-        //    EVT_CONTROL_STAND_ENG*_FUEL_CONTROL events (1=Cutoff, 0=Run);
-        //    NG3's EVT_CONTROL_STAND_ENG*_START_LEVER may behave the same or
-        //    may take direct passthrough. Initial implementation uses direct
-        //    passthrough; if the in-sim test shows it's inverted, change to
-        //    `(int)value == 0 ? 1 : 0`.
-        // ------------------------------------------------------------------
-        if (varKey == "ENG_StartLever_0" || varKey == "ENG_StartLever_1")
-        {
-            string leverEvent = varKey == "ENG_StartLever_0"
-                ? "EVT_CONTROL_STAND_ENG1_START_LEVER"
-                : "EVT_CONTROL_STAND_ENG2_START_LEVER";
-            if (EventIds.TryGetValue(leverEvent, out int leverId))
-            {
-                simConnect.SendPMDGEvent(leverEvent, (uint)leverId, (int)value);
-            }
-            return true;
-        }
-
-        // ------------------------------------------------------------------
-        // 3. MCP FD switches and AT Arm — require MOUSE_FLAG_LEFTSINGLE.
+        // 2. MCP FD switches and AT Arm — require MOUSE_FLAG_LEFTSINGLE.
         //    Unlike most PMDG switches, these ignore direct position values
         //    and need the mouse-click flag per the SDK example.
         // ------------------------------------------------------------------
@@ -2782,7 +2760,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         }
 
         // ------------------------------------------------------------------
-        // 4. Ground power switch — momentary push button, always send 1.
+        // 3. Ground power switch — momentary push button, always send 1.
         // ------------------------------------------------------------------
         if (varKey == "ELEC_GrdPwrSw")
         {
@@ -2794,28 +2772,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         }
 
         // ------------------------------------------------------------------
-        // 5. Flaps lever — per-detent click event with MOUSE_FLAG_LEFTSINGLE
-        //    (see _flapsDetentSuffix above). Currently unreachable since the
-        //    UI doesn't expose FCTL_Flaps as a settable key (no struct field),
-        //    but the handler is in place for a future synthetic UI hookup.
-        // ------------------------------------------------------------------
-        if (varKey == "FCTL_Flaps")
-        {
-            int detent = (int)value;
-            if (_flapsDetentSuffix.TryGetValue(detent, out string? suffix))
-            {
-                string detentEvent = "EVT_CONTROL_STAND_FLAPS_LEVER" + suffix;
-                if (EventIds.TryGetValue(detentEvent, out int detentId))
-                {
-                    const int MOUSE_FLAG_LEFTSINGLE = unchecked((int)0x20000000);
-                    simConnect.SendPMDGEvent(detentEvent, (uint)detentId, MOUSE_FLAG_LEFTSINGLE);
-                }
-            }
-            return true;
-        }
-
-        // ------------------------------------------------------------------
-        // 6. Fire handles — handled as synthetic momentary press buttons
+        // 4. Fire handles — handled as synthetic momentary press buttons
         //    (FIRE_EngineHandle_1_Press / FIRE_APUHandle_Press / etc.) which
         //    route through _simpleEventMap below. Per the PMDG SDK each
         //    EVT_FIRE_HANDLE_*_TOP / _BOTTOM press is momentary and advances
@@ -2824,7 +2781,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         // ------------------------------------------------------------------
 
         // ------------------------------------------------------------------
-        // 7. Generic _simpleEventMap lookup — covers every remaining mapped
+        // 5. Generic _simpleEventMap lookup — covers every remaining mapped
         //    var-key. The parameter shape is determined by the var def:
         //
         //    - RenderAsButton && IsMomentary  → parameter = 1 (press)

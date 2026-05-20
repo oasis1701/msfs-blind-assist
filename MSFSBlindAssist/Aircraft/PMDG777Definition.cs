@@ -14,6 +14,8 @@ public class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
     public override string AircraftName => "PMDG 777";
     public override string AircraftCode => "PMDG_777";
 
+    public bool HasEFBSupport => true;
+
     // Cached merged variables dictionary — built once on first access.
     // All callers are read-only so sharing a single instance is safe.
     private Dictionary<string, SimConnect.SimVarDefinition>? _cachedVariables;
