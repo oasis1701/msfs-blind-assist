@@ -437,6 +437,22 @@ public class PMDGNG3DataManager : IPMDGDataManager
         SendEvent(guardEventName,  guardEventId,  null);
     }
 
+    /// <summary>
+    /// Guarded selector: guard open → 150 ms delay → switch event WITH targetPosition →
+    /// 150 ms delay → guard close.
+    /// </summary>
+    public async Task SendGuardedSelector(
+        string guardEventName, uint guardEventId,
+        string switchEventName, uint switchEventId,
+        int targetPosition)
+    {
+        SendEvent(guardEventName,  guardEventId,  null);
+        await Task.Delay(150);
+        SendEvent(switchEventName, switchEventId, targetPosition);
+        await Task.Delay(150);
+        SendEvent(guardEventName,  guardEventId,  null);
+    }
+
     // ------------------------------------------------------------------
     // CDU screen reading
     // ------------------------------------------------------------------

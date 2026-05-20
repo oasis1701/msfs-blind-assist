@@ -3952,6 +3952,14 @@ public class SimConnectManager
             await pmdgDataManager.SendGuardedToggle(guardEventName, guardEventId, switchEventName, switchEventId);
     }
 
+    public async Task SendPMDGGuardedSelector(string guardEventName, uint guardEventId,
+                                              string switchEventName, uint switchEventId,
+                                              int targetPosition)
+    {
+        if (pmdgDataManager != null)
+            await pmdgDataManager.SendGuardedSelector(guardEventName, guardEventId, switchEventName, switchEventId, targetPosition);
+    }
+
     public void Disconnect()
     {
         // Stop reconnect timer first to prevent it from firing during cleanup
