@@ -237,8 +237,8 @@ public class TaxiAssistForm : Form
             Visible = false,
             Checked = _aircraftWingspan > 0,
             Enabled = _aircraftWingspan > 0,
-            AccessibleName = "Show only fitting stands",
-            AccessibleDescription = "When checked, only shows parking spots large enough for your aircraft wingspan"
+            AccessibleName = "Show only fitting parking spots",
+            AccessibleDescription = "When checked, only shows parking spots large enough for your aircraft"
         };
         chkFitFilter.CheckedChanged += (s, e) => { if (cmbDestType.SelectedIndex != 0) PopulateDestinations(); };
         y += 20;
