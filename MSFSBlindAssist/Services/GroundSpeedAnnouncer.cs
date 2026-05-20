@@ -4,18 +4,20 @@ using MSFSBlindAssist.Settings;
 namespace MSFSBlindAssist.Services;
 
 /// <summary>
-/// Global periodic ground-speed announcer. Speaks the aircraft's ground speed rounded to
-/// the nearest multiple of the user-configured interval (5 or 10 kt; 0 = off).
+/// Periodic ground-speed announcer. Speaks the aircraft's ground speed rounded to the
+/// nearest multiple of the user-configured interval (5 or 10 kt; 0 = off).
 ///
-/// Runs independent of taxi / takeoff / visual-guidance mode. It is fed by the always-on
+/// Runs independent of taxi / takeoff / visual-guidance mode — it is fed by the always-on
 /// GROUND_VELOCITY continuous SimConnect variable (registered as a base variable in
-/// <see cref="Aircraft.BaseAircraftDefinition"/>), so callouts continue uninterrupted
-/// through the takeoff roll, the landing rollout, and taxi.
+/// <see cref="Aircraft.BaseAircraftDefinition"/>), so callouts cover every ON-GROUND phase:
+/// taxi, the takeoff roll, and the landing rollout. Callouts are intentionally silenced
+/// while airborne — ground speed isn't a useful continuous callout in the air, and the
+/// caller passes the air/ground state into <see cref="ProcessGroundSpeed"/>.
 ///
 /// This logic previously lived inside <c>TaxiGuidanceManager.UpdatePosition</c>, which only
 /// ran while taxi guidance was active — so the callouts stopped the instant takeoff assist
 /// took over, or after touchdown before taxi guidance re-engaged. Extracting it here makes
-/// the feature behave as users expect: enabled in settings ⇒ global.
+/// the feature behave as users expect: enabled in settings ⇒ works in every ground phase.
 ///
 /// The backing setting is still <c>UserSettings.TaxiGuidanceGroundSpeedAnnounceInterval</c>
 /// (kept under that name to avoid a settings migration; it is surfaced in the Taxi Guidance
@@ -46,12 +48,21 @@ public class GroundSpeedAnnouncer
     public void ResetBaseline() => lastAnnouncedBucket = -1;
 
     /// <summary>
-    /// Feed a fresh ground-speed sample (knots). Announces when the rounded bucket changes,
-    /// with hysteresis to ride out SimConnect jitter near a bucket boundary. No-op when the
-    /// interval setting is 0 (off) or the speed is negative/invalid.
+    /// Feed a fresh ground-speed sample (knots) plus the current air/ground state. Announces
+    /// when the rounded bucket changes, with hysteresis to ride out SimConnect jitter near a
+    /// bucket boundary. No-op when: the interval setting is 0 (off), the speed is invalid, OR
+    /// the aircraft is airborne — GS callouts are an on-ground-only feature (taxi, takeoff
+    /// roll, landing rollout).
+    ///
+    /// While airborne the bucket baseline is left FROZEN (not reset) — so the first sample
+    /// after touchdown compares the rollout speed against the last on-ground bucket and
+    /// announces immediately, rather than spending a sample re-establishing a baseline.
     /// </summary>
-    public void ProcessGroundSpeed(double groundSpeedKts)
+    public void ProcessGroundSpeed(double groundSpeedKts, bool onGround)
     {
+        if (!onGround)
+            return;  // airborne — GS callouts are on-ground only; baseline left frozen
+
         int interval = SettingsManager.Current.TaxiGuidanceGroundSpeedAnnounceInterval;
         if (interval <= 0 || groundSpeedKts < 0)
             return;

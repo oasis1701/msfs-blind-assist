@@ -630,13 +630,14 @@ public partial class MainForm : Form
             return true;
         }
 
-        // Global ground-speed announcer. GROUND_VELOCITY is a continuous base variable
-        // (always monitored while connected). Route it to the dedicated announcer's
-        // bucket/hysteresis logic and return true so the generic "value changed"
-        // announcement is suppressed — the announcer self-gates on the interval setting.
+        // Ground-speed announcer. GROUND_VELOCITY is a continuous base variable (always
+        // monitored while connected). Route it to the dedicated announcer's bucket/hysteresis
+        // logic and return true so the generic "value changed" announcement is suppressed.
+        // The announcer self-gates on the interval setting AND on the on-ground state
+        // (_lastOnGround, cached from SIM_ON_GROUND) — GS callouts are on-ground only.
         if (e.VarName == "GROUND_VELOCITY")
         {
-            groundSpeedAnnouncer.ProcessGroundSpeed(e.Value);
+            groundSpeedAnnouncer.ProcessGroundSpeed(e.Value, _lastOnGround);
             return true;
         }
 
