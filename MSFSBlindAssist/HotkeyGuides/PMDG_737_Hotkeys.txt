@@ -46,7 +46,8 @@ Landing Gear:
   Shift+G    Read Gear Position
 
 Altimeter:
-  B          Read Altimeter Setting (hPa and inHg, or Standard)
+  B          Read altimeter setting (announces in hPa and inHg;
+             "Altimeter standard" if at 29.92 inHg)
 
 Vertical:
   V          Read Vertical Speed
@@ -163,6 +164,11 @@ MCP Set Values:
   Ctrl+S     Set Speed (opens dialog with Intervene, IAS/Mach Mode toggles)
   Ctrl+A     Set Altitude (opens dialog with Intervene, VNAV, Level Change, ALT HOLD toggles)
   Ctrl+V     Set Vertical Speed (opens dialog with VS Engage toggle)
+
+Altimeter:
+  Ctrl+B     Set altimeter (input dialog accepts hPa 900-1060 or
+             inHg 26.50-31.30; branches on entered magnitude, so both
+             "1013" and "29.92" work, locale-safe)
 
 Taxi Guidance:
   Shift+Y    Open Taxi Assist Form (enter ATC taxi clearance, start guidance)

@@ -6,6 +6,24 @@ Reference for working with `PMDG737Definition`, `PMDGNG3DataManager`, `PMDGNG3Da
 
 Only the 737-800 BW HD is currently supported. The data struct's `AircraftModel` field (`ushort`) discriminates variants if -600 / -700 / -900 support is added later. `EVT_*_600` and `EVT_*_800` entries are both in `EventIds`, so wiring a variant is largely a one-line `_simpleEventMap` change.
 
+## Panel structure
+
+Overhead: Electrical, ADIRU, Hydraulics, Fuel, Engines, Anti-Ice, Air Systems,
+Lights, Signs, Oxygen, Wipers, Flight Controls, Flight Recorder
+
+Glareshield: Warnings, EFIS Captain, EFIS First Officer, MCP, Display Select
+(absorbs both DU source selectors and NAVDIS source selectors)
+
+Forward Panel: Landing Gear, Autobrake, GPWS, Instruments
+
+Pedestal: Control Stand, Transponder, Fire Protection, Cargo Fire,
+Communication, Flight Deck Door, Trim
+
+Layout philosophy: mirror the PMDG 777 panel structure where logical; prioritize
+screen-reader navigability over physical-cockpit faithfulness. No empty panels,
+no location-based buckets, no tiny single-control panels except where there's no
+sensible merge target (Landing Gear, Autobrake, Oxygen, Flight Recorder).
+
 ## SDK CDA names
 
 `PMDG_NG3_Data` / `PMDG_NG3_Control` / `PMDG_NG3_CDU_0` / `PMDG_NG3_CDU_1`. Event base offset: `THIRD_PARTY_EVENT_ID_MIN = 69632` (same as the 777X).
@@ -32,6 +50,35 @@ Do **not** translate names from 777 conventions.
 ## MCP value entry is dialog-based
 
 `MCP_Heading`, `MCP_Altitude`, `MCP_IASMach`, `MCP_VertSpeed` are declared with `PreventTextInput = true` in `GetPMDGVariables()` (same pattern as the 777). The panel UI shows them as read-only readouts; values are set via the four MCP dialogs accessed by Shift+H / Shift+S / Shift+A / Shift+V. This matches the 777 UX. Do not add inline text inputs.
+
+## Altimeter access
+
+ALTIMETER_SETTING is an MSFS simvar (not a PMDG var). It is NOT in the panel
+tree. Set/read via existing global hotkeys:
+
+- Input mode `Ctrl+B` → set the altimeter (input dialog accepts hPa 900–1060 or
+  inHg 26.50–31.30; magnitude-based branching, locale-safe)
+- Output mode `B` → read current altimeter setting in both units; announces
+  "Altimeter standard" if at 29.92 inHg
+
+Implementation in PMDG737Definition.HandleHotkeyAction. MainForm has no generic
+fallback for these actions — every PMDG aircraft must implement them or the
+hotkey silently does nothing.
+
+## Guarded selector dispatch
+
+Two primitives on IPMDGDataManager:
+
+- `SendGuardedToggle(guard, switch)` — guard open → switch event WITHOUT parameter
+  → guard close. Use for guarded 2-position toggles only.
+- `SendGuardedSelector(guard, switch, targetPosition)` — guard open → switch
+  event WITH targetPosition → guard close. Use for guarded ≥3-position selectors
+  (battery, standby power, emergency exit lights).
+
+PMDG737Definition.HandleUIVariableSet picks the right primitive by inspecting
+`varDef.ValueDescriptions.Count`. Never call SendGuardedToggle for a 3-position
+selector — the SDK ignores the user's target position and the switch silently
+fails to move.
 
 ## Selector ValueDescriptions must match SDK enum positions verbatim
 
