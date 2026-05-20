@@ -309,13 +309,26 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         d["FUEL_FWDBleed"]          = Toggle("FUEL_FWDBleed", "Aux Fuel Forward Bleed");
         d["FUEL_AFTBleed"]          = Toggle("FUEL_AFTBleed", "Aux Fuel Aft Bleed");
         d["FUEL_GNDXfr"]            = Toggle("FUEL_GNDXfr", "Ground Transfer");
-        d["FUEL_annunENG_VALVE_CLOSED_0"]  = Annun("FUEL_annunENG_VALVE_CLOSED_0", "Engine 1 Valve Closed");
-        d["FUEL_annunENG_VALVE_CLOSED_1"]  = Annun("FUEL_annunENG_VALVE_CLOSED_1", "Engine 2 Valve Closed");
-        d["FUEL_annunSPAR_VALVE_CLOSED_0"] = Annun("FUEL_annunSPAR_VALVE_CLOSED_0", "Spar Valve 1 Closed");
-        d["FUEL_annunSPAR_VALVE_CLOSED_1"] = Annun("FUEL_annunSPAR_VALVE_CLOSED_1", "Spar Valve 2 Closed");
+        // SDK 142–145: these fuel-valve "annunciators" are actually 3-state
+        // (unsigned char), not the 2-state bool the helper Annun assumes:
+        //   FUEL_annunENG_VALVE_CLOSED[2]  // 0: Closed  1: Open  2: In transit (bright)
+        //   FUEL_annunSPAR_VALVE_CLOSED[2] // 0: Closed  1: Open  2: In transit (bright)
+        //   FUEL_annunXFEED_VALVE_OPEN     // 0: Closed  1: Open  2: In transit (dim)
+        // Treating them as 2-state Annun with OnlyAnnounceValueDescriptionMatches
+        // silently swallowed the "In transit" state — the pilot was never told
+        // when a valve was mid-travel. Use Selector to surface all three states.
+        d["FUEL_annunENG_VALVE_CLOSED_0"]  = Selector("FUEL_annunENG_VALVE_CLOSED_0", "Engine 1 Valve",
+            "Closed", "Open", "In transit");
+        d["FUEL_annunENG_VALVE_CLOSED_1"]  = Selector("FUEL_annunENG_VALVE_CLOSED_1", "Engine 2 Valve",
+            "Closed", "Open", "In transit");
+        d["FUEL_annunSPAR_VALVE_CLOSED_0"] = Selector("FUEL_annunSPAR_VALVE_CLOSED_0", "Spar Valve 1",
+            "Closed", "Open", "In transit");
+        d["FUEL_annunSPAR_VALVE_CLOSED_1"] = Selector("FUEL_annunSPAR_VALVE_CLOSED_1", "Spar Valve 2",
+            "Closed", "Open", "In transit");
         d["FUEL_annunFILTER_BYPASS_0"]     = Annun("FUEL_annunFILTER_BYPASS_0", "Fuel Filter 1 Bypass");
         d["FUEL_annunFILTER_BYPASS_1"]     = Annun("FUEL_annunFILTER_BYPASS_1", "Fuel Filter 2 Bypass");
-        d["FUEL_annunXFEED_VALVE_OPEN"]    = Annun("FUEL_annunXFEED_VALVE_OPEN", "Crossfeed Valve Open");
+        d["FUEL_annunXFEED_VALVE_OPEN"]    = Selector("FUEL_annunXFEED_VALVE_OPEN", "Crossfeed Valve",
+            "Closed", "Open", "In transit");
         d["FUEL_annunLOWPRESS_Fwd_0"]      = Annun("FUEL_annunLOWPRESS_Fwd_0", "Fuel Pump 1 Forward Low Press");
         d["FUEL_annunLOWPRESS_Fwd_1"]      = Annun("FUEL_annunLOWPRESS_Fwd_1", "Fuel Pump 2 Forward Low Press");
         d["FUEL_annunLOWPRESS_Aft_0"]      = Annun("FUEL_annunLOWPRESS_Aft_0", "Fuel Pump 1 Aft Low Press");
