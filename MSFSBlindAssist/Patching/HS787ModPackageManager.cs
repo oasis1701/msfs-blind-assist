@@ -22,7 +22,17 @@ namespace MSFSBlindAssist.Patching
         // and Coherent GT 2.x won't execute <script src> inside template-loaded HTML — so we
         // edit the original HTML in place, inject via import-script (matching the original
         // instrument's style), and drop bridge JS next to MFD789.RR.js. FS2020 path unchanged.
-        private const int BridgeVersion = 18;
+        // v19: hs787-mfd-bridge.js scrapes the ND "TIME TO ALIGN" element and
+        // writes L:MSFSBA_IRS_ALIGN_STATE / _MINUTES so MSFSBA can show true,
+        // Realistic-respecting IRS alignment (WT exposes it only on the bus).
+        // v20: pollIrsAlign hardened (typeof-SimVar-guarded writes) + diagnostic
+        // L:MSFSBA_IRS_DEBUG (entry/branch/flag-coded) to locate why the v19
+        // synthetic L-vars stayed at unset default (0/0).
+        // v21: eval_js command + live bridge REPL — Ctrl+Shift+R hot-reloads
+        // hs787-mfd-bridge.js from disk and POST /mfd-eval drives DOM probes,
+        // so bridge JS (incl. the IRS scrape) iterates without sim restarts.
+        // This is the LAST mandatory sim restart; everything after is hot-reload.
+        private const int BridgeVersion = 21;
         private const string VersionFileName = "bridge-version.txt";
 
         private const string PackageFolderName = "zzz-hs787-accessibility";

@@ -1127,6 +1127,24 @@ public partial class MainForm : Form
                 {
                     var varDef = currentAircraft.GetVariables()[varKey];
 
+                    // Fall back to SimConnectManager's lastVariableValues cache
+                    // when displayValues lacks an entry. lastVariableValues is
+                    // populated in ProcessIndividualVariableResponse BEFORE the
+                    // announced-var "unchanged" suppression at line 2215, so it
+                    // holds the current value even when SimVarUpdated was
+                    // suppressed and never reached MainForm's displayValues
+                    // sink. Without this fallback, panel display fields for
+                    // stable continuous announced vars (e.g. IRS POS_SET held
+                    // at 1, IRS minutes held at -1) silently render as "--".
+                    if (!displayValues.ContainsKey(varKey))
+                    {
+                        double? cached = simConnectManager?.GetCachedVariableValue(varKey);
+                        if (cached.HasValue)
+                        {
+                            displayValues[varKey] = cached.Value;
+                        }
+                    }
+
                     if (displayValues.ContainsKey(varKey))
                     {
                         double value = displayValues[varKey];
@@ -4829,12 +4847,17 @@ public partial class MainForm : Form
                 // Store the pending values temporarily
                 pendingDisplayRequests = pendingValues;
 
-                // Request all values
+                // Request all values. forceUpdate=true bypasses the
+                // ProcessIndividualVariableResponse suppression that drops
+                // SimVarUpdated for unchanged announced variables — without it,
+                // a Refresh on a stable announced var (e.g. IRS state held at
+                // Aligning for minutes) silently no-ops and the display falls
+                // through to "--" after the 2-second timeout.
                 foreach (var varKey in displayVars)
                 {
                     if (currentAircraft.GetVariables().ContainsKey(varKey))
                     {
-                        simConnectManager?.RequestVariable(varKey);
+                        simConnectManager?.RequestVariable(varKey, forceUpdate: true);
                     }
                 }
 

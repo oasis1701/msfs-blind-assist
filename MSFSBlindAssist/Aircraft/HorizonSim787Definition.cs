@@ -310,6 +310,14 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             ["Pressurization"] = new List<string> { "HS787_PressLdgAlt", "HS787_CabinAltitude", "HS787_CabinPressureLevel" },
             ["Landing"]       = new List<string> { "HS787_ReverseNozzle1", "HS787_ReverseNozzle2" },
             ["EFIS"]          = new List<string> { "HS787_BaroSetting" },
+            // IRS: read-only indicators. HS787_IRS_Align is the true,
+            // Realistic-respecting alignment state (bridge-sourced); the
+            // Position vars are the WT_IRS_POS_SET "position accepted" flags.
+            ["IRS"]           = new List<string>
+            {
+                "HS787_IRS_Align", "HS787_IRS_AlignMinutes",
+                "HS787_IRS_Aligned1", "HS787_IRS_Aligned2"
+            },
             ["FMC Status"]    = new List<string>
             {
                 "HS787_EXECActive", "HS787_TOGA", "HS787_FmsPhase",
@@ -646,34 +654,89 @@ public class HorizonSim787Definition : BaseAircraftDefinition
                 }
             },
 
-            // WT_IRS_POS_SET_N becomes true when WT Boeing IRS alignment completes and
-            // GPS position has been accepted. False during alignment, true when nav-ready.
+            // CORRECTION: WT_IRS_POS_SET_N is NOT "alignment complete". The WT 787
+            // IrsSystem sets this L-var from `isPositionInit` — true the moment the
+            // IRS *accepts a position* (GPS auto-init, ~within a minute), regardless
+            // of the Realistic align-time setting. True alignment (operating mode
+            // Navigation / the "TIME TO ALIGN" countdown) lives only on the WT
+            // internal Coherent bus and is NOT exposed as any L-var. So this var
+            // is honestly a "position accepted" flag, not "aligned". Real
+            // realistic-alignment status is sourced via the MFD bridge instead
+            // (see HS787_IRS_Align below / hs787-mfd-bridge.js irs_align scrape).
+            // These are read-only (the IRS system owns them) — exposed via
+            // GetPanelDisplayVariables, NOT BuildPanelControls, so they render as
+            // a read-only status field, not an editable combo.
             ["HS787_IRS_Aligned1"] = new SimConnect.SimVarDefinition
             {
                 Name = "WT_IRS_POS_SET_1",
-                DisplayName = "IRS Left Aligned",
+                DisplayName = "IRS Left Position",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
+                // Individual SimConnect subscription so the panel Refresh button's
+                // RequestVariable(ONCE) call gets a per-var data definition to query.
+                // Batched continuous vars share a struct slot and have no per-var
+                // data def, so RequestVariable is a silent no-op and the on-demand
+                // display path times out with "--" until a value-CHANGE event fires.
+                ExcludeFromBatch = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
-                    [0] = "Aligning",
-                    [1] = "Aligned"
+                    [0] = "No position",
+                    [1] = "Position set"
                 }
             },
 
             ["HS787_IRS_Aligned2"] = new SimConnect.SimVarDefinition
             {
                 Name = "WT_IRS_POS_SET_2",
-                DisplayName = "IRS Right Aligned",
+                DisplayName = "IRS Right Position",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
+                ExcludeFromBatch = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
-                    [0] = "Aligning",
-                    [1] = "Aligned"
+                    [0] = "No position",
+                    [1] = "Position set"
                 }
+            },
+
+            // True IRS alignment status, sourced from the MFD bridge scraping the
+            // WT "TIME TO ALIGN" element (the only place real, Realistic-respecting
+            // alignment state is exposed). Read-only display. Values:
+            //   0 = Off / unknown   1 = Aligning   2 = Aligned (Navigation)
+            // The minutes-remaining detail is carried separately for the hotkey
+            // readout; this var drives the panel field + the completion announce.
+            ["HS787_IRS_Align"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MSFSBA_IRS_ALIGN_STATE",   // synthetic L-var written by the bridge feed
+                DisplayName = "IRS Alignment",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ExcludeFromBatch = true,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "Off",
+                    [1] = "Aligning",
+                    [2] = "Aligned"
+                }
+            },
+
+            // Minutes remaining in the WT "TIME TO ALIGN" countdown (bridge feed).
+            // -1 = not aligning / unknown. Cache-only (silent) — surfaced in the
+            // read-only IRS display field so the pilot can check time remaining on
+            // demand without a noisy per-minute callout. The completion is
+            // announced by HS787_IRS_Align transitioning to Aligned.
+            ["HS787_IRS_AlignMinutes"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MSFSBA_IRS_ALIGN_MINUTES",
+                DisplayName = "IRS Time To Align (min)",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ExcludeFromBatch = true,
+                ValueDescriptions = new Dictionary<double, string> { [-1] = "n/a" }
             },
 
             // -----------------------------------------------------------------
@@ -3375,10 +3438,11 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             },
             ["IRS"] = new List<string>
             {
+                // Knobs are user controls. The aligned/position indicators are
+                // read-only — moved to GetPanelDisplayVariables so they render
+                // as a status field, not an editable combo.
                 "HS787_IRS_Knob1",
                 "HS787_IRS_Knob2",
-                "HS787_IRS_Aligned1",
-                "HS787_IRS_Aligned2",
                 "HS787_AirDataSrc1",
                 "HS787_AirDataSrc2"
             },
@@ -5239,12 +5303,14 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             return true;
         }
 
-        // IRS aligned — announce when alignment completes or is lost, suppress first poll
+        // IRS position accepted (WT_IRS_POS_SET_N) — NOT alignment complete.
+        // Announce the honest position semantics; true alignment completion is
+        // owned by HS787_IRS_Align (bridge-sourced). Suppress first poll.
         if (variableKey == "HS787_IRS_Aligned1")
         {
             int now = value > 0.5 ? 1 : 0;
             if (_previousIrsAligned1 >= 0 && now != _previousIrsAligned1)
-                announcer.Announce(now == 1 ? "IRS Left Aligned" : "IRS Left Alignment Lost");
+                announcer.Announce(now == 1 ? "IRS Left position set" : "IRS Left position lost");
             _previousIrsAligned1 = now;
             return true;
         }
@@ -5252,7 +5318,7 @@ public class HorizonSim787Definition : BaseAircraftDefinition
         {
             int now = value > 0.5 ? 1 : 0;
             if (_previousIrsAligned2 >= 0 && now != _previousIrsAligned2)
-                announcer.Announce(now == 1 ? "IRS Right Aligned" : "IRS Right Alignment Lost");
+                announcer.Announce(now == 1 ? "IRS Right position set" : "IRS Right position lost");
             _previousIrsAligned2 = now;
             return true;
         }
@@ -6020,6 +6086,10 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             // user-facing announcement, so suppress here to avoid duplicate speech.
             case "HS787_ExtPwr1":
             case "HS787_ExtPwr2":
+            // IRS time-to-align: cached for the read-only display field only.
+            // The Aligned transition is announced via HS787_IRS_Align; a
+            // per-minute spoken countdown would be noise.
+            case "HS787_IRS_AlignMinutes":
                 return true; // cached — no announcement
         }
 

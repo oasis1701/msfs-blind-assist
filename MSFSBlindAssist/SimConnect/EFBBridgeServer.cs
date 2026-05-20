@@ -45,6 +45,14 @@ namespace MSFSBlindAssist.SimConnect
         private string _cachedDisplayElementsJson = "[]";
         private readonly object _displayLock = new();
 
+        // Last eval_result posted by a bridge (HS787 MFD or PMDG EFB), captured
+        // in ALL build configs so the always-available GET /mfd-eval-result can
+        // return it. This is the Release-safe readback path for the live bridge
+        // REPL: POST /mfd-eval enqueues an eval_js MFD command, the bridge polls
+        // it, evals, and posts eval_result back here. Same localhost-only trust
+        // boundary the PMDG EFB bridge already ships eval_js under.
+        private volatile string _lastMfdEvalResultJson = "{\"status\":\"none\"}";
+
 #if DEBUG
         // Debug: ring buffer of recent state updates keyed by type, for
         // external test harnesses to inspect what the bridge has posted
@@ -271,6 +279,17 @@ namespace MSFSBlindAssist.SimConnect
                     case "/display-set-value" when request.HttpMethod == "POST":
                         await HandleDisplaySetValue(request, response);
                         break;
+                    // Always-available live bridge REPL (Release-safe). Localhost-only
+                    // (HttpListener binds 127.0.0.1), same trust boundary the PMDG EFB
+                    // bridge already ships eval_js under. POST a JS snippet, the MFD
+                    // bridge polls + evals + posts eval_result back; GET reads it.
+                    // Used to iterate bridge JS without sim/MSFSBA restarts.
+                    case "/mfd-eval" when request.HttpMethod == "POST":
+                        await HandleMfdEval(request, response);
+                        break;
+                    case "/mfd-eval-result" when request.HttpMethod == "GET":
+                        await HandleMfdEvalResult(response);
+                        break;
 #if DEBUG
                     // Debug endpoints gated to Debug builds only. /debug-enqueue
                     // accepts arbitrary bridge commands (including eval_js) with
@@ -343,6 +362,18 @@ namespace MSFSBlindAssist.SimConnect
                 }
 
                 var args = new EFBStateUpdateEventArgs { Type = type, Data = data };
+
+                // Capture eval_result in ALL build configs for the Release-safe
+                // GET /mfd-eval-result readback (the live bridge REPL).
+                if (type == "eval_result")
+                {
+                    _lastMfdEvalResultJson = JsonSerializer.Serialize(new
+                    {
+                        status = "ok",
+                        receivedAt = DateTime.UtcNow.ToString("O"),
+                        data
+                    });
+                }
 
 #if DEBUG
                 // Record for debug introspection (external test access).
@@ -660,6 +691,62 @@ loadItems();
                 System.Diagnostics.Debug.WriteLine($"EFBBridgeServer: Set value error: {ex.Message}");
                 await WriteJson(response, new { set = false, error = ex.Message });
             }
+        }
+
+        // --- Always-available live bridge REPL (Release-safe) ---
+        //
+        // The HS787 MFD bridge (and PMDG EFB bridge) ship an eval_js command.
+        // These two endpoints expose it for restart-free iteration:
+        //
+        //   POST /mfd-eval         body: {"code":"document.querySelector('.x')&&1"}
+        //   GET  /mfd-eval-result  -> {"status":"ok","data":{"result":"…"}}
+        //
+        // Flow: POST a snippet (enqueued as an eval_js MFD command) -> the MFD
+        // bridge polls /commands/mfd, evals it, posts eval_result back -> GET
+        // /mfd-eval-result returns the latest. Localhost-only (HttpListener
+        // binds 127.0.0.1); only the local MSFSBA process can be reached. This
+        // is the SAME trust boundary the PMDG EFB bridge already ships eval_js
+        // under (via the in-app Ctrl+Shift+R hot-reload command queue) — these
+        // endpoints just make it scriptable for bridge debugging. NOTE: the MFD
+        // bridge only dequeues commands while a CDU page is visible on the MFD.
+
+        private async Task HandleMfdEval(HttpListenerRequest request, HttpListenerResponse response)
+        {
+            if (request.ContentLength64 > MaxRequestBodyBytes)
+            {
+                response.StatusCode = 413;
+                await WriteJson(response, new { error = "Request too large" });
+                return;
+            }
+            using var reader = new StreamReader(request.InputStream, request.ContentEncoding);
+            string body = await reader.ReadToEndAsync();
+            try
+            {
+                var json = JsonDocument.Parse(body);
+                string code = json.RootElement.GetProperty("code").GetString() ?? "";
+                if (string.IsNullOrEmpty(code))
+                {
+                    response.StatusCode = 400;
+                    await WriteJson(response, new { error = "code required" });
+                    return;
+                }
+                EnqueueMfdCommand("eval_js", new Dictionary<string, string> { ["code"] = code });
+                await WriteJson(response, new { enqueued = true, bytes = code.Length });
+            }
+            catch (Exception ex)
+            {
+                response.StatusCode = 500;
+                await WriteJson(response, new { error = ex.Message });
+            }
+        }
+
+        private async Task HandleMfdEvalResult(HttpListenerResponse response)
+        {
+            response.ContentType = "application/json";
+            byte[] bytes = Encoding.UTF8.GetBytes(_lastMfdEvalResultJson);
+            response.ContentLength64 = bytes.Length;
+            await response.OutputStream.WriteAsync(bytes);
+            response.Close();
         }
 
 #if DEBUG

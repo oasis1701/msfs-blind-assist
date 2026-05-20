@@ -1,4 +1,5 @@
 // HorizonSim 787-9 MFD Accessibility Bridge
+// BRIDGE_JS_VERSION: 23-irs-instant
 // Injected into HSB789_MFD.GE.html and HSB789_MFD.RR.html via mod package override.
 // Reads the WT Boeing FMC screen from the DOM and exposes CDU controls to the
 // MSFS Blind Assist application via HTTP on localhost:19778.
@@ -14,6 +15,7 @@ if (window._mfd_bridge_loaded) {
 } else { window._mfd_bridge_loaded = true;
 
 var _mfd = {
+    JS_VERSION: '23-irs-instant',
     SERVER_URL: 'http://localhost:19778',
     SCREEN_POLL_INTERVAL: 300,
     COMMAND_POLL_INTERVAL: 400,
@@ -23,6 +25,7 @@ var _mfd = {
     commandPollTimer: null,
     heartbeatTimer: null,
     screenPollTimer: null,
+    reconnectTimer: null,
     previousScreen: null,
     previousCduVisible: null,  // null = unknown, true/false after first poll
     stageReached: 0            // SimVar diagnostic: 1=loaded, 2=fetch failed, 3=connected
@@ -216,7 +219,136 @@ _mfd.readScreen = function() {
     return lines;
 };
 
+// --- IRS alignment scrape ---
+// The WT 787 exposes true (Realistic-respecting) IRS alignment only on its
+// internal Coherent bus, surfaced in the ND "TIME TO ALIGN" element
+// (div.time-to-align, 'hidden' class while not aligning, last child div = the
+// minutes-remaining text: "--", "NN", or "7+"). The only IRS L-var WT sets is
+// WT_IRS_POS_SET_N (position accepted, ~1 min — NOT alignment complete). So we
+// scrape the element here and write synthetic L-vars MSFSBA reads normally:
+//   L:MSFSBA_IRS_ALIGN_STATE   0=Off 1=Aligning 2=Aligned(Navigation)
+//   L:MSFSBA_IRS_ALIGN_MINUTES minutes remaining, -1 = n/a
+// Graceful degradation: if .time-to-align isn't in this MFD instance's
+// document, fall back to the IRS-knob + WT_IRS_POS_SET L-vars (globally
+// readable) so state still resolves Off/Aligned — only the live countdown is
+// lost in that case.
+// Guarded L-var write — mirrors setStage's `typeof SimVar` guard so an
+// undefined SimVar can never throw out of the polled path. Returns true on
+// a successful write attempt.
+_mfd.setLVar = function(name, value) {
+    try {
+        if (typeof SimVar !== 'undefined' && typeof SimVar.SetSimVarValue === 'function') {
+            SimVar.SetSimVarValue('L:' + name, 'number', value);
+            return true;
+        }
+    } catch (e) { }
+    return false;
+};
+
+_mfd.pollIrsAlign = function() {
+    // The .time-to-align element lives only on the ND. The bridge runs in
+    // EVERY MFD instance, so this function early-returns in MFDs that don't
+    // have it — otherwise the CDU/EFB MFDs race the ND's L-var writes with
+    // -1/Aligning values 3x/sec and the announcer flickers.
+    //
+    // DIAGNOSTIC L:MSFSBA_IRS_DEBUG (sum of):
+    //   1   = function entered
+    //   2   = .time-to-align element found (i.e. this IS the ND MFD)
+    //   4   = element visible (not 'hidden') — alignment panel showing
+    //   8   = knobOn (B787_IRS_Knob_State:1|2 > 0)
+    //   16  = posSet (WT_IRS_POS_SET_1 > 0)
+    //   32  = irsSawVisible latch (saw alignment panel visible since knob-on)
+    //   64  = irsPosSetSeenZero latch (saw posSet=0 with knobs on since knob-on)
+    //   +100*state at the end (0=Off, 1=Aligning, 2=Aligned).
+    //   +1000 if exception thrown mid-run.
+    var dbg = 1;
+    _mfd.setLVar('MSFSBA_IRS_DEBUG', dbg);
+    try {
+        var el = document.querySelector('.time-to-align');
+        if (!el) return;   // not the ND MFD — stay silent
+        dbg += 2;
+
+        var knobOn = false, posSet = false;
+        try {
+            knobOn = SimVar.GetSimVarValue('L:B787_IRS_Knob_State:1', 'number') > 0 ||
+                     SimVar.GetSimVarValue('L:B787_IRS_Knob_State:2', 'number') > 0;
+            posSet = SimVar.GetSimVarValue('L:WT_IRS_POS_SET_1', 'number') > 0;
+        } catch (e) { }
+        if (knobOn) dbg += 8;
+        if (posSet) dbg += 16;
+
+        var visible = !el.classList.contains('hidden');
+        if (visible) dbg += 4;
+
+        var state, minutes = -1;
+        if (visible) {
+            // Alignment panel showing — actively aligning, parse the countdown.
+            state = 1;
+            var kids = el.querySelectorAll('div');
+            var txt = kids.length ? (kids[kids.length - 1].textContent || '').trim() : '';
+            if (txt === '' || txt === '--') {
+                minutes = -1;
+            } else if (txt.indexOf('+') >= 0) {
+                var p = parseInt(txt, 10); minutes = isNaN(p) ? 7 : p;
+            } else {
+                var n = parseInt(txt, 10); minutes = isNaN(n) ? -1 : n;
+            }
+            _mfd.irsSawVisible = true;   // primary latch
+        } else if (!knobOn) {
+            // Knobs off — IRS is off. Reset BOTH arming latches so a fresh
+            // power cycle starts from a known state.
+            state = 0;
+            _mfd.irsSawVisible = false;
+            _mfd.irsPosSetSeenZero = false;
+        } else if (_mfd.irsSawVisible || (_mfd.irsPosSetSeenZero && posSet)) {
+            // Aligned. Two independent signals can fire this:
+            //   (a) irsSawVisible — we caught the alignment panel rendered at
+            //       least once during this knob-on cycle. The transition
+            //       visible→hidden is WT's "alignment complete" event.
+            //   (b) irsPosSetSeenZero + posSet=1 — for INSTANT-mode alignment
+            //       where WT may not render the panel long enough for a 300ms
+            //       poll to catch it. If we saw posSet=0 earlier this session
+            //       (proving WT cleared it on knob-on) AND posSet is now 1,
+            //       that's a verified POS INIT transition WITHIN this session,
+            //       so combined with !visible the IRS is in Navigation mode.
+            //       The "saw zero" requirement prevents a false-positive on
+            //       knob-cycle-with-stale-posSet (WT may keep posSet=1 across
+            //       a quick power cycle).
+            state = 2;
+        } else {
+            // Knobs on but neither arming signal has fired — just turned on,
+            // panel hasn't rendered yet, or POS INIT not done. Report Aligning.
+            state = 1;
+        }
+        if (_mfd.irsSawVisible) dbg += 32;
+        if (_mfd.irsPosSetSeenZero) dbg += 64;
+
+        dbg += 100 * state;
+        _mfd.setLVar('MSFSBA_IRS_DEBUG', dbg);
+
+        // Arm the second latch AFTER state computation, so it reflects "posSet
+        // was zero in a PRIOR frame this session" — never the current frame.
+        // This way (irsPosSetSeenZero && posSet) means a 0→1 transition we
+        // actually witnessed, not just a stale posSet=1 from a previous session.
+        if (knobOn && !posSet) {
+            _mfd.irsPosSetSeenZero = true;
+        }
+
+        if (state !== _mfd.prevIrsState) {
+            _mfd.setLVar('MSFSBA_IRS_ALIGN_STATE', state);
+            _mfd.prevIrsState = state;
+        }
+        if (minutes !== _mfd.prevIrsMinutes) {
+            _mfd.setLVar('MSFSBA_IRS_ALIGN_MINUTES', minutes);
+            _mfd.prevIrsMinutes = minutes;
+        }
+    } catch (e) {
+        _mfd.setLVar('MSFSBA_IRS_DEBUG', dbg + 1000);
+    }
+};
+
 _mfd.pollScreen = function() {
+    _mfd.pollIrsAlign();   // runs regardless of CDU visibility (IRS aligns with CDU hidden)
     var lines = _mfd.readScreen();
     if (!lines) {
         // Only send cdu_not_visible if WE previously reported cdu_visible.
@@ -367,6 +499,23 @@ _mfd.handleCommand = function(command, payload) {
                 _mfd.previousScreen = null; // force re-send
                 _mfd.pollScreen();
                 break;
+            case 'eval_js':
+                // Trust boundary: this eval is only reachable via the C# app's
+                // localhost-only HTTP bridge (EFBBridgeServer on 127.0.0.1:19778).
+                // Commands are enqueued server-side; this bridge polls for them.
+                // No external network exposure — only the local MSFSBA process can
+                // enqueue commands. Used for hot-reload of bridge functions and
+                // live DOM inspection without restarting the simulator. Same trust
+                // boundary the PMDG EFB bridge already ships (eval_js, port 19777).
+                if (payload && payload.code) {
+                    try {
+                        var evalResult = eval(payload.code);
+                        _mfd.postState('eval_result', { result: String(evalResult) });
+                    } catch (evalErr) {
+                        _mfd.postState('eval_result', { error: evalErr.message });
+                    }
+                }
+                break;
             default:
                 console.warn('[MFD Bridge] Unknown command:', command);
         }
@@ -379,7 +528,9 @@ _mfd.handleCommand = function(command, payload) {
 
 _mfd.startConnectionLoop = function() {
     _mfd.tryConnect();
-    setInterval(async function() {
+    // Stored so hot-reload teardown can clear it (otherwise the old instance's
+    // reconnect loop keeps running alongside the freshly-eval'd one).
+    _mfd.reconnectTimer = setInterval(async function() {
         if (!_mfd.serverConnected) {
             await _mfd.tryConnect();
         }
