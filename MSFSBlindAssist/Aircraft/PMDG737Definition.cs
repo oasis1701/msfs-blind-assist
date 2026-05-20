@@ -3807,8 +3807,10 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     /// <summary>
     /// PMDG 737 has no SDK-exposed baro knob control, so this dialog writes the
     /// standard MSFS KOHLSMAN SETTING HG simvar directly. Accepts either hPa
-    /// (whole numbers ~950–1050) or inHg (decimal ~28.00–31.00); the validator
-    /// picks the unit based on input shape.
+    /// (~900–1060) or inHg (~26.50–31.30); the validator picks the unit based on
+    /// magnitude (>=100 = hPa, <100 = inHg) — the two ranges don't overlap so the
+    /// branch is unambiguous, and magnitude-based branching avoids the de-DE
+    /// locale ambiguity where "1013,5" would otherwise be misrouted to inHg.
     /// </summary>
     private void ShowPMDGBaroDialog(
         SimConnect.SimConnectManager simConnect,
@@ -3821,47 +3823,45 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             return;
         }
 
+        // Parse "1013", "1013,5", or "29.92" into a single double (locale-tolerant).
+        static bool TryParseBaro(string input, out double value)
+        {
+            return double.TryParse(
+                input.Replace(',', '.'),
+                System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out value);
+        }
+
         var dialog = new ValueInputForm(
-            "Altimeter", "altimeter", "950-1050 hPa or 28.00-31.00 inHg", announcer,
+            "Altimeter", "altimeter", "900-1060 hPa or 26.50-31.30 inHg", announcer,
             input =>
             {
                 if (string.IsNullOrWhiteSpace(input))
                     return (false, "Enter a value in hPa or inHg");
 
-                // Decimal point → treat as inHg
-                if (input.Contains('.') || input.Contains(','))
+                if (!TryParseBaro(input, out double value))
+                    return (false, "Enter a numeric value in hPa or inHg");
+
+                // Branch on magnitude — ranges don't overlap (smallest hPa 900 > largest inHg 31.30).
+                if (value >= 100)
                 {
-                    if (double.TryParse(input.Replace(',', '.'),
-                            System.Globalization.NumberStyles.Float,
-                            System.Globalization.CultureInfo.InvariantCulture,
-                            out double inHg) &&
-                        inHg >= 28.00 && inHg <= 31.00)
+                    if (value >= 900 && value <= 1060)
                         return (true, "");
-                    return (false, "Enter inHg between 28.00 and 31.00");
+                    return (false, "Enter hPa between 900 and 1060");
                 }
 
-                // Whole number → treat as hPa
-                if (int.TryParse(input, out int hpa) && hpa >= 950 && hpa <= 1050)
+                if (value >= 26.50 && value <= 31.30)
                     return (true, "");
-                return (false, "Enter hPa between 950 and 1050");
+                return (false, "Enter inHg between 26.50 and 31.30");
             },
             new List<ToggleButtonDef>(),
             input =>
             {
-                double inHg;
-                if (input.Contains('.') || input.Contains(','))
-                {
-                    if (!double.TryParse(input.Replace(',', '.'),
-                            System.Globalization.NumberStyles.Float,
-                            System.Globalization.CultureInfo.InvariantCulture,
-                            out inHg))
-                        return;
-                }
-                else
-                {
-                    if (!int.TryParse(input, out int hpa)) return;
-                    inHg = hpa / 33.8639;
-                }
+                if (!TryParseBaro(input, out double value)) return;
+
+                // Same magnitude-based branch as the validator.
+                double inHg = value >= 100 ? value / 33.8639 : value;
 
                 simConnect.SetSimVar("KOHLSMAN SETTING HG", inHg, "inHg");
             });
