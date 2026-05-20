@@ -78,7 +78,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             },
             ["Glareshield"] = new List<string>
             {
-                "EFIS Captain", "EFIS First Officer", "MCP", "Display Select"
+                "Warnings", "EFIS Captain", "EFIS First Officer", "MCP", "Display Select"
             },
             ["Forward Panel"] = new List<string>
             {
@@ -1076,13 +1076,11 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             },
 
             // ===== Glareshield =====
-            // Warnings panel deliberately omitted: WARN_annunFIRE_WARN[2] and
-            // WARN_annunMASTER_CAUTION[2] are pure read-only annunciators that
-            // auto-announce on change via the continuous-monitoring path
-            // (rising-edge handlers in ProcessSimVarUpdate). Listing them in a
-            // panel produced a navigable "Warnings" page containing only
-            // read-only labels — no actionable controls. Same convention as
-            // PMDG777Definition, which has no annunciator-only panels.
+            ["Warnings"] = new List<string>
+            {
+                "WARN_annunFIRE_WARN_0", "WARN_annunFIRE_WARN_1",
+                "WARN_annunMASTER_CAUTION_0", "WARN_annunMASTER_CAUTION_1"
+            },
             ["EFIS Captain"] = new List<string>
             {
                 "EFIS_MinsSelBARO_0", "EFIS_BaroSelHPA_0",
@@ -1170,9 +1168,8 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             },
             ["Flight Deck Door"] = new List<string>
             {
-                // PED_annunLOCK_FAIL / PED_annunAUTO_UNLK omitted — annunciators
-                // auto-announce; the panel only renders user-actionable controls.
-                "PED_FltDkDoorSel"
+                "PED_FltDkDoorSel",
+                "PED_annunLOCK_FAIL", "PED_annunAUTO_UNLK"
             },
             ["Trim"] = new List<string>
             {
