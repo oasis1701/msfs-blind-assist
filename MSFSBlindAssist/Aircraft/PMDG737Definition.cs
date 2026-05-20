@@ -78,7 +78,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             },
             ["Glareshield"] = new List<string>
             {
-                "Warnings", "EFIS Captain", "EFIS First Officer", "MCP", "Display Select"
+                "EFIS Captain", "EFIS First Officer", "MCP", "Display Select"
             },
             ["Forward Panel"] = new List<string>
             {
@@ -1076,11 +1076,13 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             },
 
             // ===== Glareshield =====
-            ["Warnings"] = new List<string>
-            {
-                "WARN_annunFIRE_WARN_0", "WARN_annunFIRE_WARN_1",
-                "WARN_annunMASTER_CAUTION_0", "WARN_annunMASTER_CAUTION_1"
-            },
+            // Warnings panel deliberately omitted: WARN_annunFIRE_WARN[2] and
+            // WARN_annunMASTER_CAUTION[2] are pure read-only annunciators that
+            // auto-announce on change via the continuous-monitoring path
+            // (rising-edge handlers in ProcessSimVarUpdate). Listing them in a
+            // panel produced a navigable "Warnings" page containing only
+            // read-only labels — no actionable controls. Same convention as
+            // PMDG777Definition, which has no annunciator-only panels.
             ["EFIS Captain"] = new List<string>
             {
                 "EFIS_MinsSelBARO_0", "EFIS_BaroSelHPA_0",
@@ -1168,8 +1170,9 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             },
             ["Flight Deck Door"] = new List<string>
             {
-                "PED_FltDkDoorSel",
-                "PED_annunLOCK_FAIL", "PED_annunAUTO_UNLK"
+                // PED_annunLOCK_FAIL / PED_annunAUTO_UNLK omitted — annunciators
+                // auto-announce; the panel only renders user-actionable controls.
+                "PED_FltDkDoorSel"
             },
             ["Trim"] = new List<string>
             {
@@ -2542,8 +2545,13 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             ["MAIN_DisengageTestSelector_0"] = "EVT_DSP_CPT_DISENGAGE_TEST_SWITCH",
             ["MAIN_DisengageTestSelector_1"] = "EVT_DSP_FO_DISENGAGE_TEST_SWITCH",
             ["MAIN_LightsSelector"]        = "EVT_DSP_CPT_MASTER_LIGHTS_SWITCH",
-            ["MAIN_annunBELOW_GS_0"]       = "EVT_DSP_CPT_BELOW_GS_INHIBIT_SWITCH",
-            ["MAIN_annunBELOW_GS_1"]       = "EVT_DSP_FO_BELOW_GS_INHIBIT_SWITCH",
+            // MAIN_annunBELOW_GS_0/1 are SDK bool annunciators (read-only). The
+            // lamps double as momentary inhibit pushbuttons on the panel
+            // (EVT_DSP_*_BELOW_GS_INHIBIT_SWITCH), but the vars are declared as
+            // Annun with no Momentary press companion and don't appear in
+            // BuildPanelControls — there is no UI surface to invoke the press.
+            // Add MAIN_BelowGSInhibit_0/1 Momentary entries here + map below if
+            // the inhibit button is ever needed via panel UI.
 
             // --- Forward panel: RMI / autobrake / spd ref / N1 set / fuel flow ---
             ["MAIN_RMISelector1_VOR"]      = "EVT_RMI_LEFT_SELECTOR",
