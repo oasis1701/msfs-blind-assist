@@ -1,0 +1,3 @@
+[submodule "MSFSBlindAssist/fenix-mcdu-accessibility"]
+	path = MSFSBlindAssist/fenix-mcdu-accessibility
+	url = https://github.com/oasis1701/fenix-mcdu-accessibility.git
