@@ -286,6 +286,10 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         };
 
         // Oxygen
+        // TFM: `_normalOrOffStates` (0:off, 1:normal); SDK line 89: `bool OXY_SwNormal; // true: NORMAL  false: ON`.
+        // Resolved with SDK because TFM and SDK have the same position count (2) but disagree
+        // on the label for byte 0 — SDK explicitly says false (byte 0) = ON, not "off".
+        // The switch is physically ON ↔ NORMAL on the NG3 cockpit, not OFF ↔ NORMAL.
         d["OXY_SwNormal"]         = Toggle("OXY_SwNormal", "Passenger Oxygen", "ON", "Normal");
         d["OXY_annunPASS_OXY_ON"] = Annun("OXY_annunPASS_OXY_ON", "PASS OXY ON");
 
@@ -524,6 +528,13 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         d["HYD_PumpSw_elec_1"]          = Toggle("HYD_PumpSw_elec_1", "Elec 1 Hyd Pump");
 
         // Air systems
+        // TFM: `_airSourceSelectorStates` (cryptic abbreviations: scant/sfwd/saft/cfwd/caft/pckl/pckr).
+        // SDK line 248: `unsigned char AIR_TempSourceSelector; // Positions 0..6` (no inline labels).
+        // Resolved with the documented 737NG cockpit labels (SUPPLY DUCT, PASS CAB, CONT CAB,
+        // PACK L, PACK R, RAM A, RAM B). Both TFM and SDK declare 7 positions; SDK has no label
+        // detail to adjudicate against, but our labels match the standard 737NG temp source
+        // knob detents per the FCOM. TFM's abbreviations look like internal field-namespace
+        // identifiers, not user-facing labels.
         d["AIR_TempSourceSelector"]     = Selector("AIR_TempSourceSelector", "Temperature Source",
             "SUPPLY DUCT", "PASS CAB", "CONT CAB", "PACK L", "PACK R", "RAM A", "RAM B");
         d["AIR_TrimAirSwitch"]          = Toggle("AIR_TrimAirSwitch", "Trim Air");
@@ -554,6 +565,10 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         d["AIR_annunMANUAL"]            = Annun("AIR_annunMANUAL", "Pressurization MANUAL");
         d["AIR_DisplayFltAlt"]          = Display("AIR_DisplayFltAlt", "Flight Altitude Display");
         d["AIR_DisplayLandAlt"]         = Display("AIR_DisplayLandAlt", "Landing Altitude Display");
+        // TFM: `_neutralClosedOrOpenStates` (0:opened, 1:neutral, 2:closed) — REVERSED.
+        // SDK line 292: `unsigned int AIR_OutflowValveSwitch; // 0=CLOSE  1=NEUTRAL  2=OPEN`.
+        // Resolved with SDK: TFM's dict has byte 0 and byte 2 labelled swapped from the SDK
+        // header. Ours matches the SDK directly. Keep as-is.
         d["AIR_OutflowValveSwitch"]     = Selector("AIR_OutflowValveSwitch", "Outflow Valve",
             "CLOSE", "Neutral", "OPEN");
         d["AIR_PressurizationModeSelector"] = Selector("AIR_PressurizationModeSelector",
@@ -586,6 +601,11 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         d["LTS_RunwayTurnoffSw_1"]        = Toggle("LTS_RunwayTurnoffSw_1", "Runway Turnoff Right");
         d["LTS_TaxiSw"]                   = Toggle("LTS_TaxiSw", "Taxi Lights");
         d["APU_Selector"]                 = Selector("APU_Selector", "APU", "OFF", "ON", "START");
+        // TFM: `_engineStartModeStates` (0:grd, 1:auto, 2:cont, 3:flt) — position 1 labelled "auto".
+        // SDK line 301: `unsigned char ENG_StartSelector[2]; // 0: GRD  1: OFF  2: CONT  3: FLT`.
+        // Resolved with SDK: TFM labels position 1 as "auto" but SDK explicitly says "OFF",
+        // and the 737NG engine start selector is documented as GRD/OFF/CONT/FLT (no AUTO
+        // detent). Ours matches the SDK directly. Keep as-is.
         d["ENG_StartSelector_0"]          = Selector("ENG_StartSelector_0", "Engine 1 Start",
             "GRD", "OFF", "CONT", "FLT");
         d["ENG_StartSelector_1"]          = Selector("ENG_StartSelector_1", "Engine 2 Start",
@@ -731,6 +751,12 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             "SET", "AUTO", "V1", "VR", "WT", "VREF", "BUG");            // SDK 392: 0:SET 1:AUTO 2:V1 3:VR 4:WT 5:VREF 6:Bug
         d["MAIN_FuelFlowSelector"] = Selector("MAIN_FuelFlowSelector", "Fuel Flow",
             "RESET", "RATE", "USED");                                   // SDK 393: 0:RESET 1:RATE 2:USED
+        // TFM: `_autoBrakeSelectorStates` (0:RTO 1:off 2:disarm 3:1 4:2 5:3).
+        // SDK line 394: `unsigned char MAIN_AutobrakeSelector; // 0: RTO  1: OFF ... 5: MAX`.
+        // Resolved with SDK: TFM exposes a "disarm" detent at position 2 and tops out at "3";
+        // SDK says position 5 = MAX. The 737NG-800 autobrake selector is documented as
+        // RTO/OFF/1/2/3/MAX (6 positions, with MAX, no DISARM — that's a 777 detent). TFM is
+        // likely cross-pollinated from the 777 autobrake dict. Ours matches the SDK. Keep as-is.
         d["MAIN_AutobrakeSelector"] = new SimConnect.SimVarDefinition
         {
             Name = "MAIN_AutobrakeSelector",
@@ -748,6 +774,14 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         d["MAIN_annunAUTO_BRAKE_DISARM"] = Annun("MAIN_annunAUTO_BRAKE_DISARM", "Auto Brake Disarm");
         d["MAIN_annunLE_FLAPS_TRANSIT"]  = Annun("MAIN_annunLE_FLAPS_TRANSIT", "LE Flaps Transit");
         d["MAIN_annunLE_FLAPS_EXT"]      = Annun("MAIN_annunLE_FLAPS_EXT", "LE Flaps Ext");
+        // TFM: [0]=nose, [1]=left, [2]=right. SDK lines 400-401: arrays declared without
+        // inline comments. Resolved with the [0]=Left, [1]=Nose, [2]=Right convention because
+        // the PMDG NG3 struct orders the related overhead annunciators as
+        // `GEAR_annunOvhdLEFT` (line 93), `GEAR_annunOvhdNOSE` (94), `GEAR_annunOvhdRIGHT` (95)
+        // — Left-Nose-Right is the documented PMDG struct ordering for gear-related state.
+        // Both TFM and ours agree on [2]=Right; the disagreement is [0]/[1]. Verify in sim
+        // during gear extension/retraction; if a tester reports the wrong leg appears in
+        // transit, swap the "Left" and "Nose" labels on _0 and _1.
         d["MAIN_annunGEAR_transit_0"]    = Annun("MAIN_annunGEAR_transit_0", "Left Gear Transit");
         d["MAIN_annunGEAR_transit_1"]    = Annun("MAIN_annunGEAR_transit_1", "Nose Gear Transit");
         d["MAIN_annunGEAR_transit_2"]    = Annun("MAIN_annunGEAR_transit_2", "Right Gear Transit");
