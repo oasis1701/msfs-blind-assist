@@ -2840,8 +2840,8 @@ public class TaxiGuidanceManager : IDisposable
                     : $"Handoff re-route failed ({rerouteErr}), continuing with original route");
             }
 
-            // If we did NOT re-route (standard HS/IHS exit where ApronNodeId ==
-            // NodeId, or a re-route that failed), the route is still the one
+            // If the re-route did NOT succeed (LoadRoute failed, or _rolloutExit
+            // / data provider / graph was null), the route is still the one
             // built at touchdown and _currentSegmentIndex is still 0 — the
             // Taxiing branch never ran during the rollout. Segment 0 sits back
             // in the touchdown zone, thousands of feet behind the aircraft;
