@@ -226,24 +226,27 @@ public class LandingExitPlanner
             prebuiltGraph: _graph,
             announceSummary: false);
 
+        // Compute the full exit list once — used by both the success and no-route
+        // fallback paths below. GetLandingExits returns exits sorted by
+        // DistanceFromThresholdFeet ascending, which is what the overshoot scan needs.
+        var allExits = _graph.GetLandingExits(_runway);
+
         if (error != null)
         {
-            DiagLog($"ActivateGuidance LoadRoute failed: {error} — falling back to runway-end countdown");
+            DiagLog($"ActivateGuidance LoadRoute failed: {error} — entering rollout with exit geometry (no taxi route)");
 
-            // Engage the runway-end countdown so a blind pilot still gets
-            // distance callouts during the rollout. This path fires when the
-            // taxi graph is too defective to route from touchdown to the chosen
-            // exit (e.g. orphaned-taxiway data, exit in a tiny isolated graph
-            // component). The pilot loses the taxi-tone guidance to the exit
-            // but keeps the "Runway end in 1500 feet / 500 feet, slow down /
-            // 100 feet, stop" callouts driven from runway geometry.
-            _announcer.Announce(
-                $"Landing exit guidance unavailable: {error.TrimEnd('.')}. " +
-                $"Runway end distance callouts active.");
-            _guidanceManager.BeginLandingRolloutNoRoute(_runway);
+            // The taxi graph is disconnected at this airport: the exit's component
+            // has no nodes near the touchdown zone, so A* can't build a route from
+            // here. BUT the rollout distance callouts (1500/500/150 ft), steering
+            // tone, and overshoot logic all use exit geometry directly — not the
+            // route. Enter rollout mode with the exit set so the pilot still gets
+            // full guidance. At handoff (turnBegun / exitedLaterally), LoadRoute is
+            // retried from the live near-exit position, which IS in the exit's
+            // component, so that re-route succeeds and normal taxi guidance follows.
+            _guidanceManager.BeginLandingRolloutNoGraph(
+                _exit, _runway.Heading, _runway, allExits, lat, lon,
+                SettingsManager.Current);
 
-            // Mark as activated so we don't retry on subsequent ground-state
-            // events for this landing — the fallback is the final state.
             _activatedThisLanding = true;
             return true;
         }
@@ -251,13 +254,6 @@ public class LandingExitPlanner
         DiagLog($"ActivateGuidance LoadRoute OK, calling StartGuidance");
         _activatedThisLanding = true;
         _guidanceManager.StartGuidance(SettingsManager.Current);
-
-        // Compute the full exit list for the chosen runway so the
-        // TaxiGuidanceManager can retarget on overshoot without rebuilding
-        // the graph or querying the DB per frame. GetLandingExits returns
-        // the list sorted by DistanceFromThresholdFeet ascending, which is
-        // exactly what the overshoot scan expects.
-        var allExits = _graph.GetLandingExits(_runway);
 
         // Switch into landing-rollout mode: tone is paused, distance-based
         // callouts ("approaching high-speed exit Sierra-5, 1500 feet" /

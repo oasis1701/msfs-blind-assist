@@ -1191,6 +1191,84 @@ public class TaxiGuidanceManager : IDisposable
     }
 
     /// <summary>
+    /// Enters landing-rollout mode with full exit guidance even when the initial
+    /// A* route from touchdown to the exit failed (e.g. disconnected graph components).
+    ///
+    /// The rollout distance callouts (1500/500/150 ft), steering tone, overshoot
+    /// detection, and handoff to Taxiing all use exit geometry directly — not the
+    /// route — so they work without one. At handoff time (turnBegun / exitedLaterally),
+    /// <see cref="UpdateLandingRollout"/> calls LoadRoute from the live aircraft position
+    /// which by then is within the exit's graph component, so that re-route succeeds.
+    ///
+    /// Must be called AFTER a failed <see cref="LoadRoute"/> so that _graph,
+    /// _dataProvider, and _icao are populated for the subsequent handoff re-route.
+    /// </summary>
+    public void BeginLandingRolloutNoGraph(
+        Navigation.LandingExit exit,
+        double runwayHeadingTrue,
+        Database.Models.Runway runway,
+        List<Navigation.LandingExit> allExits,
+        double touchdownLat,
+        double touchdownLon,
+        UserSettings settings)
+    {
+        lock (_stateLock)
+        {
+            // Start the tone now — StartGuidance (which normally does this) was
+            // never called because LoadRoute failed.
+            _announceCrossings = settings.TaxiGuidanceAnnounceCrossings;
+            _steeringTone.InvertPan = settings.TaxiGuidanceInvertSteeringTone;
+            _steeringTone.HardPan = settings.TaxiGuidanceHardPanTone;
+            _steeringTone.Start(settings.TaxiGuidanceToneWaveform, settings.TaxiGuidanceToneVolume);
+
+            // Populate rollout state (mirrors BeginLandingRollout, without the _route guard).
+            _rolloutExit = exit;
+            _isLandingExitRoute = true;
+            _rolloutRunwayHeadingTrue = runwayHeadingTrue;
+            _rolloutRunway = runway;
+            _rolloutAllExits = allExits;
+            _rolloutApproach1500Announced = false;
+            _rolloutApproach900Announced = false;
+            _rolloutApproach500Announced = false;
+            _rolloutTurnNowAnnounced = false;
+            _rolloutExitToneArmed = false;
+            _rolloutEarlyHandoffDone = false;
+            _lastUndershootRetargetTime = DateTime.MinValue;
+            _rolloutNoExitMode = false;
+            _rolloutHandoffActive = false;
+            _rolloutEnd1500Announced = false;
+            _rolloutEnd500Announced = false;
+            _rolloutEnd100Announced = false;
+            _rolloutDiagFirstCallDone = false;
+            _rolloutDiagLastPeriodic = DateTime.MinValue;
+            _smoothedHeadingError = 0.0;
+            _headingErrorInitialized = false;
+            _steeringTone.SetPulse(false);
+
+            SetState(TaxiGuidanceState.LandingRollout);
+
+            RolloutDiag($"BeginLandingRolloutNoGraph: exit='{exit.TaxiwayName}' node={exit.NodeId} " +
+                $"runway={runway.RunwayID} hdgTrue={runwayHeadingTrue:F2} allExits={allExits.Count}");
+
+            // Touchdown callout — same logic as BeginLandingRollout.
+            string exitClass = exit.ExitType switch
+            {
+                "High-speed" => "high-speed exit",
+                "End"        => "runway-end exit",
+                _            => "exit"
+            };
+            string name = string.IsNullOrEmpty(exit.TaxiwayName) ? "exit" : $"taxiway {exit.TaxiwayName}";
+            int distFt = touchdownLat != 0 && touchdownLon != 0
+                ? (int)Math.Round(TaxiGraph.FastDistanceMeters(touchdownLat, touchdownLon, exit.Latitude, exit.Longitude) * METERS_TO_FEET)
+                : (int)Math.Round(exit.DistanceFromTouchdownFeet);
+            if (distFt > 0)
+                AnnounceInstruction($"Touchdown. {exitClass} {name} in {distFt} feet.");
+            else
+                AnnounceInstruction($"Touchdown. {exitClass} {name}.");
+        }
+    }
+
+    /// <summary>
     /// Called every position update (~30Hz from SimConnect SIM_FRAME).
     /// headingMag is MAGNETIC heading in degrees; magVariation converts to true heading.
     /// </summary>
