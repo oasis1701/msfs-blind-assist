@@ -463,6 +463,10 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         d["LTS_annunEmerNOT_ARMED"]      = Annun("LTS_annunEmerNOT_ARMED", "Emergency Lights NOT ARMED");
         d["LTS_EmerExitSelector"]        = Selector("LTS_EmerExitSelector", "Emergency Exit Lights",
             "OFF", "ARMED", "ON");
+        // TFM: under-modeled as 2-position off/on switch.
+        // SDK line 215: `unsigned char COMM_NoSmokingSelector; // 0: OFF  1: AUTO  2: ON`.
+        // Resolved with SDK: this is a 3-position physical selector on the NG3 cockpit
+        // (OFF/AUTO/ON). TFM is wrong; keep our 3-position dispatch.
         d["COMM_NoSmokingSelector"]      = Selector("COMM_NoSmokingSelector", "No Smoking", "OFF", "AUTO", "ON");
         d["COMM_FastenBeltsSelector"]    = Selector("COMM_FastenBeltsSelector", "Fasten Seat Belts", "OFF", "AUTO", "ON");
         d["COMM_annunCALL"]              = Annun("COMM_annunCALL", "Cabin Call");
@@ -877,6 +881,12 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         // EVT_FIRE_UNLOCK_SWITCH_ENGINE_1=976, _APU=977, _ENGINE_2=978). Requires an active
         // fire scenario to verify in sim — handles are mechanically locked otherwise.
         // Values 0..4 per SDK: In / Blocked / Out / Turned Left / Turned Right.
+        //
+        // TFM disagrees: it uses [0]=Left/Eng1, [1]=Right/Eng2, [2]=APU. We don't follow
+        // TFM here because the SDK event-ID sequence (697/698/699 = Eng1/APU/Eng2) is a
+        // stronger technical signal than TFM's convention. If a tester reports the wrong
+        // handle moves on a fire press, swap the DisplayName strings on _1 and _2 (and on
+        // FIRE_HandleIlluminated_1 / _2). Documented in docs/pmdg-737.md.
         d["FIRE_HandlePos_0"] = new SimConnect.SimVarDefinition
         {
             Name = "FIRE_HandlePos_0",
