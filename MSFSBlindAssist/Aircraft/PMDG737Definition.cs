@@ -209,8 +209,29 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         // =================================================================
         // AFT OVERHEAD — ADIRU (IRS)
         // =================================================================
-        d["IRS_DisplaySelector"] = Selector("IRS_DisplaySelector", "ISDU Display Selector",
-            "TK/GS", "PPOS", "WIND", "HDG/STS", "SYS");
+        // TFM: `_IRSDisplaySelectorStates` (indices 1..4: TK/GS, PPOS, WIND, HDG/STAT);
+        // SDK line 52: `unsigned char IRS_DisplaySelector; // Positions 0..4` (5 positions
+        // declared, no inline labels). Resolved with TFM's 4-position dispatch space
+        // (indices 1..4): SDK has more positions than TFM and position 0 is the unreachable
+        // TEST detent (sprung-return on the physical ISDU). The previous 5-position dict
+        // (0:TK/GS, 1:PPOS, 2:WIND, 3:HDG/STS, 4:SYS) was off-by-one for every pick and
+        // exposed a phantom SYS detent that doesn't exist on the NG3 ISDU. Build the dict
+        // manually because the Selector helper always starts at index 0.
+        d["IRS_DisplaySelector"] = new SimConnect.SimVarDefinition
+        {
+            Name = "IRS_DisplaySelector",
+            DisplayName = "ISDU Display Selector",
+            Type = SimConnect.SimVarType.PMDGVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            ValueDescriptions = new Dictionary<double, string>
+            {
+                [1] = "TK/GS",
+                [2] = "PPOS",
+                [3] = "WIND",
+                [4] = "HDG/STS",
+            },
+        };
         d["IRS_SysDisplay_R"]    = Toggle("IRS_SysDisplay_R", "IRS Sys Display", "Left", "Right");
         d["IRS_annunGPS"]        = Annun("IRS_annunGPS", "GPS");
         d["IRS_annunALIGN_0"]    = Annun("IRS_annunALIGN_0", "IRS Left ALIGN");
