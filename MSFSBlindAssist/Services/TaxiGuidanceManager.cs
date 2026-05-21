@@ -326,6 +326,7 @@ public class TaxiGuidanceManager : IDisposable
     // entry event), so no per-rollout flag is needed for it. The three flags below
     // gate per-rollout-once distance callouts in UpdateLandingRollout.
     private bool _rolloutApproach1500Announced = false;
+    private bool _rolloutApproach900Announced = false;
     private bool _rolloutApproach500Announced = false;
     private bool _rolloutTurnNowAnnounced = false;
     // Latches true when distToExitFeet first drops below ROLLOUT_EXIT_TONE_ARM_FT.
@@ -1108,6 +1109,7 @@ public class TaxiGuidanceManager : IDisposable
             _rolloutRunway = runway;
             _rolloutAllExits = allExits;
             _rolloutApproach1500Announced = false;
+            _rolloutApproach900Announced = false;
             _rolloutApproach500Announced = false;
             _rolloutTurnNowAnnounced = false;
             _rolloutExitToneArmed = false;
@@ -3035,11 +3037,22 @@ public class TaxiGuidanceManager : IDisposable
             ? "exit"
             : $"taxiway {_rolloutExit.TaxiwayName}";
 
-        if (!_rolloutApproach1500Announced && distToExitFeet <= 1500.0 && distToExitFeet > 500.0)
+        if (!_rolloutApproach1500Announced && distToExitFeet <= 1500.0 && distToExitFeet > 900.0)
         {
             RolloutDiag($"1500-ft approach callout firing: distToExit={distToExitFeet:F0}ft");
             AnnounceInstruction($"Approaching {exitClass} {name}, 1500 feet.");
             _rolloutApproach1500Announced = true;
+        }
+
+        // High-speed exits only: extra callout at 900 ft, analogous to the first RETIL
+        // flash (~984 ft). Gives blind pilots a second awareness cue before the 500 ft
+        // "prepare to turn" window — sighted pilots would see the first RETIL light here.
+        if (!_rolloutApproach900Announced && _rolloutExit.ExitType == "High-speed"
+            && distToExitFeet <= 900.0 && distToExitFeet > 500.0)
+        {
+            RolloutDiag($"900-ft high-speed callout firing: distToExit={distToExitFeet:F0}ft");
+            AnnounceInstruction($"{CapFirst(name)}, 900 feet.");
+            _rolloutApproach900Announced = true;
         }
 
         if (!_rolloutApproach500Announced && distToExitFeet <= 500.0 && distToExitFeet > 150.0)
@@ -3526,6 +3539,7 @@ public class TaxiGuidanceManager : IDisposable
         _rolloutExit = newExit;
         _isLandingExitRoute = true; // LoadRoute above cleared it; still a landing-exit route
         _rolloutApproach1500Announced = false;
+        _rolloutApproach900Announced = false;
         _rolloutApproach500Announced = false;
         _rolloutTurnNowAnnounced = false;
         _rolloutExitToneArmed = false;
@@ -3729,6 +3743,7 @@ public class TaxiGuidanceManager : IDisposable
         // KEEP _rolloutRunway and _rolloutRunwayHeadingTrue — countdown needs them.
         _rolloutAllExits = new List<Navigation.LandingExit>();
         _rolloutApproach1500Announced = false;
+        _rolloutApproach900Announced = false;
         _rolloutApproach500Announced = false;
         _rolloutTurnNowAnnounced = false;
         _rolloutExitToneArmed = false;
@@ -4341,6 +4356,7 @@ public class TaxiGuidanceManager : IDisposable
         _rolloutRunway = null;
         _rolloutAllExits = new List<Navigation.LandingExit>();
         _rolloutApproach1500Announced = false;
+        _rolloutApproach900Announced = false;
         _rolloutApproach500Announced = false;
         _rolloutTurnNowAnnounced = false;
         _rolloutExitToneArmed = false;

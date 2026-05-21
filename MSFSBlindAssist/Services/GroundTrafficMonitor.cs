@@ -66,6 +66,10 @@ public sealed class GroundTrafficMonitor : IDisposable
     private const int POLL_INTERVAL_MS = 3000;
     private const double NM_TO_FEET = 6076.12;
 
+    // When set, alerts are suppressed while this predicate returns true.
+    // Used to silence traffic callouts during takeoff roll.
+    public Func<bool>? SuppressCheck { get; set; }
+
     private readonly ScreenReaderAnnouncer _announcer;
     private readonly SimConnectManager _sim;
     private readonly System.Windows.Forms.Timer _timer;
@@ -94,6 +98,7 @@ public sealed class GroundTrafficMonitor : IDisposable
     {
         bool onGround = _sim.LastKnownOnGround ?? false;
         if (!onGround || !_sim.IsConnected) return;
+        if (SuppressCheck?.Invoke() == true) return;
 
         // Proactively refresh own position so the distance measurements stay
         // accurate even when no other guidance system (visual / taxi) is active.

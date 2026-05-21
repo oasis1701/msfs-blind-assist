@@ -248,6 +248,7 @@ public partial class MainForm : Form
         // Ground traffic monitor — proximity alerts for on-ground AI/multiplayer traffic.
         // Starts its own 3-second poll timer; gates on LastKnownOnGround each tick.
         groundTrafficMonitor = new GroundTrafficMonitor(announcer, simConnectManager);
+        groundTrafficMonitor.SuppressCheck = () => takeoffAssistManager.IsActive;
 
         // Initialize airport database provider (optional - can be null if database not built yet)
         airportDataProvider = DatabaseSelector.SelectProvider();
