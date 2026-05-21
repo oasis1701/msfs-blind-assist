@@ -1494,42 +1494,37 @@ public class TaxiGraph
                         }
                         else if (Math.Abs(curOff - bestOff) <= 0.01)
                         {
-                            // Equal off-axis angle: the adjacency list contains both the
-                            // forward edge (toward the apron) and the reverse edge of the
-                            // same taxiway segment (toward the threshold or opposite apron).
-                            // Both fold to the same `off`, so first-encountered was winning
-                            // non-deterministically. Wrong edge → wrong ExitBearingTrue →
-                            // FindExitExtensionNode routes backward → permanent wrong pan.
+                            // Equal off-axis angle (within float tolerance): the adjacency
+                            // list contains both the forward exit edge and the reverse edge
+                            // of the same taxiway segment. Both fold to the same `off`, so
+                            // first-encountered was winning non-deterministically.
+                            // Wrong edge → wrong ExitBearingTrue → FindExitExtensionNode
+                            // routes backward → permanent max-pan tone for any exit angle.
                             //
-                            // Two-tier tiebreak:
+                            // Primary tiebreak — lateral direction.
+                            //   Use the junction node's signed lateral offset from the
+                            //   runway centreline (lateralM: + = right, - = left, already
+                            //   computed above). The correct exit edge moves the aircraft
+                            //   further off-runway on the SAME side as the junction; the
+                            //   reverse edge heads toward the opposite apron or back across
+                            //   the runway. lateralComponent = sin(NormalizeAngle(bearing −
+                            //   rwyHeading)) gives the signed lateral movement of an edge.
+                            //   This criterion is geometrically correct for ALL exit angles:
+                            //     7°  exit: correct edge lat≈+0.12, reverse lat≈-0.12
+                            //     90° exit: correct edge lat=±1.00, reverse lat=∓1.00
+                            //     100° exit: correct edge lat≈±0.98, reverse lat≈∓0.98
+                            //   (hemisphere alone would mis-pick the reverse edge for
+                            //   obtuse exits 90°–180° where the correct edge is in the
+                            //   "backward" hemisphere by the rel≤90 criterion.)
                             //
-                            // Tier 1 — hemisphere (handles shallow exits like 7°).
-                            //   Forward-hemisphere edges (rel ≤ 90° from runway heading) beat
-                            //   backward-hemisphere edges (rel > 90°). For a 7° exit the
-                            //   forward edge has rel=7, the reverse has rel=173; both fold to
-                            //   off=7, but only one is forward-hemisphere.
-                            //
-                            // Tier 2 — lateral direction (handles 90° and other symmetric
-                            //   cases where both edges land in the same hemisphere).
-                            //   At exactly 90° both edges have rel=90 (the boundary), so
-                            //   tier 1 can't distinguish them. Use the junction node's own
-                            //   lateral offset (lateralM, signed: + = right of runway, -
-                            //   = left). The correct exit edge moves the aircraft further
-                            //   off-runway on the SAME side as the junction; the wrong edge
-                            //   moves toward the opposite apron or back across the runway.
-                            //   lateralComponent = sin(NormalizeAngle(bearing - rwyHeading))
-                            //   matches the lateral unit vector (right of runway direction).
-                            bool bestForward = bestRel <= 90.0;
-                            bool curForward  = curRel  <= 90.0;
-                            if (curForward != bestForward)
+                            // Fallback tiebreak — hemisphere.
+                            //   Applied only when the junction is within 1 m of the
+                            //   centreline and lateral direction can't discriminate.
+                            //   Forward-hemisphere edges (rel ≤ 90°) beat backward edges;
+                            //   correct for acute exits, ambiguous for obtuse exits on the
+                            //   centreline (an inherently rare degenerate case).
+                            if (Math.Abs(lateralM) > 1.0)
                             {
-                                // Different hemispheres — forward wins.
-                                if (curForward) best = e;
-                            }
-                            else if (Math.Abs(lateralM) > 1.0)
-                            {
-                                // Same hemisphere: prefer edge whose lateral direction
-                                // matches the side the junction node is on.
                                 double bestLatComp = Math.Sin(NormalizeAngle(best.BearingDegrees - rwyHeadingTrue) * Math.PI / 180.0);
                                 double curLatComp  = Math.Sin(NormalizeAngle(e.BearingDegrees   - rwyHeadingTrue) * Math.PI / 180.0);
                                 bool curMatchesSide  = Math.Sign(curLatComp)  == Math.Sign(lateralM);
@@ -1537,9 +1532,14 @@ public class TaxiGraph
                                 if (curMatchesSide && !bestMatchesSide)
                                     best = e;
                             }
-                            // If junction is on the centreline (|lateralM| ≤ 1 m) and both
-                            // edges are in the same hemisphere, first-encountered wins — no
-                            // additional information available to distinguish them.
+                            else
+                            {
+                                // Junction near centreline: fall back to hemisphere.
+                                bool bestForward = bestRel <= 90.0;
+                                bool curForward  = curRel  <= 90.0;
+                                if (curForward && !bestForward)
+                                    best = e;
+                            }
                         }
                     }
                 }
