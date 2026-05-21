@@ -69,6 +69,10 @@ public class TaxiGuidanceManager : IDisposable
 
     // Current tracking state
     private int _currentSegmentIndex = 0;
+    // True when the active route came from the Landing Exit Planner (it
+    // terminates at a runway exit, not a gate) — drives the post-exit arrival
+    // announcement in HandleArrival.
+    private bool _isLandingExitRoute = false;
     private DateTime _lastRecalculationTime = DateTime.MinValue;
     private string _lastAnnouncedTaxiway = "";
     private bool _approachAnnounced = false;      // "In X feet, turn..." at ~300ft
@@ -871,6 +875,9 @@ public class TaxiGuidanceManager : IDisposable
 
             _route = route;
             _currentSegmentIndex = 0;
+            // Cleared for every fresh route; BeginLandingRollout / RetargetLandingExit
+            // re-set it true when this is a Landing Exit Planner route.
+            _isLandingExitRoute = false;
             _approachAnnounced = false;
             _turnImminentAnnounced = false;
             _crossingAnnounced = false;
@@ -1050,6 +1057,7 @@ public class TaxiGuidanceManager : IDisposable
             }
 
             _rolloutExit = exit;
+            _isLandingExitRoute = true; // arrival message will direct the pilot to the gate planner
             _rolloutRunwayHeadingTrue = runwayHeadingTrue;
             _rolloutRunway = runway;
             _rolloutAllExits = allExits;
@@ -1121,6 +1129,7 @@ public class TaxiGuidanceManager : IDisposable
         lock (_stateLock)
         {
             _rolloutExit = null;
+            _isLandingExitRoute = false; // no route to an exit — runway-end countdown only
             _rolloutRunway = runway;
             _rolloutRunwayHeadingTrue = runway.Heading;
 
@@ -2485,10 +2494,27 @@ public class TaxiGuidanceManager : IDisposable
             return;
         }
 
-        // No lineup data — just stop
+        // No lineup data — just stop.
         _steeringTone.Stop();
         SetState(TaxiGuidanceState.Arrived);
-        AnnounceInstruction($"{_route?.DestinationName ?? "Destination"} reached.");
+
+        if (_isLandingExitRoute)
+        {
+            // A Landing Exit Planner route terminates at the runway exit, not
+            // at the gate. Tell the pilot explicitly what to do next — newer
+            // pilots won't know the planner stops here by design, and the tone
+            // simply going quiet reads as "broken" rather than "done, your
+            // move". The taxi planner (Input mode + Shift+Y) builds the gate
+            // route.
+            string exitName = _route?.DestinationName ?? "the exit";
+            AnnounceInstruction(
+                $"Off the runway at {exitName}. Hold position. " +
+                $"Open the taxi planner to set a route to your gate.");
+        }
+        else
+        {
+            AnnounceInstruction($"{_route?.DestinationName ?? "Destination"} reached.");
+        }
     }
 
     /// <summary>
@@ -3298,6 +3324,7 @@ public class TaxiGuidanceManager : IDisposable
         }
 
         _rolloutExit = newExit;
+        _isLandingExitRoute = true; // LoadRoute above cleared it; still a landing-exit route
         _rolloutApproach1500Announced = false;
         _rolloutApproach500Announced = false;
         _rolloutTurnNowAnnounced = false;
@@ -3344,6 +3371,7 @@ public class TaxiGuidanceManager : IDisposable
         _currentSegmentIndex = 0;
         _originalTaxiwaySequence = null;
         _rolloutExit = null;
+        _isLandingExitRoute = false; // no exit route — runway-end countdown
         // KEEP _rolloutRunway and _rolloutRunwayHeadingTrue — countdown needs them.
         _rolloutAllExits = new List<Navigation.LandingExit>();
         _rolloutApproach1500Announced = false;
@@ -3955,6 +3983,7 @@ public class TaxiGuidanceManager : IDisposable
         // subsequent BeginLandingRollout caller assume a clean baseline
         // without depending on its own field assignments to overwrite.
         _rolloutExit = null;
+        _isLandingExitRoute = false;
         _rolloutRunway = null;
         _rolloutAllExits = new List<Navigation.LandingExit>();
         _rolloutApproach1500Announced = false;
