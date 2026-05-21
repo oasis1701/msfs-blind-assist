@@ -347,7 +347,14 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             "STBY PWR", "BAT BUS", "BAT", "AUX BAT", "TR1", "TR2", "TR3", "TEST");
         d["ELEC_ACMeterSelector"]    = Selector("ELEC_ACMeterSelector", "AC Meter",
             "STBY PWR", "GRD PWR", "GEN 1", "APU GEN", "GEN 2", "INV", "TEST");
-        d["ELEC_BatSelector"]        = Selector("ELEC_BatSelector", "Battery", "OFF", "BAT", "ON");
+        // TFM: `_onOrOffStates` (off/on, 2 positions); SDK line 159: `unsigned char ELEC_BatSelector; // 0: OFF  1: BAT  2: ON`.
+        // Resolved as 2-position toggle (off/on) because TFM exposes fewer positions
+        // than SDK and the user has directly confirmed only 2 detents exist physically
+        // on the NG3 battery selector. SDK position 2 ("ON") is a phantom enum value
+        // — what the SDK documents as "BAT" (position 1) is the real cockpit "on"
+        // position. Switch is still guarded; the 2-position guarded dispatch path
+        // (`SendPMDGGuardedToggle`, parameterless) handles this correctly.
+        d["ELEC_BatSelector"]        = Toggle("ELEC_BatSelector", "Battery", "OFF", "ON");
         d["ELEC_CabUtilSw"]          = Toggle("ELEC_CabUtilSw", "Cabin Utility");
         d["ELEC_IFEPassSeatSw"]      = Toggle("ELEC_IFEPassSeatSw", "IFE Pass Seats");
         d["ELEC_annunDRIVE_0"]       = Annun("ELEC_annunDRIVE_0", "Drive 1");
