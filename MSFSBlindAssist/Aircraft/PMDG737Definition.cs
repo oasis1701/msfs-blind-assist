@@ -292,6 +292,11 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         // The switch is physically ON ↔ NORMAL on the NG3 cockpit, not OFF ↔ NORMAL.
         d["OXY_SwNormal"]         = Toggle("OXY_SwNormal", "Passenger Oxygen", "ON", "Normal");
         d["OXY_annunPASS_OXY_ON"] = Annun("OXY_annunPASS_OXY_ON", "PASS OXY ON");
+        // Oxygen pressure needle (SDK line 157: `byte OXY_Needle; // Position 0..240`).
+        // Quantity (no auto-announce) — the byte updates on every consumption tick and would
+        // flood the screen reader. Exposed in the Oxygen panel as a readable focus target for
+        // status queries. TFM has this as a Slider readout for parity.
+        d["OXY_Needle"]           = Quantity("OXY_Needle", "Oxygen Pressure Needle");
 
         // Gear overhead annunciators
         d["GEAR_annunOvhdLEFT"]  = Annun("GEAR_annunOvhdLEFT", "Gear Left");
@@ -444,6 +449,27 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         d["ELEC_annunAPU_GEN_OFF_BUS"] = AnnunInverted("ELEC_annunAPU_GEN_OFF_BUS", "APU Gen Off Bus");
         d["ELEC_MeterDisplayTop"]    = Display("ELEC_MeterDisplayTop", "Electrical Meter Top Display");
         d["ELEC_MeterDisplayBottom"] = Display("ELEC_MeterDisplayBottom", "Electrical Meter Bottom Display");
+        // ELEC_BusPowered[16] — bus-powered indicators (SDK line 299, `bool[16]`). All 16 are
+        // read-only annunciators surfaced by TFM in its `BUSES` panel. Per the user-approved
+        // 29-panel functional structure, these are auto-announced (IsAnnounced=true via Annun)
+        // and NOT placed in any panel — 16 entries would dominate the Electrical panel which
+        // is already dense. Index → label per TFM's BUSES panel ordering.
+        d["ELEC_BusPowered_0"]  = Annun("ELEC_BusPowered_0",  "DC bus Hot Battery");
+        d["ELEC_BusPowered_1"]  = Annun("ELEC_BusPowered_1",  "DC bus Hot Battery Switched");
+        d["ELEC_BusPowered_2"]  = Annun("ELEC_BusPowered_2",  "DC bus Battery");
+        d["ELEC_BusPowered_3"]  = Annun("ELEC_BusPowered_3",  "DC bus Standby");
+        d["ELEC_BusPowered_4"]  = Annun("ELEC_BusPowered_4",  "DC bus 1");
+        d["ELEC_BusPowered_5"]  = Annun("ELEC_BusPowered_5",  "DC bus 2");
+        d["ELEC_BusPowered_6"]  = Annun("ELEC_BusPowered_6",  "DC bus Ground Service");
+        d["ELEC_BusPowered_7"]  = Annun("ELEC_BusPowered_7",  "AC bus Transfer 1");
+        d["ELEC_BusPowered_8"]  = Annun("ELEC_BusPowered_8",  "AC bus Transfer 2");
+        d["ELEC_BusPowered_9"]  = Annun("ELEC_BusPowered_9",  "AC bus Ground Service 1");
+        d["ELEC_BusPowered_10"] = Annun("ELEC_BusPowered_10", "AC bus Ground Service 2");
+        d["ELEC_BusPowered_11"] = Annun("ELEC_BusPowered_11", "AC bus Main 1");
+        d["ELEC_BusPowered_12"] = Annun("ELEC_BusPowered_12", "AC bus Main 2");
+        d["ELEC_BusPowered_13"] = Annun("ELEC_BusPowered_13", "AC bus Galley 1");
+        d["ELEC_BusPowered_14"] = Annun("ELEC_BusPowered_14", "AC bus Galley 2");
+        d["ELEC_BusPowered_15"] = Annun("ELEC_BusPowered_15", "AC bus Standby");
 
         // APU
         d["APU_annunMAINT"]            = Annun("APU_annunMAINT", "APU MAINT");
@@ -701,6 +727,11 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         d["MCP_annunCWS_A"]  = Annun("MCP_annunCWS_A", "CWS A");
         d["MCP_annunCMD_B"]  = Annun("MCP_annunCMD_B", "CMD B");
         d["MCP_annunCWS_B"]  = Annun("MCP_annunCWS_B", "CWS B");
+        // SDK lines 542-593: MCP_IASOverspeedFlash / MCP_IASUnderspeedFlash / MCP_indication_powered
+        // (all bool). Surface as Annun in the MCP panel — matches TFM's MCP-section coverage.
+        d["MCP_IASOverspeedFlash"]  = Annun("MCP_IASOverspeedFlash",  "MCP Overspeed");
+        d["MCP_IASUnderspeedFlash"] = Annun("MCP_IASUnderspeedFlash", "MCP Underspeed");
+        d["MCP_indication_powered"] = Annun("MCP_indication_powered", "MCP Powered");
 
         // =================================================================
         // FORWARD PANEL — NWS, AP/AT annunciators, DU selectors, autobrake, etc.
@@ -849,11 +880,27 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             IsAnnounced = true
         };
 
-        // ACP selected mic & receivers (read-only state cache).
+        // ACP selected mic & receivers.
         // The SDK array is 3-wide for binary compatibility, but the 737 cockpit has no
         // observer ACP — index 2 always reads as 0 and is not exposed in the panel.
-        d["COMM_SelectedMic_0"] = Display("COMM_SelectedMic_0", "Captain Selected Mic");
-        d["COMM_SelectedMic_1"] = Display("COMM_SelectedMic_1", "First Officer Selected Mic");
+        // SDK line 721: `byte[3] COMM_SelectedMic` — single-selection enum 0..7 per ACP.
+        // Per-position labels match TFM's `_micSelectorStates`. Each position has its own
+        // dedicated EVT_ACP_*_MIC_X event (not a stepwise selector) — dispatch is
+        // special-cased in HandleUIVariableSet by looking up the per-position event.
+        d["COMM_SelectedMic_0"] = Selector("COMM_SelectedMic_0", "Captain Selected Mic",
+            "VHF1", "VHF2", "VHF3", "HF1", "HF2", "FLT", "SVC", "PA");
+        d["COMM_SelectedMic_1"] = Selector("COMM_SelectedMic_1", "First Officer Selected Mic",
+            "VHF1", "VHF2", "VHF3", "HF1", "HF2", "FLT", "SVC", "PA");
+        // SDK line 723: `uint[3] COMM_ReceiverSwitches` — bitmask of currently-selected
+        // receivers per ACP (ACP_SEL_RECV_* flags, SDK lines 610-623). Each receiver button
+        // is an independent momentary toggle (EVT_ACP_*_REC_X events), so the UI can't
+        // model this as a single-selection selector. Exposed as Display for status query
+        // (value rendered as bitmask decode in ProcessSimVarUpdate). Index 2 is the overhead
+        // ACP — surfaced because the overhead ACP DOES exist on the 737 (the observer one
+        // doesn't). TFM exposes all three.
+        d["COMM_ReceiverSwitches_0"] = Display("COMM_ReceiverSwitches_0", "Captain Receivers");
+        d["COMM_ReceiverSwitches_1"] = Display("COMM_ReceiverSwitches_1", "First Officer Receivers");
+        d["COMM_ReceiverSwitches_2"] = Display("COMM_ReceiverSwitches_2", "Overhead Receivers");
 
         // Stab trim
         d["TRIM_StabTrimMainElecSw_NORMAL"] = Toggle("TRIM_StabTrimMainElecSw_NORMAL",
@@ -1170,7 +1217,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             },
             ["Oxygen"] = new List<string>
             {
-                "OXY_SwNormal"
+                "OXY_SwNormal", "OXY_Needle"
             },
             ["Wipers"] = new List<string>
             {
@@ -1211,7 +1258,8 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 "MCP_Course_0", "MCP_Course_1",
                 "MCP_IASMach", "MCP_Heading", "MCP_Altitude", "MCP_VertSpeed",
                 "MCP_FDSw_0", "MCP_FDSw_1",
-                "MCP_ATArmSw", "MCP_BankLimitSel", "MCP_DisengageBar"
+                "MCP_ATArmSw", "MCP_BankLimitSel", "MCP_DisengageBar",
+                "MCP_indication_powered", "MCP_IASOverspeedFlash", "MCP_IASUnderspeedFlash"
             },
             ["Display Select"] = new List<string>
             {
@@ -1277,7 +1325,8 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 "COM2_ActiveFreq", "COM_STANDBY_FREQUENCY_SET:2", "COM2_RADIO_SWAP",
                 "COMM_ServiceInterphoneSw",
                 "COMM_Attend_PressCount", "COMM_GrdCall_PressCount",
-                "COMM_SelectedMic_0", "COMM_SelectedMic_1"
+                "COMM_SelectedMic_0", "COMM_SelectedMic_1",
+                "COMM_ReceiverSwitches_0", "COMM_ReceiverSwitches_1", "COMM_ReceiverSwitches_2"
             },
             ["Flight Deck Door"] = new List<string>
             {
@@ -2902,6 +2951,38 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         }
 
         // ------------------------------------------------------------------
+        // 3a. ACP selected mic — direct dispatch via per-position event.
+        //     The SDK exposes one momentary event per mic detent (VHF1..PA),
+        //     not a single stepwise selector. The byte value chosen in the
+        //     UI dropdown maps directly to the matching EVT_ACP_*_MIC_X
+        //     event. No-op when already at target. Index 2 (observer ACP)
+        //     is intentionally not handled — the 737 has no observer ACP.
+        // ------------------------------------------------------------------
+        if (varKey == "COMM_SelectedMic_0" || varKey == "COMM_SelectedMic_1")
+        {
+            int target = (int)value;
+            string[] perPositionEvents =
+            {
+                "MIC_VHF1", "MIC_VHF2", "MIC_VHF3", "MIC_HF1",
+                "MIC_HF2",  "MIC_FLT",  "MIC_SVC",  "MIC_PA"
+            };
+            if (target < 0 || target >= perPositionEvents.Length) return true;
+
+            // Skip if cached state already at target (saves a redundant CDA round-trip
+            // and prevents the SDK from re-firing the mic-pressed sound).
+            var dm = simConnect.PMDGDataManager;
+            if (dm != null && (int)dm.GetFieldValue(varDef.Name) == target) return true;
+
+            string acpPrefix = varKey == "COMM_SelectedMic_0" ? "EVT_ACP_CAPT_" : "EVT_ACP_FO_";
+            string micEvtName = acpPrefix + perPositionEvents[target];
+            if (EventIds.TryGetValue(micEvtName, out int micEvId))
+            {
+                simConnect.SendPMDGEvent(micEvtName, (uint)micEvId, 1);
+            }
+            return true;
+        }
+
+        // ------------------------------------------------------------------
         // 4. Fire handles — handled as synthetic momentary press buttons
         //    (FIRE_EngineHandle_1_Press / FIRE_APUHandle_Press / etc.) which
         //    route through _simpleEventMap below. Per the PMDG SDK each
@@ -3043,6 +3124,21 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             case "MCP_IASBlank":
             case "MCP_VertSpeedBlank":
                 // Flags consumed by other handlers — absorb silently.
+                return true;
+
+            // -------------------------------------------------------------
+            // MCP overspeed / underspeed flash and power indicator. Rising
+            // edge speaks; falling edge is silent (no point repeating "no
+            // longer overspeed" — the pilot just slowed down).
+            // -------------------------------------------------------------
+            case "MCP_IASOverspeedFlash":
+                if (value > 0.5) announcer.AnnounceImmediate("MCP overspeed");
+                return true;
+            case "MCP_IASUnderspeedFlash":
+                if (value > 0.5) announcer.AnnounceImmediate("MCP underspeed");
+                return true;
+            case "MCP_indication_powered":
+                announcer.Announce(value > 0.5 ? "MCP powered" : "MCP unpowered");
                 return true;
 
             // -------------------------------------------------------------
@@ -3301,9 +3397,55 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             case "FMC_flightNumber":
                 return true;
 
+            // -------------------------------------------------------------
+            // ACP receiver bitmasks (SDK lines 723 + 610-623). Decode the
+            // selected-receiver bitmask into a readable string. Suppress when
+            // value is 0 (no receivers selected — usually means "muted"); the
+            // panel display still surfaces the raw value for query.
+            // -------------------------------------------------------------
+            case "COMM_ReceiverSwitches_0":
+            case "COMM_ReceiverSwitches_1":
+            case "COMM_ReceiverSwitches_2":
+            {
+                uint bits = (uint)value;
+                if (bits == 0) return true;
+                string acpLabel = varName switch
+                {
+                    "COMM_ReceiverSwitches_0" => "Captain receivers",
+                    "COMM_ReceiverSwitches_1" => "First officer receivers",
+                    _                         => "Overhead receivers"
+                };
+                announcer.Announce($"{acpLabel}: {DecodeReceiverBitmask(bits)}");
+                return true;
+            }
+
             default:
                 return false;
         }
+    }
+
+    // -------------------------------------------------------------------
+    // Decode `COMM_ReceiverSwitches` bitmask into a comma-separated list of
+    // selected-receiver labels. Bit definitions per SDK lines 610-623.
+    // -------------------------------------------------------------------
+    private static string DecodeReceiverBitmask(uint bits)
+    {
+        var labels = new List<string>();
+        if ((bits & 0x0001) != 0) labels.Add("VHF1");
+        if ((bits & 0x0002) != 0) labels.Add("VHF2");
+        if ((bits & 0x0004) != 0) labels.Add("VHF3");
+        if ((bits & 0x0008) != 0) labels.Add("HF1");
+        if ((bits & 0x0010) != 0) labels.Add("HF2");
+        if ((bits & 0x0020) != 0) labels.Add("FLT");
+        if ((bits & 0x0040) != 0) labels.Add("SVC");
+        if ((bits & 0x0080) != 0) labels.Add("PA");
+        if ((bits & 0x0100) != 0) labels.Add("NAV1");
+        if ((bits & 0x0200) != 0) labels.Add("NAV2");
+        if ((bits & 0x0400) != 0) labels.Add("ADF1");
+        if ((bits & 0x0800) != 0) labels.Add("ADF2");
+        if ((bits & 0x1000) != 0) labels.Add("MKR");
+        if ((bits & 0x2000) != 0) labels.Add("SPKR");
+        return labels.Count == 0 ? "none" : string.Join(", ", labels);
     }
 
     public override bool HandleHotkeyAction(
