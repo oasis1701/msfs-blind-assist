@@ -4179,8 +4179,8 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
 
             // Request both variables using existing registrations
             // ProcessSimVarUpdate will combine them when both arrive
-            simConnectMgr.RequestVariable("A32NX_FCU_AFS_DISPLAY_HDG_TRK_VALUE");
-            simConnectMgr.RequestVariable("A32NX_FCU_AFS_DISPLAY_HDG_TRK_MANAGED");
+            simConnectMgr.RequestVariable("A32NX_FCU_AFS_DISPLAY_HDG_TRK_VALUE", forceUpdate: true);
+            simConnectMgr.RequestVariable("A32NX_FCU_AFS_DISPLAY_HDG_TRK_MANAGED", forceUpdate: true);
         }
     }
 
@@ -4197,8 +4197,8 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
 
             // Request both variables using existing registrations
             // ProcessSimVarUpdate will combine them when both arrive
-            simConnectMgr.RequestVariable("A32NX_FCU_AFS_DISPLAY_SPD_MACH_VALUE");
-            simConnectMgr.RequestVariable("A32NX_FCU_AFS_DISPLAY_SPD_MACH_MANAGED");
+            simConnectMgr.RequestVariable("A32NX_FCU_AFS_DISPLAY_SPD_MACH_VALUE", forceUpdate: true);
+            simConnectMgr.RequestVariable("A32NX_FCU_AFS_DISPLAY_SPD_MACH_MANAGED", forceUpdate: true);
         }
     }
 
@@ -4215,8 +4215,8 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
 
             // Request both variables using existing registrations
             // ProcessSimVarUpdate will combine them when both arrive
-            simConnectMgr.RequestVariable("A32NX_FCU_AFS_DISPLAY_ALT_VALUE");
-            simConnectMgr.RequestVariable("A32NX_FCU_AFS_DISPLAY_LVL_CH_MANAGED");
+            simConnectMgr.RequestVariable("A32NX_FCU_AFS_DISPLAY_ALT_VALUE", forceUpdate: true);
+            simConnectMgr.RequestVariable("A32NX_FCU_AFS_DISPLAY_LVL_CH_MANAGED", forceUpdate: true);
         }
     }
 
@@ -4233,8 +4233,8 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
 
             // Request both variables using existing registrations
             // ProcessSimVarUpdate will combine them when both arrive
-            simConnectMgr.RequestVariable("A32NX_FCU_AFS_DISPLAY_VS_FPA_VALUE");
-            simConnectMgr.RequestVariable("A32NX_TRK_FPA_MODE_ACTIVE");
+            simConnectMgr.RequestVariable("A32NX_FCU_AFS_DISPLAY_VS_FPA_VALUE", forceUpdate: true);
+            simConnectMgr.RequestVariable("A32NX_TRK_FPA_MODE_ACTIVE", forceUpdate: true);
         }
     }
 
