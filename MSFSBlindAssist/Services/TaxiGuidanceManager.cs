@@ -338,6 +338,12 @@ public class TaxiGuidanceManager : IDisposable
     // If it succeeds, state moves to Taxiing and we never return here. If it fails,
     // the bearing-to-junction fallback tone below takes over for the remainder.
     private bool _rolloutEarlyHandoffDone = false;
+    // Set true when LandingRollout hands off early to Taxiing (TryEarlyExitHandoff
+    // or turnBegun). While set, UpdatePosition monitors for post-handoff overshoot:
+    // if the pilot rolls past the exit without turning, retarget or countdown.
+    // Cleared when the exit is confirmed taken, on StopGuidance, or on next
+    // BeginLandingRollout.
+    private bool _rolloutHandoffActive = false;
     // Timestamp of the last undershoot retarget. DateTime.MinValue = no retarget
     // yet this rollout. Guards against rapid cascade retargeting when multiple
     // earlier exits are within ROLLOUT_UNDERSHOOT_RANGE_FT.
@@ -1099,6 +1105,7 @@ public class TaxiGuidanceManager : IDisposable
             // next BeginLandingRollout (StopGuidance fires on takeoff via
             // OnTakeoffAssistActiveChanged), but defensive is cheap.
             _rolloutNoExitMode = false;
+            _rolloutHandoffActive = false;
             _rolloutEnd1500Announced = false;
             _rolloutEnd500Announced = false;
             _rolloutEnd100Announced = false;
@@ -1277,6 +1284,77 @@ public class TaxiGuidanceManager : IDisposable
 
         if (_state != TaxiGuidanceState.Taxiing || _route == null || _graph == null)
             return;
+
+        // Post-handoff overshoot monitor. After TryEarlyExitHandoff or the
+        // turnBegun/exitedLaterally handoff from UpdateLandingRollout transitions
+        // to Taxiing, the LandingRollout overshoot detector no longer runs. If
+        // the pilot fails to turn, the off-route recalc would try to route BACK
+        // to the missed exit — dangerous on an active runway. This block detects
+        // that case and retargets to the next downfield exit or triggers the
+        // runway-end countdown, exactly like the LandingRollout overshoot path.
+        if (_rolloutHandoffActive && _rolloutExit != null && _rolloutRunway != null)
+        {
+            double hdgDeltaAbsPH = Math.Abs(NormalizeAngle(headingTrue - _rolloutRunwayHeadingTrue));
+            bool turnBegunPH = hdgDeltaAbsPH >= ROLLOUT_TURN_BEGAN_HDG_DEG
+                               && groundSpeedKts < ROLLOUT_TURN_MAX_GS_KTS;
+
+            double halfWidthFtPH = (_rolloutRunway.Width > 0 ? _rolloutRunway.Width : 200.0) * 0.5;
+            double lateralFtPH = AbsLateralFromRunwayMeters(
+                lat, lon,
+                _rolloutRunway.StartLat, _rolloutRunway.StartLon,
+                _rolloutRunwayHeadingTrue) * METERS_TO_FEET;
+            bool exitedLaterallyPH = lateralFtPH >= halfWidthFtPH + 30.0;
+
+            double exitBrgErrPH = _rolloutExit.ExitBearingTrue != 0.0
+                ? Math.Abs(NormalizeAngle(headingTrue - _rolloutExit.ExitBearingTrue))
+                : double.MaxValue;
+            bool alignedWithExitPH = _rolloutExit.ExitBearingTrue != 0.0
+                && _rolloutExit.ExitAngleDegrees >= 3.0
+                && exitBrgErrPH <= 5.0
+                && hdgDeltaAbsPH >= Math.Max(2.0, _rolloutExit.ExitAngleDegrees * 0.7)
+                && groundSpeedKts < ROLLOUT_TURN_MAX_GS_KTS;
+
+            if (turnBegunPH || exitedLaterallyPH || alignedWithExitPH)
+            {
+                // Pilot has taken the exit — stop monitoring.
+                _rolloutHandoffActive = false;
+            }
+            else
+            {
+                double signedAlongPastFtPH = SignedAlongRunwayMeters(
+                    lat, lon,
+                    _rolloutExit.Latitude, _rolloutExit.Longitude,
+                    _rolloutRunwayHeadingTrue) * METERS_TO_FEET;
+
+                if (signedAlongPastFtPH >= ROLLOUT_OVERSHOOT_FT)
+                {
+                    _rolloutHandoffActive = false;
+
+                    Navigation.LandingExit? nextExitPH = null;
+                    foreach (var e in _rolloutAllExits)
+                    {
+                        if (e.DistanceFromThresholdFeet <= _rolloutExit.DistanceFromThresholdFeet + ROLLOUT_OVERSHOOT_FT)
+                            continue;
+                        if (e.ExitAngleDegrees > 0.0 && e.ExitAngleDegrees > 90.0)
+                            continue;
+                        nextExitPH = e;
+                        break;
+                    }
+
+                    if (nextExitPH != null)
+                    {
+                        RetargetLandingExit(nextExitPH, lat, lon, headingTrue);
+                        return;
+                    }
+
+                    string rwyLabelPH = !string.IsNullOrEmpty(_rolloutRunway.RunwayID)
+                        ? _rolloutRunway.RunwayID : "this runway";
+                    AnnounceInstruction($"Missed last exit on runway {rwyLabelPH}.");
+                    EnterRunwayEndCountdown();
+                    return;
+                }
+            }
+        }
 
         if (_currentSegmentIndex >= _route.Segments.Count)
         {
@@ -2710,6 +2788,10 @@ public class TaxiGuidanceManager : IDisposable
                 $"exitBrgErr={exitBrgErr:F1}deg lateral={lateralFromCenterlineFt:F0}ft " +
                 $"atTaxiSpeed={atTaxiSpeed} nearExit={nearExit} pastExit={pastExit}");
 
+            // Arm post-handoff overshoot monitor so UpdatePosition can detect
+            // a missed exit while in Taxiing state.
+            _rolloutHandoffActive = true;
+
             // Re-route from the pilot's LIVE position to the best destination node for
             // this exit. Always done (not just for ApronNodeId exits) because the initial
             // touchdown route goes through the taxiway network and is never on the runway
@@ -3213,6 +3295,9 @@ public class TaxiGuidanceManager : IDisposable
         // than inheriting the rollout's near-zero centreline residual.
         _smoothedHeadingError = 0.0;
         _headingErrorInitialized = false;
+
+        // Arm post-handoff overshoot monitor (same as the turnBegun path above).
+        _rolloutHandoffActive = true;
 
         SetState(TaxiGuidanceState.Taxiing);
         return true;
@@ -4194,6 +4279,7 @@ public class TaxiGuidanceManager : IDisposable
         _rolloutTurnNowAnnounced = false;
         _rolloutExitToneArmed = false;
         _rolloutNoExitMode = false;
+        _rolloutHandoffActive = false;
         _rolloutEnd1500Announced = false;
         _rolloutEnd500Announced = false;
         _rolloutEnd100Announced = false;
