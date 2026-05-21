@@ -3952,12 +3952,18 @@ public class SimConnectManager
             await pmdgDataManager.SendGuardedToggle(guardEventName, guardEventId, switchEventName, switchEventId);
     }
 
-    public async Task SendPMDGGuardedSelector(string guardEventName, uint guardEventId,
-                                              string switchEventName, uint switchEventId,
-                                              int targetPosition)
+    public async Task SendPMDGSelectorStepwise(string eventName, uint eventId, int currentPosition, int targetPosition)
     {
         if (pmdgDataManager != null)
-            await pmdgDataManager.SendGuardedSelector(guardEventName, guardEventId, switchEventName, switchEventId, targetPosition);
+            await pmdgDataManager.SendSelectorStepwise(eventName, eventId, currentPosition, targetPosition);
+    }
+
+    public async Task SendPMDGGuardedSelectorStepwise(string guardEventName, uint guardEventId,
+                                                      string switchEventName, uint switchEventId,
+                                                      int currentPosition, int targetPosition)
+    {
+        if (pmdgDataManager != null)
+            await pmdgDataManager.SendGuardedSelectorStepwise(guardEventName, guardEventId, switchEventName, switchEventId, currentPosition, targetPosition);
     }
 
     public void Disconnect()

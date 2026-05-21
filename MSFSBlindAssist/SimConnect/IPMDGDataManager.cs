@@ -31,14 +31,21 @@ public interface IPMDGDataManager : IDisposable
         string switchEventName, uint switchEventId);
 
     /// <summary>
-    /// Guarded selector: guard open → 150 ms delay → switch event WITH targetPosition →
-    /// 150 ms delay → guard close. Use for guarded multi-position selectors where the
-    /// parameterless SendGuardedToggle would silently ignore the target position.
+    /// Walks a multi-position selector from currentPosition to targetPosition by sending
+    /// click-flag events on the switch event. ClkL (LEFTSINGLE = increment) or ClkR
+    /// (RIGHTSINGLE = decrement) is sent abs(delta) times with a short gap between clicks.
+    /// Reads current position from outside (caller responsibility) to avoid races.
     /// </summary>
-    Task SendGuardedSelector(
+    Task SendSelectorStepwise(string eventName, uint eventId, int currentPosition, int targetPosition);
+
+    /// <summary>
+    /// Guarded variant of SendSelectorStepwise: opens the guard, walks the selector via clicks,
+    /// then closes the guard. Use for guarded multi-position selectors like ELEC_StandbyPowerSelector.
+    /// </summary>
+    Task SendGuardedSelectorStepwise(
         string guardEventName, uint guardEventId,
         string switchEventName, uint switchEventId,
-        int targetPosition);
+        int currentPosition, int targetPosition);
 
     void RequestCDUScreen(int cdu);
 

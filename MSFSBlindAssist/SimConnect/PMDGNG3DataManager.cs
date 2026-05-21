@@ -437,20 +437,42 @@ public class PMDGNG3DataManager : IPMDGDataManager
         SendEvent(guardEventName,  guardEventId,  null);
     }
 
+    // Click-flag values per TFM PMDG737Aircraft.cs lines 31-34 (verified working in TFM's production code).
+    private const int ClkL = 0x20000000;                          // LEFTSINGLE  — increment one position
+    private const int ClkR = unchecked((int)0x80000000);          // RIGHTSINGLE — decrement one position
+    private const int ClickGapMs = 50;
+
     /// <summary>
-    /// Guarded selector: guard open → 150 ms delay → switch event WITH targetPosition →
-    /// 150 ms delay → guard close.
+    /// Walks a multi-position selector from currentPosition to targetPosition by sending
+    /// abs(delta) click-flag events. Uses ClkL for forward (increment), ClkR for reverse.
     /// </summary>
-    public async Task SendGuardedSelector(
+    public async Task SendSelectorStepwise(string eventName, uint eventId, int currentPosition, int targetPosition)
+    {
+        int delta = targetPosition - currentPosition;
+        if (delta == 0) return;
+        int clickFlag = delta > 0 ? ClkL : ClkR;
+        int steps = Math.Abs(delta);
+        for (int i = 0; i < steps; i++)
+        {
+            SendEvent(eventName, eventId, clickFlag);
+            if (i < steps - 1) await Task.Delay(ClickGapMs);
+        }
+    }
+
+    /// <summary>
+    /// Guarded variant: guard-open → walk via clicks → guard-close.
+    /// </summary>
+    public async Task SendGuardedSelectorStepwise(
         string guardEventName, uint guardEventId,
         string switchEventName, uint switchEventId,
-        int targetPosition)
+        int currentPosition, int targetPosition)
     {
-        SendEvent(guardEventName,  guardEventId,  null);
+        if (currentPosition == targetPosition) return;
+        SendEvent(guardEventName, guardEventId, null);
         await Task.Delay(150);
-        SendEvent(switchEventName, switchEventId, targetPosition);
+        await SendSelectorStepwise(switchEventName, switchEventId, currentPosition, targetPosition);
         await Task.Delay(150);
-        SendEvent(guardEventName,  guardEventId,  null);
+        SendEvent(guardEventName, guardEventId, null);
     }
 
     // ------------------------------------------------------------------
