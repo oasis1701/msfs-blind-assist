@@ -410,6 +410,21 @@ public class TaxiGuidanceManager : IDisposable
     // normal case, so an actual overshoot is unambiguous when this fires.
     private const double ROLLOUT_OVERSHOOT_FT = 100.0;
 
+    // Overshoot margin for a HIGH-SPEED (rapid-exit) taxiway. A RET curves away
+    // from the runway so gently (ICAO design radius >= 550 m) that at 100 ft
+    // past the exit a CORRECT turn is still only ~3 deg of heading and ~3 ft
+    // off the centerline — indistinguishable from rolling straight past. The
+    // flat 100 ft margin therefore mistakes a correct RET turn for a miss and
+    // retargets, cascading exit-to-exit down the runway. ~500 ft gives the turn
+    // room to register before an overshoot can be declared.
+    private const double ROLLOUT_HIGHSPEED_OVERSHOOT_FT = 500.0;
+
+    // Cross-track-from-centerline gate for overshoot detection: a genuine
+    // overshoot is past the exit AND still tracking the runway. Once the
+    // aircraft has moved this far off the centerline it is curving onto the
+    // exit, not missing it — not an overshoot regardless of distance past.
+    private const double OVERSHOOT_ON_CENTERLINE_FT = 30.0;
+
     // If the aircraft is within this distance of an earlier exit while below
     // the undershoot speed threshold, retarget to minimise runway occupancy.
     // 1000 ft gives ~15 s at 40 kt to hear the callout and react.
@@ -1326,7 +1341,18 @@ public class TaxiGuidanceManager : IDisposable
                     _rolloutExit.Latitude, _rolloutExit.Longitude,
                     _rolloutRunwayHeadingTrue) * METERS_TO_FEET;
 
-                if (signedAlongPastFtPH >= ROLLOUT_OVERSHOOT_FT)
+                // A high-speed (rapid-exit) taxiway needs a far larger margin
+                // before a miss can be declared — its gentle curve carries a
+                // correctly-turning aircraft >100 ft downfield while still only
+                // a few degrees into the turn. And it is a genuine overshoot
+                // only while the aircraft is still tracking the runway
+                // centerline; once it has moved laterally clear it is on the
+                // exit, not missing it.
+                double overshootMarginPH = _rolloutExit.ExitType == "High-speed"
+                    ? ROLLOUT_HIGHSPEED_OVERSHOOT_FT
+                    : ROLLOUT_OVERSHOOT_FT;
+                if (signedAlongPastFtPH >= overshootMarginPH
+                    && lateralFtPH < OVERSHOOT_ON_CENTERLINE_FT)
                 {
                     _rolloutHandoffActive = false;
 
@@ -2874,7 +2900,12 @@ public class TaxiGuidanceManager : IDisposable
         // buildup is too slow but heading alignment with ExitBearingTrue is clear).
         bool stillOnRunway = !exitedLaterally;
 
-        if (signedAlongPastFt >= ROLLOUT_OVERSHOOT_FT
+        // Exit-type-aware margin — see the post-handoff monitor: a high-speed
+        // RET's gentle curve would otherwise be misread as a miss at 100 ft.
+        double overshootMargin = _rolloutExit.ExitType == "High-speed"
+            ? ROLLOUT_HIGHSPEED_OVERSHOOT_FT
+            : ROLLOUT_OVERSHOOT_FT;
+        if (signedAlongPastFt >= overshootMargin
             && hdgDeltaAbs < ROLLOUT_TURN_BEGAN_HDG_DEG
             && stillOnRunway
             && !alignedWithExit)
