@@ -1495,19 +1495,51 @@ public class TaxiGraph
                         else if (Math.Abs(curOff - bestOff) <= 0.01)
                         {
                             // Equal off-axis angle: the adjacency list contains both the
-                            // forward edge (toward the apron, bearing ≈ runway ± exitAngle)
-                            // and the backward edge of the same taxiway (bearing ≈ runway ±
-                            // exitAngle ± 180°). Both fold to the same `off` value, so the
-                            // old strict-greater-than test was non-deterministic. A backward
-                            // edge causes ExitBearingTrue to point toward the threshold;
-                            // FindExitExtensionNode then routes the Taxiing handoff backward,
-                            // producing a permanent max-pan tone regardless of heading.
-                            // Fix: when off-axis angles are equal, forward-pointing edges
-                            // (rel ≤ 90° — bearing within 90° of runway heading) win.
+                            // forward edge (toward the apron) and the reverse edge of the
+                            // same taxiway segment (toward the threshold or opposite apron).
+                            // Both fold to the same `off`, so first-encountered was winning
+                            // non-deterministically. Wrong edge → wrong ExitBearingTrue →
+                            // FindExitExtensionNode routes backward → permanent wrong pan.
+                            //
+                            // Two-tier tiebreak:
+                            //
+                            // Tier 1 — hemisphere (handles shallow exits like 7°).
+                            //   Forward-hemisphere edges (rel ≤ 90° from runway heading) beat
+                            //   backward-hemisphere edges (rel > 90°). For a 7° exit the
+                            //   forward edge has rel=7, the reverse has rel=173; both fold to
+                            //   off=7, but only one is forward-hemisphere.
+                            //
+                            // Tier 2 — lateral direction (handles 90° and other symmetric
+                            //   cases where both edges land in the same hemisphere).
+                            //   At exactly 90° both edges have rel=90 (the boundary), so
+                            //   tier 1 can't distinguish them. Use the junction node's own
+                            //   lateral offset (lateralM, signed: + = right of runway, -
+                            //   = left). The correct exit edge moves the aircraft further
+                            //   off-runway on the SAME side as the junction; the wrong edge
+                            //   moves toward the opposite apron or back across the runway.
+                            //   lateralComponent = sin(NormalizeAngle(bearing - rwyHeading))
+                            //   matches the lateral unit vector (right of runway direction).
                             bool bestForward = bestRel <= 90.0;
                             bool curForward  = curRel  <= 90.0;
-                            if (curForward && !bestForward)
-                                best = e;
+                            if (curForward != bestForward)
+                            {
+                                // Different hemispheres — forward wins.
+                                if (curForward) best = e;
+                            }
+                            else if (Math.Abs(lateralM) > 1.0)
+                            {
+                                // Same hemisphere: prefer edge whose lateral direction
+                                // matches the side the junction node is on.
+                                double bestLatComp = Math.Sin(NormalizeAngle(best.BearingDegrees - rwyHeadingTrue) * Math.PI / 180.0);
+                                double curLatComp  = Math.Sin(NormalizeAngle(e.BearingDegrees   - rwyHeadingTrue) * Math.PI / 180.0);
+                                bool curMatchesSide  = Math.Sign(curLatComp)  == Math.Sign(lateralM);
+                                bool bestMatchesSide = Math.Sign(bestLatComp) == Math.Sign(lateralM);
+                                if (curMatchesSide && !bestMatchesSide)
+                                    best = e;
+                            }
+                            // If junction is on the centreline (|lateralM| ≤ 1 m) and both
+                            // edges are in the same hemisphere, first-encountered wins — no
+                            // additional information available to distinguish them.
                         }
                     }
                 }
