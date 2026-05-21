@@ -147,6 +147,24 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 OnlyAnnounceValueDescriptionMatches = true,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             };
+        // AnnunInverted: for annunciators named `annunOFF` / `annunBUS_OFF` / `annunSOURCE_OFF` etc.
+        // These lamps light when the system they describe is OFF (the lamp NAME is the abnormal
+        // condition the lamp signals). TFM's `_offOrOnStates` (0:on, 1:off) treats byte=1 as
+        // the "off" announcement because byte=1 means the lamp is lit, which means the system
+        // is in the "off" condition the lamp is named for. Without this inversion the default
+        // Annun helper would announce `<DisplayName>: on` when the lamp lights, which contradicts
+        // the lamp's semantic meaning ("X is OFF" — the lamp says X is off, not that X is on).
+        static SimConnect.SimVarDefinition AnnunInverted(string name, string display) =>
+            new SimConnect.SimVarDefinition
+            {
+                Name = name,
+                DisplayName = display,
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "on", [1] = "off" }
+            };
         static SimConnect.SimVarDefinition Numeric(string name, string display) =>
             new SimConnect.SimVarDefinition
             {
@@ -257,7 +275,12 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
 
         // Flight recorder / CVR
         d["FLTREC_SwNormal"]   = Toggle("FLTREC_SwNormal", "Flight Recorder", "TEST", "Normal");
-        d["FLTREC_annunOFF"]   = Annun("FLTREC_annunOFF", "Flight Recorder OFF");
+        // TFM: `_offOrOnStates` (0:on, 1:off); SDK line 99: `bool FLTREC_annunOFF;` (no inline comment).
+        // Resolved with TFM's inverted convention: this is an `annunOFF` lamp — it lights when
+        // the flight recorder system is OFF. byte=1 means the lamp is lit → announce "off"
+        // (the system is in the off condition the lamp names). Default Annun would announce
+        // "on" when the lamp lights, which contradicts the lamp's semantic meaning.
+        d["FLTREC_annunOFF"]   = AnnunInverted("FLTREC_annunOFF", "Flight Recorder OFF");
         d["CVR_annunTEST"]     = Annun("CVR_annunTEST", "CVR TEST");
 
         // =================================================================
@@ -381,13 +404,19 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         d["ELEC_GenSw_1"]            = Toggle("ELEC_GenSw_1", "Generator 2");
         d["ELEC_APUGenSw_0"]         = Toggle("ELEC_APUGenSw_0", "APU Generator 1");
         d["ELEC_APUGenSw_1"]         = Toggle("ELEC_APUGenSw_1", "APU Generator 2");
-        d["ELEC_annunTRANSFER_BUS_OFF_0"] = Annun("ELEC_annunTRANSFER_BUS_OFF_0", "Transfer Bus 1 Off");
-        d["ELEC_annunTRANSFER_BUS_OFF_1"] = Annun("ELEC_annunTRANSFER_BUS_OFF_1", "Transfer Bus 2 Off");
-        d["ELEC_annunSOURCE_OFF_0"]  = Annun("ELEC_annunSOURCE_OFF_0", "Source 1 Off");
-        d["ELEC_annunSOURCE_OFF_1"]  = Annun("ELEC_annunSOURCE_OFF_1", "Source 2 Off");
-        d["ELEC_annunGEN_BUS_OFF_0"] = Annun("ELEC_annunGEN_BUS_OFF_0", "Gen Bus 1 Off");
-        d["ELEC_annunGEN_BUS_OFF_1"] = Annun("ELEC_annunGEN_BUS_OFF_1", "Gen Bus 2 Off");
-        d["ELEC_annunAPU_GEN_OFF_BUS"] = Annun("ELEC_annunAPU_GEN_OFF_BUS", "APU Gen Off Bus");
+        // TFM: `_offOrOnStates` (0:on, 1:off); SDK lines 171-174: bus-off annunciator arrays,
+        // no inline comments. Resolved with TFM's inverted convention: these are `annunOFF`
+        // lamps — they light when the named bus/source is OFF. byte=1 means the lamp is lit
+        // → the bus IS off → announce "off". Default Annun would announce "on" when the lamp
+        // lights, which contradicts the lamp's semantic meaning. Applies to all eight bus-off
+        // annunciators below.
+        d["ELEC_annunTRANSFER_BUS_OFF_0"] = AnnunInverted("ELEC_annunTRANSFER_BUS_OFF_0", "Transfer Bus 1 Off");
+        d["ELEC_annunTRANSFER_BUS_OFF_1"] = AnnunInverted("ELEC_annunTRANSFER_BUS_OFF_1", "Transfer Bus 2 Off");
+        d["ELEC_annunSOURCE_OFF_0"]  = AnnunInverted("ELEC_annunSOURCE_OFF_0", "Source 1 Off");
+        d["ELEC_annunSOURCE_OFF_1"]  = AnnunInverted("ELEC_annunSOURCE_OFF_1", "Source 2 Off");
+        d["ELEC_annunGEN_BUS_OFF_0"] = AnnunInverted("ELEC_annunGEN_BUS_OFF_0", "Gen Bus 1 Off");
+        d["ELEC_annunGEN_BUS_OFF_1"] = AnnunInverted("ELEC_annunGEN_BUS_OFF_1", "Gen Bus 2 Off");
+        d["ELEC_annunAPU_GEN_OFF_BUS"] = AnnunInverted("ELEC_annunAPU_GEN_OFF_BUS", "APU Gen Off Bus");
         d["ELEC_MeterDisplayTop"]    = Display("ELEC_MeterDisplayTop", "Electrical Meter Top Display");
         d["ELEC_MeterDisplayBottom"] = Display("ELEC_MeterDisplayBottom", "Electrical Meter Bottom Display");
 
