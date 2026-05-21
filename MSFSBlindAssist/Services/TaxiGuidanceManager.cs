@@ -28,7 +28,16 @@ public enum TaxiGuidanceState
     /// significantly off runway heading (the turn onto the exit is
     /// underway).
     /// </summary>
-    LandingRollout
+    LandingRollout,
+    /// <summary>
+    /// The pilot reached the runway end without exiting and is backtaxiing
+    /// toward the apron. Steering tone guides on the reciprocal runway heading
+    /// (silent while heading is &gt;90° from backtrack target — turn direction is
+    /// ambiguous for a 180° rotation). Transitions to Taxiing once the aircraft
+    /// is within BACKTRACK_HANDOFF_M of the first taxi-graph connection node,
+    /// or if no connection node was found nearby.
+    /// </summary>
+    BacktrackingOnRunway
 }
 
 /// <summary>
@@ -345,6 +354,15 @@ public class TaxiGuidanceManager : IDisposable
     private bool _rolloutEnd500Announced;
     private bool _rolloutEnd100Announced;
 
+    // Backtrack state. Entered from runway-end countdown once the pilot has stopped
+    // or begun a 180° turn. Guides on the reciprocal runway heading until the
+    // aircraft reaches the first taxi-graph connection node.
+    private double _backtackHeadingTrue;
+    private double _backtackConnectionLat;
+    private double _backtackConnectionLon;
+    private int    _backtackConnectionNodeId;  // 0 = no graph node found within range
+    private bool   _backtackApproachAnnounced; // "taxiway ahead" callout fired
+
     // --- DIAGNOSTIC LOGGING (debug/landing-rollout-instrumentation branch) ---
     // Captures rollout-phase state to landing_exit.log so we can see why
     // UpdateLandingRollout silently fails to fire approach callouts at some
@@ -434,6 +452,13 @@ public class TaxiGuidanceManager : IDisposable
     // braking hard with no further callouts coming; once they're at a
     // crawl the countdown has nothing more useful to say.
     private const double ROLLOUT_NO_EXIT_STOPPED_GS_KTS = 3.0;
+
+    // Backtrack guidance thresholds.
+    // Within ANNOUNCE distance: fires the "taxiway ahead" callout.
+    // Within HANDOFF distance: transitions to Taxiing so the pilot can pick up
+    // normal routing via Taxi Assist. 25m = WAYPOINT_CAPTURE_RADIUS_M equivalent.
+    private const double BACKTRACK_TAXI_ANNOUNCE_M = 200.0;
+    private const double BACKTRACK_HANDOFF_M        = 25.0;
 
     // Lineup thresholds — runway needs degree-level precision because takeoff roll
     // amplifies any heading error; gate is more forgiving since there's no roll.
@@ -1240,6 +1265,13 @@ public class TaxiGuidanceManager : IDisposable
         if (_state == TaxiGuidanceState.LandingRollout)
         {
             UpdateLandingRollout(lat, lon, headingTrue, groundSpeedKts);
+            return;
+        }
+
+        // Backtrack after runway-end: tone guides on reciprocal runway heading.
+        if (_state == TaxiGuidanceState.BacktrackingOnRunway)
+        {
+            UpdateBacktracking(lat, lon, headingTrue, groundSpeedKts);
             return;
         }
 
@@ -3256,16 +3288,14 @@ public class TaxiGuidanceManager : IDisposable
         double hdgDeltaAbs = Math.Abs(hdgDelta);
 
         // Transition out: effectively stopped, OR pilot is turning (likely
-        // beginning a backtaxi). After transitioning, _route is still null
-        // so Taxiing's off-route recalc cannot fire.
+        // beginning a backtaxi). Hand off to BacktrackingOnRunway so the
+        // steering tone guides the pilot back along the runway to the apron.
         bool effectivelyStopped = groundSpeedKts < ROLLOUT_NO_EXIT_STOPPED_GS_KTS;
         bool turnBegun = hdgDeltaAbs >= ROLLOUT_TURN_BEGAN_HDG_DEG
                          && groundSpeedKts < ROLLOUT_TURN_MAX_GS_KTS;
         if (effectivelyStopped || turnBegun)
         {
-            _rolloutNoExitMode = false;
-            SetState(TaxiGuidanceState.Taxiing);
-            // Tone stays paused — no route to steer toward.
+            EnterBacktracking(lat, lon);
             return;
         }
 
@@ -3402,6 +3432,141 @@ public class TaxiGuidanceManager : IDisposable
     /// silence would leave a blind pilot rolling toward the end of an
     /// active runway with no audio cues.
     /// </summary>
+    /// <summary>
+    /// Scans all taxi-graph nodes for the nearest one in the backtrack heading
+    /// direction, within 2000m. Used only by <see cref="EnterBacktracking"/>.
+    /// Wider range than <see cref="TaxiGraph.FindNearestNodeInDirection"/> (800m)
+    /// to handle airports like LGZA where the apron is ~1006m from the runway end.
+    /// No component filter — we just want the nearest reachable apron node.
+    /// </summary>
+    private TaxiNode? FindBacktrackConnectionNode(double lat, double lon, double backtackHdg)
+    {
+        if (_graph == null) return null;
+        const double MAX_M = 2000.0;
+        TaxiNode? best = null;
+        double bestScore = double.MaxValue;
+        foreach (var node in _graph.Nodes.Values)
+        {
+            double dist = TaxiGraph.FastDistanceMeters(lat, lon, node.Latitude, node.Longitude);
+            if (dist < 5 || dist > MAX_M) continue;
+            double bearing = NavigationCalculator.CalculateBearing(lat, lon, node.Latitude, node.Longitude);
+            double angleDiff = Math.Abs(NormalizeAngle(bearing - backtackHdg));
+            if (angleDiff > 90) continue;
+            double score = dist + (angleDiff * 0.5);
+            if (score < bestScore) { bestScore = score; best = node; }
+        }
+        return best;
+    }
+
+    /// <summary>
+    /// Enters <see cref="TaxiGuidanceState.BacktrackingOnRunway"/> after the
+    /// runway-end countdown completes (pilot stopped or began a 180° turn).
+    /// Announces the backtrack heading and begins steering-tone guidance on the
+    /// reciprocal runway heading once the pilot's heading comes within 90° of it.
+    /// </summary>
+    private void EnterBacktracking(double lat, double lon)
+    {
+        if (_rolloutRunway == null)
+        {
+            _rolloutNoExitMode = false;
+            SetState(TaxiGuidanceState.Taxiing);
+            return;
+        }
+
+        double reciprocalHdg = (_rolloutRunwayHeadingTrue + 180.0) % 360.0;
+        _backtackHeadingTrue = reciprocalHdg;
+
+        TaxiNode? conn = FindBacktrackConnectionNode(lat, lon, reciprocalHdg);
+        if (conn != null)
+        {
+            _backtackConnectionLat    = conn.Latitude;
+            _backtackConnectionLon    = conn.Longitude;
+            _backtackConnectionNodeId = conn.NodeId;
+        }
+        else
+        {
+            _backtackConnectionLat    = 0;
+            _backtackConnectionLon    = 0;
+            _backtackConnectionNodeId = 0;
+        }
+
+        _backtackApproachAnnounced = false;
+        _rolloutNoExitMode = false;
+
+        // Reset heading-error smoother so no rollout residual leaks into backtrack tone.
+        _headingErrorInitialized = false;
+        _smoothedHeadingError    = 0;
+        _steeringTone.SetPulse(false);
+        // Tone stays paused until UpdateBacktracking sees heading within 90° of
+        // the backtrack target — keeps the tone silent during the 180° U-turn.
+
+        SetState(TaxiGuidanceState.BacktrackingOnRunway);
+
+        int hdgInt  = (int)Math.Round(reciprocalHdg);
+        string rwyId = _rolloutRunway.RunwayID ?? "runway";
+        AnnounceInstruction($"End of runway {rwyId}. Turn around, heading {hdgInt}. Backtracking.");
+    }
+
+    /// <summary>
+    /// Per-frame logic while in <see cref="TaxiGuidanceState.BacktrackingOnRunway"/>.
+    /// Uses precision runway-lineup thresholds (silent ±0.5°, active ±1°) once the
+    /// pilot's heading is within 90° of the backtrack target. Silent while heading
+    /// is >90° away (the initial U-turn — direction is ambiguous for a 180° rotation).
+    /// Transitions to Taxiing when within BACKTRACK_HANDOFF_M of the connection node.
+    /// </summary>
+    private void UpdateBacktracking(double lat, double lon, double headingTrue, double groundSpeedKts)
+    {
+        double headingError = NormalizeAngle(_backtackHeadingTrue - headingTrue);
+        double absError = Math.Abs(headingError);
+
+        if (absError <= 90.0)
+        {
+            // Apply low-pass filter (same as normal taxiing) then update tone.
+            if (!_headingErrorInitialized)
+            {
+                _smoothedHeadingError = headingError;
+                _headingErrorInitialized = true;
+                _steeringTone.Resume(); // activate from the initial U-turn silence
+            }
+            else
+            {
+                _smoothedHeadingError = _smoothedHeadingError * (1.0 - HEADING_ERROR_FILTER_ALPHA)
+                                      + headingError * HEADING_ERROR_FILTER_ALPHA;
+            }
+            _steeringTone.UpdateHeadingErrorWithThresholds(
+                _smoothedHeadingError,
+                silentThresholdDeg:     0.5,
+                activationThresholdDeg: 1.0,
+                maxPanThresholdDeg:     15.0);
+        }
+        else
+        {
+            // Still in the U-turn: keep tone silent and reset the smoother so it
+            // initialises cleanly once heading crosses the 90° threshold.
+            _steeringTone.Pause();
+            _headingErrorInitialized = false;
+            _smoothedHeadingError    = 0;
+        }
+
+        if (_backtackConnectionNodeId <= 0) return;
+
+        double distM = TaxiGraph.FastDistanceMeters(
+            lat, lon, _backtackConnectionLat, _backtackConnectionLon);
+
+        if (!_backtackApproachAnnounced && distM <= BACKTRACK_TAXI_ANNOUNCE_M)
+        {
+            AnnounceInstruction("Taxiway ahead. Vacate runway.");
+            _backtackApproachAnnounced = true;
+        }
+
+        if (distM <= BACKTRACK_HANDOFF_M)
+        {
+            AnnounceInstruction("Runway vacated.");
+            // _route is null; pilot loads the next route via Taxi Assist.
+            SetState(TaxiGuidanceState.Taxiing);
+        }
+    }
+
     private void EnterRunwayEndCountdown()
     {
         _route = null;
@@ -4032,6 +4197,8 @@ public class TaxiGuidanceManager : IDisposable
         _rolloutEnd1500Announced = false;
         _rolloutEnd500Announced = false;
         _rolloutEnd100Announced = false;
+        _backtackConnectionNodeId = 0;
+        _backtackApproachAnnounced = false;
         SetState(TaxiGuidanceState.Inactive);
         } // end lock(_stateLock)
     }
@@ -4117,6 +4284,21 @@ public class TaxiGuidanceManager : IDisposable
             }
 
             return $"Rolling out.{gsStr}";
+        }
+
+        if (_state == TaxiGuidanceState.BacktrackingOnRunway)
+        {
+            string gsStr = _positionInitialized
+                ? $" Ground speed {(int)Math.Round(_lastGroundSpeedKts)} knots."
+                : "";
+            if (_backtackConnectionNodeId > 0 && _positionInitialized)
+            {
+                double distM = TaxiGraph.FastDistanceMeters(
+                    _lastLat, _lastLon, _backtackConnectionLat, _backtackConnectionLon);
+                int distFt = (int)Math.Max(0, Math.Round(distM * METERS_TO_FEET));
+                return $"Backtracking. {distFt} feet to taxiway connection.{gsStr}";
+            }
+            return $"Backtracking.{gsStr}";
         }
 
         if (_route == null || _route.Segments.Count == 0)
