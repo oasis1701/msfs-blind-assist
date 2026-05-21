@@ -3664,7 +3664,26 @@ public class TaxiGuidanceManager : IDisposable
             _smoothedHeadingError    = 0;
         }
 
-        if (_backtackConnectionNodeId <= 0) return;
+        if (_backtackConnectionNodeId <= 0)
+        {
+            // No taxiway connection node was found in the backtrack direction
+            // (FindBacktrackConnectionNode returned null). Do NOT dead-end here
+            // — a bare `return` left the pilot stuck in BacktrackingOnRunway
+            // forever, on the runway, with no further guidance and no escape.
+            // Once they have come round onto the backtrack heading there is
+            // nothing more this state can do: say so and hand off to plain
+            // Taxiing so Where-Am-I and the taxi planner are available.
+            if (absError <= 90.0 && !_backtackApproachAnnounced)
+            {
+                _backtackApproachAnnounced = true;
+                _steeringTone.Stop();
+                AnnounceInstruction(
+                    "Backtracking on the runway. No taxiway connection found — " +
+                    "use the taxi planner to set a route.");
+                SetState(TaxiGuidanceState.Taxiing);
+            }
+            return;
+        }
 
         double distM = TaxiGraph.FastDistanceMeters(
             lat, lon, _backtackConnectionLat, _backtackConnectionLon);
