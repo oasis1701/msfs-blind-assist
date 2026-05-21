@@ -502,14 +502,26 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         // Hydraulics
         d["HYD_annunLOW_PRESS_eng_0"]   = Annun("HYD_annunLOW_PRESS_eng_0", "Eng 1 Hyd Low Pressure");
         d["HYD_annunLOW_PRESS_eng_1"]   = Annun("HYD_annunLOW_PRESS_eng_1", "Eng 2 Hyd Low Pressure");
-        d["HYD_annunLOW_PRESS_elec_0"]  = Annun("HYD_annunLOW_PRESS_elec_0", "Elec 1 Hyd Low Pressure");
-        d["HYD_annunLOW_PRESS_elec_1"]  = Annun("HYD_annunLOW_PRESS_elec_1", "Elec 2 Hyd Low Pressure");
-        d["HYD_annunOVERHEAT_elec_0"]   = Annun("HYD_annunOVERHEAT_elec_0", "Elec 1 Hyd Overheat");
-        d["HYD_annunOVERHEAT_elec_1"]   = Annun("HYD_annunOVERHEAT_elec_1", "Elec 2 Hyd Overheat");
+        // TFM: array-index swap on `HYD_PumpSw_elec` / `HYD_annunLOW_PRESS_elec` / `HYD_annunOVERHEAT_elec`
+        // — TFM labels its "Electric hydraulic pump #1" off SDK index [1] and "#2" off [0].
+        // SDK lines 242-245: arrays declared without inline comments.
+        // Resolved with TFM's swap because (a) the SDK event ID sequence corroborates it —
+        // EVT_OH_HYD_ELEC2 = event_base+167 and EVT_OH_HYD_ELEC1 = event_base+168 (ELEC2
+        // assigned the LOWER ID, which in PMDG SDK ordering means ELEC2 corresponds to the
+        // FIRST array slot), and (b) we already map "HYD_PumpSw_elec_0 → EVT_OH_HYD_ELEC1"
+        // and "_1 → EVT_OH_HYD_ELEC2" in `_simpleEventMap`, but that compensation only fires
+        // on user-initiated toggles; the cached read from `HYD_PumpSw_elec[0]` reports
+        // pump 2's physical state. Swapping the display labels (so `_0` is presented as
+        // "Pump 2" and `_1` as "Pump 1") restores parity between the announced state and
+        // the cockpit pump number. The underlying SimVar keys are unchanged.
+        d["HYD_annunLOW_PRESS_elec_0"]  = Annun("HYD_annunLOW_PRESS_elec_0", "Elec 2 Hyd Low Pressure");
+        d["HYD_annunLOW_PRESS_elec_1"]  = Annun("HYD_annunLOW_PRESS_elec_1", "Elec 1 Hyd Low Pressure");
+        d["HYD_annunOVERHEAT_elec_0"]   = Annun("HYD_annunOVERHEAT_elec_0", "Elec 2 Hyd Overheat");
+        d["HYD_annunOVERHEAT_elec_1"]   = Annun("HYD_annunOVERHEAT_elec_1", "Elec 1 Hyd Overheat");
         d["HYD_PumpSw_eng_0"]           = Toggle("HYD_PumpSw_eng_0", "Eng 1 Hyd Pump");
         d["HYD_PumpSw_eng_1"]           = Toggle("HYD_PumpSw_eng_1", "Eng 2 Hyd Pump");
-        d["HYD_PumpSw_elec_0"]          = Toggle("HYD_PumpSw_elec_0", "Elec 1 Hyd Pump");
-        d["HYD_PumpSw_elec_1"]          = Toggle("HYD_PumpSw_elec_1", "Elec 2 Hyd Pump");
+        d["HYD_PumpSw_elec_0"]          = Toggle("HYD_PumpSw_elec_0", "Elec 2 Hyd Pump");
+        d["HYD_PumpSw_elec_1"]          = Toggle("HYD_PumpSw_elec_1", "Elec 1 Hyd Pump");
 
         // Air systems
         d["AIR_TempSourceSelector"]     = Selector("AIR_TempSourceSelector", "Temperature Source",
@@ -2530,8 +2542,14 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             // --- Hydraulics ---
             ["HYD_PumpSw_eng_0"]           = "EVT_OH_HYD_ENG1",
             ["HYD_PumpSw_eng_1"]           = "EVT_OH_HYD_ENG2",
-            ["HYD_PumpSw_elec_0"]          = "EVT_OH_HYD_ELEC1",
-            ["HYD_PumpSw_elec_1"]          = "EVT_OH_HYD_ELEC2",
+            // HYD_PumpSw_elec_N maps to the SDK array slot N. The PMDG NG3 SDK orders the
+            // electric hydraulic pump array as [0]=pump 2, [1]=pump 1 — corroborated by the
+            // event_id sequence (EVT_OH_HYD_ELEC2=event_base+167 has the LOWER ID, meaning
+            // it corresponds to array slot 0). Display labels on HYD_PumpSw_elec_0/_1 reflect
+            // this swap ("Elec 2 Hyd Pump" lives at _0). Event dispatch must follow the same
+            // mapping so the user-toggled label, cached state, and physical pump all agree.
+            ["HYD_PumpSw_elec_0"]          = "EVT_OH_HYD_ELEC2",
+            ["HYD_PumpSw_elec_1"]          = "EVT_OH_HYD_ELEC1",
 
             // --- Air conditioning / bleed / pack ---
             ["AIR_TempSourceSelector"]     = "EVT_OH_AIRCOND_TEMP_SOURCE_SELECTOR_800",
