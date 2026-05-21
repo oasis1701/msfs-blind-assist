@@ -66,6 +66,9 @@ public class PMDG777DataManager : IPMDGDataManager
     private PMDG777XDataStruct _lastDataSnapshot;
     private bool _hasSnapshot;
 
+    /// <inheritdoc />
+    public bool IsReady => _hasSnapshot;
+
     private readonly PMDG777CDUScreen?[] _lastCDUScreen = new PMDG777CDUScreen?[3];
     private System.Windows.Forms.Timer? _pollTimer;
 
@@ -509,9 +512,17 @@ public class PMDG777DataManager : IPMDGDataManager
         if (currentPosition == targetPosition) return;
         SendEvent(guardEventName, guardEventId, null);
         await Task.Delay(150);
-        await SendSelectorStepwise(switchEventName, switchEventId, currentPosition, targetPosition);
-        await Task.Delay(150);
-        SendEvent(guardEventName, guardEventId, null);
+        try
+        {
+            await SendSelectorStepwise(switchEventName, switchEventId, currentPosition, targetPosition);
+        }
+        finally
+        {
+            // Guard-close must always run, even if the walker threw mid-walk,
+            // otherwise the cockpit guard stays open on a safety-critical switch.
+            await Task.Delay(150);
+            SendEvent(guardEventName, guardEventId, null);
+        }
     }
 
     // ------------------------------------------------------------------

@@ -2717,7 +2717,15 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 if (varDef.ValueDescriptions != null && varDef.ValueDescriptions.Count > 2)
                 {
                     var dm = simConnect.PMDGDataManager;
-                    int currentPosition = dm != null ? (int)dm.GetFieldValue(varDef.Name) : 0;
+                    // Snapshot must have arrived before we can trust the cached position —
+                    // otherwise GetFieldValue returns 0.0 silently and we'd walk an arbitrary
+                    // selector to a wrong detent.
+                    if (dm == null || !dm.IsReady)
+                    {
+                        announcer.AnnounceImmediate("Selector not ready, please try again in a moment.");
+                        return true;
+                    }
+                    int currentPosition = (int)dm.GetFieldValue(varDef.Name);
                     int targetPosition = (int)value;
                     _ = simConnect.SendPMDGGuardedSelectorStepwise(
                         guardPair.Guard,  (uint)gId,
@@ -2825,7 +2833,15 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             if (varDef.ValueDescriptions != null && varDef.ValueDescriptions.Count > 2)
             {
                 var dm = simConnect.PMDGDataManager;
-                int currentPosition = dm != null ? (int)dm.GetFieldValue(varDef.Name) : 0;
+                // Snapshot must have arrived before we can trust the cached position —
+                // otherwise GetFieldValue returns 0.0 silently and we'd walk an arbitrary
+                // selector to a wrong detent.
+                if (dm == null || !dm.IsReady)
+                {
+                    announcer.AnnounceImmediate("Selector not ready, please try again in a moment.");
+                    return true;
+                }
+                int currentPosition = (int)dm.GetFieldValue(varDef.Name);
                 int targetPosition = target;
                 _ = simConnect.SendPMDGSelectorStepwise(eventName, eventId, currentPosition, targetPosition);
                 return true;

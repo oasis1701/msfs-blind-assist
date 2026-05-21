@@ -14,6 +14,13 @@ public interface IPMDGDataManager : IDisposable
     /// <summary>Number of CDU sides: 3 for 777X (L/C/R), 2 for NG3 (L/R).</summary>
     int CDUSideCount { get; }
 
+    /// <summary>
+    /// True once the data manager has received at least one CDA snapshot. Until this
+    /// is true, GetFieldValue returns 0.0 for any field — callers must not interpret
+    /// that as a real position-0 reading.
+    /// </summary>
+    bool IsReady { get; }
+
     event EventHandler<PMDGVarUpdateEventArgs>? VariableChanged;
 
     void Initialize(
