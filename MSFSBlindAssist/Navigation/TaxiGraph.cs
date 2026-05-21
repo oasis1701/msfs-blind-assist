@@ -1488,8 +1488,27 @@ public class TaxiGraph
                         double bestOff = bestRel > 90.0 ? 180.0 - bestRel : bestRel;
                         double curRel  = Math.Abs(NormalizeAngle(e.BearingDegrees - rwyHeadingTrue));
                         double curOff  = curRel > 90.0 ? 180.0 - curRel : curRel;
-                        if (curOff > bestOff)
+                        if (curOff > bestOff + 0.01)
+                        {
                             best = e;
+                        }
+                        else if (Math.Abs(curOff - bestOff) <= 0.01)
+                        {
+                            // Equal off-axis angle: the adjacency list contains both the
+                            // forward edge (toward the apron, bearing ≈ runway ± exitAngle)
+                            // and the backward edge of the same taxiway (bearing ≈ runway ±
+                            // exitAngle ± 180°). Both fold to the same `off` value, so the
+                            // old strict-greater-than test was non-deterministic. A backward
+                            // edge causes ExitBearingTrue to point toward the threshold;
+                            // FindExitExtensionNode then routes the Taxiing handoff backward,
+                            // producing a permanent max-pan tone regardless of heading.
+                            // Fix: when off-axis angles are equal, forward-pointing edges
+                            // (rel ≤ 90° — bearing within 90° of runway heading) win.
+                            bool bestForward = bestRel <= 90.0;
+                            bool curForward  = curRel  <= 90.0;
+                            if (curForward && !bestForward)
+                                best = e;
+                        }
                     }
                 }
 
