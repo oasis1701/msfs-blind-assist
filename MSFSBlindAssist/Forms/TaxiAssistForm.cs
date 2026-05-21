@@ -34,7 +34,11 @@ public class TaxiAssistForm : Form
     // off that route, and off-route detection recalcs immediately.
     private readonly MSFSBlindAssist.SimConnect.SimConnectManager? _simConnectManager;
     private readonly TcasService? _tcasService;
-    private readonly double _aircraftWingspan;
+    // Refreshed at the top of LoadAirportData from _simConnectManager?.AircraftWingSpan
+    // so a mid-session aircraft swap (multi-aircraft architecture) is honored on the
+    // next form open. Constructor parameter is preserved as a fallback for callers
+    // that don't pass a SimConnectManager.
+    private double _aircraftWingspan;
 
     // Form controls
     private Label lblAirport = null!;
@@ -465,6 +469,21 @@ public class TaxiAssistForm : Form
     private async void LoadAirportData(string icao)
     {
         if (string.IsNullOrWhiteSpace(icao)) return;
+
+        // Refresh wingspan from the live SimConnectManager. This form persists
+        // across opens (hide-on-close), so the constructor-time wingspan can be
+        // stale after a mid-session aircraft swap or after SimConnect connected.
+        // _simConnectManager is null only when the form was constructed without
+        // one (test/standalone) — fall back to the constructor value in that case.
+        if (_simConnectManager != null && _simConnectManager.AircraftWingSpan > 0)
+            _aircraftWingspan = _simConnectManager.AircraftWingSpan;
+
+        // Re-enable the "fitting only" checkbox if wingspan data has become
+        // available since the form was constructed. The Visible state is
+        // refreshed by OnDestTypeChanged when the user selects a parking
+        // destination type; the Enabled state needs its own refresh here.
+        chkFitFilter.Enabled = _aircraftWingspan > 0;
+
         if (icao.Equals(_currentIcao, StringComparison.OrdinalIgnoreCase) && _graph != null) return;
 
         _currentIcao = icao.ToUpperInvariant();

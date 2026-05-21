@@ -363,11 +363,11 @@ public class TaxiGuidanceManager : IDisposable
     // Backtrack state. Entered from runway-end countdown once the pilot has stopped
     // or begun a 180° turn. Guides on the reciprocal runway heading until the
     // aircraft reaches the first taxi-graph connection node.
-    private double _backtackHeadingTrue;
-    private double _backtackConnectionLat;
-    private double _backtackConnectionLon;
-    private int    _backtackConnectionNodeId;  // 0 = no graph node found within range
-    private bool   _backtackApproachAnnounced; // "taxiway ahead" callout fired
+    private double _backtrackHeadingTrue;
+    private double _backtrackConnectionLat;
+    private double _backtrackConnectionLon;
+    private int    _backtrackConnectionNodeId;  // 0 = no graph node found within range
+    private bool   _backtrackApproachAnnounced; // "taxiway ahead" callout fired
 
     // --- DIAGNOSTIC LOGGING (debug/landing-rollout-instrumentation branch) ---
     // Captures rollout-phase state to landing_exit.log so we can see why
@@ -2861,6 +2861,13 @@ public class TaxiGuidanceManager : IDisposable
                     prebuiltGraph: _graph,
                     announceSummary: false);
                 handoffRerouted = rerouteErr == null;
+                if (handoffRerouted)
+                {
+                    // LoadRoute clears _isLandingExitRoute; re-set so HandleArrival
+                    // fires the landing-exit-specific "Hold position. Open the taxi
+                    // planner..." message instead of the generic "Destination reached".
+                    _isLandingExitRoute = true;
+                }
                 RolloutDiag(rerouteErr == null
                     ? $"Handoff re-route OK: lat={lat:F6} lon={lon:F6} → {rerouteDestSrc}={rerouteDest}"
                     : $"Handoff re-route failed ({rerouteErr}), continuing with original route");
@@ -2962,7 +2969,7 @@ public class TaxiGuidanceManager : IDisposable
         // when multiple earlier exits are within ROLLOUT_UNDERSHOOT_RANGE_FT.
         if (!_rolloutNoExitMode && !pastExit)
         {
-            bool cooldownOk = (DateTime.Now - _lastUndershootRetargetTime).TotalSeconds >= ROLLOUT_UNDERSHOOT_COOLDOWN_SEC;
+            bool cooldownOk = (DateTime.UtcNow - _lastUndershootRetargetTime).TotalSeconds >= ROLLOUT_UNDERSHOOT_COOLDOWN_SEC;
 
             if (groundSpeedKts < ROLLOUT_UNDERSHOOT_ENTRY_GS_KTS && cooldownOk)
             {
@@ -3001,7 +3008,7 @@ public class TaxiGuidanceManager : IDisposable
 
                 if (earlierExit != null)
                 {
-                    _lastUndershootRetargetTime = DateTime.Now;
+                    _lastUndershootRetargetTime = DateTime.UtcNow;
                     string newName = string.IsNullOrEmpty(earlierExit.TaxiwayName)
                         ? "earlier exit"
                         : $"taxiway {earlierExit.TaxiwayName}";
@@ -3311,6 +3318,10 @@ public class TaxiGuidanceManager : IDisposable
             RolloutDiag($"TryEarlyExitHandoff: first segment {firstBearing:F1}° is " +
                 $"{bearingDeltaFromRunway:F1}° from runway (threshold {firstSegThreshold:F0}°) " +
                 $"and doesn't align with exit bearing {_rolloutExit.ExitBearingTrue:F1}° — rejecting");
+            // Intentionally discard the touchdown route too — it routed through the
+            // taxiway network and would feed the off-route detector once state moves
+            // to Taxiing. Next RetargetLandingExit / handoff will rebuild from
+            // current position.
             _route = null;
             _destinationNodeId = 0;
             return false;
@@ -3329,6 +3340,11 @@ public class TaxiGuidanceManager : IDisposable
 
         // Arm post-handoff overshoot monitor (same as the turnBegun path above).
         _rolloutHandoffActive = true;
+
+        // LoadRoute above cleared _isLandingExitRoute; re-set so HandleArrival
+        // fires the landing-exit-specific "Hold position. Open the taxi planner..."
+        // message instead of the generic "Destination reached".
+        _isLandingExitRoute = true;
 
         SetState(TaxiGuidanceState.Taxiing);
         return true;
@@ -3555,7 +3571,7 @@ public class TaxiGuidanceManager : IDisposable
     /// to handle airports like LGZA where the apron is ~1006m from the runway end.
     /// No component filter — we just want the nearest reachable apron node.
     /// </summary>
-    private TaxiNode? FindBacktrackConnectionNode(double lat, double lon, double backtackHdg)
+    private TaxiNode? FindBacktrackConnectionNode(double lat, double lon, double backtrackHdg)
     {
         if (_graph == null) return null;
         const double MAX_M = 2000.0;
@@ -3566,7 +3582,7 @@ public class TaxiGuidanceManager : IDisposable
             double dist = TaxiGraph.FastDistanceMeters(lat, lon, node.Latitude, node.Longitude);
             if (dist < 5 || dist > MAX_M) continue;
             double bearing = NavigationCalculator.CalculateBearing(lat, lon, node.Latitude, node.Longitude);
-            double angleDiff = Math.Abs(NormalizeAngle(bearing - backtackHdg));
+            double angleDiff = Math.Abs(NormalizeAngle(bearing - backtrackHdg));
             if (angleDiff > 90) continue;
             double score = dist + (angleDiff * 0.5);
             if (score < bestScore) { bestScore = score; best = node; }
@@ -3590,23 +3606,23 @@ public class TaxiGuidanceManager : IDisposable
         }
 
         double reciprocalHdg = (_rolloutRunwayHeadingTrue + 180.0) % 360.0;
-        _backtackHeadingTrue = reciprocalHdg;
+        _backtrackHeadingTrue = reciprocalHdg;
 
         TaxiNode? conn = FindBacktrackConnectionNode(lat, lon, reciprocalHdg);
         if (conn != null)
         {
-            _backtackConnectionLat    = conn.Latitude;
-            _backtackConnectionLon    = conn.Longitude;
-            _backtackConnectionNodeId = conn.NodeId;
+            _backtrackConnectionLat    = conn.Latitude;
+            _backtrackConnectionLon    = conn.Longitude;
+            _backtrackConnectionNodeId = conn.NodeId;
         }
         else
         {
-            _backtackConnectionLat    = 0;
-            _backtackConnectionLon    = 0;
-            _backtackConnectionNodeId = 0;
+            _backtrackConnectionLat    = 0;
+            _backtrackConnectionLon    = 0;
+            _backtrackConnectionNodeId = 0;
         }
 
-        _backtackApproachAnnounced = false;
+        _backtrackApproachAnnounced = false;
         _rolloutNoExitMode = false;
 
         // Reset heading-error smoother so no rollout residual leaks into backtrack tone.
@@ -3632,7 +3648,7 @@ public class TaxiGuidanceManager : IDisposable
     /// </summary>
     private void UpdateBacktracking(double lat, double lon, double headingTrue, double groundSpeedKts)
     {
-        double headingError = NormalizeAngle(_backtackHeadingTrue - headingTrue);
+        double headingError = NormalizeAngle(_backtrackHeadingTrue - headingTrue);
         double absError = Math.Abs(headingError);
 
         if (absError <= 90.0)
@@ -3664,7 +3680,7 @@ public class TaxiGuidanceManager : IDisposable
             _smoothedHeadingError    = 0;
         }
 
-        if (_backtackConnectionNodeId <= 0)
+        if (_backtrackConnectionNodeId <= 0)
         {
             // No taxiway connection node was found in the backtrack direction
             // (FindBacktrackConnectionNode returned null). Do NOT dead-end here
@@ -3673,9 +3689,9 @@ public class TaxiGuidanceManager : IDisposable
             // Once they have come round onto the backtrack heading there is
             // nothing more this state can do: say so and hand off to plain
             // Taxiing so Where-Am-I and the taxi planner are available.
-            if (absError <= 90.0 && !_backtackApproachAnnounced)
+            if (absError <= 90.0 && !_backtrackApproachAnnounced)
             {
-                _backtackApproachAnnounced = true;
+                _backtrackApproachAnnounced = true;
                 _steeringTone.Stop();
                 AnnounceInstruction(
                     "Backtracking on the runway. No taxiway connection found — " +
@@ -3686,12 +3702,12 @@ public class TaxiGuidanceManager : IDisposable
         }
 
         double distM = TaxiGraph.FastDistanceMeters(
-            lat, lon, _backtackConnectionLat, _backtackConnectionLon);
+            lat, lon, _backtrackConnectionLat, _backtrackConnectionLon);
 
-        if (!_backtackApproachAnnounced && distM <= BACKTRACK_TAXI_ANNOUNCE_M)
+        if (!_backtrackApproachAnnounced && distM <= BACKTRACK_TAXI_ANNOUNCE_M)
         {
             AnnounceInstruction("Taxiway ahead. Vacate runway.");
-            _backtackApproachAnnounced = true;
+            _backtrackApproachAnnounced = true;
         }
 
         if (distM <= BACKTRACK_HANDOFF_M)
@@ -4333,8 +4349,8 @@ public class TaxiGuidanceManager : IDisposable
         _rolloutEnd1500Announced = false;
         _rolloutEnd500Announced = false;
         _rolloutEnd100Announced = false;
-        _backtackConnectionNodeId = 0;
-        _backtackApproachAnnounced = false;
+        _backtrackConnectionNodeId = 0;
+        _backtrackApproachAnnounced = false;
         SetState(TaxiGuidanceState.Inactive);
         } // end lock(_stateLock)
     }
@@ -4427,10 +4443,10 @@ public class TaxiGuidanceManager : IDisposable
             string gsStr = _positionInitialized
                 ? $" Ground speed {(int)Math.Round(_lastGroundSpeedKts)} knots."
                 : "";
-            if (_backtackConnectionNodeId > 0 && _positionInitialized)
+            if (_backtrackConnectionNodeId > 0 && _positionInitialized)
             {
                 double distM = TaxiGraph.FastDistanceMeters(
-                    _lastLat, _lastLon, _backtackConnectionLat, _backtackConnectionLon);
+                    _lastLat, _lastLon, _backtrackConnectionLat, _backtrackConnectionLon);
                 int distFt = (int)Math.Max(0, Math.Round(distM * METERS_TO_FEET));
                 return $"Backtracking. {distFt} feet to taxiway connection.{gsStr}";
             }
