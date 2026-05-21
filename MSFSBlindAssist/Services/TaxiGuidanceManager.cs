@@ -1786,6 +1786,35 @@ public class TaxiGuidanceManager : IDisposable
     }
 
     /// <summary>
+    /// Full-route nearest-segment search. Unlike <see cref="AdvanceToNearestSegment"/>
+    /// (which only scans a 6-segment look-ahead window for the per-frame fast
+    /// path), this scans every segment and returns the index whose centerline
+    /// endpoints are closest to the given position. Used as a one-shot re-anchor
+    /// at the landing-rollout → Taxiing handoff, where _currentSegmentIndex can
+    /// be thousands of feet stale because the rollout phase never advanced it.
+    /// </summary>
+    private int FindNearestSegmentIndexFullRoute(double lat, double lon)
+    {
+        if (_route == null || _route.Segments.Count == 0) return 0;
+
+        int bestIdx = 0;
+        double bestDist = double.MaxValue;
+        for (int i = 0; i < _route.Segments.Count; i++)
+        {
+            var seg = _route.Segments[i];
+            double d = Math.Min(
+                TaxiGraph.FastDistanceMeters(lat, lon, seg.ToNode.Latitude, seg.ToNode.Longitude),
+                TaxiGraph.FastDistanceMeters(lat, lon, seg.FromNode.Latitude, seg.FromNode.Longitude));
+            if (d < bestDist)
+            {
+                bestDist = d;
+                bestIdx = i;
+            }
+        }
+        return bestIdx;
+    }
+
+    /// <summary>
     /// Advances _currentSegmentIndex to the segment closest to the aircraft's current position.
     /// Only moves forward (never backward). Handles segment skipping when updates are sparse.
     /// </summary>
@@ -2638,6 +2667,7 @@ public class TaxiGuidanceManager : IDisposable
             //
             // For regular HS/IHS exits ApronNodeId == NodeId, so the condition is false
             // and the original route (which worked fine for those exits) is kept.
+            bool handoffRerouted = false;
             if (_rolloutExit != null &&
                 _rolloutExit.ApronNodeId > 0 &&
                 _rolloutExit.ApronNodeId != _rolloutExit.NodeId &&
@@ -2655,9 +2685,26 @@ public class TaxiGuidanceManager : IDisposable
                     taxiwaySequence: null,
                     prebuiltGraph: _graph,
                     announceSummary: false);
+                handoffRerouted = rerouteErr == null;
                 RolloutDiag(rerouteErr == null
                     ? $"Handoff re-route OK: lat={lat:F6} lon={lon:F6} → apronNode={_rolloutExit.ApronNodeId}"
                     : $"Handoff re-route failed ({rerouteErr}), continuing with original route");
+            }
+
+            // If we did NOT re-route (standard HS/IHS exit where ApronNodeId ==
+            // NodeId, or a re-route that failed), the route is still the one
+            // built at touchdown and _currentSegmentIndex is still 0 — the
+            // Taxiing branch never ran during the rollout. Segment 0 sits back
+            // in the touchdown zone, thousands of feet behind the aircraft;
+            // AdvanceToNearestSegment's 6-segment look-ahead cannot recover
+            // from index 0, so the tone would target a waypoint behind the
+            // aircraft and hard-pan on the ±180° bearing wrap. Re-anchor the
+            // segment cursor to the aircraft's true position, once, here.
+            if (!handoffRerouted && _route != null)
+            {
+                _currentSegmentIndex = FindNearestSegmentIndexFullRoute(lat, lon);
+                RolloutDiag($"Handoff re-anchored _currentSegmentIndex={_currentSegmentIndex} " +
+                    $"of {_route.Segments.Count}");
             }
 
             SetState(TaxiGuidanceState.Taxiing);
