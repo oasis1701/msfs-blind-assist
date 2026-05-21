@@ -2678,42 +2678,51 @@ public class TaxiGuidanceManager : IDisposable
                 $"exitBrgErr={exitBrgErr:F1}deg lateral={lateralFromCenterlineFt:F0}ft " +
                 $"atTaxiSpeed={atTaxiSpeed} nearExit={nearExit} pastExit={pastExit}");
 
-            // For curved-RET exits (LVFR-style scenery with no HS/IHS nodes on the
-            // runway), the original route was built at touchdown from the nearest graph
-            // node to the apron — it routes through L7 or another exit to the apron,
-            // then back to the chosen exit's on-runway entry node. None of those segments
-            // are near the pilot who has just turned onto the curve, so AdvanceToNearest
-            // Segment can't find them and off-route fires 3 s later.
+            // Re-route from the pilot's LIVE position to the best destination node for
+            // this exit. Always done (not just for ApronNodeId exits) because the initial
+            // touchdown route goes through the taxiway network and is never on the runway
+            // pavement the pilot is now crossing. The re-route gives A* a fresh start from
+            // wherever the aircraft actually is at handoff time.
             //
-            // Fix: re-route from the pilot's LIVE position to ApronNodeId — the first
-            // graph node outside the runway corridor on this exit's path (set by the BFS
-            // in GetLandingExits). A* now starts from wherever the pilot actually is on
-            // the curve and routes to the corridor-exit node, giving segments that are
-            // on the actual curve the tone can steer through.
+            // Destination priority (same as TryEarlyExitHandoff):
+            //   (a) ApronNodeId — shallow-exit BFS node outside the runway corridor
+            //   (b) FindExitExtensionNode — first graph node in the exit direction
+            //   (c) NodeId — the junction itself (last resort)
             //
-            // For regular HS/IHS exits ApronNodeId == NodeId, so the condition is false
-            // and the original route (which worked fine for those exits) is kept.
+            // A side-effect of always re-routing: the initial route's false "hold short of
+            // runway X" tag (inserted by InsertRunwayCrossingHoldShorts because the route's
+            // destination sits on the runway) is replaced with a clean 1-2 segment route
+            // that has no runway-crossing tags.
             bool handoffRerouted = false;
-            if (_rolloutExit != null &&
-                _rolloutExit.ApronNodeId > 0 &&
-                _rolloutExit.ApronNodeId != _rolloutExit.NodeId &&
-                _dataProvider != null &&
-                _graph != null)
+            if (_rolloutExit != null && _dataProvider != null && _graph != null)
             {
+                int rerouteDest;
+                string rerouteDestSrc;
+                if (_rolloutExit.ApronNodeId > 0 && _rolloutExit.ApronNodeId != _rolloutExit.NodeId)
+                {
+                    rerouteDest = _rolloutExit.ApronNodeId;
+                    rerouteDestSrc = "apronNode";
+                }
+                else
+                {
+                    int extNode = FindExitExtensionNode(_rolloutExit.NodeId, _rolloutExit.ExitBearingTrue);
+                    rerouteDest = extNode > 0 ? extNode : _rolloutExit.NodeId;
+                    rerouteDestSrc = extNode > 0 ? "extNode" : "nodeId";
+                }
                 string exitName = _rolloutExit.TaxiwayName.Length > 0
                     ? $"Taxiway {_rolloutExit.TaxiwayName}"
                     : "exit taxiway";
                 string? rerouteErr = LoadRoute(
                     _dataProvider, _icao,
                     lat, lon, headingTrue,
-                    _rolloutExit.ApronNodeId,
+                    rerouteDest,
                     exitName,
                     taxiwaySequence: null,
                     prebuiltGraph: _graph,
                     announceSummary: false);
                 handoffRerouted = rerouteErr == null;
                 RolloutDiag(rerouteErr == null
-                    ? $"Handoff re-route OK: lat={lat:F6} lon={lon:F6} → apronNode={_rolloutExit.ApronNodeId}"
+                    ? $"Handoff re-route OK: lat={lat:F6} lon={lon:F6} → {rerouteDestSrc}={rerouteDest}"
                     : $"Handoff re-route failed ({rerouteErr}), continuing with original route");
             }
 
@@ -2908,6 +2917,12 @@ public class TaxiGuidanceManager : IDisposable
             string turnWord = _rolloutExit.ExitAngleDegrees < 20.0 ? "Gentle" : "Turn";
             AnnounceInstruction($"{turnWord} {dir} now, {name}.");
             _rolloutTurnNowAnnounced = true;
+            // Normal exits (50–110°): reset the heading-error smoother immediately
+            // so the ExitBearingTrue-based tone below starts with a sharp hard-pan
+            // rather than ramping up from the near-zero "bearing-to-junction ≈ runway
+            // heading" residual built up during the approach.
+            if (_rolloutExit.ExitType == "Normal" && _rolloutExit.ExitBearingTrue > 0.0)
+                _headingErrorInitialized = false;
         }
 
         // Early handoff to live taxi look-ahead guidance.
@@ -2922,10 +2937,19 @@ public class TaxiGuidanceManager : IDisposable
         // segment >120° off runway heading), the bearing-to-junction fallback tone
         // below takes over unchanged, and the rollout's own 150 ft "turn now"
         // callout fires as the verbal backstop.
+        //
+        // Only applies to HIGH-SPEED exits (angle < HIGH_SPEED_MAX_DEG). For Normal
+        // and End exits (≥ 50°) the extension node is too far off the runway heading
+        // to give useful tone steering from 300 ft before the junction — e.g., a 90°
+        // exit immediately pans the tone to maximum regardless of what the pilot does,
+        // and the 150 ft "turn now" callout (from UpdateLandingRollout) is silently
+        // skipped because state has already moved to Taxiing. Let those exits fire
+        // through the rollout's own callouts and transition via turnBegun instead.
         if (!_rolloutEarlyHandoffDone
             && !pastExit
             && groundSpeedKts <= ROLLOUT_TONE_ACTIVE_BELOW_GS_KTS
-            && distToExitFeet <= ROLLOUT_EXIT_TONE_ARM_FT)
+            && distToExitFeet <= ROLLOUT_EXIT_TONE_ARM_FT
+            && (_rolloutExit == null || _rolloutExit.ExitType == "High-speed"))
         {
             _rolloutEarlyHandoffDone = true;
             if (TryEarlyExitHandoff(lat, lon, headingTrue))
@@ -2973,10 +2997,24 @@ public class TaxiGuidanceManager : IDisposable
             // This is ≈runway heading when the junction is on the centreline,
             // and deviates toward the exit only as the aircraft nears an off-axis
             // junction. "Guide me to the junction" rather than "point at the apron."
+            //
+            // Exception: once the "turn now" callout has fired for a Normal exit
+            // (50–110°), switch to ExitBearingTrue as the desired heading.
+            // Bearing-to-junction fights the turn at this range — the junction is
+            // still ahead, so as the pilot turns off the runway the heading error
+            // flips toward the wrong side. ExitBearingTrue correctly decreases as
+            // the pilot aligns with the exit, telling them how much more to turn.
+            // The Taxiing handoff via turnBegun (15° heading change) takes over
+            // shortly after and continues this guidance through the full turn.
             double desiredHeading;
+            if (_rolloutTurnNowAnnounced && _rolloutExit!.ExitType == "Normal" && _rolloutExit.ExitBearingTrue > 0.0)
+            {
+                desiredHeading = _rolloutExit.ExitBearingTrue;
+            }
+            else
             {
                 const double MPD = 111132.0;
-                double midLatRad = (lat + _rolloutExit.Latitude) * 0.5 * Math.PI / 180.0;
+                double midLatRad = (lat + _rolloutExit!.Latitude) * 0.5 * Math.PI / 180.0;
                 double bN = (_rolloutExit.Latitude - lat) * MPD;
                 double bE = (_rolloutExit.Longitude - lon) * MPD * Math.Cos(midLatRad);
                 desiredHeading = (Math.Atan2(bE, bN) * 180.0 / Math.PI + 360.0) % 360.0;
