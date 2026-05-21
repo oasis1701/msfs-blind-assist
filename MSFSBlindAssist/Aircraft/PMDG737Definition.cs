@@ -2712,17 +2712,21 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             if (EventIds.TryGetValue(guardPair.Guard, out int gId) &&
                 EventIds.TryGetValue(guardPair.Switch, out int sId))
             {
-                // Guarded multi-position selector — must carry target position to land
-                // on the correct detent. ValueDescriptions.Count > 2 means ≥3 positions.
+                // Guarded multi-position selector — walk via click events from current
+                // cached position to target. ValueDescriptions.Count > 2 means ≥3 positions.
                 if (varDef.ValueDescriptions != null && varDef.ValueDescriptions.Count > 2)
                 {
-                    _ = simConnect.SendPMDGGuardedSelector(
+                    var dm = simConnect.PMDGDataManager;
+                    int currentPosition = dm != null ? (int)dm.GetFieldValue(varDef.Name) : 0;
+                    int targetPosition = (int)value;
+                    _ = simConnect.SendPMDGGuardedSelectorStepwise(
                         guardPair.Guard,  (uint)gId,
                         guardPair.Switch, (uint)sId,
-                        (int)value);
+                        currentPosition, targetPosition);
                 }
                 else
                 {
+                    // 2-position guarded toggle — any click flips state; current path still works.
                     _ = simConnect.SendPMDGGuardedToggle(
                         guardPair.Guard,  (uint)gId,
                         guardPair.Switch, (uint)sId);
@@ -2814,6 +2818,19 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                     return true; // already at target — no-op
                 }
             }
+
+            // Multi-position selector — walk via click events from current cached position to target.
+            // The parameter-carrying path doesn't work for selectors; the PMDG SDK interprets the
+            // parameter as a mouse-click flag, not a position.
+            if (varDef.ValueDescriptions != null && varDef.ValueDescriptions.Count > 2)
+            {
+                var dm = simConnect.PMDGDataManager;
+                int currentPosition = dm != null ? (int)dm.GetFieldValue(varDef.Name) : 0;
+                int targetPosition = target;
+                _ = simConnect.SendPMDGSelectorStepwise(eventName, eventId, currentPosition, targetPosition);
+                return true;
+            }
+
             simConnect.SendPMDGEvent(eventName, eventId, target);
             return true;
         }
