@@ -18,6 +18,21 @@ public class FenixA320Definition : BaseAircraftDefinition
     public override FCUControlType GetSpeedControlType() => FCUControlType.IncrementDecrement;
     public override FCUControlType GetVerticalSpeedControlType() => FCUControlType.IncrementDecrement;
 
+    // Visual-guidance profile — Fenix A320. Declared explicitly so the math is keyed to this
+    // specific profile rather than inherited from the base default. Approach AoA / Vref /
+    // rate caps are the A320 numbers validated in earlier flight testing on the Fenix and
+    // are left unchanged. The glidepath biases (GlideslopeAltitude / FlareAltitude) are
+    // estimates pending an in-sim coupled-ILS-autoland check.
+    public override VisualGuidanceProfile GetVisualGuidanceProfile() => new()
+    {
+        TypicalApproachAoaDeg    = 6.0,
+        ReferenceVrefKnots       = 140.0,
+        MaxPitchRateDegPerSec    = 2.5,
+        MaxBankRateDegPerSec     = 3.0,
+        GlideslopeAltitudeBiasFt = 60.0,   // estimate — calibrate vs a coupled ILS autoland
+        FlareAltitudeBiasFt      = 12.0    // estimate
+    };
+
     // Private fields for FCU readout tracking
     private double? pendingHeadingValue = null;
     private double? pendingHeadingStatus = null;

@@ -137,7 +137,7 @@ public override VisualGuidanceProfile GetVisualGuidanceProfile() => new()
 };
 ```
 
-Aircraft that do not override (Fenix A320, FBW A320) inherit the A320 defaults — both are the same airframe, so they share one profile.
+Every concrete aircraft declares its own `GetVisualGuidanceProfile()` override — `FlyByWireA320Definition`, `FenixA320Definition`, and `PMDG777Definition` each spell out a full profile, so the math is explicitly keyed per airframe and the FBW / Fenix glidepath biases can be calibrated independently. The `BaseAircraftDefinition` default is only a fallback for aircraft with no visual-guidance tuning. The Fenix A320's approach AoA / Vref / rate caps are the values validated in earlier flight testing — left unchanged; only its glidepath biases (60 / 12) are still estimates.
 
 ## How PID Control Works
 
