@@ -141,6 +141,14 @@ public class TaxiGuidanceManager : IDisposable
     private const double OFF_ROUTE_PERP_FLOOR_M = 25.0;
     private const double OFF_ROUTE_PERP_MARGIN_M = 15.0;
     private const double DEFAULT_TAXIWAY_WIDTH_FT = 75.0;
+    // Minimum negative along-track (behind the segment's start node) before the
+    // "going backwards" off-route condition fires. GPS at taxi scale has <1 m
+    // noise; 10 m gives a comfortable margin while catching deliberate rearward
+    // movement. Requires the same GS + persistence gates as the lateral check.
+    // Blind spot this closes: heading almost opposite to segment bearing keeps
+    // cross-track near zero (PerpendicularDistance returns ~0), so the lateral
+    // check never fires even as the pilot drives steadily away from the route.
+    private const double OFF_ROUTE_BEHIND_START_M = 10.0;
     // Some navdata rows report absurd widths (up to thousands of feet on aprons
     // / combined surfaces). Cap so a malformed row can't blow the perpendicular
     // off-route tolerance out to hundreds of meters — that would mean the
@@ -1429,10 +1437,12 @@ public class TaxiGuidanceManager : IDisposable
             double exitBrgErrPH = _rolloutExit.ExitBearingTrue != 0.0
                 ? Math.Abs(NormalizeAngle(headingTrue - _rolloutExit.ExitBearingTrue))
                 : double.MaxValue;
+            // Widened from 5°/0.7× to 10°/0.4× so a pilot mid-turn (e.g. 7° into
+            // a 17° exit) is recognised as committed before the overshoot retarget fires.
             bool alignedWithExitPH = _rolloutExit.ExitBearingTrue != 0.0
                 && _rolloutExit.ExitAngleDegrees >= 3.0
-                && exitBrgErrPH <= 5.0
-                && hdgDeltaAbsPH >= Math.Max(2.0, _rolloutExit.ExitAngleDegrees * 0.7)
+                && exitBrgErrPH <= 10.0
+                && hdgDeltaAbsPH >= Math.Max(2.0, _rolloutExit.ExitAngleDegrees * 0.4)
                 && groundSpeedKts < ROLLOUT_TURN_MAX_GS_KTS;
 
             if (turnBegunPH || exitedLaterallyPH || alignedWithExitPH)
@@ -1447,16 +1457,28 @@ public class TaxiGuidanceManager : IDisposable
                     _rolloutExit.Latitude, _rolloutExit.Longitude,
                     _rolloutRunwayHeadingTrue) * METERS_TO_FEET;
 
-                // A high-speed (rapid-exit) taxiway needs a far larger margin
-                // before a miss can be declared — its gentle curve carries a
-                // correctly-turning aircraft >100 ft downfield while still only
-                // a few degrees into the turn. And it is a genuine overshoot
-                // only while the aircraft is still tracking the runway
-                // centerline; once it has moved laterally clear it is on the
-                // exit, not missing it.
-                double overshootMarginPH = _rolloutExit.ExitType == "High-speed"
-                    ? ROLLOUT_HIGHSPEED_OVERSHOOT_FT
-                    : ROLLOUT_OVERSHOOT_FT;
+                // A high-speed (rapid-exit) taxiway needs a larger margin before
+                // a miss can be declared — a correctly-turning aircraft carries
+                // downfield while still only a few degrees into the turn. But
+                // the old fixed 500 ft margin was too generous for shallow
+                // exits (e.g. 17°): the guidance pointed at ApronNodeId ~435 ft
+                // past the junction, giving counterproductive left pan for
+                // hundreds of feet. Use an angle-proportional formula:
+                // fire as soon as the lateral displacement of a committed
+                // aircraft would exceed OVERSHOOT_ON_CENTERLINE_FT + 5 ft.
+                double overshootMarginPH;
+                if (_rolloutExit.ExitType == "High-speed" && _rolloutExit.ExitAngleDegrees > 0.0)
+                {
+                    double radPH = _rolloutExit.ExitAngleDegrees * Math.PI / 180.0;
+                    double angleBasedFtPH = (OVERSHOOT_ON_CENTERLINE_FT + 5.0) / Math.Sin(radPH);
+                    overshootMarginPH = Math.Max(ROLLOUT_OVERSHOOT_FT,
+                                        Math.Min(angleBasedFtPH, ROLLOUT_HIGHSPEED_OVERSHOOT_FT));
+                }
+                else
+                {
+                    overshootMarginPH = _rolloutExit.ExitType == "High-speed"
+                        ? ROLLOUT_HIGHSPEED_OVERSHOOT_FT : ROLLOUT_OVERSHOOT_FT;
+                }
                 if (signedAlongPastFtPH >= overshootMarginPH
                     && lateralFtPH < OVERSHOOT_ON_CENTERLINE_FT)
                 {
@@ -1648,6 +1670,35 @@ public class TaxiGuidanceManager : IDisposable
         bool farBehindStart = distFromSegStart > currentSeg.DistanceMeters + 50.0
                               && distToTarget > distFromSegStart;
 
+        // Detect backwards travel along the segment axis. When the aircraft moves
+        // in nearly the opposite direction to the segment bearing, cross-track stays
+        // near zero — the perpendicular check above is blind to it. Compute the
+        // unclamped signed along-track from the segment's start node: negative means
+        // the aircraft is behind where the segment begins.
+        //
+        // TWO conditions must both hold to avoid the false-positive where the aircraft
+        // is approaching the segment from behind in the correct direction (e.g. started
+        // 20 m south of a NNE segment start and is heading NNE to reach it):
+        //   (a) along-track is negative enough to be genuinely behind the start, AND
+        //   (b) aircraft heading is MORE than 90° off the segment bearing — meaning
+        //       the aircraft is moving away from the segment, not toward it.
+        bool goingBackward;
+        {
+            const double MPD = 111132.0;
+            double latMid = (currentSeg.FromNode.Latitude + currentSeg.ToNode.Latitude) * 0.5;
+            double mpl = MPD * Math.Cos(latMid * Math.PI / 180.0);
+            double dx = (currentSeg.ToNode.Longitude - currentSeg.FromNode.Longitude) * mpl;
+            double dy = (currentSeg.ToNode.Latitude  - currentSeg.FromNode.Latitude)  * MPD;
+            double px2 = (lon - currentSeg.FromNode.Longitude) * mpl;
+            double py2 = (lat - currentSeg.FromNode.Latitude)  * MPD;
+            double len = Math.Sqrt(dx * dx + dy * dy);
+            double signedAlongTrack = len < 1.0 ? 0.0 : (px2 * dx + py2 * dy) / len;
+            double segBrg = len < 1.0 ? 0.0 : Math.Atan2(dx, dy) * 180.0 / Math.PI;
+            if (segBrg < 0) segBrg += 360.0;
+            double hdgVsSeg = Math.Abs(NormalizeAngle(headingTrue - segBrg));
+            goingBackward = signedAlongTrack < -OFF_ROUTE_BEHIND_START_M && hdgVsSeg > 90.0;
+        }
+
         // Suspend off-route detection when we're close to a turn. Even with the
         // min(current, next) trick, very tight 90°+ turns can briefly exceed both
         // centerlines. The planned turn geometry is known — just trust it.
@@ -1672,7 +1723,7 @@ public class TaxiGuidanceManager : IDisposable
         if ((DateTime.Now - _lastSegmentAdvanceTime).TotalSeconds < POST_TURN_OFFROUTE_GRACE_SEC)
             nearTurn = true;
 
-        bool offRouteNow = !nearTurn && (perp > perpTolerance || farBehindStart);
+        bool offRouteNow = !nearTurn && (perp > perpTolerance || farBehindStart || goingBackward);
 
         // Persistence: off-route must be sustained for N seconds AND the aircraft
         // must actually be moving. This kills two bugs:
@@ -3037,11 +3088,21 @@ public class TaxiGuidanceManager : IDisposable
         // buildup is too slow but heading alignment with ExitBearingTrue is clear).
         bool stillOnRunway = !exitedLaterally;
 
-        // Exit-type-aware margin — see the post-handoff monitor: a high-speed
-        // RET's gentle curve would otherwise be misread as a miss at 100 ft.
-        double overshootMargin = _rolloutExit.ExitType == "High-speed"
-            ? ROLLOUT_HIGHSPEED_OVERSHOOT_FT
-            : ROLLOUT_OVERSHOOT_FT;
+        // Exit-type-aware margin — same angle-proportional formula as the
+        // post-handoff monitor. See that block for the rationale.
+        double overshootMargin;
+        if (_rolloutExit.ExitType == "High-speed" && _rolloutExit.ExitAngleDegrees > 0.0)
+        {
+            double radOM = _rolloutExit.ExitAngleDegrees * Math.PI / 180.0;
+            double angleBasedFtOM = (OVERSHOOT_ON_CENTERLINE_FT + 5.0) / Math.Sin(radOM);
+            overshootMargin = Math.Max(ROLLOUT_OVERSHOOT_FT,
+                              Math.Min(angleBasedFtOM, ROLLOUT_HIGHSPEED_OVERSHOOT_FT));
+        }
+        else
+        {
+            overshootMargin = _rolloutExit.ExitType == "High-speed"
+                ? ROLLOUT_HIGHSPEED_OVERSHOOT_FT : ROLLOUT_OVERSHOOT_FT;
+        }
         if (signedAlongPastFt >= overshootMargin
             && hdgDeltaAbs < ROLLOUT_TURN_BEGAN_HDG_DEG
             && stillOnRunway
