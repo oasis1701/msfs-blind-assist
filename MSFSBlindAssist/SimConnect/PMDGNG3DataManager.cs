@@ -88,6 +88,44 @@ public class PMDGNG3DataManager : IPMDGDataManager
     public event EventHandler<PMDGVarUpdateEventArgs>? VariableChanged;
 
     // ------------------------------------------------------------------
+    // Diagnostic logging (one-shot, file-based) — written to
+    // %APPDATA%\MSFSBlindAssist\pmdg_ng3_diag.log. Intentionally NOT
+    // System.Diagnostics.Debug.WriteLine because end users can't see
+    // that. Lets a non-developer user attach the file when filing a bug.
+    // ------------------------------------------------------------------
+    private static readonly string s_diagLogPath = System.IO.Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        "MSFSBlindAssist", "pmdg_ng3_diag.log");
+    private static readonly object s_diagLogLock = new();
+    private static bool s_diagLogTruncated;
+    private static int s_processClientDataCalls;
+    private static int s_dataSnapshotsReceived;
+
+    private static void DiagLog(string message)
+    {
+        try
+        {
+            lock (s_diagLogLock)
+            {
+                var dir = System.IO.Path.GetDirectoryName(s_diagLogPath);
+                if (dir != null) System.IO.Directory.CreateDirectory(dir);
+                if (!s_diagLogTruncated)
+                {
+                    System.IO.File.WriteAllText(s_diagLogPath,
+                        $"=== PMDG NG3 diagnostic log — {DateTime.Now:yyyy-MM-dd HH:mm:ss} ===\n");
+                    s_diagLogTruncated = true;
+                }
+                System.IO.File.AppendAllText(s_diagLogPath,
+                    $"{DateTime.Now:HH:mm:ss.fff}  {message}\n");
+            }
+        }
+        catch
+        {
+            // Diagnostic logging must never throw into production paths.
+        }
+    }
+
+    // ------------------------------------------------------------------
     // Initialization
     // ------------------------------------------------------------------
 
@@ -100,15 +138,22 @@ public class PMDGNG3DataManager : IPMDGDataManager
         Microsoft.FlightSimulator.SimConnect.SimConnect simConnect,
         MobiFlightWasmModule mobiFlightWasm)
     {
+        DiagLog($"Initialize entered (simConnect={(simConnect == null ? "null" : "non-null")})");
         _simConnect     = simConnect;
         _mobiFlightWasm = mobiFlightWasm;
+
+        DiagLog($"Struct sizes: PMDGNG3DataStruct={Marshal.SizeOf<PMDGNG3DataStruct>()} bytes, " +
+                $"PMDGNG3Control={Marshal.SizeOf<PMDGNG3Control>()} bytes, " +
+                $"PMDGNG3CDUScreen={Marshal.SizeOf<PMDGNG3CDUScreen>()} bytes");
 
         try
         {
             RegisterClientDataAreas();
+            DiagLog("RegisterClientDataAreas OK");
         }
         catch (Exception ex)
         {
+            DiagLog($"RegisterClientDataAreas FAILED: {ex}");
             System.Diagnostics.Debug.WriteLine(
                 $"[PMDGNG3DataManager] RegisterClientDataAreas failed: {ex.Message}");
         }
@@ -118,6 +163,7 @@ public class PMDGNG3DataManager : IPMDGDataManager
         _pollTimer.Tick += PollTimer_Tick;
         _pollTimer.Start();
 
+        DiagLog("Poll timer started (1000ms)");
         System.Diagnostics.Debug.WriteLine($"[PMDGNG3DataManager] Initialized.");
     }
 
@@ -184,9 +230,13 @@ public class PMDGNG3DataManager : IPMDGDataManager
                 SIMCONNECT_CLIENT_DATA_PERIOD.ONCE,
                 SIMCONNECT_CLIENT_DATA_REQUEST_FLAG.DEFAULT,
                 0, 0, 0);
+            // Log only first few poll attempts so the file doesn't grow unbounded.
+            if (s_processClientDataCalls < 3 || s_dataSnapshotsReceived == 0)
+                DiagLog($"RequestData call dispatched (snapshots received so far: {s_dataSnapshotsReceived})");
         }
         catch (Exception ex)
         {
+            DiagLog($"RequestData FAILED: {ex.Message}");
             System.Diagnostics.Debug.WriteLine(
                 $"[PMDGNG3DataManager] RequestData failed: {ex.Message}");
         }
@@ -201,6 +251,10 @@ public class PMDGNG3DataManager : IPMDGDataManager
     /// </summary>
     public void ProcessClientData(SIMCONNECT_RECV_CLIENT_DATA data)
     {
+        s_processClientDataCalls++;
+        if (s_processClientDataCalls <= 5)
+            DiagLog($"ProcessClientData call #{s_processClientDataCalls}: dwRequestID={data.dwRequestID}, dwDefineID={data.dwDefineID}, dwSize={data.dwSize}");
+
         try
         {
             switch ((PMDG_DATA_REQUEST_ID)data.dwRequestID)
@@ -208,6 +262,12 @@ public class PMDGNG3DataManager : IPMDGDataManager
                 case PMDG_DATA_REQUEST_ID.Data:
                 {
                     var newData = (PMDGNG3DataStruct)data.dwData[0];
+                    s_dataSnapshotsReceived++;
+                    if (s_dataSnapshotsReceived <= 3)
+                        DiagLog($"Data snapshot #{s_dataSnapshotsReceived} parsed: " +
+                                $"ELEC_BatSelector={newData.ELEC_BatSelector}, " +
+                                $"FUEL_QtyLeft={newData.FUEL_QtyLeft:F0}, " +
+                                $"IRS_DisplaySelector={newData.IRS_DisplaySelector}");
                     DetectAndRaiseChanges(newData);
                     _lastDataSnapshot = newData;
                     _hasSnapshot      = true;
@@ -403,10 +463,12 @@ public class PMDGNG3DataManager : IPMDGDataManager
     {
         try
         {
+            DiagLog($"SendEvent (CDA): {eventName} (id=0x{eventId:X}={eventId}) param={parameter?.ToString() ?? "null"}");
             SendViaCDA(eventId, (uint)(parameter ?? 0));
         }
         catch (Exception ex)
         {
+            DiagLog($"SendEvent FAILED: {eventName} → {ex.Message}");
             System.Diagnostics.Debug.WriteLine(
                 $"[PMDGNG3DataManager] SendEvent '{eventName}' failed: {ex.Message}");
         }

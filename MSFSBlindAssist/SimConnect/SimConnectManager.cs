@@ -2886,6 +2886,20 @@ public class SimConnectManager
         }
 
         System.Diagnostics.Debug.WriteLine($"SimConnect Exception: {data.dwException} ({exceptionName}) - SendID: {data.dwSendID}, Index: {data.dwIndex}");
+
+        // Mirror to PMDG NG3 diagnostic log so the user can see exceptions related to
+        // their loaded aircraft without needing a debugger attached.
+        try
+        {
+            var logPath = System.IO.Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "MSFSBlindAssist", "pmdg_ng3_diag.log");
+            var dir = System.IO.Path.GetDirectoryName(logPath);
+            if (dir != null) System.IO.Directory.CreateDirectory(dir);
+            System.IO.File.AppendAllText(logPath,
+                $"{DateTime.Now:HH:mm:ss.fff}  SimConnect EXCEPTION: {data.dwException} ({exceptionName}) - SendID: {data.dwSendID}, Index: {data.dwIndex}\n");
+        }
+        catch { /* never throw from logging */ }
     }
 
     private void SimConnect_OnRecvClientData(Microsoft.FlightSimulator.SimConnect.SimConnect sender, SIMCONNECT_RECV_CLIENT_DATA data)
