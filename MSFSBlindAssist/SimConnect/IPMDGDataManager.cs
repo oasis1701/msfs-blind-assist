@@ -47,11 +47,26 @@ public interface IPMDGDataManager : IDisposable
     /// closes the guard (param=0). Used for two-position guarded toggles AND for multi-position
     /// guarded selectors where the underlying switch event accepts a direct target position via CDA.
     /// Delays between sub-steps so PMDG's frame loop sees each transition.
+    /// Used by the 777; NG3 manager prefers <see cref="WalkSelectorViaClicks"/> per TFM convention.
     /// </summary>
     Task SendGuardedSet(
         string guardEventName, uint guardEventId,
         string switchEventName, uint switchEventId,
         int targetPosition);
+
+    /// <summary>
+    /// Walks a switch from currentPosition to targetPosition by sending abs(delta)
+    /// mouse-click TransmitClientEvent dispatches on the switch event:
+    ///   ClkR (RIGHTSINGLE = 0x80000000) when currentPosition &gt; targetPosition
+    ///   ClkL (LEFTSINGLE  = 0x20000000) when currentPosition &lt; targetPosition
+    /// PMDG NG3 handles guarded switches transparently via clicks — no explicit
+    /// guard open/close is needed. This matches the working TFM convention
+    /// (PMDG737Aircraft.CalculateSwitchPosition with useClicks=true) and replaces
+    /// the broken CDA-with-direct-position dispatch for the NG3, where the CDA
+    /// handler ignored absolute parameter values for guarded switches and the
+    /// extra guard-close write caused the switch to spring back to its prior detent.
+    /// </summary>
+    Task WalkSelectorViaClicks(uint eventId, int currentPosition, int targetPosition);
 
     void RequestCDUScreen(int cdu);
 

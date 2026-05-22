@@ -543,6 +543,33 @@ public class PMDGNG3DataManager : IPMDGDataManager
     private enum TRANSMIT_GROUP_PRIORITY : uint { HIGHEST = 1 }
     private const uint SIMCONNECT_OBJECT_ID_USER = 0;
 
+    private const uint MOUSE_FLAG_LEFTSINGLE  = 0x20000000;
+    private const uint MOUSE_FLAG_RIGHTSINGLE = 0x80000000;
+    private const int  CLICK_GAP_MS = 60;
+
+    /// <summary>
+    /// Walks the switch by sending mouse-click TransmitClientEvents one step
+    /// at a time. ClkR (RIGHTSINGLE) for downward steps (current &gt; target),
+    /// ClkL (LEFTSINGLE) for upward steps. Matches TFM's
+    /// CalculateSwitchPosition(useClicks=true) convention — proven to work
+    /// against the NG3 WASM module without explicit guard manipulation
+    /// (PMDG NG3 lifts and lowers the cover internally when a guarded
+    /// switch receives a click event).
+    /// </summary>
+    public async Task WalkSelectorViaClicks(uint eventId, int currentPosition, int targetPosition)
+    {
+        if (currentPosition == targetPosition) return;
+        bool steppingDown = currentPosition > targetPosition;
+        uint clickFlag = steppingDown ? MOUSE_FLAG_RIGHTSINGLE : MOUSE_FLAG_LEFTSINGLE;
+        int steps = Math.Abs(targetPosition - currentPosition);
+        DiagLog($"WalkSelectorViaClicks: eventId=0x{eventId:X} from={currentPosition} to={targetPosition} steps={steps} clickFlag=0x{clickFlag:X8} ({(steppingDown ? "ClkR/down" : "ClkL/up")})");
+        for (int i = 0; i < steps; i++)
+        {
+            SendEventViaTransmitWithTarget(eventId, clickFlag);
+            if (i < steps - 1) await Task.Delay(CLICK_GAP_MS);
+        }
+    }
+
     /// <summary>
     /// Guarded set: open guard (param=1) → set switch (param=targetPosition) → close guard (param=0).
     /// 150 ms gaps so PMDG's frame loop processes each transition. The guard-close runs inside

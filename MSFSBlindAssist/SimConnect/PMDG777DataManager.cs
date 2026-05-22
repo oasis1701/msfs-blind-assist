@@ -506,6 +506,26 @@ public class PMDG777DataManager : IPMDGDataManager
     }
 
     /// <summary>
+    /// 777 currently uses CDA-set-position for selectors (commit e1682ae is the
+    /// proven working pattern). This walker is provided to satisfy the interface
+    /// in case a future control needs TFM-style click-walking; not wired into the
+    /// 777 HandleUIVariableSet dispatch.
+    /// </summary>
+    public async Task WalkSelectorViaClicks(uint eventId, int currentPosition, int targetPosition)
+    {
+        if (currentPosition == targetPosition) return;
+        const uint LEFTSINGLE  = 0x20000000;
+        const uint RIGHTSINGLE = 0x80000000;
+        uint clickFlag = currentPosition > targetPosition ? RIGHTSINGLE : LEFTSINGLE;
+        int steps = Math.Abs(targetPosition - currentPosition);
+        for (int i = 0; i < steps; i++)
+        {
+            SendEventViaTransmitWithTarget(eventId, clickFlag);
+            if (i < steps - 1) await Task.Delay(60);
+        }
+    }
+
+    /// <summary>
     /// Guarded set: open guard → set switch to targetPosition → close guard.
     /// Each sub-step writes the CDA control area with the appropriate parameter:
     ///   guard event with parameter=1 → opens the spring-loaded cover

@@ -4002,6 +4002,17 @@ public class SimConnectManager
         pmdgDataManager?.SendEventViaTransmitWithTarget(eventId, targetPosition);
     }
 
+    /// <summary>
+    /// Walks an NG3 switch to a target position via mouse-click TransmitClientEvents
+    /// (TFM convention). PMDG NG3 handles guard physics transparently — no explicit
+    /// guard manipulation needed.
+    /// </summary>
+    public async Task WalkPMDGSelector(uint eventId, int currentPosition, int targetPosition)
+    {
+        if (pmdgDataManager != null)
+            await pmdgDataManager.WalkSelectorViaClicks(eventId, currentPosition, targetPosition);
+    }
+
     public void Disconnect()
     {
         // Stop reconnect timer first to prevent it from firing during cleanup
