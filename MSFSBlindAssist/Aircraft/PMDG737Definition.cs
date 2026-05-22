@@ -2834,6 +2834,37 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     // Behavior overrides — scaffold (populated in Tasks C10–C12)
     // =========================================================================
 
+    // Standby Power Selector dispatch — TFM convention. PMDG NG3 does not
+    // auto-handle the standby power guard, so we must click it open before
+    // clicking the switch. Click directions on this control are INVERTED
+    // relative to the battery: ClkR moves position UP (toward AUTO=2), ClkL
+    // moves DOWN (toward BAT=0). Source: TFM StandbyAuto sends 2x ClkR to
+    // reach position 2; StandbyBat sends 2x ClkL to reach position 0.
+    private static async Task DispatchStandbyPowerAsync(
+        SimConnect.SimConnectManager simConnect,
+        uint guardEventId, uint switchEventId,
+        int currentPosition, int targetPosition)
+    {
+        const uint MOUSE_FLAG_LEFTSINGLE  = 0x20000000;
+        const uint MOUSE_FLAG_RIGHTSINGLE = 0x80000000;
+
+        // ClkR = up (toward AUTO), ClkL = down (toward BAT) on this control.
+        bool steppingUp = targetPosition > currentPosition;
+        uint clickFlag = steppingUp ? MOUSE_FLAG_RIGHTSINGLE : MOUSE_FLAG_LEFTSINGLE;
+        int steps = Math.Abs(targetPosition - currentPosition);
+
+        // Always click the guard to ensure the cover is lifted before manipulating
+        // the switch (PMDG does not snap it open on this specific control).
+        simConnect.SendPMDGEventViaTransmitWithTarget(guardEventId, MOUSE_FLAG_RIGHTSINGLE);
+        await Task.Delay(75);
+
+        for (int i = 0; i < steps; i++)
+        {
+            simConnect.SendPMDGEventViaTransmitWithTarget(switchEventId, clickFlag);
+            if (i < steps - 1) await Task.Delay(80);
+        }
+    }
+
     // Per-detent flaps lever events. The base EVT_CONTROL_STAND_FLAPS_LEVER is a
     public override bool HandleUIVariableSet(
         string varKey, double value,
@@ -2867,6 +2898,51 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             else
             {
                 announcer.AnnounceImmediate("Invalid frequency. Range: 118.000 to 136.975");
+            }
+            return true;
+        }
+
+        // ------------------------------------------------------------------
+        // 0b. Autobrake selector — TFM dispatches with the absolute target
+        //     position via SendControlToFS(EVT_MPM_AUTOBRAKE_SELECTOR, position).
+        //     Mirroring that via TransmitClientEvent("#<id>", target). Click-walking
+        //     does not move this control; it accepts only direct positions.
+        // ------------------------------------------------------------------
+        if (varKey == "MAIN_AutobrakeSelector")
+        {
+            if (EventIds.TryGetValue("EVT_MPM_AUTOBRAKE_SELECTOR", out int abId))
+            {
+                int target = (int)value;
+                var dm = simConnect.PMDGDataManager;
+                if (dm != null && (int)dm.GetFieldValue(varDef.Name) == target) return true;
+                simConnect.SendPMDGEventViaTransmitWithTarget((uint)abId, (uint)target);
+            }
+            return true;
+        }
+
+        // ------------------------------------------------------------------
+        // 0c. Standby Power Selector — guarded 3-position switch where PMDG
+        //     does NOT auto-handle the guard (unlike the battery). TFM's
+        //     StandbyBat/Off/Auto methods explicitly click the guard event
+        //     (EVT_OH_ELEC_STBY_PWR_GUARD) BEFORE clicking the switch event
+        //     to lift the protective cover. We replicate the same sequence.
+        // ------------------------------------------------------------------
+        if (varKey == "ELEC_StandbyPowerSelector")
+        {
+            if (EventIds.TryGetValue("EVT_OH_ELEC_STBY_PWR_GUARD", out int sgId) &&
+                EventIds.TryGetValue("EVT_OH_ELEC_STBY_PWR_SWITCH", out int ssId))
+            {
+                int target = (int)value;
+                var dm = simConnect.PMDGDataManager;
+                if (dm == null || !dm.IsReady)
+                {
+                    announcer.AnnounceImmediate("Switch not ready, please try again in a moment.");
+                    return true;
+                }
+                int currentPosition = (int)dm.GetFieldValue(varDef.Name);
+                if (currentPosition == target) return true;
+                _ = DispatchStandbyPowerAsync(
+                    simConnect, (uint)sgId, (uint)ssId, currentPosition, target);
             }
             return true;
         }
