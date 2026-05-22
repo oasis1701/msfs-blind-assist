@@ -6,11 +6,11 @@ Two hotkey modes with three-tier delegation architecture for multi-aircraft supp
 
 ### Read Mode (Activated with `]`)
 - Read out values (altitude, heading, fuel, etc.)
-- Examples: Shift+H (FCU heading), A (altitude MSL), F (fuel)
+- Examples: Shift+H (FCU heading), A (altitude MSL), F (fuel), Ctrl+G (latest GSX tooltip)
 
 ### Input Mode (Activated with `[`)
 - Execute functions (teleportation, aircraft controls)
-- Examples: Shift+R (runway teleport), Shift+1 (push heading knob), Ctrl+A (set altitude)
+- Examples: Shift+R (runway teleport), Shift+1 (push heading knob), Ctrl+A (set altitude), Alt+G (open Access GSX window)
 
 ### Usage Flow
 1. Press `]` or `[` to activate mode
