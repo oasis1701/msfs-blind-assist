@@ -3937,6 +3937,20 @@ public class SimConnectManager
 
     public void InitializePMDG(IAircraftDefinition aircraft)
     {
+        // Always log entry — covers the "PMDGNG3DataManager.Initialize never fires"
+        // diagnosis where we need to know if we even GOT to the factory.
+        try
+        {
+            var logPath = System.IO.Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "MSFSBlindAssist", "pmdg_ng3_diag.log");
+            var dir = System.IO.Path.GetDirectoryName(logPath);
+            if (dir != null) System.IO.Directory.CreateDirectory(dir);
+            System.IO.File.AppendAllText(logPath,
+                $"{DateTime.Now:HH:mm:ss.fff}  SimConnectManager.InitializePMDG called: aircraftCode='{aircraft?.AircraftCode}', simConnect={(simConnect == null ? "null" : "non-null")}, IsConnected={IsConnected}\n");
+        }
+        catch { /* never throw from logging */ }
+
         if (simConnect == null || !IsConnected) return;
         DisposePMDG();
         pmdgDataManager = aircraft.AircraftCode switch
@@ -3945,6 +3959,17 @@ public class SimConnectManager
             "PMDG_737" => new PMDGNG3DataManager(),
             _ => null
         };
+
+        try
+        {
+            var logPath = System.IO.Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "MSFSBlindAssist", "pmdg_ng3_diag.log");
+            System.IO.File.AppendAllText(logPath,
+                $"{DateTime.Now:HH:mm:ss.fff}  Factory result: pmdgDataManager={(pmdgDataManager == null ? "null" : pmdgDataManager.GetType().Name)}\n");
+        }
+        catch { }
+
         pmdgDataManager?.Initialize(simConnect, mobiFlightWasm);
     }
 
