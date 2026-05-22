@@ -440,6 +440,11 @@ public class TaxiGuidanceManager : IDisposable
     // Minimum gap between consecutive undershoot retargets. Prevents rapid
     // cascade when multiple earlier exits fall within the range window.
     private const double ROLLOUT_UNDERSHOOT_COOLDOWN_SEC = 8.0;
+    // Minimum lead distance for an undershoot retarget: the earlier exit must be
+    // far enough ahead for the aircraft to react, decelerate and set up the turn
+    // at the current speed. A floor plus a speed-proportional term.
+    private const double ROLLOUT_UNDERSHOOT_MIN_LEAD_FT = 200.0;
+    private const double ROLLOUT_UNDERSHOOT_LEAD_PER_KT_FT = 11.0;
 
     // Distance from the chosen exit at which the rollout tone snaps from
     // runway-heading guidance (centreline tracking) to exit-bearing guidance.
@@ -3056,6 +3061,17 @@ public class TaxiGuidanceManager : IDisposable
                 Navigation.LandingExit? earlierExit = null;
                 double earlierExitDistFt = double.MaxValue;
 
+                // Minimum lead distance: the earlier exit must be far enough
+                // ahead that the aircraft can still react, decelerate and set up
+                // the turn at the current speed. Without it the scan grabs
+                // whatever exit is physically nearest — observed at YSSY 16R
+                // retargeting to taxiway 'L' just 79 ft ahead at 52 kt,
+                // impossible to make, which then cascaded to a missed exit and a
+                // false "no exit remaining". Scales with speed.
+                double undershootMinLeadFt = Math.Max(
+                    ROLLOUT_UNDERSHOOT_MIN_LEAD_FT,
+                    groundSpeedKts * ROLLOUT_UNDERSHOOT_LEAD_PER_KT_FT);
+
                 foreach (var e in _rolloutAllExits)
                 {
                     // Only consider exits clearly before the planned exit.
@@ -3079,7 +3095,9 @@ public class TaxiGuidanceManager : IDisposable
                         continue;
 
                     double distFt2 = TaxiGraph.FastDistanceMeters(lat, lon, e.Latitude, e.Longitude) * METERS_TO_FEET;
-                    if (distFt2 <= ROLLOUT_UNDERSHOOT_RANGE_FT && distFt2 < earlierExitDistFt)
+                    if (distFt2 >= undershootMinLeadFt
+                        && distFt2 <= ROLLOUT_UNDERSHOOT_RANGE_FT
+                        && distFt2 < earlierExitDistFt)
                     {
                         earlierExit = e;
                         earlierExitDistFt = distFt2;
@@ -3582,57 +3600,91 @@ public class TaxiGuidanceManager : IDisposable
         string prevName = string.IsNullOrEmpty(_rolloutExit.TaxiwayName)
             ? "exit"
             : $"taxiway {_rolloutExit.TaxiwayName}";
-        string newName = string.IsNullOrEmpty(newExit.TaxiwayName)
-            ? "next exit"
-            : $"taxiway {newExit.TaxiwayName}";
-        int distAheadFt = (int)Math.Round(
-            TaxiGraph.FastDistanceMeters(lat, lon, newExit.Latitude, newExit.Longitude)
-            * METERS_TO_FEET);
 
-        string destNameForRoute = newExit.TaxiwayName.Length > 0
-            ? $"Taxiway {newExit.TaxiwayName}"
-            : "Exit";
-
-        // LoadRoute acquires _stateLock; same-thread reentrancy is safe.
-        // announceSummary:false suppresses the "Route to X via Y" callout so
-        // the only spoken line from this transition is our retarget message
-        // below.
-        string? error = LoadRoute(
-            _dataProvider, _icao,
-            lat, lon, headingTrue,
-            newExit.NodeId,
-            destNameForRoute,
-            taxiwaySequence: null,
-            prebuiltGraph: _graph,
-            announceSummary: false,
-            isRunwayDestination: false);
-
-        if (error != null)
+        // Try the requested exit; if its route cannot be built, fall forward to
+        // the next downfield exit instead of giving up. A single failed
+        // LoadRoute used to drop straight into runway-end countdown ("no exit
+        // remaining") even with good exits further down the runway — the YSSY
+        // 16R failure, where a degenerate retarget target failed to route and
+        // condemned the whole rollout. Only declare no-exit once EVERY
+        // remaining downfield exit has failed to route.
+        Navigation.LandingExit? candidate = newExit;
+        while (candidate != null)
         {
-            AnnounceInstruction($"Missed {prevName}. Could not retarget: {error}.");
-            EnterRunwayEndCountdown();
-            return;
+            string destNameForRoute = candidate.TaxiwayName.Length > 0
+                ? $"Taxiway {candidate.TaxiwayName}"
+                : "Exit";
+
+            // LoadRoute acquires _stateLock; same-thread reentrancy is safe.
+            // announceSummary:false suppresses the "Route to X via Y" callout.
+            string? error = LoadRoute(
+                _dataProvider, _icao,
+                lat, lon, headingTrue,
+                candidate.NodeId,
+                destNameForRoute,
+                taxiwaySequence: null,
+                prebuiltGraph: _graph,
+                announceSummary: false,
+                isRunwayDestination: false);
+
+            if (error == null)
+            {
+                _rolloutExit = candidate;
+                _isLandingExitRoute = true; // LoadRoute above cleared it; still a landing-exit route
+                _rolloutApproach1500Announced = false;
+                _rolloutApproach900Announced = false;
+                _rolloutApproach500Announced = false;
+                _rolloutTurnNowAnnounced = false;
+                _rolloutExitToneArmed = false;
+                // Allow TryEarlyExitHandoff to fire for the newly targeted exit.
+                _rolloutEarlyHandoffDone = false;
+
+                // LoadRoute set state to RouteLoaded. Re-enter LandingRollout so
+                // the next UpdatePosition frame re-runs UpdateLandingRollout.
+                SetState(TaxiGuidanceState.LandingRollout);
+
+                int distAheadFt = (int)Math.Round(
+                    TaxiGraph.FastDistanceMeters(lat, lon, candidate.Latitude, candidate.Longitude)
+                    * METERS_TO_FEET);
+                string newName = string.IsNullOrEmpty(candidate.TaxiwayName)
+                    ? "next exit"
+                    : $"taxiway {candidate.TaxiwayName}";
+                // The caller's override message describes only the originally
+                // requested exit; if we fell forward to a later one, drop it.
+                string announcement = (candidate == newExit && overrideAnnouncement != null)
+                    ? overrideAnnouncement
+                    : $"Missed {prevName}. Retargeting {newName}, {distAheadFt} feet ahead.";
+                AnnounceInstruction(announcement);
+                return;
+            }
+
+            RolloutDiag($"RetargetLandingExit: route to '{candidate.TaxiwayName}' failed ({error}) — " +
+                $"trying next downfield exit");
+            candidate = NextDownfieldExit(candidate);
         }
 
-        _rolloutExit = newExit;
-        _isLandingExitRoute = true; // LoadRoute above cleared it; still a landing-exit route
-        _rolloutApproach1500Announced = false;
-        _rolloutApproach900Announced = false;
-        _rolloutApproach500Announced = false;
-        _rolloutTurnNowAnnounced = false;
-        _rolloutExitToneArmed = false;
-        // Allow TryEarlyExitHandoff to fire for the newly targeted exit.
-        _rolloutEarlyHandoffDone = false;
+        // Every downfield exit failed to route.
+        AnnounceInstruction($"Missed {prevName}. No reachable exit remaining.");
+        EnterRunwayEndCountdown();
+    }
 
-        // LoadRoute set state to RouteLoaded. Re-enter LandingRollout so the
-        // next UpdatePosition frame re-runs UpdateLandingRollout (tone stays
-        // paused, approach callouts re-armed, overshoot detector active for
-        // the new exit).
-        SetState(TaxiGuidanceState.LandingRollout);
-
-        string announcement = overrideAnnouncement
-            ?? $"Missed {prevName}. Retargeting {newName}, {distAheadFt} feet ahead.";
-        AnnounceInstruction(announcement);
+    /// <summary>
+    /// First exit in <see cref="_rolloutAllExits"/> downfield of
+    /// <paramref name="afterExit"/> (beyond it by ROLLOUT_OVERSHOOT_FT) that is
+    /// not a greater-than-90-degree turn. Null when none remain. Same
+    /// suitability rule as the overshoot next-exit scan.
+    /// </summary>
+    private Navigation.LandingExit? NextDownfieldExit(Navigation.LandingExit afterExit)
+    {
+        foreach (var e in _rolloutAllExits)
+        {
+            if (e.DistanceFromThresholdFeet <= afterExit.DistanceFromThresholdFeet + ROLLOUT_OVERSHOOT_FT)
+                continue;
+            if (e.ExitAngleDegrees > 0.0 && e.ExitAngleDegrees > 90.0)
+                continue;
+            return e;
+        }
+        return null;
     }
 
     /// <summary>
