@@ -170,7 +170,20 @@ public sealed class AccessGSXForm : Form
             }
         };
 
-        VisibleChanged += (_, _) => _gsxService.AnnounceWhenFormHidden = !Visible;
+        VisibleChanged += (_, _) =>
+        {
+            // Form visible → form's own TooltipChanged handler announces;
+            //   the service must stay silent to avoid double-speaking.
+            // Form hidden → respect the user's "Announce GSX tooltips in
+            //   background" setting. If unchecked, the service stays silent
+            //   even though the form isn't driving speech anymore.
+            // Reading the saved setting here (rather than just !Visible) is
+            // what makes the in-flight Hide() path honour the toggle —
+            // MainForm sets the initial value but only this handler keeps
+            // it correct across show/hide cycles.
+            _gsxService.AnnounceWhenFormHidden = !Visible
+                && MSFSBlindAssist.Settings.SettingsManager.Current.GsxBackgroundMonitoring;
+        };
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -374,9 +387,13 @@ public sealed class AccessGSXForm : Form
             _gsxService.MenuHidden -= OnMenuHidden;
             _gsxService.MenuTimedOut -= OnMenuTimedOut;
             _gsxService.TooltipChanged -= OnTooltipChanged;
-            // Restore background-announce policy when the form goes away
-            // entirely (e.g. app shutdown). The service may outlive the form.
-            _gsxService.AnnounceWhenFormHidden = true;
+            // Restore background-announce policy to the user setting when
+            // the form goes away entirely (e.g. app shutdown). The service
+            // may outlive the form — without this it would stay in
+            // form-driven (=false) mode forever and the user's setting
+            // would be ignored.
+            _gsxService.AnnounceWhenFormHidden =
+                MSFSBlindAssist.Settings.SettingsManager.Current.GsxBackgroundMonitoring;
         }
         base.Dispose(disposing);
     }
