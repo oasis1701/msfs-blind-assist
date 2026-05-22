@@ -3945,25 +3945,22 @@ public class SimConnectManager
         pmdgDataManager?.SendEvent(eventName, eventId, parameter);
     }
 
-    public async Task SendPMDGGuardedToggle(string guardEventName, uint guardEventId,
-                                              string switchEventName, uint switchEventId)
+    public async Task SendPMDGGuardedSet(string guardEventName, uint guardEventId,
+                                          string switchEventName, uint switchEventId,
+                                          int targetPosition)
     {
         if (pmdgDataManager != null)
-            await pmdgDataManager.SendGuardedToggle(guardEventName, guardEventId, switchEventName, switchEventId);
+            await pmdgDataManager.SendGuardedSet(guardEventName, guardEventId, switchEventName, switchEventId, targetPosition);
     }
 
-    public async Task SendPMDGSelectorStepwise(string eventName, uint eventId, int currentPosition, int targetPosition)
+    /// <summary>
+    /// TransmitClientEvent dispatch for absolute-position selectors (3+ detents) whose
+    /// CDA selector handler does not accept the target position directly. PMDG accepts
+    /// the absolute target position via the standard SimConnect event path.
+    /// </summary>
+    public void SendPMDGEventViaTransmitWithTarget(uint eventId, uint targetPosition)
     {
-        if (pmdgDataManager != null)
-            await pmdgDataManager.SendSelectorStepwise(eventName, eventId, currentPosition, targetPosition);
-    }
-
-    public async Task SendPMDGGuardedSelectorStepwise(string guardEventName, uint guardEventId,
-                                                      string switchEventName, uint switchEventId,
-                                                      int currentPosition, int targetPosition)
-    {
-        if (pmdgDataManager != null)
-            await pmdgDataManager.SendGuardedSelectorStepwise(guardEventName, guardEventId, switchEventName, switchEventId, currentPosition, targetPosition);
+        pmdgDataManager?.SendEventViaTransmitWithTarget(eventId, targetPosition);
     }
 
     public void Disconnect()

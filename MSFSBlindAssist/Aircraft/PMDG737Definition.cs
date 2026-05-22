@@ -400,13 +400,13 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             "STBY PWR", "BAT BUS", "BAT", "AUX BAT", "TR1", "TR2", "TR3", "TEST");
         d["ELEC_ACMeterSelector"]    = Selector("ELEC_ACMeterSelector", "AC Meter",
             "STBY PWR", "GRD PWR", "GEN 1", "APU GEN", "GEN 2", "INV", "TEST");
-        // TFM: `_onOrOffStates` (off/on, 2 positions); SDK line 159: `unsigned char ELEC_BatSelector; // 0: OFF  1: BAT  2: ON`.
-        // Resolved as 2-position toggle (off/on) because TFM exposes fewer positions
-        // than SDK and the user has directly confirmed only 2 detents exist physically
-        // on the NG3 battery selector. SDK position 2 ("ON") is a phantom enum value
-        // — what the SDK documents as "BAT" (position 1) is the real cockpit "on"
-        // position. Switch is still guarded; the 2-position guarded dispatch path
-        // (`SendPMDGGuardedToggle`, parameterless) handles this correctly.
+        // SDK enum: ELEC_BatSelector { 0=OFF, 1=BAT, 2=ON } — but the actual NG3
+        // cockpit has two physical detents only. User-confirmed: there is no real
+        // third "ON" position on the lever. Picking the UI "ON" maps to SDK
+        // position 1 (BAT), which is the up detent that energizes the battery bus
+        // for normal operations; position 2 is an enum-only phantom we never want
+        // to land on. Switch remains guarded — dispatched via SendPMDGGuardedSet
+        // with the target position written directly to PMDG's Control CDA.
         d["ELEC_BatSelector"]        = Toggle("ELEC_BatSelector", "Battery", "OFF", "ON");
         d["ELEC_CabUtilSw"]          = Toggle("ELEC_CabUtilSw", "Cabin Utility");
         d["ELEC_IFEPassSeatSw"]      = Toggle("ELEC_IFEPassSeatSw", "IFE Pass Seats");
@@ -2872,41 +2872,20 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         }
 
         // ------------------------------------------------------------------
-        // 1. Guarded switches — guard open → toggle → guard close (async,
-        //    fire-and-forget; UI doesn't need to await).
+        // 1. Guarded switches — open guard, set switch to target position, close guard.
+        //    Works for both two-position toggles and multi-position selectors; PMDG's
+        //    CDA handler accepts the absolute target position via Control.Parameter for
+        //    both. Fire-and-forget; UI doesn't need to await.
         // ------------------------------------------------------------------
         if (_guardedMap.TryGetValue(varKey, out var guardPair))
         {
             if (EventIds.TryGetValue(guardPair.Guard, out int gId) &&
                 EventIds.TryGetValue(guardPair.Switch, out int sId))
             {
-                // Guarded multi-position selector — walk via click events from current
-                // cached position to target. ValueDescriptions.Count > 2 means ≥3 positions.
-                if (varDef.ValueDescriptions != null && varDef.ValueDescriptions.Count > 2)
-                {
-                    var dm = simConnect.PMDGDataManager;
-                    // Snapshot must have arrived before we can trust the cached position —
-                    // otherwise GetFieldValue returns 0.0 silently and we'd walk an arbitrary
-                    // selector to a wrong detent.
-                    if (dm == null || !dm.IsReady)
-                    {
-                        announcer.AnnounceImmediate("Selector not ready, please try again in a moment.");
-                        return true;
-                    }
-                    int currentPosition = (int)dm.GetFieldValue(varDef.Name);
-                    int targetPosition = (int)value;
-                    _ = simConnect.SendPMDGGuardedSelectorStepwise(
-                        guardPair.Guard,  (uint)gId,
-                        guardPair.Switch, (uint)sId,
-                        currentPosition, targetPosition);
-                }
-                else
-                {
-                    // 2-position guarded toggle — any click flips state; current path still works.
-                    _ = simConnect.SendPMDGGuardedToggle(
-                        guardPair.Guard,  (uint)gId,
-                        guardPair.Switch, (uint)sId);
-                }
+                _ = simConnect.SendPMDGGuardedSet(
+                    guardPair.Guard,  (uint)gId,
+                    guardPair.Switch, (uint)sId,
+                    (int)value);
                 return true;
             }
         }
@@ -3027,26 +3006,21 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 }
             }
 
-            // Multi-position selector — walk via click events from current cached position to target.
-            // The parameter-carrying path doesn't work for selectors; the PMDG SDK interprets the
-            // parameter as a mouse-click flag, not a position.
+            // Multi-position selector (3+ detents) — PMDG's CDA selector handler steps
+            // only one detent regardless of the parameter, so a single CDA write to
+            // jump from "OFF" to "MAX" lands on "1" instead of the requested target.
+            // The standard SimConnect TransmitClientEvent path with the event mapped
+            // under "#<eventId>" accepts the absolute target position as dwData and
+            // PMDG's event router places the switch at that detent in one shot.
+            // Prior art: PMDG777Definition LTS_EmerLights case (commit e1682ae rationale).
             if (varDef.ValueDescriptions != null && varDef.ValueDescriptions.Count > 2)
             {
-                var dm = simConnect.PMDGDataManager;
-                // Snapshot must have arrived before we can trust the cached position —
-                // otherwise GetFieldValue returns 0.0 silently and we'd walk an arbitrary
-                // selector to a wrong detent.
-                if (dm == null || !dm.IsReady)
-                {
-                    announcer.AnnounceImmediate("Selector not ready, please try again in a moment.");
-                    return true;
-                }
-                int currentPosition = (int)dm.GetFieldValue(varDef.Name);
-                int targetPosition = target;
-                _ = simConnect.SendPMDGSelectorStepwise(eventName, eventId, currentPosition, targetPosition);
+                simConnect.SendPMDGEventViaTransmitWithTarget(eventId, (uint)target);
                 return true;
             }
 
+            // Two-position switch — CDA with absolute target position (per PMDG sample
+            // ConnectionTest.cpp:105-109 logo-light example).
             simConnect.SendPMDGEvent(eventName, eventId, target);
             return true;
         }

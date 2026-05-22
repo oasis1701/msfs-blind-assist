@@ -5438,9 +5438,10 @@ public class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             if (EventIds.TryGetValue(guardPair.Guard, out int gId) &&
                 EventIds.TryGetValue(guardPair.Switch, out int sId))
             {
-                _ = simConnect.SendPMDGGuardedToggle(
+                _ = simConnect.SendPMDGGuardedSet(
                     guardPair.Guard,  (uint)gId,
-                    guardPair.Switch, (uint)sId);
+                    guardPair.Switch, (uint)sId,
+                    (int)value);
                 return true;
             }
         }

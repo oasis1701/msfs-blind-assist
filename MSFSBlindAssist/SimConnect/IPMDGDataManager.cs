@@ -33,26 +33,25 @@ public interface IPMDGDataManager : IDisposable
 
     void SendEvent(string eventName, uint eventId, int? parameter);
 
-    Task SendGuardedToggle(
-        string guardEventName, uint guardEventId,
-        string switchEventName, uint switchEventId);
+    /// <summary>
+    /// Sends a PMDG event through the standard SimConnect TransmitClientEvent path
+    /// with the event registered under the alias "#&lt;eventId&gt;". Used for absolute-position
+    /// selectors (3+ detents) where PMDG's CDA selector handler does not accept the
+    /// direct target position. The 777 emergency-exit lights selector uses this path —
+    /// see PMDG777Definition LTS_EmerLights case and the e1682ae commit history.
+    /// </summary>
+    void SendEventViaTransmitWithTarget(uint eventId, uint targetPosition);
 
     /// <summary>
-    /// Walks a multi-position selector from currentPosition to targetPosition by sending
-    /// click-flag events on the switch event. ClkL (LEFTSINGLE = increment) or ClkR
-    /// (RIGHTSINGLE = decrement) is sent abs(delta) times with a short gap between clicks.
-    /// Reads current position from outside (caller responsibility) to avoid races.
+    /// Guarded set: opens the guard (param=1), writes the switch position (param=targetPosition),
+    /// closes the guard (param=0). Used for two-position guarded toggles AND for multi-position
+    /// guarded selectors where the underlying switch event accepts a direct target position via CDA.
+    /// Delays between sub-steps so PMDG's frame loop sees each transition.
     /// </summary>
-    Task SendSelectorStepwise(string eventName, uint eventId, int currentPosition, int targetPosition);
-
-    /// <summary>
-    /// Guarded variant of SendSelectorStepwise: opens the guard, walks the selector via clicks,
-    /// then closes the guard. Use for guarded multi-position selectors like ELEC_StandbyPowerSelector.
-    /// </summary>
-    Task SendGuardedSelectorStepwise(
+    Task SendGuardedSet(
         string guardEventName, uint guardEventId,
         string switchEventName, uint switchEventId,
-        int currentPosition, int targetPosition);
+        int targetPosition);
 
     void RequestCDUScreen(int cdu);
 

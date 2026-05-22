@@ -427,62 +427,76 @@ public class PMDGNG3DataManager : IPMDGDataManager
     }
 
     /// <summary>
-    /// Guarded toggle: guard event → 150 ms delay → switch event → 150 ms delay → guard event.
+    /// Sends a PMDG event through the standard SimConnect TransmitClientEvent path
+    /// with the event registered under the alias "#&lt;eventId&gt;". Used for absolute-position
+    /// selectors (3+ detents) where PMDG's CDA handler steps one detent regardless of the
+    /// supplied parameter. The standard path accepts the target position as dwData and
+    /// PMDG's event router places the switch at that detent in one shot.
     /// </summary>
-    public async Task SendGuardedToggle(
-        string guardEventName, uint guardEventId,
-        string switchEventName, uint switchEventId)
+    public void SendEventViaTransmitWithTarget(uint eventId, uint targetPosition)
     {
-        SendEvent(guardEventName,  guardEventId,  null);
-        await Task.Delay(150);
-        SendEvent(switchEventName, switchEventId, null);
-        await Task.Delay(150);
-        SendEvent(guardEventName,  guardEventId,  null);
-    }
-
-    // Click-flag values per TFM PMDG737Aircraft.cs lines 31-34 (verified working in TFM's production code).
-    private const int ClkL = 0x20000000;                          // LEFTSINGLE  — increment one position
-    private const int ClkR = unchecked((int)0x80000000);          // RIGHTSINGLE — decrement one position
-    private const int ClickGapMs = 50;
-
-    /// <summary>
-    /// Walks a multi-position selector from currentPosition to targetPosition by sending
-    /// abs(delta) click-flag events. Uses ClkL for forward (increment), ClkR for reverse.
-    /// </summary>
-    public async Task SendSelectorStepwise(string eventName, uint eventId, int currentPosition, int targetPosition)
-    {
-        int delta = targetPosition - currentPosition;
-        if (delta == 0) return;
-        int clickFlag = delta > 0 ? ClkL : ClkR;
-        int steps = Math.Abs(delta);
-        for (int i = 0; i < steps; i++)
+        if (_simConnect == null) return;
+        try
         {
-            SendEvent(eventName, eventId, clickFlag);
-            if (i < steps - 1) await Task.Delay(ClickGapMs);
+            string aliasName = "#" + eventId;
+            uint id;
+            lock (_transmitLock)
+            {
+                if (!_transmitEventIds.ContainsKey(aliasName))
+                {
+                    uint mappedId = _nextTransmitEventId++;
+                    _transmitEventIds[aliasName] = mappedId;
+                    _simConnect.MapClientEventToSimEvent(
+                        (TRANSMIT_EVENT_GROUP)mappedId, aliasName);
+                }
+                id = _transmitEventIds[aliasName];
+            }
+            _simConnect.TransmitClientEvent(
+                SIMCONNECT_OBJECT_ID_USER,
+                (TRANSMIT_EVENT_GROUP)id,
+                targetPosition,
+                TRANSMIT_GROUP_PRIORITY.HIGHEST,
+                SIMCONNECT_EVENT_FLAG.GROUPID_IS_PRIORITY);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"[PMDGNG3DataManager] SendEventViaTransmitWithTarget eventId=0x{eventId:X} failed: {ex.Message}");
         }
     }
 
+    // Local registry for events mapped through TransmitClientEvent. Distinct from
+    // SimConnectManager.eventIds so we don't collide with global event-name semantics.
+    // _nextTransmitEventId starts high enough to leave room for the standard ranges.
+    private readonly Dictionary<string, uint> _transmitEventIds = new();
+    private readonly object _transmitLock = new();
+    private uint _nextTransmitEventId = 90000;
+    private enum TRANSMIT_EVENT_GROUP : uint { }
+    private enum TRANSMIT_GROUP_PRIORITY : uint { HIGHEST = 1 }
+    private const uint SIMCONNECT_OBJECT_ID_USER = 0;
+
     /// <summary>
-    /// Guarded variant: guard-open → walk via clicks → guard-close.
+    /// Guarded set: open guard (param=1) → set switch (param=targetPosition) → close guard (param=0).
+    /// 150 ms gaps so PMDG's frame loop processes each transition. The guard-close runs inside
+    /// try/finally so a thrown mid-sequence does not strand the cover open on a safety-critical
+    /// switch. Works for two-position guarded toggles AND multi-position guarded selectors —
+    /// the switch event accepts the absolute target position via CDA in both cases.
     /// </summary>
-    public async Task SendGuardedSelectorStepwise(
+    public async Task SendGuardedSet(
         string guardEventName, uint guardEventId,
         string switchEventName, uint switchEventId,
-        int currentPosition, int targetPosition)
+        int targetPosition)
     {
-        if (currentPosition == targetPosition) return;
-        SendEvent(guardEventName, guardEventId, null);
+        SendEvent(guardEventName,  guardEventId,  1);
         await Task.Delay(150);
         try
         {
-            await SendSelectorStepwise(switchEventName, switchEventId, currentPosition, targetPosition);
+            SendEvent(switchEventName, switchEventId, targetPosition);
         }
         finally
         {
-            // Guard-close must always run, even if the walker threw mid-walk,
-            // otherwise the cockpit guard stays open on a safety-critical switch.
             await Task.Delay(150);
-            SendEvent(guardEventName, guardEventId, null);
+            SendEvent(guardEventName, guardEventId, 0);
         }
     }
 
