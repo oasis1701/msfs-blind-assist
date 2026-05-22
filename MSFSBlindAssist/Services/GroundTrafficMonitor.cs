@@ -30,8 +30,9 @@ public sealed class GroundTrafficMonitor : IDisposable
     private const double ZONE_LEAD_SEC = 7.0;
     private const double ZONE_LEAD_KTSFPS = 1.6878; // ft/s per knot
 
-    // Forward arc for zone-based auto-alerts (±degrees from own nose)
-    // Aircraft outside this range only appear in the hotkey summary, not auto-alerts
+    // Forward arc for action-required auto-alerts ("Slow down" / "Stop") — ±degrees from own nose.
+    // Awareness pings fire in all directions; only Caution and Warning are arc-gated, because
+    // a behind-arc threat cannot be mitigated by braking. The hotkey summary lists all directions.
     private const double FORWARD_ARC_DEG = 120.0;
 
     // Minimum own GS before a caution-zone alert becomes "Slow down" rather than plain "Traffic".
@@ -259,9 +260,14 @@ public sealed class GroundTrafficMonitor : IDisposable
 
                 if (newZone == GroundZone.None)  { ac.CurrentZone = GroundZone.None; continue; }
 
-                // Awareness alerts only fire for traffic in the forward arc
+                // Caution ("Slow down") and Warning ("Stop") only fire for traffic
+                // in the forward arc — a behind-arc threat is not something the pilot
+                // can act on by braking. Awareness pings still fire for behind-arc
+                // traffic so the pilot retains passive awareness; the hotkey summary
+                // (Alt+G) lists every direction regardless of arc.
                 bool inForwardArc = relBearing <= FORWARD_ARC_DEG || relBearing >= 360.0 - FORWARD_ARC_DEG;
-                if (!inForwardArc && newZone == GroundZone.Awareness) { ac.CurrentZone = newZone; continue; }
+                if (!inForwardArc && (newZone == GroundZone.Caution || newZone == GroundZone.Warning))
+                { ac.CurrentZone = newZone; continue; }
 
                 // Don't escalate for moving-away aircraft
                 if (movingAway) { ac.CurrentZone = newZone; continue; }
