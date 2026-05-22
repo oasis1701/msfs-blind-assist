@@ -64,7 +64,6 @@ public class VisualGuidanceManager : IDisposable
     private double lastCalculatedAltitudeError = 0.0;  // Last calculated altitude error for hotkey announcement (positive = high, negative = low)
 
     // State tracking for derivative term and rate limiting (lateral)
-    private double? previousCrossTrackError = null;  // Used for integral anti-windup sign change detection
     private double previousDesiredBank = 0.0;
     private double? smoothedCrossTrackRate = null;  // Smoothed rate to prevent oscillation during handoff
     private Queue<(double xte, DateTime timestamp)> crossTrackHistory = new Queue<(double, DateTime)>();
@@ -113,9 +112,6 @@ public class VisualGuidanceManager : IDisposable
     // Flare rate limiting constant
     private const double MAX_FLARE_PITCH_RATE = 1.5;        // Maximum pitch change rate during flare (deg/sec)
 
-    // Stabilization gate: Target 3000 ft AGL at 9 NM for terrain clearance
-    private const double STABILIZATION_GATE_NM = 9.0;     // Distance from threshold for stabilization gate
-    private const double STABILIZATION_GATE_AGL_FT = 3000.0;  // Target altitude at stabilization gate
     // Standard ILS glideslope angle
     private const double GLIDESLOPE_ANGLE_DEG = 3.0;   // Standard 3° glideslope angle
 
@@ -279,7 +275,6 @@ public class VisualGuidanceManager : IDisposable
         cachedGroundTrack = null;
 
         // Reset derivative term tracking (lateral)
-        previousCrossTrackError = null;
         previousDesiredBank = 0.0;
         smoothedCrossTrackRate = null;
         crossTrackHistory.Clear();  // Clear multi-sample history buffer
@@ -745,9 +740,6 @@ public class VisualGuidanceManager : IDisposable
                     smoothedCrossTrackRate = crossTrackRate;
                 }
             }
-
-            // Update tracking state for integral anti-windup logic (sign change detection)
-            previousCrossTrackError = signedCrossTrackNM;
 
             // Ground track vs heading selection based on altitude
             // High altitude (>100 ft AGL): Use ground track to maintain centerline (allows crab in wind)

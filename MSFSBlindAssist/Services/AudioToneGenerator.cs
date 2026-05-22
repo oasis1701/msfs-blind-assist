@@ -198,19 +198,6 @@ public class AudioToneGenerator : IDisposable
     }
 
     /// <summary>
-    /// Sets the oscillator frequency directly in Hz.
-    /// Lock-free for smooth real-time updates via phase-continuous oscillator.
-    /// </summary>
-    /// <param name="frequencyHz">Frequency in Hz (e.g., 440.0 for A4).</param>
-    public void SetFrequency(double frequencyHz)
-    {
-        if (oscillator == null || !isPlaying)
-            return;
-
-        oscillator.SetFrequency(frequencyHz);
-    }
-
-    /// <summary>
     /// Updates wave type.
     /// Lock-free for smooth real-time updates.
     /// </summary>
