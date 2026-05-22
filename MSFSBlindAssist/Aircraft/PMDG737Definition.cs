@@ -2876,16 +2876,25 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         //    Works for both two-position toggles and multi-position selectors; PMDG's
         //    CDA handler accepts the absolute target position via Control.Parameter for
         //    both. Fire-and-forget; UI doesn't need to await.
+        //    No-op when the cached struct already shows the switch at the target —
+        //    avoids briefly opening the spring-loaded cover (visual + audio chatter)
+        //    when the user reaffirms an already-set position.
         // ------------------------------------------------------------------
         if (_guardedMap.TryGetValue(varKey, out var guardPair))
         {
             if (EventIds.TryGetValue(guardPair.Guard, out int gId) &&
                 EventIds.TryGetValue(guardPair.Switch, out int sId))
             {
+                int target = (int)value;
+                var dm = simConnect.PMDGDataManager;
+                if (dm != null && (int)dm.GetFieldValue(varDef.Name) == target)
+                {
+                    return true; // already at target — no-op
+                }
                 _ = simConnect.SendPMDGGuardedSet(
                     guardPair.Guard,  (uint)gId,
                     guardPair.Switch, (uint)sId,
-                    (int)value);
+                    target);
                 return true;
             }
         }
