@@ -44,12 +44,17 @@ public class PMDG777Definition : BaseAircraftDefinition
     public override FCUControlType GetVerticalSpeedControlType() => FCUControlType.SetValue;
 
     // Heavy widebody — lower approach AoA, slightly higher Vref, slower pitch authority than A320.
+    // GlideslopeAltitudeBiasFt / FlareAltitudeBiasFt are MEASURED against a coupled ILS autoland:
+    // VG read ~80 ft high on a correctly-flown glideslope, and the flare cue fired ~20 ft late
+    // (VG's 30 ft reading coincided with the aircraft's radio-altimeter "10" callout).
     public override VisualGuidanceProfile GetVisualGuidanceProfile() => new()
     {
         TypicalApproachAoaDeg = 4.5,
         ReferenceVrefKnots = 145.0,
         MaxPitchRateDegPerSec = 2.0,
-        MaxBankRateDegPerSec = 3.0
+        MaxBankRateDegPerSec = 3.0,
+        GlideslopeAltitudeBiasFt = 80.0,
+        FlareAltitudeBiasFt = 20.0
     };
 
     // =========================================================================

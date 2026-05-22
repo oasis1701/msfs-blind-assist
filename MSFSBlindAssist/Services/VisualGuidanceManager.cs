@@ -142,6 +142,16 @@ public class VisualGuidanceManager : IDisposable
     // Vertical guidance — aircraft-specific (set from VisualGuidanceProfile in Initialize).
     private double typicalApproachAoaDeg = 6.0;          // A320 baseline; biases nominal pitch = -3° + AoA
     private double maxPitchRateDegPerSec = 2.5;          // Cap on commanded pitch change rate (deg/sec)
+    // Glidepath/flare altitude calibration — see VisualGuidanceProfile for the full rationale.
+    // glideslopeAltitudeBiasFt is ADDED to the ideal distance×tan(3°) glidepath so VG's
+    // "on glideslope" matches the real ILS (which crosses the threshold at the ~50 ft TCH).
+    // flareAltitudeBiasFt is SUBTRACTED from the measured datum altitude before the flare /
+    // touchdown thresholds are tested so they fire at true main-gear height. The two are
+    // applied in DIFFERENT code paths (glideslope-error vs phase-detection) and are NOT a
+    // single shared constant — they were measured separately (on the beam vs near the
+    // ground, different attitudes), so do not "reconcile" them into one value.
+    private double glideslopeAltitudeBiasFt = 60.0;      // A320 estimate; 777 measured = 80
+    private double flareAltitudeBiasFt = 12.0;           // A320 estimate; 777 measured = 20
     private const double CROSS_TRACK_RATE_SMOOTHING_FACTOR = 0.85;  // Exponential smoothing for cross-track rate (0.85 = strong filtering to prevent noise spikes)
 
     // FPM-based vertical guidance constants
@@ -256,6 +266,8 @@ public class VisualGuidanceManager : IDisposable
         airspeedReferenceKnots = profile.ReferenceVrefKnots;
         maxPitchRateDegPerSec = profile.MaxPitchRateDegPerSec;
         maxBankRateDegPerSec = profile.MaxBankRateDegPerSec;
+        glideslopeAltitudeBiasFt = profile.GlideslopeAltitudeBiasFt;
+        flareAltitudeBiasFt = profile.FlareAltitudeBiasFt;
 
         // Reset state
         currentPhase = GuidancePhase.NotStarted;
@@ -581,14 +593,25 @@ public class VisualGuidanceManager : IDisposable
         // SimConnect AGL sensor can be stale/inaccurate when on ground
         double calculatedAGL = altMSL - thresholdElevationMSL;
 
+        // calculatedAGL is the SimConnect reference-datum height; the main gear sits
+        // flareAltitudeBiasFt below it in the flare attitude. The touchdown (5 ft) and
+        // flare (30 ft) thresholds are true main-gear heights, so test them against the
+        // corrected wheel height — otherwise the flare cue fires ~one bias too late and,
+        // on a widebody, the datum never gets within 5 ft of the runway so the touchdown
+        // phase would never trigger via altitude at all. Coarser gates further below
+        // (e.g. the 500 ft "behind runway" check) keep using raw calculatedAGL — a ~20 ft
+        // bias is irrelevant there.
+        double wheelHeightAGL = calculatedAGL - flareAltitudeBiasFt;
+
         // Diagnostic logging to help identify sensor issues
         System.Diagnostics.Debug.WriteLine(
-            $"[VisualGuidance] AGL: SimConnect={agl:F1}ft, Calculated={calculatedAGL:F1}ft, Diff={Math.Abs(agl - calculatedAGL):F1}ft");
+            $"[VisualGuidance] AGL: SimConnect={agl:F1}ft, Calculated={calculatedAGL:F1}ft, " +
+            $"WheelHeight={wheelHeightAGL:F1}ft, Diff={Math.Abs(agl - calculatedAGL):F1}ft");
 
         GuidancePhase previousPhase = currentPhase;
 
         // Check for touchdown first
-        if (calculatedAGL <= TOUCHDOWN_ALTITUDE_FT)
+        if (wheelHeightAGL <= TOUCHDOWN_ALTITUDE_FT)
         {
             currentPhase = GuidancePhase.Touchdown;
             if (previousPhase != currentPhase)
@@ -600,7 +623,7 @@ public class VisualGuidanceManager : IDisposable
         }
 
         // Check for flare
-        if (calculatedAGL <= FLARE_ALTITUDE_FT)
+        if (wheelHeightAGL <= FLARE_ALTITUDE_FT)
         {
             currentPhase = GuidancePhase.Flare;
             if (previousPhase != currentPhase)
@@ -984,11 +1007,17 @@ public class VisualGuidanceManager : IDisposable
             // Get current AGL relative to threshold
             double currentAGL = altMSL - thresholdElevationMSL;
 
-            // Calculate ideal altitude on 3° glideslope from threshold
-            // idealAltitude = distanceToThreshold × tan(3°) + thresholdElevation
+            // Calculate ideal altitude on 3° glideslope.
+            // A bare distance×tan(3°) path crosses the threshold at 0 ft — but a real ILS
+            // glideslope crosses it at the ~50 ft reference datum height (TCH), and VG's
+            // altitude is the SimConnect reference datum, which sits above the GS antenna.
+            // glideslopeAltitudeBiasFt (per-aircraft, see VisualGuidanceProfile) folds both
+            // terms in, so VG's "on glideslope" coincides with the real ILS path the
+            // autopilot flies — instead of a path one TCH too low, which previously biased
+            // the commanded vertical speed into commanding excess descent.
             double distanceFt = distanceToThresholdNM * 6076.12;
             double glideslopeAngleRad = GLIDESLOPE_ANGLE_DEG * Math.PI / 180.0;
-            double idealAltitudeAGL = distanceFt * Math.Tan(glideslopeAngleRad);
+            double idealAltitudeAGL = distanceFt * Math.Tan(glideslopeAngleRad) + glideslopeAltitudeBiasFt;
 
             // Calculate altitude error (positive = too high, negative = too low)
             double altitudeError = currentAGL - idealAltitudeAGL;

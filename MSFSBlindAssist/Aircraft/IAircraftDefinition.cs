@@ -66,6 +66,27 @@ public sealed class VisualGuidanceProfile
     /// ("3 left", "2 right", etc.) already handle the large-error regime where matching by
     /// ear is unnecessary. Raise for aircraft with wider habitual bank envelopes.</summary>
     public double ToneBankRangeDeg { get; init; } = 5.0;
+
+    /// <summary>Height (ft) by which VG's datum-referenced altitude (SimConnect PLANE ALTITUDE −
+    /// threshold elevation) sits ABOVE the bare geometric distance×tan(3°) glidepath when the
+    /// aircraft is correctly tracking the published ILS glideslope. It is the sum of two terms:
+    /// the ILS reference datum height (~50 ft — ICAO Annex 10, the glideslope antenna's
+    /// threshold crossing height), plus the airframe's SimConnect-datum-above-GS-antenna
+    /// offset. Added to the ideal glidepath so VG's "on glideslope" coincides with the real
+    /// ILS path instead of one ~50 ft TCH too low (which biased the commanded vertical speed
+    /// into commanding extra descent). The 777 value (80) is measured against a coupled
+    /// autoland; the A320 default is estimated (≈50 TCH + a smaller datum offset) and should
+    /// be calibrated in-sim. Set to 0 to disable the correction.</summary>
+    public double GlideslopeAltitudeBiasFt { get; init; } = 60.0;
+
+    /// <summary>Height (ft) by which VG's datum-referenced altitude sits ABOVE true radio
+    /// altitude (main-gear height over the runway) in the flare attitude. Subtracted from the
+    /// measured altitude before the flare and touchdown phase thresholds are tested, so the
+    /// flare cue fires at a real ~30 ft of gear height (Boeing/Airbus FCTM flare initiation)
+    /// rather than ~20 ft late, and "touchdown" actually triggers (on a widebody the datum
+    /// never gets within the 5 ft touchdown threshold of the runway, so the uncorrected check
+    /// never fired at all). The 777 value (20) is measured; the A320 default is estimated.</summary>
+    public double FlareAltitudeBiasFt { get; init; } = 12.0;
 }
 
 /// <summary>
