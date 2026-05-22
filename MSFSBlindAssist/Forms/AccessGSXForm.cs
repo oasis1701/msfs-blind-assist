@@ -138,9 +138,12 @@ public sealed class AccessGSXForm : Form
         Controls.Add(rootLayout);
         Controls.Add(_statusLabel);
 
+        // KeyPreview = true above routes every keystroke through the form's
+        // KeyDown event before the focused control sees it. Subscribing the
+        // child TextBoxes too would invoke the same handler a second time
+        // (KeyPreview only previews; the focused control still receives the
+        // event), causing F5 / number / letter chooses to fire twice.
         KeyDown += AccessGSXForm_KeyDown;
-        _menuTextBox.KeyDown += AccessGSXForm_KeyDown;
-        _tooltipTextBox.KeyDown += AccessGSXForm_KeyDown;
     }
 
     private void WireEvents()

@@ -258,7 +258,7 @@ public sealed class GsxService : IDisposable
         // stale options until GSX explicitly closes — which it sometimes
         // doesn't, leaving the user staring at the option they just picked
         // and pressing F5 twice to recover.
-        HideMenuInternal(timedOut: false);
+        HideMenuInternal();
         SendVariable(DataDefineId.MenuChoice, choice);
     }
 
@@ -334,18 +334,18 @@ public sealed class GsxService : IDisposable
         {
             case 1:
                 if (_menuOpen)
-                    HideMenuInternal(timedOut: false);
+                    HideMenuInternal();
                 else
                     ReloadMenuFromFile();
                 break;
             case 2:
-                HideMenuInternal(timedOut: false);
+                HideMenuInternal();
                 break;
             case 3:
                 // Tell GSX we've abandoned the menu, then surface the timeout
                 // to subscribers (form announces "GSX menu timeout").
                 SendVariable(DataDefineId.MenuChoice, -1);
-                HideMenuInternal(timedOut: true);
+                HideMenuInternal();
                 MenuTimedOut?.Invoke(this, EventArgs.Empty);
                 break;
             case 4:
@@ -531,7 +531,7 @@ public sealed class GsxService : IDisposable
         MenuChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    private void HideMenuInternal(bool timedOut)
+    private void HideMenuInternal()
     {
         if (!_menuOpen && _menuOptions.Count == 0) return;
         _menuOpen = false;
