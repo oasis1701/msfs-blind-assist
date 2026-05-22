@@ -1185,32 +1185,6 @@ public class TaxiGuidanceManager : IDisposable
     }
 
     /// <summary>
-    /// Enters runway-end countdown mode directly, without a taxi route. Used by
-    /// LandingExitPlanner as a safety net when LoadRoute fails at touchdown —
-    /// e.g., at an airport with navdata defects that leave no valid path from
-    /// touchdown to the chosen exit. Keeps the per-frame distance callouts
-    /// ("Runway end in 1500 feet" → "...500 feet, slow down" → "...100 feet,
-    /// stop") active so a blind pilot has audio cues during rollout even when
-    /// turn-by-turn taxi guidance is unavailable.
-    /// </summary>
-    public void BeginLandingRolloutNoRoute(Database.Models.Runway runway)
-    {
-        lock (_stateLock)
-        {
-            _rolloutExit = null;
-            _isLandingExitRoute = false; // no route to an exit — runway-end countdown only
-            _rolloutRunway = runway;
-            _rolloutRunwayHeadingTrue = runway.Heading;
-
-            // EnterRunwayEndCountdown handles everything else: clears _route /
-            // _destinationNodeId, sets _rolloutNoExitMode, resets the approach
-            // and end-countdown announce flags, pauses the tone, and enters
-            // LandingRollout state.
-            EnterRunwayEndCountdown();
-        }
-    }
-
-    /// <summary>
     /// Enters landing-rollout mode with full exit guidance even when the initial
     /// A* route from touchdown to the exit failed (e.g. disconnected graph components).
     ///
