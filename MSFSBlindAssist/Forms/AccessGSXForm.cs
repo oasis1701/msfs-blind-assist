@@ -24,7 +24,7 @@ public sealed class AccessGSXForm : Form
     private const string MENU_HIDDEN_PROMPT = "GSX Menu hidden. Press F5 to open it.";
     private const string MENU_TIMEOUT_PROMPT = "[GSX Menu] Timeout. Press F5 to re-open.";
 
-    private Label _statusLabel = null!;
+    private TextBox _statusTextBox = null!;
     private TextBox _menuTextBox = null!;
     private TextBox _tooltipTextBox = null!;
 
@@ -56,13 +56,18 @@ public sealed class AccessGSXForm : Form
         // tethered to MainForm in z-order.
         ShowInTaskbar = true;
 
-        _statusLabel = new Label
+        // Read-only single-line TextBox (not a Label) so screen readers
+        // treat status as a focusable, value-bearing field — matches the
+        // upstream AccessGSX UX. Tab reaches it; NVDA/JAWS read the current
+        // status on focus. A plain Label has no tab stop and is announced
+        // only as adjacent context, which made the status invisible to many
+        // screen-reader users.
+        _statusTextBox = new TextBox
         {
             Dock = DockStyle.Top,
-            Height = 32,
-            Padding = new Padding(8, 6, 8, 4),
+            Height = 26,
+            ReadOnly = true,
             Text = "Status: Disconnected",
-            AutoEllipsis = true,
             AccessibleName = "GSX status"
         };
 
@@ -108,8 +113,7 @@ public sealed class AccessGSXForm : Form
             Multiline = true,
             ReadOnly = true,
             ScrollBars = ScrollBars.Vertical,
-            AccessibleName = "GSX tooltip",
-            AccessibleDescription = "Latest GSX tooltip text. Read-only."
+            AccessibleName = "GSX tooltip"
         };
 
         // Layout: status (top), menu list (center, fills), tooltip (bottom panel).
@@ -136,7 +140,7 @@ public sealed class AccessGSXForm : Form
         rootLayout.Controls.Add(tooltipPanel, 0, 1);
 
         Controls.Add(rootLayout);
-        Controls.Add(_statusLabel);
+        Controls.Add(_statusTextBox);
 
         // KeyPreview = true above routes every keystroke through the form's
         // KeyDown event before the focused control sees it. Subscribing the
@@ -328,7 +332,7 @@ public sealed class AccessGSXForm : Form
     // ─────────────────────────────────────────────────────────────────────
     private void UpdateStatus()
     {
-        _statusLabel.Text = _gsxService.StatusText;
+        _statusTextBox.Text = _gsxService.StatusText;
     }
 
     private void RepopulateMenu()
