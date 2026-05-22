@@ -2844,6 +2844,13 @@ public class TaxiGuidanceManager : IDisposable
         // touchdown yaw / crab alignment, not a deliberate runway exit turn.
         bool turnBegun = hdgDeltaAbs >= ROLLOUT_TURN_BEGAN_HDG_DEG
                          && groundSpeedKts < ROLLOUT_TURN_MAX_GS_KTS;
+        // Effectively stopped before reaching the exit — e.g. pilot braked
+        // hard after an undershoot retarget left the exit 500+ ft away.
+        // The atTaxiSpeed&&nearExit gate intentionally doesn't fire this far
+        // out (it prevents premature tone on long runways), but a fully stopped
+        // aircraft needs to continue as Taxiing so they can taxi to the exit.
+        // pastExit guard: let the overshoot detector handle the past-exit case.
+        bool trulyStopped = groundSpeedKts < ROLLOUT_NO_EXIT_STOPPED_GS_KTS && !pastExit;
 
         // DIAGNOSTIC: periodic snapshot (every ~3s) of rollout state.
         // Captures the moment the per-frame loop is or isn't seeing the
@@ -2913,12 +2920,12 @@ public class TaxiGuidanceManager : IDisposable
             && groundSpeedKts < ROLLOUT_TURN_MAX_GS_KTS
             && pastExit;
 
-        if (turnBegun || exitedLaterally || alignedWithExit || (atTaxiSpeed && nearExit && !pastExit))
+        if (turnBegun || exitedLaterally || alignedWithExit || (atTaxiSpeed && nearExit && !pastExit) || trulyStopped)
         {
             RolloutDiag($"UpdateLandingRollout HANDOFF -> Taxiing: " +
                 $"turnBegun={turnBegun} exitedLaterally={exitedLaterally} alignedWithExit={alignedWithExit} " +
                 $"exitBrgErr={exitBrgErr:F1}deg lateral={lateralFromCenterlineFt:F0}ft " +
-                $"atTaxiSpeed={atTaxiSpeed} nearExit={nearExit} pastExit={pastExit}");
+                $"atTaxiSpeed={atTaxiSpeed} nearExit={nearExit} pastExit={pastExit} trulyStopped={trulyStopped}");
 
             // Arm post-handoff overshoot monitor so UpdatePosition can detect
             // a missed exit while in Taxiing state.
@@ -2993,6 +3000,23 @@ public class TaxiGuidanceManager : IDisposable
                 _currentSegmentIndex = FindNearestSegmentIndexFullRoute(lat, lon);
                 RolloutDiag($"Handoff re-anchored _currentSegmentIndex={_currentSegmentIndex} " +
                     $"of {_route.Segments.Count}");
+            }
+
+            // NoGraph path: route was never built (LoadRoute failed at touchdown
+            // due to disconnected graph component) and the handoff re-route also
+            // failed. Resuming the tone here would leave it frozen at its last
+            // heading-error update — no further UpdateHeadingError calls happen
+            // in Taxiing state when _route is null. Stop cleanly instead so the
+            // pilot isn't misled by a panning tone with no route behind it.
+            if (!handoffRerouted && _route == null)
+            {
+                RolloutDiag("Handoff re-route failed with no fallback route — stopping guidance");
+                string exitDesc = _rolloutExit != null && _rolloutExit.TaxiwayName.Length > 0
+                    ? $"taxiway {_rolloutExit.TaxiwayName}"
+                    : "the exit";
+                AnnounceInstruction($"Exit reached. Route unavailable. Taxi to {exitDesc} and use the taxi planner.");
+                StopGuidance();
+                return;
             }
 
             SetState(TaxiGuidanceState.Taxiing);
