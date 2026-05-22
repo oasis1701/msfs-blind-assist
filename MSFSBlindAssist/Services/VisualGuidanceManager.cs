@@ -673,12 +673,18 @@ public class VisualGuidanceManager : IDisposable
             return;
         }
 
-        // On centerline - check glideslope
+        // On centerline - check glideslope.
+        // CalculateGlideslopeDeviation measures against a bare path crossing the threshold at
+        // 0 ft; subtract glideslopeAltitudeBiasFt so this phase-capture test uses the SAME
+        // TCH-corrected reference as the FPM vertical guidance (idealAltitudeAGL above).
+        // Without this the "On vertical profile" capture would be offset by ~one TCH from the
+        // glideslope the tone actually flies — announcing "on profile" while ~80 ft low.
         double glideslopeDeviation = NavigationCalculator.CalculateGlideslopeDeviation(
             altMSL,                                      // Aircraft altitude MSL
             distance,                                     // Distance from threshold in NM
             GLIDESLOPE_ANGLE_DEG,                        // 3-degree glideslope
-            thresholdElevationMSL);                      // Threshold elevation MSL
+            thresholdElevationMSL)                       // Threshold elevation MSL
+            - glideslopeAltitudeBiasFt;
 
         if (Math.Abs(glideslopeDeviation) < GLIDESLOPE_CAPTURE_FT)
         {
