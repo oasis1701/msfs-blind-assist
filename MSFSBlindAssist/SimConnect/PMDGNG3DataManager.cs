@@ -28,24 +28,30 @@ public class PMDGNG3DataManager : IPMDGDataManager
         typeof(PMDGNG3DataStruct).GetFields(BindingFlags.Public | BindingFlags.Instance);
 
     // ------------------------------------------------------------------
-    // Local enum IDs — SimConnect accepts any Enum type for these calls,
-    // so we define our own enums sourced from PMDGNG3Constants.
+    // Local enum IDs — these are OUR app's internal SimConnect identifiers
+    // for the data and definition objects. They are NOT PMDG's IDs and MUST
+    // NOT match the values in PMDG_NG3_SDK.h (which are the IDs PMDG itself
+    // registers on its side). Using PMDG's own ID values here caused our
+    // RequestClientData subscription to never receive data — the 777 manager
+    // uses custom 0x504D44xx values for the same reason. The data-area
+    // NAMES still match the SDK ("PMDG_NG3_Data" etc.); names are what
+    // SimConnect routes by, IDs are per-client tracking handles.
     // ------------------------------------------------------------------
 
     private enum PMDG_CLIENT_DATA_ID : uint
     {
-        Data    = PMDGNG3Constants.PMDG_NG3_DATA_ID,
-        Control = PMDGNG3Constants.PMDG_NG3_CONTROL_ID,
-        CDU_0   = PMDGNG3Constants.PMDG_NG3_CDU_0_ID,
-        CDU_1   = PMDGNG3Constants.PMDG_NG3_CDU_1_ID,
+        Data    = 0x4E473730,   // "NG70"
+        Control = 0x4E473731,   // "NG71"
+        CDU_0   = 0x4E473732,   // "NG72"
+        CDU_1   = 0x4E473733,   // "NG73"
     }
 
     private enum PMDG_DATA_DEFINITION_ID : uint
     {
-        Data    = PMDGNG3Constants.PMDG_NG3_DATA_DEFINITION,
-        Control = PMDGNG3Constants.PMDG_NG3_CONTROL_DEFINITION,
-        CDU_0   = PMDGNG3Constants.PMDG_NG3_CDU_0_DEFINITION,
-        CDU_1   = PMDGNG3Constants.PMDG_NG3_CDU_1_DEFINITION,
+        Data    = 0x4E473734,   // "NG74"
+        Control = 0x4E473735,   // "NG75"
+        CDU_0   = 0x4E473736,   // "NG76"
+        CDU_1   = 0x4E473737,   // "NG77"
     }
 
     private enum PMDG_DATA_REQUEST_ID : uint
