@@ -1208,6 +1208,16 @@ public class TaxiGuidanceManager : IDisposable
     {
         lock (_stateLock)
         {
+            // Guarantee the handoff-failure fallback's _route == null invariant.
+            // LoadRoute's failure paths leave _route untouched, so a stale value
+            // from a prior route (e.g., hand-flown departure that didn't call
+            // StopGuidance) could survive into this NoGraph entry. Nulling here
+            // ensures the !handoffRerouted && _route == null branch in
+            // UpdateLandingRollout will fire if the eventual handoff re-route
+            // also fails, instead of driving the steering tone against stale
+            // departure-airport segments.
+            _route = null;
+
             // Precondition: a prior LoadRoute (even one that failed at route
             // construction) must have populated _graph, _dataProvider, and _icao.
             // The handoff re-route in UpdateLandingRollout reads these directly.
