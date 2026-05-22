@@ -443,6 +443,13 @@ public class TaxiGuidanceManager : IDisposable
     // Minimum lead distance for an undershoot retarget: the earlier exit must be
     // far enough ahead for the aircraft to react, decelerate and set up the turn
     // at the current speed. A floor plus a speed-proportional term.
+    //
+    // IMPLICIT COUPLING with ROLLOUT_UNDERSHOOT_RANGE_FT (1000): at gs ≥ 91 kt
+    // the min-lead floor (91 · 11 = 1001 ft) exceeds the scan range, so the
+    // undershoot retarget effectively no-ops. This is intentional — 90 kt is
+    // the high-speed-exit ceiling (Category E RETs top out there), beyond which
+    // any retarget is unsafe at any range. If you change either constant, check
+    // the cutoff GS still lines up.
     private const double ROLLOUT_UNDERSHOOT_MIN_LEAD_FT = 200.0;
     private const double ROLLOUT_UNDERSHOOT_LEAD_PER_KT_FT = 11.0;
 
@@ -1219,6 +1226,20 @@ public class TaxiGuidanceManager : IDisposable
     {
         lock (_stateLock)
         {
+            // Precondition: a prior LoadRoute (even one that failed at route
+            // construction) must have populated _graph, _dataProvider, and _icao.
+            // The handoff re-route in UpdateLandingRollout reads these directly.
+            // A null here means the caller skipped the LoadRoute attempt — log
+            // and proceed (geometry-driven callouts and tone still work, but the
+            // handoff re-route will fail until normal taxi guidance kicks in).
+            if (_graph == null || _dataProvider == null || string.IsNullOrEmpty(_icao))
+            {
+                RolloutDiag($"BeginLandingRolloutNoGraph precondition not met: " +
+                    $"_graph={(_graph == null ? "null" : "set")} " +
+                    $"_dataProvider={(_dataProvider == null ? "null" : "set")} " +
+                    $"_icao='{_icao}' — handoff re-route will not succeed.");
+            }
+
             // Start the tone now — StartGuidance (which normally does this) was
             // never called because LoadRoute failed.
             _announceCrossings = settings.TaxiGuidanceAnnounceCrossings;
