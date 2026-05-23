@@ -276,9 +276,13 @@ public class VisualGuidanceManager : IDisposable
             : destinationAirport.Altitude;
         // Use the published per-runway glideslope angle (LCY 5.5°, Aspen 6.59°, Innsbruck
         // 3.8°, ...) when navdata has it. Fall back to 3° for runways without an ILS row
-        // or DB builds that don't populate ils.gs_pitch.
-        glideslopeAngleDeg = destinationRunway.GlideslopeAngleDeg > 0
-            ? destinationRunway.GlideslopeAngleDeg
+        // or DB builds that don't populate ils.gs_pitch. Sanity-clamp to [2°, 8°] to reject
+        // corrupt navdata (a 0.1° or 30° value would yield nonsense guidance); real-world
+        // ILS angles fit comfortably inside this band — Aspen at 6.59° is the steepest
+        // certified Cat I in the world.
+        double rawGsAngle = destinationRunway.GlideslopeAngleDeg;
+        glideslopeAngleDeg = (rawGsAngle >= 2.0 && rawGsAngle <= 8.0)
+            ? rawGsAngle
             : DEFAULT_GLIDESLOPE_ANGLE_DEG;
 
         // Apply aircraft-specific tunables (preserves A320 defaults if profile is the base instance).
@@ -1087,8 +1091,14 @@ public class VisualGuidanceManager : IDisposable
                 double correctionRateFPM = -altitudeError * GLIDESLOPE_GAIN;
                 targetFPM = natural3DegDescentRateFPM + correctionRateFPM;
 
-                // Apply safety limits (never command climb, limit max descent)
-                targetFPM = Math.Clamp(targetFPM, MAX_DESCENT_RATE_FPM, 0.0);
+                // Apply safety limits (never command climb, limit max descent). The clamp is
+                // dynamic: -1500 fpm is the typical-3°-approach safety ceiling, but at steep
+                // approaches (Aspen 6.59°, London City 5.5°) the natural rate can approach or
+                // exceed it. Allow up to 1.3× the natural rate (whichever is more negative)
+                // so the controller has headroom for catch-up corrections without clipping
+                // the legitimate per-runway descent profile.
+                double effectiveMaxDescent = Math.Min(MAX_DESCENT_RATE_FPM, natural3DegDescentRateFPM * 1.3);
+                targetFPM = Math.Clamp(targetFPM, effectiveMaxDescent, 0.0);
 
                 System.Diagnostics.Debug.WriteLine(
                     $"[VisualGuidance] CORRECTION MODE: AltErr={altitudeError:F0}ft, " +
