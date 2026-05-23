@@ -1190,11 +1190,24 @@ public class VisualGuidanceManager : IDisposable
             }
             double nominalPitch = -glideslopeAngleDeg + effectiveAoaDeg;  // A320 default ≈ +3°; 777 ≈ +1.5°; LCY steep ≈ +0.5°
 
-            // PD controller on FPM error:
-            // Proportional: Correct based on FPM error
-            // Derivative: Dampen based on rate of FPM error change
-            double proportionalTerm = -fpmError * FPM_P_GAIN;
-            double derivativeTerm = -fpmErrorRate * FPM_D_GAIN;
+            // PD controller on FPM error.
+            // Sign convention (verified): fpmError = targetFPM − actualFPM. Negative fpmError
+            // means actualFPM is more positive than target — the airplane is descending less
+            // than the target rate — so we need to descend MORE, which (with autothrust holding
+            // airspeed) means LESS pitch, i.e. a NEGATIVE correction. So proportionalTerm has
+            // the SAME sign as fpmError: positive coefficient on fpmError. Same logic for the
+            // derivative term: if fpmError is becoming more negative (we're falling further
+            // behind on descent), the rate is negative, and we want the correction to push
+            // pitch further negative — positive coefficient on the rate.
+            //
+            // The previous implementation had `-fpmError * gain` and `-fpmErrorRate * gain`,
+            // which produced wrong-direction guidance: when the airplane was HIGH on glideslope
+            // VG commanded MORE pitch (less descent — staying high). With autopilot active
+            // fpmError stays near zero and the wrong-direction correction was negligible, so
+            // the bug never manifested in autopilot tests; in manual flying it would steer the
+            // pilot away from the glideslope.
+            double proportionalTerm = fpmError * FPM_P_GAIN;
+            double derivativeTerm = fpmErrorRate * FPM_D_GAIN;
 
             double rawDesiredPitch = nominalPitch + proportionalTerm + derivativeTerm;
 
