@@ -632,12 +632,14 @@ public class LittleNavMapProvider : IAirportDataProvider
         // Get ILS frequency if ILS exists
         double ilsFreq = 0.0;
         double ilsHeading = 0.0;
+        double ilsGsPitch = 0.0;  // Published glideslope angle (deg); 0 = unknown, caller falls back to 3°
 
         if (!string.IsNullOrEmpty(ilsIdent))
         {
             var ilsData = GetILSData(connection, ilsIdent, icao);
-            ilsFreq = ilsData.Item1;
-            ilsHeading = ilsData.Item2;
+            ilsFreq = ilsData.freq;
+            ilsHeading = ilsData.heading;
+            ilsGsPitch = ilsData.gsPitch;
         }
         else
         {
@@ -655,6 +657,7 @@ public class LittleNavMapProvider : IAirportDataProvider
             {
                 ilsFreq = fallback.Frequency;
                 ilsHeading = fallback.LocalizerHeading;
+                ilsGsPitch = fallback.GlideslopePitch;
                 ilsIdent = fallback.Ident;
             }
         }
@@ -681,6 +684,8 @@ public class LittleNavMapProvider : IAirportDataProvider
             ILSFreq = ilsFreq,
             ILSHeading = ilsHeading,
             ThresholdOffset = thresholdOffset,
+            ThresholdElevation = altitude,
+            GlideslopeAngleDeg = ilsGsPitch,
             IsClosed = isClosed,
             IsLanding = isLanding,
             IsTakeoff = isTakeoff
@@ -711,15 +716,17 @@ public class LittleNavMapProvider : IAirportDataProvider
         }
     }
 
-    private (double, double) GetILSData(SqliteConnection connection, string ilsIdent, string? icao = null)
+    private (double freq, double heading, double gsPitch) GetILSData(SqliteConnection connection, string ilsIdent, string? icao = null)
     {
         // Airport-scoped lookup first: multiple airports can share the same ILS ident
         // (e.g. 'IDE' exists at EIDW, OTHH, and ZUUU). Without the airport filter,
         // LIMIT 1 returns whichever row has the lowest row-id — typically a different
         // airport — giving the wrong heading and frequency for the actual runway.
+        // gs_pitch is the published glideslope angle (degrees) — usually 3.0, but not
+        // always (LCY 5.5°, Aspen 6.59°). Defaults to 0.0 when missing → caller falls back.
         if (!string.IsNullOrEmpty(icao))
         {
-            var scopedSql = "SELECT frequency, loc_heading FROM ils WHERE ident = @Ident AND loc_airport_ident = @ICAO LIMIT 1";
+            var scopedSql = "SELECT frequency, loc_heading, gs_pitch FROM ils WHERE ident = @Ident AND loc_airport_ident = @ICAO LIMIT 1";
             using (var cmd = new SqliteCommand(scopedSql, connection))
             {
                 cmd.Parameters.AddWithValue("@Ident", ilsIdent);
@@ -730,14 +737,15 @@ public class LittleNavMapProvider : IAirportDataProvider
                     {
                         double freq = Convert.ToDouble(rdr["frequency"] ?? 0.0) / 1000.0;
                         double heading = Convert.ToDouble(rdr["loc_heading"] ?? 0.0);
-                        return (freq, heading);
+                        double gsPitch = Convert.ToDouble(rdr["gs_pitch"] ?? 0.0);
+                        return (freq, heading, gsPitch);
                     }
                 }
             }
         }
 
         // Fallback: no airport match (e.g. loc_airport_ident unpopulated in this DB build).
-        var sql = "SELECT frequency, loc_heading FROM ils WHERE ident = @Ident LIMIT 1";
+        var sql = "SELECT frequency, loc_heading, gs_pitch FROM ils WHERE ident = @Ident LIMIT 1";
         using (var command = new SqliteCommand(sql, connection))
         {
             command.Parameters.AddWithValue("@Ident", ilsIdent);
@@ -747,12 +755,13 @@ public class LittleNavMapProvider : IAirportDataProvider
                 {
                     double freq = Convert.ToDouble(reader["frequency"] ?? 0.0) / 1000.0;
                     double heading = Convert.ToDouble(reader["loc_heading"] ?? 0.0);
-                    return (freq, heading);
+                    double gsPitch = Convert.ToDouble(reader["gs_pitch"] ?? 0.0);
+                    return (freq, heading, gsPitch);
                 }
             }
         }
 
-        return (0.0, 0.0);
+        return (0.0, 0.0, 0.0);
     }
 
     private int MapSurfaceType(string? littleNavMapSurface)

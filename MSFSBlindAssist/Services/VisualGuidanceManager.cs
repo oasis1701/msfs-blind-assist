@@ -112,8 +112,13 @@ public class VisualGuidanceManager : IDisposable
     // Flare rate limiting constant
     private const double MAX_FLARE_PITCH_RATE = 1.5;        // Maximum pitch change rate during flare (deg/sec)
 
-    // Standard ILS glideslope angle
-    private const double GLIDESLOPE_ANGLE_DEG = 3.0;   // Standard 3° glideslope angle
+    // ILS glideslope angle — usually 3°, but published per-runway (LCY 5.5°, Aspen 6.59°,
+    // Innsbruck 3.8°). Populated in Initialize() from runway.GlideslopeAngleDeg with a 3.0°
+    // fallback if the runway has no ILS or the navdata doesn't carry the angle. Used by the
+    // ideal-glidepath altitude, the natural-3°-descent-rate FPM target, the phase-capture
+    // deviation test, and the nominal-pitch baseline.
+    private const double DEFAULT_GLIDESLOPE_ANGLE_DEG = 3.0;
+    private double glideslopeAngleDeg = DEFAULT_GLIDESLOPE_ANGLE_DEG;
 
     // New vertical guidance constants
     private const double GLIDESLOPE_LOCK_DISTANCE_NM = 1.0;  // Distance at which to lock to steady 3° angle
@@ -262,7 +267,19 @@ public class VisualGuidanceManager : IDisposable
         currentToneVolume = currentToneVol;
         hardPanTone = hardPan;
         magneticVariation = destinationAirport.MagVar;
-        thresholdElevationMSL = destinationAirport.Altitude;
+        // Prefer the runway end's own elevation (runway_end.altitude) over the airport's
+        // published field elevation — matters at airports with sloped runways or different
+        // threshold elevations between ends (KASE, LSZS, KSEA 16L/34R). Fall back to airport
+        // altitude when the runway value is unknown (older DB builds, soft runways, etc.).
+        thresholdElevationMSL = destinationRunway.ThresholdElevation > 0
+            ? destinationRunway.ThresholdElevation
+            : destinationAirport.Altitude;
+        // Use the published per-runway glideslope angle (LCY 5.5°, Aspen 6.59°, Innsbruck
+        // 3.8°, ...) when navdata has it. Fall back to 3° for runways without an ILS row
+        // or DB builds that don't populate ils.gs_pitch.
+        glideslopeAngleDeg = destinationRunway.GlideslopeAngleDeg > 0
+            ? destinationRunway.GlideslopeAngleDeg
+            : DEFAULT_GLIDESLOPE_ANGLE_DEG;
 
         // Apply aircraft-specific tunables (preserves A320 defaults if profile is the base instance).
         typicalApproachAoaDeg = profile.TypicalApproachAoaDeg;
@@ -687,7 +704,7 @@ public class VisualGuidanceManager : IDisposable
         double glideslopeDeviation = NavigationCalculator.CalculateGlideslopeDeviation(
             altMSL,                                      // Aircraft altitude MSL
             distance,                                     // Distance from threshold in NM
-            GLIDESLOPE_ANGLE_DEG,                        // 3-degree glideslope
+            glideslopeAngleDeg,                          // per-runway glideslope (3° default)
             thresholdElevationMSL)                       // Threshold elevation MSL
             - glideslopeAltitudeBiasFt;
 
@@ -1027,7 +1044,7 @@ public class VisualGuidanceManager : IDisposable
             // autopilot flies — instead of a path one TCH too low, which previously biased
             // the commanded vertical speed into commanding excess descent.
             double distanceFt = distanceToThresholdNM * 6076.12;
-            double glideslopeAngleRad = GLIDESLOPE_ANGLE_DEG * Math.PI / 180.0;
+            double glideslopeAngleRad = glideslopeAngleDeg * Math.PI / 180.0;
             double idealAltitudeAGL = distanceFt * Math.Tan(glideslopeAngleRad) + glideslopeAltitudeBiasFt;
 
             // Calculate altitude error (positive = too high, negative = too low)
@@ -1103,7 +1120,7 @@ public class VisualGuidanceManager : IDisposable
             previousGlideslopeTimestamp = DateTime.Now;
 
             // Calculate nominal pitch for descent
-            double nominalPitch = -GLIDESLOPE_ANGLE_DEG + typicalApproachAoaDeg;  // A320 default ≈ +3°; 777 ≈ +1.5°
+            double nominalPitch = -glideslopeAngleDeg + typicalApproachAoaDeg;  // A320 default ≈ +3°; 777 ≈ +1.5°; LCY steep ≈ +0.5°
 
             // PD controller on FPM error:
             // Proportional: Correct based on FPM error

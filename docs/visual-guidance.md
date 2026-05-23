@@ -185,7 +185,8 @@ The vertical path is **FPM-based** (target FPM derived from 3° glideslope + alt
 
 | Name | Value | Description |
 |------|-------|-------------|
-| `GLIDESLOPE_ANGLE_DEG` | 3.0° | Standard ILS glideslope angle (universal) |
+| `glideslopeAngleDeg` | per-runway (3.0° default) | Read from `ils.gs_pitch` via `Runway.GlideslopeAngleDeg`; falls back to 3° when navdata lacks the angle. London City = 5.5°, Aspen = 6.59°, Innsbruck = 3.8°. Feeds the ideal glidepath, the natural-descent-rate FPM target, the phase-capture deviation, and the nominal-pitch baseline. |
+| `thresholdElevationMSL` | per-runway-end | Read from `runway_end.altitude` via `Runway.ThresholdElevation`; falls back to `airport.Altitude` when missing. Matters at airports with sloped runways. |
 | `GLIDESLOPE_GAIN` | 2.0 | Proportional: altitude error → FPM correction (FPM per ft) |
 | `GLIDESLOPE_LOCK_DISTANCE_NM` | 1.0 | Inside this distance, lock to steady 3° descent — no altitude correction |
 | `MAX_DESCENT_RATE_FPM` | -1500 | Safety clamp on commanded descent |
