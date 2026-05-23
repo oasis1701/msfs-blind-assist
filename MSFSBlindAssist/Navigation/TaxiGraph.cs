@@ -1580,13 +1580,29 @@ public class TaxiGraph
             }
 
             // For implicit (non-HS) exits whose first named edge is nearly parallel to
-            // the runway (< 5°), the edge bearing gives an inadequate pan cue. The BFS
+            // the runway (< 20°), the edge bearing gives an inadequate pan cue. The BFS
             // apron node — first node found outside the corridor — captures the actual
-            // exit direction after the arc, so use node→apron bearing instead.
-            // Guard: only override when the apron is in the forward direction (within
-            // NORMAL_MAX_DEG of runway heading) — a backward apron (BFS exited toward
-            // the approach end) would pan the pilot the wrong way.
-            if (!isHoldShortNode && exitAngle < 5.0
+            // exit direction after the arc, so use node→apron bearing instead when it
+            // gives a wider (more useful) angle.
+            //
+            // Guards (both required):
+            //   (a) apronAngle <= NORMAL_MAX_DEG (110°) — forward direction only. A
+            //       backward apron-bearing (BFS exited toward the approach end) would
+            //       pan the pilot the wrong way.
+            //   (b) apronAngle > currentAngleFwd — only override when apron is MORE
+            //       off-axis than the existing first-edge bearing. Mirrors the HS-style
+            //       override guard at the next block. Without this, an exit whose stub
+            //       points further off-runway than its eventual apron node (a curved-
+            //       back-toward-centreline shape) would have its bearing narrowed by
+            //       the override — a regression vs. the first-edge value.
+            //
+            // Threshold widened from 5° → 20° so EDDB-style implicit
+            // exits with shallow first-edge stubs (e.g. EDDB 24L M3 at 6.9°, LGAV 03R
+            // D8/D9 at 7.6°) are covered. Symmetric with the HS-style override gate at
+            // the next block (also < 20°). EIDW S5 and other hold-short shallow exits
+            // are unaffected — they use the parallel HS-style branch (`isHoldShortNode`
+            // gate). EGNX 27/M (90° normal) is above 20°, also unaffected.
+            if (!isHoldShortNode && exitAngle < 20.0
                 && implicitApronNodeId > 0
                 && Nodes.TryGetValue(implicitApronNodeId, out var apronTaxiNode))
             {
@@ -1597,7 +1613,13 @@ public class TaxiGraph
                 double dEb = (apronTaxiNode.Longitude - node.Longitude) * mPLb;
                 double apronBrg = Math.Atan2(dEb, dNb) * 180.0 / Math.PI;
                 if (apronBrg < 0) apronBrg += 360.0;
-                if (Math.Abs(NormalizeAngle(apronBrg - rwyHeadingTrue)) <= NORMAL_MAX_DEG)
+                double apronAngle = Math.Abs(NormalizeAngle(apronBrg - rwyHeadingTrue));
+                // Compare against current exitBearingTrue. 0.0 means no bearing found
+                // (sentinel) → treat as -1 so any forward-direction apron wins.
+                double currentAngleFwd = exitBearingTrue != 0.0
+                    ? Math.Abs(NormalizeAngle(exitBearingTrue - rwyHeadingTrue))
+                    : -1.0;
+                if (apronAngle <= NORMAL_MAX_DEG && apronAngle > currentAngleFwd)
                     exitBearingTrue = apronBrg == 0.0 ? 360.0 : apronBrg;
             }
 
