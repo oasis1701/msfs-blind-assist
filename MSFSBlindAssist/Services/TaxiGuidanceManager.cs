@@ -1075,6 +1075,22 @@ public class TaxiGuidanceManager : IDisposable
     }
 
     /// <summary>
+    /// Resets the rollout-phase approach-callout latches so the next rollout
+    /// entry path can re-fire the 1500 / 900 / 500 ft callouts, the "turn now"
+    /// cue, and the exit-tone arming gate. Sites that reset additional rollout
+    /// state (NoGraph, EnterRunwayEndCountdown, RetargetLandingExit, etc.) keep
+    /// their site-specific resets inline next to the call.
+    /// </summary>
+    private void ResetRolloutApproachLatches()
+    {
+        _rolloutApproach1500Announced = false;
+        _rolloutApproach900Announced = false;
+        _rolloutApproach500Announced = false;
+        _rolloutTurnNowAnnounced = false;
+        _rolloutExitToneArmed = false;
+    }
+
+    /// <summary>
     /// Switches active guidance into landing-rollout mode. Called by
     /// <see cref="LandingExitPlanner"/> after StartGuidance, before the
     /// aircraft has decelerated to taxi speed.
@@ -1128,11 +1144,7 @@ public class TaxiGuidanceManager : IDisposable
             _rolloutRunwayHeadingTrue = runwayHeadingTrue;
             _rolloutRunway = runway;
             _rolloutAllExits = allExits;
-            _rolloutApproach1500Announced = false;
-            _rolloutApproach900Announced = false;
-            _rolloutApproach500Announced = false;
-            _rolloutTurnNowAnnounced = false;
-            _rolloutExitToneArmed = false;
+            ResetRolloutApproachLatches();
             _rolloutEarlyHandoffDone = false;
             _lastUndershootRetargetTime = DateTime.MinValue;
             // Defense in depth: clear no-exit/runway-end state from any prior
@@ -1245,11 +1257,7 @@ public class TaxiGuidanceManager : IDisposable
             _rolloutRunwayHeadingTrue = runwayHeadingTrue;
             _rolloutRunway = runway;
             _rolloutAllExits = allExits;
-            _rolloutApproach1500Announced = false;
-            _rolloutApproach900Announced = false;
-            _rolloutApproach500Announced = false;
-            _rolloutTurnNowAnnounced = false;
-            _rolloutExitToneArmed = false;
+            ResetRolloutApproachLatches();
             _rolloutEarlyHandoffDone = false;
             _lastUndershootRetargetTime = DateTime.MinValue;
             _rolloutNoExitMode = false;
@@ -3721,11 +3729,7 @@ public class TaxiGuidanceManager : IDisposable
             {
                 _rolloutExit = candidate;
                 _isLandingExitRoute = true; // LoadRoute above cleared it; still a landing-exit route
-                _rolloutApproach1500Announced = false;
-                _rolloutApproach900Announced = false;
-                _rolloutApproach500Announced = false;
-                _rolloutTurnNowAnnounced = false;
-                _rolloutExitToneArmed = false;
+                ResetRolloutApproachLatches();
                 // Allow TryEarlyExitHandoff to fire for the newly targeted exit.
                 _rolloutEarlyHandoffDone = false;
 
@@ -3962,11 +3966,7 @@ public class TaxiGuidanceManager : IDisposable
         _isLandingExitRoute = false; // no exit route — runway-end countdown
         // KEEP _rolloutRunway and _rolloutRunwayHeadingTrue — countdown needs them.
         _rolloutAllExits = new List<Navigation.LandingExit>();
-        _rolloutApproach1500Announced = false;
-        _rolloutApproach900Announced = false;
-        _rolloutApproach500Announced = false;
-        _rolloutTurnNowAnnounced = false;
-        _rolloutExitToneArmed = false;
+        ResetRolloutApproachLatches();
         _rolloutEnd1500Announced = false;
         _rolloutEnd500Announced = false;
         _rolloutEnd100Announced = false;
@@ -4575,11 +4575,7 @@ public class TaxiGuidanceManager : IDisposable
         _isLandingExitRoute = false;
         _rolloutRunway = null;
         _rolloutAllExits = new List<Navigation.LandingExit>();
-        _rolloutApproach1500Announced = false;
-        _rolloutApproach900Announced = false;
-        _rolloutApproach500Announced = false;
-        _rolloutTurnNowAnnounced = false;
-        _rolloutExitToneArmed = false;
+        ResetRolloutApproachLatches();
         _rolloutNoExitMode = false;
         _rolloutHandoffActive = false;
         _rolloutEnd1500Announced = false;
