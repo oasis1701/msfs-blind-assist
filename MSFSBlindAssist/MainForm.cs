@@ -934,6 +934,14 @@ public partial class MainForm : Form
             visualGuidanceManager.UpdateBank(bankDegrees);
             return true;
         }
+        if (e.VarName == "VISUAL_GUIDANCE_AOA" && visualGuidanceManager.IsActive)
+        {
+            // INCIDENCE ALPHA from SimConnect arrives in radians. VG smooths and sanity-gates
+            // it consumer-side; we just convert and forward.
+            double aoaDegrees = e.Value * (180.0 / Math.PI);
+            visualGuidanceManager.UpdateAoA(aoaDegrees);
+            return true;
+        }
 
         // Handle aircraft variable hotkey announcements
         if (e.VarName == "ALTITUDE_AGL" || e.VarName == "ALTITUDE_MSL" || e.VarName == "AIRSPEED_INDICATED" ||

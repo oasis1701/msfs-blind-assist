@@ -23,8 +23,13 @@ public enum FCUControlType
 /// </summary>
 public sealed class VisualGuidanceProfile
 {
-    /// <summary>Typical pitch attitude (degrees) the airframe sits at during a stabilized approach.
-    /// Used to bias the commanded nominal pitch: nominalPitch = -3 (glideslope) + AoA.</summary>
+    /// <summary>Typical angle of attack (degrees) at the airframe's stabilized-approach trim
+    /// point. Used as a FALLBACK in <c>VisualGuidanceManager.CalculateDesiredPitch</c> when the
+    /// live AoA reading (SimConnect <c>INCIDENCE ALPHA</c>) is unavailable or outside the
+    /// sanity band. With live AoA available (the normal case), this value is unused — the
+    /// real measured AoA inherently encodes the current weight / flap / speed, so the nominal
+    /// pitch baseline converges on whatever the airplane is actually trimmed for and the
+    /// per-aircraft estimate becomes obsolete.</summary>
     public double TypicalApproachAoaDeg { get; init; } = 6.0;
 
     /// <summary>Reference Vref (knots) used as the denominator in the lateral airspeed-compensation

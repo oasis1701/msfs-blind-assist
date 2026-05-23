@@ -145,8 +145,26 @@ public class VisualGuidanceManager : IDisposable
     private const double ARC_BANK_LIMIT = 15.0;             // Gentle bank limit for comfort during arc
 
     // Vertical guidance — aircraft-specific (set from VisualGuidanceProfile in Initialize).
-    private double typicalApproachAoaDeg = 6.0;          // A320 baseline; biases nominal pitch = -3° + AoA
+    // typicalApproachAoaDeg is now only a FALLBACK used when measured AoA is unavailable or
+    // outside the sanity band. Live AoA from SimConnect (INCIDENCE ALPHA) is preferred — it
+    // inherently encodes weight + flap + speed and makes the nominal-pitch baseline converge
+    // on whatever the airplane is actually trimmed for.
+    private double typicalApproachAoaDeg = 6.0;
     private double maxPitchRateDegPerSec = 2.5;          // Cap on commanded pitch change rate (deg/sec)
+
+    // Live angle of attack (degrees, right-handed: positive = nose pitched above relative
+    // wind). Updated each frame from VISUAL_GUIDANCE_AOA. Smoothed with an EMA to remove
+    // sim/sensor jitter (gust-driven AoA wiggle would otherwise modulate the desired-tone
+    // frequency around the true trimmed value).
+    private double? cachedAoaDeg;
+    private double? smoothedAoaDeg;
+    private const double AOA_SMOOTHING_FACTOR = 0.7;     // Same characteristic as FPM smoothing
+    // Sanity band on the measured AoA. Stabilized-approach AoA sits in ~3–8° band; flare
+    // briefly spikes to ~8–10°. Outside [-5°, 20°] we treat the reading as a sim glitch and
+    // fall back to typicalApproachAoaDeg. -5° lower bound covers nose-low cruise descent;
+    // 20° upper bound is well past stall AoA for any transport airframe.
+    private const double AOA_MIN_VALID_DEG = -5.0;
+    private const double AOA_MAX_VALID_DEG = 20.0;
     // Glidepath/flare altitude calibration — see VisualGuidanceProfile for the full rationale.
     // glideslopeAltitudeBiasFt is ADDED to the ideal distance×tan(3°) glidepath so VG's
     // "on glideslope" matches the real ILS (which crosses the threshold at the ~50 ft TCH).
@@ -310,6 +328,8 @@ public class VisualGuidanceManager : IDisposable
         cachedBank = null;
         cachedHeading = null;
         cachedGroundTrack = null;
+        cachedAoaDeg = null;
+        smoothedAoaDeg = null;
 
         // Reset derivative term tracking (lateral)
         previousDesiredBank = 0.0;
@@ -520,6 +540,14 @@ public class VisualGuidanceManager : IDisposable
         currentPitch = pitchDegrees;  // Also update for dynamic pitch calculation
     }
     public void UpdateBank(double bankDegrees) => cachedBank = bankDegrees;
+
+    /// <summary>
+    /// Updates the cached angle of attack (degrees) from SimConnect's INCIDENCE ALPHA. Used
+    /// in <see cref="CalculateDesiredPitch"/> to bias the nominal pitch baseline. Smoothing
+    /// and validity gating are applied at consumption time (not here) so the raw cache stays
+    /// honest about whether a sample exists.
+    /// </summary>
+    public void UpdateAoA(double aoaDegrees) => cachedAoaDeg = aoaDegrees;
     public void UpdateHeading(double headingDegrees) => cachedHeading = headingDegrees;
     public void UpdateGroundTrack(double groundTrackDegrees) => cachedGroundTrack = groundTrackDegrees;
 
@@ -1129,8 +1157,38 @@ public class VisualGuidanceManager : IDisposable
             previousGlideslopeDeviation = fpmError;  // Reusing field for FPM error history
             previousGlideslopeTimestamp = DateTime.Now;
 
-            // Calculate nominal pitch for descent
-            double nominalPitch = -glideslopeAngleDeg + typicalApproachAoaDeg;  // A320 default ≈ +3°; 777 ≈ +1.5°; LCY steep ≈ +0.5°
+            // Calculate nominal pitch for descent.
+            // Prefer LIVE angle of attack (SimConnect INCIDENCE ALPHA) over the static profile
+            // estimate: measured AoA inherently encodes weight + flap + speed, so the nominal
+            // converges on whatever the airplane is actually trimmed for. Fall back to the
+            // profile value when (a) we haven't received an AoA sample yet, or (b) the reading
+            // is outside the sanity band (sim glitches, on-ground oddities).
+            // Smooth the AoA with an EMA to suppress gust-driven jitter that would otherwise
+            // modulate the desired-tone frequency around the true trimmed value.
+            double effectiveAoaDeg;
+            if (cachedAoaDeg.HasValue &&
+                cachedAoaDeg.Value >= AOA_MIN_VALID_DEG &&
+                cachedAoaDeg.Value <= AOA_MAX_VALID_DEG)
+            {
+                if (smoothedAoaDeg.HasValue)
+                {
+                    smoothedAoaDeg = AOA_SMOOTHING_FACTOR * smoothedAoaDeg.Value +
+                                     (1.0 - AOA_SMOOTHING_FACTOR) * cachedAoaDeg.Value;
+                }
+                else
+                {
+                    smoothedAoaDeg = cachedAoaDeg.Value;
+                }
+                effectiveAoaDeg = smoothedAoaDeg.Value;
+            }
+            else
+            {
+                // No valid measurement — use the per-aircraft estimate. Do NOT update
+                // smoothedAoaDeg; we want it to resume from the last good value when
+                // measurements come back.
+                effectiveAoaDeg = typicalApproachAoaDeg;
+            }
+            double nominalPitch = -glideslopeAngleDeg + effectiveAoaDeg;  // A320 default ≈ +3°; 777 ≈ +1.5°; LCY steep ≈ +0.5°
 
             // PD controller on FPM error:
             // Proportional: Correct based on FPM error

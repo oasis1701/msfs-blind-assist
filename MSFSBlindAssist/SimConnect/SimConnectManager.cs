@@ -342,6 +342,12 @@ public class SimConnectManager
         // follower tone needs live pitch/bank, and we don't want to gate VG on HandFly anymore.
         public double PitchRadians;
         public double BankRadians;
+        // Angle of attack (radians from SimConnect; consumer converts to degrees). Fed into
+        // VG's nominal-pitch baseline so the desired-tone reflects what the airplane actually
+        // needs to fly given its current weight / flap / speed, instead of a static
+        // TypicalApproachAoaDeg estimate. With autothrust holding Vref this is a near-constant;
+        // gusts and configuration changes shift it transiently.
+        public double AlphaRadians;
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
@@ -631,6 +637,11 @@ public class SimConnectManager
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)9);
         sc.AddToDataDefinition(DATA_DEFINITIONS.VISUAL_GUIDANCE_DATA, "PLANE BANK DEGREES", "radians",
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)10);
+        // Angle of attack — replaces the per-aircraft TypicalApproachAoaDeg constant in VG's
+        // nominal-pitch baseline. Measured AoA inherently encodes weight + flap + speed, so the
+        // nominal converges on the actual stabilized-approach pitch automatically.
+        sc.AddToDataDefinition(DATA_DEFINITIONS.VISUAL_GUIDANCE_DATA, "INCIDENCE ALPHA", "radians",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)11);
         sc.RegisterDataDefineStruct<VisualGuidanceData>(DATA_DEFINITIONS.VISUAL_GUIDANCE_DATA);
 
         // Register takeoff assist data (consolidated position + pitch + heading + airspeed)
@@ -1857,6 +1868,14 @@ public class SimConnectManager
                 {
                     VarName = "VISUAL_GUIDANCE_BANK",
                     Value = vgData.BankRadians,
+                    Description = ""
+                });
+                // Angle of attack — emitted before AGL so VG's ProcessUpdate sees the freshest
+                // alpha for the same frame. Consumer (MainForm) converts radians → degrees.
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "VISUAL_GUIDANCE_AOA",
+                    Value = vgData.AlphaRadians,
                     Description = ""
                 });
 
