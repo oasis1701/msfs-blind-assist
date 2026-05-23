@@ -85,8 +85,18 @@ public sealed class VisualGuidanceProfile
     /// flare cue fires at a real ~30 ft of gear height (Boeing/Airbus FCTM flare initiation)
     /// rather than ~20 ft late, and "touchdown" actually triggers (on a widebody the datum
     /// never gets within the 5 ft touchdown threshold of the runway, so the uncorrected check
-    /// never fired at all). The 777 value (20) is measured; the A320 default is estimated.</summary>
+    /// never fired at all). The 777 value (30) is measured against an actual flare attitude
+    /// (pitches up further than approach attitude → larger datum-vs-gear offset than on the
+    /// approach); the A320 default (12) is estimated and should be calibrated in-sim.</summary>
     public double FlareAltitudeBiasFt { get; init; } = 12.0;
+
+    /// <summary>True main-gear height (ft) at which the flare phase is entered and the flare
+    /// audio cue announces. Per-aircraft because manufacturer flare-initiation guidance and
+    /// autoland behaviour vary: the A320 FCTM specifies a 30 ft initiation (default); the
+    /// PMDG 777's autoland begins flaring at ~40 ft RA, so VG's cue is timed to match — a
+    /// hand-flying pilot using VG to mirror autoland gets the cue at the same moment the
+    /// autopilot would have started its flare. Keep within 20–50 ft.</summary>
+    public double FlareTriggerWheelHeightFt { get; init; } = 30.0;
 }
 
 /// <summary>

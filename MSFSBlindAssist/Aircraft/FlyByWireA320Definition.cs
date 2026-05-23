@@ -45,12 +45,13 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     // / FlareAltitude) are estimates pending an in-sim coupled-ILS-autoland check.
     public override VisualGuidanceProfile GetVisualGuidanceProfile() => new()
     {
-        TypicalApproachAoaDeg    = 6.0,
-        ReferenceVrefKnots       = 140.0,
-        MaxPitchRateDegPerSec    = 2.5,
-        MaxBankRateDegPerSec     = 3.0,
-        GlideslopeAltitudeBiasFt = 60.0,   // estimate — calibrate vs a coupled ILS autoland
-        FlareAltitudeBiasFt      = 12.0    // estimate
+        TypicalApproachAoaDeg     = 6.0,
+        ReferenceVrefKnots        = 140.0,
+        MaxPitchRateDegPerSec     = 2.5,
+        MaxBankRateDegPerSec      = 3.0,
+        GlideslopeAltitudeBiasFt  = 60.0,   // estimate — calibrate vs a coupled ILS autoland
+        FlareAltitudeBiasFt       = 12.0,   // estimate
+        FlareTriggerWheelHeightFt = 30.0    // A320 FCTM: flare initiation at 30 ft RA
     };
 
     public override Dictionary<string, SimConnect.SimVarDefinition> GetVariables()

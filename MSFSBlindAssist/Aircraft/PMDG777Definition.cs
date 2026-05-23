@@ -43,18 +43,29 @@ public class PMDG777Definition : BaseAircraftDefinition
     public override FCUControlType GetSpeedControlType() => FCUControlType.SetValue;
     public override FCUControlType GetVerticalSpeedControlType() => FCUControlType.SetValue;
 
-    // Heavy widebody — lower approach AoA, slightly higher Vref, slower pitch authority than A320.
-    // GlideslopeAltitudeBiasFt / FlareAltitudeBiasFt are MEASURED against a coupled ILS autoland:
-    // VG read ~80 ft high on a correctly-flown glideslope, and the flare cue fired ~20 ft late
-    // (VG's 30 ft reading coincided with the aircraft's radio-altimeter "10" callout).
+    // Heavy widebody — lower approach AoA, slightly higher Vref, slower pitch authority than
+    // A320. All values measured against the PMDG 777's coupled ILS autoland:
+    // - GlideslopeAltitudeBiasFt = 80: a correctly-flown glideslope reads near-zero on VG (the
+    //   first uncorrected run measured ~80 ft high; corrected residual is ±10 ft, acceptable).
+    // - FlareAltitudeBiasFt = 30: in flare attitude the SimConnect datum sits ~30 ft above the
+    //   wheels. (First run estimated 20 from approach-attitude data; the second run confirmed
+    //   that with bias=20 the flare cue fired at RA 20 instead of RA 30 — i.e. the wheelHeight
+    //   over-read by 10 ft → real flare-attitude offset = 30.)
+    // - FlareTriggerWheelHeightFt = 40: the PMDG 777 autoland begins its flare at ~40 ft RA;
+    //   timing VG's cue to match lets a hand-flying pilot mirror the autoland.
+    // - TonePitchRangeDeg = 10: the default 6° gave 50 Hz/° of beat (too dissonant at the
+    //   ±0.1° pitch errors a stabilized approach produces). 10° = 30 Hz/° — gentler at small
+    //   errors, still clearly audible when off.
     public override VisualGuidanceProfile GetVisualGuidanceProfile() => new()
     {
-        TypicalApproachAoaDeg = 4.5,
-        ReferenceVrefKnots = 145.0,
-        MaxPitchRateDegPerSec = 2.0,
-        MaxBankRateDegPerSec = 3.0,
-        GlideslopeAltitudeBiasFt = 80.0,
-        FlareAltitudeBiasFt = 20.0
+        TypicalApproachAoaDeg     = 4.5,
+        ReferenceVrefKnots        = 145.0,
+        MaxPitchRateDegPerSec     = 2.0,
+        MaxBankRateDegPerSec      = 3.0,
+        GlideslopeAltitudeBiasFt  = 80.0,
+        FlareAltitudeBiasFt       = 30.0,
+        FlareTriggerWheelHeightFt = 40.0,
+        TonePitchRangeDeg         = 10.0
     };
 
     // =========================================================================

@@ -151,7 +151,10 @@ public class VisualGuidanceManager : IDisposable
     // single shared constant — they were measured separately (on the beam vs near the
     // ground, different attitudes), so do not "reconcile" them into one value.
     private double glideslopeAltitudeBiasFt = 60.0;      // A320 estimate; 777 measured = 80
-    private double flareAltitudeBiasFt = 12.0;           // A320 estimate; 777 measured = 20
+    private double flareAltitudeBiasFt = 12.0;           // A320 estimate; 777 measured = 30
+    // True main-gear height (ft) at which the flare phase fires. Per-aircraft: A320 default
+    // 30 (FCTM), PMDG 777 = 40 (matches the autopilot's autoland flare initiation).
+    private double flareTriggerWheelHeightFt = 30.0;
     private const double CROSS_TRACK_RATE_SMOOTHING_FACTOR = 0.85;  // Exponential smoothing for cross-track rate (0.85 = strong filtering to prevent noise spikes)
 
     // FPM-based vertical guidance constants
@@ -268,6 +271,7 @@ public class VisualGuidanceManager : IDisposable
         maxBankRateDegPerSec = profile.MaxBankRateDegPerSec;
         glideslopeAltitudeBiasFt = profile.GlideslopeAltitudeBiasFt;
         flareAltitudeBiasFt = profile.FlareAltitudeBiasFt;
+        flareTriggerWheelHeightFt = profile.FlareTriggerWheelHeightFt;
 
         // Reset state
         currentPhase = GuidancePhase.NotStarted;
@@ -622,8 +626,9 @@ public class VisualGuidanceManager : IDisposable
             return;
         }
 
-        // Check for flare
-        if (wheelHeightAGL <= FLARE_ALTITUDE_FT)
+        // Check for flare. Trigger height is per-aircraft (777 = 40 to match autopilot
+        // autoland; A320 = 30 from FCTM). FLARE_ALTITUDE_FT is now legacy / a sanity fallback.
+        if (wheelHeightAGL <= flareTriggerWheelHeightFt)
         {
             currentPhase = GuidancePhase.Flare;
             if (previousPhase != currentPhase)
