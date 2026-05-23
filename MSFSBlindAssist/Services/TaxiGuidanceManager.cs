@@ -1429,13 +1429,23 @@ public class TaxiGuidanceManager : IDisposable
             double exitBrgErrPH = _rolloutExit.ExitBearingTrue != 0.0
                 ? Math.Abs(NormalizeAngle(headingTrue - _rolloutExit.ExitBearingTrue))
                 : double.MaxValue;
-            // Widened from 5°/0.7× to 10°/0.4× so a pilot mid-turn (e.g. 7° into
-            // a 17° exit) is recognised as committed before the overshoot retarget fires.
+
+            double signedAlongPastFtPH = SignedAlongRunwayMeters(
+                lat, lon,
+                _rolloutExit.Latitude, _rolloutExit.Longitude,
+                _rolloutRunwayHeadingTrue) * METERS_TO_FEET;
+
+            // Must be past the exit junction AND heading toward the exit bearing to
+            // count as committed. Without the pastExit guard, A/P jitter on shallow
+            // exits (e.g. 7.6° at LGAV 03R D8/D9) falsely satisfies this check while
+            // the aircraft is still hundreds of feet short, killing the overshoot monitor
+            // prematurely. Thresholds match alignedWithExit in UpdateLandingRollout.
             bool alignedWithExitPH = _rolloutExit.ExitBearingTrue != 0.0
                 && _rolloutExit.ExitAngleDegrees >= 3.0
-                && exitBrgErrPH <= 10.0
-                && hdgDeltaAbsPH >= Math.Max(2.0, _rolloutExit.ExitAngleDegrees * 0.4)
-                && groundSpeedKts < ROLLOUT_TURN_MAX_GS_KTS;
+                && exitBrgErrPH <= 5.0
+                && hdgDeltaAbsPH >= Math.Max(2.0, _rolloutExit.ExitAngleDegrees * 0.7)
+                && groundSpeedKts < ROLLOUT_TURN_MAX_GS_KTS
+                && signedAlongPastFtPH >= 0.0;
 
             if (turnBegunPH || exitedLaterallyPH || alignedWithExitPH)
             {
@@ -1444,11 +1454,6 @@ public class TaxiGuidanceManager : IDisposable
             }
             else
             {
-                double signedAlongPastFtPH = SignedAlongRunwayMeters(
-                    lat, lon,
-                    _rolloutExit.Latitude, _rolloutExit.Longitude,
-                    _rolloutRunwayHeadingTrue) * METERS_TO_FEET;
-
                 // A high-speed (rapid-exit) taxiway needs a larger margin before
                 // a miss can be declared — a correctly-turning aircraft carries
                 // downfield while still only a few degrees into the turn. But
