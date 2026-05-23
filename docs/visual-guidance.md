@@ -105,7 +105,7 @@ Approach AoA, Vref reference, and the pitch/bank rate caps are aircraft-shaped �
 
 | Field | A320 default | PMDG 777 override | Purpose |
 |-------|-------------|-------------------|---------|
-| `TypicalApproachAoaDeg` | 6.0° | 4.5° | Nominal commanded pitch = `-3° (glideslope) + AoA`. Wrong value biases the desired-tone baseline frequency. |
+| `TypicalApproachAoaDeg` | 6.0° | 4.5° | **Fallback only.** VG uses the live SimConnect `INCIDENCE ALPHA` reading (smoothed, sanity-banded `[-5°, 20°]`) for the nominal pitch baseline. This profile value is only used when measured AoA is unavailable or out of band. With live AoA, weight/flap/speed-driven AoA variation is handled automatically — no per-airframe estimate needed. |
 | `ReferenceVrefKnots` | 140 | 145 | Denominator in lateral airspeed-compensation scaler `sqrt(GS / Vref)`. |
 | `MaxPitchRateDegPerSec` | 2.5 | 2.0 | Cap on commanded-pitch change rate; heavier aircraft = slower authority. |
 | `MaxBankRateDegPerSec` | 3.0 | 3.0 | Cap on commanded-bank change rate. |
