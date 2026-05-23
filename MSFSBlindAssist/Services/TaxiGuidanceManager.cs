@@ -1424,6 +1424,16 @@ public class TaxiGuidanceManager : IDisposable
                 lat, lon,
                 _rolloutRunway.StartLat, _rolloutRunway.StartLon,
                 _rolloutRunwayHeadingTrue) * METERS_TO_FEET;
+            // Bare lateral check (no dist/heading gate) is intentional in this
+            // post-handoff context. The primary handoff in UpdateLandingRollout
+            // uses a combined gate to avoid false-firing during anticipatory
+            // drift (EDDB 24L → M3 case), but this block runs AFTER handoff in
+            // Taxiing state and asks "has the pilot committed?" — gating it
+            // would delay clearing _rolloutHandoffActive and could cause
+            // spurious overshoot-retarget cascades. Commit b69a03d adds the
+            // pastExit guard to the sibling alignedWithExitPH check below for
+            // the analogous A/P-jitter concern; this lateral check doesn't
+            // suffer the same false-positive mode.
             bool exitedLaterallyPH = lateralFtPH >= halfWidthFtPH + 30.0;
 
             double exitBrgErrPH = _rolloutExit.ExitBearingTrue != 0.0
@@ -2945,7 +2955,36 @@ public class TaxiGuidanceManager : IDisposable
             lat, lon,
             _rolloutRunway!.StartLat, _rolloutRunway.StartLon,
             _rolloutRunwayHeadingTrue) * METERS_TO_FEET;
-        bool exitedLaterally = lateralFromCenterlineFt >= halfRunwayWidthFt + 30.0;
+        // Combined gate: the bare lateral threshold (halfWidth+30 ft) fires too
+        // eagerly when the pilot drifts laterally during the rollout silent-tone
+        // phase, BEFORE the 150 ft "turn now" verbal has had a chance to fire.
+        // EDDB 24L → M3 reproduction: lateral=129 ft at distToExit=445 ft and
+        // hdgDelta=6.6° triggered handoff before the verbal cue.
+        //
+        // Original intent of exitedLaterally is to recognise the "shallow RET
+        // drift-off" case where heading never reaches the 15° turnBegun threshold
+        // but the aircraft has clearly moved onto the exit taxiway. That intent
+        // is preserved by the three OR'd conditions below — at least one will be
+        // true any time the pilot is genuinely committed to the exit.
+        //
+        // Conditions (any one triggers when lateral threshold is met):
+        //   (a) distToExitFeet <= 250 — within turn-cue range. The 150 ft "turn
+        //       now" verbal will have fired (or is about to); lateral drift here
+        //       is committing, not anticipatory.
+        //   (b) hdgDeltaAbs >= 8.0 — heading commitment. Below the 15° turnBegun
+        //       threshold but enough to distinguish anticipatory steering from
+        //       passive drift. 8° = half of turnBegun.
+        //   (c) pastExit — overshoot. Preserves the existing behavior for the
+        //       overshoot detector downstream.
+        //
+        // True shallow RETs (<8° real exit angle): the dist gate fires once the
+        // aircraft closes to <=250 ft of the exit — no regression. 90° normal
+        // exits: turnBegun fires almost immediately upon turn, before the lateral
+        // gate is relevant. No behavioral change for the common case.
+        bool exitedLaterally = lateralFromCenterlineFt >= halfRunwayWidthFt + 30.0
+                               && (distToExitFeet <= 250.0
+                                   || hdgDeltaAbs >= 8.0
+                                   || pastExit);
 
         // Heading-aligned-with-exit handoff for shallow RETs whose angle is
         // below ROLLOUT_TURN_BEGAN_HDG_DEG (15°), so turnBegun never fires.
@@ -2973,6 +3012,7 @@ public class TaxiGuidanceManager : IDisposable
             RolloutDiag($"UpdateLandingRollout HANDOFF -> Taxiing: " +
                 $"turnBegun={turnBegun} exitedLaterally={exitedLaterally} alignedWithExit={alignedWithExit} " +
                 $"exitBrgErr={exitBrgErr:F1}deg lateral={lateralFromCenterlineFt:F0}ft " +
+                $"distToExit={distToExitFeet:F0}ft hdgDelta={hdgDeltaAbs:F1}deg " +
                 $"atTaxiSpeed={atTaxiSpeed} nearExit={nearExit} pastExit={pastExit} trulyStopped={trulyStopped}");
 
             // Arm post-handoff overshoot monitor so UpdatePosition can detect
@@ -3337,10 +3377,15 @@ public class TaxiGuidanceManager : IDisposable
         //   naturally as the aircraft approaches → appropriate directional pan.
         //   The verbal "turn now" at 150 ft and the Taxiing handoff with ApronNodeId
         //   re-route together handle the actual exit turn.
-        //   NOTE: ExitBearingTrue is NOT used here. For near-parallel exits (< 5°) the
-        //   apron-bearing override stores a bearing ~90° off the runway (pointing toward
-        //   the apron rather than along the approach path), which caused premature hard
-        //   panning 300 ft before the junction on shallow high-speed exits like EIDW S5.
+        //   NOTE: ExitBearingTrue is NOT used here. For shallow exits, both the HS-style
+        //   override (TaxiGraph.cs:1618, can store an apron-bearing up to NORMAL_MAX_DEG
+        //   off the runway) and the implicit-exit override (TaxiGraph.cs:1589, gated to
+        //   only-widen via the apronAngle > currentAngleFwd guard) can produce bearings
+        //   meaningfully off the approach path. Using ExitBearingTrue here caused
+        //   premature hard panning 300 ft before the junction on shallow high-speed
+        //   exits like EIDW S5 (apron ~90° off runway). Bearing-to-junction stays silent
+        //   while the aircraft is on centreline and only deviates as the aircraft nears
+        //   an off-axis junction — appropriate directional pan without false alarms.
         if (groundSpeedKts > ROLLOUT_TONE_ACTIVE_BELOW_GS_KTS)
         {
             _steeringTone.Pause();
