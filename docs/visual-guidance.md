@@ -189,7 +189,7 @@ The vertical path is **FPM-based** (target FPM derived from 3° glideslope + alt
 | `thresholdElevationMSL` | per-runway-end | Read from `runway_end.altitude` via `Runway.ThresholdElevation`; falls back to `airport.Altitude` when missing. Matters at airports with sloped runways. |
 | `GLIDESLOPE_GAIN` | 2.0 | Proportional: altitude error → FPM correction (FPM per ft) |
 | `GLIDESLOPE_LOCK_DISTANCE_NM` | 1.0 | Inside this distance, lock to steady 3° descent — no altitude correction |
-| `MAX_DESCENT_RATE_FPM` | -1500 | Safety clamp on commanded descent |
+| `MAX_DESCENT_RATE_FPM` | -1500 | Safety clamp on commanded descent. Applied **dynamically** as `min(-1500, natural × 1.3)` so a legitimate steep-approach natural rate (Aspen 6.59° × 130 kt = ~-1521 fpm) is never clipped — the clamp always allows the natural rate plus correction headroom. |
 | `typicalApproachAoaDeg` `[profile]` | 6.0° | Nominal pitch = -3° + AoA. PMDG 777 overrides to 4.5°. |
 | `maxPitchRateDegPerSec` `[profile]` | 2.5 | Cap on commanded pitch change rate (deg/sec) |
 | `glideslopeAltitudeBiasFt` `[profile]` | 60 *(est.)* | Added to ideal glidepath so VG matches the real ILS (TCH + datum). PMDG 777 = 80 (measured). |
