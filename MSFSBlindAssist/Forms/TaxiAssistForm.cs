@@ -634,11 +634,8 @@ public class TaxiAssistForm : Form
                 // are permissive (closed=false, can-takeoff=true) so DBs that
                 // don't populate these columns still see every runway. Users
                 // with Navigraph or third-party scenery — which DOES populate
-                // these — won't see closed runways or takeoff-prohibited ends
-                // in the destination dropdown. Avoids routing to a closed
-                // runway and getting "WTF" looks on VATSIM.
+                // these — won't see closed runways in the destination dropdown.
                 if (rwy.IsClosed) continue;
-                if (!rwy.IsTakeoff) continue;
 
                 // Prefer the start-table lineup point (handles displaced
                 // thresholds correctly). Fall back to the physical pavement
