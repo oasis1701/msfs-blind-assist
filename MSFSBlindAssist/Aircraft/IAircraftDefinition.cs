@@ -102,6 +102,14 @@ public sealed class VisualGuidanceProfile
     /// hand-flying pilot using VG to mirror autoland gets the cue at the same moment the
     /// autopilot would have started its flare. Keep within 20–50 ft.</summary>
     public double FlareTriggerWheelHeightFt { get; init; } = 30.0;
+
+    /// <summary>Target pitch (degrees) commanded during the flare phase. Per-aircraft because
+    /// manufacturer flare pitch attitudes vary: Boeing FCTM specifies a 2–3° pitch increase
+    /// from approach attitude (777 ≈ +1.5° approach → ~+4–4.5° flare), while Airbus aircraft
+    /// flare to ~+5–6° (default). Used directly by <c>CalculateDesiredPitch</c> in the Flare
+    /// branch, rate-limited from the previous pitch by <c>MAX_FLARE_PITCH_RATE</c> so the
+    /// desired-tone frequency doesn't step. Keep within 3–8°.</summary>
+    public double FlareTargetPitchDeg { get; init; } = 6.0;
 }
 
 /// <summary>

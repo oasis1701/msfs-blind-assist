@@ -31,7 +31,8 @@ public class FenixA320Definition : BaseAircraftDefinition
         MaxBankRateDegPerSec      = 3.0,
         GlideslopeAltitudeBiasFt  = 60.0,   // estimate — calibrate vs a coupled ILS autoland
         FlareAltitudeBiasFt       = 12.0,   // estimate
-        FlareTriggerWheelHeightFt = 30.0    // A320 FCTM: flare initiation at 30 ft RA
+        FlareTriggerWheelHeightFt = 30.0,   // A320 FCTM: flare initiation at 30 ft RA
+        FlareTargetPitchDeg       = 6.0     // A320 FCTM: flare attitude ~+5–6°
     };
 
     // Private fields for FCU readout tracking
