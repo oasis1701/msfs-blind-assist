@@ -45,6 +45,14 @@ The `main` branch is protected. Always create a new branch for changes and open 
 
 **Why:** Screen readers already announce UI interactions. Redundant announcements = poor UX.
 
+### Access GSX Tooltips
+
+Access GSX tooltip speech is intentionally broad: keep announcing GSX tooltips by default. Only suppress exact duplicate tooltip text or targeted no-new-information progress repeats. `GsxService.ReloadAndPublishTooltip` currently suppresses:
+- exact consecutive duplicate tooltip file contents
+- repeated baggage loading/unloading percentages within a short repeat window
+
+Do not add a blanket debounce/throttle for GSX tooltips. Boarding, deboarding, baggage, fuel, pushback, and other GSX messages are operationally useful; new tooltip text and new progress percentages must still be spoken. `LastTooltip` should still be updated for suppressed repeats so the output `Ctrl+G` hotkey reads the current GSX tooltip.
+
 ### SimConnect Connection Timing
 
 **CRITICAL:** In SimConnectManager.cs, set `IsConnected = true` BEFORE calling `SetupDataDefinitions()`. Required for `StartContinuousMonitoring()` to execute properly (has guard clause requiring `IsConnected == true`). See SimConnectManager.cs:251

@@ -9,6 +9,7 @@
 // MSFSBA's existing ScreenReaderAnnouncer; no Tolk is loaded here.
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Windows.Forms;
 using Microsoft.FlightSimulator.SimConnect;
 using Microsoft.Win32;
@@ -117,6 +118,11 @@ public sealed class GsxService : IDisposable
     private string? _menuFilePath;
     private string? _tooltipFilePath;
     private readonly List<MenuOption> _menuOptions = new();
+    private readonly Dictionary<string, (int Percent, DateTime SeenAt)> _lastBaggageProgressByOperation = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly TimeSpan BaggageProgressRepeatWindow = TimeSpan.FromMinutes(10);
+    private static readonly Regex PercentRegex = new(
+        @"\b(\d{1,3})\s*%",
+        RegexOptions.Compiled);
 
     public GsxService(IntPtr windowHandle, ScreenReaderAnnouncer announcer)
     {
@@ -547,16 +553,28 @@ public sealed class GsxService : IDisposable
             return;
         }
 
+        string tooltip;
         try
         {
             var lines = File.ReadAllLines(_tooltipFilePath, Encoding.UTF8);
-            _lastTooltip = string.Join(Environment.NewLine, lines);
+            tooltip = string.Join(Environment.NewLine, lines);
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"[GsxService] Failed to read tooltip file: {ex.Message}");
             return;
         }
+
+        if (string.Equals(tooltip, _lastTooltip, StringComparison.Ordinal))
+            return;
+
+        if (IsRepeatedBaggageProgress(tooltip))
+        {
+            _lastTooltip = tooltip;
+            return;
+        }
+
+        _lastTooltip = tooltip;
 
         TooltipChanged?.Invoke(this, EventArgs.Empty);
 
@@ -574,6 +592,50 @@ public sealed class GsxService : IDisposable
                 System.Diagnostics.Debug.WriteLine($"[GsxService] Background announce failed: {ex.Message}");
             }
         }
+    }
+
+    private bool IsRepeatedBaggageProgress(string tooltip)
+    {
+        if (!TryParseBaggageProgress(tooltip, out string operation, out int percent))
+            return false;
+
+        DateTime now = DateTime.UtcNow;
+        if (_lastBaggageProgressByOperation.TryGetValue(operation, out var lastProgress)
+            && percent == lastProgress.Percent
+            && now - lastProgress.SeenAt < BaggageProgressRepeatWindow)
+        {
+            return true;
+        }
+
+        _lastBaggageProgressByOperation[operation] = (percent, now);
+        return false;
+    }
+
+    private static bool TryParseBaggageProgress(string tooltip, out string operation, out int percent)
+    {
+        operation = string.Empty;
+        percent = 0;
+
+        if (string.IsNullOrWhiteSpace(tooltip))
+            return false;
+
+        string normalized = tooltip.ReplaceLineEndings(" ").ToLowerInvariant();
+        if (!normalized.Contains("baggage"))
+            return false;
+
+        if (normalized.Contains("unloading") || normalized.Contains("unloaded"))
+            operation = "unloading";
+        else if (normalized.Contains("loading") || normalized.Contains("loaded"))
+            operation = "loading";
+        else
+            return false;
+
+        var match = PercentRegex.Match(normalized);
+        if (!match.Success || !int.TryParse(match.Groups[1].Value, out percent))
+            return false;
+
+        percent = Math.Clamp(percent, 0, 100);
+        return true;
     }
 
     // ─────────────────────────────────────────────────────────────────────
