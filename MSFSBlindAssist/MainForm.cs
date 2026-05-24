@@ -3024,6 +3024,24 @@ public partial class MainForm : Form
                 settings.VisualGuidanceHardPanTone,
                 currentAircraft.GetVisualGuidanceProfile());
 
+            // PMDG 777: if the FMC has a pilot-entered landing Vref, push it as a live
+            // override of the profile-default reference Vref. The PMDG SDK doesn't expose
+            // AoA (which we read via the standard SimConnect INCIDENCE ALPHA simvar) but
+            // it DOES publish FMC_LandingVREF in its CDA broadcast — snapshot it at VG
+            // activation time. FBW / Fenix A320 have no equivalent SDK field, so they
+            // continue to use the A320 profile default. Snapshot rather than live: if the
+            // pilot re-enters Vref mid-approach (rare), they re-toggle VG to pick it up.
+            if (currentAircraft?.AircraftCode == "PMDG_777" &&
+                simConnectManager?.PMDG777DataManager != null)
+            {
+                double fmcVref = simConnectManager.PMDG777DataManager.GetFieldValue("FMC_LandingVREF");
+                if (fmcVref > 0)
+                {
+                    visualGuidanceManager.UpdateReferenceVref(fmcVref);
+                    System.Diagnostics.Debug.WriteLine($"[MainForm] VG: pushed PMDG FMC_LandingVREF={fmcVref:F0}kt as ReferenceVref");
+                }
+            }
+
             // Start monitoring position variables at 1 Hz
             simConnectManager.StartVisualGuidanceMonitoring();
 

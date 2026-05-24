@@ -548,6 +548,24 @@ public class VisualGuidanceManager : IDisposable
     /// honest about whether a sample exists.
     /// </summary>
     public void UpdateAoA(double aoaDegrees) => cachedAoaDeg = aoaDegrees;
+
+    /// <summary>
+    /// Optional live override for the lateral airspeed-compensation Vref. Aircraft models
+    /// that publish their pilot-entered landing Vref (e.g., PMDG 777's FMC_LandingVREF in
+    /// the CDA broadcast) can push it here to replace the profile-default reference. Values
+    /// ≤0 are ignored — the profile default is preserved when no FMC entry exists. Used by
+    /// the lateral PID's sqrt(GS / Vref) scaler; the effect on bank command is second-order
+    /// (a ±10 kt Vref error shifts speedFactor by ~3%), so this is a polish improvement
+    /// rather than a correctness fix.
+    /// </summary>
+    public void UpdateReferenceVref(double knots)
+    {
+        if (knots > 0)
+        {
+            airspeedReferenceKnots = knots;
+            System.Diagnostics.Debug.WriteLine($"[VisualGuidanceManager] ReferenceVref updated to {knots:F0} kt (live override)");
+        }
+    }
     public void UpdateHeading(double headingDegrees) => cachedHeading = headingDegrees;
     public void UpdateGroundTrack(double groundTrackDegrees) => cachedGroundTrack = groundTrackDegrees;
 
