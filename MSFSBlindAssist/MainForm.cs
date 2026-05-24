@@ -465,6 +465,23 @@ public partial class MainForm : Form
         // Step 1: ALWAYS store the value first (needed by all consumers)
         currentSimVarValues[e.VarName] = e.Value;
 
+        // Initial-snapshot fast path: populate caches and refresh UI controls
+        // but skip all announcement paths. These events represent "what the
+        // cockpit looked like when the app started", not user-triggered
+        // transitions, so announcing them would spam the user on every launch.
+        if (e.IsInitialSnapshot)
+        {
+            UpdateControlFromSimVar(e.VarName, e.Value);
+            // Also mirror to displayValues so panel display textboxes have
+            // the right initial content when first rendered.
+            if (currentAircraft.GetVariables().ContainsKey(e.VarName) &&
+                currentAircraft.GetPanelDisplayVariables().Values.Any(list => list.Contains(e.VarName)))
+            {
+                displayValues[e.VarName] = e.Value;
+            }
+            return;
+        }
+
         // Step 2: Handle special one-off announcements (terminal cases only)
         if (HandleSpecialAnnouncements(e))
         {
@@ -1264,15 +1281,21 @@ public partial class MainForm : Form
         // Translate struct field name to variable key
         if (!_pmdgFieldToKeyMap!.TryGetValue(e.FieldName, out string? varKey))
         {
+            if (e.FieldName is "ELEC_GrdPwrSw" or "ELEC_GenSw_0" or "ELEC_GenSw_1" or "ELEC_APUGenSw_0" or "ELEC_APUGenSw_1")
+                System.Diagnostics.Debug.WriteLine($"[MainForm] PMDG event {e.FieldName} DROPPED (varKey not found in map)");
             return;
         }
+
+        if (e.FieldName is "ELEC_GrdPwrSw" or "ELEC_GenSw_0" or "ELEC_GenSw_1" or "ELEC_APUGenSw_0" or "ELEC_APUGenSw_1")
+            System.Diagnostics.Debug.WriteLine($"[MainForm] PMDG event {e.FieldName} -> varKey={varKey} value={e.Value} initial={e.IsInitialSnapshot}");
 
         // Route PMDG variable changes through the same pipeline as SimVar updates
         var simVarEvent = new SimVarUpdateEventArgs
         {
             VarName = varKey,
             Value   = e.Value,
-            Description = string.Empty
+            Description = string.Empty,
+            IsInitialSnapshot = e.IsInitialSnapshot,
         };
         OnSimVarUpdated(this, simVarEvent);
     }

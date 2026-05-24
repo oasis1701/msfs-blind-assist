@@ -158,6 +158,14 @@ public class PMDGNG3DataManager : IPMDGDataManager
                 $"[PMDGNG3DataManager] RegisterClientDataAreas failed: {ex.Message}");
         }
 
+        // Restart the 1Hz polling. We tried ON_SET push-subscription per the
+        // SDK sample, but the FLAG.CHANGED filter never delivers an initial
+        // baseline snapshot — _hasSnapshot stays false until something changes,
+        // which makes IsReady return false and the guarded-switch dispatcher
+        // bail out with "Switch not ready". Polling guarantees a snapshot
+        // within 1 second of startup. The "stale cache" risk that ON_SET was
+        // meant to mitigate turned out to be PMDG-side state inconsistency,
+        // not snapshot lag, so polling is fine.
         _pollTimer = new System.Windows.Forms.Timer();
         _pollTimer.Interval = 1000;
         _pollTimer.Tick += PollTimer_Tick;
@@ -264,10 +272,26 @@ public class PMDGNG3DataManager : IPMDGDataManager
                     var newData = (PMDGNG3DataStruct)data.dwData[0];
                     s_dataSnapshotsReceived++;
                     if (s_dataSnapshotsReceived <= 3)
+                    {
                         DiagLog($"Data snapshot #{s_dataSnapshotsReceived} parsed: " +
                                 $"ELEC_BatSelector={newData.ELEC_BatSelector}, " +
                                 $"FUEL_QtyLeft={newData.FUEL_QtyLeft:F0}, " +
                                 $"IRS_DisplaySelector={newData.IRS_DisplaySelector}");
+                        // Extended diagnostics for the derived-state debugging session.
+                        var bp = newData.ELEC_BusPowered ?? new bool[16];
+                        var so = newData.ELEC_annunSOURCE_OFF ?? new bool[2];
+                        var gb = newData.ELEC_annunGEN_BUS_OFF ?? new bool[2];
+                        DiagLog($"  ELEC_GrdPwrSw={newData.ELEC_GrdPwrSw}, " +
+                                $"GenSw=[{newData.ELEC_GenSw?[0]},{newData.ELEC_GenSw?[1]}], " +
+                                $"APUGenSw=[{newData.ELEC_APUGenSw?[0]},{newData.ELEC_APUGenSw?[1]}], " +
+                                $"annunGRDPwrAvail={newData.ELEC_annunGRD_POWER_AVAILABLE}");
+                        DiagLog($"  BusPowered[9,10]=[{bp[9]},{bp[10]}] (AC GROUND SVC), " +
+                                $"BusPowered[7,8]=[{bp[7]},{bp[8]}] (AC TRANSFER), " +
+                                $"BusPowered[11,12]=[{bp[11]},{bp[12]}] (AC MAIN)");
+                        DiagLog($"  annunSOURCE_OFF=[{so[0]},{so[1]}], " +
+                                $"annunGEN_BUS_OFF=[{gb[0]},{gb[1]}], " +
+                                $"annunAPU_GEN_OFF_BUS={newData.ELEC_annunAPU_GEN_OFF_BUS}");
+                    }
                     DetectAndRaiseChanges(newData);
                     _lastDataSnapshot = newData;
                     _hasSnapshot      = true;
@@ -292,12 +316,133 @@ public class PMDGNG3DataManager : IPMDGDataManager
     // Change detection via reflection
     // ------------------------------------------------------------------
 
+    // Cache for derived-field values so we can detect change deltas
+    // independently of PMDG's lying source fields. Keyed by the user-facing
+    // varKey (e.g. "ELEC_GrdPwrSw"), value is the most recent derived bool.
+    private readonly Dictionary<string, bool> _lastDerivedValues = new();
+
+    // Local-state tracking for switches where PMDG exposes no reliable
+    // per-switch signal (e.g. ELEC_APUGenSw_0/1 share a single annunciator
+    // so we can't tell them apart from PMDG data alone). Updated when the
+    // user dispatches, displayed as the effective state. Defaults to false
+    // (cold-and-dark assumption). Keyed by varKey.
+    private readonly Dictionary<string, bool> _localSwitchStates = new()
+    {
+        // APU GEN 1/2 removed — they're now two-button push pairs (no state
+        // displayed), so no local tracking is needed. Engine GEN 1/2 remain
+        // here as combos with local-state display.
+        ["ELEC_GenSw_0"]    = false,
+        ["ELEC_GenSw_1"]    = false,
+    };
+
+    /// <summary>
+    /// Records that the user just dispatched a switch to a new state. The
+    /// next snapshot's derived-override pass will publish the recorded state
+    /// (rather than guessing from PMDG's data, which lies for these
+    /// switches). Called from PMDG737Definition.HandleUIVariableSet right
+    /// after the dispatch is sent.
+    /// </summary>
+    public void NotifyLocalSwitchState(string varKey, bool newState)
+    {
+        if (!_localSwitchStates.ContainsKey(varKey)) return;
+        _localSwitchStates[varKey] = newState;
+        // Fire a synthetic event immediately so the UI updates without
+        // waiting for the next 1Hz snapshot.
+        RaiseDerivedIfChanged(varKey, newState, isFirstSnapshot: false);
+    }
+
+    /// <summary>
+    /// PMDG NG3 reports some switch-position bool fields (ELEC_GrdPwrSw,
+    /// ELEC_GenSw, ELEC_APUGenSw) that don't reflect the actual bus
+    /// connectivity — they read as "true" even when the source is not
+    /// providing power. Verified against ELEC_BusPowered[] and the
+    /// annunciator OFF lamps via the PMDGDispatchTester rig 2026-05-24.
+    /// For these specific fields we OVERRIDE the natural snapshot value with
+    /// a derived value computed from the truthful fields PMDG also exposes.
+    /// Synthetic events fire AFTER the natural foreach in DetectAndRaiseChanges
+    /// so they win in the per-frame cache.
+    ///
+    /// Derivation rules (display the EFFECTIVE bus-connected state, not the
+    /// raw switch detent — PMDG doesn't reliably expose detent position):
+    ///   - ELEC_GrdPwrSw   ⟵ ELEC_BusPowered[9] OR [10] (AC GROUND SVC) —
+    ///                       these buses are only ever powered by GPU.
+    ///   - ELEC_APUGenSw_X ⟵ (APU_Selector >= 1) AND
+    ///                       (NOT ELEC_annunAPU_GEN_OFF_BUS).
+    ///                       The annunciator lights when APU is running but
+    ///                       gen is off-bus, so NOT-annun says "either APU
+    ///                       off OR gen on-bus" — gating on APU running
+    ///                       disambiguates to "gen on-bus". PMDG exposes a
+    ///                       single shared annunciator so both APU gens
+    ///                       display the same state.
+    ///   - ELEC_GenSw_X    ⟵ NOT ELEC_annunGEN_BUS_OFF[X] —
+    ///                       lamp lit ⟹ no gen on this bus ⟹ engine gen off.
+    ///                       Lamp off ⟹ some gen (engine or APU) is on bus;
+    ///                       if APU is the source the user will see APU GEN
+    ///                       shown ON too, so this gives the user enough info
+    ///                       to disambiguate by looking at both rows.
+    /// </summary>
+    private void RaiseDerivedFieldOverrides(PMDGNG3DataStruct newData, bool isFirstSnapshot)
+    {
+        // Ground Power and APU GEN 1/2 no longer have derived state — they're
+        // exposed as stateless push-button pairs (e.g. "Ground Power On" /
+        // "Ground Power Off"), so nothing to publish here.
+        //
+        // Engine GEN 1/2 still use locally-tracked state with cold-and-dark
+        // default. Updated via NotifyLocalSwitchState from the dispatch path.
+        foreach (var kvp in _localSwitchStates)
+            RaiseDerivedIfChanged(kvp.Key, kvp.Value, isFirstSnapshot);
+
+        // Engine fuel control levers (ENG_StartLever_0/1): derived from
+        // FUEL_annunENG_VALVE_CLOSED[i]. The SDK header comment claims
+        // "0: Closed  1: Open  2: In transit" but the FIELD'S ACTUAL
+        // POLARITY IS INVERTED on PMDG NG3 — confirmed against live cockpit
+        // state on 2026-05-24:
+        //     N1=0 (engine 1 off, lever at CUTOFF) → field reads 1
+        //     N1=21.6 (engine 2 running, lever at RUN) → field reads 0
+        // The field is the annunciator lamp ("VALVE_CLOSED" warning) which
+        // lights (1) when the valve IS closed — so 1 = closed (CUTOFF) and
+        // 0 = open (RUN). The SDK comment misnames the bits.
+        //   Empirical mapping:
+        //     0 → Run    (valve open, no warning)
+        //     1 → Cutoff (valve closed, warning lit)
+        //     2 → In transit — treat as Cutoff (strict): "Run" only displayed
+        //                       when valve fully opens. Brief flicker during
+        //                       animation is preferable to false-positive Run.
+        byte[] fuelValveClosed = newData.FUEL_annunENG_VALVE_CLOSED ?? new byte[2];
+        bool lever0Run = fuelValveClosed.Length > 0 && fuelValveClosed[0] == 0;
+        bool lever1Run = fuelValveClosed.Length > 1 && fuelValveClosed[1] == 0;
+        RaiseDerivedIfChanged("ENG_StartLever_0", lever0Run, isFirstSnapshot);
+        RaiseDerivedIfChanged("ENG_StartLever_1", lever1Run, isFirstSnapshot);
+    }
+
+    private void RaiseDerivedIfChanged(string fieldName, bool newVal, bool isFirstSnapshot)
+    {
+        bool fire = isFirstSnapshot;
+        if (!_lastDerivedValues.TryGetValue(fieldName, out bool prev) || prev != newVal)
+            fire = true;
+        _lastDerivedValues[fieldName] = newVal;
+        if (fire)
+        {
+            if (s_dataSnapshotsReceived <= 3)
+                DiagLog($"  Derived event: {fieldName} = {(newVal ? 1 : 0)} (isFirstSnapshot={isFirstSnapshot})");
+            RaiseVariableChanged(fieldName, newVal ? 1.0 : 0.0, isFirstSnapshot);
+        }
+    }
+
     private void DetectAndRaiseChanges(PMDGNG3DataStruct newData)
     {
-        if (!_hasSnapshot)
-        {
-            return;
-        }
+        // First snapshot: there's no prior snapshot to compare against, so
+        // _lastDataSnapshot holds the default(struct) value (zeros for scalars,
+        // nulls for array refs). We INTENTIONALLY proceed through the loop
+        // anyway — scalar non-zero fields fire VariableChanged so the UI cache
+        // (currentSimVarValues in MainForm) populates with the real cockpit
+        // state on first arrival. CompareArrayField is null-safe below and
+        // fires an event for every element on first call. Without this, the
+        // panel combos default to OFF/position-0 and never update if the
+        // value doesn't subsequently change (Battery=BAT, Ground Power=ON,
+        // IRS_DisplaySelector=HDG/STS — all common steady-state values that
+        // never change after sim load).
+        bool isFirstSnapshot = !_hasSnapshot;
 
         foreach (var field in s_dataFields)
         {
@@ -311,35 +456,61 @@ public class PMDGNG3DataManager : IPMDGDataManager
                 // from "PPOS" to "WIND" should be ONE event, not seven).
                 if (IsAsciiStringField(field.Name))
                 {
-                    if (ArrayHasChanged(oldVal as Array, newVal as Array))
+                    if (isFirstSnapshot || ArrayHasChanged(oldVal as Array, newVal as Array))
                     {
-                        RaiseVariableChanged(field.Name, 0);
+                        RaiseVariableChanged(field.Name, 0, isFirstSnapshot);
                     }
                 }
                 else
                 {
-                    CompareArrayField(field.Name, oldVal, newVal);
+                    CompareArrayField(field.Name, oldVal, newVal, fireAll: isFirstSnapshot, isInitialSnapshot: isFirstSnapshot);
                 }
             }
-            else if (!Equals(oldVal, newVal))
+            else if (isFirstSnapshot || !Equals(oldVal, newVal))
             {
+                // Suppress PMDG's natural value for fields whose displayed
+                // state is derived from elsewhere (see RaiseDerivedFieldOverrides).
+                if (s_derivedOverrideFields.Contains(field.Name)) continue;
                 double newDouble = ToDouble(newVal);
-                RaiseVariableChanged(field.Name, newDouble);
+                RaiseVariableChanged(field.Name, newDouble, isFirstSnapshot);
             }
         }
+
+        // Fire derived-value overrides for fields where PMDG's natural value
+        // doesn't reflect actual bus connectivity.
+        RaiseDerivedFieldOverrides(newData, isFirstSnapshot);
     }
 
-    private void CompareArrayField(string fieldName, object? oldVal, object? newVal)
-    {
-        if (oldVal is not Array oldArr || newVal is not Array newArr) return;
+    // Field NAMES (not varKeys) of scalar PMDG fields whose snapshot value
+    // is unreliable — suppress natural events. Empty now that ELEC_GrdPwrSw
+    // is exposed as a stateless push-button pair (its natural events would
+    // be silently dropped by the field-to-key map anyway since varKey
+    // ELEC_GrdPwrSw no longer exists, but explicit suppression saves a
+    // round-trip).
+    private static readonly HashSet<string> s_derivedOverrideFields = new();
 
-        int len = Math.Min(oldArr.Length, newArr.Length);
+    // Array fields whose per-element events should be suppressed.
+    private static readonly HashSet<string> s_derivedOverrideArrayFields = new()
+    {
+        "ELEC_GenSw",
+        "ELEC_APUGenSw",
+    };
+
+    private void CompareArrayField(string fieldName, object? oldVal, object? newVal, bool fireAll = false, bool isInitialSnapshot = false)
+    {
+        if (newVal is not Array newArr) return;
+        // Suppress natural events for arrays whose per-element values are
+        // derived elsewhere (see RaiseDerivedFieldOverrides).
+        if (s_derivedOverrideArrayFields.Contains(fieldName)) return;
+        Array? oldArr = oldVal as Array;
+        int len = newArr.Length;
+
         for (int i = 0; i < len; i++)
         {
-            object? ov = oldArr.GetValue(i);
             object? nv = newArr.GetValue(i);
-            if (!Equals(ov, nv))
-                RaiseVariableChanged($"{fieldName}_{i}", ToDouble(nv));
+            object? ov = (oldArr != null && i < oldArr.Length) ? oldArr.GetValue(i) : null;
+            if (fireAll || oldArr == null || !Equals(ov, nv))
+                RaiseVariableChanged($"{fieldName}_{i}", ToDouble(nv), isInitialSnapshot);
         }
     }
 
@@ -352,11 +523,12 @@ public class PMDGNG3DataManager : IPMDGDataManager
         return false;
     }
 
-    private void RaiseVariableChanged(string fieldName, double value) =>
+    private void RaiseVariableChanged(string fieldName, double value, bool isInitialSnapshot = false) =>
         VariableChanged?.Invoke(this, new PMDGVarUpdateEventArgs
         {
             FieldName = fieldName,
-            Value     = value
+            Value     = value,
+            IsInitialSnapshot = isInitialSnapshot,
         });
 
     private static double ToDouble(object? val) => val switch
@@ -391,6 +563,18 @@ public class PMDGNG3DataManager : IPMDGDataManager
         if (!_hasSnapshot)
         {
             return 0.0;
+        }
+
+        // Derived-override fields: PMDG's raw bool lies for these (see
+        // RaiseDerivedFieldOverrides). Return the cached derived value
+        // instead so panel-open code that reads via this method gets the
+        // truthful state matching the cockpit. Without this short-circuit,
+        // the panel-refresh path at MainForm.cs:4640+ overwrites our
+        // synthetic-event-populated cache with PMDG's lying value, and the
+        // combo flips to ON.
+        if (_lastDerivedValues.TryGetValue(fieldName, out bool derived))
+        {
+            return derived ? 1.0 : 0.0;
         }
 
         // Plain field
@@ -545,7 +729,32 @@ public class PMDGNG3DataManager : IPMDGDataManager
 
     private const uint MOUSE_FLAG_LEFTSINGLE  = 0x20000000;
     private const uint MOUSE_FLAG_RIGHTSINGLE = 0x80000000;
+    private const uint MOUSE_FLAG_LEFTRELEASE  = 0x00020000;
+    private const uint MOUSE_FLAG_RIGHTRELEASE = 0x00080000;
     private const int  CLICK_GAP_MS = 60;
+
+    /// <summary>
+    /// Sends a paired press-and-release sequence for a momentary spring-loaded
+    /// toggle (e.g. the GRD POWER switch and APU / engine generator switches on
+    /// the 737 NG). Per PMDG_NG3_ConnectionTest.cpp `toggleFlightDirector` —
+    /// the documented convention for momentary press-to-toggle events is
+    /// MOUSE_FLAG_LEFTSINGLE followed by MOUSE_FLAG_LEFTRELEASE.
+    ///
+    /// Direction matches click-walking convention: target=1 (up/ON) uses LEFT,
+    /// target=0 (down/OFF) uses RIGHT. A bare LEFTSINGLE (no RELEASE) makes
+    /// PMDG NG3 play the switch-click sound but never commit the state — the
+    /// switch springs back to its prior value within a frame.
+    /// </summary>
+    public async Task SendMomentaryToggle(uint eventId, int targetPosition)
+    {
+        bool up = targetPosition != 0;
+        uint pressFlag   = up ? MOUSE_FLAG_LEFTSINGLE  : MOUSE_FLAG_RIGHTSINGLE;
+        uint releaseFlag = up ? MOUSE_FLAG_LEFTRELEASE : MOUSE_FLAG_RIGHTRELEASE;
+        DiagLog($"SendMomentaryToggle: eventId=0x{eventId:X} target={targetPosition} press=0x{pressFlag:X8} release=0x{releaseFlag:X8}");
+        SendEventViaTransmitWithTarget(eventId, pressFlag);
+        await Task.Delay(CLICK_GAP_MS);
+        SendEventViaTransmitWithTarget(eventId, releaseFlag);
+    }
 
     /// <summary>
     /// Walks the switch by sending mouse-click TransmitClientEvents one step

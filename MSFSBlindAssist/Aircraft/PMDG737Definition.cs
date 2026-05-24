@@ -401,12 +401,11 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         d["ELEC_ACMeterSelector"]    = Selector("ELEC_ACMeterSelector", "AC Meter",
             "STBY PWR", "GRD PWR", "GEN 1", "APU GEN", "GEN 2", "INV", "TEST");
         // SDK enum: ELEC_BatSelector { 0=OFF, 1=BAT, 2=ON } — but the actual NG3
-        // cockpit has two physical detents only. User-confirmed: there is no real
-        // third "ON" position on the lever. Picking the UI "ON" maps to SDK
-        // position 1 (BAT), which is the up detent that energizes the battery bus
-        // for normal operations; position 2 is an enum-only phantom we never want
-        // to land on. Switch remains guarded — dispatched via SendPMDGGuardedSet
-        // with the target position written directly to PMDG's Control CDA.
+        // cockpit lever has only two physical detents (user-confirmed in 2026-05-22
+        // testing). The SDK position 2 ("ON") is an enum-only phantom that's
+        // never reachable on the actual switch; PMDG reports the up detent as
+        // byte=1 (BAT) and treats that as the operational ON state. Expose two
+        // positions only: UI "ON" maps to SDK byte 1.
         d["ELEC_BatSelector"]        = Toggle("ELEC_BatSelector", "Battery", "OFF", "ON");
         d["ELEC_CabUtilSw"]          = Toggle("ELEC_CabUtilSw", "Cabin Utility");
         d["ELEC_IFEPassSeatSw"]      = Toggle("ELEC_IFEPassSeatSw", "IFE Pass Seats");
@@ -428,12 +427,30 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         d["ELEC_StandbyPowerSelector"] = Selector("ELEC_StandbyPowerSelector", "Standby Power",
             "BAT", "OFF", "AUTO");
         d["ELEC_annunGRD_POWER_AVAILABLE"] = Annun("ELEC_annunGRD_POWER_AVAILABLE", "Ground Power Available");
-        d["ELEC_GrdPwrSw"]           = Toggle("ELEC_GrdPwrSw", "Ground Power");
+        // GRD POWER: same "honest push-button pair" pattern as APU GEN 1/2.
+        // The only PMDG signal we found that tracks GRD POWER specifically
+        // (ELEC_BusPowered[9] = AC GROUND SVC) reads "powered" whenever ANY
+        // source is feeding the AC transfer system, so it false-reads ON when
+        // APU is running with the bus transfer set to AUTO. PMDG exposes no
+        // GPU-vs-APU discriminator on this bus. Rather than display a state
+        // that could be wrong, expose two stateless action buttons.
+        d["ELEC_GrdPwrSw_On"]        = Momentary("ELEC_GrdPwrSw_On",  "Ground Power On");
+        d["ELEC_GrdPwrSw_Off"]       = Momentary("ELEC_GrdPwrSw_Off", "Ground Power Off");
         d["ELEC_BusTransSw_AUTO"]    = Toggle("ELEC_BusTransSw_AUTO", "Bus Transfer", "OFF", "AUTO");
         d["ELEC_GenSw_0"]            = Toggle("ELEC_GenSw_0", "Generator 1");
         d["ELEC_GenSw_1"]            = Toggle("ELEC_GenSw_1", "Generator 2");
-        d["ELEC_APUGenSw_0"]         = Toggle("ELEC_APUGenSw_0", "APU Generator 1");
-        d["ELEC_APUGenSw_1"]         = Toggle("ELEC_APUGenSw_1", "APU Generator 2");
+        // APU GEN 1/2: rendered as two momentary push buttons each ("On" / "Off")
+        // because PMDG NG3 exposes no reliable per-switch position signal — the
+        // ELEC_APUGenSw[] bool is a spring-loaded transient (always reads 1 at
+        // rest), and the single shared ELEC_annunAPU_GEN_OFF_BUS annunciator
+        // can't discriminate APU GEN 1 vs APU GEN 2. Rather than display a
+        // state that could be out of sync with reality, we expose stateless
+        // action buttons that just dispatch a directional press. Dispatch
+        // shape per button is in _directionalPushMap below.
+        d["ELEC_APUGenSw_0_On"]      = Momentary("ELEC_APUGenSw_0_On",  "APU Gen 1 On");
+        d["ELEC_APUGenSw_0_Off"]     = Momentary("ELEC_APUGenSw_0_Off", "APU Gen 1 Off");
+        d["ELEC_APUGenSw_1_On"]      = Momentary("ELEC_APUGenSw_1_On",  "APU Gen 2 On");
+        d["ELEC_APUGenSw_1_Off"]     = Momentary("ELEC_APUGenSw_1_Off", "APU Gen 2 Off");
         // TFM: `_offOrOnStates` (0:on, 1:off); SDK lines 171-174: bus-off annunciator arrays,
         // no inline comments. Resolved with TFM's inverted convention: these are `annunOFF`
         // lamps — they light when the named bus/source is OFF. byte=1 means the lamp is lit
@@ -642,6 +659,27 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             "GRD", "OFF", "CONT", "FLT");
         d["ENG_IgnitionSelector"]         = Selector("ENG_IgnitionSelector", "Ignition",
             "IGN L", "BOTH", "IGN R");
+        // Fuel control levers (also called "start levers" / "fuel cutoff levers")
+        // on the throttle quadrant — one per engine. Combo with state tracking.
+        //
+        //   READ:  Display state is derived from PMDG's FUEL_annunENG_VALVE_CLOSED
+        //          byte (verified 2026-05-24 via test rig — values cycle correctly
+        //          on dispatch: 0=Closed/CUTOFF, 1=Open/RUN, 2=In transit). The
+        //          derivation collapses 2→1 since "in transit" means the lever
+        //          was just commanded to RUN and is animating. See
+        //          RaiseDerivedFieldOverrides in PMDGNG3DataManager.
+        //
+        //   WRITE: Dispatched via TransmitClientEvent + mouse flag:
+        //              Run    (target=1) → LEFTSINGLE  (0x20000000) — verified
+        //              Cutoff (target=0) → RIGHTSINGLE (0x80000000) — verified
+        //          Verified live with the standalone PMDGDispatchTester rig
+        //          (FUEL_annunENG_VALVE_CLOSED cycled 0→2→1 on LEFTSINGLE and
+        //          1→2→0 on RIGHTSINGLE for both levers). Special case in
+        //          HandleUIVariableSet handles the dispatch.
+        d["ENG_StartLever_0"]             = Selector("ENG_StartLever_0", "Engine 1 Fuel Lever",
+            "Cutoff", "Run");
+        d["ENG_StartLever_1"]             = Selector("ENG_StartLever_1", "Engine 2 Fuel Lever",
+            "Cutoff", "Run");
         d["LTS_LogoSw"]                   = Toggle("LTS_LogoSw", "Logo Lights");
         d["LTS_PositionSw"]               = Selector("LTS_PositionSw", "Position Lights",
             "STEADY", "OFF", "STROBE & STEADY");
@@ -1146,9 +1184,10 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 "ELEC_BatSelector", "ELEC_StandbyPowerSelector",
                 "ELEC_DCMeterSelector", "ELEC_ACMeterSelector",
                 "ELEC_GenSw_0", "ELEC_GenSw_1",
-                "ELEC_APUGenSw_0", "ELEC_APUGenSw_1",
+                "ELEC_APUGenSw_0_On", "ELEC_APUGenSw_0_Off",
+                "ELEC_APUGenSw_1_On", "ELEC_APUGenSw_1_Off",
                 "ELEC_BusTransSw_AUTO",
-                "ELEC_GrdPwrSw",
+                "ELEC_GrdPwrSw_On", "ELEC_GrdPwrSw_Off",
                 "ELEC_IDGDisconnectSw_0", "ELEC_IDGDisconnectSw_1",
                 "ELEC_CabUtilSw", "ELEC_IFEPassSeatSw",
                 "APU_Selector"
@@ -1178,7 +1217,8 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             {
                 "ENG_EECSwitch_0", "ENG_EECSwitch_1",
                 "ENG_StartSelector_0", "ENG_StartSelector_1",
-                "ENG_IgnitionSelector"
+                "ENG_IgnitionSelector",
+                "ENG_StartLever_0", "ENG_StartLever_1",
             },
             ["Anti-Ice"] = new List<string>
             {
@@ -2831,6 +2871,88 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         };
 
     // =========================================================================
+    // Momentary press-to-toggle bool switches — 2-position bool fields whose
+    // PMDG NG3 event ID is modeled as a momentary spring-loaded toggle (not a
+    // stable detent). CDA direct-position writes have no effect; bare
+    // LEFTSINGLE/RIGHTSINGLE click TransmitClientEvents play the switch sound
+    // but the bool springs back within a frame. The fix is the FD-switch
+    // dispatch pattern from PMDG_NG3_ConnectionTest.cpp:
+    //   LEFTSINGLE   then LEFTRELEASE  for target=1 (ON / up)
+    //   RIGHTSINGLE  then RIGHTRELEASE for target=0 (OFF / down)
+    //
+    //   - ELEC_GrdPwrSw  (real Boeing GRD POWER switch is momentary spring-loaded)
+    //   - ELEC_GenSw_0   (GEN 1 — user reported "spring back" on the click-walk path)
+    //   - ELEC_GenSw_1   (GEN 2 — same)
+    //   - ELEC_APUGenSw_0 (APU GEN 1 — user reported "locked in the on position")
+    //   - ELEC_APUGenSw_1 (APU GEN 2 — same)
+    //
+    // The diagnostic log captured at 2026-05-22 17:25-17:26 confirmed CDA-direct
+    // writes were reaching PMDG (multiple EVT_OH_ELEC_GRD_PWR_SWITCH param=0
+    // entries) but the switch played its sound and snapped back to ON — the
+    // signature of an unmatched mouse press without RELEASE.
+    // =========================================================================
+    private static readonly IReadOnlyDictionary<string, string> _momentaryToggleMap =
+        new Dictionary<string, string>
+        {
+            // Ground Power and APU GEN 1/2 are NOT here — they're two-button
+            // push pairs dispatched via _directionalPushMap below (PMDG NG3
+            // exposes no reliable state signal that distinguishes their
+            // source from other AC sources on shared buses).
+            ["ELEC_GenSw_0"]    = "EVT_OH_ELEC_GEN1_SWITCH",
+            ["ELEC_GenSw_1"]    = "EVT_OH_ELEC_GEN2_SWITCH",
+        };
+
+    // =========================================================================
+    // Directional push buttons — momentary buttons that dispatch a specific
+    // mouse-flag direction (LEFTSINGLE = press up = "On", RIGHTSINGLE = press
+    // down = "Off"). Used for APU GEN 1/2 where PMDG NG3 exposes no reliable
+    // per-switch state signal (shared annunciator, spring-loaded bool that
+    // always reads 1 at rest). Rather than display a possibly-wrong state,
+    // each switch shows two stateless action buttons: "APU Gen N On" /
+    // "APU Gen N Off". Each press dispatches the corresponding direction once.
+    // =========================================================================
+    private static readonly IReadOnlyDictionary<string, (string EventName, bool IsOn)> _directionalPushMap =
+        new Dictionary<string, (string, bool)>
+        {
+            ["ELEC_GrdPwrSw_On"]    = ("EVT_OH_ELEC_GRD_PWR_SWITCH", true),
+            ["ELEC_GrdPwrSw_Off"]   = ("EVT_OH_ELEC_GRD_PWR_SWITCH", false),
+            ["ELEC_APUGenSw_0_On"]  = ("EVT_OH_ELEC_APU_GEN1_SWITCH", true),
+            ["ELEC_APUGenSw_0_Off"] = ("EVT_OH_ELEC_APU_GEN1_SWITCH", false),
+            ["ELEC_APUGenSw_1_On"]  = ("EVT_OH_ELEC_APU_GEN2_SWITCH", true),
+            ["ELEC_APUGenSw_1_Off"] = ("EVT_OH_ELEC_APU_GEN2_SWITCH", false),
+        };
+
+    // (Previously held entries for the fuel-lever push-button pairs. Now empty
+    //  because fuel levers are combos with state tracking — see the
+    //  ENG_StartLever_X branch in HandleUIVariableSet for dispatch. Kept as
+    //  scaffolding for future events that may need TransmitClientEvent + mouse
+    //  flag dispatch via a similar map structure.)
+
+    // =========================================================================
+    // Spring-loaded selectors — 3-position byte selectors where the outer
+    // detents (or one of them) spring back to a rest position after the
+    // operator releases them. Dispatched via CDA direct-position (one
+    // SetClientData write with the target detent index). Click-walking these
+    // via TransmitClientEvent is unsafe: PMDG NG3 starts springing the byte
+    // back to rest the moment the first click lands, racing our second click
+    // and leaving the cached byte in a transient invalid state.
+    //   - APU_Selector            (0=OFF, 1=ON, 2=START — START springs to ON)
+    //   - FIRE_DetTestSw          (0=FAULT/INOP, 1=neutral, 2=OVHT/FIRE — both
+    //                              outer test detents spring back to neutral)
+    //   - FIRE_ExtinguisherTestSw (0=1, 1=neutral, 2=2 — same spring pattern)
+    // Pattern source: PMDG_NG3_ConnectionTest.cpp `toggleTaxiLightSwitch` —
+    // CDA write with `Control.Parameter = target` is the documented
+    // SDK convention for byte/bool position fields.
+    // =========================================================================
+    private static readonly IReadOnlyDictionary<string, string> _springLoadedSelectorMap =
+        new Dictionary<string, string>
+        {
+            ["APU_Selector"]            = "EVT_OH_LIGHTS_APU_START",
+            ["FIRE_DetTestSw"]          = "EVT_FIRE_DETECTION_TEST_SWITCH",
+            ["FIRE_ExtinguisherTestSw"] = "EVT_FIRE_EXTINGUISHER_TEST_SWITCH",
+        };
+
+    // =========================================================================
     // Behavior overrides — scaffold (populated in Tasks C10–C12)
     // =========================================================================
 
@@ -3002,14 +3124,142 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         }
 
         // ------------------------------------------------------------------
-        // 3. Ground power switch — momentary push button, always send 1.
+        // 2c. Engine Start Selectors (GRD/OFF/CONT/FLT) and Ignition Selector
+        //     (IGN L/BOTH/IGN R) — rotary selectors that PMDG NG3 dispatches
+        //     via TransmitClientEvent with an ABSOLUTE position parameter
+        //     (verified live 2026-05-24 with the standalone test rig:
+        //     evt 69751 N successfully sets ENG_StartSelector[0] to N for
+        //     N in {0,1,2,3}). The generic click-walking path was sending
+        //     LEFTSINGLE for "stepping up" but on this event family LEFTSINGLE
+        //     DECREASES the position — directionally inverted, so every user
+        //     interaction stepped the selector the wrong way.
         // ------------------------------------------------------------------
-        if (varKey == "ELEC_GrdPwrSw")
+        if (varKey is "ENG_StartSelector_0" or "ENG_StartSelector_1" or "ENG_IgnitionSelector")
         {
-            if (EventIds.TryGetValue("EVT_OH_ELEC_GRD_PWR_SWITCH", out int gpId))
+            string evName = varKey switch
             {
-                simConnect.SendPMDGEvent("EVT_OH_ELEC_GRD_PWR_SWITCH", (uint)gpId, 1);
+                "ENG_StartSelector_0" => "EVT_OH_LIGHTS_L_ENGINE_START",
+                "ENG_StartSelector_1" => "EVT_OH_LIGHTS_R_ENGINE_START",
+                _                     => "EVT_OH_LIGHTS_IGN_SEL",
+            };
+            if (EventIds.TryGetValue(evName, out int selEvId))
+            {
+                int target = (int)value;
+                var dm = simConnect.PMDGDataManager;
+                if (dm != null && (int)dm.GetFieldValue(varDef.Name) == target) return true;
+                simConnect.SendPMDGEventViaTransmitWithTarget((uint)selEvId, (uint)target);
             }
+            return true;
+        }
+
+        // ------------------------------------------------------------------
+        // 2c1. Fuel Control Levers (combo, Cutoff/Run) — dispatched via
+        //     TransmitClientEvent with directional mouse flag. Verified
+        //     2026-05-24 with the PMDGDispatchTester rig: both directions
+        //     cycle FUEL_annunENG_VALVE_CLOSED correctly (0→2→1 for Run,
+        //     1→2→0 for Cutoff). Read state comes from a derived override in
+        //     PMDGNG3DataManager that watches the same FUEL_annun byte.
+        // ------------------------------------------------------------------
+        if (varKey is "ENG_StartLever_0" or "ENG_StartLever_1")
+        {
+            string leverEvName = varKey == "ENG_StartLever_0"
+                ? "EVT_CONTROL_STAND_ENG1_START_LEVER"
+                : "EVT_CONTROL_STAND_ENG2_START_LEVER";
+            if (EventIds.TryGetValue(leverEvName, out int leverEvId))
+            {
+                int target = (int)value;
+                const uint MOUSE_FLAG_LEFTSINGLE  = 0x20000000u;
+                const uint MOUSE_FLAG_RIGHTSINGLE = 0x80000000u;
+                uint flag = target != 0 ? MOUSE_FLAG_LEFTSINGLE : MOUSE_FLAG_RIGHTSINGLE;
+                simConnect.SendPMDGEventViaTransmitWithTarget((uint)leverEvId, flag);
+            }
+            return true;
+        }
+
+        // ------------------------------------------------------------------
+        // 2d. Directional push buttons — momentary buttons that dispatch a
+        //     specific mouse-flag direction once per press. Used by APU GEN
+        //     1/2 (split into separate "On" / "Off" buttons because PMDG NG3
+        //     gives no reliable per-switch state signal — see
+        //     _directionalPushMap above).
+        // ------------------------------------------------------------------
+        if (_directionalPushMap.TryGetValue(varKey, out var directional) &&
+            EventIds.TryGetValue(directional.EventName, out int dirEvId))
+        {
+            const int MOUSE_FLAG_LEFTSINGLE  = unchecked((int)0x20000000);
+            const int MOUSE_FLAG_RIGHTSINGLE = unchecked((int)0x80000000);
+            int flag = directional.IsOn ? MOUSE_FLAG_LEFTSINGLE : MOUSE_FLAG_RIGHTSINGLE;
+            simConnect.SendPMDGEvent(directional.EventName, (uint)dirEvId, flag);
+            return true;
+        }
+
+        // ------------------------------------------------------------------
+        // 2e. Momentary press-to-set bool switches — Ground Power and the
+        //     four generator switches on the 737 NG.
+        //
+        //     Verified dispatch shape (2026-05-22, standalone test rig in
+        //     PMDGDispatchTester subscribing directly to PMDG_NG3_Data with
+        //     PERIOD.ON_SET / FLAG.CHANGED): CDA write with a directional
+        //     MOUSE_FLAG_* value in the Parameter field.
+        //         LEFTSINGLE  (0x20000000) → set ON   (push up)
+        //         RIGHTSINGLE (0x80000000) → set OFF  (push down)
+        //     Direct parameter 0/1 is silently ignored. The state PERSISTS
+        //     (no spring back) and same-direction repeats are idempotent on
+        //     the PMDG side, so we don't need a cache no-op guard. Removing
+        //     the guard also fixes the "ON does nothing" complaint when the
+        //     CDA snapshot lags the actual cockpit state.
+        //
+        //     Patterns tried that do NOT work (do not revive):
+        //       - bare LEFT/RIGHTSINGLE via TransmitClientEvent (click-walk):
+        //         plays sound, state springs back.
+        //       - CDA direct-position (Parameter=0/1, taxi-light convention):
+        //         silently ignored on this event family.
+        //       - paired LEFTSINGLE+LEFTRELEASE via TransmitClientEvent
+        //         (FD-switch convention from ConnectionTest.cpp): silently
+        //         ignored.
+        //       - CDA with MOUSE_FLAG_LEFTSINGLE for both directions (toggle):
+        //         worked for ON but cache-mismatch races could flip OFF the
+        //         wrong way ("toggling OFF actually turned it on").
+        // ------------------------------------------------------------------
+        if (_momentaryToggleMap.TryGetValue(varKey, out string? momentaryEventName) &&
+            EventIds.TryGetValue(momentaryEventName, out int momentaryEvId))
+        {
+            int target = (int)value;
+            const int MOUSE_FLAG_LEFTSINGLE  = unchecked((int)0x20000000);
+            const int MOUSE_FLAG_RIGHTSINGLE = unchecked((int)0x80000000);
+            int mouseFlag = target != 0 ? MOUSE_FLAG_LEFTSINGLE : MOUSE_FLAG_RIGHTSINGLE;
+            simConnect.SendPMDGEvent(momentaryEventName, (uint)momentaryEvId, mouseFlag);
+            // Inform the data manager of the user's intended switch state so
+            // it can publish the derived-override event with the right value.
+            // PMDG's own snapshot for these switches lies, and the annunciator
+            // can't disambiguate APU GEN 1 vs APU GEN 2 (they share one).
+            // Without this, after the first user click PMDG's stale snapshot
+            // would re-set the display via the next derived-override pass.
+            (simConnect.PMDGDataManager as SimConnect.PMDGNG3DataManager)
+                ?.NotifyLocalSwitchState(varKey, target != 0);
+            return true;
+        }
+
+        // ------------------------------------------------------------------
+        // 3. Spring-loaded selectors — dispatch via CDA direct position.
+        //    APU_Selector (0/1/2 = OFF/ON/START) and the fire-detect /
+        //    extinguisher test switches all have a sprung detent that PMDG
+        //    NG3 returns to rest automatically. Click-walking these via
+        //    TransmitClientEvent left the cached byte in a transient invalid
+        //    state (PMDG's spring-back raced our second click), producing
+        //    "APU state unknown" announcements and a stale panel display.
+        //    One CDA write with the target position is the convention from
+        //    PMDG's own ConnectionTest.cpp taxi-light sample; PMDG handles
+        //    the spring internally and reflects the rest state in the next
+        //    snapshot.
+        // ------------------------------------------------------------------
+        if (_springLoadedSelectorMap.TryGetValue(varKey, out string? springEventName) &&
+            EventIds.TryGetValue(springEventName, out int springEvId))
+        {
+            int target = (int)value;
+            var dm = simConnect.PMDGDataManager;
+            if (dm != null && (int)dm.GetFieldValue(varDef.Name) == target) return true;
+            simConnect.SendPMDGEvent(springEventName, (uint)springEvId, target);
             return true;
         }
 
@@ -3090,12 +3340,37 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 }
             }
 
-            // Multi-position selector (3+ detents) and 2-position switches —
-            // walk via mouse-click TransmitClientEvents per TFM. PMDG NG3's CDA
-            // selector handler does not accept absolute positions reliably, so we
-            // step through detents one click at a time (ClkR for down-steps,
-            // ClkL for up-steps). Cached snapshot supplies the current position.
-            if (varDef.ValueDescriptions != null && varDef.ValueDescriptions.Count >= 2)
+            // 2-position bool toggles: CDA direct-position dispatch.
+            // Pattern source: PMDG_NG3_ConnectionTest.cpp `toggleTaxiLightSwitch`
+            // — one SetClientData write with `Control.Parameter = target`. PMDG
+            // NG3 latches the bool to the target detent in one shot. Confirmed
+            // working against the cached snapshot (after the ca72271 SimConnect
+            // ID-collision fix landed and snapshots started reporting real
+            // values).
+            //
+            // The earlier "walk via single LEFTSINGLE/RIGHTSINGLE click" approach
+            // was incompatible: PMDG NG3 receives the click event (sim plays the
+            // physical-switch sound), but a bare LEFTSINGLE without its matching
+            // LEFTRELEASE is interpreted as an incomplete momentary press — the
+            // bool flicks to the new state for a frame and then springs back to
+            // its prior value. Confirmed at the PMDG 737 Ground Power and APU
+            // GENERATOR switches in 2026-05-22 user testing (switch played its
+            // click sound on every press, but state never latched).
+            if (varDef.ValueDescriptions != null && varDef.ValueDescriptions.Count == 2)
+            {
+                simConnect.SendPMDGEvent(eventName, eventId, target);
+                return true;
+            }
+
+            // 3+ position selector — walk through detents one click at a time
+            // via TransmitClientEvent LEFTSINGLE/RIGHTSINGLE. Stable-detent
+            // selectors (IRS_ModeSelector, ENG_StartSelector, LTS_DomeWhiteSw,
+            // EFIS_VORADFSel*, EFIS_ModeSel, EFIS_RangeSel, AIR_OutflowValve,
+            // AIR_PressurizationModeSelector, etc.) work with this pattern in
+            // user testing — each click advances one detent and the new
+            // position latches normally. Spring-loaded selectors are
+            // intercepted earlier by the _springLoadedSelectorMap branch.
+            if (varDef.ValueDescriptions != null && varDef.ValueDescriptions.Count >= 3)
             {
                 var dm = simConnect.PMDGDataManager;
                 if (dm == null || !dm.IsReady)
@@ -3331,18 +3606,22 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 return true;
 
             // -------------------------------------------------------------
-            // APU selector (0=OFF / 1=ON / 2=START).
+            // APU selector (0=OFF / 1=ON / 2=START). The byte field can
+            // briefly carry transient values outside this range during PMDG's
+            // spring-back from START; suppress those instead of speaking
+            // "APU state unknown", which has no useful semantics for a pilot.
             // -------------------------------------------------------------
             case "APU_Selector":
             {
-                string apuStr = (int)value switch
+                int apuPos = (int)value;
+                string? apuStr = apuPos switch
                 {
                     0 => "APU off",
                     1 => "APU on",
                     2 => "APU starting",
-                    _ => "APU state unknown"
+                    _ => null
                 };
-                announcer.Announce(apuStr);
+                if (apuStr != null) announcer.Announce(apuStr);
                 return true;
             }
 

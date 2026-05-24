@@ -4013,6 +4013,18 @@ public class SimConnectManager
             await pmdgDataManager.WalkSelectorViaClicks(eventId, currentPosition, targetPosition);
     }
 
+    /// <summary>
+    /// Sends a press-and-release dispatch pair for a momentary spring-loaded
+    /// toggle. Used by the PMDG 737 NG3 for GRD POWER, GEN, and APU GEN
+    /// switches — bare clicks without RELEASE play the switch sound but the
+    /// state springs back. See <see cref="IPMDGDataManager.SendMomentaryToggle"/>.
+    /// </summary>
+    public async Task SendPMDGMomentaryToggle(uint eventId, int targetPosition)
+    {
+        if (pmdgDataManager != null)
+            await pmdgDataManager.SendMomentaryToggle(eventId, targetPosition);
+    }
+
     public void Disconnect()
     {
         // Stop reconnect timer first to prevent it from firing during cleanup
@@ -4823,6 +4835,15 @@ public class SimVarUpdateEventArgs : EventArgs
     public double Value { get; set; }
     public string Description { get; set; } = string.Empty;
     public SimConnectManager.AircraftPosition? PositionData { get; set; }  // For visual guidance position updates
+
+    /// <summary>
+    /// True for events sourced from a PMDG initial baseline snapshot. UI
+    /// caches should populate and controls should refresh, but announcers
+    /// must skip — these represent app-load state, not user-triggered
+    /// transitions. Other update paths (regular SimVar polls, hotkey
+    /// requests) always leave this false.
+    /// </summary>
+    public bool IsInitialSnapshot { get; set; }
 }
 
 public class ECAMDataEventArgs : EventArgs

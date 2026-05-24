@@ -526,6 +526,25 @@ public class PMDG777DataManager : IPMDGDataManager
     }
 
     /// <summary>
+    /// 777 doesn't currently need the momentary press+release pattern — its
+    /// switches accept CDA direct-position. Provided to satisfy the interface
+    /// in case a future PMDG 777 control needs the FD-switch dispatch shape.
+    /// </summary>
+    public async Task SendMomentaryToggle(uint eventId, int targetPosition)
+    {
+        const uint LEFTSINGLE   = 0x20000000;
+        const uint RIGHTSINGLE  = 0x80000000;
+        const uint LEFTRELEASE  = 0x00020000;
+        const uint RIGHTRELEASE = 0x00080000;
+        bool up = targetPosition != 0;
+        uint press   = up ? LEFTSINGLE  : RIGHTSINGLE;
+        uint release = up ? LEFTRELEASE : RIGHTRELEASE;
+        SendEventViaTransmitWithTarget(eventId, press);
+        await Task.Delay(60);
+        SendEventViaTransmitWithTarget(eventId, release);
+    }
+
+    /// <summary>
     /// Guarded set: open guard → set switch to targetPosition → close guard.
     /// Each sub-step writes the CDA control area with the appropriate parameter:
     ///   guard event with parameter=1 → opens the spring-loaded cover

@@ -68,6 +68,18 @@ public interface IPMDGDataManager : IDisposable
     /// </summary>
     Task WalkSelectorViaClicks(uint eventId, int currentPosition, int targetPosition);
 
+    /// <summary>
+    /// Sends a press-and-release dispatch pair for a momentary spring-loaded
+    /// toggle switch. PMDG NG3's GRD POWER and (APU) generator switches are
+    /// modeled as momentary press-to-toggle controls: a bare LEFTSINGLE /
+    /// RIGHTSINGLE click without its matching RELEASE flag plays the switch
+    /// sound but never commits the state — the switch springs back to its
+    /// prior value. Pattern source: PMDG_NG3_ConnectionTest.cpp
+    /// `toggleFlightDirector` (LEFTSINGLE + LEFTRELEASE). target=1 routes
+    /// through LEFT (up/ON); target=0 routes through RIGHT (down/OFF).
+    /// </summary>
+    Task SendMomentaryToggle(uint eventId, int targetPosition);
+
     void RequestCDUScreen(int cdu);
 
     string[]? GetCDURows(int cdu);
