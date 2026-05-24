@@ -79,6 +79,20 @@ public class ActiveSkyWeatherMonitor : IDisposable
     /// <summary>Stops further work after Dispose so a pending tick can't fire announcements late.</summary>
     private bool _disposed;
 
+    /// <summary>Wall-clock UTC of the last announcement fired by this monitor. Used by the user-configurable throttle.</summary>
+    private DateTime _lastAnnouncedAt = DateTime.MinValue;
+
+    /// <summary>
+    /// User-configurable minimum minutes between announcements. 0 = no extra
+    /// throttle (announce whenever the smart change-detection sees a refresh).
+    /// Positive values add a hard floor on TOP of the existing detection —
+    /// useful when teleporting/repositioning makes the position METAR change
+    /// spatially in ways the detection can't tell from a real AS download.
+    /// When throttled, the baseline is preserved so a still-pending change
+    /// fires as soon as the throttle window passes.
+    /// </summary>
+    public int IntervalMinutes { get; set; }
+
     public ActiveSkyWeatherMonitor(ActiveSkyClient activeSky, ScreenReaderAnnouncer announcer)
     {
         _activeSky = activeSky;
@@ -115,6 +129,10 @@ public class ActiveSkyWeatherMonitor : IDisposable
                 _lastTimeStamp = 0;
                 _lastNormalizedMetar = null;
                 _hasBaseline = false;
+                // Drop the throttle stamp too — if AS comes back later the user
+                // shouldn't be artificially held up by a stale "last announced"
+                // timestamp from a previous AS session.
+                _lastAnnouncedAt = DateTime.MinValue;
                 return;
             }
 
@@ -158,6 +176,23 @@ public class ActiveSkyWeatherMonitor : IDisposable
 
             System.Diagnostics.Debug.WriteLine(
                 $"[ASMonitor] tick: REFRESH detected ts {_lastTimeStamp}→{conditions.TimeStamp}");
+
+            // User-configurable hard floor on announcement rate. Applied on TOP
+            // of the smart change-detection so a positive setting strictly
+            // limits how often the user hears an update, regardless of how
+            // many genuine refreshes AS reports. Throttled poll keeps the
+            // OLD baseline so a still-pending change announces immediately
+            // once the throttle window passes (instead of being silently
+            // absorbed).
+            if (IntervalMinutes > 0
+                && _lastAnnouncedAt != DateTime.MinValue
+                && DateTime.UtcNow - _lastAnnouncedAt < TimeSpan.FromMinutes(IntervalMinutes))
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"[ASMonitor] tick: refresh detected but throttled — last announce was {(DateTime.UtcNow - _lastAnnouncedAt).TotalMinutes:F1}m ago, interval={IntervalMinutes}m");
+                return;
+            }
+
             _lastTimeStamp = conditions.TimeStamp;
             _lastNormalizedMetar = normalized;
 
@@ -174,6 +209,7 @@ public class ActiveSkyWeatherMonitor : IDisposable
             {
                 System.Diagnostics.Debug.WriteLine($"[ASMonitor] announcing: \"{spoken}\"");
                 _announcer.Announce(spoken);
+                _lastAnnouncedAt = DateTime.UtcNow;
             }
         }
         catch (Exception ex)

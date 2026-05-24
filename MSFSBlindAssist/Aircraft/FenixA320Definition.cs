@@ -12207,8 +12207,8 @@ public class FenixA320Definition : BaseAircraftDefinition
             pendingHeadingValue = null;
             pendingHeadingStatus = null;
 
-            simConnectMgr.RequestVariable("N_FCU_HEADING");
-            simConnectMgr.RequestVariable("I_FCU_HEADING_MANAGED");
+            simConnectMgr.RequestVariable("N_FCU_HEADING", forceUpdate: true);
+            simConnectMgr.RequestVariable("I_FCU_HEADING_MANAGED", forceUpdate: true);
         }
     }
 
@@ -12224,8 +12224,8 @@ public class FenixA320Definition : BaseAircraftDefinition
             pendingSpeedValue = null;
             pendingSpeedStatus = null;
 
-            simConnectMgr.RequestVariable("N_FCU_SPEED");
-            simConnectMgr.RequestVariable("I_FCU_SPEED_MANAGED");
+            simConnectMgr.RequestVariable("N_FCU_SPEED", forceUpdate: true);
+            simConnectMgr.RequestVariable("I_FCU_SPEED_MANAGED", forceUpdate: true);
         }
     }
 
@@ -12241,8 +12241,8 @@ public class FenixA320Definition : BaseAircraftDefinition
             pendingAltitudeValue = null;
             pendingAltitudeStatus = null;
 
-            simConnectMgr.RequestVariable("N_FCU_ALTITUDE");
-            simConnectMgr.RequestVariable("I_FCU_ALTITUDE_MANAGED");
+            simConnectMgr.RequestVariable("N_FCU_ALTITUDE", forceUpdate: true);
+            simConnectMgr.RequestVariable("I_FCU_ALTITUDE_MANAGED", forceUpdate: true);
         }
     }
 
@@ -12259,8 +12259,8 @@ public class FenixA320Definition : BaseAircraftDefinition
             pendingVSValue = null;
             pendingVSStatus = null;
 
-            simConnectMgr.RequestVariable("N_FCU_VS");
-            simConnectMgr.RequestVariable("B_FCU_VERTICALSPEED_DASHED");
+            simConnectMgr.RequestVariable("N_FCU_VS", forceUpdate: true);
+            simConnectMgr.RequestVariable("B_FCU_VERTICALSPEED_DASHED", forceUpdate: true);
         }
     }
 
@@ -12280,8 +12280,8 @@ public class FenixA320Definition : BaseAircraftDefinition
             isRequestingBaro = true;
             pendingBaroHpa = null;
             pendingBaroInch = null;
-            simConnectMgr.RequestVariable("N_FCU_EFIS1_BARO_HPA");
-            simConnectMgr.RequestVariable("N_FCU_EFIS1_BARO_INCH");
+            simConnectMgr.RequestVariable("N_FCU_EFIS1_BARO_HPA", forceUpdate: true);
+            simConnectMgr.RequestVariable("N_FCU_EFIS1_BARO_INCH", forceUpdate: true);
         }
     }
 
