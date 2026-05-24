@@ -956,12 +956,18 @@ public class TaxiGuidanceManager : IDisposable
             _lastSegmentAdvanceTime = DateTime.MinValue;
             _holdShortAtDestination = false;
 
-            // Reset diagnostic frame trace. Each LoadRoute starts a fresh file
-            // headed with route metadata + CSV column names so the file is
-            // self-describing for post-flight analysis.
+            // Append a session-start header + CSV column row to the diagnostic
+            // frame trace. Previously this used WriteAllText which OVERWROTE the
+            // file on every LoadRoute — so if a buggy session was followed by
+            // another route load, the buggy session's trace was lost before it
+            // could be examined. Appending preserves history across sessions:
+            // each "=== Guidance ... ===" line acts as a session separator so a
+            // post-flight reader can split on it. The file is bounded by typical
+            // session lengths (a 10-minute taxi at 30 Hz ≈ 18k lines ≈ 2 MB) and
+            // grows slowly enough to not be a concern in normal use.
             try
             {
-                File.WriteAllText(GuidanceLogPath,
+                File.AppendAllText(GuidanceLogPath,
                     $"=== Guidance {DateTime.Now:yyyy-MM-dd HH:mm:ss} icao={_icao} dest={_destinationName} segments={_route.Segments.Count} totalM={_route.TotalDistanceMeters:F0} ===" + Environment.NewLine
                     + "time,lat,lon,hdg,gs,seg,segBrg,w,nxtTurn,tLat,tLon,raw,smooth" + Environment.NewLine);
             }
@@ -4031,6 +4037,28 @@ public class TaxiGuidanceManager : IDisposable
                 ? _smoothedHeadingError * (1 - HEADING_ERROR_FILTER_ALPHA) + toneHeadingError * HEADING_ERROR_FILTER_ALPHA
                 : toneHeadingError;
             _headingErrorInitialized = true;
+
+            // Diagnostic frame trace for runway lineup. Captures the full lineup-phase
+            // state so post-flight analysis can pinpoint bugs like "the system is
+            // redirecting me away from the runway." Rate-limited inside LogGuidanceFrame.
+            // Field overloading vs the taxi-phase format (a separate column-set would
+            // mean dual schemas in one log; reusing the columns keeps post-hoc tooling
+            // simple):
+            //   seg = -1                    → distinguishes lineup-phase rows from taxi
+            //   segBrg = desiredHeadingTrue → the heading the tone is steering to
+            //   w = _lineupHeadingTrue      → the runway's true heading (reference)
+            //   tLat, tLon = threshold      → so a reader can recompute geometry
+            //   raw = crossTrackFeet        → signed (+left of CL, -right) — IMPORTANT
+            //                                 for diagnosing sign-direction bugs
+            //   smooth = smoothed heading error (degrees) — the actual tone driver
+            LogGuidanceFrame(
+                lat, lon, headingTrue, /* groundSpeedKts */ 0.0,
+                /* segIdx */ -1, /* segBrg = desiredHeadingTrue */ desiredHeadingTrue,
+                /* w = _lineupHeadingTrue (reference) */ _lineupHeadingTrue,
+                /* nxtTurn */ true,
+                _lineupTargetLat, _lineupTargetLon,
+                /* raw = signed crossTrackFeet */ crossTrackFeet,
+                /* smooth = smoothed heading error */ _smoothedHeadingError);
             // PRECISION hysteresis for runway LINEUP. We pass explicit thresholds
             // (bypassing the width-scaling MIN_SCALE clamp at 0.65, which still
             // gave silent ≈1.95° / activation ≈3.9° — too loose). With a 3° dead
