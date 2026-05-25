@@ -896,7 +896,17 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         };
         d["MAIN_annunANTI_SKID_INOP"]    = Annun("MAIN_annunANTI_SKID_INOP", "Anti-Skid Inop");
         d["MAIN_annunAUTO_BRAKE_DISARM"] = Annun("MAIN_annunAUTO_BRAKE_DISARM", "Auto Brake Disarm");
-        d["MAIN_annunLE_FLAPS_TRANSIT"]  = Annun("MAIN_annunLE_FLAPS_TRANSIT", "LE Flaps Transit");
+        // LE Flaps Transit light toggles on/off every time the flaps travel —
+        // announcing it is chatty noise (the flap-position callout already
+        // conveys movement). Keep it defined/monitored but NOT announced.
+        d["MAIN_annunLE_FLAPS_TRANSIT"]  = new SimConnect.SimVarDefinition
+        {
+            Name = "MAIN_annunLE_FLAPS_TRANSIT",
+            DisplayName = "LE Flaps Transit",
+            Type = SimConnect.SimVarType.PMDGVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = false
+        };
         d["MAIN_annunLE_FLAPS_EXT"]      = Annun("MAIN_annunLE_FLAPS_EXT", "LE Flaps Ext");
         // TFM: [0]=nose, [1]=left, [2]=right. SDK lines 400-401: arrays declared without
         // inline comments. Resolved with the [0]=Left, [1]=Nose, [2]=Right convention because
@@ -3440,6 +3450,25 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         }
 
         // ------------------------------------------------------------------
+        // 3b. IRS Mode Selector Unit (left/right rotary). The generic 3+-
+        //     position click-walk does NOT move this selector — verified
+        //     in-sim 2026-05-25: LEFTSINGLE clicks no-op, but a CDA direct-
+        //     position write latches it (OFF→NAV confirmed). Dispatch directly.
+        // ------------------------------------------------------------------
+        if (varKey == "IRS_ModeSelector_0" || varKey == "IRS_ModeSelector_1")
+        {
+            if (_simpleEventMap.TryGetValue(varKey, out string? irsEvent) &&
+                EventIds.TryGetValue(irsEvent, out int irsId))
+            {
+                int target = (int)value;
+                var dm = simConnect.PMDGDataManager;
+                if (dm != null && (int)dm.GetFieldValue(varDef.Name) == target) return true;
+                simConnect.SendPMDGEvent(irsEvent, (uint)irsId, target);
+            }
+            return true;
+        }
+
+        // ------------------------------------------------------------------
         // 4. Fire handles — handled as synthetic momentary press buttons
         //    (FIRE_EngineHandle_1_Press / FIRE_APUHandle_Press / etc.) which
         //    route through _simpleEventMap below. Per the PMDG SDK each
@@ -3591,17 +3620,17 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             // -------------------------------------------------------------
             case "MCP_IASMach":
                 if (value < 10)
-                    announcer.Announce($"Mach {value:F2}");
+                    announcer.Announce($"MCP Mach {value:F2}");
                 else
-                    announcer.Announce($"Speed {(int)Math.Round(value)} knots");
+                    announcer.Announce($"MCP speed {(int)Math.Round(value)} knots");
                 return true;
 
             case "MCP_Heading":
-                announcer.Announce($"Heading {(int)Math.Round(value)}");
+                announcer.Announce($"MCP heading {(int)Math.Round(value)}");
                 return true;
 
             case "MCP_Altitude":
-                announcer.Announce($"{(int)Math.Round(value)} feet");
+                announcer.Announce($"MCP altitude {(int)Math.Round(value)} feet");
                 return true;
 
             case "MCP_VertSpeed":
