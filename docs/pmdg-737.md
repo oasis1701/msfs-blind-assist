@@ -34,6 +34,26 @@ sensible merge target (Landing Gear, Autobrake, Oxygen, Flight Recorder).
 
 All CDU-side arrays are `[2]` (Captain = 0, F/O = 1). No observer CDU. `PMDG737CDUForm` uses the raw 0/1 ordering — no L/C/R dropdown swap like the 777 form has.
 
+## CDU keys must use TransmitClientEvent, not the CDA write
+
+`PMDG737CDUForm.SendCDUKey` dispatches every CDU key (letters, LSKs, function
+keys, CLR/DEL/EXEC) via `SendEventViaTransmitWithTarget(eventId,
+MOUSE_FLAG_LEFTSINGLE = 0x20000000)` — a self-contained press+release click.
+
+Do **not** use the CDA path (`SendEvent(name, id, 1)`) the 777 form uses for most
+keys. The NG3 FMC ignores the CDA `{eventId, 1}` write for CDU keypad events —
+the click sound plays but nothing registers (same momentary-button behavior
+proven for the MCP buttons). This is the documented PMDG convention (the SDK's
+flight-director sample uses `MOUSE_FLAG_LEFTSINGLE`/`LEFTRELEASE`, and TFM uses
+TransmitClientEvent for every CDU key) and matches the 777's own FMCCOMM/HOLD
+path. A single `LEFTSINGLE` is a complete click — no separate `LEFTRELEASE` is
+needed for CDU keys. Live-verified against the NG3 (CLR + letter entry) with
+`tools/CDUTest` (`CDUTest 737 transmit <eventId> 536870912`).
+
+`tools/CDUTest` is a standalone single-shot probe: it maps the chosen Control
+CDA (`PMDG_NG3_Control` / `PMDG_777X_Control`) and fires one event via either
+`cda` or `transmit`, for confirming which dispatch shape a given switch accepts.
+
 ## No FPA mode
 
 NG3 has no `MCP_FPA` field, no `MCP_annunVS_FPA`, and the VS dialog drops the FPA toggle the 777 dialog has. The VS dialog gates input on `MCP_annunVS` (not `MCP_annunVS_FPA`).

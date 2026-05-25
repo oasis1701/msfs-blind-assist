@@ -27,6 +27,7 @@ public partial class PMDG737CDUForm : Form
     private bool _clearingInProgress = false;
     private int _clearingPollCount = 0;
     private const int MaxClearingPolls = 3; // timeout after ~1500ms (3 × 500ms poll)
+    private const uint MOUSE_FLAG_LEFTSINGLE = 0x20000000; // self-contained press+release click
 
     public PMDG737CDUForm(IPMDGDataManager dataManager, ScreenReaderAnnouncer announcer)
     {
@@ -236,7 +237,13 @@ public partial class PMDG737CDUForm : Form
         if (!PMDG737Definition.EventIds.TryGetValue(eventName, out int eventId))
             return;
 
-        _dataManager.SendEvent(eventName, (uint)eventId, 1);
+        // NG3 CDU keys do NOT commit via the CDA {eventId, 1} write the 777 form
+        // uses for most keys — the NG3 FMC ignores it (same momentary-button
+        // behavior proven for the MCP buttons this branch). They must be sent as a
+        // self-contained TransmitClientEvent LEFTSINGLE click, which is the shape
+        // TFM uses for every CDU key and the 777's FMCCOMM/HOLD path uses.
+        // Live-verified against the NG3 (CLR + letter entry) via tools/CDUTest.
+        _dataManager.SendEventViaTransmitWithTarget((uint)eventId, MOUSE_FLAG_LEFTSINGLE);
     }
 
     private void OnLineSelect(string suffix, int lineNumber)
