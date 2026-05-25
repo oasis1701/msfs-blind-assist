@@ -1,5 +1,5 @@
 // FlyByWire A380X — MSFS Blind Assist accessibility bridge
-// BRIDGE_JS_VERSION: 0.2.0-verified
+// BRIDGE_JS_VERSION: 0.3.0-mcdu-elements
 //
 // Selectors and event names verified against the open-source FBW aircraft
 // repo (master branch, fbw-a380x). See:
@@ -52,10 +52,12 @@ var _a380 = {
     COMMAND_POLL_INTERVAL: 400,
     HEARTBEAT_INTERVAL: 5000,
     serverConnected: false,
-    timers: { mcdu: null, efb: null, cmd: null, hb: null },
+    timers: { mcdu: null, mcduElements: null, efb: null, cmd: null, hb: null },
     lastMcduHash: null,
+    lastMcduElementsHash: null,
     lastEfbHash: null,
     activeMcdu: 1,     // 1 = CAPT (left), 2 = FO (right)
+    _mcduElements: [],
     role: detectRole() // 'mfd' or 'efb' — set once below
 };
 
@@ -251,6 +253,219 @@ _a380.pollMcdu = function() {
     _a380.post('fbwa380_mcdu_screen', data);
 };
 
+// ----- MCDU interactive element enumerator ---------------------------
+//
+// Walks the active MFD's navigator container + header to enumerate every
+// page-internal interactive element. Classes verified against
+// fbw-a380x/src/systems/instruments/src/MsfsAvionicsCommon/UiWidgets/*
+// (master):
+//
+//   .mfd-input-field-container       — data entry field (FLT NBR, FROM, …)
+//     -> child .mfd-input-field-text-input holds the displayed value
+//   .mfd-button                      — text button (INSERT*, RETURN, …)
+//   .mfd-icon-button                 — icon-only button
+//   .mfd-dropdown-outer              — closed dropdown (selector + arrow)
+//     -> child .mfd-dropdown-inner holds the displayed value
+//   .mfd-dropdown-menu-element       — open-dropdown menu item
+//   .mfd-page-selector-outer         — header page-selector tab
+//     -> child .mfd-page-selector-label is the label
+//
+// We also walk the header (.mfd-header-page-select-row) so the user can
+// navigate ACTIVE / POSITION / SEC INDEX / DATA / etc. from the same list.
+
+_a380.MCDU_INTERACTIVE_SELECTOR = [
+    '.mfd-input-field-container',
+    '.mfd-button',
+    '.mfd-icon-button',
+    '.mfd-dropdown-outer',
+    '.mfd-dropdown-menu-element',
+    '.mfd-page-selector-outer'
+].join(',');
+
+_a380.classifyMcduElement = function(node) {
+    if (node.classList.contains('mfd-input-field-container')) return 'input';
+    if (node.classList.contains('mfd-button'))                return 'button';
+    if (node.classList.contains('mfd-icon-button'))           return 'icon';
+    if (node.classList.contains('mfd-dropdown-outer'))        return 'dropdown';
+    if (node.classList.contains('mfd-dropdown-menu-element')) return 'menu';
+    if (node.classList.contains('mfd-page-selector-outer'))   return 'tab';
+    return 'other';
+};
+
+_a380.mcduElementLabel = function(node, kind) {
+    var text = '';
+    switch (kind) {
+        case 'input': {
+            // The value lives in .mfd-input-field-text-input. The field
+            // label is rendered as a sibling .mfd-label above the input.
+            var inner = node.querySelector('.mfd-input-field-text-input');
+            if (inner) text = (inner.textContent || '').replace(/\s+/g, ' ').trim();
+            var label = node.previousElementSibling;
+            if (label && label.classList && label.classList.contains('mfd-label')) {
+                var lbl = (label.textContent || '').replace(/\s+/g, ' ').trim();
+                if (lbl) text = lbl + ': ' + text;
+            }
+            return text || '(empty input field)';
+        }
+        case 'button':
+        case 'icon':
+        case 'menu':
+            return (node.textContent || '').replace(/\s+/g, ' ').trim() || '(unlabeled)';
+        case 'dropdown': {
+            var di = node.querySelector('.mfd-dropdown-inner');
+            return (di ? di.textContent : node.textContent || '').replace(/\s+/g, ' ').trim() || '(empty dropdown)';
+        }
+        case 'tab': {
+            var t = node.querySelector('.mfd-page-selector-label');
+            return (t ? t.textContent : node.textContent || '').replace(/\s+/g, ' ').trim() || '(tab)';
+        }
+    }
+    return '';
+};
+
+_a380.collectMcduElements = function(root) {
+    var out = [];
+    if (!root) return out;
+
+    // Scrape the header (tabs/dropdowns) AND the navigator container.
+    // The header sits outside .mfd-navigator-container so a single
+    // querySelectorAll on the whole .mfd-main covers both.
+    var nodes = root.querySelectorAll(_a380.MCDU_INTERACTIVE_SELECTOR);
+    var idx = 0;
+    for (var i = 0; i < nodes.length && idx < 400; i++) {
+        var n = nodes[i];
+
+        // Skip non-visible nodes (closed dropdowns render their menu but
+        // hide it with display:none).
+        var style = (n.ownerDocument && n.ownerDocument.defaultView)
+            ? n.ownerDocument.defaultView.getComputedStyle(n) : null;
+        if (style && (style.display === 'none' || style.visibility === 'hidden')) continue;
+
+        var kind = _a380.classifyMcduElement(n);
+        var text = _a380.mcduElementLabel(n, kind);
+        var disabled = n.classList.contains('disabled');
+
+        n.setAttribute('data-fbwa380-mcdu-idx', String(idx));
+        out.push({
+            index: idx, kind: kind, text: text,
+            value: kind === 'input' ? _a380.readInputValue(n) : '',
+            disabled: disabled
+        });
+        idx++;
+    }
+    return out;
+};
+
+_a380.readInputValue = function(inputContainer) {
+    var inner = inputContainer.querySelector('.mfd-input-field-text-input');
+    return inner ? (inner.textContent || '').replace(/\s+/g, ' ').trim() : '';
+};
+
+_a380.flattenMcduElementsForPost = function(elements) {
+    var data = { count: String(elements.length), mcdu: String(_a380.activeMcdu) };
+    for (var i = 0; i < elements.length; i++) {
+        var e = elements[i];
+        data['items.' + i + '.text']     = e.text || '';
+        data['items.' + i + '.kind']     = e.kind || '';
+        data['items.' + i + '.value']    = e.value || '';
+        data['items.' + i + '.disabled'] = e.disabled ? 'true' : 'false';
+    }
+    return data;
+};
+
+_a380.pollMcduElements = function() {
+    if (_a380.role !== 'mfd') return;
+    var roots = _a380.findMfdRoots();
+    var root = roots[_a380.activeMcdu];
+    var elements = _a380.collectMcduElements(root);
+
+    var hashBuf = _a380.activeMcdu + '|' + elements.length + '|';
+    for (var i = 0; i < elements.length; i++) hashBuf += elements[i].text + '/' + elements[i].value + '/';
+    if (hashBuf === _a380.lastMcduElementsHash) return;
+    _a380.lastMcduElementsHash = hashBuf;
+
+    _a380._mcduElements = elements;
+    _a380.post('fbwa380_mcdu_elements', _a380.flattenMcduElementsForPost(elements));
+};
+
+_a380.clickMcduElement = function(index) {
+    var node = document.querySelector('[data-fbwa380-mcdu-idx="' + index + '"]');
+    if (!node) return;
+    try {
+        if (typeof node.click === 'function') node.click();
+        else node.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    } catch (e) { console.warn('[A380 Bridge] mcdu click failed', e); }
+    setTimeout(function(){ _a380.lastMcduElementsHash = null; _a380.pollMcduElements(); }, 200);
+};
+
+// Composite "set the value of this input field". The FBW MFD input
+// fields are edited by clicking to enter edit mode, typing characters
+// via the KCCU keyboard, and pressing ENT to commit. We do the whole
+// sequence here so the form caller just sends one set_mcdu_element_value
+// command per field.
+_a380.setMcduElementValue = function(index, newValue) {
+    var node = document.querySelector('[data-fbwa380-mcdu-idx="' + index + '"]');
+    if (!node) return;
+    var elementInfo = _a380._mcduElements[index];
+    if (!elementInfo) return;
+
+    // Only input fields accept a value. Dropdowns / buttons / menu items
+    // are activated with click — caller should use click_mcdu_element.
+    if (elementInfo.kind !== 'input') {
+        _a380.clickMcduElement(index);
+        return;
+    }
+
+    try {
+        // Click the field to focus / enter edit mode.
+        if (typeof node.click === 'function') node.click();
+
+        // Walk the displayed value backwards and BACKSPACE the existing
+        // contents. The MFD's edit mode swallows BACKSPACE without
+        // committing, so this clears in place.
+        var existing = _a380.readInputValue(node);
+        var existingLen = existing ? existing.length : 0;
+        var delay = 25; // ms between key presses; the MFD eats them at
+                       // about this rate without dropping any.
+
+        var step = 0;
+        var queue = [];
+        for (var i = 0; i < existingLen; i++) queue.push('BACKSPACE');
+
+        // Convert the new value into KCCU key names.
+        var v = String(newValue || '').toUpperCase();
+        for (var j = 0; j < v.length; j++) {
+            var c = v.charCodeAt(j);
+            var kc = v.charAt(j);
+            if (kc >= 'A' && kc <= 'Z') queue.push(kc);
+            else if (kc >= '0' && kc <= '9') queue.push(kc);
+            else if (kc === '.') queue.push('DOT');
+            else if (kc === '/') queue.push('SLASH');
+            else if (kc === '+' || kc === '-') queue.push('PLUSMINUS');
+            else if (kc === ' ') queue.push('SP');
+            // Unsupported characters are silently dropped (the KCCU
+            // doesn't have them anyway).
+        }
+        queue.push('ENT');
+
+        function fireNext() {
+            if (step >= queue.length) {
+                setTimeout(function(){
+                    _a380.lastMcduElementsHash = null;
+                    _a380.pollMcduElements();
+                }, 200);
+                return;
+            }
+            _a380.fireKccu(queue[step]);
+            step++;
+            setTimeout(fireNext, delay);
+        }
+        setTimeout(fireNext, 80); // small initial delay so the click registers
+    } catch (e) {
+        console.warn('[A380 Bridge] setMcduElementValue failed', e);
+    }
+};
+
 // ----- Command dispatch ----------------------------------------------
 
 // Page button → KCCU key. The A380X exposes a smaller set than the A320
@@ -309,6 +524,21 @@ _a380.handleCommand = function(command, payload) {
         }
         if (command === 'get_display_elements') {
             _a380.pollEfb(true);
+            return;
+        }
+        if (command === 'get_mcdu_elements') {
+            _a380.lastMcduElementsHash = null;
+            _a380.pollMcduElements();
+            return;
+        }
+        if (command === 'click_mcdu_element') {
+            if (payload && payload.index) _a380.clickMcduElement(parseInt(payload.index, 10));
+            return;
+        }
+        if (command === 'set_mcdu_element_value') {
+            if (payload && payload.index !== undefined) {
+                _a380.setMcduElementValue(parseInt(payload.index, 10), payload.value || '');
+            }
             return;
         }
         if (command === 'click_display_element') {
@@ -516,6 +746,9 @@ _a380.start = function() {
     _a380.timers.cmd = setInterval(_a380.pollCommands, _a380.COMMAND_POLL_INTERVAL);
     if (_a380.role === 'mfd') {
         _a380.timers.mcdu = setInterval(_a380.pollMcdu, _a380.SCREEN_POLL_INTERVAL);
+        // Element enumeration on a slightly slower cadence — the
+        // structural list changes less often than the text content does.
+        _a380.timers.mcduElements = setInterval(_a380.pollMcduElements, _a380.SCREEN_POLL_INTERVAL * 2);
     } else {
         _a380.timers.efb = setInterval(_a380.pollEfb, _a380.EFB_POLL_INTERVAL);
     }
