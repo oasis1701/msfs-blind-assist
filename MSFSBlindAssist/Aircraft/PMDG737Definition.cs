@@ -4253,8 +4253,11 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
 
     private void SendPMDGMomentary(SimConnect.SimConnectManager simConnect, string eventName)
     {
+        // Momentary MCP buttons commit only via LEFTSINGLE+LEFTRELEASE — a bare CDA
+        // param=1 plays the click sound but the state springs back. Verified in-sim
+        // 2026-05-25 (FD switch + HDG SEL committed via LEFTSINGLE+RELEASE; CDA did not).
         if (EventIds.TryGetValue(eventName, out int evId))
-            simConnect.SendPMDGEvent(eventName, (uint)evId, 1);
+            _ = simConnect.SendPMDGMomentaryToggle((uint)evId, 1);
     }
 
     /// <summary>
@@ -4347,16 +4350,16 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 if (dm == null) return "?";
                 return (int)dm.GetFieldValue("MCP_annunLNAV") > 0 ? "Engaged" : "Off";
             }, () => SendPMDGMomentary(simConnect, "EVT_MCP_LNAV_SWITCH")),
-            new("&Approach", () =>
-            {
-                if (dm == null) return "?";
-                return (int)dm.GetFieldValue("MCP_annunAPP") > 0 ? "Engaged" : "Off";
-            }, () => SendPMDGMomentary(simConnect, "EVT_MCP_APP_SWITCH")),
             new("&VOR LOC", () =>
             {
                 if (dm == null) return "?";
                 return (int)dm.GetFieldValue("MCP_annunVOR_LOC") > 0 ? "Engaged" : "Off";
             }, () => SendPMDGMomentary(simConnect, "EVT_MCP_VOR_LOC_SWITCH")),
+            new("&Approach", () =>
+            {
+                if (dm == null) return "?";
+                return (int)dm.GetFieldValue("MCP_annunAPP") > 0 ? "Engaged" : "Off";
+            }, () => SendPMDGMomentary(simConnect, "EVT_MCP_APP_SWITCH")),
         };
 
         var dialog = new ValueInputForm(
@@ -4396,18 +4399,13 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
 
         var toggles = new List<ToggleButtonDef>
         {
-            new("&Level Change", () =>
-            {
-                if (dm == null) return "?";
-                return (int)dm.GetFieldValue("MCP_annunLVL_CHG") > 0 ? "Engaged" : "Off";
-            }, () => SendPMDGMomentary(simConnect, "EVT_MCP_LVL_CHG_SWITCH")),
-            new("Speed &Intervene", () => "",
-                () => SendPMDGMomentary(simConnect, "EVT_MCP_SPD_INTV_SWITCH")),
             new("&Speed", () =>
             {
                 if (dm == null) return "?";
                 return (int)dm.GetFieldValue("MCP_annunSPEED") > 0 ? "Engaged" : "Off";
             }, () => SendPMDGMomentary(simConnect, "EVT_MCP_SPEED_SWITCH")),
+            new("Speed &Intervene", () => "",
+                () => SendPMDGMomentary(simConnect, "EVT_MCP_SPD_INTV_SWITCH")),
         };
 
         var dialog = new ValueInputForm(
@@ -4483,18 +4481,23 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
 
         var toggles = new List<ToggleButtonDef>
         {
+            new("Altitude &Intervene", () => "",
+                () => SendPMDGMomentary(simConnect, "EVT_MCP_ALT_INTV_SWITCH")),
             new("Altitude &Hold", () =>
             {
                 if (dm == null) return "?";
                 return (int)dm.GetFieldValue("MCP_annunALT_HOLD") > 0 ? "Engaged" : "Off";
             }, () => SendPMDGMomentary(simConnect, "EVT_MCP_ALT_HOLD_SWITCH")),
-            new("Altitude &Intervene", () => "",
-                () => SendPMDGMomentary(simConnect, "EVT_MCP_ALT_INTV_SWITCH")),
             new("&VNAV", () =>
             {
                 if (dm == null) return "?";
                 return (int)dm.GetFieldValue("MCP_annunVNAV") > 0 ? "Engaged" : "Off";
             }, () => SendPMDGMomentary(simConnect, "EVT_MCP_VNAV_SWITCH")),
+            new("&Level Change", () =>
+            {
+                if (dm == null) return "?";
+                return (int)dm.GetFieldValue("MCP_annunLVL_CHG") > 0 ? "Engaged" : "Off";
+            }, () => SendPMDGMomentary(simConnect, "EVT_MCP_LVL_CHG_SWITCH")),
         };
 
         var dialog = new ValueInputForm(
