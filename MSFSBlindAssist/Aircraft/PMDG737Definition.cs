@@ -4162,7 +4162,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             // ------------------------------------------------------------------
             // Altimeter (EFIS baro) — PMDG 737 has no SDK control of the baro
             // knob, so we READ the standard MSFS KOHLSMAN simvar (the set dialog
-            // writes via the standard KOHLSMAN_SET event). Format
+            // rotates the EFIS baro knob, EVT_EFIS_CPT_BARO, to the target). Format
             // mirrors PMDG 777 / Fenix: STD detected at 29.92 inHg, otherwise
             // dual-unit announcement "Altimeter: <hpa>, <inhg>".
             // ------------------------------------------------------------------
@@ -4680,9 +4680,9 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     }
 
     /// <summary>
-    /// PMDG 737 has no SDK-exposed baro knob control, so this dialog sets the
-    /// altimeter via the standard KOHLSMAN_SET event (a direct KOHLSMAN SETTING HG
-    /// SimVar write is ignored by PMDG, which re-asserts baro every frame). Accepts either hPa
+    /// PMDG owns the baro and ignores absolute writes (KOHLSMAN_SET event and direct
+    /// SimVar writes get re-asserted every frame), so this dialog sets the altimeter by
+    /// ROTATING the captain EFIS baro knob (EVT_EFIS_CPT_BARO) to the target. Accepts either hPa
     /// (~900–1060) or inHg (~26.50–31.30); the validator picks the unit based on
     /// magnitude (>=100 = hPa, <100 = inHg) — the two ranges don't overlap so the
     /// branch is unambiguous, and magnitude-based branching avoids the de-DE
@@ -4736,16 +4736,54 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             {
                 if (!TryParseBaro(input, out double value)) return;
 
-                // KOHLSMAN_SET expects millibars*16. A direct SimVar write to
-                // KOHLSMAN SETTING HG is ignored by PMDG (it re-asserts baro every
-                // frame), but the standard KOHLSMAN_SET event is honored — the same
-                // path the baro knob drives. Verified the event fires 2026-05-25.
-                double hpa = value >= 100 ? value : value * 33.8639;   // entry hPa, else inHg->hPa
-                uint param = (uint)Math.Round(hpa * 16.0);
-                simConnect.SendEvent("KOHLSMAN_SET", param);
+                // PMDG owns the baro and re-asserts it every frame, so absolute
+                // writes (KOHLSMAN_SET event AND a direct SimVar write) are ignored.
+                // The EFIS baro is set by ROTATING the captain baro knob
+                // (EVT_EFIS_CPT_BARO via TransmitClientEvent). Verified in-sim
+                // 2026-05-25: RIGHTSINGLE = up, LEFTSINGLE = down, ~1 hPa per click
+                // in hPa mode / 0.01 inHg per click in inHg mode. So read the current
+                // baro, compute the difference in the displayed unit, and step the knob.
+                double? curInHg = simConnect.GetCachedVariableValue("ALTIMETER_SETTING");
+                if (curInHg == null) { announcer.AnnounceImmediate("Altimeter not available"); return; }
+                if (!EventIds.TryGetValue("EVT_EFIS_CPT_BARO", out int baroEvId)) return;
+
+                var dm = simConnect.PMDGDataManager;
+                bool hpaMode = dm != null && (int)dm.GetFieldValue("EFIS_BaroSelHPA_0") == 1;
+
+                int clicks;
+                if (hpaMode)
+                {
+                    int curHpa = (int)Math.Round(curInHg.Value * 33.8639);
+                    int tgtHpa = (int)Math.Round(value >= 100 ? value : value * 33.8639);
+                    clicks = tgtHpa - curHpa;                                  // 1 hPa per click
+                }
+                else
+                {
+                    double tgtInHg = value >= 100 ? value / 33.8639 : value;
+                    clicks = (int)Math.Round((tgtInHg - curInHg.Value) / 0.01); // 0.01 inHg per click
+                }
+
+                if (clicks == 0) return;
+                // RIGHTSINGLE (0x80000000) = up, LEFTSINGLE (0x20000000) = down.
+                uint flag = clicks > 0 ? 0x80000000u : 0x20000000u;
+                _ = RotateBaroKnobAsync(simConnect, (uint)baroEvId, flag, Math.Min(Math.Abs(clicks), 200));
             });
 
         dialog.ShowCancelButton = false;
         dialog.Show(parentForm);
+    }
+
+    // Rotates the captain EFIS baro knob (EVT_EFIS_CPT_BARO) `count` clicks in the
+    // given direction (RIGHTSINGLE=up, LEFTSINGLE=down) via TransmitClientEvent.
+    // PMDG ignores absolute baro writes, so the set dialog reaches a target by
+    // stepping the knob ~1 hPa (or 0.01 inHg) per click. Verified in-sim 2026-05-25.
+    private static async Task RotateBaroKnobAsync(
+        SimConnect.SimConnectManager simConnect, uint eventId, uint flag, int count)
+    {
+        for (int i = 0; i < count; i++)
+        {
+            simConnect.SendPMDGEventViaTransmitWithTarget(eventId, flag);
+            if (i < count - 1) await System.Threading.Tasks.Task.Delay(40);
+        }
     }
 }
