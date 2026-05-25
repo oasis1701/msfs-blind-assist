@@ -353,6 +353,15 @@ public class TaxiGuidanceManager : IDisposable
     // Cleared when the exit is confirmed taken, on StopGuidance, or on next
     // BeginLandingRollout.
     private bool _rolloutHandoffActive = false;
+    // After TryEarlyExitHandoff fires for a high-speed exit, stores ExitBearingTrue
+    // as a minimum desired heading so the post-exit arc tone stays active during the
+    // initial flat section where A* segment bearing is nearly parallel to the runway
+    // (e.g. EIDW S5: 92 m at ~runway heading before the RET curve tightens).
+    // Acts as a pan floor — whichever of the look-ahead bearing or this minimum
+    // gives the stronger pan toward the exit side wins. Becomes a no-op once the
+    // arc's natural segment bearings exceed it. Cleared on LoadRoute and StopGuidance.
+    // 0 = inactive.
+    private double _postHighSpeedExitMinBearing = 0.0;
     // Timestamp of the last undershoot retarget. DateTime.MinValue = no retarget
     // yet this rollout. Guards against rapid cascade retargeting when multiple
     // earlier exits are within ROLLOUT_UNDERSHOOT_RANGE_FT.
@@ -822,6 +831,7 @@ public class TaxiGuidanceManager : IDisposable
             // fire RequestTakeoffAssistAutoActivate on its first lineup-aligned
             // transition.
             _autoActivateFired = false;
+            _postHighSpeedExitMinBearing = 0.0;
 
             // Use pre-built graph if provided (avoids a 200-500ms rebuild stall at large
             // airports when the form already ran BuildAsync). Otherwise build from the DB —
@@ -1568,6 +1578,19 @@ public class TaxiGuidanceManager : IDisposable
         var (targetLat, targetLon) = GetGuidanceTarget(lat, lon);
         double bearingToTarget = NavigationCalculator.CalculateBearing(lat, lon, targetLat, targetLon);
         double headingError = NormalizeAngle(bearingToTarget - headingTrue);
+
+        // Post-high-speed-exit: ExitBearingTrue acts as a minimum pan floor so the
+        // tone stays active during the initial flat section of a shallow RET where
+        // the A* segment bearing is nearly parallel to the runway. Takes whichever of
+        // the look-ahead error or the minimum-bearing error gives the stronger pan
+        // toward the exit side. Becomes a no-op once the arc steers harder than the
+        // minimum. Cleared by LoadRoute and StopGuidance.
+        if (_postHighSpeedExitMinBearing > 0.0)
+        {
+            double minError = NormalizeAngle(_postHighSpeedExitMinBearing - headingTrue);
+            headingError = minError >= 0.0 ? Math.Max(headingError, minError)
+                                           : Math.Min(headingError, minError);
+        }
 
         // Apply 1-pole low-pass filter to heading error (kills jitter from wheel vibration)
         if (!_headingErrorInitialized)
@@ -3610,6 +3633,13 @@ public class TaxiGuidanceManager : IDisposable
         _smoothedHeadingError = 0.0;
         _headingErrorInitialized = false;
 
+        // Set ExitBearingTrue as a minimum pan floor for the post-exit arc. Prevents
+        // the initial flat section of a shallow RET (e.g. EIDW S5: 92 m at ~runway
+        // heading) from producing a silent tone when a gentle rightward cue is needed.
+        // The floor is a no-op once the A* arc's natural bearing exceeds it.
+        _postHighSpeedExitMinBearing = (_rolloutExit!.ExitBearingTrue > 0.0)
+            ? _rolloutExit.ExitBearingTrue : 0.0;
+
         // Arm post-handoff overshoot monitor (same as the turnBegun path above).
         _rolloutHandoffActive = true;
 
@@ -4648,6 +4678,7 @@ public class TaxiGuidanceManager : IDisposable
         _rolloutEnd100Announced = false;
         _backtrackConnectionNodeId = 0;
         _backtrackApproachAnnounced = false;
+        _postHighSpeedExitMinBearing = 0.0;
         SetState(TaxiGuidanceState.Inactive);
         } // end lock(_stateLock)
     }
