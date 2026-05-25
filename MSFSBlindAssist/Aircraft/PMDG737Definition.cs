@@ -87,7 +87,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             ["Pedestal"] = new List<string>
             {
                 "Control Stand", "Transponder", "Fire Protection", "Cargo Fire",
-                "Communication", "Flight Deck Door", "Trim"
+                "Communication", "Flight Deck Door"
             },
         };
     }
@@ -1038,6 +1038,17 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         d["FIRE_EngineHandle_1_PressBottom"] = Momentary("FIRE_EngineHandle_1_PressBottom", "Press engine 1 fire handle (bottom)");
         d["FIRE_EngineHandle_2_PressBottom"] = Momentary("FIRE_EngineHandle_2_PressBottom", "Press engine 2 fire handle (bottom)");
         d["FIRE_APUHandle_PressBottom"]      = Momentary("FIRE_APUHandle_PressBottom",      "Press APU fire handle (bottom)");
+
+        // Control stand / pedestal momentary buttons. TO/GA and AT-disengage are
+        // momentary presses (LEFTSINGLE+RELEASE via the momentary dispatch path).
+        // Parking brake is intentionally NOT exposed yet: in-sim the NG3 park-brake
+        // lever event (and the standard PARKING_BRAKES toggle) did not move
+        // PED_annunParkingBrake, likely the real toe-brake-pressure latch gate — a
+        // control would appear inert, so it is deferred pending further investigation.
+        d["CS_TOGA_1"]   = Momentary("CS_TOGA_1",   "TO/GA Left");
+        d["CS_TOGA_2"]   = Momentary("CS_TOGA_2",   "TO/GA Right");
+        d["CS_ATDisc_1"] = Momentary("CS_ATDisc_1", "Autothrottle Disengage Left");
+        d["CS_ATDisc_2"] = Momentary("CS_ATDisc_2", "Autothrottle Disengage Right");
         // Same array convention as FIRE_HandlePos: [0]=Eng1, [1]=APU, [2]=Eng2.
         d["FIRE_HandleIlluminated_0"] = Annun("FIRE_HandleIlluminated_0", "Engine 1 Fire Handle Illuminated");
         d["FIRE_HandleIlluminated_1"] = Annun("FIRE_HandleIlluminated_1", "APU Fire Handle Illuminated");
@@ -1365,6 +1376,9 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             // queryable via the CDU (Shift+T).
             ["Control Stand"] = new List<string>
             {
+                "TRIM_StabTrimMainElecSw_NORMAL", "TRIM_StabTrimAutoPilotSw_NORMAL", "TRIM_StabTrimSw_NORMAL",
+                "CS_TOGA_1", "CS_TOGA_2",
+                "CS_ATDisc_1", "CS_ATDisc_2"
             },
             ["Transponder"] = new List<string>
             {
@@ -1399,11 +1413,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 "PED_FltDkDoorSel",
                 "PED_annunLOCK_FAIL", "PED_annunAUTO_UNLK"
             },
-            ["Trim"] = new List<string>
-            {
-                "TRIM_StabTrimMainElecSw_NORMAL", "TRIM_StabTrimAutoPilotSw_NORMAL",
-                "TRIM_StabTrimSw_NORMAL"
-            },
+            // Stab-trim cutout switches moved to the Control Stand panel (pedestal).
         };
     }
 
@@ -2837,6 +2847,11 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             ["MCP_VorLoc"]  = "EVT_MCP_VOR_LOC_SWITCH",
             ["MCP_LnavBtn"] = "EVT_MCP_LNAV_SWITCH",
             ["MCP_AltIntv"] = "EVT_MCP_ALT_INTV_SWITCH",
+            // Control stand / pedestal
+            ["CS_TOGA_1"]   = "EVT_CONTROL_STAND_TOGA1_SWITCH",
+            ["CS_TOGA_2"]   = "EVT_CONTROL_STAND_TOGA2_SWITCH",
+            ["CS_ATDisc_1"] = "EVT_CONTROL_STAND_AT1_DISENGAGE_SWITCH",
+            ["CS_ATDisc_2"] = "EVT_CONTROL_STAND_AT2_DISENGAGE_SWITCH",
         };
 
     // =========================================================================
