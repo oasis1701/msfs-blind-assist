@@ -198,7 +198,7 @@ Details: [docs/taxi-guidance.md](docs/taxi-guidance.md).
 
 ### PMDG 737-800 NG3 Specific Patterns
 
-Details: [docs/pmdg-737.md](docs/pmdg-737.md). Key gotchas: two CDUs (no observer), no FPA mode, annunciator names differ from 777 (LVL_CHG / HDG_SEL / VOR_LOC), DU selectors have "reverse sequence for FO", fire handles need an active fire to test, EFB support is gated on `IPMDGAircraft.HasEFBSupport` (false for 737 until the follow-up PR).
+Details: [docs/pmdg-737.md](docs/pmdg-737.md). Key gotchas: two CDUs (no observer), no FPA mode, annunciator names differ from 777 (LVL_CHG / HDG_SEL / VOR_LOC), DU selectors have "reverse sequence for FO", fire handles need an active fire to test, the 738 EFB bridge is supported (focused Preferences + SimBrief form `PMDG737EFBForm`, opened with Shift+T) reusing the 777's bridge unchanged — the EFB app is byte-identical across both, so one shared bridge JS + `zzz-pmdg-efb-accessibility` package (738 subfolder `pmdg-737-800`) serves both.
 
 ### PMDG 777 EFB Bridge
 

@@ -21,7 +21,7 @@ namespace MSFSBlindAssist.Patching
         // Bump this version when the mod package structure or bridge JS changes.
         // On app startup, if the installed version is older, UpdateModPackage will
         // re-patch HTML for all variants, copy the latest bridge JS, and regenerate layout.json.
-        private const int BridgeVersion = 4;
+        private const int BridgeVersion = 5;
         private const string VersionFileName = "bridge-version.txt";
 
         private const string PackageFolderName = "zzz-pmdg-efb-accessibility";
@@ -29,13 +29,16 @@ namespace MSFSBlindAssist.Patching
         private const string HtmlFileName = "PMDGTabletCA.html";
         private const string BridgeJsFileName = "pmdg-efb-accessibility-bridge.js";
 
-        // Each PMDG 777 variant has its own tablet subfolder that needs an override
+        // Each PMDG variant has its own tablet subfolder that needs an override.
+        // The 737 and 777 ship the identical EFB app, so one shared bridge JS +
+        // package serves both — only the per-variant tablet subfolder differs.
         private static readonly (string PackageFolder, string VariantSubfolder)[] Variants = new[]
         {
             ("pmdg-aircraft-77er", "pmdg-777-200ER"),
             ("pmdg-aircraft-77w", "pmdg-777-300ER"),
             ("pmdg-aircraft-77l", "pmdg-777-200LR"),
             ("pmdg-aircraft-77f", "pmdg-777F"),
+            ("pmdg-aircraft-738", "pmdg-737-800"),
         };
 
         private static string GetHtmlRelativePath(string variantSubfolder) =>
@@ -61,7 +64,7 @@ namespace MSFSBlindAssist.Patching
         private const string ManifestJson = @"{
   ""dependencies"": [],
   ""content_type"": ""MISC"",
-  ""title"": ""MSFS Blind Assist - PMDG 777 EFB Bridge"",
+  ""title"": ""MSFS Blind Assist - PMDG EFB Bridge"",
   ""manufacturer"": """",
   ""creator"": ""MSFS Blind Assist"",
   ""package_version"": ""0.1.0"",

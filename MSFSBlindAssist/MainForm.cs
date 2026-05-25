@@ -2060,13 +2060,18 @@ public partial class MainForm : Form
             return;
         }
 
-        // Phase E will add a 737 case here.
         if (pmdgEFBForm == null || pmdgEFBForm.IsDisposed)
         {
-            pmdgEFBForm = new PMDG777EFBForm(efbBridgeServer, announcer);
+            pmdgEFBForm = currentAircraft.AircraftCode == "PMDG_737"
+                ? new MSFSBlindAssist.Forms.PMDG737.PMDG737EFBForm(efbBridgeServer, announcer)
+                : new PMDG777EFBForm(efbBridgeServer, announcer);
         }
 
-        ((PMDG777EFBForm)pmdgEFBForm).ShowForm();
+        switch (pmdgEFBForm)
+        {
+            case MSFSBlindAssist.Forms.PMDG737.PMDG737EFBForm f737: f737.ShowForm(); break;
+            case PMDG777EFBForm f777: f777.ShowForm(); break;
+        }
     }
 
     private void CheckAndOfferEFBModPackage()

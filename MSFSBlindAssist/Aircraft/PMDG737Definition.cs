@@ -14,6 +14,11 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     public override string AircraftName => "PMDG 737-800";
     public override string AircraftCode => "PMDG_737";
 
+    // EFB accessibility bridge is supported on the 738 — it ships the identical
+    // EFB app as the 777, so the shared bridge JS + package and the 777 EFB panels
+    // are reused. Opened with Shift+T via the focused PMDG737EFBForm.
+    public bool HasEFBSupport => true;
+
     // Cached merged variables dictionary — built once on first access.
     // All callers are read-only so sharing a single instance is safe.
     private Dictionary<string, SimConnect.SimVarDefinition>? _cachedVariables;

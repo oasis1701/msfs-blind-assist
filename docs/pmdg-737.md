@@ -133,12 +133,21 @@ PMDG NG3 mechanically locks fire handles in the "In" position unless a fire warn
 
 ## EFB support
 
-The 737 does not yet have an EFB tablet bridge wired up — it's planned as a follow-up once the panels are stable. The gating mechanism: `IPMDGAircraft.HasEFBSupport` (default `false`). `PMDG777Definition` overrides it to `true`; `PMDG737Definition` leaves it at the default.
+The 737 EFB tablet bridge is wired up (focused first cut: **Preferences + SimBrief**). The 738
+ships the **byte-identical** EFB app as the 777, so it reuses the same bridge JS, the shared
+`zzz-pmdg-efb-accessibility` Community package (738 tablet subfolder `pmdg-737-800`), the
+`EFBBridgeServer`, and the 777 EFB panels/navigator unchanged.
 
-`MainForm` gates three sites on `HasEFBSupport`: the startup EFB plumbing (constructor), the `ShowPMDGEFB` hotkey dispatch (Shift+T), and the aircraft-change EFB plumbing. With the gate at default, the 737 user never sees the 777's EFB mod-package prompt and Shift+T is a no-op.
+- Enabled via `IPMDGAircraft.HasEFBSupport => true` in `PMDG737Definition` — this single flag turns
+  on the startup/aircraft-change EFB plumbing (bridge-server start + mod-package install prompt) and
+  the Shift+T dispatch (`MainForm` gates those sites on `HasEFBSupport`).
+- `Forms/PMDG737/PMDG737EFBForm.cs` is a focused, code-built form with two tabs — Dashboard (fetch
+  SimBrief + Send to FMC) and Preferences (all settings incl. SimBrief alias + Navigraph sign-in) —
+  reusing `DashboardPanel`/`PrefsPanel`/`EfbAppNavigator`/`PreferencesCache` from `Forms/PMDG777`.
+- `MainForm.ShowPMDGEFBDialog` constructs `PMDG737EFBForm` for `PMDG_737`, else `PMDG777EFBForm`.
+- `EFBModPackageManager.Variants` includes `("pmdg-aircraft-738", "pmdg-737-800")`; `BridgeVersion`
+  was bumped so existing installs re-patch and create the 738 override folder.
 
-When the 737 EFB lands:
-1. Build `PMDG737EFBForm` (companion to `PMDG777EFBForm`).
-2. Override `HasEFBSupport => true` in `PMDG737Definition`.
-3. Make `MainForm.ShowPMDGEFBDialog` polymorphic — pick the right form based on `currentAircraft` type.
-4. Extend `EFBModPackageManager.Variants` to include `pmdg-aircraft-738`.
+First-time install needs **one sim restart** for MSFS to load the override HTML (the bridge then
+injects when the tablet opens). Performance / Ground Ops / W&B / Manuals are out of scope for this
+first cut — add later by hosting more of the existing app panels.
