@@ -1404,7 +1404,15 @@ public class TaxiGuidanceManager : IDisposable
         }
 
         if (_state != TaxiGuidanceState.Taxiing || _route == null || _graph == null)
+        {
+            // After a landing-exit arrival the pilot is in Arrived state with no
+            // route — they still need runway incursion warnings while taxiing to
+            // their gate before opening the taxi planner (e.g. runway 16/34 at EIDW
+            // lies east of the S6 exit on the way to the terminal).
+            if (_state == TaxiGuidanceState.Arrived && _graph != null)
+                CheckRunwayIncursion(lat, lon);
             return;
+        }
 
         // Post-handoff overshoot monitor. After TryEarlyExitHandoff or the
         // turnBegun/exitedLaterally handoff from UpdateLandingRollout transitions
@@ -1970,11 +1978,12 @@ public class TaxiGuidanceManager : IDisposable
     /// </summary>
     private void CheckRunwayIncursion(double lat, double lon)
     {
-        if (_graph == null || _route == null) return;
+        if (_graph == null) return;
 
         // Currently-scheduled hold-short node (owned by CheckHoldShortCountdown).
+        // Only meaningful when a route is active.
         int scheduledHsNodeId = -1;
-        if (_currentSegmentIndex < _route.Segments.Count &&
+        if (_route != null && _currentSegmentIndex < _route.Segments.Count &&
             _route.Segments[_currentSegmentIndex].IsHoldShortPoint)
         {
             scheduledHsNodeId = _route.Segments[_currentSegmentIndex].ToNode.NodeId;
@@ -1986,14 +1995,20 @@ public class TaxiGuidanceManager : IDisposable
 
         // Build the set of HS node-IDs that lie on the remaining planned route
         // (so "crossing" announcements fire for them; "off route" does not).
+        // When _route is null (e.g. after landing-exit arrival, before the pilot
+        // opens the taxi planner) the set stays empty and every approaching
+        // hold-short node triggers the "off route" warning — exactly what we want.
         var onRouteHsNodes = new HashSet<int>();
-        for (int i = _currentSegmentIndex; i < _route.Segments.Count; i++)
+        if (_route != null)
         {
-            var seg = _route.Segments[i];
-            if (seg.ToNode != null &&
-                (seg.ToNode.Type == TaxiNodeType.HoldShort || seg.ToNode.Type == TaxiNodeType.ILSHoldShort))
+            for (int i = _currentSegmentIndex; i < _route.Segments.Count; i++)
             {
-                onRouteHsNodes.Add(seg.ToNode.NodeId);
+                var seg = _route.Segments[i];
+                if (seg.ToNode != null &&
+                    (seg.ToNode.Type == TaxiNodeType.HoldShort || seg.ToNode.Type == TaxiNodeType.ILSHoldShort))
+                {
+                    onRouteHsNodes.Add(seg.ToNode.NodeId);
+                }
             }
         }
 
