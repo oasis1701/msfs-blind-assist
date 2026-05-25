@@ -1332,13 +1332,13 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             },
 
             // ===== Pedestal =====
+            // Real pedestal controls are added by the Control Stand tasks below.
+            // FMC performance readouts (V-speeds, perf-complete, alts, flight
+            // number) are NOT controls — their SimVarDefinitions remain
+            // IsAnnounced=true so they announce on change; the exact values are
+            // queryable via the CDU (Shift+T).
             ["Control Stand"] = new List<string>
             {
-                "FMC_TakeoffFlaps", "FMC_V1", "FMC_VR", "FMC_V2",
-                "FMC_LandingFlaps", "FMC_LandingVREF",
-                "FMC_CruiseAlt", "FMC_LandingAltitude",
-                "FMC_TransitionAlt", "FMC_TransitionLevel",
-                "FMC_PerfInputComplete", "FMC_flightNumber"
             },
             ["Transponder"] = new List<string>
             {
