@@ -86,8 +86,8 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             },
             ["Pedestal"] = new List<string>
             {
-                "Control Stand", "Transponder", "Fire Protection", "Cargo Fire",
-                "Communication", "Flight Deck Door"
+                "Control Stand", "Transponder/TCAS", "Fire Protection", "Cargo Fire",
+                "Radio", "Calls", "Flight Deck Door"
             },
         };
     }
@@ -787,7 +787,8 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         d["MCP_LnavBtn"] = Momentary("MCP_LnavBtn", "LNAV");
         d["MCP_AltIntv"] = Momentary("MCP_AltIntv", "Altitude Intervention");
         // SDK lines 542-593: MCP_IASOverspeedFlash / MCP_IASUnderspeedFlash / MCP_indication_powered
-        // (all bool). Surface as Annun in the MCP panel — matches TFM's MCP-section coverage.
+        // (all bool). These are warning-light / indication STATES, not controls — announced on change
+        // (see ProcessSimVarUpdate) but NOT listed in the MCP panel (mirrors the 777).
         d["MCP_IASOverspeedFlash"]  = Annun("MCP_IASOverspeedFlash",  "MCP Overspeed");
         d["MCP_IASUnderspeedFlash"] = Annun("MCP_IASUnderspeedFlash", "MCP Underspeed");
         d["MCP_indication_powered"] = Annun("MCP_indication_powered", "MCP Powered");
@@ -1331,7 +1332,6 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 "MCP_IASMach", "MCP_Heading", "MCP_Altitude", "MCP_VertSpeed",
                 "MCP_FDSw_0", "MCP_FDSw_1",
                 "MCP_ATArmSw", "MCP_BankLimitSel", "MCP_DisengageBar",
-                "MCP_indication_powered", "MCP_IASOverspeedFlash", "MCP_IASUnderspeedFlash",
                 // Autopilot push buttons (momentary)
                 "MCP_CmdA", "MCP_CmdB", "MCP_CwsA", "MCP_CwsB",
                 "MCP_N1Btn", "MCP_SpeedBtn", "MCP_SpdIntv", "MCP_CoBtn",
@@ -1380,7 +1380,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 "CS_TOGA_1", "CS_TOGA_2",
                 "CS_ATDisc_1", "CS_ATDisc_2"
             },
-            ["Transponder"] = new List<string>
+            ["Transponder/TCAS"] = new List<string>
             {
                 "XPDR_XpndrSelector_2", "XPDR_AltSourceSel_2", "XPDR_ModeSel",
                 "TRANSPONDER_CODE_SET"
@@ -1399,14 +1399,19 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 "CARGO_DetSelect_0", "CARGO_DetSelect_1",
                 "CARGO_ArmedSw_0", "CARGO_ArmedSw_1"
             },
-            ["Communication"] = new List<string>
+            // Radios and crew-call/audio split into "Radio" + "Calls" to mirror the 777.
+            // The dead Attendant/Ground-call press-counters are intentionally NOT listed
+            // (their SimVarDefinitions + auto-announce handler remain).
+            ["Radio"] = new List<string>
             {
                 "COM1_ActiveFreq", "COM_STANDBY_FREQUENCY_SET:1", "COM1_RADIO_SWAP",
-                "COM2_ActiveFreq", "COM_STANDBY_FREQUENCY_SET:2", "COM2_RADIO_SWAP",
-                "COMM_ServiceInterphoneSw",
-                "COMM_Attend_PressCount", "COMM_GrdCall_PressCount",
+                "COM2_ActiveFreq", "COM_STANDBY_FREQUENCY_SET:2", "COM2_RADIO_SWAP"
+            },
+            ["Calls"] = new List<string>
+            {
                 "COMM_SelectedMic_0", "COMM_SelectedMic_1",
-                "COMM_ReceiverSwitches_0", "COMM_ReceiverSwitches_1", "COMM_ReceiverSwitches_2"
+                "COMM_ReceiverSwitches_0", "COMM_ReceiverSwitches_1", "COMM_ReceiverSwitches_2",
+                "COMM_ServiceInterphoneSw"
             },
             ["Flight Deck Door"] = new List<string>
             {
