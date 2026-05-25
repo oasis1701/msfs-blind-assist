@@ -35,6 +35,8 @@ public partial class MainForm : Form
     private FenixMCDUService? fenixMCDUService;
     private PMDG777CDUForm? pmdg777CDUForm;
     private PMDG777EFBForm? pmdg777EFBForm;
+    private Forms.FBWA380.FBWA380MCDUForm? fbwA380MCDUForm;
+    private Forms.FBWA380.FBWA380EFBForm? fbwA380EFBForm;
     private EFBBridgeServer? efbBridgeServer;
     private TakeoffAssistManager takeoffAssistManager = null!;
     private HandFlyManager handFlyManager = null!;
@@ -137,6 +139,7 @@ public partial class MainForm : Form
             "A320" => new FlyByWireA320Definition(),
             "FENIX_A320CEO" => new FenixA320Definition(),
             "PMDG_777" => new PMDG777Definition(),
+            "FBW_A380" => new FlyByWireA380Definition(),
             // Future aircraft will be added here
             _ => new FlyByWireA320Definition() // Default to A320
         };
@@ -169,6 +172,15 @@ public partial class MainForm : Form
         if (currentAircraft?.AircraftCode == "PMDG_777")
         {
             CheckAndOfferEFBModPackage();
+            StartEFBBridgeServer();
+        }
+        // The FBW A380 integration also uses the shared EFB bridge server
+        // (MCDU + flyPad both push state through it). The mod-package
+        // installer overlays patched mfd.html / efb.html in the Community
+        // folder that pull in fbw-a380-bridge.js at run time.
+        else if (currentAircraft?.AircraftCode == "FBW_A380")
+        {
+            CheckAndOfferFBWA380ModPackage();
             StartEFBBridgeServer();
         }
 
@@ -1303,6 +1315,7 @@ public partial class MainForm : Form
             HotkeyAction.SimBriefBriefing,
             HotkeyAction.ShowElectronicFlightBag,
             HotkeyAction.ShowFenixMCDU,
+            HotkeyAction.ShowPMDG777EFB,
             HotkeyAction.TaxiStatus
         };
 
@@ -1427,9 +1440,16 @@ public partial class MainForm : Form
                 ShowElectronicFlightBagDialog();
                 break;
             case HotkeyAction.ShowFenixMCDU:
+                // Single "show MCDU" hotkey routed by the currently-selected
+                // aircraft. The action's enum name is historical (it was added
+                // for Fenix first); FBW A380 reuses the same chord.
                 if (currentAircraft?.AircraftCode == "PMDG_777" && simConnectManager.PMDG777DataManager != null)
                 {
                     ShowPMDG777CDUDialog();
+                }
+                else if (currentAircraft?.AircraftCode == "FBW_A380")
+                {
+                    ShowFBWA380MCDUDialog();
                 }
                 else
                 {
@@ -1440,6 +1460,10 @@ public partial class MainForm : Form
                 if (currentAircraft?.AircraftCode == "PMDG_777")
                 {
                     ShowPMDG777EFBDialog();
+                }
+                else if (currentAircraft?.AircraftCode == "FBW_A380")
+                {
+                    ShowFBWA380EFBDialog();
                 }
                 break;
             case HotkeyAction.ShowTrackFixWindow:
@@ -2000,6 +2024,40 @@ public partial class MainForm : Form
         pmdg777EFBForm.ShowForm();
     }
 
+    private void ShowFBWA380MCDUDialog()
+    {
+        hotkeyManager.ExitInputHotkeyMode();
+
+        if (efbBridgeServer == null || !efbBridgeServer.IsRunning)
+        {
+            announcer.Announce("EFB bridge server is not running.");
+            return;
+        }
+
+        if (fbwA380MCDUForm == null || fbwA380MCDUForm.IsDisposed)
+        {
+            fbwA380MCDUForm = new Forms.FBWA380.FBWA380MCDUForm(efbBridgeServer, announcer);
+        }
+        fbwA380MCDUForm.ShowForm();
+    }
+
+    private void ShowFBWA380EFBDialog()
+    {
+        hotkeyManager.ExitInputHotkeyMode();
+
+        if (efbBridgeServer == null || !efbBridgeServer.IsRunning)
+        {
+            announcer.Announce("EFB bridge server is not running.");
+            return;
+        }
+
+        if (fbwA380EFBForm == null || fbwA380EFBForm.IsDisposed)
+        {
+            fbwA380EFBForm = new Forms.FBWA380.FBWA380EFBForm(efbBridgeServer, announcer);
+        }
+        fbwA380EFBForm.ShowForm();
+    }
+
     private void CheckAndOfferEFBModPackage()
     {
         var allFolders = EFBModPackageManager.FindAllCommunityFolders();
@@ -2160,6 +2218,174 @@ public partial class MainForm : Form
         }
     }
 
+    /// <summary>
+    /// FlyByWire A380X equivalent of <see cref="CheckAndOfferEFBModPackage"/>.
+    /// Walks the same install/update/offer flow but targets the A380X
+    /// MFD + EFB instruments via <see cref="FBWA380ModPackageManager"/>.
+    /// </summary>
+    private void CheckAndOfferFBWA380ModPackage()
+    {
+        var allFolders = FBWA380ModPackageManager.FindAllCommunityFolders();
+        if (allFolders.Count == 0)
+        {
+            System.Diagnostics.Debug.WriteLine("FBW A380 Mod Package: Could not find any MSFS Community folder");
+            return;
+        }
+
+        string bridgeJsSource = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources", "fbw-a380-bridge.js");
+
+        // Refresh any already-installed overlays first.
+        bool anyInstalled = false;
+        foreach (var (simLabel, folderPath) in allFolders)
+        {
+            if (FBWA380ModPackageManager.IsInstalled(folderPath))
+            {
+                anyInstalled = true;
+                if (File.Exists(bridgeJsSource))
+                {
+                    var updateResult = FBWA380ModPackageManager.UpdateModPackage(folderPath, bridgeJsSource);
+                    if (updateResult == ModPackageResult.Updated)
+                    {
+                        MessageBox.Show(
+                            $"The FlyByWire A380X accessibility bridge for {simLabel} has been updated. Changes will take effect next time the simulator starts.",
+                            "FBW A380X Accessibility Bridge", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    }
+                }
+            }
+        }
+
+        // Anywhere still missing the overlay? Offer to install — but only
+        // in sims that actually have the FBW A380X present (otherwise the
+        // overlay has nothing to layer on top of).
+        var notInstalledFolders = allFolders
+            .Where(f => !FBWA380ModPackageManager.IsInstalled(f.Path))
+            .Where(f => FBWA380ModPackageManager.FindFbwA380PackageRoot(f.Path) != null)
+            .ToList();
+        if (notInstalledFolders.Count == 0) return;
+
+        if (!File.Exists(bridgeJsSource))
+        {
+            announcer.Announce("Bridge script file not found. Cannot install FBW A380X mod package.");
+            return;
+        }
+
+        List<string> installTargets = new();
+
+        if (notInstalledFolders.Count == 1)
+        {
+            var (simLabel, folderPath) = notInstalledFolders[0];
+            string context = anyInstalled
+                ? $"The FBW A380X accessibility bridge is already installed elsewhere. Would you also like to install it for {simLabel}?"
+                : $"The FlyByWire A380X accessibility bridge is not installed. Would you like to install it for {simLabel}? No FlyByWire files are modified.";
+            announcer.Announce(context);
+            if (MessageBox.Show(context, "FBW A380X Accessibility Bridge",
+                MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
+            {
+                installTargets.Add(folderPath);
+            }
+        }
+        else
+        {
+            // Multi-sim install dialog — mirror the PMDG one above.
+            using var dialog = new Form
+            {
+                Text = "FBW A380X Accessibility Bridge",
+                ClientSize = new Size(420, 220),
+                FormBorderStyle = FormBorderStyle.FixedDialog,
+                StartPosition = FormStartPosition.CenterScreen,
+                MaximizeBox = false,
+                MinimizeBox = false
+            };
+
+            var label = new Label
+            {
+                Text = "MSFS 2020 and 2024 both have FBW A380X installed. Where should the accessibility bridge go?",
+                Location = new Point(15, 15),
+                Size = new Size(390, 40),
+                AccessibleName = "Installation location"
+            };
+
+            var radioButtons = new List<RadioButton>();
+            int y = 60;
+            foreach (var (simLabel, _) in notInstalledFolders)
+            {
+                var rb = new RadioButton
+                {
+                    Text = simLabel,
+                    Location = new Point(20, y),
+                    Size = new Size(370, 25),
+                    AccessibleName = simLabel
+                };
+                radioButtons.Add(rb);
+                dialog.Controls.Add(rb);
+                y += 30;
+            }
+            var rbBoth = new RadioButton
+            {
+                Text = "Both",
+                Location = new Point(20, y),
+                Size = new Size(370, 25),
+                AccessibleName = "Both simulators",
+                Checked = true
+            };
+            radioButtons.Add(rbBoth);
+            dialog.Controls.Add(rbBoth);
+            y += 40;
+
+            var btnOk = new Button { Text = "Install", Location = new Point(220, y), Size = new Size(80, 30), DialogResult = DialogResult.OK };
+            var btnCancel = new Button { Text = "Cancel", Location = new Point(310, y), Size = new Size(80, 30), DialogResult = DialogResult.Cancel };
+            dialog.Controls.AddRange(new Control[] { label, btnOk, btnCancel });
+            dialog.AcceptButton = btnOk;
+            dialog.CancelButton = btnCancel;
+
+            announcer.Announce("MSFS 2020 and 2024 detected. Choose where to install the FBW A380X accessibility bridge.");
+
+            if (dialog.ShowDialog(this) == DialogResult.OK)
+            {
+                if (rbBoth.Checked)
+                {
+                    installTargets.AddRange(notInstalledFolders.Select(f => f.Path));
+                }
+                else
+                {
+                    for (int i = 0; i < notInstalledFolders.Count; i++)
+                    {
+                        if (radioButtons[i].Checked)
+                        {
+                            installTargets.Add(notInstalledFolders[i].Path);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        foreach (string folderPath in installTargets)
+        {
+            var result = FBWA380ModPackageManager.Install(folderPath, bridgeJsSource);
+            string simName = notInstalledFolders.FirstOrDefault(f => f.Path == folderPath).SimLabel
+                ?? allFolders.FirstOrDefault(f => f.Path == folderPath).SimLabel ?? "MSFS";
+            switch (result)
+            {
+                case ModPackageResult.Success:
+                    MessageBox.Show($"FBW A380X accessibility bridge installed for {simName}. Restart MSFS to pick up the changes.",
+                        "FBW A380X Accessibility Bridge", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    break;
+                case ModPackageResult.PmdgPackageNotFound:
+                    MessageBox.Show(
+                        $"Could not find the FlyByWire A380X in the {simName} Community folder. Skipping.",
+                        "FBW A380X Accessibility Bridge", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    break;
+                case ModPackageResult.AlreadyInstalled:
+                    break;
+                default:
+                    MessageBox.Show($"Failed to install for {simName}: {result}",
+                        "FBW A380X Accessibility Bridge", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    break;
+            }
+        }
+    }
+
     private void StartEFBBridgeServer()
     {
         if (efbBridgeServer == null)
@@ -2179,6 +2405,17 @@ public partial class MainForm : Form
         {
             pmdg777EFBForm.Dispose();
             pmdg777EFBForm = null;
+        }
+
+        if (fbwA380MCDUForm != null && !fbwA380MCDUForm.IsDisposed)
+        {
+            fbwA380MCDUForm.Dispose();
+            fbwA380MCDUForm = null;
+        }
+        if (fbwA380EFBForm != null && !fbwA380EFBForm.IsDisposed)
+        {
+            fbwA380EFBForm.Dispose();
+            fbwA380EFBForm = null;
         }
 
         efbBridgeServer?.Stop();
@@ -3245,6 +3482,11 @@ public partial class MainForm : Form
         SwitchAircraft(new PMDG777Definition());
     }
 
+    private void FlyByWireA380MenuItem_Click(object? sender, EventArgs e)
+    {
+        SwitchAircraft(new FlyByWireA380Definition());
+    }
+
     private void SwitchAircraft(IAircraftDefinition newAircraft)
     {
         // Update the aircraft instance
@@ -3355,6 +3597,21 @@ public partial class MainForm : Form
             pmdg777EFBForm = null;
         }
 
+        // Dispose FBW A380 MCDU + EFB forms on swap. The EFBBridgeServer is
+        // kept running by the block below when the new aircraft also uses
+        // it; disposing the forms just clears their state-update wiring so
+        // the next aircraft doesn't get cross-talk.
+        if (fbwA380MCDUForm != null && !fbwA380MCDUForm.IsDisposed)
+        {
+            fbwA380MCDUForm.Dispose();
+            fbwA380MCDUForm = null;
+        }
+        if (fbwA380EFBForm != null && !fbwA380EFBForm.IsDisposed)
+        {
+            fbwA380EFBForm.Dispose();
+            fbwA380EFBForm = null;
+        }
+
         // PMDG 777 data manager lifecycle
         if (newAircraft.AircraftCode == "PMDG_777" && simConnectManager.IsConnected)
         {
@@ -3385,6 +3642,11 @@ public partial class MainForm : Form
         if (newAircraft.AircraftCode == "PMDG_777")
         {
             CheckAndOfferEFBModPackage();
+            StartEFBBridgeServer();
+        }
+        else if (newAircraft.AircraftCode == "FBW_A380")
+        {
+            CheckAndOfferFBWA380ModPackage();
             StartEFBBridgeServer();
         }
         else
@@ -3439,6 +3701,7 @@ public partial class MainForm : Form
         flyByWireA320MenuItem.Checked = false;
         fenixA320MenuItem.Checked = false;
         pmdg777MenuItem.Checked = false;
+        flyByWireA380MenuItem.Checked = false;
 
         // Set the check on the current aircraft's menu item
         if (currentAircraft is FlyByWireA320Definition)
@@ -3452,6 +3715,10 @@ public partial class MainForm : Form
         else if (currentAircraft is PMDG777Definition)
         {
             pmdg777MenuItem.Checked = true;
+        }
+        else if (currentAircraft is FlyByWireA380Definition)
+        {
+            flyByWireA380MenuItem.Checked = true;
         }
     }
 
