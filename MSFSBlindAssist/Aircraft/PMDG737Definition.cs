@@ -2859,16 +2859,45 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             ["CARGO_ArmedSw_1"]            = ("EVT_CARGO_FIRE_DISC_SWITCH_GUARD", "EVT_CARGO_FIRE_ARM_SWITCH_AFT"),
 
             // --- Fire handle TOP press (UNLOCK + TOP) ---
-            // The fire handle is mechanically locked in the "In" position
-            // until either (a) a fire warning is active for that engine/APU,
-            // which auto-unlocks the handle, or (b) the UNLOCK switch is
-            // pressed first. Outside an active fire scenario the handle won't
-            // move even with this sequence — PMDG enforces realism. Without
-            // an active fire, this press sequence is a no-op.
+            // The fire handle is mechanically locked In. The guard slot holds the
+            // spring-loaded UNLOCK switch — unlike an ordinary cover (which PMDG
+            // NG3 auto-lifts on a click) this is a real momentary control that the
+            // dispatch must press immediately before the TOP pull, or the handle
+            // stays locked. See _fireHandlePressKeys handling in HandleUIVariableSet.
+            // Verified in-sim (PMDG 737, 2026-05-25): UNLOCK then TOP pulls the
+            // handle even with no active fire warning; a bare TOP press is a no-op.
+            // During a real fire the handle also auto-unlocks, so the explicit
+            // UNLOCK is harmless in that case.
             ["FIRE_EngineHandle_1_Press"]  = ("EVT_FIRE_UNLOCK_SWITCH_ENGINE_1", "EVT_FIRE_HANDLE_ENGINE_1_TOP"),
             ["FIRE_EngineHandle_2_Press"]  = ("EVT_FIRE_UNLOCK_SWITCH_ENGINE_2", "EVT_FIRE_HANDLE_ENGINE_2_TOP"),
             ["FIRE_APUHandle_Press"]       = ("EVT_FIRE_UNLOCK_SWITCH_APU",      "EVT_FIRE_HANDLE_APU_TOP"),
         };
+
+    // The three fire-handle "Press" actions whose guard-slot event is the
+    // spring-loaded UNLOCK switch rather than an auto-lifted cover. These are
+    // dispatched as UNLOCK→TOP momentary presses (see HandleUIVariableSet); the
+    // rest of _guardedMap relies on PMDG NG3 lifting the cover internally.
+    private static readonly HashSet<string> _fireHandlePressKeys = new()
+    {
+        "FIRE_EngineHandle_1_Press",
+        "FIRE_EngineHandle_2_Press",
+        "FIRE_APUHandle_Press",
+    };
+
+    /// <summary>
+    /// Pulls a 737 fire handle: presses the spring-loaded UNLOCK switch, then the
+    /// handle TOP. Both are single LEFTSINGLE TransmitClientEvents (the
+    /// WalkPMDGSelector 0→1 shape). The 150 ms gap lets PMDG process the unlock
+    /// before the pull — the unlock is momentary and resets once the handle moves,
+    /// so the ordering, not the exact delay, is what matters. Verified in-sim
+    /// (PMDG 737, 2026-05-25): without the UNLOCK the TOP press is a no-op.
+    /// </summary>
+    private static async Task PullFireHandleAsync(SimConnect.SimConnectManager simConnect, uint unlockId, uint topId)
+    {
+        await simConnect.WalkPMDGSelector(unlockId, 0, 1);
+        await Task.Delay(150);
+        await simConnect.WalkPMDGSelector(topId, 0, 1);
+    }
 
     // =========================================================================
     // Momentary press-to-toggle bool switches — 2-position bool fields whose
@@ -3089,6 +3118,17 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                     announcer.AnnounceImmediate("Switch not ready, please try again in a moment.");
                     return true;
                 }
+
+                // Fire handles need the UNLOCK switch (guard slot) pressed before
+                // the TOP pull — PMDG does not auto-lift it like a cover. Fire the
+                // UNLOCK→TOP pair instead of click-walking the switch alone.
+                if (_fireHandlePressKeys.Contains(varKey) &&
+                    EventIds.TryGetValue(guardPair.Guard, out int unlockId))
+                {
+                    _ = PullFireHandleAsync(simConnect, (uint)unlockId, (uint)sId);
+                    return true;
+                }
+
                 int currentPosition = (int)dm.GetFieldValue(varDef.Name);
                 if (currentPosition == target) return true; // already at target — no-op
                 _ = simConnect.WalkPMDGSelector((uint)sId, currentPosition, target);
