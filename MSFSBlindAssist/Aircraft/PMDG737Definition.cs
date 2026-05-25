@@ -765,6 +765,27 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         d["MCP_annunCWS_A"]  = Annun("MCP_annunCWS_A", "CWS A");
         d["MCP_annunCMD_B"]  = Annun("MCP_annunCMD_B", "CMD B");
         d["MCP_annunCWS_B"]  = Annun("MCP_annunCWS_B", "CWS B");
+        // MCP autopilot push buttons (momentary). Dispatched via LEFTSINGLE+
+        // LEFTRELEASE (see the momentary branch in HandleUIVariableSet) — verified
+        // in-sim 2026-05-25: CDA param=1 does not commit these. The engaged state
+        // is reflected by the MCP_annun* lamps above.
+        d["MCP_CmdA"]    = Momentary("MCP_CmdA",    "CMD A");
+        d["MCP_CmdB"]    = Momentary("MCP_CmdB",    "CMD B");
+        d["MCP_CwsA"]    = Momentary("MCP_CwsA",    "CWS A");
+        d["MCP_CwsB"]    = Momentary("MCP_CwsB",    "CWS B");
+        d["MCP_N1Btn"]   = Momentary("MCP_N1Btn",   "N1");
+        d["MCP_SpeedBtn"]= Momentary("MCP_SpeedBtn","Speed");
+        d["MCP_CoBtn"]   = Momentary("MCP_CoBtn",   "Change Over");
+        d["MCP_VnavBtn"] = Momentary("MCP_VnavBtn", "VNAV");
+        d["MCP_SpdIntv"] = Momentary("MCP_SpdIntv", "Speed Intervention");
+        d["MCP_LvlChg"]  = Momentary("MCP_LvlChg",  "Level Change");
+        d["MCP_HdgSel"]  = Momentary("MCP_HdgSel",  "Heading Select");
+        d["MCP_AppBtn"]  = Momentary("MCP_AppBtn",  "Approach");
+        d["MCP_AltHold"] = Momentary("MCP_AltHold", "Altitude Hold");
+        d["MCP_VsBtn"]   = Momentary("MCP_VsBtn",   "Vertical Speed");
+        d["MCP_VorLoc"]  = Momentary("MCP_VorLoc",  "VOR LOC");
+        d["MCP_LnavBtn"] = Momentary("MCP_LnavBtn", "LNAV");
+        d["MCP_AltIntv"] = Momentary("MCP_AltIntv", "Altitude Intervention");
         // SDK lines 542-593: MCP_IASOverspeedFlash / MCP_IASUnderspeedFlash / MCP_indication_powered
         // (all bool). Surface as Annun in the MCP panel — matches TFM's MCP-section coverage.
         d["MCP_IASOverspeedFlash"]  = Annun("MCP_IASOverspeedFlash",  "MCP Overspeed");
@@ -1299,7 +1320,12 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 "MCP_IASMach", "MCP_Heading", "MCP_Altitude", "MCP_VertSpeed",
                 "MCP_FDSw_0", "MCP_FDSw_1",
                 "MCP_ATArmSw", "MCP_BankLimitSel", "MCP_DisengageBar",
-                "MCP_indication_powered", "MCP_IASOverspeedFlash", "MCP_IASUnderspeedFlash"
+                "MCP_indication_powered", "MCP_IASOverspeedFlash", "MCP_IASUnderspeedFlash",
+                // Autopilot push buttons (momentary)
+                "MCP_CmdA", "MCP_CmdB", "MCP_CwsA", "MCP_CwsB",
+                "MCP_N1Btn", "MCP_SpeedBtn", "MCP_SpdIntv", "MCP_CoBtn",
+                "MCP_LvlChg", "MCP_VnavBtn", "MCP_LnavBtn", "MCP_HdgSel",
+                "MCP_VorLoc", "MCP_AppBtn", "MCP_AltHold", "MCP_AltIntv", "MCP_VsBtn"
             },
             ["Display Select"] = new List<string>
             {
@@ -2793,6 +2819,24 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             ["XPDR_AltSourceSel_2"]        = "EVT_TCAS_ALTSOURCE",
             ["XPDR_ModeSel"]               = "EVT_TCAS_MODE",
             ["PED_FltDkDoorSel"]           = "EVT_FLT_DK_DOOR_KNOB",
+            // MCP autopilot push buttons (momentary)
+            ["MCP_CmdA"]    = "EVT_MCP_CMD_A_SWITCH",
+            ["MCP_CmdB"]    = "EVT_MCP_CMD_B_SWITCH",
+            ["MCP_CwsA"]    = "EVT_MCP_CWS_A_SWITCH",
+            ["MCP_CwsB"]    = "EVT_MCP_CWS_B_SWITCH",
+            ["MCP_N1Btn"]   = "EVT_MCP_N1_SWITCH",
+            ["MCP_SpeedBtn"]= "EVT_MCP_SPEED_SWITCH",
+            ["MCP_CoBtn"]   = "EVT_MCP_CO_SWITCH",
+            ["MCP_VnavBtn"] = "EVT_MCP_VNAV_SWITCH",
+            ["MCP_SpdIntv"] = "EVT_MCP_SPD_INTV_SWITCH",
+            ["MCP_LvlChg"]  = "EVT_MCP_LVL_CHG_SWITCH",
+            ["MCP_HdgSel"]  = "EVT_MCP_HDG_SEL_SWITCH",
+            ["MCP_AppBtn"]  = "EVT_MCP_APP_SWITCH",
+            ["MCP_AltHold"] = "EVT_MCP_ALT_HOLD_SWITCH",
+            ["MCP_VsBtn"]   = "EVT_MCP_VS_SWITCH",
+            ["MCP_VorLoc"]  = "EVT_MCP_VOR_LOC_SWITCH",
+            ["MCP_LnavBtn"] = "EVT_MCP_LNAV_SWITCH",
+            ["MCP_AltIntv"] = "EVT_MCP_ALT_INTV_SWITCH",
         };
 
     // =========================================================================
@@ -3366,7 +3410,13 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
 
             if (varDef.RenderAsButton && varDef.IsMomentary)
             {
-                simConnect.SendPMDGEvent(eventName, eventId, 1);
+                // Momentary push buttons (MCP modes/engage, fire-handle bottom,
+                // etc.) commit only with a LEFTSINGLE press followed by a
+                // LEFTRELEASE (TransmitClientEvent). A bare CDA param=1 plays the
+                // click sound but the state springs back. Verified in-sim
+                // 2026-05-25: FD switch + HDG SEL committed via LEFTSINGLE+RELEASE
+                // while CDA param=1 did not.
+                _ = simConnect.SendPMDGMomentaryToggle(eventId, 1);
                 return true;
             }
 
