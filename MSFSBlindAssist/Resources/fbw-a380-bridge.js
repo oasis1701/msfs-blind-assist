@@ -1,5 +1,5 @@
 // FlyByWire A380X — MSFS Blind Assist accessibility bridge
-// BRIDGE_JS_VERSION: 0.3.0-mcdu-elements
+// BRIDGE_JS_VERSION: 0.4.0-mcdu-grid
 //
 // Selectors and event names verified against the open-source FBW aircraft
 // repo (master branch, fbw-a380x). See:
@@ -176,80 +176,175 @@ _a380.findMfdRoots = function() {
 };
 
 _a380.getActivePageLabel = function(root) {
-    // .mfd-header-page-select-row contains the four ACTIVE / POSITION /
-    // SEC INDEX / DATA group selectors. Each selector is highlighted via
-    // an "active" / "selected" CSS class on its menu items. We pick the
-    // first highlighted dropdown menu item label as the page name.
-    var header = root.querySelector('.mfd-header-page-select-row, .mfd-fms-header, [class*="header"]');
-    if (!header) return '';
-    var active = header.querySelector(
-        '.selected, .active, [class*="active"], [class*="selected"]'
-    );
-    if (active && active.textContent) {
-        return active.textContent.replace(/\s+/g, ' ').trim();
+    // The A380X title bar puts the current page name in
+    // .mfd-title-bar-text (verified in ActivePageTitleBar.tsx + style.scss).
+    // We pick the first non-empty .mfd-title-bar-text inside the title bar
+    // container — that's the page label. Subsequent ones are TMPY / EO /
+    // PENALTY markers; we include them inline after the page name when
+    // they're visible.
+    var bar = root.querySelector('.mfd-title-bar-container');
+    if (!bar) return '';
+    var spans = bar.querySelectorAll('.mfd-title-bar-text');
+    var parts = [];
+    for (var i = 0; i < spans.length; i++) {
+        var s = spans[i];
+        var style = window.getComputedStyle(s);
+        if (style.display === 'none' || style.visibility === 'hidden') continue;
+        var t = (s.textContent || '').replace(/\s+/g, ' ').trim();
+        if (t) parts.push(t);
     }
-    // Fall back to the first heading or label in the navigator container.
-    return '';
+    return parts.join(' / ');
 };
 
-_a380.collectMfdLines = function(root) {
-    var rows = new Array(24);
-    for (var i = 0; i < 24; i++) rows[i] = '';
-    if (!root) return rows;
+// Width of the synthesised MCDU-style text grid in characters. The A380
+// MFD is 768 px wide and uses a 30 px display font — about 25 glyphs fit
+// across the page. We round up to 36 to leave a little space for the
+// numbered "N:" row prefix and any padding between left/right halves.
+_a380.GRID_WIDTH = 36;
+_a380.MAX_BODY_ROWS = 28;
+_a380.ROW_Y_TOLERANCE_PX = 14;
 
-    rows[0] = _a380.getActivePageLabel(root);
+// Selectors that produce visible "text-bearing" leaves on the FMS page.
+// Picking specific FBW widget classes rather than walking every element
+// avoids the noise of layout containers re-emitting their entire subtree
+// text and keeps the grid alignment honest. Verified in
+// MsfsAvionicsCommon/UiWidgets and pages/common/style.scss.
+_a380.MFD_LEAF_SELECTOR = [
+    '.mfd-label',
+    '.mfd-input-field-text-input',
+    '.mfd-button',
+    '.mfd-icon-button',
+    '.mfd-dropdown-inner',
+    '.mfd-page-selector-label',
+    '.mfd-dropdown-menu-element',
+    '.mfd-amber-error-message'
+].join(',');
 
+_a380.collectMfdGrid = function(root) {
+    // Layout: row 0 = page title, rows 1..N = body lines, last row =
+    // scratchpad / footer message. Each line is GRID_WIDTH chars wide so
+    // the C# ListBox can render with a monospace font and preserve the
+    // left/right spatial layout that's actually meaningful on an
+    // Airbus FMS page.
+    var rows = [];
+    if (!root) return [_a380.padRight('', _a380.GRID_WIDTH)];
+
+    // --- 1) Title row.
+    rows.push(_a380.padRight('Title: ' + _a380.getActivePageLabel(root), _a380.GRID_WIDTH));
+
+    // --- 2) Body rows from .mfd-navigator-container, positioned by
+    // bounding-rect.
     var page = root.querySelector('.mfd-navigator-container');
-    if (!page) return rows;
-
-    // Walk visible elements, collect text from leaf-ish nodes. We treat
-    // any element with own (non-descendant) text content as a leaf.
-    // Skip nodes that are hidden (computed visibility/display none).
-    var idx = 1;
-    var walker = document.createTreeWalker(page, NodeFilter.SHOW_ELEMENT, null, false);
-    while (walker.nextNode() && idx < 23) {
-        var n = walker.currentNode;
-        var style = (n.ownerDocument && n.ownerDocument.defaultView)
-            ? n.ownerDocument.defaultView.getComputedStyle(n) : null;
-        if (style && (style.display === 'none' || style.visibility === 'hidden')) continue;
-
-        var ownText = '';
-        for (var c = 0; c < n.childNodes.length; c++) {
-            if (n.childNodes[c].nodeType === 3) ownText += n.childNodes[c].nodeValue;
+    if (page) {
+        var bodyRect = page.getBoundingClientRect();
+        var leaves = page.querySelectorAll(_a380.MFD_LEAF_SELECTOR);
+        var positioned = [];
+        for (var i = 0; i < leaves.length; i++) {
+            var n = leaves[i];
+            var style = window.getComputedStyle(n);
+            if (style.display === 'none' || style.visibility === 'hidden') continue;
+            var text = (n.textContent || '').replace(/\s+/g, ' ').trim();
+            if (!text) continue;
+            var r = n.getBoundingClientRect();
+            if (r.width === 0 || r.height === 0) continue;
+            positioned.push({ text: text, left: r.left - bodyRect.left, top: r.top - bodyRect.top, width: r.width });
         }
-        ownText = ownText.replace(/\s+/g, ' ').trim();
-        if (!ownText) continue;
+        // Sort by Y first, then X — natural reading order.
+        positioned.sort(function(a, b) { return a.top - b.top || a.left - b.left; });
 
-        // Skip pure padding/spacer wrappers that re-emit whole sub-tree text.
-        if (n.children && n.children.length && ownText.length > 80) continue;
+        // Cluster into rows by Y tolerance.
+        var clustered = [];
+        var current = null;
+        for (var j = 0; j < positioned.length; j++) {
+            var p = positioned[j];
+            if (!current || Math.abs(p.top - current.y) > _a380.ROW_Y_TOLERANCE_PX) {
+                current = { y: p.top, items: [] };
+                clustered.push(current);
+            }
+            current.items.push(p);
+        }
 
-        rows[idx++] = ownText;
+        // Convert each cluster into a fixed-width string. Map element X
+        // positions into grid columns by linear scaling against the body
+        // width. Multiple items per row → laid out at their respective
+        // column positions; collisions are resolved by truncation.
+        var bodyW = Math.max(bodyRect.width, 1);
+        var rowNum = 0;
+        for (var c = 0; c < clustered.length && rowNum < _a380.MAX_BODY_ROWS; c++) {
+            var cluster = clustered[c];
+            // Sort items left-to-right within the row.
+            cluster.items.sort(function(a, b) { return a.left - b.left; });
+            var grid = _a380.makeBlankRow(_a380.GRID_WIDTH);
+            for (var k = 0; k < cluster.items.length; k++) {
+                var item = cluster.items[k];
+                var col = Math.round((item.left / bodyW) * _a380.GRID_WIDTH);
+                if (col < 0) col = 0;
+                if (col >= _a380.GRID_WIDTH) col = _a380.GRID_WIDTH - 1;
+                _a380.writeAt(grid, col, item.text);
+            }
+            // Drop pure-whitespace rows (the page often emits decorative
+            // separators that contain only padding).
+            var asString = grid.join('').replace(/\s+$/, '');
+            if (asString.length === 0) continue;
+            // Number the row in Fenix style: " N: " left-pads the line
+            // so screen-reader users can navigate by row index.
+            var prefix = _a380.padLeft(String(rowNum + 1), 2) + ': ';
+            rows.push(prefix + asString);
+            rowNum++;
+        }
     }
 
-    // Scratchpad / FMS error message — last row. The error sits in the
-    // mailbox area; if present we take its first non-empty text line.
-    var msg = root.querySelector(
-        '.mfd-fms-error-message, .fms-scratchpad, [class*="scratchpad"], [class*="error-message"]'
-    );
-    if (msg && msg.textContent) {
-        rows[23] = msg.textContent.replace(/\s+/g, ' ').trim();
+    // --- 3) Scratchpad / footer message row.
+    var footer = root.querySelector('.mfd-footer-message-area');
+    var footerText = '';
+    if (footer) footerText = (footer.textContent || '').replace(/\s+/g, ' ').trim();
+    if (!footerText) {
+        // Some pages render an inline amber error message rather than the
+        // footer area — keep that too.
+        var amber = root.querySelector('.mfd-amber-error-message');
+        if (amber) footerText = (amber.textContent || '').replace(/\s+/g, ' ').trim();
     }
+    rows.push(_a380.padRight('Scratchpad: ' + footerText, _a380.GRID_WIDTH));
 
     return rows;
+};
+
+_a380.makeBlankRow = function(n) { var a = new Array(n); for (var i = 0; i < n; i++) a[i] = ' '; return a; };
+
+_a380.writeAt = function(grid, col, text) {
+    for (var i = 0; i < text.length && col + i < grid.length; i++) {
+        grid[col + i] = text.charAt(i);
+    }
+};
+
+_a380.padRight = function(s, n) {
+    s = s == null ? '' : String(s);
+    while (s.length < n) s += ' ';
+    return s.length > n ? s.substring(0, n) : s;
+};
+
+_a380.padLeft = function(s, n) {
+    s = s == null ? '' : String(s);
+    while (s.length < n) s = ' ' + s;
+    return s.length > n ? s.substring(s.length - n) : s;
 };
 
 _a380.pollMcdu = function() {
     if (_a380.role !== 'mfd') return;
     var roots = _a380.findMfdRoots();
     var root = roots[_a380.activeMcdu];
-    var rows = _a380.collectMfdLines(root);
+    var rows = _a380.collectMfdGrid(root);
 
     var hash = _a380.activeMcdu + '|' + rows.join('|');
     if (hash === _a380.lastMcduHash) return;
     _a380.lastMcduHash = hash;
 
-    var data = { mcdu: String(_a380.activeMcdu), rowCount: '24' };
-    for (var i = 0; i < 24; i++) data['row' + i] = rows[i];
+    var data = {
+        mcdu: String(_a380.activeMcdu),
+        rowCount: String(rows.length),
+        gridWidth: String(_a380.GRID_WIDTH)
+    };
+    for (var i = 0; i < rows.length; i++) data['row' + i] = rows[i];
     _a380.post('fbwa380_mcdu_screen', data);
 };
 

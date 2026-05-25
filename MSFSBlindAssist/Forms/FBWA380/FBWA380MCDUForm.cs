@@ -82,7 +82,7 @@ public class FBWA380MCDUForm : Form
     private Button _btnExec = null!;
     private Button _btnClr = null!;
 
-    private string[] _rows = new string[24];
+    private string[] _rows = Array.Empty<string>();
     private List<McduElement> _elements = new();
 
     private string _previousTitle = "";
@@ -371,13 +371,21 @@ public class FBWA380MCDUForm : Form
     private void HandleScreenPush(EFBStateUpdateEventArgs e)
     {
         _bridgeConnected = true;
-        int rowCount = 24;
-        if (e.Data.TryGetValue("rowCount", out string? rcs) && int.TryParse(rcs, out int rc))
-            rowCount = Math.Max(rc, 24);
-        var newRows = new string[rowCount];
-        for (int i = 0; i < rowCount; i++)
-            newRows[i] = e.Data.TryGetValue($"row{i}", out string? v) ? v ?? "" : "";
-        _rows = newRows;
+        // The bridge now emits a variable number of rows per push, sized
+        // to whatever the active page's content needs. Row 0 is the
+        // title line, last row is the scratchpad / footer message;
+        // everything between is numbered body content laid out on a
+        // GRID_WIDTH-char monospace grid (see fbw-a380-bridge.js).
+        if (!e.Data.TryGetValue("rowCount", out string? rcs) || !int.TryParse(rcs, out int rowCount))
+            rowCount = 0;
+        if (rowCount <= 0) { _rows = Array.Empty<string>(); }
+        else
+        {
+            var newRows = new string[rowCount];
+            for (int i = 0; i < rowCount; i++)
+                newRows[i] = e.Data.TryGetValue($"row{i}", out string? v) ? v ?? "" : "";
+            _rows = newRows;
+        }
         if (IsHandleCreated) BeginInvoke(RefreshScreen);
     }
 
@@ -420,19 +428,33 @@ public class FBWA380MCDUForm : Form
 
     private void RefreshScreen()
     {
-        if (_rows.Length < 24) return;
+        // The bridge already produces a fully laid-out grid in Fenix-style
+        // semantics: row 0 is "Title: …", the last row is "Scratchpad: …",
+        // body rows are numbered "N: …" with monospace-padded content.
+        // We render rows as-is so the Consolas font preserves the spatial
+        // layout (label on the left, value on the right, etc.).
+        if (_rows.Length == 0) return;
 
-        var lines = new List<string>();
-        lines.Add(_rows[0]); // page label / title
-
-        for (int i = 1; i <= 22; i++)
+        var lines = new List<string>(_rows.Length);
+        string scratchpad = "";
+        for (int i = 0; i < _rows.Length; i++)
         {
-            if (!string.IsNullOrWhiteSpace(_rows[i]))
-                lines.Add(_rows[i]);
+            string row = _rows[i] ?? "";
+            // Keep title and scratchpad rows verbatim; drop empty body rows.
+            bool isLast = i == _rows.Length - 1;
+            bool isTitle = i == 0;
+            if (!isTitle && !isLast && string.IsNullOrWhiteSpace(row)) continue;
+            if (isLast)
+            {
+                // Pull just the value half of "Scratchpad: ..." so the
+                // change-detection logic below works on the underlying
+                // text rather than the literal prefix.
+                const string prefix = "Scratchpad:";
+                int p = row.IndexOf(prefix, StringComparison.Ordinal);
+                scratchpad = p >= 0 ? row.Substring(p + prefix.Length).Trim() : row.Trim();
+            }
+            lines.Add(row);
         }
-
-        string scratchpad = _rows[23];
-        lines.Add("Scratchpad: " + scratchpad);
 
         int saved = _mcduDisplay.SelectedIndex;
         _mcduDisplay.BeginUpdate();
@@ -443,7 +465,13 @@ public class FBWA380MCDUForm : Form
                 _mcduDisplay.Items[i] = lines[i];
         _mcduDisplay.EndUpdate();
 
-        string title = _rows[0].Trim();
+        // Extract just the page name out of "Title: ..." for change
+        // detection and screen-reader announcement.
+        string title = _rows.Length > 0 ? _rows[0] : "";
+        const string titlePrefix = "Title:";
+        int titleIdx = title.IndexOf(titlePrefix, StringComparison.Ordinal);
+        if (titleIdx >= 0) title = title.Substring(titleIdx + titlePrefix.Length).Trim();
+        else title = title.Trim();
         if (!string.IsNullOrWhiteSpace(title) && title != _previousTitle)
         {
             _announcer.Announce(title);
