@@ -857,8 +857,10 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         d["MAIN_annunAT_1"]       = Annun("MAIN_annunAT_1", "AT Disengage First Officer");
         d["MAIN_annunAT_Amber_0"] = Annun("MAIN_annunAT_Amber_0", "AT Disengage Amber Captain");
         d["MAIN_annunAT_Amber_1"] = Annun("MAIN_annunAT_Amber_1", "AT Disengage Amber First Officer");
-        d["MAIN_annunFMC_0"]      = Annun("MAIN_annunFMC_0", "FMC Caution Captain");
-        d["MAIN_annunFMC_1"]      = Annun("MAIN_annunFMC_1", "FMC Caution First Officer");
+        // MAIN_annunFMC_0/_1 (the amber FMC caution light) intentionally NOT registered:
+        // it illuminates whenever the CDU posts a scratchpad message, which is already
+        // announced via CDU_annunMSG_0/_1. Announcing both is redundant. The 777 has no
+        // FMC-caution annunciator either — match that pattern.
         d["MAIN_DisengageTestSelector_0"] = Selector("MAIN_DisengageTestSelector_0",
             "Disengage Test Captain", "1", "OFF", "2");
         d["MAIN_DisengageTestSelector_1"] = Selector("MAIN_DisengageTestSelector_1",
@@ -965,17 +967,19 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         // =================================================================
         // CONTROL STAND — CDU annunciators, COMM counters, ACP, stab trim, fire, xpdr, etc.
         // =================================================================
-        // CDU annunciators — NG3 SDK has only 2 CDUs (Captain=0, F/O=1)
-        d["CDU_annunEXEC_0"]  = Annun("CDU_annunEXEC_0", "CDU Captain EXEC");
-        d["CDU_annunEXEC_1"]  = Annun("CDU_annunEXEC_1", "CDU First Officer EXEC");
-        d["CDU_annunCALL_0"]  = Annun("CDU_annunCALL_0", "CDU Captain Call");
-        d["CDU_annunCALL_1"]  = Annun("CDU_annunCALL_1", "CDU First Officer Call");
-        d["CDU_annunFAIL_0"]  = Annun("CDU_annunFAIL_0", "CDU Captain Fail");
-        d["CDU_annunFAIL_1"]  = Annun("CDU_annunFAIL_1", "CDU First Officer Fail");
-        d["CDU_annunMSG_0"]   = Annun("CDU_annunMSG_0", "CDU Captain Message");
-        d["CDU_annunMSG_1"]   = Annun("CDU_annunMSG_1", "CDU First Officer Message");
-        d["CDU_annunOFST_0"]  = Annun("CDU_annunOFST_0", "CDU Captain Offset");
-        d["CDU_annunOFST_1"]  = Annun("CDU_annunOFST_1", "CDU First Officer Offset");
+        // CDU annunciators — NG3 SDK has only 2 CDUs (0 = Left/Captain, 1 = Right/F.O.).
+        // DisplayName follows the 777 "CDU <TYPE> <position>" pattern, using Left/Right
+        // (not Capt/F.O.) so announcements read e.g. "CDU EXEC Left: on" like the 777.
+        d["CDU_annunEXEC_0"]  = Annun("CDU_annunEXEC_0", "CDU EXEC Left");
+        d["CDU_annunEXEC_1"]  = Annun("CDU_annunEXEC_1", "CDU EXEC Right");
+        d["CDU_annunCALL_0"]  = Annun("CDU_annunCALL_0", "CDU CALL Left");
+        d["CDU_annunCALL_1"]  = Annun("CDU_annunCALL_1", "CDU CALL Right");
+        d["CDU_annunFAIL_0"]  = Annun("CDU_annunFAIL_0", "CDU FAIL Left");
+        d["CDU_annunFAIL_1"]  = Annun("CDU_annunFAIL_1", "CDU FAIL Right");
+        d["CDU_annunMSG_0"]   = Annun("CDU_annunMSG_0", "CDU MSG Left");
+        d["CDU_annunMSG_1"]   = Annun("CDU_annunMSG_1", "CDU MSG Right");
+        d["CDU_annunOFST_0"]  = Annun("CDU_annunOFST_0", "CDU OFST Left");
+        d["CDU_annunOFST_1"]  = Annun("CDU_annunOFST_1", "CDU OFST Right");
 
         // COMM press counters
         d["COMM_Attend_PressCount"]  = new SimConnect.SimVarDefinition
