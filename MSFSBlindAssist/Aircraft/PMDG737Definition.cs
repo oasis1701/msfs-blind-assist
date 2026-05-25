@@ -4053,7 +4053,8 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
 
             // ------------------------------------------------------------------
             // Altimeter (EFIS baro) — PMDG 737 has no SDK control of the baro
-            // knob, so we read/write the standard MSFS KOHLSMAN simvar. Format
+            // knob, so we READ the standard MSFS KOHLSMAN simvar (the set dialog
+            // writes via the standard KOHLSMAN_SET event). Format
             // mirrors PMDG 777 / Fenix: STD detected at 29.92 inHg, otherwise
             // dual-unit announcement "Altimeter: <hpa>, <inhg>".
             // ------------------------------------------------------------------
@@ -4571,8 +4572,9 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     }
 
     /// <summary>
-    /// PMDG 737 has no SDK-exposed baro knob control, so this dialog writes the
-    /// standard MSFS KOHLSMAN SETTING HG simvar directly. Accepts either hPa
+    /// PMDG 737 has no SDK-exposed baro knob control, so this dialog sets the
+    /// altimeter via the standard KOHLSMAN_SET event (a direct KOHLSMAN SETTING HG
+    /// SimVar write is ignored by PMDG, which re-asserts baro every frame). Accepts either hPa
     /// (~900–1060) or inHg (~26.50–31.30); the validator picks the unit based on
     /// magnitude (>=100 = hPa, <100 = inHg) — the two ranges don't overlap so the
     /// branch is unambiguous, and magnitude-based branching avoids the de-DE
@@ -4626,10 +4628,13 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             {
                 if (!TryParseBaro(input, out double value)) return;
 
-                // Same magnitude-based branch as the validator.
-                double inHg = value >= 100 ? value / 33.8639 : value;
-
-                simConnect.SetSimVar("KOHLSMAN SETTING HG", inHg, "inHg");
+                // KOHLSMAN_SET expects millibars*16. A direct SimVar write to
+                // KOHLSMAN SETTING HG is ignored by PMDG (it re-asserts baro every
+                // frame), but the standard KOHLSMAN_SET event is honored — the same
+                // path the baro knob drives. Verified the event fires 2026-05-25.
+                double hpa = value >= 100 ? value : value * 33.8639;   // entry hPa, else inHg->hPa
+                uint param = (uint)Math.Round(hpa * 16.0);
+                simConnect.SendEvent("KOHLSMAN_SET", param);
             });
 
         dialog.ShowCancelButton = false;
