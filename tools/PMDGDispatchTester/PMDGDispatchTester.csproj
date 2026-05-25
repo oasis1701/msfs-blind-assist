@@ -16,7 +16,7 @@
          (linked, not copied) so the tester's CDA layout can never drift from
          PMDGNG3DataManager's. The file declares the MSFSBlindAssist.SimConnect
          namespace, which Program.cs already references. -->
-    <Compile Include="..\MSFSBlindAssist\SimConnect\PMDGNG3DataStruct.cs" Link="PMDGNG3DataStruct.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\SimConnect\PMDGNG3DataStruct.cs" Link="PMDGNG3DataStruct.cs" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="Microsoft.FlightSimulator.SimConnect">

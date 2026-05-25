@@ -7,7 +7,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MSFSBlindAssist", "MSFSBlin
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MSFSBlindAssistUpdater", "MSFSBlindAssistUpdater\MSFSBlindAssistUpdater.csproj", "{B2C3D4E5-F6A7-4321-8765-543210987654}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PMDGDispatchTester", "PMDGDispatchTester\PMDGDispatchTester.csproj", "{5762879E-A58F-4186-8670-2F999D3BA5BA}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PMDGDispatchTester", "tools\PMDGDispatchTester\PMDGDispatchTester.csproj", "{5762879E-A58F-4186-8670-2F999D3BA5BA}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
