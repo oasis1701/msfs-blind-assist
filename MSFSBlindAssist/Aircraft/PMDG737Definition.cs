@@ -3644,6 +3644,16 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 return true;
 
             // -------------------------------------------------------------
+            // Parking brake (control-stand annunciator). Every other 737
+            // annunciator has an explicit case; this one was missing, so a
+            // toggle produced no callout. Announce both edges. The field is
+            // confirmed to track in-sim (false<->true with brakes applied).
+            // -------------------------------------------------------------
+            case "PED_annunParkingBrake":
+                announcer.AnnounceImmediate(value > 0.5 ? "Parking brake set" : "Parking brake released");
+                return true;
+
+            // -------------------------------------------------------------
             // Fire warnings + master caution — these are time-critical and
             // must interrupt queued speech. Only announce on the rising
             // edge (value > 0).
