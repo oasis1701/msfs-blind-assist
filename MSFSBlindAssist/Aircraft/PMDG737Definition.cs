@@ -55,6 +55,35 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     private byte _lastAttendPressCount;
     private byte _lastGrdCallPressCount;
 
+    // Flap-position announcement state. The NG3 SDK exposes only the analog
+    // trailing-edge needle (MAIN_TEFlapsNeedle, degrees) — no commanded-detent
+    // field — so we snap to the nearest detent and debounce (announce a new
+    // detent only after two consecutive settled samples, so a multi-step
+    // extension doesn't chatter every intermediate detent it sweeps past).
+    private int _lastFlapDetentAnnounced = int.MinValue;
+    private int _flapDetentCandidate = int.MinValue;
+    private static readonly double[] FlapDetentDegs = { 0, 1, 2, 5, 10, 15, 25, 30, 40 };
+
+    // The detent the needle is settled at (within tolerance), or -1 mid-transit.
+    private static int SettledFlapDetent(double needleDeg)
+    {
+        foreach (double d in FlapDetentDegs)
+            if (Math.Abs(needleDeg - d) <= 0.6) return (int)d;
+        return -1;
+    }
+
+    // Nearest detent regardless of transit (for the on-demand "L" readout).
+    private static int NearestFlapDetent(double needleDeg)
+    {
+        int best = 0; double bestDiff = double.MaxValue;
+        foreach (double d in FlapDetentDegs)
+        {
+            double diff = Math.Abs(needleDeg - d);
+            if (diff < bestDiff) { bestDiff = diff; best = (int)d; }
+        }
+        return best;
+    }
+
     // PMDG 737 MCP supports direct SetValue events for SPD/HDG/ALT/VS (NG3 SDK
     // exposes EVT_*_SET style events just like the 777).
     public override FCUControlType GetAltitudeControlType() => FCUControlType.SetValue;
@@ -884,6 +913,17 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         d["MAIN_annunGEAR_locked_1"]     = Annun("MAIN_annunGEAR_locked_1", "Nose Gear Locked Down");
         d["MAIN_annunGEAR_locked_2"]     = Annun("MAIN_annunGEAR_locked_2", "Right Gear Locked Down");
         d["MAIN_GearLever"]              = Selector("MAIN_GearLever", "Gear Lever", "UP", "OFF", "DOWN");
+        // Trailing-edge flap needle (analog, degrees). Monitored only — the
+        // flap-position announcement snaps it to a detent in ProcessSimVarUpdate.
+        // IsAnnounced=false so the generic path doesn't read out the raw float.
+        d["MAIN_TEFlapsNeedle_0"] = new SimConnect.SimVarDefinition
+        {
+            Name = "MAIN_TEFlapsNeedle_0",
+            DisplayName = "Flaps",
+            Type = SimConnect.SimVarType.PMDGVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = false
+        };
         d["MAIN_annunCABIN_ALTITUDE"]    = Annun("MAIN_annunCABIN_ALTITUDE", "Cabin Altitude");
         d["MAIN_annunTAKEOFF_CONFIG"]    = Annun("MAIN_annunTAKEOFF_CONFIG", "Takeoff Config");
 
@@ -3654,6 +3694,34 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 return true;
 
             // -------------------------------------------------------------
+            // Flap position (trailing-edge needle, degrees). No commanded-
+            // detent field exists on the 737, so snap the analog needle to the
+            // nearest detent and announce on a settled change. The candidate
+            // must be confirmed on two consecutive settled samples to debounce
+            // the brief sweep past intermediate detents during a multi-step
+            // selection. IsAnnounced=false on the var keeps the generic path
+            // from reading the raw float.
+            // -------------------------------------------------------------
+            case "MAIN_TEFlapsNeedle_0":
+            {
+                int detent = SettledFlapDetent(value);
+                if (detent < 0) { _flapDetentCandidate = int.MinValue; return true; }
+                if (detent == _lastFlapDetentAnnounced) return true;
+                if (detent == _flapDetentCandidate)
+                {
+                    bool first = _lastFlapDetentAnnounced == int.MinValue;
+                    _lastFlapDetentAnnounced = detent;
+                    if (!first)
+                        announcer.Announce(detent == 0 ? "Flaps up" : $"Flaps {detent}");
+                }
+                else
+                {
+                    _flapDetentCandidate = detent;
+                }
+                return true;
+            }
+
+            // -------------------------------------------------------------
             // Fire warnings + master caution — these are time-critical and
             // must interrupt queued speech. Only announce on the rising
             // edge (value > 0).
@@ -4026,10 +4094,11 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
 
             case HotkeyAction.ReadFlaps:
             {
-                // No FCTL_Flaps_Lever / TEFlapsNeedle defined in the NG3 PMDG
-                // SDK data block exposed to us — delegate to MainForm's
-                // generic flaps handler which reads the standard SimVar.
-                return false;
+                var dm = simConnect.PMDGDataManager;
+                if (dm == null) { announcer.AnnounceImmediate("Flaps unavailable."); return true; }
+                int detent = NearestFlapDetent(dm.GetFieldValue("MAIN_TEFlapsNeedle_0"));
+                announcer.AnnounceImmediate(detent == 0 ? "Flaps up" : $"Flaps {detent}");
+                return true;
             }
 
             case HotkeyAction.ReadGear:
