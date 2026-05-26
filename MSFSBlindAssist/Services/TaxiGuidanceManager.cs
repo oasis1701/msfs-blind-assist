@@ -359,7 +359,10 @@ public class TaxiGuidanceManager : IDisposable
     // (e.g. EIDW S5: 92 m at ~runway heading before the RET curve tightens).
     // Acts as a pan floor — whichever of the look-ahead bearing or this minimum
     // gives the stronger pan toward the exit side wins. Becomes a no-op once the
-    // arc's natural segment bearings exceed it. Cleared on LoadRoute and StopGuidance.
+    // arc's natural segment bearings exceed it, and is RELEASED (reset to 0) the
+    // frame the aircraft heading reaches/passes the exit bearing — the turn onto the
+    // exit is complete, so the floor must stop clamping or it would mute a legitimate
+    // opposite-side route cue. Also cleared on LoadRoute and StopGuidance.
     // 0 = inactive.
     private double _postHighSpeedExitMinBearing = 0.0;
     // Timestamp of the last undershoot retarget. DateTime.MinValue = no retarget
@@ -1588,8 +1591,28 @@ public class TaxiGuidanceManager : IDisposable
         if (_postHighSpeedExitMinBearing > 0.0)
         {
             double minError = NormalizeAngle(_postHighSpeedExitMinBearing - headingTrue);
-            headingError = minError >= 0.0 ? Math.Max(headingError, minError)
-                                           : Math.Min(headingError, minError);
+
+            // The floor only bridges the turn ONTO the exit. exitSide (exit bearing
+            // relative to the runway heading) is the direction the floor pushes. Once
+            // the aircraft heading has swung all the way to — or past — the exit
+            // bearing, minError crosses zero against exitSide: the turn is complete and
+            // the floor has done its job. RELEASE it here. Without this the floor would
+            // persist until the next LoadRoute/StopGuidance, and a legitimate opposite-
+            // side cue from the live route (e.g. the exit taxiway curving back the other
+            // way, or the look-ahead wrapping onto the next segment) would be clamped to
+            // silence — the worst failure mode for a blind pilot relying on the tone.
+            double exitSide = NormalizeAngle(_postHighSpeedExitMinBearing - _rolloutRunwayHeadingTrue);
+            bool turnComplete = (exitSide > 0.0 && minError <= 0.0)
+                             || (exitSide < 0.0 && minError >= 0.0);
+            if (turnComplete)
+            {
+                _postHighSpeedExitMinBearing = 0.0;
+            }
+            else
+            {
+                headingError = minError >= 0.0 ? Math.Max(headingError, minError)
+                                               : Math.Min(headingError, minError);
+            }
         }
 
         // Apply 1-pole low-pass filter to heading error (kills jitter from wheel vibration)
