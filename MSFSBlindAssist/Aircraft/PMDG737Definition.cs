@@ -132,7 +132,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             ["Pedestal"] = new List<string>
             {
                 "Control Stand", "Transponder/TCAS", "Fire Protection", "Cargo Fire",
-                "Radio", "Calls", "Flight Deck Door"
+                "Radio", "Calls", "Flight Deck Door", "Boris Audio Works"
             },
         };
     }
@@ -1278,6 +1278,56 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             HelpText = "Swap COM2 active and standby frequencies"
         };
 
+        // =================================================================
+        // BORIS / xBAW AUDIO WORKS SOUNDPACK (737)
+        // -----------------------------------------------------------------
+        // Mirrors the 777's Boris Audio Works panel, but the 737 xBAW soundset
+        // uses DIFFERENT backing variables (verified against the soundset's
+        // sound.xml and in-sim 2026-05-26):
+        //   Headphone Simulation -> L:ANR_onoff      (RTPC LOCALVAR_A20)
+        //   Hydraulic Pump Model -> L:HydPumpMfg     (RTPC SIMVAR_ON_RUNWAY)
+        //   Passenger Chatter    -> L:switch_277_73X (paxchatter <Requires> <=0)
+        // Unlike the 777's PMDG-owned switch_NNN_a (which revert a raw write and
+        // need K:ROTOR_BRAKE), all three of these are plain L-vars that accept a
+        // direct SetLVar and persist — see the LVar branch in HandleUIVariableSet.
+        // switch_102_73X (Emer Exit Lights, the soundset's other chatter gate) is
+        // deliberately NOT exposed: its normal flight position already satisfies
+        // the <=0 gate and it's a safety system, exactly like the 777's
+        // switch_49_a. switch_277_73X is the safety-neutral audio selector.
+        // =================================================================
+        d["ANR_onoff"] = new SimConnect.SimVarDefinition
+        {
+            Name = "ANR_onoff",
+            DisplayName = "Headphone Simulation",
+            Type = SimConnect.SimVarType.LVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        };
+        d["HydPumpMfg"] = new SimConnect.SimVarDefinition
+        {
+            Name = "HydPumpMfg",
+            DisplayName = "Hydraulic Pump Model",
+            Type = SimConnect.SimVarType.LVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Vickers 1", [1] = "Vickers 2" }
+        };
+        // Passenger chatter: the soundset gates paxchatter on switch_277_73X <= 0,
+        // so 0 = chatter audible (On), 100 = muted (Off). ReverseDisplayOrder puts
+        // "Off" at the top of the combo to match every other on/off control,
+        // despite On being the zero value (same treatment as the 777's chatter).
+        d["switch_277_73X"] = new SimConnect.SimVarDefinition
+        {
+            Name = "switch_277_73X",
+            DisplayName = "Passenger Chatter",
+            Type = SimConnect.SimVarType.LVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            ReverseDisplayOrder = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "On", [100] = "Off" }
+        };
+
         return d;
     }
 
@@ -1499,6 +1549,14 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 "PED_annunLOCK_FAIL", "PED_annunAUTO_UNLK"
             },
             // Stab-trim cutout switches moved to the Control Stand panel (pedestal).
+
+            // Pedestal — Boris Audio Works Soundpack (737 xBAW). Backing L-vars
+            // differ from the 777 (see the GetVariables block); switch_102_73X
+            // (emer exit lights) is intentionally not exposed.
+            ["Boris Audio Works"] = new List<string>
+            {
+                "ANR_onoff", "HydPumpMfg", "switch_277_73X"
+            },
         };
     }
 
@@ -3174,6 +3232,17 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         if (varDef.Type == SimConnect.SimVarType.Event)
         {
             simConnect.SendEvent(varDef.Name);
+            return true;
+        }
+
+        // ------------------------------------------------------------------
+        // 0b. Plain L-vars (Boris/xBAW Audio Works soundpack: ANR_onoff,
+        //     HydPumpMfg, switch_277_73X). These accept a direct SetLVar and
+        //     persist — verified in-sim — unlike the PMDG-owned CDA switches.
+        // ------------------------------------------------------------------
+        if (varDef.Type == SimConnect.SimVarType.LVar)
+        {
+            simConnect.SetLVar(varDef.Name, value);
             return true;
         }
 
