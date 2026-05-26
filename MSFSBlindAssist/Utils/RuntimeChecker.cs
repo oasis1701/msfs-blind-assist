@@ -201,15 +201,10 @@ public static class RuntimeChecker
         }
         else
         {
-#if DEBUG
-            result.Messages.Add("⚠ navdatareader directory not found (allowed in Debug build)");
-            StartupLogger.Log("⚠ Missing: navdatareader directory (allowed in Debug build)");
-#else
             result.Success = false;
             result.Errors.Add("✗ navdatareader directory not found");
             result.MissingComponents.Add("navdatareader directory");
             StartupLogger.Log($"✗ Missing: navdatareader directory");
-#endif
         }
     }
 

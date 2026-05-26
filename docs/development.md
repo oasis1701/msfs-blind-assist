@@ -90,7 +90,6 @@ See [Taxi Guidance](taxi-guidance.md) for the full feature reference.
 - Application requires x64 build for proper SimConnect operation
 - C# 13 with nullable reference types enabled
 - **IMPORTANT - SimConnect Connection Timing:** `IsConnected = true` must be set immediately after SimConnect constructor, BEFORE calling `SetupDataDefinitions()`. This ensures `StartContinuousMonitoring()` can execute properly (it has a guard clause requiring `IsConnected == true`). See SimConnectManager.cs:251
-- Debug builds allow startup without a copied `navdatareader` folder so local UI/SimConnect work can run from `bin\x64\Debug\net9.0-windows` even when the external `Navdatareader-win-1.2.3` package is not present in the checkout. Release/package builds still require `navdatareader`; `MSFSBlindAssist.csproj` copies it only when `..\Navdatareader-win-1.2.3\` exists.
 
 ## Dependencies
 

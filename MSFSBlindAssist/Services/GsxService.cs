@@ -619,23 +619,28 @@ public sealed class GsxService : IDisposable
         if (string.IsNullOrWhiteSpace(tooltip))
             return false;
 
-        string normalized = tooltip.ReplaceLineEndings(" ").ToLowerInvariant();
-        if (!normalized.Contains("baggage"))
-            return false;
+        foreach (string line in tooltip.ReplaceLineEndings("\n").Split('\n'))
+        {
+            string normalizedLine = line.ToLowerInvariant();
+            if (!normalizedLine.Contains("baggage"))
+                continue;
 
-        if (normalized.Contains("unloading") || normalized.Contains("unloaded"))
-            operation = "unloading";
-        else if (normalized.Contains("loading") || normalized.Contains("loaded"))
-            operation = "loading";
-        else
-            return false;
+            var match = PercentRegex.Match(normalizedLine);
+            if (!match.Success || !int.TryParse(match.Groups[1].Value, out percent))
+                continue;
 
-        var match = PercentRegex.Match(normalized);
-        if (!match.Success || !int.TryParse(match.Groups[1].Value, out percent))
-            return false;
+            if (normalizedLine.Contains("unloading") || normalizedLine.Contains("unloaded"))
+                operation = "unloading";
+            else if (normalizedLine.Contains("loading") || normalizedLine.Contains("loaded"))
+                operation = "loading";
+            else
+                continue;
 
-        percent = Math.Clamp(percent, 0, 100);
-        return true;
+            percent = Math.Clamp(percent, 0, 100);
+            return true;
+        }
+
+        return false;
     }
 
     // ─────────────────────────────────────────────────────────────────────
