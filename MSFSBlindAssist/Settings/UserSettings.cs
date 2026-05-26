@@ -204,6 +204,13 @@ public class UserSettings
         // Default false (feet) — aviation uses feet for taxiway spacing.
         public bool GroundTrafficUseMetres { get; set; } = false;
 
+        /// <summary>
+        /// When true, parking.radius is interpreted as metres when filtering
+        /// "show only fitting" gates/stands. When false, it is interpreted as
+        /// feet. Default true preserves the pre-option behavior.
+        /// </summary>
+        public bool TaxiGuidanceParkingRadiusUseMetres { get; set; } = true;
+
         // Weather Settings
         public bool WeatherAutoAnnounceEnabled { get; set; } = false;
 
@@ -305,6 +312,7 @@ public class UserSettings
             TaxiGuidanceAnnounceCrossings = TaxiGuidanceAnnounceCrossings,
             TaxiGuidanceGroundSpeedAnnounceInterval = TaxiGuidanceGroundSpeedAnnounceInterval,
             GroundTrafficUseMetres = GroundTrafficUseMetres,
+            TaxiGuidanceParkingRadiusUseMetres = TaxiGuidanceParkingRadiusUseMetres,
             GsxBackgroundMonitoring = GsxBackgroundMonitoring
         };
     }

@@ -2,6 +2,8 @@
 namespace MSFSBlindAssist.Database.Models;
 public class ParkingSpot
 {
+    private const double FeetToMeters = 0.3048;
+
     public int Id { get; set; }
     public string AirportICAO { get; set; }
     public string Name { get; set; }
@@ -66,6 +68,18 @@ public class ParkingSpot
             12 => "Dock",
             _ => "Other"
         };
+    }
+
+    public bool FitsAircraftWingspan(double wingspanFeet, bool parkingRadiusIsMetres)
+    {
+        if (wingspanFeet <= 0) return true;
+
+        if (parkingRadiusIsMetres)
+        {
+            return Radius >= (wingspanFeet * FeetToMeters) / 2.0;
+        }
+
+        return Radius >= wingspanFeet / 2.0;
     }
 
     public override string ToString()

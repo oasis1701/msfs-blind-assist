@@ -1,6 +1,7 @@
 using MSFSBlindAssist.Database;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Accessibility;
+using MSFSBlindAssist.Settings;
 
 namespace MSFSBlindAssist.Forms;
 public partial class GateTeleportForm : Form
@@ -293,7 +294,9 @@ public partial class GateTeleportForm : Form
             : _allParkingSpots.Where(p => p.GetFilterCategory() == selectedFilter).ToList();
 
         if (fitFilterCheckBox.Checked && _aircraftWingspan > 0)
-            filtered = filtered.Where(p => p.Radius >= _aircraftWingspan / 2.0).ToList();
+            filtered = filtered
+                .Where(p => p.FitsAircraftWingspan(_aircraftWingspan, SettingsManager.Current.TaxiGuidanceParkingRadiusUseMetres))
+                .ToList();
 
         gateListBox.Items.Clear();
         gateListBox.Items.AddRange(filtered.ToArray());
