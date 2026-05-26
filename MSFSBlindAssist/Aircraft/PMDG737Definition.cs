@@ -4256,6 +4256,13 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 return true;
             }
 
+            case HotkeyAction.SetNavRadios:
+            {
+                hotkeyManager.ExitInputHotkeyMode();
+                ShowNavRadiosDialog(simConnect, announcer, parentForm);
+                return true;
+            }
+
             // ------------------------------------------------------------------
             // Distance Readouts
             // ------------------------------------------------------------------
@@ -4868,5 +4875,52 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             simConnect.SendPMDGEventViaTransmitWithTarget(eventId, flag);
             if (i < count - 1) await System.Threading.Tasks.Task.Delay(40);
         }
+    }
+
+    /// <summary>
+    /// Opens the NAV Radios dialog (Ctrl+N). The PMDG 737 honors the standard
+    /// SimConnect radio events, so frequencies/courses are set directly via
+    /// NAV1/2_RADIO_SET_HZ (active frequency, Hz) and VOR1/2_SET (course/OBS,
+    /// degrees) — verified in-sim. The dialog is pre-filled with the current
+    /// values via RequestNavRadioInfo (one-shot); that callback can arrive off
+    /// the UI thread, so the form is opened through parentForm.BeginInvoke.
+    /// </summary>
+    private void ShowNavRadiosDialog(
+        SimConnect.SimConnectManager simConnect,
+        ScreenReaderAnnouncer announcer,
+        Form parentForm)
+    {
+        if (!simConnect.IsConnected)
+        {
+            announcer.AnnounceImmediate("Not connected to simulator.");
+            return;
+        }
+
+        simConnect.RequestNavRadioInfo(navData =>
+        {
+            void Open()
+            {
+                var form = new NavRadiosForm(
+                    announcer,
+                    navData.Nav1Freq, (int)Math.Round(navData.Nav1Obs),
+                    navData.Nav2Freq, (int)Math.Round(navData.Nav2Obs),
+                    settings =>
+                    {
+                        // Active frequency in whole Hz (the form already snapped to a 50 kHz channel).
+                        simConnect.SendEvent("NAV1_RADIO_SET_HZ", (uint)Math.Round(settings.Nav1FreqMHz * 1_000_000.0));
+                        simConnect.SendEvent("VOR1_SET", (uint)settings.Nav1Course);
+                        simConnect.SendEvent("NAV2_RADIO_SET_HZ", (uint)Math.Round(settings.Nav2FreqMHz * 1_000_000.0));
+                        simConnect.SendEvent("VOR2_SET", (uint)settings.Nav2Course);
+                        announcer.AnnounceImmediate(
+                            $"NAV 1 {settings.Nav1FreqMHz:0.00}, course {settings.Nav1Course}. " +
+                            $"NAV 2 {settings.Nav2FreqMHz:0.00}, course {settings.Nav2Course}.");
+                    });
+                form.Show(parentForm);
+            }
+
+            if (parentForm.IsDisposed) return;
+            if (parentForm.InvokeRequired) parentForm.BeginInvoke((Action)Open);
+            else Open();
+        });
     }
 }

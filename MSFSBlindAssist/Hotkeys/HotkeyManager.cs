@@ -82,6 +82,7 @@ public class HotkeyManager : IDisposable
         private const int HOTKEY_DISTANCE_TO_DEST = 9101;
         private const int HOTKEY_DISTANCE_TO_TOD = 9102;
         private const int HOTKEY_NAV_RADIO_INFO = 9103;
+        private const int HOTKEY_NAV_RADIOS_SET = 9212;   // Input mode: Ctrl+N (Set NAV radios)
         private const int HOTKEY_TAKEOFF_ASSIST = 9058;
         private const int HOTKEY_TOGGLE_ECAM_MONITORING = 9059;
         private const int HOTKEY_HAND_FLY_MODE = 9075;
@@ -518,6 +519,9 @@ public class HotkeyManager : IDisposable
                         case HOTKEY_FCU_SET_BARO:
                             TriggerHotkey(HotkeyAction.FCUSetBaro);
                             break;
+                        case HOTKEY_NAV_RADIOS_SET:
+                            TriggerHotkey(HotkeyAction.SetNavRadios);
+                            break;
                         case HOTKEY_TOGGLE_AP2:
                             TriggerHotkey(HotkeyAction.ToggleAutopilot2);
                             break;
@@ -852,6 +856,7 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_FCU_SET_VS, MOD_CONTROL, 0x56);      // Ctrl+V (Set VS)
             RegisterHotKey(windowHandle, HOTKEY_FCU_SET_AUTOPILOT, MOD_CONTROL, 0x50); // Ctrl+P (Set Autopilot)
             RegisterHotKey(windowHandle, HOTKEY_FCU_SET_BARO, MOD_CONTROL, 0x42);     // Ctrl+B (Set Baro)
+            RegisterHotKey(windowHandle, HOTKEY_NAV_RADIOS_SET, MOD_CONTROL, 0x4E);   // Ctrl+N (Set NAV Radios)
             RegisterHotKey(windowHandle, HOTKEY_TOGGLE_AP2, MOD_CONTROL, 0x4F);      // Ctrl+O (Toggle Autopilot 2)
             RegisterHotKey(windowHandle, HOTKEY_TRACK_FIX, MOD_SHIFT, 0x46);         // Shift+F (Track Fix Window)
             RegisterHotKey(windowHandle, HOTKEY_FENIX_MCDU, MOD_SHIFT, 0x4D);       // Shift+M (Fenix MCDU)
@@ -901,6 +906,7 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_FCU_SET_VS);
             UnregisterHotKey(windowHandle, HOTKEY_FCU_SET_AUTOPILOT);
             UnregisterHotKey(windowHandle, HOTKEY_FCU_SET_BARO);
+            UnregisterHotKey(windowHandle, HOTKEY_NAV_RADIOS_SET);
             UnregisterHotKey(windowHandle, HOTKEY_TOGGLE_AP2);
             UnregisterHotKey(windowHandle, HOTKEY_TRACK_FIX);
             UnregisterHotKey(windowHandle, HOTKEY_FENIX_MCDU);
@@ -1213,6 +1219,7 @@ public class HotkeyManager : IDisposable
         ReadGear,
         ReadAltimeter,
         FCUSetBaro,
+        SetNavRadios,
         ReadGrossWeightKg,
         ShowNavigationDisplay,
         ReadWaypointInfo,

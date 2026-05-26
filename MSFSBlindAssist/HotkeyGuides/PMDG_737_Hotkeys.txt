@@ -168,7 +168,13 @@ MCP Set Values:
 Altimeter:
   Ctrl+B     Set altimeter (input dialog accepts hPa 900-1060 or
              inHg 26.50-31.30; branches on entered magnitude, so both
-             "1013" and "29.92" work, locale-safe)
+             "1013" and "29.92" work, locale-safe; includes a Standard
+             button that sets the altimeter to STD / 29.92)
+
+Radios:
+  Ctrl+N     Set NAV radios (input dialog with NAV 1 and NAV 2 frequency
+             and course; pre-filled with current values, applies all on
+             Set; frequency 108.00-117.95 MHz, course 0-359 degrees)
 
 Taxi Guidance:
   Shift+Y    Open Taxi Assist Form (enter ATC taxi clearance, start guidance)
