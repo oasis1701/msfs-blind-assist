@@ -124,19 +124,6 @@ public partial class MainForm : Form
         var settings = MSFSBlindAssist.Settings.SettingsManager.Current;
         currentAircraft = LoadAircraftFromCode(settings.LastAircraft ?? "A320");
 
-        // Diagnostic: log the starting aircraft so we can see what the saved profile is.
-        try
-        {
-            var logPath = System.IO.Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "MSFSBlindAssist", "pmdg_ng3_diag.log");
-            var dir = System.IO.Path.GetDirectoryName(logPath);
-            if (dir != null) System.IO.Directory.CreateDirectory(dir);
-            System.IO.File.AppendAllText(logPath,
-                $"{DateTime.Now:HH:mm:ss.fff}  MainForm ctor: starting aircraft = {currentAircraft.GetType().Name} (code={currentAircraft.AircraftCode}, IPMDGAircraft={(currentAircraft is Aircraft.IPMDGAircraft)})\n");
-        }
-        catch { }
-
         InitializeComponent();
         InitializeManagers();
 
@@ -378,16 +365,6 @@ public partial class MainForm : Form
 
             // After SimConnect connects, if current aircraft is a PMDG type, initialize data manager.
             // Use IPMDGAircraft (not == "PMDG_777") so the 737 NG3 is initialized too.
-            try
-            {
-                var logPath = System.IO.Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                    "MSFSBlindAssist", "pmdg_ng3_diag.log");
-                System.IO.File.AppendAllText(logPath,
-                    $"{DateTime.Now:HH:mm:ss.fff}  OnConnect: currentAircraft={currentAircraft.GetType().Name}, is IPMDGAircraft={currentAircraft is IPMDGAircraft}\n");
-            }
-            catch { }
-
             if (currentAircraft is IPMDGAircraft)
             {
                 simConnectManager.InitializePMDG(currentAircraft);
@@ -3326,18 +3303,6 @@ public partial class MainForm : Form
 
     private void SwitchAircraft(IAircraftDefinition newAircraft)
     {
-        try
-        {
-            var logPath = System.IO.Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "MSFSBlindAssist", "pmdg_ng3_diag.log");
-            var dir = System.IO.Path.GetDirectoryName(logPath);
-            if (dir != null) System.IO.Directory.CreateDirectory(dir);
-            System.IO.File.AppendAllText(logPath,
-                $"{DateTime.Now:HH:mm:ss.fff}  SwitchAircraft: from={currentAircraft?.GetType().Name} to={newAircraft.GetType().Name} (code={newAircraft.AircraftCode}, IPMDGAircraft={newAircraft is IPMDGAircraft}, IsConnected={simConnectManager.IsConnected})\n");
-        }
-        catch { }
-
         // Update the aircraft instance
         currentAircraft = newAircraft;
 
