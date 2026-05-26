@@ -5,13 +5,14 @@ using MSFSBlindAssist.Forms;
 namespace MSFSBlindAssist.Aircraft;
 
 /// <summary>
-/// Aircraft definition for the PMDG 737-800 (NG3). Variables, panels, hotkey
+/// Aircraft definition for the PMDG 737 (NG3) family. Variables, panels, hotkey
 /// routing, MCP direct-set dialogs, and announcement logic. Tasks C2–C13 fill
-/// in the data dictionaries and behavior methods.
+/// in the data dictionaries and behavior methods. The NG3 SDK is shared across
+/// the 737 variants, so this definition serves all of them.
 /// </summary>
 public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
 {
-    public override string AircraftName => "PMDG 737-800";
+    public override string AircraftName => "PMDG 737";
     public override string AircraftCode => "PMDG_737";
 
     // EFB accessibility bridge is supported on the 738 — it ships the identical
@@ -59,6 +60,16 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     private double _lastSquawkCode = double.NaN;
     private byte _lastAttendPressCount;
     private byte _lastGrdCallPressCount;
+
+    // Speed-brake lever position, derived from the ARMED / EXTENDED annunciators.
+    // The NG3 SDK exposes no lever-position field (unlike the 777's
+    // FCTL_Speedbrake_Lever) and PMDG does not drive the stock SPOILERS HANDLE
+    // POSITION SimVar, so these two annunciators are the only readback available.
+    // We cache each one and announce a single consolidated 777-style callout
+    // ("Speed brake down/armed/extended") when the combined state changes.
+    private bool _speedbrakeArmed;
+    private bool _speedbrakeExtended;
+    private string? _lastSpeedbrakeState;
 
     // Flap-position announcement state. The NG3 SDK exposes only the analog
     // trailing-edge needle (MAIN_TEFlapsNeedle, degrees) — no commanded-detent
@@ -644,8 +655,6 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         d["AIR_annunOFFSCHED_DESCENT"]  = Annun("AIR_annunOFFSCHED_DESCENT", "Off Schedule Descent");
         d["AIR_annunALTN"]              = Annun("AIR_annunALTN", "Pressurization ALTN");
         d["AIR_annunMANUAL"]            = Annun("AIR_annunMANUAL", "Pressurization MANUAL");
-        d["AIR_DisplayFltAlt"]          = Display("AIR_DisplayFltAlt", "Flight Altitude Display");
-        d["AIR_DisplayLandAlt"]         = Display("AIR_DisplayLandAlt", "Landing Altitude Display");
         // TFM: `_neutralClosedOrOpenStates` (0:opened, 1:neutral, 2:closed) — REVERSED.
         // SDK line 292: `unsigned int AIR_OutflowValveSwitch; // 0=CLOSE  1=NEUTRAL  2=OPEN`.
         // Resolved with SDK: TFM's dict has byte 0 and byte 2 labelled swapped from the SDK
@@ -914,7 +923,17 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
             IsAnnounced = false
         };
-        d["MAIN_annunLE_FLAPS_EXT"]      = Annun("MAIN_annunLE_FLAPS_EXT", "LE Flaps Ext");
+        // LE Flaps Ext light illuminates when the leading-edge devices are fully
+        // extended — redundant with the flap-position callout, so keep it defined/
+        // monitored but NOT announced (mirrors the LE Flaps Transit handling above).
+        d["MAIN_annunLE_FLAPS_EXT"]      = new SimConnect.SimVarDefinition
+        {
+            Name = "MAIN_annunLE_FLAPS_EXT",
+            DisplayName = "LE Flaps Ext",
+            Type = SimConnect.SimVarType.PMDGVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = false
+        };
         // TFM: [0]=nose, [1]=left, [2]=right. SDK lines 400-401: arrays declared without
         // inline comments. Resolved with the [0]=Left, [1]=Nose, [2]=Right convention because
         // the PMDG NG3 struct orders the related overhead annunciators as
@@ -1286,8 +1305,9 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             },
             ["ADIRU"] = new List<string>
             {
-                "IRS_DisplaySelector", "IRS_SysDisplay_R",
+                // IRS mode selectors come first, then the ISDU display selectors.
                 "IRS_ModeSelector_0", "IRS_ModeSelector_1",
+                "IRS_DisplaySelector", "IRS_SysDisplay_R",
                 "IRS_DisplayLeft", "IRS_DisplayRight"
             },
             ["Hydraulics"] = new List<string>
@@ -1308,9 +1328,11 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             ["Engines"] = new List<string>
             {
                 "ENG_EECSwitch_0", "ENG_EECSwitch_1",
-                "ENG_StartSelector_0", "ENG_StartSelector_1",
                 "ENG_IgnitionSelector",
-                "ENG_StartLever_0", "ENG_StartLever_1",
+                // Each engine's fuel lever sits directly after its start switch
+                // (Start 1, Fuel 1, Start 2, Fuel 2) — mirrors the PMDG 777 layout.
+                "ENG_StartSelector_0", "ENG_StartLever_0",
+                "ENG_StartSelector_1", "ENG_StartLever_1",
             },
             ["Anti-Ice"] = new List<string>
             {
@@ -1329,7 +1351,6 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 "AIR_BleedAirSwitch_0", "AIR_BleedAirSwitch_1", "AIR_APUBleedAirSwitch",
                 "AIR_IsolationValveSwitch",
                 "AIR_OutflowValveSwitch", "AIR_PressurizationModeSelector",
-                "AIR_DisplayFltAlt", "AIR_DisplayLandAlt",
                 "AIR_EquipCoolingSupplyNORM", "AIR_EquipCoolingExhaustNORM"
             },
             ["Lights"] = new List<string>
@@ -3623,6 +3644,38 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             }
 
             // -------------------------------------------------------------
+            // Speed brake lever position (consolidated, 777-style). Derived
+            // from the ARMED / EXTENDED annunciators — the only readback the
+            // NG3 SDK offers. Cache whichever one fired, recompute the combined
+            // state (EXTENDED wins over ARMED), and announce only on change.
+            // The initial baseline is captured silently. Returning true here
+            // suppresses the per-annunciator "on/off" auto-announcements.
+            // -------------------------------------------------------------
+            case "MAIN_annunSPEEDBRAKE_ARMED":
+            case "MAIN_annunSPEEDBRAKE_EXTENDED":
+            {
+                if (varName == "MAIN_annunSPEEDBRAKE_ARMED")
+                    _speedbrakeArmed = value > 0.5;
+                else
+                    _speedbrakeExtended = value > 0.5;
+
+                string state = _speedbrakeExtended ? "Speed brake extended"
+                             : _speedbrakeArmed    ? "Speed brake armed"
+                             :                       "Speed brake down";
+
+                if (_lastSpeedbrakeState == null)
+                {
+                    _lastSpeedbrakeState = state;   // baseline, announce silently
+                    return true;
+                }
+                if (state == _lastSpeedbrakeState)
+                    return true;
+                _lastSpeedbrakeState = state;
+                announcer.Announce(state);
+                return true;
+            }
+
+            // -------------------------------------------------------------
             // MCP display values. IASBlank/VertSpeedBlank are flags that
             // other handlers consult; we absorb their own announcements
             // silently here. MCP_IASMach below 10 is Mach, otherwise knots.
@@ -3959,8 +4012,6 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             case "IRS_DisplayRight":
             case "ELEC_MeterDisplayTop":
             case "ELEC_MeterDisplayBottom":
-            case "AIR_DisplayFltAlt":
-            case "AIR_DisplayLandAlt":
             case "FMC_flightNumber":
                 return true;
 
@@ -4740,7 +4791,30 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                     return (true, "");
                 return (false, "Enter inHg between 26.50 and 31.30");
             },
-            new List<ToggleButtonDef>(),
+            new List<ToggleButtonDef>
+            {
+                // Set the altimeter to standard (29.92 inHg / 1013 hPa) via the
+                // EFIS baro knob's STD push (EVT_EFIS_CPT_BARO_STD). That event is
+                // a QNH<->STD toggle and there is no STD-state readback on the NG3,
+                // so we guard on the current setting: only push when the altimeter
+                // is meaningfully off standard (which means we're not already in
+                // STD, since STD always reads 29.92). This avoids toggling STD off.
+                // The push is a momentary button: NG3 commits it only with a
+                // LEFTSINGLE+LEFTRELEASE pair (SendPMDGMomentaryToggle). A bare
+                // dwData transmit — including 0 — plays no click and never commits.
+                // The dialog's button handler announces "Standard" as confirmation.
+                new ToggleButtonDef(
+                    "&Standard",
+                    () => "",
+                    () =>
+                    {
+                        double? curInHg = simConnect.GetCachedVariableValue("ALTIMETER_SETTING");
+                        if (curInHg != null && Math.Abs(curInHg.Value - 29.92) < 0.02)
+                            return;   // already at standard pressure — don't toggle STD off
+                        if (EventIds.TryGetValue("EVT_EFIS_CPT_BARO_STD", out int stdEvId))
+                            _ = simConnect.SendPMDGMomentaryToggle((uint)stdEvId, 1);
+                    })
+            },
             input =>
             {
                 if (!TryParseBaro(input, out double value)) return;

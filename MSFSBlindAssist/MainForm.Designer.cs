@@ -256,11 +256,11 @@ namespace MSFSBlindAssist
             //
             // pmdg737MenuItem
             //
-            this.pmdg737MenuItem.AccessibleName = "PMDG Boeing 737-800";
-            this.pmdg737MenuItem.AccessibleDescription = "Switch to PMDG Boeing 737-800";
+            this.pmdg737MenuItem.AccessibleName = "PMDG Boeing 737";
+            this.pmdg737MenuItem.AccessibleDescription = "Switch to PMDG Boeing 737";
             this.pmdg737MenuItem.Name = "pmdg737MenuItem";
             this.pmdg737MenuItem.Size = new System.Drawing.Size(240, 26);
-            this.pmdg737MenuItem.Text = "PMDG Boeing &737-800";
+            this.pmdg737MenuItem.Text = "PMDG Boeing &737";
             this.pmdg737MenuItem.Checked = false;
             this.pmdg737MenuItem.Click += new System.EventHandler(this.PMDG737MenuItem_Click);
             //
