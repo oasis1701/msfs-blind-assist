@@ -233,6 +233,8 @@ The "Hold position" wording on runway-aligned matches the FAA AIM 5-2-5 / ICAO D
 
 **Parking-listing parity with the gate-teleport dialog.** The taxi-assist form's parking dropdown is built directly from `IAirportDataProvider.GetParkingSpots(icao)` — the same data source the gate-teleport dialog uses — and labels each entry with `ParkingSpot.ToString()` (which expands to e.g. `"P 21 - Ramp GA Large (Jetway)"`). Earlier the listing was driven off graph nodes that happened to be tagged with a `ParkingName` during graph build, which silently dropped any parking spot whose lat/lon didn't have a nearby graph node — common in third-party scenery (Colombo, KORD payware, etc.) whose taxi-path data lags the parking layout. A pilot given "Parking 21" by ATC would see "Parking 21" in the gate-teleport dialog but NOT in the taxi-assist form. Now the same set of entries appears in both. Each parking spot's actual lat/lon is the lineup convergence target; routing endpoint is the nearest graph node within 100 m (the `MAX_PARKING_TO_GRAPH_M` floor — beyond that, the spot is dropped because there's no realistic taxi path to reach it).
 
+**Fitting-stand radius units.** Both the taxi-assist parking destination list and the gate-teleport dialog share `ParkingSpot.FitsAircraftWingspan(...)` for the "show only fitting" filter. The aircraft wingspan comes from SimConnect in feet; the parking radius comes from the navdatareader database and may be interpreted as metres or feet through the Taxi Guidance Options checkbox `Treat parking radius as metres (untick for feet)`. The default is metres to preserve the historical filter behavior.
+
 ### Taxiway connectivity in the route form
 
 `TaxiAssistForm`'s "Add Taxiway" dropdown lists **every named taxiway at the airport**, with heuristically-connected taxiways at the top (sorted by aircraft distance) and the rest alphabetically below. The connectivity heuristic is `TaxiGraph.GetConnectedTaxiwayNames(taxiwayName)`, which counts **named-taxiway crossings** (transitions between distinct named taxiways) rather than raw graph hops — walking along the seed taxiway and through unnamed connectors is free; only crossing into a different named taxiway counts toward the budget (`maxCrossings = 2`).
@@ -361,6 +363,7 @@ Opened from the File menu. User-tunable settings:
 - **Steering tone waveform** — Sine (default), Square, Triangle, Sawtooth. Picks up from `HandFlyWaveType` to share the hand-fly tone palette.
 - **Steering tone volume** — slider, default 0.05 (quiet — intended to sit under ATC chatter).
 - **Announce taxiway crossings** — checkbox, default on. Turns off the ~150 ft "Crossing taxiway X" callouts for pilots who find them chatty.
+- **Treat parking radius as metres** — checkbox, default on. Controls how the "show only fitting" filter interprets `parking.radius` from the navdatareader database in both the taxi-assist parking destination list and the gate-teleport dialog. Untick to interpret radius values as feet.
 
 All settings persist through `UserSettings`.
 

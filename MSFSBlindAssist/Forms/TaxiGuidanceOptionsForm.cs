@@ -21,6 +21,7 @@ public class TaxiGuidanceOptionsForm : Form
     private Label gsAnnounceLabel = null!;
     private ComboBox gsAnnounceCombo = null!;
     private CheckBox useMetresCheckBox = null!;
+    private CheckBox parkingRadiusMetresCheckBox = null!;
 
     private Button okButton = null!;
     private Button cancelButton = null!;
@@ -34,6 +35,7 @@ public class TaxiGuidanceOptionsForm : Form
     public bool AnnounceCrossings { get; private set; }
     public int GroundSpeedAnnounceInterval { get; private set; }
     public bool GroundTrafficUseMetres { get; private set; }
+    public bool ParkingRadiusUseMetres { get; private set; }
 
     public TaxiGuidanceOptionsForm(
         HandFlyWaveType currentWaveform,
@@ -42,7 +44,8 @@ public class TaxiGuidanceOptionsForm : Form
         bool hardPanSteeringTone,
         bool announceCrossings,
         int groundSpeedAnnounceInterval,
-        bool groundTrafficUseMetres)
+        bool groundTrafficUseMetres,
+        bool parkingRadiusUseMetres)
     {
         SelectedToneWaveform = currentWaveform;
         SelectedVolume = currentVolume;
@@ -51,6 +54,7 @@ public class TaxiGuidanceOptionsForm : Form
         AnnounceCrossings = announceCrossings;
         GroundSpeedAnnounceInterval = groundSpeedAnnounceInterval;
         GroundTrafficUseMetres = groundTrafficUseMetres;
+        ParkingRadiusUseMetres = parkingRadiusUseMetres;
         InitializeComponent();
         SetupAccessibility();
     }
@@ -58,7 +62,7 @@ public class TaxiGuidanceOptionsForm : Form
     private void InitializeComponent()
     {
         Text = "Taxi Guidance Options";
-        Size = new Size(500, 475);
+        Size = new Size(500, 520);
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -254,11 +258,24 @@ public class TaxiGuidanceOptionsForm : Form
         useMetresCheckBox.CheckedChanged += (s, e) =>
             GroundTrafficUseMetres = useMetresCheckBox.Checked;
 
+        // Parking radius unit interpretation for "show only fitting" gate filters.
+        parkingRadiusMetresCheckBox = new CheckBox
+        {
+            Text = "Treat parking radius as metres (untick for feet)",
+            Location = new Point(20, 355),
+            Size = new Size(450, 25),
+            Checked = ParkingRadiusUseMetres,
+            AccessibleName = "Treat parking radius as metres",
+            AccessibleDescription = "When enabled, parking radius values from the airport database are interpreted as metres for the show only fitting stands filter. Untick to interpret them as feet."
+        };
+        parkingRadiusMetresCheckBox.CheckedChanged += (s, e) =>
+            ParkingRadiusUseMetres = parkingRadiusMetresCheckBox.Checked;
+
         // OK Button
         okButton = new Button
         {
             Text = "OK",
-            Location = new Point(310, 390),
+            Location = new Point(310, 430),
             Size = new Size(75, 30),
             DialogResult = DialogResult.OK,
             AccessibleName = "Apply Settings",
@@ -275,7 +292,7 @@ public class TaxiGuidanceOptionsForm : Form
         cancelButton = new Button
         {
             Text = "Cancel",
-            Location = new Point(395, 390),
+            Location = new Point(395, 430),
             Size = new Size(75, 30),
             DialogResult = DialogResult.Cancel,
             AccessibleName = "Cancel",
@@ -292,6 +309,7 @@ public class TaxiGuidanceOptionsForm : Form
             announceCrossingsCheckBox,
             gsAnnounceLabel, gsAnnounceCombo,
             useMetresCheckBox,
+            parkingRadiusMetresCheckBox,
             okButton, cancelButton
         });
 
@@ -310,6 +328,7 @@ public class TaxiGuidanceOptionsForm : Form
         announceCrossingsCheckBox.TabIndex = tabIdx++;
         gsAnnounceCombo.TabIndex = tabIdx++;
         useMetresCheckBox.TabIndex = tabIdx++;
+        parkingRadiusMetresCheckBox.TabIndex = tabIdx++;
         okButton.TabIndex = tabIdx++;
         cancelButton.TabIndex = tabIdx++;
 

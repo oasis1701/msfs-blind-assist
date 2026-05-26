@@ -705,9 +705,11 @@ public class TaxiAssistForm : Form
             var allSpots = _dataProvider.GetParkingSpots(_currentIcao);
 
             // Wingspan filter: spot must be large enough for the aircraft.
-            // Radius is centre-to-edge; half-wingspan must fit within it.
+            // Parking radius units vary by data source; user controls interpretation.
             if (chkFitFilter.Checked && _aircraftWingspan > 0)
-                allSpots = allSpots.Where(p => p.Radius >= _aircraftWingspan / 2.0).ToList();
+                allSpots = allSpots
+                    .Where(p => p.FitsAircraftWingspan(_aircraftWingspan, SettingsManager.Current.TaxiGuidanceParkingRadiusUseMetres))
+                    .ToList();
 
             var parkingSpots = allSpots
                 .OrderBy(p => categoryOrder.TryGetValue(p.GetFilterCategory(), out int o) ? o : 99)
