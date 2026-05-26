@@ -71,11 +71,18 @@ public class LandingExit
     /// </summary>
     public string ExitType { get; set; } = "";
 
+    /// <summary>
+    /// Which side of the runway this exit is on — "Left" or "Right" relative to the
+    /// landing direction. Empty string when the bearing is unknown (ExitBearingTrue == 0).
+    /// </summary>
+    public string ExitSide { get; set; } = "";
+
     public override string ToString()
     {
         int distFt = (int)Math.Round(DistanceFromThresholdFeet);
         int angle = (int)Math.Round(ExitAngleDegrees);
         string nameLabel = string.IsNullOrEmpty(TaxiwayName) ? "(unnamed)" : TaxiwayName;
-        return $"{nameLabel} — {distFt} ft from threshold ({ExitType}, {angle}°)";
+        string sideLabel = string.IsNullOrEmpty(ExitSide) ? "" : $", {ExitSide.ToLower()}";
+        return $"{nameLabel} — {distFt} ft from threshold ({ExitType}{sideLabel}, {angle}°)";
     }
 }
