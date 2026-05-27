@@ -39,6 +39,7 @@ public partial class ValueInputForm : Form
         private readonly IntPtr previousWindow;
         private readonly List<ToggleButtonDef> _toggleDefs;
         private readonly List<Button> _toggleButtons = new();
+        private System.Windows.Forms.Timer? _toggleRefreshTimer;
         private readonly Func<bool>? _inputEnabledCheck;
 
         public ValueInputForm(string title, string parameterType, string rangeText,
@@ -62,6 +63,18 @@ public partial class ValueInputForm : Form
 
             InitializeComponent(title, rangeText);
             SetupAccessibility();
+            if (_toggleDefs.Count > 0)
+            {
+                _toggleRefreshTimer = new System.Windows.Forms.Timer { Interval = 400 };
+                _toggleRefreshTimer.Tick += (_, _) => RefreshToggleLabels();
+                _toggleRefreshTimer.Start();
+                FormClosed += (_, _) =>
+                {
+                    _toggleRefreshTimer?.Stop();
+                    _toggleRefreshTimer?.Dispose();
+                    _toggleRefreshTimer = null;
+                };
+            }
         }
 
         private void InitializeComponent(string title, string rangeText)
@@ -201,6 +214,28 @@ public partial class ValueInputForm : Form
             valueTextBox.AccessibleDescription = enabled
                 ? $"Enter {parameterType} value and press Enter to set"
                 : $"Engage mode first to enter a value";
+        }
+
+        // Keeps every toggle button's label in sync with live mode state while
+        // the dialog is open. Pressing one mode can change others (e.g. LNAV
+        // drops Heading Select) and the AP can change modes on its own; the
+        // one-shot post-press refresh missed both. Updates only on change to
+        // avoid screen-reader churn. Never announces — that stays in the click
+        // handler for the button the user actually pressed.
+        private void RefreshToggleLabels()
+        {
+            for (int j = 0; j < _toggleButtons.Count; j++)
+            {
+                var b = _toggleButtons[j];
+                var d = _toggleDefs[j];
+                string s = d.GetCurrentState();
+                string lbl = string.IsNullOrEmpty(s) ? d.Label : $"{d.Label}: {s}";
+                if (b.Text != lbl)
+                {
+                    b.Text = lbl;
+                    b.AccessibleName = lbl.Replace("&", "");
+                }
+            }
         }
 
         private void SetupAccessibility()
