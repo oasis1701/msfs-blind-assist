@@ -43,6 +43,9 @@ namespace MSFSBlindAssist.Patching
             ("pmdg-aircraft-77l", "pmdg-777-200LR"),
             ("pmdg-aircraft-77f", "pmdg-777F"),
             ("pmdg-aircraft-738", "pmdg-737-800"),
+            ("pmdg-aircraft-736", "pmdg-737-600"),
+            ("pmdg-aircraft-737", "pmdg-737-700"),
+            ("pmdg-aircraft-739", "pmdg-737-900"),
         };
 
         private static string GetHtmlRelativePath(string variantSubfolder) =>
