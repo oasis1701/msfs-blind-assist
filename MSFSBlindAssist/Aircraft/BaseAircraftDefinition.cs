@@ -17,8 +17,12 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     private int? _lastAnnouncedAltitudeThousands = null;
     private double? _lastAnnouncedRawAltitude = null;
 
-    // Elevator trim announcement toggle and debounce
-    private bool _trimAnnouncementsEnabled = true;
+    // Elevator trim announcement toggle and debounce.
+    // Toggle is protected so aircraft that source trim from a custom variable
+    // (e.g. the PMDG 737 reads the L-var ElevTrimTT — the stock ELEVATOR TRIM
+    // POSITION SimVar is not driven by the NG3) can honour the shared Shift+T
+    // gate from their own ProcessSimVarUpdate.
+    protected bool _trimAnnouncementsEnabled = true;
     private double _lastAnnouncedTrimDeg = double.NaN;
 
     // Glideslope alive/lost tracking

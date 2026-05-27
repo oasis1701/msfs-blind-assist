@@ -61,6 +61,11 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     private byte _lastAttendPressCount;
     private byte _lastGrdCallPressCount;
 
+    // Stabilizer trim, in units. Last announced value rounded to 0.1 unit, or
+    // NaN until the baseline is absorbed silently on connect. See the
+    // MON_PMDG737_StabTrim case in ProcessSimVarUpdate.
+    private double _lastAnnouncedStabTrim = double.NaN;
+
     // Speed-brake lever position, derived from the ARMED / EXTENDED annunciators.
     // The NG3 SDK exposes no lever-position field (unlike the 777's
     // FCTL_Speedbrake_Lever) and PMDG does not drive the stock SPOILERS HANDLE
@@ -147,6 +152,12 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             return _cachedVariables;
 
         var variables = GetBaseVariables();
+        // The PMDG NG3 does not drive the stock ELEVATOR TRIM POSITION SimVar
+        // (it stays pinned within ±0.04° regardless of actual stabilizer trim),
+        // so the base-class trim announcement is meaningless for this aircraft.
+        // Drop it and announce the real stab-trim units from the PMDG L-var
+        // ElevTrimTT instead (MON_PMDG737_StabTrim, added in GetPMDGVariables).
+        variables.Remove("MON_ElevatorTrim");
         var pmdgVars = GetPMDGVariables();
         foreach (var kvp in pmdgVars)
             variables[kvp.Key] = kvp.Value;
@@ -250,6 +261,22 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             };
 
         var d = new Dictionary<string, SimConnect.SimVarDefinition>();
+
+        // Stabilizer trim, in units (~0–17). The NG3 SDK exposes no trim
+        // position field (only the cutout switches) and PMDG does not drive the
+        // stock ELEVATOR TRIM POSITION SimVar, so the real value comes from the
+        // PMDG L-var ElevTrimTT — the same source TFM used and the value the
+        // cockpit stab-trim indicator shows. Announced (in units) by the
+        // MON_PMDG737_StabTrim case in ProcessSimVarUpdate; the stock-SimVar
+        // trim announcement is removed in GetVariables.
+        d["MON_PMDG737_StabTrim"] = new SimConnect.SimVarDefinition
+        {
+            Name = "ElevTrimTT",
+            DisplayName = "Stab Trim",
+            Type = SimConnect.SimVarType.LVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true  // custom announcement in ProcessSimVarUpdate
+        };
 
         // =================================================================
         // AFT OVERHEAD — ADIRU (IRS)
@@ -3687,6 +3714,30 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
 
         switch (varName)
         {
+            // -------------------------------------------------------------
+            // Stabilizer trim, in units (~0–17). Sourced from the PMDG L-var
+            // ElevTrimTT (see GetPMDGVariables) because the NG3 does not drive
+            // the stock ELEVATOR TRIM POSITION SimVar. Gated by the shared
+            // Shift+T trim-announcement toggle; baseline absorbed silently on
+            // connect; debounced so sub-0.1-unit electric-trim jitter is quiet.
+            // -------------------------------------------------------------
+            case "MON_PMDG737_StabTrim":
+            {
+                if (!_trimAnnouncementsEnabled)
+                    return true;
+                double rounded = Math.Round(value, 1);
+                if (double.IsNaN(_lastAnnouncedStabTrim))
+                {
+                    _lastAnnouncedStabTrim = rounded;
+                    return true;
+                }
+                if (Math.Abs(rounded - _lastAnnouncedStabTrim) < 0.05)
+                    return true;
+                _lastAnnouncedStabTrim = rounded;
+                announcer.Announce($"Trim {rounded:F1}");
+                return true;
+            }
+
             // -------------------------------------------------------------
             // Altimeter setting (inHg). 29.92 = "Altimeter standard".
             // Otherwise announce both hPa and inches. Suppress the initial
