@@ -4748,12 +4748,21 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         // autothrottle armed (so it reads "Off" and no-ops on the ground), it
         // duplicated a mode command rather than helping set a speed, and the
         // SPEED-mode state is already announced via the MCP_annunSPEED monitor.
-        // Speed Intervene stays — it's a momentary push (opens the MCP speed
-        // window in VNAV); the NG3 SDK exposes no intervene state to label it with.
+        //
+        // Speed Intervene's engaged state IS observable, but only in VNAV: there
+        // SPD INTV latches the MCP speed window OPEN (MCP_IASBlank=0 → you've
+        // intervened and own the speed) vs BLANK (=1 → the FMC owns the speed) —
+        // verified live in the sim. Outside VNAV the window is always open and
+        // intervene is not applicable, so we show no state. The Task-3 refresh
+        // timer keeps the label live while the dialog is open.
         var toggles = new List<ToggleButtonDef>
         {
-            new("Speed &Intervene", () => "",
-                () => SendPMDGMomentary(simConnect, "EVT_MCP_SPD_INTV_SWITCH")),
+            new("Speed &Intervene", () =>
+            {
+                if (dm == null) return "";
+                if ((int)dm.GetFieldValue("MCP_annunVNAV") == 0) return "";  // intervene only applies in VNAV
+                return (int)dm.GetFieldValue("MCP_IASBlank") == 0 ? "Engaged" : "Off";
+            }, () => SendPMDGMomentary(simConnect, "EVT_MCP_SPD_INTV_SWITCH")),
         };
 
         var dialog = new ValueInputForm(
