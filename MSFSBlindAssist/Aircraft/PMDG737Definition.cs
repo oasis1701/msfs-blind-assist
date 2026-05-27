@@ -3988,7 +3988,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             // confirmed to track in-sim (false<->true with brakes applied).
             // -------------------------------------------------------------
             case "PED_annunParkingBrake":
-                announcer.AnnounceImmediate(value > 0.5 ? "Parking brake set" : "Parking brake released");
+                announcer.AnnounceImmediate(value > 0.5 ? "Parking brake on" : "Parking brake off");
                 return true;
 
             // -------------------------------------------------------------
