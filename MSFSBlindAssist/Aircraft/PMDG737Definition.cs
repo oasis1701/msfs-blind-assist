@@ -930,19 +930,8 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         d["MCP_CmdB"]    = Momentary("MCP_CmdB",    "CMD B");
         d["MCP_CwsA"]    = Momentary("MCP_CwsA",    "CWS A");
         d["MCP_CwsB"]    = Momentary("MCP_CwsB",    "CWS B");
-        d["MCP_N1Btn"]   = Momentary("MCP_N1Btn",   "N1");
-        d["MCP_SpeedBtn"]= Momentary("MCP_SpeedBtn","Speed");
-        d["MCP_CoBtn"]   = Momentary("MCP_CoBtn",   "Change Over");
-        d["MCP_VnavBtn"] = Momentary("MCP_VnavBtn", "VNAV");
-        d["MCP_SpdIntv"] = Momentary("MCP_SpdIntv", "Speed Intervention");
-        d["MCP_LvlChg"]  = Momentary("MCP_LvlChg",  "Level Change");
-        d["MCP_HdgSel"]  = Momentary("MCP_HdgSel",  "Heading Select");
         d["MCP_AppBtn"]  = Momentary("MCP_AppBtn",  "Approach");
-        d["MCP_AltHold"] = Momentary("MCP_AltHold", "Altitude Hold");
-        d["MCP_VsBtn"]   = Momentary("MCP_VsBtn",   "Vertical Speed");
         d["MCP_VorLoc"]  = Momentary("MCP_VorLoc",  "VOR LOC");
-        d["MCP_LnavBtn"] = Momentary("MCP_LnavBtn", "LNAV");
-        d["MCP_AltIntv"] = Momentary("MCP_AltIntv", "Altitude Intervention");
         // SDK lines 542-593: MCP_IASOverspeedFlash / MCP_IASUnderspeedFlash / MCP_indication_powered
         // (all bool). These are warning-light / indication STATES, not controls — announced on change
         // (see ProcessSimVarUpdate) but NOT listed in the MCP panel (mirrors the 777).
@@ -1572,15 +1561,10 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             },
             ["MCP"] = new List<string>
             {
-                "MCP_Course_0", "MCP_Course_1",
-                "MCP_IASMach", "MCP_Heading", "MCP_Altitude", "MCP_VertSpeed",
                 "MCP_FDSw_0", "MCP_FDSw_1",
                 "MCP_ATArmSw", "MCP_BankLimitSel", "MCP_DisengageBar",
-                // Autopilot push buttons (momentary)
                 "MCP_CmdA", "MCP_CmdB", "MCP_CwsA", "MCP_CwsB",
-                "MCP_N1Btn", "MCP_SpeedBtn", "MCP_SpdIntv", "MCP_CoBtn",
-                "MCP_LvlChg", "MCP_VnavBtn", "MCP_LnavBtn", "MCP_HdgSel",
-                "MCP_VorLoc", "MCP_AppBtn", "MCP_AltHold", "MCP_AltIntv", "MCP_VsBtn"
+                "MCP_AppBtn", "MCP_VorLoc"
             },
             ["Display Select"] = new List<string>
             {
@@ -3091,19 +3075,8 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             ["MCP_CmdB"]    = "EVT_MCP_CMD_B_SWITCH",
             ["MCP_CwsA"]    = "EVT_MCP_CWS_A_SWITCH",
             ["MCP_CwsB"]    = "EVT_MCP_CWS_B_SWITCH",
-            ["MCP_N1Btn"]   = "EVT_MCP_N1_SWITCH",
-            ["MCP_SpeedBtn"]= "EVT_MCP_SPEED_SWITCH",
-            ["MCP_CoBtn"]   = "EVT_MCP_CO_SWITCH",
-            ["MCP_VnavBtn"] = "EVT_MCP_VNAV_SWITCH",
-            ["MCP_SpdIntv"] = "EVT_MCP_SPD_INTV_SWITCH",
-            ["MCP_LvlChg"]  = "EVT_MCP_LVL_CHG_SWITCH",
-            ["MCP_HdgSel"]  = "EVT_MCP_HDG_SEL_SWITCH",
             ["MCP_AppBtn"]  = "EVT_MCP_APP_SWITCH",
-            ["MCP_AltHold"] = "EVT_MCP_ALT_HOLD_SWITCH",
-            ["MCP_VsBtn"]   = "EVT_MCP_VS_SWITCH",
             ["MCP_VorLoc"]  = "EVT_MCP_VOR_LOC_SWITCH",
-            ["MCP_LnavBtn"] = "EVT_MCP_LNAV_SWITCH",
-            ["MCP_AltIntv"] = "EVT_MCP_ALT_INTV_SWITCH",
             // Control stand / pedestal
             ["CS_TOGA_1"]   = "EVT_CONTROL_STAND_TOGA1_SWITCH",
             ["CS_TOGA_2"]   = "EVT_CONTROL_STAND_TOGA2_SWITCH",
