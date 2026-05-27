@@ -322,7 +322,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = false
             };
-        static SimConnect.SimVarDefinition Momentary(string name, string display) =>
+        static SimConnect.SimVarDefinition Momentary(string name, string display, string? stateVar = null) =>
             new SimConnect.SimVarDefinition
             {
                 Name = name,
@@ -330,7 +330,8 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Never,
                 RenderAsButton = true,
-                IsMomentary = true
+                IsMomentary = true,
+                StateVariable = stateVar
             };
 
         var d = new Dictionary<string, SimConnect.SimVarDefinition>();
@@ -926,12 +927,12 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         // LEFTRELEASE (see the momentary branch in HandleUIVariableSet) — verified
         // in-sim 2026-05-25: CDA param=1 does not commit these. The engaged state
         // is reflected by the MCP_annun* lamps above.
-        d["MCP_CmdA"]    = Momentary("MCP_CmdA",    "CMD A");
-        d["MCP_CmdB"]    = Momentary("MCP_CmdB",    "CMD B");
-        d["MCP_CwsA"]    = Momentary("MCP_CwsA",    "CWS A");
-        d["MCP_CwsB"]    = Momentary("MCP_CwsB",    "CWS B");
-        d["MCP_AppBtn"]  = Momentary("MCP_AppBtn",  "Approach");
-        d["MCP_VorLoc"]  = Momentary("MCP_VorLoc",  "VOR LOC");
+        d["MCP_CmdA"]    = Momentary("MCP_CmdA",    "CMD A",    "MCP_annunCMD_A");
+        d["MCP_CmdB"]    = Momentary("MCP_CmdB",    "CMD B",    "MCP_annunCMD_B");
+        d["MCP_CwsA"]    = Momentary("MCP_CwsA",    "CWS A",    "MCP_annunCWS_A");
+        d["MCP_CwsB"]    = Momentary("MCP_CwsB",    "CWS B",    "MCP_annunCWS_B");
+        d["MCP_AppBtn"]  = Momentary("MCP_AppBtn",  "Approach", "MCP_annunAPP");
+        d["MCP_VorLoc"]  = Momentary("MCP_VorLoc",  "VOR LOC",  "MCP_annunVOR_LOC");
         // SDK lines 542-593: MCP_IASOverspeedFlash / MCP_IASUnderspeedFlash / MCP_indication_powered
         // (all bool). These are warning-light / indication STATES, not controls — announced on change
         // (see ProcessSimVarUpdate) but NOT listed in the MCP panel (mirrors the 777).
