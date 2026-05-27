@@ -66,15 +66,70 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     // MON_PMDG737_StabTrim case in ProcessSimVarUpdate.
     private double _lastAnnouncedStabTrim = double.NaN;
 
-    // Speed-brake lever position, derived from the ARMED / EXTENDED annunciators.
-    // The NG3 SDK exposes no lever-position field (unlike the 777's
-    // FCTL_Speedbrake_Lever) and PMDG does not drive the stock SPOILERS HANDLE
-    // POSITION SimVar, so these two annunciators are the only readback available.
-    // We cache each one and announce a single consolidated 777-style callout
-    // ("Speed brake down/armed/extended") when the combined state changes.
-    private bool _speedbrakeArmed;
-    private bool _speedbrakeExtended;
-    private string? _lastSpeedbrakeState;
+    // Speed-brake lever position. The NG3 SDK exposes no lever-position field
+    // (the 777 has FCTL_Speedbrake_Lever; the 737 does not) and PMDG does not
+    // drive the stock SPOILERS HANDLE POSITION SimVar, so the analog handle
+    // position comes from the PMDG L-var switch_679_73X. The L-var sweeps
+    // CONTINUOUSLY as the lever animates (verified live — e.g. 62 / 337 caught
+    // mid-move), and continuous monitoring only fires on change, so a value that
+    // settles at a detent produces one final event then silence. We therefore
+    // announce on a trailing-edge SETTLE timer: every change restarts the timer
+    // and the resting detent is announced once movement stops. Detent values
+    // were verified live against MSFS NG3 (TFM's 272 for flight was a P3D value;
+    // it reads 337 here). Positions that come to rest between detents say nothing.
+    private readonly object _speedBrakeLock = new object();
+    private double _speedBrakeLatestValue = double.NaN;
+    private int _lastSpeedBrakeDetentAnnounced = int.MinValue;
+    private System.Threading.Timer? _speedBrakeSettleTimer;
+    private ScreenReaderAnnouncer? _speedBrakeAnnouncer;
+    private const int SpeedBrakeSettleMs = 300;
+    private static readonly (double Value, string Label)[] SpeedBrakeDetents =
+    {
+        (0,   "Speed brake down"),
+        (100, "Speed brake armed"),
+        (250, "Speed brake 50 percent"),
+        (337, "Speed brake flight"),
+        (400, "Speed brake fully deployed"),
+    };
+
+    // The detent index the handle is resting at (within tolerance), or -1 if it
+    // came to rest between named detents.
+    private static int SettledSpeedBrakeDetent(double value)
+    {
+        for (int i = 0; i < SpeedBrakeDetents.Length; i++)
+            if (Math.Abs(value - SpeedBrakeDetents[i].Value) <= 10.0) return i;
+        return -1;
+    }
+
+    // Fires SpeedBrakeSettleMs after the handle stops moving (the timer is
+    // restarted on every value change). Announces the resting detent once,
+    // skipping the initial baseline and unchanged positions. Runs on a
+    // thread-pool thread; ScreenReaderAnnouncer.Announce is queue-locked and
+    // safe to call off the UI thread.
+    private void OnSpeedBrakeSettle(object? state)
+    {
+        double value;
+        ScreenReaderAnnouncer? announcer;
+        lock (_speedBrakeLock)
+        {
+            value = _speedBrakeLatestValue;
+            announcer = _speedBrakeAnnouncer;
+        }
+        if (announcer == null || double.IsNaN(value)) return;
+
+        int idx = SettledSpeedBrakeDetent(value);
+        if (idx < 0) return;  // resting between detents — say nothing
+
+        bool announce;
+        lock (_speedBrakeLock)
+        {
+            if (idx == _lastSpeedBrakeDetentAnnounced) return;
+            announce = _lastSpeedBrakeDetentAnnounced != int.MinValue;  // skip baseline
+            _lastSpeedBrakeDetentAnnounced = idx;
+        }
+        if (announce)
+            announcer.Announce(SpeedBrakeDetents[idx].Label);
+    }
 
     // Flap-position announcement state. The NG3 SDK exposes only the analog
     // trailing-edge needle (MAIN_TEFlapsNeedle, degrees) — no commanded-detent
@@ -273,6 +328,20 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         {
             Name = "ElevTrimTT",
             DisplayName = "Stab Trim",
+            Type = SimConnect.SimVarType.LVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true  // custom announcement in ProcessSimVarUpdate
+        };
+
+        // Speed-brake lever position. The NG3 SDK exposes no lever-position
+        // field and PMDG does not drive the stock SPOILERS HANDLE POSITION
+        // SimVar, so the handle position comes from the PMDG L-var
+        // switch_679_73X (same source TFM used). Snapped to detents and
+        // announced by the MON_PMDG737_SpeedBrake case in ProcessSimVarUpdate.
+        d["MON_PMDG737_SpeedBrake"] = new SimConnect.SimVarDefinition
+        {
+            Name = "switch_679_73X",
+            DisplayName = "Speed Brake",
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
             IsAnnounced = true  // custom announcement in ProcessSimVarUpdate
@@ -3764,36 +3833,36 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             }
 
             // -------------------------------------------------------------
-            // Speed brake lever position (consolidated, 777-style). Derived
-            // from the ARMED / EXTENDED annunciators — the only readback the
-            // NG3 SDK offers. Cache whichever one fired, recompute the combined
-            // state (EXTENDED wins over ARMED), and announce only on change.
-            // The initial baseline is captured silently. Returning true here
-            // suppresses the per-annunciator "on/off" auto-announcements.
+            // Speed-brake lever position, from the PMDG L-var switch_679_73X
+            // (see MON_PMDG737_SpeedBrake in GetPMDGVariables) — the NG3 SDK
+            // exposes no lever-position field and PMDG doesn't drive the stock
+            // SPOILERS HANDLE POSITION SimVar, so this is the only source for
+            // the full position (down / armed / 50% / flight / fully deployed).
+            // The L-var sweeps as the lever animates; the resting detent is
+            // announced via the trailing-edge settle timer (OnSpeedBrakeSettle).
+            // Replaces the old 3-state annunciator-derived callout.
             // -------------------------------------------------------------
-            case "MAIN_annunSPEEDBRAKE_ARMED":
-            case "MAIN_annunSPEEDBRAKE_EXTENDED":
+            case "MON_PMDG737_SpeedBrake":
             {
-                if (varName == "MAIN_annunSPEEDBRAKE_ARMED")
-                    _speedbrakeArmed = value > 0.5;
-                else
-                    _speedbrakeExtended = value > 0.5;
-
-                string state = _speedbrakeExtended ? "Speed brake extended"
-                             : _speedbrakeArmed    ? "Speed brake armed"
-                             :                       "Speed brake down";
-
-                if (_lastSpeedbrakeState == null)
+                // The L-var sweeps as the lever animates; defer the callout to a
+                // trailing-edge settle timer (restarted on every change) so we
+                // announce only the resting detent, not values swept through.
+                lock (_speedBrakeLock)
                 {
-                    _lastSpeedbrakeState = state;   // baseline, announce silently
-                    return true;
+                    _speedBrakeLatestValue = value;
+                    _speedBrakeAnnouncer = announcer;
                 }
-                if (state == _lastSpeedbrakeState)
-                    return true;
-                _lastSpeedbrakeState = state;
-                announcer.Announce(state);
+                (_speedBrakeSettleTimer ??= new System.Threading.Timer(OnSpeedBrakeSettle))
+                    .Change(SpeedBrakeSettleMs, System.Threading.Timeout.Infinite);
                 return true;
             }
+
+            // Speed-brake position is now announced from the L-var above;
+            // suppress the redundant ARMED / EXTENDED annunciator-light callouts
+            // (the separate DO NOT ARM caution light still announces normally).
+            case "MAIN_annunSPEEDBRAKE_ARMED":
+            case "MAIN_annunSPEEDBRAKE_EXTENDED":
+                return true;
 
             // -------------------------------------------------------------
             // MCP display values. IASBlank/VertSpeedBlank are flags that
