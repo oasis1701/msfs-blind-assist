@@ -4744,13 +4744,14 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
 
         var dm = simConnect.PMDGDataManager;
 
+        // The A/T SPEED-mode button was removed here: it only engages with the
+        // autothrottle armed (so it reads "Off" and no-ops on the ground), it
+        // duplicated a mode command rather than helping set a speed, and the
+        // SPEED-mode state is already announced via the MCP_annunSPEED monitor.
+        // Speed Intervene stays — it's a momentary push (opens the MCP speed
+        // window in VNAV); the NG3 SDK exposes no intervene state to label it with.
         var toggles = new List<ToggleButtonDef>
         {
-            new("&Speed", () =>
-            {
-                if (dm == null) return "?";
-                return (int)dm.GetFieldValue("MCP_annunSPEED") > 0 ? "Engaged" : "Off";
-            }, () => SendPMDGMomentary(simConnect, "EVT_MCP_SPEED_SWITCH")),
             new("Speed &Intervene", () => "",
                 () => SendPMDGMomentary(simConnect, "EVT_MCP_SPD_INTV_SWITCH")),
         };
