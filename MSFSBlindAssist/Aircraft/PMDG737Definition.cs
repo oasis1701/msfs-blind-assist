@@ -258,6 +258,24 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 OnlyAnnounceValueDescriptionMatches = true,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "on" }
             };
+        // Cabin/cargo door open-or-closed annunciator. The NG3 SDK models each
+        // door as a single bool (set = the overhead DOORS annunciator is lit =
+        // door open/unlatched). There is NO armed / closing / opening state — the
+        // 777 gets those from its multi-state DOOR_state[] array, but the 737 SDK
+        // has only the boolean, so the 737 announces open/closed only. Same shape
+        // as Annun but with door-appropriate "open"/"closed" labels instead of
+        // "on"/"off" (which read as the odd "Forward entry door off").
+        static SimConnect.SimVarDefinition Door(string name, string display) =>
+            new SimConnect.SimVarDefinition
+            {
+                Name = name,
+                DisplayName = display,
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                OnlyAnnounceValueDescriptionMatches = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "closed", [1] = "open" }
+            };
         // AnnunInverted: for annunciators named `annunOFF` / `annunBUS_OFF` / `annunSOURCE_OFF` etc.
         // These lamps light when the system they describe is OFF (the lamp NAME is the abnormal
         // condition the lamp signals). TFM's `_offOrOnStates` (0:on, 1:off) treats byte=1 as
@@ -761,18 +779,18 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             "Pressurization Mode", "AUTO", "ALTN", "MAN");
 
         // Doors
-        d["DOOR_annunFWD_ENTRY"]          = Annun("DOOR_annunFWD_ENTRY", "Forward Entry Door");
-        d["DOOR_annunFWD_SERVICE"]        = Annun("DOOR_annunFWD_SERVICE", "Forward Service Door");
-        d["DOOR_annunAIRSTAIR"]           = Annun("DOOR_annunAIRSTAIR", "Airstair Door");
-        d["DOOR_annunLEFT_FWD_OVERWING"]  = Annun("DOOR_annunLEFT_FWD_OVERWING", "Left Forward Overwing");
-        d["DOOR_annunRIGHT_FWD_OVERWING"] = Annun("DOOR_annunRIGHT_FWD_OVERWING", "Right Forward Overwing");
-        d["DOOR_annunFWD_CARGO"]          = Annun("DOOR_annunFWD_CARGO", "Forward Cargo");
-        d["DOOR_annunEQUIP"]              = Annun("DOOR_annunEQUIP", "Equipment Hatch");
-        d["DOOR_annunLEFT_AFT_OVERWING"]  = Annun("DOOR_annunLEFT_AFT_OVERWING", "Left Aft Overwing");
-        d["DOOR_annunRIGHT_AFT_OVERWING"] = Annun("DOOR_annunRIGHT_AFT_OVERWING", "Right Aft Overwing");
-        d["DOOR_annunAFT_CARGO"]          = Annun("DOOR_annunAFT_CARGO", "Aft Cargo");
-        d["DOOR_annunAFT_ENTRY"]          = Annun("DOOR_annunAFT_ENTRY", "Aft Entry Door");
-        d["DOOR_annunAFT_SERVICE"]        = Annun("DOOR_annunAFT_SERVICE", "Aft Service Door");
+        d["DOOR_annunFWD_ENTRY"]          = Door("DOOR_annunFWD_ENTRY", "Forward Entry Door");
+        d["DOOR_annunFWD_SERVICE"]        = Door("DOOR_annunFWD_SERVICE", "Forward Service Door");
+        d["DOOR_annunAIRSTAIR"]           = Door("DOOR_annunAIRSTAIR", "Airstair Door");
+        d["DOOR_annunLEFT_FWD_OVERWING"]  = Door("DOOR_annunLEFT_FWD_OVERWING", "Left Forward Overwing");
+        d["DOOR_annunRIGHT_FWD_OVERWING"] = Door("DOOR_annunRIGHT_FWD_OVERWING", "Right Forward Overwing");
+        d["DOOR_annunFWD_CARGO"]          = Door("DOOR_annunFWD_CARGO", "Forward Cargo");
+        d["DOOR_annunEQUIP"]              = Door("DOOR_annunEQUIP", "Equipment Hatch");
+        d["DOOR_annunLEFT_AFT_OVERWING"]  = Door("DOOR_annunLEFT_AFT_OVERWING", "Left Aft Overwing");
+        d["DOOR_annunRIGHT_AFT_OVERWING"] = Door("DOOR_annunRIGHT_AFT_OVERWING", "Right Aft Overwing");
+        d["DOOR_annunAFT_CARGO"]          = Door("DOOR_annunAFT_CARGO", "Aft Cargo");
+        d["DOOR_annunAFT_ENTRY"]          = Door("DOOR_annunAFT_ENTRY", "Aft Entry Door");
+        d["DOOR_annunAFT_SERVICE"]        = Door("DOOR_annunAFT_SERVICE", "Aft Service Door");
 
         // =================================================================
         // BOTTOM OVERHEAD — Landing lights, APU, engine start, ignition, exterior
