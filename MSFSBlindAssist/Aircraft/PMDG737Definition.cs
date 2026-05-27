@@ -4707,16 +4707,6 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 if (dm == null) return "?";
                 return (int)dm.GetFieldValue("MCP_annunLNAV") > 0 ? "Engaged" : "Off";
             }, () => SendPMDGMomentary(simConnect, "EVT_MCP_LNAV_SWITCH")),
-            new("&VOR LOC", () =>
-            {
-                if (dm == null) return "?";
-                return (int)dm.GetFieldValue("MCP_annunVOR_LOC") > 0 ? "Engaged" : "Off";
-            }, () => SendPMDGMomentary(simConnect, "EVT_MCP_VOR_LOC_SWITCH")),
-            new("&Approach", () =>
-            {
-                if (dm == null) return "?";
-                return (int)dm.GetFieldValue("MCP_annunAPP") > 0 ? "Engaged" : "Off";
-            }, () => SendPMDGMomentary(simConnect, "EVT_MCP_APP_SWITCH")),
         };
 
         var dialog = new ValueInputForm(
