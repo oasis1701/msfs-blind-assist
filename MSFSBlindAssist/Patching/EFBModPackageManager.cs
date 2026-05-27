@@ -18,9 +18,13 @@ namespace MSFSBlindAssist.Patching
 
     public static class EFBModPackageManager
     {
-        // Bump this version when the mod package structure or bridge JS changes.
-        // On app startup, if the installed version is older, UpdateModPackage will
-        // re-patch HTML for all variants, copy the latest bridge JS, and regenerate layout.json.
+        // Bump this version when the bridge JS or package STRUCTURE changes — on app
+        // startup UpdateModPackage then re-patches HTML for all variants, copies the
+        // latest bridge JS, and regenerates layout.json on every existing install.
+        // Adding a new PMDG variant to Variants does NOT require a bump: UpdateModPackage
+        // also fires when a variant installed in the sim is missing its override folder
+        // (see HasMissingVariantOverride), so a variant the user installs later is picked
+        // up without forcing a no-op re-patch on installs that are already complete.
         private const int BridgeVersion = 5;
         private const string VersionFileName = "bridge-version.txt";
 
@@ -345,8 +349,15 @@ namespace MSFSBlindAssist.Patching
             if (!File.Exists(bridgeJsSourcePath))
                 return ModPackageResult.BridgeJsSourceNotFound;
 
+            // Run the update when the bridge version advanced OR when a PMDG variant that
+            // is installed in this sim is missing its override folder in our package. The
+            // missing-variant case covers a variant the user installed AFTER the package
+            // already reached the current BridgeVersion — a version-only gate would never
+            // pick it up. (This was the 738-only-works-in-2020 bug: the 2024 package's
+            // version file already read the current value, so the 737 override folder was
+            // never created and the version check permanently blocked the retry.)
             int installedVersion = GetInstalledVersion(communityFolderPath);
-            if (installedVersion >= BridgeVersion)
+            if (installedVersion >= BridgeVersion && !HasMissingVariantOverride(communityFolderPath))
                 return ModPackageResult.AlreadyUpToDate;
 
             try
@@ -412,6 +423,31 @@ namespace MSFSBlindAssist.Patching
                 System.Diagnostics.Debug.WriteLine($"EFBModPackageManager: Remove failed: {ex.Message}");
                 return ModPackageResult.InstallFailed;
             }
+        }
+
+        /// <summary>
+        /// Returns true when a PMDG variant whose original tablet HTML is present in this
+        /// Community folder does NOT yet have a corresponding override folder in our package.
+        /// Lets UpdateModPackage pick up a variant the user installed after the package already
+        /// reached the current BridgeVersion, without forcing a re-patch on installs that are
+        /// genuinely complete (which would pop a spurious "updated" dialog at every launch).
+        /// </summary>
+        private static bool HasMissingVariantOverride(string communityFolderPath)
+        {
+            string packagePath = Path.Combine(communityFolderPath, PackageFolderName);
+            foreach (var (packageFolder, variantSubfolder) in Variants)
+            {
+                // Is this PMDG variant actually installed in this sim?
+                string originalHtml = Path.Combine(communityFolderPath, packageFolder, GetHtmlRelativePath(variantSubfolder), HtmlFileName);
+                if (!File.Exists(originalHtml))
+                    continue; // not installed — nothing for us to override
+
+                // Do we already have an override folder for it?
+                string overrideHtml = Path.Combine(packagePath, GetHtmlRelativePath(variantSubfolder), HtmlFileName);
+                if (!File.Exists(overrideHtml))
+                    return true; // a present variant lacks our override
+            }
+            return false;
         }
 
         /// <summary>

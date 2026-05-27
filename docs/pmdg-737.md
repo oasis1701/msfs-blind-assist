@@ -165,8 +165,13 @@ ships the **byte-identical** EFB app as the 777, so it reuses the same bridge JS
   SimBrief + Send to FMC) and Preferences (all settings incl. SimBrief alias + Navigraph sign-in) —
   reusing `DashboardPanel`/`PrefsPanel`/`EfbAppNavigator`/`PreferencesCache` from `Forms/PMDG777`.
 - `MainForm.ShowPMDGEFBDialog` constructs `PMDG737EFBForm` for `PMDG_737`, else `PMDG777EFBForm`.
-- `EFBModPackageManager.Variants` includes `("pmdg-aircraft-738", "pmdg-737-800")`; `BridgeVersion`
-  was bumped so existing installs re-patch and create the 738 override folder.
+- `EFBModPackageManager.Variants` includes `("pmdg-aircraft-738", "pmdg-737-800")`. Existing installs
+  pick up the 738 override folder via `UpdateModPackage`'s `HasMissingVariantOverride` check — it fires
+  even when the installed `BridgeVersion` already matches, so a 738 the user installs *after* the
+  package reached the current version still gets patched (the version-only gate previously left it
+  stuck: an install whose version file already read the current value never re-scanned, so the 738
+  override was never created — the "EFB works in 2020 but not 2024" bug). Adding a new variant no
+  longer requires a `BridgeVersion` bump; bump only when the bridge JS or package structure changes.
 
 First-time install needs **one sim restart** for MSFS to load the override HTML (the bridge then
 injects when the tablet opens). Performance / Ground Ops / W&B / Manuals are out of scope for this
