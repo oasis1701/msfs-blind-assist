@@ -181,10 +181,6 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 "Anti-Ice", "Air Systems", "Lights", "Signs", "Oxygen",
                 "Wipers", "Flight Controls", "Flight Recorder"
             },
-            ["Glareshield"] = new List<string>
-            {
-                "Warnings", "EFIS Captain", "EFIS First Officer", "MCP", "Display Select"
-            },
             ["Forward Panel"] = new List<string>
             {
                 "Landing Gear", "Autobrake", "GPWS", "Instruments"
@@ -193,6 +189,10 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             {
                 "Control Stand", "Transponder/TCAS", "Fire Protection", "Cargo Fire",
                 "Radio", "Calls", "Flight Deck Door", "Boris Audio Works"
+            },
+            ["Glareshield"] = new List<string>
+            {
+                "MCP", "Warnings", "EFIS Captain", "EFIS First Officer", "Display Select"
             },
         };
     }
