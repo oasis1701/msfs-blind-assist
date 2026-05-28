@@ -1273,8 +1273,27 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         // Flight deck door
         d["PED_annunLOCK_FAIL"]   = Annun("PED_annunLOCK_FAIL", "Door Lock Fail");
         d["PED_annunAUTO_UNLK"]   = Annun("PED_annunAUTO_UNLK", "Door Auto Unlock");
-        d["PED_FltDkDoorSel"]     = Selector("PED_FltDkDoorSel", "Flight Deck Door",
-            "UNLKD", "AUTO Pushed In", "AUTO", "DENY");
+        // PED_FltDkDoorSel: positions 0 (UNLKD), 1 (AUTO Pushed In) and 3 (DENY) are
+        // spring-loaded — only position 2 (AUTO) is stable. A combo selector can't
+        // reach the spring-loaded positions (they immediately return to AUTO), so this
+        // is exposed as a read-only status field. The two synthetic momentary buttons
+        // below dispatch EVT_FLT_DK_DOOR_KNOB with parameter 0 (Unlock) or 3 (Deny)
+        // for the press-and-spring-back cockpit interaction.
+        d["PED_FltDkDoorSel"]     = new SimConnect.SimVarDefinition
+        {
+            Name = "PED_FltDkDoorSel",
+            DisplayName = "Flight Deck Door",
+            Type = SimConnect.SimVarType.PMDGVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            RenderAsReadOnlyStatus = true,
+            ValueDescriptions = new Dictionary<double, string>
+            {
+                [0] = "UNLKD", [1] = "AUTO Pushed In", [2] = "AUTO", [3] = "DENY"
+            }
+        };
+        d["PED_FltDkDoor_Unlock"] = Momentary("PED_FltDkDoor_Unlock", "Unlock flight deck door");
+        d["PED_FltDkDoor_Deny"]   = Momentary("PED_FltDkDoor_Deny",   "Deny flight deck entry");
 
         // =================================================================
         // FMS — V-speeds, flaps, cruise / landing alt, transition, perf
@@ -1638,7 +1657,8 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             },
             ["Flight Deck Door"] = new List<string>
             {
-                "PED_FltDkDoorSel",
+                "PED_FltDkDoorSel",                          // read-only status (AUTO at rest)
+                "PED_FltDkDoor_Unlock", "PED_FltDkDoor_Deny", // momentary press buttons
                 "PED_annunLOCK_FAIL", "PED_annunAUTO_UNLK"
             },
             // Stab-trim cutout switches moved to the Control Stand panel (pedestal).
@@ -3389,6 +3409,23 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 if (currentPosition == target) return true;
                 _ = DispatchStandbyPowerAsync(
                     simConnect, (uint)sgId, (uint)ssId, currentPosition, target);
+            }
+            return true;
+        }
+
+        // ------------------------------------------------------------------
+        // 0d. Flight deck door momentary buttons. PED_FltDkDoorSel positions
+        //     0/1/3 are spring-loaded — they momentarily latch and then PMDG
+        //     springs them back to position 2 (AUTO). Single CDA write with
+        //     the target position parameter is the documented PMDG pattern
+        //     for spring-loaded selectors (same as APU_Selector, etc.).
+        // ------------------------------------------------------------------
+        if (varKey == "PED_FltDkDoor_Unlock" || varKey == "PED_FltDkDoor_Deny")
+        {
+            if (EventIds.TryGetValue("EVT_FLT_DK_DOOR_KNOB", out int doorEvId))
+            {
+                int target = varKey == "PED_FltDkDoor_Unlock" ? 0 : 3;
+                simConnect.SendPMDGEvent("EVT_FLT_DK_DOOR_KNOB", (uint)doorEvId, target);
             }
             return true;
         }
