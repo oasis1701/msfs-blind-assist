@@ -1,5 +1,5 @@
 // FlyByWire A380X — MSFS Blind Assist accessibility bridge
-// BRIDGE_JS_VERSION: 0.5.0-flat
+// BRIDGE_JS_VERSION: 0.6.0-stage
 //
 // Selectors and event names verified against the open-source FBW aircraft
 // repo (master branch, fbw-a380x):
@@ -60,7 +60,7 @@ if (window._fbwA380_bridge_loaded) {
 } else { window._fbwA380_bridge_loaded = true;
 
 var _a380 = {
-    JS_VERSION: '0.5.0-flat',
+    JS_VERSION: '0.6.0-stage',
     SERVER_URL: 'http://localhost:19777',
     SCREEN_POLL_INTERVAL: 350,
     EFB_POLL_INTERVAL: 800,
@@ -74,8 +74,31 @@ var _a380 = {
     lastEfbHash: null,
     activeMcdu: 1,           // 1 = CAPT, 2 = FO. The A380X has no third MCDU.
     _mcduElements: [],
-    role: 'efb'
+    role: 'efb',
+    // Stage diagnostic — copied from the verified-working HS787 bridge
+    // pattern. Writes L:MSFSBA_FBWA380_STAGE so MSFSBA can detect bridge
+    // execution state without MSFS dev mode:
+    //   0 = JS never ran (default L:var value)
+    //   1 = JS executed in this VCockpit context
+    //   2 = fetch threw — likely Coherent GT CSP / network policy
+    //       blocking localhost from this gauge context
+    //   3 = /ping succeeded, bridge connected, posting to the server
+    // Never downgrades from 3 so a transient reconnect doesn't erase
+    // a good state.
+    stageReached: 0
 };
+
+_a380.setStage = function(stage) {
+    if (_a380.stageReached >= 3 && stage < 3) return;
+    _a380.stageReached = stage;
+    try {
+        if (typeof SimVar !== 'undefined' && typeof SimVar.SetSimVarValue === 'function') {
+            SimVar.SetSimVarValue('L:MSFSBA_FBWA380_STAGE', 'number', stage);
+        }
+    } catch (e) { /* swallow */ }
+};
+
+_a380.setStage(1);
 
 // Same JS file is included from both mfd.html and efb.html. Pick the role
 // from the host DOM so the unused pollers don't waste CPU.
@@ -118,17 +141,25 @@ _a380.heartbeat = function() {
         fetch(_a380.SERVER_URL + '/ping').then(function(r){
             if (r.ok && !_a380.serverConnected) {
                 _a380.serverConnected = true;
+                _a380.setStage(3);
                 console.log('[A380 Bridge] Connected to MSFSBA server, role=' + _a380.role);
                 if (_a380.role === 'mfd') _a380.post('fbwa380_mcdu_connected');
                 else                     _a380.post('fbwa380_efb_connected');
             }
-        }).catch(function(){
+        }).catch(function(err){
+            // Distinguishes a true network/CSP block (fetch throws) from
+            // "server simply not running yet" — we don't downgrade the
+            // L:var below 2 once we've seen at least one throw, which
+            // tells MSFSBA the JS got far enough to try.
+            if (_a380.stageReached < 2) _a380.setStage(2);
             if (_a380.serverConnected) {
                 _a380.serverConnected = false;
                 console.log('[A380 Bridge] Lost MSFSBA server');
             }
         });
-    } catch (e) { /* swallow */ }
+    } catch (e) {
+        if (_a380.stageReached < 2) _a380.setStage(2);
+    }
 };
 
 // ----- KCCU key dispatch ---------------------------------------------

@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using MSFSBlindAssist.Accessibility;
+using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.SimConnect;
 
 namespace MSFSBlindAssist.Forms.FBWA380;
@@ -49,6 +50,7 @@ public class FBWA380MCDUForm : Form
 
     private readonly EFBBridgeServer _bridgeServer;
     private readonly ScreenReaderAnnouncer _announcer;
+    private readonly FlyByWireA380Definition? _aircraftDefinition;
 
     private Label _statusLabel = null!;
     private ComboBox _mcduSelector = null!;
@@ -83,10 +85,12 @@ public class FBWA380MCDUForm : Form
 
     private static readonly Regex FieldMarkerRegex = new Regex(@"\b(\d+):", RegexOptions.Compiled);
 
-    public FBWA380MCDUForm(EFBBridgeServer bridgeServer, ScreenReaderAnnouncer announcer)
+    public FBWA380MCDUForm(EFBBridgeServer bridgeServer, ScreenReaderAnnouncer announcer,
+        FlyByWireA380Definition? aircraftDefinition = null)
     {
         _bridgeServer = bridgeServer;
         _announcer = announcer;
+        _aircraftDefinition = aircraftDefinition;
 
         InitializeComponent();
         SetupEventHandlers();
@@ -125,15 +129,6 @@ public class FBWA380MCDUForm : Form
 
         int y = 10;
 
-        _statusLabel = new Label
-        {
-            Text = "MCDU bridge: connecting…",
-            Location = new Point(10, y),
-            Size = new Size(400, 22),
-            AccessibleName = "MCDU bridge status"
-        };
-        Controls.Add(_statusLabel);
-
         _mcduSelector = new ComboBox
         {
             Location = new Point(420, y),
@@ -145,7 +140,17 @@ public class FBWA380MCDUForm : Form
         _mcduSelector.Items.AddRange(new object[] { "Captain (1)", "First Officer (2)" });
         _mcduSelector.SelectedIndex = 0;
         Controls.Add(_mcduSelector);
-        y += 32;
+
+        _statusLabel = new Label
+        {
+            Text = "MCDU bridge: connecting…",
+            Location = new Point(10, y),
+            Size = new Size(400, 76),  // multi-line — full stage diagnostic
+            AutoSize = false,
+            AccessibleName = "MCDU bridge status"
+        };
+        Controls.Add(_statusLabel);
+        y += 82;
 
         _display = new ListBox
         {
@@ -303,11 +308,30 @@ public class FBWA380MCDUForm : Form
         bool reallyConnected = _bridgeConnected && _bridgeServer.IsBridgeConnected;
         string desired;
         if (reallyConnected && _initialPushReceived)
+        {
             desired = $"MCDU bridge: connected (MCDU {_mcduIndex})";
+        }
         else if (reallyConnected)
+        {
             desired = "MCDU bridge: connected — waiting for MFD content…";
+        }
         else
-            desired = "MCDU bridge: not connected — switch aircraft to FBW A380X, accept the install dialog, and restart MSFS.";
+        {
+            // Surface the bridge-stage diagnostic so the user can tell
+            // which step of bring-up failed. Stage value comes from the
+            // continuously-monitored L:MSFSBA_FBWA380_STAGE that the JS
+            // updates on every state transition (see fbw-a380-bridge.js).
+            int stage = _aircraftDefinition?.BridgeStage ?? 0;
+            string stageHint = stage switch
+            {
+                0 => "Stage 0: bridge JS hasn't run. The overlay package isn't being picked up by MSFS, or the script failed to load. Open the FBW A380 with MSFSBA running, accept any install prompt, then RESTART MSFS so the patched HTML is re-scanned.",
+                1 => "Stage 1: bridge JS is running but hasn't reached the server yet. If this stays at 1 for more than 30 seconds, MSFSBA may not have started the bridge server — switch aircraft to FBW A380X in the Aircraft menu to start it.",
+                2 => "Stage 2: bridge JS ran but its fetch to localhost was blocked. Coherent GT may have a CSP / network policy issue. Restart MSFS and MSFSBA in that order.",
+                3 => "Stage 3: bridge JS is connected. If you see this without 'MCDU bridge: connected' then the server lost the connection — check MSFSBA is still running.",
+                _ => $"Stage {stage}: unrecognised bridge state."
+            };
+            desired = "MCDU bridge: not connected. " + stageHint;
+        }
         if (_statusLabel.Text != desired) _statusLabel.Text = desired;
     }
 

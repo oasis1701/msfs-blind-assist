@@ -29,6 +29,20 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     public override string AircraftName => "FlyByWire A380X (Dev)";
     public override string AircraftCode => "FBW_A380";
 
+    /// <summary>
+    /// Bridge JS execution stage, as written by Resources/fbw-a380-bridge.js
+    /// into L:MSFSBA_FBWA380_STAGE. Used by the MCDU form's status label
+    /// to surface bridge bring-up problems without MSFS dev mode:
+    ///   0 = bridge JS never ran (override not picked up, syntax error,
+    ///       or HTML patch missing)
+    ///   1 = JS executed inside the VCockpit but hasn't reached the
+    ///       server (fetch in flight, or server not started yet)
+    ///   2 = fetch threw — Coherent GT CSP / network policy is blocking
+    ///       localhost from this gauge context
+    ///   3 = bridge connected and posting state to the server
+    /// </summary>
+    public int BridgeStage { get; private set; }
+
     // A380 FCU uses the same direct-set dialog pattern as the A320.
     public override FCUControlType GetAltitudeControlType() => FCUControlType.SetValue;
     public override FCUControlType GetHeadingControlType() => FCUControlType.SetValue;
@@ -40,7 +54,36 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // Common base vars (SIM_ON_GROUND, altitude, trim, visual/hand-fly
         // sources) — gives the universal MSFSBA features a working dataset
         // even without aircraft-specific panel L:vars wired up yet.
-        return GetBaseVariables();
+        var vars = GetBaseVariables();
+
+        // Bridge stage diagnostic — written by Resources/fbw-a380-bridge.js
+        // every time it advances. Continuously monitored so the MCDU
+        // form's status label reflects bring-up state in real time.
+        vars["MSFSBA_FBWA380_STAGE"] = new SimVarDefinition
+        {
+            Name = "L:MSFSBA_FBWA380_STAGE",
+            DisplayName = "A380 Bridge Stage",
+            Type = SimVarType.LVar,
+            UpdateFrequency = UpdateFrequency.Continuous,
+            IsAnnounced = false  // Diagnostic only; form's status timer reads it.
+        };
+        return vars;
+    }
+
+    /// <summary>
+    /// Captures bridge-stage updates from the continuous SimVar monitor.
+    /// Returning true suppresses the default announcement (we don't want
+    /// MSFSBA to speak "A380 Bridge Stage 1" on every change — the MCDU
+    /// form surfaces this through its status label instead).
+    /// </summary>
+    public override bool ProcessSimVarUpdate(string varName, double value, ScreenReaderAnnouncer announcer)
+    {
+        if (varName == "MSFSBA_FBWA380_STAGE")
+        {
+            BridgeStage = (int)value;
+            return true;
+        }
+        return base.ProcessSimVarUpdate(varName, value, announcer);
     }
 
     public override Dictionary<string, List<string>> GetPanelStructure()

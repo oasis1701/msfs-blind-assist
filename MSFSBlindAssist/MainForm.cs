@@ -2036,7 +2036,9 @@ public partial class MainForm : Form
 
         if (fbwA380MCDUForm == null || fbwA380MCDUForm.IsDisposed)
         {
-            fbwA380MCDUForm = new Forms.FBWA380.FBWA380MCDUForm(efbBridgeServer, announcer);
+            fbwA380MCDUForm = new Forms.FBWA380.FBWA380MCDUForm(
+                efbBridgeServer, announcer,
+                currentAircraft as Aircraft.FlyByWireA380Definition);
         }
         fbwA380MCDUForm.ShowForm();
     }

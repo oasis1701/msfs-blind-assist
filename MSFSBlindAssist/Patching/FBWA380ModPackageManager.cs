@@ -27,7 +27,10 @@ namespace MSFSBlindAssist.Patching
         // v2: bridge JS rewritten to v0.5.0-flat — clears stale data attrs,
         //     auto-enables KCCU keyboard, adds send_to_field composite, and
         //     emits Fenix-style "N: <value>" field markers in the grid.
-        private const int BridgeVersion = 2;
+        // v3: bridge JS v0.6.0-stage — adds L:MSFSBA_FBWA380_STAGE diagnostic
+        //     so the MCDU form's status label can show where bring-up failed
+        //     (JS not running / fetch blocked / connected) without dev mode.
+        private const int BridgeVersion = 3;
         private const string VersionFileName = "bridge-version.txt";
 
         private const string PackageFolderName = "zzz-fbw-a380-msfsba-bridge";
