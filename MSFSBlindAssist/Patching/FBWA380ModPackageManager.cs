@@ -34,7 +34,15 @@ namespace MSFSBlindAssist.Patching
         //     fetch() is blocked (some Coherent GT CSP combinations).
         //     Stage diagnostic now only escalates to 2 when *both* fetch
         //     and XHR fail, so a CSP-block-on-fetch alone still posts.
-        private const int BridgeVersion = 4;
+        // v5: bridge JS now INLINED into the patched HTML rather than
+        //     loaded via import-script. The user's overlay was confirmed
+        //     installed but the bridge still reported Stage 0, meaning
+        //     either MSFS isn't loading the override HTML or it's
+        //     loading it but rejecting the import-script reference. We
+        //     also write L:MSFSBA_FBWA380_HTML_LOADED from a tiny inline
+        //     marker script so the form can distinguish "HTML never
+        //     loaded" from "HTML loaded but bridge JS still failed".
+        private const int BridgeVersion = 5;
         private const string VersionFileName = "bridge-version.txt";
 
         private const string PackageFolderName = "zzz-fbw-a380-msfsba-bridge";
@@ -89,15 +97,53 @@ namespace MSFSBlindAssist.Patching
 
         // Marker we look for when deciding whether the HTML is already
         // patched (avoids appending the script tag twice on re-install).
-        private const string PatchMarker = BridgeJsFileName;
+        // The marker is the inline-bridge sentinel so we don't get a
+        // stale match on a previously-import-script-patched HTML.
+        private const string PatchMarker = "/* MSFSBA-A380-BRIDGE-INLINE */";
 
-        // Each instrument needs its own script tag (relative path within
-        // that instrument's folder).
-        private static string GetMfdBridgeScriptTag() =>
-            $"\n<script type=\"text/html\" import-script=\"/Pages/VCockpit/Instruments/A380X/MFD/{BridgeJsFileName}\"></script>";
+        // HTML-loaded marker — fires the instant the patched HTML is
+        // parsed, regardless of whether the inlined bridge JS later
+        // throws or succeeds. Lets the form distinguish "MSFS never
+        // loaded my override HTML" (Stage 0 + HtmlLoaded=0) from
+        // "MSFS loaded the HTML but the bridge JS broke" (Stage 0 +
+        // HtmlLoaded=1).
+        private const string HtmlLoadedMarkerScript =
+            "<script>try{if(typeof SimVar!=='undefined'&&SimVar.SetSimVarValue){SimVar.SetSimVarValue('L:MSFSBA_FBWA380_HTML_LOADED','number',1);}}catch(e){}</script>";
 
-        private static string GetEfbBridgeScriptTag() =>
-            $"\n<script type=\"text/html\" import-script=\"/Pages/VCockpit/Instruments/A380X/EFB/{BridgeJsFileName}\"></script>";
+        /// <summary>
+        /// Builds the patched HTML by inlining the marker + the full bridge
+        /// JS into the original HTML. This bypasses MSFS's import-script
+        /// loader entirely — if the override HTML is being scanned at all,
+        /// the inlined code runs in plain Coherent GT script execution.
+        /// </summary>
+        private static string BuildInlinedHtml(string originalHtml, string bridgeJsContent)
+        {
+            // Strip any old import-script reference we might have written
+            // in a previous version so we don't end up trying to load the
+            // file twice.
+            string cleaned = StripOldImportScriptTag(originalHtml);
+            return cleaned.TrimEnd()
+                + "\n" + HtmlLoadedMarkerScript
+                + "\n<script>" + PatchMarker + "\n"
+                + bridgeJsContent
+                + "\n</script>\n";
+        }
+
+        /// <summary>
+        /// Removes a previous-style import-script tag pointing at our
+        /// bridge JS file, so a re-install switches cleanly from the
+        /// external-file approach to the inlined approach.
+        /// </summary>
+        private static string StripOldImportScriptTag(string html)
+        {
+            int i = html.IndexOf(BridgeJsFileName, StringComparison.Ordinal);
+            if (i < 0) return html;
+            int lineStart = html.LastIndexOf('\n', i);
+            int lineEnd = html.IndexOf('\n', i);
+            if (lineStart < 0) lineStart = 0;
+            if (lineEnd < 0) lineEnd = html.Length;
+            return html.Substring(0, lineStart) + html.Substring(lineEnd);
+        }
 
         // ------- public API ------------------------------------------------
 
@@ -332,17 +378,18 @@ namespace MSFSBlindAssist.Patching
         private static List<(string relativePath, long size)> WriteOverlay(
             string fbwRoot, string packagePath, string bridgeJsSourcePath)
         {
+            string bridgeJsContent = File.ReadAllText(bridgeJsSourcePath);
             var entries = new List<(string, long)>();
             entries.AddRange(WriteOneInstrumentOverlay(
-                fbwRoot, packagePath, bridgeJsSourcePath, MfdRelPath, MfdHtmlFileName, GetMfdBridgeScriptTag()));
+                fbwRoot, packagePath, bridgeJsContent, MfdRelPath, MfdHtmlFileName));
             entries.AddRange(WriteOneInstrumentOverlay(
-                fbwRoot, packagePath, bridgeJsSourcePath, EfbRelPath, EfbHtmlFileName, GetEfbBridgeScriptTag()));
+                fbwRoot, packagePath, bridgeJsContent, EfbRelPath, EfbHtmlFileName));
             return entries;
         }
 
         private static List<(string relativePath, long size)> WriteOneInstrumentOverlay(
-            string fbwRoot, string packagePath, string bridgeJsSourcePath,
-            string relPath, string htmlFile, string scriptTag)
+            string fbwRoot, string packagePath, string bridgeJsContent,
+            string relPath, string htmlFile)
         {
             var entries = new List<(string, long)>();
             string sourceHtmlPath = Path.Combine(fbwRoot, relPath, htmlFile);
@@ -358,18 +405,21 @@ namespace MSFSBlindAssist.Patching
             string overlayDir = Path.Combine(packagePath, relPath);
             Directory.CreateDirectory(overlayDir);
 
+            // Inline the bridge JS directly into the HTML rather than
+            // referencing it via import-script. This bypasses MSFS's
+            // instrument-loader script-import path so the bridge runs
+            // off plain Coherent GT HTML parsing — which (a) is harder
+            // for MSFS to silently skip, and (b) lets us prove via the
+            // HtmlLoadedMarkerScript whether the override HTML is being
+            // picked up at all.
             string originalHtml = File.ReadAllText(sourceHtmlPath);
             string patchedHtml = originalHtml.Contains(PatchMarker)
                 ? originalHtml
-                : originalHtml.TrimEnd() + scriptTag;
+                : BuildInlinedHtml(originalHtml, bridgeJsContent);
             string overlayHtmlPath = Path.Combine(overlayDir, htmlFile);
             File.WriteAllText(overlayHtmlPath, patchedHtml);
 
-            string overlayJsPath = Path.Combine(overlayDir, BridgeJsFileName);
-            File.Copy(bridgeJsSourcePath, overlayJsPath, overwrite: true);
-
             entries.Add(($"{relPath}/{htmlFile}", new FileInfo(overlayHtmlPath).Length));
-            entries.Add(($"{relPath}/{BridgeJsFileName}", new FileInfo(overlayJsPath).Length));
             return entries;
         }
 

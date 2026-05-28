@@ -43,6 +43,18 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     /// </summary>
     public int BridgeStage { get; private set; }
 
+    /// <summary>
+    /// Written by the inline marker script embedded in the patched MFD/EFB
+    /// HTML overlay (see FBWA380ModPackageManager.HtmlLoadedMarkerScript).
+    /// Fires the instant MSFS parses the override HTML, regardless of
+    /// whether the inlined bridge JS itself later runs successfully.
+    /// 0 = MSFS never loaded our override (overlay package not picked
+    ///     up, manifest mismatch, layout integrity rejection, etc.)
+    /// 1 = override HTML loaded; if BridgeStage is still 0 then the
+    ///     bridge JS aborted before its first instruction.
+    /// </summary>
+    public int BridgeHtmlLoaded { get; private set; }
+
     // A380 FCU uses the same direct-set dialog pattern as the A320.
     public override FCUControlType GetAltitudeControlType() => FCUControlType.SetValue;
     public override FCUControlType GetHeadingControlType() => FCUControlType.SetValue;
@@ -67,6 +79,14 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             UpdateFrequency = UpdateFrequency.Continuous,
             IsAnnounced = false  // Diagnostic only; form's status timer reads it.
         };
+        vars["MSFSBA_FBWA380_HTML_LOADED"] = new SimVarDefinition
+        {
+            Name = "L:MSFSBA_FBWA380_HTML_LOADED",
+            DisplayName = "A380 Bridge HTML Loaded",
+            Type = SimVarType.LVar,
+            UpdateFrequency = UpdateFrequency.Continuous,
+            IsAnnounced = false
+        };
         return vars;
     }
 
@@ -81,6 +101,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         if (varName == "MSFSBA_FBWA380_STAGE")
         {
             BridgeStage = (int)value;
+            return true;
+        }
+        if (varName == "MSFSBA_FBWA380_HTML_LOADED")
+        {
+            BridgeHtmlLoaded = (int)value;
             return true;
         }
         return base.ProcessSimVarUpdate(varName, value, announcer);

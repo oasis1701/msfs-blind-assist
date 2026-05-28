@@ -317,19 +317,41 @@ public class FBWA380MCDUForm : Form
         }
         else
         {
-            // Surface the bridge-stage diagnostic so the user can tell
-            // which step of bring-up failed. Stage value comes from the
-            // continuously-monitored L:MSFSBA_FBWA380_STAGE that the JS
-            // updates on every state transition (see fbw-a380-bridge.js).
+            // Two-level diagnostic: HTML loaded vs bridge JS executed.
+            //   HtmlLoaded=0 + Stage=0  → MSFS isn't loading my override HTML.
+            //   HtmlLoaded=1 + Stage=0  → HTML loaded; inlined JS aborted before its
+            //                              first instruction (rare; would mean a
+            //                              syntax error in the inlined code).
+            //   HtmlLoaded=1 + Stage=1  → JS running, server unreachable.
+            //   HtmlLoaded=1 + Stage=2  → JS running, both fetch and XHR blocked.
+            //   HtmlLoaded=1 + Stage=3  → connected (should not see this here).
             int stage = _aircraftDefinition?.BridgeStage ?? 0;
-            string stageHint = stage switch
+            int htmlLoaded = _aircraftDefinition?.BridgeHtmlLoaded ?? 0;
+            string stageHint;
+            if (htmlLoaded == 0 && stage == 0)
             {
-                0 => "Stage 0: bridge JS hasn't run. The overlay package isn't being picked up by MSFS, or the script failed to load. Open the FBW A380 with MSFSBA running, accept any install prompt, then RESTART MSFS so the patched HTML is re-scanned.",
-                1 => "Stage 1: bridge JS is running but hasn't reached the server yet. If this stays at 1 for more than 30 seconds, MSFSBA may not have started the bridge server — switch aircraft to FBW A380X in the Aircraft menu to start it.",
-                2 => "Stage 2: bridge JS ran but its fetch to localhost was blocked. Coherent GT may have a CSP / network policy issue. Restart MSFS and MSFSBA in that order.",
-                3 => "Stage 3: bridge JS is connected. If you see this without 'MCDU bridge: connected' then the server lost the connection — check MSFSBA is still running.",
-                _ => $"Stage {stage}: unrecognised bridge state."
-            };
+                stageHint = "HTML loaded: NO, Stage: 0. MSFS is not loading my override HTML. The overlay package exists on disk but MSFS is ignoring it. This usually means MSFS was started BEFORE the overlay was installed (MSFS only scans the Community folder at cold boot), or another higher-priority package is taking precedence. Close MSFS completely, then start it FRESH — leave MSFSBA running through the restart.";
+            }
+            else if (htmlLoaded == 1 && stage == 0)
+            {
+                stageHint = "HTML loaded: YES, Stage: 0. The override HTML reached MSFS but the inlined bridge JS aborted before its first instruction — almost certainly a syntax error in the bundled bridge code. Please report this; it shouldn't happen.";
+            }
+            else if (stage == 1)
+            {
+                stageHint = "HTML loaded: YES, Stage: 1. Bridge JS is running but hasn't reached the server yet. If this stays at 1 for more than 30 seconds, MSFSBA's bridge server isn't listening on port 19777 — switch aircraft to FBW A380X in the Aircraft menu to (re)start it.";
+            }
+            else if (stage == 2)
+            {
+                stageHint = "HTML loaded: YES, Stage: 2. Bridge JS is running but BOTH fetch and XMLHttpRequest are blocked by Coherent GT's network policy. This is the hard case — would need a different IPC path (WASM gauge, named pipe, SimConnect L:var stream).";
+            }
+            else if (stage == 3)
+            {
+                stageHint = "HTML loaded: YES, Stage: 3. Bridge JS is connected. If you still see 'not connected' on the form, MSFSBA's server side lost the event subscription — try closing and reopening the MCDU window.";
+            }
+            else
+            {
+                stageHint = $"HTML loaded: {htmlLoaded}, Stage: {stage}. Unrecognised state.";
+            }
             desired = "MCDU bridge: not connected. " + stageHint;
         }
         if (_statusLabel.Text != desired) _statusLabel.Text = desired;
