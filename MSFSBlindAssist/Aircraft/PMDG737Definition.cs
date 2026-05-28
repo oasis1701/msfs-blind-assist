@@ -5094,6 +5094,25 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 if (curInHg == null) { announcer.AnnounceImmediate("Altimeter not available"); return; }
                 if (!EventIds.TryGetValue("EVT_EFIS_CPT_BARO", out int baroEvId)) return;
 
+                // STD-mode lockout fix: when STD is active, ALTIMETER_SETTING reads
+                // ~29.92 and rotate-clicks fire behind the STD mask with no visible
+                // effect. Detect "STD likely active" via the 29.92 tolerance, and if
+                // the user's target value is meaningfully different from 29.92 inHg,
+                // disengage STD first via EVT_EFIS_CPT_BARO_STD, then re-read the
+                // baro to compute clicks against the post-STD value.
+                double targetInHg = value >= 100 ? value / 33.8639 : value;
+                bool likelyStdActive = Math.Abs(curInHg.Value - 29.92) < 0.005;
+                bool targetIsAtStd   = Math.Abs(targetInHg - 29.92) < 0.005;
+                if (likelyStdActive && !targetIsAtStd)
+                {
+                    if (EventIds.TryGetValue("EVT_EFIS_CPT_BARO_STD", out int stdEvId))
+                    {
+                        _ = DisengageStdThenRotateAsync(
+                            simConnect, (uint)stdEvId, (uint)baroEvId, targetInHg, announcer);
+                        return;
+                    }
+                }
+
                 var dm = simConnect.PMDGDataManager;
                 bool hpaMode = dm != null && (int)dm.GetFieldValue("EFIS_BaroSelHPA_0") == 1;
 
@@ -5132,6 +5151,42 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             simConnect.SendPMDGEventViaTransmitWithTarget(eventId, flag);
             if (i < count - 1) await System.Threading.Tasks.Task.Delay(40);
         }
+    }
+
+    // STD-mode lockout fix: toggles STD off, awaits sim settle, re-reads the
+    // post-STD altimeter, then rotates the baro knob to the user's target.
+    // Called only when STD appeared active at submit time and the user's
+    // target value is meaningfully different from 29.92 inHg.
+    private static async Task DisengageStdThenRotateAsync(
+        SimConnect.SimConnectManager simConnect, uint stdEventId, uint baroEventId,
+        double targetInHg, ScreenReaderAnnouncer announcer)
+    {
+        // Press EVT_EFIS_CPT_BARO_STD once to toggle STD off.
+        await simConnect.SendPMDGMomentaryToggle(stdEventId, 1);
+        await Task.Delay(200);
+
+        // Re-read the now post-STD altimeter setting.
+        double? curInHg = simConnect.GetCachedVariableValue("ALTIMETER_SETTING");
+        if (curInHg == null) { announcer.AnnounceImmediate("Altimeter not available"); return; }
+
+        var dm = simConnect.PMDGDataManager;
+        bool hpaMode = dm != null && (int)dm.GetFieldValue("EFIS_BaroSelHPA_0") == 1;
+
+        int clicks;
+        if (hpaMode)
+        {
+            int curHpa = (int)Math.Round(curInHg.Value * 33.8639);
+            int tgtHpa = (int)Math.Round(targetInHg * 33.8639);
+            clicks = tgtHpa - curHpa;
+        }
+        else
+        {
+            clicks = (int)Math.Round((targetInHg - curInHg.Value) / 0.01);
+        }
+
+        if (clicks == 0) return;
+        uint flag = clicks > 0 ? 0x80000000u : 0x20000000u;
+        await RotateBaroKnobAsync(simConnect, baroEventId, flag, Math.Min(Math.Abs(clicks), 200));
     }
 
     /// <summary>
