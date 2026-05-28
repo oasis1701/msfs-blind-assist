@@ -83,6 +83,16 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     private System.Threading.Timer? _speedBrakeSettleTimer;
     private ScreenReaderAnnouncer? _speedBrakeAnnouncer;
     private const int SpeedBrakeSettleMs = 300;
+
+    // EFIS Minimums knob step sizes per click on the PMDG NG3 737. RADIO mode
+    // (DH) clicks in 1-ft increments; BARO mode (DA) clicks in 20-ft increments.
+    // Values are empirical and may need tuning if a tester reports drift —
+    // change here and rebuild; no other code depends on these.
+    private const int MINS_STEP_FT_RADIO = 1;
+    private const int MINS_STEP_FT_BARO  = 20;
+    // Safety cap on a single Set operation. ~40 seconds worst-case at 40ms/click.
+    private const int MINS_MAX_CLICKS_PER_SET = 1000;
+
     private static readonly (double Value, string Label)[] SpeedBrakeDetents =
     {
         (0,   "Speed brake down"),
@@ -871,6 +881,28 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         // =================================================================
         d["EFIS_MinsSelBARO_0"]  = Toggle("EFIS_MinsSelBARO_0", "Captain Mins Mode", "RADIO", "BARO");
         d["EFIS_MinsSelBARO_1"]  = Toggle("EFIS_MinsSelBARO_1", "First Officer Mins Mode", "RADIO", "BARO");
+        // EFIS Minimums altitude input. The PMDG NG3 SDK exposes no readback
+        // for the minimums VALUE (only the RADIO/BARO mode toggle above), so
+        // absolute setting uses a stateless RST-then-rotate-up dispatch in
+        // HandleUIVariableSet. The synthetic Name is non-existent in the SDK
+        // struct, so auto-monitoring will silently skip it; the _SET suffix
+        // routes the var through MainForm's TextBox+Button render branch.
+        d["EFIS_MinsValueFt_0_SET"] = new SimConnect.SimVarDefinition
+        {
+            Name = "_SYNTHETIC_EFIS_MinsValueFt_0",
+            DisplayName = "Captain Minimums (feet)",
+            Type = SimConnect.SimVarType.PMDGVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.Never,
+            IsAnnounced = false,
+        };
+        d["EFIS_MinsValueFt_1_SET"] = new SimConnect.SimVarDefinition
+        {
+            Name = "_SYNTHETIC_EFIS_MinsValueFt_1",
+            DisplayName = "First Officer Minimums (feet)",
+            Type = SimConnect.SimVarType.PMDGVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.Never,
+            IsAnnounced = false,
+        };
         d["EFIS_BaroSelHPA_0"]   = Toggle("EFIS_BaroSelHPA_0", "Captain Baro Units", "inHg", "hPa");
         d["EFIS_BaroSelHPA_1"]   = Toggle("EFIS_BaroSelHPA_1", "First Officer Baro Units", "inHg", "hPa");
         d["EFIS_VORADFSel1_0"]   = Selector("EFIS_VORADFSel1_0", "Captain Bearing Pointer 1",
@@ -1571,13 +1603,15 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             },
             ["EFIS Captain"] = new List<string>
             {
-                "EFIS_MinsSelBARO_0", "EFIS_BaroSelHPA_0",
+                "EFIS_MinsSelBARO_0", "EFIS_MinsValueFt_0_SET",
+                "EFIS_BaroSelHPA_0",
                 "EFIS_VORADFSel1_0", "EFIS_VORADFSel2_0",
                 "EFIS_ModeSel_0", "EFIS_RangeSel_0"
             },
             ["EFIS First Officer"] = new List<string>
             {
-                "EFIS_MinsSelBARO_1", "EFIS_BaroSelHPA_1",
+                "EFIS_MinsSelBARO_1", "EFIS_MinsValueFt_1_SET",
+                "EFIS_BaroSelHPA_1",
                 "EFIS_VORADFSel1_1", "EFIS_VORADFSel2_1",
                 "EFIS_ModeSel_1", "EFIS_RangeSel_1"
             },
@@ -3442,6 +3476,46 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         }
 
         // ------------------------------------------------------------------
+        // 0c-mins. EFIS Mins value Set — stateless RST-then-rotate-up. The
+        //     PMDG NG3 SDK exposes no readback for the minimums VALUE, so we
+        //     always reset the knob to zero first via EVT_EFIS_CPT/FO_MINIMUMS_RST,
+        //     then rotate up by N clicks to reach the user's target. Step size
+        //     depends on the current mode (RADIO = 1 ft/click, BARO = 20 ft/click).
+        // ------------------------------------------------------------------
+        if (varKey == "EFIS_MinsValueFt_0_SET" || varKey == "EFIS_MinsValueFt_1_SET")
+        {
+            bool isCaptain = varKey == "EFIS_MinsValueFt_0_SET";
+            string modeVar = isCaptain ? "EFIS_MinsSelBARO_0" : "EFIS_MinsSelBARO_1";
+            string rstEvent = isCaptain ? "EVT_EFIS_CPT_MINIMUMS_RST" : "EVT_EFIS_FO_MINIMUMS_RST";
+            string rotEvent = isCaptain ? "EVT_EFIS_CPT_MINIMUMS"     : "EVT_EFIS_FO_MINIMUMS";
+
+            var dm = simConnect.PMDGDataManager;
+            bool baroMode = dm != null && (int)dm.GetFieldValue(modeVar) == 1;
+            int stepFt = baroMode ? MINS_STEP_FT_BARO : MINS_STEP_FT_RADIO;
+            int maxFt  = baroMode ? 9999 : 1000;
+            int target = (int)value;
+
+            if (target < 0 || target > maxFt)
+            {
+                announcer.AnnounceImmediate(
+                    $"Invalid minimums. Enter 0 to {maxFt} feet.");
+                return true;
+            }
+
+            if (!EventIds.TryGetValue(rstEvent, out int rstEvId) ||
+                !EventIds.TryGetValue(rotEvent, out int rotEvId))
+            {
+                announcer.AnnounceImmediate("Minimums knob event not available.");
+                return true;
+            }
+
+            _ = ResetThenRotateMinsAsync(
+                simConnect, rstEvent, (uint)rstEvId, rotEvent, (uint)rotEvId,
+                target, stepFt, baroMode, announcer);
+            return true;
+        }
+
+        // ------------------------------------------------------------------
         // 0d. Flight deck door momentary buttons. PED_FltDkDoorSel positions
         //     0/1/3 are spring-loaded — they momentarily latch and then PMDG
         //     springs them back to position 2 (AUTO). Single CDA write with
@@ -5187,6 +5261,38 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         if (clicks == 0) return;
         uint flag = clicks > 0 ? 0x80000000u : 0x20000000u;
         await RotateBaroKnobAsync(simConnect, baroEventId, flag, Math.Min(Math.Abs(clicks), 200));
+    }
+
+    // Stateless mins dispatch: zero the knob via RST, then rotate up by
+    // (target / stepFt) clicks. Always announces the result. Capped at
+    // MINS_MAX_CLICKS_PER_SET for safety (~40 s worst case at 40ms/click).
+    private static async Task ResetThenRotateMinsAsync(
+        SimConnect.SimConnectManager simConnect,
+        string rstEventName, uint rstEventId,
+        string rotEventName, uint rotEventId,
+        int targetFt, int stepFt, bool baroMode,
+        ScreenReaderAnnouncer announcer)
+    {
+        // Step 1: Zero the knob via RST.
+        simConnect.SendPMDGEvent(rstEventName, rstEventId, 1);
+        await Task.Delay(200);   // sim settle
+
+        // Step 2: Rotate up by N clicks.
+        int clicks = targetFt > 0
+            ? Math.Min(targetFt / stepFt, MINS_MAX_CLICKS_PER_SET)
+            : 0;
+        const uint MOUSE_FLAG_RIGHTSINGLE = 0x80000000u;
+        for (int i = 0; i < clicks; i++)
+        {
+            simConnect.SendPMDGEventViaTransmitWithTarget(rotEventId, MOUSE_FLAG_RIGHTSINGLE);
+            if (i < clicks - 1) await Task.Delay(40);
+        }
+
+        // Step 3: Announce result (verbalize the actual stepped-to value, not the
+        // raw target — they can differ when target isn't a multiple of stepFt).
+        int reached = clicks * stepFt;
+        string label = baroMode ? "Decision altitude" : "Minimums";
+        announcer.AnnounceImmediate($"{label} set to {reached} feet.");
     }
 
     /// <summary>
