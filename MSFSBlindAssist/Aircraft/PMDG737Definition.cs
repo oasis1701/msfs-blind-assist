@@ -3510,7 +3510,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             }
 
             _ = ResetThenRotateMinsAsync(
-                simConnect, rstEvent, (uint)rstEvId, rotEvent, (uint)rotEvId,
+                simConnect, rstEvent, (uint)rstEvId, (uint)rotEvId,
                 target, stepFt, baroMode, announcer);
             return true;
         }
@@ -5269,7 +5269,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     private static async Task ResetThenRotateMinsAsync(
         SimConnect.SimConnectManager simConnect,
         string rstEventName, uint rstEventId,
-        string rotEventName, uint rotEventId,
+        uint rotEventId,
         int targetFt, int stepFt, bool baroMode,
         ScreenReaderAnnouncer announcer)
     {
