@@ -3084,7 +3084,6 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             ["XPDR_XpndrSelector_2"]       = "EVT_TCAS_XPNDR",
             ["XPDR_AltSourceSel_2"]        = "EVT_TCAS_ALTSOURCE",
             ["XPDR_ModeSel"]               = "EVT_TCAS_MODE",
-            ["PED_FltDkDoorSel"]           = "EVT_FLT_DK_DOOR_KNOB",
             // MCP autopilot push buttons (momentary)
             ["MCP_CmdA"]    = "EVT_MCP_CMD_A_SWITCH",
             ["MCP_CmdB"]    = "EVT_MCP_CMD_B_SWITCH",
