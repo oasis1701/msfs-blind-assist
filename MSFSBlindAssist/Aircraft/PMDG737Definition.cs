@@ -3284,6 +3284,25 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             ["FIRE_ExtinguisherTestSw"] = "EVT_FIRE_EXTINGUISHER_TEST_SWITCH",
         };
 
+    // Selectors that PMDG NG3 dispatches via TransmitClientEvent with an
+    // ABSOLUTE position parameter (NOT click-walking with LEFTSINGLE/RIGHTSINGLE).
+    // The generic WalkPMDGSelector path inverted the click direction for these
+    // selectors, producing the well-known "step Normal to A lands at B" pattern.
+    // Same fix shape as ENG_StartSelector/ENG_IgnitionSelector at line ~3478.
+    // Verified in user-reported reproductions for FIRE_OvhtDetSw, CARGO_DetSelect,
+    // MAIN_*DUSel, and NAVDIS_*Selector; absolute-position dispatch confirmed
+    // working at the SDK protocol level for these families.
+    private static readonly HashSet<string> _absolutePositionSelectorSet =
+        new HashSet<string>
+        {
+            "FIRE_OvhtDetSw_0", "FIRE_OvhtDetSw_1",
+            "CARGO_DetSelect_0", "CARGO_DetSelect_1",
+            "MAIN_MainPanelDUSel_0", "MAIN_MainPanelDUSel_1",
+            "MAIN_LowerDUSel_0", "MAIN_LowerDUSel_1",
+            "NAVDIS_VHFNavSelector", "NAVDIS_IRSSelector", "NAVDIS_FMCSelector",
+            "NAVDIS_SourceSelector", "NAVDIS_ControlPaneSelector",
+        };
+
     // =========================================================================
     // Behavior overrides — scaffold (populated in Tasks C10–C12)
     // =========================================================================
@@ -3693,6 +3712,23 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         //    the handle one state position — the parameter is ignored. The
         //    read-only FIRE_HandlePos_0/1/2 state vars are NOT user-settable.
         // ------------------------------------------------------------------
+
+        // ------------------------------------------------------------------
+        // 4a. Absolute-position selector dispatch — for selector families
+        //     that PMDG NG3 accepts via TransmitClientEvent with the target
+        //     position as the parameter (vs. click-walking). See
+        //     _absolutePositionSelectorSet for the list and rationale.
+        // ------------------------------------------------------------------
+        if (_absolutePositionSelectorSet.Contains(varKey) &&
+            _simpleEventMap.TryGetValue(varKey, out string? absEventName) &&
+            EventIds.TryGetValue(absEventName, out int absEvId))
+        {
+            int target = (int)value;
+            var dm = simConnect.PMDGDataManager;
+            if (dm != null && (int)dm.GetFieldValue(varDef.Name) == target) return true;
+            simConnect.SendPMDGEventViaTransmitWithTarget((uint)absEvId, (uint)target);
+            return true;
+        }
 
         // ------------------------------------------------------------------
         // 5. Generic _simpleEventMap lookup — covers every remaining mapped
