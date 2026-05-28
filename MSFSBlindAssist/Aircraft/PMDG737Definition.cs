@@ -1634,7 +1634,6 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             ["Calls"] = new List<string>
             {
                 "COMM_SelectedMic_0", "COMM_SelectedMic_1",
-                "COMM_ReceiverSwitches_0", "COMM_ReceiverSwitches_1", "COMM_ReceiverSwitches_2",
                 "COMM_ServiceInterphoneSw"
             },
             ["Flight Deck Door"] = new List<string>
