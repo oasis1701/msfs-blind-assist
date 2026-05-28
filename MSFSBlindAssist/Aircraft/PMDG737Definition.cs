@@ -452,11 +452,6 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         // The switch is physically ON ↔ NORMAL on the NG3 cockpit, not OFF ↔ NORMAL.
         d["OXY_SwNormal"]         = Toggle("OXY_SwNormal", "Passenger Oxygen", "ON", "Normal");
         d["OXY_annunPASS_OXY_ON"] = Annun("OXY_annunPASS_OXY_ON", "PASS OXY ON");
-        // Oxygen pressure needle (SDK line 157: `byte OXY_Needle; // Position 0..240`).
-        // Quantity (no auto-announce) — the byte updates on every consumption tick and would
-        // flood the screen reader. Exposed in the Oxygen panel as a readable focus target for
-        // status queries. TFM has this as a Slider readout for parity.
-        d["OXY_Needle"]           = Quantity("OXY_Needle", "Oxygen Pressure Needle");
 
         // Gear overhead annunciators
         d["GEAR_annunOvhdLEFT"]  = Annun("GEAR_annunOvhdLEFT", "Gear Left");
@@ -1524,7 +1519,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             },
             ["Oxygen"] = new List<string>
             {
-                "OXY_SwNormal", "OXY_Needle"
+                "OXY_SwNormal"
             },
             ["Wipers"] = new List<string>
             {
