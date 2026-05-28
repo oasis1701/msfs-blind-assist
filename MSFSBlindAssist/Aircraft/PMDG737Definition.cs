@@ -17,7 +17,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
 
     // EFB accessibility bridge is supported on the 738 — it ships the identical
     // EFB app as the 777, so the shared bridge JS + package and the 777 EFB panels
-    // are reused. Opened with Shift+T via the focused PMDG737EFBForm.
+    // are reused. Opened with Shift+T via the shared PMDGEFBForm.
     public bool HasEFBSupport => true;
 
     // Cached merged variables dictionary — built once on first access.

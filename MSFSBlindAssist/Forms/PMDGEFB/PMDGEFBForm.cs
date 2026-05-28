@@ -1,11 +1,11 @@
 using System.Runtime.InteropServices;
 using MSFSBlindAssist.Accessibility;
-using MSFSBlindAssist.Forms.PMDG777.Apps;
+using MSFSBlindAssist.Forms.PMDGEFB.Apps;
 using MSFSBlindAssist.SimConnect;
 
-namespace MSFSBlindAssist.Forms.PMDG777
+namespace MSFSBlindAssist.Forms.PMDGEFB
 {
-    public partial class PMDG777EFBForm : Form
+    public partial class PMDGEFBForm : Form
     {
         [DllImport("user32.dll")]
         private static extern IntPtr GetForegroundWindow();
@@ -22,7 +22,7 @@ namespace MSFSBlindAssist.Forms.PMDG777
         private readonly Dictionary<string, string?[]> _htmlChunkBuffers = new();
         private bool _webViewInitialized;
 
-        public PMDG777EFBForm(EFBBridgeServer bridgeServer, ScreenReaderAnnouncer announcer)
+        public PMDGEFBForm(EFBBridgeServer bridgeServer, ScreenReaderAnnouncer announcer, string aircraftCode)
         {
             _bridgeServer = bridgeServer;
             _announcer = announcer;
@@ -30,6 +30,11 @@ namespace MSFSBlindAssist.Forms.PMDG777
             _navigator.NavigationCompleted += OnNavigationCompleted;
 
             InitializeComponent();
+
+            string label = aircraftCode == "PMDG_737" ? "PMDG 737 EFB" : "PMDG 777 EFB";
+            Text = label;
+            AccessibleName = label;
+
             WireEventHandlers();
 
             _connectionCheckTimer = new System.Windows.Forms.Timer { Interval = 3000 };

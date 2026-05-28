@@ -8,6 +8,7 @@ using MSFSBlindAssist.Forms.A32NX;
 using MSFSBlindAssist.Forms.FenixA320;
 using MSFSBlindAssist.Forms.PMDG737;
 using MSFSBlindAssist.Forms.PMDG777;
+using MSFSBlindAssist.Forms.PMDGEFB;
 using MSFSBlindAssist.Hotkeys;
 using MSFSBlindAssist.Services;
 using MSFSBlindAssist.Settings;
@@ -2055,16 +2056,10 @@ public partial class MainForm : Form
 
         if (pmdgEFBForm == null || pmdgEFBForm.IsDisposed)
         {
-            pmdgEFBForm = currentAircraft.AircraftCode == "PMDG_737"
-                ? new MSFSBlindAssist.Forms.PMDG737.PMDG737EFBForm(efbBridgeServer, announcer)
-                : new PMDG777EFBForm(efbBridgeServer, announcer);
+            pmdgEFBForm = new PMDGEFBForm(efbBridgeServer, announcer, currentAircraft.AircraftCode);
         }
 
-        switch (pmdgEFBForm)
-        {
-            case MSFSBlindAssist.Forms.PMDG737.PMDG737EFBForm f737: f737.ShowForm(); break;
-            case PMDG777EFBForm f777: f777.ShowForm(); break;
-        }
+        ((PMDGEFBForm)pmdgEFBForm).ShowForm();
     }
 
     private void CheckAndOfferEFBModPackage()

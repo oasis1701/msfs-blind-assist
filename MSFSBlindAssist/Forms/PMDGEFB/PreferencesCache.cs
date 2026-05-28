@@ -1,4 +1,4 @@
-namespace MSFSBlindAssist.Forms.PMDG777
+namespace MSFSBlindAssist.Forms.PMDGEFB
 {
     /// <summary>
     /// Singleton cache of EFB preferences (units). Populated from the bridge's

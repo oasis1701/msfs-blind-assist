@@ -1,4 +1,4 @@
-namespace MSFSBlindAssist.Forms.PMDG777
+namespace MSFSBlindAssist.Forms.PMDGEFB
 {
     /// <summary>
     /// Temporary hot-injected JS that augments the bridge with a display scanner,

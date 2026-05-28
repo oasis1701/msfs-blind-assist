@@ -1,9 +1,9 @@
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Controls;
 using MSFSBlindAssist.SimConnect;
-using MSFSBlindAssist.Forms.PMDG777.Apps.Performance;
+using MSFSBlindAssist.Forms.PMDGEFB.Apps.Performance;
 
-namespace MSFSBlindAssist.Forms.PMDG777.Apps
+namespace MSFSBlindAssist.Forms.PMDGEFB.Apps
 {
     /// <summary>
     /// Performance Tool container. Hosts an inner AccessibleTabControl with

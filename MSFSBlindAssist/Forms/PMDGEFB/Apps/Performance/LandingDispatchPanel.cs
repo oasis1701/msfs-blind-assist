@@ -1,6 +1,6 @@
 using MSFSBlindAssist.SimConnect;
 
-namespace MSFSBlindAssist.Forms.PMDG777.Apps.Performance
+namespace MSFSBlindAssist.Forms.PMDGEFB.Apps.Performance
 {
     /// <summary>
     /// Performance Tool — Landing Dispatch page. Pre-departure planning tool
