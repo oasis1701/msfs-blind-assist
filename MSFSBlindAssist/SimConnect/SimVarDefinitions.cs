@@ -35,6 +35,15 @@ public class SimVarDefinition
     public bool RenderAsButton { get; set; }  // True to render as button instead of combo box (e.g., APU Start)
     public string? StateVariable { get; set; }  // LVar name to read for actual button on/off state (e.g., I_ indicator for S_ switch buttons)
     public bool PreventTextInput { get; set; }  // True to prevent text input UI for _SET variables (e.g., autobrake)
+    /// <summary>
+    /// When true, the panel renderer skips the ComboBox/Button path and renders a read-only TextBox
+    /// whose Text mirrors the current ValueDescriptions mapping for the cached value. Used for
+    /// annunciators and other status-only variables that have ValueDescriptions but are not
+    /// user-settable. The renderer ALSO treats OnlyAnnounceValueDescriptionMatches == true as
+    /// implying RenderAsReadOnlyStatus, so the ~200 existing Annun-style definitions in
+    /// PMDG777Definition.cs render as read-only without per-line edits.
+    /// </summary>
+    public bool RenderAsReadOnlyStatus { get; set; }
     public string? HelpText { get; set; }  // Optional help text read by screen reader (overrides default AccessibleDescription)
 
     // MobiFlight WASM support properties
