@@ -1025,6 +1025,22 @@ public partial class MainForm : Form
                     }
                 }
             }
+            else if (control is TextBox textBox && textBox.ReadOnly)
+            {
+                // Read-only status TextBox (annunciator, door state, etc.).
+                // Mirror the value through ValueDescriptions, fall back to numeric.
+                if (currentAircraft.GetVariables().ContainsKey(varName))
+                {
+                    var varDef = currentAircraft.GetVariables()[varName];
+                    string newText;
+                    if (varDef.ValueDescriptions.TryGetValue(value, out string? desc))
+                        newText = desc;
+                    else
+                        newText = value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                    if (textBox.Text != newText)
+                        textBox.Text = newText;
+                }
+            }
             else if (control is Button btn)
             {
                 // Update stateful button label from StateVariable or ValueDescriptions
@@ -4016,6 +4032,34 @@ public partial class MainForm : Form
 
                 layout.Controls.Add(controlButton, 1, rowIndex);
                 currentControls[varKey] = controlButton;
+            }
+            else if (varDef.ValueDescriptions != null && varDef.ValueDescriptions.Count > 1 &&
+                     (varDef.RenderAsReadOnlyStatus || varDef.OnlyAnnounceValueDescriptionMatches))
+            {
+                // Read-only status field (annunciators, door state, etc.).
+                // ValueDescriptions still drive the text; the user can focus the
+                // field for the screen reader to read it, but cannot change it.
+                TextBox statusBox = new TextBox();
+                statusBox.ReadOnly = true;
+                statusBox.TabStop = true;
+                statusBox.Size = new Size(240, 25);
+                statusBox.Name = varKey;
+                statusBox.AccessibleName = varDef.DisplayName;
+
+                // Seed initial text from cached value, falling back to numeric string
+                // and finally to "—" if no value is known yet.
+                string initial = "—";
+                if (currentSimVarValues.ContainsKey(varKey))
+                {
+                    double cur = currentSimVarValues[varKey];
+                    initial = varDef.ValueDescriptions.TryGetValue(cur, out string? desc)
+                        ? desc
+                        : cur.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                }
+                statusBox.Text = initial;
+
+                layout.Controls.Add(statusBox, 1, rowIndex);
+                currentControls[varKey] = statusBox;
             }
             else if (varDef.ValueDescriptions != null && varDef.ValueDescriptions.Count > 1)
             {
