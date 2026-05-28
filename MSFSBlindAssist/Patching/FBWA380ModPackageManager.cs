@@ -24,7 +24,10 @@ namespace MSFSBlindAssist.Patching
     {
         // Bump on any bridge-JS or override-HTML structure change. Pre-existing
         // installs older than this trigger an automatic re-patch on app start.
-        private const int BridgeVersion = 1;
+        // v2: bridge JS rewritten to v0.5.0-flat — clears stale data attrs,
+        //     auto-enables KCCU keyboard, adds send_to_field composite, and
+        //     emits Fenix-style "N: <value>" field markers in the grid.
+        private const int BridgeVersion = 2;
         private const string VersionFileName = "bridge-version.txt";
 
         private const string PackageFolderName = "zzz-fbw-a380-msfsba-bridge";

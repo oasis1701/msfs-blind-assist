@@ -7,25 +7,30 @@ namespace MSFSBlindAssist.Forms.FBWA380;
 /// <summary>
 /// Accessible reader for the FlyByWire A380X flyPad EFB (flyPadOS 3).
 ///
-/// Reuses the generic <see cref="EFBBridgeServer"/> infrastructure that PMDG
-/// uses: the JS bridge inside the flyPad tablet posts a flat array of
-/// "display elements" (one item per visible DOM node — heading, paragraph,
-/// button, input, checkbox, select) to <c>/state</c> with type
-/// <c>fbwa380_efb_elements</c>; clicks and value sets are sent back as
-/// queued commands.
+/// Single flat layout — no tabs. Tab order (top to bottom):
+///   1. Status label   — shows whether the bridge is connected and
+///                       whether the EFB tablet is currently powered.
+///   2. Page label     — current flyPad route (Dashboard, Ground,
+///                       Performance, Navigation, ATC, Failures,
+///                       Checklists, Presets, Settings).
+///   3. Element list   — every visible interactive element on the
+///                       current flyPad page, prefixed with its kind
+///                       ([Button], [Input], [Checkbox], [Heading], …).
+///                       Enter to activate; F5 to refresh.
+///   4. Value input    — type a new value for the selected input /
+///                       checkbox / select.
+///   5. Set / Refresh  — Set value sends the value above. Refresh
+///                       re-pulls the element list from the bridge.
 ///
-/// Why "elements" not page-by-page state: flyPadOS is a React app with many
-/// dynamic pages (Dashboard, Dispatch, Ground, Performance, Navigation,
-/// ATC, Failures, Checklist, Settings). A generic element list is the only
-/// approach that survives layout changes without hardcoded per-page logic.
+/// The flyPad is a React app (react-router-dom MemoryRouter, see
+/// Efb.tsx). Activating any "Nav link" element causes a route change
+/// and the bridge re-emits the new page's elements automatically; no
+/// page-specific code on this side. Page changes are also announced.
 /// </summary>
 public class FBWA380EFBForm : Form
 {
-    [DllImport("user32.dll")]
-    private static extern IntPtr GetForegroundWindow();
-
-    [DllImport("user32.dll")]
-    private static extern bool SetForegroundWindow(IntPtr hWnd);
+    [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr hWnd);
 
     private const string StateTypeElements = "fbwa380_efb_elements";
     private const string StateTypeConnected = "fbwa380_efb_connected";
@@ -34,17 +39,21 @@ public class FBWA380EFBForm : Form
     private readonly ScreenReaderAnnouncer _announcer;
 
     private Label _statusLabel = null!;
-    private ListBox _elementsList = null!;
-    private Button _refreshBtn = null!;
-    private Button _clickBtn = null!;
-    private TextBox _valueInput = null!;
-    private Button _setValueBtn = null!;
     private Label _pageLabel = null!;
+    private ListBox _elementsList = null!;
+    private TextBox _valueInput = null!;
+    private Button _activateBtn = null!;
+    private Button _setValueBtn = null!;
+    private Button _refreshBtn = null!;
 
     private IntPtr _previousWindow = IntPtr.Zero;
     private bool _bridgeConnected;
+    private bool _initialPushReceived;
     private List<EFBElement> _elements = new();
     private string _currentPage = "";
+    private string _previousAnnouncedPage = "";
+
+    private System.Windows.Forms.Timer _statusTimer = null!;
 
     public FBWA380EFBForm(EFBBridgeServer bridgeServer, ScreenReaderAnnouncer announcer)
     {
@@ -53,6 +62,11 @@ public class FBWA380EFBForm : Form
 
         InitializeComponent();
         WireEvents();
+
+        _statusTimer = new System.Windows.Forms.Timer { Interval = 1500 };
+        _statusTimer.Tick += (_, _) => UpdateStatusLabel();
+        _statusTimer.Start();
+
         _bridgeServer.StateUpdated += OnBridgeStateUpdated;
     }
 
@@ -64,8 +78,6 @@ public class FBWA380EFBForm : Form
         Activate();
         TopMost = true;
         TopMost = false;
-        // Request a fresh snapshot whenever the user opens the form so a
-        // newly-launched session doesn't sit on stale cached items.
         _bridgeServer.EnqueueCommand("get_display_elements");
         _elementsList.Focus();
     }
@@ -75,12 +87,13 @@ public class FBWA380EFBForm : Form
         SuspendLayout();
 
         Text = "A380X flyPad EFB";
-        ClientSize = new Size(720, 600);
+        ClientSize = new Size(720, 620);
         FormBorderStyle = FormBorderStyle.Sizable;
         StartPosition = FormStartPosition.CenterScreen;
         KeyPreview = true;
 
         int y = 10;
+
         _statusLabel = new Label
         {
             Text = "EFB bridge: connecting…",
@@ -96,7 +109,7 @@ public class FBWA380EFBForm : Form
             Text = "Page: (unknown)",
             Location = new Point(10, y),
             Size = new Size(700, 22),
-            AccessibleName = "Current EFB page"
+            AccessibleName = "Current flyPad page"
         };
         Controls.Add(_pageLabel);
         y += 26;
@@ -104,49 +117,42 @@ public class FBWA380EFBForm : Form
         _elementsList = new ListBox
         {
             Location = new Point(10, y),
-            Size = new Size(700, 420),
+            Size = new Size(700, 440),
             Font = new Font("Segoe UI", 10f),
             AccessibleName = "EFB content",
-            AccessibleDescription = "Use arrow keys to read items. Enter to click a button or open an input. F5 to refresh.",
+            AccessibleDescription = "Every visible item on the current flyPad page. Press Enter to activate the selected item, F5 to refresh.",
             IntegralHeight = false
         };
         Controls.Add(_elementsList);
-        y += 430;
+        y += 450;
 
-        _refreshBtn = new Button
+        int btnW = 130, btnH = 32, gap = 6, col = 10;
+        Button MakeBtn(string text, string accDesc)
         {
-            Text = "Refresh (F5)",
-            Location = new Point(10, y),
-            Size = new Size(130, 30),
-            AccessibleName = "Refresh EFB content"
-        };
-        Controls.Add(_refreshBtn);
+            var b = new Button
+            {
+                Text = text,
+                Location = new Point(col, y),
+                Size = new Size(btnW, btnH),
+                AccessibleName = text,
+                AccessibleDescription = accDesc
+            };
+            Controls.Add(b);
+            col += btnW + gap;
+            return b;
+        }
 
-        _clickBtn = new Button
-        {
-            Text = "Activate selected (Enter)",
-            Location = new Point(150, y),
-            Size = new Size(180, 30),
-            AccessibleName = "Activate selected element"
-        };
-        Controls.Add(_clickBtn);
-
+        _activateBtn = MakeBtn("&Activate (Enter)", "Activate the selected element (click button, toggle checkbox, open nav link).");
         _valueInput = new TextBox
         {
-            Location = new Point(340, y),
-            Size = new Size(220, 25),
+            Location = new Point(col, y + 3),
+            Size = new Size(260, 25),
             AccessibleName = "Value for the selected input or select"
         };
         Controls.Add(_valueInput);
-
-        _setValueBtn = new Button
-        {
-            Text = "Set value",
-            Location = new Point(570, y),
-            Size = new Size(120, 30),
-            AccessibleName = "Send the value above to the selected input or select"
-        };
-        Controls.Add(_setValueBtn);
+        col += 270;
+        _setValueBtn = MakeBtn("&Set value", "Send the value above to the selected input, checkbox, or select.");
+        _refreshBtn  = MakeBtn("&Refresh (F5)", "Re-pull the element list from the bridge.");
 
         ResumeLayout(true);
     }
@@ -161,7 +167,7 @@ public class FBWA380EFBForm : Form
         };
 
         _refreshBtn.Click += (_, _) => _bridgeServer.EnqueueCommand("get_display_elements");
-        _clickBtn.Click += (_, _) => ClickSelected();
+        _activateBtn.Click += (_, _) => ClickSelected();
         _setValueBtn.Click += (_, _) => SetValueSelected();
 
         _elementsList.KeyDown += (s, e) =>
@@ -190,13 +196,11 @@ public class FBWA380EFBForm : Form
         if (e.Type != StateTypeElements) return;
 
         _bridgeConnected = true;
+        _initialPushReceived = true;
 
         e.Data.TryGetValue("page", out string? page);
         if (page != null) _currentPage = page;
 
-        // The bridge serialises the element array as items[i].field
-        // ("items.0.text", "items.0.tag", "items.0.idx", "items.0.value", "items.0.role")
-        // because EFBStateUpdateEventArgs is a flat Dictionary<string,string>.
         var byIndex = new SortedDictionary<int, EFBElement>();
         foreach (var kv in e.Data)
         {
@@ -211,31 +215,39 @@ public class FBWA380EFBForm : Form
             }
             switch (parts[2])
             {
-                case "text":  el.Text = kv.Value; break;
-                case "tag":   el.Tag = kv.Value; break;
-                case "role":  el.Role = kv.Value; break;
-                case "value": el.Value = kv.Value; break;
-                case "type":  el.ControlType = kv.Value; break;
+                case "text":      el.Text = kv.Value; break;
+                case "tag":       el.Tag = kv.Value; break;
+                case "role":      el.Role = kv.Value; break;
+                case "value":     el.Value = kv.Value; break;
+                case "type":      el.ControlType = kv.Value; break;
                 case "clickable": el.Clickable = kv.Value == "true"; break;
             }
         }
         _elements = byIndex.Values.ToList();
-
         if (IsHandleCreated) BeginInvoke(RefreshList);
     }
 
     private void UpdateStatusLabel()
     {
         bool reallyConnected = _bridgeConnected && _bridgeServer.IsBridgeConnected;
-        string desired = reallyConnected
-            ? "EFB bridge: connected"
-            : "EFB bridge: not connected — install fbw-a380-bridge.js into the FBW A380X package";
+        string desired;
+        if (reallyConnected && _initialPushReceived)
+            desired = $"EFB bridge: connected ({_elements.Count} elements)";
+        else if (reallyConnected)
+            desired = "EFB bridge: connected — waiting for flyPad content (power on the tablet)…";
+        else
+            desired = "EFB bridge: not connected — switch aircraft to FBW A380X, accept the install dialog, and restart MSFS.";
         if (_statusLabel.Text != desired) _statusLabel.Text = desired;
     }
 
     private void RefreshList()
     {
         _pageLabel.Text = $"Page: {(string.IsNullOrEmpty(_currentPage) ? "(unknown)" : _currentPage)}";
+        if (!string.IsNullOrEmpty(_currentPage) && _currentPage != _previousAnnouncedPage)
+        {
+            _announcer.Announce("flyPad page: " + _currentPage);
+            _previousAnnouncedPage = _currentPage;
+        }
 
         int saved = _elementsList.SelectedIndex;
         _elementsList.BeginUpdate();
@@ -244,12 +256,12 @@ public class FBWA380EFBForm : Form
         {
             string prefix = el.ControlType switch
             {
-                "text"     => "[Text input] ",
-                "checkbox" => $"[Checkbox: {(el.Value == "true" ? "on" : "off")}] ",
+                "text"     => "[Input] ",
+                "checkbox" => $"[Checkbox {(el.Value == "true" ? "on" : "off")}] ",
                 "select"   => $"[Choice: {el.Value}] ",
                 _          => el.Clickable || el.Tag == "button" ? "[Button] " :
-                              el.Tag is "h1" or "h2" or "h3"     ? "[Heading] " :
-                                                                    ""
+                              el.Tag is "h1" or "h2" or "h3" or "h4" ? "[Heading] " :
+                                                                       ""
             };
             _elementsList.Items.Add(prefix + el.Text);
         }
@@ -288,10 +300,12 @@ public class FBWA380EFBForm : Form
         }
         _bridgeServer.EnqueueCommand("set_element_value", new Dictionary<string, string>
         {
-            ["index"] = el.Index.ToString(),
-            ["value"] = _valueInput.Text,
+            ["index"]       = el.Index.ToString(),
+            ["value"]       = _valueInput.Text,
             ["controlType"] = el.ControlType ?? ""
         });
+        _announcer.Announce("Set " + el.Text + " to " + _valueInput.Text);
+        _valueInput.Text = "";
     }
 
     protected override void Dispose(bool disposing)
@@ -299,6 +313,8 @@ public class FBWA380EFBForm : Form
         if (disposing)
         {
             _bridgeServer.StateUpdated -= OnBridgeStateUpdated;
+            _statusTimer?.Stop();
+            _statusTimer?.Dispose();
         }
         base.Dispose(disposing);
     }

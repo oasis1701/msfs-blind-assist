@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.SimConnect;
 
@@ -7,34 +8,35 @@ namespace MSFSBlindAssist.Forms.FBWA380;
 /// <summary>
 /// Accessible MCDU window for the FlyByWire A380X (development build).
 ///
-/// Two complementary views, one per tab:
+/// Single flat layout — no tabs. Tab order (top to bottom):
+///   1. MCDU selector       — Captain (1) / First Officer (2). The A380X
+///                            has no third MCDU; the combo lists only
+///                            those that exist.
+///   2. Display list        — live scrape of the active MFD's FMS page.
+///                            Rows follow the Fenix MCDU convention:
+///                              "Title: <page>"  (row 0)
+///                              "   <label>"     (3-space indent)
+///                              "N: <value>"     (numbered interactive fields)
+///                              "Scratchpad: …"  (last row)
+///                            Enter on a numbered row activates that field.
+///   3. Scratchpad input    — Type text, press Enter to fire each KCCU key
+///                            then ENT. The screen reader speaks the text
+///                            back ("3 2 0") after the bridge has sent it.
+///                            Ctrl+1..9 sends the typed scratchpad to that
+///                            field number (click + clear + type + ENT).
+///   4. Page nav buttons    — KCCU keys for INIT, F-PLN, PERF, RAD NAV,
+///                            DIR, SEC F-PLN, ATC, DOWN, UP, ENT, CLR.
 ///
-///   Screen tab  — live text scrape of the active MFD's FMS page, plus
-///                 a scratchpad text input that fires KCCU keys + ENT.
-///                 Read-only view of what the cockpit MFD is showing,
-///                 with a free-text entry that types into whichever field
-///                 is currently selected on the page (same as a sighted
-///                 pilot would do via the KCCU keyboard).
+/// Everything refreshes automatically: bridge JS polls the MFD DOM at
+/// 350 ms and pushes new state via EFBBridgeServer when anything changes.
+/// Title changes and scratchpad/footer-message changes are announced
+/// without the user having to refocus.
 ///
-///   Page fields — enumerated list of every interactive element on the
-///                 current FMS page (input fields, buttons, dropdowns,
-///                 menu items, header tabs). Click any item to activate
-///                 it; set a value on any input field and the bridge
-///                 atomically clicks it, clears it, types the new value,
-///                 and confirms with ENT — same end-state as doing it
-///                 manually with the cockpit cursor + keyboard.
-///
-/// Bottom: hardcoded KCCU page buttons (FPLN/PERF/INIT/…). These mirror
-/// the physical KCCU keyboard, which has the same fixed keys regardless
-/// of the page being shown.
-///
-/// Wire protocol — see Resources/fbw-a380-bridge.js. State pushes:
-///   fbwa380_mcdu_screen    { mcdu, rowCount, row0..row23 }
-///   fbwa380_mcdu_elements  { mcdu, count, items.N.text/kind/value/disabled }
-///   fbwa380_mcdu_connected (heartbeat marker)
-/// Commands sent:
-///   page_*  / key_*  / lsk_*  / type_key  / select_mcdu
-///   get_mcdu_elements  / click_mcdu_element  / set_mcdu_element_value
+/// Wire protocol — see Resources/fbw-a380-bridge.js. State pushes
+/// consumed here: fbwa380_mcdu_screen, fbwa380_mcdu_elements,
+/// fbwa380_mcdu_connected. Commands sent: page_*, key_*, type_key,
+/// select_mcdu, get_mcdu_elements, click_mcdu_element,
+/// send_scratchpad, send_to_field.
 /// </summary>
 public class FBWA380MCDUForm : Form
 {
@@ -48,53 +50,38 @@ public class FBWA380MCDUForm : Form
     private readonly EFBBridgeServer _bridgeServer;
     private readonly ScreenReaderAnnouncer _announcer;
 
-    private TabControl _tabs = null!;
-    private TabPage _tabScreen = null!;
-    private TabPage _tabFields = null!;
-
-    private ListBox _mcduDisplay = null!;
-    private TextBox _scratchpad = null!;
     private Label _statusLabel = null!;
     private ComboBox _mcduSelector = null!;
+    private ListBox _display = null!;
+    private TextBox _scratchpad = null!;
 
-    private ListBox _fieldsList = null!;
-    private Button _activateBtn = null!;
-    private TextBox _valueInput = null!;
-    private Button _setValueBtn = null!;
-    private Button _refreshFieldsBtn = null!;
-    private Label _fieldDetailLabel = null!;
-
-    // Page navigation buttons mirror the physical KCCU keyboard layout.
+    // Page nav buttons mirror the physical KCCU keyboard.
     private Button _btnInit = null!;
-    private Button _btnData = null!;
     private Button _btnFPln = null!;
     private Button _btnPerf = null!;
     private Button _btnRadNav = null!;
-    private Button _btnFuel = null!;
     private Button _btnSecFPln = null!;
     private Button _btnAtc = null!;
-    private Button _btnMenu = null!;
-    private Button _btnAirport = null!;
     private Button _btnDir = null!;
-    private Button _btnOverfly = null!;
-    private Button _btnNextPage = null!;
-    private Button _btnPrevPage = null!;
-    private Button _btnExec = null!;
+    private Button _btnUp = null!;
+    private Button _btnDown = null!;
+    private Button _btnEnt = null!;
     private Button _btnClr = null!;
+    private Button _btnRefresh = null!;
 
     private string[] _rows = Array.Empty<string>();
     private List<McduElement> _elements = new();
 
     private string _previousTitle = "";
-    private string? _previousScratchpad;
-    private bool _typingInProgress;
-    private bool _clearingInProgress;
-    private int _clearingWatchdog;
+    private string _previousScratchpad = "";
     private bool _bridgeConnected;
-    private int _mcduIndex = 1; // 1=CAPT, 2=FO
+    private int _mcduIndex = 1;
+    private bool _initialPushReceived;
 
     private IntPtr _previousWindow = IntPtr.Zero;
     private System.Windows.Forms.Timer _statusTimer = null!;
+
+    private static readonly Regex FieldMarkerRegex = new Regex(@"\b(\d+):", RegexOptions.Compiled);
 
     public FBWA380MCDUForm(EFBBridgeServer bridgeServer, ScreenReaderAnnouncer announcer)
     {
@@ -119,8 +106,11 @@ public class FBWA380MCDUForm : Form
         Activate();
         TopMost = true;
         TopMost = false;
+        // Ask the bridge for a fresh push so the display populates the
+        // moment the user opens the form, rather than waiting for the
+        // next 350-ms poll cycle.
         _bridgeServer.EnqueueCommand("get_mcdu_elements");
-        _mcduDisplay.Focus();
+        _display.Focus();
     }
 
     private void InitializeComponent()
@@ -128,9 +118,8 @@ public class FBWA380MCDUForm : Form
         SuspendLayout();
 
         Text = "A380X MCDU (Captain)";
-        ClientSize = new Size(660, 760);
+        ClientSize = new Size(640, 700);
         FormBorderStyle = FormBorderStyle.Sizable;
-        MaximizeBox = true;
         StartPosition = FormStartPosition.CenterScreen;
         KeyPreview = true;
 
@@ -140,125 +129,55 @@ public class FBWA380MCDUForm : Form
         {
             Text = "MCDU bridge: connecting…",
             Location = new Point(10, y),
-            Size = new Size(420, 22),
+            Size = new Size(400, 22),
             AccessibleName = "MCDU bridge status"
         };
         Controls.Add(_statusLabel);
 
         _mcduSelector = new ComboBox
         {
-            Location = new Point(440, y),
-            Size = new Size(200, 25),
+            Location = new Point(420, y),
+            Size = new Size(210, 25),
             DropDownStyle = ComboBoxStyle.DropDownList,
-            AccessibleName = "MCDU selector"
+            AccessibleName = "Active MCDU side",
+            AccessibleDescription = "Choose which A380 MFD's FMS pages to display: Captain or First Officer."
         };
         _mcduSelector.Items.AddRange(new object[] { "Captain (1)", "First Officer (2)" });
         _mcduSelector.SelectedIndex = 0;
         Controls.Add(_mcduSelector);
-        y += 30;
+        y += 32;
 
-        _tabs = new TabControl
+        _display = new ListBox
         {
             Location = new Point(10, y),
-            Size = new Size(630, 480),
-            AccessibleName = "MCDU view selector"
-        };
-        Controls.Add(_tabs);
-
-        // --- Screen tab ---------------------------------------------------
-        _tabScreen = new TabPage("&Screen") { AccessibleName = "MCDU screen content" };
-        _tabs.TabPages.Add(_tabScreen);
-
-        _mcduDisplay = new ListBox
-        {
-            Location = new Point(5, 5),
-            Size = new Size(610, 380),
+            Size = new Size(620, 380),
             Font = new Font("Consolas", 11f),
             BackColor = Color.Black,
             ForeColor = Color.Lime,
             AccessibleName = "MCDU display",
-            AccessibleDescription = "Live FMS page content. Use arrow keys to read each line.",
+            AccessibleDescription = "FMS page contents. Use arrow keys to read each line. Press Enter on a numbered row to activate that field. Ctrl plus 1 to 9 in this window sends the scratchpad to the matching field.",
             IntegralHeight = false
         };
-        _tabScreen.Controls.Add(_mcduDisplay);
+        Controls.Add(_display);
+        y += 390;
 
         _scratchpad = new TextBox
         {
-            Location = new Point(5, 395),
-            Size = new Size(610, 25),
-            AccessibleName = "MCDU scratchpad input",
-            AccessibleDescription = "Type and press Enter to send to the active MFD field. Backspace removes one character."
+            Location = new Point(10, y),
+            Size = new Size(620, 25),
+            AccessibleName = "Scratchpad input",
+            AccessibleDescription = "Type text and press Enter to send it to the currently focused MFD field. Press Ctrl plus a digit to send to that field number instead."
         };
-        _tabScreen.Controls.Add(_scratchpad);
+        Controls.Add(_scratchpad);
+        y += 35;
 
-        // --- Page fields tab ---------------------------------------------
-        _tabFields = new TabPage("Page &fields") { AccessibleName = "Interactive MCDU page elements" };
-        _tabs.TabPages.Add(_tabFields);
-
-        _fieldsList = new ListBox
-        {
-            Location = new Point(5, 5),
-            Size = new Size(610, 300),
-            Font = new Font("Segoe UI", 10f),
-            AccessibleName = "Interactive page elements",
-            AccessibleDescription = "Every input, button, dropdown, and tab on the current MFD page. Enter to activate. F5 to refresh.",
-            IntegralHeight = false
-        };
-        _tabFields.Controls.Add(_fieldsList);
-
-        _fieldDetailLabel = new Label
-        {
-            Location = new Point(5, 310),
-            Size = new Size(610, 22),
-            AccessibleName = "Selected element details",
-            Text = "Select an element to see its current value."
-        };
-        _tabFields.Controls.Add(_fieldDetailLabel);
-
-        _activateBtn = new Button
-        {
-            Text = "&Activate (Enter)",
-            Location = new Point(5, 340),
-            Size = new Size(140, 30),
-            AccessibleName = "Activate the selected element"
-        };
-        _tabFields.Controls.Add(_activateBtn);
-
-        _valueInput = new TextBox
-        {
-            Location = new Point(155, 343),
-            Size = new Size(260, 25),
-            AccessibleName = "New value for the selected input field"
-        };
-        _tabFields.Controls.Add(_valueInput);
-
-        _setValueBtn = new Button
-        {
-            Text = "Set &value",
-            Location = new Point(425, 340),
-            Size = new Size(100, 30),
-            AccessibleName = "Send the value above to the selected input field"
-        };
-        _tabFields.Controls.Add(_setValueBtn);
-
-        _refreshFieldsBtn = new Button
-        {
-            Text = "&Refresh (F5)",
-            Location = new Point(535, 340),
-            Size = new Size(80, 30),
-            AccessibleName = "Refresh the list of page elements"
-        };
-        _tabFields.Controls.Add(_refreshFieldsBtn);
-
-        // --- KCCU page buttons (below tab control) ----------------------
-        int btnY = y + _tabs.Height + 10;
-        int btnW = 100, btnH = 28, gap = 4, col = 10;
+        int btnW = 90, btnH = 30, gap = 4, col = 10;
         Button MakeBtn(string text, string accDesc)
         {
             var b = new Button
             {
                 Text = text,
-                Location = new Point(col, btnY),
+                Location = new Point(col, y),
                 Size = new Size(btnW, btnH),
                 AccessibleName = text,
                 AccessibleDescription = accDesc
@@ -268,31 +187,27 @@ public class FBWA380MCDUForm : Form
             return b;
         }
 
-        _btnInit    = MakeBtn("INIT",      "KCCU INIT key");
-        _btnFPln    = MakeBtn("F-PLN",     "KCCU FPLN key");
-        _btnPerf    = MakeBtn("PERF",      "KCCU PERF key");
-        _btnRadNav  = MakeBtn("RAD NAV",   "KCCU NAVAID key");
-        _btnFuel    = MakeBtn("FUEL",      "Open ACTIVE → FUEL&LOAD via FPLN key + header click");
-        _btnSecFPln = MakeBtn("SEC F-PLN", "KCCU SECINDEX key");
-        btnY += btnH + gap; col = 10;
-        _btnAtc     = MakeBtn("ATC COM",   "KCCU ATCCOM key");
-        _btnMenu    = MakeBtn("MCDU MENU", "Open MCDU MENU page (no dedicated KCCU key)");
-        _btnAirport = MakeBtn("AIRPORT",   "Insert nearest airport — uses DIR + header navigation");
-        _btnData    = MakeBtn("DATA",      "Open DATA page from header dropdown");
-        _btnDir     = MakeBtn("DIR",       "KCCU DIR key");
-        _btnOverfly = MakeBtn("OVFY",      "Toggle overfly on active waypoint");
-        btnY += btnH + gap; col = 10;
-        _btnPrevPage = MakeBtn("UP",        "KCCU UP — previous page / scroll up");
-        _btnNextPage = MakeBtn("DOWN",      "KCCU DOWN — next page / scroll down");
-        _btnExec     = MakeBtn("ENT",       "KCCU ENT — confirm pending entry");
-        _btnClr      = MakeBtn("CLR",       "KCCU BACKSPACE — clear scratchpad / delete a field");
+        _btnInit    = MakeBtn("&INIT",     "KCCU INIT key");
+        _btnFPln    = MakeBtn("&F-PLN",    "KCCU FPLN key");
+        _btnPerf    = MakeBtn("&PERF",     "KCCU PERF key");
+        _btnRadNav  = MakeBtn("&RAD NAV",  "KCCU NAVAID key");
+        _btnSecFPln = MakeBtn("&SEC FPL",  "KCCU SECINDEX key");
+        _btnAtc     = MakeBtn("&ATC COM",  "KCCU ATCCOM key");
+        _btnDir     = MakeBtn("&DIR",      "KCCU DIR key");
+        y += btnH + gap; col = 10;
+
+        _btnUp      = MakeBtn("&UP",       "KCCU UP / previous page");
+        _btnDown    = MakeBtn("DO&WN",     "KCCU DOWN / next page");
+        _btnEnt     = MakeBtn("&ENT",      "KCCU ENT / confirm entry");
+        _btnClr     = MakeBtn("&CLR",      "KCCU BACKSPACE / clear");
+        _btnRefresh = MakeBtn("Re&fresh",  "Re-request the current MFD content from the bridge.");
 
         ResumeLayout(true);
     }
 
     private void SetupEventHandlers()
     {
-        Load += (_, _) => _mcduDisplay.Focus();
+        Load += (_, _) => _display.Focus();
 
         FormClosing += (s, e) =>
         {
@@ -302,21 +217,17 @@ public class FBWA380MCDUForm : Form
         };
 
         _btnInit.Click    += (_, _) => SendCommand("page_init");
-        _btnData.Click    += (_, _) => SendCommand("page_data");
         _btnFPln.Click    += (_, _) => SendCommand("page_fpln");
         _btnPerf.Click    += (_, _) => SendCommand("page_perf");
         _btnRadNav.Click  += (_, _) => SendCommand("page_radnav");
-        _btnFuel.Click    += (_, _) => SendCommand("page_fuel");
         _btnSecFPln.Click += (_, _) => SendCommand("page_sec_fpln");
         _btnAtc.Click     += (_, _) => SendCommand("page_atc");
-        _btnMenu.Click    += (_, _) => SendCommand("page_menu");
-        _btnAirport.Click += (_, _) => SendCommand("page_airport");
         _btnDir.Click     += (_, _) => SendCommand("page_dir");
-        _btnOverfly.Click += (_, _) => SendCommand("page_overfly");
-        _btnPrevPage.Click += (_, _) => SendCommand("key_prev_page");
-        _btnNextPage.Click += (_, _) => SendCommand("key_next_page");
-        _btnExec.Click    += (_, _) => SendCommand("key_exec");
-        _btnClr.Click     += (_, _) => ClearOrDelete();
+        _btnUp.Click      += (_, _) => SendCommand("key_prev_page");
+        _btnDown.Click    += (_, _) => SendCommand("key_next_page");
+        _btnEnt.Click     += (_, _) => SendCommand("key_exec");
+        _btnClr.Click     += (_, _) => SendTypeKey("BACKSPACE");
+        _btnRefresh.Click += (_, _) => _bridgeServer.EnqueueCommand("get_mcdu_elements");
 
         _mcduSelector.SelectedIndexChanged += (_, _) =>
         {
@@ -328,32 +239,8 @@ public class FBWA380MCDUForm : Form
         };
 
         _scratchpad.KeyDown += ScratchpadKeyDown;
-        KeyDown += FormKeyDown;
-
-        // Page fields tab interactions.
-        _activateBtn.Click += (_, _) => ClickSelectedField();
-        _setValueBtn.Click += (_, _) => SetSelectedFieldValue();
-        _refreshFieldsBtn.Click += (_, _) => _bridgeServer.EnqueueCommand("get_mcdu_elements");
-        _fieldsList.SelectedIndexChanged += (_, _) => UpdateFieldDetailLabel();
-        _fieldsList.KeyDown += (s, e) =>
-        {
-            if (e.KeyCode == Keys.F5)
-            {
-                _bridgeServer.EnqueueCommand("get_mcdu_elements");
-                e.Handled = true;
-            }
-            else if (e.KeyCode == Keys.Return)
-            {
-                ClickSelectedField();
-                e.Handled = true; e.SuppressKeyPress = true;
-            }
-        };
-        // Refresh element list whenever the user lands on the fields tab.
-        _tabs.SelectedIndexChanged += (_, _) =>
-        {
-            if (_tabs.SelectedTab == _tabFields)
-                _bridgeServer.EnqueueCommand("get_mcdu_elements");
-        };
+        _display.KeyDown    += DisplayKeyDown;
+        KeyDown             += FormKeyDown;
     }
 
     private void OnBridgeStateUpdated(object? sender, EFBStateUpdateEventArgs e)
@@ -364,18 +251,14 @@ public class FBWA380MCDUForm : Form
             if (IsHandleCreated) BeginInvoke(UpdateStatusLabel);
             return;
         }
-        if (e.Type == StateTypeScreen) { HandleScreenPush(e); return; }
+        if (e.Type == StateTypeScreen)   { HandleScreenPush(e); return; }
         if (e.Type == StateTypeElements) { HandleElementsPush(e); return; }
     }
 
     private void HandleScreenPush(EFBStateUpdateEventArgs e)
     {
         _bridgeConnected = true;
-        // The bridge now emits a variable number of rows per push, sized
-        // to whatever the active page's content needs. Row 0 is the
-        // title line, last row is the scratchpad / footer message;
-        // everything between is numbered body content laid out on a
-        // GRID_WIDTH-char monospace grid (see fbw-a380-bridge.js).
+        _initialPushReceived = true;
         if (!e.Data.TryGetValue("rowCount", out string? rcs) || !int.TryParse(rcs, out int rowCount))
             rowCount = 0;
         if (rowCount <= 0) { _rows = Array.Empty<string>(); }
@@ -386,13 +269,12 @@ public class FBWA380MCDUForm : Form
                 newRows[i] = e.Data.TryGetValue($"row{i}", out string? v) ? v ?? "" : "";
             _rows = newRows;
         }
-        if (IsHandleCreated) BeginInvoke(RefreshScreen);
+        if (IsHandleCreated) BeginInvoke(RefreshDisplay);
     }
 
     private void HandleElementsPush(EFBStateUpdateEventArgs e)
     {
         _bridgeConnected = true;
-
         var byIndex = new SortedDictionary<int, McduElement>();
         foreach (var kv in e.Data)
         {
@@ -414,25 +296,29 @@ public class FBWA380MCDUForm : Form
             }
         }
         _elements = byIndex.Values.ToList();
-        if (IsHandleCreated) BeginInvoke(RefreshFieldsList);
     }
 
     private void UpdateStatusLabel()
     {
         bool reallyConnected = _bridgeConnected && _bridgeServer.IsBridgeConnected;
-        string desired = reallyConnected
-            ? $"MCDU bridge: connected (MCDU {_mcduIndex})"
-            : "MCDU bridge: not connected — install the FBW A380 bridge overlay from the File menu";
+        string desired;
+        if (reallyConnected && _initialPushReceived)
+            desired = $"MCDU bridge: connected (MCDU {_mcduIndex})";
+        else if (reallyConnected)
+            desired = "MCDU bridge: connected — waiting for MFD content…";
+        else
+            desired = "MCDU bridge: not connected — switch aircraft to FBW A380X, accept the install dialog, and restart MSFS.";
         if (_statusLabel.Text != desired) _statusLabel.Text = desired;
     }
 
-    private void RefreshScreen()
+    private void RefreshDisplay()
     {
-        // The bridge already produces a fully laid-out grid in Fenix-style
-        // semantics: row 0 is "Title: …", the last row is "Scratchpad: …",
-        // body rows are numbered "N: …" with monospace-padded content.
-        // We render rows as-is so the Consolas font preserves the spatial
-        // layout (label on the left, value on the right, etc.).
+        // The bridge already produces Fenix-style labelled rows:
+        //   row 0 ........ "Title: <page>"
+        //   middle ....... "   <label>" (3-space indent) or "N: <value>"
+        //   last ......... "Scratchpad: <text>"
+        // We render verbatim into the monospace ListBox so column
+        // alignment survives.
         if (_rows.Length == 0) return;
 
         var lines = new List<string>(_rows.Length);
@@ -440,15 +326,11 @@ public class FBWA380MCDUForm : Form
         for (int i = 0; i < _rows.Length; i++)
         {
             string row = _rows[i] ?? "";
-            // Keep title and scratchpad rows verbatim; drop empty body rows.
-            bool isLast = i == _rows.Length - 1;
             bool isTitle = i == 0;
+            bool isLast  = i == _rows.Length - 1;
             if (!isTitle && !isLast && string.IsNullOrWhiteSpace(row)) continue;
             if (isLast)
             {
-                // Pull just the value half of "Scratchpad: ..." so the
-                // change-detection logic below works on the underlying
-                // text rather than the literal prefix.
                 const string prefix = "Scratchpad:";
                 int p = row.IndexOf(prefix, StringComparison.Ordinal);
                 scratchpad = p >= 0 ? row.Substring(p + prefix.Length).Trim() : row.Trim();
@@ -456,192 +338,48 @@ public class FBWA380MCDUForm : Form
             lines.Add(row);
         }
 
-        int saved = _mcduDisplay.SelectedIndex;
-        _mcduDisplay.BeginUpdate();
-        while (_mcduDisplay.Items.Count > lines.Count) _mcduDisplay.Items.RemoveAt(_mcduDisplay.Items.Count - 1);
-        while (_mcduDisplay.Items.Count < lines.Count) _mcduDisplay.Items.Add("");
+        int saved = _display.SelectedIndex;
+        _display.BeginUpdate();
+        while (_display.Items.Count > lines.Count) _display.Items.RemoveAt(_display.Items.Count - 1);
+        while (_display.Items.Count < lines.Count) _display.Items.Add("");
         for (int i = 0; i < lines.Count; i++)
-            if (_mcduDisplay.Items[i]?.ToString() != lines[i])
-                _mcduDisplay.Items[i] = lines[i];
-        _mcduDisplay.EndUpdate();
+            if (_display.Items[i]?.ToString() != lines[i])
+                _display.Items[i] = lines[i];
+        _display.EndUpdate();
 
-        // Extract just the page name out of "Title: ..." for change
-        // detection and screen-reader announcement.
+        // Extract just the page name out of "Title: …" for change
+        // detection and announce.
         string title = _rows.Length > 0 ? _rows[0] : "";
         const string titlePrefix = "Title:";
         int titleIdx = title.IndexOf(titlePrefix, StringComparison.Ordinal);
-        if (titleIdx >= 0) title = title.Substring(titleIdx + titlePrefix.Length).Trim();
-        else title = title.Trim();
+        title = titleIdx >= 0 ? title.Substring(titleIdx + titlePrefix.Length).Trim() : title.Trim();
         if (!string.IsNullOrWhiteSpace(title) && title != _previousTitle)
         {
             _announcer.Announce(title);
             _previousTitle = title;
-            if (_mcduDisplay.Items.Count > 0) _mcduDisplay.SelectedIndex = 0;
+            if (_display.Items.Count > 0) _display.SelectedIndex = 0;
         }
-        else if (saved >= 0 && saved < _mcduDisplay.Items.Count)
+        else if (saved >= 0 && saved < _display.Items.Count)
         {
-            _mcduDisplay.SelectedIndex = saved;
+            _display.SelectedIndex = saved;
         }
 
-        // Scratchpad change announcement.
-        bool firstPush = _previousScratchpad == null;
-        if (firstPush) { _previousScratchpad = scratchpad; }
-        else if (scratchpad != _previousScratchpad && !_typingInProgress)
+        // Background scratchpad / message announcement.
+        if (scratchpad != _previousScratchpad)
         {
-            if (_clearingInProgress)
-            {
-                _clearingWatchdog++;
-                if (string.IsNullOrWhiteSpace(scratchpad))
-                {
-                    _clearingInProgress = false;
-                    _announcer.Announce("Cleared");
-                    _previousScratchpad = scratchpad;
-                }
-                else if (_clearingWatchdog > 3)
-                {
-                    _clearingInProgress = false;
-                    _announcer.Announce(scratchpad);
-                    _previousScratchpad = scratchpad;
-                }
-            }
-            else
-            {
-                if (!string.IsNullOrWhiteSpace(scratchpad))
-                    _announcer.Announce(scratchpad);
-                _previousScratchpad = scratchpad;
-            }
+            if (!string.IsNullOrWhiteSpace(scratchpad))
+                _announcer.Announce(scratchpad);
+            _previousScratchpad = scratchpad;
         }
 
         UpdateStatusLabel();
     }
 
-    private void RefreshFieldsList()
-    {
-        int saved = _fieldsList.SelectedIndex;
-        _fieldsList.BeginUpdate();
-        _fieldsList.Items.Clear();
-        foreach (var el in _elements)
-        {
-            string prefix = el.Kind switch
-            {
-                "input"    => "[Input] ",
-                "button"   => "[Button] ",
-                "icon"     => "[Icon] ",
-                "dropdown" => "[Dropdown] ",
-                "menu"     => "[Menu item] ",
-                "tab"      => "[Tab] ",
-                _          => ""
-            };
-            string suffix = el.Disabled ? " (disabled)" : "";
-            _fieldsList.Items.Add(prefix + el.Text + suffix);
-        }
-        if (saved >= 0 && saved < _fieldsList.Items.Count)
-            _fieldsList.SelectedIndex = saved;
-        _fieldsList.EndUpdate();
-        UpdateFieldDetailLabel();
-    }
-
-    private void UpdateFieldDetailLabel()
-    {
-        var el = SelectedField();
-        if (el == null)
-        {
-            _fieldDetailLabel.Text = $"{_elements.Count} interactive element(s) on this page.";
-            return;
-        }
-        if (el.Kind == "input")
-            _fieldDetailLabel.Text = $"Current value: \"{el.Value}\". Type a new value above and press Set value.";
-        else if (el.Kind == "dropdown")
-            _fieldDetailLabel.Text = $"Current selection: \"{el.Value}\". Press Activate to open the menu.";
-        else
-            _fieldDetailLabel.Text = el.Disabled ? "Disabled." : "Press Activate (Enter) to click.";
-    }
-
-    private McduElement? SelectedField()
-    {
-        int idx = _fieldsList.SelectedIndex;
-        if (idx < 0 || idx >= _elements.Count) return null;
-        return _elements[idx];
-    }
-
-    private void ClickSelectedField()
-    {
-        var el = SelectedField();
-        if (el == null) { _announcer.AnnounceImmediate("No element selected"); return; }
-        if (el.Disabled)  { _announcer.AnnounceImmediate("Element is disabled"); return; }
-        _bridgeServer.EnqueueCommand("click_mcdu_element",
-            new Dictionary<string, string> { ["index"] = el.Index.ToString() });
-    }
-
-    private void SetSelectedFieldValue()
-    {
-        var el = SelectedField();
-        if (el == null) { _announcer.AnnounceImmediate("No element selected"); return; }
-        if (el.Disabled)  { _announcer.AnnounceImmediate("Element is disabled"); return; }
-        if (el.Kind != "input")
-        {
-            _announcer.AnnounceImmediate("This element does not accept a value. Use Activate instead.");
-            return;
-        }
-        _bridgeServer.EnqueueCommand("set_mcdu_element_value", new Dictionary<string, string>
-        {
-            ["index"] = el.Index.ToString(),
-            ["value"] = _valueInput.Text
-        });
-        _valueInput.Text = "";
-    }
+    // ---- input handlers ---------------------------------------------------
 
     private void SendCommand(string command) => _bridgeServer.EnqueueCommand(command);
-    private void SendLskLeft(int n)  => _bridgeServer.EnqueueCommand($"lsk_L{n}");
-    private void SendLskRight(int n) => _bridgeServer.EnqueueCommand($"lsk_R{n}");
-
     private void SendTypeKey(string key) =>
         _bridgeServer.EnqueueCommand("type_key", new Dictionary<string, string> { ["key"] = key });
-
-    private void ClearOrDelete()
-    {
-        if (!string.IsNullOrWhiteSpace(_previousScratchpad))
-        {
-            _clearingInProgress = true; _clearingWatchdog = 0;
-            SendTypeKey("CLR");
-        }
-        else
-        {
-            SendTypeKey("DEL");
-        }
-    }
-
-    private void FormKeyDown(object? sender, KeyEventArgs e)
-    {
-        // Ctrl+1-6 / Alt+1-6 chord — accepted for parity with other CDU
-        // forms even though the A380 KCCU has no LSKs; the bridge maps
-        // them to the cursor + ENT pattern (placeholder no-op for now).
-        if (e.Control && !e.Alt && e.KeyCode >= Keys.D1 && e.KeyCode <= Keys.D6)
-        {
-            SendLskLeft(e.KeyCode - Keys.D1 + 1);
-            e.Handled = true; e.SuppressKeyPress = true; return;
-        }
-        if (e.Alt && !e.Control && e.KeyCode >= Keys.D1 && e.KeyCode <= Keys.D6)
-        {
-            SendLskRight(e.KeyCode - Keys.D1 + 1);
-            e.Handled = true; e.SuppressKeyPress = true; return;
-        }
-        if (e.KeyCode == Keys.PageUp || (e.Alt && e.KeyCode == Keys.Up))
-        {
-            SendCommand("key_prev_page");
-            e.Handled = true; e.SuppressKeyPress = true; return;
-        }
-        if (e.KeyCode == Keys.PageDown || (e.Alt && e.KeyCode == Keys.Down))
-        {
-            SendCommand("key_next_page");
-            e.Handled = true; e.SuppressKeyPress = true; return;
-        }
-        if (e.Control && e.KeyCode == Keys.Return)
-        {
-            SendCommand("key_exec");
-            e.Handled = true; e.SuppressKeyPress = true;
-        }
-    }
 
     private void ScratchpadKeyDown(object? sender, KeyEventArgs e)
     {
@@ -650,39 +388,101 @@ public class FBWA380MCDUForm : Form
             string text = _scratchpad.Text;
             if (!string.IsNullOrEmpty(text))
             {
-                _typingInProgress = true;
-                foreach (char c in text)
-                {
-                    string mapped = MapScratchpadChar(c);
-                    if (!string.IsNullOrEmpty(mapped)) SendTypeKey(mapped);
-                }
+                // Atomic composite — bridge fires the chars + ENT into
+                // whichever field the cockpit cursor is currently on.
+                _bridgeServer.EnqueueCommand("send_scratchpad",
+                    new Dictionary<string, string> { ["text"] = text });
                 _scratchpad.Text = "";
-                _typingInProgress = false;
+                // Speak back what was sent so the user gets immediate
+                // confirmation independent of the live MFD scrape.
+                _announcer.Announce(text);
             }
             e.Handled = true; e.SuppressKeyPress = true;
             return;
         }
         if (e.KeyCode == Keys.Back && string.IsNullOrEmpty(_scratchpad.Text))
         {
-            ClearOrDelete();
+            SendTypeKey("BACKSPACE");
             e.Handled = true; e.SuppressKeyPress = true;
         }
     }
 
-    private static string MapScratchpadChar(char c)
+    private void DisplayKeyDown(object? sender, KeyEventArgs e)
     {
-        if (c >= 'A' && c <= 'Z') return c.ToString();
-        if (c >= 'a' && c <= 'z') return char.ToUpper(c).ToString();
-        if (c >= '0' && c <= '9') return c.ToString();
-        return c switch
+        if (e.KeyCode == Keys.Return)
         {
-            '.' => "DOT",
-            '/' => "SLASH",
-            '+' => "PLUSMINUS",
-            '-' => "PLUSMINUS",
-            ' ' => "SP",
-            _   => "",
-        };
+            int fieldIdx = ExtractFirstFieldIndex(_display.SelectedItem?.ToString() ?? "");
+            if (fieldIdx > 0)
+            {
+                _bridgeServer.EnqueueCommand("click_mcdu_element",
+                    new Dictionary<string, string> { ["index"] = fieldIdx.ToString() });
+                _announcer.Announce("Field " + fieldIdx + " activated");
+            }
+            e.Handled = true; e.SuppressKeyPress = true;
+        }
+        else if (e.KeyCode == Keys.F5)
+        {
+            _bridgeServer.EnqueueCommand("get_mcdu_elements");
+            e.Handled = true;
+        }
+    }
+
+    private void FormKeyDown(object? sender, KeyEventArgs e)
+    {
+        // Ctrl+1..9 — send whatever's in the scratchpad to field N (composite:
+        // click the field, clear any existing value, type the new value,
+        // press ENT). Mirrors the LSK shortcuts on Fenix/PMDG even though
+        // the A380 has no physical LSKs.
+        if (e.Control && !e.Alt && !e.Shift && e.KeyCode >= Keys.D1 && e.KeyCode <= Keys.D9)
+        {
+            int fieldIdx = e.KeyCode - Keys.D0;
+            string text = _scratchpad.Text;
+            _bridgeServer.EnqueueCommand("send_to_field", new Dictionary<string, string>
+            {
+                ["index"] = fieldIdx.ToString(),
+                ["text"]  = text
+            });
+            _scratchpad.Text = "";
+            _announcer.Announce(
+                string.IsNullOrEmpty(text)
+                    ? $"Activating field {fieldIdx}"
+                    : $"Sending {text} to field {fieldIdx}");
+            e.Handled = true; e.SuppressKeyPress = true;
+            return;
+        }
+        if ((e.KeyCode == Keys.PageUp) || (e.Alt && e.KeyCode == Keys.Up))
+        {
+            SendCommand("key_prev_page");
+            e.Handled = true; e.SuppressKeyPress = true;
+            return;
+        }
+        if ((e.KeyCode == Keys.PageDown) || (e.Alt && e.KeyCode == Keys.Down))
+        {
+            SendCommand("key_next_page");
+            e.Handled = true; e.SuppressKeyPress = true;
+            return;
+        }
+        if (e.Control && e.KeyCode == Keys.Return)
+        {
+            SendCommand("key_exec");
+            e.Handled = true; e.SuppressKeyPress = true;
+        }
+    }
+
+    /// <summary>
+    /// Parses the leftmost "N:" field-index marker from a display row.
+    /// Returns 0 if the row has no marker (e.g. label rows or the title).
+    /// </summary>
+    private static int ExtractFirstFieldIndex(string row)
+    {
+        if (string.IsNullOrEmpty(row)) return 0;
+        // Skip the "Title: " and "Scratchpad: " prefixes — those aren't
+        // field markers.
+        if (row.StartsWith("Title:", StringComparison.Ordinal)) return 0;
+        if (row.StartsWith("Scratchpad:", StringComparison.Ordinal)) return 0;
+        var m = FieldMarkerRegex.Match(row);
+        if (!m.Success) return 0;
+        return int.TryParse(m.Groups[1].Value, out int n) ? n : 0;
     }
 
     protected override void Dispose(bool disposing)

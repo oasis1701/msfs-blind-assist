@@ -1,43 +1,58 @@
 // FlyByWire A380X — MSFS Blind Assist accessibility bridge
-// BRIDGE_JS_VERSION: 0.4.0-mcdu-grid
+// BRIDGE_JS_VERSION: 0.5.0-flat
 //
 // Selectors and event names verified against the open-source FBW aircraft
-// repo (master branch, fbw-a380x). See:
+// repo (master branch, fbw-a380x):
+//   - <a380x-mfd> custom element, mount at #MFD_CONTENT, split into
+//     #MFD_LEFT_PARENT_DIV (CAPT) + #MFD_RIGHT_PARENT_DIV (FO).
+//   - Per-MFD root: <div class="mfd-main">.
+//   - Title bar:   .mfd-title-bar-text (in .mfd-title-bar-container).
+//   - Footer msg:  .mfd-footer-message-area.
+//   - Interactive widgets (from MsfsAvionicsCommon/UiWidgets/):
+//       .mfd-input-field-container / .mfd-button / .mfd-icon-button /
+//       .mfd-dropdown-outer / .mfd-dropdown-menu-element /
+//       .mfd-page-selector-outer
+//   - KCCU H:events: H:A32NX_KCCU_{L|R}_<KEY>, where KEY is from kccu.xml
+//     (FPLN, PERF, INIT, DIR, NAVAID, DEST, SECINDEX, SURV, ATCCOM, ND,
+//      MAILBOX, CLRINFO, UP, DOWN, LEFT, RIGHT, DOT, SLASH, PLUSMINUS,
+//      SP, ENT, BACKSPACE, ESC, ESC2, A-Z, 0-9, KBD).
+//   - KCCU keyboard enable L:var: L:A32NX_KCCU_L_KBD_ON_OFF (and R).
+//   - EFB mount point: #MSFS_REACT_MOUNT (verified in installed efb.html).
 //
-//   fbw-a380x/src/systems/instruments/src/MFD/MFD.tsx
-//     - <a380x-mfd> custom element, mount at #MFD_CONTENT,
-//       split into #MFD_LEFT_PARENT_DIV (CAPT) + #MFD_RIGHT_PARENT_DIV (FO).
-//     - Per-MFD root: <div class="mfd-main">, page in <div class="mfd-navigator-container">.
-//     - KCCU H:events fired by panel buttons: H:A32NX_KCCU_L_<KEY> / H:A32NX_KCCU_R_<KEY>.
+// Display semantics (mirrors Forms/FenixA320/FenixMCDUForm.OnDisplayUpdated):
+//   row 0:  "Title: <page name>"
+//   body:   label rows are "   <text>" (3-space indent, unnumbered);
+//           value rows are "N: <text>" where N is the interactive
+//           element's sequential index on this page. Rows that contain
+//           multiple interactive fields get inline "N: <text>" markers
+//           at each field's spatial position.
+//   last:   "Scratchpad: <text>"
 //
-//   fbw-a380x/src/base/.../model/behaviour/kccu.xml
-//     - Complete key list (digits, A-Z, FPLN, PERF, INIT, DIR, NAVAID, DEST,
-//       SECINDEX, SURV, ATCCOM, ND, MAILBOX, CLRINFO, UP, DOWN, LEFT, RIGHT,
-//       DOT, SLASH, PLUSMINUS, SP, ENT, BACKSPACE, ESC, ESC2, FORWARD,
-//       REWIND, KBD).
-//
-//   fbw-common/src/systems/instruments/src/EFB/Efb.tsx
-//     - React app routes: /dashboard /dispatch /ground /performance
-//       /navigation /atc /failures /checklists /presets /settings.
-//     - Toolbar uses NavLink with activeClassName "bg-theme-accent".
-//
-// Wire protocol (see C# Forms/FBWA380/FBWA380MCDUForm.cs + FBWA380EFBForm.cs):
-//   MCDU push:  type="fbwa380_mcdu_screen"
-//               data={ mcdu:"1"|"2", rowCount, row0..row13 }
-//   EFB push:   type="fbwa380_efb_elements"
-//               data={ page, items.N.text/tag/role/value/type/clickable }
-//   Commands consumed (GET /commands):
-//     page_init / page_data / page_dir / page_fpln / page_perf
-//     page_radnav / page_fuel / page_sec_fpln / page_atc / page_menu
+// Wire protocol (consumed by Forms/FBWA380/FBWA380MCDUForm + FBWA380EFBForm):
+//   POST /state:
+//     fbwa380_mcdu_connected  (heartbeat marker)
+//     fbwa380_efb_connected   (heartbeat marker)
+//     fbwa380_mcdu_screen     { mcdu, rowCount, gridWidth, row0..rowN }
+//     fbwa380_mcdu_elements   { mcdu, count, items.N.text/kind/value/disabled }
+//     fbwa380_efb_elements    { page, items.N.text/tag/role/value/type/clickable }
+//   GET /commands  (dispatched here):
+//     page_init / page_data / page_dir / page_fpln / page_perf /
+//     page_radnav / page_fuel / page_sec_fpln / page_atc / page_menu /
 //     page_airport / page_overfly
 //     key_next_page / key_prev_page / key_exec
-//     lsk_L1..lsk_L6 / lsk_R1..lsk_R6        (synthesised: scroll-to + click)
-//     type_key { key in "A-Z","0-9","DOT","SLASH","PLUSMINUS","SP","CLR","DEL" }
-//     select_mcdu { mcdu: "1" | "2" }
+//     type_key  { key }   — fire one KCCU key
+//     select_mcdu { mcdu }
+//     get_mcdu_elements / click_mcdu_element / set_mcdu_element_value
+//     send_scratchpad     { text } — type each char + ENT into the
+//                                   currently-focused MFD field
+//     send_to_field       { index, text } — click field [index], clear it,
+//                                   type each char, fire ENT
 //     get_display_elements / click_display_element / set_element_value
+//                                   (EFB analogues)
 //
-// Runs in Coherent GT (older Chromium build). Top-level try/catch keeps
-// errors here from breaking the avionics.
+// Runs in Coherent GT (older Chromium). Top-level try/catch keeps a bug
+// here from breaking the avionics. fetch() to localhost works in CGT —
+// verified by the existing PMDG bridge in this same repo.
 
 try {
 if (window._fbwA380_bridge_loaded) {
@@ -45,35 +60,33 @@ if (window._fbwA380_bridge_loaded) {
 } else { window._fbwA380_bridge_loaded = true;
 
 var _a380 = {
-    JS_VERSION: '0.2.0-verified',
+    JS_VERSION: '0.5.0-flat',
     SERVER_URL: 'http://localhost:19777',
     SCREEN_POLL_INTERVAL: 350,
     EFB_POLL_INTERVAL: 800,
     COMMAND_POLL_INTERVAL: 400,
     HEARTBEAT_INTERVAL: 5000,
+    KEY_FIRE_DELAY_MS: 50,   // inter-key delay when typing into a field
     serverConnected: false,
     timers: { mcdu: null, mcduElements: null, efb: null, cmd: null, hb: null },
     lastMcduHash: null,
     lastMcduElementsHash: null,
     lastEfbHash: null,
-    activeMcdu: 1,     // 1 = CAPT (left), 2 = FO (right)
+    activeMcdu: 1,           // 1 = CAPT, 2 = FO. The A380X has no third MCDU.
     _mcduElements: [],
-    role: detectRole() // 'mfd' or 'efb' — set once below
+    role: 'efb'
 };
 
-// The same JS is included from both mfd.html and efb.html. We pick what
-// to do based on which DOM is hosting us: presence of #MFD_CONTENT means
-// MFD, anything else falls back to EFB scraping. The custom element
-// <a380x-mfd> appears under MFD too — checking either is sufficient.
-function detectRole() {
-    try {
-        if (document.getElementById('MFD_CONTENT')
-            || document.getElementsByTagName('a380x-mfd').length > 0) {
-            return 'mfd';
-        }
-    } catch (e) { /* swallow */ }
-    return 'efb';
-}
+// Same JS file is included from both mfd.html and efb.html. Pick the role
+// from the host DOM so the unused pollers don't waste CPU.
+try {
+    if (document.getElementById('MFD_CONTENT')
+        || document.getElementsByTagName('a380x-mfd').length > 0) {
+        _a380.role = 'mfd';
+    } else if (document.getElementById('MSFS_REACT_MOUNT')) {
+        _a380.role = 'efb';
+    }
+} catch (e) { /* default to efb */ }
 
 // ----- HTTP -----------------------------------------------------------
 
@@ -119,23 +132,29 @@ _a380.heartbeat = function() {
 };
 
 // ----- KCCU key dispatch ---------------------------------------------
-//
-// All buttons on the A380X "MCDU"/KCCU panel fire H:A32NX_KCCU_{L|R}_<KEY>.
-// The MFD listens for hEvents, slices off the "A32NX_KCCU_L_" prefix
-// (13 characters), and dispatches the suffix to the active page.
+
+_a380.ensureKccuKeyboardOn = function() {
+    // Without the KCCU keyboard enabled, the MFD ignores typed
+    // characters. Flip the L:var on if it isn't already. The cockpit
+    // panel has a KBD ON / OFF switch; this is the same toggle.
+    try {
+        if (typeof SimVar !== 'undefined' && typeof SimVar.SetSimVarValue === 'function') {
+            var name = 'L:A32NX_KCCU_' + (_a380.activeMcdu === 1 ? 'L' : 'R') + '_KBD_ON_OFF';
+            SimVar.SetSimVarValue(name, 'bool', 1);
+        }
+    } catch (e) { /* swallow */ }
+};
 
 _a380.fireKccu = function(key) {
     var side = _a380.activeMcdu === 1 ? 'L' : 'R';
     var eventName = 'A32NX_KCCU_' + side + '_' + key;
     try {
-        // Preferred path: Coherent.trigger (the ASOBO_GT_Push_Button_Airliner
-        // template fires H:events through Coherent).
+        // Coherent.trigger is the canonical path the WT/FBW SDK wires
+        // H:events through. SimVar.SetSimVarValue on the same name is a
+        // belt-and-braces fallback some builds also recognise.
         if (typeof Coherent !== 'undefined' && typeof Coherent.trigger === 'function') {
             Coherent.trigger('H:' + eventName);
         }
-        // Backup path: SimVar.SetSimVarValue on the H:event name. Some
-        // builds route H:events through this. No-op if the handler isn't
-        // registered.
         if (typeof SimVar !== 'undefined' && typeof SimVar.SetSimVarValue === 'function') {
             SimVar.SetSimVarValue('H:' + eventName, 'number', 0);
         }
@@ -144,29 +163,45 @@ _a380.fireKccu = function(key) {
     }
 };
 
-// ----- MCDU screen scraper -------------------------------------------
+_a380.charToKccuKey = function(c) {
+    if (c >= 'A' && c <= 'Z') return c;
+    if (c >= 'a' && c <= 'z') return c.toUpperCase();
+    if (c >= '0' && c <= '9') return c;
+    if (c === '.') return 'DOT';
+    if (c === '/') return 'SLASH';
+    if (c === '+' || c === '-') return 'PLUSMINUS';
+    if (c === ' ') return 'SP';
+    return null;
+};
+
+// ----- Stale-attribute hygiene ---------------------------------------
 //
-// Each MFD instance is a <div class="mfd-main"> nested two levels under
-// either #MFD_LEFT_PARENT_DIV (CAPT) or #MFD_RIGHT_PARENT_DIV (FO).
-// The current page sits in .mfd-navigator-container; the page header
-// (active tab labels) sits in .mfd-header-page-select-row.
-//
-// We don't try to map the FMS page to a 14-row classical MCDU layout —
-// the A380 FMS pages aren't laid out that way. Instead we walk the
-// visible text content of the navigator container in document order,
-// up to a sensible row cap (24 rows), and return:
-//   row0          = current page title (best-effort: active header tab)
-//   row1..row22   = page lines
-//   row23         = scratchpad / error message (best-effort)
-// FBWA380MCDUForm.cs treats anything beyond row13 as "extra page rows".
+// Each poll re-assigns sequential indices starting at 1 to whatever
+// interactive elements are visible RIGHT NOW. Stale [data-fbwa380-*]
+// attributes from a previous poll on now-removed elements would mean
+// that a "click element 5" command issued by the form lands on the wrong
+// node — or worse, a hidden node that's still in the React tree.
+// Clearing before each poll keeps the index space invariant.
+
+_a380.clearStaleAttrs = function(root, attrName) {
+    if (!root) return;
+    var stale = root.querySelectorAll('[' + attrName + ']');
+    for (var i = 0; i < stale.length; i++) {
+        stale[i].removeAttribute(attrName);
+    }
+};
+
+// ----- MFD layout helpers --------------------------------------------
 
 _a380.findMfdRoots = function() {
+    // Two MFDs only — CAPT (left) and FO (right). The A380X has no
+    // standby MCDU. The MFD instrument splits its single iframe into
+    // MFD_LEFT_PARENT_DIV / MFD_RIGHT_PARENT_DIV (see MFD/instrument.tsx).
     var roots = { 1: null, 2: null };
     var captParent = document.getElementById('MFD_LEFT_PARENT_DIV');
     var foParent   = document.getElementById('MFD_RIGHT_PARENT_DIV');
     if (captParent) roots[1] = captParent.querySelector('.mfd-main');
     if (foParent)   roots[2] = foParent.querySelector('.mfd-main');
-    // Fallback for single-MFD layouts: take whatever .mfd-main is there.
     if (!roots[1] && !roots[2]) {
         var all = document.querySelectorAll('.mfd-main');
         if (all.length >= 1) roots[1] = all[0];
@@ -175,198 +210,41 @@ _a380.findMfdRoots = function() {
     return roots;
 };
 
+_a380.isVisible = function(node) {
+    try {
+        var s = window.getComputedStyle(node);
+        if (s.display === 'none' || s.visibility === 'hidden') return false;
+        var r = node.getBoundingClientRect();
+        return r.width > 0 && r.height > 0;
+    } catch (e) { return true; }
+};
+
 _a380.getActivePageLabel = function(root) {
-    // The A380X title bar puts the current page name in
-    // .mfd-title-bar-text (verified in ActivePageTitleBar.tsx + style.scss).
-    // We pick the first non-empty .mfd-title-bar-text inside the title bar
-    // container — that's the page label. Subsequent ones are TMPY / EO /
-    // PENALTY markers; we include them inline after the page name when
-    // they're visible.
     var bar = root.querySelector('.mfd-title-bar-container');
     if (!bar) return '';
     var spans = bar.querySelectorAll('.mfd-title-bar-text');
     var parts = [];
     for (var i = 0; i < spans.length; i++) {
         var s = spans[i];
-        var style = window.getComputedStyle(s);
-        if (style.display === 'none' || style.visibility === 'hidden') continue;
+        if (!_a380.isVisible(s)) continue;
         var t = (s.textContent || '').replace(/\s+/g, ' ').trim();
         if (t) parts.push(t);
     }
     return parts.join(' / ');
 };
 
-// Width of the synthesised MCDU-style text grid in characters. The A380
-// MFD is 768 px wide and uses a 30 px display font — about 25 glyphs fit
-// across the page. We round up to 36 to leave a little space for the
-// numbered "N:" row prefix and any padding between left/right halves.
-_a380.GRID_WIDTH = 36;
-_a380.MAX_BODY_ROWS = 28;
-_a380.ROW_Y_TOLERANCE_PX = 14;
-
-// Selectors that produce visible "text-bearing" leaves on the FMS page.
-// Picking specific FBW widget classes rather than walking every element
-// avoids the noise of layout containers re-emitting their entire subtree
-// text and keeps the grid alignment honest. Verified in
-// MsfsAvionicsCommon/UiWidgets and pages/common/style.scss.
-_a380.MFD_LEAF_SELECTOR = [
-    '.mfd-label',
-    '.mfd-input-field-text-input',
-    '.mfd-button',
-    '.mfd-icon-button',
-    '.mfd-dropdown-inner',
-    '.mfd-page-selector-label',
-    '.mfd-dropdown-menu-element',
-    '.mfd-amber-error-message'
-].join(',');
-
-_a380.collectMfdGrid = function(root) {
-    // Layout: row 0 = page title, rows 1..N = body lines, last row =
-    // scratchpad / footer message. Each line is GRID_WIDTH chars wide so
-    // the C# ListBox can render with a monospace font and preserve the
-    // left/right spatial layout that's actually meaningful on an
-    // Airbus FMS page.
-    var rows = [];
-    if (!root) return [_a380.padRight('', _a380.GRID_WIDTH)];
-
-    // --- 1) Title row.
-    rows.push(_a380.padRight('Title: ' + _a380.getActivePageLabel(root), _a380.GRID_WIDTH));
-
-    // --- 2) Body rows from .mfd-navigator-container, positioned by
-    // bounding-rect.
-    var page = root.querySelector('.mfd-navigator-container');
-    if (page) {
-        var bodyRect = page.getBoundingClientRect();
-        var leaves = page.querySelectorAll(_a380.MFD_LEAF_SELECTOR);
-        var positioned = [];
-        for (var i = 0; i < leaves.length; i++) {
-            var n = leaves[i];
-            var style = window.getComputedStyle(n);
-            if (style.display === 'none' || style.visibility === 'hidden') continue;
-            var text = (n.textContent || '').replace(/\s+/g, ' ').trim();
-            if (!text) continue;
-            var r = n.getBoundingClientRect();
-            if (r.width === 0 || r.height === 0) continue;
-            positioned.push({ text: text, left: r.left - bodyRect.left, top: r.top - bodyRect.top, width: r.width });
-        }
-        // Sort by Y first, then X — natural reading order.
-        positioned.sort(function(a, b) { return a.top - b.top || a.left - b.left; });
-
-        // Cluster into rows by Y tolerance.
-        var clustered = [];
-        var current = null;
-        for (var j = 0; j < positioned.length; j++) {
-            var p = positioned[j];
-            if (!current || Math.abs(p.top - current.y) > _a380.ROW_Y_TOLERANCE_PX) {
-                current = { y: p.top, items: [] };
-                clustered.push(current);
-            }
-            current.items.push(p);
-        }
-
-        // Convert each cluster into a fixed-width string. Map element X
-        // positions into grid columns by linear scaling against the body
-        // width. Multiple items per row → laid out at their respective
-        // column positions; collisions are resolved by truncation.
-        var bodyW = Math.max(bodyRect.width, 1);
-        var rowNum = 0;
-        for (var c = 0; c < clustered.length && rowNum < _a380.MAX_BODY_ROWS; c++) {
-            var cluster = clustered[c];
-            // Sort items left-to-right within the row.
-            cluster.items.sort(function(a, b) { return a.left - b.left; });
-            var grid = _a380.makeBlankRow(_a380.GRID_WIDTH);
-            for (var k = 0; k < cluster.items.length; k++) {
-                var item = cluster.items[k];
-                var col = Math.round((item.left / bodyW) * _a380.GRID_WIDTH);
-                if (col < 0) col = 0;
-                if (col >= _a380.GRID_WIDTH) col = _a380.GRID_WIDTH - 1;
-                _a380.writeAt(grid, col, item.text);
-            }
-            // Drop pure-whitespace rows (the page often emits decorative
-            // separators that contain only padding).
-            var asString = grid.join('').replace(/\s+$/, '');
-            if (asString.length === 0) continue;
-            // Number the row in Fenix style: " N: " left-pads the line
-            // so screen-reader users can navigate by row index.
-            var prefix = _a380.padLeft(String(rowNum + 1), 2) + ': ';
-            rows.push(prefix + asString);
-            rowNum++;
-        }
-    }
-
-    // --- 3) Scratchpad / footer message row.
+_a380.getFooterMessage = function(root) {
     var footer = root.querySelector('.mfd-footer-message-area');
-    var footerText = '';
-    if (footer) footerText = (footer.textContent || '').replace(/\s+/g, ' ').trim();
-    if (!footerText) {
-        // Some pages render an inline amber error message rather than the
-        // footer area — keep that too.
-        var amber = root.querySelector('.mfd-amber-error-message');
-        if (amber) footerText = (amber.textContent || '').replace(/\s+/g, ' ').trim();
+    if (footer) {
+        var t = (footer.textContent || '').replace(/\s+/g, ' ').trim();
+        if (t) return t;
     }
-    rows.push(_a380.padRight('Scratchpad: ' + footerText, _a380.GRID_WIDTH));
-
-    return rows;
+    var amber = root.querySelector('.mfd-amber-error-message');
+    if (amber) return (amber.textContent || '').replace(/\s+/g, ' ').trim();
+    return '';
 };
 
-_a380.makeBlankRow = function(n) { var a = new Array(n); for (var i = 0; i < n; i++) a[i] = ' '; return a; };
-
-_a380.writeAt = function(grid, col, text) {
-    for (var i = 0; i < text.length && col + i < grid.length; i++) {
-        grid[col + i] = text.charAt(i);
-    }
-};
-
-_a380.padRight = function(s, n) {
-    s = s == null ? '' : String(s);
-    while (s.length < n) s += ' ';
-    return s.length > n ? s.substring(0, n) : s;
-};
-
-_a380.padLeft = function(s, n) {
-    s = s == null ? '' : String(s);
-    while (s.length < n) s = ' ' + s;
-    return s.length > n ? s.substring(s.length - n) : s;
-};
-
-_a380.pollMcdu = function() {
-    if (_a380.role !== 'mfd') return;
-    var roots = _a380.findMfdRoots();
-    var root = roots[_a380.activeMcdu];
-    var rows = _a380.collectMfdGrid(root);
-
-    var hash = _a380.activeMcdu + '|' + rows.join('|');
-    if (hash === _a380.lastMcduHash) return;
-    _a380.lastMcduHash = hash;
-
-    var data = {
-        mcdu: String(_a380.activeMcdu),
-        rowCount: String(rows.length),
-        gridWidth: String(_a380.GRID_WIDTH)
-    };
-    for (var i = 0; i < rows.length; i++) data['row' + i] = rows[i];
-    _a380.post('fbwa380_mcdu_screen', data);
-};
-
-// ----- MCDU interactive element enumerator ---------------------------
-//
-// Walks the active MFD's navigator container + header to enumerate every
-// page-internal interactive element. Classes verified against
-// fbw-a380x/src/systems/instruments/src/MsfsAvionicsCommon/UiWidgets/*
-// (master):
-//
-//   .mfd-input-field-container       — data entry field (FLT NBR, FROM, …)
-//     -> child .mfd-input-field-text-input holds the displayed value
-//   .mfd-button                      — text button (INSERT*, RETURN, …)
-//   .mfd-icon-button                 — icon-only button
-//   .mfd-dropdown-outer              — closed dropdown (selector + arrow)
-//     -> child .mfd-dropdown-inner holds the displayed value
-//   .mfd-dropdown-menu-element       — open-dropdown menu item
-//   .mfd-page-selector-outer         — header page-selector tab
-//     -> child .mfd-page-selector-label is the label
-//
-// We also walk the header (.mfd-header-page-select-row) so the user can
-// navigate ACTIVE / POSITION / SEC INDEX / DATA / etc. from the same list.
+// ----- MCDU interactive element classification -----------------------
 
 _a380.MCDU_INTERACTIVE_SELECTOR = [
     '.mfd-input-field-container',
@@ -387,12 +265,15 @@ _a380.classifyMcduElement = function(node) {
     return 'other';
 };
 
+_a380.readInputValue = function(inputContainer) {
+    var inner = inputContainer.querySelector('.mfd-input-field-text-input');
+    return inner ? (inner.textContent || '').replace(/\s+/g, ' ').trim() : '';
+};
+
 _a380.mcduElementLabel = function(node, kind) {
     var text = '';
     switch (kind) {
         case 'input': {
-            // The value lives in .mfd-input-field-text-input. The field
-            // label is rendered as a sibling .mfd-label above the input.
             var inner = node.querySelector('.mfd-input-field-text-input');
             if (inner) text = (inner.textContent || '').replace(/\s+/g, ' ').trim();
             var label = node.previousElementSibling;
@@ -418,42 +299,44 @@ _a380.mcduElementLabel = function(node, kind) {
     return '';
 };
 
-_a380.collectMcduElements = function(root) {
+// Returns the field index attached to the nearest ancestor that's an
+// interactive widget, or null if this leaf isn't inside one.
+_a380.findAncestorFieldIdx = function(node, root) {
+    var cur = node;
+    while (cur && cur !== root.parentNode) {
+        if (cur.getAttribute) {
+            var idx = cur.getAttribute('data-fbwa380-mcdu-idx');
+            if (idx) return parseInt(idx, 10);
+        }
+        cur = cur.parentElement;
+    }
+    return null;
+};
+
+// ----- MCDU element enumeration (interactive list) -------------------
+
+_a380.enumerateInteractiveElements = function(root) {
+    // Tag each currently-visible interactive widget with a fresh
+    // sequential index starting at 1, returns the metadata list.
+    _a380.clearStaleAttrs(root, 'data-fbwa380-mcdu-idx');
     var out = [];
     if (!root) return out;
-
-    // Scrape the header (tabs/dropdowns) AND the navigator container.
-    // The header sits outside .mfd-navigator-container so a single
-    // querySelectorAll on the whole .mfd-main covers both.
     var nodes = root.querySelectorAll(_a380.MCDU_INTERACTIVE_SELECTOR);
-    var idx = 0;
-    for (var i = 0; i < nodes.length && idx < 400; i++) {
+    var idx = 1;
+    for (var i = 0; i < nodes.length && idx <= 400; i++) {
         var n = nodes[i];
-
-        // Skip non-visible nodes (closed dropdowns render their menu but
-        // hide it with display:none).
-        var style = (n.ownerDocument && n.ownerDocument.defaultView)
-            ? n.ownerDocument.defaultView.getComputedStyle(n) : null;
-        if (style && (style.display === 'none' || style.visibility === 'hidden')) continue;
-
+        if (!_a380.isVisible(n)) continue;
         var kind = _a380.classifyMcduElement(n);
         var text = _a380.mcduElementLabel(n, kind);
-        var disabled = n.classList.contains('disabled');
-
         n.setAttribute('data-fbwa380-mcdu-idx', String(idx));
         out.push({
             index: idx, kind: kind, text: text,
             value: kind === 'input' ? _a380.readInputValue(n) : '',
-            disabled: disabled
+            disabled: n.classList.contains('disabled')
         });
         idx++;
     }
     return out;
-};
-
-_a380.readInputValue = function(inputContainer) {
-    var inner = inputContainer.querySelector('.mfd-input-field-text-input');
-    return inner ? (inner.textContent || '').replace(/\s+/g, ' ').trim() : '';
 };
 
 _a380.flattenMcduElementsForPost = function(elements) {
@@ -468,119 +351,183 @@ _a380.flattenMcduElementsForPost = function(elements) {
     return data;
 };
 
-_a380.pollMcduElements = function() {
+// ----- MCDU display grid (Fenix-style) -------------------------------
+//
+// Renders the page as a fixed-width text grid:
+//   row 0:  "Title: <name>"
+//   body:   pure label rows are "   <text>" (3-space indent, no number).
+//           Interactive value rows are "N: <text>" where N is the field
+//           index assigned by enumerateInteractiveElements. Multiple
+//           fields on one row get inline "N: <text>" markers at their
+//           horizontal positions, mirroring the cockpit layout.
+//   last:   "Scratchpad: <text>"
+
+_a380.GRID_WIDTH = 36;
+_a380.MAX_BODY_ROWS = 28;
+_a380.ROW_Y_TOLERANCE_PX = 14;
+
+_a380.MFD_LEAF_SELECTOR = [
+    '.mfd-label',
+    '.mfd-input-field-text-input',
+    '.mfd-button',
+    '.mfd-icon-button',
+    '.mfd-dropdown-inner',
+    '.mfd-page-selector-label',
+    '.mfd-dropdown-menu-element',
+    '.mfd-amber-error-message'
+].join(',');
+
+_a380.collectMfdGrid = function(root) {
+    var rows = [];
+    if (!root) return rows;
+
+    rows.push('Title: ' + _a380.getActivePageLabel(root));
+
+    var page = root.querySelector('.mfd-navigator-container');
+    if (page) {
+        var bodyRect = page.getBoundingClientRect();
+        var leaves = page.querySelectorAll(_a380.MFD_LEAF_SELECTOR);
+        var positioned = [];
+        for (var i = 0; i < leaves.length; i++) {
+            var n = leaves[i];
+            if (!_a380.isVisible(n)) continue;
+            var text = (n.textContent || '').replace(/\s+/g, ' ').trim();
+            if (!text) continue;
+            var r = n.getBoundingClientRect();
+            positioned.push({
+                text: text,
+                top: r.top - bodyRect.top,
+                left: r.left - bodyRect.left,
+                width: r.width,
+                fieldIdx: _a380.findAncestorFieldIdx(n, page)
+            });
+        }
+        positioned.sort(function(a, b) { return a.top - b.top || a.left - b.left; });
+
+        var clustered = [];
+        var current = null;
+        for (var j = 0; j < positioned.length; j++) {
+            var p = positioned[j];
+            if (!current || Math.abs(p.top - current.y) > _a380.ROW_Y_TOLERANCE_PX) {
+                current = { y: p.top, items: [] };
+                clustered.push(current);
+            }
+            current.items.push(p);
+        }
+
+        var bodyW = Math.max(bodyRect.width, 1);
+        var bodyRowCount = 0;
+        for (var c = 0; c < clustered.length && bodyRowCount < _a380.MAX_BODY_ROWS; c++) {
+            var cluster = clustered[c];
+            cluster.items.sort(function(a, b) { return a.left - b.left; });
+
+            // Decide: is this row a pure label row (no interactive
+            // children) or does it contain at least one numbered field?
+            var anyField = false;
+            for (var k = 0; k < cluster.items.length; k++) {
+                if (cluster.items[k].fieldIdx !== null) { anyField = true; break; }
+            }
+
+            if (!anyField) {
+                // Pure label row — 3-space indent, no number prefix.
+                var labelGrid = _a380.makeBlankRow(_a380.GRID_WIDTH);
+                for (var m = 0; m < cluster.items.length; m++) {
+                    var item = cluster.items[m];
+                    var col = Math.round((item.left / bodyW) * _a380.GRID_WIDTH);
+                    if (col < 3) col = 3; // honour the 3-space indent
+                    _a380.writeAt(labelGrid, col, item.text);
+                }
+                var labelText = labelGrid.join('').replace(/\s+$/, '');
+                if (labelText.trim().length === 0) continue;
+                rows.push('   ' + labelText.substring(3));
+                bodyRowCount++;
+                continue;
+            }
+
+            // Interactive row — number each field, label-only items kept
+            // inline at their position.
+            var valueGrid = _a380.makeBlankRow(_a380.GRID_WIDTH);
+            for (var n2 = 0; n2 < cluster.items.length; n2++) {
+                var it = cluster.items[n2];
+                var col2 = Math.round((it.left / bodyW) * _a380.GRID_WIDTH);
+                if (col2 < 0) col2 = 0;
+                if (col2 >= _a380.GRID_WIDTH) col2 = _a380.GRID_WIDTH - 1;
+                var prefix = it.fieldIdx !== null ? (it.fieldIdx + ': ') : '';
+                _a380.writeAt(valueGrid, col2, prefix + it.text);
+            }
+            var line = valueGrid.join('').replace(/\s+$/, '');
+            if (line.length === 0) continue;
+            rows.push(line);
+            bodyRowCount++;
+        }
+    }
+
+    rows.push('Scratchpad: ' + _a380.getFooterMessage(root));
+    return rows;
+};
+
+_a380.makeBlankRow = function(n) { var a = new Array(n); for (var i = 0; i < n; i++) a[i] = ' '; return a; };
+
+_a380.writeAt = function(grid, col, text) {
+    for (var i = 0; i < text.length && col + i < grid.length; i++) {
+        grid[col + i] = text.charAt(i);
+    }
+};
+
+// ----- MCDU polling --------------------------------------------------
+
+_a380.pollMcdu = function() {
     if (_a380.role !== 'mfd') return;
     var roots = _a380.findMfdRoots();
     var root = roots[_a380.activeMcdu];
-    var elements = _a380.collectMcduElements(root);
 
-    var hashBuf = _a380.activeMcdu + '|' + elements.length + '|';
-    for (var i = 0; i < elements.length; i++) hashBuf += elements[i].text + '/' + elements[i].value + '/';
-    if (hashBuf === _a380.lastMcduElementsHash) return;
-    _a380.lastMcduElementsHash = hashBuf;
+    // Element enumeration must run BEFORE the grid scrape so each
+    // interactive widget has its data-fbwa380-mcdu-idx attribute set —
+    // the grid scrape's "find ancestor field idx" relies on those attrs.
+    var elements = _a380.enumerateInteractiveElements(root);
+    var rows = _a380.collectMfdGrid(root);
 
-    _a380._mcduElements = elements;
-    _a380.post('fbwa380_mcdu_elements', _a380.flattenMcduElementsForPost(elements));
-};
-
-_a380.clickMcduElement = function(index) {
-    var node = document.querySelector('[data-fbwa380-mcdu-idx="' + index + '"]');
-    if (!node) return;
-    try {
-        if (typeof node.click === 'function') node.click();
-        else node.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-    } catch (e) { console.warn('[A380 Bridge] mcdu click failed', e); }
-    setTimeout(function(){ _a380.lastMcduElementsHash = null; _a380.pollMcduElements(); }, 200);
-};
-
-// Composite "set the value of this input field". The FBW MFD input
-// fields are edited by clicking to enter edit mode, typing characters
-// via the KCCU keyboard, and pressing ENT to commit. We do the whole
-// sequence here so the form caller just sends one set_mcdu_element_value
-// command per field.
-_a380.setMcduElementValue = function(index, newValue) {
-    var node = document.querySelector('[data-fbwa380-mcdu-idx="' + index + '"]');
-    if (!node) return;
-    var elementInfo = _a380._mcduElements[index];
-    if (!elementInfo) return;
-
-    // Only input fields accept a value. Dropdowns / buttons / menu items
-    // are activated with click — caller should use click_mcdu_element.
-    if (elementInfo.kind !== 'input') {
-        _a380.clickMcduElement(index);
-        return;
+    // Push the grid display if it changed.
+    var hash = _a380.activeMcdu + '|' + rows.join('|');
+    if (hash !== _a380.lastMcduHash) {
+        _a380.lastMcduHash = hash;
+        var data = {
+            mcdu: String(_a380.activeMcdu),
+            rowCount: String(rows.length),
+            gridWidth: String(_a380.GRID_WIDTH)
+        };
+        for (var i = 0; i < rows.length; i++) data['row' + i] = rows[i];
+        _a380.post('fbwa380_mcdu_screen', data);
     }
 
-    try {
-        // Click the field to focus / enter edit mode.
-        if (typeof node.click === 'function') node.click();
-
-        // Walk the displayed value backwards and BACKSPACE the existing
-        // contents. The MFD's edit mode swallows BACKSPACE without
-        // committing, so this clears in place.
-        var existing = _a380.readInputValue(node);
-        var existingLen = existing ? existing.length : 0;
-        var delay = 25; // ms between key presses; the MFD eats them at
-                       // about this rate without dropping any.
-
-        var step = 0;
-        var queue = [];
-        for (var i = 0; i < existingLen; i++) queue.push('BACKSPACE');
-
-        // Convert the new value into KCCU key names.
-        var v = String(newValue || '').toUpperCase();
-        for (var j = 0; j < v.length; j++) {
-            var c = v.charCodeAt(j);
-            var kc = v.charAt(j);
-            if (kc >= 'A' && kc <= 'Z') queue.push(kc);
-            else if (kc >= '0' && kc <= '9') queue.push(kc);
-            else if (kc === '.') queue.push('DOT');
-            else if (kc === '/') queue.push('SLASH');
-            else if (kc === '+' || kc === '-') queue.push('PLUSMINUS');
-            else if (kc === ' ') queue.push('SP');
-            // Unsupported characters are silently dropped (the KCCU
-            // doesn't have them anyway).
-        }
-        queue.push('ENT');
-
-        function fireNext() {
-            if (step >= queue.length) {
-                setTimeout(function(){
-                    _a380.lastMcduElementsHash = null;
-                    _a380.pollMcduElements();
-                }, 200);
-                return;
-            }
-            _a380.fireKccu(queue[step]);
-            step++;
-            setTimeout(fireNext, delay);
-        }
-        setTimeout(fireNext, 80); // small initial delay so the click registers
-    } catch (e) {
-        console.warn('[A380 Bridge] setMcduElementValue failed', e);
+    // Push the element list if it changed (form's Page-fields view).
+    var elHash = _a380.activeMcdu + '|' + elements.length + '|';
+    for (var k = 0; k < elements.length; k++) elHash += elements[k].text + '/' + elements[k].value + '/';
+    if (elHash !== _a380.lastMcduElementsHash) {
+        _a380.lastMcduElementsHash = elHash;
+        _a380._mcduElements = elements;
+        _a380.post('fbwa380_mcdu_elements', _a380.flattenMcduElementsForPost(elements));
     }
 };
 
-// ----- Command dispatch ----------------------------------------------
+// ----- MCDU command dispatch -----------------------------------------
 
-// Page button → KCCU key. The A380X exposes a smaller set than the A320
-// MCDU: missing pages route to the closest equivalent or are no-ops.
 _a380.PAGE_TO_KCCU = {
     'page_init':     'INIT',
-    'page_data':     null,        // No direct DATA key — DATA is a header dropdown
+    'page_data':     null,
     'page_dir':      'DIR',
     'page_fpln':     'FPLN',
     'page_perf':     'PERF',
     'page_radnav':   'NAVAID',
-    'page_fuel':     null,        // Reached via header ACTIVE → FUEL&LOAD
+    'page_fuel':     null,
     'page_sec_fpln': 'SECINDEX',
     'page_atc':      'ATCCOM',
-    'page_menu':     null,        // No MENU key on A380 KCCU
-    'page_airport':  null,        // No standalone AIRPORT key
-    'page_overfly':  null,        // No standalone OVFY key
-    'key_next_page': 'DOWN',      // A380 paginates with up/down rather than NEXT/PREV
+    'page_menu':     null,
+    'page_airport':  null,
+    'page_overfly':  null,
+    'key_next_page': 'DOWN',
     'key_prev_page': 'UP',
-    'key_exec':      'ENT'        // ENT confirms edits on A380 KCCU
+    'key_exec':      'ENT'
 };
 
 _a380.handleCommand = function(command, payload) {
@@ -594,36 +541,36 @@ _a380.handleCommand = function(command, payload) {
             if (payload && payload.mcdu) {
                 var n = parseInt(payload.mcdu, 10);
                 if (n === 1 || n === 2) _a380.activeMcdu = n;
-                _a380.lastMcduHash = null; // force resend
+                _a380.lastMcduHash = null;
+                _a380.lastMcduElementsHash = null;
             }
             return;
         }
         if (command === 'type_key') {
             if (payload && payload.key) {
                 var k = payload.key;
-                if (k === 'CLR') k = 'BACKSPACE';
-                else if (k === 'DEL') k = 'BACKSPACE';
+                if (k === 'CLR' || k === 'DEL') k = 'BACKSPACE';
                 else if (k === 'SPACE') k = 'SP';
                 _a380.fireKccu(k);
             }
             return;
         }
-        // LSK chord — A380 has no LSKs. Best we can do: synthesize an UP/DOWN
-        // scroll + ENT click on the currently-highlighted input field. For
-        // now we just log and ignore; the user navigates the readout list
-        // and uses type_key for entries.
-        var lsk = /^lsk_([LR])(\d)$/.exec(command);
-        if (lsk) {
-            console.log('[A380 Bridge] lsk_' + lsk[1] + lsk[2] + ' received — A380 has no LSKs; use UP/DOWN + ENT.');
+        if (command === 'send_scratchpad') {
+            _a380.sendScratchpadComposite(payload && payload.text);
             return;
         }
-        if (command === 'get_display_elements') {
-            _a380.pollEfb(true);
+        if (command === 'send_to_field') {
+            if (payload && payload.index !== undefined) {
+                _a380.sendToFieldComposite(
+                    parseInt(payload.index, 10),
+                    payload.text || ''
+                );
+            }
             return;
         }
         if (command === 'get_mcdu_elements') {
             _a380.lastMcduElementsHash = null;
-            _a380.pollMcduElements();
+            _a380.pollMcdu();
             return;
         }
         if (command === 'click_mcdu_element') {
@@ -632,8 +579,13 @@ _a380.handleCommand = function(command, payload) {
         }
         if (command === 'set_mcdu_element_value') {
             if (payload && payload.index !== undefined) {
-                _a380.setMcduElementValue(parseInt(payload.index, 10), payload.value || '');
+                _a380.sendToFieldComposite(parseInt(payload.index, 10), payload.value || '');
             }
+            return;
+        }
+        if (command === 'get_display_elements') {
+            _a380.lastEfbHash = null;
+            _a380.pollEfb();
             return;
         }
         if (command === 'click_display_element') {
@@ -653,19 +605,93 @@ _a380.handleCommand = function(command, payload) {
     }
 };
 
+_a380.clickMcduElement = function(index) {
+    var node = document.querySelector('[data-fbwa380-mcdu-idx="' + index + '"]');
+    if (!node) return;
+    try {
+        if (typeof node.click === 'function') node.click();
+        else node.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    } catch (e) { console.warn('[A380 Bridge] mcdu click failed', e); }
+    setTimeout(function(){ _a380.lastMcduHash = null; _a380.lastMcduElementsHash = null; _a380.pollMcdu(); }, 200);
+};
+
+// Type a sequence of chars + ENT into whatever field the cockpit cursor
+// is currently focused on.
+_a380.sendScratchpadComposite = function(text) {
+    if (!text) return;
+    _a380.ensureKccuKeyboardOn();
+    var v = String(text).toUpperCase();
+    var step = 0;
+    var queue = [];
+    for (var j = 0; j < v.length; j++) {
+        var k = _a380.charToKccuKey(v.charAt(j));
+        if (k) queue.push(k);
+    }
+    queue.push('ENT');
+    function fireNext() {
+        if (step >= queue.length) {
+            setTimeout(function(){ _a380.lastMcduHash = null; _a380.pollMcdu(); }, 200);
+            return;
+        }
+        _a380.fireKccu(queue[step]);
+        step++;
+        setTimeout(fireNext, _a380.KEY_FIRE_DELAY_MS);
+    }
+    fireNext();
+};
+
+// Composite: click field [index] → clear existing → type new → ENT.
+_a380.sendToFieldComposite = function(index, newValue) {
+    var node = document.querySelector('[data-fbwa380-mcdu-idx="' + index + '"]');
+    if (!node) return;
+    var elementInfo = null;
+    for (var i = 0; i < _a380._mcduElements.length; i++) {
+        if (_a380._mcduElements[i].index === index) { elementInfo = _a380._mcduElements[i]; break; }
+    }
+
+    // Non-input element (button, dropdown, menu item, tab) — just click.
+    if (elementInfo && elementInfo.kind !== 'input') {
+        _a380.clickMcduElement(index);
+        return;
+    }
+
+    _a380.ensureKccuKeyboardOn();
+    try {
+        if (typeof node.click === 'function') node.click();
+        else node.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    } catch (e) {}
+
+    var existingLen = elementInfo
+        ? (elementInfo.value ? elementInfo.value.length : 0)
+        : _a380.readInputValue(node).length;
+    var queue = [];
+    for (var ii = 0; ii < existingLen; ii++) queue.push('BACKSPACE');
+    var v = String(newValue || '').toUpperCase();
+    for (var jj = 0; jj < v.length; jj++) {
+        var kk = _a380.charToKccuKey(v.charAt(jj));
+        if (kk) queue.push(kk);
+    }
+    queue.push('ENT');
+
+    var step = 0;
+    function fireNext() {
+        if (step >= queue.length) {
+            setTimeout(function(){ _a380.lastMcduHash = null; _a380.lastMcduElementsHash = null; _a380.pollMcdu(); }, 200);
+            return;
+        }
+        _a380.fireKccu(queue[step]);
+        step++;
+        setTimeout(fireNext, _a380.KEY_FIRE_DELAY_MS);
+    }
+    // Small initial delay so the click registers before we start typing.
+    setTimeout(fireNext, 100);
+};
+
 // ----- flyPad EFB scraper --------------------------------------------
-//
-// flyPadOS is a React app with a MemoryRouter (so location.hash is
-// empty). Active page is found by reading the toolbar's NavLink whose
-// activeClassName is "bg-theme-accent" — that's the FBW EFB convention.
-// The page content sits next to the toolbar in the main flex row.
 
 _a380._efbElements = [];
 
 _a380.getEfbPage = function() {
-    // The toolbar lives at the top of the document. Active NavLink has
-    // the "bg-theme-accent" class applied via react-router-dom NavLink
-    // activeClassName.
     var active = document.querySelector('a.bg-theme-accent[href], a[class*="bg-theme-accent"][href]');
     if (active) {
         var href = active.getAttribute('href') || '';
@@ -676,11 +702,6 @@ _a380.getEfbPage = function() {
 };
 
 _a380.findEfbContentRoot = function() {
-    // The A380X EFB instrument mounts React under #MSFS_REACT_MOUNT (see
-    // the runtime mfd.html / efb.html in the installed FBW A380X package).
-    // Inside that root the EfbInstrument component renders <ToolBar/>
-    // alongside the page content. The toolbar has className containing
-    // "w-32"; everything else in the flex row is the page itself.
     var mount = document.getElementById('MSFS_REACT_MOUNT') || document.body;
     var nav = mount.querySelector('nav.flex.flex-col.w-32, nav[class*="w-32"][class*="flex-col"]');
     if (nav && nav.parentNode) {
@@ -693,6 +714,7 @@ _a380.findEfbContentRoot = function() {
 };
 
 _a380.collectEfbElements = function(root) {
+    _a380.clearStaleAttrs(root, 'data-fbwa380-idx');
     var out = [];
     if (!root) return out;
     var idx = 0;
@@ -700,22 +722,13 @@ _a380.collectEfbElements = function(root) {
     var walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT, null, false);
     while (walker.nextNode()) {
         var n = walker.currentNode;
-        // Skip our own bridge nodes and offscreen/hidden trees.
-        if (n.hasAttribute('data-fbwa380-skip')) continue;
-        var style = (n.ownerDocument && n.ownerDocument.defaultView)
-            ? n.ownerDocument.defaultView.getComputedStyle(n) : null;
-        if (style && (style.display === 'none' || style.visibility === 'hidden')) continue;
-
+        if (!_a380.isVisible(n)) continue;
         var tag = (n.tagName || '').toLowerCase();
         var role = (n.getAttribute && n.getAttribute('role')) || '';
         var className = (n.className && typeof n.className === 'string') ? n.className : '';
-
-        // Skip pure layout containers — divs without text-only children
-        // and no role/click handlers.
         var clickable = tag === 'button' || tag === 'a' || role === 'button'
                        || (n.onclick !== null && n.onclick !== undefined)
                        || className.indexOf('cursor-pointer') >= 0;
-
         var isHeading = tag === 'h1' || tag === 'h2' || tag === 'h3' || tag === 'h4';
         var controlType = '';
         var value = '';
@@ -741,16 +754,9 @@ _a380.collectEfbElements = function(root) {
             }
             text = ownText.replace(/\s+/g, ' ').trim();
         }
-
         if (!text && !controlType) continue;
-        // Truncate huge concatenated strings (e.g. wrapping <div> that
-        // happened to be a "leaf" because all its text was directly
-        // inside it) — anything beyond 240 chars is almost certainly
-        // a layout artefact.
         if (text.length > 240) text = text.substring(0, 240) + '…';
 
-        // Dedup adjacent identical labels (toolbar tooltip wrappers
-        // double-emit otherwise).
         var dedupKey = tag + '|' + text + '|' + value;
         if (seenText[dedupKey] && !controlType) continue;
         seenText[dedupKey] = true;
@@ -761,7 +767,6 @@ _a380.collectEfbElements = function(root) {
             controlType: controlType, clickable: clickable
         });
         idx++;
-        // Hard cap so a huge React tree doesn't blow the bridge body limit.
         if (idx >= 400) break;
     }
     return out;
@@ -781,19 +786,15 @@ _a380.flattenElementsForPost = function(elements, page) {
     return data;
 };
 
-_a380.pollEfb = function(force) {
+_a380.pollEfb = function() {
     if (_a380.role !== 'efb') return;
     var page = _a380.getEfbPage();
     var root = _a380.findEfbContentRoot();
     var elements = _a380.collectEfbElements(root);
-
-    // Hash based on page + element count + concatenated text. Cheap
-    // enough to compute at 800 ms cadence.
     var hashBuf = page + '|' + elements.length + '|';
     for (var i = 0; i < elements.length; i++) hashBuf += elements[i].text + elements[i].value;
-    if (!force && hashBuf === _a380.lastEfbHash) return;
+    if (hashBuf === _a380.lastEfbHash) return;
     _a380.lastEfbHash = hashBuf;
-
     _a380._efbElements = elements;
     _a380.post('fbwa380_efb_elements', _a380.flattenElementsForPost(elements, page));
 };
@@ -804,8 +805,8 @@ _a380.clickEfbElement = function(index) {
     try {
         if (typeof node.click === 'function') node.click();
         else node.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-    } catch (e) { console.warn('[A380 Bridge] click failed', e); }
-    setTimeout(function(){ _a380.pollEfb(true); }, 250);
+    } catch (e) { console.warn('[A380 Bridge] efb click failed', e); }
+    setTimeout(function(){ _a380.lastEfbHash = null; _a380.pollEfb(); }, 250);
 };
 
 _a380.setEfbElementValue = function(index, value, controlType) {
@@ -823,15 +824,13 @@ _a380.setEfbElementValue = function(index, value, controlType) {
             }
             node.dispatchEvent(new Event('change', { bubbles: true }));
         } else {
-            // React's onChange listens to the native input event. Use the
-            // prototype setter so React picks up the new value.
             var setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
             setter.call(node, value);
             node.dispatchEvent(new Event('input', { bubbles: true }));
             node.dispatchEvent(new Event('change', { bubbles: true }));
         }
-    } catch (e) { console.warn('[A380 Bridge] set value failed', e); }
-    setTimeout(function(){ _a380.pollEfb(true); }, 250);
+    } catch (e) { console.warn('[A380 Bridge] efb set value failed', e); }
+    setTimeout(function(){ _a380.lastEfbHash = null; _a380.pollEfb(); }, 250);
 };
 
 // ----- Lifecycle ------------------------------------------------------
@@ -841,9 +840,6 @@ _a380.start = function() {
     _a380.timers.cmd = setInterval(_a380.pollCommands, _a380.COMMAND_POLL_INTERVAL);
     if (_a380.role === 'mfd') {
         _a380.timers.mcdu = setInterval(_a380.pollMcdu, _a380.SCREEN_POLL_INTERVAL);
-        // Element enumeration on a slightly slower cadence — the
-        // structural list changes less often than the text content does.
-        _a380.timers.mcduElements = setInterval(_a380.pollMcduElements, _a380.SCREEN_POLL_INTERVAL * 2);
     } else {
         _a380.timers.efb = setInterval(_a380.pollEfb, _a380.EFB_POLL_INTERVAL);
     }
