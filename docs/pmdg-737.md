@@ -153,26 +153,30 @@ PMDG NG3 mechanically locks fire handles in the "In" position unless a fire warn
 
 ## EFB support
 
-The 737 EFB tablet bridge is wired up (focused first cut: **Preferences + SimBrief**). The 738
-ships the **byte-identical** EFB app as the 777, so it reuses the same bridge JS, the shared
-`zzz-pmdg-efb-accessibility` Community package (738 tablet subfolder `pmdg-737-800`), the
-`EFBBridgeServer`, and the 777 EFB panels/navigator unchanged.
+The PMDG 737-600 / -700 / -800 / -900 EFB has full parity with the PMDG 777. The 737 ships the
+**byte-identical** EFB application bundle as the 777 (MD5-confirmed for `PMDGTablet.js` across all
+five aircraft variants), so the bridge JS, the shared `zzz-pmdg-efb-accessibility` Community
+package, the `EFBBridgeServer`, and every EFB app panel are reused unchanged. The only per-variant
+data is the path string inside `PMDGTabletCA.html` (`pmdg-737-800`, `pmdg-737-600`, etc.) —
+`EFBModPackageManager.Variants` enumerates all four 737 entries and creates a tablet override
+folder for each.
 
 - Enabled via `IPMDGAircraft.HasEFBSupport => true` in `PMDG737Definition` — this single flag turns
   on the startup/aircraft-change EFB plumbing (bridge-server start + mod-package install prompt) and
   the Shift+T dispatch (`MainForm` gates those sites on `HasEFBSupport`).
-- `Forms/PMDG737/PMDG737EFBForm.cs` is a focused, code-built form with two tabs — Dashboard (fetch
-  SimBrief + Send to FMC) and Preferences (all settings incl. SimBrief alias + Navigraph sign-in) —
-  reusing `DashboardPanel`/`PrefsPanel`/`EfbAppNavigator`/`PreferencesCache` from `Forms/PMDG777`.
-- `MainForm.ShowPMDGEFBDialog` constructs `PMDG737EFBForm` for `PMDG_737`, else `PMDG777EFBForm`.
-- `EFBModPackageManager.Variants` includes `("pmdg-aircraft-738", "pmdg-737-800")`. Existing installs
-  pick up the 738 override folder via `UpdateModPackage`'s `HasMissingVariantOverride` check — it fires
-  even when the installed `BridgeVersion` already matches, so a 738 the user installs *after* the
-  package reached the current version still gets patched (the version-only gate previously left it
-  stuck: an install whose version file already read the current value never re-scanned, so the 738
-  override was never created — the "EFB works in 2020 but not 2024" bug). Adding a new variant no
-  longer requires a `BridgeVersion` bump; bump only when the bridge JS or package structure changes.
+- `Forms/PMDGEFB/PMDGEFBForm.cs` is the **shared** accessible form for both 737 and 777. The
+  constructor takes `currentAircraft.AircraftCode`; the form title reads `"PMDG 737 EFB"` for
+  `PMDG_737` and `"PMDG 777 EFB"` otherwise. All seven EFB app panels are hosted:
+  Dashboard / Preferences / Navdata / Performance / Ground Ops / Weights & Balance / Manuals
+  (plus a Display debug tab and Ctrl+Shift+{R,C,D,E} diagnostic hotkeys).
+- `MainForm.ShowPMDGEFBDialog` constructs `PMDGEFBForm(efbBridgeServer, announcer, AircraftCode)`
+  unconditionally — no per-aircraft switch.
+- `EFBModPackageManager.Variants` includes the four 737 entries (`pmdg-aircraft-736 / 737 / 738 / 739`
+  with tablet subfolders `pmdg-737-600 / -700 / -800 / -900`). Existing installs pick up newly
+  installed variants via `UpdateModPackage`'s `HasMissingVariantOverride` check; the same path
+  also re-runs after a `BridgeVersion` bump.
 
 First-time install needs **one sim restart** for MSFS to load the override HTML (the bridge then
-injects when the tablet opens). Performance / Ground Ops / W&B / Manuals are out of scope for this
-first cut — add later by hosting more of the existing app panels.
+injects when the tablet opens). The 738's Flight Attendant Panel (`PMDGFlightAttendantPanel.*`)
+is a separate VCockpit instrument with its own DOM and is NOT part of the EFB bridge — making it
+accessible would need its own bridge package and is out of scope.
