@@ -860,6 +860,12 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         d["WARN_annunOVERHEAD"]   = Annun("WARN_annunOVERHEAD", "Overhead Warning");
         d["WARN_annunAIR_COND"]   = Annun("WARN_annunAIR_COND", "Air Conditioning Warning");
 
+        // Master Warning / Master Caution recall (momentary). Press once to
+        // silence the corresponding light. PMDG NG3 recalls both sides on
+        // either press, so the LEFT-side events are sufficient.
+        d["WARN_ResetFireWarning"]  = Momentary("WARN_ResetFireWarning",  "Clear Fire Warning");
+        d["WARN_ResetMasterCaution"] = Momentary("WARN_ResetMasterCaution", "Clear Master Caution");
+
         // =================================================================
         // GLARESHIELD — EFIS Captain / First Officer
         // =================================================================
@@ -1560,7 +1566,8 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             ["Warnings"] = new List<string>
             {
                 "WARN_annunFIRE_WARN_0", "WARN_annunFIRE_WARN_1",
-                "WARN_annunMASTER_CAUTION_0", "WARN_annunMASTER_CAUTION_1"
+                "WARN_annunMASTER_CAUTION_0", "WARN_annunMASTER_CAUTION_1",
+                "WARN_ResetFireWarning", "WARN_ResetMasterCaution"
             },
             ["EFIS Captain"] = new List<string>
             {
@@ -3096,6 +3103,9 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             ["CS_TOGA_2"]   = "EVT_CONTROL_STAND_TOGA2_SWITCH",
             ["CS_ATDisc_1"] = "EVT_CONTROL_STAND_AT1_DISENGAGE_SWITCH",
             ["CS_ATDisc_2"] = "EVT_CONTROL_STAND_AT2_DISENGAGE_SWITCH",
+            // Glareshield — Master Warning / Caution recall
+            ["WARN_ResetFireWarning"]      = "EVT_FIRE_WARN_LIGHT_LEFT",
+            ["WARN_ResetMasterCaution"]    = "EVT_MASTER_CAUTION_LIGHT_LEFT",
         };
 
     // =========================================================================
