@@ -25,7 +25,7 @@ namespace MSFSBlindAssist.Patching
         // also fires when a variant installed in the sim is missing its override folder
         // (see HasMissingVariantOverride), so a variant the user installs later is picked
         // up without forcing a no-op re-patch on installs that are already complete.
-        private const int BridgeVersion = 5;
+        private const int BridgeVersion = 6;
         private const string VersionFileName = "bridge-version.txt";
 
         private const string PackageFolderName = "zzz-pmdg-efb-accessibility";
