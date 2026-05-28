@@ -1,5 +1,5 @@
 // FlyByWire A380X — MSFS Blind Assist accessibility bridge
-// BRIDGE_JS_VERSION: 0.6.0-stage
+// BRIDGE_JS_VERSION: 0.7.0-xhr-fallback
 //
 // Selectors and event names verified against the open-source FBW aircraft
 // repo (master branch, fbw-a380x):
@@ -60,7 +60,7 @@ if (window._fbwA380_bridge_loaded) {
 } else { window._fbwA380_bridge_loaded = true;
 
 var _a380 = {
-    JS_VERSION: '0.6.0-stage',
+    JS_VERSION: '0.7.0-xhr-fallback',
     SERVER_URL: 'http://localhost:19777',
     SCREEN_POLL_INTERVAL: 350,
     EFB_POLL_INTERVAL: 800,
@@ -112,54 +112,134 @@ try {
 } catch (e) { /* default to efb */ }
 
 // ----- HTTP -----------------------------------------------------------
+//
+// Dual transport: try fetch() first (modern, used by PMDG bridge), fall
+// back to XMLHttpRequest if fetch is unavailable or throws on this gauge
+// context. Coherent GT in MSFS 2024 has been observed to ship fetch but
+// occasionally apply CSPs that block specific origins; XHR is the older
+// pre-fetch API and tends to be unblocked even when fetch isn't.
+
+_a380.HAS_FETCH = (typeof fetch === 'function');
+
+_a380.httpGet = function(url) {
+    return new Promise(function(resolve, reject) {
+        try {
+            var xhr = new XMLHttpRequest();
+            xhr.open('GET', url, true);
+            xhr.timeout = 2500;
+            xhr.onload = function() {
+                if (xhr.status >= 200 && xhr.status < 300) resolve(xhr.responseText);
+                else reject(new Error('HTTP ' + xhr.status));
+            };
+            xhr.onerror = function() { reject(new Error('xhr network error')); };
+            xhr.ontimeout = function() { reject(new Error('xhr timeout')); };
+            xhr.send();
+        } catch (e) { reject(e); }
+    });
+};
+
+_a380.httpPost = function(url, body) {
+    return new Promise(function(resolve, reject) {
+        try {
+            var xhr = new XMLHttpRequest();
+            xhr.open('POST', url, true);
+            xhr.timeout = 2500;
+            xhr.setRequestHeader('Content-Type', 'application/json');
+            xhr.onload = function() {
+                if (xhr.status >= 200 && xhr.status < 300) resolve(xhr.responseText);
+                else reject(new Error('HTTP ' + xhr.status));
+            };
+            xhr.onerror = function() { reject(new Error('xhr network error')); };
+            xhr.ontimeout = function() { reject(new Error('xhr timeout')); };
+            xhr.send(body);
+        } catch (e) { reject(e); }
+    });
+};
 
 _a380.post = function(type, data) {
     if (!_a380.serverConnected) return;
-    try {
-        fetch(_a380.SERVER_URL + '/state', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ type: type, data: data || {} })
-        }).catch(function(){});
-    } catch (e) { /* swallow */ }
+    var body = JSON.stringify({ type: type, data: data || {} });
+    if (_a380.HAS_FETCH) {
+        try {
+            fetch(_a380.SERVER_URL + '/state', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: body
+            }).catch(function(){
+                // fetch failed at runtime — fall back to XHR for subsequent
+                // posts. Mark fetch as unusable so we stop trying it.
+                _a380.HAS_FETCH = false;
+                _a380.httpPost(_a380.SERVER_URL + '/state', body).catch(function(){});
+            });
+            return;
+        } catch (e) {
+            _a380.HAS_FETCH = false;
+        }
+    }
+    _a380.httpPost(_a380.SERVER_URL + '/state', body).catch(function(){});
 };
 
 _a380.pollCommands = function() {
     if (!_a380.serverConnected) return;
-    try {
-        fetch(_a380.SERVER_URL + '/commands').then(function(r){ return r.json(); }).then(function(cmds){
+    var handle = function(text) {
+        try {
+            var cmds = JSON.parse(text);
             if (!cmds || !cmds.length) return;
             for (var i = 0; i < cmds.length; i++) {
                 _a380.handleCommand(cmds[i].command, cmds[i].payload);
             }
-        }).catch(function(){});
-    } catch (e) { /* swallow */ }
+        } catch (e) { /* swallow */ }
+    };
+    if (_a380.HAS_FETCH) {
+        try {
+            fetch(_a380.SERVER_URL + '/commands').then(function(r){ return r.text(); })
+                .then(handle)
+                .catch(function(){
+                    _a380.HAS_FETCH = false;
+                    _a380.httpGet(_a380.SERVER_URL + '/commands').then(handle).catch(function(){});
+                });
+            return;
+        } catch (e) { _a380.HAS_FETCH = false; }
+    }
+    _a380.httpGet(_a380.SERVER_URL + '/commands').then(handle).catch(function(){});
 };
 
 _a380.heartbeat = function() {
-    try {
-        fetch(_a380.SERVER_URL + '/ping').then(function(r){
-            if (r.ok && !_a380.serverConnected) {
-                _a380.serverConnected = true;
-                _a380.setStage(3);
-                console.log('[A380 Bridge] Connected to MSFSBA server, role=' + _a380.role);
-                if (_a380.role === 'mfd') _a380.post('fbwa380_mcdu_connected');
-                else                     _a380.post('fbwa380_efb_connected');
-            }
-        }).catch(function(err){
-            // Distinguishes a true network/CSP block (fetch throws) from
-            // "server simply not running yet" — we don't downgrade the
-            // L:var below 2 once we've seen at least one throw, which
-            // tells MSFSBA the JS got far enough to try.
-            if (_a380.stageReached < 2) _a380.setStage(2);
-            if (_a380.serverConnected) {
-                _a380.serverConnected = false;
-                console.log('[A380 Bridge] Lost MSFSBA server');
-            }
-        });
-    } catch (e) {
-        if (_a380.stageReached < 2) _a380.setStage(2);
+    var onOk = function() {
+        if (!_a380.serverConnected) {
+            _a380.serverConnected = true;
+            _a380.setStage(3);
+            console.log('[A380 Bridge] Connected to MSFSBA server, role=' + _a380.role + ', transport=' + (_a380.HAS_FETCH ? 'fetch' : 'xhr'));
+            if (_a380.role === 'mfd') _a380.post('fbwa380_mcdu_connected');
+            else                     _a380.post('fbwa380_efb_connected');
+        }
+    };
+    var onFail = function() {
+        // Distinguishes a true network/CSP block (transport threw) from
+        // "server simply not running yet" — we don't downgrade the L:var
+        // below 2 once we've seen at least one throw on a transport we
+        // can no longer fall back from. fetch failing alone isn't stage 2
+        // yet; we only escalate when XHR also fails.
+        if (!_a380.HAS_FETCH && _a380.stageReached < 2) _a380.setStage(2);
+        if (_a380.serverConnected) {
+            _a380.serverConnected = false;
+            console.log('[A380 Bridge] Lost MSFSBA server');
+        }
+    };
+    if (_a380.HAS_FETCH) {
+        try {
+            fetch(_a380.SERVER_URL + '/ping').then(function(r){
+                if (r.ok) onOk();
+                else onFail();
+            }).catch(function(){
+                // fetch threw — try XHR before giving up.
+                _a380.HAS_FETCH = false;
+                _a380.httpGet(_a380.SERVER_URL + '/ping').then(onOk).catch(onFail);
+            });
+            return;
+        } catch (e) { _a380.HAS_FETCH = false; }
     }
+    _a380.httpGet(_a380.SERVER_URL + '/ping').then(onOk).catch(onFail);
 };
 
 // ----- KCCU key dispatch ---------------------------------------------

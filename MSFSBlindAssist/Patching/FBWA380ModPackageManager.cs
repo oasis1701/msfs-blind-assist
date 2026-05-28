@@ -30,7 +30,11 @@ namespace MSFSBlindAssist.Patching
         // v3: bridge JS v0.6.0-stage — adds L:MSFSBA_FBWA380_STAGE diagnostic
         //     so the MCDU form's status label can show where bring-up failed
         //     (JS not running / fetch blocked / connected) without dev mode.
-        private const int BridgeVersion = 3;
+        // v4: bridge JS v0.7.0-xhr-fallback — defensive XHR transport when
+        //     fetch() is blocked (some Coherent GT CSP combinations).
+        //     Stage diagnostic now only escalates to 2 when *both* fetch
+        //     and XHR fail, so a CSP-block-on-fetch alone still posts.
+        private const int BridgeVersion = 4;
         private const string VersionFileName = "bridge-version.txt";
 
         private const string PackageFolderName = "zzz-fbw-a380-msfsba-bridge";
