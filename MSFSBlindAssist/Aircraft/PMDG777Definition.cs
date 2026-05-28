@@ -4853,9 +4853,10 @@ public class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                 "EVAC_Command", "EVAC_HornShutoff", "EVAC_PressToTest"
             },
 
-            // Pedestal — Warning (Master Warning/Caution already in Glareshield Warning section)
+            // Pedestal — Warning
             ["Warning"] = new List<string>
             {
+                "WARN_annunMasterWarning_L", "WARN_annunMasterCaution_L",
                 "WARN_Reset_L", "WARN_Reset_R"
             },
 
