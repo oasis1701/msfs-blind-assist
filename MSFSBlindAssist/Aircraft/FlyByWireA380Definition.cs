@@ -1491,6 +1491,27 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         };
     }
 
+    // Input-mode FCU push/pull + AP chords → the A380 FCU events (HDG/VS pull use
+    // the _TO_AP_ variants). The base HandleHotkeyAction consults this map for any
+    // action our switch doesn't handle.
+    protected override Dictionary<HotkeyAction, string> GetHotkeyVariableMap()
+    {
+        return new Dictionary<HotkeyAction, string>
+        {
+            [HotkeyAction.FCUHeadingPush] = "A32NX.FCU_TO_AP_HDG_PUSH",
+            [HotkeyAction.FCUHeadingPull] = "A32NX.FCU_TO_AP_HDG_PULL",
+            [HotkeyAction.FCUSpeedPush] = "A32NX.FCU_SPD_PUSH",
+            [HotkeyAction.FCUSpeedPull] = "A32NX.FCU_SPD_PULL",
+            [HotkeyAction.FCUAltitudePush] = "A32NX.FCU_ALT_PUSH",
+            [HotkeyAction.FCUAltitudePull] = "A32NX.FCU_ALT_PULL",
+            [HotkeyAction.FCUVSPush] = "A32NX.FCU_VS_PUSH",
+            [HotkeyAction.FCUVSPull] = "A32NX.FCU_TO_AP_VS_PULL",
+            [HotkeyAction.ToggleAutopilot1] = "A32NX.FCU_AP_1_PUSH",
+            [HotkeyAction.ToggleAutopilot2] = "A32NX.FCU_AP_2_PUSH",
+            [HotkeyAction.ToggleApproachMode] = "A32NX.FCU_APPR_PUSH",
+        };
+    }
+
     // ===================================================================
     // Update hook (bridge diagnostics)
     // ===================================================================
@@ -1511,6 +1532,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             if (!_lastEwdCode.TryGetValue(varName, out var prev) || prev != code)
             {
                 _lastEwdCode[varName] = code;
+                // Honour the "ECAM E/WD call-outs" mute from the Monitor Manager.
+                if (Settings.SettingsManager.Current.A380DisabledMonitorVariables.Contains("FBWA380_ECAM_MEMOS"))
+                    return true;
                 string text = EWDMessageLookupA380.GetMessage(code);
                 if (!string.IsNullOrWhiteSpace(text) &&
                     !text.Equals("NORMAL", StringComparison.OrdinalIgnoreCase))
@@ -1638,6 +1662,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             case HotkeyAction.ReadSpeed: RequestFCUSpeedWithStatus(simConnect); return true;
             case HotkeyAction.ReadAltitude: RequestFCUAltitudeWithStatus(simConnect); return true;
             case HotkeyAction.ReadFCUVerticalSpeedFPA: RequestFCUVSWithStatus(simConnect); return true;
+            case HotkeyAction.MonitorManager:
+                hotkeyManager.ExitOutputHotkeyMode();
+                if (parentForm is MainForm mf) mf.ShowA380MonitorManagerDialog();
+                return true;
             default:
                 return base.HandleHotkeyAction(action, simConnect, announcer, parentForm, hotkeyManager);
         }

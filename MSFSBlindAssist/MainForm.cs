@@ -29,6 +29,7 @@ public partial class MainForm : Form
     private IAirportDataProvider? airportDataProvider;
     private ChecklistForm? checklistForm;
     private FenixMonitorManagerForm? fenixMonitorManagerForm;
+    private Forms.FBWA380.FBWA380MonitorManagerForm? fbwA380MonitorManagerForm;
     private PMDGAnnouncementMonitorForm? pmdgAnnouncementMonitorForm;
     private MSFSBlindAssist.Services.PMDGProgPageMonitor? pmdgProgPageMonitor;
     private FenixMCDUForm? fenixMCDUForm;
@@ -578,6 +579,13 @@ public partial class MainForm : Form
                 // sharing the same disabled-variables list.
                 if (currentAircraft.AircraftCode.StartsWith("PMDG_", StringComparison.Ordinal) &&
                     Settings.SettingsManager.Current.PMDGDisabledMonitorVariables.Contains(e.VarName))
+                {
+                    return; // Skip announcement for disabled variable
+                }
+
+                // Check if disabled in the A380 Monitor Manager.
+                if (currentAircraft.AircraftCode == "FBW_A380" &&
+                    Settings.SettingsManager.Current.A380DisabledMonitorVariables.Contains(e.VarName))
                 {
                     return; // Skip announcement for disabled variable
                 }
@@ -1915,6 +1923,17 @@ public partial class MainForm : Form
 
         // Show the form (reuses same instance to preserve state)
         fenixMonitorManagerForm.ShowForm();
+    }
+
+    public void ShowA380MonitorManagerDialog()
+    {
+        hotkeyManager.ExitOutputHotkeyMode();
+        if (fbwA380MonitorManagerForm == null || fbwA380MonitorManagerForm.IsDisposed)
+        {
+            fbwA380MonitorManagerForm = new Forms.FBWA380.FBWA380MonitorManagerForm(
+                announcer, currentAircraft.GetVariables());
+        }
+        fbwA380MonitorManagerForm.ShowForm();
     }
 
     /// <summary>
@@ -3568,6 +3587,12 @@ public partial class MainForm : Form
             checklistForm = null;
         }
 
+        // Dispose A380 monitor manager when switching aircraft
+        if (fbwA380MonitorManagerForm != null && !fbwA380MonitorManagerForm.IsDisposed)
+        {
+            fbwA380MonitorManagerForm.Dispose();
+            fbwA380MonitorManagerForm = null;
+        }
         // Dispose fenixMonitorManagerForm when switching aircraft
         if (fenixMonitorManagerForm != null && !fenixMonitorManagerForm.IsDisposed)
         {

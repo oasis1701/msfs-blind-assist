@@ -1,0 +1,183 @@
+FLYBYWIRE A380X HOTKEY REFERENCE
+
+This is the FlyByWire A380X (development build). The MCDU is actually the MFD
+(driven by the KCCU cursor, not classic line-select keys); the EFB is the
+flyPad. Both are read and driven live through the MSFS Coherent GT debugger —
+no add-on install is required, but MSFS must be in Developer Mode and the
+A380X must be loaded with the displays powered up.
+
+Panels: use the main window's Sections and Panels lists (Ctrl+1 / Ctrl+2) to
+browse every system. Most controls are combo boxes or buttons; many panels also
+have a read-only "Status Display" field listing the live readouts one per line
+(battery voltages, gen load, hydraulic pressures, bleed temps, brake temps,
+engine N2/N3/EGT/FF, fault lights, etc.). Press the panel's Refresh button (or
+re-open the panel) to update on demand; values also update automatically as the
+sim changes.
+
+Application Navigation:
+  Ctrl+1     Focus Sections List
+  Ctrl+2     Focus Panels List
+
+Tip: Press the same bracket key again to cancel a mode you activated by accident.
+
+
+OUTPUT MODE - Press right bracket to activate
+
+AI features:
+  Alt+D      Describe Scene
+
+FCU Controls (read):
+  Shift+H    Read FCU Heading (selected/managed)
+  Shift+S    Read FCU Speed (knots or Mach, selected/managed)
+  Shift+A    Read FCU Altitude (selected/managed)
+  Shift+V    Read FCU Vertical Speed / FPA
+
+Altitude:
+  Q          Read Altitude AGL
+  A          Read Altitude MSL
+
+Airspeed:
+  S          Read IAS (Indicated Airspeed)
+  T          Read TAS (True Airspeed)
+  G          Read Ground Speed
+  M          Read Mach Number
+
+Heading:
+  H          Read Magnetic Heading
+  U          Read True Heading
+
+Vertical:
+  V          Read Vertical Speed
+
+Weather:
+  I          Wind Info
+  O          Read Outside Temperature (Celsius)
+
+Time:
+  Z          Read Local Time at aircraft position
+  Shift+Z    Read Zulu / UTC Time
+
+Transponder:
+  X          Read Squawk Code
+
+Location:
+  C          Read Nearest City
+
+Announcements:
+  Shift+T    Toggle trim announcements on/off
+  Ctrl+M     A380 Monitor Manager — tick/untick which variables are announced
+             automatically as they change (master warning/caution, engine state,
+             fire, flight phase, ATC message waiting, and a single "ECAM E/WD
+             call-outs" entry that mutes the live memo/warning read-out). Your
+             choices are saved between sessions.
+
+Tools:
+  Ctrl+H     Activate/deactivate Hand fly mode (enables more hotkeys)
+  Ctrl+V     Activate/deactivate Visual guidance mode (requires hand fly mode)
+  Ctrl+T     Takeoff Assistance
+  Ctrl+D     Distance to Selected Runway
+  Ctrl+I     ILS guidance system
+
+Taxi Guidance (turn-by-turn taxi assistance with audio steering tone):
+  Y          Taxi Status (current taxiway, next turn, distance to destination)
+  Ctrl+Y     Repeat Current Taxi Instruction
+  Alt+Y      Where Am I (current taxiway, gate, or runway at nearest airport)
+  (Open the Taxi Assist form with Input mode > Shift+Y)
+
+Traffic and Weather:
+  R          Announce Tracked TCAS Traffic
+  Ctrl+R     Show TCAS Window
+  Shift+W    Show Weather Radar
+  Shift+M    Show METAR Report
+
+Displays:
+  Shift+M    (Input mode) Open the A380 MCDU / MFD window — see below
+
+Ground Services:
+  Ctrl+G     Read latest GSX tooltip
+
+
+INPUT MODE - Press left bracket to activate
+
+Teleport:
+  Shift+R    Runway Teleport
+  Shift+G    Gate Teleport
+
+Flight planning:
+  Shift+F    Fix/waypoint tracking
+  Shift+D    Select Destination Runway
+
+Autopilot:
+  Shift+A    Toggle Autopilot 1
+  Ctrl+O     Toggle Autopilot 2
+  Shift+P    Toggle Approach Mode
+
+FCU Push/Pull:
+  Shift+1    Push Heading Knob
+  Ctrl+1     Pull Heading Knob
+  Shift+2    Push Altitude Knob
+  Ctrl+2     Pull Altitude Knob
+  Shift+3    Push Speed Knob
+  Ctrl+3     Pull Speed Knob
+  Shift+4    Push VS Knob
+  Ctrl+4     Pull VS Knob
+
+FCU Set Values (opens an edit box):
+  Ctrl+H     Set Heading Value
+  Ctrl+S     Set Speed Value
+  Ctrl+A     Set Altitude Value
+  Ctrl+V     Set VS Value
+
+flyPad EFB:
+  Shift+T    Open the A380 flyPad EFB window. Lists the current flyPad page as
+             native controls (links, checkboxes, edit fields, buttons). Tab
+             between them; F5 refreshes. Activating a navigation link changes the
+             flyPad page and the list updates.
+
+Taxi Guidance:
+  Shift+Y    Open Taxi Assist Form (enter ATC taxi clearance, start guidance)
+  Y          Continue past current hold-short point
+  Ctrl+Y     Stop Taxi Guidance
+  Shift+X    Open Landing Exit Planner
+
+Ground Services:
+  Alt+G      Open Access GSX window
+
+
+A380 MCDU / MFD Window (open with Input mode, then Shift+M):
+
+  The A380 "MCDU" is the MFD — a cursor-driven display. The window shows one
+  thing per line; numbered lines are actionable (button "1: PERF, button", edit
+  field "3: 195.3, edit", menu "2: FMS 1, menu"); un-numbered lines are static
+  text. The page title is announced once when the page changes; the scratchpad /
+  message line is announced when it changes.
+
+  Up/Down Arrow   Move through the lines
+  Enter           Activate the selected line; if you typed into the scratchpad
+                  first, the text is sent to the selected field
+  (type)          Type into the scratchpad edit box, then Enter to send
+  Backspace       CLR (clears the scratchpad first, then the selected field)
+  Ctrl+Up         Previous page
+  Ctrl+Down       Next page
+  MCDU (Captain) / First Officer selector chooses which side you are driving.
+
+  Page buttons (mnemonics, Alt+letter):
+  Alt+I   INIT       Alt+F   F-PLN      Alt+P   PERF
+  Alt+R   RAD NAV    Alt+S   SEC FPL    Alt+A   ATC COM
+  Alt+D   DIR        Alt+H   Refresh
+
+  (Page buttons navigate by clicking the MFD's own page-selector menu items, so
+  they work whether or not the dropdown is open.)
+
+
+General:
+  Escape     Exit active hotkey mode
+
+Notes:
+  - There is no FCU knob hardware difference to worry about: the A380 reuses the
+    same FCU set/read flow as the A320.
+  - Many overhead/pedestal systems are A380-specific (4 engines, Green/Yellow
+    hydraulics, 11 fuel tanks with transfer + jettison, PRIM/SEC flight-control
+    computers, BTV autobrake, 3 RMP radios). All are in the Sections/Panels tree.
+  - This is a development build; some control or readout names may not match
+    perfectly. Report anything that reads or sets wrong.

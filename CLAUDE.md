@@ -220,6 +220,28 @@ The EFB (Electronic Flight Bag) tablet is made accessible via a JavaScript bridg
 - C# → JS: `GET /commands` polled every 500ms, returns JSON array of `{command, payload}`. Commands expire after 30s if not polled.
 - Bridge connects on startup, retries every 5s if server unavailable. On reconnection, flushes pending states and re-sends Navigraph auth status.
 
+### FlyByWire A380X Specific Patterns
+
+`FlyByWireA380Definition` (code `FBW_A380`), branch `fly-by-wire-A380-integration`.
+
+**No-injection MCDU/flyPad transport.** The A380X MFD/MCDU and flyPad EFB are read AND driven live through the MSFS Coherent GT remote debugger (`http://127.0.0.1:19999`, WebKit inspector, `Runtime.evaluate`) — NOT via a Community-folder mod or HTTP bridge. `SimConnect/CoherentDebuggerClient.cs` (MFD, resolves the view by title needle `A380X_MFD`) and `SimConnect/CoherentEFBClient.cs` (flyPad, title needle `- EFB`) both implement `IMcduBridge`, so `FBWA380MCDUForm`/`FBWA380EFBForm` are transport-agnostic. The in-page agents are `Resources/coherent-a380-agent.js` and `coherent-flypad-agent.js` — **ES5 only** (Coherent GT = Chromium 49: `var`, no arrow funcs, no `String.includes`, top-level try/catch). MFD page-ids shift each session → always resolve by TITLE. The injection-era `fbw-a380-bridge.js`/`FBWA380ModPackageManager` is retired for the A380 (PMDG still uses `EFBBridgeServer`). Requires MSFS Developer Mode on; no sim restart.
+
+**MFD navigation = click stable element id, NOT KCCU H-events.** FBW issue #9348 says the KCCU H-events are "practically unusable for external tools". The agent clicks the MFD page-selector menu item by its stable id `{CAPT|FO}_MFD_pageSelector{Tab}_{idx}` (the click fires even while the dropdown is collapsed); KCCU key is a cross-system fallback only. Current page is readable from SimVar `A380X_MFD_{L|R}_ACTIVE_PAGE` (string URI).
+
+**Variable provenance.** The A380X reuses the `A32NX_` prefix for almost all systems (index ranges extended: 4 engines/gens/IDGs/bleeds/FADECs, 11 fuel tanks, 16 brakes, 4 outflow valves). `A380X_` is reserved for genuinely new hardware (RMP suite, EFIS-CP/ND, fuel transfer/jettison, battery display knob, ANN/INT-LT, OIT, storm light, MFD page URIs). Source completeness from the FBW **A32NX docs** (docs.flybywiresim.com) too — MSFSBA's own A320 definition is incomplete, so don't treat it as the ceiling. Reference catalogs in `tools/`: `a380-simvars-catalog.md`, `a380-fcu-vars.md`, `a380-engine-start.md`, `a380-fault-status-vars.md`, `a380-sd-pages.md`, `a32nx-gap-vs-a380.md`, `a380-doc-final-gap.md`, `a380-correctness-audit.md`, `a380-framework-verification.md`, `fbw-a380-mfd-source-findings.md`. FCU mapping (the A380 has NO `A32NX_FCU_AFS_DISPLAY_*`/`*_LIGHT_ON` vars) is in `a380-fcu-vars.md`.
+
+**FCU is ported from the A320** (set dialogs + paired readouts via `HandleHotkeyAction`; A380 autoflight vars). Not out of scope — it reuses the A320 `A32NX.FCU_*_SET` events with A380 value/managed/mode vars.
+
+**Engine start.** ENG MASTER 1-4 = `FUELSYSTEM_VALVE_OPEN/CLOSE` (per-engine `EventParam`); engine MODE selector fans `TURBINE_IGNITION_SWITCH_SET{1..4}` out to all engines via `HandleUIVariableSet` (same place the 3-speed wipers send `ELECTRICAL_CIRCUIT_POWER_SETTING_SET:141/143`).
+
+**ARINC429 readouts.** Many SD-page quantities (FQMS per-tank fuel, FOB/GW/CG, cabin alt/VS/ΔP, APU N/EGT) are ARINC429 words — decode with `SimConnect/Arinc429Word.cs` (numeric-truncate the double to u64; low 32 bits = IEEE-754 float in engineering units; bits 32-33 = SSM, `0b11` = NormalOperation). The generic per-panel display path shows the raw double, so ARINC429 values need a dedicated decoded readout window (still TODO). Plain (non-ARINC429) SD scalars are already surfaced as panel readouts.
+
+**ECAM E/WD monitoring.** Upper E/WD memo/warning lines `A32NX_EWD_LOWER_LEFT/RIGHT_LINE_1..10` (uppercase `EWD`, 10/side — vs A320's `Ewd`/7) are numeric message CODES decoded via `SimConnect/EWDMessageLookupA380.cs` (ported A380 `EcamMemos`, delegates the ANSI/colour pipeline to the A320 `EWDMessageLookup`) and announced live in `ProcessSimVarUpdate`.
+
+**Monitor Manager (Ctrl+M).** `FBWA380MonitorManagerForm` dynamically lists every auto-announced var (Continuous + IsAnnounced) with checkboxes, persisting un-ticked keys to `UserSettings.A380DisabledMonitorVariables` (consulted in `MainForm.OnSimVarUpdated`; the synthetic `FBWA380_ECAM_MEMOS` key mutes ECAM call-outs in `ProcessSimVarUpdate`). Mirrors the Fenix/PMDG monitor managers. The framework auto-monitor, read-only per-panel display fields, and combo auto-update-on-change are all free (driven off `GetVariables`/`GetPanelDisplayVariables`).
+
+**Everything is verified against FBW docs/source, not the running sim** — several names (EFIS-CP baro events, FCU `_TO_AP_` push/pull variants, SURV pushbuttons, RMP per-channel TX) are flagged uncertain and need an in-sim pass. Hotkey guide: `HotkeyGuides/FBW_A380_Hotkeys.txt`.
+
 ## Detailed Documentation
 
 **Claude: Read these docs only when the task specifically requires them.**

@@ -139,6 +139,11 @@ public class UserSettings
         // doesn't have to re-tick on every launch.
         public List<string> PMDGDisabledMonitorVariables { get; set; } = new List<string>();
 
+        // A380 Monitor Manager Settings — variable keys the user has unticked in
+        // FBWA380MonitorManagerForm. Consulted (and ECAM-memo sentinel honoured)
+        // when AircraftCode == "FBW_A380". Persisted across sessions.
+        public List<string> A380DisabledMonitorVariables { get; set; } = new List<string>();
+
         // FMC settings — meaningful when a PMDG aircraft or the Fenix A320 is
         // loaded; the FMC Settings menu item is gated on
         // AircraftCode.StartsWith("PMDG_") || AircraftCode.StartsWith("FENIX_").
@@ -290,6 +295,7 @@ public class UserSettings
             DistanceUnits = DistanceUnits,
             FenixDisabledMonitorVariables = new List<string>(FenixDisabledMonitorVariables),
             PMDGDisabledMonitorVariables = new List<string>(PMDGDisabledMonitorVariables),
+            A380DisabledMonitorVariables = new List<string>(A380DisabledMonitorVariables),
             MCDUUseAlternateLSKKeys = MCDUUseAlternateLSKKeys,
             PMDGEnhancedDistanceMode = PMDGEnhancedDistanceMode,
             WeatherAutoAnnounceEnabled = WeatherAutoAnnounceEnabled,
