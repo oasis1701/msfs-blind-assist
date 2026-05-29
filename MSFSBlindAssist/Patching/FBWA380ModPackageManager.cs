@@ -50,10 +50,23 @@ namespace MSFSBlindAssist.Patching
         //     protected html_ui/Pages/VCockpit/Instruments/ namespace, so our
         //     overlay's mfd.html/efb.html were never loaded (diagnostic proved
         //     HTML loaded: NO, Stage: 0 even after a clean reboot). On FS2024
-        //     we now back up the original mfd.html/efb.html, inline the bridge
-        //     into the originals, and update the FBW package's own layout.json
-        //     so MSFS's file-size validation passes. FS2020 keeps the overlay.
-        private const int BridgeVersion = 6;
+        //     we now back up the original mfd.html/efb.html and update the FBW
+        //     package's own layout.json so MSFS's file-size validation passes.
+        // v7: CRITICAL bring-up fix. v5/v6 INLINED the bridge as a plain
+        //     <script> appended to the instrument HTML — but MSFS instrument
+        //     templates are NOT ordinary web pages: the Coherent loader only
+        //     executes scripts referenced via `import-script="…"` directives,
+        //     never plain inline <script> blocks. So the inlined bridge (and
+        //     the HTML-loaded marker) never ran, leaving HTML loaded: NO even
+        //     though the patched file was on disk and loading fine. v7 drops
+        //     the bridge JS (and a tiny HTML-loaded marker JS) as SEPARATE
+        //     files in each instrument folder and appends `import-script` tags
+        //     referencing them — the same mechanism FBW's own mfd.js/efb.js
+        //     use, and what HS787 v18 does. The new JS files are registered in
+        //     layout.json (without that, MSFS's VFS won't serve them and the
+        //     import 404s). Applies to BOTH the FS2024 in-place path and the
+        //     FS2020 overlay.
+        private const int BridgeVersion = 7;
         private const string VersionFileName = "bridge-version.txt";
 
         // Suffix for the backed-up pristine HTML kept beside each in-place
@@ -68,6 +81,17 @@ namespace MSFSBlindAssist.Patching
 
         private const string PackageFolderName = "zzz-fbw-a380-msfsba-bridge";
         private const string BridgeJsFileName = "fbw-a380-bridge.js";
+
+        // Tiny companion script dropped next to the bridge. It only sets
+        // L:MSFSBA_FBWA380_HTML_LOADED=1, and is loaded by its OWN
+        // import-script tag BEFORE the bridge. If this var goes to 1 but the
+        // bridge's Stage var stays 0, we know MSFS loaded & ran our injected
+        // scripts but the bridge JS itself failed to parse — a different bug
+        // from "MSFS never loaded the override at all" (both vars 0).
+        private const string MarkerJsFileName = "msfsba-html-marker.js";
+        private const string MarkerJsContent =
+            "try{if(typeof SimVar!=='undefined'&&SimVar.SetSimVarValue){" +
+            "SimVar.SetSimVarValue('L:MSFSBA_FBWA380_HTML_LOADED','number',1);}}catch(e){}";
 
         // Per-instrument override target — relative paths inside the FBW
         // A380X package that we mirror in our overlay package.
@@ -116,54 +140,73 @@ namespace MSFSBlindAssist.Patching
   ""total_package_size"": ""0000000000000001000""
 }";
 
-        // Marker we look for when deciding whether the HTML is already
-        // patched (avoids appending the script tag twice on re-install).
-        // The marker is the inline-bridge sentinel so we don't get a
-        // stale match on a previously-import-script-patched HTML.
-        private const string PatchMarker = "/* MSFSBA-A380-BRIDGE-INLINE */";
+        // HTML comment we append so we can detect an already-patched file.
+        private const string PatchMarker = "<!-- MSFSBA-A380-BRIDGE -->";
 
-        // HTML-loaded marker — fires the instant the patched HTML is
-        // parsed, regardless of whether the inlined bridge JS later
-        // throws or succeeds. Lets the form distinguish "MSFS never
-        // loaded my override HTML" (Stage 0 + HtmlLoaded=0) from
-        // "MSFS loaded the HTML but the bridge JS broke" (Stage 0 +
-        // HtmlLoaded=1).
-        private const string HtmlLoadedMarkerScript =
-            "<script>try{if(typeof SimVar!=='undefined'&&SimVar.SetSimVarValue){SimVar.SetSimVarValue('L:MSFSBA_FBWA380_HTML_LOADED','number',1);}}catch(e){}</script>";
+        // Legacy v5/v6 inline sentinel. Still recognised by the
+        // "is it patched?" check so we correctly identify an old broken
+        // install and re-patch it (rather than re-prompting from scratch).
+        private const string LegacyInlineMarker = "/* MSFSBA-A380-BRIDGE-INLINE */";
 
         /// <summary>
-        /// Builds the patched HTML by inlining the marker + the full bridge
-        /// JS into the original HTML. This bypasses MSFS's import-script
-        /// loader entirely — if the override HTML is being scanned at all,
-        /// the inlined code runs in plain Coherent GT script execution.
+        /// Builds the patched instrument HTML. MSFS instrument templates only
+        /// execute scripts referenced via <c>import-script="…"</c> — plain
+        /// inline &lt;script&gt; blocks are ignored — so we append two
+        /// import-script tags (marker first, then the bridge), matching the
+        /// way FBW's own mfd.js/efb.js are loaded. The referenced JS files are
+        /// dropped beside the HTML by the caller and registered in layout.json.
         /// </summary>
-        private static string BuildInlinedHtml(string originalHtml, string bridgeJsContent)
+        private static string BuildPatchedHtml(string originalHtml, string relPath)
         {
-            // Strip any old import-script reference we might have written
-            // in a previous version so we don't end up trying to load the
-            // file twice.
-            string cleaned = StripOldImportScriptTag(originalHtml);
+            string cleaned = StripOldBridgeReferences(originalHtml);
+            string markerImport = ImportScriptPath(relPath, MarkerJsFileName);
+            string bridgeImport = ImportScriptPath(relPath, BridgeJsFileName);
             return cleaned.TrimEnd()
-                + "\n" + HtmlLoadedMarkerScript
-                + "\n<script>" + PatchMarker + "\n"
-                + bridgeJsContent
-                + "\n</script>\n";
+                + "\n" + PatchMarker
+                + "\n<script type=\"text/html\" import-script=\"" + markerImport + "\" import-async=\"false\"></script>"
+                + "\n<script type=\"text/html\" import-script=\"" + bridgeImport + "\" import-async=\"false\"></script>\n";
         }
 
         /// <summary>
-        /// Removes a previous-style import-script tag pointing at our
-        /// bridge JS file, so a re-install switches cleanly from the
-        /// external-file approach to the inlined approach.
+        /// Converts a layout-relative instrument folder ("html_ui/Pages/…/MFD")
+        /// + a file name into the leading-slash, html_ui-rooted path that MSFS
+        /// import-script directives use ("/Pages/…/MFD/fbw-a380-bridge.js"),
+        /// matching the existing mfd.js / efb.js references in these files.
         /// </summary>
-        private static string StripOldImportScriptTag(string html)
+        private static string ImportScriptPath(string relPath, string fileName)
         {
-            int i = html.IndexOf(BridgeJsFileName, StringComparison.Ordinal);
-            if (i < 0) return html;
-            int lineStart = html.LastIndexOf('\n', i);
-            int lineEnd = html.IndexOf('\n', i);
-            if (lineStart < 0) lineStart = 0;
-            if (lineEnd < 0) lineEnd = html.Length;
-            return html.Substring(0, lineStart) + html.Substring(lineEnd);
+            string p = relPath.Replace('\\', '/');
+            const string prefix = "html_ui/";
+            if (p.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                p = p.Substring(prefix.Length);
+            return "/" + p.TrimEnd('/') + "/" + fileName;
+        }
+
+        /// <summary>
+        /// Strips any previous bridge/marker import lines and the legacy inline
+        /// &lt;script&gt; block, so re-patching is clean. (FS2024 already
+        /// re-derives from the pristine backup; this is a belt-and-braces for
+        /// the FS2020 overlay path and any odd state.)
+        /// </summary>
+        private static string StripOldBridgeReferences(string html)
+        {
+            var kept = new List<string>();
+            bool inLegacyBlock = false;
+            foreach (var line in html.Replace("\r\n", "\n").Split('\n'))
+            {
+                if (line.Contains(LegacyInlineMarker)) { inLegacyBlock = true; continue; }
+                if (inLegacyBlock)
+                {
+                    if (line.Contains("</script>")) inLegacyBlock = false;
+                    continue;
+                }
+                if (line.Contains(BridgeJsFileName) || line.Contains(MarkerJsFileName)
+                    || line.Contains(PatchMarker)
+                    || line.Contains("MSFSBA_FBWA380_HTML_LOADED"))
+                    continue;
+                kept.Add(line);
+            }
+            return string.Join("\n", kept);
         }
 
         // ------- FS2024 detection ------------------------------------------
@@ -461,9 +504,14 @@ namespace MSFSBlindAssist.Patching
         {
             string? fbwRoot = FindFbwA380PackageRoot(communityFolderPath);
             if (fbwRoot == null) return false;
-            // The patch marker is detectable on the MFD HTML — checking it suffices.
+            // Detectable on the MFD HTML — recognise BOTH the current
+            // import-script marker and the legacy inline sentinel so an old
+            // broken install is identified (and re-patched) rather than
+            // treated as unpatched.
             string mfd = Path.Combine(fbwRoot, MfdRelPath, MfdHtmlFileName);
-            return File.Exists(mfd) && File.ReadAllText(mfd).Contains(PatchMarker);
+            if (!File.Exists(mfd)) return false;
+            string html = File.ReadAllText(mfd);
+            return html.Contains(PatchMarker) || html.Contains(LegacyInlineMarker);
         }
 
         private static int GetInstalledVersionFs2024(string communityFolderPath)
@@ -525,29 +573,39 @@ namespace MSFSBlindAssist.Patching
         }
 
         /// <summary>
-        /// In-place patches one FBW instrument HTML: back up the pristine file
-        /// once (preserving the first known-good state), then always re-derive
-        /// the patched content from that backup so re-patches don't stack. No-op
-        /// if the instrument HTML isn't present in this build.
+        /// In-place patches one FBW instrument: back up the pristine HTML once
+        /// (preserving the first known-good state), drop the bridge JS and the
+        /// HTML-loaded marker JS beside it, then re-derive the patched HTML
+        /// from the backup with import-script tags referencing those files. The
+        /// re-derive means re-patches never stack. No-op if the instrument HTML
+        /// isn't present in this build.
         /// </summary>
         private static void PatchInstrumentInPlace(
             string fbwRoot, string relPath, string htmlFile, string bridgeJsContent)
         {
-            string htmlPath = Path.Combine(fbwRoot, relPath, htmlFile);
+            string instrumentDir = Path.Combine(fbwRoot, relPath);
+            string htmlPath = Path.Combine(instrumentDir, htmlFile);
             if (!File.Exists(htmlPath)) return;
 
             string backupPath = htmlPath + BackupSuffix;
             if (!File.Exists(backupPath))
                 File.Copy(htmlPath, backupPath, overwrite: false);
 
+            // Drop the companion JS files MSFS will load via import-script.
+            File.WriteAllText(Path.Combine(instrumentDir, MarkerJsFileName), MarkerJsContent);
+            File.WriteAllText(Path.Combine(instrumentDir, BridgeJsFileName), bridgeJsContent);
+
             string original = File.ReadAllText(backupPath);
-            File.WriteAllText(htmlPath, BuildInlinedHtml(original, bridgeJsContent));
+            File.WriteAllText(htmlPath, BuildPatchedHtml(original, relPath));
         }
 
         /// <summary>
-        /// Updates the FBW A380X package's layout.json so the patched (grown)
-        /// mfd.html / efb.html sizes match what MSFS validates on load. Backs
-        /// the layout up once. Idempotent — only sizes change.
+        /// Updates the FBW A380X package's layout.json so MSFS's VFS accepts
+        /// our changes: the patched (grown) mfd.html / efb.html get their new
+        /// sizes, and the dropped bridge/marker JS files get fresh content
+        /// entries (MSFS will not serve a file that isn't listed, so the
+        /// import-script would 404 without this). Backs the layout up once.
+        /// Idempotent — upserts by path.
         /// </summary>
         private static void UpdateFbwLayoutJson(string fbwRoot)
         {
@@ -565,25 +623,39 @@ namespace MSFSBlindAssist.Patching
             // Slash-agnostic, case-insensitive canonical form for matching.
             string Canonical(string p) => p.Replace('\\', '/').ToLowerInvariant();
 
-            void UpdateHtmlSize(string relPath, string htmlFile)
+            // Insert a new entry or update an existing one's size, keyed on the
+            // layout-relative path ("html_ui/Pages/…/<file>").
+            void Upsert(string relPath, string fileName)
             {
-                string absPath = Path.Combine(fbwRoot, relPath, htmlFile);
+                string absPath = Path.Combine(fbwRoot, relPath, fileName);
                 if (!File.Exists(absPath)) return;
                 long newSize = new FileInfo(absPath).Length;
-                string targetCanonical = Canonical($"{relPath}/{htmlFile}");
+                string relCanonical = Canonical($"{relPath}/{fileName}");
                 foreach (var entry in content)
                 {
                     string? p = entry["path"]?.ToString();
-                    if (p != null && Canonical(p) == targetCanonical)
+                    if (p != null && Canonical(p) == relCanonical)
                     {
                         entry["size"] = newSize;
-                        break;
+                        return;
                     }
                 }
+                content.Add(new JObject
+                {
+                    ["path"] = $"{relPath}/{fileName}".Replace('\\', '/'),
+                    ["size"] = newSize,
+                    ["date"] = 133888888888888888L
+                });
             }
 
-            UpdateHtmlSize(MfdRelPath, MfdHtmlFileName);
-            UpdateHtmlSize(EfbRelPath, EfbHtmlFileName);
+            // Grown HTML (existing entries) + the two new JS files per
+            // instrument that the import-script tags reference.
+            Upsert(MfdRelPath, MfdHtmlFileName);
+            Upsert(MfdRelPath, MarkerJsFileName);
+            Upsert(MfdRelPath, BridgeJsFileName);
+            Upsert(EfbRelPath, EfbHtmlFileName);
+            Upsert(EfbRelPath, MarkerJsFileName);
+            Upsert(EfbRelPath, BridgeJsFileName);
 
             File.WriteAllText(layoutPath, layout.ToString(Newtonsoft.Json.Formatting.Indented));
         }
@@ -598,13 +670,19 @@ namespace MSFSBlindAssist.Patching
             {
                 void RestoreOne(string relPath, string htmlFile)
                 {
-                    string htmlPath = Path.Combine(fbwRoot, relPath, htmlFile);
+                    string instrumentDir = Path.Combine(fbwRoot, relPath);
+                    string htmlPath = Path.Combine(instrumentDir, htmlFile);
                     string backup = htmlPath + BackupSuffix;
                     if (File.Exists(backup))
                     {
                         File.Copy(backup, htmlPath, overwrite: true);
                         File.Delete(backup);
                     }
+                    // Remove the dropped companion JS files.
+                    string bridgeJs = Path.Combine(instrumentDir, BridgeJsFileName);
+                    string markerJs = Path.Combine(instrumentDir, MarkerJsFileName);
+                    if (File.Exists(bridgeJs)) File.Delete(bridgeJs);
+                    if (File.Exists(markerJs)) File.Delete(markerJs);
                 }
 
                 RestoreOne(MfdRelPath, MfdHtmlFileName);
@@ -663,21 +741,23 @@ namespace MSFSBlindAssist.Patching
             string overlayDir = Path.Combine(packagePath, relPath);
             Directory.CreateDirectory(overlayDir);
 
-            // Inline the bridge JS directly into the HTML rather than
-            // referencing it via import-script. This bypasses MSFS's
-            // instrument-loader script-import path so the bridge runs
-            // off plain Coherent GT HTML parsing — which (a) is harder
-            // for MSFS to silently skip, and (b) lets us prove via the
-            // HtmlLoadedMarkerScript whether the override HTML is being
-            // picked up at all.
+            // Drop the bridge + marker JS into the overlay and reference them
+            // from the patched HTML via import-script — the only script form
+            // MSFS instrument templates actually execute. All three files are
+            // registered in the overlay's layout.json (returned entries).
+            string markerJsPath = Path.Combine(overlayDir, MarkerJsFileName);
+            File.WriteAllText(markerJsPath, MarkerJsContent);
+            string bridgeJsPath = Path.Combine(overlayDir, BridgeJsFileName);
+            File.WriteAllText(bridgeJsPath, bridgeJsContent);
+
             string originalHtml = File.ReadAllText(sourceHtmlPath);
-            string patchedHtml = originalHtml.Contains(PatchMarker)
-                ? originalHtml
-                : BuildInlinedHtml(originalHtml, bridgeJsContent);
+            string patchedHtml = BuildPatchedHtml(originalHtml, relPath);
             string overlayHtmlPath = Path.Combine(overlayDir, htmlFile);
             File.WriteAllText(overlayHtmlPath, patchedHtml);
 
             entries.Add(($"{relPath}/{htmlFile}", new FileInfo(overlayHtmlPath).Length));
+            entries.Add(($"{relPath}/{MarkerJsFileName}", new FileInfo(markerJsPath).Length));
+            entries.Add(($"{relPath}/{BridgeJsFileName}", new FileInfo(bridgeJsPath).Length));
             return entries;
         }
 
