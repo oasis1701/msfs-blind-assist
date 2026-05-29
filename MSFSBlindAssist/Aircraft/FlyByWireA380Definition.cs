@@ -369,12 +369,22 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             };
         }
         Light("LIGHT_BEACON", "LIGHT BEACON", "Beacon");
-        Light("LIGHT_STROBE", "LIGHT STROBE", "Strobe");
         Light("LIGHT_NAV", "LIGHT NAV", "Navigation Lights");
+        // Strobe is a 3-position switch (On / Auto / Off) backed by the writable
+        // FBW L:var LIGHTING_STROBE_0 (verified live), same as the A320 — a plain
+        // On/Off via STROBES_SET can't express AUTO. Rendered as a combo, written
+        // via SetLVar by the framework, auto-announced. ReverseDisplayOrder so the
+        // list reads Off / Auto / On top-to-bottom.
+        Sel("LIGHTING_STROBE_0", "Strobe",
+            new Dictionary<double, string> { [0] = "On", [1] = "Auto", [2] = "Off" }, false, true);
         Light("LIGHT_WING", "LIGHT WING", "Wing Lights");
         Light("LIGHT_LOGO", "LIGHT LOGO", "Logo Lights");
         Light("LIGHT_LANDING", "LIGHT LANDING", "Landing Lights");
-        Light("LIGHT_TAXI", "LIGHT TAXI:2", "Taxi Lights");
+        // Nose light is a 3-position switch (Takeoff / Taxi / Off) on the writable
+        // FBW L:var A380X_OVHD_EXTLT_NOSE — verified live that writing it drives the
+        // actual taxi/landing lights. Replaces the old on/off "Taxi Lights" proxy.
+        Sel("A380X_OVHD_EXTLT_NOSE", "Nose Light",
+            new Dictionary<double, string> { [0] = "Takeoff", [1] = "Taxi", [2] = "Off" }, false, true);
 
         // ============================ GLARESHIELD ============================
 
@@ -884,8 +894,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Read("A32NX_SPEEDS_F", "F Speed", "knots");
         Read("A32NX_SPEEDS_S", "S Speed", "knots");
 
-        // Lighting extras.
-        OnOff("STROBE_0_AUTO", "Strobe Auto Mode");
+        // Lighting extras. (Strobe AUTO is part of the LIGHTING_STROBE_0
+        // 3-position combo above — no separate STROBE_0_AUTO control needed.)
         Sel("A380X_OVHD_EXTLT_STBY_COMPASS_ICE_IND_SWITCH_POS", "Standby Compass / Ice Light",
             new Dictionary<double, string> { [0] = "Off", [1] = "On" });
 
@@ -1164,8 +1174,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         };
         p["Exterior Lighting"] = new List<string>
         {
-            "LIGHT_BEACON", "LIGHT_STROBE", "LIGHT_NAV", "LIGHT_WING", "LIGHT_LOGO",
-            "LIGHT_LANDING", "LIGHT_TAXI"
+            "LIGHT_BEACON", "LIGHTING_STROBE_0", "LIGHT_NAV", "LIGHT_WING", "LIGHT_LOGO",
+            "LIGHT_LANDING", "A380X_OVHD_EXTLT_NOSE"
         };
 
         p["Warnings"] = new List<string>
@@ -1278,7 +1288,6 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "A32NX_OVHD_NSS_DATA_TO_AVNCS_TOGGLE", "A32NX_NSS_MASTER_OFF"
         });
         p["Interior Lighting"].Add("A380X_OVHD_EXTLT_STBY_COMPASS_ICE_IND_SWITCH_POS");
-        p["Exterior Lighting"].Add("STROBE_0_AUTO");
         p["EFIS Control Panel"].AddRange(new[]
         {
             "A380X_EFIS_L_ACTIVE_FILTER", "A380X_EFIS_L_ACTIVE_OVERLAY", "XMLVAR_Baro_Selector_HPA_1", "A32NX_EFIS_L_OANS_RANGE",
@@ -1551,14 +1560,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     {
         return new Dictionary<HotkeyAction, string>
         {
-            [HotkeyAction.FCUHeadingPush] = "A32NX.FCU_TO_AP_HDG_PUSH",
-            [HotkeyAction.FCUHeadingPull] = "A32NX.FCU_TO_AP_HDG_PULL",
-            [HotkeyAction.FCUSpeedPush] = "A32NX.FCU_SPD_PUSH",
-            [HotkeyAction.FCUSpeedPull] = "A32NX.FCU_SPD_PULL",
-            [HotkeyAction.FCUAltitudePush] = "A32NX.FCU_ALT_PUSH",
-            [HotkeyAction.FCUAltitudePull] = "A32NX.FCU_ALT_PULL",
-            [HotkeyAction.FCUVSPush] = "A32NX.FCU_VS_PUSH",
-            [HotkeyAction.FCUVSPull] = "A32NX.FCU_TO_AP_VS_PULL",
+            // FCU knob push/pull are handled in HandleHotkeyAction (event + spoken
+            // readback), so they are intentionally NOT mapped here — a map entry
+            // would also fire a redundant post-action state announcement.
             [HotkeyAction.ToggleAutopilot1] = "A32NX.FCU_AP_1_PUSH",
             [HotkeyAction.ToggleAutopilot2] = "A32NX.FCU_AP_2_PUSH",
             [HotkeyAction.ToggleApproachMode] = "A32NX.FCU_APPR_PUSH",
@@ -1703,12 +1707,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     private static readonly Dictionary<string, string> _extLightSetEvents = new Dictionary<string, string>
     {
         ["LIGHT_BEACON"] = "BEACON_LIGHTS_SET",
-        ["LIGHT_STROBE"] = "STROBES_SET",
         ["LIGHT_NAV"] = "NAV_LIGHTS_SET",
         ["LIGHT_WING"] = "WING_LIGHTS_SET",
         ["LIGHT_LOGO"] = "LOGO_LIGHTS_SET",
-        ["LIGHT_LANDING"] = "LANDING_LIGHTS_SET",
-        ["LIGHT_TAXI"] = "TAXI_LIGHTS_SET"
+        ["LIGHT_LANDING"] = "LANDING_LIGHTS_SET"
     };
 
     public override bool HandleUIVariableSet(string varKey, double value, SimVarDefinition varDef,
@@ -1787,6 +1789,29 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             case HotkeyAction.FCUSetVS:
                 hotkeyManager.ExitInputHotkeyMode();
                 return ShowFCUVSDialog(simConnect, announcer, parentForm);
+
+            // FCU knob push/pull (Shift+1..4 push, Ctrl+1..4 pull). Fire the
+            // A32NX.FCU_* event (same events the A320 uses), then read back the
+            // managed/selected state so the user gets spoken confirmation — the
+            // raw event is otherwise silent, which read as "doesn't work". Handled
+            // here rather than via GetHotkeyVariableMap so we can add the readout.
+            case HotkeyAction.FCUHeadingPush:
+                simConnect.SendEvent("A32NX.FCU_TO_AP_HDG_PUSH"); RequestFCUHeadingWithStatus(simConnect); return true;
+            case HotkeyAction.FCUHeadingPull:
+                simConnect.SendEvent("A32NX.FCU_TO_AP_HDG_PULL"); RequestFCUHeadingWithStatus(simConnect); return true;
+            case HotkeyAction.FCUSpeedPush:
+                simConnect.SendEvent("A32NX.FCU_SPD_PUSH"); RequestFCUSpeedWithStatus(simConnect); return true;
+            case HotkeyAction.FCUSpeedPull:
+                simConnect.SendEvent("A32NX.FCU_SPD_PULL"); RequestFCUSpeedWithStatus(simConnect); return true;
+            case HotkeyAction.FCUAltitudePush:
+                simConnect.SendEvent("A32NX.FCU_ALT_PUSH"); RequestFCUAltitudeWithStatus(simConnect); return true;
+            case HotkeyAction.FCUAltitudePull:
+                simConnect.SendEvent("A32NX.FCU_ALT_PULL"); RequestFCUAltitudeWithStatus(simConnect); return true;
+            case HotkeyAction.FCUVSPush:
+                simConnect.SendEvent("A32NX.FCU_VS_PUSH"); RequestFCUVSWithStatus(simConnect); return true;
+            case HotkeyAction.FCUVSPull:
+                simConnect.SendEvent("A32NX.FCU_TO_AP_VS_PULL"); RequestFCUVSWithStatus(simConnect); return true;
+
             case HotkeyAction.ReadFlaps:
                 if (simConnect.IsConnected) { _reqFlaps = true; simConnect.RequestVariable("A32NX_FLAPS_HANDLE_INDEX", forceUpdate: true); }
                 return true;
