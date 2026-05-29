@@ -477,6 +477,69 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 [5] = "Approach", [6] = "Go Around", [7] = "Done"
             });
 
+        // ============================ FCU / AFS + EFIS BARO ============================
+        // Ported from the A320 FCU integration, retargeted to A380X autoflight
+        // vars: the A380 has NO A32NX_FCU_AFS_DISPLAY_* value words and NO
+        // A32NX_FCU_*_LIGHT_ON vars. Values come from A32NX_AUTOPILOT_*_SELECTED,
+        // managed state from A32NX_FCU_*_MANAGED[_DOT|_DASHES], and engagement
+        // from FG/FMA status vars. See tools/a380-fcu-vars.md.
+
+        // Knob / pushbutton events (FCU panel buttons; also reached by hotkeys).
+        Evt("A32NX.FCU_TO_AP_HDG_PUSH", "A32NX.FCU_TO_AP_HDG_PUSH", "Heading Push");
+        Evt("A32NX.FCU_TO_AP_HDG_PULL", "A32NX.FCU_TO_AP_HDG_PULL", "Heading Pull");
+        Evt("A32NX.FCU_SPD_PUSH", "A32NX.FCU_SPD_PUSH", "Speed Push");
+        Evt("A32NX.FCU_SPD_PULL", "A32NX.FCU_SPD_PULL", "Speed Pull");
+        Evt("A32NX.FCU_ALT_PUSH", "A32NX.FCU_ALT_PUSH", "Altitude Push");
+        Evt("A32NX.FCU_ALT_PULL", "A32NX.FCU_ALT_PULL", "Altitude Pull");
+        Evt("A32NX.FCU_VS_PUSH", "A32NX.FCU_VS_PUSH", "Vertical Speed Push");
+        Evt("A32NX.FCU_TO_AP_VS_PULL", "A32NX.FCU_TO_AP_VS_PULL", "Vertical Speed Pull");
+        Evt("A32NX.FCU_AP_1_PUSH", "A32NX.FCU_AP_1_PUSH", "Autopilot 1");
+        Evt("A32NX.FCU_AP_2_PUSH", "A32NX.FCU_AP_2_PUSH", "Autopilot 2");
+        Evt("A32NX.FCU_ATHR_PUSH", "A32NX.FCU_ATHR_PUSH", "Autothrust");
+        Evt("A32NX.FCU_LOC_PUSH", "A32NX.FCU_LOC_PUSH", "Localizer");
+        Evt("A32NX.FCU_APPR_PUSH", "A32NX.FCU_APPR_PUSH", "Approach");
+        Evt("A32NX.FCU_EXPED_PUSH", "A32NX.FCU_EXPED_PUSH", "Expedite");
+        Evt("A32NX.FCU_AP_DISCONNECT_PUSH", "A32NX.FCU_AP_DISCONNECT_PUSH", "Autopilot Disconnect");
+        Evt("A32NX.FCU_ATHR_DISCONNECT_PUSH", "A32NX.FCU_ATHR_DISCONNECT_PUSH", "Autothrust Disconnect");
+        Evt("A32NX.FCU_SPD_MACH_TOGGLE_PUSH", "A32NX.FCU_SPD_MACH_TOGGLE_PUSH", "Speed / Mach Toggle");
+        Evt("A32NX.FCU_TRK_FPA_TOGGLE_PUSH", "A32NX.FCU_TRK_FPA_TOGGLE_PUSH", "TRK / FPA Toggle");
+        Sel("XMLVAR_AUTOPILOT_ALTITUDE_INCREMENT", "Altitude Increment",
+            new Dictionary<double, string> { [100] = "100", [1000] = "1000" });
+        OnOff("A32NX_METRIC_ALT_TOGGLE", "Metric Altitude");
+
+        // Readout value + managed-indicator vars (OnRequest; requested in pairs).
+        Read("A32NX_AUTOPILOT_HEADING_SELECTED", "Selected Heading", "degrees");
+        Read("A32NX_FCU_HDG_MANAGED_DASHES", "Heading Managed");
+        Read("A32NX_AUTOPILOT_SPEED_SELECTED", "Selected Speed");
+        Read("A32NX_FCU_SPD_MANAGED_DOT", "Speed Managed");
+        Read("A32NX_AUTOPILOT_VS_SELECTED", "Selected Vertical Speed", "feet per minute");
+        Read("A32NX_AUTOPILOT_FPA_SELECTED", "Selected FPA");
+        Read("A32NX_FCU_VS_MANAGED", "Vertical Speed Managed");
+        Read("A32NX_FCU_ALT_MANAGED", "Altitude Managed");
+        ReadEnum("A32NX_TRK_FPA_MODE_ACTIVE", "Vertical Mode",
+            new Dictionary<double, string> { [0] = "HDG V/S", [1] = "TRK FPA" });
+        // SimVars (key != Name — ProcessSimVarUpdate matches on the key).
+        Stock("FCU_ALT_VALUE", "AUTOPILOT ALTITUDE LOCK VAR:3", "Selected Altitude", "feet");
+        Stock("FCU_MACH_MODE", "AUTOPILOT MANAGED SPEED IN MACH", "Mach Mode", "bool", onOff);
+
+        // Engagement / mode readouts (A380 has no FCU light vars).
+        ReadEnum("A32NX_AUTOPILOT_1_ACTIVE", "Autopilot 1", onOff);
+        ReadEnum("A32NX_AUTOPILOT_2_ACTIVE", "Autopilot 2", onOff);
+        ReadEnum("A32NX_FCU_LOC_MODE_ACTIVE", "Localizer Mode", onOff);
+        ReadEnum("A32NX_FCU_APPR_MODE_ACTIVE", "Approach Mode", onOff);
+        ReadEnum("A32NX_FMA_EXPEDITE_MODE", "Expedite Mode", onOff);
+
+        // ---- EFIS Control Panel: flight director + baro (per side) ----
+        Evt("TOGGLE_FLIGHT_DIRECTOR", "TOGGLE_FLIGHT_DIRECTOR", "Flight Director Toggle");
+        Stock("FD_ACTIVE", "AUTOPILOT FLIGHT DIRECTOR ACTIVE", "Flight Director", "bool", onOff);
+        var baroMode = new Dictionary<double, string> { [0] = "QFE", [1] = "QNH", [2] = "Standard" };
+        Sel("XMLVAR_Baro1_Mode", "Capt Baro Mode", baroMode);
+        Sel("XMLVAR_Baro2_Mode", "F/O Baro Mode", baroMode);
+        Read("A32NX_FCU_LEFT_EIS_BARO_HPA", "Capt Baro (hPa)", "hectopascals");
+        Read("A32NX_FCU_RIGHT_EIS_BARO_HPA", "F/O Baro (hPa)", "hectopascals");
+        Read("A380X_EFIS_L_BARO_PRESELECTED", "Capt Preselected QNH");
+        Read("A380X_EFIS_R_BARO_PRESELECTED", "F/O Preselected QNH");
+
         // ---- ECAM upper (E/WD) memo + warning lines — live monitoring ----
         // The A380X publishes 10 lines per side as numeric message CODES
         // (uppercase EWD, vs the A320's lowercase Ewd / 7 lines). They are
@@ -516,7 +579,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 "Calls", "Signs", "ADIRS", "Flight Control Computers", "Engine Start",
                 "Recorder and Misc", "Interior Lighting", "Exterior Lighting"
             },
-            ["Glareshield"] = new List<string> { "Warnings", "EFIS Control Panel", "OIT" },
+            ["Glareshield"] = new List<string> { "FCU", "EFIS Control Panel", "Warnings", "OIT" },
             ["Instrument"] = new List<string> { "Gear", "Autobrake", "Source Switching" },
             ["Pedestal"] = new List<string>
             {
@@ -665,7 +728,20 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "A380X_EFIS_R_LS_BUTTON_IS_ON", "A380X_EFIS_R_VV_BUTTON_IS_ON", "A380X_EFIS_R_CSTR_BUTTON_IS_ON",
             "A380X_EFIS_R_ARPT_BUTTON_IS_ON", "A380X_EFIS_R_TRAF_BUTTON_IS_ON",
             "A380X_EFIS_R_ND_MODE", "A380X_EFIS_R_ND_RANGE",
-            "A380X_EFIS_R_NAVAID_1_BUTTON_IS_ON", "A380X_EFIS_R_NAVAID_2_BUTTON_IS_ON"
+            "A380X_EFIS_R_NAVAID_1_BUTTON_IS_ON", "A380X_EFIS_R_NAVAID_2_BUTTON_IS_ON",
+            "TOGGLE_FLIGHT_DIRECTOR", "XMLVAR_Baro1_Mode", "XMLVAR_Baro2_Mode"
+        };
+        p["FCU"] = new List<string>
+        {
+            "A32NX.FCU_AP_1_PUSH", "A32NX.FCU_AP_2_PUSH", "A32NX.FCU_ATHR_PUSH",
+            "A32NX.FCU_TO_AP_HDG_PUSH", "A32NX.FCU_TO_AP_HDG_PULL",
+            "A32NX.FCU_SPD_PUSH", "A32NX.FCU_SPD_PULL",
+            "A32NX.FCU_ALT_PUSH", "A32NX.FCU_ALT_PULL", "XMLVAR_AUTOPILOT_ALTITUDE_INCREMENT",
+            "A32NX.FCU_VS_PUSH", "A32NX.FCU_TO_AP_VS_PULL",
+            "A32NX.FCU_LOC_PUSH", "A32NX.FCU_APPR_PUSH", "A32NX.FCU_EXPED_PUSH",
+            "A32NX.FCU_SPD_MACH_TOGGLE_PUSH", "A32NX.FCU_TRK_FPA_TOGGLE_PUSH",
+            "A32NX.FCU_AP_DISCONNECT_PUSH", "A32NX.FCU_ATHR_DISCONNECT_PUSH",
+            "A32NX_METRIC_ALT_TOGGLE"
         };
         p["OIT"] = new List<string> { "A380X_SWITCH_OIT_SIDE_LEFT", "A380X_SWITCH_OIT_SIDE_RIGHT" };
 
@@ -770,7 +846,18 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 "FBW_RMP_FREQUENCY_ACTIVE_2", "FBW_RMP_FREQUENCY_STANDBY_2",
                 "FBW_RMP_FREQUENCY_ACTIVE_3", "FBW_RMP_FREQUENCY_STANDBY_3"
             },
-            ["Status"] = new List<string> { "A32NX_FMGC_FLIGHT_PHASE" }
+            ["Status"] = new List<string> { "A32NX_FMGC_FLIGHT_PHASE" },
+            ["FCU"] = new List<string>
+            {
+                "A32NX_AUTOPILOT_1_ACTIVE", "A32NX_AUTOPILOT_2_ACTIVE", "A32NX_AUTOTHRUST_STATUS",
+                "A32NX_FCU_LOC_MODE_ACTIVE", "A32NX_FCU_APPR_MODE_ACTIVE", "A32NX_FMA_EXPEDITE_MODE",
+                "A32NX_TRK_FPA_MODE_ACTIVE", "FD_ACTIVE"
+            },
+            ["EFIS Control Panel"] = new List<string>
+            {
+                "A32NX_FCU_LEFT_EIS_BARO_HPA", "A380X_EFIS_L_BARO_PRESELECTED",
+                "A32NX_FCU_RIGHT_EIS_BARO_HPA", "A380X_EFIS_R_BARO_PRESELECTED"
+            }
         };
     }
 
@@ -778,7 +865,16 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     {
         return new Dictionary<string, string>
         {
-            ["A32NX_AUTOBRAKES_SELECTED_MODE"] = "A32NX_AUTOBRAKES_ARMED_MODE"
+            ["A32NX_AUTOBRAKES_SELECTED_MODE"] = "A32NX_AUTOBRAKES_ARMED_MODE",
+            // FCU push/pull buttons → the engagement/mode state they drive.
+            ["A32NX.FCU_AP_1_PUSH"] = "A32NX_AUTOPILOT_1_ACTIVE",
+            ["A32NX.FCU_AP_2_PUSH"] = "A32NX_AUTOPILOT_2_ACTIVE",
+            ["A32NX.FCU_ATHR_PUSH"] = "A32NX_AUTOTHRUST_STATUS",
+            ["A32NX.FCU_LOC_PUSH"] = "A32NX_FCU_LOC_MODE_ACTIVE",
+            ["A32NX.FCU_APPR_PUSH"] = "A32NX_FCU_APPR_MODE_ACTIVE",
+            ["A32NX.FCU_EXPED_PUSH"] = "A32NX_FMA_EXPEDITE_MODE",
+            ["A32NX.FCU_TRK_FPA_TOGGLE_PUSH"] = "A32NX_TRK_FPA_MODE_ACTIVE",
+            ["TOGGLE_FLIGHT_DIRECTOR"] = "FD_ACTIVE"
         };
     }
 
@@ -813,35 +909,202 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             return true;
         }
 
+        // ---- FCU readouts: value + managed-indicator pairs ----
+        // Each Read* hotkey requests the value var(s) and the managed indicator
+        // and force-updates them; we announce once the pair (or, for VS, the
+        // mode + matching value) has arrived. The _req* guards ensure these are
+        // only intercepted during an active readout — otherwise they fall
+        // through so the FCU panel's display readouts work normally.
+        if (_reqHdg && (varName == "A32NX_AUTOPILOT_HEADING_SELECTED" || varName == "A32NX_FCU_HDG_MANAGED_DASHES"))
+        {
+            if (varName.EndsWith("HEADING_SELECTED")) _pHdgVal = value; else _pHdgMgd = value;
+            if (_pHdgVal.HasValue && _pHdgMgd.HasValue)
+            {
+                string st = _pHdgMgd.Value > 0 ? "managed" : "selected";
+                announcer.AnnounceImmediate($"FCU heading {_pHdgVal.Value:000} degrees, {st}");
+                _pHdgVal = _pHdgMgd = null; _reqHdg = false;
+            }
+            return true;
+        }
+        if (_reqSpd && (varName == "A32NX_AUTOPILOT_SPEED_SELECTED" || varName == "A32NX_FCU_SPD_MANAGED_DOT"))
+        {
+            if (varName.EndsWith("SPEED_SELECTED")) _pSpdVal = value; else _pSpdMgd = value;
+            if (_pSpdVal.HasValue && _pSpdMgd.HasValue)
+            {
+                string st = _pSpdMgd.Value > 0 ? "managed" : "selected";
+                // The A380 SPEED_SELECTED carries mach (< 1) when in mach mode.
+                string spoken = _pSpdVal.Value < 10
+                    ? $"FCU speed mach {_pSpdVal.Value:0.00}, {st}"
+                    : $"FCU speed {_pSpdVal.Value:000} knots, {st}";
+                announcer.AnnounceImmediate(spoken);
+                _pSpdVal = _pSpdMgd = null; _reqSpd = false;
+            }
+            return true;
+        }
+        if (_reqAlt && (varName == "FCU_ALT_VALUE" || varName == "A32NX_FCU_ALT_MANAGED"))
+        {
+            if (varName == "FCU_ALT_VALUE") _pAltVal = value; else _pAltMgd = value;
+            if (_pAltVal.HasValue && _pAltMgd.HasValue)
+            {
+                string st = _pAltMgd.Value > 0 ? "managed" : "selected";
+                announcer.AnnounceImmediate($"FCU altitude {_pAltVal.Value:0} feet, {st}");
+                _pAltVal = _pAltMgd = null; _reqAlt = false;
+            }
+            return true;
+        }
+        if (_reqVs && (varName == "A32NX_AUTOPILOT_VS_SELECTED" || varName == "A32NX_AUTOPILOT_FPA_SELECTED" ||
+                       varName == "A32NX_TRK_FPA_MODE_ACTIVE"))
+        {
+            if (varName.EndsWith("VS_SELECTED")) _pVsVal = value;
+            else if (varName.EndsWith("FPA_SELECTED")) _pFpaVal = value;
+            else _pVsMode = value;
+            if (_pVsMode.HasValue && ((_pVsMode.Value > 0 && _pFpaVal.HasValue) || (_pVsMode.Value <= 0 && _pVsVal.HasValue)))
+            {
+                string spoken = _pVsMode.Value > 0
+                    ? $"FCU flight path angle {_pFpaVal!.Value:0.0} degrees"
+                    : $"FCU vertical speed {_pVsVal!.Value:0} feet per minute";
+                announcer.AnnounceImmediate(spoken);
+                _pVsVal = _pFpaVal = _pVsMode = null; _reqVs = false;
+            }
+            return true;
+        }
+
         return base.ProcessSimVarUpdate(varName, value, announcer);
     }
 
-    // ---- FCU readout overrides (A380X reuses the A32NX FCU display L:vars) ----
-    public override void RequestFCUHeading(SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
+    // ===================================================================
+    // FCU — ported from the A320 integration (same SET events; A380 readout
+    // vars). Set dialogs send A32NX.FCU_*_SET; reads request value + managed
+    // and announce via the pairing in ProcessSimVarUpdate.
+    // ===================================================================
+    private double? _pHdgVal, _pHdgMgd, _pSpdVal, _pSpdMgd, _pAltVal, _pAltMgd, _pVsVal, _pFpaVal, _pVsMode;
+    private bool _reqHdg, _reqSpd, _reqAlt, _reqVs;
+
+    public override bool HandleHotkeyAction(
+        HotkeyAction action, SimConnectManager simConnect, ScreenReaderAnnouncer announcer,
+        System.Windows.Forms.Form parentForm, HotkeyManager hotkeyManager)
     {
-        if (!simConnect.IsConnected) return;
-        try { simConnect.RequestSingleValue(300, "L:A32NX_FCU_AFS_DISPLAY_HDG_TRK_VALUE", "number", "FCU_HEADING"); }
-        catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[FBWA380] FCU heading: {ex.Message}"); }
+        switch (action)
+        {
+            case HotkeyAction.FCUSetHeading:
+                hotkeyManager.ExitInputHotkeyMode();
+                return ShowFCUHeadingDialog(simConnect, announcer, parentForm);
+            case HotkeyAction.FCUSetSpeed:
+                hotkeyManager.ExitInputHotkeyMode();
+                return ShowFCUSpeedDialog(simConnect, announcer, parentForm);
+            case HotkeyAction.FCUSetAltitude:
+                hotkeyManager.ExitInputHotkeyMode();
+                return ShowFCUAltitudeDialog(simConnect, announcer, parentForm);
+            case HotkeyAction.FCUSetVS:
+                hotkeyManager.ExitInputHotkeyMode();
+                return ShowFCUVSDialog(simConnect, announcer, parentForm);
+            case HotkeyAction.ReadHeading: RequestFCUHeadingWithStatus(simConnect); return true;
+            case HotkeyAction.ReadSpeed: RequestFCUSpeedWithStatus(simConnect); return true;
+            case HotkeyAction.ReadAltitude: RequestFCUAltitudeWithStatus(simConnect); return true;
+            case HotkeyAction.ReadFCUVerticalSpeedFPA: RequestFCUVSWithStatus(simConnect); return true;
+            default:
+                return base.HandleHotkeyAction(action, simConnect, announcer, parentForm, hotkeyManager);
+        }
     }
 
-    public override void RequestFCUSpeed(SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
+    private bool ShowFCUHeadingDialog(SimConnectManager simConnect, ScreenReaderAnnouncer announcer, System.Windows.Forms.Form parentForm)
     {
-        if (!simConnect.IsConnected) return;
-        try { simConnect.RequestSingleValue(301, "L:A32NX_FCU_AFS_DISPLAY_SPD_MACH_VALUE", "number", "FCU_SPEED"); }
-        catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[FBWA380] FCU speed: {ex.Message}"); }
+        var validator = new Func<string, (bool, string)>(input =>
+            double.TryParse(input, out double v)
+                ? (v >= 0 && v <= 360 ? (true, "") : (false, "Heading must be between 0 and 360 degrees"))
+                : (false, "Invalid number format"));
+        return ShowFCUInputDialog("Set Heading", "Heading", "0-360 degrees",
+            "A32NX.FCU_HDG_SET", simConnect, announcer, parentForm, validator);
     }
 
-    public override void RequestFCUAltitude(SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
+    private bool ShowFCUSpeedDialog(SimConnectManager simConnect, ScreenReaderAnnouncer announcer, System.Windows.Forms.Form parentForm)
     {
-        if (!simConnect.IsConnected) return;
-        try { simConnect.RequestSingleValue(302, "L:A32NX_FCU_AFS_DISPLAY_ALT_VALUE", "number", "FCU_ALTITUDE"); }
-        catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[FBWA380] FCU altitude: {ex.Message}"); }
+        var validator = new Func<string, (bool, string)>(input =>
+            double.TryParse(input, out double v)
+                ? (((v >= 0.10 && v <= 0.99) || (v >= 100 && v <= 399)) ? (true, "") : (false, "Speed must be 100-399 knots or 0.10-0.99 Mach"))
+                : (false, "Invalid number format"));
+        Func<double, uint> converter = v => v < 1.0 ? (uint)(v * 100) : (uint)v;
+        return ShowFCUInputDialog("Set Speed", "Speed", "100-399 knots or 0.10-0.99 Mach",
+            "A32NX.FCU_SPD_SET", simConnect, announcer, parentForm, validator, converter);
     }
 
-    public override void RequestFCUVerticalSpeed(SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
+    private bool ShowFCUAltitudeDialog(SimConnectManager simConnect, ScreenReaderAnnouncer announcer, System.Windows.Forms.Form parentForm)
     {
-        if (!simConnect.IsConnected) return;
-        try { simConnect.RequestSingleValue(303, "L:A32NX_FCU_AFS_DISPLAY_VS_VALUE", "number", "FCU_VERTICAL_SPEED"); }
-        catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[FBWA380] FCU vertical speed: {ex.Message}"); }
+        if (!simConnect.IsConnected) { announcer.AnnounceImmediate("Not connected to simulator."); return false; }
+        var validator = new Func<string, (bool, string)>(input =>
+            double.TryParse(input, out double v)
+                ? (v >= 100 && v <= 49000 ? (true, "") : (false, "Altitude must be between 100 and 49000 feet"))
+                : (false, "Invalid number format"));
+        var dialog = new Forms.ValueInputForm("Set Altitude", "Altitude", "100-49000 feet", announcer, validator);
+        if (dialog.ShowDialog(parentForm) == System.Windows.Forms.DialogResult.OK && dialog.IsValidInput
+            && double.TryParse(dialog.InputValue, out double value))
+        {
+            uint rounded = (uint)(Math.Round(value / 100) * 100);
+            simConnect.SendEvent("A32NX.FCU_ALT_INCREMENT_SET", 100);
+            System.Threading.Thread.Sleep(50);
+            simConnect.SendEvent("A32NX.FCU_ALT_SET", rounded);
+            announcer.AnnounceImmediate($"Altitude set to {rounded}");
+            return true;
+        }
+        return false;
     }
+
+    private bool ShowFCUVSDialog(SimConnectManager simConnect, ScreenReaderAnnouncer announcer, System.Windows.Forms.Form parentForm)
+    {
+        if (!simConnect.IsConnected) { announcer.AnnounceImmediate("Not connected to simulator."); return false; }
+        var validator = new Func<string, (bool, string)>(input =>
+            double.TryParse(input, out double v)
+                ? (((v >= -6000 && v <= 6000) || (v >= -9.9 && v <= 9.9)) ? (true, "") : (false, "Value must be -6000 to 6000 ft/min or -9.9 to 9.9 degrees FPA"))
+                : (false, "Invalid number format"));
+        var dialog = new Forms.ValueInputForm("Set Vertical Speed / FPA", "VS/FPA",
+            "-6000 to 6000 ft/min or -9.9 to 9.9 degrees FPA", announcer, validator);
+        if (dialog.ShowDialog(parentForm) == System.Windows.Forms.DialogResult.OK && dialog.IsValidInput
+            && double.TryParse(dialog.InputValue, out double value))
+        {
+            uint toSend = Math.Abs(value) < 100 ? (uint)(value * 100) : (uint)value;
+            simConnect.SendEvent("A32NX.FCU_VS_SET", toSend);
+            announcer.AnnounceImmediate($"Vertical speed set to {value}");
+            return true;
+        }
+        return false;
+    }
+
+    private void RequestFCUHeadingWithStatus(SimConnectManager s)
+    {
+        if (!s.IsConnected) return;
+        _reqHdg = true; _pHdgVal = _pHdgMgd = null;
+        s.RequestVariable("A32NX_AUTOPILOT_HEADING_SELECTED", forceUpdate: true);
+        s.RequestVariable("A32NX_FCU_HDG_MANAGED_DASHES", forceUpdate: true);
+    }
+
+    private void RequestFCUSpeedWithStatus(SimConnectManager s)
+    {
+        if (!s.IsConnected) return;
+        _reqSpd = true; _pSpdVal = _pSpdMgd = null;
+        s.RequestVariable("A32NX_AUTOPILOT_SPEED_SELECTED", forceUpdate: true);
+        s.RequestVariable("A32NX_FCU_SPD_MANAGED_DOT", forceUpdate: true);
+    }
+
+    private void RequestFCUAltitudeWithStatus(SimConnectManager s)
+    {
+        if (!s.IsConnected) return;
+        _reqAlt = true; _pAltVal = _pAltMgd = null;
+        s.RequestVariable("FCU_ALT_VALUE", forceUpdate: true);
+        s.RequestVariable("A32NX_FCU_ALT_MANAGED", forceUpdate: true);
+    }
+
+    private void RequestFCUVSWithStatus(SimConnectManager s)
+    {
+        if (!s.IsConnected) return;
+        _reqVs = true; _pVsVal = _pFpaVal = _pVsMode = null;
+        s.RequestVariable("A32NX_TRK_FPA_MODE_ACTIVE", forceUpdate: true);
+        s.RequestVariable("A32NX_AUTOPILOT_VS_SELECTED", forceUpdate: true);
+        s.RequestVariable("A32NX_AUTOPILOT_FPA_SELECTED", forceUpdate: true);
+    }
+
+    // Base FCU readout virtuals (rarely used path) → route to the paired readout.
+    public override void RequestFCUHeading(SimConnectManager simConnect, ScreenReaderAnnouncer announcer) => RequestFCUHeadingWithStatus(simConnect);
+    public override void RequestFCUSpeed(SimConnectManager simConnect, ScreenReaderAnnouncer announcer) => RequestFCUSpeedWithStatus(simConnect);
+    public override void RequestFCUAltitude(SimConnectManager simConnect, ScreenReaderAnnouncer announcer) => RequestFCUAltitudeWithStatus(simConnect);
+    public override void RequestFCUVerticalSpeed(SimConnectManager simConnect, ScreenReaderAnnouncer announcer) => RequestFCUVSWithStatus(simConnect);
 }
