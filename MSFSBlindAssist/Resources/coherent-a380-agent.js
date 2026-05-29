@@ -202,6 +202,38 @@
   // a stable 1-based idx (also stamped on the DOM node as data-fbwa380-mcdu-idx
   // so clicks/entries can find them); static lines get idx 0. Empty lines are
   // dropped. The scratchpad/footer message is appended as the last line.
+  // Fold each input field's naming label into the field's own line. For every
+  // input item, pick the label item that (a) vertically overlaps the field and
+  // (b) sits to its left (label.right <= field.left + GAP), choosing the label
+  // whose right edge is closest to the field. The chosen label is marked
+  // `consumed` so the caller drops it as a separate line. Robust to multiple
+  // label+field pairs sharing one row (FROM / TO / ALTN), since each field
+  // takes its nearest left-hand label.
+  A.associateInputLabels = function (items) {
+    var GAP = 28; // px tolerance between a label's right edge and its field's left edge
+    for (var i = 0; i < items.length; i++) {
+      var inp = items[i];
+      if (inp.kind !== "input") continue;
+      if (typeof inp.left !== "number") continue;
+      var best = null, bestRight = -1;
+      for (var j = 0; j < items.length; j++) {
+        var lb = items[j];
+        if (!lb.isLabel || lb.consumed) continue;
+        if (typeof lb.right !== "number") continue;
+        // vertical ranges must overlap (same visual row)
+        if (!(lb.top < inp.bot && lb.bot > inp.top)) continue;
+        // label must be to the left of the field, within tolerance
+        if (lb.right > inp.left + GAP) continue;
+        if (lb.right > bestRight) { bestRight = lb.right; best = lb; }
+      }
+      if (best) {
+        var val = inp.value || inp.text || "";
+        inp.text = clean(best.text) + ": " + (val || "(empty)");
+        best.consumed = true;
+      }
+    }
+  };
+
   A.enumerateLines = function (root) {
     var stale = root.querySelectorAll("[data-fbwa380-mcdu-idx]");
     for (var s = 0; s < stale.length; s++) stale[s].removeAttribute("data-fbwa380-mcdu-idx");
@@ -226,6 +258,7 @@
       var r = n.getBoundingClientRect();
       items.push({
         top: r.top - pageRect.top, left: r.left - pageRect.left,
+        right: r.right - pageRect.left, bot: r.bottom - pageRect.top,
         idx: idx, kind: kind, text: label,
         value: kind === "input" ? A.readInputValue(n) : "",
         disabled: n.classList.contains("disabled")
@@ -242,11 +275,23 @@
       var own = A.directText(t);
       if (!own) continue;
       var tr = t.getBoundingClientRect();
+      var cls = (t.className && t.className.toString) ? t.className.toString() : "";
       items.push({
         top: tr.top - pageRect.top, left: tr.left - pageRect.left,
-        idx: 0, kind: "text", text: own, value: "", disabled: false
+        right: tr.right - pageRect.left, bot: tr.bottom - pageRect.top,
+        idx: 0, kind: "text", text: own, value: "", disabled: false,
+        isLabel: cls.indexOf("mfd-label") >= 0
       });
     }
+
+    // Pair each input field with the on-screen label that names it, so the
+    // screen reader announces "FLT NBR: <value>" instead of a bare, ambiguous
+    // editable field. On the A380 MFD the label sits on the same visual row,
+    // immediately to the LEFT of its field (label.right ~= field.left); labels
+    // are absolutely positioned, NOT DOM siblings, so this is geometric.
+    A.associateInputLabels(items);
+    // Drop labels that were folded into an input line (avoid a dangling copy).
+    items = items.filter(function (it) { return !it.consumed; });
 
     // reading order: rows top→bottom (rounded to a tolerance), then left→right.
     items.sort(function (a, b) {
