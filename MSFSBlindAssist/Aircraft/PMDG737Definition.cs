@@ -462,6 +462,15 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         // The switch is physically ON ↔ NORMAL on the NG3 cockpit, not OFF ↔ NORMAL.
         d["OXY_SwNormal"]         = Toggle("OXY_SwNormal", "Passenger Oxygen", "ON", "Normal");
         d["OXY_annunPASS_OXY_ON"] = Annun("OXY_annunPASS_OXY_ON", "PASS OXY ON");
+        // 3-position spring-loaded crew oxygen TEST / NORMAL / RESET switches —
+        // one per side (L = Captain, R = First Officer). SDK exposes the events
+        // but no state-byte readback, so we surface only the TEST direction as
+        // a single momentary press per side (the standard LEFTSINGLE+LEFTRELEASE
+        // pattern from SendPMDGMomentaryToggle drives the "up" direction, which
+        // on this switch is the TEST detent). RESET is rarely used (only after
+        // a deployment cycle) and is intentionally omitted; revisit if needed.
+        d["OXY_TestL"] = Momentary("OXY_TestL", "Oxygen Test (Captain)");
+        d["OXY_TestR"] = Momentary("OXY_TestR", "Oxygen Test (First Officer)");
 
         // Gear overhead annunciators
         d["GEAR_annunOvhdLEFT"]  = Annun("GEAR_annunOvhdLEFT", "Gear Left");
@@ -1119,6 +1128,9 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         d["GPWS_FlapInhibitSw_NORM"]   = Toggle("GPWS_FlapInhibitSw_NORM", "Flap Inhibit", "INHIBIT", "Normal");
         d["GPWS_GearInhibitSw_NORM"]   = Toggle("GPWS_GearInhibitSw_NORM", "Gear Inhibit", "INHIBIT", "Normal");
         d["GPWS_TerrInhibitSw_NORM"]   = Toggle("GPWS_TerrInhibitSw_NORM", "Terrain Inhibit", "INHIBIT", "Normal");
+        // GPWS system test — momentary push; plays the EGPWS self-test sequence
+        // (visual + audible). SDK exposes only the event, no state field.
+        d["GPWS_SysTest"]              = Momentary("GPWS_SysTest", "GPWS System Test");
 
         // =================================================================
         // CONTROL STAND — CDU annunciators, COMM counters, ACP, stab trim, fire, xpdr, etc.
@@ -1307,6 +1319,12 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         d["XPDR_ModeSel"]         = Selector("XPDR_ModeSel", "Transponder Mode",
             "Stby", "Alt Rptg Off", "Xpndr", "TA Only", "TA/RA");
         d["XPDR_annunFAIL"]       = Annun("XPDR_annunFAIL", "Transponder Fail");
+        // TCAS self-test — momentary push; plays the TCAS test sequence (TA/RA
+        // audio + display callouts). SDK exposes only the event, no state field.
+        d["XPDR_TcasTest"]        = Momentary("XPDR_TcasTest", "TCAS Test");
+        // Transponder IDENT — momentary push; squawks IDENT to make the aircraft
+        // blip flash on ATC radar for ~18 seconds. SDK exposes only the event.
+        d["XPDR_Ident"]           = Momentary("XPDR_Ident", "Ident");
 
         // Flight deck door
         d["PED_annunLOCK_FAIL"]   = Annun("PED_annunLOCK_FAIL", "Door Lock Fail");
@@ -1576,7 +1594,8 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             },
             ["Oxygen"] = new List<string>
             {
-                "OXY_SwNormal"
+                "OXY_SwNormal",
+                "OXY_TestL", "OXY_TestR"
             },
             ["Wipers"] = new List<string>
             {
@@ -1641,7 +1660,8 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             },
             ["GPWS"] = new List<string>
             {
-                "GPWS_FlapInhibitSw_NORM", "GPWS_GearInhibitSw_NORM", "GPWS_TerrInhibitSw_NORM"
+                "GPWS_FlapInhibitSw_NORM", "GPWS_GearInhibitSw_NORM", "GPWS_TerrInhibitSw_NORM",
+                "GPWS_SysTest"
             },
             ["Instruments"] = new List<string>
             {
@@ -1667,7 +1687,8 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             ["Transponder/TCAS"] = new List<string>
             {
                 "XPDR_XpndrSelector_2", "XPDR_AltSourceSel_2", "XPDR_ModeSel",
-                "TRANSPONDER_CODE_SET"
+                "TRANSPONDER_CODE_SET",
+                "XPDR_Ident", "XPDR_TcasTest"
             },
             ["Fire Protection"] = new List<string>
             {
@@ -3125,6 +3146,13 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             ["XPDR_XpndrSelector_2"]       = "EVT_TCAS_XPNDR",
             ["XPDR_AltSourceSel_2"]        = "EVT_TCAS_ALTSOURCE",
             ["XPDR_ModeSel"]               = "EVT_TCAS_MODE",
+            ["XPDR_TcasTest"]              = "EVT_TCAS_TEST",
+            ["XPDR_Ident"]                 = "EVT_TCAS_IDENT",
+            // Overhead — Oxygen TEST (spring-loaded; release returns to NORMAL)
+            ["OXY_TestL"]                  = "EVT_OH_OXY_TEST_RESET_SWITCH_L",
+            ["OXY_TestR"]                  = "EVT_OH_OXY_TEST_RESET_SWITCH_R",
+            // Lower forward panel — GPWS system test
+            ["GPWS_SysTest"]               = "EVT_GPWS_SYS_TEST_BTN",
             // MCP autopilot push buttons (momentary)
             ["MCP_CmdA"]    = "EVT_MCP_CMD_A_SWITCH",
             ["MCP_CmdB"]    = "EVT_MCP_CMD_B_SWITCH",
