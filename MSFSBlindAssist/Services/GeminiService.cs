@@ -37,7 +37,11 @@ public class GeminiService
         EICAS,         // Engine Indicating and Crew Alerting System (Boeing 777)
         PFD777,        // Primary Flight Display (Boeing 777)
         ND777,         // Navigation Display (Boeing 777)
-        ISFD           // Integrated Standby Flight Display (Boeing 777)
+        ISFD,          // Integrated Standby Flight Display (Boeing 777)
+        PFD737,        // Primary Flight Display (Boeing 737 NG3)
+        ND737,         // Navigation Display (Boeing 737 NG3)
+        ISFD737,       // Integrated Standby Flight Display (Boeing 737 NG3)
+        EICAS737       // Upper Engine Display / "EICAS-equivalent" / DU3 (Boeing 737 NG3)
     }
 
     /// <summary>
@@ -238,6 +242,80 @@ Report any caution or warning messages displayed in the crew alerting area.
 Be extremely concise and direct. Skip descriptions of gauge layouts, arc positions, and visual formatting. Only report actual values and states.
 Skip normal colors (green, white) - only mention warning/alert colors (amber, red).
 Use line breaks to separate parameters. Put each engine on its own line, then system page data on separate lines.
+Do not use markdown formatting. Do not explain what things mean. Just state the essential data.",
+
+            DisplayType.PFD737 => @"You are reading the Primary Flight Display (PFD) of a Boeing 737 (NG3 family — 737-600 / -700 / -800 / -900) for a screen reader user.
+The image may contain multiple displays. ONLY describe the Primary Flight Display (PFD) — the leftmost display showing airspeed, altitude, and attitude. Ignore the ND, the Engine Display, the ISFD, and any other displays.
+Be extremely concise and direct. Skip descriptions of tape layouts, scales, and visual positioning. Only report actual values, modes, states, and deviations.
+
+Report in this order:
+Airspeed: current indicated airspeed in knots, any speed reference bugs shown (V1, VR, V2, Vref, flap maneuvering speeds, FMC speed bug).
+Mach number if displayed.
+Altitude: current altitude in feet, MCP selected altitude if shown.
+Vertical speed in feet per minute.
+Heading or track value.
+Flight Mode Annunciations (FMA) at the top of the PFD: report autothrottle mode (N1, MCP SPD, FMC SPD, RETARD, THR HLD, ARM, IDLE, GA), roll mode (HDG SEL, LNAV, VOR/LOC, TO/GA), pitch mode (V/S, LVL CHG, VNAV PTH, VNAV SPD, VNAV ALT, ALT HOLD, ALT ACQ, G/S, FLARE, TO/GA), and autopilot/flight-director engagement (CMD A, CMD B, CWS A, CWS B, FD). Green = active, white = armed, magenta = FMC commanded mode.
+Flight director bars if active.
+Localizer and glideslope deviation if displayed and not centered.
+Radio altitude and DH bug if displayed.
+Barometric setting (IN HG or HPA), and whether STD is displayed.
+Any warnings or alerts (e.g., flag conditions like NO VSPD, FLAG ATT).
+
+Skip normal colors (green, white) for flight data — only mention warning/alert colors (amber, red).
+Use line breaks to separate major values. Put each item on its own line.
+Do not use markdown formatting. Do not explain what things mean. Just state the essential data.",
+
+            DisplayType.ND737 => @"You are reading the Navigation Display (ND) of a Boeing 737 (NG3 family — 737-600 / -700 / -800 / -900) for a screen reader user.
+The image may contain multiple displays. ONLY describe the Navigation Display (ND) — the map display next to the PFD. Ignore PFD, Engine Display, ISFD, and any other displays.
+Be extremely concise and direct. Skip descriptions of map layouts, visual positioning, and symbology explanations. Only report actual values, modes, and navigation data.
+
+Report in this order:
+Display mode: MAP, CTR MAP, EXP MAP, PLAN, APP, or VOR.
+Range setting in nautical miles.
+Aircraft heading or track in degrees, and whether HDG or TRK reference is selected (MAG / TRU label).
+Active waypoint and next waypoints in sequence with distances (NM) and ETA/time remaining if shown.
+Step climb or descent points if visible.
+Course deviation and CDI if shown.
+Wind direction (degrees true) and speed (knots) if displayed.
+Ground speed (GS) and true airspeed (TAS) if shown.
+RNP / ANP values if displayed.
+VOR 1 / VOR 2 source labels and DME readouts at the bottom of the display if present (e.g., ""VOR 1 FMC L, ANP 0.05"", ""VOR 2 DME ---"").
+Weather radar returns if shown (intensity and position relative to aircraft).
+TCAS traffic if present (relative position, altitude, and climb/descend trend).
+Terrain shading or warnings if TERR is active.
+
+Skip normal colors (green, white, magenta) — only mention warning/alert colors (amber, red).
+Use line breaks to separate information. Put mode and range on the first line, heading/track on the next, then each waypoint on its own line.
+Do not use markdown formatting. Do not explain what things mean. Just state the essential data.",
+
+            DisplayType.ISFD737 => @"You are reading the Integrated Standby Flight Display (ISFD) of a Boeing 737 (NG3 family — 737-600 / -700 / -800 / -900) for a screen reader user.
+The image may contain multiple displays. ONLY describe the ISFD — the small square backup instrument located between the captain's displays and the Engine Display. Ignore all other displays.
+The ISFD is a compact display showing basic flight parameters as backup instruments.
+Be extremely concise and direct. Skip descriptions of instrument layout and visual positioning. Only report actual values.
+Report: airspeed in knots, altitude in feet, barometric setting (including STD if standard altimeter is selected), pitch and roll attitude if significant, ILS localizer/glideslope deviation if displayed, heading if shown, any warnings or flags.
+Skip normal colors — only mention warning/alert colors (amber, red).
+Use line breaks to separate values. Put airspeed, altitude, baro setting, attitude, and any deviations each on their own line.
+Do not use markdown formatting. Do not explain what things mean. Just state the essential data.",
+
+            DisplayType.EICAS737 => @"You are reading the Upper Engine Display (also called the Engine Display or EICAS-equivalent, designated DU3) of a Boeing 737 (NG3 family — 737-600 / -700 / -800 / -900) for a screen reader user.
+The image may contain multiple displays. ONLY describe the upper center display showing N1, EGT, and fuel flow for both engines. Ignore the PFD, the ND, the ISFD, the lower system display (which shows N2, oil pressure, oil temperature, oil quantity, vibration), the CDU, and any other displays.
+
+Important: the 737's Upper Engine Display does NOT show N2 — that is on the lower display. Do not report N2 values from this display.
+
+Report in this order:
+Thrust mode label at the top (TO, R-TO, CLB, CLB1, CLB2, CON, CRZ, GA).
+TAT (Total Air Temperature) and SAT (Static Air Temperature) if shown, in degrees Celsius.
+For each engine (ENG 1 / ENG 2 or Left / Right):
+  N1 percentage, and the N1 reference / limit indicator if displayed (small numbers above each N1 gauge, e.g. ""96.3"").
+  EGT in degrees Celsius.
+  Fuel flow (FF) in thousands of pounds per hour (e.g. ""2.95"" means 2950 PPH).
+Fuel quantity panel: left, center, right tank quantities and total, in thousands of pounds (e.g. ""6.76 / 0.41 / 6.34, TOTAL 13.5"").
+Landing gear limit information if shown (extension/retraction/extended speeds in knots).
+Flaps limit information if shown (max IAS per flap detent).
+Any crew alert messages in the lower portion of the display (caution/warning text).
+
+Skip normal colors (green, white) — only mention warning/alert colors (amber, red).
+Use line breaks to separate parameters. Put thrust mode on the first line, TAT/SAT on the next, then each engine on its own line, then fuel quantities, then limits, then any alerts.
 Do not use markdown formatting. Do not explain what things mean. Just state the essential data.",
 
             _ => "Report what you see on this display in plain text. No markdown formatting. No explanations. Just the data."

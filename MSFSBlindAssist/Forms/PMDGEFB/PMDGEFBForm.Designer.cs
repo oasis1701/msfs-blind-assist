@@ -1,8 +1,8 @@
-using MSFSBlindAssist.Forms.PMDG777.Apps;
+using MSFSBlindAssist.Forms.PMDGEFB.Apps;
 
-namespace MSFSBlindAssist.Forms.PMDG777
+namespace MSFSBlindAssist.Forms.PMDGEFB
 {
-    partial class PMDG777EFBForm
+    partial class PMDGEFBForm
     {
         private System.ComponentModel.IContainer? components = null;
 
@@ -48,13 +48,11 @@ namespace MSFSBlindAssist.Forms.PMDG777
 
         private void InitializeComponent()
         {
-            this.Text = "PMDG 777 EFB";
             this.Size = new System.Drawing.Size(560, 620);
             this.FormBorderStyle = FormBorderStyle.FixedDialog;
             this.MaximizeBox = false;
             this.StartPosition = FormStartPosition.CenterScreen;
             this.KeyPreview = true;
-            this.AccessibleName = "PMDG 777 EFB";
 
             // === Outer tab control ===
             outerTabControl = new Controls.AccessibleTabControl { Dock = DockStyle.Fill };

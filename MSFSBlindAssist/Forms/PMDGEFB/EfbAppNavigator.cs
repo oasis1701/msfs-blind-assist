@@ -1,6 +1,6 @@
 using MSFSBlindAssist.SimConnect;
 
-namespace MSFSBlindAssist.Forms.PMDG777
+namespace MSFSBlindAssist.Forms.PMDGEFB
 {
     public enum EfbApp
     {

@@ -6,8 +6,8 @@ obj/
 *.pdb
 *.cache
 
-# Local diagnostic tools (not part of the shipped solution)
-/tools/
+# Diagnostic-tool build outputs are covered by the bin/ obj/ *.exe *.dll rules
+# above; the tool *source* under tools/ (PMDGDispatchTester, CDUTest) is tracked.
 
 # Visual Studio user-specific files
 .vs/

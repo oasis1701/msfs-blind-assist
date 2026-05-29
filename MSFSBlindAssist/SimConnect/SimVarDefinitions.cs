@@ -35,6 +35,32 @@ public class SimVarDefinition
     public bool RenderAsButton { get; set; }  // True to render as button instead of combo box (e.g., APU Start)
     public string? StateVariable { get; set; }  // LVar name to read for actual button on/off state (e.g., I_ indicator for S_ switch buttons)
     public bool PreventTextInput { get; set; }  // True to prevent text input UI for _SET variables (e.g., autobrake)
+    /// <summary>
+    /// When true, the panel renderer skips the ComboBox/Button path and renders a read-only TextBox
+    /// whose Text mirrors the current ValueDescriptions mapping for the cached value. Used for
+    /// annunciators and other status-only variables that have ValueDescriptions but are not
+    /// user-settable. The renderer ALSO treats OnlyAnnounceValueDescriptionMatches == true as
+    /// implying RenderAsReadOnlyStatus, so the ~200 existing Annun-style definitions in
+    /// PMDG777Definition.cs render as read-only without per-line edits.
+    /// </summary>
+    public bool RenderAsReadOnlyStatus { get; set; }
+    /// <summary>
+    /// Numeric .NET format specifier used when rendering a continuous-numeric var
+    /// as a read-only TextBox (the RenderAsReadOnlyStatus + Units + no
+    /// ValueDescriptions branch). Examples: "F0" = "1200", "F2" = "8.20".
+    /// Ignored when ValueDescriptions are present (those drive the display text).
+    /// </summary>
+    public string Format { get; set; } = "F0";
+    /// <summary>
+    /// Linear transform applied before formatting in the read-only-numeric
+    /// renderer: <c>displayValue = rawValue * Scale + Offset</c>. Defaults to
+    /// the identity (1.0, 0.0) so existing vars are unaffected. Used when the
+    /// PMDG SDK returns a value in a different unit than the cockpit gauge
+    /// displays — e.g. AIR_TemperatureNeedle is documented as °C but actually
+    /// returns °F, so we set Scale = 5.0/9.0 and Offset = -160.0/9.0 to convert.
+    /// </summary>
+    public double Scale { get; set; } = 1.0;
+    public double Offset { get; set; } = 0.0;
     public string? HelpText { get; set; }  // Optional help text read by screen reader (overrides default AccessibleDescription)
 
     // MobiFlight WASM support properties
