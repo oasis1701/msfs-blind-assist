@@ -378,14 +378,74 @@
     }
   };
 
-  // ---- KCCU input --------------------------------------------------------
-  A.ensureKccuKeyboardOn = function () {
-    try {
-      if (typeof SimVar !== "undefined" && typeof SimVar.SetSimVarValue === "function") {
-        SimVar.SetSimVarValue("L:A32NX_KCCU_" + (A.activeMcdu === 1 ? "L" : "R") + "_KBD_ON_OFF", "bool", 1);
-      }
-    } catch (e) {}
+  // ---- text entry (DOM keypress, NOT KCCU) -------------------------------
+  //
+  // The A380X MFD InputField (MsfsAvionicsCommon/UiWidgets/InputField.tsx) does
+  // NOT consume the KCCU L:vars/H-events for external tools. Its real entry path,
+  // read straight from the source, is:
+  //   * DOM layout (per field):
+  //       div.mfd-input-field-container          <- carries data-fbwa380-mcdu-idx
+  //         div.mfd-input-field-text-input-container  (spanningDivRef) <- click = focus
+  //           span.mfd-input-field-text-input         (textInputRef)   <- key listeners
+  //   * focus: a `click` on the spanning div calls textInput.focus(); the resulting
+  //     `focus` event flips the field's internal isFocused=true and clears the edit
+  //     buffer (modifiedFieldValue=null), so we do NOT need to backspace first.
+  //   * characters: a `keypress` event on the text-input span. The handler reads the
+  //     DEPRECATED ev.keyCode (ev.key is undefined in Coherent) via
+  //     String.fromCharCode(ev.keyCode).toUpperCase() and accepts /^[A-Z0-9/.+\- ]$/.
+  //     => keyCode is simply the ASCII code of the UPPER-CASED character.
+  //   * commit: a `keypress` with keyCode 13 (ENTER) -> handleEnter -> blur+validate.
+  //   * delete: a `keydown` with keyCode 8 (BACK_SPACE) -> handleBackspace.
+  // The `keypress`/`keydown` listeners are always attached; only the auto
+  // click->focus listeners are skipped when a field is handleFocusBlurExternally,
+  // so we both click the span AND fire a synthetic focus event to be robust.
+
+  // Dispatch a keyboard event whose (read-only) keyCode/which/charCode all report
+  // `code` — Coherent's Chromium 49 honours Object.defineProperty getters here.
+  A.dispatchKey = function (target, type, code) {
+    var ev;
+    try { ev = new KeyboardEvent(type, { bubbles: true, cancelable: true }); }
+    catch (e) { ev = document.createEvent("Event"); ev.initEvent(type, true, true); }
+    try { Object.defineProperty(ev, "keyCode", { get: function () { return code; } }); } catch (e2) {}
+    try { Object.defineProperty(ev, "which", { get: function () { return code; } }); } catch (e3) {}
+    try { Object.defineProperty(ev, "charCode", { get: function () { return code; } }); } catch (e4) {}
+    target.dispatchEvent(ev);
   };
+
+  // Focus an InputField's text-input span the same way a real click does.
+  A.focusField = function (span, spanningDiv) {
+    try {
+      var sd = spanningDiv || span;
+      if (typeof sd.click === "function") sd.click();
+      else sd.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    } catch (e) {}
+    try { if (typeof span.focus === "function") span.focus(); } catch (e2) {}
+    // Fire a synthetic focus event too, in case .click()/.focus() didn't trigger
+    // the field's own focus listener (covers re-focus + headless eval contexts).
+    try {
+      var fe;
+      try { fe = new FocusEvent("focus", { bubbles: false, cancelable: false }); }
+      catch (e3) { fe = document.createEvent("Event"); fe.initEvent("focus", false, false); }
+      span.dispatchEvent(fe);
+    } catch (e4) {}
+  };
+
+  // Type a string into a focused text-input span via keypress events, then ENTER.
+  // Only chars the field accepts are sent; others (e.g. lowercase already upper-cased)
+  // map to their ASCII code. Dispatched synchronously — the handlers are synchronous.
+  A.typeIntoField = function (span, text, commit) {
+    var v = String(text || "").toUpperCase();
+    for (var i = 0; i < v.length; i++) {
+      var ch = v.charAt(i);
+      if (!/^[A-Z0-9/.+\- ]$/.test(ch)) continue;
+      A.dispatchKey(span, "keypress", ch.charCodeAt(0));
+    }
+    if (commit) A.dispatchKey(span, "keypress", 13);
+  };
+
+  // Legacy no-op kept so older call sites don't break; the DOM path needs no
+  // KCCU keyboard-enable (that SimVar.Set doesn't even stick in-page anyway).
+  A.ensureKccuKeyboardOn = function () {};
 
   A.fireKey = function (key) {
     try {
@@ -396,17 +456,6 @@
       if (typeof SimVar !== "undefined" && typeof SimVar.SetSimVarValue === "function") SimVar.SetSimVarValue("H:" + eventName, "number", 0);
     } catch (e) {}
     return "ok";
-  };
-
-  A.charToKey = function (c) {
-    if (c >= "A" && c <= "Z") return c;
-    if (c >= "a" && c <= "z") return c.toUpperCase();
-    if (c >= "0" && c <= "9") return c;
-    if (c === ".") return "DOT";
-    if (c === "/") return "SLASH";
-    if (c === "+" || c === "-") return "PLUSMINUS";
-    if (c === " ") return "SP";
-    return null;
   };
 
   A.clickNode = function (node) {
@@ -423,24 +472,27 @@
     return "ok";
   };
 
-  function fireQueue(queue) {
-    var step = 0;
-    function next() {
-      if (step >= queue.length) return;
-      A.fireKey(queue[step]); step++;
-      setTimeout(next, A.KEY_FIRE_DELAY_MS);
-    }
-    next();
-  }
-
+  // The A380X MFD has NO shared scratchpad — every value is typed directly into
+  // a focused field. So "send to scratchpad then ENTER on a field" collapses to:
+  // focus the field, type the text, ENTER. sendScratchpad alone has no target, so
+  // it focuses the first editable (non-disabled) input field on the page and types
+  // there — but the real entry path the form uses is sendToField(index, text).
   A.sendScratchpad = function (text) {
     if (!text) return "ok";
-    A.ensureKccuKeyboardOn();
-    var v = String(text).toUpperCase(), queue = [];
-    for (var j = 0; j < v.length; j++) { var k = A.charToKey(v.charAt(j)); if (k) queue.push(k); }
-    queue.push("ENT");
-    fireQueue(queue);
-    return "ok";
+    var root = A.findRoot(A.activeMcdu);
+    if (!root) return "missing";
+    var conts = root.querySelectorAll(".mfd-input-field-container");
+    for (var i = 0; i < conts.length; i++) {
+      if (!A.isVisible(conts[i])) continue;
+      if (conts[i].className.toString().indexOf("disabled") >= 0) continue;
+      var span = conts[i].querySelector(".mfd-input-field-text-input");
+      if (!span) continue;
+      var sd = conts[i].querySelector(".mfd-input-field-text-input-container");
+      A.focusField(span, sd);
+      A.typeIntoField(span, text, true);
+      return "ok";
+    }
+    return "nofield";
   };
 
   A.sendToField = function (index, newValue) {
@@ -453,15 +505,13 @@
     // Non-input (button/dropdown/tab/menu) — just click.
     if (info && info.kind !== "input") { A.clickNode(node); return "ok"; }
 
-    A.ensureKccuKeyboardOn();
-    A.clickNode(node);
-    var existingLen = info ? (info.value ? info.value.length : 0) : A.readInputValue(node).length;
-    var queue = [];
-    for (var ii = 0; ii < existingLen; ii++) queue.push("BACKSPACE");
-    var v = String(newValue || "").toUpperCase();
-    for (var jj = 0; jj < v.length; jj++) { var kk = A.charToKey(v.charAt(jj)); if (kk) queue.push(kk); }
-    queue.push("ENT");
-    setTimeout(function () { fireQueue(queue); }, 100);
+    // Input field: focus via the real click->focus path, then type + ENTER.
+    // Focusing clears the field's edit buffer, so no manual backspacing needed.
+    var span = node.querySelector(".mfd-input-field-text-input");
+    if (!span) { A.clickNode(node); return "noinput"; }
+    var spanningDiv = node.querySelector(".mfd-input-field-text-input-container");
+    A.focusField(span, spanningDiv);
+    A.typeIntoField(span, newValue, true);
     return "ok";
   };
 
