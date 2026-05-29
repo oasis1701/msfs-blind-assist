@@ -467,6 +467,24 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Stock("KOHLSMAN_HG", "KOHLSMAN SETTING HG", "Altimeter", "inHg");
         Stock("GROSS_WEIGHT_KG", "TOTAL WEIGHT", "Gross Weight", "kilograms");
 
+        // ECAM System Display (SD) window read sources — raw doubles (the window
+        // decodes the ARINC429 words itself). Registered on-request, add-if-absent
+        // so existing defs (e.g. engine vars) are not clobbered. The window
+        // (FBWA380SystemDisplayForm) is the single source of truth for the names.
+        foreach (var sdVar in Forms.FBWA380.FBWA380SystemDisplayForm.AllVariableNames())
+        {
+            if (vars.ContainsKey(sdVar)) continue;
+            bool isStock = !sdVar.StartsWith("A32NX_") && !sdVar.StartsWith("A380X_") && !sdVar.StartsWith("FBW_");
+            vars[sdVar] = new SimVarDefinition
+            {
+                Name = sdVar,
+                DisplayName = sdVar,
+                Type = isStock ? SimVarType.SimVar : SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                Units = "number"
+            };
+        }
+
         // ---- Thrust levers (detent combos) ----
         // Command a thrust-lever detent from a combo. The write is intercepted in
         // HandleUIVariableSet, which fires THROTTLEn_AXIS_SET_EX1 with the detent's
@@ -1918,6 +1936,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 hotkeyManager.ExitOutputHotkeyMode();
                 ShowPFDWindow(announcer, simConnect);
                 return true;
+            case HotkeyAction.ShowStatusPage:
+            case HotkeyAction.ShowECAM:
+                hotkeyManager.ExitOutputHotkeyMode();
+                ShowSystemDisplayWindow(announcer, simConnect);
+                return true;
             case HotkeyAction.ReadWaypointInfo:
                 RequestWaypointInfo(simConnect);
                 return true;
@@ -1946,6 +1969,15 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     private void ShowPFDWindow(ScreenReaderAnnouncer announcer, SimConnectManager simConnect)
     {
         var dialog = new Forms.A32NX.PFDForm(announcer, simConnect) { CurrentAircraft = this };
+        dialog.Show();
+    }
+
+    // ECAM System Display (SD) window — decodes the FQMS/PRESS/APU ARINC429 words
+    // + plain SD scalars (Fuel/Engine/Press/APU/Elec/Hyd/Cond). Opened from
+    // ShowStatusPage and ShowECAM (the A380 also announces E/WD live).
+    private void ShowSystemDisplayWindow(ScreenReaderAnnouncer announcer, SimConnectManager simConnect)
+    {
+        var dialog = new Forms.FBWA380.FBWA380SystemDisplayForm(announcer, simConnect);
         dialog.Show();
     }
 
