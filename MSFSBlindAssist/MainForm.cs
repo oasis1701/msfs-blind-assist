@@ -2278,7 +2278,7 @@ public partial class MainForm : Form
             var (simLabel, folderPath) = notInstalledFolders[0];
             string context = anyInstalled
                 ? $"The FBW A380X accessibility bridge is already installed elsewhere. Would you also like to install it for {simLabel}?"
-                : $"The FlyByWire A380X accessibility bridge is not installed. Would you like to install it for {simLabel}? No FlyByWire files are modified.";
+                : $"The FlyByWire A380X accessibility bridge is not installed. Would you like to install it for {simLabel}? On MSFS 2024 the FlyByWire instrument files are patched in place (originals are backed up and restored if you uninstall); on MSFS 2020 a separate overlay package is used.";
             announcer.Announce(context);
             if (MessageBox.Show(context, "FBW A380X Accessibility Bridge",
                 MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
