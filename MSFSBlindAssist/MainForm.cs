@@ -4058,6 +4058,15 @@ public partial class MainForm : Form
             panelsListBox.Focus();
             return true;
         }
+        // F5 refreshes the current panel's Status Display without leaving the
+        // edit field/combo you're on (easier than tabbing to the Refresh button).
+        else if (keyData == Keys.F5 &&
+                 currentControls.TryGetValue("_REFRESH_", out var refreshCtrl) &&
+                 refreshCtrl is Button refreshBtn && refreshBtn.Enabled)
+        {
+            refreshBtn.PerformClick();
+            return true;
+        }
 
         // Let hotkey manager process other hotkeys
         if (hotkeyManager.ProcessKeyDown(keyData))
@@ -4990,8 +4999,10 @@ public partial class MainForm : Form
             displayPanel.Controls.Add(refreshButton);
             layout.Controls.Add(displayPanel, 1, displayRow);
 
-            // Store reference to display textbox
+            // Store reference to display textbox + refresh button (F5 in ProcessCmdKey
+            // performs the refresh from anywhere in the panel).
             currentControls["_DISPLAY_"] = displayTextBox;
+            currentControls["_REFRESH_"] = refreshButton;
         }
 
             controlsContainer.Controls.Add(layout);

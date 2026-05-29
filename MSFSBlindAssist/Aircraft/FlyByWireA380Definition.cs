@@ -71,7 +71,12 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 Name = key,
                 DisplayName = display,
                 Type = SimVarType.LVar,
-                UpdateFrequency = UpdateFrequency.OnRequest,
+                // Continuous + announced so a switch/selector change is spoken
+                // automatically — exactly how the PMDG 777 marks its writable
+                // switch combos (e.g. ELEC_Battery): Continuous + IsAnnounced.
+                // Users can mute any individual var via the Monitor Manager (Ctrl+M).
+                UpdateFrequency = UpdateFrequency.Continuous,
+                IsAnnounced = true,
                 ValueDescriptions = vd,
                 // Every writable L:var is a multi-state value, so render it as a
                 // combo box (NOT a button). A button only writes one value and a
@@ -104,7 +109,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 Units = units
             };
         }
-        // Read-only enum/status L:var readout.
+        // Read-only enum/status L:var readout. Continuous + announced so status
+        // and fault transitions (e.g. a fault light coming on) are spoken when
+        // they happen — the pilot can't see the annunciator. Mutable per-var via
+        // the Monitor Manager (Ctrl+M) if any proves too chatty.
         void ReadEnum(string key, string display, Dictionary<double, string> vd)
         {
             vars[key] = new SimVarDefinition
@@ -112,7 +120,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 Name = key,
                 DisplayName = display,
                 Type = SimVarType.LVar,
-                UpdateFrequency = UpdateFrequency.OnRequest,
+                UpdateFrequency = UpdateFrequency.Continuous,
+                IsAnnounced = true,
                 ValueDescriptions = vd
             };
         }
@@ -710,7 +719,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
 
         // ============================ TRANSPONDER / ATC ============================
         Stock("XPNDR_CODE", "TRANSPONDER CODE:1", "Squawk Code", "number");
-        Evt("XPNDR_SET", "XPNDR_SET", "Set Squawk (BCD)");
+        // Key MUST be "TRANSPONDER_CODE_SET" so MainForm's squawk-input path
+        // BCD16-encodes the entered code (4242 -> 0x4242). Sending the raw decimal
+        // via the generic event path produced a wrong squawk. Event name stays XPNDR_SET.
+        Evt("TRANSPONDER_CODE_SET", "XPNDR_SET", "Squawk Code");
         ReadEnum("A32NX_TRANSPONDER_MODE", "Transponder Mode",
             new Dictionary<double, string> { [0] = "Standby", [1] = "Auto", [2] = "On" });
         Sel("A32NX_SWITCH_ATC_ALT", "ATC Altitude Reporting",
@@ -1190,7 +1202,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         };
         p["Transponder"] = new List<string>
         {
-            "XPNDR_SET", "XPNDR_IDENT_ON", "A32NX_TRANSPONDER_MODE", "A32NX_SWITCH_ATC_ALT"
+            "TRANSPONDER_CODE_SET", "XPNDR_IDENT_ON", "A32NX_TRANSPONDER_MODE", "A32NX_SWITCH_ATC_ALT"
         };
         p["Radios"] = new List<string>
         {
