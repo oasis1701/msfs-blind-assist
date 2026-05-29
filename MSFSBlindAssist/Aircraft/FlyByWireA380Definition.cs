@@ -267,8 +267,18 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         for (int n = 1; n <= 7; n++) Read($"A32NX_COND_UPPER_DECK_{n}_TEMP", $"Upper Deck {n} Temperature", "celsius");
 
         // ---- CARGO AIR ----
-        Read("A32NX_OVHD_CARGO_AIR_FWD_SELECTOR_KNOB", "Cargo Fwd Temp Selector");
-        Read("A32NX_OVHD_CARGO_AIR_BULK_SELECTOR_KNOB", "Cargo Bulk Temp Selector");
+        // Cargo temp selectors: settable target temp 5-25 C (FBW knob 0-300 over
+        // that range -> knob = (temp - 5) * 15). Converted in HandleUIVariableSet.
+        vars["CARGO_FWD_TEMP_SET"] = new SimVarDefinition
+        {
+            Name = "A32NX_OVHD_CARGO_AIR_FWD_SELECTOR_KNOB", DisplayName = "Cargo Fwd Target Temp (5-25 C)",
+            Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest, Units = "number"
+        };
+        vars["CARGO_BULK_TEMP_SET"] = new SimVarDefinition
+        {
+            Name = "A32NX_OVHD_CARGO_AIR_BULK_SELECTOR_KNOB", DisplayName = "Cargo Bulk Target Temp (5-25 C)",
+            Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest, Units = "number"
+        };
         OnOff("A32NX_OVHD_CARGO_AIR_ISOL_VALVES_FWD_PB_IS_ON", "Cargo Fwd Isolation Valve");
         OnOff("A32NX_OVHD_CARGO_AIR_ISOL_VALVES_BULK_PB_IS_ON", "Cargo Bulk Isolation Valve");
         OnOff("A32NX_OVHD_CARGO_AIR_HEATER_PB_IS_ON", "Cargo Heater");
@@ -1194,7 +1204,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         };
         p["Cargo Air"] = new List<string>
         {
-            "A32NX_OVHD_CARGO_AIR_FWD_SELECTOR_KNOB", "A32NX_OVHD_CARGO_AIR_BULK_SELECTOR_KNOB",
+            "CARGO_FWD_TEMP_SET", "CARGO_BULK_TEMP_SET",
             "A32NX_OVHD_CARGO_AIR_ISOL_VALVES_FWD_PB_IS_ON", "A32NX_OVHD_CARGO_AIR_ISOL_VALVES_BULK_PB_IS_ON",
             "A32NX_OVHD_CARGO_AIR_HEATER_PB_IS_ON"
         };
@@ -1812,6 +1822,17 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     // combo's value comes from the matching LIGHT * simvar (Continuous +
     // announced), so it reflects state and auto-announces; this only handles the
     // write side.
+    // Settable temperature selectors: the _SET combo key -> the FBW knob L:var
+    // (0-300) and the zone's Celsius range. knob = (temp - Lo)/(Hi - Lo)*300.
+    private sealed record TempSel(string Knob, double Lo, double Hi, string Label);
+    private static readonly Dictionary<string, TempSel> _tempSelectors = new Dictionary<string, TempSel>
+    {
+        ["COND_CKPT_TEMP_SET"] = new TempSel("A32NX_OVHD_COND_CKPT_SELECTOR_KNOB", 18, 30, "Cockpit"),
+        ["COND_CABIN_TEMP_SET"] = new TempSel("A32NX_OVHD_COND_CABIN_SELECTOR_KNOB", 18, 30, "Cabin"),
+        ["CARGO_FWD_TEMP_SET"] = new TempSel("A32NX_OVHD_CARGO_AIR_FWD_SELECTOR_KNOB", 5, 25, "Forward cargo"),
+        ["CARGO_BULK_TEMP_SET"] = new TempSel("A32NX_OVHD_CARGO_AIR_BULK_SELECTOR_KNOB", 5, 25, "Bulk cargo"),
+    };
+
     private static readonly Dictionary<string, string> _extLightSetEvents = new Dictionary<string, string>
     {
         ["LIGHT_BEACON"] = "BEACON_LIGHTS_SET",
@@ -1829,19 +1850,18 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             simConnect.SendEvent(lightEvent, (uint)Math.Round(value));
             return true;
         }
-        // Cockpit/cabin target temperature: user enters degrees C (18-30); the FBW
-        // selector knob is 0-300 over that range, so knob = (temp - 18) * 25.
-        if (varKey == "COND_CKPT_TEMP_SET" || varKey == "COND_CABIN_TEMP_SET")
+        // Air-cond/cargo target temperature: user enters degrees C; the FBW
+        // selector knob is 0-300 over the zone's range (cockpit/cabin 18-30 C,
+        // cargo 5-25 C), so knob = (temp - lo) / (hi - lo) * 300.
+        if (_tempSelectors.TryGetValue(varKey, out var ts))
         {
-            if (value < 18 || value > 30)
+            if (value < ts.Lo || value > ts.Hi)
             {
-                announcer.AnnounceImmediate("Temperature must be between 18 and 30 degrees Celsius.");
+                announcer.AnnounceImmediate($"Temperature must be between {ts.Lo} and {ts.Hi} degrees Celsius.");
                 return true;
             }
-            string knobVar = varKey == "COND_CKPT_TEMP_SET"
-                ? "A32NX_OVHD_COND_CKPT_SELECTOR_KNOB" : "A32NX_OVHD_COND_CABIN_SELECTOR_KNOB";
-            simConnect.SetLVar(knobVar, (value - 18.0) * 25.0);
-            announcer.Announce($"{(varKey.Contains("CKPT") ? "Cockpit" : "Cabin")} temperature set to {value:0} degrees");
+            simConnect.SetLVar(ts.Knob, (value - ts.Lo) / (ts.Hi - ts.Lo) * 300.0);
+            announcer.Announce($"{ts.Label} temperature set to {value:0} degrees");
             return true;
         }
         // Thrust-lever detent combos -> THROTTLEn_AXIS_SET_EX1 with the detent's
