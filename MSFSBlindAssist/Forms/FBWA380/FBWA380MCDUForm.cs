@@ -358,9 +358,11 @@ public class FBWA380MCDUForm : Form
                 // tells the user what it is (a ListBox renders plain strings, so
                 // it doesn't get the automatic role a native control would).
                 string role = AnnounceRoles ? RoleWord(el.Kind) : "";
-                lines.Add(role.Length > 0
-                    ? $"{el.Index}: {el.Text}, {role}"
-                    : $"{el.Index}: {el.Text}");
+                // Tell the user a control is disabled, so a no-op activation
+                // reads as "disabled" rather than "broken".
+                string suffix = el.Disabled ? (role.Length > 0 ? $", {role}, disabled" : ", disabled")
+                                             : (role.Length > 0 ? $", {role}" : "");
+                lines.Add($"{el.Index}: {el.Text}{suffix}");
             }
             else
             {
@@ -412,15 +414,23 @@ public class FBWA380MCDUForm : Form
     };
 
     /// <summary>
-    /// Element index of the currently selected display line, or 0 if none.
-    /// The list is built 1:1 from <see cref="_elements"/>, so the selected
-    /// row position maps straight onto that element's MFD index.
+    /// The element backing the currently selected display row, or null.
+    /// The ListBox rows are built 1:1 from <see cref="_displayedElements"/>
+    /// (the filtered, rendered list) — NOT <see cref="_elements"/>, which may
+    /// contain entries that were filtered out. Mapping the selected row onto
+    /// _elements drifts by the number of skipped entries and lands on the wrong
+    /// element (often a static idx-0 line), which is why "buttons didn't click".
     /// </summary>
-    private int SelectedElementIndex()
+    private McduElement? SelectedElement()
     {
         int i = _display.SelectedIndex;
-        return (i >= 0 && i < _elements.Count) ? _elements[i].Index : 0;
+        return (i >= 0 && i < _displayedElements.Count) ? _displayedElements[i] : null;
     }
+
+    /// <summary>
+    /// Element index (MFD handle) of the currently selected display line, or 0.
+    /// </summary>
+    private int SelectedElementIndex() => SelectedElement()?.Index ?? 0;
 
     // ---- input handlers ---------------------------------------------------
 
@@ -526,10 +536,19 @@ public class FBWA380MCDUForm : Form
                 }
                 else
                 {
-                    // No pending value — just activate the field (buttons,
-                    // toggles, page-selector tabs that need no entry).
-                    _bridgeServer.EnqueueCommand("click_mcdu_element",
-                        new Dictionary<string, string> { ["index"] = fieldIdx.ToString() });
+                    // No pending value — just activate the element (buttons,
+                    // toggles, page-selector tabs that need no entry). If it's
+                    // disabled, say so instead of silently doing nothing (the MFD
+                    // ignores clicks on disabled controls — that read as "broken").
+                    if (SelectedElement()?.Disabled == true)
+                    {
+                        _announcer.Announce("Unavailable");
+                    }
+                    else
+                    {
+                        _bridgeServer.EnqueueCommand("click_mcdu_element",
+                            new Dictionary<string, string> { ["index"] = fieldIdx.ToString() });
+                    }
                 }
             }
             e.Handled = true; e.SuppressKeyPress = true;
