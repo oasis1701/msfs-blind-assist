@@ -477,6 +477,28 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 [5] = "Approach", [6] = "Go Around", [7] = "Done"
             });
 
+        // ---- ECAM upper (E/WD) memo + warning lines — live monitoring ----
+        // The A380X publishes 10 lines per side as numeric message CODES
+        // (uppercase EWD, vs the A320's lowercase Ewd / 7 lines). They are
+        // continuously monitored and decoded to text in ProcessSimVarUpdate
+        // via EWDMessageLookupA380 (the ported A380 EcamMemos dictionary), so
+        // memos / cautions / warnings are announced in real time.
+        for (int i = 1; i <= 10; i++)
+        {
+            foreach (var lr in new[] { "LEFT", "RIGHT" })
+            {
+                string key = $"A32NX_EWD_LOWER_{lr}_LINE_{i}";
+                vars[key] = new SimVarDefinition
+                {
+                    Name = key,
+                    DisplayName = $"E/WD {(lr == "LEFT" ? "Left" : "Right")} Line {i}",
+                    Type = SimVarType.LVar,
+                    UpdateFrequency = UpdateFrequency.Continuous,
+                    IsAnnounced = true
+                };
+            }
+        }
+
         return vars;
     }
 
@@ -763,10 +785,34 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     // ===================================================================
     // Update hook (bridge diagnostics)
     // ===================================================================
+    // Last announced E/WD code per line, so a line only speaks when it changes.
+    private readonly Dictionary<string, long> _lastEwdCode = new();
+
     public override bool ProcessSimVarUpdate(string varName, double value, ScreenReaderAnnouncer announcer)
     {
         if (varName == "MSFSBA_FBWA380_STAGE") { BridgeStage = (int)value; return true; }
         if (varName == "MSFSBA_FBWA380_HTML_LOADED") { BridgeHtmlLoaded = (int)value; return true; }
+
+        // ECAM upper (E/WD) memo/warning lines: decode the numeric code to text
+        // and announce it (with its FWC colour as a priority word). Returning
+        // true suppresses the generic raw-number announcement.
+        if (varName.StartsWith("A32NX_EWD_LOWER_"))
+        {
+            long code = (long)value;
+            if (!_lastEwdCode.TryGetValue(varName, out var prev) || prev != code)
+            {
+                _lastEwdCode[varName] = code;
+                string text = EWDMessageLookupA380.GetMessage(code);
+                if (!string.IsNullOrWhiteSpace(text) &&
+                    !text.Equals("NORMAL", StringComparison.OrdinalIgnoreCase))
+                {
+                    string priority = EWDMessageLookupA380.GetMessagePriority(code);
+                    announcer.Announce(string.IsNullOrEmpty(priority) ? text : $"{text}, {priority}");
+                }
+            }
+            return true;
+        }
+
         return base.ProcessSimVarUpdate(varName, value, announcer);
     }
 
