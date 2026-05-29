@@ -6340,66 +6340,6 @@ public class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         }
     }
 
-    /// <summary>
-    /// Captures screenshot and analyzes cockpit display using Gemini AI.
-    /// </summary>
-    private async void ReadDisplay(Services.GeminiService.DisplayType displayType,
-                                    string displayName,
-                                    ScreenReaderAnnouncer announcer,
-                                    System.Windows.Forms.Form parentForm)
-    {
-        try
-        {
-            announcer.Announce($"Capturing {displayName}...");
-
-            var screenshotService = new Services.ScreenshotService();
-            var geminiService = new Services.GeminiService();
-
-            if (!screenshotService.IsMsfsWindowAvailable())
-            {
-                announcer.Announce("Microsoft Flight Simulator window not found. Make sure the simulator is running.");
-                return;
-            }
-
-            byte[]? screenshot = await screenshotService.CaptureAsync();
-            if (screenshot == null || screenshot.Length == 0)
-            {
-                announcer.Announce($"Failed to capture {displayName} screenshot.");
-                return;
-            }
-
-            string analysis = await geminiService.AnalyzeDisplayAsync(screenshot, displayType);
-
-            var resultForm = new Forms.DisplayReadingResultForm(displayName, analysis);
-            resultForm.ShowForm();
-
-            announcer.Announce($"{displayName} analysis ready.");
-        }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("API key"))
-        {
-            announcer.Announce("Gemini API key not configured. Please go to File menu, Gemini Settings.");
-            System.Windows.Forms.MessageBox.Show(
-                parentForm,
-                "Gemini API key is not configured.\n\n" +
-                "Please configure your API key in:\n" +
-                "File > Gemini Settings\n\n" +
-                "Get a free API key at: https://aistudio.google.com/apikey",
-                "API Key Required",
-                System.Windows.Forms.MessageBoxButtons.OK,
-                System.Windows.Forms.MessageBoxIcon.Warning);
-        }
-        catch (Exception ex)
-        {
-            announcer.Announce($"Error analyzing {displayName}: {ex.Message}");
-            System.Windows.Forms.MessageBox.Show(
-                parentForm,
-                $"Error analyzing {displayName}:\n\n{ex.Message}",
-                "Error",
-                System.Windows.Forms.MessageBoxButtons.OK,
-                System.Windows.Forms.MessageBoxIcon.Error);
-        }
-    }
-
     // =========================================================================
     // FCU Request Override Methods
     // =========================================================================
