@@ -21,6 +21,15 @@ Application Navigation:
 Tip: Press the same bracket key again to cancel a mode you activated by accident.
 
 
+Displays and Windows (direct chords — no bracket mode needed):
+  Ctrl+M     A380 Monitor Manager — tick/untick which variables are announced
+             automatically as they change (master warning/caution, engine state,
+             fire, flight phase, ATC message waiting, and a single "ECAM E/WD
+             call-outs" entry that mutes the live memo/warning read-out). Same
+             Ctrl+M chord the Fenix and PMDG use; your choices are saved between
+             sessions.
+
+
 OUTPUT MODE - Press right bracket to activate
 
 AI features:
@@ -65,11 +74,6 @@ Location:
 
 Announcements:
   Shift+T    Toggle trim announcements on/off
-  Ctrl+M     A380 Monitor Manager — tick/untick which variables are announced
-             automatically as they change (master warning/caution, engine state,
-             fire, flight phase, ATC message waiting, and a single "ECAM E/WD
-             call-outs" entry that mutes the live memo/warning read-out). Your
-             choices are saved between sessions.
 
 Tools:
   Ctrl+H     Activate/deactivate Hand fly mode (enables more hotkeys)
