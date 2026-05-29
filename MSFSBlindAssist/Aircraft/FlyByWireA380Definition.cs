@@ -847,6 +847,99 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             OnOff($"A32NX_KCCU_{side}_CCD_ON_OFF", $"{who} KCCU Cursor");
         }
 
+        // ============================ SD SYSTEM-PAGE READOUTS (plain) + DOC GAP ============================
+        // Plain (non-ARINC429) SD-page scalars — readable directly; surfaced as
+        // panel readouts. (Fuel tanks / FOB / GW / CG, cabin press, APU N/EGT are
+        // ARINC429 → handled by the SD readout window.) See tools/a380-sd-pages.md
+        // and tools/a380-doc-final-gap.md.
+
+        // ELEC AC: per-source volts / load / frequency.
+        for (int n = 1; n <= 4; n++)
+        {
+            Read($"A32NX_ELEC_ENG_GEN_{n}_POTENTIAL", $"Gen {n} Voltage", "volts");
+            Read($"A32NX_ELEC_ENG_GEN_{n}_LOAD", $"Gen {n} Load", "percent");
+            Read($"A32NX_ELEC_ENG_GEN_{n}_FREQUENCY", $"Gen {n} Frequency", "hertz");
+            Read($"A32NX_ELEC_ENG_GEN_{n}_IDG_OIL_OUTLET_TEMPERATURE", $"IDG {n} Oil Temp", "celsius");
+        }
+        for (int n = 1; n <= 2; n++)
+        {
+            Read($"A32NX_ELEC_APU_GEN_{n}_POTENTIAL", $"APU Gen {n} Voltage", "volts");
+            Read($"A32NX_ELEC_APU_GEN_{n}_LOAD", $"APU Gen {n} Load", "percent");
+            Read($"A32NX_ELEC_APU_GEN_{n}_FREQUENCY", $"APU Gen {n} Frequency", "hertz");
+        }
+        Read("A32NX_ELEC_EXT_PWR_POTENTIAL", "Ext Power Voltage", "volts");
+        Read("A32NX_ELEC_EXT_PWR_FREQUENCY", "Ext Power Frequency", "hertz");
+        Read("A32NX_ELEC_EMER_GEN_POTENTIAL", "Emergency Gen Voltage", "volts");
+        Read("A32NX_ELEC_STAT_INV_POTENTIAL", "Static Inverter Voltage", "volts");
+        // ELEC DC: TR + battery volts / amps.
+        for (int n = 1; n <= 4; n++)
+        {
+            Read($"A32NX_ELEC_TR_{n}_POTENTIAL", $"TR {n} Voltage", "volts");
+            Read($"A32NX_ELEC_TR_{n}_CURRENT", $"TR {n} Current", "amperes");
+            Read($"A32NX_ELEC_BAT_{n}_CURRENT", $"Battery {n} Current", "amperes");
+        }
+
+        // HYDRAULICS: Green/Yellow pressures, reservoirs, electric pumps.
+        foreach (var sys in new[] { "GREEN", "YELLOW" })
+        {
+            Read($"A32NX_HYD_{sys}_SYSTEM_1_SECTION_PRESSURE", $"{sys} System Pressure", "psi");
+            Read($"A32NX_HYD_{sys}_RESERVOIR_LEVEL", $"{sys} Reservoir Level", "gallons");
+            ReadEnum($"A32NX_HYD_{sys}_RESERVOIR_LEVEL_IS_LOW", $"{sys} Reservoir Low", new Dictionary<double, string> { [0] = "Normal", [1] = "LOW" });
+        }
+
+        // BLEED: per-engine precooler temp/pressure + valves; pack outlet temps.
+        for (int n = 1; n <= 4; n++)
+        {
+            Read($"A32NX_PNEU_ENG_{n}_PRECOOLER_OUTLET_TEMPERATURE", $"Engine {n} Bleed Temp", "celsius");
+            Read($"A32NX_PNEU_ENG_{n}_REGULATED_TRANSDUCER_PRESSURE", $"Engine {n} Bleed Pressure", "psi");
+            ReadEnum($"A32NX_PNEU_ENG_{n}_STARTER_VALVE_OPEN", $"Engine {n} Starter Valve", openVd);
+        }
+        for (int n = 1; n <= 2; n++) Read($"A32NX_COND_PACK_{n}_OUTLET_TEMPERATURE", $"Pack {n} Outlet Temp", "celsius");
+        Read("A32NX_PNEU_APU_BLEED_CONTAINER_PRESSURE", "APU Bleed Pressure", "psi");
+
+        // ENGINE extras: oil qty, vibration.
+        for (int n = 1; n <= 4; n++)
+        {
+            Read($"A32NX_ENGINE_OIL_QTY:{n}", $"Engine {n} Oil Quantity", "quarts");
+            Stock($"ENG_VIBRATION:{n}", $"TURB ENG VIBRATION:{n}", $"Engine {n} Vibration", "number");
+        }
+
+        // COND extras: cargo temps + duct temps.
+        Read("A32NX_COND_CARGO_FWD_TEMP", "Cargo Fwd Temperature", "celsius");
+        Read("A32NX_COND_CARGO_BULK_TEMP", "Cargo Bulk Temperature", "celsius");
+        Read("A32NX_COND_CKPT_DUCT_TEMP", "Cockpit Duct Temp", "celsius");
+
+        // FLIGHT CONTROLS: surface positions + trim + sidestick priority.
+        foreach (var side in new[] { "LEFT", "RIGHT" })
+        {
+            Read($"A32NX_{side}_FLAPS_POSITION_PERCENT", $"{side} Flaps Position", "percent");
+            Read($"A32NX_{side}_SLATS_POSITION_PERCENT", $"{side} Slats Position", "percent");
+        }
+        Stock("ELEVATOR_TRIM", "ELEVATOR TRIM INDICATOR", "Pitch Trim", "number");
+        Stock("RUDDER_TRIM_PCT", "RUDDER TRIM PCT", "Rudder Trim", "percent");
+        ReadEnum("A32NX_PRIORITY_TAKEOVER:1", "Capt Sidestick Priority", new Dictionary<double, string> { [0] = "Normal", [1] = "Priority Taken" });
+        ReadEnum("A32NX_PRIORITY_TAKEOVER:2", "F/O Sidestick Priority", new Dictionary<double, string> { [0] = "Normal", [1] = "Priority Taken" });
+
+        // GEAR strut positions + RTO armed.
+        Stock("GEAR_LEFT_POS", "GEAR LEFT POSITION", "Left Gear Position", "percent");
+        Stock("GEAR_CENTER_POS", "GEAR CENTER POSITION", "Center Gear Position", "percent");
+        Stock("GEAR_RIGHT_POS", "GEAR RIGHT POSITION", "Right Gear Position", "percent");
+        ReadEnum("A32NX_AUTOBRAKES_RTO_ARMED", "RTO Armed", new Dictionary<double, string> { [0] = "No", [1] = "Armed" });
+
+        // ENGINE master / ignition position readbacks (we only sent before).
+        for (int n = 1; n <= 4; n++)
+        {
+            Stock($"ENG_IGN_POS:{n}", $"TURB ENG IGNITION SWITCH EX1:{n}", $"Engine {n} Ignition",
+                "enum", new Dictionary<double, string> { [0] = "Crank", [1] = "Norm", [2] = "Ignition / Start" });
+            Stock($"ENG_VALVE_SWITCH:{n}", $"FUELSYSTEM VALVE SWITCH:{n}", $"Engine {n} Master", "bool",
+                new Dictionary<double, string> { [0] = "Off", [1] = "On" });
+        }
+
+        // EFIS OANS range (airport map zoom).
+        foreach (var side in new[] { "L", "R" })
+            Sel($"A32NX_EFIS_{side}_OANS_RANGE", $"{(side == "L" ? "Capt" : "F/O")} OANS Range",
+                new Dictionary<double, string> { [0] = "Max", [1] = "1", [2] = "2", [3] = "3", [4] = "Min" });
+
         // ---- ECAM upper (E/WD) memo + warning lines — live monitoring ----
         // The A380X publishes 10 lines per side as numeric message CODES
         // (uppercase EWD, vs the A320's lowercase Ewd / 7 lines). They are
@@ -1128,8 +1221,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         p["Exterior Lighting"].Add("STROBE_0_AUTO");
         p["EFIS Control Panel"].AddRange(new[]
         {
-            "A380X_EFIS_L_ACTIVE_FILTER", "A380X_EFIS_L_ACTIVE_OVERLAY", "A32NX_FCU_EFIS_L_BARO_IS_INHG",
-            "A380X_EFIS_R_ACTIVE_FILTER", "A380X_EFIS_R_ACTIVE_OVERLAY", "A32NX_FCU_EFIS_R_BARO_IS_INHG"
+            "A380X_EFIS_L_ACTIVE_FILTER", "A380X_EFIS_L_ACTIVE_OVERLAY", "A32NX_FCU_EFIS_L_BARO_IS_INHG", "A32NX_EFIS_L_OANS_RANGE",
+            "A380X_EFIS_R_ACTIVE_FILTER", "A380X_EFIS_R_ACTIVE_OVERLAY", "A32NX_FCU_EFIS_R_BARO_IS_INHG", "A32NX_EFIS_R_OANS_RANGE"
         });
         p["ECAM Control Panel"].AddRange(new[] { "A32NX_BTN_CHECK_LH", "A32NX_BTN_CHECK_RH" });
         p["Transponder"].Add("A32NX_DCDU_ATC_MSG_ACK");
@@ -1339,6 +1432,41 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         d["Wipers"] = new List<string> { "WIPER_LEFT_ON", "WIPER_RIGHT_ON" };
         d["Speeds"] = new List<string> { "A32NX_SPEEDS_VLS", "A32NX_SPEEDS_VAPP", "A32NX_SPEEDS_GD", "A32NX_SPEEDS_F", "A32NX_SPEEDS_S" };
         d["Ground"] = new List<string> { "A32NX_AIRCRAFT_PRESET_LOAD_PROGRESS" };
+
+        // ---- plain SD-page scalar readouts ----
+        for (int n = 1; n <= 4; n++)
+        {
+            d["ELEC"].AddRange(new[]
+            {
+                $"A32NX_ELEC_ENG_GEN_{n}_POTENTIAL", $"A32NX_ELEC_ENG_GEN_{n}_LOAD",
+                $"A32NX_ELEC_ENG_GEN_{n}_FREQUENCY", $"A32NX_ELEC_ENG_GEN_{n}_IDG_OIL_OUTLET_TEMPERATURE",
+                $"A32NX_ELEC_TR_{n}_POTENTIAL", $"A32NX_ELEC_TR_{n}_CURRENT", $"A32NX_ELEC_BAT_{n}_CURRENT"
+            });
+        }
+        for (int n = 1; n <= 2; n++)
+            d["ELEC"].AddRange(new[] { $"A32NX_ELEC_APU_GEN_{n}_POTENTIAL", $"A32NX_ELEC_APU_GEN_{n}_LOAD", $"A32NX_ELEC_APU_GEN_{n}_FREQUENCY" });
+        d["ELEC"].AddRange(new[] { "A32NX_ELEC_EXT_PWR_POTENTIAL", "A32NX_ELEC_EXT_PWR_FREQUENCY", "A32NX_ELEC_EMER_GEN_POTENTIAL", "A32NX_ELEC_STAT_INV_POTENTIAL" });
+
+        foreach (var sys in new[] { "GREEN", "YELLOW" })
+            d["Hydraulics"].AddRange(new[] { $"A32NX_HYD_{sys}_SYSTEM_1_SECTION_PRESSURE", $"A32NX_HYD_{sys}_RESERVOIR_LEVEL", $"A32NX_HYD_{sys}_RESERVOIR_LEVEL_IS_LOW" });
+
+        for (int n = 1; n <= 4; n++)
+            d["Bleed Air"].AddRange(new[] { $"A32NX_PNEU_ENG_{n}_PRECOOLER_OUTLET_TEMPERATURE", $"A32NX_PNEU_ENG_{n}_REGULATED_TRANSDUCER_PRESSURE", $"A32NX_PNEU_ENG_{n}_STARTER_VALVE_OPEN" });
+        d["Bleed Air"].AddRange(new[] { "A32NX_COND_PACK_1_OUTLET_TEMPERATURE", "A32NX_COND_PACK_2_OUTLET_TEMPERATURE", "A32NX_PNEU_APU_BLEED_CONTAINER_PRESSURE" });
+
+        for (int n = 1; n <= 4; n++)
+            d["Engines"].AddRange(new[] { $"A32NX_ENGINE_OIL_QTY:{n}", $"ENG_VIBRATION:{n}", $"ENG_IGN_POS:{n}", $"ENG_VALVE_SWITCH:{n}" });
+
+        d["Air Conditioning"].AddRange(new[] { "A32NX_COND_CARGO_FWD_TEMP", "A32NX_COND_CARGO_BULK_TEMP", "A32NX_COND_CKPT_DUCT_TEMP" });
+
+        d["Flight Control Computers"].AddRange(new[]
+        {
+            "A32NX_LEFT_FLAPS_POSITION_PERCENT", "A32NX_RIGHT_FLAPS_POSITION_PERCENT",
+            "A32NX_LEFT_SLATS_POSITION_PERCENT", "A32NX_RIGHT_SLATS_POSITION_PERCENT",
+            "ELEVATOR_TRIM", "RUDDER_TRIM_PCT", "A32NX_PRIORITY_TAKEOVER:1", "A32NX_PRIORITY_TAKEOVER:2"
+        });
+
+        d["Gear"].AddRange(new[] { "GEAR_LEFT_POS", "GEAR_CENTER_POS", "GEAR_RIGHT_POS", "A32NX_AUTOBRAKES_RTO_ARMED" });
 
         return d;
     }
