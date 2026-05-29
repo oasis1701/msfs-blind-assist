@@ -44,6 +44,14 @@ public class SimVarDefinition
     /// PMDG777Definition.cs render as read-only without per-line edits.
     /// </summary>
     public bool RenderAsReadOnlyStatus { get; set; }
+    /// <summary>
+    /// Numeric .NET format specifier used when rendering a continuous-numeric var
+    /// as a read-only TextBox (the RenderAsReadOnlyStatus + Units + no
+    /// ValueDescriptions branch). Examples: "F0" = "1200", "F2" = "8.20",
+    /// "P0" = "30 %". Ignored when ValueDescriptions are present (those drive
+    /// the display text).
+    /// </summary>
+    public string Format { get; set; } = "F0";
     public string? HelpText { get; set; }  // Optional help text read by screen reader (overrides default AccessibleDescription)
 
     // MobiFlight WASM support properties

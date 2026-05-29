@@ -1028,16 +1028,32 @@ public partial class MainForm : Form
             }
             else if (control is TextBox textBox && textBox.ReadOnly)
             {
-                // Read-only status TextBox (annunciator, door state, etc.).
-                // Mirror the value through ValueDescriptions, fall back to numeric.
+                // Read-only status TextBox. Two flavors:
+                //  (a) Continuous-numeric readout (RenderAsReadOnlyStatus + Units +
+                //      no ValueDescriptions) — format as "<value:Format> <Units>".
+                //  (b) Enum-style status field (door state, annunciator, etc.) —
+                //      mirror the value through ValueDescriptions; fall back to
+                //      raw numeric if the cached value isn't in the map.
                 if (currentAircraft.GetVariables().ContainsKey(varName))
                 {
                     var varDef = currentAircraft.GetVariables()[varName];
                     string newText;
-                    if (varDef.ValueDescriptions.TryGetValue(value, out string? desc))
+                    bool isContinuousReadout =
+                        varDef.RenderAsReadOnlyStatus &&
+                        (varDef.ValueDescriptions == null || varDef.ValueDescriptions.Count == 0) &&
+                        !string.IsNullOrEmpty(varDef.Units);
+                    if (isContinuousReadout)
+                    {
+                        newText = $"{value.ToString(varDef.Format, System.Globalization.CultureInfo.InvariantCulture)} {varDef.Units}";
+                    }
+                    else if (varDef.ValueDescriptions.TryGetValue(value, out string? desc))
+                    {
                         newText = desc;
+                    }
                     else
+                    {
                         newText = value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                    }
                     if (textBox.Text != newText)
                         textBox.Text = newText;
                 }
@@ -4027,6 +4043,34 @@ public partial class MainForm : Form
 
                 layout.Controls.Add(controlButton, 1, rowIndex);
                 currentControls[varKey] = controlButton;
+            }
+            else if (varDef.RenderAsReadOnlyStatus &&
+                     (varDef.ValueDescriptions == null || varDef.ValueDescriptions.Count == 0) &&
+                     !string.IsNullOrEmpty(varDef.Units))
+            {
+                // Continuous-numeric read-only TextBox. Used for cockpit gauges
+                // exposed by the PMDG NG3 SDK as float fields (cabin altitude,
+                // DP, duct pressure, APU EGT, fuel temp, etc.). Text is
+                // "{value:Format} {Units}" and is silently refreshed on each
+                // continuous broadcast via UpdateControlFromSimVar — the user
+                // reads the current value by Tab-focusing the field.
+                TextBox readoutBox = new TextBox();
+                readoutBox.ReadOnly = true;
+                readoutBox.TabStop = true;
+                readoutBox.Size = new Size(240, 25);
+                readoutBox.Name = varKey;
+                readoutBox.AccessibleName = varDef.DisplayName;
+
+                string initial = "—";
+                if (currentSimVarValues.ContainsKey(varKey))
+                {
+                    double cur = currentSimVarValues[varKey];
+                    initial = $"{cur.ToString(varDef.Format, System.Globalization.CultureInfo.InvariantCulture)} {varDef.Units}";
+                }
+                readoutBox.Text = initial;
+
+                layout.Controls.Add(readoutBox, 1, rowIndex);
+                currentControls[varKey] = readoutBox;
             }
             else if (varDef.ValueDescriptions != null && varDef.ValueDescriptions.Count > 1 &&
                      (varDef.RenderAsReadOnlyStatus || varDef.OnlyAnnounceValueDescriptionMatches))
