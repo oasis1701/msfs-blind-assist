@@ -38,7 +38,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     ISupportsBridgedMCDU,
     ISupportsBridgedEFB
 {
-    public override string AircraftName => "FlyByWire A380X (Dev)";
+    public override string AircraftName => "FlyByWire A380X";
     public override string AircraftCode => "FBW_A380";
 
     /// <summary>Bridge JS execution stage (legacy injection diagnostic). See

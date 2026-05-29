@@ -79,24 +79,36 @@
     return roots[idx] || roots[1] || roots[2];
   };
 
+  // Status flags that share the .mfd-title-bar-text class but aren't a title.
+  A.TITLE_FLAGS = { "PENALTY": 1, "EO": 1, "TMPY": 1, "SEC": 1 };
+
   A.activePageLabel = function (root) {
-    var bar = root.querySelector(".mfd-title-bar-container");
-    if (!bar) return "";
-    var spans = bar.querySelectorAll(".mfd-title-bar-text");
     var parts = [];
-    for (var i = 0; i < spans.length; i++) {
-      if (!A.isVisible(spans[i])) continue;
-      var t = clean(spans[i].textContent);
-      if (t) parts.push(t);
+    // 1) The active top-level tab (ACTIVE / POSITION / SEC INDEX / DATA / ...).
+    var tab = root.querySelector(".mfd-page-selector-label.active");
+    if (tab && A.isVisible(tab)) { var tt = clean(tab.textContent); if (tt) parts.push(tt); }
+    // 2) The first VISIBLE title bar's text — skipping hidden overlays
+    //    (MESSAGE LIST / DUPLICATE NAMES are always in the DOM but hidden) and
+    //    the PENALTY/EO/TMPY status flags.
+    var bars = root.querySelectorAll(".mfd-title-bar-container");
+    for (var b = 0; b < bars.length; b++) {
+      if (!A.isVisible(bars[b])) continue;
+      var spans = bars[b].querySelectorAll(".mfd-title-bar-text");
+      for (var i = 0; i < spans.length; i++) {
+        if (!A.isVisible(spans[i])) continue;
+        var t = clean(spans[i].textContent);
+        if (t && !A.TITLE_FLAGS[t.toUpperCase()]) parts.push(t);
+      }
+      break; // only the first visible title bar
     }
     return parts.join(" / ");
   };
 
   A.footerMessage = function (root) {
-    var footer = root.querySelector(".mfd-footer-message-area");
-    if (footer) { var t = clean(footer.textContent); if (t) return t; }
-    var amber = root.querySelector(".mfd-amber-error-message");
-    if (amber) return clean(amber.textContent);
+    var f = root.querySelectorAll(".mfd-footer-message-area");
+    for (var i = 0; i < f.length; i++) { if (!A.isVisible(f[i])) continue; var t = clean(f[i].textContent); if (t) return t; }
+    var a = root.querySelectorAll(".mfd-amber-error-message");
+    for (var j = 0; j < a.length; j++) { if (!A.isVisible(a[j])) continue; var t2 = clean(a[j].textContent); if (t2) return t2; }
     return "";
   };
 

@@ -256,11 +256,11 @@ namespace MSFSBlindAssist
             //
             // flyByWireA380MenuItem
             //
-            this.flyByWireA380MenuItem.AccessibleName = "FlyByWire Airbus A380X (Dev)";
-            this.flyByWireA380MenuItem.AccessibleDescription = "Switch to FlyByWire Airbus A380X development build";
+            this.flyByWireA380MenuItem.AccessibleName = "FlyByWire Airbus A380X";
+            this.flyByWireA380MenuItem.AccessibleDescription = "Switch to FlyByWire Airbus A380X";
             this.flyByWireA380MenuItem.Name = "flyByWireA380MenuItem";
             this.flyByWireA380MenuItem.Size = new System.Drawing.Size(240, 26);
-            this.flyByWireA380MenuItem.Text = "FlyByWire Airbus A&380X (Dev)";
+            this.flyByWireA380MenuItem.Text = "FlyByWire Airbus A&380X";
             this.flyByWireA380MenuItem.Checked = false;
             this.flyByWireA380MenuItem.Click += new System.EventHandler(this.FlyByWireA380MenuItem_Click);
             //
