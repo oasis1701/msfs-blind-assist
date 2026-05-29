@@ -472,8 +472,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             ReadEnum($"A380X_RMP_{r}_STATE", $"RMP {r} State", rmpState);
         for (int v = 1; v <= 3; v++)
         {
-            Read($"FBW_RMP_FREQUENCY_ACTIVE_{v}", $"VHF {v} Active Frequency");
-            Read($"FBW_RMP_FREQUENCY_STANDBY_{v}", $"VHF {v} Standby Frequency");
+            Read($"FBW_RMP_FREQUENCY_ACTIVE_{v}", $"COM {v} Active Frequency");
+            Read($"FBW_RMP_FREQUENCY_STANDBY_{v}", $"COM {v} Standby Frequency");
         }
 
         // ---- Cockpit door ----
@@ -709,12 +709,12 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         {
             vars[$"COM_STANDBY_FREQUENCY_SET:{n}"] = new SimVarDefinition
             {
-                Name = "COM_STANDBY_FREQUENCY_SET", DisplayName = $"VHF {n} Standby (set)",
+                Name = "COM_STANDBY_FREQUENCY_SET", DisplayName = $"COM {n} Standby (set)",
                 Type = SimVarType.Event, EventParam = (uint)n
             };
-            Evt($"COM{n}_RADIO_SWAP", $"COM{n}_RADIO_SWAP", $"VHF {n} Swap");
-            Stock($"COM_ACTIVE_FREQUENCY:{n}", $"COM ACTIVE FREQUENCY:{n}", $"VHF {n} Active", "MHz");
-            Stock($"COM_STANDBY_FREQUENCY:{n}", $"COM STANDBY FREQUENCY:{n}", $"VHF {n} Standby", "MHz");
+            Evt($"COM{n}_RADIO_SWAP", $"COM{n}_RADIO_SWAP", $"COM {n} Swap");
+            Stock($"COM_ACTIVE_FREQUENCY:{n}", $"COM ACTIVE FREQUENCY:{n}", $"COM {n} Active", "MHz");
+            Stock($"COM_STANDBY_FREQUENCY:{n}", $"COM STANDBY FREQUENCY:{n}", $"COM {n} Standby", "MHz");
         }
 
         // ============================ TRANSPONDER / ATC ============================
@@ -860,13 +860,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Read("A32NX_PUSHBACK_SPD_FACTOR", "Pushback Speed Factor");
         Read("A32NX_PUSHBACK_HDG_FACTOR", "Pushback Heading Factor");
 
-        // KCCU keyboard / cursor enable.
-        foreach (var side in new[] { "L", "R" })
-        {
-            string who = side == "L" ? "Capt" : "F/O";
-            OnOff($"A32NX_KCCU_{side}_KBD_ON_OFF", $"{who} KCCU Keyboard");
-            OnOff($"A32NX_KCCU_{side}_CCD_ON_OFF", $"{who} KCCU Cursor");
-        }
+        // KCCU keyboard/cursor enable vars are intentionally NOT defined as
+        // controls — the KCCU is the MCDU's input device, driven through the
+        // MCDU form (Coherent agent), not a user-facing panel.
 
         // ============================ SD SYSTEM-PAGE READOUTS (plain) + DOC GAP ============================
         // Plain (non-ARINC429) SD-page scalars — readable directly; surfaced as
@@ -1005,7 +1001,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             ["Pedestal"] = new List<string>
             {
                 "Engines", "Flaps and Brakes", "ECAM Control Panel", "Weather Radar",
-                "Transponder", "Radios", "RMP", "KCCU", "Cockpit Door"
+                "Transponder", "Radios", "RMP", "Cockpit Door"
             },
             ["Displays"] = new List<string> { "Status", "Speeds", "Minimums", "Ground" }
         };
@@ -1252,11 +1248,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         p["ISIS"] = new List<string> { "A32NX_ISIS_BARO_MODE", "A32NX_ISIS_BARO_UNIT_INHG" };
         p["Wipers"] = new List<string> { "WIPER_LEFT", "WIPER_RIGHT" };
         p["Speeds"] = new List<string>();
-        p["KCCU"] = new List<string>
-        {
-            "A32NX_KCCU_L_KBD_ON_OFF", "A32NX_KCCU_R_KBD_ON_OFF",
-            "A32NX_KCCU_L_CCD_ON_OFF", "A32NX_KCCU_R_CCD_ON_OFF"
-        };
+        // KCCU (keyboard/cursor control unit) is the MCDU's input device — it is
+        // driven through the MCDU form (Coherent agent), not as a standalone
+        // control panel, so it is intentionally NOT exposed as a panel here.
         p["Ground"] = new List<string>
         {
             "A32NX_AIRCRAFT_PRESET_LOAD", "A32NX_PUSHBACK_SYSTEM_ENABLED",
