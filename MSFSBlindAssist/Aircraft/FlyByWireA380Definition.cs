@@ -723,6 +723,28 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Stock("FCU_ALT_VALUE", "AUTOPILOT ALTITUDE LOCK VAR:3", "Selected Altitude", "feet");
         Stock("FCU_MACH_MODE", "AUTOPILOT MANAGED SPEED IN MACH", "Mach Mode", "bool", onOff);
 
+        // ---- PFD / FMA live mode annunciations (ported from the A320; the
+        //      A380X publishes these under the same A32NX_ names). Auto-announced
+        //      so engaged mode changes (incl. VS/FPA, OP CLB, G/S, LAND, FLARE,
+        //      SRS, NAV, LOC, RWY) are spoken live, like the FMA on the PFD. ----
+        Mon("A32NX_FMA_VERTICAL_MODE", "Vertical Mode", new Dictionary<double, string>
+        {
+            [0] = "None", [10] = "ALT", [11] = "ALT star", [12] = "OP CLB", [13] = "OP DES",
+            [14] = "V/S", [15] = "FPA", [20] = "ALT constraint", [21] = "ALT constraint star",
+            [22] = "CLB", [23] = "DES", [24] = "FINAL", [30] = "G/S capture", [31] = "G/S track",
+            [32] = "LAND", [33] = "FLARE", [34] = "ROLL OUT", [40] = "SRS", [41] = "SRS GA", [50] = "TCAS"
+        });
+        Mon("A32NX_FMA_LATERAL_MODE", "Lateral Mode", new Dictionary<double, string>
+        {
+            [0] = "None", [10] = "HDG", [11] = "TRACK", [20] = "NAV", [30] = "LOC capture",
+            [31] = "LOC track", [32] = "LAND", [33] = "FLARE", [34] = "ROLL OUT",
+            [40] = "RWY", [41] = "RWY track", [50] = "GA track"
+        });
+        Mon("A32NX_APPROACH_CAPABILITY", "Approach Capability", new Dictionary<double, string>
+        {
+            [0] = "None", [1] = "CAT 1", [2] = "CAT 2", [3] = "CAT 3 Single", [4] = "CAT 3 Dual"
+        });
+
         // Engagement / mode readouts (A380 has no FCU light vars).
         ReadEnum("A32NX_AUTOPILOT_1_ACTIVE", "Autopilot 1", onOff);
         ReadEnum("A32NX_AUTOPILOT_2_ACTIVE", "Autopilot 2", onOff);
@@ -1456,6 +1478,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         d["Status"] = new List<string> { "A32NX_FMGC_FLIGHT_PHASE" };
         d["FCU"] = new List<string>
         {
+            "A32NX_FMA_LATERAL_MODE", "A32NX_FMA_VERTICAL_MODE", "A32NX_APPROACH_CAPABILITY",
             "A32NX_AUTOPILOT_1_ACTIVE", "A32NX_AUTOPILOT_2_ACTIVE", "A32NX_AUTOTHRUST_STATUS",
             "A32NX_FCU_LOC_MODE_ACTIVE", "A32NX_FCU_APPR_MODE_ACTIVE", "A32NX_FMA_EXPEDITE_MODE",
             "A32NX_TRK_FPA_MODE_ACTIVE", "FD_ACTIVE"
@@ -1620,6 +1643,18 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             announcer.AnnounceImmediate(value > 0.5 ? "Gear down" : "Gear up");
             return true;
         }
+        if (_readoutKey != null && varName == _readoutKey)
+        {
+            string lbl = _readoutLabel ?? varName;
+            string spoken;
+            if (_readoutMap != null && _readoutMap.TryGetValue(Math.Round(value), out var dsc))
+                spoken = lbl + " " + dsc;
+            else
+                spoken = string.IsNullOrEmpty(_readoutUnit) ? $"{lbl} {value:0}" : $"{lbl} {value:0} {_readoutUnit}";
+            announcer.AnnounceImmediate(spoken);
+            _readoutKey = null; _readoutMap = null;
+            return true;
+        }
         if (_reqBaro && varName == "KOHLSMAN_HG")
         {
             _reqBaro = false;
@@ -1771,6 +1806,21 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     private bool _reqHdg, _reqSpd, _reqAlt, _reqVs;
     private bool _reqFlaps, _reqGear, _reqBaro, _reqGw;
 
+    // Generic one-shot on-demand readout (speeds, fuel, approach capability):
+    // request the var, then announce "<label> <value> <unit>" (or a mapped word)
+    // when it arrives in ProcessSimVarUpdate.
+    private string? _readoutKey, _readoutLabel, _readoutUnit;
+    private Dictionary<double, string>? _readoutMap;
+    private static readonly Dictionary<double, string> _apprCapMap = new Dictionary<double, string>
+    { [0] = "None", [1] = "CAT 1", [2] = "CAT 2", [3] = "CAT 3 Single", [4] = "CAT 3 Dual" };
+
+    private void RequestReadout(SimConnectManager s, string key, string label, string unit = "", Dictionary<double, string>? map = null)
+    {
+        if (!s.IsConnected) return;
+        _readoutKey = key; _readoutLabel = label; _readoutUnit = unit; _readoutMap = map;
+        s.RequestVariable(key, forceUpdate: true);
+    }
+
     public override bool HandleHotkeyAction(
         HotkeyAction action, SimConnectManager simConnect, ScreenReaderAnnouncer announcer,
         System.Windows.Forms.Form parentForm, HotkeyManager hotkeyManager)
@@ -1818,6 +1868,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             case HotkeyAction.ReadGear:
                 if (simConnect.IsConnected) { _reqGear = true; simConnect.RequestVariable("A32NX_GEAR_HANDLE_POSITION", forceUpdate: true); }
                 return true;
+            // On-demand readouts ported from the A320 (vars shared / already defined).
+            case HotkeyAction.ReadSpeedVLS: RequestReadout(simConnect, "A32NX_SPEEDS_VLS", "V L S", "knots"); return true;
+            case HotkeyAction.ReadSpeedF: RequestReadout(simConnect, "A32NX_SPEEDS_F", "F speed", "knots"); return true;
+            case HotkeyAction.ReadFuelQuantity: RequestReadout(simConnect, "A32NX_TOTAL_FUEL_QUANTITY", "Total fuel", "kilograms"); return true;
+            case HotkeyAction.ReadApproachCapability: RequestReadout(simConnect, "A32NX_APPROACH_CAPABILITY", "Approach capability", "", _apprCapMap); return true;
             case HotkeyAction.ReadAltimeter:
                 if (simConnect.IsConnected) { _reqBaro = true; simConnect.RequestVariable("KOHLSMAN_HG", forceUpdate: true); }
                 return true;
