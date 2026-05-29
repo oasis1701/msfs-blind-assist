@@ -457,6 +457,27 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Stock("KOHLSMAN_HG", "KOHLSMAN SETTING HG", "Altimeter", "inHg");
         Stock("GROSS_WEIGHT_KG", "TOTAL WEIGHT", "Gross Weight", "kilograms");
 
+        // ---- Thrust levers (detent combos) ----
+        // Command a thrust-lever detent from a combo. The write is intercepted in
+        // HandleUIVariableSet, which fires THROTTLEn_AXIS_SET_EX1 with the detent's
+        // axis value; the FBW throttle mapping snaps the lever to that detent.
+        // (Synthetic LVar key — never read/written as an L:var; it just gives the
+        // framework a settable combo. The displayed value reflects the last
+        // command, not live lever position.)
+        var detents = new Dictionary<double, string>
+        { [0] = "Reverse", [1] = "Reverse Idle", [2] = "Idle", [3] = "Climb", [4] = "Flex/MCT", [5] = "TOGA" };
+        void Detent(string key, string display)
+        {
+            vars[key] = new SimVarDefinition
+            {
+                Name = key, DisplayName = display, Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest, RenderAsButton = false,
+                ValueDescriptions = detents
+            };
+        }
+        Detent("THROTTLE_ALL_DETENT", "All Thrust Levers");
+        for (int n = 1; n <= 4; n++) Detent($"THROTTLE_{n}_DETENT", $"Thrust Lever {n}");
+
         // ---- ECAM Control Panel ----
         Sel("A32NX_ECAM_SD_CURRENT_PAGE_INDEX", "System Display Page",
             new Dictionary<double, string>
@@ -1016,7 +1037,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             ["Instrument"] = new List<string> { "Gear", "Autobrake", "ISIS", "Source Switching" },
             ["Pedestal"] = new List<string>
             {
-                "Engines", "Flaps and Brakes", "ECAM Control Panel", "Weather Radar",
+                "Engines", "Thrust Levers", "Flaps and Brakes", "ECAM Control Panel", "Weather Radar",
                 "Transponder", "Radios", "RMP", "Cockpit Door"
             },
             ["Displays"] = new List<string> { "Status", "Speeds", "Minimums", "Ground" }
@@ -1199,6 +1220,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "ENGINE_3_MASTER_ON", "ENGINE_3_MASTER_OFF",
             "ENGINE_4_MASTER_ON", "ENGINE_4_MASTER_OFF"
             // ENG MAN START 1-4 live in the overhead "Engine Start" panel (not duplicated here).
+        };
+        p["Thrust Levers"] = new List<string>
+        {
+            "THROTTLE_ALL_DETENT", "THROTTLE_1_DETENT", "THROTTLE_2_DETENT",
+            "THROTTLE_3_DETENT", "THROTTLE_4_DETENT"
         };
         p["Flaps and Brakes"] = new List<string> { "A32NX_PARK_BRAKE_LEVER_POS" };
         p["ECAM Control Panel"] = new List<string>
@@ -1691,6 +1717,31 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         if (_extLightSetEvents.TryGetValue(varKey, out var lightEvent))
         {
             simConnect.SendEvent(lightEvent, (uint)Math.Round(value));
+            return true;
+        }
+        // Thrust-lever detent combos -> THROTTLEn_AXIS_SET_EX1 with the detent's
+        // axis value (-1..1 scaled to +-16384). Values are the FBW default-style
+        // detent calibration (Reverse -1.0 / Rev Idle -0.70 / Idle -0.44 /
+        // Climb -0.10 / Flex-MCT 0.53 / TOGA 1.0); the throttle mapping snaps the
+        // lever to the detent. Assumes default throttle calibration.
+        if (varKey == "THROTTLE_ALL_DETENT" || (varKey.StartsWith("THROTTLE_") && varKey.EndsWith("_DETENT")))
+        {
+            int idx = (int)Math.Round(value);
+            double[] detentAxis = { -1.0, -0.70, -0.44, -0.10, 0.53, 1.0 };
+            string[] names = { "Reverse", "Reverse Idle", "Idle", "Climb", "Flex M C T", "TOGA" };
+            if (idx < 0 || idx >= detentAxis.Length) return true;
+            uint ex1 = unchecked((uint)(int)Math.Round(detentAxis[idx] * 16384));
+            if (varKey == "THROTTLE_ALL_DETENT")
+            {
+                for (int n = 1; n <= 4; n++) simConnect.SendEvent($"THROTTLE{n}_AXIS_SET_EX1", ex1);
+                announcer.Announce($"All thrust levers {names[idx]}");
+            }
+            else
+            {
+                int eng = varKey.Length > 9 && char.IsDigit(varKey[9]) ? varKey[9] - '0' : 1;
+                simConnect.SendEvent($"THROTTLE{eng}_AXIS_SET_EX1", ex1);
+                announcer.Announce($"Thrust lever {eng} {names[idx]}");
+            }
             return true;
         }
         if (varKey == "ENGINE_MODE_SELECTOR")
