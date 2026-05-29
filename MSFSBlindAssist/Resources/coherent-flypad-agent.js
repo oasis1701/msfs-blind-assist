@@ -295,13 +295,30 @@
     return out;
   };
 
-  // Best-effort page label: the active flyPad route is reflected in a heading
-  // or the document title; fall back to the first heading on the page.
+  // Page label = the ACTIVE nav-rail route, not the first <h1>. The flyPad marks
+  // the selected nav link with the bare class token "bg-theme-accent" (inactive
+  // links only have "hover:bg-theme-accent"); its href (e.g. "/settings") gives
+  // the true current page. Using the first <h1> was wrong — it caught modal/toast
+  // headings (e.g. "Checklist Reset Warning") and reported the wrong page.
   A.pageLabel = function (root) {
     try {
-      var h = root.querySelector("h1");
-      if (h) { var t = clean(h.textContent); if (t) return t; }
+      var links = root.querySelectorAll("a[href]");
+      for (var i = 0; i < links.length; i++) {
+        var href = (links[i].getAttribute("href") || "");
+        if (href.charAt(0) !== "/") continue;
+        var toks = A.cls(links[i]).split(/\s+/);
+        for (var t = 0; t < toks.length; t++) {
+          if (toks[t] === "bg-theme-accent") {
+            var p = A.prettifyHref(href);
+            if (p) return p;
+          }
+        }
+      }
     } catch (e) {}
+    try {
+      var h = root.querySelector("h1");
+      if (h) { var tt = clean(h.textContent); if (tt) return tt; }
+    } catch (e2) {}
     return clean(document.title || "");
   };
 
