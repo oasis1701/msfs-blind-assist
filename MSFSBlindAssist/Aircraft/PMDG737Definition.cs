@@ -4690,13 +4690,26 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 return true;
 
             // ------------------------------------------------------------------
-            // Display OCR — out of scope for the 737 in this PR; delegate.
+            // Gemini display capture — Alt+P / Shift+N / Alt+I / Alt+E
             // ------------------------------------------------------------------
 
             case HotkeyAction.ReadDisplayPFD:
+                ReadDisplay(Services.GeminiService.DisplayType.PFD737, "PFD", announcer, parentForm);
+                return true;
+
             case HotkeyAction.ReadDisplayND:
+                ReadDisplay(Services.GeminiService.DisplayType.ND737, "ND", announcer, parentForm);
+                return true;
+
             case HotkeyAction.ReadDisplayISIS:
+                ReadDisplay(Services.GeminiService.DisplayType.ISFD737, "ISFD", announcer, parentForm);
+                return true;
+
             case HotkeyAction.ReadDisplayUpperECAM:
+                ReadDisplay(Services.GeminiService.DisplayType.EICAS737, "EICAS", announcer, parentForm);
+                return true;
+
+            // Lower System Display (DU4) — out of scope for now (matches 777, which doesn't handle this either)
             case HotkeyAction.ReadDisplayLowerECAM:
                 return false;
 
