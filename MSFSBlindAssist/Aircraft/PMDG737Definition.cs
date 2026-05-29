@@ -3592,6 +3592,11 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         // ------------------------------------------------------------------
         if (varKey == "EFIS_MinsValueFt_0_SET" || varKey == "EFIS_MinsValueFt_1_SET")
         {
+            if (_minsKnobOp is { IsCompleted: false })
+            {
+                announcer.AnnounceImmediate("Still setting minimums, please wait.");
+                return true;
+            }
             bool isCaptain = varKey == "EFIS_MinsValueFt_0_SET";
             string modeVar = isCaptain ? "EFIS_MinsSelBARO_0" : "EFIS_MinsSelBARO_1";
             string rstEvent = isCaptain ? "EVT_EFIS_CPT_MINIMUMS_RST" : "EVT_EFIS_FO_MINIMUMS_RST";
@@ -3617,7 +3622,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 return true;
             }
 
-            _ = ResetThenRotateMinsAsync(
+            _minsKnobOp = ResetThenRotateMinsAsync(
                 simConnect, rstEvent, (uint)rstEvId, (uint)rotEvId,
                 target, stepFt, baroMode, announcer);
             return true;
@@ -5203,6 +5208,16 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         dialog.Show(parentForm);
     }
 
+    // Re-entrancy guards for the async knob-stepping loops. The baro value
+    // dialog and the EFIS-mins panel set both kick off a multi-second knob
+    // sweep, and neither input path debounces, so a second submit mid-sweep
+    // would launch a competing sweep and overstep the knob. These hold the
+    // in-flight Task so a re-submit is ignored until it completes. UI-thread-only
+    // access (dialog callbacks / HandleUIVariableSet + WinForms continuations),
+    // so no synchronization is needed.
+    private Task? _baroKnobOp;
+    private Task? _minsKnobOp;
+
     /// <summary>
     /// PMDG owns the baro and ignores absolute writes (KOHLSMAN_SET event and direct
     /// SimVar writes get re-asserted every frame), so this dialog sets the altimeter by
@@ -5283,6 +5298,12 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             {
                 if (!TryParseBaro(input, out double value)) return;
 
+                if (_baroKnobOp is { IsCompleted: false })
+                {
+                    announcer.AnnounceImmediate("Still setting altimeter, please wait.");
+                    return;
+                }
+
                 // PMDG owns the baro and re-asserts it every frame, so absolute
                 // writes (KOHLSMAN_SET event AND a direct SimVar write) are ignored.
                 // The EFIS baro is set by ROTATING the captain baro knob
@@ -5307,7 +5328,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 {
                     if (EventIds.TryGetValue("EVT_EFIS_CPT_BARO_STD", out int stdEvId))
                     {
-                        _ = DisengageStdThenRotateAsync(
+                        _baroKnobOp = DisengageStdThenRotateAsync(
                             simConnect, (uint)stdEvId, (uint)baroEvId, targetInHg, announcer);
                         return;
                     }
@@ -5332,7 +5353,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 if (clicks == 0) return;
                 // RIGHTSINGLE (0x80000000) = up, LEFTSINGLE (0x20000000) = down.
                 uint flag = clicks > 0 ? 0x80000000u : 0x20000000u;
-                _ = RotateBaroKnobAsync(simConnect, (uint)baroEvId, flag, Math.Min(Math.Abs(clicks), 200));
+                _baroKnobOp = RotateBaroKnobAsync(simConnect, (uint)baroEvId, flag, Math.Min(Math.Abs(clicks), 200));
             });
 
         dialog.ShowCancelButton = false;
