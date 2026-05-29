@@ -477,6 +477,145 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 [5] = "Approach", [6] = "Go Around", [7] = "Done"
             });
 
+        // ============================ ENGINE START + ENGINE READOUTS ============================
+        // ENG MASTER 1-4 drive the fuel valves (same as the A320, per engine);
+        // the mode selector fans TURBINE_IGNITION_SWITCH_SET out to all 4 engines
+        // (handled in HandleUIVariableSet). Engine params are plain L:vars.
+        var revVd = new Dictionary<double, string> { [0] = "Stowed", [1] = "Deployed" };
+        for (int n = 1; n <= 4; n++)
+        {
+            Evt($"ENGINE_{n}_MASTER_ON", "FUELSYSTEM_VALVE_OPEN", $"Engine {n} Master On", (uint)n);
+            Evt($"ENGINE_{n}_MASTER_OFF", "FUELSYSTEM_VALVE_CLOSE", $"Engine {n} Master Off", (uint)n);
+            Read($"A32NX_ENGINE_N1:{n}", $"Engine {n} N1", "percent");
+            Read($"A32NX_ENGINE_N2:{n}", $"Engine {n} N2", "percent");
+            Read($"A32NX_ENGINE_N3:{n}", $"Engine {n} N3", "percent");
+            Read($"A32NX_ENGINE_EGT:{n}", $"Engine {n} EGT", "celsius");
+            Read($"A32NX_ENGINE_FF:{n}", $"Engine {n} Fuel Flow", "kilograms per hour");
+            Stock($"ENG_OIL_PRESSURE:{n}", $"ENG OIL PRESSURE:{n}", $"Engine {n} Oil Pressure", "psi");
+            Stock($"ENG_OIL_TEMP:{n}", $"GENERAL ENG OIL TEMPERATURE:{n}", $"Engine {n} Oil Temperature", "celsius");
+            ReadEnum($"A32NX_REVERSER_{n}_DEPLOYED", $"Engine {n} Reverser", revVd);
+        }
+        // Engine mode knob: combo writes via HandleUIVariableSet to all engines.
+        vars["ENGINE_MODE_SELECTOR"] = new SimVarDefinition
+        {
+            Name = "XMLVAR_ENG_MODE_SEL", DisplayName = "Engine Mode", Type = SimVarType.LVar,
+            UpdateFrequency = UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Crank", [1] = "Norm", [2] = "Ignition / Start" }
+        };
+
+        // ============================ FAULT / STATUS READOUTS ============================
+        // All OnRequest + IsAnnounced=false (Read/ReadEnum) — surfaced only when
+        // the user opens a panel, never auto-announced (no call-out spam).
+        var fault = new Dictionary<double, string> { [0] = "Normal", [1] = "Fault" };
+        var powered = new Dictionary<double, string> { [0] = "Unpowered", [1] = "Powered" };
+        var abnNorm = new Dictionary<double, string> { [0] = "Abnormal", [1] = "Normal" };
+        var openVd = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" };
+        var armedVd = new Dictionary<double, string> { [0] = "No", [1] = "Armed" };
+        var dischVd = new Dictionary<double, string> { [0] = "No", [1] = "Discharged" };
+        var fireVd = new Dictionary<double, string> { [0] = "Normal", [1] = "FIRE" };
+        var downlk = new Dictionary<double, string> { [0] = "Not Locked", [1] = "Downlocked" };
+        var connVd = new Dictionary<double, string> { [0] = "Disconnected", [1] = "Connected" };
+
+        // ELEC
+        foreach (var id in new[] { "1", "2", "ESS", "APU" })
+            ReadEnum($"A32NX_OVHD_ELEC_BAT_{id}_PB_HAS_FAULT", $"Battery {id} Fault", fault);
+        ReadEnum("A32NX_OVHD_ELEC_AC_ESS_FEED_PB_HAS_FAULT", "AC ESS Feed Fault", fault);
+        ReadEnum("A32NX_OVHD_ELEC_GALY_AND_CAB_PB_HAS_FAULT", "Galley and Cabin Fault", fault);
+        ReadEnum("A32NX_OVHD_EMER_ELEC_RAT_AND_EMER_GEN_HAS_FAULT", "RAT and Emergency Gen Fault", fault);
+        for (int n = 1; n <= 4; n++)
+        {
+            ReadEnum($"A32NX_OVHD_ELEC_IDG_{n}_PB_HAS_FAULT", $"IDG {n} Fault", fault);
+            ReadEnum($"A32NX_OVHD_ELEC_IDG_{n}_PB_IS_DISC", $"IDG {n} Disconnected", new Dictionary<double, string> { [0] = "No", [1] = "Disconnected" });
+            ReadEnum($"A32NX_OVHD_ELEC_ENG_GEN_{n}_PB_HAS_FAULT", $"Engine Gen {n} Fault", fault);
+            ReadEnum($"A32NX_ELEC_ENG_GEN_{n}_IDG_IS_CONNECTED", $"IDG {n} Connected", connVd);
+            ReadEnum($"A32NX_EXT_PWR_AVAIL:{n}", $"Ext Power {n} Available", new Dictionary<double, string> { [0] = "No", [1] = "Available" });
+        }
+        foreach (var bus in new[] { "AC_1", "AC_2", "AC_3", "AC_4", "AC_ESS", "AC_ESS_SCHED", "AC_247XP",
+                                    "DC_1", "DC_2", "DC_ESS", "DC_247PP", "DC_HOT_1", "DC_HOT_2", "DC_HOT_3", "DC_HOT_4", "DC_GND_FLT_SVC" })
+            ReadEnum($"A32NX_ELEC_{bus}_BUS_IS_POWERED", $"{bus.Replace('_', ' ')} Bus", powered);
+
+        // APU
+        ReadEnum("A32NX_OVHD_APU_MASTER_SW_PB_HAS_FAULT", "APU Master Fault", fault);
+        ReadEnum("A32NX_APU_LOW_FUEL_PRESSURE_FAULT", "APU Low Fuel Pressure", fault);
+        ReadEnum("A32NX_APU_BLEED_AIR_VALVE_OPEN", "APU Bleed Valve", openVd);
+        Read("A32NX_APU_N_RAW", "APU N", "percent");
+
+        // HYDRAULICS
+        for (int n = 1; n <= 4; n++)
+        {
+            ReadEnum($"A32NX_OVHD_HYD_ENG_{n}AB_PUMP_DISC_PB_HAS_FAULT", $"Engine {n} Pump Disc Fault", fault);
+            ReadEnum($"A32NX_HYD_ENG_{n}AB_PUMP_DISC", $"Engine {n} Pump Disconnected", new Dictionary<double, string> { [0] = "No", [1] = "Disconnected" });
+        }
+        ReadEnum("A32NX_HYD_GREEN_SYSTEM_1_SECTION_PRESSURE_SWITCH", "Green System Pressure", new Dictionary<double, string> { [0] = "Low", [1] = "Normal" });
+        ReadEnum("A32NX_HYD_YELLOW_SYSTEM_1_SECTION_PRESSURE_SWITCH", "Yellow System Pressure", new Dictionary<double, string> { [0] = "Low", [1] = "Normal" });
+
+        // BLEED
+        for (int n = 1; n <= 4; n++)
+            ReadEnum($"A32NX_OVHD_PNEU_ENG_{n}_BLEED_PB_HAS_FAULT", $"Engine {n} Bleed Fault", fault);
+        ReadEnum("A32NX_OVHD_PNEU_APU_BLEED_PB_HAS_FAULT", "APU Bleed Fault", fault);
+        foreach (var s in new[] { "L", "C", "R" })
+            ReadEnum($"A32NX_PNEU_XBLEED_VALVE_{s}_OPEN", $"Crossbleed Valve {s}", openVd);
+
+        // AIR CONDITIONING
+        for (int n = 1; n <= 2; n++)
+        {
+            ReadEnum($"A32NX_OVHD_COND_PACK_{n}_PB_HAS_FAULT", $"Pack {n} Fault", fault);
+            ReadEnum($"A32NX_OVHD_COND_HOT_AIR_{n}_PB_HAS_FAULT", $"Hot Air {n} Fault", fault);
+            for (int ch = 1; ch <= 2; ch++)
+                ReadEnum($"A32NX_COND_FDAC_{n}_CHANNEL_{ch}_FAILURE", $"FDAC {n} Channel {ch}", fault);
+        }
+        foreach (var z in new[] { "FWD", "BULK" })
+            ReadEnum($"A32NX_OVHD_CARGO_AIR_ISOL_VALVES_{z}_PB_HAS_FAULT", $"Cargo {z} Isolation Fault", fault);
+        ReadEnum("A32NX_OVHD_CARGO_AIR_HEATER_PB_HAS_FAULT", "Cargo Heater Fault", fault);
+
+        // PRESSURIZATION
+        for (int n = 1; n <= 4; n++)
+        {
+            for (int ch = 1; ch <= 2; ch++)
+                ReadEnum($"A32NX_PRESS_OCSM_{n}_CHANNEL_{ch}_FAILURE", $"OCSM {n} Channel {ch}", fault);
+            ReadEnum($"A32NX_PRESS_OCSM_{n}_AUTO_PARTITION_FAILURE", $"OCSM {n} Auto Control", fault);
+        }
+        Read("A32NX_PRESS_MAN_CABIN_DELTA_PRESSURE", "Cabin Delta Pressure", "psi");
+
+        // VENTILATION
+        foreach (var id in new[] { "FWD", "AFT" })
+            for (int ch = 1; ch <= 2; ch++)
+                ReadEnum($"A32NX_VENT_{id}_VCM_CHANNEL_{ch}_FAILURE", $"{id} VCM Channel {ch}", fault);
+        ReadEnum("A32NX_VENT_OVERPRESSURE_RELIEF_VALVE_IS_OPEN", "Overpressure Relief Valve", openVd);
+
+        // FIRE
+        ReadEnum("A32NX_FIRE_DETECTED_MLG", "Main Gear Bay Fire", fireVd);
+        for (int n = 1; n <= 4; n++)
+        {
+            ReadEnum($"A32NX_ENG_{n}_ON_FIRE", $"Engine {n} On Fire", fireVd);
+            for (int b = 1; b <= 2; b++)
+            {
+                ReadEnum($"A32NX_OVHD_FIRE_SQUIB_{b}_ENG_{n}_IS_ARMED", $"Engine {n} Agent {b} Squib", armedVd);
+                ReadEnum($"A32NX_OVHD_FIRE_SQUIB_{b}_ENG_{n}_IS_DISCHARGED", $"Engine {n} Agent {b} Discharged", dischVd);
+            }
+        }
+        ReadEnum("A32NX_OVHD_FIRE_SQUIB_1_APU_1_IS_DISCHARGED", "APU Agent Discharged", dischVd);
+
+        // ADIRS
+        for (int n = 1; n <= 3; n++)
+            ReadEnum($"A32NX_ADIRS_ADIRU_{n}_STATE", $"ADIRU {n} State",
+                new Dictionary<double, string> { [0] = "Off", [1] = "Aligning", [2] = "Aligned" });
+
+        // FLIGHT CONTROL COMPUTERS (3 PRIM + 3 SEC)
+        for (int n = 1; n <= 3; n++)
+        {
+            ReadEnum($"A32NX_PRIM_{n}_HEALTHY", $"PRIM {n} Healthy", new Dictionary<double, string> { [0] = "Failed", [1] = "Healthy" });
+            ReadEnum($"A32NX_SEC_{n}_HEALTHY", $"SEC {n} Healthy", new Dictionary<double, string> { [0] = "Failed", [1] = "Healthy" });
+        }
+        ReadEnum("A32NX_FWS1_IS_HEALTHY", "FWS 1 Healthy", new Dictionary<double, string> { [0] = "Failed", [1] = "Healthy" });
+        ReadEnum("A32NX_FWS2_IS_HEALTHY", "FWS 2 Healthy", new Dictionary<double, string> { [0] = "Failed", [1] = "Healthy" });
+
+        // GEAR
+        foreach (var lc in new[] { "1", "2" })
+            foreach (var sd in new[] { "LEFT", "RIGHT" })
+                ReadEnum($"A32NX_LGCIU_{lc}_{sd}_GEAR_DOWNLOCKED", $"LGCIU {lc} {sd} Downlock", downlk);
+        ReadEnum("A32NX_LGCIU_1_NOSE_GEAR_COMPRESSED", "Nose Gear Compressed", new Dictionary<double, string> { [0] = "No", [1] = "Compressed" });
+
         // ============================ FCU / AFS + EFIS BARO ============================
         // Ported from the A320 FCU integration, retargeted to A380X autoflight
         // vars: the A380 has NO A32NX_FCU_AFS_DISPLAY_* value words and NO
@@ -796,6 +935,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
 
         p["Engines"] = new List<string>
         {
+            "ENGINE_MODE_SELECTOR",
+            "ENGINE_1_MASTER_ON", "ENGINE_1_MASTER_OFF",
+            "ENGINE_2_MASTER_ON", "ENGINE_2_MASTER_OFF",
+            "ENGINE_3_MASTER_ON", "ENGINE_3_MASTER_OFF",
+            "ENGINE_4_MASTER_ON", "ENGINE_4_MASTER_OFF",
             "A32NX_ENGMANSTART1_TOGGLE", "A32NX_ENGMANSTART2_TOGGLE",
             "A32NX_ENGMANSTART3_TOGGLE", "A32NX_ENGMANSTART4_TOGGLE"
         };
@@ -840,84 +984,166 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     // ===================================================================
     public override Dictionary<string, List<string>> GetPanelDisplayVariables()
     {
-        return new Dictionary<string, List<string>>
+        var d = new Dictionary<string, List<string>>();
+
+        // ELEC: battery voltages + per-unit faults + bus-powered flags.
+        var elec = new List<string>();
+        for (int n = 1; n <= 4; n++) elec.Add($"A32NX_ELEC_BAT_{n}_POTENTIAL");
+        foreach (var id in new[] { "1", "2", "ESS", "APU" }) elec.Add($"A32NX_OVHD_ELEC_BAT_{id}_PB_HAS_FAULT");
+        elec.Add("A32NX_OVHD_ELEC_AC_ESS_FEED_PB_HAS_FAULT");
+        elec.Add("A32NX_OVHD_ELEC_GALY_AND_CAB_PB_HAS_FAULT");
+        elec.Add("A32NX_OVHD_EMER_ELEC_RAT_AND_EMER_GEN_HAS_FAULT");
+        for (int n = 1; n <= 4; n++)
         {
-            ["ELEC"] = new List<string>
-            {
-                "A32NX_ELEC_BAT_1_POTENTIAL", "A32NX_ELEC_BAT_2_POTENTIAL",
-                "A32NX_ELEC_BAT_3_POTENTIAL", "A32NX_ELEC_BAT_4_POTENTIAL"
-            },
-            ["APU"] = new List<string> { "A32NX_OVHD_APU_START_PB_IS_AVAILABLE" },
-            ["Fuel"] = new List<string> { "A32NX_TOTAL_FUEL_QUANTITY" },
-            ["Air Conditioning"] = new List<string>
-            {
-                "A32NX_COND_CKPT_TEMP",
-                "A32NX_COND_MAIN_DECK_1_TEMP", "A32NX_COND_MAIN_DECK_2_TEMP", "A32NX_COND_MAIN_DECK_3_TEMP",
-                "A32NX_COND_MAIN_DECK_4_TEMP", "A32NX_COND_MAIN_DECK_5_TEMP", "A32NX_COND_MAIN_DECK_6_TEMP",
-                "A32NX_COND_MAIN_DECK_7_TEMP", "A32NX_COND_MAIN_DECK_8_TEMP",
-                "A32NX_COND_UPPER_DECK_1_TEMP", "A32NX_COND_UPPER_DECK_2_TEMP", "A32NX_COND_UPPER_DECK_3_TEMP",
-                "A32NX_COND_UPPER_DECK_4_TEMP", "A32NX_COND_UPPER_DECK_5_TEMP", "A32NX_COND_UPPER_DECK_6_TEMP",
-                "A32NX_COND_UPPER_DECK_7_TEMP"
-            },
-            ["Anti Ice"] = new List<string> { "A32NX_ICING_STATE_ICING_STICK_INDICATOR" },
-            ["ADIRS"] = new List<string> { "A32NX_ADIRS_REMAINING_IR_ALIGNMENT_TIME" },
-            ["Warnings"] = new List<string>
-            {
-                "A32NX_MASTER_WARNING", "A32NX_MASTER_CAUTION", "A32NX_AUTOPILOT_AUTOLAND_WARNING"
-            },
-            ["Autobrake"] = new List<string>
-            {
-                "A32NX_AUTOBRAKES_ARMED_MODE", "A32NX_BTV_STATE",
-                "A32NX_BRAKE_TEMPERATURE_1", "A32NX_BRAKE_TEMPERATURE_2", "A32NX_BRAKE_TEMPERATURE_3",
-                "A32NX_BRAKE_TEMPERATURE_4", "A32NX_BRAKE_TEMPERATURE_5", "A32NX_BRAKE_TEMPERATURE_6",
-                "A32NX_BRAKE_TEMPERATURE_7", "A32NX_BRAKE_TEMPERATURE_8", "A32NX_BRAKE_TEMPERATURE_9",
-                "A32NX_BRAKE_TEMPERATURE_10", "A32NX_BRAKE_TEMPERATURE_11", "A32NX_BRAKE_TEMPERATURE_12",
-                "A32NX_BRAKE_TEMPERATURE_13", "A32NX_BRAKE_TEMPERATURE_14", "A32NX_BRAKE_TEMPERATURE_15",
-                "A32NX_BRAKE_TEMPERATURE_16"
-            },
-            ["Engines"] = new List<string>
-            {
-                "A32NX_ENGINE_STATE:1", "A32NX_ENGINE_STATE:2", "A32NX_ENGINE_STATE:3", "A32NX_ENGINE_STATE:4"
-            },
-            ["Flaps and Brakes"] = new List<string>
-            {
-                "A32NX_FLAPS_HANDLE_INDEX", "A32NX_SPOILERS_HANDLE_POSITION", "A32NX_SPOILERS_ARMED"
-            },
-            ["Exterior Lighting"] = new List<string>
-            {
-                "LIGHT_BEACON", "LIGHT_NAV", "LIGHT_STROBE", "LIGHT_WING", "LIGHT_LOGO",
-                "LIGHT_TAXI", "LIGHT_LANDING"
-            },
-            ["RMP"] = new List<string>
-            {
-                "FBW_RMP_FREQUENCY_ACTIVE_1", "FBW_RMP_FREQUENCY_STANDBY_1",
-                "FBW_RMP_FREQUENCY_ACTIVE_2", "FBW_RMP_FREQUENCY_STANDBY_2",
-                "FBW_RMP_FREQUENCY_ACTIVE_3", "FBW_RMP_FREQUENCY_STANDBY_3"
-            },
-            ["Status"] = new List<string> { "A32NX_FMGC_FLIGHT_PHASE" },
-            ["FCU"] = new List<string>
-            {
-                "A32NX_AUTOPILOT_1_ACTIVE", "A32NX_AUTOPILOT_2_ACTIVE", "A32NX_AUTOTHRUST_STATUS",
-                "A32NX_FCU_LOC_MODE_ACTIVE", "A32NX_FCU_APPR_MODE_ACTIVE", "A32NX_FMA_EXPEDITE_MODE",
-                "A32NX_TRK_FPA_MODE_ACTIVE", "FD_ACTIVE"
-            },
-            ["EFIS Control Panel"] = new List<string>
-            {
-                "A32NX_FCU_LEFT_EIS_BARO_HPA", "A380X_EFIS_L_BARO_PRESELECTED",
-                "A32NX_FCU_RIGHT_EIS_BARO_HPA", "A380X_EFIS_R_BARO_PRESELECTED"
-            },
-            ["Radios"] = new List<string>
-            {
-                "COM_ACTIVE_FREQUENCY:1", "COM_STANDBY_FREQUENCY:1",
-                "COM_ACTIVE_FREQUENCY:2", "COM_STANDBY_FREQUENCY:2",
-                "COM_ACTIVE_FREQUENCY:3", "COM_STANDBY_FREQUENCY:3"
-            },
-            ["Transponder"] = new List<string> { "XPNDR_CODE" },
-            ["Minimums"] = new List<string>
-            {
-                "A32NX_FM1_MINIMUM_DESCENT_ALTITUDE", "A32NX_FM1_DECISION_HEIGHT"
-            }
+            elec.Add($"A32NX_OVHD_ELEC_IDG_{n}_PB_HAS_FAULT");
+            elec.Add($"A32NX_OVHD_ELEC_IDG_{n}_PB_IS_DISC");
+            elec.Add($"A32NX_OVHD_ELEC_ENG_GEN_{n}_PB_HAS_FAULT");
+            elec.Add($"A32NX_ELEC_ENG_GEN_{n}_IDG_IS_CONNECTED");
+            elec.Add($"A32NX_EXT_PWR_AVAIL:{n}");
+        }
+        foreach (var bus in new[] { "AC_1", "AC_2", "AC_3", "AC_4", "AC_ESS", "AC_ESS_SCHED", "AC_247XP",
+                                    "DC_1", "DC_2", "DC_ESS", "DC_247PP", "DC_HOT_1", "DC_HOT_2", "DC_HOT_3", "DC_HOT_4", "DC_GND_FLT_SVC" })
+            elec.Add($"A32NX_ELEC_{bus}_BUS_IS_POWERED");
+        d["ELEC"] = elec;
+
+        d["APU"] = new List<string>
+        {
+            "A32NX_OVHD_APU_START_PB_IS_AVAILABLE", "A32NX_OVHD_APU_MASTER_SW_PB_HAS_FAULT",
+            "A32NX_APU_LOW_FUEL_PRESSURE_FAULT", "A32NX_APU_BLEED_AIR_VALVE_OPEN", "A32NX_APU_N_RAW"
         };
+
+        d["Fuel"] = new List<string> { "A32NX_TOTAL_FUEL_QUANTITY" };
+
+        var hyd = new List<string>();
+        for (int n = 1; n <= 4; n++)
+        {
+            hyd.Add($"A32NX_OVHD_HYD_ENG_{n}AB_PUMP_DISC_PB_HAS_FAULT");
+            hyd.Add($"A32NX_HYD_ENG_{n}AB_PUMP_DISC");
+        }
+        hyd.Add("A32NX_HYD_GREEN_SYSTEM_1_SECTION_PRESSURE_SWITCH");
+        hyd.Add("A32NX_HYD_YELLOW_SYSTEM_1_SECTION_PRESSURE_SWITCH");
+        d["Hydraulics"] = hyd;
+
+        var bleed = new List<string>();
+        for (int n = 1; n <= 4; n++) bleed.Add($"A32NX_OVHD_PNEU_ENG_{n}_BLEED_PB_HAS_FAULT");
+        bleed.Add("A32NX_OVHD_PNEU_APU_BLEED_PB_HAS_FAULT");
+        foreach (var s in new[] { "L", "C", "R" }) bleed.Add($"A32NX_PNEU_XBLEED_VALVE_{s}_OPEN");
+        d["Bleed Air"] = bleed;
+
+        var cond = new List<string> { "A32NX_COND_CKPT_TEMP" };
+        for (int n = 1; n <= 8; n++) cond.Add($"A32NX_COND_MAIN_DECK_{n}_TEMP");
+        for (int n = 1; n <= 7; n++) cond.Add($"A32NX_COND_UPPER_DECK_{n}_TEMP");
+        for (int n = 1; n <= 2; n++)
+        {
+            cond.Add($"A32NX_OVHD_COND_PACK_{n}_PB_HAS_FAULT");
+            cond.Add($"A32NX_OVHD_COND_HOT_AIR_{n}_PB_HAS_FAULT");
+            for (int ch = 1; ch <= 2; ch++) cond.Add($"A32NX_COND_FDAC_{n}_CHANNEL_{ch}_FAILURE");
+        }
+        foreach (var z in new[] { "FWD", "BULK" }) cond.Add($"A32NX_OVHD_CARGO_AIR_ISOL_VALVES_{z}_PB_HAS_FAULT");
+        cond.Add("A32NX_OVHD_CARGO_AIR_HEATER_PB_HAS_FAULT");
+        d["Air Conditioning"] = cond;
+
+        var press = new List<string>();
+        for (int n = 1; n <= 4; n++)
+        {
+            for (int ch = 1; ch <= 2; ch++) press.Add($"A32NX_PRESS_OCSM_{n}_CHANNEL_{ch}_FAILURE");
+            press.Add($"A32NX_PRESS_OCSM_{n}_AUTO_PARTITION_FAILURE");
+        }
+        press.Add("A32NX_PRESS_MAN_CABIN_DELTA_PRESSURE");
+        d["Pressurization"] = press;
+
+        var vent = new List<string>();
+        foreach (var id in new[] { "FWD", "AFT" })
+            for (int ch = 1; ch <= 2; ch++) vent.Add($"A32NX_VENT_{id}_VCM_CHANNEL_{ch}_FAILURE");
+        vent.Add("A32NX_VENT_OVERPRESSURE_RELIEF_VALVE_IS_OPEN");
+        d["Ventilation"] = vent;
+
+        d["Anti Ice"] = new List<string> { "A32NX_ICING_STATE_ICING_STICK_INDICATOR" };
+
+        var fire = new List<string> { "A32NX_FIRE_DETECTED_MLG" };
+        for (int n = 1; n <= 4; n++)
+        {
+            fire.Add($"A32NX_ENG_{n}_ON_FIRE");
+            for (int b = 1; b <= 2; b++)
+            {
+                fire.Add($"A32NX_OVHD_FIRE_SQUIB_{b}_ENG_{n}_IS_ARMED");
+                fire.Add($"A32NX_OVHD_FIRE_SQUIB_{b}_ENG_{n}_IS_DISCHARGED");
+            }
+        }
+        fire.Add("A32NX_OVHD_FIRE_SQUIB_1_APU_1_IS_DISCHARGED");
+        d["Fire"] = fire;
+
+        var adirs = new List<string> { "A32NX_ADIRS_REMAINING_IR_ALIGNMENT_TIME" };
+        for (int n = 1; n <= 3; n++) adirs.Add($"A32NX_ADIRS_ADIRU_{n}_STATE");
+        d["ADIRS"] = adirs;
+
+        var fcc = new List<string>();
+        for (int n = 1; n <= 3; n++) { fcc.Add($"A32NX_PRIM_{n}_HEALTHY"); fcc.Add($"A32NX_SEC_{n}_HEALTHY"); }
+        fcc.Add("A32NX_FWS1_IS_HEALTHY"); fcc.Add("A32NX_FWS2_IS_HEALTHY");
+        d["Flight Control Computers"] = fcc;
+
+        var gear = new List<string>();
+        foreach (var lc in new[] { "1", "2" })
+            foreach (var sd in new[] { "LEFT", "RIGHT" }) gear.Add($"A32NX_LGCIU_{lc}_{sd}_GEAR_DOWNLOCKED");
+        gear.Add("A32NX_LGCIU_1_NOSE_GEAR_COMPRESSED");
+        d["Gear"] = gear;
+
+        d["Warnings"] = new List<string>
+        {
+            "A32NX_MASTER_WARNING", "A32NX_MASTER_CAUTION", "A32NX_AUTOPILOT_AUTOLAND_WARNING"
+        };
+
+        var ab = new List<string> { "A32NX_AUTOBRAKES_ARMED_MODE", "A32NX_BTV_STATE" };
+        for (int n = 1; n <= 16; n++) ab.Add($"A32NX_BRAKE_TEMPERATURE_{n}");
+        d["Autobrake"] = ab;
+
+        // Engines: state + per-engine N1/N2/N3/EGT/FF/oil/reverser.
+        var eng = new List<string>();
+        for (int n = 1; n <= 4; n++) eng.Add($"A32NX_ENGINE_STATE:{n}");
+        for (int n = 1; n <= 4; n++)
+        {
+            eng.Add($"A32NX_ENGINE_N1:{n}"); eng.Add($"A32NX_ENGINE_N2:{n}"); eng.Add($"A32NX_ENGINE_N3:{n}");
+            eng.Add($"A32NX_ENGINE_EGT:{n}"); eng.Add($"A32NX_ENGINE_FF:{n}");
+            eng.Add($"ENG_OIL_PRESSURE:{n}"); eng.Add($"ENG_OIL_TEMP:{n}"); eng.Add($"A32NX_REVERSER_{n}_DEPLOYED");
+        }
+        d["Engines"] = eng;
+
+        d["Flaps and Brakes"] = new List<string>
+        {
+            "A32NX_FLAPS_HANDLE_INDEX", "A32NX_SPOILERS_HANDLE_POSITION", "A32NX_SPOILERS_ARMED"
+        };
+        d["Exterior Lighting"] = new List<string>
+        {
+            "LIGHT_BEACON", "LIGHT_NAV", "LIGHT_STROBE", "LIGHT_WING", "LIGHT_LOGO", "LIGHT_TAXI", "LIGHT_LANDING"
+        };
+        d["RMP"] = new List<string>
+        {
+            "FBW_RMP_FREQUENCY_ACTIVE_1", "FBW_RMP_FREQUENCY_STANDBY_1",
+            "FBW_RMP_FREQUENCY_ACTIVE_2", "FBW_RMP_FREQUENCY_STANDBY_2",
+            "FBW_RMP_FREQUENCY_ACTIVE_3", "FBW_RMP_FREQUENCY_STANDBY_3"
+        };
+        d["Status"] = new List<string> { "A32NX_FMGC_FLIGHT_PHASE" };
+        d["FCU"] = new List<string>
+        {
+            "A32NX_AUTOPILOT_1_ACTIVE", "A32NX_AUTOPILOT_2_ACTIVE", "A32NX_AUTOTHRUST_STATUS",
+            "A32NX_FCU_LOC_MODE_ACTIVE", "A32NX_FCU_APPR_MODE_ACTIVE", "A32NX_FMA_EXPEDITE_MODE",
+            "A32NX_TRK_FPA_MODE_ACTIVE", "FD_ACTIVE"
+        };
+        d["EFIS Control Panel"] = new List<string>
+        {
+            "A32NX_FCU_LEFT_EIS_BARO_HPA", "A380X_EFIS_L_BARO_PRESELECTED",
+            "A32NX_FCU_RIGHT_EIS_BARO_HPA", "A380X_EFIS_R_BARO_PRESELECTED"
+        };
+        d["Radios"] = new List<string>
+        {
+            "COM_ACTIVE_FREQUENCY:1", "COM_STANDBY_FREQUENCY:1",
+            "COM_ACTIVE_FREQUENCY:2", "COM_STANDBY_FREQUENCY:2",
+            "COM_ACTIVE_FREQUENCY:3", "COM_STANDBY_FREQUENCY:3"
+        };
+        d["Transponder"] = new List<string> { "XPNDR_CODE" };
+        d["Minimums"] = new List<string> { "A32NX_FM1_MINIMUM_DESCENT_ALTITUDE", "A32NX_FM1_DECISION_HEIGHT" };
+
+        return d;
     }
 
     public override Dictionary<string, string> GetButtonStateMapping()
@@ -1029,6 +1255,22 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         }
 
         return base.ProcessSimVarUpdate(varName, value, announcer);
+    }
+
+    /// <summary>
+    /// Engine-mode selector fans the chosen position (0=Crank, 1=Norm,
+    /// 2=Ignition/Start) out to all four engines via TURBINE_IGNITION_SWITCH_SET{N}.
+    /// </summary>
+    public override bool HandleUIVariableSet(string varKey, double value, SimVarDefinition varDef,
+        SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
+    {
+        if (varKey == "ENGINE_MODE_SELECTOR")
+        {
+            uint mode = (uint)Math.Round(value);
+            for (int n = 1; n <= 4; n++) simConnect.SendEvent($"TURBINE_IGNITION_SWITCH_SET{n}", mode);
+            return true;
+        }
+        return base.HandleUIVariableSet(varKey, value, varDef, simConnect, announcer);
     }
 
     // ===================================================================
