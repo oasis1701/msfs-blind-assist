@@ -1193,9 +1193,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "ENGINE_1_MASTER_ON", "ENGINE_1_MASTER_OFF",
             "ENGINE_2_MASTER_ON", "ENGINE_2_MASTER_OFF",
             "ENGINE_3_MASTER_ON", "ENGINE_3_MASTER_OFF",
-            "ENGINE_4_MASTER_ON", "ENGINE_4_MASTER_OFF",
-            "A32NX_ENGMANSTART1_TOGGLE", "A32NX_ENGMANSTART2_TOGGLE",
-            "A32NX_ENGMANSTART3_TOGGLE", "A32NX_ENGMANSTART4_TOGGLE"
+            "ENGINE_4_MASTER_ON", "ENGINE_4_MASTER_OFF"
+            // ENG MAN START 1-4 live in the overhead "Engine Start" panel (not duplicated here).
         };
         p["Flaps and Brakes"] = new List<string> { "A32NX_PARK_BRAKE_LEVER_POS" };
         p["ECAM Control Panel"] = new List<string>
@@ -1227,7 +1226,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
 
         p["Status"] = new List<string>
         {
-            "A32NX_AUTOTHRUST_STATUS", "A32NX_FMS_PAX_NUMBER", "A32NX_ECAM_FAILURE_ACTIVE",
+            // A32NX_AUTOTHRUST_STATUS is a read-only state shown in the FCU display
+            // (not duplicated here as a settable control).
+            "A32NX_FMS_PAX_NUMBER", "A32NX_ECAM_FAILURE_ACTIVE",
             "A32NX_FMS_SWITCHING_KNOB"
         };
 
@@ -1568,6 +1569,24 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             return true;
         }
 
+        // ---- On-demand flaps / gear readouts (global hotkeys) ----
+        // Only intercept while a readout is pending; otherwise fall through so the
+        // normal continuous-monitor announcement (on change) still fires.
+        if (_reqFlaps && varName == "A32NX_FLAPS_HANDLE_INDEX")
+        {
+            _reqFlaps = false;
+            string[] detents = { "Up", "1", "2", "3", "Full" };
+            int i = (int)Math.Round(value);
+            announcer.AnnounceImmediate("Flaps " + (i >= 0 && i < detents.Length ? detents[i] : value.ToString()));
+            return true;
+        }
+        if (_reqGear && varName == "A32NX_GEAR_HANDLE_POSITION")
+        {
+            _reqGear = false;
+            announcer.AnnounceImmediate(value > 0.5 ? "Gear down" : "Gear up");
+            return true;
+        }
+
         // ---- FCU readouts: value + managed-indicator pairs ----
         // Each Read* hotkey requests the value var(s) and the managed indicator
         // and force-updates them; we announce once the pair (or, for VS, the
@@ -1681,6 +1700,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     // ===================================================================
     private double? _pHdgVal, _pHdgMgd, _pSpdVal, _pSpdMgd, _pAltVal, _pAltMgd, _pVsVal, _pFpaVal, _pVsMode;
     private bool _reqHdg, _reqSpd, _reqAlt, _reqVs;
+    private bool _reqFlaps, _reqGear;
 
     public override bool HandleHotkeyAction(
         HotkeyAction action, SimConnectManager simConnect, ScreenReaderAnnouncer announcer,
@@ -1700,6 +1720,12 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             case HotkeyAction.FCUSetVS:
                 hotkeyManager.ExitInputHotkeyMode();
                 return ShowFCUVSDialog(simConnect, announcer, parentForm);
+            case HotkeyAction.ReadFlaps:
+                if (simConnect.IsConnected) { _reqFlaps = true; simConnect.RequestVariable("A32NX_FLAPS_HANDLE_INDEX", forceUpdate: true); }
+                return true;
+            case HotkeyAction.ReadGear:
+                if (simConnect.IsConnected) { _reqGear = true; simConnect.RequestVariable("A32NX_GEAR_HANDLE_POSITION", forceUpdate: true); }
+                return true;
             case HotkeyAction.ReadHeading: RequestFCUHeadingWithStatus(simConnect); return true;
             case HotkeyAction.ReadSpeed: RequestFCUSpeedWithStatus(simConnect); return true;
             case HotkeyAction.ReadAltitude: RequestFCUAltitudeWithStatus(simConnect); return true;
