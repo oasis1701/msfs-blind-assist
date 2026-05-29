@@ -187,7 +187,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         OnOff("A32NX_OVHD_EMER_ELEC_GEN_1_LINE_PB_IS_ON", "Emergency Generator 1 Line");
         Press("A32NX_OVHD_EMER_ELEC_RAT_AND_EMER_GEN_IS_PRESSED", "RAT and Emergency Generator");
         Sel("A380X_OVHD_ELEC_BAT_SELECTOR_KNOB", "Battery Display Selector",
-            new Dictionary<double, string> { [0] = "Off", [1] = "APU", [2] = "Off (2)", [3] = "Battery 1", [4] = "Battery 2" });
+            new Dictionary<double, string> { [0] = "ESS", [1] = "APU", [2] = "Off", [3] = "Battery 1", [4] = "Battery 2" });
         for (int n = 1; n <= 4; n++) Read($"A32NX_ELEC_BAT_{n}_POTENTIAL", $"Battery {n} Voltage", "volts");
 
         // ---- APU ----
@@ -372,12 +372,12 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             OnOff($"A380X_EFIS_{side}_CSTR_BUTTON_IS_ON", $"{who} Constraints");
             OnOff($"A380X_EFIS_{side}_ARPT_BUTTON_IS_ON", $"{who} Airport");
             OnOff($"A380X_EFIS_{side}_TRAF_BUTTON_IS_ON", $"{who} Traffic");
-            Sel($"A380X_EFIS_{side}_ND_MODE", $"{who} ND Mode",
+            Sel($"A32NX_EFIS_{side}_ND_MODE", $"{who} ND Mode",
                 new Dictionary<double, string> { [0] = "Rose ILS", [1] = "Rose VOR", [2] = "Rose Nav", [3] = "Arc", [4] = "Plan" });
-            Sel($"A380X_EFIS_{side}_ND_RANGE", $"{who} ND Range",
+            Sel($"A32NX_EFIS_{side}_ND_RANGE", $"{who} ND Range",
                 new Dictionary<double, string> { [0] = "Zoom", [1] = "10", [2] = "20", [3] = "40", [4] = "80", [5] = "160", [6] = "320", [7] = "640" });
             for (int nav = 1; nav <= 2; nav++)
-                Sel($"A380X_EFIS_{side}_NAVAID_{nav}_BUTTON_IS_ON", $"{who} Navaid {nav}",
+                Sel($"A32NX_EFIS_{side}_NAVAID_{nav}_MODE", $"{who} Navaid {nav}",
                     new Dictionary<double, string> { [0] = "Off", [1] = "ADF", [2] = "VOR" });
         }
 
@@ -417,7 +417,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // ---- Engine state / start ----
         for (int n = 1; n <= 4; n++)
             Mon($"A32NX_ENGINE_STATE:{n}", $"Engine {n}",
-                new Dictionary<double, string> { [0] = "Off", [1] = "On", [2] = "Starting", [3] = "Shutting Down", [4] = "Restarting" });
+                new Dictionary<double, string> { [0] = "Off", [1] = "On", [2] = "Starting", [3] = "Restarting", [4] = "Shutting Down" });
 
         // ---- Flaps / Speedbrake / Trim / Park brake ----
         ReadEnum("A32NX_FLAPS_HANDLE_INDEX", "Flap Lever",
@@ -444,7 +444,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
 
         // ---- Weather radar / SURV ----
         Sel("A32NX_SWITCH_RADAR_PWS_Position", "Predictive Windshear",
-            new Dictionary<double, string> { [0] = "Off", [1] = "Auto" });
+            new Dictionary<double, string> { [0] = "Auto", [1] = "Off" });
         OnOff("A32NX_RADAR_MULTISCAN_AUTO", "WXR Multiscan Auto");
         OnOff("A32NX_RADAR_GCS_AUTO", "WXR Ground Clutter Suppression");
 
@@ -801,7 +801,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 new Dictionary<double, string> { [1] = "Waypoints", [2] = "VOR/DME", [3] = "NDB" });
             Sel($"A380X_EFIS_{side}_ACTIVE_OVERLAY", $"{who} ND Overlay",
                 new Dictionary<double, string> { [0] = "Off", [1] = "Weather", [2] = "Terrain" });
-            OnOff($"A32NX_FCU_EFIS_{side}_BARO_IS_INHG", $"{who} Baro in inHg");
+            // A380 baro unit lives on XMLVAR_Baro_Selector_HPA_{1|2} (1=hPa, 0=inHg),
+            // not A32NX_FCU_EFIS_*_BARO_IS_INHG (which doesn't exist on the A380).
+            Sel($"XMLVAR_Baro_Selector_HPA_{(side == "L" ? "1" : "2")}", $"{who} Baro Unit",
+                new Dictionary<double, string> { [0] = "inHg", [1] = "hPa" });
         }
 
         // ECAM control panel — checklist buttons + SD more.
@@ -1123,12 +1126,12 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         {
             "A380X_EFIS_L_LS_BUTTON_IS_ON", "A380X_EFIS_L_VV_BUTTON_IS_ON", "A380X_EFIS_L_CSTR_BUTTON_IS_ON",
             "A380X_EFIS_L_ARPT_BUTTON_IS_ON", "A380X_EFIS_L_TRAF_BUTTON_IS_ON",
-            "A380X_EFIS_L_ND_MODE", "A380X_EFIS_L_ND_RANGE",
-            "A380X_EFIS_L_NAVAID_1_BUTTON_IS_ON", "A380X_EFIS_L_NAVAID_2_BUTTON_IS_ON",
+            "A32NX_EFIS_L_ND_MODE", "A32NX_EFIS_L_ND_RANGE",
+            "A32NX_EFIS_L_NAVAID_1_MODE", "A32NX_EFIS_L_NAVAID_2_MODE",
             "A380X_EFIS_R_LS_BUTTON_IS_ON", "A380X_EFIS_R_VV_BUTTON_IS_ON", "A380X_EFIS_R_CSTR_BUTTON_IS_ON",
             "A380X_EFIS_R_ARPT_BUTTON_IS_ON", "A380X_EFIS_R_TRAF_BUTTON_IS_ON",
-            "A380X_EFIS_R_ND_MODE", "A380X_EFIS_R_ND_RANGE",
-            "A380X_EFIS_R_NAVAID_1_BUTTON_IS_ON", "A380X_EFIS_R_NAVAID_2_BUTTON_IS_ON",
+            "A32NX_EFIS_R_ND_MODE", "A32NX_EFIS_R_ND_RANGE",
+            "A32NX_EFIS_R_NAVAID_1_MODE", "A32NX_EFIS_R_NAVAID_2_MODE",
             "TOGGLE_FLIGHT_DIRECTOR", "XMLVAR_Baro1_Mode", "XMLVAR_Baro2_Mode",
             "A380X_EFIS_CP_BARO_PUSH_1", "A380X_EFIS_CP_BARO_PULL_1",
             "A380X_EFIS_CP_BARO_PUSH_2", "A380X_EFIS_CP_BARO_PULL_2"
@@ -1221,8 +1224,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         p["Exterior Lighting"].Add("STROBE_0_AUTO");
         p["EFIS Control Panel"].AddRange(new[]
         {
-            "A380X_EFIS_L_ACTIVE_FILTER", "A380X_EFIS_L_ACTIVE_OVERLAY", "A32NX_FCU_EFIS_L_BARO_IS_INHG", "A32NX_EFIS_L_OANS_RANGE",
-            "A380X_EFIS_R_ACTIVE_FILTER", "A380X_EFIS_R_ACTIVE_OVERLAY", "A32NX_FCU_EFIS_R_BARO_IS_INHG", "A32NX_EFIS_R_OANS_RANGE"
+            "A380X_EFIS_L_ACTIVE_FILTER", "A380X_EFIS_L_ACTIVE_OVERLAY", "XMLVAR_Baro_Selector_HPA_1", "A32NX_EFIS_L_OANS_RANGE",
+            "A380X_EFIS_R_ACTIVE_FILTER", "A380X_EFIS_R_ACTIVE_OVERLAY", "XMLVAR_Baro_Selector_HPA_2", "A32NX_EFIS_R_OANS_RANGE"
         });
         p["ECAM Control Panel"].AddRange(new[] { "A32NX_BTN_CHECK_LH", "A32NX_BTN_CHECK_RH" });
         p["Transponder"].Add("A32NX_DCDU_ATC_MSG_ACK");
