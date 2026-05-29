@@ -1,121 +1,82 @@
 using System.IO;
 using System.Text;
+using Newtonsoft.Json.Linq;
 
 namespace MSFSBlindAssist.Patching
 {
     /// <summary>
-    /// Installs an MSFS Community-folder overlay package that injects the
-    /// accessibility bridge (<c>fbw-a380-bridge.js</c>) into the FlyByWire
-    /// A380X's MFD and EFB instruments.
+    /// Installs / updates / removes the accessibility bridge
+    /// (<c>fbw-a380-bridge.js</c>) for the FlyByWire A380X's MFD and EFB
+    /// instruments.
     ///
-    /// The overlay package name (<c>zzz-fbw-a380-msfsba-bridge</c>) sorts
-    /// after the base FBW package alphabetically, so MSFS loads it last and
-    /// the patched HTML files replace the originals at runtime.
+    /// This is modelled byte-for-byte on the proven-working HS787 bridge
+    /// (<see cref="HS787ModPackageManager"/>): on MSFS 2024 we patch the
+    /// FlyByWire A380X package IN PLACE (append a single bare
+    /// <c>import-script</c> tag to each instrument HTML, drop the bridge JS
+    /// beside the instrument's own JS, and register it in the package's
+    /// layout.json); on MSFS 2020 we ship a separate <c>zzz-</c> overlay
+    /// package. Backups (.msfsba_backup) beside each touched file allow a
+    /// clean uninstall.
     ///
-    /// Both reads (selectors) and writes (KCCU H:events) are documented in
-    /// the bridge JS file. The base FBW A380X paths are verified against
-    /// the open-source repo (master/fbw-a380x):
+    /// Base FBW A380X paths (verified against master/fbw-a380x and the
+    /// installed package on disk):
     ///   - MFD: <c>html_ui/Pages/VCockpit/Instruments/A380X/MFD/mfd.html</c>
     ///   - EFB: <c>html_ui/Pages/VCockpit/Instruments/A380X/EFB/efb.html</c>
-    /// Base package folder is <c>flybywire-aircraft-a380-842</c> (per
-    /// FlyByWire's mach.config.js + installation docs).
     /// </summary>
     public static class FBWA380ModPackageManager
     {
-        // Bump on any bridge-JS or override-HTML structure change. Pre-existing
-        // installs older than this trigger an automatic re-patch on app start.
-        // v2: bridge JS rewritten to v0.5.0-flat — clears stale data attrs,
-        //     auto-enables KCCU keyboard, adds send_to_field composite, and
-        //     emits Fenix-style "N: <value>" field markers in the grid.
-        // v3: bridge JS v0.6.0-stage — adds L:MSFSBA_FBWA380_STAGE diagnostic
-        //     so the MCDU form's status label can show where bring-up failed
-        //     (JS not running / fetch blocked / connected) without dev mode.
-        // v4: bridge JS v0.7.0-xhr-fallback — defensive XHR transport when
-        //     fetch() is blocked (some Coherent GT CSP combinations).
-        //     Stage diagnostic now only escalates to 2 when *both* fetch
-        //     and XHR fail, so a CSP-block-on-fetch alone still posts.
-        // v5: bridge JS now INLINED into the patched HTML rather than
-        //     loaded via import-script. The user's overlay was confirmed
-        //     installed but the bridge still reported Stage 0, meaning
-        //     either MSFS isn't loading the override HTML or it's
-        //     loading it but rejecting the import-script reference. We
-        //     also write L:MSFSBA_FBWA380_HTML_LOADED from a tiny inline
-        //     marker script so the form can distinguish "HTML never
-        //     loaded" from "HTML loaded but bridge JS still failed".
-        // v6 (FS2024): switched FS2024 from the community-on-community overlay
-        //     package to IN-PLACE patching of the FlyByWire A380X package —
-        //     exactly what the HS787 bridge had to do at its v18. MSFS 2024's
-        //     VFS silently ignores community overrides of files under the
-        //     protected html_ui/Pages/VCockpit/Instruments/ namespace, so our
-        //     overlay's mfd.html/efb.html were never loaded (diagnostic proved
-        //     HTML loaded: NO, Stage: 0 even after a clean reboot). On FS2024
-        //     we now back up the original mfd.html/efb.html and update the FBW
-        //     package's own layout.json so MSFS's file-size validation passes.
-        // v7: CRITICAL bring-up fix. v5/v6 INLINED the bridge as a plain
-        //     <script> appended to the instrument HTML — but MSFS instrument
-        //     templates are NOT ordinary web pages: the Coherent loader only
-        //     executes scripts referenced via `import-script="…"` directives,
-        //     never plain inline <script> blocks. So the inlined bridge (and
-        //     the HTML-loaded marker) never ran, leaving HTML loaded: NO even
-        //     though the patched file was on disk and loading fine. v7 drops
-        //     the bridge JS (and a tiny HTML-loaded marker JS) as SEPARATE
-        //     files in each instrument folder and appends `import-script` tags
-        //     referencing them — the same mechanism FBW's own mfd.js/efb.js
-        //     use, and what HS787 v18 does. The new JS files are registered in
-        //     layout.json (without that, MSFS's VFS won't serve them and the
-        //     import 404s). Applies to BOTH the FS2024 in-place path and the
-        //     FS2020 overlay.
-        // v8: CRITICAL bring-up fix #2 — abandon FS2024 in-place patching and
-        //     unify on the `zzz-` overlay package for ALL sims. The v6 premise
-        //     ("MSFS 2024 ignores community overrides of html_ui/Pages/VCockpit/
-        //     Instruments/…") was WRONG: this app's own *working* PMDG EFB
-        //     bridge (EFBModPackageManager) overrides exactly that namespace
-        //     via a zzz- overlay on FS2024 and it loads fine. What actually
-        //     broke the v5 overlay was the inline-<script> bug (fixed in v7) —
-        //     NOT the overlay mechanism. v7 fixed the script bug but kept the
-        //     pointless in-place strategy, which MSFS 2024 was apparently
-        //     refusing to re-index (HTML loaded: NO, Stage: 0). v8 writes the
-        //     overlay (already correct: import-script + layout.json) on FS2024
-        //     too, and REPAIRS any prior in-place patch by restoring the FBW
-        //     package's mfd.html/efb.html/layout.json from the .msfsba_backup
-        //     files so the overlay is the single source of truth.
-        private const int BridgeVersion = 8;
+        // Bump on any bridge-JS or patch-structure change — triggers an
+        // automatic re-patch on app start for older installs.
+        //
+        // v9: CRITICAL bring-up fix. Earlier versions appended TWO
+        //     import-script tags (a separate msfsba-html-marker.js plus the
+        //     bridge) and an HTML comment to the instrument template. On the
+        //     A380X template the Coherent loader choked on that multi-tag /
+        //     commented block and executed NEITHER script (HTML loaded: NO,
+        //     Stage: 0) — and because the overlay and in-place paths shared
+        //     the same BuildPatchedHtml, BOTH failed identically. v9 matches
+        //     the verified-working HS787 bridge exactly: a SINGLE bare
+        //     `<script type="text/html" import-script="…"></script>` tag,
+        //     nothing else. The HTML-loaded marker moved into the bridge JS's
+        //     first executable line, so we keep the diagnostic with one tag.
+        //     FS2024 returns to in-place patching (what HS787 does and what
+        //     the user confirmed works on their machine); FS2020 keeps the
+        //     overlay package. Both share the new single-tag BuildPatchedHtml.
+        private const int BridgeVersion = 9;
         private const string VersionFileName = "bridge-version.txt";
 
-        // Suffix for the backed-up pristine HTML kept beside each in-place
-        // patched file (FS2024 path only). Restored on Remove.
+        // Backup suffix for pristine files kept beside each in-place patched
+        // file (FS2024). Restored on Remove.
         private const string BackupSuffix = ".msfsba_backup";
 
-        // Version marker we drop inside the FBW A380X package on the FS2024
-        // in-place path (we can't touch FBW's manifest, and the overlay's
-        // bridge-version.txt doesn't exist on this path). Detects installed
-        // version across app restarts without a separate package.
+        // Version marker dropped inside the FBW package on the FS2024 in-place
+        // path (we can't touch FBW's manifest). Detects installed version
+        // across app restarts.
         private const string FbwVersionMarkerFileName = "msfsba-bridge-version.txt";
 
         private const string PackageFolderName = "zzz-fbw-a380-msfsba-bridge";
         private const string BridgeJsFileName = "fbw-a380-bridge.js";
 
-        // Tiny companion script dropped next to the bridge. It only sets
-        // L:MSFSBA_FBWA380_HTML_LOADED=1, and is loaded by its OWN
-        // import-script tag BEFORE the bridge. If this var goes to 1 but the
-        // bridge's Stage var stays 0, we know MSFS loaded & ran our injected
-        // scripts but the bridge JS itself failed to parse — a different bug
-        // from "MSFS never loaded the override at all" (both vars 0).
-        private const string MarkerJsFileName = "msfsba-html-marker.js";
-        private const string MarkerJsContent =
-            "try{if(typeof SimVar!=='undefined'&&SimVar.SetSimVarValue){" +
-            "SimVar.SetSimVarValue('L:MSFSBA_FBWA380_HTML_LOADED','number',1);}}catch(e){}";
-
-        // Per-instrument override target — relative paths inside the FBW
-        // A380X package that we mirror in our overlay package.
         private const string MfdRelPath = "html_ui/Pages/VCockpit/Instruments/A380X/MFD";
         private const string MfdHtmlFileName = "mfd.html";
 
         private const string EfbRelPath = "html_ui/Pages/VCockpit/Instruments/A380X/EFB";
         private const string EfbHtmlFileName = "efb.html";
 
-        // FlyByWire A380X publishes one stable package folder name. We also
-        // accept a few dev-installer aliases (FBW Installer dev/PR builds).
+        // Absolute (html_ui-rooted) import-script tags — single, bare, no
+        // import-async, no comment. This is exactly the form HS787 uses and
+        // the form the A380X's own mfd.js/efb.js use.
+        private const string MfdBridgeImportScriptTag =
+            "\n<script type=\"text/html\" import-script=\"/Pages/VCockpit/Instruments/A380X/MFD/fbw-a380-bridge.js\"></script>";
+        private const string EfbBridgeImportScriptTag =
+            "\n<script type=\"text/html\" import-script=\"/Pages/VCockpit/Instruments/A380X/EFB/fbw-a380-bridge.js\"></script>";
+
+        // The bridge filename itself is the patch marker — it never appears in
+        // pristine FBW HTML (which references mfd.js/efb.js, not our bridge).
+        private const string PatchMarker = BridgeJsFileName;
+
+        // FlyByWire publishes one stable folder name; accept dev-installer
+        // aliases too.
         private static readonly string[] FbwA380PackageFolders = new[]
         {
             "flybywire-aircraft-a380-842",
@@ -153,83 +114,54 @@ namespace MSFSBlindAssist.Patching
   ""total_package_size"": ""0000000000000001000""
 }";
 
-        // HTML comment we append so we can detect an already-patched file.
-        private const string PatchMarker = "<!-- MSFSBA-A380-BRIDGE -->";
+        // ------- FS2024 detection ------------------------------------------
 
-        // Legacy v5/v6 inline sentinel. Still recognised by the
-        // "is it patched?" check so we correctly identify an old broken
-        // install and re-patch it (rather than re-prompting from scratch).
-        private const string LegacyInlineMarker = "/* MSFSBA-A380-BRIDGE-INLINE */";
-
-        /// <summary>
-        /// Builds the patched instrument HTML. MSFS instrument templates only
-        /// execute scripts referenced via <c>import-script="…"</c> — plain
-        /// inline &lt;script&gt; blocks are ignored — so we append two
-        /// import-script tags (marker first, then the bridge), matching the
-        /// way FBW's own mfd.js/efb.js are loaded. The referenced JS files are
-        /// dropped beside the HTML by the caller and registered in layout.json.
-        /// </summary>
-        private static string BuildPatchedHtml(string originalHtml, string relPath)
+        private static bool IsFs2024(string communityFolderPath)
         {
-            string cleaned = StripOldBridgeReferences(originalHtml);
-            string markerImport = ImportScriptPath(relPath, MarkerJsFileName);
-            string bridgeImport = ImportScriptPath(relPath, BridgeJsFileName);
-            return cleaned.TrimEnd()
-                + "\n" + PatchMarker
-                + "\n<script type=\"text/html\" import-script=\"" + markerImport + "\" import-async=\"false\"></script>"
-                + "\n<script type=\"text/html\" import-script=\"" + bridgeImport + "\" import-async=\"false\"></script>\n";
+            if (string.IsNullOrEmpty(communityFolderPath)) return false;
+            if (communityFolderPath.IndexOf("Limitless", StringComparison.OrdinalIgnoreCase) >= 0) return true;
+            if (communityFolderPath.IndexOf("Flight Simulator 2024", StringComparison.OrdinalIgnoreCase) >= 0) return true;
+            return false;
         }
 
-        /// <summary>
-        /// Converts a layout-relative instrument folder ("html_ui/Pages/…/MFD")
-        /// + a file name into the leading-slash, html_ui-rooted path that MSFS
-        /// import-script directives use ("/Pages/…/MFD/fbw-a380-bridge.js"),
-        /// matching the existing mfd.js / efb.js references in these files.
-        /// </summary>
-        private static string ImportScriptPath(string relPath, string fileName)
-        {
-            string p = relPath.Replace('\\', '/');
-            const string prefix = "html_ui/";
-            if (p.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-                p = p.Substring(prefix.Length);
-            return "/" + p.TrimEnd('/') + "/" + fileName;
-        }
+        // ------- shared HTML patch -----------------------------------------
 
         /// <summary>
-        /// Strips any previous bridge/marker import lines and the legacy inline
-        /// &lt;script&gt; block, so re-patching is clean. (FS2024 already
-        /// re-derives from the pristine backup; this is a belt-and-braces for
-        /// the FS2020 overlay path and any odd state.)
+        /// Appends a single bare import-script tag to a pristine instrument
+        /// HTML. No marker JS, no HTML comment, no import-async — matches the
+        /// proven HS787 patch and the A380X template's own script style.
         /// </summary>
-        private static string StripOldBridgeReferences(string html)
+        private static string BuildPatchedHtml(string originalHtml, string importScriptTag)
         {
-            var kept = new List<string>();
-            bool inLegacyBlock = false;
-            foreach (var line in html.Replace("\r\n", "\n").Split('\n'))
+            return originalHtml.TrimEnd() + importScriptTag + "\n";
+        }
+
+        // ------- package discovery -----------------------------------------
+
+        /// <summary>
+        /// Locates the installed FBW A380X package within a Community folder.
+        /// </summary>
+        public static string? FindFbwA380PackageRoot(string communityFolderPath)
+        {
+            foreach (string candidate in FbwA380PackageFolders)
             {
-                if (line.Contains(LegacyInlineMarker)) { inLegacyBlock = true; continue; }
-                if (inLegacyBlock)
+                string root = Path.Combine(communityFolderPath, candidate);
+                if (Directory.Exists(root))
                 {
-                    if (line.Contains("</script>")) inLegacyBlock = false;
-                    continue;
+                    string mfd = Path.Combine(root, MfdRelPath, MfdHtmlFileName);
+                    if (File.Exists(mfd)) return root;
                 }
-                if (line.Contains(BridgeJsFileName) || line.Contains(MarkerJsFileName)
-                    || line.Contains(PatchMarker)
-                    || line.Contains("MSFSBA_FBWA380_HTML_LOADED"))
-                    continue;
-                kept.Add(line);
             }
-            return string.Join("\n", kept);
+            return null;
         }
 
         // ------- public API ------------------------------------------------
 
-        /// <summary>
-        /// True if the bridge overlay package is installed in the given
-        /// Community folder (overlay-only on both FS2020 and FS2024 as of v8).
-        /// </summary>
         public static bool IsInstalled(string communityFolderPath)
         {
+            if (IsFs2024(communityFolderPath))
+                return IsInstalledFs2024(communityFolderPath);
+
             string packagePath = Path.Combine(communityFolderPath, PackageFolderName);
             return File.Exists(Path.Combine(packagePath, MfdRelPath, MfdHtmlFileName))
                 || File.Exists(Path.Combine(packagePath, EfbRelPath, EfbHtmlFileName));
@@ -237,16 +169,400 @@ namespace MSFSBlindAssist.Patching
 
         public static int GetInstalledVersion(string communityFolderPath)
         {
+            if (IsFs2024(communityFolderPath))
+                return GetInstalledVersionFs2024(communityFolderPath);
+
             string versionPath = Path.Combine(communityFolderPath, PackageFolderName, VersionFileName);
             if (File.Exists(versionPath) && int.TryParse(File.ReadAllText(versionPath).Trim(), out int v))
                 return v;
             return IsInstalled(communityFolderPath) ? 1 : 0;
         }
 
+        public static ModPackageResult Install(string communityFolderPath, string bridgeJsSourcePath)
+        {
+            if (IsFs2024(communityFolderPath))
+                return InstallFs2024(communityFolderPath, bridgeJsSourcePath, isUpdate: false);
+
+            if (!Directory.Exists(communityFolderPath))
+                return ModPackageResult.CommunityFolderNotFound;
+            if (!File.Exists(bridgeJsSourcePath))
+                return ModPackageResult.BridgeJsSourceNotFound;
+
+            string? fbwRoot = FindFbwA380PackageRoot(communityFolderPath);
+            if (fbwRoot == null)
+                return ModPackageResult.PmdgPackageNotFound;  // shared enum — "base package missing"
+
+            string packagePath = Path.Combine(communityFolderPath, PackageFolderName);
+            if (IsInstalled(communityFolderPath))
+                return ModPackageResult.AlreadyInstalled;
+
+            try
+            {
+                var layoutEntries = WriteOverlay(fbwRoot, packagePath, bridgeJsSourcePath);
+                File.WriteAllText(Path.Combine(packagePath, "layout.json"), GenerateLayoutJson(layoutEntries));
+                File.WriteAllText(Path.Combine(packagePath, "manifest.json"), ManifestJson);
+                WriteVersionFile(packagePath);
+                return ModPackageResult.Success;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"FBWA380ModPackageManager: Install failed: {ex.Message}");
+                try { if (Directory.Exists(packagePath)) Directory.Delete(packagePath, recursive: true); } catch { }
+                return ModPackageResult.InstallFailed;
+            }
+        }
+
+        public static ModPackageResult UpdateModPackage(string communityFolderPath, string bridgeJsSourcePath)
+        {
+            if (IsFs2024(communityFolderPath))
+            {
+                if (!File.Exists(bridgeJsSourcePath))
+                    return ModPackageResult.BridgeJsSourceNotFound;
+                if (GetInstalledVersion(communityFolderPath) >= BridgeVersion)
+                    return ModPackageResult.AlreadyUpToDate;
+                // In-place re-patch re-derives from the pristine backups, so
+                // re-patching is always clean.
+                return InstallFs2024(communityFolderPath, bridgeJsSourcePath, isUpdate: true);
+            }
+
+            if (!IsInstalled(communityFolderPath))
+                return ModPackageResult.CommunityFolderNotFound;
+            if (!File.Exists(bridgeJsSourcePath))
+                return ModPackageResult.BridgeJsSourceNotFound;
+
+            if (GetInstalledVersion(communityFolderPath) >= BridgeVersion)
+                return ModPackageResult.AlreadyUpToDate;
+
+            string? fbwRoot = FindFbwA380PackageRoot(communityFolderPath);
+            if (fbwRoot == null)
+                return ModPackageResult.PmdgPackageNotFound;
+
+            string packagePath = Path.Combine(communityFolderPath, PackageFolderName);
+            try
+            {
+                var layoutEntries = WriteOverlay(fbwRoot, packagePath, bridgeJsSourcePath);
+                File.WriteAllText(Path.Combine(packagePath, "layout.json"), GenerateLayoutJson(layoutEntries));
+                WriteVersionFile(packagePath);
+                return ModPackageResult.Updated;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"FBWA380ModPackageManager: Update failed: {ex.Message}");
+                return ModPackageResult.InstallFailed;
+            }
+        }
+
+        public static ModPackageResult Remove(string communityFolderPath)
+        {
+            if (IsFs2024(communityFolderPath))
+            {
+                // Wipe any legacy overlay package, then restore in-place patch.
+                string legacyPackage = Path.Combine(communityFolderPath, PackageFolderName);
+                if (Directory.Exists(legacyPackage))
+                {
+                    try { Directory.Delete(legacyPackage, recursive: true); } catch { }
+                }
+                return RemoveFs2024(communityFolderPath);
+            }
+
+            string packagePath = Path.Combine(communityFolderPath, PackageFolderName);
+            if (!Directory.Exists(packagePath))
+                return ModPackageResult.CommunityFolderNotFound;
+            try
+            {
+                Directory.Delete(packagePath, recursive: true);
+                return ModPackageResult.Removed;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"FBWA380ModPackageManager: Remove failed: {ex.Message}");
+                return ModPackageResult.InstallFailed;
+            }
+        }
+
+        // ------- FS2024 in-place patching ----------------------------------
+        //
+        //  MSFS 2024 patches the FlyByWire A380X package directly: back up the
+        //  pristine mfd.html/efb.html, append a single bare import-script tag,
+        //  drop the bridge JS beside the instrument's own JS, and update the
+        //  FBW package's layout.json (MSFS validates file sizes and won't serve
+        //  a file that isn't listed). Mirrors HS787 v18+.
+
+        private static bool IsInstalledFs2024(string communityFolderPath)
+        {
+            string? fbwRoot = FindFbwA380PackageRoot(communityFolderPath);
+            if (fbwRoot == null) return false;
+            string mfd = Path.Combine(fbwRoot, MfdRelPath, MfdHtmlFileName);
+            return File.Exists(mfd) && File.ReadAllText(mfd).Contains(PatchMarker);
+        }
+
+        private static int GetInstalledVersionFs2024(string communityFolderPath)
+        {
+            string? fbwRoot = FindFbwA380PackageRoot(communityFolderPath);
+            if (fbwRoot == null) return 0;
+            string marker = Path.Combine(fbwRoot, FbwVersionMarkerFileName);
+            if (File.Exists(marker) && int.TryParse(File.ReadAllText(marker).Trim(), out int v))
+                return v;
+            return IsInstalledFs2024(communityFolderPath) ? 1 : 0;
+        }
+
+        private static ModPackageResult InstallFs2024(
+            string communityFolderPath, string bridgeJsSourcePath, bool isUpdate)
+        {
+            if (!Directory.Exists(communityFolderPath))
+                return ModPackageResult.CommunityFolderNotFound;
+            if (!File.Exists(bridgeJsSourcePath))
+                return ModPackageResult.BridgeJsSourceNotFound;
+
+            string? fbwRoot = FindFbwA380PackageRoot(communityFolderPath);
+            if (fbwRoot == null)
+                return ModPackageResult.PmdgPackageNotFound;  // shared enum — "base package missing"
+
+            if (!isUpdate && IsInstalledFs2024(communityFolderPath))
+                return ModPackageResult.AlreadyInstalled;
+
+            try
+            {
+                string bridgeJsContent = File.ReadAllText(bridgeJsSourcePath);
+
+                PatchInstrumentInPlace(fbwRoot, MfdRelPath, MfdHtmlFileName, MfdBridgeImportScriptTag, bridgeJsContent);
+                PatchInstrumentInPlace(fbwRoot, EfbRelPath, EfbHtmlFileName, EfbBridgeImportScriptTag, bridgeJsContent);
+
+                UpdateFbwLayoutJson(fbwRoot);
+
+                File.WriteAllText(Path.Combine(fbwRoot, FbwVersionMarkerFileName), BridgeVersion.ToString());
+
+                // Remove any obsolete overlay package from earlier installs —
+                // on FS2024 it does nothing functional.
+                string overlayPackage = Path.Combine(communityFolderPath, PackageFolderName);
+                if (Directory.Exists(overlayPackage))
+                {
+                    try { Directory.Delete(overlayPackage, recursive: true); } catch { }
+                }
+
+                return isUpdate ? ModPackageResult.Updated : ModPackageResult.Success;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"FBWA380ModPackageManager: FS2024 Install failed: {ex.Message}");
+                return ModPackageResult.InstallFailed;
+            }
+        }
+
         /// <summary>
-        /// Resolves the running sim's Community folder. Mirrors the
-        /// PMDG/EFB resolver in <see cref="EFBModPackageManager"/>.
+        /// In-place patches one FBW instrument: back up the pristine HTML once,
+        /// drop the bridge JS beside it, then re-derive the patched HTML from
+        /// the backup with a single bare import-script tag. Re-derive means
+        /// re-patches never stack. No-op if the HTML isn't present.
         /// </summary>
+        private static void PatchInstrumentInPlace(
+            string fbwRoot, string relPath, string htmlFile, string importScriptTag, string bridgeJsContent)
+        {
+            string instrumentDir = Path.Combine(fbwRoot, relPath);
+            string htmlPath = Path.Combine(instrumentDir, htmlFile);
+            if (!File.Exists(htmlPath)) return;
+
+            string backupPath = htmlPath + BackupSuffix;
+            if (!File.Exists(backupPath))
+                File.Copy(htmlPath, backupPath, overwrite: false);
+
+            File.WriteAllText(Path.Combine(instrumentDir, BridgeJsFileName), bridgeJsContent);
+
+            string original = File.ReadAllText(backupPath);
+            File.WriteAllText(htmlPath, BuildPatchedHtml(original, importScriptTag));
+        }
+
+        /// <summary>
+        /// Updates the FBW A380X package's layout.json: refresh the patched
+        /// mfd.html / efb.html sizes and add (idempotently) the dropped bridge
+        /// JS entries. Matches the package's existing slash convention. Backs
+        /// the layout up once.
+        /// </summary>
+        private static void UpdateFbwLayoutJson(string fbwRoot)
+        {
+            string layoutPath = Path.Combine(fbwRoot, "layout.json");
+            if (!File.Exists(layoutPath)) return;
+
+            string backupPath = layoutPath + BackupSuffix;
+            if (!File.Exists(backupPath))
+                File.Copy(layoutPath, backupPath, overwrite: false);
+
+            var layout = JObject.Parse(File.ReadAllText(layoutPath));
+            var content = (JArray?)layout["content"];
+            if (content == null) return;
+
+            // Detect the package's slash convention from the first entry that
+            // has any slash (top-level files have none).
+            bool useForwardSlash = true;
+            foreach (var probeEntry in content)
+            {
+                string probe = probeEntry["path"]?.ToString() ?? "";
+                if (probe.Contains('/')) { useForwardSlash = true; break; }
+                if (probe.Contains('\\')) { useForwardSlash = false; break; }
+            }
+            string Normalize(string p) => useForwardSlash ? p.Replace('\\', '/') : p.Replace('/', '\\');
+            string Canonical(string p) => p.Replace('\\', '/').ToLowerInvariant();
+
+            void UpdateSize(string relPath, string fileName)
+            {
+                string absPath = Path.Combine(fbwRoot, relPath, fileName);
+                if (!File.Exists(absPath)) return;
+                long newSize = new FileInfo(absPath).Length;
+                string targetCanonical = Canonical($"{relPath}/{fileName}");
+                foreach (var entry in content)
+                {
+                    string? p = entry["path"]?.ToString();
+                    if (p != null && Canonical(p) == targetCanonical)
+                    {
+                        entry["size"] = newSize;
+                        return;
+                    }
+                }
+            }
+
+            void UpsertJs(string relPath, string fileName)
+            {
+                string absPath = Path.Combine(fbwRoot, relPath, fileName);
+                if (!File.Exists(absPath)) return;
+                long size = new FileInfo(absPath).Length;
+                string normalized = Normalize($"{relPath}/{fileName}");
+                string targetCanonical = Canonical(normalized);
+                for (int i = content.Count - 1; i >= 0; i--)
+                {
+                    string? p = content[i]["path"]?.ToString();
+                    if (p != null && Canonical(p) == targetCanonical)
+                        content.RemoveAt(i);
+                }
+                content.Add(new JObject
+                {
+                    ["path"] = normalized,
+                    ["size"] = size,
+                    ["date"] = 133888888888888888L
+                });
+            }
+
+            UpdateSize(MfdRelPath, MfdHtmlFileName);
+            UpdateSize(EfbRelPath, EfbHtmlFileName);
+            UpsertJs(MfdRelPath, BridgeJsFileName);
+            UpsertJs(EfbRelPath, BridgeJsFileName);
+
+            File.WriteAllText(layoutPath, layout.ToString(Newtonsoft.Json.Formatting.Indented));
+        }
+
+        private static ModPackageResult RemoveFs2024(string communityFolderPath)
+        {
+            string? fbwRoot = FindFbwA380PackageRoot(communityFolderPath);
+            if (fbwRoot == null)
+                return ModPackageResult.CommunityFolderNotFound;
+
+            try
+            {
+                void RestoreOne(string relPath, string htmlFile)
+                {
+                    string instrumentDir = Path.Combine(fbwRoot, relPath);
+                    string htmlPath = Path.Combine(instrumentDir, htmlFile);
+                    string backup = htmlPath + BackupSuffix;
+                    if (File.Exists(backup))
+                    {
+                        File.Copy(backup, htmlPath, overwrite: true);
+                        File.Delete(backup);
+                    }
+                    string bridgeJs = Path.Combine(instrumentDir, BridgeJsFileName);
+                    if (File.Exists(bridgeJs)) File.Delete(bridgeJs);
+                }
+
+                RestoreOne(MfdRelPath, MfdHtmlFileName);
+                RestoreOne(EfbRelPath, EfbHtmlFileName);
+
+                string layoutPath = Path.Combine(fbwRoot, "layout.json");
+                string layoutBackup = layoutPath + BackupSuffix;
+                if (File.Exists(layoutBackup))
+                {
+                    File.Copy(layoutBackup, layoutPath, overwrite: true);
+                    File.Delete(layoutBackup);
+                }
+
+                string marker = Path.Combine(fbwRoot, FbwVersionMarkerFileName);
+                if (File.Exists(marker)) File.Delete(marker);
+
+                return ModPackageResult.Removed;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"FBWA380ModPackageManager: FS2024 Remove failed: {ex.Message}");
+                return ModPackageResult.InstallFailed;
+            }
+        }
+
+        // ------- FS2020 overlay package ------------------------------------
+
+        private static List<(string relativePath, long size)> WriteOverlay(
+            string fbwRoot, string packagePath, string bridgeJsSourcePath)
+        {
+            string bridgeJsContent = File.ReadAllText(bridgeJsSourcePath);
+            var entries = new List<(string, long)>();
+            entries.AddRange(WriteOneInstrumentOverlay(
+                fbwRoot, packagePath, bridgeJsContent, MfdRelPath, MfdHtmlFileName, MfdBridgeImportScriptTag));
+            entries.AddRange(WriteOneInstrumentOverlay(
+                fbwRoot, packagePath, bridgeJsContent, EfbRelPath, EfbHtmlFileName, EfbBridgeImportScriptTag));
+            return entries;
+        }
+
+        private static List<(string relativePath, long size)> WriteOneInstrumentOverlay(
+            string fbwRoot, string packagePath, string bridgeJsContent,
+            string relPath, string htmlFile, string importScriptTag)
+        {
+            var entries = new List<(string, long)>();
+            string sourceHtmlPath = Path.Combine(fbwRoot, relPath, htmlFile);
+            if (!File.Exists(sourceHtmlPath))
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"FBWA380ModPackageManager: skipping {relPath}/{htmlFile} — not present in {fbwRoot}");
+                return entries;
+            }
+
+            string overlayDir = Path.Combine(packagePath, relPath);
+            Directory.CreateDirectory(overlayDir);
+
+            string bridgeJsPath = Path.Combine(overlayDir, BridgeJsFileName);
+            File.WriteAllText(bridgeJsPath, bridgeJsContent);
+
+            string originalHtml = File.ReadAllText(sourceHtmlPath);
+            string overlayHtmlPath = Path.Combine(overlayDir, htmlFile);
+            File.WriteAllText(overlayHtmlPath, BuildPatchedHtml(originalHtml, importScriptTag));
+
+            entries.Add(($"{relPath}/{htmlFile}", new FileInfo(overlayHtmlPath).Length));
+            entries.Add(($"{relPath}/{BridgeJsFileName}", new FileInfo(bridgeJsPath).Length));
+            return entries;
+        }
+
+        private static void WriteVersionFile(string packagePath)
+        {
+            File.WriteAllText(Path.Combine(packagePath, VersionFileName), BridgeVersion.ToString());
+        }
+
+        private static string GenerateLayoutJson(List<(string relativePath, long size)> entries)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("{");
+            sb.AppendLine("  \"content\": [");
+            for (int i = 0; i < entries.Count; i++)
+            {
+                var (p, sz) = entries[i];
+                sb.AppendLine("    {");
+                sb.AppendLine($"      \"path\": \"{p.Replace("\\", "/")}\",");
+                sb.AppendLine($"      \"size\": {sz},");
+                sb.AppendLine("      \"date\": 133888888888888888");
+                sb.Append("    }");
+                sb.AppendLine(i < entries.Count - 1 ? "," : "");
+            }
+            sb.AppendLine("  ]");
+            sb.Append("}");
+            return sb.ToString();
+        }
+
+        // ------- Community folder resolution -------------------------------
+
         public static string? FindCommunityFolderPath()
         {
             string runningSimulator = Utils.SimulatorDetector.DetectRunningSimulator();
@@ -281,11 +597,6 @@ namespace MSFSBlindAssist.Patching
             return null;
         }
 
-        /// <summary>
-        /// Discovers every accessible Community folder (FS2020 + FS2024 +
-        /// fallback). Used when offering to install the overlay across
-        /// multiple sims. Returns (simLabel, communityPath) tuples.
-        /// </summary>
         public static List<(string SimLabel, string Path)> FindAllCommunityFolders()
         {
             var results = new List<(string, string)>();
@@ -338,271 +649,6 @@ namespace MSFSBlindAssist.Patching
                     if (Directory.Exists(p)) { results.Add(("MSFS", p)); break; }
 
             return results;
-        }
-
-        /// <summary>
-        /// Locates the installed FBW A380X package within the given
-        /// Community folder. Searches the known folder names and returns
-        /// the first existing one whose <c>mfd.html</c> can be found.
-        /// </summary>
-        public static string? FindFbwA380PackageRoot(string communityFolderPath)
-        {
-            foreach (string candidate in FbwA380PackageFolders)
-            {
-                string root = Path.Combine(communityFolderPath, candidate);
-                if (Directory.Exists(root))
-                {
-                    string mfd = Path.Combine(root, MfdRelPath, MfdHtmlFileName);
-                    if (File.Exists(mfd)) return root;
-                }
-            }
-            return null;
-        }
-
-        /// <summary>
-        /// Creates the overlay package: manifest + layout + the patched
-        /// MFD and EFB HTML + a copy of the bridge JS in each instrument's
-        /// folder. Idempotent: re-installing with the same bridge version
-        /// is a no-op (returns <see cref="ModPackageResult.AlreadyInstalled"/>).
-        /// </summary>
-        public static ModPackageResult Install(string communityFolderPath, string bridgeJsSourcePath)
-        {
-            if (!Directory.Exists(communityFolderPath))
-                return ModPackageResult.CommunityFolderNotFound;
-            if (!File.Exists(bridgeJsSourcePath))
-                return ModPackageResult.BridgeJsSourceNotFound;
-
-            string? fbwRoot = FindFbwA380PackageRoot(communityFolderPath);
-            if (fbwRoot == null)
-                return ModPackageResult.PmdgPackageNotFound;  // shared enum — "base package missing"
-
-            // Undo any earlier in-place patch (v6/v7) so the FBW package is
-            // pristine and the overlay is the single source of truth.
-            RepairInPlacePatch(communityFolderPath);
-
-            string packagePath = Path.Combine(communityFolderPath, PackageFolderName);
-            if (IsInstalled(communityFolderPath))
-                return ModPackageResult.AlreadyInstalled;
-
-            try
-            {
-                var layoutEntries = WriteOverlay(fbwRoot, packagePath, bridgeJsSourcePath);
-                File.WriteAllText(Path.Combine(packagePath, "layout.json"), GenerateLayoutJson(layoutEntries));
-                File.WriteAllText(Path.Combine(packagePath, "manifest.json"), ManifestJson);
-                WriteVersionFile(packagePath);
-                return ModPackageResult.Success;
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"FBWA380ModPackageManager: Install failed: {ex.Message}");
-                try { if (Directory.Exists(packagePath)) Directory.Delete(packagePath, recursive: true); } catch { }
-                return ModPackageResult.InstallFailed;
-            }
-        }
-
-        /// <summary>
-        /// Re-patches the overlay against the current FBW A380X package
-        /// content when the bundled bridge version is newer than the
-        /// installed one. Used at app startup so a user who first
-        /// installed an older overlay automatically picks up improvements.
-        /// </summary>
-        public static ModPackageResult UpdateModPackage(string communityFolderPath, string bridgeJsSourcePath)
-        {
-            if (!IsInstalled(communityFolderPath))
-                return ModPackageResult.CommunityFolderNotFound;
-            if (!File.Exists(bridgeJsSourcePath))
-                return ModPackageResult.BridgeJsSourceNotFound;
-
-            int installed = GetInstalledVersion(communityFolderPath);
-            if (installed >= BridgeVersion)
-                return ModPackageResult.AlreadyUpToDate;
-
-            string? fbwRoot = FindFbwA380PackageRoot(communityFolderPath);
-            if (fbwRoot == null)
-                return ModPackageResult.PmdgPackageNotFound;
-
-            // Repair any leftover in-place patch (a user updating from a
-            // v6/v7 in-place install) before refreshing the overlay.
-            RepairInPlacePatch(communityFolderPath);
-
-            string packagePath = Path.Combine(communityFolderPath, PackageFolderName);
-            try
-            {
-                var layoutEntries = WriteOverlay(fbwRoot, packagePath, bridgeJsSourcePath);
-                File.WriteAllText(Path.Combine(packagePath, "layout.json"), GenerateLayoutJson(layoutEntries));
-                WriteVersionFile(packagePath);
-                return ModPackageResult.Updated;
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"FBWA380ModPackageManager: Update failed: {ex.Message}");
-                return ModPackageResult.InstallFailed;
-            }
-        }
-
-        public static ModPackageResult Remove(string communityFolderPath)
-        {
-            // Restore any in-place patch (v6/v7) the FBW package may still carry.
-            bool repaired = RepairInPlacePatch(communityFolderPath);
-
-            string packagePath = Path.Combine(communityFolderPath, PackageFolderName);
-            bool overlayExisted = Directory.Exists(packagePath);
-            if (!overlayExisted && !repaired)
-                return ModPackageResult.CommunityFolderNotFound;
-            try
-            {
-                if (overlayExisted)
-                    Directory.Delete(packagePath, recursive: true);
-                return ModPackageResult.Removed;
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"FBWA380ModPackageManager: Remove failed: {ex.Message}");
-                return ModPackageResult.InstallFailed;
-            }
-        }
-
-        // ------- in-place patch repair (legacy v6/v7 cleanup) --------------
-        //
-        //  v6/v7 modified the FlyByWire A380X package directly (in-place patch
-        //  of mfd.html/efb.html + edits to FBW's own layout.json). v8 reverts
-        //  to the overlay model, so before writing the overlay we restore the
-        //  FBW package to pristine from the .msfsba_backup files this app made.
-        //  Safe to call unconditionally: a no-op when no backups exist (a fresh
-        //  install, an FS2020 install, or a package never patched in place).
-
-        /// <summary>
-        /// Reverts any earlier in-place patch of the FBW A380X package by
-        /// restoring mfd.html / efb.html / layout.json from their
-        /// <c>.msfsba_backup</c> siblings and deleting the dropped bridge/
-        /// marker JS plus the version marker. Returns true if anything was
-        /// restored. No-op (returns false) when no backups are present.
-        /// </summary>
-        private static bool RepairInPlacePatch(string communityFolderPath)
-        {
-            string? fbwRoot = FindFbwA380PackageRoot(communityFolderPath);
-            if (fbwRoot == null) return false;
-
-            bool repairedAnything = false;
-            try
-            {
-                void RestoreOne(string relPath, string htmlFile)
-                {
-                    string instrumentDir = Path.Combine(fbwRoot, relPath);
-                    string htmlPath = Path.Combine(instrumentDir, htmlFile);
-                    string backup = htmlPath + BackupSuffix;
-                    if (File.Exists(backup))
-                    {
-                        File.Copy(backup, htmlPath, overwrite: true);
-                        File.Delete(backup);
-                        repairedAnything = true;
-                    }
-                    // Remove the dropped companion JS files left in the FBW dir.
-                    string bridgeJs = Path.Combine(instrumentDir, BridgeJsFileName);
-                    string markerJs = Path.Combine(instrumentDir, MarkerJsFileName);
-                    if (File.Exists(bridgeJs)) { File.Delete(bridgeJs); repairedAnything = true; }
-                    if (File.Exists(markerJs)) { File.Delete(markerJs); repairedAnything = true; }
-                }
-
-                RestoreOne(MfdRelPath, MfdHtmlFileName);
-                RestoreOne(EfbRelPath, EfbHtmlFileName);
-
-                // Restore FBW's layout.json from backup if we edited it.
-                string layoutPath = Path.Combine(fbwRoot, "layout.json");
-                string layoutBackup = layoutPath + BackupSuffix;
-                if (File.Exists(layoutBackup))
-                {
-                    File.Copy(layoutBackup, layoutPath, overwrite: true);
-                    File.Delete(layoutBackup);
-                    repairedAnything = true;
-                }
-
-                string marker = Path.Combine(fbwRoot, FbwVersionMarkerFileName);
-                if (File.Exists(marker)) { File.Delete(marker); repairedAnything = true; }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine(
-                    $"FBWA380ModPackageManager: in-place repair failed: {ex.Message}");
-            }
-            return repairedAnything;
-        }
-
-        // ------- write helpers --------------------------------------------
-
-        private static List<(string relativePath, long size)> WriteOverlay(
-            string fbwRoot, string packagePath, string bridgeJsSourcePath)
-        {
-            string bridgeJsContent = File.ReadAllText(bridgeJsSourcePath);
-            var entries = new List<(string, long)>();
-            entries.AddRange(WriteOneInstrumentOverlay(
-                fbwRoot, packagePath, bridgeJsContent, MfdRelPath, MfdHtmlFileName));
-            entries.AddRange(WriteOneInstrumentOverlay(
-                fbwRoot, packagePath, bridgeJsContent, EfbRelPath, EfbHtmlFileName));
-            return entries;
-        }
-
-        private static List<(string relativePath, long size)> WriteOneInstrumentOverlay(
-            string fbwRoot, string packagePath, string bridgeJsContent,
-            string relPath, string htmlFile)
-        {
-            var entries = new List<(string, long)>();
-            string sourceHtmlPath = Path.Combine(fbwRoot, relPath, htmlFile);
-            if (!File.Exists(sourceHtmlPath))
-            {
-                // Not every dev build ships both instruments — silently
-                // skip the missing one rather than failing the whole install.
-                System.Diagnostics.Debug.WriteLine(
-                    $"FBWA380ModPackageManager: skipping {relPath}/{htmlFile} — not present in {fbwRoot}");
-                return entries;
-            }
-
-            string overlayDir = Path.Combine(packagePath, relPath);
-            Directory.CreateDirectory(overlayDir);
-
-            // Drop the bridge + marker JS into the overlay and reference them
-            // from the patched HTML via import-script — the only script form
-            // MSFS instrument templates actually execute. All three files are
-            // registered in the overlay's layout.json (returned entries).
-            string markerJsPath = Path.Combine(overlayDir, MarkerJsFileName);
-            File.WriteAllText(markerJsPath, MarkerJsContent);
-            string bridgeJsPath = Path.Combine(overlayDir, BridgeJsFileName);
-            File.WriteAllText(bridgeJsPath, bridgeJsContent);
-
-            string originalHtml = File.ReadAllText(sourceHtmlPath);
-            string patchedHtml = BuildPatchedHtml(originalHtml, relPath);
-            string overlayHtmlPath = Path.Combine(overlayDir, htmlFile);
-            File.WriteAllText(overlayHtmlPath, patchedHtml);
-
-            entries.Add(($"{relPath}/{htmlFile}", new FileInfo(overlayHtmlPath).Length));
-            entries.Add(($"{relPath}/{MarkerJsFileName}", new FileInfo(markerJsPath).Length));
-            entries.Add(($"{relPath}/{BridgeJsFileName}", new FileInfo(bridgeJsPath).Length));
-            return entries;
-        }
-
-        private static void WriteVersionFile(string packagePath)
-        {
-            File.WriteAllText(Path.Combine(packagePath, VersionFileName), BridgeVersion.ToString());
-        }
-
-        private static string GenerateLayoutJson(List<(string relativePath, long size)> entries)
-        {
-            var sb = new StringBuilder();
-            sb.AppendLine("{");
-            sb.AppendLine("  \"content\": [");
-            for (int i = 0; i < entries.Count; i++)
-            {
-                var (p, sz) = entries[i];
-                sb.AppendLine("    {");
-                sb.AppendLine($"      \"path\": \"{p.Replace("\\", "/")}\",");
-                sb.AppendLine($"      \"size\": {sz},");
-                sb.AppendLine("      \"date\": 133888888888888888");
-                sb.Append("    }");
-                sb.AppendLine(i < entries.Count - 1 ? "," : "");
-            }
-            sb.AppendLine("  ]");
-            sb.Append("}");
-            return sb.ToString();
         }
 
         private static string? TryParseInstalledPackagesPath(string configPath)

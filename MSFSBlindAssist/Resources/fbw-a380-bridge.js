@@ -59,6 +59,17 @@ if (window._fbwA380_bridge_loaded) {
     console.log('[A380 Bridge] Already loaded, skipping');
 } else { window._fbwA380_bridge_loaded = true;
 
+// First action: prove the patched HTML loaded AND our injected script ran.
+// (Previously a separate msfsba-html-marker.js loaded via its own
+// import-script tag — but a second tag plus an HTML comment broke the
+// Coherent loader on the A380X template, so neither script ran. Folding the
+// flag in here means a single bare import-script tag, matching the proven
+// HS787 bridge exactly.) MSFSBA reads L:MSFSBA_FBWA380_HTML_LOADED to tell
+// "HTML never loaded" (0) from "HTML loaded but bridge failed later".
+try { if (typeof SimVar !== 'undefined' && SimVar.SetSimVarValue) {
+    SimVar.SetSimVarValue('L:MSFSBA_FBWA380_HTML_LOADED', 'number', 1);
+} } catch (e) {}
+
 var _a380 = {
     JS_VERSION: '0.7.0-xhr-fallback',
     SERVER_URL: 'http://localhost:19777',
