@@ -160,7 +160,7 @@ public class FBWA380MCDUForm : Form
             BackColor = Color.Black,
             ForeColor = Color.Lime,
             AccessibleName = "MCDU display",
-            AccessibleDescription = "FMS page contents. Use arrow keys to read each line. Press Enter on a numbered row to activate that field. Ctrl plus 1 to 9 in this window sends the scratchpad to the matching field.",
+            AccessibleDescription = "FMS page contents. Use arrow keys to read each line. On a numbered field row, press Enter to send the scratchpad to that field, or Enter with an empty scratchpad to just activate it. Ctrl plus 1 to 9 anywhere in this window sends the scratchpad to the matching field number.",
             IntegralHeight = false
         };
         Controls.Add(_display);
@@ -460,9 +460,28 @@ public class FBWA380MCDUForm : Form
             int fieldIdx = ExtractFirstFieldIndex(_display.SelectedItem?.ToString() ?? "");
             if (fieldIdx > 0)
             {
-                _bridgeServer.EnqueueCommand("click_mcdu_element",
-                    new Dictionary<string, string> { ["index"] = fieldIdx.ToString() });
-                _announcer.Announce("Field " + fieldIdx + " activated");
+                string text = _scratchpad.Text;
+                if (!string.IsNullOrEmpty(text))
+                {
+                    // Scratchpad has a pending value — commit it straight to the
+                    // field the user just navigated to (click + clear + type +
+                    // ENT). Saves them having to remember the Ctrl+N shortcut.
+                    _bridgeServer.EnqueueCommand("send_to_field", new Dictionary<string, string>
+                    {
+                        ["index"] = fieldIdx.ToString(),
+                        ["text"]  = text
+                    });
+                    _scratchpad.Text = "";
+                    _announcer.Announce("Sending " + text + " to field " + fieldIdx);
+                }
+                else
+                {
+                    // No pending value — just activate the field (buttons,
+                    // toggles, page jumps that need no entry).
+                    _bridgeServer.EnqueueCommand("click_mcdu_element",
+                        new Dictionary<string, string> { ["index"] = fieldIdx.ToString() });
+                    _announcer.Announce("Field " + fieldIdx + " activated");
+                }
             }
             e.Handled = true; e.SuppressKeyPress = true;
         }
