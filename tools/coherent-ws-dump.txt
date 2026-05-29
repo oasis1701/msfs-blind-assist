@@ -1,0 +1,15 @@
+﻿==== Coherent debugger raw WebSocket test @ 2026-05-29T14:06:41.3403043+02:00 ====
+  target page id: 31   host: 127.0.0.1:19999
+
+---- trying: ws://127.0.0.1:19999/devtools/page/31 ----
+   CONNECT FAILED: The 'Connection' header value 'Upgrade,Keep-Alive' is invalid.
+
+---- trying: ws://127.0.0.1:19999/devtools/inspector/31 ----
+   CONNECTED (state=Open)
+   SENT: Runtime.evaluate
+   RESPONSE:
+{"result":{"result":{"type":"string","value":"FMS 1\n----------\nACTIVE\nPOSITION\nSEC INDEX\nDATA\nDATA/STATUS\nACFT STATUS\nFMS P/N\nA380-800\u00A0/\u00A0TRENT 972\nIDLE\n+0.0\nPERF\n+0.0\nMODIFY\nFUEL PENALTY\u00A0\n+000.0\n%\nNAV DATABASEMS26050001\nACTIVE\n14MAY-11JUN\nSWAP\n\u00A0\u00A0*\nSECOND\n\u00A0\u00A014MAY-11JUN\nPILOT STORED ELEMENTS\nWAYPOINTS\n00\nROUTES\n00\nNAVAIDS\n00\nRUNWAYS\n00\nDELETE ALL\n*\nCLEAR\nINFO\nNAV PRIMARY\nFMS 2\n----------\nACTIVE\nPOSITION\nSEC INDEX\nDATA\nDATA/STATUS\nACFT STATUS\nFMS P/N\nA380-800\u00A0/\u00A0TRENT 972\nIDLE\n+0.0\nPERF\n+0.0\nMODIFY\nFUEL PENALTY\u00A0\n+000.0\n%\nNAV DATABASEMS26050001\nACTIVE\n14MAY-11JUN\nSWAP\n\u00A0\u00A0*\nSECOND\n\u00A0\u00A014MAY-11JUN\nPILOT STORED ELEMENTS\nWAYPOINTS\n00\nROUTES\n00\nNAVAIDS\n00\nRUNWAYS\n00\nDELETE ALL\n*\nCLEAR\nINFO\nNAV PRIMARY\n"},"wasThrown":false},"id":1}
+
+>>> SUCCESS with: ws://127.0.0.1:19999/devtools/inspector/31
+
+==== done. Saved to: C:\Users\franc\Documents\development\MSFSBA\msfs-blind-assist\tools\coherent-ws-dump.txt ====

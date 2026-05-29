@@ -1,0 +1,1 @@
+﻿SimVar.SetSimVarValue("L:A32NX_KCCU_L_KBD_ON_OFF","bool",1); JSON.stringify({afterSet:SimVar.GetSimVarValue("L:A32NX_KCCU_L_KBD_ON_OFF","bool"), ccdL:SimVar.GetSimVarValue("L:A32NX_KCCU_L_CCD_ON_OFF","bool")})

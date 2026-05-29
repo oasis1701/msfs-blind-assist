@@ -1,0 +1,171 @@
+﻿==== Coherent debugger page enumeration @ 2026-05-29T14:00:18.4227494+02:00 ====
+  19999 LISTENING (pid 11804)
+
+==== http://127.0.0.1:19999/pagelist.json (HTTP 200) ====
+  32 view(s) found:
+
+  [0] title : ATLAS
+      id    : 0
+      url   : coui://html_UI/Global/atlas.html
+      ws    : /inspector/Main.html?page=0
+
+  [1] title : Shared variables
+      id    : 1
+      url   : coui://html_UI/Global/sharedVariables.html
+      ws    : /inspector/Main.html?page=1
+
+  [2] title : MAIN UI
+      id    : 2
+      url   : coui://html_UI/Global/mainUI.html
+      ws    : /inspector/Main.html?page=2
+
+  [3] title : NOTIFICATION
+      id    : 3
+      url   : coui://html_UI/Global/notifications.html?type=POPUP|MESSAGE|OBJECTIVE|ACTION_STEP|SUBTITLES|STACKABLE&theme=SYSTEM
+      ws    : /inspector/Main.html?page=3
+
+  [4] title : Transitions
+      id    : 5
+      url   : coui://html_UI/Global/transition.html
+      ws    : /inspector/Main.html?page=5
+
+  [5] title : Electronic Flight Bag
+      id    : 6
+      url   : coui://html_ui/efb_ui/efb_os/efb_ui.html
+      ws    : /inspector/Main.html?page=6
+
+  [6] title : Mission Steps
+      id    : 7
+      url   : coui://html_UI/Global/Panel.html
+      ws    : /inspector/Main.html?page=7
+
+  [7] title : Toolbar
+      id    : 8
+      url   : coui://html_UI/Global/Panel.html
+      ws    : /inspector/Main.html?page=8
+
+  [8] title : NOTIFICATION
+      id    : 9
+      url   : coui://html_UI/Global/notifications.html?type=MESSAGE|STACKABLE|OVERLAY&theme=TIPS|GAMEPLAY|INFO|SCORE
+      ws    : /inspector/Main.html?page=9
+
+  [9] title : VCockpit66 - A380X_popup
+      id    : 10
+      url   : coui://html_UI/Pages/VCockpit/Core/VCockpit.html
+      ws    : /inspector/Main.html?page=10
+
+  [10] title : VCockpit65 - A380X_EXTRASHOST
+      id    : 11
+      url   : coui://html_UI/Pages/VCockpit/Core/VCockpit.html
+      ws    : /inspector/Main.html?page=11
+
+  [11] title : VCockpit64 - A380X_SYSTEMSHOST
+      id    : 12
+      url   : coui://html_UI/Pages/VCockpit/Core/VCockpit.html
+      ws    : /inspector/Main.html?page=12
+
+  [12] title : VCockpit63 - WasmInstrument - WasmInstrument - WasmInstrument - WasmInstrument
+      id    : 13
+      url   : coui://html_UI/Pages/VCockpit/Core/VCockpit.html
+      ws    : /inspector/Main.html?page=13
+
+  [13] title : VCockpit62 - A380X_OIT_2 - OITlegacy
+      id    : 14
+      url   : coui://html_UI/Pages/VCockpit/Core/VCockpit.html
+      ws    : /inspector/Main.html?page=14
+
+  [14] title : VCockpit61 - A380X_OIT_1 - OITlegacy
+      id    : 15
+      url   : coui://html_UI/Pages/VCockpit/Core/VCockpit.html
+      ws    : /inspector/Main.html?page=15
+
+  [15] title : VCockpit60 - A380X_RMP_3
+      id    : 16
+      url   : coui://html_UI/Pages/VCockpit/Core/VCockpit.html
+      ws    : /inspector/Main.html?page=16
+
+  [16] title : VCockpit59 - A380X_RMP_2
+      id    : 17
+      url   : coui://html_UI/Pages/VCockpit/Core/VCockpit.html
+      ws    : /inspector/Main.html?page=17
+
+  [17] title : VCockpit58 - A380X_RMP_1
+      id    : 18
+      url   : coui://html_UI/Pages/VCockpit/Core/VCockpit.html
+      ws    : /inspector/Main.html?page=18
+
+  [18] title : VCockpit57 - EFB
+      id    : 19
+      url   : coui://html_UI/Pages/VCockpit/Core/VCockpit.html
+      ws    : /inspector/Main.html?page=19
+
+  [19] title : VCockpit56 - BAT
+      id    : 20
+      url   : coui://html_UI/Pages/VCockpit/Core/VCockpit.html
+      ws    : /inspector/Main.html?page=20
+
+  [20] title : VCockpit55 - RTPI
+      id    : 21
+      url   : coui://html_UI/Pages/VCockpit/Core/VCockpit.html
+      ws    : /inspector/Main.html?page=21
+
+  [21] title : VCockpit54 - A380X_Clock
+      id    : 22
+      url   : coui://html_UI/Pages/VCockpit/Core/VCockpit.html
+      ws    : /inspector/Main.html?page=22
+
+  [22] title : VCockpit53 - ISISlegacy
+      id    : 23
+      url   : coui://html_UI/Pages/VCockpit/Core/VCockpit.html
+      ws    : /inspector/Main.html?page=23
+
+  [23] title : VCockpit52 - A380X_FCU
+      id    : 24
+      url   : coui://html_UI/Pages/VCockpit/Core/VCockpit.html
+      ws    : /inspector/Main.html?page=24
+
+  [24] title : VCockpit51 - WasmInstrument - A380X_ND_2
+      id    : 25
+      url   : coui://html_UI/Pages/VCockpit/Core/VCockpit.html
+      ws    : /inspector/Main.html?page=25
+
+  [25] title : VCockpit50 - WasmInstrument - A380X_ND_1
+      id    : 26
+      url   : coui://html_UI/Pages/VCockpit/Core/VCockpit.html
+      ws    : /inspector/Main.html?page=26
+
+  [26] title : VCockpit49 - A380X_PFD_2
+      id    : 27
+      url   : coui://html_UI/Pages/VCockpit/Core/VCockpit.html
+      ws    : /inspector/Main.html?page=27
+
+  [27] title : VCockpit48 - A380X_PFD_1
+      id    : 28
+      url   : coui://html_UI/Pages/VCockpit/Core/VCockpit.html
+      ws    : /inspector/Main.html?page=28
+
+  [28] title : VCockpit47 - SD - A380X_SDv2
+      id    : 29
+      url   : coui://html_UI/Pages/VCockpit/Core/VCockpit.html
+      ws    : /inspector/Main.html?page=29
+
+  [29] title : VCockpit46 - A380X_EWD
+      id    : 30
+      url   : coui://html_UI/Pages/VCockpit/Core/VCockpit.html
+      ws    : /inspector/Main.html?page=30
+
+  [30] title : VCockpit45 - A380X_MFD
+      id    : 31
+      url   : coui://html_UI/Pages/VCockpit/Core/VCockpit.html
+      ws    : /inspector/Main.html?page=31
+
+  [31] title : VLogic
+      id    : 32
+      url   : coui://html_UI/Pages/VCockpit/Core/VCockpitLogic.html
+      ws    : /inspector/Main.html?page=32
+
+==== http://127.0.0.1:19999/json -> no response (The remote server returned an error: (404) Not Found.) ====
+
+==== http://127.0.0.1:19999/json/list -> no response (The remote server returned an error: (404) Not Found.) ====
+
+==== done. Saved to: C:\Users\franc\Documents\development\MSFSBA\msfs-blind-assist\tools\coherent-debugger-dump.txt ====

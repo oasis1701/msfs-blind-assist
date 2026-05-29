@@ -102,7 +102,8 @@ public partial class HotkeyListForm : Form
             { "A320", "FBW_A320_Hotkeys.txt" },
             { "FBW_A380", "FBW_A380_Hotkeys.txt" },
             { "FENIX_A320CEO", "Fenix_A320_Hotkeys.txt" },
-            { "PMDG_777", "PMDG_777_Hotkeys.txt" }
+            { "PMDG_777", "PMDG_777_Hotkeys.txt" },
+            { "PMDG_737", "PMDG_737_Hotkeys.txt" }
         };
 
         // Determine which file to load
