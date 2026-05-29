@@ -99,13 +99,56 @@
     return clean(s);
   };
 
+  // Prettify a router href into a label: "/pinned-charts" -> "Pinned Charts".
+  A.prettifyHref = function (href) {
+    href = clean(href || "").replace(/^#/, "").replace(/^\//, "");
+    if (!href) return "";
+    var seg = href.split("/").pop().replace(/[-_]/g, " ");
+    return seg.replace(/\b\w/g, function (c) { return c.toUpperCase(); });
+  };
+
+  // Nearest preceding heading text (section context) for an element. The flyPad
+  // groups controls under <h1>-<h6> section headers; an unlabeled / generic
+  // control borrows that heading so the user knows what it belongs to.
+  A.nearestHeading = function (n) {
+    var p = n, guard = 0;
+    while (p && guard < 80) {
+      guard++;
+      var prev = p.previousElementSibling;
+      while (prev) {
+        if (/^h[1-6]$/i.test(prev.tagName)) { var t = clean(prev.textContent); if (t) return t; }
+        if (prev.querySelector) { var h = prev.querySelector("h1,h2,h3,h4,h5,h6"); if (h) { var t2 = clean(h.textContent); if (t2) return t2; } }
+        prev = prev.previousElementSibling;
+      }
+      p = p.parentElement;
+    }
+    return "";
+  };
+
+  // A label good enough for a screen reader. The flyPad behaves like an app:
+  // many controls have no text (icon nav-rail links) or a generic label
+  // ("Go to Page"). Derive something meaningful from aria/title, then the
+  // element's own text, then the router href, then the section heading.
   A.labelFor = function (n) {
-    var aria = n.getAttribute && (n.getAttribute("aria-label") || n.getAttribute("title"));
-    aria = clean(aria || "");
-    if (aria) return aria;
-    var own = A.directText(n);
-    if (own) return own;
-    return clean(n.textContent);
+    var base = clean((n.getAttribute && (n.getAttribute("aria-label") || n.getAttribute("title"))) || "");
+    if (!base) base = A.directText(n);
+    if (!base) base = clean(n.textContent);
+
+    var lower = base.toLowerCase();
+    var generic = (base === "" || lower === "go to page" || lower === "go to" || lower === "open");
+    if (!generic) return base;
+
+    var href = (n.getAttribute && n.getAttribute("href")) || "";
+    var heading = A.nearestHeading(n);
+    if (base === "") {
+      if (href) return A.prettifyHref(href);   // icon nav-rail link -> "Dashboard" etc.
+      if (heading) return heading;
+      return "";
+    }
+    // Generic ("Go to Page"): qualify with the section, else the href target.
+    if (heading) return heading + ": " + base;
+    if (href) return base + " (" + A.prettifyHref(href) + ")";
+    return base;
   };
 
   A.valueOf = function (kind, n) {

@@ -73,19 +73,25 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 Type = SimVarType.LVar,
                 UpdateFrequency = UpdateFrequency.OnRequest,
                 ValueDescriptions = vd,
-                RenderAsButton = button,
+                // Every writable L:var is a multi-state value, so render it as a
+                // combo box (NOT a button). A button only writes one value and a
+                // second press does nothing; a combo lets the user pick either
+                // state and writes whatever they choose. Real momentary actions
+                // with no readable state are the K-event Evt() entries, which the
+                // framework renders as buttons because their Type is Event.
+                RenderAsButton = false,
                 ReverseDisplayOrder = reverse
             };
         }
         // Bool L:var: Off / On.
         void OnOff(string key, string display, bool button = false) =>
-            Sel(key, display, new Dictionary<double, string> { [0] = "Off", [1] = "On" }, button);
+            Sel(key, display, new Dictionary<double, string> { [0] = "Off", [1] = "On" });
         // Bool L:var: Off / Auto (FBW "_IS_AUTO" pushbuttons).
         void OffAuto(string key, string display, bool button = false) =>
-            Sel(key, display, new Dictionary<double, string> { [0] = "Off", [1] = "Auto" }, button);
-        // Momentary press L:var rendered as a button.
+            Sel(key, display, new Dictionary<double, string> { [0] = "Off", [1] = "Auto" });
+        // Latching/momentary PB L:var as a combo (Released / Pressed).
         void Press(string key, string display) =>
-            Sel(key, display, new Dictionary<double, string> { [0] = "Off", [1] = "Pressed" }, button: true);
+            Sel(key, display, new Dictionary<double, string> { [0] = "Released", [1] = "Pressed" });
         // Read-only numeric L:var readout.
         void Read(string key, string display, string units = "number")
         {
