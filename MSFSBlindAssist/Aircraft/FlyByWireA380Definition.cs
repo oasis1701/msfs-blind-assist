@@ -453,6 +453,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         ReadEnum("A32NX_SPOILERS_ARMED", "Ground Spoilers", new Dictionary<double, string> { [0] = "Disarmed", [1] = "Armed" });
         OnOff("A32NX_PARK_BRAKE_LEVER_POS", "Parking Brake");
 
+        // On-demand readout sources for global hotkeys (not paneled, not announced).
+        Stock("KOHLSMAN_HG", "KOHLSMAN SETTING HG", "Altimeter", "inHg");
+        Stock("GROSS_WEIGHT_KG", "TOTAL WEIGHT", "Gross Weight", "kilograms");
+
         // ---- ECAM Control Panel ----
         Sel("A32NX_ECAM_SD_CURRENT_PAGE_INDEX", "System Display Page",
             new Dictionary<double, string>
@@ -1586,6 +1590,18 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             announcer.AnnounceImmediate(value > 0.5 ? "Gear down" : "Gear up");
             return true;
         }
+        if (_reqBaro && varName == "KOHLSMAN_HG")
+        {
+            _reqBaro = false;
+            announcer.AnnounceImmediate($"Altimeter {value * 33.8639:0} hectopascals, {value:0.00} inches");
+            return true;
+        }
+        if (_reqGw && varName == "GROSS_WEIGHT_KG")
+        {
+            _reqGw = false;
+            announcer.AnnounceImmediate($"Gross weight {value:0} kilograms");
+            return true;
+        }
 
         // ---- FCU readouts: value + managed-indicator pairs ----
         // Each Read* hotkey requests the value var(s) and the managed indicator
@@ -1700,7 +1716,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     // ===================================================================
     private double? _pHdgVal, _pHdgMgd, _pSpdVal, _pSpdMgd, _pAltVal, _pAltMgd, _pVsVal, _pFpaVal, _pVsMode;
     private bool _reqHdg, _reqSpd, _reqAlt, _reqVs;
-    private bool _reqFlaps, _reqGear;
+    private bool _reqFlaps, _reqGear, _reqBaro, _reqGw;
 
     public override bool HandleHotkeyAction(
         HotkeyAction action, SimConnectManager simConnect, ScreenReaderAnnouncer announcer,
@@ -1725,6 +1741,12 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 return true;
             case HotkeyAction.ReadGear:
                 if (simConnect.IsConnected) { _reqGear = true; simConnect.RequestVariable("A32NX_GEAR_HANDLE_POSITION", forceUpdate: true); }
+                return true;
+            case HotkeyAction.ReadAltimeter:
+                if (simConnect.IsConnected) { _reqBaro = true; simConnect.RequestVariable("KOHLSMAN_HG", forceUpdate: true); }
+                return true;
+            case HotkeyAction.ReadGrossWeightKg:
+                if (simConnect.IsConnected) { _reqGw = true; simConnect.RequestVariable("GROSS_WEIGHT_KG", forceUpdate: true); }
                 return true;
             case HotkeyAction.ReadHeading: RequestFCUHeadingWithStatus(simConnect); return true;
             case HotkeyAction.ReadSpeed: RequestFCUSpeedWithStatus(simConnect); return true;
