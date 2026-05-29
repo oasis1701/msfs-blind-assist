@@ -921,6 +921,15 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Sel("A380X_OVHD_EXTLT_STBY_COMPASS_ICE_IND_SWITCH_POS", "Standby Compass / Ice Light",
             new Dictionary<double, string> { [0] = "Off", [1] = "On" });
 
+        // GPWS / TAWS pushbuttons (ported from the A320; shared A32NX_ vars,
+        // verified live). The OFF buttons inhibit a function when pressed (1=Off).
+        var normOff = new Dictionary<double, string> { [0] = "Normal", [1] = "Off" };
+        Sel("A32NX_GPWS_SYS_OFF", "GPWS System", normOff);
+        Sel("A32NX_GPWS_GS_OFF", "GPWS Glideslope Mode", normOff);
+        Sel("A32NX_GPWS_FLAP_OFF", "GPWS Flap Mode", normOff);
+        Sel("A32NX_GPWS_TERR_OFF", "GPWS Terrain", normOff);
+        Sel("A32NX_GPWS_FLAPS3", "Landing Flap 3", new Dictionary<double, string> { [0] = "Off", [1] = "On" });
+
         // Ground / automation helpers (whole-aircraft state + pushback).
         Sel("A32NX_AIRCRAFT_PRESET_LOAD", "Load Aircraft Preset",
             new Dictionary<double, string> { [0] = "None", [1] = "Cold and Dark", [2] = "Powered", [3] = "Pushback", [4] = "Taxi", [5] = "Takeoff" });
@@ -1063,7 +1072,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 "ELEC", "APU", "Fuel", "Hydraulics", "Bleed Air", "Air Conditioning",
                 "Pressurization", "Ventilation", "Cargo Air", "Anti Ice", "Fire", "Oxygen",
                 "Calls", "Signs", "Wipers", "ADIRS", "Flight Control Computers", "Engine Start",
-                "Recorder and Misc", "Interior Lighting", "Exterior Lighting"
+                "Recorder and Misc", "GPWS", "Interior Lighting", "Exterior Lighting"
             },
             ["Glareshield"] = new List<string> { "FCU", "EFIS Control Panel", "Warnings", "OIT" },
             ["Instrument"] = new List<string> { "Gear", "Autobrake", "ISIS", "Source Switching" },
@@ -1309,6 +1318,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "A32NX_RAIN_REPELLENT_LEFT_ON", "A32NX_RAIN_REPELLENT_RIGHT_ON",
             "A32NX_OVHD_NSS_DATA_TO_AVNCS_TOGGLE", "A32NX_NSS_MASTER_OFF"
         });
+        p["GPWS"] = new List<string>
+        {
+            "A32NX_GPWS_SYS_OFF", "A32NX_GPWS_GS_OFF", "A32NX_GPWS_FLAP_OFF",
+            "A32NX_GPWS_TERR_OFF", "A32NX_GPWS_FLAPS3"
+        };
         p["Interior Lighting"].Add("A380X_OVHD_EXTLT_STBY_COMPASS_ICE_IND_SWITCH_POS");
         p["EFIS Control Panel"].AddRange(new[]
         {
