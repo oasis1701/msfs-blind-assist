@@ -471,7 +471,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // decodes the ARINC429 words itself). Registered on-request, add-if-absent
         // so existing defs (e.g. engine vars) are not clobbered. The window
         // (FBWA380SystemDisplayForm) is the single source of truth for the names.
-        foreach (var sdVar in Forms.FBWA380.FBWA380SystemDisplayForm.AllVariableNames())
+        var windowReadVars = Forms.FBWA380.FBWA380SystemDisplayForm.AllVariableNames()
+            .Concat(Forms.FBWA380.FBWA380NavDisplayForm.AllVariableNames());
+        foreach (var sdVar in windowReadVars)
         {
             if (vars.ContainsKey(sdVar)) continue;
             bool isStock = !sdVar.StartsWith("A32NX_") && !sdVar.StartsWith("A380X_") && !sdVar.StartsWith("FBW_");
@@ -1940,6 +1942,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             case HotkeyAction.ShowECAM:
                 hotkeyManager.ExitOutputHotkeyMode();
                 ShowSystemDisplayWindow(announcer, simConnect);
+                return true;
+            case HotkeyAction.ShowNavigationDisplay:
+                hotkeyManager.ExitOutputHotkeyMode();
+                new Forms.FBWA380.FBWA380NavDisplayForm(announcer, simConnect).Show();
                 return true;
             case HotkeyAction.ReadWaypointInfo:
                 RequestWaypointInfo(simConnect);
