@@ -348,21 +348,33 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Sel("A32NX_OVHD_INTLT_ANN", "Integral Lights",
             new Dictionary<double, string> { [0] = "Test", [1] = "Bright", [2] = "Dim" });
 
-        // ---- EXTERIOR LIGHTING (stock toggles + readbacks) ----
-        Evt("TOGGLE_BEACON_LIGHTS", "TOGGLE_BEACON_LIGHTS", "Beacon Toggle");
-        Evt("TOGGLE_NAV_LIGHTS", "TOGGLE_NAV_LIGHTS", "Navigation Toggle");
-        Evt("STROBES_TOGGLE", "STROBES_TOGGLE", "Strobe Toggle");
-        Evt("TOGGLE_WING_LIGHTS", "TOGGLE_WING_LIGHTS", "Wing Toggle");
-        Evt("TOGGLE_LOGO_LIGHTS", "TOGGLE_LOGO_LIGHTS", "Logo Toggle");
-        Evt("LANDING_LIGHTS_TOGGLE", "LANDING_LIGHTS_TOGGLE", "Landing Lights Toggle");
-        Evt("TOGGLE_TAXI_LIGHTS", "TOGGLE_TAXI_LIGHTS", "Taxi Lights Toggle");
-        Stock("LIGHT_BEACON", "LIGHT BEACON", "Beacon", "bool", onOff);
-        Stock("LIGHT_NAV", "LIGHT NAV", "Navigation Lights", "bool", onOff);
-        Stock("LIGHT_STROBE", "LIGHT STROBE", "Strobe", "bool", onOff);
-        Stock("LIGHT_WING", "LIGHT WING", "Wing Lights", "bool", onOff);
-        Stock("LIGHT_LOGO", "LIGHT LOGO", "Logo Lights", "bool", onOff);
-        Stock("LIGHT_TAXI", "LIGHT TAXI:2", "Taxi Lights", "bool", onOff);
-        Stock("LIGHT_LANDING", "LIGHT LANDING", "Landing Lights", "bool", onOff);
+        // ---- EXTERIOR LIGHTING ----
+        // On/Off COMBOS (not toggle buttons) backed by the stock *_LIGHTS_SET
+        // events. The combo's value is the stock LIGHT * simvar, monitored
+        // Continuous + announced so it reflects state and auto-announces changes
+        // (same as every other switch). Writing the combo is intercepted in
+        // HandleUIVariableSet, which fires the matching SET event with 0/1.
+        void Light(string key, string simvar, string display)
+        {
+            vars[key] = new SimVarDefinition
+            {
+                Name = simvar,
+                DisplayName = display,
+                Type = SimVarType.SimVar,
+                UpdateFrequency = UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                Units = "bool",
+                RenderAsButton = false,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            };
+        }
+        Light("LIGHT_BEACON", "LIGHT BEACON", "Beacon");
+        Light("LIGHT_STROBE", "LIGHT STROBE", "Strobe");
+        Light("LIGHT_NAV", "LIGHT NAV", "Navigation Lights");
+        Light("LIGHT_WING", "LIGHT WING", "Wing Lights");
+        Light("LIGHT_LOGO", "LIGHT LOGO", "Logo Lights");
+        Light("LIGHT_LANDING", "LIGHT LANDING", "Landing Lights");
+        Light("LIGHT_TAXI", "LIGHT TAXI:2", "Taxi Lights");
 
         // ============================ GLARESHIELD ============================
 
@@ -435,7 +447,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 new Dictionary<double, string> { [0] = "Off", [1] = "On", [2] = "Starting", [3] = "Restarting", [4] = "Shutting Down" });
 
         // ---- Flaps / Speedbrake / Trim / Park brake ----
-        ReadEnum("A32NX_FLAPS_HANDLE_INDEX", "Flap Lever",
+        ReadEnum("A32NX_FLAPS_HANDLE_INDEX", "Flaps",
             new Dictionary<double, string> { [0] = "Up", [1] = "1", [2] = "2", [3] = "3", [4] = "Full" });
         Read("A32NX_SPOILERS_HANDLE_POSITION", "Speed Brake Handle");
         ReadEnum("A32NX_SPOILERS_ARMED", "Ground Spoilers", new Dictionary<double, string> { [0] = "Disarmed", [1] = "Armed" });
@@ -1127,8 +1139,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         };
         p["Exterior Lighting"] = new List<string>
         {
-            "TOGGLE_BEACON_LIGHTS", "TOGGLE_NAV_LIGHTS", "STROBES_TOGGLE", "TOGGLE_WING_LIGHTS",
-            "TOGGLE_LOGO_LIGHTS", "LANDING_LIGHTS_TOGGLE", "TOGGLE_TAXI_LIGHTS"
+            "LIGHT_BEACON", "LIGHT_STROBE", "LIGHT_NAV", "LIGHT_WING", "LIGHT_LOGO",
+            "LIGHT_LANDING", "LIGHT_TAXI"
         };
 
         p["Warnings"] = new List<string>
@@ -1393,10 +1405,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         {
             "A32NX_FLAPS_HANDLE_INDEX", "A32NX_SPOILERS_HANDLE_POSITION", "A32NX_SPOILERS_ARMED"
         };
-        d["Exterior Lighting"] = new List<string>
-        {
-            "LIGHT_BEACON", "LIGHT_NAV", "LIGHT_STROBE", "LIGHT_WING", "LIGHT_LOGO", "LIGHT_TAXI", "LIGHT_LANDING"
-        };
+        // Exterior lights are now On/Off combos in the panel itself (auto-announced),
+        // so they are NOT duplicated as read-only display variables here.
         d["RMP"] = new List<string>
         {
             "FBW_RMP_FREQUENCY_ACTIVE_1", "FBW_RMP_FREQUENCY_STANDBY_1",
@@ -1625,9 +1635,29 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     /// Engine-mode selector fans the chosen position (0=Crank, 1=Norm,
     /// 2=Ignition/Start) out to all four engines via TURBINE_IGNITION_SWITCH_SET{N}.
     /// </summary>
+    // Exterior-light On/Off combos -> the stock SET event fired with 0/1. The
+    // combo's value comes from the matching LIGHT * simvar (Continuous +
+    // announced), so it reflects state and auto-announces; this only handles the
+    // write side.
+    private static readonly Dictionary<string, string> _extLightSetEvents = new Dictionary<string, string>
+    {
+        ["LIGHT_BEACON"] = "BEACON_LIGHTS_SET",
+        ["LIGHT_STROBE"] = "STROBES_SET",
+        ["LIGHT_NAV"] = "NAV_LIGHTS_SET",
+        ["LIGHT_WING"] = "WING_LIGHTS_SET",
+        ["LIGHT_LOGO"] = "LOGO_LIGHTS_SET",
+        ["LIGHT_LANDING"] = "LANDING_LIGHTS_SET",
+        ["LIGHT_TAXI"] = "TAXI_LIGHTS_SET"
+    };
+
     public override bool HandleUIVariableSet(string varKey, double value, SimVarDefinition varDef,
         SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
     {
+        if (_extLightSetEvents.TryGetValue(varKey, out var lightEvent))
+        {
+            simConnect.SendEvent(lightEvent, (uint)Math.Round(value));
+            return true;
+        }
         if (varKey == "ENGINE_MODE_SELECTOR")
         {
             uint mode = (uint)Math.Round(value);
