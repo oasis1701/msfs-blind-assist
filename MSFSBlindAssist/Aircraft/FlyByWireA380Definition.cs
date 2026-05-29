@@ -540,6 +540,42 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Read("A380X_EFIS_L_BARO_PRESELECTED", "Capt Preselected QNH");
         Read("A380X_EFIS_R_BARO_PRESELECTED", "F/O Preselected QNH");
 
+        // ---- EFIS-CP baro set (best-effort; spelling unconfirmed on dev build) ----
+        Evt("A380X_EFIS_CP_BARO_PUSH_1", "H:A380X_EFIS_CP_BARO_PUSH_1", "Capt Baro Push (STD)");
+        Evt("A380X_EFIS_CP_BARO_PULL_1", "H:A380X_EFIS_CP_BARO_PULL_1", "Capt Baro Pull (QNH)");
+        Evt("A380X_EFIS_CP_BARO_PUSH_2", "H:A380X_EFIS_CP_BARO_PUSH_2", "F/O Baro Push (STD)");
+        Evt("A380X_EFIS_CP_BARO_PULL_2", "H:A380X_EFIS_CP_BARO_PULL_2", "F/O Baro Pull (QNH)");
+
+        // ============================ RADIOS (RMP) ============================
+        // The A380 RMPs manage the radios on-screen, but the aircraft sits on
+        // standard MSFS COM radios — the stock COM events/SimVars (as used by
+        // the A320 RMP panel) drive and read them. Standby is the editable box;
+        // swap moves it to active.
+        for (int n = 1; n <= 3; n++)
+        {
+            vars[$"COM_STANDBY_FREQUENCY_SET:{n}"] = new SimVarDefinition
+            {
+                Name = "COM_STANDBY_FREQUENCY_SET", DisplayName = $"VHF {n} Standby (set)",
+                Type = SimVarType.Event, EventParam = (uint)n
+            };
+            Evt($"COM{n}_RADIO_SWAP", $"COM{n}_RADIO_SWAP", $"VHF {n} Swap");
+            Stock($"COM_ACTIVE_FREQUENCY:{n}", $"COM ACTIVE FREQUENCY:{n}", $"VHF {n} Active", "MHz");
+            Stock($"COM_STANDBY_FREQUENCY:{n}", $"COM STANDBY FREQUENCY:{n}", $"VHF {n} Standby", "MHz");
+        }
+
+        // ============================ TRANSPONDER / ATC ============================
+        Stock("XPNDR_CODE", "TRANSPONDER CODE:1", "Squawk Code", "number");
+        Evt("XPNDR_SET", "XPNDR_SET", "Set Squawk (BCD)");
+        ReadEnum("A32NX_TRANSPONDER_MODE", "Transponder Mode",
+            new Dictionary<double, string> { [0] = "Standby", [1] = "Auto", [2] = "On" });
+        Sel("A32NX_SWITCH_ATC_ALT", "ATC Altitude Reporting",
+            new Dictionary<double, string> { [0] = "Off", [1] = "On" });
+
+        // ============================ MINIMUMS ============================
+        // FMS-set decision minimums (best-effort; var reused from A32NX FM).
+        Read("A32NX_FM1_MINIMUM_DESCENT_ALTITUDE", "Baro Minimum", "feet");
+        Read("A32NX_FM1_DECISION_HEIGHT", "Radio Minimum (DH)", "feet");
+
         // ---- ECAM upper (E/WD) memo + warning lines — live monitoring ----
         // The A380X publishes 10 lines per side as numeric message CODES
         // (uppercase EWD, vs the A320's lowercase Ewd / 7 lines). They are
@@ -584,9 +620,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             ["Pedestal"] = new List<string>
             {
                 "Engines", "Flaps and Brakes", "ECAM Control Panel", "Weather Radar",
-                "Transponder", "RMP", "Cockpit Door"
+                "Transponder", "Radios", "RMP", "Cockpit Door"
             },
-            ["Displays"] = new List<string> { "Status" }
+            ["Displays"] = new List<string> { "Status", "Minimums" }
         };
     }
 
@@ -729,7 +765,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "A380X_EFIS_R_ARPT_BUTTON_IS_ON", "A380X_EFIS_R_TRAF_BUTTON_IS_ON",
             "A380X_EFIS_R_ND_MODE", "A380X_EFIS_R_ND_RANGE",
             "A380X_EFIS_R_NAVAID_1_BUTTON_IS_ON", "A380X_EFIS_R_NAVAID_2_BUTTON_IS_ON",
-            "TOGGLE_FLIGHT_DIRECTOR", "XMLVAR_Baro1_Mode", "XMLVAR_Baro2_Mode"
+            "TOGGLE_FLIGHT_DIRECTOR", "XMLVAR_Baro1_Mode", "XMLVAR_Baro2_Mode",
+            "A380X_EFIS_CP_BARO_PUSH_1", "A380X_EFIS_CP_BARO_PULL_1",
+            "A380X_EFIS_CP_BARO_PUSH_2", "A380X_EFIS_CP_BARO_PULL_2"
         };
         p["FCU"] = new List<string>
         {
@@ -772,11 +810,21 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         {
             "A32NX_SWITCH_RADAR_PWS_Position", "A32NX_RADAR_MULTISCAN_AUTO", "A32NX_RADAR_GCS_AUTO"
         };
-        p["Transponder"] = new List<string> { "XPNDR_IDENT_ON" };
+        p["Transponder"] = new List<string>
+        {
+            "XPNDR_SET", "XPNDR_IDENT_ON", "A32NX_TRANSPONDER_MODE", "A32NX_SWITCH_ATC_ALT"
+        };
+        p["Radios"] = new List<string>
+        {
+            "COM_STANDBY_FREQUENCY_SET:1", "COM1_RADIO_SWAP",
+            "COM_STANDBY_FREQUENCY_SET:2", "COM2_RADIO_SWAP",
+            "COM_STANDBY_FREQUENCY_SET:3", "COM3_RADIO_SWAP"
+        };
         p["RMP"] = new List<string>
         {
             "A380X_RMP_1_STATE", "A380X_RMP_2_STATE", "A380X_RMP_3_STATE"
         };
+        p["Minimums"] = new List<string>();
         p["Cockpit Door"] = new List<string> { "A32NX_COCKPIT_DOOR_LOCKED", "A32NX_CABIN_READY" };
 
         p["Status"] = new List<string>
@@ -857,6 +905,17 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             {
                 "A32NX_FCU_LEFT_EIS_BARO_HPA", "A380X_EFIS_L_BARO_PRESELECTED",
                 "A32NX_FCU_RIGHT_EIS_BARO_HPA", "A380X_EFIS_R_BARO_PRESELECTED"
+            },
+            ["Radios"] = new List<string>
+            {
+                "COM_ACTIVE_FREQUENCY:1", "COM_STANDBY_FREQUENCY:1",
+                "COM_ACTIVE_FREQUENCY:2", "COM_STANDBY_FREQUENCY:2",
+                "COM_ACTIVE_FREQUENCY:3", "COM_STANDBY_FREQUENCY:3"
+            },
+            ["Transponder"] = new List<string> { "XPNDR_CODE" },
+            ["Minimums"] = new List<string>
+            {
+                "A32NX_FM1_MINIMUM_DESCENT_ALTITUDE", "A32NX_FM1_DECISION_HEIGHT"
             }
         };
     }
