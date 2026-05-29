@@ -1944,8 +1944,21 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 ShowSystemDisplayWindow(announcer, simConnect);
                 return true;
             case HotkeyAction.ShowNavigationDisplay:
+            case HotkeyAction.ReadDisplayND:
                 hotkeyManager.ExitOutputHotkeyMode();
                 new Forms.FBWA380.FBWA380NavDisplayForm(announcer, simConnect).Show();
+                return true;
+            // The A320/PMDG "read display" hotkeys map onto the A380's readout
+            // windows (same data, screen-reader friendly).
+            case HotkeyAction.ReadDisplayPFD:
+                hotkeyManager.ExitOutputHotkeyMode();
+                ShowPFDWindow(announcer, simConnect);
+                return true;
+            case HotkeyAction.ReadDisplayUpperECAM:
+            case HotkeyAction.ReadDisplayLowerECAM:
+            case HotkeyAction.ReadFuelInfo:
+                hotkeyManager.ExitOutputHotkeyMode();
+                ShowSystemDisplayWindow(announcer, simConnect);
                 return true;
             case HotkeyAction.ReadWaypointInfo:
                 RequestWaypointInfo(simConnect);
