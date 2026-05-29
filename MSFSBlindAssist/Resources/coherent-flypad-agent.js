@@ -323,7 +323,12 @@
       var h = root.querySelector("h1, h2");
       if (h) head = clean(h.textContent);
     } catch (e2) {}
-    if (base && head && head.toUpperCase() !== base.toUpperCase()) return base + ": " + head;
+    // Don't fold a transient notice/warning heading into the page name (e.g. a
+    // persistent "Checklist Reset Warning" toast) — it isn't the page title and
+    // made every page read as "X: Checklist Reset Warning". Real sub-page titles
+    // (e.g. "3rd Party Options") still get appended.
+    var isNotice = /WARNING|RESET|CAUTION|NOTICE|CONFIRM|ARE YOU SURE/i.test(head);
+    if (base && head && !isNotice && head.toUpperCase() !== base.toUpperCase()) return base + ": " + head;
     if (base) return base;
     if (head) return head;
     return clean(document.title || "");
