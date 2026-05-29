@@ -1918,6 +1918,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 hotkeyManager.ExitOutputHotkeyMode();
                 ShowPFDWindow(announcer, simConnect);
                 return true;
+            case HotkeyAction.ReadWaypointInfo:
+                RequestWaypointInfo(simConnect);
+                return true;
             case HotkeyAction.ReadAltimeter:
                 if (simConnect.IsConnected) { _reqBaro = true; simConnect.RequestVariable("KOHLSMAN_HG", forceUpdate: true); }
                 return true;
@@ -1944,6 +1947,37 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     {
         var dialog = new Forms.A32NX.PFDForm(announcer, simConnect) { CurrentAircraft = this };
         dialog.Show();
+    }
+
+    // TO waypoint readout (ident / distance / bearing). The A380X publishes the
+    // same A32NX_EFIS_L_TO_WPT_* vars (verified live); the shared SimConnectManager
+    // request-370 handler unpacks the ident and announces "WPT, X NM, Y degrees".
+    private void RequestWaypointInfo(SimConnectManager simConnectMgr)
+    {
+        var simConnect = simConnectMgr.SimConnectInstance;
+        if (!simConnectMgr.IsConnected || simConnect == null) return;
+        try
+        {
+            var tempDefId = (SimConnectManager.DATA_DEFINITIONS)370;
+            simConnect.ClearDataDefinition(tempDefId);
+            simConnect.AddToDataDefinition(tempDefId, "L:A32NX_EFIS_L_TO_WPT_IDENT_0", "number",
+                Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
+            simConnect.AddToDataDefinition(tempDefId, "L:A32NX_EFIS_L_TO_WPT_IDENT_1", "number",
+                Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
+            simConnect.AddToDataDefinition(tempDefId, "L:A32NX_EFIS_L_TO_WPT_DISTANCE", "number",
+                Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
+            simConnect.AddToDataDefinition(tempDefId, "L:A32NX_EFIS_L_TO_WPT_BEARING", "radians",
+                Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
+            simConnect.RegisterDataDefineStruct<SimConnectManager.WaypointInfo>(tempDefId);
+            simConnect.RequestDataOnSimObject((SimConnectManager.DATA_REQUESTS)370,
+                tempDefId, Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_OBJECT_ID_USER,
+                Microsoft.FlightSimulator.SimConnect.SIMCONNECT_PERIOD.ONCE,
+                Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error requesting A380 waypoint info: {ex.Message}");
+        }
     }
 
     private bool ShowFCUHeadingDialog(SimConnectManager simConnect, ScreenReaderAnnouncer announcer, System.Windows.Forms.Form parentForm)
