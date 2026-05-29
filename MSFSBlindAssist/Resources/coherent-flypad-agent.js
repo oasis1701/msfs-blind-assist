@@ -301,6 +301,7 @@
   // the true current page. Using the first <h1> was wrong — it caught modal/toast
   // headings (e.g. "Checklist Reset Warning") and reported the wrong page.
   A.pageLabel = function (root) {
+    var base = "";
     try {
       var links = root.querySelectorAll("a[href]");
       for (var i = 0; i < links.length; i++) {
@@ -308,17 +309,23 @@
         if (href.charAt(0) !== "/") continue;
         var toks = A.cls(links[i]).split(/\s+/);
         for (var t = 0; t < toks.length; t++) {
-          if (toks[t] === "bg-theme-accent") {
-            var p = A.prettifyHref(href);
-            if (p) return p;
-          }
+          if (toks[t] === "bg-theme-accent") { base = A.prettifyHref(href); break; }
         }
+        if (base) break;
       }
     } catch (e) {}
+    // Append the content's own heading when it adds detail — this is how a
+    // settings SUB-page (e.g. "3rd Party Options") or an open modal (e.g.
+    // "Checklist Reset Warning") becomes visible, so navigating into a sub-page
+    // announces a changed label instead of staying on the nav-rail section name.
+    var head = "";
     try {
-      var h = root.querySelector("h1");
-      if (h) { var tt = clean(h.textContent); if (tt) return tt; }
+      var h = root.querySelector("h1, h2");
+      if (h) head = clean(h.textContent);
     } catch (e2) {}
+    if (base && head && head.toUpperCase() !== base.toUpperCase()) return base + ": " + head;
+    if (base) return base;
+    if (head) return head;
     return clean(document.title || "");
   };
 

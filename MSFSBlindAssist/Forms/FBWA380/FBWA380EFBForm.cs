@@ -402,8 +402,21 @@ public class FBWA380EFBForm : Form
             };
             int idx = el.Index;
             btn.Click += (_, _) =>
+            {
                 _bridgeServer.EnqueueCommand("click_display_element",
                     new Dictionary<string, string> { ["index"] = idx.ToString() });
+                // flyPad nav (links/buttons) changes the page; force a fresh scrape
+                // shortly after so the new content + page label appear promptly
+                // (and the page-change announcement fires) instead of waiting for
+                // the next routine poll — that lag read as "clicking did nothing".
+                var t = new System.Windows.Forms.Timer { Interval = 450 };
+                t.Tick += (_, _) =>
+                {
+                    t.Stop(); t.Dispose();
+                    _bridgeServer.EnqueueCommand("get_display_elements");
+                };
+                t.Start();
+            };
             return btn;
         }
 
