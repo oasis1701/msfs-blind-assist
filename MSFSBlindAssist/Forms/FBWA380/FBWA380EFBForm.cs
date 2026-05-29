@@ -41,7 +41,7 @@ public class FBWA380EFBForm : Form
     private const string StateTypeElements = "fbwa380_efb_elements";
     private const string StateTypeConnected = "fbwa380_efb_connected";
 
-    private readonly EFBBridgeServer _bridgeServer;
+    private readonly IMcduBridge _bridgeServer;
     private readonly ScreenReaderAnnouncer _announcer;
 
     private Label _statusLabel = null!;
@@ -65,7 +65,7 @@ public class FBWA380EFBForm : Form
 
     private System.Windows.Forms.Timer _statusTimer = null!;
 
-    public FBWA380EFBForm(EFBBridgeServer bridgeServer, ScreenReaderAnnouncer announcer)
+    public FBWA380EFBForm(IMcduBridge bridgeServer, ScreenReaderAnnouncer announcer)
     {
         _bridgeServer = bridgeServer;
         _announcer = announcer;
@@ -216,11 +216,11 @@ public class FBWA380EFBForm : Form
         bool reallyConnected = _bridgeConnected && _bridgeServer.IsBridgeConnected;
         string desired;
         if (reallyConnected && _initialPushReceived)
-            desired = $"EFB bridge: connected ({_elements.Count} elements)";
+            desired = $"flyPad connected ({_elements.Count} elements)";
         else if (reallyConnected)
-            desired = "EFB bridge: connected — waiting for flyPad content (power on the tablet)…";
+            desired = "flyPad connected — waiting for content (power on the tablet)…";
         else
-            desired = "EFB bridge: not connected — switch aircraft to FBW A380X, accept the install dialog, and restart MSFS.";
+            desired = "flyPad not connected. Make sure MSFS is running with Developer Mode on, the A380X is loaded, and the flyPad tablet is powered up.";
         if (_statusLabel.Text != desired) _statusLabel.Text = desired;
     }
 

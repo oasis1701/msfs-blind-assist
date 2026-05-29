@@ -1,0 +1,472 @@
+// coherent-a380-agent.js
+//
+// Persistent in-page agent for the FlyByWire A380X MFD, installed via the
+// Coherent GT debugger's Runtime.evaluate (NO injection, NO Community-folder
+// patching). Runs inside the live MFD view's own JS context — so `SimVar`,
+// `Coherent` and the MFD DOM are all directly reachable.
+//
+// CoherentDebuggerClient.cs sends this whole file once per connection to
+// define window.__MSFSBA_A380. Thereafter it calls the small entry points:
+//
+//   __MSFSBA_A380.scrape(mcduIndex)            -> JSON string (see below)
+//   __MSFSBA_A380.setMcdu(n)                   -> "" (1=Capt, 2=FO)
+//   __MSFSBA_A380.clickElement(index)          -> "ok"|"missing"
+//   __MSFSBA_A380.sendToField(index, text)     -> "ok"|"missing"
+//   __MSFSBA_A380.sendScratchpad(text)         -> "ok"
+//   __MSFSBA_A380.fireKey(key)                 -> "ok"     (KCCU key name)
+//   __MSFSBA_A380.ping()                       -> "MSFSBA_A380_OK"
+//
+// If the page reloads, window.__MSFSBA_A380 disappears; the client detects
+// the missing global (ping/scrape returns undefined) and re-installs.
+//
+// Target engine: Coherent GT (Chromium 49 era). ES5 ONLY — var, no arrow
+// funcs, no String.includes (use indexOf), top-level try/catch.
+
+(function () {
+  "use strict";
+  var A = {};
+
+  A.activeMcdu = 1;            // 1 = Captain (left), 2 = First Officer (right)
+  A.GRID_WIDTH = 36;
+  A.MAX_BODY_ROWS = 28;
+  A.ROW_Y_TOLERANCE_PX = 14;
+  A.KEY_FIRE_DELAY_MS = 50;
+
+  A.INTERACTIVE_SELECTOR = [
+    ".mfd-input-field-container", ".mfd-button", ".mfd-icon-button",
+    ".mfd-dropdown-outer", ".mfd-dropdown-menu-element", ".mfd-page-selector-outer"
+  ].join(",");
+
+  A.LEAF_SELECTOR = [
+    ".mfd-label", ".mfd-input-field-text-input", ".mfd-button", ".mfd-icon-button",
+    ".mfd-dropdown-inner", ".mfd-page-selector-label", ".mfd-dropdown-menu-element",
+    ".mfd-amber-error-message"
+  ].join(",");
+
+  // Maps the legacy A320-style page commands to A380 KCCU keys. null = the
+  // A380 has no equivalent fixed key (those live as on-screen tabs instead).
+  A.PAGE_TO_KCCU = {
+    page_init: "INIT", page_dir: "DIR", page_fpln: "FPLN", page_perf: "PERF",
+    page_radnav: "NAVAID", page_sec_fpln: "SECINDEX", page_atc: "ATCCOM",
+    page_data: null, page_fuel: null, page_menu: null,
+    key_next_page: "DOWN", key_prev_page: "UP", key_exec: "ENT"
+  };
+
+  A._mcduElements = [];
+
+  function clean(s) { return (s || "").replace(/\s+/g, " ").replace(/^\s+|\s+$/g, ""); }
+
+  A.isVisible = function (node) {
+    try {
+      var st = window.getComputedStyle(node);
+      if (st.display === "none" || st.visibility === "hidden") return false;
+      var r = node.getBoundingClientRect();
+      return r.width > 0 && r.height > 0;
+    } catch (e) { return true; }
+  };
+
+  A.findRoot = function (idx) {
+    var roots = { 1: null, 2: null };
+    var capt = document.getElementById("MFD_LEFT_PARENT_DIV");
+    var fo = document.getElementById("MFD_RIGHT_PARENT_DIV");
+    if (capt) roots[1] = capt.querySelector(".mfd-main");
+    if (fo) roots[2] = fo.querySelector(".mfd-main");
+    if (!roots[1] && !roots[2]) {
+      var all = document.querySelectorAll(".mfd-main");
+      if (all.length >= 1) roots[1] = all[0];
+      if (all.length >= 2) roots[2] = all[1];
+    }
+    return roots[idx] || roots[1] || roots[2];
+  };
+
+  A.activePageLabel = function (root) {
+    var bar = root.querySelector(".mfd-title-bar-container");
+    if (!bar) return "";
+    var spans = bar.querySelectorAll(".mfd-title-bar-text");
+    var parts = [];
+    for (var i = 0; i < spans.length; i++) {
+      if (!A.isVisible(spans[i])) continue;
+      var t = clean(spans[i].textContent);
+      if (t) parts.push(t);
+    }
+    return parts.join(" / ");
+  };
+
+  A.footerMessage = function (root) {
+    var footer = root.querySelector(".mfd-footer-message-area");
+    if (footer) { var t = clean(footer.textContent); if (t) return t; }
+    var amber = root.querySelector(".mfd-amber-error-message");
+    if (amber) return clean(amber.textContent);
+    return "";
+  };
+
+  A.classify = function (node) {
+    var c = node.classList;
+    if (c.contains("mfd-input-field-container")) return "input";
+    if (c.contains("mfd-button")) return "button";
+    if (c.contains("mfd-icon-button")) return "icon";
+    if (c.contains("mfd-dropdown-outer")) return "dropdown";
+    if (c.contains("mfd-dropdown-menu-element")) return "menu";
+    if (c.contains("mfd-page-selector-outer")) return "tab";
+    return "other";
+  };
+
+  A.readInputValue = function (node) {
+    var inner = node.querySelector(".mfd-input-field-text-input");
+    return inner ? clean(inner.textContent) : "";
+  };
+
+  A.elementLabel = function (node, kind) {
+    var text = "";
+    if (kind === "input") {
+      var inner = node.querySelector(".mfd-input-field-text-input");
+      if (inner) text = clean(inner.textContent);
+      var label = node.previousElementSibling;
+      if (label && label.classList && label.classList.contains("mfd-label")) {
+        var lbl = clean(label.textContent);
+        if (lbl) text = lbl + ": " + text;
+      }
+      return text || "(empty)";
+    }
+    if (kind === "button" || kind === "icon" || kind === "menu") {
+      var t = clean(node.textContent);
+      if (!t && node.getAttribute) t = clean(node.getAttribute("aria-label") || node.getAttribute("title") || "");
+      return t || "(unlabeled)";
+    }
+    if (kind === "dropdown") {
+      var di = node.querySelector(".mfd-dropdown-inner");
+      return clean(di ? di.textContent : node.textContent) || "(empty dropdown)";
+    }
+    if (kind === "tab") {
+      var t = node.querySelector(".mfd-page-selector-label");
+      return clean(t ? t.textContent : node.textContent) || "(tab)";
+    }
+    return "";
+  };
+
+  // Direct (own) text of a node — only its immediate text children, so a big
+  // container with text scattered through descendants returns "" (its leaves
+  // get reported individually instead).
+  A.directText = function (n) {
+    var s = "";
+    for (var c = 0; c < n.childNodes.length; c++) {
+      if (n.childNodes[c].nodeType === 3) s += n.childNodes[c].nodeValue;
+    }
+    return clean(s);
+  };
+
+  // True when the node is (or sits inside) an already-captured interactive
+  // control — used to avoid listing a button's inner text twice.
+  A.isInsideInteractive = function (n) {
+    var cur = n;
+    while (cur) {
+      if (cur.getAttribute && cur.getAttribute("data-fbwa380-mcdu-idx")) return true;
+      cur = cur.parentElement;
+    }
+    return false;
+  };
+
+  // Short label for an interactive control, ONE thing per line (no positional
+  // grid). Inputs show their current value (or "(empty)"); the field's text
+  // label, if any, is reported separately as its own static line above it.
+  A.lineText = function (n, kind) {
+    if (kind === "input") { var v = A.readInputValue(n); return v || "(empty)"; }
+    if (kind === "dropdown") {
+      var di = n.querySelector(".mfd-dropdown-inner");
+      return clean(di ? di.textContent : n.textContent) || "(choice)";
+    }
+    if (kind === "tab") {
+      var t = n.querySelector(".mfd-page-selector-label");
+      return clean(t ? t.textContent : n.textContent);
+    }
+    var bt = clean(n.textContent);
+    if (!bt && n.getAttribute) bt = clean(n.getAttribute("aria-label") || n.getAttribute("title") || "");
+    return bt;
+  };
+
+  // Builds the flat, screen-reader-friendly line list for the current page:
+  // every visible interactive control PLUS every visible static-text leaf,
+  // one per line, sorted top-to-bottom / left-to-right. Interactive lines get
+  // a stable 1-based idx (also stamped on the DOM node as data-fbwa380-mcdu-idx
+  // so clicks/entries can find them); static lines get idx 0. Empty lines are
+  // dropped. The scratchpad/footer message is appended as the last line.
+  A.enumerateLines = function (root) {
+    var stale = root.querySelectorAll("[data-fbwa380-mcdu-idx]");
+    for (var s = 0; s < stale.length; s++) stale[s].removeAttribute("data-fbwa380-mcdu-idx");
+
+    var page = root.querySelector(".mfd-navigator-container") || root;
+    var pageRect = page.getBoundingClientRect();
+    var items = [];
+    var idx = 1;
+
+    // 1) interactive controls (innermost only — a wrapper that contains
+    //    another control is skipped so two controls never merge onto a line).
+    var nodes = page.querySelectorAll(A.INTERACTIVE_SELECTOR);
+    for (var i = 0; i < nodes.length && idx <= 400; i++) {
+      var n = nodes[i];
+      if (!A.isVisible(n)) continue;
+      if (n.querySelector(A.INTERACTIVE_SELECTOR)) continue;
+      var kind = A.classify(n);
+      var label = A.lineText(n, kind);
+      // Drop empty non-input controls (noise). Empty inputs stay as "(empty)".
+      if (kind !== "input" && label.length === 0) continue;
+      n.setAttribute("data-fbwa380-mcdu-idx", String(idx));
+      var r = n.getBoundingClientRect();
+      items.push({
+        top: r.top - pageRect.top, left: r.left - pageRect.left,
+        idx: idx, kind: kind, text: label,
+        value: kind === "input" ? A.readInputValue(n) : "",
+        disabled: n.classList.contains("disabled")
+      });
+      idx++;
+    }
+
+    // 2) static-text leaves not inside an interactive control above.
+    var all = page.getElementsByTagName("*");
+    for (var j = 0; j < all.length; j++) {
+      var t = all[j];
+      if (!A.isVisible(t)) continue;
+      if (A.isInsideInteractive(t)) continue;
+      var own = A.directText(t);
+      if (!own) continue;
+      var tr = t.getBoundingClientRect();
+      items.push({
+        top: tr.top - pageRect.top, left: tr.left - pageRect.left,
+        idx: 0, kind: "text", text: own, value: "", disabled: false
+      });
+    }
+
+    // reading order: rows top→bottom (rounded to a tolerance), then left→right.
+    items.sort(function (a, b) {
+      var dy = Math.round(a.top / A.ROW_Y_TOLERANCE_PX) - Math.round(b.top / A.ROW_Y_TOLERANCE_PX);
+      return dy || (a.left - b.left);
+    });
+
+    items = A.dedupeLines(items);
+
+    A._mcduElements = items;
+    return items;
+  };
+
+  // Removes repeated text so the same thing isn't read twice. Two cases:
+  //  (a) a stray STATIC label that duplicates an interactive control on the
+  //      same (or an adjacent) row — e.g. a "FMS 1" text node sitting beside
+  //      the "FMS 1" source dropdown, or the duplicate seen on ATC COM. The
+  //      interactive control is the one worth keeping (it's actionable), so
+  //      the static copy is dropped.
+  //  (b) consecutive identical lines of any kind — collapsed to one, keeping
+  //      the interactive line if one of the pair is interactive.
+  // Operates on the already-sorted (reading-order) list.
+  A.dedupeLines = function (items) {
+    function rowBucket(it) { return Math.round(it.top / A.ROW_Y_TOLERANCE_PX); }
+    function norm(s) { return clean(s).toUpperCase(); }
+
+    // index interactive labels by row bucket
+    var interactiveByRow = {};
+    for (var a = 0; a < items.length; a++) {
+      if (items[a].idx > 0) {
+        var rb = rowBucket(items[a]);
+        var key = norm(items[a].text);
+        if (!key) continue;
+        if (!interactiveByRow[rb]) interactiveByRow[rb] = {};
+        interactiveByRow[rb][key] = true;
+      }
+    }
+
+    var out = [];
+    for (var b = 0; b < items.length; b++) {
+      var it = items[b];
+
+      // (a) drop a static line that an interactive control already covers
+      //     on this or an immediately adjacent row.
+      if (it.idx === 0) {
+        var k = norm(it.text);
+        var here = rowBucket(it);
+        var isDup = false;
+        for (var d = -1; d <= 1; d++) {
+          var bucket = interactiveByRow[here + d];
+          if (bucket && bucket[k]) { isDup = true; break; }
+        }
+        if (isDup) continue;
+      }
+
+      // (b) collapse a run of identical text; prefer keeping the interactive one.
+      if (out.length > 0 && norm(out[out.length - 1].text) === norm(it.text)) {
+        var prev = out[out.length - 1];
+        if (prev.idx === 0 && it.idx > 0) out[out.length - 1] = it;
+        continue;
+      }
+
+      out.push(it);
+    }
+    return out;
+  };
+
+  // Finds a visible interactive element whose label matches `label` (and any
+  // of the `synonyms`) and clicks it. Used for page navigation by clicking the
+  // MFD's own on-screen buttons rather than guessing KCCU H-event names. If no
+  // match is found and `kccuKey` is given, falls back to firing that key.
+  // Navigate by clicking a page-selector menu item by its STABLE element id.
+  // The A380X MFD renders every dropdown menu item as
+  //   <span id="{CAPT|FO}_MFD_pageSelector{Tab}_{idx}" ...>
+  // with a click listener that calls uiService.navigateTo(uri) — and the click
+  // fires even while the dropdown is collapsed (display:none). This is the
+  // reliable navigation path (FlyByWire's own issue #9348 says the KCCU
+  // H-events are "practically unusable for external tools"). `prefix` is the
+  // tab (Active/Position/SecIndex/Data/…); the side (CAPT/FO) is taken from the
+  // active MCDU. If the id isn't present (e.g. a different system's header is
+  // mounted) and `kccuKey` is given, fall back to firing that KCCU key — which
+  // navigates cross-system for the keyed pages (PERF/INIT/NAVAID/…).
+  A.navigateById = function (prefix, index, kccuKey) {
+    try {
+      if (prefix && index >= 0) {
+        var side = A.activeMcdu === 1 ? "CAPT" : "FO";
+        var id = side + "_MFD_pageSelector" + prefix + "_" + index;
+        var el = document.getElementById(id);
+        if (el) { A.clickNode(el); return "ok"; }
+      }
+    } catch (e) {}
+    if (kccuKey) { A.fireKey(kccuKey); return "key"; }
+    return "missing";
+  };
+
+  A.navigate = function (label, kccuKey) {
+    try {
+      var root = A.findRoot(A.activeMcdu);
+      if (root) {
+        var want = String(label || "").toUpperCase().replace(/[\s.\-]/g, "");
+        var nodes = root.querySelectorAll(A.INTERACTIVE_SELECTOR);
+        for (var i = 0; i < nodes.length; i++) {
+          var n = nodes[i];
+          if (!A.isVisible(n)) continue;
+          if (n.querySelector(A.INTERACTIVE_SELECTOR)) continue;
+          var t = clean(n.textContent).toUpperCase().replace(/[\s.\-]/g, "");
+          if (t && (t === want || t.indexOf(want) >= 0)) { A.clickNode(n); return "ok"; }
+        }
+      }
+    } catch (e) {}
+    if (kccuKey) { A.fireKey(kccuKey); return "key"; }
+    return "missing";
+  };
+
+  // ---- public: read ------------------------------------------------------
+  A.scrape = function (mcduIndex) {
+    try {
+      if (mcduIndex === 1 || mcduIndex === 2) A.activeMcdu = mcduIndex;
+      var root = A.findRoot(A.activeMcdu);
+      if (!root) return JSON.stringify({ ok: false, error: "MFD root not found (powered up?)" });
+      var lines = A.enumerateLines(root);
+      return JSON.stringify({
+        ok: true, mcdu: A.activeMcdu,
+        title: A.activePageLabel(root), scratchpad: A.footerMessage(root),
+        elements: lines
+      });
+    } catch (e) {
+      return JSON.stringify({ ok: false, error: (e && e.message) ? e.message : String(e) });
+    }
+  };
+
+  // ---- KCCU input --------------------------------------------------------
+  A.ensureKccuKeyboardOn = function () {
+    try {
+      if (typeof SimVar !== "undefined" && typeof SimVar.SetSimVarValue === "function") {
+        SimVar.SetSimVarValue("L:A32NX_KCCU_" + (A.activeMcdu === 1 ? "L" : "R") + "_KBD_ON_OFF", "bool", 1);
+      }
+    } catch (e) {}
+  };
+
+  A.fireKey = function (key) {
+    try {
+      if (key === "CLR" || key === "DEL") key = "BACKSPACE";
+      else if (key === "SPACE") key = "SP";
+      var eventName = "A32NX_KCCU_" + (A.activeMcdu === 1 ? "L" : "R") + "_" + key;
+      if (typeof Coherent !== "undefined" && typeof Coherent.trigger === "function") Coherent.trigger("H:" + eventName);
+      if (typeof SimVar !== "undefined" && typeof SimVar.SetSimVarValue === "function") SimVar.SetSimVarValue("H:" + eventName, "number", 0);
+    } catch (e) {}
+    return "ok";
+  };
+
+  A.charToKey = function (c) {
+    if (c >= "A" && c <= "Z") return c;
+    if (c >= "a" && c <= "z") return c.toUpperCase();
+    if (c >= "0" && c <= "9") return c;
+    if (c === ".") return "DOT";
+    if (c === "/") return "SLASH";
+    if (c === "+" || c === "-") return "PLUSMINUS";
+    if (c === " ") return "SP";
+    return null;
+  };
+
+  A.clickNode = function (node) {
+    try {
+      if (typeof node.click === "function") node.click();
+      else node.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    } catch (e) {}
+  };
+
+  A.clickElement = function (index) {
+    var node = document.querySelector('[data-fbwa380-mcdu-idx="' + index + '"]');
+    if (!node) return "missing";
+    A.clickNode(node);
+    return "ok";
+  };
+
+  function fireQueue(queue) {
+    var step = 0;
+    function next() {
+      if (step >= queue.length) return;
+      A.fireKey(queue[step]); step++;
+      setTimeout(next, A.KEY_FIRE_DELAY_MS);
+    }
+    next();
+  }
+
+  A.sendScratchpad = function (text) {
+    if (!text) return "ok";
+    A.ensureKccuKeyboardOn();
+    var v = String(text).toUpperCase(), queue = [];
+    for (var j = 0; j < v.length; j++) { var k = A.charToKey(v.charAt(j)); if (k) queue.push(k); }
+    queue.push("ENT");
+    fireQueue(queue);
+    return "ok";
+  };
+
+  A.sendToField = function (index, newValue) {
+    var node = document.querySelector('[data-fbwa380-mcdu-idx="' + index + '"]');
+    if (!node) return "missing";
+    var info = null;
+    for (var i = 0; i < A._mcduElements.length; i++) {
+      if (A._mcduElements[i].idx === index) { info = A._mcduElements[i]; break; }
+    }
+    // Non-input (button/dropdown/tab/menu) — just click.
+    if (info && info.kind !== "input") { A.clickNode(node); return "ok"; }
+
+    A.ensureKccuKeyboardOn();
+    A.clickNode(node);
+    var existingLen = info ? (info.value ? info.value.length : 0) : A.readInputValue(node).length;
+    var queue = [];
+    for (var ii = 0; ii < existingLen; ii++) queue.push("BACKSPACE");
+    var v = String(newValue || "").toUpperCase();
+    for (var jj = 0; jj < v.length; jj++) { var kk = A.charToKey(v.charAt(jj)); if (kk) queue.push(kk); }
+    queue.push("ENT");
+    setTimeout(function () { fireQueue(queue); }, 100);
+    return "ok";
+  };
+
+  A.setMcdu = function (n) { if (n === 1 || n === 2) A.activeMcdu = n; return ""; };
+
+  // Maps a legacy page_/key_ command to its KCCU key and fires it.
+  A.pageCommand = function (command) {
+    if (Object.prototype.hasOwnProperty.call(A.PAGE_TO_KCCU, command)) {
+      var key = A.PAGE_TO_KCCU[command];
+      if (key) A.fireKey(key);
+      return "ok";
+    }
+    return "unknown";
+  };
+
+  A.ping = function () { return "MSFSBA_A380_OK"; };
+
+  window.__MSFSBA_A380 = A;
+  return "MSFSBA_A380_INSTALLED";
+})();

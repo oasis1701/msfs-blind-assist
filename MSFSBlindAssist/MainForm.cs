@@ -38,6 +38,14 @@ public partial class MainForm : Form
     private Forms.FBWA380.FBWA380MCDUForm? fbwA380MCDUForm;
     private Forms.FBWA380.FBWA380EFBForm? fbwA380EFBForm;
     private EFBBridgeServer? efbBridgeServer;
+    // No-injection A380X transport: reads/drives the MFD live through the
+    // MSFS Coherent GT debugger (127.0.0.1:19999). Created when the A380X
+    // loads; replaces the injection bridge for the MCDU.
+    private CoherentDebuggerClient? coherentClient;
+    // No-injection A380X flyPad transport: reads/drives the EFB live through the
+    // same Coherent GT debugger, resolved to the flyPad view ("- EFB" title).
+    // Replaces the injection bridge for the flyPad.
+    private CoherentEFBClient? coherentEFBClient;
     private TakeoffAssistManager takeoffAssistManager = null!;
     private HandFlyManager handFlyManager = null!;
     private VisualGuidanceManager visualGuidanceManager = null!;
@@ -174,13 +182,13 @@ public partial class MainForm : Form
             CheckAndOfferEFBModPackage();
             StartEFBBridgeServer();
         }
-        // The FBW A380 integration also uses the shared EFB bridge server
-        // (MCDU + flyPad both push state through it). The mod-package
-        // installer overlays patched mfd.html / efb.html in the Community
-        // folder that pull in fbw-a380-bridge.js at run time.
+        // The FBW A380X MCDU is read live through the Coherent GT debugger —
+        // no injection, no Community-folder patching. The flyPad EFB form
+        // still uses the shared bridge server until it moves to a served page.
         else if (currentAircraft?.AircraftCode == "FBW_A380")
         {
-            CheckAndOfferFBWA380ModPackage();
+            coherentClient = new CoherentDebuggerClient();
+            coherentClient.Start();
             StartEFBBridgeServer();
         }
 
@@ -2028,16 +2036,18 @@ public partial class MainForm : Form
     {
         hotkeyManager.ExitInputHotkeyMode();
 
-        if (efbBridgeServer == null || !efbBridgeServer.IsRunning)
+        // The A380X MCDU is read live through the Coherent debugger — no
+        // injection, no Community-folder patching. Spin the client up lazily.
+        if (coherentClient == null)
         {
-            announcer.Announce("EFB bridge server is not running.");
-            return;
+            coherentClient = new CoherentDebuggerClient();
+            coherentClient.Start();
         }
 
         if (fbwA380MCDUForm == null || fbwA380MCDUForm.IsDisposed)
         {
             fbwA380MCDUForm = new Forms.FBWA380.FBWA380MCDUForm(
-                efbBridgeServer, announcer,
+                coherentClient, announcer,
                 currentAircraft as Aircraft.FlyByWireA380Definition);
         }
         fbwA380MCDUForm.ShowForm();
@@ -2047,15 +2057,16 @@ public partial class MainForm : Form
     {
         hotkeyManager.ExitInputHotkeyMode();
 
-        if (efbBridgeServer == null || !efbBridgeServer.IsRunning)
+        // No-injection: drive the flyPad live through the Coherent GT debugger.
+        if (coherentEFBClient == null)
         {
-            announcer.Announce("EFB bridge server is not running.");
-            return;
+            coherentEFBClient = new CoherentEFBClient();
+            coherentEFBClient.Start();
         }
 
         if (fbwA380EFBForm == null || fbwA380EFBForm.IsDisposed)
         {
-            fbwA380EFBForm = new Forms.FBWA380.FBWA380EFBForm(efbBridgeServer, announcer);
+            fbwA380EFBForm = new Forms.FBWA380.FBWA380EFBForm(coherentEFBClient, announcer);
         }
         fbwA380EFBForm.ShowForm();
     }
@@ -3613,6 +3624,18 @@ public partial class MainForm : Form
             fbwA380EFBForm.Dispose();
             fbwA380EFBForm = null;
         }
+        // Tear down the Coherent debugger client on every swap; it is
+        // recreated below only when the new aircraft is the A380X.
+        if (coherentClient != null)
+        {
+            coherentClient.Dispose();
+            coherentClient = null;
+        }
+        if (coherentEFBClient != null)
+        {
+            coherentEFBClient.Dispose();
+            coherentEFBClient = null;
+        }
 
         // PMDG 777 data manager lifecycle
         if (newAircraft.AircraftCode == "PMDG_777" && simConnectManager.IsConnected)
@@ -3648,7 +3671,13 @@ public partial class MainForm : Form
         }
         else if (newAircraft.AircraftCode == "FBW_A380")
         {
-            CheckAndOfferFBWA380ModPackage();
+            // No injection / Community-folder patching for the A380X: the MCDU
+            // is read live through the Coherent GT debugger. Start the client
+            // now so it is connected by the time the user opens the MCDU.
+            coherentClient = new CoherentDebuggerClient();
+            coherentClient.Start();
+            // EFB form still uses the legacy bridge server until it moves to a
+            // served accessible page; keep it running for now.
             StartEFBBridgeServer();
         }
         else

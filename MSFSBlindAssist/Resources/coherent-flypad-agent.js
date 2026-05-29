@@ -1,0 +1,350 @@
+// coherent-flypad-agent.js
+//
+// Persistent in-page agent for the FlyByWire A380X flyPad EFB (flyPadOS 3),
+// installed via the Coherent GT debugger's Runtime.evaluate (NO injection, NO
+// Community-folder patching). Runs inside the live EFB view's own JS context,
+// so the React flyPad DOM is directly reachable.
+//
+// CoherentEFBClient.cs sends this whole file once per connection to define
+// window.__MSFSBA_FLYPAD. Thereafter it calls the small entry points:
+//
+//   __MSFSBA_FLYPAD.scrape()              -> JSON string (see below)
+//   __MSFSBA_FLYPAD.clickElement(index)   -> "ok"|"missing"
+//   __MSFSBA_FLYPAD.setValue(index, text) -> "ok"|"missing"
+//   __MSFSBA_FLYPAD.ping()                -> "MSFSBA_FLYPAD_OK"
+//
+// If the page reloads, window.__MSFSBA_FLYPAD disappears; the client detects
+// the missing global (ping/scrape returns undefined) and re-installs.
+//
+// The flyPad is a React app (react-router MemoryRouter): its controls are
+// mostly styled <div>s/<a>s, not native <input>s, so we classify by tag /
+// role / class. One thing per line, de-duplicated, in reading order.
+//
+// Target engine: Coherent GT (Chromium 49 era). ES5 ONLY — var, no arrow
+// funcs, no String.includes (use indexOf), top-level try/catch.
+
+(function () {
+  "use strict";
+  var A = {};
+
+  A.ROW_Y_TOLERANCE_PX = 14;
+  A._elements = [];
+
+  function clean(s) { return (s || "").replace(/\s+/g, " ").replace(/^\s+|\s+$/g, ""); }
+  function lower(s) { return (s || "").toString().toLowerCase(); }
+
+  A.cls = function (n) {
+    return (n.className && n.className.toString) ? n.className.toString() : "";
+  };
+
+  A.isVisible = function (n) {
+    try {
+      var st = window.getComputedStyle(n);
+      if (st.display === "none" || st.visibility === "hidden") return false;
+      var r = n.getBoundingClientRect();
+      return r.width > 0 && r.height > 0;
+    } catch (e) { return false; }
+  };
+
+  // The React flyPad mounts under MSFS_REACT_MOUNT (#EFB is an empty shell).
+  // Fall back to body if that node is empty.
+  A.findRoot = function () {
+    var root = document.getElementById("MSFS_REACT_MOUNT");
+    if (!root || root.querySelectorAll("*").length === 0) root = document.body;
+    return root;
+  };
+
+  // Returns one of: link, input, slider, checkbox, select, heading, toggle,
+  // tab, button, or null (not an element we surface as its own line).
+  A.classify = function (n) {
+    var c = lower(A.cls(n));
+    var role = lower(n.getAttribute && n.getAttribute("role") || "");
+    var tag = n.tagName.toLowerCase();
+    if (tag === "a") return "link";
+    if (tag === "input") {
+      var ty = lower(n.getAttribute("type") || "text");
+      if (ty === "range") return "slider";
+      if (ty === "checkbox" || ty === "radio") return "checkbox";
+      return "input";
+    }
+    if (tag === "select") return "select";
+    if (tag === "textarea") return "input";
+    if (/^h[1-6]$/.test(tag)) return "heading";
+    if (role === "slider" || c.indexOf("slider") >= 0) return "slider";
+    if (role === "checkbox" || role === "switch" ||
+        c.indexOf("toggle") >= 0 || c.indexOf("switch") >= 0 || c.indexOf("checkbox") >= 0) return "toggle";
+    if (role === "tab" || c.indexOf("tab-") >= 0 || c.indexOf("-tab") >= 0) return "tab";
+    if (role === "button" || c.indexOf("button") >= 0 || c.indexOf("btn") >= 0 || tag === "button") return "button";
+    if (n.getAttribute && n.getAttribute("contenteditable") === "true") return "input";
+    return null;
+  };
+
+  // The C# side maps "kind" to a native control. We collapse the rich classify
+  // set onto the four families the EFB form renders.
+  A.controlType = function (kind, n) {
+    if (kind === "input" || kind === "select" || kind === "slider") {
+      if (kind === "slider") return "text"; // editable numeric value
+      if (kind === "select") return "select";
+      return "text";
+    }
+    if (kind === "checkbox" || kind === "toggle") return "checkbox";
+    return ""; // button/link/heading/tab handled via tag/clickable
+  };
+
+  A.directText = function (n) {
+    var s = "";
+    for (var c = 0; c < n.childNodes.length; c++) {
+      if (n.childNodes[c].nodeType === 3) s += n.childNodes[c].nodeValue;
+    }
+    return clean(s);
+  };
+
+  A.labelFor = function (n) {
+    var aria = n.getAttribute && (n.getAttribute("aria-label") || n.getAttribute("title"));
+    aria = clean(aria || "");
+    if (aria) return aria;
+    var own = A.directText(n);
+    if (own) return own;
+    return clean(n.textContent);
+  };
+
+  A.valueOf = function (kind, n) {
+    if (kind === "slider") return clean(n.getAttribute("aria-valuenow") || n.value || "");
+    if (kind === "checkbox" || kind === "toggle") {
+      var ck = n.getAttribute && n.getAttribute("aria-checked");
+      if (ck !== null && ck !== undefined && ck !== "") return ck === "true" ? "true" : "false";
+      return n.checked ? "true" : "false";
+    }
+    if (kind === "input") {
+      if (typeof n.value === "string") return clean(n.value);
+      if (n.getAttribute && n.getAttribute("contenteditable") === "true") return clean(n.textContent);
+      return "";
+    }
+    if (kind === "select") { return typeof n.value === "string" ? clean(n.value) : ""; }
+    return "";
+  };
+
+  A.isClickable = function (kind) {
+    return kind === "link" || kind === "button" || kind === "tab";
+  };
+
+  // True when this node sits inside an already-stamped interactive control —
+  // avoids reporting a button's inner text as its own separate line.
+  A.isInsideStamped = function (n) {
+    var cur = n;
+    while (cur) {
+      if (cur.getAttribute && cur.getAttribute("data-fbwa380-efb-idx")) return true;
+      cur = cur.parentElement;
+    }
+    return false;
+  };
+
+  // Builds the flat, screen-reader-friendly element list for the current
+  // flyPad page: every visible interactive control PLUS visible headings/text,
+  // one per line, in reading order, de-duplicated. Interactive/clickable items
+  // get a stable index stamped on the node (data-fbwa380-efb-idx) so clicks and
+  // value sets can find them again.
+  A.enumerate = function (root) {
+    var stale = root.querySelectorAll("[data-fbwa380-efb-idx]");
+    for (var s = 0; s < stale.length; s++) stale[s].removeAttribute("data-fbwa380-efb-idx");
+
+    var rootRect = root.getBoundingClientRect();
+    var all = root.getElementsByTagName("*");
+    var items = [];
+    var idx = 1;
+
+    for (var i = 0; i < all.length && idx <= 400; i++) {
+      var n = all[i];
+      if (!A.isVisible(n)) continue;
+      var kind = A.classify(n);
+      if (!kind) continue;
+
+      var interactive = kind !== "heading";
+
+      // For interactive controls, skip wrappers that contain a more specific
+      // control (we want the innermost actionable node, one per line).
+      if (interactive && A.containsInteractive(n)) continue;
+      if (A.isInsideStamped(n)) continue;
+
+      var text = A.labelFor(n);
+      var ctype = A.controlType(kind, n);
+      var clickable = A.isClickable(kind);
+
+      // Drop empty, non-actionable noise. Inputs/checkboxes keep their slot
+      // (their value carries meaning even with no label).
+      if (!text && ctype !== "text" && ctype !== "select" && ctype !== "checkbox") continue;
+
+      var thisIdx = 0;
+      if (interactive) { thisIdx = idx; n.setAttribute("data-fbwa380-efb-idx", String(idx)); idx++; }
+
+      var r = n.getBoundingClientRect();
+      items.push({
+        top: r.top - rootRect.top, left: r.left - rootRect.left,
+        idx: thisIdx, kind: kind, tag: n.tagName.toLowerCase(),
+        role: lower(n.getAttribute && n.getAttribute("role") || ""),
+        text: text, value: A.valueOf(kind, n),
+        controlType: ctype, clickable: clickable
+      });
+    }
+
+    items.sort(function (a, b) {
+      var dy = Math.round(a.top / A.ROW_Y_TOLERANCE_PX) - Math.round(b.top / A.ROW_Y_TOLERANCE_PX);
+      return dy || (a.left - b.left);
+    });
+
+    items = A.dedupe(items);
+    A._elements = items;
+    return items;
+  };
+
+  // A node "contains an interactive control" if any descendant classifies as
+  // something other than a heading. Used to keep only innermost controls.
+  A.containsInteractive = function (n) {
+    var kids = n.getElementsByTagName("*");
+    for (var i = 0; i < kids.length; i++) {
+      if (!A.isVisible(kids[i])) continue;
+      var k = A.classify(kids[i]);
+      if (k && k !== "heading") return true;
+    }
+    return false;
+  };
+
+  // Collapse repeats so nothing is read twice:
+  //  (a) a non-interactive heading whose text duplicates a clickable item on
+  //      the same/adjacent row (flyPad cards render the label as both a link
+  //      and an inner <h2> with identical text), and
+  //  (b) consecutive identical lines (keep the interactive/clickable one).
+  A.dedupe = function (items) {
+    function rowBucket(it) { return Math.round(it.top / A.ROW_Y_TOLERANCE_PX); }
+    function norm(s) { return clean(s).toUpperCase(); }
+
+    var interactiveByRow = {};
+    for (var a = 0; a < items.length; a++) {
+      if (items[a].idx > 0) {
+        var rb = rowBucket(items[a]);
+        var key = norm(items[a].text);
+        if (!key) continue;
+        if (!interactiveByRow[rb]) interactiveByRow[rb] = {};
+        interactiveByRow[rb][key] = true;
+      }
+    }
+
+    var out = [];
+    for (var b = 0; b < items.length; b++) {
+      var it = items[b];
+      if (it.idx === 0) {
+        var k = norm(it.text);
+        var here = rowBucket(it);
+        var dup = false;
+        for (var d = -1; d <= 1; d++) {
+          var bucket = interactiveByRow[here + d];
+          if (bucket && bucket[k]) { dup = true; break; }
+        }
+        if (dup) continue;
+      }
+      if (out.length > 0 && norm(out[out.length - 1].text) === norm(it.text)) {
+        var prev = out[out.length - 1];
+        if (prev.idx === 0 && it.idx > 0) out[out.length - 1] = it;
+        continue;
+      }
+      out.push(it);
+    }
+    return out;
+  };
+
+  // Best-effort page label: the active flyPad route is reflected in a heading
+  // or the document title; fall back to the first heading on the page.
+  A.pageLabel = function (root) {
+    try {
+      var h = root.querySelector("h1");
+      if (h) { var t = clean(h.textContent); if (t) return t; }
+    } catch (e) {}
+    return clean(document.title || "");
+  };
+
+  // ---- public: read ------------------------------------------------------
+  A.scrape = function () {
+    try {
+      var root = A.findRoot();
+      if (!root) return JSON.stringify({ ok: false, error: "flyPad root not found (powered up?)" });
+      var els = A.enumerate(root);
+      return JSON.stringify({ ok: true, page: A.pageLabel(root), elements: els });
+    } catch (e) {
+      return JSON.stringify({ ok: false, error: (e && e.message) ? e.message : String(e) });
+    }
+  };
+
+  // ---- public: drive -----------------------------------------------------
+  A.findByIdx = function (index) {
+    return document.querySelector('[data-fbwa380-efb-idx="' + index + '"]');
+  };
+
+  A.clickNode = function (node) {
+    try {
+      if (typeof node.click === "function") node.click();
+      else node.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    } catch (e) {}
+  };
+
+  A.clickElement = function (index) {
+    var node = A.findByIdx(index);
+    if (!node) return "missing";
+    A.clickNode(node);
+    return "ok";
+  };
+
+  // Sets a value the React-friendly way: use the native value setter so React's
+  // internal value tracker notices the change, then dispatch input + change.
+  A.setNativeValue = function (el, value) {
+    try {
+      var proto = el.tagName === "TEXTAREA"
+        ? window.HTMLTextAreaElement.prototype
+        : window.HTMLInputElement.prototype;
+      var desc = Object.getOwnPropertyDescriptor(proto, "value");
+      if (desc && desc.set) desc.set.call(el, value);
+      else el.value = value;
+    } catch (e) { try { el.value = value; } catch (e2) {} }
+    try { el.dispatchEvent(new Event("input", { bubbles: true })); } catch (e) {}
+    try { el.dispatchEvent(new Event("change", { bubbles: true })); } catch (e) {}
+  };
+
+  A.setValue = function (index, value) {
+    var node = A.findByIdx(index);
+    if (!node) return "missing";
+    var kind = A.classify(node);
+    value = (value === null || value === undefined) ? "" : String(value);
+
+    if (kind === "checkbox" || kind === "toggle") {
+      var want = value === "true";
+      var cur = A.valueOf(kind, node) === "true";
+      if (want !== cur) A.clickNode(node);
+      return "ok";
+    }
+
+    var tag = node.tagName.toLowerCase();
+    if (tag === "input" || tag === "textarea") {
+      node.focus();
+      A.setNativeValue(node, value);
+      return "ok";
+    }
+    if (node.getAttribute && node.getAttribute("contenteditable") === "true") {
+      node.focus();
+      node.textContent = value;
+      try { node.dispatchEvent(new Event("input", { bubbles: true })); } catch (e) {}
+      return "ok";
+    }
+    if (tag === "select") {
+      node.value = value;
+      try { node.dispatchEvent(new Event("change", { bubbles: true })); } catch (e) {}
+      return "ok";
+    }
+    // Not directly settable (e.g. a slider div) — click as a fallback.
+    A.clickNode(node);
+    return "ok";
+  };
+
+  A.ping = function () { return "MSFSBA_FLYPAD_OK"; };
+
+  window.__MSFSBA_FLYPAD = A;
+  return "MSFSBA_FLYPAD_INSTALLED";
+})();

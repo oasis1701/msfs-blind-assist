@@ -18,7 +18,7 @@ namespace MSFSBlindAssist.SimConnect
         public Dictionary<string, string>? Payload { get; set; }
     }
 
-    public class EFBBridgeServer : IDisposable
+    public class EFBBridgeServer : IDisposable, IMcduBridge
     {
         private const int Port = 19777;
         private const string Prefix = "http://localhost:19777/";
