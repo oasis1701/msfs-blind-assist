@@ -1334,8 +1334,14 @@ public partial class MainForm : Form
         // For PMDG aircraft, IsInitialValue is always true on first change because the
         // simVarMonitor has never seen the variable before. But PMDG data manager already
         // suppresses the initial snapshot, so any change that reaches here IS a real change.
+        // The FBW A380 has the SAME behaviour: its L:vars are monitored changed-only, so a
+        // var's first sample only arrives WHEN it first changes (no startup baseline) — which
+        // made the first switch/flap movement after load silent (only the 2nd worked). The
+        // 5-second announcement grace period (EnableAnnouncements) already suppresses the
+        // cold-and-dark startup snapshot, so treating the A380 like PMDG here is safe.
         bool isPMDG = currentAircraft is IPMDGAircraft;
-        bool shouldAnnounce = isPMDG ? !updatingFromSim : (!e.IsInitialValue && !updatingFromSim);
+        bool announceInitialChange = isPMDG || currentAircraft?.AircraftCode == "FBW_A380";
+        bool shouldAnnounce = announceInitialChange ? !updatingFromSim : (!e.IsInitialValue && !updatingFromSim);
 
         if (shouldAnnounce && !string.IsNullOrEmpty(e.Description))
         {
