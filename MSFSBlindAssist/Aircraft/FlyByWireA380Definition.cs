@@ -745,6 +745,20 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             [0] = "None", [1] = "CAT 1", [2] = "CAT 2", [3] = "CAT 3 Single", [4] = "CAT 3 Dual"
         });
 
+        // PFD messages + armed modes + approach settings (for the PFD window;
+        // ported from the A320, shared A32NX_ names). The 3 PFD messages are
+        // announced live (meaningful callouts); the rest are window-only readouts.
+        Mon("A32NX_PFD_MSG_SET_HOLD_SPEED", "Set Hold Speed", onOff);
+        Mon("A32NX_PFD_MSG_TD_REACHED", "Top of Descent Reached", onOff);
+        Mon("A32NX_PFD_MSG_CHECK_SPEED_MODE", "Check Speed Mode", onOff);
+        Read("A32NX_FMA_VERTICAL_ARMED", "Armed Vertical Modes");
+        Read("A32NX_FMA_LATERAL_ARMED", "Armed Lateral Modes");
+        Read("A32NX_FMA_CRUISE_ALT_MODE", "Cruise Altitude Mode");
+        Read("A32NX_PFD_LINEAR_DEVIATION_ACTIVE", "Linear Deviation Active");
+        Read("A32NX_FMGC_1_LDEV_REQUEST", "FMGC L DEV Request");
+        Read("A32NX_FM1_MINIMUM_DESCENT_ALTITUDE", "Minimum Descent Altitude", "feet");
+        Read("A32NX_DESTINATION_QNH", "Destination QNH");
+
         // Engagement / mode readouts (A380 has no FCU light vars).
         ReadEnum("A32NX_AUTOPILOT_1_ACTIVE", "Autopilot 1", onOff);
         ReadEnum("A32NX_AUTOPILOT_2_ACTIVE", "Autopilot 2", onOff);
@@ -1323,6 +1337,19 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "A32NX_GPWS_SYS_OFF", "A32NX_GPWS_GS_OFF", "A32NX_GPWS_FLAP_OFF",
             "A32NX_GPWS_TERR_OFF", "A32NX_GPWS_FLAPS3"
         };
+        // "PFD" is NOT a navigable control panel — it's the variable set the PFD
+        // window (ShowPFD hotkey) requests/reads. Intentionally absent from
+        // GetPanelStructure so it isn't shown as a UI panel.
+        p["PFD"] = new List<string>
+        {
+            "A32NX_FMA_VERTICAL_MODE", "A32NX_FMA_LATERAL_MODE", "A32NX_FMA_VERTICAL_ARMED",
+            "A32NX_FMA_LATERAL_ARMED", "A32NX_FMA_CRUISE_ALT_MODE", "A32NX_APPROACH_CAPABILITY",
+            "A32NX_PFD_MSG_SET_HOLD_SPEED", "A32NX_PFD_MSG_TD_REACHED", "A32NX_PFD_MSG_CHECK_SPEED_MODE",
+            "A32NX_PFD_LINEAR_DEVIATION_ACTIVE", "A32NX_FMGC_1_LDEV_REQUEST",
+            "A32NX_FM1_MINIMUM_DESCENT_ALTITUDE", "A32NX_DESTINATION_QNH",
+            "A32NX_AUTOTHRUST_STATUS", "A32NX_AUTOBRAKES_SELECTED_MODE",
+            "A32NX_AUTOPILOT_1_ACTIVE", "A32NX_AUTOPILOT_2_ACTIVE"
+        };
         p["Interior Lighting"].Add("A380X_OVHD_EXTLT_STBY_COMPASS_ICE_IND_SWITCH_POS");
         p["EFIS Control Panel"].AddRange(new[]
         {
@@ -1887,6 +1914,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             case HotkeyAction.ReadSpeedF: RequestReadout(simConnect, "A32NX_SPEEDS_F", "F speed", "knots"); return true;
             case HotkeyAction.ReadFuelQuantity: RequestReadout(simConnect, "A32NX_TOTAL_FUEL_QUANTITY", "Total fuel", "kilograms"); return true;
             case HotkeyAction.ReadApproachCapability: RequestReadout(simConnect, "A32NX_APPROACH_CAPABILITY", "Approach capability", "", _apprCapMap); return true;
+            case HotkeyAction.ShowPFD:
+                hotkeyManager.ExitOutputHotkeyMode();
+                ShowPFDWindow(announcer, simConnect);
+                return true;
             case HotkeyAction.ReadAltimeter:
                 if (simConnect.IsConnected) { _reqBaro = true; simConnect.RequestVariable("KOHLSMAN_HG", forceUpdate: true); }
                 return true;
@@ -1904,6 +1935,15 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             default:
                 return base.HandleHotkeyAction(action, simConnect, announcer, parentForm, hotkeyManager);
         }
+    }
+
+    // PFD/FMA readout window — reuses the shared A32NX PFDForm, which reads the
+    // current aircraft's PFD-panel vars by name (FMA modes, approach capability,
+    // PFD messages, MDA, QNH — all shared A32NX_ names the A380 now defines).
+    private void ShowPFDWindow(ScreenReaderAnnouncer announcer, SimConnectManager simConnect)
+    {
+        var dialog = new Forms.A32NX.PFDForm(announcer, simConnect) { CurrentAircraft = this };
+        dialog.Show();
     }
 
     private bool ShowFCUHeadingDialog(SimConnectManager simConnect, ScreenReaderAnnouncer announcer, System.Windows.Forms.Form parentForm)

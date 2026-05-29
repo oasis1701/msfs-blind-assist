@@ -289,8 +289,12 @@ public partial class PFDForm : Form
         {
             try
             {
+                // A320 exposes FCU AP light vars; the A380 does not (no FCU light
+                // vars) — fall back to the shared A32NX_AUTOPILOT_n_ACTIVE state.
                 double ap1 = GetVariableRawValue("A32NX_FCU_AP_1_LIGHT_ON");
                 double ap2 = GetVariableRawValue("A32NX_FCU_AP_2_LIGHT_ON");
+                if (ap1 == 0) ap1 = GetVariableRawValue("A32NX_AUTOPILOT_1_ACTIVE");
+                if (ap2 == 0) ap2 = GetVariableRawValue("A32NX_AUTOPILOT_2_ACTIVE");
 
                 if (ap1 > 0 && ap2 > 0)
                     return "AP1+2: Both Autopilots are active";
