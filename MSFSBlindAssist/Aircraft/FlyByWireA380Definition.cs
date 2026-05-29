@@ -715,6 +715,138 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Read("A32NX_FM1_MINIMUM_DESCENT_ALTITUDE", "Baro Minimum", "feet");
         Read("A32NX_FM1_DECISION_HEIGHT", "Radio Minimum (DH)", "feet");
 
+        // ============================ A32NX SHARED GAP CONTROLS/READOUTS ============================
+        // Pulled from the FBW A32NX API docs (shared with the A380); see
+        // tools/a32nx-gap-vs-a380.md. MSFSBA's own A320 definition is incomplete,
+        // so these come from the docs, not the A320 code.
+        var dischargedVd = new Dictionary<double, string> { [0] = "No", [1] = "Discharged" };
+
+        // Clock / chrono (readouts pair with the ET switch already present).
+        Read("A32NX_CHRONO_ELAPSED_TIME", "Chronometer (seconds)", "seconds");
+        Read("A32NX_CHRONO_ET_ELAPSED_TIME", "Elapsed Time (seconds)", "seconds");
+
+        // ISIS standby instrument.
+        ReadEnum("A32NX_ISIS_LS_ACTIVE", "ISIS LS", onOff);
+        ReadEnum("A32NX_ISIS_BUGS_ACTIVE", "ISIS Bugs Page", onOff);
+        Sel("A32NX_ISIS_BARO_MODE", "ISIS Baro Mode", new Dictionary<double, string> { [0] = "Set", [1] = "Standard" });
+        OnOff("A32NX_ISIS_BARO_UNIT_INHG", "ISIS Baro in inHg");
+
+        // Brakes.
+        OnOff("A32NX_BRAKE_FAN_BTN_PRESSED", "Brake Fan", button: true);
+        ReadEnum("A32NX_BRAKE_FAN_RUNNING", "Brake Fan Running", new Dictionary<double, string> { [0] = "Off", [1] = "Running" });
+        ReadEnum("A32NX_BRAKES_HOT", "Brakes Hot", new Dictionary<double, string> { [0] = "Normal", [1] = "HOT" });
+        Read("A32NX_HYD_BRAKE_ALTN_LEFT_PRESS", "Alternate Brake Left", "psi");
+        Read("A32NX_HYD_BRAKE_ALTN_RIGHT_PRESS", "Alternate Brake Right", "psi");
+        Read("A32NX_HYD_BRAKE_ALTN_ACC_PRESS", "Brake Accumulator", "psi");
+
+        // Gear.
+        ReadEnum("A32NX_GEAR_LEVER_LOCKED", "Gear Lever Locked", new Dictionary<double, string> { [0] = "Unlocked", [1] = "Locked" });
+        ReadEnum("A32NX_LG_GRVTY_MASTER_SWITCH_GUARD", "Gravity Extension Guard", openVd);
+
+        // Pressurization manual selectors.
+        Read("A32NX_OVHD_PRESS_MAN_ALTITUDE_KNOB", "Manual Cabin Altitude", "feet");
+        Read("A32NX_OVHD_PRESS_MAN_VS_CTL_KNOB", "Manual Cabin V/S", "feet per minute");
+
+        // Fuel crossfeed + jettison status + volume.
+        OnOff("XMLVAR_Momentary_PUSH_OVHD_FUEL_XFEED_Pressed", "Crossfeed 1", button: true);
+        for (int n = 2; n <= 4; n++)
+            OnOff($"XMLVAR_Momentary_PUSH_OVHD_FUEL_XFEED{n}_Pressed", $"Crossfeed {n}", button: true);
+        ReadEnum("A380X_OVHD_FUEL_JETTISON_IS_OPEN", "Jettison Valve", openVd);
+        Read("A32NX_TOTAL_FUEL_VOLUME", "Total Fuel Volume", "gallons");
+
+        // Hydraulics PTU.
+        OffAuto("A32NX_OVHD_HYD_PTU_PB_IS_AUTO", "PTU");
+        ReadEnum("A32NX_OVHD_HYD_PTU_PB_HAS_FAULT", "PTU Fault", fault);
+
+        // Ventilation avionics blower/extract.
+        OnOff("A32NX_VENTILATION_BLOWER_TOGGLE", "Avionics Blower");
+        OnOff("A32NX_VENTILATION_EXTRACT_TOGGLE", "Avionics Extract");
+        ReadEnum("A32NX_VENTILATION_BLOWER_FAULT", "Blower Fault", fault);
+        ReadEnum("A32NX_VENTILATION_EXTRACT_FAULT", "Extract Fault", fault);
+
+        // Anti-ice status.
+        ReadEnum("A32NX_PNEU_WING_ANTI_ICE_SYSTEM_ON", "Wing Anti-Ice Flowing", onOff);
+        ReadEnum("A32NX_PNEU_WING_ANTI_ICE_HAS_FAULT", "Wing Anti-Ice Fault", fault);
+
+        // Oxygen.
+        ReadEnum("A32NX_OXYGEN_TMR_RESET_FAULT", "Oxygen Timer Reset Fault", fault);
+
+        // Calls / EVAC / cabin / cargo smoke.
+        ReadEnum("A32NX_SLIDES_ARMED", "Door Slides", armedVd);
+        ReadEnum("A32NX_EVAC_COMMAND_FAULT", "Evacuation Command Fault", fault);
+        ReadEnum("A32NX_CARGOSMOKE_FWD_DISCHARGED", "Cargo Fwd Smoke Agent", dischargedVd);
+        ReadEnum("A32NX_CARGOSMOKE_AFT_DISCHARGED", "Cargo Aft Smoke Agent", dischargedVd);
+
+        // Recorder / misc overhead.
+        OnOff("A32NX_RCDR_TEST", "Recorder Test", button: true);
+        OnOff("A32NX_ELT_TEST_RESET", "ELT Test / Reset", button: true);
+        OnOff("A32NX_DFDR_EVENT_ON", "DFDR Event", button: true);
+        OnOff("A32NX_RAIN_REPELLENT_LEFT_ON", "Rain Repellent Left", button: true);
+        OnOff("A32NX_RAIN_REPELLENT_RIGHT_ON", "Rain Repellent Right", button: true);
+        OnOff("A32NX_OVHD_NSS_DATA_TO_AVNCS_TOGGLE", "NSS Data to Avionics");
+        OnOff("A32NX_NSS_MASTER_OFF", "NSS Master Off");
+
+        // Wipers (3-speed; written via HandleUIVariableSet → circuit power events).
+        var wiperVd = new Dictionary<double, string> { [0] = "Off", [75] = "Slow", [100] = "Fast" };
+        Sel("WIPER_LEFT", "Wiper Left", wiperVd);
+        Sel("WIPER_RIGHT", "Wiper Right", wiperVd);
+        Stock("WIPER_LEFT_ON", "CIRCUIT SWITCH ON:141", "Wiper Left State", "bool", onOff);
+        Stock("WIPER_RIGHT_ON", "CIRCUIT SWITCH ON:143", "Wiper Right State", "bool", onOff);
+
+        // EFIS-CP filter / overlay / baro unit (per side).
+        foreach (var side in new[] { "L", "R" })
+        {
+            string who = side == "L" ? "Capt" : "F/O";
+            Sel($"A380X_EFIS_{side}_ACTIVE_FILTER", $"{who} ND Filter",
+                new Dictionary<double, string> { [1] = "Waypoints", [2] = "VOR/DME", [3] = "NDB" });
+            Sel($"A380X_EFIS_{side}_ACTIVE_OVERLAY", $"{who} ND Overlay",
+                new Dictionary<double, string> { [0] = "Off", [1] = "Weather", [2] = "Terrain" });
+            OnOff($"A32NX_FCU_EFIS_{side}_BARO_IS_INHG", $"{who} Baro in inHg");
+        }
+
+        // ECAM control panel — checklist buttons + SD more.
+        Press("A32NX_BTN_CHECK_LH", "ECAM Check Left");
+        Press("A32NX_BTN_CHECK_RH", "ECAM Check Right");
+        ReadEnum("A32NX_SD_MORE_SHOWN", "SD More Page", new Dictionary<double, string> { [0] = "No", [1] = "Shown" });
+
+        // ATC datalink (DCDU).
+        OnOff("A32NX_DCDU_ATC_MSG_ACK", "ATC Message Acknowledge", button: true);
+        Mon("A32NX_DCDU_ATC_MSG_WAITING", "ATC Message Waiting", new Dictionary<double, string> { [0] = "No", [1] = "Message Waiting" });
+
+        // FMS switching + destination fuel warning.
+        Sel("A32NX_FMS_SWITCHING_KNOB", "FMS Switching",
+            new Dictionary<double, string> { [0] = "Both on 2", [1] = "Normal", [2] = "Both on 1" });
+        Mon("A380X_FMS_DEST_EFOB_BELOW_MIN", "Destination Fuel",
+            new Dictionary<double, string> { [0] = "OK", [1] = "Below Minimum" });
+
+        // Reference speeds (high value with no visible PFD tape).
+        Read("A32NX_SPEEDS_VLS", "VLS (lowest selectable)", "knots");
+        Read("A32NX_SPEEDS_VAPP", "Approach Speed", "knots");
+        Read("A32NX_SPEEDS_GD", "Green Dot Speed", "knots");
+        Read("A32NX_SPEEDS_F", "F Speed", "knots");
+        Read("A32NX_SPEEDS_S", "S Speed", "knots");
+
+        // Lighting extras.
+        OnOff("STROBE_0_AUTO", "Strobe Auto Mode");
+        Sel("A380X_OVHD_EXTLT_STBY_COMPASS_ICE_IND_SWITCH_POS", "Standby Compass / Ice Light",
+            new Dictionary<double, string> { [0] = "Off", [1] = "On" });
+
+        // Ground / automation helpers (whole-aircraft state + pushback).
+        Sel("A32NX_AIRCRAFT_PRESET_LOAD", "Load Aircraft Preset",
+            new Dictionary<double, string> { [0] = "None", [1] = "Cold and Dark", [2] = "Powered", [3] = "Pushback", [4] = "Taxi", [5] = "Takeoff" });
+        Read("A32NX_AIRCRAFT_PRESET_LOAD_PROGRESS", "Preset Load Progress");
+        OnOff("A32NX_PUSHBACK_SYSTEM_ENABLED", "Pushback System");
+        Read("A32NX_PUSHBACK_SPD_FACTOR", "Pushback Speed Factor");
+        Read("A32NX_PUSHBACK_HDG_FACTOR", "Pushback Heading Factor");
+
+        // KCCU keyboard / cursor enable.
+        foreach (var side in new[] { "L", "R" })
+        {
+            string who = side == "L" ? "Capt" : "F/O";
+            OnOff($"A32NX_KCCU_{side}_KBD_ON_OFF", $"{who} KCCU Keyboard");
+            OnOff($"A32NX_KCCU_{side}_CCD_ON_OFF", $"{who} KCCU Cursor");
+        }
+
         // ---- ECAM upper (E/WD) memo + warning lines — live monitoring ----
         // The A380X publishes 10 lines per side as numeric message CODES
         // (uppercase EWD, vs the A320's lowercase Ewd / 7 lines). They are
@@ -751,17 +883,17 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             {
                 "ELEC", "APU", "Fuel", "Hydraulics", "Bleed Air", "Air Conditioning",
                 "Pressurization", "Ventilation", "Cargo Air", "Anti Ice", "Fire", "Oxygen",
-                "Calls", "Signs", "ADIRS", "Flight Control Computers", "Engine Start",
+                "Calls", "Signs", "Wipers", "ADIRS", "Flight Control Computers", "Engine Start",
                 "Recorder and Misc", "Interior Lighting", "Exterior Lighting"
             },
             ["Glareshield"] = new List<string> { "FCU", "EFIS Control Panel", "Warnings", "OIT" },
-            ["Instrument"] = new List<string> { "Gear", "Autobrake", "Source Switching" },
+            ["Instrument"] = new List<string> { "Gear", "Autobrake", "ISIS", "Source Switching" },
             ["Pedestal"] = new List<string>
             {
                 "Engines", "Flaps and Brakes", "ECAM Control Panel", "Weather Radar",
-                "Transponder", "Radios", "RMP", "Cockpit Door"
+                "Transponder", "Radios", "RMP", "KCCU", "Cockpit Door"
             },
-            ["Displays"] = new List<string> { "Status", "Minimums" }
+            ["Displays"] = new List<string> { "Status", "Speeds", "Minimums", "Ground" }
         };
     }
 
@@ -973,7 +1105,48 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
 
         p["Status"] = new List<string>
         {
-            "A32NX_AUTOTHRUST_STATUS", "A32NX_FMS_PAX_NUMBER", "A32NX_ECAM_FAILURE_ACTIVE"
+            "A32NX_AUTOTHRUST_STATUS", "A32NX_FMS_PAX_NUMBER", "A32NX_ECAM_FAILURE_ACTIVE",
+            "A32NX_FMS_SWITCHING_KNOB"
+        };
+
+        // ---- A32NX shared gap controls folded into panels ----
+        p["Fuel"].AddRange(new[]
+        {
+            "XMLVAR_Momentary_PUSH_OVHD_FUEL_XFEED_Pressed", "XMLVAR_Momentary_PUSH_OVHD_FUEL_XFEED2_Pressed",
+            "XMLVAR_Momentary_PUSH_OVHD_FUEL_XFEED3_Pressed", "XMLVAR_Momentary_PUSH_OVHD_FUEL_XFEED4_Pressed"
+        });
+        p["Hydraulics"].Add("A32NX_OVHD_HYD_PTU_PB_IS_AUTO");
+        p["Ventilation"].AddRange(new[] { "A32NX_VENTILATION_BLOWER_TOGGLE", "A32NX_VENTILATION_EXTRACT_TOGGLE" });
+        p["Autobrake"].Add("A32NX_BRAKE_FAN_BTN_PRESSED");
+        p["Recorder and Misc"].AddRange(new[]
+        {
+            "A32NX_RCDR_TEST", "A32NX_ELT_TEST_RESET", "A32NX_DFDR_EVENT_ON",
+            "A32NX_RAIN_REPELLENT_LEFT_ON", "A32NX_RAIN_REPELLENT_RIGHT_ON",
+            "A32NX_OVHD_NSS_DATA_TO_AVNCS_TOGGLE", "A32NX_NSS_MASTER_OFF"
+        });
+        p["Interior Lighting"].Add("A380X_OVHD_EXTLT_STBY_COMPASS_ICE_IND_SWITCH_POS");
+        p["Exterior Lighting"].Add("STROBE_0_AUTO");
+        p["EFIS Control Panel"].AddRange(new[]
+        {
+            "A380X_EFIS_L_ACTIVE_FILTER", "A380X_EFIS_L_ACTIVE_OVERLAY", "A32NX_FCU_EFIS_L_BARO_IS_INHG",
+            "A380X_EFIS_R_ACTIVE_FILTER", "A380X_EFIS_R_ACTIVE_OVERLAY", "A32NX_FCU_EFIS_R_BARO_IS_INHG"
+        });
+        p["ECAM Control Panel"].AddRange(new[] { "A32NX_BTN_CHECK_LH", "A32NX_BTN_CHECK_RH" });
+        p["Transponder"].Add("A32NX_DCDU_ATC_MSG_ACK");
+
+        // ---- new panels ----
+        p["ISIS"] = new List<string> { "A32NX_ISIS_BARO_MODE", "A32NX_ISIS_BARO_UNIT_INHG" };
+        p["Wipers"] = new List<string> { "WIPER_LEFT", "WIPER_RIGHT" };
+        p["Speeds"] = new List<string>();
+        p["KCCU"] = new List<string>
+        {
+            "A32NX_KCCU_L_KBD_ON_OFF", "A32NX_KCCU_R_KBD_ON_OFF",
+            "A32NX_KCCU_L_CCD_ON_OFF", "A32NX_KCCU_R_CCD_ON_OFF"
+        };
+        p["Ground"] = new List<string>
+        {
+            "A32NX_AIRCRAFT_PRESET_LOAD", "A32NX_PUSHBACK_SYSTEM_ENABLED",
+            "A32NX_PUSHBACK_SPD_FACTOR", "A32NX_PUSHBACK_HDG_FACTOR"
         };
 
         return p;
@@ -1140,8 +1313,32 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "COM_ACTIVE_FREQUENCY:2", "COM_STANDBY_FREQUENCY:2",
             "COM_ACTIVE_FREQUENCY:3", "COM_STANDBY_FREQUENCY:3"
         };
-        d["Transponder"] = new List<string> { "XPNDR_CODE" };
+        d["Transponder"] = new List<string> { "XPNDR_CODE", "A32NX_DCDU_ATC_MSG_WAITING" };
         d["Minimums"] = new List<string> { "A32NX_FM1_MINIMUM_DESCENT_ALTITUDE", "A32NX_FM1_DECISION_HEIGHT" };
+
+        // ---- A32NX shared gap readouts ----
+        d["Autobrake"].AddRange(new[]
+        {
+            "A32NX_BRAKE_FAN_RUNNING", "A32NX_BRAKES_HOT",
+            "A32NX_HYD_BRAKE_ALTN_LEFT_PRESS", "A32NX_HYD_BRAKE_ALTN_RIGHT_PRESS", "A32NX_HYD_BRAKE_ALTN_ACC_PRESS"
+        });
+        d["Gear"].AddRange(new[] { "A32NX_GEAR_LEVER_LOCKED", "A32NX_LG_GRVTY_MASTER_SWITCH_GUARD" });
+        d["Pressurization"].AddRange(new[] { "A32NX_OVHD_PRESS_MAN_ALTITUDE_KNOB", "A32NX_OVHD_PRESS_MAN_VS_CTL_KNOB" });
+        d["Fuel"].AddRange(new[] { "A380X_OVHD_FUEL_JETTISON_IS_OPEN", "A32NX_TOTAL_FUEL_VOLUME" });
+        d["Hydraulics"].Add("A32NX_OVHD_HYD_PTU_PB_HAS_FAULT");
+        d["Ventilation"].AddRange(new[] { "A32NX_VENTILATION_BLOWER_FAULT", "A32NX_VENTILATION_EXTRACT_FAULT" });
+        d["Anti Ice"].AddRange(new[] { "A32NX_PNEU_WING_ANTI_ICE_SYSTEM_ON", "A32NX_PNEU_WING_ANTI_ICE_HAS_FAULT" });
+        d["Fire"].AddRange(new[] { "A32NX_CARGOSMOKE_FWD_DISCHARGED", "A32NX_CARGOSMOKE_AFT_DISCHARGED" });
+        d["Status"].Add("A380X_FMS_DEST_EFOB_BELOW_MIN");
+
+        d["Source Switching"] = new List<string> { "A32NX_CHRONO_ELAPSED_TIME", "A32NX_CHRONO_ET_ELAPSED_TIME" };
+        d["ISIS"] = new List<string> { "A32NX_ISIS_LS_ACTIVE", "A32NX_ISIS_BUGS_ACTIVE" };
+        d["Oxygen"] = new List<string> { "A32NX_OXYGEN_TMR_RESET_FAULT" };
+        d["Calls"] = new List<string> { "A32NX_SLIDES_ARMED", "A32NX_EVAC_COMMAND_FAULT" };
+        d["ECAM Control Panel"] = new List<string> { "A32NX_SD_MORE_SHOWN" };
+        d["Wipers"] = new List<string> { "WIPER_LEFT_ON", "WIPER_RIGHT_ON" };
+        d["Speeds"] = new List<string> { "A32NX_SPEEDS_VLS", "A32NX_SPEEDS_VAPP", "A32NX_SPEEDS_GD", "A32NX_SPEEDS_F", "A32NX_SPEEDS_S" };
+        d["Ground"] = new List<string> { "A32NX_AIRCRAFT_PRESET_LOAD_PROGRESS" };
 
         return d;
     }
@@ -1268,6 +1465,13 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         {
             uint mode = (uint)Math.Round(value);
             for (int n = 1; n <= 4; n++) simConnect.SendEvent($"TURBINE_IGNITION_SWITCH_SET{n}", mode);
+            return true;
+        }
+        // Wipers: 0=Off / 75=Slow / 100=Fast → the circuit-power-setting event.
+        if (varKey == "WIPER_LEFT" || varKey == "WIPER_RIGHT")
+        {
+            int circuit = varKey == "WIPER_LEFT" ? 141 : 143;
+            simConnect.SendEvent($"ELECTRICAL_CIRCUIT_POWER_SETTING_SET:{circuit}", (uint)Math.Round(value));
             return true;
         }
         return base.HandleUIVariableSet(varKey, value, varDef, simConnect, announcer);
