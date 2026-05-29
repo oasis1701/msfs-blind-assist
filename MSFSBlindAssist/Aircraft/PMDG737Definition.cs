@@ -332,6 +332,25 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = false
             };
+        // Continuous-numeric read-only TextBox for cockpit gauge readouts
+        // (cabin altitude, DP, duct pressure, APU EGT, fuel temp, etc.).
+        // Renders via the MainForm `RenderAsReadOnlyStatus + Units + no
+        // ValueDescriptions` branch. IsAnnounced=false so the gauge doesn't
+        // speak every broadcast — the user reads the value by Tab-focusing
+        // the TextBox.
+        static SimConnect.SimVarDefinition Readout(string name, string display,
+                                                   string units, string format = "F0") =>
+            new SimConnect.SimVarDefinition
+            {
+                Name = name,
+                DisplayName = display,
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = false,
+                RenderAsReadOnlyStatus = true,
+                Units = units,
+                Format = format
+            };
         static SimConnect.SimVarDefinition Momentary(string name, string display, string? stateVar = null) =>
             new SimConnect.SimVarDefinition
             {
@@ -498,6 +517,12 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         d["FCTL_AltnFlaps_Sw_ARM"] = Toggle("FCTL_AltnFlaps_Sw_ARM", "Alternate Flaps Arm", "OFF", "ARM");
         d["FCTL_AltnFlaps_Control_Sw"] = Selector("FCTL_AltnFlaps_Control_Sw", "Alternate Flaps Control",
             "UP", "OFF", "DOWN");
+        // Leading-edge devices position test — SDK-modeled as a 3-position
+        // spring-loaded switch (OFF / TEST 1 / TEST 2) but no state field is
+        // exposed, so we surface only the TEST direction via the standard
+        // SendPMDGMomentaryToggle LEFTSINGLE+LEFTRELEASE press. Same pattern
+        // we used for the Oxygen Test buttons.
+        d["FCTL_LEDevicesTest"]      = Momentary("FCTL_LEDevicesTest", "Leading Edge Devices Test");
         d["FCTL_annunFC_LOW_PRESSURE_0"] = Annun("FCTL_annunFC_LOW_PRESSURE_0", "Flight Control A LOW PRESSURE");
         d["FCTL_annunFC_LOW_PRESSURE_1"] = Annun("FCTL_annunFC_LOW_PRESSURE_1", "Flight Control B LOW PRESSURE");
         d["FCTL_annunYAW_DAMPER"]        = Annun("FCTL_annunYAW_DAMPER", "YAW DAMPER");
@@ -565,6 +590,10 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         d["FUEL_QtyCenter"] = Quantity("FUEL_QtyCenter", "Fuel Center Tank");
         d["FUEL_QtyLeft"]   = Quantity("FUEL_QtyLeft",   "Fuel Left Tank");
         d["FUEL_QtyRight"]  = Quantity("FUEL_QtyRight",  "Fuel Right Tank");
+        // Fuel temperature — continuous-numeric readout on the Fuel panel.
+        // Low temps at altitude signal fuel-icing risk (cross-monitor with
+        // anti-ice switches).
+        d["FUEL_FuelTempNeedle"]    = Readout("FUEL_FuelTempNeedle", "Fuel Temperature", "°C", "F0");
 
         // Electrical
         d["ELEC_annunBAT_DISCHARGE"] = Annun("ELEC_annunBAT_DISCHARGE", "Battery Discharge");
@@ -667,6 +696,10 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         d["APU_annunLOW_OIL_PRESSURE"] = Annun("APU_annunLOW_OIL_PRESSURE", "APU LOW OIL PRESSURE");
         d["APU_annunFAULT"]            = Annun("APU_annunFAULT", "APU FAULT");
         d["APU_annunOVERSPEED"]        = Annun("APU_annunOVERSPEED", "APU OVERSPEED");
+        // APU EGT — continuous-numeric readout shown on the Electrical panel
+        // next to APU Selector. Ramps during start; important for hot-start
+        // detection (NG3 APU max EGT during start is ~760°C).
+        d["APU_EGTNeedle"]             = Readout("APU_EGTNeedle", "APU EGT", "°C", "F0");
 
         // Wipers
         d["OH_WiperLSelector"] = Selector("OH_WiperLSelector", "Wiper Left", "PARK", "INT", "LOW", "HIGH");
@@ -793,6 +826,22 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         d["AIR_PressurizationModeSelector"] = Selector("AIR_PressurizationModeSelector",
             "Pressurization Mode", "AUTO", "ALTN", "MAN");
 
+        // Pressurization, duct-pressure, and cabin-temperature readouts —
+        // continuous-numeric SDK fields rendered as read-only TextBoxes on
+        // the Air Systems panel. IsAnnounced=false (no auto-announce every
+        // broadcast); the pilot reads the current value by Tab-focusing the
+        // field and letting the screen reader speak the text.
+        d["AIR_CabinAltNeedle"]      = Readout("AIR_CabinAltNeedle", "Cabin Altitude", "ft", "F0");
+        d["AIR_CabinDPNeedle"]       = Readout("AIR_CabinDPNeedle", "Cabin Differential Pressure", "PSI", "F2");
+        d["AIR_CabinVSNeedle"]       = Readout("AIR_CabinVSNeedle", "Cabin Vertical Speed", "ft/min", "F0");
+        d["AIR_CabinValveNeedle"]    = Readout("AIR_CabinValveNeedle", "Outflow Valve Position", "%", "P0");
+        d["AIR_DuctPress_0"]         = Readout("AIR_DuctPress_0", "Duct Pressure Left", "PSI", "F0");
+        d["AIR_DuctPress_1"]         = Readout("AIR_DuctPress_1", "Duct Pressure Right", "PSI", "F0");
+        d["AIR_TemperatureNeedle"]   = Readout("AIR_TemperatureNeedle", "Cabin Temperature", "°C", "F0");
+        // Bleed-overheat detection self-test. Pure momentary push; SDK exposes
+        // only the event, no state field.
+        d["AIR_BleedOvhtTest"]       = Momentary("AIR_BleedOvhtTest", "Bleed Overheat Test");
+
         // Doors
         d["DOOR_annunFWD_ENTRY"]          = Door("DOOR_annunFWD_ENTRY", "Forward Entry Door");
         d["DOOR_annunFWD_SERVICE"]        = Door("DOOR_annunFWD_SERVICE", "Forward Service Door");
@@ -884,6 +933,10 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         // either press, so the LEFT-side events are sufficient.
         d["WARN_ResetFireWarning"]  = Momentary("WARN_ResetFireWarning",  "Clear Fire Warning");
         d["WARN_ResetMasterCaution"] = Momentary("WARN_ResetMasterCaution", "Clear Master Caution");
+        // Cabin altitude warning horn cutout — silences the warning horn after
+        // a depressurization event so the crew can use the radios. Pure
+        // momentary push; SDK exposes only the event, no state field.
+        d["WARN_CabAltHornCutout"]   = Momentary("WARN_CabAltHornCutout", "Cabin Altitude Horn Cutout");
 
         // =================================================================
         // GLARESHIELD — EFIS Captain / First Officer
@@ -1525,7 +1578,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 "ELEC_GrdPwrSw_On", "ELEC_GrdPwrSw_Off",
                 "ELEC_IDGDisconnectSw_0", "ELEC_IDGDisconnectSw_1",
                 "ELEC_CabUtilSw", "ELEC_IFEPassSeatSw",
-                "APU_Selector"
+                "APU_Selector", "APU_EGTNeedle"
             },
             ["ADIRU"] = new List<string>
             {
@@ -1547,7 +1600,8 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 "FUEL_PumpCtrSw_0", "FUEL_PumpCtrSw_1",
                 "FUEL_AuxFwd_0", "FUEL_AuxFwd_1",
                 "FUEL_AuxAft_0", "FUEL_AuxAft_1",
-                "FUEL_FWDBleed", "FUEL_AFTBleed", "FUEL_GNDXfr"
+                "FUEL_FWDBleed", "FUEL_AFTBleed", "FUEL_GNDXfr",
+                "FUEL_FuelTempNeedle"
             },
             ["Engines"] = new List<string>
             {
@@ -1575,7 +1629,14 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 "AIR_BleedAirSwitch_0", "AIR_BleedAirSwitch_1", "AIR_APUBleedAirSwitch",
                 "AIR_IsolationValveSwitch",
                 "AIR_OutflowValveSwitch", "AIR_PressurizationModeSelector",
-                "AIR_EquipCoolingSupplyNORM", "AIR_EquipCoolingExhaustNORM"
+                "AIR_EquipCoolingSupplyNORM", "AIR_EquipCoolingExhaustNORM",
+                // Continuous readouts (pressurization, duct pressure, cabin temp)
+                "AIR_CabinAltNeedle", "AIR_CabinDPNeedle", "AIR_CabinVSNeedle",
+                "AIR_CabinValveNeedle",
+                "AIR_DuctPress_0", "AIR_DuctPress_1",
+                "AIR_TemperatureNeedle",
+                // Bleed overheat self-test
+                "AIR_BleedOvhtTest"
             },
             ["Lights"] = new List<string>
             {
@@ -1606,7 +1667,8 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 "FCTL_FltControl_Sw_0", "FCTL_FltControl_Sw_1",
                 "FCTL_Spoiler_Sw_0", "FCTL_Spoiler_Sw_1",
                 "FCTL_YawDamper_Sw",
-                "FCTL_AltnFlaps_Sw_ARM", "FCTL_AltnFlaps_Control_Sw"
+                "FCTL_AltnFlaps_Sw_ARM", "FCTL_AltnFlaps_Control_Sw",
+                "FCTL_LEDevicesTest"
             },
             ["Flight Recorder"] = new List<string>
             {
@@ -1618,7 +1680,8 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             {
                 "WARN_annunFIRE_WARN_0", "WARN_annunFIRE_WARN_1",
                 "WARN_annunMASTER_CAUTION_0", "WARN_annunMASTER_CAUTION_1",
-                "WARN_ResetFireWarning", "WARN_ResetMasterCaution"
+                "WARN_ResetFireWarning", "WARN_ResetMasterCaution",
+                "WARN_CabAltHornCutout"
             },
             ["EFIS Captain"] = new List<string>
             {
@@ -3153,6 +3216,13 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             ["OXY_TestR"]                  = "EVT_OH_OXY_TEST_RESET_SWITCH_R",
             // Lower forward panel — GPWS system test
             ["GPWS_SysTest"]               = "EVT_GPWS_SYS_TEST_BTN",
+            // Overhead — Air Systems bleed-overheat self-test
+            ["AIR_BleedOvhtTest"]          = "EVT_OH_BLEED_OVHT_TEST_BUTTON",
+            // Forward overhead — Leading-edge devices test (spring-loaded;
+            // single LEFTSINGLE+LEFTRELEASE = TEST direction)
+            ["FCTL_LEDevicesTest"]         = "EVT_OH_LE_DEVICES_TEST_SWITCH",
+            // Glareshield Warnings — cabin altitude warning horn cutout
+            ["WARN_CabAltHornCutout"]      = "EVT_OH_CAB_ALT_HORN_CUTOUT_BUTTON",
             // MCP autopilot push buttons (momentary)
             ["MCP_CmdA"]    = "EVT_MCP_CMD_A_SWITCH",
             ["MCP_CmdB"]    = "EVT_MCP_CMD_B_SWITCH",
