@@ -530,6 +530,14 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Detent("THROTTLE_ALL_DETENT", "All Thrust Levers");
         for (int n = 1; n <= 4; n++) Detent($"THROTTLE_{n}_DETENT", $"Thrust Lever {n}");
 
+        // Thrust lever angle — monitored so ProcessSimVarUpdate announces the
+        // detent when the levers move (handled there; the raw value is suppressed).
+        vars["A32NX_AUTOTHRUST_TLA:1"] = new SimVarDefinition
+        {
+            Name = "A32NX_AUTOTHRUST_TLA:1", DisplayName = "Thrust Lever Angle",
+            Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true
+        };
+
         // ---- ECAM Control Panel ----
         Sel("A32NX_ECAM_SD_CURRENT_PAGE_INDEX", "System Display Page",
             new Dictionary<double, string>
@@ -886,9 +894,21 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         ReadEnum("A32NX_GEAR_LEVER_LOCKED", "Gear Lever Locked", new Dictionary<double, string> { [0] = "Unlocked", [1] = "Locked" });
         ReadEnum("A32NX_LG_GRVTY_MASTER_SWITCH_GUARD", "Gravity Extension Guard", openVd);
 
-        // Pressurization manual selectors.
-        Read("A32NX_OVHD_PRESS_MAN_ALTITUDE_KNOB", "Manual Cabin Altitude", "feet");
-        Read("A32NX_OVHD_PRESS_MAN_VS_CTL_KNOB", "Manual Cabin V/S", "feet per minute");
+        // Pressurization manual selectors (manual mode only). The FBW knob L:vars
+        // are written directly with a rotary POSITION value (not feet/fpm — the
+        // dev build doesn't expose a documented engineering-unit mapping), so
+        // these are pass-through numeric inputs of the knob position. Key ends
+        // _SET so MainForm renders a numeric box; HandleUIVariableSet writes it.
+        vars["PRESS_MAN_ALT_SET"] = new SimVarDefinition
+        {
+            Name = "A32NX_OVHD_PRESS_MAN_ALTITUDE_KNOB", DisplayName = "Manual Cabin Altitude Knob (position)",
+            Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest, Units = "number"
+        };
+        vars["PRESS_MAN_VS_SET"] = new SimVarDefinition
+        {
+            Name = "A32NX_OVHD_PRESS_MAN_VS_CTL_KNOB", DisplayName = "Manual Cabin V/S Knob (position)",
+            Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest, Units = "number"
+        };
 
         // Fuel crossfeed + jettison status + volume.
         OnOff("XMLVAR_Momentary_PUSH_OVHD_FUEL_XFEED_Pressed", "Crossfeed 1", button: true);
@@ -1195,7 +1215,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         };
         p["Pressurization"] = new List<string>
         {
-            "A32NX_OVHD_PRESS_MAN_ALTITUDE_PB_IS_AUTO", "A32NX_OVHD_PRESS_MAN_VS_CTL_PB_IS_AUTO",
+            "A32NX_OVHD_PRESS_MAN_ALTITUDE_PB_IS_AUTO", "PRESS_MAN_ALT_SET",
+            "A32NX_OVHD_PRESS_MAN_VS_CTL_PB_IS_AUTO", "PRESS_MAN_VS_SET",
             "A32NX_OVHD_PRESS_DITCHING_PB_IS_ON"
         };
         p["Ventilation"] = new List<string>
@@ -1680,11 +1701,33 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     // ===================================================================
     // Last announced E/WD code per line, so a line only speaks when it changes.
     private readonly Dictionary<string, long> _lastEwdCode = new();
+    private string? _lastThrottleDetent;
 
     public override bool ProcessSimVarUpdate(string varName, double value, ScreenReaderAnnouncer announcer)
     {
         if (varName == "MSFSBA_FBWA380_STAGE") { BridgeStage = (int)value; return true; }
         if (varName == "MSFSBA_FBWA380_HTML_LOADED") { BridgeHtmlLoaded = (int)value; return true; }
+
+        // Thrust lever angle -> announce the DETENT when it changes (not the raw
+        // angle, which would spam). FBW TLA detents: IDLE 0, CLB 25, FLX/MCT 35,
+        // TOGA 45, reverse negative. Only speak when the lever is AT a detent so
+        // mid-travel doesn't false-announce. Returns true to suppress the raw value.
+        if (varName == "A32NX_AUTOTHRUST_TLA:1")
+        {
+            string? detent =
+                Math.Abs(value - 0) < 1.5 ? "Idle" :
+                Math.Abs(value - 25) < 2.5 ? "Climb" :
+                Math.Abs(value - 35) < 2.5 ? "Flex M C T" :
+                Math.Abs(value - 45) < 2.5 ? "TOGA" :
+                value <= -15 ? "Maximum reverse" :
+                value < -2 ? "Reverse idle" : null;
+            if (detent != null && detent != _lastThrottleDetent)
+            {
+                _lastThrottleDetent = detent;
+                announcer.Announce($"Thrust levers {detent}");
+            }
+            return true;
+        }
 
         // ECAM upper (E/WD) memo/warning lines: decode the numeric code to text
         // and announce it (with its FWC colour as a priority word). Returning
@@ -1862,6 +1905,14 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             }
             simConnect.SetLVar(ts.Knob, (value - ts.Lo) / (ts.Hi - ts.Lo) * 300.0);
             announcer.Announce($"{ts.Label} temperature set to {value:0} degrees");
+            return true;
+        }
+        // Manual pressurization knobs — pass-through position write.
+        if (varKey == "PRESS_MAN_ALT_SET" || varKey == "PRESS_MAN_VS_SET")
+        {
+            simConnect.SetLVar(varKey == "PRESS_MAN_ALT_SET"
+                ? "A32NX_OVHD_PRESS_MAN_ALTITUDE_KNOB" : "A32NX_OVHD_PRESS_MAN_VS_CTL_KNOB", value);
+            announcer.Announce($"Set to {value:0.0}");
             return true;
         }
         // Thrust-lever detent combos -> THROTTLEn_AXIS_SET_EX1 with the detent's
