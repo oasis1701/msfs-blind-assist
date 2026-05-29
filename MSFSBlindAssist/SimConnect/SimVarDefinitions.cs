@@ -47,11 +47,20 @@ public class SimVarDefinition
     /// <summary>
     /// Numeric .NET format specifier used when rendering a continuous-numeric var
     /// as a read-only TextBox (the RenderAsReadOnlyStatus + Units + no
-    /// ValueDescriptions branch). Examples: "F0" = "1200", "F2" = "8.20",
-    /// "P0" = "30 %". Ignored when ValueDescriptions are present (those drive
-    /// the display text).
+    /// ValueDescriptions branch). Examples: "F0" = "1200", "F2" = "8.20".
+    /// Ignored when ValueDescriptions are present (those drive the display text).
     /// </summary>
     public string Format { get; set; } = "F0";
+    /// <summary>
+    /// Linear transform applied before formatting in the read-only-numeric
+    /// renderer: <c>displayValue = rawValue * Scale + Offset</c>. Defaults to
+    /// the identity (1.0, 0.0) so existing vars are unaffected. Used when the
+    /// PMDG SDK returns a value in a different unit than the cockpit gauge
+    /// displays — e.g. AIR_TemperatureNeedle is documented as °C but actually
+    /// returns °F, so we set Scale = 5.0/9.0 and Offset = -160.0/9.0 to convert.
+    /// </summary>
+    public double Scale { get; set; } = 1.0;
+    public double Offset { get; set; } = 0.0;
     public string? HelpText { get; set; }  // Optional help text read by screen reader (overrides default AccessibleDescription)
 
     // MobiFlight WASM support properties

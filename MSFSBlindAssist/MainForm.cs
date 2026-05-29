@@ -1044,7 +1044,8 @@ public partial class MainForm : Form
                         !string.IsNullOrEmpty(varDef.Units);
                     if (isContinuousReadout)
                     {
-                        newText = $"{value.ToString(varDef.Format, System.Globalization.CultureInfo.InvariantCulture)} {varDef.Units}";
+                        double displayValue = value * varDef.Scale + varDef.Offset;
+                        newText = $"{displayValue.ToString(varDef.Format, System.Globalization.CultureInfo.InvariantCulture)} {varDef.Units}";
                     }
                     else if (varDef.ValueDescriptions.TryGetValue(value, out string? desc))
                     {
@@ -4064,7 +4065,7 @@ public partial class MainForm : Form
                 string initial = "—";
                 if (currentSimVarValues.ContainsKey(varKey))
                 {
-                    double cur = currentSimVarValues[varKey];
+                    double cur = currentSimVarValues[varKey] * varDef.Scale + varDef.Offset;
                     initial = $"{cur.ToString(varDef.Format, System.Globalization.CultureInfo.InvariantCulture)} {varDef.Units}";
                 }
                 readoutBox.Text = initial;
