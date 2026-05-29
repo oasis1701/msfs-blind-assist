@@ -3951,10 +3951,15 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
 
             // -------------------------------------------------------------
             // Altimeter setting (inHg). 29.92 = "Altimeter standard".
-            // Otherwise announce both hPa and inches. Suppress the initial
-            // baseline value and debounce micro-changes.
+            // Otherwise dual-unit "Altimeter: <hpa>, <inhg>" — same wording
+            // as the ReadAltimeter hotkey (B) so set and read sound alike.
+            // Switch must key off the variable KEY (ALTIMETER_SETTING), not
+            // the SimConnect Name ("KOHLSMAN SETTING HG"); MainForm dispatches
+            // on the dictionary key, so a Name-based case never matches and
+            // the announcement fell through to the generic FormatVariableValue
+            // path ("Altimeter Setting: 29.92" — inches only).
             // -------------------------------------------------------------
-            case "KOHLSMAN SETTING HG":
+            case "ALTIMETER_SETTING":
             {
                 if (double.IsNaN(_lastAnnouncedAltimeter))
                 {
@@ -3969,7 +3974,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 else
                 {
                     int hpa = (int)Math.Round(value * 33.8639);
-                    announcer.Announce($"Altimeter {hpa} hectopascals, {value:0.00} inches");
+                    announcer.Announce($"Altimeter: {hpa}, {value:0.00}");
                 }
                 return true;
             }
