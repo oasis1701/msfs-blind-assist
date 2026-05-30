@@ -1,10 +1,13 @@
 [Preflight Check]
-Batteries 1 and 2 on, ESS and APU battery auto
-External power on if available, or start APU
+All batteries on, BAT 1, ESS, BAT 2 and APU battery
+External power on if available, all four, otherwise start the APU
+Radio management panels 1 and 2 on
+Fire detection test, APU and engines 1 to 4
 APU master switch on, then APU start when available
 APU bleed air on
 Crew oxygen supply on
-ADIRS 1, 2 and 3 set to nav
+ADIRS, all three IR mode set to nav
+Anti-skid on
 Cockpit and cabin temperature set in overhead Air Conditioning panel
 EFB flight plan imported in the flyPad before flight
 flyPad Ground Ops, board passengers and load cargo
@@ -116,10 +119,29 @@ Flaps up
 Autopilot disconnect, press the FCU disconnect button
 Teleport to a gate through input mode then shift G if desired
 
-[Shutdown and Secure Aircraft]
-Engine masters 1 to 4 off
-Beacon light off
+[Parking at the Gate]
+Anti-ice off
+APU bleed on
 Parking brake set
-APU master off when no longer needed
-External power or APU as required for ground services
-Complete the secure or turnaround procedure on the flyPad
+Engine master switches 1, 2, 3 and 4 off
+Seat belts sign off
+Slides disarmed, check
+Wait for engine N1 below 5 percent
+Beacon light off
+Exterior lights as required
+Establish ground contact
+Fuel pumps off
+Verify fuel quantity
+
+[Securing the Aircraft]
+Oxygen crew supply off
+ADIRS 1, 2 and 3 off
+Exterior lights off
+APU bleed off
+External power off
+APU master switch off
+Emergency exit lights off
+No smoking off
+All batteries off, BAT 1, ESS, BAT 2 and APU battery
+Aircraft is now cold and dark
+Complete the secure or turnaround procedure on the flyPad if desired

@@ -84,25 +84,42 @@ Some pages (WIND, REPORT, GNSS, TIME, the DATA sub-pages) only open once the FMS
 has the flight plan or data they need — that is the real aircraft behaviour, not
 a limitation.
 
-## 5. Loading the flight plan (already imported in the flyPad)
+## 5. Preparing the FMS — the FlyByWire flow
 
-This guide assumes you have already imported your SimBrief/OFP flight plan into
-the **flyPad** before the flight. To bring it into the FMS:
+This follows FlyByWire's own **A380X Beginner Guide → Preparing the FMS**
+(linked at the end), in the same order, but described for the accessible MCDU
+window. It assumes your SimBrief/OFP flight plan is already imported into the
+**flyPad** and IFR clearance is obtained. Open the MCDU (Shift+M), select the
+**Captain** side, then work the pages in this order:
 
-1. Open the MCDU (Shift+M) and select the **Captain** side.
-2. Go to the **ACTIVE / INIT** page.
-3. Enter the **FLT NBR**, then **FROM** and **TO** airports (4-letter ICAO).
-   Entering the city pair creates the active flight plan.
-4. Use the **CPNY F-PLN REQUEST** / company-route button (or the AOC/init
-   request) to pull the imported company flight plan when it is available.
-5. Go to the **F-PLN** page and check the route. Clear any **discontinuities**.
-6. Set the **departure runway and SID**, then the **arrival runway and STAR**.
-7. On the **FUEL & LOAD** page, confirm block fuel and zero-fuel weight.
-8. On the **PERF** page, complete the **TAKEOFF** sub-page: enter **V1, VR, V2**
-   and the takeoff flap setting.
+1. **INIT page** (from the ACTIVE dropdown, or the INIT button at the bottom of
+   F-PLN). Enter, one field at a time (type into the scratchpad, arrow to the
+   field, Enter):
+   - **FLT NBR** — flight number
+   - **FROM** and **TO** — departure and destination ICAO (the city pair builds
+     the flight plan)
+   - **ALTN** — alternate airport
+   - **CI** — cost index
+   - **CRZ FL** — cruise flight level
+2. **F-PLN / DEPARTURE** (DEPARTURE button). Select the **RUNWAY**, then the
+   **SID**, leave **TRANS** unless required, then **TMPY F-PLN** to stage it.
+3. **F-PLN / EN ROUTE.** Click the start waypoint, choose **AIRWAYS**, enter
+   **VIA** (airway) then **TO** (next waypoint); repeat for each leg, then
+   **TMPY F-PLN**.
+4. **F-PLN / ARRIVAL.** Click the destination, select arrival **RUNWAY**,
+   **APPR** (approach), **VIA** (transition) and **STAR**, then **TMPY F-PLN**
+   and **INSERT TMPY** to activate the whole plan.
+5. **NAVAIDS** (from INIT). Set **VOR1 IDENT** / frequency and the **LS IDENT**
+   for departure if needed; the arrival ILS auto-tunes within ~250 nm.
+6. **FUEL & LOAD** (from INIT). Enter **ZFW**, **ZFWCG**, **BLOCK** fuel,
+   **TAXI**, **PAX NBR**, verify **CI**, **ALTN** fuel and **FINAL** reserve.
+7. **T.O PERF** (from INIT). Enter **V1**, **VR**, **V2**; select **FLEX/TOGA**
+   (FBW's guide uses FLEX with a temperature) or DERATED; set **FLAPS**,
+   **THS FOR** (trim), **PACKS**, **ANTI ICE**, and **TRANS** altitude. V-speeds
+   and FLEX come from the SimBrief Takeoff Performance calculator.
 
 If a button does nothing and reads "disabled", the FMS isn't ready for it yet
-(for example, the company request needs a loaded flight plan first).
+(e.g. the company request needs a loaded flight plan first).
 
 ## 6. From start to landing — FMS flow
 
@@ -120,6 +137,17 @@ If a button does nothing and reads "disabled", the FMS isn't ready for it yet
 - **Approach & landing:** the FMS manages the approach speed; the **APPR** mode
   on the FCU establishes on the localizer and glide slope. FMA mode changes
   (G/S, LAND, FLARE) are announced automatically.
+
+## Source
+
+The FMS flow above mirrors FlyByWire's official **A380X Beginner Guide**, which
+is reviewed by an A380 type-rated pilot:
+
+- Preparing the FMS — https://docs.flybywiresim.com/pilots-corner/a380x/a380x-beginner-guide/03_preparing-fms/
+- Full beginner guide (cockpit prep → powering down) — https://docs.flybywiresim.com/pilots-corner/a380x/a380x-beginner-guide/overview/
+
+The `Checklists/FBW_A380_Checklist.txt` cold-and-dark and shutdown flows follow
+the same guide's **Cockpit Preparation** and **Powering Down** pages.
 
 ## Related
 
