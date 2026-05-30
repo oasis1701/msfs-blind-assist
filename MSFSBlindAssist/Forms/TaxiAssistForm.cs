@@ -1477,10 +1477,13 @@ public class TaxiAssistForm : Form
         }
         else
         {
-            // Aircraft is on the runway: use heading to determine intended exit side
+            // Aircraft is on the runway: use heading to determine intended exit side.
             // Perpendicular component of aircraft heading relative to runway heading:
-            // sin(runwayHdg - aircraftHdg) > 0 → aircraft heading toward left side
-            double perpComp = Math.Sin((runway.Heading - _aircraftHeading) * Math.PI / 180.0);
+            // sin(runwayHdg - aircraftHdg) > 0 → aircraft heading toward left side.
+            // Use HeadingMag (not the TRUE Heading used for the geographic
+            // cross-track above) so both operands are in the magnetic frame that
+            // _aircraftHeading (PLANE HEADING DEGREES MAGNETIC) lives in.
+            double perpComp = Math.Sin((runway.HeadingMag - _aircraftHeading) * Math.PI / 180.0);
             targetSign = perpComp >= 0 ? 1 : -1;
         }
 
