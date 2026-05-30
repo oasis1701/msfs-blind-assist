@@ -332,6 +332,16 @@ Complete A320 aircraft implementation:
 - 27 button-to-state mappings for automatic announcements
 - **Serves as reference implementation** for adding new aircraft
 
+## PMDG737Definition
+
+**File:** `Aircraft/PMDG737Definition.cs`
+
+PMDG 737-800 NG3 aircraft implementation:
+- Uses CDA (Client Data Area) via `PMDG_NG3_Data` / `PMDG_NG3_Control` / `PMDG_NG3_CDU_0/1` structs
+- Two CDUs (Captain = 0, F/O = 1); no observer CDU
+- MCP value entry via dialogs (Shift+H / Shift+S / Shift+A / Shift+V) — no FPA mode
+- See `### PMDG 737-800 NG3 Specific Patterns` in CLAUDE.md for SDK gotchas
+
 ## Dynamic Aircraft Selection System
 
 - `MainForm.currentAircraft`: Holds active aircraft instance

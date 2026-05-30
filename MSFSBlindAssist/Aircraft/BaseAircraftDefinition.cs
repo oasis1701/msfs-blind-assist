@@ -17,8 +17,12 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     private int? _lastAnnouncedAltitudeThousands = null;
     private double? _lastAnnouncedRawAltitude = null;
 
-    // Elevator trim announcement toggle and debounce
-    private bool _trimAnnouncementsEnabled = true;
+    // Elevator trim announcement toggle and debounce.
+    // Toggle is protected so aircraft that source trim from a custom variable
+    // (e.g. the PMDG 737 reads the L-var ElevTrimTT — the stock ELEVATOR TRIM
+    // POSITION SimVar is not driven by the NG3) can honour the shared Shift+T
+    // gate from their own ProcessSimVarUpdate.
+    protected bool _trimAnnouncementsEnabled = true;
     private double _lastAnnouncedTrimDeg = double.NaN;
 
     // Glideslope alive/lost tracking
@@ -602,4 +606,65 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     /// Default visual-guidance profile (A320 numbers). Override on heavier or smaller airframes.
     /// </summary>
     public virtual VisualGuidanceProfile GetVisualGuidanceProfile() => new();
+
+    /// <summary>
+    /// Captures an MSFS window screenshot and analyzes the indicated cockpit display via Gemini AI.
+    /// Shared by all aircraft definitions that support Gemini display capture.
+    /// </summary>
+    protected async void ReadDisplay(Services.GeminiService.DisplayType displayType,
+                                      string displayName,
+                                      ScreenReaderAnnouncer announcer,
+                                      System.Windows.Forms.Form parentForm)
+    {
+        try
+        {
+            announcer.Announce($"Capturing {displayName}...");
+
+            var screenshotService = new Services.ScreenshotService();
+            var geminiService = new Services.GeminiService();
+
+            if (!screenshotService.IsMsfsWindowAvailable())
+            {
+                announcer.Announce("Microsoft Flight Simulator window not found. Make sure the simulator is running.");
+                return;
+            }
+
+            byte[]? screenshot = await screenshotService.CaptureAsync();
+            if (screenshot == null || screenshot.Length == 0)
+            {
+                announcer.Announce($"Failed to capture {displayName} screenshot.");
+                return;
+            }
+
+            string analysis = await geminiService.AnalyzeDisplayAsync(screenshot, displayType);
+
+            var resultForm = new Forms.DisplayReadingResultForm(displayName, analysis);
+            resultForm.ShowForm();
+
+            announcer.Announce($"{displayName} analysis ready.");
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("API key"))
+        {
+            announcer.Announce("Gemini API key not configured. Please go to File menu, Gemini Settings.");
+            System.Windows.Forms.MessageBox.Show(
+                parentForm,
+                "Gemini API key is not configured.\n\n" +
+                "Please configure your API key in:\n" +
+                "File > Gemini Settings\n\n" +
+                "Get a free API key at: https://aistudio.google.com/apikey",
+                "API Key Required",
+                System.Windows.Forms.MessageBoxButtons.OK,
+                System.Windows.Forms.MessageBoxIcon.Warning);
+        }
+        catch (Exception ex)
+        {
+            announcer.Announce($"Error analyzing {displayName}: {ex.Message}");
+            System.Windows.Forms.MessageBox.Show(
+                parentForm,
+                $"Error analyzing {displayName}:\n\n{ex.Message}",
+                "Error",
+                System.Windows.Forms.MessageBoxButtons.OK,
+                System.Windows.Forms.MessageBoxIcon.Error);
+        }
+    }
 }

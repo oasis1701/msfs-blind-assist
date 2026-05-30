@@ -1693,7 +1693,10 @@ public class TaxiGraph
                 TaxiwayName = taxiwayName,
                 ExitAngleDegrees = exitAngle,
                 ExitBearingTrue = exitBearingTrue,
-                ExitType = exitType
+                ExitType = exitType,
+                ExitSide = exitBearingTrue != 0.0
+                    ? (NormalizeAngle((exitBearingTrue == 360.0 ? 0.0 : exitBearingTrue) - rwyHeadingTrue) >= 0 ? "Right" : "Left")
+                    : ""
             });
         }
 
@@ -1876,7 +1879,10 @@ public class TaxiGraph
                         TaxiwayName = txName2,
                         ExitAngleDegrees = angle2,
                         ExitBearingTrue = best2Brg,
-                        ExitType = et2
+                        ExitType = et2,
+                        ExitSide = best2Brg != 0.0
+                            ? (NormalizeAngle((best2Brg == 360.0 ? 0.0 : best2Brg) - rwyHeadingTrue) >= 0 ? "Right" : "Left")
+                            : ""
                     });
                 }
 

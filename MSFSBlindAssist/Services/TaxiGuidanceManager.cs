@@ -349,6 +349,18 @@ public class TaxiGuidanceManager : IDisposable
     // Cleared when the exit is confirmed taken, on StopGuidance, or on next
     // BeginLandingRollout.
     private bool _rolloutHandoffActive = false;
+    // After TryEarlyExitHandoff fires for a high-speed exit, stores ExitBearingTrue
+    // as a minimum desired heading so the post-exit arc tone stays active during the
+    // initial flat section where A* segment bearing is nearly parallel to the runway
+    // (e.g. EIDW S5: 92 m at ~runway heading before the RET curve tightens).
+    // Acts as a pan floor — whichever of the look-ahead bearing or this minimum
+    // gives the stronger pan toward the exit side wins. Becomes a no-op once the
+    // arc's natural segment bearings exceed it, and is RELEASED (reset to 0) the
+    // frame the aircraft heading reaches/passes the exit bearing — the turn onto the
+    // exit is complete, so the floor must stop clamping or it would mute a legitimate
+    // opposite-side route cue. Also cleared on LoadRoute and StopGuidance.
+    // 0 = inactive.
+    private double _postHighSpeedExitMinBearing = 0.0;
     // Timestamp of the last undershoot retarget. DateTime.MinValue = no retarget
     // yet this rollout. Guards against rapid cascade retargeting when multiple
     // earlier exits are within ROLLOUT_UNDERSHOOT_RANGE_FT.
@@ -818,6 +830,7 @@ public class TaxiGuidanceManager : IDisposable
             // fire RequestTakeoffAssistAutoActivate on its first lineup-aligned
             // transition.
             _autoActivateFired = false;
+            _postHighSpeedExitMinBearing = 0.0;
 
             // Use pre-built graph if provided (avoids a 200-500ms rebuild stall at large
             // airports when the form already ran BuildAsync). Otherwise build from the DB —
@@ -1360,7 +1373,15 @@ public class TaxiGuidanceManager : IDisposable
         }
 
         if (_state != TaxiGuidanceState.Taxiing || _route == null || _graph == null)
+        {
+            // After a landing-exit arrival the pilot is in Arrived state with no
+            // route — they still need runway incursion warnings while taxiing to
+            // their gate before opening the taxi planner (e.g. runway 16/34 at EIDW
+            // lies east of the S6 exit on the way to the terminal).
+            if (_state == TaxiGuidanceState.Arrived && _graph != null)
+                CheckRunwayIncursion(lat, lon);
             return;
+        }
 
         // Post-handoff overshoot monitor. After TryEarlyExitHandoff or the
         // turnBegun/exitedLaterally handoff from UpdateLandingRollout transitions
@@ -1516,6 +1537,39 @@ public class TaxiGuidanceManager : IDisposable
         var (targetLat, targetLon) = GetGuidanceTarget(lat, lon);
         double bearingToTarget = NavigationCalculator.CalculateBearing(lat, lon, targetLat, targetLon);
         double headingError = NormalizeAngle(bearingToTarget - headingTrue);
+
+        // Post-high-speed-exit: ExitBearingTrue acts as a minimum pan floor so the
+        // tone stays active during the initial flat section of a shallow RET where
+        // the A* segment bearing is nearly parallel to the runway. Takes whichever of
+        // the look-ahead error or the minimum-bearing error gives the stronger pan
+        // toward the exit side. Becomes a no-op once the arc steers harder than the
+        // minimum. Cleared by LoadRoute and StopGuidance.
+        if (_postHighSpeedExitMinBearing > 0.0)
+        {
+            double minError = NormalizeAngle(_postHighSpeedExitMinBearing - headingTrue);
+
+            // The floor only bridges the turn ONTO the exit. exitSide (exit bearing
+            // relative to the runway heading) is the direction the floor pushes. Once
+            // the aircraft heading has swung all the way to — or past — the exit
+            // bearing, minError crosses zero against exitSide: the turn is complete and
+            // the floor has done its job. RELEASE it here. Without this the floor would
+            // persist until the next LoadRoute/StopGuidance, and a legitimate opposite-
+            // side cue from the live route (e.g. the exit taxiway curving back the other
+            // way, or the look-ahead wrapping onto the next segment) would be clamped to
+            // silence — the worst failure mode for a blind pilot relying on the tone.
+            double exitSide = NormalizeAngle(_postHighSpeedExitMinBearing - _rolloutRunwayHeadingTrue);
+            bool turnComplete = (exitSide > 0.0 && minError <= 0.0)
+                             || (exitSide < 0.0 && minError >= 0.0);
+            if (turnComplete)
+            {
+                _postHighSpeedExitMinBearing = 0.0;
+            }
+            else
+            {
+                headingError = minError >= 0.0 ? Math.Max(headingError, minError)
+                                               : Math.Min(headingError, minError);
+            }
+        }
 
         // Apply 1-pole low-pass filter to heading error (kills jitter from wheel vibration)
         if (!_headingErrorInitialized)
@@ -1926,11 +1980,12 @@ public class TaxiGuidanceManager : IDisposable
     /// </summary>
     private void CheckRunwayIncursion(double lat, double lon)
     {
-        if (_graph == null || _route == null) return;
+        if (_graph == null) return;
 
         // Currently-scheduled hold-short node (owned by CheckHoldShortCountdown).
+        // Only meaningful when a route is active.
         int scheduledHsNodeId = -1;
-        if (_currentSegmentIndex < _route.Segments.Count &&
+        if (_route != null && _currentSegmentIndex < _route.Segments.Count &&
             _route.Segments[_currentSegmentIndex].IsHoldShortPoint)
         {
             scheduledHsNodeId = _route.Segments[_currentSegmentIndex].ToNode.NodeId;
@@ -1942,14 +1997,20 @@ public class TaxiGuidanceManager : IDisposable
 
         // Build the set of HS node-IDs that lie on the remaining planned route
         // (so "crossing" announcements fire for them; "off route" does not).
+        // When _route is null (e.g. after landing-exit arrival, before the pilot
+        // opens the taxi planner) the set stays empty and every approaching
+        // hold-short node triggers the "off route" warning — exactly what we want.
         var onRouteHsNodes = new HashSet<int>();
-        for (int i = _currentSegmentIndex; i < _route.Segments.Count; i++)
+        if (_route != null)
         {
-            var seg = _route.Segments[i];
-            if (seg.ToNode != null &&
-                (seg.ToNode.Type == TaxiNodeType.HoldShort || seg.ToNode.Type == TaxiNodeType.ILSHoldShort))
+            for (int i = _currentSegmentIndex; i < _route.Segments.Count; i++)
             {
-                onRouteHsNodes.Add(seg.ToNode.NodeId);
+                var seg = _route.Segments[i];
+                if (seg.ToNode != null &&
+                    (seg.ToNode.Type == TaxiNodeType.HoldShort || seg.ToNode.Type == TaxiNodeType.ILSHoldShort))
+                {
+                    onRouteHsNodes.Add(seg.ToNode.NodeId);
+                }
             }
         }
 
@@ -3551,6 +3612,13 @@ public class TaxiGuidanceManager : IDisposable
         _smoothedHeadingError = 0.0;
         _headingErrorInitialized = false;
 
+        // Set ExitBearingTrue as a minimum pan floor for the post-exit arc. Prevents
+        // the initial flat section of a shallow RET (e.g. EIDW S5: 92 m at ~runway
+        // heading) from producing a silent tone when a gentle rightward cue is needed.
+        // The floor is a no-op once the A* arc's natural bearing exceeds it.
+        _postHighSpeedExitMinBearing = (_rolloutExit!.ExitBearingTrue > 0.0)
+            ? _rolloutExit.ExitBearingTrue : 0.0;
+
         // Arm post-handoff overshoot monitor (same as the turnBegun path above).
         _rolloutHandoffActive = true;
 
@@ -4610,6 +4678,7 @@ public class TaxiGuidanceManager : IDisposable
         _rolloutEnd100Announced = false;
         _backtrackConnectionNodeId = 0;
         _backtrackApproachAnnounced = false;
+        _postHighSpeedExitMinBearing = 0.0;
         SetState(TaxiGuidanceState.Inactive);
         } // end lock(_stateLock)
     }

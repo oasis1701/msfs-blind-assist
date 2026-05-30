@@ -13,19 +13,21 @@ namespace MSFSBlindAssist.Patching
         BridgeJsSourceNotFound,
         PmdgPackageNotFound,
         InstallFailed,
-        Removed
+        Removed,
+        HS787PackageNotFound
     }
 
     public static class EFBModPackageManager
     {
-        // Bump this version when the mod package structure or bridge JS changes.
-        // On app startup, if the installed version is older, UpdateModPackage will
-        // re-patch HTML for all variants, copy the latest bridge JS, and regenerate layout.json.
-        // Bump on every meaningful bridge.js change so users on older versions trigger an
-        // "Updated" report rather than silent "AlreadyUpToDate". The new always-re-patch
-        // logic in UpdateModPackage doesn't need this signal, but it's still useful for
-        // telemetry and for the "version bump → forced refresh" semantic some users expect.
-        private const int BridgeVersion = 5;
+        // Bump this version when the bridge JS or package STRUCTURE changes — on app
+        // startup UpdateModPackage then re-patches HTML for all variants, copies the
+        // latest bridge JS, and regenerates layout.json on every existing install.
+        // Adding a new PMDG variant to Variants does NOT require a bump: UpdateModPackage
+        // also fires when a variant installed in the sim is missing its override folder
+        // (see HasMissingVariantOverride), so a variant the user installs later is picked
+        // up without forcing a no-op re-patch on installs that are already complete.
+        // v7: bridge JS gained the click_by_id fallbackText text-search path (PR #63).
+        private const int BridgeVersion = 7;
         private const string VersionFileName = "bridge-version.txt";
 
         private const string PackageFolderName = "zzz-pmdg-efb-accessibility";
@@ -33,13 +35,19 @@ namespace MSFSBlindAssist.Patching
         private const string HtmlFileName = "PMDGTabletCA.html";
         private const string BridgeJsFileName = "pmdg-efb-accessibility-bridge.js";
 
-        // Each PMDG 777 variant has its own tablet subfolder that needs an override
+        // Each PMDG variant has its own tablet subfolder that needs an override.
+        // The 737 and 777 ship the identical EFB app, so one shared bridge JS +
+        // package serves both — only the per-variant tablet subfolder differs.
         private static readonly (string PackageFolder, string VariantSubfolder)[] Variants = new[]
         {
             ("pmdg-aircraft-77er", "pmdg-777-200ER"),
             ("pmdg-aircraft-77w", "pmdg-777-300ER"),
             ("pmdg-aircraft-77l", "pmdg-777-200LR"),
             ("pmdg-aircraft-77f", "pmdg-777F"),
+            ("pmdg-aircraft-738", "pmdg-737-800"),
+            ("pmdg-aircraft-736", "pmdg-737-600"),
+            ("pmdg-aircraft-737", "pmdg-737-700"),
+            ("pmdg-aircraft-739", "pmdg-737-900"),
         };
 
         private static string GetHtmlRelativePath(string variantSubfolder) =>
@@ -65,7 +73,7 @@ namespace MSFSBlindAssist.Patching
         private const string ManifestJson = @"{
   ""dependencies"": [],
   ""content_type"": ""MISC"",
-  ""title"": ""MSFS Blind Assist - PMDG 777 EFB Bridge"",
+  ""title"": ""MSFS Blind Assist - PMDG EFB Bridge"",
   ""manufacturer"": """",
   ""creator"": ""MSFS Blind Assist"",
   ""package_version"": ""0.1.0"",
@@ -157,6 +165,16 @@ namespace MSFSBlindAssist.Patching
                 }
             }
 
+            // Steam FS2024 default: %AppData%\Microsoft Flight Simulator 2024\Packages\Community
+            if (!results.Any(r => r.Item1 == "MSFS 2024"))
+            {
+                string steamFs2024 = System.IO.Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                    "Microsoft Flight Simulator 2024", "Packages", "Community");
+                if (Directory.Exists(steamFs2024))
+                    results.Add(("MSFS 2024", steamFs2024));
+            }
+
             if (!results.Any(r => r.Item1 == "MSFS 2020"))
             {
                 foreach (string path in DefaultMSStoreCommunityPaths)
@@ -230,6 +248,13 @@ namespace MSFSBlindAssist.Patching
                     return path;
             }
 
+            // Steam FS2024 default
+            string steamDefault = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "Microsoft Flight Simulator 2024", "Packages", "Community");
+            if (Directory.Exists(steamDefault))
+                return steamDefault;
+
             // Fallback: common manual install paths
             foreach (string path in FallbackCommunityPaths)
             {
@@ -258,23 +283,6 @@ namespace MSFSBlindAssist.Patching
         private static void WriteVersionFile(string packagePath)
         {
             File.WriteAllText(Path.Combine(packagePath, VersionFileName), BridgeVersion.ToString());
-        }
-
-        /// <summary>
-        /// Byte-by-byte equality for small files. Used by <see cref="UpdateModPackage"/> to
-        /// decide whether the bridge JS on disk already matches the resource bytes — so we
-        /// can skip the write (and avoid bumping the file's modification time) when nothing
-        /// has changed. Returns true if both arrays are the same length and contain identical
-        /// bytes; false otherwise.
-        /// </summary>
-        private static bool BytesEqual(byte[] a, byte[] b)
-        {
-            if (a.Length != b.Length) return false;
-            for (int i = 0; i < a.Length; i++)
-            {
-                if (a[i] != b[i]) return false;
-            }
-            return true;
         }
 
         /// <summary>
@@ -350,16 +358,10 @@ namespace MSFSBlindAssist.Patching
         }
 
         /// <summary>
-        /// Refreshes the mod package on every app startup. Previously this was gated on
-        /// <see cref="BridgeVersion"/> being newer than the installed version — but that meant
-        /// when PMDG shipped an EFB update (new HTML, new button DOM IDs), our cached patched
-        /// HTML stayed at whatever PMDG's HTML looked like the first time we patched it. The
-        /// user would load MSFS, see our (now-stale) HTML override the real PMDG HTML, and
-        /// half the EFB features would break silently. Now we always re-read PMDG's current
-        /// HTML, re-patch it with our bridge script tag, and overwrite our cached copy. The
-        /// version check is retained only to decide whether to report "Updated" vs "Refreshed"
-        /// in telemetry — the work happens unconditionally. File I/O on a handful of files at
-        /// startup is negligible (~milliseconds).
+        /// Updates an existing mod package if the app ships a newer bridge version.
+        /// Re-patches HTML for all installed variants, adds override folders for any
+        /// newly installed variants, copies the latest bridge JS, and regenerates layout.json.
+        /// Returns AlreadyUpToDate if no update is needed, or Updated if changes were made.
         /// </summary>
         public static ModPackageResult UpdateModPackage(string communityFolderPath, string bridgeJsSourcePath)
         {
@@ -369,27 +371,24 @@ namespace MSFSBlindAssist.Patching
             if (!File.Exists(bridgeJsSourcePath))
                 return ModPackageResult.BridgeJsSourceNotFound;
 
+            // Run the update when the bridge version advanced OR when a PMDG variant that
+            // is installed in this sim is missing its override folder in our package. The
+            // missing-variant case covers a variant the user installed AFTER the package
+            // already reached the current BridgeVersion — a version-only gate would never
+            // pick it up. (This was the 738-only-works-in-2020 bug: the 2024 package's
+            // version file already read the current value, so the 737 override folder was
+            // never created and the version check permanently blocked the retry.)
             int installedVersion = GetInstalledVersion(communityFolderPath);
-            bool versionBumped = installedVersion < BridgeVersion;
+            if (installedVersion >= BridgeVersion && !HasMissingVariantOverride(communityFolderPath))
+                return ModPackageResult.AlreadyUpToDate;
 
             try
             {
                 string packagePath = Path.Combine(communityFolderPath, PackageFolderName);
                 var layoutEntries = new List<(string relativePath, long size)>();
 
-                // Always re-read PMDG's current HTML — this catches the case where PMDG
-                // shipped an update that changed their EFB markup. Our patched copy needs
-                // to stay in sync with PMDG's, otherwise we'd be overriding their new HTML
-                // with our stale snapshot of their old HTML.
+                // Find original HTML for all installed PMDG 777 variants
                 var foundVariants = FindOriginalPmdgHtmlPerVariant(communityFolderPath);
-
-                // Every write below is content-conditional: we only touch the filesystem when
-                // the destination is actually different from what's there. Steady-state (PMDG
-                // hasn't updated, our bridge hasn't updated) hits zero writes per app startup.
-                // This avoids triggering any file-watcher MSFS might have on community packages,
-                // and avoids churning the package's modification time for no reason.
-                bool anythingChanged = false;
-                byte[] sourceBridgeJsBytes = File.ReadAllBytes(bridgeJsSourcePath);
 
                 foreach (var (variantSubfolder, originalHtml) in foundVariants)
                 {
@@ -397,61 +396,27 @@ namespace MSFSBlindAssist.Patching
                     string htmlDir = Path.Combine(packagePath, htmlRelPath);
                     Directory.CreateDirectory(htmlDir);
 
-                    // HTML — write only if PMDG's content changed or our cache is missing.
+                    // Re-patch HTML with variant-specific bridge script tag
                     string htmlPath = Path.Combine(htmlDir, HtmlFileName);
-                    string newPatchedHtml = originalHtml.Contains(BridgeJsFileName)
-                        ? originalHtml  // PMDG's own copy already has our script tag (defensive)
+                    string modifiedHtml = originalHtml.Contains(BridgeJsFileName)
+                        ? originalHtml  // Already patched — don't double-patch
                         : originalHtml.TrimEnd() + GetBridgeScriptTag(variantSubfolder);
-                    string? existingPatchedHtml = File.Exists(htmlPath) ? File.ReadAllText(htmlPath) : null;
-                    if (existingPatchedHtml != newPatchedHtml)
-                    {
-                        File.WriteAllText(htmlPath, newPatchedHtml);
-                        anythingChanged = true;
-                        System.Diagnostics.Debug.WriteLine($"EFBModPackageManager: HTML refreshed for variant {variantSubfolder}");
-                    }
+                    File.WriteAllText(htmlPath, modifiedHtml);
 
-                    // Bridge JS — content-compare before writing. The previous version of this
-                    // method called File.Copy unconditionally; that always rewrites the file
-                    // (overwriting modification time) even when bytes are identical. Now we
-                    // hash-compare via raw bytes and only write on a real change.
+                    // Copy latest bridge JS
                     string bridgeJsDest = Path.Combine(htmlDir, BridgeJsFileName);
-                    if (!File.Exists(bridgeJsDest) || !BytesEqual(sourceBridgeJsBytes, File.ReadAllBytes(bridgeJsDest)))
-                    {
-                        File.WriteAllBytes(bridgeJsDest, sourceBridgeJsBytes);
-                        anythingChanged = true;
-                        System.Diagnostics.Debug.WriteLine($"EFBModPackageManager: bridge JS refreshed for variant {variantSubfolder}");
-                    }
+                    File.Copy(bridgeJsSourcePath, bridgeJsDest, overwrite: true);
 
                     layoutEntries.Add(($"{htmlRelPath}/{HtmlFileName}", new FileInfo(htmlPath).Length));
                     layoutEntries.Add(($"{htmlRelPath}/{BridgeJsFileName}", new FileInfo(bridgeJsDest).Length));
                 }
 
-                // layout.json — content-compare. MSFS reads file sizes from here, so it MUST be
-                // current with the actual file sizes; but rewriting an identical layout.json on
-                // every startup is wasteful.
+                // Regenerate layout.json and update version
                 string layoutJson = GenerateLayoutJson(layoutEntries);
-                string layoutPath = Path.Combine(packagePath, "layout.json");
-                string? existingLayout = File.Exists(layoutPath) ? File.ReadAllText(layoutPath) : null;
-                if (existingLayout != layoutJson)
-                {
-                    File.WriteAllText(layoutPath, layoutJson);
-                    anythingChanged = true;
-                }
+                File.WriteAllText(Path.Combine(packagePath, "layout.json"), layoutJson);
+                WriteVersionFile(packagePath);
 
-                // Version file — content-compare. Only touches disk on actual version bump.
-                string versionPath = Path.Combine(packagePath, VersionFileName);
-                string newVersion = BridgeVersion.ToString();
-                string? existingVersion = File.Exists(versionPath) ? File.ReadAllText(versionPath) : null;
-                if (existingVersion != newVersion)
-                {
-                    File.WriteAllText(versionPath, newVersion);
-                    anythingChanged = true;
-                }
-
-                // Report Updated if any file changed; AlreadyUpToDate when steady state.
-                return (versionBumped || anythingChanged)
-                    ? ModPackageResult.Updated
-                    : ModPackageResult.AlreadyUpToDate;
+                return ModPackageResult.Updated;
             }
             catch (Exception ex)
             {
@@ -480,6 +445,31 @@ namespace MSFSBlindAssist.Patching
                 System.Diagnostics.Debug.WriteLine($"EFBModPackageManager: Remove failed: {ex.Message}");
                 return ModPackageResult.InstallFailed;
             }
+        }
+
+        /// <summary>
+        /// Returns true when a PMDG variant whose original tablet HTML is present in this
+        /// Community folder does NOT yet have a corresponding override folder in our package.
+        /// Lets UpdateModPackage pick up a variant the user installed after the package already
+        /// reached the current BridgeVersion, without forcing a re-patch on installs that are
+        /// genuinely complete (which would pop a spurious "updated" dialog at every launch).
+        /// </summary>
+        private static bool HasMissingVariantOverride(string communityFolderPath)
+        {
+            string packagePath = Path.Combine(communityFolderPath, PackageFolderName);
+            foreach (var (packageFolder, variantSubfolder) in Variants)
+            {
+                // Is this PMDG variant actually installed in this sim?
+                string originalHtml = Path.Combine(communityFolderPath, packageFolder, GetHtmlRelativePath(variantSubfolder), HtmlFileName);
+                if (!File.Exists(originalHtml))
+                    continue; // not installed — nothing for us to override
+
+                // Do we already have an override folder for it?
+                string overrideHtml = Path.Combine(packagePath, GetHtmlRelativePath(variantSubfolder), HtmlFileName);
+                if (!File.Exists(overrideHtml))
+                    return true; // a present variant lacks our override
+            }
+            return false;
         }
 
         /// <summary>
@@ -547,6 +537,52 @@ namespace MSFSBlindAssist.Patching
             catch { }
 
             return null;
+        }
+
+        /// <summary>
+        /// Returns true if the given community folder path belongs to an FS2024 installation.
+        /// Three-tier check: UserCfg.opt content → MS Store path substring → Steam path substring.
+        /// </summary>
+        internal static bool IsPathFromFs2024(string communityFolderPath)
+        {
+            // Primary: check both FS2024 UserCfg.opt locations (covers custom/external paths for
+            // both Steam and MS Store once the sim has been run at least once).
+            string[] fs2024ConfigPaths =
+            {
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                    "Microsoft Flight Simulator 2024", "UserCfg.opt"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "Packages", "Microsoft.Limitless_8wekyb3d8bbwe", "LocalCache", "UserCfg.opt"),
+            };
+
+            foreach (string configPath in fs2024ConfigPaths)
+            {
+                string? basePath = TryParseInstalledPackagesPath(configPath);
+                if (basePath == null) continue;
+
+                string communityFromConfig = Path.Combine(basePath, "Community");
+                try
+                {
+                    if (string.Equals(
+                        Path.GetFullPath(communityFolderPath),
+                        Path.GetFullPath(communityFromConfig),
+                        StringComparison.OrdinalIgnoreCase))
+                        return true;
+                }
+                catch (ArgumentException) { } // invalid path — skip
+            }
+
+            // Fallback 1: MS Store default path contains "Limitless" in the package store name.
+            if (communityFolderPath.Contains("Limitless", StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            // Fallback 2: Steam default path contains "Microsoft Flight Simulator 2024".
+            // FS2020 Steam is "Microsoft Flight Simulator" (no year) — no false-match risk.
+            if (communityFolderPath.Contains("Microsoft Flight Simulator 2024",
+                StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            return false;
         }
     }
 }
