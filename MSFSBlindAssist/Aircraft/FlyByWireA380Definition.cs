@@ -1923,7 +1923,12 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // through so the FCU panel's display readouts work normally.
         if (_reqHdg && (varName == "A32NX_AUTOPILOT_HEADING_SELECTED" || varName == "A32NX_FCU_HDG_MANAGED_DASHES"))
         {
-            if (varName.EndsWith("HEADING_SELECTED")) _pHdgVal = value; else _pHdgMgd = value;
+            // A32NX_AUTOPILOT_HEADING_SELECTED is stored in RADIANS (verified live:
+            // a 250° set reads 4.363, a 300° set reads 5.236). MSFSBA's read path
+            // returns the raw radians, so convert to degrees and wrap to 0-360.
+            if (varName.EndsWith("HEADING_SELECTED"))
+                _pHdgVal = ((value * 180.0 / Math.PI % 360) + 360) % 360;
+            else _pHdgMgd = value;
             if (_pHdgVal.HasValue && _pHdgMgd.HasValue)
             {
                 string st = _pHdgMgd.Value > 0 ? "managed" : "selected";
@@ -2366,8 +2371,12 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         if (dialog.ShowDialog(parentForm) == System.Windows.Forms.DialogResult.OK && dialog.IsValidInput
             && double.TryParse(dialog.InputValue, out double value))
         {
-            uint toSend = Math.Abs(value) < 100 ? (uint)(value * 100) : (uint)value;
-            simConnect.SendEvent("A32NX.FCU_VS_SET", toSend);
+            // V/S and FPA are SIGNED (e.g. -3000 ft/min, -3.5° FPA). SendEvent's
+            // data is uint, so a negative value overflowed to a huge number and
+            // the set did nothing. Fire the signed value via calculator code (the
+            // dot-event path) instead. FPA is value*100 (deci-degrees), V/S is raw.
+            int toSend = Math.Abs(value) < 100 ? (int)(value * 100) : (int)value;
+            simConnect.ExecuteCalculatorCode($"{toSend} (>K:A32NX.FCU_VS_SET)");
             announcer.AnnounceImmediate($"Vertical speed set to {value}");
             return true;
         }
