@@ -479,6 +479,17 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     {
     }
 
+    /// <summary>
+    /// Default: no override — the panel display uses ValueDescriptions / numeric
+    /// formatting. Aircraft with ARINC429 (or otherwise non-presentable) display
+    /// fields override this to return a decoded string.
+    /// </summary>
+    public virtual bool TryGetDisplayOverride(string varKey, double value, out string displayText)
+    {
+        displayText = "";
+        return false;
+    }
+
     // Variable Update Processing
 
     /// <summary>

@@ -1317,8 +1317,15 @@ public partial class MainForm : Form
                         double value = displayValues[varKey];
                         string displayValue;
 
+                        // Aircraft-specific decode for non-presentable raw values
+                        // (e.g. ARINC429 baro/minimums words on the A380, which would
+                        // otherwise render as a ~14-billion raw double).
+                        if (currentAircraft.TryGetDisplayOverride(varKey, value, out string overrideText))
+                        {
+                            displayValue = overrideText;
+                        }
                         // Check if we have value descriptions (like Off/Aligning/Aligned)
-                        if (varDef.ValueDescriptions != null && varDef.ValueDescriptions.ContainsKey(value))
+                        else if (varDef.ValueDescriptions != null && varDef.ValueDescriptions.ContainsKey(value))
                         {
                             displayValue = varDef.ValueDescriptions[value];
                         }

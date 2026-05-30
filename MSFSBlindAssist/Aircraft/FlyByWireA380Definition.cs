@@ -900,8 +900,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         //  that writing them changes nothing. STD/QNH is the IS_STD combo below.)
         // Auto-announced live as the pilot turns the baro knob (the EFIS baro
         // setting is non-visual; spoken on change, deduped to whole hPa).
-        MonNum("A32NX_FCU_LEFT_EIS_BARO_HPA", "Capt Baro (hPa)", "hectopascals");
-        MonNum("A32NX_FCU_RIGHT_EIS_BARO_HPA", "F/O Baro (hPa)", "hectopascals");
+        MonNum("A32NX_FCU_LEFT_EIS_BARO_HPA", "Captain Altimeter", "hectopascals");
+        MonNum("A32NX_FCU_RIGHT_EIS_BARO_HPA", "First Officer Altimeter", "hectopascals");
         // STD(push)/QNH(pull) per side — SETTABLE combo (push=Standard, pull=QNH).
         // The A380X has NO event for this; HandleUIVariableSet writes the L:var
         // directly (verified live). This is the real "baro push/pull" control,
@@ -1792,11 +1792,12 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "FD_ACTIVE"
         };
         // The EIS baro value is an ARINC429 word — NOT shown as a raw display field
-        // (it reads ~14 billion); it's decoded and auto-announced on change (and
-        // queryable via the altimeter read hotkey). Only the plain preselected QNH
-        // is a display readout.
-        d["EFIS Captain"] = new List<string> { "A380X_EFIS_L_BARO_PRESELECTED" };
-        d["EFIS First Officer"] = new List<string> { "A380X_EFIS_R_BARO_PRESELECTED" };
+        // (it reads ~14 billion) — but TryGetDisplayOverride decodes it to clean
+        // text ("1013 hPa" / "29.92 inHg" / "Standard"), so the same value the
+        // pilot hears auto-announced now also reads in the panel, alongside the
+        // plain preselected QNH.
+        d["EFIS Captain"] = new List<string> { "A32NX_FCU_LEFT_EIS_BARO_HPA", "A380X_EFIS_L_BARO_PRESELECTED" };
+        d["EFIS First Officer"] = new List<string> { "A32NX_FCU_RIGHT_EIS_BARO_HPA", "A380X_EFIS_R_BARO_PRESELECTED" };
         d["Radios"] = new List<string>
         {
             "COM_ACTIVE_FREQUENCY:1", "COM_STANDBY_FREQUENCY:1",
@@ -1804,9 +1805,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "COM_ACTIVE_FREQUENCY:3", "COM_STANDBY_FREQUENCY:3"
         };
         d["Transponder"] = new List<string> { "XPNDR_CODE", "A32NX_DCDU_ATC_MSG_WAITING" };
-        // Minimums are ARINC429 words — not shown as raw display fields (they'd
-        // read ~4.29e9); the decoded value auto-announces when set on the MCDU.
-        d["Minimums"] = new List<string>();
+        // Minimums are ARINC429 words — TryGetDisplayOverride decodes them to
+        // "200 feet" / "Not set" (the raw word reads ~4.29e9). They also
+        // auto-announce when set on the MCDU PERF APPR page.
+        d["Minimums"] = new List<string> { "A32NX_FM1_MINIMUM_DESCENT_ALTITUDE", "A32NX_FM1_DECISION_HEIGHT" };
 
         // ---- A32NX shared gap readouts ----
         d["Autobrake"].AddRange(new[]
@@ -2329,6 +2331,27 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             simConnect.ExecuteCalculatorCode($"{(int)Math.Round(value)} (>L:{varKey})");
             return true;
         }
+        // #56 — Wing anti-ice + probe/window heat. Engine anti-ice needs the
+        // K:ANTI_ICE_SET_ENGn event (the L:var/XMLVAR don't drive it), but wing
+        // and probe heat have NO documented A380X event (the FBW a380-simvars doc
+        // omits anti-ice entirely). Route their FBW L:var writes through the
+        // MobiFlight calculator path — the SimConnect data-def SetLVar (the old
+        // default for these two) is unreliable for FBW L:vars, same as the reads.
+        // Wing is a MOMENTARY "PRESSED" XMLVAR: pulse 1 -> 0 so each press is a
+        // fresh rising edge that toggles the system. NEEDS AN IN-SIM CONFIRM; if
+        // it doesn't actuate, the fallback is the stock K:ANTI_ICE_TOGGLE (wing) /
+        // K:PITOT_HEAT_TOGGLE (probe heat).
+        if (varKey == "XMLVAR_MOMENTARY_PUSH_OVHD_ANTIICE_WING_PRESSED")
+        {
+            simConnect.ExecuteCalculatorCode("1 (>L:XMLVAR_MOMENTARY_PUSH_OVHD_ANTIICE_WING_PRESSED)");
+            simConnect.ExecuteCalculatorCode("0 (>L:XMLVAR_MOMENTARY_PUSH_OVHD_ANTIICE_WING_PRESSED)");
+            return true;
+        }
+        if (varKey == "A32NX_MAN_PITOT_HEAT")
+        {
+            simConnect.ExecuteCalculatorCode($"{(value > 0.5 ? 1 : 0)} (>L:A32NX_MAN_PITOT_HEAT)");
+            return true;
+        }
         // FCU engage/mode toggle combos: the backing L:var is read-only state, so
         // a "set" fires the matching toggle event — but only when the picked state
         // differs from the current one (the events toggle, they don't set an
@@ -2373,6 +2396,44 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         return (capt ? _baroInHgL : _baroInHgR) == true
             ? $"{who} altimeter {pre}{hpa / 33.8639:0.00} inches"
             : $"{who} altimeter {pre}{hpa} hectopascals";
+    }
+
+    // Panel-display decode for the ARINC429 EFIS baro + minimums words, so the
+    // same value the pilot HEARS auto-announced also reads cleanly in the panel
+    // (the raw word would render as ~14 billion). See MainForm.UpdateDisplayText.
+    public override bool TryGetDisplayOverride(string varKey, double value, out string displayText)
+    {
+        displayText = "";
+        switch (varKey)
+        {
+            case "A32NX_FCU_LEFT_EIS_BARO_HPA":
+            case "A32NX_FCU_RIGHT_EIS_BARO_HPA":
+            {
+                bool capt = varKey.Contains("LEFT");
+                // STD flag wins; otherwise decode the word (range-aware) and show
+                // in the side's selected unit.
+                if ((capt ? _baroStdL : _baroStdR) == true ||
+                    !BaroHpa(new Arinc429Word(value).ValueOr(0), out int hpa))
+                {
+                    displayText = "Standard";
+                    return true;
+                }
+                displayText = (capt ? _baroInHgL : _baroInHgR) == true
+                    ? $"{hpa / 33.8639:0.00} inHg"
+                    : $"{hpa} hPa";
+                return true;
+            }
+            case "A32NX_FM1_MINIMUM_DESCENT_ALTITUDE":
+            case "A32NX_FM1_DECISION_HEIGHT":
+            {
+                var w = new Arinc429Word(value);
+                int ft = (w.IsNormalOperation || w.IsFunctionalTest)
+                    ? (int)(Math.Round(w.Value / 10.0) * 10) : -1;
+                displayText = ft > 0 ? $"{ft} feet" : "Not set";
+                return true;
+            }
+        }
+        return false;
     }
 
     // FCU engage/mode toggle combos -> the input event that flips them. The
