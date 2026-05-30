@@ -203,7 +203,14 @@
   // grid). Inputs show their current value (or "(empty)"); the field's text
   // label, if any, is reported separately as its own static line above it.
   A.lineText = function (n, kind) {
-    if (kind === "input") { var v = A.readInputValue(n); return v || "(empty)"; }
+    if (kind === "input") {
+      var v = A.readInputValue(n);
+      // An input wrapped in a DropdownMenu is really a CHOICE field (you pick a
+      // value from a list — many, like ATC COM "NOTIFY TO ATC", don't accept
+      // free text at all). Flag it so it doesn't read as a plain text box.
+      var choice = A.ancestorWithClass(n, "mfd-dropdown-outer") ? " (choice list)" : "";
+      return (v || "(empty)") + choice;
+    }
     if (kind === "dropdown") {
       var di = n.querySelector(".mfd-dropdown-inner");
       return clean(di ? di.textContent : n.textContent) || "(choice)";
@@ -267,7 +274,7 @@
       }
       if (best) {
         var val = inp.value || inp.text || "";
-        inp.text = clean(best.text) + ": " + (val || "(empty)");
+        inp.text = clean(best.text) + ": " + (val || "(empty)") + (inp.isChoice ? " (choice list)" : "");
         best.consumed = true;
       }
     }
@@ -300,6 +307,7 @@
         right: r.right - pageRect.left, bot: r.bottom - pageRect.top,
         idx: idx, kind: kind, text: label,
         value: kind === "input" ? A.readInputValue(n) : "",
+        isChoice: kind === "input" && !!A.ancestorWithClass(n, "mfd-dropdown-outer"),
         disabled: n.classList.contains("disabled")
       });
       idx++;
@@ -552,6 +560,13 @@
   A.clickElement = function (index) {
     var node = document.querySelector('[data-fbwa380-mcdu-idx="' + index + '"]');
     if (!node) return "missing";
+    // A DropdownMenu-wrapped input opens its option list when the DROPDOWN (not
+    // the inert inner field) is clicked — so activating "NOTIFY TO ATC" etc.
+    // shows the choices instead of doing nothing.
+    if (node.classList && node.classList.contains("mfd-input-field-container")) {
+      var dd = A.ancestorWithClass(node, "mfd-dropdown-outer");
+      if (dd) { A.clickNode(dd); return "ok"; }
+    }
     A.clickNode(node);
     return "ok";
   };
@@ -579,6 +594,25 @@
     return "nofield";
   };
 
+  // Nearest ancestor (or self) carrying a class, else null.
+  A.ancestorWithClass = function (node, cls) {
+    var cur = node;
+    while (cur) { if (cur.classList && cur.classList.contains(cls)) return cur; cur = cur.parentElement; }
+    return null;
+  };
+
+  // Is a DropdownMenu (its .mfd-dropdown-outer) currently open? The dropdown list
+  // (.mfd-dropdown-menu, a sibling under .mfd-dropdown-container) is display:none
+  // when closed.
+  A.dropdownIsOpen = function (outer) {
+    try {
+      var cont = outer.parentElement;
+      var menu = cont && cont.querySelector(".mfd-dropdown-menu");
+      if (!menu) return false;
+      return window.getComputedStyle(menu).display !== "none";
+    } catch (e) { return false; }
+  };
+
   A.sendToField = function (index, newValue) {
     var node = document.querySelector('[data-fbwa380-mcdu-idx="' + index + '"]');
     if (!node) return "missing";
@@ -589,11 +623,23 @@
     // Non-input (button/dropdown/tab/menu) — just click.
     if (info && info.kind !== "input") { A.clickNode(node); return "ok"; }
 
-    // Input field: focus via the real click->focus path, then type + ENTER.
-    // Focusing clears the field's edit buffer, so no manual backspacing needed.
     var span = node.querySelector(".mfd-input-field-text-input");
     if (!span) { A.clickNode(node); return "noinput"; }
     var spanningDiv = node.querySelector(".mfd-input-field-text-input-container");
+
+    // DropdownMenu-wrapped input (e.g. ATC COM "NOTIFY TO ATC", any combo field):
+    // its InputField is handleFocusBlurExternally, so a direct span click does NOT
+    // focus it — the field only becomes editable when the DROPDOWN is opened
+    // (DropdownMenu focuses the inner InputField on open). So open it first.
+    var dd = A.ancestorWithClass(node, "mfd-dropdown-outer");
+    if (dd) {
+      if (!A.dropdownIsOpen(dd)) A.clickNode(dd);   // toggle open -> focuses inner field
+      A.typeIntoField(span, newValue, true);        // type + ENTER (commits, closes)
+      return "ok";
+    }
+
+    // Plain InputField: focus via the real click->focus path, then type + ENTER.
+    // Focusing clears the field's edit buffer, so no manual backspacing needed.
     A.focusField(span, spanningDiv);
     A.typeIntoField(span, newValue, true);
     return "ok";
