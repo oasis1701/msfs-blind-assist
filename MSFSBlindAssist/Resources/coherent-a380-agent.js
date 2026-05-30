@@ -360,7 +360,9 @@
       if (!A.isVisible(t)) continue;
       if (A.isInsideInteractive(t)) continue;
       var own = A.directText(t);
-      if (!own) continue;
+      // Skip empty leaves and FBW data-binding artifacts ("null"/"undefined"
+      // rendered into empty MFD cells) — never meaningful to the pilot.
+      if (!own || own === "null" || own === "undefined") continue;
       var tr = t.getBoundingClientRect();
       var cls = (t.className && t.className.toString) ? t.className.toString() : "";
       items.push({
