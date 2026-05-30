@@ -302,7 +302,7 @@ public class LittleNavMapProvider : IAirportDataProvider
             Ident = reader["ident"]?.ToString() ?? "",
             Frequency = Convert.ToDouble(reader["frequency"] ?? 0.0) / 1000.0, // Convert kHz to MHz
             Range = Convert.ToInt32(reader["range"] ?? 0),
-            GlideslopeRange = Convert.ToInt32(reader["gs_range"] ?? 0),
+            GlideslopeRange = SafeReadInt(reader, "gs_range", 0),  // NULL on LOC-only rows
             GlideslopePitch = SafeReadDouble(reader, "gs_pitch", 3.0),  // NULL on LOC-only rows
             LocalizerHeading = Convert.ToDouble(reader["loc_heading"] ?? 0.0),
             LocalizerWidth = Convert.ToDouble(reader["loc_width"] ?? 0.0),
@@ -731,6 +731,26 @@ public class LittleNavMapProvider : IAirportDataProvider
             int ord = reader.GetOrdinal(columnName);
             if (reader.IsDBNull(ord)) return defaultValue;
             return Convert.ToDouble(reader.GetValue(ord));
+        }
+        catch
+        {
+            return defaultValue;
+        }
+    }
+
+    /// <summary>
+    /// Safely reads an integer column that may be missing or NULL. Integer twin of
+    /// <see cref="SafeReadDouble"/> — same DBNull caveat: <c>Convert.ToInt32(DBNull.Value)</c>
+    /// throws, so the bare <c>?? 0</c> pattern is unsafe for nullable columns like
+    /// <c>ils.gs_range</c> (NULL on localizer-only approaches).
+    /// </summary>
+    private static int SafeReadInt(SqliteDataReader reader, string columnName, int defaultValue)
+    {
+        try
+        {
+            int ord = reader.GetOrdinal(columnName);
+            if (reader.IsDBNull(ord)) return defaultValue;
+            return Convert.ToInt32(reader.GetValue(ord));
         }
         catch
         {
