@@ -1283,7 +1283,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 "Calls", "Signs", "Wipers", "ADIRS", "Flight Control Computers", "Engine Start",
                 "Recorder and Misc", "GPWS", "Interior Lighting", "Exterior Lighting"
             },
-            ["Glareshield"] = new List<string> { "FCU", "EFIS Control Panel", "Warnings", "OIT" },
+            ["Glareshield"] = new List<string> { "FCU", "EFIS Captain", "EFIS First Officer", "Warnings", "OIT" },
             ["Instrument"] = new List<string> { "Gear", "Autobrake", "ISIS", "Source Switching" },
             ["Pedestal"] = new List<string>
             {
@@ -1425,18 +1425,27 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "PUSH_AUTOPILOT_MASTERWARN_L", "PUSH_AUTOPILOT_MASTERWARN_R",
             "PUSH_AUTOPILOT_MASTERCAUT_L", "PUSH_AUTOPILOT_MASTERCAUT_R"
         };
-        p["EFIS Control Panel"] = new List<string>
+        // EFIS Control Panel split per side (Captain / First Officer), PMDG-style.
+        p["EFIS Captain"] = new List<string>
         {
             "A380X_EFIS_L_LS_BUTTON_IS_ON", "A380X_EFIS_L_VV_BUTTON_IS_ON", "A380X_EFIS_L_CSTR_BUTTON_IS_ON",
             "A380X_EFIS_L_ARPT_BUTTON_IS_ON", "A380X_EFIS_L_TRAF_BUTTON_IS_ON",
             "A32NX_EFIS_L_ND_MODE", "A32NX_EFIS_L_ND_RANGE",
+            "A380X_EFIS_L_ACTIVE_FILTER", "A380X_EFIS_L_ACTIVE_OVERLAY",
             "A32NX_EFIS_L_NAVAID_1_MODE", "A32NX_EFIS_L_NAVAID_2_MODE",
+            "A32NX_FCU_LEFT_EIS_BARO_IS_STD", "XMLVAR_Baro_Selector_HPA_1",
+            "A32NX_EFIS_L_OANS_RANGE",
+            "TOGGLE_FLIGHT_DIRECTOR" // FD (single/broken; per-side fix pending source audit)
+        };
+        p["EFIS First Officer"] = new List<string>
+        {
             "A380X_EFIS_R_LS_BUTTON_IS_ON", "A380X_EFIS_R_VV_BUTTON_IS_ON", "A380X_EFIS_R_CSTR_BUTTON_IS_ON",
             "A380X_EFIS_R_ARPT_BUTTON_IS_ON", "A380X_EFIS_R_TRAF_BUTTON_IS_ON",
             "A32NX_EFIS_R_ND_MODE", "A32NX_EFIS_R_ND_RANGE",
+            "A380X_EFIS_R_ACTIVE_FILTER", "A380X_EFIS_R_ACTIVE_OVERLAY",
             "A32NX_EFIS_R_NAVAID_1_MODE", "A32NX_EFIS_R_NAVAID_2_MODE",
-            "TOGGLE_FLIGHT_DIRECTOR",
-            "A32NX_FCU_LEFT_EIS_BARO_IS_STD", "A32NX_FCU_RIGHT_EIS_BARO_IS_STD"
+            "A32NX_FCU_RIGHT_EIS_BARO_IS_STD", "XMLVAR_Baro_Selector_HPA_2",
+            "A32NX_EFIS_R_OANS_RANGE"
         };
         p["FCU"] = new List<string>
         {
@@ -1568,11 +1577,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "A32NX_AUTOPILOT_1_ACTIVE", "A32NX_AUTOPILOT_2_ACTIVE"
         };
         p["Interior Lighting"].Add("A380X_OVHD_EXTLT_STBY_COMPASS_ICE_IND_SWITCH_POS");
-        p["EFIS Control Panel"].AddRange(new[]
-        {
-            "A380X_EFIS_L_ACTIVE_FILTER", "A380X_EFIS_L_ACTIVE_OVERLAY", "XMLVAR_Baro_Selector_HPA_1", "A32NX_EFIS_L_OANS_RANGE",
-            "A380X_EFIS_R_ACTIVE_FILTER", "A380X_EFIS_R_ACTIVE_OVERLAY", "XMLVAR_Baro_Selector_HPA_2", "A32NX_EFIS_R_OANS_RANGE"
-        });
+        // (EFIS filter/overlay/baro-unit/OANS folded into the per-side EFIS panels above.)
         p["ECAM Control Panel"].AddRange(new[] { "A32NX_BTN_CHECK_LH", "A32NX_BTN_CHECK_RH" });
         p["Transponder"].Add("A32NX_DCDU_ATC_MSG_ACK");
 
@@ -1741,9 +1746,12 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "A32NX_FMA_LATERAL_MODE", "A32NX_FMA_VERTICAL_MODE", "A32NX_APPROACH_CAPABILITY",
             "FD_ACTIVE"
         };
-        d["EFIS Control Panel"] = new List<string>
+        d["EFIS Captain"] = new List<string>
         {
-            "A32NX_FCU_LEFT_EIS_BARO_HPA", "A380X_EFIS_L_BARO_PRESELECTED",
+            "A32NX_FCU_LEFT_EIS_BARO_HPA", "A380X_EFIS_L_BARO_PRESELECTED"
+        };
+        d["EFIS First Officer"] = new List<string>
+        {
             "A32NX_FCU_RIGHT_EIS_BARO_HPA", "A380X_EFIS_R_BARO_PRESELECTED"
         };
         d["Radios"] = new List<string>
