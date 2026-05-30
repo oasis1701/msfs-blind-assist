@@ -423,9 +423,10 @@ public class FBWA380MCDUForm : Form
                 // tells the user what it is (a ListBox renders plain strings, so
                 // it doesn't get the automatic role a native control would).
                 string role = AnnounceRoles ? RoleWord(el.Kind) : "";
-                // Tell the user a control is disabled, so a no-op activation
-                // reads as "disabled" rather than "broken".
-                string suffix = el.Disabled ? (role.Length > 0 ? $", {role}, disabled" : ", disabled")
+                // Tell the user a control is unavailable, so a no-op activation
+                // reads as "dimmed" rather than "broken". (Matches the flyPad
+                // browser view, which also says "dimmed".)
+                string suffix = el.Disabled ? (role.Length > 0 ? $", {role}, dimmed" : ", dimmed")
                                              : (role.Length > 0 ? $", {role}" : "");
                 lines.Add($"{el.Index}: {el.Text}{suffix}");
             }

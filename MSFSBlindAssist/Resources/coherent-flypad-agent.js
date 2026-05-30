@@ -306,6 +306,25 @@
     return false;
   };
 
+  // True when n is the ACTIVE option of a segmented / choice control (e.g. the
+  // chosen throttle axis "4", the detent being calibrated "TO/GA", a "Fast /
+  // Real" sync setting). The bare bg-theme-highlight token is AMBIGUOUS: FBW's
+  // primary Button component also uses it as its base background, so every
+  // action button (Back, Apply, Reset, Set from Throttle, ...) would otherwise
+  // read "(selected)". A genuine segmented control has sibling options styled
+  // with the UNSELECTED-segment token bg-theme-accent; a standalone button does
+  // not. Require an accent-styled peer to disambiguate.
+  A.isSelectedSegment = function (n) {
+    if (!A.hasClassToken(n, "bg-theme-highlight")) return false;
+    var p = n.parentElement;
+    if (!p) return false;
+    var sibs = p.children;
+    for (var i = 0; i < sibs.length; i++) {
+      if (sibs[i] !== n && A.hasClassToken(sibs[i], "bg-theme-accent")) return true;
+    }
+    return false;
+  };
+
   // Builds the flat, screen-reader-friendly element list for the current
   // flyPad page: every visible interactive control PLUS visible headings/text,
   // one per line, in reading order, de-duplicated. Interactive/clickable items
@@ -338,10 +357,11 @@
       var clickable = A.isClickable(kind);
 
       // Mark the selected option of a segmented setting control (e.g. the chosen
-      // "Instant / Fast / Real"): the active segment carries bg-theme-highlight as
-      // a STANDALONE token. Must be a token check, not a substring — otherwise the
-      // common hover:bg-theme-highlight style falsely marks every button selected.
-      if (text && A.hasClassToken(n, "bg-theme-highlight")) text = text + " (selected)";
+      // "Instant / Fast / Real", throttle axis, or calibration detent). Only a
+      // genuine choice control gets the marker — a primary action button shares
+      // the same bg-theme-highlight background, so isSelectedSegment additionally
+      // requires an unselected (bg-theme-accent) sibling to disambiguate.
+      if (text && A.isSelectedSegment(n)) text = text + " (selected)";
 
       // Drop empty, non-actionable noise. Inputs/checkboxes keep their slot
       // (their value carries meaning even with no label).
