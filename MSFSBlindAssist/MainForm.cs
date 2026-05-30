@@ -61,6 +61,7 @@ public partial class MainForm : Form
     private TakeoffAssistManager takeoffAssistManager = null!;
     private HandFlyManager handFlyManager = null!;
     private VisualGuidanceManager visualGuidanceManager = null!;
+    private MSFSBlindAssist.Services.GroundSpeedAnnouncer groundSpeedAnnouncer = null!;
     private ElectronicFlightBagForm? electronicFlightBagForm;
     private TrackFixForm? trackFixForm;
     private TcasForm? tcasForm;
@@ -274,6 +275,11 @@ public partial class MainForm : Form
         // Initialize visual guidance manager
         visualGuidanceManager = new VisualGuidanceManager(announcer);
         visualGuidanceManager.VisualGuidanceActiveChanged += OnVisualGuidanceActiveChanged;
+
+        // Global ground-speed announcer — fed by the always-on GROUND_VELOCITY continuous
+        // variable, so callouts work in every phase (takeoff roll, landing rollout, taxi),
+        // not just while taxi guidance is active.
+        groundSpeedAnnouncer = new MSFSBlindAssist.Services.GroundSpeedAnnouncer(announcer);
 
         // Initialize taxi guidance manager
         taxiGuidanceManager = new TaxiGuidanceManager(announcer);
@@ -700,6 +706,17 @@ public partial class MainForm : Form
             return true;
         }
 
+        // Ground-speed announcer. GROUND_VELOCITY is a continuous base variable (always
+        // monitored while connected). Route it to the dedicated announcer's bucket/hysteresis
+        // logic and return true so the generic "value changed" announcement is suppressed.
+        // The announcer self-gates on the interval setting AND on the on-ground state
+        // (_lastOnGround, cached from SIM_ON_GROUND) — GS callouts are on-ground only.
+        if (e.VarName == "GROUND_VELOCITY")
+        {
+            groundSpeedAnnouncer.ProcessGroundSpeed(e.Value, _lastOnGround);
+            return true;
+        }
+
         // Handle takeoff assist toggle activation (receives position from RequestPositionForTakeoffAssist)
         if (e.VarName == "POSITION_FOR_TAKEOFF_ASSIST")
         {
@@ -836,11 +853,24 @@ public partial class MainForm : Form
         if (e.VarName == "SIM_ON_GROUND")
         {
             bool onGround = e.Value >= 0.5;
+            bool justTouchedDown = onGround && !_lastOnGround;
             _lastOnGround = onGround;
             // Mirror to SimConnectManager so other components (LandingExitForm,
             // etc.) that have a SimConnectManager reference can read the latest
             // air/ground state without a separate MainForm dependency.
             simConnectManager.LastKnownOnGround = onGround;
+
+            // Auto-deactivate visual guidance on touchdown: from this moment on,
+            // the landing-exit planner / taxi guidance take over the rollout and
+            // taxi guidance respectively, so the dual-tone guidance no longer
+            // has a useful job. Keeping it running would compete with the taxi
+            // steering tone audibly. Only fires on the airborne→on-ground edge,
+            // so a user who manually engages visual guidance on the ramp for any
+            // reason (preflight test, etc.) is not surprised by auto-deactivation.
+            if (justTouchedDown && visualGuidanceManager.IsActive)
+            {
+                visualGuidanceManager.Toggle();
+            }
 
             // Feed SIM_ON_GROUND transitions to the landing-exit planner so it
             // can detect touchdown and auto-activate taxi guidance to the
@@ -960,24 +990,33 @@ public partial class MainForm : Form
             return true;
         }
 
-        // Share pitch/bank/heading with visual guidance when both modes active
-        if (visualGuidanceManager.IsActive)
+        // Visual guidance attitude (pitch / bank) now comes from VG's own SimConnect
+        // monitoring batch — no longer dependent on HandFly being active. Heading is
+        // already populated by the VG position update above.
+        if (e.VarName == "VISUAL_GUIDANCE_PITCH" && visualGuidanceManager.IsActive)
         {
-            if (e.VarName == "PLANE_PITCH_DEGREES")
-            {
-                double pitchDegrees = -(e.Value * (180.0 / Math.PI));
-                visualGuidanceManager.UpdatePitch(pitchDegrees);
-            }
-            else if (e.VarName == "PLANE_BANK_DEGREES")
-            {
-                double bankDegrees = e.Value * (180.0 / Math.PI);
-                visualGuidanceManager.UpdateBank(bankDegrees);
-            }
-            else if (e.VarName == "PLANE_HEADING_DEGREES_MAGNETIC")
-            {
-                double headingDegrees = e.Value * (180.0 / Math.PI);
-                visualGuidanceManager.UpdateHeading(headingDegrees);
-            }
+            // SimConnect pitch is positive=nose down (Euler convention); negate to
+            // standard right-handed convention (positive=nose up).
+            double pitchDegrees = -(e.Value * (180.0 / Math.PI));
+            visualGuidanceManager.UpdatePitch(pitchDegrees);
+            return true;
+        }
+        if (e.VarName == "VISUAL_GUIDANCE_BANK" && visualGuidanceManager.IsActive)
+        {
+            // SimConnect bank is left-positive; VisualGuidanceManager.StandardBank() applies
+            // the sign conversion at the consumer side, so we pass the raw SimConnect value
+            // (just converted from radians to degrees).
+            double bankDegrees = e.Value * (180.0 / Math.PI);
+            visualGuidanceManager.UpdateBank(bankDegrees);
+            return true;
+        }
+        if (e.VarName == "VISUAL_GUIDANCE_AOA" && visualGuidanceManager.IsActive)
+        {
+            // INCIDENCE ALPHA from SimConnect arrives in radians. VG smooths and sanity-gates
+            // it consumer-side; we just convert and forward.
+            double aoaDegrees = e.Value * (180.0 / Math.PI);
+            visualGuidanceManager.UpdateAoA(aoaDegrees);
+            return true;
         }
 
         // Handle aircraft variable hotkey announcements
@@ -1432,6 +1471,26 @@ public partial class MainForm : Form
         OnSimVarUpdated(this, simVarEvent);
     }
 
+    /// <summary>
+    /// True for the quick-access readout hotkeys (the H/V/Q/S/D/B/P/A/F set) — single
+    /// keypresses whose whole purpose is to speak a value. When one of these fires during
+    /// an active visual-guidance session, VG opens a grace window so its per-second
+    /// bank/centerline callouts don't talk over the readout.
+    /// </summary>
+    private static bool IsManualReadoutAction(HotkeyAction action) => action switch
+    {
+        HotkeyAction.ReadTargetFPM
+            or HotkeyAction.ReadPitch
+            or HotkeyAction.ReadBankAngle
+            or HotkeyAction.ReadVerticalSpeed
+            or HotkeyAction.ReadAltitudeAGL
+            or HotkeyAction.ReadAltitudeMSL
+            or HotkeyAction.ReadAirspeedIndicated
+            or HotkeyAction.ReadDestinationRunwayDistance
+            or HotkeyAction.ReadHeadingMagnetic => true,
+        _ => false
+    };
+
     private void OnHotkeyTriggered(object? sender, HotkeyEventArgs e)
     {
         // Actions that don't require SimConnect connection (can be used offline)
@@ -1451,6 +1510,14 @@ public partial class MainForm : Form
         {
             announcer.Announce("Not connected to simulator, please wait");
             return;
+        }
+
+        // If the pilot fired a manual readout query while visual guidance is active, open a
+        // short grace window so VG's per-second bank/centerline callouts don't interrupt the
+        // readout mid-sentence. See VisualGuidanceManager.NotifyManualQuery.
+        if (visualGuidanceManager.IsActive && IsManualReadoutAction(e.Action))
+        {
+            visualGuidanceManager.NotifyManualQuery();
         }
 
         // Try aircraft-specific handler first
@@ -3367,11 +3434,11 @@ public partial class MainForm : Form
             // Unregister global H, V, Q hotkeys
             hotkeyManager.UnregisterHandFlyHotkeys();
 
-            // Stop visual guidance if active (requires hand fly mode)
-            if (visualGuidanceManager.IsActive)
-            {
-                visualGuidanceManager.Stop();
-            }
+            // Visual guidance is now independent of HandFly mode — do NOT stop it just
+            // because HandFly is being toggled off. VG runs its own attitude monitoring
+            // (VISUAL_GUIDANCE_PITCH / VISUAL_GUIDANCE_BANK) and has nothing to lose from
+            // HandFly going inactive. If anything, HandFly turning off makes VG audio
+            // cleaner because there are now only two tones playing instead of three.
         }
     }
 
@@ -3390,20 +3457,20 @@ public partial class MainForm : Form
     {
         if (isActive)
         {
-            // Validation checks
-            if (!handFlyManager.IsActive)
-            {
-                announcer.Announce("Hand fly mode must be active first");
-                visualGuidanceManager.Stop();
-                return;
-            }
-
+            // Validation: visual guidance no longer requires HandFly mode — it monitors its
+            // own pitch/bank/heading via VISUAL_GUIDANCE_DATA. Decoupled per pilot feedback that
+            // HandFly's single tone interfered with VG's dual tones, making it hard to tell
+            // which tone to follow. If HandFly happens to also be active, its tone is paused
+            // for the duration of VG (see HandFlyManager.SuppressAudio).
+            // Use Stop(announce: false) — Toggle has already flipped isActive=true but the user
+            // never actually had a running guidance session, so the public "Visual guidance off"
+            // callout would be misleading after a validation error.
             var runway = simConnectManager.GetDestinationRunway();
             var airport = simConnectManager.GetDestinationAirport();
             if (runway == null)
             {
                 announcer.Announce("No destination runway selected");
-                visualGuidanceManager.Stop();
+                visualGuidanceManager.Stop(announce: false);
                 return;
             }
 
@@ -3412,16 +3479,68 @@ public partial class MainForm : Form
             var guidanceToneWaveform = settings.VisualGuidanceToneWaveform;
             var guidanceVolume = settings.VisualGuidanceToneVolume;
 
-            // Initialize visual guidance with runway and preferences
-            visualGuidanceManager.Initialize(runway, airport, guidanceToneWaveform, guidanceVolume);
+            // Initialize visual guidance with runway, audio preferences (desired + optional follower tone),
+            // and aircraft-specific tunables from the current aircraft definition.
+            visualGuidanceManager.Initialize(
+                runway, airport,
+                guidanceToneWaveform, guidanceVolume,
+                settings.VisualGuidanceCurrentToneWaveform,
+                settings.VisualGuidanceCurrentToneVolume,
+                settings.VisualGuidanceHardPanTone,
+                currentAircraft.GetVisualGuidanceProfile());
+
+            // PMDG 777: if the FMC has a pilot-entered landing Vref, push it as a live
+            // override of the profile-default reference Vref. The PMDG SDK doesn't expose
+            // AoA (which we read via the standard SimConnect INCIDENCE ALPHA simvar) but
+            // it DOES publish FMC_LandingVREF in its CDA broadcast — snapshot it at VG
+            // activation time. FBW / Fenix A320 have no equivalent SDK field, so they
+            // continue to use the A320 profile default. Snapshot rather than live: if the
+            // pilot re-enters Vref mid-approach (rare), they re-toggle VG to pick it up.
+            if (currentAircraft?.AircraftCode == "PMDG_777" &&
+                simConnectManager?.PMDGDataManager != null)
+            {
+                double fmcVref = simConnectManager.PMDGDataManager.GetFieldValue("FMC_LandingVREF");
+                if (fmcVref > 0)
+                {
+                    visualGuidanceManager.UpdateReferenceVref(fmcVref);
+                    System.Diagnostics.Debug.WriteLine($"[MainForm] VG: pushed PMDG FMC_LandingVREF={fmcVref:F0}kt as ReferenceVref");
+                }
+            }
 
             // Start monitoring position variables at 1 Hz
             simConnectManager.StartVisualGuidanceMonitoring();
+
+            // Silence HandFly's tone if it's also active — VG's two tones use the same
+            // Hz/pan mapping as HandFly's single tone, and pilots reported the three tones
+            // together were impossible to follow. Announcements (if HandFly's feedback mode
+            // includes them) still fire. Idempotent — no-op if HandFly was already silent.
+            handFlyManager.SuppressAudio();
+
+            // Register the quick-access hotkey set (H, V, Q, S, D, B, P, A, F). The set is
+            // shared with HandFly — VG is a hand-flying scenario with extra audio guidance, so
+            // the same per-key readouts apply. The shared registration is reference-counted
+            // inside HotkeyManager, so activating both modes is conflict-free; whichever
+            // deactivates last releases the keys. If a key fails to register (some other app
+            // is holding it globally), the user is told to fall back to output mode.
+            bool allQuickKeysRegistered = hotkeyManager.RegisterVisualGuidanceHotkeys();
+            if (!allQuickKeysRegistered)
+            {
+                announcer.Announce("Visual guidance active. Some quick-access keys unavailable; use output mode.");
+            }
         }
         else
         {
             // Stop monitoring
             simConnectManager.StopVisualGuidanceMonitoring();
+
+            // Release VG's claim on the quick-access hotkey set. If HandFly is still active,
+            // its claim keeps the keys registered; if not, this drops the ref count to zero
+            // and unregisters all 9 keys.
+            hotkeyManager.UnregisterVisualGuidanceHotkeys();
+
+            // Resume HandFly's tone if HandFly is still active and its feedback mode wants
+            // tones. Idempotent — no-op if HandFly is off or in announcements-only mode.
+            handFlyManager.ResumeAudio();
         }
     }
 
@@ -3554,6 +3673,9 @@ public partial class MainForm : Form
             currentSettings.HandFlyMonitorVerticalSpeed,
             currentSettings.VisualGuidanceToneWaveform,
             currentSettings.VisualGuidanceToneVolume,
+            currentSettings.VisualGuidanceCurrentToneWaveform,
+            currentSettings.VisualGuidanceCurrentToneVolume,
+            currentSettings.VisualGuidanceHardPanTone,
             currentSettings.TakeoffAssistToneWaveform,
             currentSettings.TakeoffAssistToneVolume,
             currentSettings.TakeoffAssistMuteCenterlineAnnouncements,
@@ -3574,6 +3696,9 @@ public partial class MainForm : Form
                 currentSettings.HandFlyMonitorVerticalSpeed = settingsForm.MonitorVerticalSpeed;
                 currentSettings.VisualGuidanceToneWaveform = settingsForm.GuidanceToneWaveform;
                 currentSettings.VisualGuidanceToneVolume = settingsForm.SelectedGuidanceVolume;
+                currentSettings.VisualGuidanceCurrentToneWaveform = settingsForm.VisualGuidanceCurrentToneWaveform;
+                currentSettings.VisualGuidanceCurrentToneVolume = settingsForm.VisualGuidanceCurrentToneVolume;
+                currentSettings.VisualGuidanceHardPanTone = settingsForm.VisualGuidanceHardPanTone;
                 currentSettings.TakeoffAssistToneWaveform = settingsForm.TakeoffToneWaveform;
                 currentSettings.TakeoffAssistToneVolume = settingsForm.TakeoffToneVolume;
                 currentSettings.TakeoffAssistMuteCenterlineAnnouncements = settingsForm.TakeoffAssistMuteCenterlineAnnouncements;

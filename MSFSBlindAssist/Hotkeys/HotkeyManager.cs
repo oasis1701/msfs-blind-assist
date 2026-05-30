@@ -173,6 +173,29 @@ public class HotkeyManager : IDisposable
         private bool disposed = false;
         private bool suspended = false;
 
+        // === Shared quick-access (single-letter, no-modifier) hotkey set ============
+        // Registered when EITHER HandFly OR visual guidance is active. Same keys serve
+        // both modes — they're "things a pilot wants to query while hand-flying", and
+        // running visual guidance is a hand-flying scenario with extra audio guidance.
+        // Reference-counted so the keys survive a single mode toggling off while the
+        // other mode is still active. Per-key registration tracking + partial-retry
+        // on each acquire handles the case where Windows previously refused a key
+        // (some other app held it) but it's now available.
+        private int quickAccessActiveModeCount = 0;
+        private readonly bool[] quickAccessKeyRegistered = new bool[9];
+        private static readonly (int id, uint vk, string label)[] QuickAccessKeys = new[]
+        {
+            (HOTKEY_HANDFLY_HEADING,         (uint)0x48, "H"),
+            (HOTKEY_HANDFLY_VERTICAL_SPEED,  (uint)0x56, "V"),
+            (HOTKEY_HANDFLY_ALTITUDE_AGL,    (uint)0x51, "Q"),
+            (HOTKEY_HANDFLY_SPEED,           (uint)0x53, "S"),
+            (HOTKEY_HANDFLY_RUNWAY_DISTANCE, (uint)0x44, "D"),
+            (HOTKEY_HANDFLY_BANK_ANGLE,      (uint)0x42, "B"),
+            (HOTKEY_HANDFLY_PITCH,           (uint)0x50, "P"),
+            (HOTKEY_HANDFLY_ALTITUDE_MSL,    (uint)0x41, "A"),
+            (HOTKEY_VISUAL_TARGET_FPM,       (uint)0x46, "F"),
+        };
+
         public event EventHandler<HotkeyEventArgs>? HotkeyTriggered;
         public event EventHandler<HotkeyModeEventArgs>? OutputHotkeyModeChanged;
         public event EventHandler<HotkeyModeEventArgs>? InputHotkeyModeChanged;
@@ -384,8 +407,15 @@ public class HotkeyManager : IDisposable
                             TriggerHotkey(HotkeyAction.ToggleHandFlyMode);
                             return true;  // Return immediately, mode already deactivated
                         case HOTKEY_VISUAL_GUIDANCE:
+                            // Visual guidance now registers the same quick-access keys HandFly
+                            // does (H/V/Q/S/D/B/P/A/F), and RegisterVisualGuidanceHotkeys is
+                            // gated on `!outputHotkeyModeActive`. If we don't deactivate output
+                            // mode before triggering, RegisterVisualGuidanceHotkeys silently
+                            // returns false and the user has VG running with NO quick-access
+                            // hotkeys. Same fix pattern as HOTKEY_HAND_FLY_MODE above.
+                            DeactivateOutputHotkeyMode();
                             TriggerHotkey(HotkeyAction.ToggleVisualGuidance);
-                            break;
+                            return true;
                         case HOTKEY_EFB:
                             TriggerHotkey(HotkeyAction.ShowElectronicFlightBag);
                             break;
@@ -557,72 +587,49 @@ public class HotkeyManager : IDisposable
                     DeactivateInputHotkeyMode();
                     return true;
                 }
-                else if (handFlyHotkeysActive)
+                else if (handFlyHotkeysActive || visualGuidanceHotkeysActive)
                 {
-                    System.Diagnostics.Debug.WriteLine($"Hand fly hotkeys: Received WM_HOTKEY with ID {hotkeyId}");
-
-                    // Handle hand fly mode hotkeys (H, V, Q, S, D, B, P)
+                    // Unified quick-access dispatch. The same H/V/Q/S/D/B/P/A/F keys serve
+                    // both HandFly and visual guidance — they're "things a pilot wants to
+                    // query while hand-flying", and VG implies hand-flying with extra audio.
+                    // Registration is reference-counted (see AcquireQuickAccessHotkeys), so
+                    // either mode by itself or both active produces the same dispatch path.
+                    System.Diagnostics.Debug.WriteLine($"Quick-access hotkey: Received WM_HOTKEY id={hotkeyId} (handFly={handFlyHotkeysActive}, vg={visualGuidanceHotkeysActive})");
                     switch (hotkeyId)
                     {
                         case HOTKEY_HANDFLY_HEADING:
-                            System.Diagnostics.Debug.WriteLine("Hand fly hotkeys: Triggering ReadHeadingMagnetic");
                             TriggerHotkey(HotkeyAction.ReadHeadingMagnetic);
                             break;
                         case HOTKEY_HANDFLY_VERTICAL_SPEED:
-                            System.Diagnostics.Debug.WriteLine("Hand fly hotkeys: Triggering ReadVerticalSpeed");
                             TriggerHotkey(HotkeyAction.ReadVerticalSpeed);
                             break;
                         case HOTKEY_HANDFLY_ALTITUDE_AGL:
-                            System.Diagnostics.Debug.WriteLine("Hand fly hotkeys: Triggering ReadAltitudeAGL");
                             TriggerHotkey(HotkeyAction.ReadAltitudeAGL);
                             break;
                         case HOTKEY_HANDFLY_SPEED:
-                            System.Diagnostics.Debug.WriteLine("Hand fly hotkeys: Triggering ReadAirspeedIndicated");
                             TriggerHotkey(HotkeyAction.ReadAirspeedIndicated);
                             break;
                         case HOTKEY_HANDFLY_RUNWAY_DISTANCE:
-                            System.Diagnostics.Debug.WriteLine("Hand fly hotkeys: Triggering ReadDestinationRunwayDistance");
                             TriggerHotkey(HotkeyAction.ReadDestinationRunwayDistance);
                             break;
                         case HOTKEY_HANDFLY_BANK_ANGLE:
-                            System.Diagnostics.Debug.WriteLine("Hand fly hotkeys: Triggering ReadBankAngle");
                             TriggerHotkey(HotkeyAction.ReadBankAngle);
                             break;
                         case HOTKEY_HANDFLY_PITCH:
-                            System.Diagnostics.Debug.WriteLine("Hand fly hotkeys: Triggering ReadPitch");
                             TriggerHotkey(HotkeyAction.ReadPitch);
                             break;
                         case HOTKEY_HANDFLY_ALTITUDE_MSL:
-                            System.Diagnostics.Debug.WriteLine("Hand fly hotkeys: Triggering ReadAltitudeMSL");
                             TriggerHotkey(HotkeyAction.ReadAltitudeMSL);
                             break;
                         case HOTKEY_VISUAL_TARGET_FPM:
-                            System.Diagnostics.Debug.WriteLine("Hand fly hotkeys: Triggering ReadTargetFPM for visual guidance");
+                            // The action handler self-gates on VG.IsActive — when only HandFly
+                            // is up and the user presses F, they get "Visual guidance not active".
                             TriggerHotkey(HotkeyAction.ReadTargetFPM);
                             break;
                         default:
-                            System.Diagnostics.Debug.WriteLine($"Hand fly hotkeys: Unknown hotkey ID {hotkeyId}");
+                            System.Diagnostics.Debug.WriteLine($"Quick-access hotkey: Unknown hotkey ID {hotkeyId}");
                             break;
                     }
-                    // Don't deactivate - these stay active until hand fly mode is disabled
-                    return true;
-                }
-                else if (visualGuidanceHotkeysActive)
-                {
-                    System.Diagnostics.Debug.WriteLine($"Visual guidance hotkeys: Received WM_HOTKEY with ID {hotkeyId}");
-
-                    // Handle visual guidance mode hotkeys (F)
-                    switch (hotkeyId)
-                    {
-                        case HOTKEY_VISUAL_TARGET_FPM:
-                            System.Diagnostics.Debug.WriteLine("Visual guidance hotkeys: Triggering ReadTargetFPM");
-                            TriggerHotkey(HotkeyAction.ReadTargetFPM);
-                            break;
-                        default:
-                            System.Diagnostics.Debug.WriteLine($"Visual guidance hotkeys: Unknown hotkey ID {hotkeyId}");
-                            break;
-                    }
-                    // Don't deactivate - these stay active until visual guidance mode is disabled
                     return true;
                 }
             }
@@ -960,54 +967,85 @@ public class HotkeyManager : IDisposable
             DeactivateInputHotkeyMode();
         }
 
+        /// <summary>
+        /// Internal — register every quick-access key not yet held by us. Called by both
+        /// HandFly and visual-guidance Register methods. Reference-counted via
+        /// <see cref="quickAccessActiveModeCount"/>; the actual RegisterHotKey calls happen
+        /// once and the keys persist as long as at least one mode is active. Per-key
+        /// tracking + retry-on-each-acquire handles the case where Windows previously
+        /// refused a key (some other app held it) but the key has since freed up.
+        /// </summary>
+        private bool AcquireQuickAccessHotkeys()
+        {
+            quickAccessActiveModeCount++;
+            bool allOk = true;
+            for (int i = 0; i < QuickAccessKeys.Length; i++)
+            {
+                if (!quickAccessKeyRegistered[i])
+                {
+                    bool ok = RegisterHotKey(windowHandle, QuickAccessKeys[i].id, MOD_NONE, QuickAccessKeys[i].vk);
+                    quickAccessKeyRegistered[i] = ok;
+                    if (!ok)
+                    {
+                        allOk = false;
+                        System.Diagnostics.Debug.WriteLine($"Quick-access hotkey: failed to register {QuickAccessKeys[i].label} (id={QuickAccessKeys[i].id})");
+                    }
+                }
+            }
+            System.Diagnostics.Debug.WriteLine($"Quick-access hotkeys: refCount={quickAccessActiveModeCount}, allOk={allOk}");
+            return allOk;
+        }
+
+        /// <summary>
+        /// Internal — drop one mode's reference to the quick-access keys. If no mode is
+        /// still active, releases every key we registered. Idempotent guard against
+        /// over-release (refCount won't go negative).
+        /// </summary>
+        private void ReleaseQuickAccessHotkeys()
+        {
+            quickAccessActiveModeCount--;
+            if (quickAccessActiveModeCount <= 0)
+            {
+                quickAccessActiveModeCount = 0;
+                for (int i = 0; i < QuickAccessKeys.Length; i++)
+                {
+                    if (quickAccessKeyRegistered[i])
+                    {
+                        UnregisterHotKey(windowHandle, QuickAccessKeys[i].id);
+                        quickAccessKeyRegistered[i] = false;
+                    }
+                }
+                System.Diagnostics.Debug.WriteLine("Quick-access hotkeys: all keys released (no active modes)");
+            }
+            else
+            {
+                System.Diagnostics.Debug.WriteLine($"Quick-access hotkeys: refCount={quickAccessActiveModeCount} (other mode still active, keys kept)");
+            }
+        }
+
+        /// <summary>
+        /// Registers HandFly's quick-access hotkeys (H, V, Q, S, D, B, P, A, F).
+        /// F (Target FPM) is included because pilots use HandFly during approaches too and
+        /// it's confusing to lose F just because VG isn't yet active. If VG also activates,
+        /// the keys stay registered exactly once via the shared acquire/release mechanism.
+        /// </summary>
         public bool RegisterHandFlyHotkeys()
         {
-            // Don't register if output mode is active (to prevent conflicts)
             if (outputHotkeyModeActive || handFlyHotkeysActive)
             {
                 System.Diagnostics.Debug.WriteLine("Hand fly hotkeys: Skipped registration (mode conflict or already active)");
                 return false;
             }
-
-            System.Diagnostics.Debug.WriteLine("Hand fly hotkeys: Attempting registration...");
-
-            // Register H, V, Q, S, D, B, P, A without modifiers for global access
-            bool hRegistered = RegisterHotKey(windowHandle, HOTKEY_HANDFLY_HEADING, MOD_NONE, 0x48);         // H (Heading)
-            bool vRegistered = RegisterHotKey(windowHandle, HOTKEY_HANDFLY_VERTICAL_SPEED, MOD_NONE, 0x56); // V (Vertical Speed)
-            bool qRegistered = RegisterHotKey(windowHandle, HOTKEY_HANDFLY_ALTITUDE_AGL, MOD_NONE, 0x51);   // Q (Altitude AGL)
-            bool sRegistered = RegisterHotKey(windowHandle, HOTKEY_HANDFLY_SPEED, MOD_NONE, 0x53);          // S (Airspeed)
-            bool dRegistered = RegisterHotKey(windowHandle, HOTKEY_HANDFLY_RUNWAY_DISTANCE, MOD_NONE, 0x44); // D (Runway Distance)
-            bool bRegistered = RegisterHotKey(windowHandle, HOTKEY_HANDFLY_BANK_ANGLE, MOD_NONE, 0x42);     // B (Bank Angle)
-            bool pRegistered = RegisterHotKey(windowHandle, HOTKEY_HANDFLY_PITCH, MOD_NONE, 0x50);          // P (Pitch)
-            bool aRegistered = RegisterHotKey(windowHandle, HOTKEY_HANDFLY_ALTITUDE_MSL, MOD_NONE, 0x41);   // A (Altitude MSL)
-            bool fRegistered = RegisterHotKey(windowHandle, HOTKEY_VISUAL_TARGET_FPM, MOD_NONE, 0x46);    // F (Target FPM for visual guidance)
-
-            System.Diagnostics.Debug.WriteLine($"Hand fly hotkeys: H={hRegistered}, V={vRegistered}, Q={qRegistered}, S={sRegistered}, D={dRegistered}, B={bRegistered}, P={pRegistered}, A={aRegistered}, F={fRegistered}");
-
-            // Only mark as active if ALL registrations succeeded
-            if (hRegistered && vRegistered && qRegistered && sRegistered && dRegistered && bRegistered && pRegistered && aRegistered && fRegistered)
-            {
-                handFlyHotkeysActive = true;
-                System.Diagnostics.Debug.WriteLine("Hand fly hotkeys: All registered successfully");
-                return true;
-            }
-            else
-            {
-                // Partial failure - clean up any successful registrations
-                System.Diagnostics.Debug.WriteLine("Hand fly hotkeys: Registration failed, cleaning up...");
-                if (hRegistered) UnregisterHotKey(windowHandle, HOTKEY_HANDFLY_HEADING);
-                if (vRegistered) UnregisterHotKey(windowHandle, HOTKEY_HANDFLY_VERTICAL_SPEED);
-                if (qRegistered) UnregisterHotKey(windowHandle, HOTKEY_HANDFLY_ALTITUDE_AGL);
-                if (sRegistered) UnregisterHotKey(windowHandle, HOTKEY_HANDFLY_SPEED);
-                if (dRegistered) UnregisterHotKey(windowHandle, HOTKEY_HANDFLY_RUNWAY_DISTANCE);
-                if (bRegistered) UnregisterHotKey(windowHandle, HOTKEY_HANDFLY_BANK_ANGLE);
-                if (pRegistered) UnregisterHotKey(windowHandle, HOTKEY_HANDFLY_PITCH);
-                if (aRegistered) UnregisterHotKey(windowHandle, HOTKEY_HANDFLY_ALTITUDE_MSL);
-                if (fRegistered) UnregisterHotKey(windowHandle, HOTKEY_VISUAL_TARGET_FPM);
-                return false;
-            }
+            bool ok = AcquireQuickAccessHotkeys();
+            handFlyHotkeysActive = true;  // mode flag; dispatch reads it to know which actions to fire
+            System.Diagnostics.Debug.WriteLine($"Hand fly hotkeys: registered (allKeysOk={ok})");
+            return ok;
         }
 
+        /// <summary>
+        /// Drops HandFly's claim on the quick-access keys. If visual guidance is also active,
+        /// the keys stay registered (VG still needs them).
+        /// </summary>
         public void UnregisterHandFlyHotkeys()
         {
             if (!handFlyHotkeysActive)
@@ -1015,54 +1053,28 @@ public class HotkeyManager : IDisposable
                 System.Diagnostics.Debug.WriteLine("Hand fly hotkeys: Unregister skipped (not active)");
                 return;
             }
-
-            System.Diagnostics.Debug.WriteLine("Hand fly hotkeys: Unregistering...");
             handFlyHotkeysActive = false;
-
-            // Unregister the hand fly hotkeys
-            UnregisterHotKey(windowHandle, HOTKEY_HANDFLY_HEADING);
-            UnregisterHotKey(windowHandle, HOTKEY_HANDFLY_VERTICAL_SPEED);
-            UnregisterHotKey(windowHandle, HOTKEY_HANDFLY_ALTITUDE_AGL);
-            UnregisterHotKey(windowHandle, HOTKEY_HANDFLY_SPEED);
-            UnregisterHotKey(windowHandle, HOTKEY_HANDFLY_RUNWAY_DISTANCE);
-            UnregisterHotKey(windowHandle, HOTKEY_HANDFLY_BANK_ANGLE);
-            UnregisterHotKey(windowHandle, HOTKEY_HANDFLY_PITCH);
-            UnregisterHotKey(windowHandle, HOTKEY_HANDFLY_ALTITUDE_MSL);
-            UnregisterHotKey(windowHandle, HOTKEY_VISUAL_TARGET_FPM);
-
+            ReleaseQuickAccessHotkeys();
             System.Diagnostics.Debug.WriteLine("Hand fly hotkeys: Unregistered successfully");
         }
 
         /// <summary>
-        /// Registers F key hotkey for visual guidance mode (target FPM)
-        /// Note: F is now registered with hand-fly hotkeys, this method is kept for compatibility
+        /// Registers visual guidance's quick-access hotkeys — the same H/V/Q/S/D/B/P/A/F set
+        /// that HandFly uses. VG implies hand-flying (the pilot is matching tones to control
+        /// pitch and bank manually), so all the same in-flight readouts apply. If HandFly is
+        /// also active, the keys stay registered exactly once via the shared mechanism.
         /// </summary>
         public bool RegisterVisualGuidanceHotkeys()
         {
-            if (visualGuidanceHotkeysActive)
+            if (outputHotkeyModeActive || visualGuidanceHotkeysActive)
             {
-                System.Diagnostics.Debug.WriteLine("Visual guidance hotkeys: Skipped registration (already active)");
+                System.Diagnostics.Debug.WriteLine("Visual guidance hotkeys: Skipped registration (mode conflict or already active)");
                 return false;
             }
-
-            System.Diagnostics.Debug.WriteLine("Visual guidance hotkeys: Attempting registration...");
-
-            // Register F key without modifiers for target FPM
-            bool fRegistered = RegisterHotKey(windowHandle, HOTKEY_VISUAL_TARGET_FPM, MOD_NONE, 0x46); // F (Target FPM)
-
-            System.Diagnostics.Debug.WriteLine($"Visual guidance hotkeys: F={fRegistered}");
-
-            if (fRegistered)
-            {
-                visualGuidanceHotkeysActive = true;
-                System.Diagnostics.Debug.WriteLine("Visual guidance hotkeys: Registered successfully");
-                return true;
-            }
-            else
-            {
-                System.Diagnostics.Debug.WriteLine("Visual guidance hotkeys: Registration failed");
-                return false;
-            }
+            bool ok = AcquireQuickAccessHotkeys();
+            visualGuidanceHotkeysActive = true;
+            System.Diagnostics.Debug.WriteLine($"Visual guidance hotkeys: registered (allKeysOk={ok})");
+            return ok;
         }
 
         /// <summary>
@@ -1076,11 +1088,8 @@ public class HotkeyManager : IDisposable
                 return;
             }
 
-            System.Diagnostics.Debug.WriteLine("Visual guidance hotkeys: Unregistering...");
             visualGuidanceHotkeysActive = false;
-
-            UnregisterHotKey(windowHandle, HOTKEY_VISUAL_TARGET_FPM);
-
+            ReleaseQuickAccessHotkeys();
             System.Diagnostics.Debug.WriteLine("Visual guidance hotkeys: Unregistered successfully");
         }
 
