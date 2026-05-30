@@ -209,6 +209,22 @@
     return clean(s);
   };
 
+  // Like textContent, but joins text from SEPARATE descendant nodes with a space
+  // so multi-span / stacked button captions don't mash together ("ACTIVATE" +
+  // "APPR*" -> "ACTIVATE APPR*", not "ACTIVATEAPPR*"). The FBW MFD renders many
+  // two-word/two-line button labels as adjacent spans with no whitespace.
+  A.spacedText = function (n) {
+    var parts = [];
+    (function walk(node) {
+      for (var i = 0; i < node.childNodes.length; i++) {
+        var c = node.childNodes[i];
+        if (c.nodeType === 3) { var t = c.nodeValue; if (t && t.replace(/\s+/g, "")) parts.push(clean(t)); }
+        else if (c.nodeType === 1) { walk(c); }
+      }
+    })(n);
+    return parts.join(" ").replace(/\s+/g, " ").trim();
+  };
+
   // True when the node is (or sits inside) an already-captured interactive
   // control — used to avoid listing a button's inner text twice.
   A.isInsideInteractive = function (n) {
@@ -277,7 +293,7 @@
     if (kind === "surv" || kind === "survstatus") {
       return A.labelValueText(n) || "(button)";
     }
-    var bt = clean(n.textContent);
+    var bt = A.spacedText(n);
     if (!bt && n.getAttribute) bt = clean(n.getAttribute("aria-label") || n.getAttribute("title") || "");
     return bt;
   };
@@ -469,7 +485,15 @@
         var side = A.activeMcdu === 1 ? "CAPT" : "FO";
         var id = side + "_MFD_pageSelector" + prefix + "_" + index;
         var el = document.getElementById(id);
-        if (el) { A.clickNode(el); return "ok"; }
+        if (el) {
+          // A disabled menu item (FMS not ready for it — WIND/REPORT/GNSS/TIME
+          // and the DATA sub-pages need a flight plan / data first) is a no-op
+          // click. Report it so the caller can say "not available yet" instead
+          // of silently staying on the current page.
+          var ec = el.className ? el.className.toString() : "";
+          if (ec.indexOf("disabled") >= 0) return "disabled";
+          A.clickNode(el); return "ok";
+        }
       }
     } catch (e) {}
     if (kccuKey) { A.fireKey(kccuKey); return "key"; }
