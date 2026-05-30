@@ -309,7 +309,12 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
 
         // ---- ANTI-ICE ----
         OnOff("A32NX_MAN_PITOT_HEAT", "Probe / Window Heat");
-        Press("XMLVAR_MOMENTARY_PUSH_OVHD_ANTIICE_WING_PRESSED", "Wing Anti-Ice");
+        // Wing anti-ice: the cockpit button is momentary, but its underlying
+        // selected-state L:var is a plain writable toggle (verified live #56 — the
+        // momentary XMLVAR_..._PRESSED pulse did NOT actuate; writing _SYSTEM_SELECTED
+        // does and sticks). SYSTEM_ON (the actual valve-open output) is read-only and
+        // shown separately as "Wing Anti-Ice Flowing".
+        OnOff("A32NX_PNEU_WING_ANTI_ICE_SYSTEM_SELECTED", "Wing Anti-Ice");
         for (int n = 1; n <= 4; n++)
         {
             // Settable On/Off combo — fires K:ANTI_ICE_SET_ENGn via
@@ -1416,7 +1421,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         };
         p["Anti Ice"] = new List<string>
         {
-            "A32NX_MAN_PITOT_HEAT", "XMLVAR_MOMENTARY_PUSH_OVHD_ANTIICE_WING_PRESSED",
+            "A32NX_MAN_PITOT_HEAT", "A32NX_PNEU_WING_ANTI_ICE_SYSTEM_SELECTED",
             "ENG1_ANTI_ICE", "ENG2_ANTI_ICE", "ENG3_ANTI_ICE", "ENG4_ANTI_ICE"
         };
         p["Fire"] = new List<string>
@@ -2390,25 +2395,20 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             simConnect.ExecuteCalculatorCode($"{(int)Math.Round(value)} (>L:{varKey})");
             return true;
         }
-        // #56 — Wing anti-ice + probe/window heat. Engine anti-ice needs the
-        // K:ANTI_ICE_SET_ENGn event (the L:var/XMLVAR don't drive it), but wing
-        // and probe heat have NO documented A380X event (the FBW a380-simvars doc
-        // omits anti-ice entirely). Route their FBW L:var writes through the
-        // MobiFlight calculator path — the SimConnect data-def SetLVar (the old
-        // default for these two) is unreliable for FBW L:vars, same as the reads.
-        // Wing is a MOMENTARY "PRESSED" XMLVAR: pulse 1 -> 0 so each press is a
-        // fresh rising edge that toggles the system. NEEDS AN IN-SIM CONFIRM; if
-        // it doesn't actuate, the fallback is the stock K:ANTI_ICE_TOGGLE (wing) /
-        // K:PITOT_HEAT_TOGGLE (probe heat).
-        if (varKey == "XMLVAR_MOMENTARY_PUSH_OVHD_ANTIICE_WING_PRESSED")
+        // #56 — Wing anti-ice + probe/window heat (live-verified 2026-05).
+        // ENGINE anti-ice needs K:ANTI_ICE_SET_ENGn (handled above; the L:var/XMLVAR
+        // don't drive it). For WING anti-ice the momentary XMLVAR_..._PRESSED pulse
+        // does NOT actuate the system — write the selected-state L:var directly
+        // instead (verified: 0/1 both stick and drive _SYSTEM_ON when conditions
+        // allow). PROBE/WINDOW heat toggles A32NX_MAN_PITOT_HEAT (the same var the
+        // cockpit button toggles); note it auto-forces ON whenever AC2 is powered or
+        // an engine is running, so a "set Off" reverts — that is real A380 behaviour
+        // (probe heat is automatic), and the Mon auto-announce re-reads the true
+        // state. Both go through the reliable MobiFlight calculator path.
+        if (varKey == "A32NX_PNEU_WING_ANTI_ICE_SYSTEM_SELECTED"
+            || varKey == "A32NX_MAN_PITOT_HEAT")
         {
-            simConnect.ExecuteCalculatorCode("1 (>L:XMLVAR_MOMENTARY_PUSH_OVHD_ANTIICE_WING_PRESSED)");
-            simConnect.ExecuteCalculatorCode("0 (>L:XMLVAR_MOMENTARY_PUSH_OVHD_ANTIICE_WING_PRESSED)");
-            return true;
-        }
-        if (varKey == "A32NX_MAN_PITOT_HEAT")
-        {
-            simConnect.ExecuteCalculatorCode($"{(value > 0.5 ? 1 : 0)} (>L:A32NX_MAN_PITOT_HEAT)");
+            simConnect.ExecuteCalculatorCode($"{(value > 0.5 ? 1 : 0)} (>L:{varKey})");
             return true;
         }
         // FCU engage/mode toggle combos: the backing L:var is read-only state, so
