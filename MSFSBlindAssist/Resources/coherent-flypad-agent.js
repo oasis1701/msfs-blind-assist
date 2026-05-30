@@ -73,6 +73,10 @@
     if (role === "slider" || c.indexOf("slider") >= 0) return "slider";
     if (role === "checkbox" || role === "switch" ||
         c.indexOf("toggle") >= 0 || c.indexOf("switch") >= 0 || c.indexOf("checkbox") >= 0) return "toggle";
+    // flyPad Toggle switch (UtilComponents/Form/Toggle): a cursor-pointer pill
+    // (rounded-full, w-14) with a knob child and NO text. State lives in the
+    // knob's class (translate-x-5 = on). It has no role/aria, so match the shape.
+    if (c.indexOf("rounded-full") >= 0 && c.indexOf("cursor-pointer") >= 0 && c.indexOf("w-14") >= 0) return "toggle";
     if (role === "tab" || c.indexOf("tab-") >= 0 || c.indexOf("-tab") >= 0) return "tab";
     if (role === "button" || c.indexOf("button") >= 0 || c.indexOf("btn") >= 0 || tag === "button") return "button";
     if (n.getAttribute && n.getAttribute("contenteditable") === "true") return "input";
@@ -141,12 +145,13 @@
   // input itself has no aria/own text, but its parent (or grandparent) holds the
   // visible label. Only accept SHORT text so we never grab a whole container.
   A.fieldUnitLabel = function (n) {
-    var hops = [n.parentElement, n.parentElement && n.parentElement.parentElement];
+    var hops = [n.parentElement, n.parentElement && n.parentElement.parentElement,
+                n.parentElement && n.parentElement.parentElement && n.parentElement.parentElement.parentElement];
     for (var h = 0; h < hops.length; h++) {
       var p = hops[h];
       if (!p) continue;
       var t = clean(p.textContent);
-      if (t && t.length <= 24) return t;
+      if (t && t.length <= 42) return t;
     }
     return "";
   };
@@ -172,11 +177,19 @@
       // field. Prefer that over the section heading, which mislabels every field
       // on the page with the same name (e.g. "Ground").
       var tag = n.tagName.toLowerCase();
+      var clz = A.cls(n).toLowerCase();
+      var isToggle = (clz.indexOf("rounded-full") >= 0 && clz.indexOf("cursor-pointer") >= 0)
+                  || clz.indexOf("toggle") >= 0 || clz.indexOf("switch") >= 0;
       if (tag === "input" || tag === "textarea" ||
           (n.getAttribute && n.getAttribute("contenteditable") === "true")) {
+        // A value field with no own text — borrow its parent unit label (PAX/KGS).
         var fl = A.fieldUnitLabel(n);
         if (fl) return fl;
       }
+      // Toggles/switches carry no own text; take the row's setting NAME (its
+      // first real text leaf) — never the page heading, which would mislabel
+      // every toggle on the page identically.
+      if (isToggle) return A.toggleLabel(n);
       if (href) return A.prettifyHref(href);   // icon nav-rail link -> "Dashboard" etc.
       if (heading) return heading;
       return "";
@@ -192,7 +205,11 @@
     if (kind === "checkbox" || kind === "toggle") {
       var ck = n.getAttribute && n.getAttribute("aria-checked");
       if (ck !== null && ck !== undefined && ck !== "") return ck === "true" ? "true" : "false";
-      return n.checked ? "true" : "false";
+      if (typeof n.checked === "boolean") return n.checked ? "true" : "false";
+      // flyPad Toggle div: the knob child carries translate-x-5 when ON.
+      var knob = n.firstElementChild;
+      var kc = (knob && knob.className && knob.className.toString) ? knob.className.toString() : "";
+      return kc.indexOf("translate-x") >= 0 ? "true" : "false";
     }
     if (kind === "input") {
       if (typeof n.value === "string") return clean(n.value);
@@ -318,6 +335,27 @@
       });
     }
 
+    // Pass 2: visible DESCRIPTIVE TEXT leaves (setting names like "ADIRS Align
+    // Time", values, list/table cells, descriptions). The flyPad renders these
+    // as plain <div>/<span>/<p>, which pass 1 (interactive + headings) skips, so
+    // controls would otherwise have no context ("Instant / Fast / Real — of
+    // what?"). Mirror the MCDU agent's static-text leaf pass.
+    for (var ti = 0; ti < all.length && items.length < 600; ti++) {
+      var tn = all[ti];
+      if (!A.isVisible(tn)) continue;
+      if (A.classify(tn)) continue;        // already captured (interactive/heading)
+      if (A.isInsideStamped(tn)) continue; // text inside a captured control
+      var own = A.directText(tn);          // immediate text only -> leaf labels/values
+      if (!own || own.length > 80) continue;
+      var tr = tn.getBoundingClientRect();
+      items.push({
+        top: tr.top - rootRect.top, left: tr.left - rootRect.left,
+        idx: 0, kind: "text", tag: tn.tagName.toLowerCase(), role: "",
+        text: own, value: "", controlType: "", clickable: false,
+        level: 0, live: A.liveFor(tn), disabled: false, options: []
+      });
+    }
+
     items.sort(function (a, b) {
       var dy = Math.round(a.top / A.ROW_Y_TOLERANCE_PX) - Math.round(b.top / A.ROW_Y_TOLERANCE_PX);
       return dy || (a.left - b.left);
@@ -326,6 +364,36 @@
     items = A.dedupe(items);
     A._elements = items;
     return items;
+  };
+
+  // The setting NAME for a toggle/switch: the first meaningful text leaf in the
+  // control's row (the flyPad lays a setting out as name [+ "(...)" sublabel] on
+  // the left and the Toggle on the right). Skips parenthetical sublabels like
+  // "(Unrealistic)". Returning the exact name also lets the de-dup drop the
+  // separate text line so the setting is not read twice.
+  A.firstTextLeaf = function (root) {
+    var all = root.getElementsByTagName("*");
+    for (var i = 0; i < all.length; i++) {
+      if (!A.isVisible(all[i])) continue;
+      var t = A.directText(all[i]);
+      if (t && t.length >= 2 && t.charAt(0) !== "(") return t;
+    }
+    return "";
+  };
+
+  A.toggleLabel = function (n) {
+    // Walk up to the row container (a parent that holds text besides the toggle),
+    // then take its first real text leaf as the setting name.
+    var row = n.parentElement, guard = 0;
+    while (row && guard < 4) {
+      guard++;
+      if (clean(row.textContent).length >= 2) {
+        var name = A.firstTextLeaf(row);
+        if (name) return name;
+      }
+      row = row.parentElement;
+    }
+    return "";
   };
 
   // A node "contains an interactive control" if any descendant classifies as
@@ -350,6 +418,7 @@
     function norm(s) { return clean(s).toUpperCase(); }
 
     var interactiveByRow = {};
+    var interactiveAll = {};
     for (var a = 0; a < items.length; a++) {
       if (items[a].idx > 0) {
         var rb = rowBucket(items[a]);
@@ -357,6 +426,7 @@
         if (!key) continue;
         if (!interactiveByRow[rb]) interactiveByRow[rb] = {};
         interactiveByRow[rb][key] = true;
+        interactiveAll[key] = true;
       }
     }
 
@@ -365,6 +435,10 @@
       var it = items[b];
       if (it.idx === 0) {
         var k = norm(it.text);
+        // A descriptive-text line whose exact text is ALSO an interactive control
+        // anywhere on the page is redundant (e.g. nav-rail icon labels duplicated
+        // by their links, or a card title repeated as its link). Drop it.
+        if (k && interactiveAll[k]) continue;
         var here = rowBucket(it);
         var dup = false;
         for (var d = -1; d <= 1; d++) {
