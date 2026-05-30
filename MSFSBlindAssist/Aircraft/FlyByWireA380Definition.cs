@@ -2209,6 +2209,20 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             simConnect.ExecuteCalculatorCode($"{(value > 0.5 ? 1 : 0)} (>L:{varKey})");
             return true;
         }
+        // EFIS Control Panel controls are ALL direct L:var writes on the A380X
+        // (no events — confirmed from efis-cp.xml: ND mode/range, navaid 1/2, the
+        // LS/VV/CSTR/ARPT/TRAF option buttons, the WPT/VOR/NDB filter + WX/TERR
+        // overlay, OANS range, and the hPa/inHg baro-unit selector). The cockpit
+        // buttons run RPN that writes the L:var; the SimConnect data-def write is
+        // unreliable for FBW L:vars (same as the reads), so route every one of
+        // them through the MobiFlight calculator path to guarantee they actuate.
+        if (varKey.StartsWith("A32NX_EFIS_", StringComparison.Ordinal)
+            || varKey.StartsWith("A380X_EFIS_", StringComparison.Ordinal)
+            || varKey.StartsWith("XMLVAR_Baro_Selector_HPA_", StringComparison.Ordinal))
+        {
+            simConnect.ExecuteCalculatorCode($"{(int)Math.Round(value)} (>L:{varKey})");
+            return true;
+        }
         // FCU engage/mode toggle combos: the backing L:var is read-only state, so
         // a "set" fires the matching toggle event — but only when the picked state
         // differs from the current one (the events toggle, they don't set an
