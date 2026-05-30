@@ -3846,6 +3846,23 @@ public class SimConnectManager
             var varDef = variables.Values.FirstOrDefault(v =>
                 v.LedVariable == e.LedVariable);
 
+            // Fallback: route a one-shot MobiFlight read by var KEY when no def
+            // declares it as a LedVariable. Used for FCU readouts (e.g. the VS
+            // selected target) whose SimConnect data-def read is unreliable, so
+            // ReadLedVariable(key) can deliver the correct MobiFlight value under
+            // the var's own name without setting LedVariable (which would make
+            // MainForm re-request it over the unreliable SimConnect path).
+            if (varDef == null && variables.TryGetValue(e.LedVariable, out var byKey))
+            {
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = e.LedVariable,
+                    Value = e.Value,
+                    Description = byKey.DisplayName
+                });
+                return;
+            }
+
             if (varDef != null)
             {
                 // Trigger SimVar update event for LED state changes
