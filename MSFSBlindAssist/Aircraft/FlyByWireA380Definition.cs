@@ -1082,6 +1082,12 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 new Dictionary<double, string> { [0] = "Off", [1] = "Weather", [2] = "Terrain" });
             // A380 baro unit lives on XMLVAR_Baro_Selector_HPA_{1|2} (1=hPa, 0=inHg),
             // not A32NX_FCU_EFIS_*_BARO_IS_INHG (which doesn't exist on the A380).
+            // #60 NOTE (verified in FBW source extras-host/BaroUnitSelector.ts):
+            // the unit is NOT a freely-settable cockpit control — FBW derives it
+            // from the flyPad config + the aircraft's GEOGRAPHIC POSITION (inHg in
+            // N. America, hPa elsewhere) and the systems code re-writes this XMLVAR
+            // from that, so a SimConnect write to it reverts. Kept as a combo for
+            // the live READOUT (which is correct); a set is best-effort only.
             Sel($"XMLVAR_Baro_Selector_HPA_{(side == "L" ? "1" : "2")}", $"{who} Baro Unit",
                 new Dictionary<double, string> { [0] = "inHg", [1] = "hPa" });
         }
