@@ -1,5 +1,5 @@
 // PMDG EFB Accessibility Bridge
-// BRIDGE_JS_VERSION: 45-groundops
+// BRIDGE_JS_VERSION: 46-text-fallback
 // Injected into PMDGTabletCA.html via mod package override to expose EFB
 // functionality to the MSFS Blind Assist application via HTTP on localhost:19777.
 //
@@ -8,7 +8,7 @@
 try {
 
 var _efb = {
-    JS_VERSION: '45-groundops',
+    JS_VERSION: '46-text-fallback',
     SERVER_URL: 'http://localhost:19777',
     COMMAND_POLL_INTERVAL: 500,
     HEARTBEAT_INTERVAL: 5000,
@@ -300,17 +300,44 @@ _efb.handleCommand = function(command, payload) {
                 }
                 break;
             case 'click_by_id':
-                // Targeted click on a DOM element by id. By default uses the
-                // full mousedown/mouseup/click sequence plus native .click()
-                // so both plain DOM listeners and React's SyntheticEvent
-                // pipeline see the interaction. Pass simple:"true" to use
-                // bare .click() only — needed for Ground Ops buttons where
-                // the MouseEvent+click double-fires the addEventListener
-                // handler, toggling the state twice (= no visible change).
+                // Targeted click on a DOM element. Primary path: getElementById.
+                // Fallback path: if the id isn't found AND payload.fallbackText is set,
+                // search for a button-like element whose visible text matches. This
+                // catches the case where a PMDG update renames a DOM id (broke the
+                // "Import Weather" path in the post-update build that motivated this
+                // fallback). Using both paths means we never hard-fail on a missing
+                // id as long as the human-visible button label is stable.
+                //
+                // By default uses the full mousedown/mouseup/click sequence plus native
+                // .click() so both plain DOM listeners and React's SyntheticEvent
+                // pipeline see the interaction. Pass simple:"true" to use bare .click()
+                // only — needed for Ground Ops buttons where the MouseEvent+click
+                // double-fires the addEventListener handler, toggling the state twice
+                // (= no visible change).
                 try {
                     var cbiId = payload && payload.id ? String(payload.id) : '';
                     var cbiSimple = payload && payload.simple === 'true';
+                    var cbiFallbackText = payload && payload.fallbackText ? String(payload.fallbackText) : '';
                     var cbiEl = cbiId ? document.getElementById(cbiId) : null;
+                    var cbiMatchedBy = cbiEl ? 'id' : '';
+
+                    // Fallback: search by visible text content if id missed.
+                    if (!cbiEl && cbiFallbackText) {
+                        var cbiCandidates = document.querySelectorAll('button, .button, [role="button"], div[onclick], span[onclick]');
+                        for (var cbiI = 0; cbiI < cbiCandidates.length; cbiI++) {
+                            var cbiCand = cbiCandidates[cbiI];
+                            var cbiCandText = (cbiCand.textContent || '').trim();
+                            // Case-insensitive equality OR contains, so "Import Weather"
+                            // matches both "Import Weather" and "Import Weather >" etc.
+                            if (cbiCandText.length > 0 &&
+                                cbiCandText.toLowerCase().indexOf(cbiFallbackText.toLowerCase()) !== -1) {
+                                cbiEl = cbiCand;
+                                cbiMatchedBy = 'text';
+                                break;
+                            }
+                        }
+                    }
+
                     if (cbiEl) {
                         if (!cbiSimple) {
                             try {
@@ -320,9 +347,9 @@ _efb.handleCommand = function(command, payload) {
                             } catch (cbiMevt) { /* old Coherent GT — fall through to .click() */ }
                         }
                         try { cbiEl.click(); } catch (cbiClk) { /* already dispatched */ }
-                        _efb.postState('click_result', { id: cbiId, clicked: 'true' });
+                        _efb.postState('click_result', { id: cbiId, clicked: 'true', matchedBy: cbiMatchedBy });
                     } else {
-                        _efb.postState('click_result', { id: cbiId, clicked: 'false' });
+                        _efb.postState('click_result', { id: cbiId, clicked: 'false', fallbackText: cbiFallbackText });
                     }
                 } catch (cbiErr) {
                     _efb.postState('error', { message: 'click_by_id: ' + cbiErr.message });

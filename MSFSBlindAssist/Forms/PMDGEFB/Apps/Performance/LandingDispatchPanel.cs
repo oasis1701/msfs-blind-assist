@@ -404,9 +404,13 @@ namespace MSFSBlindAssist.Forms.PMDGEFB.Apps.Performance
             };
             importWeatherButton.Click += (_, _) =>
             {
-
+                // fallbackText: text-content fallback for PMDG DOM-id drift (see TakeoffPanel).
                 BridgeServer.EnqueueCommand("click_by_id",
-                    new Dictionary<string, string> { ["id"] = IdImportWeather });
+                    new Dictionary<string, string>
+                    {
+                        ["id"] = IdImportWeather,
+                        ["fallbackText"] = "Import Weather"
+                    });
                 ScheduleRefreshAfter(700);
                 ScheduleRefreshAfter(2500);
                 ScheduleRefreshAfter(5000);

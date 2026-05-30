@@ -475,9 +475,15 @@ namespace MSFSBlindAssist.Forms.PMDGEFB.Apps.Performance
             };
             importWeatherButton.Click += (_, _) =>
             {
-
+                // fallbackText lets the JS bridge degrade gracefully to a text-content
+                // search if PMDG rename the button's DOM id in a future update (the
+                // primary cause of the post-PMDG-update weather-import outage in late 2025).
                 BridgeServer.EnqueueCommand("click_by_id",
-                    new Dictionary<string, string> { ["id"] = IdImportWeather });
+                    new Dictionary<string, string>
+                    {
+                        ["id"] = IdImportWeather,
+                        ["fallbackText"] = "Import Weather"
+                    });
                 ScheduleRefreshAfter(700);
                 ScheduleRefreshAfter(2500);
                 ScheduleRefreshAfter(5000);

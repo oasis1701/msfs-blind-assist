@@ -64,7 +64,7 @@ Fuel:
 
 Tools:
 CTRL+h, Activate/deactivate Hand fly mode, Note, enables more hotkeys, advanced feature.
-CTRL+v, activate/deactivate visual guidance mode, note, requires hand fly mode to be on. Enables more hotkeys.
+CTRL+v, activate/deactivate visual guidance mode, note, does not require hand fly mode. Enables the same single-letter quick-access hotkeys hand fly mode does, plus F for target VS.
 CTRL+T, Takeoff Assistance
 CTRL+D, Distance to Selected Runway
 CTRL+I, ILS guidance system
@@ -126,8 +126,18 @@ B, Read aircraft's bank
 Q, read AGL
 V, Read VS
 
-Visual guidance mode hotkeys:
+Visual guidance mode hotkeys (same single-letter set as hand fly mode, plus F):
+A, read MSL
+S, Read IAS
+D, Read distance to destination runway
+H, Read MH
+P, Read aircraft's pitch
+B, Read aircraft's bank
+Q, read AGL
+V, Read VS
 F, Read target VS
+
+Note: both modes share the quick-access hotkeys. Activate hand fly mode, visual guidance mode, or both — the single-letter keys H, V, Q, S, D, B, P, A work in either. F is visual-guidance-specific (announces "visual guidance not active" if pressed when VG is off).
 
 Ground Services:
   Ctrl+G     Read latest GSX tooltip (no need to open the Access GSX window)
