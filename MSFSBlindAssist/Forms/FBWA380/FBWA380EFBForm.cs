@@ -665,8 +665,16 @@ public class FBWA380EFBForm : Form
     setTimeout(function () { l.textContent = msg; }, 30);
   }
   window.__render = function (payload) {
+    // Skip the rebuild entirely when nothing changed. A poll-driven re-render
+    // does content.innerHTML='' which resets the screen reader's browse cursor to
+    // the TOP of the page (programmatic .focus() moves system focus but not the
+    // NVDA/JAWS virtual cursor) — so re-rendering identical content jumps the user
+    // back to the top. Only rebuild when the payload actually differs.
+    var sig = JSON.stringify(payload);
+    if (sig === window.__lastRenderSig) return;
+    window.__lastRenderSig = sig;
     var content = document.getElementById('content');
-    // Remember focus so a poll-driven re-render doesn't yank the cursor.
+    // Remember focus so a re-render doesn't yank the cursor.
     var act = document.activeElement;
     var focusIdx = act ? act.getAttribute('data-idx') : null;
     var caret = (act && typeof act.selectionStart === 'number') ? act.selectionStart : null;

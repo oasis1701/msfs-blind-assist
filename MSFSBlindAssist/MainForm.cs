@@ -5192,7 +5192,7 @@ public partial class MainForm : Form
                         else
                         {
                             simConnectManager?.SendEvent("XPNDR_SET", bcdValue);
-                            // Announcement handled by aircraft's ProcessSimVarUpdate when the SimVar changes
+                            announcer.Announce($"Squawk set to {squawkCode}");
                         }
                     }
                     else if (double.TryParse(textBox.Text, out double value))

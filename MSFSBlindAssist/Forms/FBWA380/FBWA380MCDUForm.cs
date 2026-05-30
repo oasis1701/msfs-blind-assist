@@ -253,11 +253,19 @@ public class FBWA380MCDUForm : Form
         _btnRefresh = MakeBtn("Refres&h", "Refresh");
 
         ResumeLayout(true);
+        // Open with the DISPLAY focused, not the MCDU-side combo (the first-added
+        // control). Otherwise the screen reader announces "Active MCDU side" on
+        // open even though we move focus on Load — set it as the active control up
+        // front so the display is the only thing announced.
+        ActiveControl = _display;
     }
 
     private void SetupEventHandlers()
     {
-        Load += (_, _) => _display.Focus();
+        // Focus the display after the form is actually shown (BeginInvoke defers
+        // past the screen reader's initial focus announcement so it lands on the
+        // display, not the side combo).
+        Shown += (_, _) => BeginInvoke(new Action(() => _display.Focus()));
 
         FormClosing += (s, e) =>
         {

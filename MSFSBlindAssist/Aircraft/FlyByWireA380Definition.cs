@@ -246,6 +246,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 OffAuto($"A32NX_OVHD_HYD_EPUMP{sys}{ab}_ON_PB_IS_AUTO",
                         $"{(sys == "G" ? "Green" : "Yellow")} Electric Pump {ab}");
         Press("A32NX_OVHD_HYD_RAT_MAN_ON_IS_PRESSED", "RAT Manual On");
+        Read("A32NX_RAT_RPM", "RAT R P M", "rpm"); // Ram Air Turbine speed (0 = stowed)
 
         // ---- BLEED / AIR ----
         OnOff("A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON", "APU Bleed");
@@ -2737,6 +2738,14 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             case "A32NX.FCU_ALT_PULL": RequestFCUAltitudeWithStatus(simConnect); break;
             case "A32NX.FCU_VS_PUSH":
             case "A32NX.FCU_TO_AP_VS_PULL": RequestFCUVSWithStatus(simConnect); break;
+            // SPD/MACH toggle: re-read the speed — the read-out already says
+            // "mach 0.78" vs "280 knots", so it announces the new mode.
+            case "A32NX.FCU_SPD_MACH_TOGGLE_PUSH": RequestFCUSpeedWithStatus(simConnect); break;
+            // VHF active/standby swap: announce the swap (the new active is then on
+            // the "VHF N Active" read-out in the panel).
+            case "COM1_RADIO_SWAP": announcer.Announce("VHF 1 active and standby swapped"); break;
+            case "COM2_RADIO_SWAP": announcer.Announce("VHF 2 active and standby swapped"); break;
+            case "COM3_RADIO_SWAP": announcer.Announce("VHF 3 active and standby swapped"); break;
         }
     }
 }
