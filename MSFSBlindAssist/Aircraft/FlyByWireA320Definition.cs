@@ -1,3 +1,4 @@
+using MSFSBlindAssist.Forms;
 using MSFSBlindAssist.Hotkeys;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Forms.A32NX;
@@ -3968,6 +3969,11 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             case HotkeyAction.ReadGrossWeightKg:
                 RequestGrossWeightKg(simConnect);
                 return true;
+
+            case HotkeyAction.FCUSetBaro:
+                hotkeyManager.ExitInputHotkeyMode();
+                ShowFBWBaroSetDialog(simConnect, announcer, parentForm);
+                return true;
         }
 
         // Fall back to base class for simple variable mappings
@@ -4167,6 +4173,37 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     {
         var dialog = new FuelPayloadDisplayForm(announcer, simConnect);
         dialog.Show();
+    }
+
+    private void ShowFBWBaroSetDialog(
+        SimConnect.SimConnectManager simConnect,
+        ScreenReaderAnnouncer announcer,
+        Form parentForm)
+    {
+        var dialog = new ValueInputForm(
+            "Set Altimeter",
+            "Barometric pressure (hPa)",
+            "745–1050",
+            announcer,
+            input =>
+            {
+                if (double.TryParse(input, out double val) && val >= 745 && val <= 1050)
+                    return (true, "");
+                return (false, "Enter a value between 745 and 1050 hPa");
+            },
+            new List<ToggleButtonDef>(),
+            input =>
+            {
+                if (double.TryParse(input, out double hpa))
+                {
+                    uint encoded = (uint)(hpa * 16);
+                    simConnect.SendEvent("A32NX.FCU_EFIS_L_BARO_SET", encoded);
+                    simConnect.SendEvent("A32NX.FCU_EFIS_R_BARO_SET", encoded);
+                    announcer.AnnounceImmediate($"Altimeter set to {hpa:F0} hPa");
+                }
+            });
+        dialog.ShowCancelButton = false;
+        dialog.Show(parentForm);
     }
 
     private void ShowA320ECAMDisplay(SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
