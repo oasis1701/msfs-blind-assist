@@ -616,7 +616,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         OnOff("A32NX_CABIN_READY", "Cabin Ready");
 
         // ============================ DISPLAYS / STATUS ============================
-        ReadEnum("A32NX_AUTOTHRUST_STATUS", "Autothrust Status",
+        // Settable toggle combo — fires A32NX.FCU_ATHR_PUSH via HandleUIVariableSet
+        // when the picked engage state differs from current. "Active" is automatic.
+        Sel("A32NX_AUTOTHRUST_STATUS", "Autothrust",
             new Dictionary<double, string> { [0] = "Disengaged", [1] = "Armed", [2] = "Active" });
         Read("A32NX_FMS_PAX_NUMBER", "Passenger Number");
         ReadEnum("A32NX_ECAM_FAILURE_ACTIVE", "ECAM Failure Active", onOff);
@@ -666,9 +668,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         var downlk = new Dictionary<double, string> { [0] = "Not Locked", [1] = "Downlocked" };
         var connVd = new Dictionary<double, string> { [0] = "Disconnected", [1] = "Connected" };
 
-        // ELEC
-        foreach (var id in new[] { "1", "2", "ESS", "APU" })
-            ReadEnum($"A32NX_OVHD_ELEC_BAT_{id}_PB_HAS_FAULT", $"Battery {id} Fault", fault);
+        // ELEC (BAT fault PBs already registered in the overhead ELEC section above)
         ReadEnum("A32NX_OVHD_ELEC_AC_ESS_FEED_PB_HAS_FAULT", "AC ESS Feed Fault", fault);
         ReadEnum("A32NX_OVHD_ELEC_GALY_AND_CAB_PB_HAS_FAULT", "Galley and Cabin Fault", fault);
         ReadEnum("A32NX_OVHD_EMER_ELEC_RAT_AND_EMER_GEN_HAS_FAULT", "RAT and Emergency Gen Fault", fault);
@@ -827,7 +827,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Mon("A32NX_FCU_SPD_MANAGED_DOT", "Speed Mode", managedSel);
         Mon("A32NX_FCU_VS_MANAGED", "Vertical Speed Mode", managedSel);
         Mon("A32NX_FCU_ALT_MANAGED", "Altitude Mode", managedSel);
-        ReadEnum("A32NX_TRK_FPA_MODE_ACTIVE", "Vertical Mode",
+        // Settable toggle combo — fires A32NX.FCU_TRK_FPA_TOGGLE_PUSH on change.
+        Sel("A32NX_TRK_FPA_MODE_ACTIVE", "Track FPA Mode",
             new Dictionary<double, string> { [0] = "HDG V/S", [1] = "TRK FPA" });
         // SimVars (key != Name — ProcessSimVarUpdate matches on the key).
         Stock("FCU_ALT_VALUE", "AUTOPILOT ALTITUDE LOCK VAR:3", "Selected Altitude", "feet");
@@ -866,15 +867,17 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Read("A32NX_FMA_CRUISE_ALT_MODE", "Cruise Altitude Mode");
         Read("A32NX_PFD_LINEAR_DEVIATION_ACTIVE", "Linear Deviation Active");
         Read("A32NX_FMGC_1_LDEV_REQUEST", "FMGC L DEV Request");
-        Read("A32NX_FM1_MINIMUM_DESCENT_ALTITUDE", "Minimum Descent Altitude", "feet");
+        // (A32NX_FM1_MINIMUM_DESCENT_ALTITUDE is registered once in the MINIMUMS section.)
         Read("A32NX_DESTINATION_QNH", "Destination QNH");
 
-        // Engagement / mode readouts (A380 has no FCU light vars).
-        ReadEnum("A32NX_AUTOPILOT_1_ACTIVE", "Autopilot 1", onOff);
-        ReadEnum("A32NX_AUTOPILOT_2_ACTIVE", "Autopilot 2", onOff);
-        ReadEnum("A32NX_FCU_LOC_MODE_ACTIVE", "Localizer Mode", onOff);
-        ReadEnum("A32NX_FCU_APPR_MODE_ACTIVE", "Approach Mode", onOff);
-        ReadEnum("A32NX_FMA_EXPEDITE_MODE", "Expedite Mode", onOff);
+        // FCU engage/mode toggles — settable combos that show live engage state
+        // and fire the matching A32NX.FCU_*_PUSH toggle via HandleUIVariableSet
+        // when the picked state differs from current (A380 has no FCU light vars).
+        Sel("A32NX_AUTOPILOT_1_ACTIVE", "Autopilot 1", onOff);
+        Sel("A32NX_AUTOPILOT_2_ACTIVE", "Autopilot 2", onOff);
+        Sel("A32NX_FCU_LOC_MODE_ACTIVE", "Localizer", onOff);
+        Sel("A32NX_FCU_APPR_MODE_ACTIVE", "Approach", onOff);
+        Sel("A32NX_FMA_EXPEDITE_MODE", "Expedite", onOff);
 
         // ---- EFIS Control Panel: flight director + baro (per side) ----
         Evt("TOGGLE_FLIGHT_DIRECTOR", "TOGGLE_FLIGHT_DIRECTOR", "Flight Director Toggle");
@@ -1430,13 +1433,17 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         };
         p["FCU"] = new List<string>
         {
-            "A32NX.FCU_AP_1_PUSH", "A32NX.FCU_AP_2_PUSH", "A32NX.FCU_ATHR_PUSH",
+            // Engage/mode controls as stateful combos (show live state, pick to
+            // toggle) instead of blind buttons — see HandleUIVariableSet.
+            "A32NX_AUTOPILOT_1_ACTIVE", "A32NX_AUTOPILOT_2_ACTIVE", "A32NX_AUTOTHRUST_STATUS",
+            "A32NX_FCU_LOC_MODE_ACTIVE", "A32NX_FCU_APPR_MODE_ACTIVE", "A32NX_FMA_EXPEDITE_MODE",
+            "A32NX_TRK_FPA_MODE_ACTIVE",
+            // Genuine momentary knob push/pulls stay as buttons.
             "A32NX.FCU_TO_AP_HDG_PUSH", "A32NX.FCU_TO_AP_HDG_PULL",
             "A32NX.FCU_SPD_PUSH", "A32NX.FCU_SPD_PULL",
             "A32NX.FCU_ALT_PUSH", "A32NX.FCU_ALT_PULL", "XMLVAR_AUTOPILOT_ALTITUDE_INCREMENT",
             "A32NX.FCU_VS_PUSH", "A32NX.FCU_TO_AP_VS_PULL",
-            "A32NX.FCU_LOC_PUSH", "A32NX.FCU_APPR_PUSH", "A32NX.FCU_EXPED_PUSH",
-            "A32NX.FCU_SPD_MACH_TOGGLE_PUSH", "A32NX.FCU_TRK_FPA_TOGGLE_PUSH",
+            "A32NX.FCU_SPD_MACH_TOGGLE_PUSH",
             "A32NX.FCU_AP_DISCONNECT_PUSH", "A32NX.FCU_ATHR_DISCONNECT_PUSH",
             "A32NX_METRIC_ALT_TOGGLE"
         };
@@ -1722,10 +1729,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         d["Status"] = new List<string> { "A32NX_FMGC_FLIGHT_PHASE" };
         d["FCU"] = new List<string>
         {
+            // AP1/AP2/ATHR/LOC/APPR/EXPED/TRK-FPA are now stateful combos in the
+            // FCU control panel, so they're not duplicated here as readouts.
             "A32NX_FMA_LATERAL_MODE", "A32NX_FMA_VERTICAL_MODE", "A32NX_APPROACH_CAPABILITY",
-            "A32NX_AUTOPILOT_1_ACTIVE", "A32NX_AUTOPILOT_2_ACTIVE", "A32NX_AUTOTHRUST_STATUS",
-            "A32NX_FCU_LOC_MODE_ACTIVE", "A32NX_FCU_APPR_MODE_ACTIVE", "A32NX_FMA_EXPEDITE_MODE",
-            "A32NX_TRK_FPA_MODE_ACTIVE", "FD_ACTIVE"
+            "FD_ACTIVE"
         };
         d["EFIS Control Panel"] = new List<string>
         {
@@ -1846,6 +1853,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
 
     public override bool ProcessSimVarUpdate(string varName, double value, ScreenReaderAnnouncer announcer)
     {
+        // Keep the live current state of the FCU engage/mode toggles so their
+        // combos can decide whether a "set" needs to fire the toggle event. Fall
+        // through so the base still auto-announces the state change.
+        if (_fcuToggleEvents.ContainsKey(varName)) _fcuStateCache[varName] = value;
         // Thrust lever angle -> announce the DETENT when it changes (not the raw
         // angle, which would spam). FBW TLA detents: IDLE 0, CLB 25, FLX/MCT 35,
         // TOGA 45, reverse negative. Only speak when the lever is AT a detent so
@@ -2133,6 +2144,17 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             simConnect.SendEvent($"ANTI_ICE_SET_ENG{varKey[3]}", (uint)Math.Round(value));
             return true;
         }
+        // FCU engage/mode toggle combos: the backing L:var is read-only state, so
+        // a "set" fires the matching A32NX.FCU_*_PUSH toggle — but only when the
+        // picked state differs from the current one (the events toggle, they don't
+        // set an absolute value). Current state comes from the live monitor cache.
+        if (_fcuToggleEvents.TryGetValue(varKey, out var fcuEvt))
+        {
+            bool desiredOn = value > 0.5;
+            bool currentOn = (_fcuStateCache.TryGetValue(varKey, out var cur) ? cur : 0) > 0.5;
+            if (desiredOn != currentOn) simConnect.SendEvent(fcuEvt);
+            return true; // never SetLVar the read-only state var
+        }
         return base.HandleUIVariableSet(varKey, value, varDef, simConnect, announcer);
     }
 
@@ -2145,6 +2167,21 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     private bool _reqHdg, _reqSpd, _reqAlt, _reqVs;
     private bool _reqFlaps, _reqGear, _reqBaro, _reqGw;
     private int _lastBaroL = -1, _lastBaroR = -1; // last announced EFIS baro (whole hPa)
+
+    // FCU engage/mode toggle combos -> their A32NX.FCU_*_PUSH toggle events. The
+    // combo's backing var is read-only engage state, so a set fires the toggle
+    // only when the desired state differs from the cached current value.
+    private static readonly Dictionary<string, string> _fcuToggleEvents = new()
+    {
+        ["A32NX_AUTOPILOT_1_ACTIVE"] = "A32NX.FCU_AP_1_PUSH",
+        ["A32NX_AUTOPILOT_2_ACTIVE"] = "A32NX.FCU_AP_2_PUSH",
+        ["A32NX_AUTOTHRUST_STATUS"] = "A32NX.FCU_ATHR_PUSH",
+        ["A32NX_FCU_LOC_MODE_ACTIVE"] = "A32NX.FCU_LOC_PUSH",
+        ["A32NX_FCU_APPR_MODE_ACTIVE"] = "A32NX.FCU_APPR_PUSH",
+        ["A32NX_FMA_EXPEDITE_MODE"] = "A32NX.FCU_EXPED_PUSH",
+        ["A32NX_TRK_FPA_MODE_ACTIVE"] = "A32NX.FCU_TRK_FPA_TOGGLE_PUSH",
+    };
+    private readonly Dictionary<string, double> _fcuStateCache = new();
 
     // Generic one-shot on-demand readout (speeds, fuel, approach capability):
     // request the var, then announce "<label> <value> <unit>" (or a mapped word)
