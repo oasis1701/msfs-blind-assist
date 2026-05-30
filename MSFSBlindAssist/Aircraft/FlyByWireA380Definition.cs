@@ -268,12 +268,12 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // HandleUIVariableSet. Verified in fbw-a380x air_conditioning/mod.rs.
         vars["COND_CKPT_TEMP_SET"] = new SimVarDefinition
         {
-            Name = "A32NX_OVHD_COND_CKPT_SELECTOR_KNOB", DisplayName = "Cockpit Target Temp (18-30 C)",
+            Name = "A32NX_OVHD_COND_CKPT_SELECTOR_KNOB", DisplayName = "Cockpit Target Temperature (18-30 C)",
             Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest, Units = "number"
         };
         vars["COND_CABIN_TEMP_SET"] = new SimVarDefinition
         {
-            Name = "A32NX_OVHD_COND_CABIN_SELECTOR_KNOB", DisplayName = "Cabin Target Temp (18-30 C)",
+            Name = "A32NX_OVHD_COND_CABIN_SELECTOR_KNOB", DisplayName = "Cabin Target Temperature (18-30 C)",
             Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest, Units = "number"
         };
         Read("A32NX_COND_CKPT_TEMP", "Cockpit Temperature", "celsius");
@@ -285,12 +285,12 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // that range -> knob = (temp - 5) * 15). Converted in HandleUIVariableSet.
         vars["CARGO_FWD_TEMP_SET"] = new SimVarDefinition
         {
-            Name = "A32NX_OVHD_CARGO_AIR_FWD_SELECTOR_KNOB", DisplayName = "Cargo Fwd Target Temp (5-25 C)",
+            Name = "A32NX_OVHD_CARGO_AIR_FWD_SELECTOR_KNOB", DisplayName = "Cargo Fwd Target Temperature (5-25 C)",
             Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest, Units = "number"
         };
         vars["CARGO_BULK_TEMP_SET"] = new SimVarDefinition
         {
-            Name = "A32NX_OVHD_CARGO_AIR_BULK_SELECTOR_KNOB", DisplayName = "Cargo Bulk Target Temp (5-25 C)",
+            Name = "A32NX_OVHD_CARGO_AIR_BULK_SELECTOR_KNOB", DisplayName = "Cargo Bulk Target Temperature (5-25 C)",
             Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest, Units = "number"
         };
         OnOff("A32NX_OVHD_CARGO_AIR_ISOL_VALVES_FWD_PB_IS_ON", "Cargo Fwd Isolation Valve");
@@ -1130,7 +1130,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             Read($"A32NX_ELEC_ENG_GEN_{n}_POTENTIAL", $"Gen {n} Voltage", "volts");
             Read($"A32NX_ELEC_ENG_GEN_{n}_LOAD", $"Gen {n} Load", "percent");
             Read($"A32NX_ELEC_ENG_GEN_{n}_FREQUENCY", $"Gen {n} Frequency", "hertz");
-            Read($"A32NX_ELEC_ENG_GEN_{n}_IDG_OIL_OUTLET_TEMPERATURE", $"IDG {n} Oil Temp", "celsius");
+            Read($"A32NX_ELEC_ENG_GEN_{n}_IDG_OIL_OUTLET_TEMPERATURE", $"IDG {n} Oil Temperature", "celsius");
         }
         for (int n = 1; n <= 2; n++)
         {
@@ -1161,11 +1161,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // BLEED: per-engine precooler temp/pressure + valves; pack outlet temps.
         for (int n = 1; n <= 4; n++)
         {
-            Read($"A32NX_PNEU_ENG_{n}_PRECOOLER_OUTLET_TEMPERATURE", $"Engine {n} Bleed Temp", "celsius");
+            Read($"A32NX_PNEU_ENG_{n}_PRECOOLER_OUTLET_TEMPERATURE", $"Engine {n} Bleed Temperature", "celsius");
             Read($"A32NX_PNEU_ENG_{n}_REGULATED_TRANSDUCER_PRESSURE", $"Engine {n} Bleed Pressure", "psi");
             ReadEnum($"A32NX_PNEU_ENG_{n}_STARTER_VALVE_OPEN", $"Engine {n} Starter Valve", openVd);
         }
-        for (int n = 1; n <= 2; n++) Read($"A32NX_COND_PACK_{n}_OUTLET_TEMPERATURE", $"Pack {n} Outlet Temp", "celsius");
+        for (int n = 1; n <= 2; n++) Read($"A32NX_COND_PACK_{n}_OUTLET_TEMPERATURE", $"Pack {n} Outlet Temperature", "celsius");
         Read("A32NX_PNEU_APU_BLEED_CONTAINER_PRESSURE", "APU Bleed Pressure", "psi");
 
         // ENGINE extras: oil qty, vibration.
@@ -1178,13 +1178,15 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // COND extras: cargo temps + duct temps.
         Read("A32NX_COND_CARGO_FWD_TEMP", "Cargo Fwd Temperature", "celsius");
         Read("A32NX_COND_CARGO_BULK_TEMP", "Cargo Bulk Temperature", "celsius");
-        Read("A32NX_COND_CKPT_DUCT_TEMP", "Cockpit Duct Temp", "celsius");
+        Read("A32NX_COND_CKPT_DUCT_TEMP", "Cockpit Duct Temperature", "celsius");
 
         // FLIGHT CONTROLS: surface positions + trim + sidestick priority.
-        foreach (var side in new[] { "LEFT", "RIGHT" })
+        foreach (var (side, who) in new[] { ("LEFT", "Left"), ("RIGHT", "Right") })
         {
-            Read($"A32NX_{side}_FLAPS_POSITION_PERCENT", $"{side} Flaps Position", "percent");
-            Read($"A32NX_{side}_SLATS_POSITION_PERCENT", $"{side} Slats Position", "percent");
+            // var key keeps the uppercase simvar token; label is title-case so TTS
+            // doesn't shout "LEFT"/"RIGHT".
+            Read($"A32NX_{side}_FLAPS_POSITION_PERCENT", $"{who} Flaps Position", "percent");
+            Read($"A32NX_{side}_SLATS_POSITION_PERCENT", $"{who} Slats Position", "percent");
         }
         Stock("ELEVATOR_TRIM", "ELEVATOR TRIM INDICATOR", "Pitch Trim", "number");
         Stock("RUDDER_TRIM_PCT", "RUDDER TRIM PCT", "Rudder Trim", "percent");
