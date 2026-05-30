@@ -56,7 +56,37 @@ public class FBWA380MCDUForm : Form
 
     private Label _statusLabel = null!;
     private ComboBox _mcduSelector = null!;
+    private ComboBox _pageSelector = null!;
     private ListBox _display = null!;
+
+    // Every MFD page, grouped by top-level tab, with its page-selector index
+    // (CAPT/FO_MFD_pageSelector{Prefix}_{Index}) and a KCCU-key fallback. Lets the
+    // user jump to ANY of the 20 pages from one combo box (keyboard accessible),
+    // in addition to the quick page buttons. (prefix,index) verified live.
+    private sealed record PageNav(string Label, string Prefix, int Index, string Key);
+    private static readonly PageNav[] AllPages =
+    {
+        new("ACTIVE: F-PLN",      "Active",   0, "FPLN"),
+        new("ACTIVE: PERF",       "Active",   1, "PERF"),
+        new("ACTIVE: FUEL & LOAD","Active",   2, ""),
+        new("ACTIVE: WIND",       "Active",   3, ""),
+        new("ACTIVE: INIT",       "Active",   4, "INIT"),
+        new("POSITION: MONITOR",  "Position", 0, ""),
+        new("POSITION: REPORT",   "Position", 1, ""),
+        new("POSITION: NAVAIDS",  "Position", 2, "NAVAID"),
+        new("POSITION: IRS",      "Position", 3, ""),
+        new("POSITION: GNSS",     "Position", 4, ""),
+        new("POSITION: TIME",     "Position", 5, ""),
+        new("SEC INDEX: SEC 1",   "SecIndex", 0, "SECINDEX"),
+        new("SEC INDEX: SEC 2",   "SecIndex", 1, ""),
+        new("SEC INDEX: SEC 3",   "SecIndex", 2, ""),
+        new("DATA: STATUS",       "Data",     0, ""),
+        new("DATA: WAYPOINT",     "Data",     1, ""),
+        new("DATA: NAVAID",       "Data",     2, ""),
+        new("DATA: ROUTE",        "Data",     3, ""),
+        new("DATA: AIRPORT",      "Data",     4, ""),
+        new("DATA: PRINTER",      "Data",     5, ""),
+    };
     private TextBox _scratchpad = null!;
 
     // Page nav buttons mirror the physical KCCU keyboard.
@@ -142,6 +172,19 @@ public class FBWA380MCDUForm : Form
         _mcduSelector.Items.AddRange(new object[] { "Captain", "First Officer" });
         _mcduSelector.SelectedIndex = 0;
         Controls.Add(_mcduSelector);
+
+        // "Go to page" — direct keyboard access to ALL 20 MFD pages (the quick
+        // buttons below only cover the common ones).
+        _pageSelector = new ComboBox
+        {
+            Location = new Point(420, y + 30),
+            Size = new Size(210, 25),
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            AccessibleName = "Go to MFD page",
+            AccessibleDescription = "Jump to any of the 20 MFD pages. Choose a page to navigate to it."
+        };
+        foreach (var p in AllPages) _pageSelector.Items.Add(p.Label);
+        Controls.Add(_pageSelector);
 
         _statusLabel = new Label
         {
@@ -249,6 +292,19 @@ public class FBWA380MCDUForm : Form
             _bridgeServer.EnqueueCommand("select_mcdu",
                 new Dictionary<string, string> { ["mcdu"] = _mcduIndex.ToString() });
             _bridgeServer.EnqueueCommand("get_mcdu_elements");
+        };
+
+        _pageSelector.SelectedIndexChanged += (_, _) =>
+        {
+            int i = _pageSelector.SelectedIndex;
+            if (i < 0 || i >= AllPages.Length) return;
+            var p = AllPages[i];
+            SendNavigateById(p.Prefix, p.Index, p.Key);
+            _announcer.Announce(p.Label);
+            // Pull the new page's elements shortly after the route switches.
+            var t = new System.Windows.Forms.Timer { Interval = 450 };
+            t.Tick += (_, _) => { t.Stop(); t.Dispose(); _bridgeServer.EnqueueCommand("get_mcdu_elements"); };
+            t.Start();
         };
 
         _scratchpad.KeyDown += ScratchpadKeyDown;
