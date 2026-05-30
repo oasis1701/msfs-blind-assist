@@ -791,15 +791,19 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             new Dictionary<double, string> { [100] = "100", [1000] = "1000" });
         OnOff("A32NX_METRIC_ALT_TOGGLE", "Metric Altitude");
 
-        // Readout value + managed-indicator vars (OnRequest; requested in pairs).
+        // Selected value readouts (OnRequest; read on demand via Shift+H/S/A/V).
         Read("A32NX_AUTOPILOT_HEADING_SELECTED", "Selected Heading", "degrees");
-        Read("A32NX_FCU_HDG_MANAGED_DASHES", "Heading Managed");
         Read("A32NX_AUTOPILOT_SPEED_SELECTED", "Selected Speed");
-        Read("A32NX_FCU_SPD_MANAGED_DOT", "Speed Managed");
         Read("A32NX_AUTOPILOT_VS_SELECTED", "Selected Vertical Speed", "feet per minute");
         Read("A32NX_AUTOPILOT_FPA_SELECTED", "Selected FPA");
-        Read("A32NX_FCU_VS_MANAGED", "Vertical Speed Managed");
-        Read("A32NX_FCU_ALT_MANAGED", "Altitude Managed");
+        // Managed-vs-selected indicators — AUTO-ANNOUNCED so a knob PUSH (managed)
+        // or PULL (selected) speaks the resulting mode. Previously OnRequest/silent,
+        // so pushing/pulling speed/heading/altitude/VS gave no audible feedback.
+        var managedSel = new Dictionary<double, string> { [0] = "Selected", [1] = "Managed" };
+        Mon("A32NX_FCU_HDG_MANAGED_DASHES", "Heading Mode", managedSel);
+        Mon("A32NX_FCU_SPD_MANAGED_DOT", "Speed Mode", managedSel);
+        Mon("A32NX_FCU_VS_MANAGED", "Vertical Speed Mode", managedSel);
+        Mon("A32NX_FCU_ALT_MANAGED", "Altitude Mode", managedSel);
         ReadEnum("A32NX_TRK_FPA_MODE_ACTIVE", "Vertical Mode",
             new Dictionary<double, string> { [0] = "HDG V/S", [1] = "TRK FPA" });
         // SimVars (key != Name — ProcessSimVarUpdate matches on the key).
