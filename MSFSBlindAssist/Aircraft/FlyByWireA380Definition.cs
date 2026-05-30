@@ -2144,10 +2144,19 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             simConnect.SendEvent($"ANTI_ICE_SET_ENG{varKey[3]}", (uint)Math.Round(value));
             return true;
         }
+        // TRK/FPA reference: the A380X has NO toggle event for it — the cockpit
+        // button writes the L:var directly. Write the absolute 0/1 via the
+        // MobiFlight calculator path (FBW L:var writes over the SimConnect data-def
+        // are as unreliable as the reads), not the default SetLVar.
+        if (varKey == "A32NX_TRK_FPA_MODE_ACTIVE")
+        {
+            simConnect.ExecuteCalculatorCode($"{(value > 0.5 ? 1 : 0)} (>L:A32NX_TRK_FPA_MODE_ACTIVE)");
+            return true;
+        }
         // FCU engage/mode toggle combos: the backing L:var is read-only state, so
-        // a "set" fires the matching A32NX.FCU_*_PUSH toggle — but only when the
-        // picked state differs from the current one (the events toggle, they don't
-        // set an absolute value). Current state comes from the live monitor cache.
+        // a "set" fires the matching toggle event — but only when the picked state
+        // differs from the current one (the events toggle, they don't set an
+        // absolute value). Current state comes from the live monitor cache.
         if (_fcuToggleEvents.TryGetValue(varKey, out var fcuEvt))
         {
             bool desiredOn = value > 0.5;
@@ -2168,18 +2177,25 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     private bool _reqFlaps, _reqGear, _reqBaro, _reqGw;
     private int _lastBaroL = -1, _lastBaroR = -1; // last announced EFIS baro (whole hPa)
 
-    // FCU engage/mode toggle combos -> their A32NX.FCU_*_PUSH toggle events. The
-    // combo's backing var is read-only engage state, so a set fires the toggle
+    // FCU engage/mode toggle combos -> the input event that flips them. The
+    // combo's backing var is read-only engage state, so a set fires the event
     // only when the desired state differs from the cached current value.
+    // Names verified against the A380X cockpit XML + FCU AutopilotManager source:
+    //  - AP1/AP2/LOC/APPR/EXPED fire the A32NX.FCU_*_PUSH key events (the A380X
+    //    H:A320_Neo_FCU_*_PUSH H-events translate to these).
+    //  - A/THR uses the STOCK K:AUTO_THROTTLE_ARM (A32NX.FCU_ATHR_PUSH is not the
+    //    event the A380X FCU button uses).
+    //  - TRK/FPA has NO event on the A380X — the button writes the L:var directly,
+    //    so it's intentionally NOT in this map: the combo's default L:var write
+    //    (A32NX_TRK_FPA_MODE_ACTIVE = 0/1) drives it.
     private static readonly Dictionary<string, string> _fcuToggleEvents = new()
     {
         ["A32NX_AUTOPILOT_1_ACTIVE"] = "A32NX.FCU_AP_1_PUSH",
         ["A32NX_AUTOPILOT_2_ACTIVE"] = "A32NX.FCU_AP_2_PUSH",
-        ["A32NX_AUTOTHRUST_STATUS"] = "A32NX.FCU_ATHR_PUSH",
+        ["A32NX_AUTOTHRUST_STATUS"] = "AUTO_THROTTLE_ARM",
         ["A32NX_FCU_LOC_MODE_ACTIVE"] = "A32NX.FCU_LOC_PUSH",
         ["A32NX_FCU_APPR_MODE_ACTIVE"] = "A32NX.FCU_APPR_PUSH",
         ["A32NX_FMA_EXPEDITE_MODE"] = "A32NX.FCU_EXPED_PUSH",
-        ["A32NX_TRK_FPA_MODE_ACTIVE"] = "A32NX.FCU_TRK_FPA_TOGGLE_PUSH",
     };
     private readonly Dictionary<string, double> _fcuStateCache = new();
 

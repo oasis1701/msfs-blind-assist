@@ -33,11 +33,11 @@ Sources cited per row: **[FCU-src]** = the FCU instrument managers/components; *
 | `A32NX.FCU_LOC_PUSH` | `A32NX.FCU_LOC_PUSH` | SAME [FCU-src AutopilotManager.onEvent]. |
 | `A32NX.FCU_AP_1_PUSH` | `A32NX.FCU_AP_1_PUSH` | SAME. A380 **has separate AP1/AP2** — AutopilotManager fires `K:A32NX.FCU_AP_1_PUSH` [FCU-src AutopilotManager.onEvent]. |
 | `A32NX.FCU_AP_2_PUSH` | `A32NX.FCU_AP_2_PUSH` | SAME [FCU-src AutopilotManager.onEvent]. |
-| `A32NX.FCU_ATHR_PUSH` | `A32NX.FCU_ATHR_PUSH` | SAME [api]. |
+| `A32NX.FCU_ATHR_PUSH` | **`K:AUTO_THROTTLE_ARM`** (stock) | CORRECTION: the A380X FCU A/THR button uses the STOCK `K:AUTO_THROTTLE_ARM`, not the FBW dot-event [fcu.xml:131, source audit]. |
 | `A32NX.FCU_AP_DISCONNECT_PUSH` | `A32NX.FCU_AP_DISCONNECT_PUSH` | SAME [api]. |
 | `A32NX.FCU_ATHR_DISCONNECT_PUSH` | `A32NX.FCU_ATHR_DISCONNECT_PUSH` | SAME [api]. |
 | `A32NX.FCU_SPD_MACH_TOGGLE_PUSH` | `A32NX.FCU_SPD_MACH_TOGGLE_PUSH` | SAME [api]. In-sim toggles via `K:AP_MANAGED_SPEED_IN_MACH_ON/OFF` [FCU-src SpeedManager.onSwitchSpeedMach]. |
-| `A32NX.FCU_TRK_FPA_TOGGLE_PUSH` | `A32NX.FCU_TRK_FPA_TOGGLE_PUSH` | SAME [api]. |
+| `A32NX.FCU_TRK_FPA_TOGGLE_PUSH` | **(no event — direct L:var write)** | CORRECTION: NOT wired on the A380X. The cockpit button only runs RPN `(L:A32NX_TRK_FPA_MODE_ACTIVE) ! (>L:A32NX_TRK_FPA_MODE_ACTIVE)`. Drive it by writing `L:A32NX_TRK_FPA_MODE_ACTIVE` (0/1) directly [A32NX_Interior_FCU.xml:137, source audit]. |
 
 ## EFIS-CP events (FD / baro)
 
