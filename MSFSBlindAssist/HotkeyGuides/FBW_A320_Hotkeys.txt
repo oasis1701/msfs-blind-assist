@@ -59,8 +59,10 @@ Location:
 Flight planning:
   W Next waypoint information
 
-Fuel:
-  F          Read Total Fuel Quantity
+Fuel and weight:
+  F          Read Total Fuel Quantity (pounds)
+  Shift+F    Read Total Fuel Quantity (kilograms)
+  Shift+W    Read Gross Weight (kilograms)
 
 Tools:
 CTRL+h, Activate/deactivate Hand fly mode, Note, enables more hotkeys, advanced feature.
@@ -90,7 +92,6 @@ Traffic and Weather:
 
 Displays and windows:
 shift+e, Route viewer, procedure planning and airport lookup
-  Shift+F, Fuel and payload window
   Shift+T,    Toggle Trim Announcements
   Shift+U,    Engine and warning display window
   Shift+Y,    SD Status window
@@ -172,6 +173,7 @@ FCU Set Values:
   Ctrl+S     Set Speed Value
   Ctrl+A     Set Altitude Value
   Ctrl+V     Set VS Value
+  Ctrl+B     Set Both Altimeters (captain and F/O, in hPa)
 
 Taxi Guidance:
   Shift+Y    Open Taxi Assist Form (enter ATC taxi clearance, start guidance)
