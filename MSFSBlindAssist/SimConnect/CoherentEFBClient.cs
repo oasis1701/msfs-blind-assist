@@ -220,6 +220,9 @@ namespace MSFSBlindAssist.SimConnect
             var elements = result.elements ?? new List<ScrapeElement>();
             var sb = new StringBuilder((result.page ?? "") + "|" + elements.Count + "|");
             foreach (var e in elements)
+                // e.idx (stamped) is part of the signature: if a reorder changes
+                // which element carries which idx, the form must re-render so its
+                // click/set targets stay correct even when text/value are unchanged.
                 sb.Append(e.idx).Append(':').Append(e.text).Append('/').Append(e.value)
                   .Append('/').Append(e.controlType).Append('/').Append(e.clickable ? '1' : '0')
                   .Append('/').Append(e.kind).Append('/').Append(e.level)

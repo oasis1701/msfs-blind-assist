@@ -467,7 +467,7 @@ public class FBWA380EFBForm : Form
                 Size = new Size(width, 24),
                 AccessibleName = el.Text
             };
-            int idx = el.Index;
+            int idx = el.AgentIdx;   // stamped agent idx — what click/set look up
             cb.CheckedChanged += (_, _) =>
             {
                 if (_suppressControlEvents) return;
@@ -499,7 +499,7 @@ public class FBWA380EFBForm : Form
                 AccessibleName = el.Text,
                 AccessibleDescription = "Type a value and press Enter to set it."
             };
-            int idx = el.Index;
+            int idx = el.AgentIdx;   // stamped agent idx — what click/set look up
             string controlType = el.ControlType!;
             string fieldName = el.Text;
             tb.KeyDown += (s, e) =>
@@ -545,7 +545,7 @@ public class FBWA380EFBForm : Form
                 TextAlign = ContentAlignment.MiddleLeft,
                 AccessibleName = text
             };
-            int idx = el.Index;
+            int idx = el.AgentIdx;   // stamped agent idx — what click/set look up
             btn.Click += (_, _) =>
             {
                 _bridgeServer.EnqueueCommand("click_display_element",

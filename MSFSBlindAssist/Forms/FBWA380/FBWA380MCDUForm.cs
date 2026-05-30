@@ -300,7 +300,8 @@ public class FBWA380MCDUForm : Form
             if (i < 0 || i >= AllPages.Length) return;
             var p = AllPages[i];
             SendNavigateById(p.Prefix, p.Index, p.Key);
-            _announcer.Announce(p.Label);
+            // No explicit announce: the screen reader already speaks the chosen
+            // combo item, and the MFD page title announces when the new page loads.
             // Pull the new page's elements shortly after the route switches.
             var t = new System.Windows.Forms.Timer { Interval = 450 };
             t.Tick += (_, _) => { t.Stop(); t.Dispose(); _bridgeServer.EnqueueCommand("get_mcdu_elements"); };
@@ -466,6 +467,11 @@ public class FBWA380MCDUForm : Form
         "dropdown" => "menu",
         "menu"   => "option",
         "tab"    => "tab",
+        "radio"  => "radio button",
+        "subtab" => "tab",
+        "surv"   => "button",
+        "survstatus" => "button",
+        "adsc"   => "button",
         _ => ""
     };
 
