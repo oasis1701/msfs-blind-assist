@@ -60,6 +60,39 @@ Switch to the 9th instrument camera view and then:
 - Output mode > Alt+P to read PFD
 - Output mode > Alt+I to read the ISIS display
 
+### PMDG Boeing 777
+
+Full accessibility support for the PMDG 777.
+- Accessible panels across the overhead, glareshield, main instrument and pedestal sections for control of switches, knobs and selectors.
+- MCP (autopilot) controls with dedicated dialogs for entering speed, heading, altitude and vertical speed / flight path angle, plus live engaged-mode readouts.
+- Accessible CDU (Captain, First Officer and Observer) for full FMC programming.
+- Radio and transponder tuning, Master Warning / Caution annunciators, and continuous monitoring of annunciator lights and system states.
+- Accessible EFB (Electronic Flight Bag), opened with Shift+T — Dashboard, Preferences, Navdata, Performance, Ground Ops, Weights & Balance and Manuals.
+- Using the power of Google Gemini to read PMDG displays. Requires the user's own free AIStudio API key.
+- All our shared features are integrated as well, including taxi guidance, the landing exit planner, route viewer, gate/runway teleport, METAR report, location info and text-based map.
+
+### PMDG Boeing 737 (NG3)
+
+Full accessibility support for the PMDG 737, covering the 737-600, -700, -800 and -900.
+- Accessible panels across all systems — electrical, hydraulics, pressurization, APU, fuel, fire protection, anti-ice, lights and more.
+- Full MCP (autopilot) button set (CMD A/B and every mode) with live engaged-state readouts and direct-set dialogs for speed, heading, altitude and vertical speed.
+- Accessible CDU (Captain and First Officer) for full FMC programming.
+- NAV radio tuning (Ctrl+N), altimeter set and readout in both hPa and inches (B / Ctrl+B), and EFIS Minimums entry.
+- Spoken flap position, speed-brake lever position, real stab-trim units, fire-handle operation, and Master Warning / Caution recall.
+- Boris Audio Works sound-pack panel and the full set of system test buttons.
+- Accessible EFB (Electronic Flight Bag) across all four variants, opened with Shift+T — Dashboard, Preferences, Navdata, Performance, Ground Ops, Weights & Balance and Manuals.
+- Using the power of Google Gemini to read 737 displays. Requires the user's own free AIStudio API key.
+- All our shared features are integrated as well, including taxi guidance, the landing exit planner, route viewer, gate/runway teleport, METAR report, location info and text-based map.
+
+### HorizonSim Boeing 787-9
+
+Full accessibility support for the HorizonSim 787-9, including Microsoft Flight Simulator 2024.
+- Accessible FMC / CDU through a built-in bridge, working in both MSFS2020 and MSFS2024, with an alternate LSK key layout (F1–F12).
+- Accessible panels for IRS (with alignment-status readout), anti-ice, signs, lights, landing, pressurization, cooling, annunciators, APU, external power and ground services.
+- Autopilot and autothrottle controls, ALT INTV, mach input, baro/altimeter set and announcements, and TCAS gate lookup.
+- Accessible EFB (Electronic Flight Bag), opened with Shift+T.
+- All our shared features are integrated as well, including taxi guidance, the landing exit planner, route viewer, gate/runway teleport, METAR report, location info and text-based map.
+
 ## Discord
 Please join us on discord for support or to hang out with us:
 https://discord.gg/7udKUYFFY7
