@@ -21,7 +21,9 @@ namespace MSFSBlindAssist.SimConnect
     /// <summary>
     /// Reads (and drives) the FlyByWire A380X MFD/FMS through the MSFS
     /// Coherent GT debugger — the WebKit-Inspector endpoint MSFS exposes on
-    /// 127.0.0.1:19999 in Developer Mode. NO Community-folder injection and
+    /// 127.0.0.1:19999. (Verified on MSFS 2024 cold boot: this is open with
+    /// Developer Mode OFF — the sim opens the port itself, no dev toolbar.)
+    /// NO Community-folder injection and
     /// NO patched HTML: we connect to the live MFD view's WebSocket and run
     /// our scrape/input agent via Runtime.evaluate inside its own JS context
     /// (where SimVar/Coherent and the MFD DOM are all reachable).

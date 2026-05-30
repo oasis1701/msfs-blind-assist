@@ -41,13 +41,6 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     public override string AircraftName => "FlyByWire A380X";
     public override string AircraftCode => "FBW_A380";
 
-    /// <summary>Bridge JS execution stage (legacy injection diagnostic). See
-    /// FBWA380ModPackageManager; retained for the MCDU form's status surface.</summary>
-    public int BridgeStage { get; private set; }
-
-    /// <summary>Override-HTML loaded marker (legacy injection diagnostic).</summary>
-    public int BridgeHtmlLoaded { get; private set; }
-
     // A380 FCU uses the same direct-set dialog pattern as the A320.
     public override FCUControlType GetAltitudeControlType() => FCUControlType.SetValue;
     public override FCUControlType GetHeadingControlType() => FCUControlType.SetValue;
@@ -168,18 +161,6 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         var normFault = new Dictionary<double, string> { [0] = "Normal", [1] = "Fault" };
         var signSw = new Dictionary<double, string> { [0] = "On", [1] = "Auto", [2] = "Off" };
         var srcSw = new Dictionary<double, string> { [0] = "Capt", [1] = "Norm", [2] = "F/O" };
-
-        // Legacy injection diagnostics (continuous, silent — read by the form).
-        vars["MSFSBA_FBWA380_STAGE"] = new SimVarDefinition
-        {
-            Name = "L:MSFSBA_FBWA380_STAGE", DisplayName = "A380 Bridge Stage",
-            Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = false
-        };
-        vars["MSFSBA_FBWA380_HTML_LOADED"] = new SimVarDefinition
-        {
-            Name = "L:MSFSBA_FBWA380_HTML_LOADED", DisplayName = "A380 Bridge HTML Loaded",
-            Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = false
-        };
 
         // ============================ OVERHEAD ============================
 
@@ -1739,9 +1720,6 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
 
     public override bool ProcessSimVarUpdate(string varName, double value, ScreenReaderAnnouncer announcer)
     {
-        if (varName == "MSFSBA_FBWA380_STAGE") { BridgeStage = (int)value; return true; }
-        if (varName == "MSFSBA_FBWA380_HTML_LOADED") { BridgeHtmlLoaded = (int)value; return true; }
-
         // Thrust lever angle -> announce the DETENT when it changes (not the raw
         // angle, which would spam). FBW TLA detents: IDLE 0, CLB 25, FLX/MCT 35,
         // TOGA 45, reverse negative. Only speak when the lever is AT a detent so

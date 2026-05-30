@@ -190,9 +190,9 @@ public partial class MainForm : Form
             CheckAndOfferEFBModPackage();
             StartEFBBridgeServer();
         }
-        // The FBW A380X MCDU is read live through the Coherent GT debugger —
-        // no injection, no Community-folder patching. The flyPad EFB form
-        // still uses the shared bridge server until it moves to a served page.
+        // The FBW A380X MFD/MCDU, flyPad and ND OANS are read live through the
+        // MSFS Coherent GT debugger (127.0.0.1:19999). Start the MFD client now so
+        // it is connected by the time the user opens the MCDU.
         else if (currentAircraft?.AircraftCode == "FBW_A380")
         {
             coherentClient = new CoherentDebuggerClient();
@@ -2154,18 +2154,13 @@ public partial class MainForm : Form
     {
         hotkeyManager.ExitInputHotkeyMode();
 
-        // The A380X MCDU is read live through the Coherent debugger — no
-        // injection, no Community-folder patching. Spin the client up lazily.
-        if (coherentClient == null)
-        {
-            coherentClient = new CoherentDebuggerClient();
-            coherentClient.Start();
-        }
+        if (coherentClient == null) { coherentClient = new CoherentDebuggerClient(); coherentClient.Start(); }
+        IMcduBridge bridge = coherentClient;
 
         if (fbwA380MCDUForm == null || fbwA380MCDUForm.IsDisposed)
         {
             fbwA380MCDUForm = new Forms.FBWA380.FBWA380MCDUForm(
-                coherentClient, announcer,
+                bridge, announcer,
                 currentAircraft as Aircraft.FlyByWireA380Definition);
         }
         fbwA380MCDUForm.ShowForm();
@@ -2175,37 +2170,30 @@ public partial class MainForm : Form
     {
         hotkeyManager.ExitInputHotkeyMode();
 
-        // No-injection: drive the flyPad live through the Coherent GT debugger.
-        if (coherentEFBClient == null)
-        {
-            coherentEFBClient = new CoherentEFBClient();
-            coherentEFBClient.Start();
-        }
+        if (coherentEFBClient == null) { coherentEFBClient = new CoherentEFBClient(); coherentEFBClient.Start(); }
+        IMcduBridge bridge = coherentEFBClient;
 
         if (fbwA380EFBForm == null || fbwA380EFBForm.IsDisposed)
         {
-            fbwA380EFBForm = new Forms.FBWA380.FBWA380EFBForm(coherentEFBClient, announcer);
+            fbwA380EFBForm = new Forms.FBWA380.FBWA380EFBForm(bridge, announcer);
         }
         fbwA380EFBForm.ShowForm();
     }
 
     // A380 ND OANS / BTV control panel — reuses the WebView2 EFB form, but driven
-    // by the ND Coherent view through CoherentNDClient (no injection). Used for
-    // BTV (Brake-To-Vacate) exit selection and airport/runway/exit search.
+    // by the ND Coherent view through CoherentNDClient. Used for BTV (Brake-To-
+    // Vacate) exit selection and airport/runway/exit search.
     private void ShowFBWA380OansDialog()
     {
         hotkeyManager.ExitOutputHotkeyMode();
 
-        if (coherentNDClient == null)
-        {
-            coherentNDClient = new CoherentNDClient();
-            coherentNDClient.Start();
-        }
+        if (coherentNDClient == null) { coherentNDClient = new CoherentNDClient(); coherentNDClient.Start(); }
+        IMcduBridge bridge = coherentNDClient;
 
         if (fbwA380OansForm == null || fbwA380OansForm.IsDisposed)
         {
             fbwA380OansForm = new Forms.FBWA380.FBWA380EFBForm(
-                coherentNDClient, announcer,
+                bridge, announcer,
                 "A380 Airport Map and BTV (OANS)", "OANS");
         }
         fbwA380OansForm.ShowForm();
@@ -2371,173 +2359,6 @@ public partial class MainForm : Form
         }
     }
 
-    /// <summary>
-    /// FlyByWire A380X equivalent of <see cref="CheckAndOfferEFBModPackage"/>.
-    /// Walks the same install/update/offer flow but targets the A380X
-    /// MFD + EFB instruments via <see cref="FBWA380ModPackageManager"/>.
-    /// </summary>
-    private void CheckAndOfferFBWA380ModPackage()
-    {
-        var allFolders = FBWA380ModPackageManager.FindAllCommunityFolders();
-        if (allFolders.Count == 0)
-        {
-            System.Diagnostics.Debug.WriteLine("FBW A380 Mod Package: Could not find any MSFS Community folder");
-            return;
-        }
-
-        string bridgeJsSource = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources", "fbw-a380-bridge.js");
-
-        // Refresh any already-installed overlays first.
-        bool anyInstalled = false;
-        foreach (var (simLabel, folderPath) in allFolders)
-        {
-            if (FBWA380ModPackageManager.IsInstalled(folderPath))
-            {
-                anyInstalled = true;
-                if (File.Exists(bridgeJsSource))
-                {
-                    var updateResult = FBWA380ModPackageManager.UpdateModPackage(folderPath, bridgeJsSource);
-                    if (updateResult == ModPackageResult.Updated)
-                    {
-                        MessageBox.Show(
-                            $"The FlyByWire A380X accessibility bridge for {simLabel} has been updated. Changes will take effect next time the simulator starts.",
-                            "FBW A380X Accessibility Bridge", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                    }
-                }
-            }
-        }
-
-        // Anywhere still missing the overlay? Offer to install — but only
-        // in sims that actually have the FBW A380X present (otherwise the
-        // overlay has nothing to layer on top of).
-        var notInstalledFolders = allFolders
-            .Where(f => !FBWA380ModPackageManager.IsInstalled(f.Path))
-            .Where(f => FBWA380ModPackageManager.FindFbwA380PackageRoot(f.Path) != null)
-            .ToList();
-        if (notInstalledFolders.Count == 0) return;
-
-        if (!File.Exists(bridgeJsSource))
-        {
-            announcer.Announce("Bridge script file not found. Cannot install FBW A380X mod package.");
-            return;
-        }
-
-        List<string> installTargets = new();
-
-        if (notInstalledFolders.Count == 1)
-        {
-            var (simLabel, folderPath) = notInstalledFolders[0];
-            string context = anyInstalled
-                ? $"The FBW A380X accessibility bridge is already installed elsewhere. Would you also like to install it for {simLabel}?"
-                : $"The FlyByWire A380X accessibility bridge is not installed. Would you like to install it for {simLabel}? On MSFS 2024 the FlyByWire instrument files are patched in place (originals are backed up and restored if you uninstall); on MSFS 2020 a separate overlay package is used.";
-            announcer.Announce(context);
-            if (MessageBox.Show(context, "FBW A380X Accessibility Bridge",
-                MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
-            {
-                installTargets.Add(folderPath);
-            }
-        }
-        else
-        {
-            // Multi-sim install dialog — mirror the PMDG one above.
-            using var dialog = new Form
-            {
-                Text = "FBW A380X Accessibility Bridge",
-                ClientSize = new Size(420, 220),
-                FormBorderStyle = FormBorderStyle.FixedDialog,
-                StartPosition = FormStartPosition.CenterScreen,
-                MaximizeBox = false,
-                MinimizeBox = false
-            };
-
-            var label = new Label
-            {
-                Text = "MSFS 2020 and 2024 both have FBW A380X installed. Where should the accessibility bridge go?",
-                Location = new Point(15, 15),
-                Size = new Size(390, 40),
-                AccessibleName = "Installation location"
-            };
-
-            var radioButtons = new List<RadioButton>();
-            int y = 60;
-            foreach (var (simLabel, _) in notInstalledFolders)
-            {
-                var rb = new RadioButton
-                {
-                    Text = simLabel,
-                    Location = new Point(20, y),
-                    Size = new Size(370, 25),
-                    AccessibleName = simLabel
-                };
-                radioButtons.Add(rb);
-                dialog.Controls.Add(rb);
-                y += 30;
-            }
-            var rbBoth = new RadioButton
-            {
-                Text = "Both",
-                Location = new Point(20, y),
-                Size = new Size(370, 25),
-                AccessibleName = "Both simulators",
-                Checked = true
-            };
-            radioButtons.Add(rbBoth);
-            dialog.Controls.Add(rbBoth);
-            y += 40;
-
-            var btnOk = new Button { Text = "Install", Location = new Point(220, y), Size = new Size(80, 30), DialogResult = DialogResult.OK };
-            var btnCancel = new Button { Text = "Cancel", Location = new Point(310, y), Size = new Size(80, 30), DialogResult = DialogResult.Cancel };
-            dialog.Controls.AddRange(new Control[] { label, btnOk, btnCancel });
-            dialog.AcceptButton = btnOk;
-            dialog.CancelButton = btnCancel;
-
-            announcer.Announce("MSFS 2020 and 2024 detected. Choose where to install the FBW A380X accessibility bridge.");
-
-            if (dialog.ShowDialog(this) == DialogResult.OK)
-            {
-                if (rbBoth.Checked)
-                {
-                    installTargets.AddRange(notInstalledFolders.Select(f => f.Path));
-                }
-                else
-                {
-                    for (int i = 0; i < notInstalledFolders.Count; i++)
-                    {
-                        if (radioButtons[i].Checked)
-                        {
-                            installTargets.Add(notInstalledFolders[i].Path);
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-
-        foreach (string folderPath in installTargets)
-        {
-            var result = FBWA380ModPackageManager.Install(folderPath, bridgeJsSource);
-            string simName = notInstalledFolders.FirstOrDefault(f => f.Path == folderPath).SimLabel
-                ?? allFolders.FirstOrDefault(f => f.Path == folderPath).SimLabel ?? "MSFS";
-            switch (result)
-            {
-                case ModPackageResult.Success:
-                    MessageBox.Show($"FBW A380X accessibility bridge installed for {simName}. Restart MSFS to pick up the changes.",
-                        "FBW A380X Accessibility Bridge", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                    break;
-                case ModPackageResult.PmdgPackageNotFound:
-                    MessageBox.Show(
-                        $"Could not find the FlyByWire A380X in the {simName} Community folder. Skipping.",
-                        "FBW A380X Accessibility Bridge", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    break;
-                case ModPackageResult.AlreadyInstalled:
-                    break;
-                default:
-                    MessageBox.Show($"Failed to install for {simName}: {result}",
-                        "FBW A380X Accessibility Bridge", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    break;
-            }
-        }
-    }
 
     private void StartEFBBridgeServer()
     {
@@ -3600,6 +3421,7 @@ public partial class MainForm : Form
         }
     }
 
+
     private void SuspendHotkeysMenuItem_Click(object? sender, EventArgs e)
     {
         if (suspendHotkeysMenuItem.Checked)
@@ -3822,9 +3644,8 @@ public partial class MainForm : Form
         }
         else if (newAircraft.AircraftCode == "FBW_A380")
         {
-            // No injection / Community-folder patching for the A380X: the MCDU
-            // is read live through the Coherent GT debugger. Start the client
-            // now so it is connected by the time the user opens the MCDU.
+            // The A380X MCDU is read live through the Coherent GT debugger. Start
+            // the client now so it is connected by the time the user opens the MCDU.
             coherentClient = new CoherentDebuggerClient();
             coherentClient.Start();
             // EFB form still uses the legacy bridge server until it moves to a
