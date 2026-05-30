@@ -20,6 +20,7 @@ var _efb = {
     HEARTBEAT_INTERVAL: 5000,
     RECONNECT_INTERVAL: 5000,
     serverConnected: false,
+    connecting: false,         // guard so the heartbeat + reconnect loop can't run tryConnect concurrently
     commandPollTimer: null,
     heartbeatTimer: null,
     screenPollTimer: null,
@@ -46,11 +47,15 @@ _efb.fetchWithTimeout = function(url, options, timeoutMs) {
 _efb.postState = function(type, data) {
     if (!_efb.serverConnected) return;
     try {
+        // .catch() is required: the try/catch only traps a synchronous throw from fetch() itself.
+        // A network failure (server dropped mid-post, before the heartbeat flips serverConnected)
+        // rejects the returned Promise ASYNCHRONOUSLY, which the try/catch does NOT see — that would
+        // be an unhandled rejection surfacing in Coherent GT. Swallow it; the heartbeat handles the drop.
         fetch(_efb.SERVER_URL + '/state', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ type: type, data: data || {} })
-        });
+        }).catch(function() { });
     } catch (e) { }
 };
 
@@ -66,10 +71,19 @@ _efb.pollCommands = function() {
 };
 
 _efb.tryConnect = function() {
+    // The heartbeat timer and the bootstrap reconnect loop both call tryConnect every 5s. Without
+    // this guard a second attempt can start while the first 2s ping is still outstanding. Bail if
+    // one is already in flight (resolve to the current state so callers' ok branch stays correct).
+    if (_efb.connecting) return Promise.resolve(_efb.serverConnected);
+    _efb.connecting = true;
     return _efb.fetchWithTimeout(_efb.SERVER_URL + '/ping', {}, 2000).then(function(response) {
+        _efb.connecting = false;
         if (response.ok) {
             if (!_efb.serverConnected) {
                 _efb.serverConnected = true;
+                // Fresh (re)connection: force a full screen re-push so a C# side that just came back
+                // isn't left blank until the EFB page text next changes (pollScreen dedups on previousScreen).
+                _efb.previousScreen = null;
                 console.log('[EFB Bridge] Connected to accessibility server');
                 _efb.startPolling();
                 _efb.postState('efb_connected');
@@ -78,6 +92,7 @@ _efb.tryConnect = function() {
         }
         throw new Error('not ok');
     }).catch(function() {
+        _efb.connecting = false;
         if (_efb.serverConnected) {
             _efb.serverConnected = false;
             console.log('[EFB Bridge] Lost connection to accessibility server');

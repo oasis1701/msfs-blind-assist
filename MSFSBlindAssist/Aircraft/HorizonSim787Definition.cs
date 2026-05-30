@@ -5697,10 +5697,15 @@ public class HorizonSim787Definition : BaseAircraftDefinition
             int now = (int)value;
             if (_previousAutobrake >= 0 && now != _previousAutobrake)
             {
+                // Positions MUST match HS787_Autobrake.ValueDescriptions (~line 1700) and the
+                // SET_AUTOBRAKE_CONTROL write in HandleUIVariableSet, which both use
+                // 0=Off, 1=RTO, 2=1, 3=2, 4=3, 5=MAX. This switch previously used a different
+                // mapping (0=RTO, 1=Disarmed), so the spoken callout contradicted the panel combo
+                // label and the value actually commanded. Keep all three in sync.
                 string msg = now switch
                 {
-                    0 => "Autobrakes RTO",
-                    1 => "Autobrakes Disarmed",
+                    0 => "Autobrakes Off",
+                    1 => "Autobrakes RTO",
                     2 => "Autobrakes 1",
                     3 => "Autobrakes 2",
                     4 => "Autobrakes 3",

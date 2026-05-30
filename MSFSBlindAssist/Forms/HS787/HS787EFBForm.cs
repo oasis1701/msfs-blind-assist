@@ -65,8 +65,15 @@ public partial class HS787EFBForm : Form
         // Force a fresh screen read after navigation so the form updates
         Task.Delay(900).ContinueWith(_ =>
         {
-            if (IsHandleCreated)
-                BeginInvoke(() => _bridgeServer.EnqueueCommand("read_screen"));
+            // try/catch closes the TOCTOU window between the IsHandleCreated check and BeginInvoke
+            // (the form can be disposed in between, throwing on this threadpool continuation).
+            try
+            {
+                if (IsHandleCreated)
+                    BeginInvoke(() => _bridgeServer.EnqueueCommand("read_screen"));
+            }
+            catch (ObjectDisposedException) { }
+            catch (InvalidOperationException) { }
         });
     }
 
@@ -157,7 +164,14 @@ public partial class HS787EFBForm : Form
         bool hadFocusInPanel = buttonsPanel.ContainsFocus;
 
         buttonsPanel.SuspendLayout();
+        // Dispose the old buttons before clearing. Controls.Clear() only removes them from the
+        // collection — it does NOT dispose them, so each rebuild (one per EFB page change) would
+        // otherwise leak the Win32 handle and the captured Click delegate. Over a long session with
+        // frequent page changes that accumulates.
+        var old = new List<Control>();
+        foreach (Control c in buttonsPanel.Controls) old.Add(c);
         buttonsPanel.Controls.Clear();
+        foreach (Control c in old) c.Dispose();
 
         int btnWidth = buttonsPanel.Width - SystemInformation.VerticalScrollBarWidth - 6;
 

@@ -2205,14 +2205,30 @@ public class SimConnectManager
             }
             lastVariableValues.AddOrUpdate(varKey, currentValue, (key, oldValue) => currentValue);
 
-            // Suppress SimVarUpdated for unchanged ANNOUNCED variables. Previously we fired
-            // unconditionally so that displays would refresh; the unintended consequence was
-            // double-firing aircraft-specific announce handlers (e.g. HS787's tri-state
-            // transition handlers) whenever a panel opened and RequestPanelVariables produced
-            // a ONCE response shortly after the continuous batch had already delivered the
-            // same value. Non-announced variables still fire on every response (numeric
-            // displays read them on demand), and a forceUpdate caller always fires regardless.
-            if (!hasChanged && varDef.IsAnnounced && !isForceUpdate)
+            // Suppress SimVarUpdated for unchanged ANNOUNCED CONTINUOUS variables. Previously we
+            // fired unconditionally so that displays would refresh; the unintended consequence was
+            // double-firing aircraft-specific announce handlers (e.g. HS787's tri-state transition
+            // handlers) whenever a panel opened and RequestPanelVariables produced a ONCE response
+            // shortly after the continuous stream had already delivered the same value.
+            //
+            // The UpdateFrequency.Continuous qualifier is a deliberate safety narrowing (vs. a bare
+            // IsAnnounced check). The double-fire only happens for continuously-monitored vars,
+            // because those are the ones whose value also arrives via the continuous stream — so a
+            // matching ONCE response is genuinely redundant. An OnRequest announced variable, by
+            // contrast, has the ONCE response as its ONLY data source; suppressing it would strand
+            // any display/control that depends on it. No existing aircraft ships such a variable
+            // today (audited FBW/Fenix/PMDG: announced controls are all Continuous, and PMDG vars
+            // never reach this path — they're CDA-broadcast), but the qualifier makes the safety
+            // explicit and future-proofs the rule.
+            //
+            // This does NOT regress control/display population for continuous vars: panel controls
+            // initialize from MainForm's currentSimVarValues cache at build time (kept current by
+            // the continuous stream, which fires on first delivery and every change), display fields
+            // fall back to SimConnectManager's lastVariableValues cache (populated just above, before
+            // this return), and a forceUpdate caller (panel Refresh, state announcements) always
+            // fires regardless. Non-announced variables also fire on every response.
+            if (!hasChanged && varDef.IsAnnounced &&
+                varDef.UpdateFrequency == UpdateFrequency.Continuous && !isForceUpdate)
             {
                 return;
             }

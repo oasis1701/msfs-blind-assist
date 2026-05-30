@@ -32,7 +32,7 @@ namespace MSFSBlindAssist.Patching
         // hs787-mfd-bridge.js from disk and POST /mfd-eval drives DOM probes,
         // so bridge JS (incl. the IRS scrape) iterates without sim restarts.
         // This is the LAST mandatory sim restart; everything after is hot-reload.
-        private const int BridgeVersion = 21;
+        private const int BridgeVersion = 22;
         private const string VersionFileName = "bridge-version.txt";
 
         private const string PackageFolderName = "zzz-hs787-accessibility";
@@ -141,8 +141,32 @@ namespace MSFSBlindAssist.Patching
         private const string EfbBridgeImportScriptTag =
             "\n<script type=\"text/html\" import-script=\"/Pages/VCockpit/Instruments/Airliners/HSB787_9/EFB/hs787-efb-bridge.js\"></script>";
 
-        // Unique marker string that lives inside both bridge import-script tags. Cheap detection.
+        // Unique marker strings that live inside the bridge import-script tags. Cheap detection.
+        // MFD HTMLs carry the MFD marker, EFB HTMLs the EFB marker; layout.json carries both
+        // (one entry per bridge JS). A file containing EITHER marker was patched by us.
         private const string PatchMarker = "hs787-mfd-bridge.js";
+        private const string EfbPatchMarker = "hs787-efb-bridge.js";
+
+        /// <summary>True if the given file content was patched by us (carries a bridge marker).</summary>
+        private static bool ContainsBridgeMarker(string content) =>
+            content.Contains(PatchMarker) || content.Contains(EfbPatchMarker);
+
+        /// <summary>
+        /// Reconstructs a pristine original by dropping every line that references one of our
+        /// bridge JS files. Our import-script tags are whole lines we appended, and the original
+        /// never references them, so this recovers the pre-patch content. Used as a last resort
+        /// when the live file is patched but its .msfsba_backup is missing (e.g. deleted manually).
+        /// </summary>
+        private static string StripBridgeTags(string content)
+        {
+            var sb = new StringBuilder();
+            foreach (string line in content.Replace("\r\n", "\n").Split('\n'))
+            {
+                if (line.Contains(PatchMarker) || line.Contains(EfbPatchMarker)) continue;
+                sb.Append(line).Append('\n');
+            }
+            return sb.ToString().TrimEnd();
+        }
 
         /// <summary>
         /// Locates the horizonsim-aircraft-787-9 package within a community folder by looking for
@@ -242,23 +266,47 @@ namespace MSFSBlindAssist.Patching
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"HS787ModPackageManager: FS2024 Install failed: {ex.Message}");
+                // A partial in-place patch can leave the aircraft with HTML/layout file-size
+                // mismatches that make MSFS reject the WHOLE package (the user's 787 won't load).
+                // Roll the patch back from the backups so the aircraft stays bootable. Best-effort:
+                // if the failure was a file lock the restore may also be partial, but the backups
+                // remain on disk for a later clean retry.
+                try { RestoreFs2024FromBackups(horizonsim); }
+                catch (Exception restoreEx) { System.Diagnostics.Debug.WriteLine($"HS787ModPackageManager: FS2024 rollback failed: {restoreEx.Message}"); }
                 return ModPackageResult.InstallFailed;
             }
         }
 
         /// <summary>
-        /// Patches one instrument HTML: back up the original (only if no backup exists yet so we
-        /// preserve the first known-good state), then strip any prior patch marker and append
-        /// the new import-script line. Idempotent: re-running yields the same final content.
+        /// Patches one instrument HTML: ensure a pristine-original backup exists, then re-derive
+        /// the patched content from that backup. Idempotent: re-running yields the same content.
         /// </summary>
         private static void PatchHtmlInPlace(string htmlPath, string importScriptTag)
         {
             string backupPath = htmlPath + BackupSuffix;
-            if (!File.Exists(backupPath))
-                File.Copy(htmlPath, backupPath, overwrite: false);
+            string liveContent = File.ReadAllText(htmlPath);
+            bool liveIsPristine = !ContainsBridgeMarker(liveContent);
 
-            // Always re-derive from the backup so re-patches are clean (no stacking of script tags
-            // if BridgeVersion bumps add or remove text).
+            if (liveIsPristine)
+            {
+                // The live file carries no bridge marker, so it IS a pristine original. Refresh the
+                // backup from it — overwrite included. This is what makes a HorizonSim aircraft
+                // UPDATE safe: when the marketplace/installer overwrites our patched HTML with a new
+                // pristine original, a stale backup from the prior aircraft version would otherwise
+                // be used as the patch base and silently revert the user's updated aircraft. Treating
+                // any unmarked live file as the source of truth keeps the backup current.
+                File.Copy(htmlPath, backupPath, overwrite: true);
+            }
+            else if (!File.Exists(backupPath))
+            {
+                // Live file is patched but its backup is gone (e.g. deleted manually). Reconstruct a
+                // pristine base by stripping our tag(s) rather than copying the patched file (which
+                // would stack a second tag on the next re-derive).
+                File.WriteAllText(backupPath, StripBridgeTags(liveContent) + "\n");
+            }
+
+            // Re-derive from the (now-current) pristine backup so re-patches are clean — no stacking
+            // of script tags if a BridgeVersion bump changes the appended text.
             string original = File.ReadAllText(backupPath);
             File.WriteAllText(htmlPath, original.TrimEnd() + importScriptTag + "\n");
         }
@@ -273,11 +321,19 @@ namespace MSFSBlindAssist.Patching
             if (!File.Exists(layoutPath))
                 return; // No layout.json — let MSFS deal with it; better than crashing the install.
 
+            string liveLayoutText = File.ReadAllText(layoutPath);
             string backupPath = layoutPath + BackupSuffix;
-            if (!File.Exists(backupPath))
+            // Refresh the backup whenever the live layout.json is pristine (carries no bridge JS
+            // entry). Same rationale as PatchHtmlInPlace: after an external aircraft update the
+            // marketplace regenerates layout.json without our entries, and a stale backup would be
+            // restored on uninstall — producing the file-size mismatch MSFS rejects. If the live
+            // layout still carries our markers it's our own output: keep the existing pristine backup.
+            if (!ContainsBridgeMarker(liveLayoutText))
+                File.Copy(layoutPath, backupPath, overwrite: true);
+            else if (!File.Exists(backupPath))
                 File.Copy(layoutPath, backupPath, overwrite: false);
 
-            var layout = JObject.Parse(File.ReadAllText(layoutPath));
+            var layout = JObject.Parse(liveLayoutText);
             var content = (JArray?)layout["content"];
             if (content == null)
                 return;
@@ -359,6 +415,74 @@ namespace MSFSBlindAssist.Patching
             File.WriteAllText(layoutPath, layout.ToString(Newtonsoft.Json.Formatting.Indented));
         }
 
+        /// <summary>
+        /// Reverts an FS2024 in-place patch: restores each instrument HTML and layout.json from
+        /// its .msfsba_backup (deleting the backup), removes the dropped bridge JS files, and
+        /// clears the version marker. Every operation is best-effort and self-contained so a
+        /// single locked/missing file can't abort the rest — this is called both from the normal
+        /// uninstall path AND from InstallFs2024's failure handler, where leaving the user's
+        /// aircraft in a half-patched (MSFS-rejected) state is the worst outcome.
+        /// When an HTML carries our marker but has no backup, its tag is stripped in place so the
+        /// uninstall never leaves a dead import-script referencing a now-deleted bridge JS.
+        /// </summary>
+        private static void RestoreFs2024FromBackups(string horizonsim)
+        {
+            void RestoreOne(string htmlPath)
+            {
+                string backup = htmlPath + BackupSuffix;
+                try
+                {
+                    if (File.Exists(backup))
+                    {
+                        File.Copy(backup, htmlPath, overwrite: true);
+                        File.Delete(backup);
+                    }
+                    else if (File.Exists(htmlPath))
+                    {
+                        // No backup, but the file may still carry our tag (e.g. backup deleted, or a
+                        // partial patch before the backup was written). Strip it so we don't leave a
+                        // dangling reference to a bridge JS we're about to delete.
+                        string content = File.ReadAllText(htmlPath);
+                        if (ContainsBridgeMarker(content))
+                            File.WriteAllText(htmlPath, StripBridgeTags(content) + "\n");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"HS787ModPackageManager: restore failed for {htmlPath}: {ex.Message}");
+                }
+            }
+
+            string mfdDir = Path.Combine(horizonsim, MfdBasePath);
+            foreach (string h in MfdHtmlFileNames) RestoreOne(Path.Combine(mfdDir, h));
+            string efbDir = Path.Combine(horizonsim, EfbBasePath);
+            if (Directory.Exists(efbDir))
+                foreach (string h in EfbHtmlFileNames) RestoreOne(Path.Combine(efbDir, h));
+
+            // Delete bridge JS we dropped in.
+            try { string mfdJs = Path.Combine(mfdDir, MfdBridgeJsFileName); if (File.Exists(mfdJs)) File.Delete(mfdJs); }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"HS787ModPackageManager: delete MFD JS failed: {ex.Message}"); }
+            try { string efbJs = Path.Combine(efbDir, EfbBridgeJsFileName); if (File.Exists(efbJs)) File.Delete(efbJs); }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"HS787ModPackageManager: delete EFB JS failed: {ex.Message}"); }
+
+            // Restore layout.json from backup if present.
+            string layoutPath = Path.Combine(horizonsim, "layout.json");
+            string layoutBackup = layoutPath + BackupSuffix;
+            try
+            {
+                if (File.Exists(layoutBackup))
+                {
+                    File.Copy(layoutBackup, layoutPath, overwrite: true);
+                    File.Delete(layoutBackup);
+                }
+            }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"HS787ModPackageManager: restore layout.json failed: {ex.Message}"); }
+
+            // Clean our version marker.
+            try { string versionFile = Path.Combine(horizonsim, "msfsba-bridge-version.txt"); if (File.Exists(versionFile)) File.Delete(versionFile); }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"HS787ModPackageManager: delete version marker failed: {ex.Message}"); }
+        }
+
         private static ModPackageResult RemoveFs2024(string communityFolderPath)
         {
             string? horizonsim = FindHorizonsimPackagePath(communityFolderPath);
@@ -367,42 +491,7 @@ namespace MSFSBlindAssist.Patching
 
             try
             {
-                // Restore HTMLs from backups.
-                void RestoreOne(string htmlPath)
-                {
-                    string backup = htmlPath + BackupSuffix;
-                    if (File.Exists(backup))
-                    {
-                        File.Copy(backup, htmlPath, overwrite: true);
-                        File.Delete(backup);
-                    }
-                }
-
-                string mfdDir = Path.Combine(horizonsim, MfdBasePath);
-                foreach (string h in MfdHtmlFileNames) RestoreOne(Path.Combine(mfdDir, h));
-                string efbDir = Path.Combine(horizonsim, EfbBasePath);
-                if (Directory.Exists(efbDir))
-                    foreach (string h in EfbHtmlFileNames) RestoreOne(Path.Combine(efbDir, h));
-
-                // Delete bridge JS we dropped in.
-                string mfdJs = Path.Combine(mfdDir, MfdBridgeJsFileName);
-                if (File.Exists(mfdJs)) File.Delete(mfdJs);
-                string efbJs = Path.Combine(efbDir, EfbBridgeJsFileName);
-                if (File.Exists(efbJs)) File.Delete(efbJs);
-
-                // Restore layout.json from backup if present.
-                string layoutPath = Path.Combine(horizonsim, "layout.json");
-                string layoutBackup = layoutPath + BackupSuffix;
-                if (File.Exists(layoutBackup))
-                {
-                    File.Copy(layoutBackup, layoutPath, overwrite: true);
-                    File.Delete(layoutBackup);
-                }
-
-                // Clean our version marker.
-                string versionFile = Path.Combine(horizonsim, "msfsba-bridge-version.txt");
-                if (File.Exists(versionFile)) File.Delete(versionFile);
-
+                RestoreFs2024FromBackups(horizonsim);
                 return ModPackageResult.Removed;
             }
             catch (Exception ex)

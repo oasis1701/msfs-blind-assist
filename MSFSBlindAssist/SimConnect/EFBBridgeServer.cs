@@ -45,13 +45,18 @@ namespace MSFSBlindAssist.SimConnect
         private string _cachedDisplayElementsJson = "[]";
         private readonly object _displayLock = new();
 
-        // Last eval_result posted by a bridge (HS787 MFD or PMDG EFB), captured
-        // in ALL build configs so the always-available GET /mfd-eval-result can
-        // return it. This is the Release-safe readback path for the live bridge
-        // REPL: POST /mfd-eval enqueues an eval_js MFD command, the bridge polls
-        // it, evals, and posts eval_result back here. Same localhost-only trust
-        // boundary the PMDG EFB bridge already ships eval_js under.
+#if DEBUG
+        // Last eval_result posted by a bridge (HS787 MFD or PMDG EFB). Backs the live bridge REPL:
+        // POST /mfd-eval enqueues an eval_js MFD command, the bridge polls it, evals, and posts
+        // eval_result back here; GET /mfd-eval-result reads it. DEBUG-only — this is an
+        // arbitrary-JS-execution surface and must not exist in shipped builds. With CORS
+        // Allow-Origin:* and Allow-Private-Network:true on every response, a Release-build endpoint
+        // would let any local webpage the user visits drive JS execution inside the EFB (the
+        // classic localhost/DNS-rebinding attack the Private-Network-Access header is meant to
+        // block). The eval_js command itself is likewise only reachable via the DEBUG /debug-enqueue
+        // path, so gating these two endpoints to DEBUG restores the pre-787 security posture.
         private volatile string _lastMfdEvalResultJson = "{\"status\":\"none\"}";
+#endif
 
 #if DEBUG
         // Debug: ring buffer of recent state updates keyed by type, for
@@ -279,18 +284,18 @@ namespace MSFSBlindAssist.SimConnect
                     case "/display-set-value" when request.HttpMethod == "POST":
                         await HandleDisplaySetValue(request, response);
                         break;
-                    // Always-available live bridge REPL (Release-safe). Localhost-only
-                    // (HttpListener binds 127.0.0.1), same trust boundary the PMDG EFB
-                    // bridge already ships eval_js under. POST a JS snippet, the MFD
-                    // bridge polls + evals + posts eval_result back; GET reads it.
-                    // Used to iterate bridge JS without sim/MSFSBA restarts.
+#if DEBUG
+                    // Live bridge REPL — DEBUG-only (arbitrary JS execution surface; see the
+                    // _lastMfdEvalResultJson field comment). POST a JS snippet, the MFD bridge
+                    // polls + evals + posts eval_result back; GET reads it. Lets us iterate bridge
+                    // JS without sim/MSFSBA restarts during development.
                     case "/mfd-eval" when request.HttpMethod == "POST":
                         await HandleMfdEval(request, response);
                         break;
                     case "/mfd-eval-result" when request.HttpMethod == "GET":
                         await HandleMfdEvalResult(response);
                         break;
-#if DEBUG
+
                     // Debug endpoints gated to Debug builds only. /debug-enqueue
                     // accepts arbitrary bridge commands (including eval_js) with
                     // no auth, which is fine for local development but should
@@ -363,8 +368,8 @@ namespace MSFSBlindAssist.SimConnect
 
                 var args = new EFBStateUpdateEventArgs { Type = type, Data = data };
 
-                // Capture eval_result in ALL build configs for the Release-safe
-                // GET /mfd-eval-result readback (the live bridge REPL).
+#if DEBUG
+                // Capture eval_result for the DEBUG-only GET /mfd-eval-result readback (live REPL).
                 if (type == "eval_result")
                 {
                     _lastMfdEvalResultJson = JsonSerializer.Serialize(new
@@ -375,7 +380,6 @@ namespace MSFSBlindAssist.SimConnect
                     });
                 }
 
-#if DEBUG
                 // Record for debug introspection (external test access).
                 _debugLastState[type] = new DebugStateRecord
                 {
@@ -693,7 +697,8 @@ loadItems();
             }
         }
 
-        // --- Always-available live bridge REPL (Release-safe) ---
+#if DEBUG
+        // --- Live bridge REPL — DEBUG BUILDS ONLY ---
         //
         // The HS787 MFD bridge (and PMDG EFB bridge) ship an eval_js command.
         // These two endpoints expose it for restart-free iteration:
@@ -703,12 +708,12 @@ loadItems();
         //
         // Flow: POST a snippet (enqueued as an eval_js MFD command) -> the MFD
         // bridge polls /commands/mfd, evals it, posts eval_result back -> GET
-        // /mfd-eval-result returns the latest. Localhost-only (HttpListener
-        // binds 127.0.0.1); only the local MSFSBA process can be reached. This
-        // is the SAME trust boundary the PMDG EFB bridge already ships eval_js
-        // under (via the in-app Ctrl+Shift+R hot-reload command queue) — these
-        // endpoints just make it scriptable for bridge debugging. NOTE: the MFD
-        // bridge only dequeues commands while a CDU page is visible on the MFD.
+        // /mfd-eval-result returns the latest. Although HttpListener binds
+        // 127.0.0.1, the responses carry Access-Control-Allow-Origin:* AND
+        // Access-Control-Allow-Private-Network:true, so a malicious web page the
+        // user merely visits could POST arbitrary JS here for execution inside
+        // the EFB. That is why this is DEBUG-gated and never shipped. NOTE: the
+        // MFD bridge only dequeues commands while a CDU page is visible.
 
         private async Task HandleMfdEval(HttpListenerRequest request, HttpListenerResponse response)
         {
@@ -749,7 +754,6 @@ loadItems();
             response.Close();
         }
 
-#if DEBUG
         // --- Debug endpoints for external test harnesses ---
         //
         // DEBUG BUILDS ONLY. These let tools outside the MSFSBA process

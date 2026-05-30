@@ -212,8 +212,16 @@ public class HS787AutopilotWindow : Form
         // and RefreshButtonStates will update the label so the new state is read on focus.
         Task.Delay(300).ContinueWith(_ =>
         {
-            if (!IsDisposed && IsHandleCreated)
-                BeginInvoke(RefreshButtonStates);
+            // try/catch closes the TOCTOU window: the form can be disposed between the
+            // IsHandleCreated check and BeginInvoke, which would throw on this threadpool
+            // continuation as an unobserved task exception.
+            try
+            {
+                if (!IsDisposed && IsHandleCreated)
+                    BeginInvoke(RefreshButtonStates);
+            }
+            catch (ObjectDisposedException) { }
+            catch (InvalidOperationException) { }
         });
     }
 }

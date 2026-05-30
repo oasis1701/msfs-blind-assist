@@ -1,5 +1,5 @@
 // HorizonSim 787-9 MFD Accessibility Bridge
-// BRIDGE_JS_VERSION: 23-irs-instant
+// BRIDGE_JS_VERSION: 24-reconnect-guard
 // Injected into HSB789_MFD.GE.html and HSB789_MFD.RR.html via mod package override.
 // Reads the WT Boeing FMC screen from the DOM and exposes CDU controls to the
 // MSFS Blind Assist application via HTTP on localhost:19778.
@@ -15,13 +15,14 @@ if (window._mfd_bridge_loaded) {
 } else { window._mfd_bridge_loaded = true;
 
 var _mfd = {
-    JS_VERSION: '23-irs-instant',
+    JS_VERSION: '24-reconnect-guard',
     SERVER_URL: 'http://localhost:19778',
     SCREEN_POLL_INTERVAL: 300,
     COMMAND_POLL_INTERVAL: 400,
     HEARTBEAT_INTERVAL: 5000,
     RECONNECT_INTERVAL: 5000,
     serverConnected: false,
+    connecting: false,         // guard so the heartbeat + reconnect loop can't run tryConnect concurrently
     commandPollTimer: null,
     heartbeatTimer: null,
     screenPollTimer: null,
@@ -93,32 +94,47 @@ _mfd.pollCommands = async function() {
 };
 
 _mfd.tryConnect = async function() {
+    // The heartbeat timer and the bootstrap reconnect loop both call tryConnect every 5s. Without
+    // this guard a second attempt can start while the first 2s ping is still outstanding, producing
+    // overlapping pings and a connect/disconnect that can interleave the timer state. Bail if one is
+    // already in flight (return the current state so callers' ok/not-ok branches stay correct).
+    if (_mfd.connecting) return _mfd.serverConnected;
+    _mfd.connecting = true;
     try {
-        var response = await _mfd.fetchWithTimeout(_mfd.SERVER_URL + '/ping', {}, 2000);
-        if (response.ok) {
-            if (!_mfd.serverConnected) {
-                _mfd.serverConnected = true;
-                console.log('[MFD Bridge] Connected to accessibility server');
-                _mfd.setStage(3); // Stage 3: fetch succeeded, bridge connected
-                _mfd.startPolling();
-                _mfd.postState('mfd_connected');
+        try {
+            var response = await _mfd.fetchWithTimeout(_mfd.SERVER_URL + '/ping', {}, 2000);
+            if (response.ok) {
+                if (!_mfd.serverConnected) {
+                    _mfd.serverConnected = true;
+                    // Fresh (re)connection: force a full screen re-push so a C# side that just came
+                    // back gets the current CDU contents instead of waiting for the next text change
+                    // (pollScreen short-circuits while currentStr === previousScreen).
+                    _mfd.previousScreen = null;
+                    _mfd.previousCduVisible = null;
+                    console.log('[MFD Bridge] Connected to accessibility server');
+                    _mfd.setStage(3); // Stage 3: fetch succeeded, bridge connected
+                    _mfd.startPolling();
+                    _mfd.postState('mfd_connected');
+                }
+                return true;
             }
-            return true;
+            console.warn('[MFD Bridge] /ping returned non-ok status:', response.status);
+        } catch (e) {
+            // Log the error type so we can diagnose what is blocking the connection
+            // (PNA, CSP, network error, etc.) — check MSFS console log for these lines.
+            console.error('[MFD Bridge] tryConnect failed:', e && e.name, e && e.message);
+            _mfd.setStage(2); // Stage 2: fetch threw — likely CSP or network policy blocking localhost
         }
-        console.warn('[MFD Bridge] /ping returned non-ok status:', response.status);
-    } catch (e) {
-        // Log the error type so we can diagnose what is blocking the connection
-        // (PNA, CSP, network error, etc.) — check MSFS console log for these lines.
-        console.error('[MFD Bridge] tryConnect failed:', e && e.name, e && e.message);
-        _mfd.setStage(2); // Stage 2: fetch threw — likely CSP or network policy blocking localhost
-    }
 
-    if (_mfd.serverConnected) {
-        _mfd.serverConnected = false;
-        console.log('[MFD Bridge] Lost connection to accessibility server');
-        _mfd.stopPolling();
+        if (_mfd.serverConnected) {
+            _mfd.serverConnected = false;
+            console.log('[MFD Bridge] Lost connection to accessibility server');
+            _mfd.stopPolling();
+        }
+        return false;
+    } finally {
+        _mfd.connecting = false;
     }
-    return false;
 };
 
 _mfd.startPolling = function() {
