@@ -90,6 +90,19 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // Latching/momentary PB L:var as a combo (Released / Pressed).
         void Press(string key, string display) =>
             Sel(key, display, new Dictionary<double, string> { [0] = "Released", [1] = "Pressed" });
+        // Action / toggle combo — renders as a combo but has NO real backing var; its
+        // set is fully handled in HandleUIVariableSet (fires a K-event). OnRequest so
+        // the framework never spam-monitors a non-existent L:var. Used to standardise
+        // momentary actions (transponder ident, radio swap, jetway/stairs toggle) into
+        // combo boxes instead of buttons — the user picks the action option to fire it.
+        void Act(string key, string display, Dictionary<double, string> vd)
+        {
+            vars[key] = new SimVarDefinition
+            {
+                Name = key, DisplayName = display, Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest, ValueDescriptions = vd, RenderAsButton = false
+            };
+        }
         // Read-only numeric L:var readout.
         void Read(string key, string display, string units = "number")
         {
@@ -611,7 +624,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         OnOff("A32NX_RADAR_GCS_AUTO", "WXR Ground Clutter Suppression");
 
         // ---- Transponder ----
-        Evt("XPNDR_IDENT_ON", "XPNDR_IDENT_ON", "Transponder Ident");
+        Act("XPNDR_IDENT_ON", "Transponder Ident", new Dictionary<double, string> { [0] = "Off", [1] = "Ident" });
 
         // ---- RMP radios ----
         var rmpState = new Dictionary<double, string> { [0] = "Off (Failed)", [1] = "Off / Standby", [2] = "On", [3] = "On (Failed)" };
@@ -648,8 +661,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         var revVd = new Dictionary<double, string> { [0] = "Stowed", [1] = "Deployed" };
         for (int n = 1; n <= 4; n++)
         {
-            Evt($"ENGINE_{n}_MASTER_ON", "FUELSYSTEM_VALVE_OPEN", $"Engine {n} Master On", (uint)n);
-            Evt($"ENGINE_{n}_MASTER_OFF", "FUELSYSTEM_VALVE_CLOSE", $"Engine {n} Master Off", (uint)n);
+            // ENG MASTER = a combo (Off/On) whose state is the stock fuel-valve
+            // SimVar and whose set fires FUELSYSTEM_VALVE_OPEN/CLOSE (HandleUIVariableSet).
+            // Registered as ENG_VALVE_SWITCH:n below in the engine-readback block.
             Read($"A32NX_ENGINE_N1:{n}", $"Engine {n} N1", "percent");
             Read($"A32NX_ENGINE_N2:{n}", $"Engine {n} N2", "percent");
             Read($"A32NX_ENGINE_N3:{n}", $"Engine {n} N3", "percent");
@@ -964,7 +978,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 Name = "COM_STANDBY_FREQUENCY_SET", DisplayName = $"VHF {n} Standby (set)",
                 Type = SimVarType.Event, EventParam = (uint)n
             };
-            Evt($"COM{n}_RADIO_SWAP", $"COM{n}_RADIO_SWAP", $"VHF {n} Swap");
+            Act($"COM{n}_RADIO_SWAP", $"VHF {n} Swap", new Dictionary<double, string> { [0] = "Idle", [1] = "Swap active and standby" });
             Stock($"COM_ACTIVE_FREQUENCY:{n}", $"COM ACTIVE FREQUENCY:{n}", $"VHF {n} Active", "MHz");
             Stock($"COM_STANDBY_FREQUENCY:{n}", $"COM STANDBY FREQUENCY:{n}", $"VHF {n} Standby", "MHz");
         }
@@ -1037,18 +1051,21 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // press-animation flag and never actuates the valve (verified live #60:
         // pulsing it left FUELSYSTEM VALVE SWITCH unchanged; the FBW
         // FBW_Airbus_Fuel_Crossfeed template drives FUELSYSTEM_VALVE_TOGGLE on #ID#).
-        // Mirror the engine-master pattern (proven): explicit Open + Close buttons +
-        // a read-only Open/Closed readout per valve (state from the stock SimVar).
-        // OPEN/CLOSE are used rather than TOGGLE because TOGGLE was observed to stick
-        // mid-transition on rapid presses, whereas OPEN/CLOSE are deterministic (and
-        // are the exact events the engine masters already use successfully).
+        // Each crossfeed is a single Closed/Open COMBO: live state from the stock
+        // fuel-valve SimVar, and the set fires FUELSYSTEM_VALVE_OPEN/CLOSE (valve ids
+        // 46-49) via HandleUIVariableSet. OPEN/CLOSE (not TOGGLE) because TOGGLE stuck
+        // mid-transition on rapid presses; these are the same events the engine
+        // masters use. Continuous + announced so it speaks Closed/Open on change.
         for (int n = 1; n <= 4; n++)
         {
             int id = 45 + n;
-            Evt($"XFEED_{n}_OPEN", "FUELSYSTEM_VALVE_OPEN", $"Crossfeed {n} Open", (uint)id);
-            Evt($"XFEED_{n}_CLOSE", "FUELSYSTEM_VALVE_CLOSE", $"Crossfeed {n} Close", (uint)id);
-            Stock($"XFEED_{n}_STATE", $"FUELSYSTEM VALVE SWITCH:{id}", $"Crossfeed {n}", "bool",
-                new Dictionary<double, string> { [0] = "Closed", [1] = "Open" });
+            vars[$"XFEED_{n}_STATE"] = new SimVarDefinition
+            {
+                Name = $"FUELSYSTEM VALVE SWITCH:{id}", DisplayName = $"Crossfeed {n}",
+                Type = SimVarType.SimVar, Units = "bool",
+                UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+            };
         }
         ReadEnum("A380X_OVHD_FUEL_JETTISON_IS_OPEN", "Jettison Valve", openVd);
         Read("A32NX_TOTAL_FUEL_VOLUME", "Total Fuel Volume", "gallons");
@@ -1246,8 +1263,16 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         {
             Stock($"ENG_IGN_POS:{n}", $"TURB ENG IGNITION SWITCH EX1:{n}", $"Engine {n} Ignition",
                 "enum", new Dictionary<double, string> { [0] = "Crank", [1] = "Norm", [2] = "Ignition / Start" });
-            Stock($"ENG_VALVE_SWITCH:{n}", $"FUELSYSTEM VALVE SWITCH:{n}", $"Engine {n} Master", "bool",
-                new Dictionary<double, string> { [0] = "Off", [1] = "On" });
+            // ENG MASTER combo: live SimVar state (FUELSYSTEM VALVE SWITCH:n),
+            // settable — the set fires FUELSYSTEM_VALVE_OPEN/CLOSE via HandleUIVariableSet.
+            // Continuous + announced so it speaks Off/On on change like every combo.
+            vars[$"ENG_VALVE_SWITCH:{n}"] = new SimVarDefinition
+            {
+                Name = $"FUELSYSTEM VALVE SWITCH:{n}", DisplayName = $"Engine {n} Master",
+                Type = SimVarType.SimVar, Units = "bool",
+                UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            };
         }
 
         // EFIS OANS range (airport map zoom).
@@ -1286,6 +1311,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         var openShut = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" };
         void Door(string key, int ip, uint exitId, string display)
         {
+            // A door is one Closed/Open COMBO: live state from INTERACTIVE POINT
+            // OPEN:ip, and the set fires TOGGLE_AIRCRAFT_EXIT (exit id via the
+            // _doorExitIds map) through HandleUIVariableSet — no separate button.
             vars[key] = new SimVarDefinition
             {
                 Name = $"INTERACTIVE POINT OPEN:{ip}", DisplayName = display,
@@ -1293,7 +1321,6 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true,
                 ValueDescriptions = openShut
             };
-            Evt(key + "_TOGGLE", "TOGGLE_AIRCRAFT_EXIT", "Toggle " + display, exitId);
         }
         Door("A380X_GND_DOOR_MAIN1L", 0, 1, "Main 1 Left Door");
         Door("A380X_GND_DOOR_MAIN2L", 2, 3, "Main 2 Left Door");
@@ -1304,8 +1331,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // Jet bridge + passenger stairs (stock MSFS ground-service events;
         // airport/parking dependent). Catering, fuel-truck, baggage and pushback
         // are intentionally NOT exposed — GSX owns those.
-        Evt("A380X_GND_JETWAY", "TOGGLE_JETWAY", "Toggle Jet Bridge");
-        Evt("A380X_GND_STAIRS", "TOGGLE_RAMPTRUCK", "Toggle Passenger Stairs");
+        var retractExtend = new Dictionary<double, string> { [0] = "Retracted", [1] = "Extended" };
+        Act("A380X_GND_JETWAY", "Jet Bridge", retractExtend);
+        Act("A380X_GND_STAIRS", "Passenger Stairs", retractExtend);
 
         // Wheel chocks + safety cones (FBW model state; auto-announced).
         vars["A380X_GND_CHOCKS"] = new SimVarDefinition
@@ -1553,10 +1581,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         p["Engines"] = new List<string>
         {
             "ENGINE_MODE_SELECTOR",
-            "ENGINE_1_MASTER_ON", "ENGINE_1_MASTER_OFF",
-            "ENGINE_2_MASTER_ON", "ENGINE_2_MASTER_OFF",
-            "ENGINE_3_MASTER_ON", "ENGINE_3_MASTER_OFF",
-            "ENGINE_4_MASTER_ON", "ENGINE_4_MASTER_OFF"
+            // ENG MASTER 1-4 are now Off/On combos (state from the fuel-valve SimVar,
+            // set fires FUELSYSTEM_VALVE_OPEN/CLOSE) — no separate On/Off buttons.
+            "ENG_VALVE_SWITCH:1", "ENG_VALVE_SWITCH:2", "ENG_VALVE_SWITCH:3", "ENG_VALVE_SWITCH:4"
             // ENG MAN START 1-4 live in the overhead "Engine Start" panel (not duplicated here).
         };
         p["Thrust Levers"] = new List<string>
@@ -1595,11 +1622,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // ---- Ground Services (flyPad Ground page) ----
         p["Doors"] = new List<string>
         {
-            "A380X_GND_DOOR_MAIN1L", "A380X_GND_DOOR_MAIN1L_TOGGLE",
-            "A380X_GND_DOOR_MAIN2L", "A380X_GND_DOOR_MAIN2L_TOGGLE",
-            "A380X_GND_DOOR_MAIN4R", "A380X_GND_DOOR_MAIN4R_TOGGLE",
-            "A380X_GND_DOOR_UPPER1L", "A380X_GND_DOOR_UPPER1L_TOGGLE",
-            "A380X_GND_DOOR_FWDCARGO", "A380X_GND_DOOR_FWDCARGO_TOGGLE"
+            "A380X_GND_DOOR_MAIN1L", "A380X_GND_DOOR_MAIN2L", "A380X_GND_DOOR_MAIN4R",
+            "A380X_GND_DOOR_UPPER1L", "A380X_GND_DOOR_FWDCARGO"
         };
         p["Ground Equipment"] = new List<string>
         {
@@ -1620,10 +1644,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // ---- A32NX shared gap controls folded into panels ----
         p["Fuel"].AddRange(new[]
         {
-            "XFEED_1_OPEN", "XFEED_1_CLOSE", "XFEED_1_STATE",
-            "XFEED_2_OPEN", "XFEED_2_CLOSE", "XFEED_2_STATE",
-            "XFEED_3_OPEN", "XFEED_3_CLOSE", "XFEED_3_STATE",
-            "XFEED_4_OPEN", "XFEED_4_CLOSE", "XFEED_4_STATE"
+            "XFEED_1_STATE", "XFEED_2_STATE", "XFEED_3_STATE", "XFEED_4_STATE"
         });
         p["Hydraulics"].Add("A32NX_OVHD_HYD_PTU_PB_IS_AUTO");
         p["Ventilation"].AddRange(new[] { "A32NX_VENTILATION_BLOWER_TOGGLE", "A32NX_VENTILATION_EXTRACT_TOGGLE" });
@@ -1898,7 +1919,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         d["Bleed Air"].AddRange(new[] { "A32NX_COND_PACK_1_OUTLET_TEMPERATURE", "A32NX_COND_PACK_2_OUTLET_TEMPERATURE", "A32NX_PNEU_APU_BLEED_CONTAINER_PRESSURE" });
 
         for (int n = 1; n <= 4; n++)
-            d["Engines"].AddRange(new[] { $"A32NX_ENGINE_OIL_QTY:{n}", $"ENG_VIBRATION:{n}", $"ENG_IGN_POS:{n}", $"ENG_VALVE_SWITCH:{n}" });
+            // ENG_VALVE_SWITCH:n is now a settable control combo in the Engines panel,
+            // so it is no longer listed here as a read-only display field.
+            d["Engines"].AddRange(new[] { $"A32NX_ENGINE_OIL_QTY:{n}", $"ENG_VIBRATION:{n}", $"ENG_IGN_POS:{n}" });
 
         d["Air Conditioning"].AddRange(new[] { "A32NX_COND_CARGO_FWD_TEMP", "A32NX_COND_CARGO_BULK_TEMP", "A32NX_COND_CKPT_DUCT_TEMP" });
 
@@ -2307,6 +2330,43 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             simConnect.SendEvent(lightEvent, (uint)Math.Round(value));
             return true;
         }
+        // --- Combos whose STATE is a SimVar but whose CONTROL is a K-event
+        // (standardised: every cockpit control is a combo box, no buttons except
+        // the FCU push/pull). These route here from the SimVar-combo set path. ---
+        // Engine MASTER valves: state = FUELSYSTEM VALVE SWITCH:n (1-4), control =
+        // FUELSYSTEM_VALVE_OPEN/CLOSE with the valve id (verified live).
+        if (varKey.StartsWith("ENG_VALVE_SWITCH:", StringComparison.Ordinal)
+            && int.TryParse(varKey.AsSpan("ENG_VALVE_SWITCH:".Length), out int engVid))
+        {
+            simConnect.SendEvent(value > 0.5 ? "FUELSYSTEM_VALVE_OPEN" : "FUELSYSTEM_VALVE_CLOSE", (uint)engVid);
+            return true;
+        }
+        // Crossfeed valves: XFEED_n_STATE -> valve id 45+n.
+        if (varKey.StartsWith("XFEED_", StringComparison.Ordinal)
+            && varKey.EndsWith("_STATE", StringComparison.Ordinal)
+            && int.TryParse(varKey.AsSpan(6, 1), out int xfn))
+        {
+            simConnect.SendEvent(value > 0.5 ? "FUELSYSTEM_VALVE_OPEN" : "FUELSYSTEM_VALVE_CLOSE", (uint)(45 + xfn));
+            return true;
+        }
+        // Door combos: the combo shows the live SimVar open/closed state, so
+        // selecting the OTHER option means "toggle" — fire TOGGLE_AIRCRAFT_EXIT.
+        if (_doorExitIds.TryGetValue(varKey, out uint doorExit))
+        {
+            simConnect.SendEvent("TOGGLE_AIRCRAFT_EXIT", doorExit);
+            return true;
+        }
+        // Ground-service toggle combos (no clean state SimVar) — any change toggles.
+        if (varKey == "A380X_GND_JETWAY") { simConnect.SendEvent("TOGGLE_JETWAY"); return true; }
+        if (varKey == "A380X_GND_STAIRS") { simConnect.SendEvent("TOGGLE_RAMPTRUCK"); return true; }
+        // Momentary ACTION combos: fire only when the action option (value 1) is
+        // chosen; the idle option (0) does nothing.
+        if (varKey == "XPNDR_IDENT_ON") { if (value > 0.5) simConnect.SendEvent("XPNDR_IDENT_ON"); return true; }
+        if (varKey.StartsWith("COM", StringComparison.Ordinal) && varKey.EndsWith("_RADIO_SWAP", StringComparison.Ordinal))
+        {
+            if (value > 0.5) simConnect.SendEvent(varKey);   // key == event name
+            return true;
+        }
         // Air-cond/cargo target temperature: user enters degrees C; the FBW
         // selector knob is 0-300 over the zone's range (cockpit/cabin 18-30 C,
         // cargo 5-25 C), so knob = (temp - lo) / (hi - lo) * 300.
@@ -2502,6 +2562,16 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         ["A380X_GND_DOOR_MAIN4R"] = "Main 4 Right Door",
         ["A380X_GND_DOOR_UPPER1L"] = "Upper 1 Left Door",
         ["A380X_GND_DOOR_FWDCARGO"] = "Forward Cargo Door",
+    };
+    // Door key -> TOGGLE_AIRCRAFT_EXIT interaction id, so the door COMBO itself
+    // drives the toggle (every control is a combo; no buttons).
+    private static readonly Dictionary<string, uint> _doorExitIds = new()
+    {
+        ["A380X_GND_DOOR_MAIN1L"] = 1,
+        ["A380X_GND_DOOR_MAIN2L"] = 3,
+        ["A380X_GND_DOOR_MAIN4R"] = 10,
+        ["A380X_GND_DOOR_UPPER1L"] = 11,
+        ["A380X_GND_DOOR_FWDCARGO"] = 17,
     };
 
     // Decode/normalise an EFIS baro setting to whole hPa; false for STD/no-data.

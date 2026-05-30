@@ -4940,6 +4940,16 @@ public partial class MainForm : Form
                         {
                             var selectedValue = sortedValues[combo.SelectedIndex].Key;
 
+                            // Let the aircraft handle this SimVar-backed combo first
+                            // (e.g. an A380 valve/exit combo whose STATE is a SimVar
+                            // but whose CONTROL is a K-event — engine masters,
+                            // crossfeed, doors, jetway). Mirrors the LVar-combo path.
+                            if (currentAircraft.HandleUIVariableSet(capturedVarKey, selectedValue, varDef, simConnectManager!, announcer))
+                            {
+                                currentSimVarValues[capturedVarKey] = selectedValue;
+                                return;
+                            }
+
                             // Send the main LVar
                             simConnectManager?.SetLVar(capturedVarKey, selectedValue);
                             currentSimVarValues[capturedVarKey] = selectedValue;
