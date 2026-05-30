@@ -265,7 +265,11 @@ public class FBWA380MCDUForm : Form
         // Focus the display after the form is actually shown (BeginInvoke defers
         // past the screen reader's initial focus announcement so it lands on the
         // display, not the side combo).
-        Shown += (_, _) => BeginInvoke(new Action(() => _display.Focus()));
+        Shown += (_, _) =>
+        {
+            if (!IsHandleCreated || IsDisposed) return;
+            BeginInvoke(new Action(() => { if (!IsDisposed && _display is { IsDisposed: false }) _display.Focus(); }));
+        };
 
         FormClosing += (s, e) =>
         {

@@ -595,6 +595,9 @@ public class FBWA380EFBForm : Form
             _bridgeServer.StateUpdated -= OnBridgeStateUpdated;
             _statusTimer?.Stop();
             _statusTimer?.Dispose();
+            // Unsubscribe the WebView2 message handler before disposing so a
+            // late message can't fire against a half-disposed form.
+            try { if (_webView?.CoreWebView2 != null) _webView.CoreWebView2.WebMessageReceived -= OnWebMessageReceived; } catch { }
             _webView?.Dispose();
         }
         base.Dispose(disposing);

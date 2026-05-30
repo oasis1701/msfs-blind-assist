@@ -170,10 +170,11 @@
     return A.normEmptyBoxes(inner ? clean(inner.textContent) : "");
   };
 
-  // The A380 MFD fills an empty entry field with U+25AF boxes (▯▯▯), one per
-  // character slot. A screen reader would read each as "white vertical
-  // rectangle". Render a field that's ONLY boxes + template punctuation as
-  // "(empty)"; for a partially-typed field, just drop the leftover boxes.
+  // The A380 MFD fills an empty entry field with U+25AF boxes (one per character
+  // slot). A screen reader would read each as "white vertical rectangle". Render
+  // a field that's ONLY boxes + template punctuation as "(empty)"; for a
+  // partially-typed field, drop the leftover boxes. (The ▯ below is the literal
+  // U+25AF char; keep this file UTF-8.)
   A.normEmptyBoxes = function (v) {
     if (!v || v.indexOf("▯") < 0) return v;
     if (/^[▯\s.\/:+\-]*$/.test(v)) return "(empty)";
@@ -225,13 +226,14 @@
   // two-word/two-line button labels as adjacent spans with no whitespace.
   A.spacedText = function (n) {
     var parts = [];
-    (function walk(node) {
+    (function walk(node, depth) {
+      if (depth > 40) return;   // defensive: bound recursion (button subtrees are shallow)
       for (var i = 0; i < node.childNodes.length; i++) {
         var c = node.childNodes[i];
         if (c.nodeType === 3) { var t = c.nodeValue; if (t && t.replace(/\s+/g, "")) parts.push(clean(t)); }
-        else if (c.nodeType === 1) { walk(c); }
+        else if (c.nodeType === 1) { walk(c, depth + 1); }
       }
-    })(n);
+    })(n, 0);
     return parts.join(" ").replace(/\s+/g, " ").trim();
   };
 
@@ -659,7 +661,7 @@
     var conts = root.querySelectorAll(".mfd-input-field-container");
     for (var i = 0; i < conts.length; i++) {
       if (!A.isVisible(conts[i])) continue;
-      if (conts[i].className.toString().indexOf("disabled") >= 0) continue;
+      if (conts[i].classList && conts[i].classList.contains("disabled")) continue;
       var span = conts[i].querySelector(".mfd-input-field-text-input");
       if (!span) continue;
       var sd = conts[i].querySelector(".mfd-input-field-text-input-container");
