@@ -1148,6 +1148,66 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             }
         }
 
+        // ---- Ground Services (flyPad Ground page, exposed as cockpit controls) ----
+        // Doors: read the stock `INTERACTIVE POINT OPEN:n` as BOOL so the door
+        // auto-announces Open/Closed exactly once per transition (a Percent read
+        // would spam every frame of the open/close animation). Toggle via the
+        // stock K:TOGGLE_AIRCRAFT_EXIT event with the door's interaction index —
+        // the same mechanism the FBW flyPad uses (verified from FBW source).
+        var openShut = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" };
+        void Door(string key, int ip, uint exitId, string display)
+        {
+            vars[key] = new SimVarDefinition
+            {
+                Name = $"INTERACTIVE POINT OPEN:{ip}", DisplayName = display,
+                Type = SimVarType.SimVar, Units = "bool",
+                UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true,
+                ValueDescriptions = openShut
+            };
+            Evt(key + "_TOGGLE", "TOGGLE_AIRCRAFT_EXIT", "Toggle " + display, exitId);
+        }
+        Door("A380X_GND_DOOR_MAIN1L", 0, 1, "Main 1 Left Door");
+        Door("A380X_GND_DOOR_MAIN2L", 2, 3, "Main 2 Left Door");
+        Door("A380X_GND_DOOR_MAIN4R", 9, 10, "Main 4 Right Door");
+        Door("A380X_GND_DOOR_UPPER1L", 10, 11, "Upper 1 Left Door");
+        Door("A380X_GND_DOOR_FWDCARGO", 16, 17, "Forward Cargo Door");
+
+        // Jet bridge + passenger stairs (stock MSFS ground-service events;
+        // airport/parking dependent). Catering, fuel-truck, baggage and pushback
+        // are intentionally NOT exposed — GSX owns those.
+        Evt("A380X_GND_JETWAY", "TOGGLE_JETWAY", "Toggle Jet Bridge");
+        Evt("A380X_GND_STAIRS", "TOGGLE_RAMPTRUCK", "Toggle Passenger Stairs");
+
+        // Wheel chocks + safety cones (FBW model state; auto-announced).
+        vars["A380X_GND_CHOCKS"] = new SimVarDefinition
+        {
+            Name = "A32NX_MODEL_WHEELCHOCKS_ENABLED", DisplayName = "Wheel Chocks",
+            Type = SimVarType.LVar, Units = "bool",
+            UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Removed", [1] = "Placed" }
+        };
+        vars["A380X_GND_CONES"] = new SimVarDefinition
+        {
+            Name = "A32NX_MODEL_CONES_ENABLED", DisplayName = "Safety Cones",
+            Type = SimVarType.LVar, Units = "bool",
+            UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Removed", [1] = "Placed" }
+        };
+
+        // External-power (GPU) availability per receptacle (read-only; the actual
+        // connect is the overhead EXT PWR pushbuttons). Announces when a GPU
+        // becomes available at the stand.
+        for (int n = 1; n <= 4; n++)
+        {
+            vars[$"A380X_GND_GPU_AVAIL_{n}"] = new SimVarDefinition
+            {
+                Name = $"A32NX_EXT_PWR_AVAIL:{n}", DisplayName = $"GPU {n} Available",
+                Type = SimVarType.LVar, Units = "bool",
+                UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "No", [1] = "Yes" }
+            };
+        }
+
         return vars;
     }
 
@@ -1172,6 +1232,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 "Engines", "Thrust Levers", "Flaps and Brakes", "ECAM Control Panel", "Weather Radar",
                 "Transponder", "Radios", "RMP", "Cockpit Door"
             },
+            ["Ground Services"] = new List<string> { "Doors", "Ground Equipment" },
             ["Displays"] = new List<string> { "Status", "Speeds", "Minimums", "Ground" }
         };
     }
@@ -1386,6 +1447,23 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         };
         p["Minimums"] = new List<string>();
         p["Cockpit Door"] = new List<string> { "A32NX_COCKPIT_DOOR_LOCKED", "A32NX_CABIN_READY" };
+
+        // ---- Ground Services (flyPad Ground page) ----
+        p["Doors"] = new List<string>
+        {
+            "A380X_GND_DOOR_MAIN1L", "A380X_GND_DOOR_MAIN1L_TOGGLE",
+            "A380X_GND_DOOR_MAIN2L", "A380X_GND_DOOR_MAIN2L_TOGGLE",
+            "A380X_GND_DOOR_MAIN4R", "A380X_GND_DOOR_MAIN4R_TOGGLE",
+            "A380X_GND_DOOR_UPPER1L", "A380X_GND_DOOR_UPPER1L_TOGGLE",
+            "A380X_GND_DOOR_FWDCARGO", "A380X_GND_DOOR_FWDCARGO_TOGGLE"
+        };
+        p["Ground Equipment"] = new List<string>
+        {
+            "A380X_GND_JETWAY", "A380X_GND_STAIRS",
+            "A380X_GND_CHOCKS", "A380X_GND_CONES",
+            "A380X_GND_GPU_AVAIL_1", "A380X_GND_GPU_AVAIL_2",
+            "A380X_GND_GPU_AVAIL_3", "A380X_GND_GPU_AVAIL_4"
+        };
 
         p["Status"] = new List<string>
         {
