@@ -421,6 +421,14 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             new Dictionary<double, string> { [0] = "Off", [1] = "CAUTION" });
         Mon("A32NX_AUTOPILOT_AUTOLAND_WARNING", "Autoland Warning",
             new Dictionary<double, string> { [0] = "Off", [1] = "AUTOLAND" });
+        Mon("A32NX_APU_EGT_WARNING", "APU EGT Warning",
+            new Dictionary<double, string> { [0] = "Normal", [1] = "Caution", [2] = "WARNING" });
+        Mon("A32NX_AUTOTHRUST_THRUST_LEVER_WARNING", "Thrust Lever Warning",
+            new Dictionary<double, string> { [0] = "Off", [1] = "WARNING" });
+        Mon("A32NX_PERFORMANCE_WARNING", "Performance Warning",
+            new Dictionary<double, string> { [0] = "Off", [1] = "WARNING" });
+        Mon("A32NX_TCAS_FAULT", "TCAS Fault",
+            new Dictionary<double, string> { [0] = "Normal", [1] = "FAULT" });
 
         // ---- EFIS Control Panel (per side) ----
         foreach (var side in new[] { "L", "R" })
@@ -634,6 +642,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         ReadEnum("A32NX_OVHD_ELEC_AC_ESS_FEED_PB_HAS_FAULT", "AC ESS Feed Fault", fault);
         ReadEnum("A32NX_OVHD_ELEC_GALY_AND_CAB_PB_HAS_FAULT", "Galley and Cabin Fault", fault);
         ReadEnum("A32NX_OVHD_EMER_ELEC_RAT_AND_EMER_GEN_HAS_FAULT", "RAT and Emergency Gen Fault", fault);
+        ReadEnum("A32NX_OVHD_EMER_ELEC_GEN_1_LINE_PB_HAS_FAULT", "Emergency Generator 1 Line Fault", fault);
         for (int n = 1; n <= 4; n++)
         {
             ReadEnum($"A32NX_OVHD_ELEC_IDG_{n}_PB_HAS_FAULT", $"IDG {n} Fault", fault);
@@ -657,7 +666,18 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         {
             ReadEnum($"A32NX_OVHD_HYD_ENG_{n}AB_PUMP_DISC_PB_HAS_FAULT", $"Engine {n} Pump Disc Fault", fault);
             ReadEnum($"A32NX_HYD_ENG_{n}AB_PUMP_DISC", $"Engine {n} Pump Disconnected", new Dictionary<double, string> { [0] = "No", [1] = "Disconnected" });
+            ReadEnum($"A32NX_OVHD_HYD_ENG_{n}A_PUMP_PB_HAS_FAULT", $"Engine {n} Pump A Fault", fault);
+            ReadEnum($"A32NX_OVHD_HYD_ENG_{n}B_PUMP_PB_HAS_FAULT", $"Engine {n} Pump B Fault", fault);
         }
+        foreach (var sys in new[] { "G", "Y" })
+            foreach (var ab in new[] { "A", "B" })
+            {
+                string lbl = (sys == "G" ? "Green" : "Yellow") + " Electric Pump " + ab;
+                ReadEnum($"A32NX_OVHD_HYD_EPUMP{sys}{ab}_ON_PB_HAS_FAULT", $"{lbl} On Fault", fault);
+                ReadEnum($"A32NX_OVHD_HYD_EPUMP{sys}{ab}_OFF_PB_HAS_FAULT", $"{lbl} Off Fault", fault);
+            }
+        ReadEnum("A32NX_OVHD_HYD_EPUMPB_PB_HAS_FAULT", "Electric Pump B Fault", fault);
+        ReadEnum("A32NX_OVHD_HYD_EPUMPY_PB_HAS_FAULT", "Electric Pump Y Fault", fault);
         ReadEnum("A32NX_HYD_GREEN_SYSTEM_1_SECTION_PRESSURE_SWITCH", "Green System Pressure", new Dictionary<double, string> { [0] = "Low", [1] = "Normal" });
         ReadEnum("A32NX_HYD_YELLOW_SYSTEM_1_SECTION_PRESSURE_SWITCH", "Yellow System Pressure", new Dictionary<double, string> { [0] = "Low", [1] = "Normal" });
 
@@ -679,6 +699,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         foreach (var z in new[] { "FWD", "BULK" })
             ReadEnum($"A32NX_OVHD_CARGO_AIR_ISOL_VALVES_{z}_PB_HAS_FAULT", $"Cargo {z} Isolation Fault", fault);
         ReadEnum("A32NX_OVHD_CARGO_AIR_HEATER_PB_HAS_FAULT", "Cargo Heater Fault", fault);
+        ReadEnum("A32NX_OVHD_COND_RAM_AIR_PB_HAS_FAULT", "Ram Air Fault", fault);
+        for (int ch = 1; ch <= 2; ch++)
+            ReadEnum($"A32NX_COND_TADD_CHANNEL_{ch}_FAILURE", $"Temperature Control TADD Channel {ch}", fault);
 
         // PRESSURIZATION
         for (int n = 1; n <= 4; n++)
@@ -2030,6 +2053,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             // On-demand readouts ported from the A320 (vars shared / already defined).
             case HotkeyAction.ReadSpeedVLS: RequestReadout(simConnect, "A32NX_SPEEDS_VLS", "V L S", "knots"); return true;
             case HotkeyAction.ReadSpeedF: RequestReadout(simConnect, "A32NX_SPEEDS_F", "F speed", "knots"); return true;
+            case HotkeyAction.ReadSpeedGD: RequestReadout(simConnect, "A32NX_SPEEDS_GD", "Green Dot speed", "knots"); return true;
+            case HotkeyAction.ReadSpeedS: RequestReadout(simConnect, "A32NX_SPEEDS_S", "S speed", "knots"); return true;
+            case HotkeyAction.ReadSpeedVS: RequestReadout(simConnect, "A32NX_SPEEDS_VS", "V S", "knots"); return true;
+            case HotkeyAction.ReadSpeedVFE: RequestReadout(simConnect, "A32NX_SPEEDS_VFEN", "V F E next", "knots"); return true;
             case HotkeyAction.ReadFuelQuantity: RequestReadout(simConnect, "A32NX_TOTAL_FUEL_QUANTITY", "Total fuel", "kilograms"); return true;
             case HotkeyAction.ReadApproachCapability: RequestReadout(simConnect, "A32NX_APPROACH_CAPABILITY", "Approach capability", "", _apprCapMap); return true;
             case HotkeyAction.ShowPFD:
@@ -2075,6 +2102,21 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 hotkeyManager.ExitOutputHotkeyMode();
                 if (parentForm is MainForm mf) mf.ShowA380MonitorManagerDialog();
                 return true;
+            // Toggle live ECAM E/WD memo/warning call-outs (A32NX-style). The A380
+            // monitors A32NX_EWD_LOWER_* lines in ProcessSimVarUpdate and mutes them
+            // when the FBWA380_ECAM_MEMOS sentinel is in A380DisabledMonitorVariables;
+            // this flips it (also reflected in the Ctrl+M Monitor Manager) and persists.
+            case HotkeyAction.ToggleECAMMonitoring:
+            {
+                var disabled = Settings.SettingsManager.Current.A380DisabledMonitorVariables;
+                string key = Forms.FBWA380.FBWA380MonitorManagerForm.EcamMemosKey;
+                bool turnedOff;
+                if (disabled.Contains(key)) { disabled.Remove(key); turnedOff = false; }
+                else { disabled.Add(key); turnedOff = true; }
+                Settings.SettingsManager.Save();
+                announcer.AnnounceImmediate(turnedOff ? "E W D monitoring disabled" : "E W D monitoring enabled");
+                return true;
+            }
             default:
                 return base.HandleHotkeyAction(action, simConnect, announcer, parentForm, hotkeyManager);
         }
