@@ -61,12 +61,21 @@ Read-out windows (open from OUTPUT mode — see the PFD/ND/ECAM keys below):
     heading, indicated airspeed + Mach, standby altitude with its baro reference
     (STD/QNH) and setting, and the LS overlay state. Duplicates the universal
     altitude/airspeed keys, gathered as one standby cross-check panel.
-  - System Display window (ECAM/STATUS): decoded SD readouts grouped by page —
-    Fuel (per-tank quantities, fuel on board, gross weight, CG), Engine
-    (N2/N3/fuel flow/oil), Pressurization (cabin altitude/V-S/delta-P), APU,
-    Electrical, Hydraulics, and Air Conditioning zone temperatures. The ARINC429
-    quantities are decoded for you. Refresh button + F5.
-  Each window has a Refresh button and F5; Escape closes.
+  - System Display window (ECAM/STATUS): a LIVE read of the real System Display.
+    Pick any SD page from the "SD page" list (Engine, APU, Bleed, Air Cond,
+    Pressurization, Doors, Electrical AC/DC, Fuel, Wheel, Hydraulics, Flight
+    Controls, Circuit Breakers, Video) and the window shows exactly what that page
+    displays, decoded into readable lines (oxygen pressures, per-tank fuel, gross
+    weight, CG, temperatures, pressures, door states, ...). Refresh button + F5.
+    (If the live read can't reach the display it falls back to the SimVar decode.)
+  - E/WD window — Alt+E: a live read of the Engine/Warning Display (per-engine
+    throttle/N1/EGT/fuel-flow, the memo lines, and any active warnings and ECAM
+    action items). Alt+E also speaks the current warnings immediately.
+  Each window has a Refresh button and F5; Escape closes. The PFD, ND and ISIS
+  windows also have a "Live scrape" button (or F6) that opens a live read of the
+  real display — useful for text the SimVar readout doesn't cover (note the PFD/
+  ND/ISIS speed/altitude/attitude tapes read as scale marks, so the normal SimVar
+  readout stays the primary source for those).
 
 Thrust levers: moving the levers announces the detent reached (Idle / Climb /
   Flex MCT / TOGA / Reverse). You can also set a detent from the Thrust Levers
