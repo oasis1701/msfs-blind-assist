@@ -441,8 +441,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             new Dictionary<double, string> { [0] = "Off", [1] = "CAUTION" });
         Mon("A32NX_AUTOPILOT_AUTOLAND_WARNING", "Autoland Warning",
             new Dictionary<double, string> { [0] = "Off", [1] = "AUTOLAND" });
-        Mon("A32NX_APU_EGT_WARNING", "APU EGT Warning",
-            new Dictionary<double, string> { [0] = "Normal", [1] = "Caution", [2] = "WARNING" });
+        // NOTE: A32NX_APU_EGT_WARNING is NOT a 0/1/2 enum on the A380 — it's an
+        // ARINC429 word (verified live: reads ~1.147e9, decoding to ~896, the EGT
+        // warning threshold), so announcing/displaying it raw was garbage. Dropped:
+        // the actual APU EGT is shown decoded in the SD window, and a real APU EGT
+        // exceedance is an ECAM warning (covered by the EWD monitor).
         Mon("A32NX_AUTOTHRUST_THRUST_LEVER_WARNING", "Thrust Lever Warning",
             new Dictionary<double, string> { [0] = "Off", [1] = "WARNING" });
         Mon("A32NX_PERFORMANCE_WARNING", "Performance Warning",
