@@ -167,7 +167,17 @@
 
   A.readInputValue = function (node) {
     var inner = node.querySelector(".mfd-input-field-text-input");
-    return inner ? clean(inner.textContent) : "";
+    return A.normEmptyBoxes(inner ? clean(inner.textContent) : "");
+  };
+
+  // The A380 MFD fills an empty entry field with U+25AF boxes (▯▯▯), one per
+  // character slot. A screen reader would read each as "white vertical
+  // rectangle". Render a field that's ONLY boxes + template punctuation as
+  // "(empty)"; for a partially-typed field, just drop the leftover boxes.
+  A.normEmptyBoxes = function (v) {
+    if (!v || v.indexOf("▯") < 0) return v;
+    if (/^[▯\s.\/:+\-]*$/.test(v)) return "(empty)";
+    return clean(v.replace(/▯/g, ""));
   };
 
   A.elementLabel = function (node, kind) {

@@ -34,8 +34,9 @@ Arrow up and down through the **display list**. Each line is one thing:
 - **Static text** — labels, headings, values you cannot act on.
 - **Editable fields** read as **"LABEL: value"**, e.g. `FLT NBR: BVI214`,
   `FROM: EDDF`, `TO: LIMC`, `CRZ FL: 350`. The label tells you exactly what the
-  field is for, so you always know what to type where. An empty mandatory field
-  shows question marks; an empty optional field shows dashes.
+  field is for, so you always know what to type where. An empty **mandatory**
+  field reads **"(empty)"** (the amber entry boxes on screen); an empty
+  **optional** field shows dashes (e.g. `CI: ---`).
 - **Buttons / tabs** are announced with their role, e.g. `IRS, button`. A
   control that cannot be used right now reads `…, button, dimmed` — activating it
   just says "Unavailable" rather than doing nothing.
