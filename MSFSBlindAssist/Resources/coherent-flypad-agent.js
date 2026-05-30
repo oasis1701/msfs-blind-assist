@@ -395,12 +395,23 @@
       });
     }
 
+    // Cluster items into visual ROWS by top-proximity (NOT a fixed grid) so a
+    // label and its control on the same row never split across a bucket boundary
+    // (e.g. a "Theme" label at top 727 and its options at 719 must read together,
+    // label first). Then read order = nav-rail-last, row, left-to-right.
+    var TOL = 22;
+    var byTop = items.slice().sort(function (a, b) {
+      return ((a.navRail ? 1 : 0) - (b.navRail ? 1 : 0)) || (a.top - b.top);
+    });
+    var row = 0, lastTop = null, lastNav = null;
+    for (var ri = 0; ri < byTop.length; ri++) {
+      var it = byTop[ri];
+      if (lastTop === null || it.navRail !== lastNav || (it.top - lastTop) > TOL) row++;
+      it._row = row;
+      lastTop = it.top; lastNav = it.navRail;
+    }
     items.sort(function (a, b) {
-      // Nav rail goes after all content so it stops interleaving row-by-row.
-      var ng = (a.navRail ? 1 : 0) - (b.navRail ? 1 : 0);
-      if (ng) return ng;
-      var dy = Math.round(a.top / A.ROW_Y_TOLERANCE_PX) - Math.round(b.top / A.ROW_Y_TOLERANCE_PX);
-      return dy || (a.left - b.left);
+      return ((a.navRail ? 1 : 0) - (b.navRail ? 1 : 0)) || (a._row - b._row) || (a.left - b.left);
     });
 
     items = A.dedupe(items);
