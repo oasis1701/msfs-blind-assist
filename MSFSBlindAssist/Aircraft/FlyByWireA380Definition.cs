@@ -149,6 +149,21 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 ValueDescriptions = vd
             };
         }
+        // Continuously-monitored NUMERIC L:var that is announced live on change
+        // via a custom ProcessSimVarUpdate branch (no ValueDescriptions). Used for
+        // values the pilot sets and wants spoken as they change (e.g. EIS baro).
+        void MonNum(string key, string display, string units = "number")
+        {
+            vars[key] = new SimVarDefinition
+            {
+                Name = key,
+                DisplayName = display,
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                Units = units
+            };
+        }
         // Stock MSFS SimVar readback.
         void Stock(string key, string name, string display, string units = "bool",
                    Dictionary<double, string>? vd = null)
@@ -867,8 +882,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         var baroMode = new Dictionary<double, string> { [0] = "QFE", [1] = "QNH", [2] = "Standard" };
         Sel("XMLVAR_Baro1_Mode", "Capt Baro Mode", baroMode);
         Sel("XMLVAR_Baro2_Mode", "F/O Baro Mode", baroMode);
-        Read("A32NX_FCU_LEFT_EIS_BARO_HPA", "Capt Baro (hPa)", "hectopascals");
-        Read("A32NX_FCU_RIGHT_EIS_BARO_HPA", "F/O Baro (hPa)", "hectopascals");
+        // Auto-announced live as the pilot turns the baro knob (the EFIS baro
+        // setting is non-visual; spoken on change, deduped to whole hPa).
+        MonNum("A32NX_FCU_LEFT_EIS_BARO_HPA", "Capt Baro (hPa)", "hectopascals");
+        MonNum("A32NX_FCU_RIGHT_EIS_BARO_HPA", "F/O Baro (hPa)", "hectopascals");
         Read("A380X_EFIS_L_BARO_PRESELECTED", "Capt Preselected QNH");
         Read("A380X_EFIS_R_BARO_PRESELECTED", "F/O Preselected QNH");
 
@@ -1902,6 +1919,21 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             _readoutKey = null; _readoutMap = null;
             return true;
         }
+        // Live EFIS baro auto-announce — spoken as the pilot turns the baro knob
+        // (non-visual setting). Deduped to whole hPa; sentinel/implausible values
+        // (STD or uninitialised) are ignored so it doesn't chatter.
+        if (varName == "A32NX_FCU_LEFT_EIS_BARO_HPA" || varName == "A32NX_FCU_RIGHT_EIS_BARO_HPA")
+        {
+            bool capt = varName.Contains("LEFT");
+            int hpa = (int)Math.Round(value);
+            if (hpa < 800 || hpa > 1100) return true; // STD/sentinel — don't announce
+            if (hpa != (capt ? _lastBaroL : _lastBaroR))
+            {
+                if (capt) _lastBaroL = hpa; else _lastBaroR = hpa;
+                announcer.Announce($"{(capt ? "Captain" : "First officer")} altimeter {hpa} hectopascals, {hpa / 33.8639:0.00} inches");
+            }
+            return true;
+        }
         if (_reqBaro && varName == "KOHLSMAN_HG")
         {
             _reqBaro = false;
@@ -2112,6 +2144,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     private double? _pHdgVal, _pHdgMgd, _pSpdVal, _pSpdMgd, _pAltVal, _pAltMgd, _pVsVal, _pFpaVal, _pVsMode;
     private bool _reqHdg, _reqSpd, _reqAlt, _reqVs;
     private bool _reqFlaps, _reqGear, _reqBaro, _reqGw;
+    private int _lastBaroL = -1, _lastBaroR = -1; // last announced EFIS baro (whole hPa)
 
     // Generic one-shot on-demand readout (speeds, fuel, approach capability):
     // request the var, then announce "<label> <value> <unit>" (or a mapped word)
