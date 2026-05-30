@@ -4547,13 +4547,13 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             try
             {
-                var tempDefId = SimConnect.SimConnectManager.DATA_DEFINITIONS.DEF_FUEL_QUANTITY_FBW;
+                var tempDefId = SimConnect.SimConnectManager.DATA_DEFINITIONS.DEF_FUEL_QUANTITY;
                 simConnect.ClearDataDefinition(tempDefId);
                 simConnect.AddToDataDefinition(tempDefId,
-                    "L:A32NX_TOTAL_FUEL_QUANTITY", "kilograms",
+                    "FUEL TOTAL QUANTITY WEIGHT", "pounds",
                     Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
                 simConnect.RegisterDataDefineStruct<SimConnect.SimConnectManager.SingleValue>(tempDefId);
-                simConnect.RequestDataOnSimObject(SimConnect.SimConnectManager.DATA_REQUESTS.REQUEST_FUEL_QUANTITY_FBW,
+                simConnect.RequestDataOnSimObject(SimConnect.SimConnectManager.DATA_REQUESTS.REQUEST_FUEL_QUANTITY,
                     tempDefId, Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_OBJECT_ID_USER,
                     Microsoft.FlightSimulator.SimConnect.SIMCONNECT_PERIOD.ONCE,
                     Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
