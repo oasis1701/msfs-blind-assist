@@ -37,6 +37,14 @@
     return (n.className && n.className.toString) ? n.className.toString() : "";
   };
 
+  // True when `cls` is a STANDALONE class token on n (not a substring — so
+  // "bg-theme-highlight" does NOT match "hover:bg-theme-highlight").
+  A.hasClassToken = function (n, cls) {
+    var toks = A.cls(n).split(/\s+/);
+    for (var i = 0; i < toks.length; i++) if (toks[i] === cls) return true;
+    return false;
+  };
+
   A.isVisible = function (n) {
     try {
       var st = window.getComputedStyle(n);
@@ -313,8 +321,10 @@
       var clickable = A.isClickable(kind);
 
       // Mark the selected option of a segmented setting control (e.g. the chosen
-      // "Instant / Fast / Real"): the active segment carries bg-theme-highlight.
-      if (text && lower(A.cls(n)).indexOf("bg-theme-highlight") >= 0) text = text + " (selected)";
+      // "Instant / Fast / Real"): the active segment carries bg-theme-highlight as
+      // a STANDALONE token. Must be a token check, not a substring — otherwise the
+      // common hover:bg-theme-highlight style falsely marks every button selected.
+      if (text && A.hasClassToken(n, "bg-theme-highlight")) text = text + " (selected)";
 
       // Drop empty, non-actionable noise. Inputs/checkboxes keep their slot
       // (their value carries meaning even with no label).
