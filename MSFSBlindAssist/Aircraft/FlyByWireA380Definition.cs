@@ -1031,10 +1031,25 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest, Units = "number"
         };
 
-        // Fuel crossfeed + jettison status + volume.
-        OnOff("XMLVAR_Momentary_PUSH_OVHD_FUEL_XFEED_Pressed", "Crossfeed 1", button: true);
-        for (int n = 2; n <= 4; n++)
-            OnOff($"XMLVAR_Momentary_PUSH_OVHD_FUEL_XFEED{n}_Pressed", $"Crossfeed {n}", button: true);
+        // Fuel crossfeed + jettison status + volume. Each XFEED valve is driven by
+        // the stock K:FUELSYSTEM_VALVE_OPEN / _CLOSE events (valve IDs 46-49), NOT the
+        // XMLVAR_Momentary_..._Pressed L:var — that var is only the cockpit model's
+        // press-animation flag and never actuates the valve (verified live #60:
+        // pulsing it left FUELSYSTEM VALVE SWITCH unchanged; the FBW
+        // FBW_Airbus_Fuel_Crossfeed template drives FUELSYSTEM_VALVE_TOGGLE on #ID#).
+        // Mirror the engine-master pattern (proven): explicit Open + Close buttons +
+        // a read-only Open/Closed readout per valve (state from the stock SimVar).
+        // OPEN/CLOSE are used rather than TOGGLE because TOGGLE was observed to stick
+        // mid-transition on rapid presses, whereas OPEN/CLOSE are deterministic (and
+        // are the exact events the engine masters already use successfully).
+        for (int n = 1; n <= 4; n++)
+        {
+            int id = 45 + n;
+            Evt($"XFEED_{n}_OPEN", "FUELSYSTEM_VALVE_OPEN", $"Crossfeed {n} Open", (uint)id);
+            Evt($"XFEED_{n}_CLOSE", "FUELSYSTEM_VALVE_CLOSE", $"Crossfeed {n} Close", (uint)id);
+            Stock($"XFEED_{n}_STATE", $"FUELSYSTEM VALVE SWITCH:{id}", $"Crossfeed {n}", "bool",
+                new Dictionary<double, string> { [0] = "Closed", [1] = "Open" });
+        }
         ReadEnum("A380X_OVHD_FUEL_JETTISON_IS_OPEN", "Jettison Valve", openVd);
         Read("A32NX_TOTAL_FUEL_VOLUME", "Total Fuel Volume", "gallons");
 
@@ -1605,8 +1620,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // ---- A32NX shared gap controls folded into panels ----
         p["Fuel"].AddRange(new[]
         {
-            "XMLVAR_Momentary_PUSH_OVHD_FUEL_XFEED_Pressed", "XMLVAR_Momentary_PUSH_OVHD_FUEL_XFEED2_Pressed",
-            "XMLVAR_Momentary_PUSH_OVHD_FUEL_XFEED3_Pressed", "XMLVAR_Momentary_PUSH_OVHD_FUEL_XFEED4_Pressed"
+            "XFEED_1_OPEN", "XFEED_1_CLOSE", "XFEED_1_STATE",
+            "XFEED_2_OPEN", "XFEED_2_CLOSE", "XFEED_2_STATE",
+            "XFEED_3_OPEN", "XFEED_3_CLOSE", "XFEED_3_STATE",
+            "XFEED_4_OPEN", "XFEED_4_CLOSE", "XFEED_4_STATE"
         });
         p["Hydraulics"].Add("A32NX_OVHD_HYD_PTU_PB_IS_AUTO");
         p["Ventilation"].AddRange(new[] { "A32NX_VENTILATION_BLOWER_TOGGLE", "A32NX_VENTILATION_EXTRACT_TOGGLE" });
