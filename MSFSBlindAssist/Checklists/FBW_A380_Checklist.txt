@@ -1,0 +1,125 @@
+[Preflight Check]
+Batteries 1 and 2 on, ESS and APU battery auto
+External power on if available, or start APU
+APU master switch on, then APU start when available
+APU bleed air on
+Crew oxygen supply on
+ADIRS 1, 2 and 3 set to nav
+Cockpit and cabin temperature set in overhead Air Conditioning panel
+EFB flight plan imported in the flyPad before flight
+flyPad Ground Ops, board passengers and load cargo
+flyPad Ground Ops, request and complete refueling
+Seat belts sign on
+No smoking auto
+Emergency exit lights armed
+Transponder mode auto, set squawk in Transponder panel
+Navigation and logo lights on
+Left and right barometer reference set on the EFIS control panel
+Contact ATC for clearance
+Open the MCDU window and select the captain side
+MCDU, enter flight number, from and to airports on the active init page
+MCDU, request company flight plan from the AOC or init page if available
+MCDU, set departure runway and SID
+MCDU, set arrival runway and STAR per clearance
+MCDU, check the flight plan page and clear any discontinuities
+MCDU, complete the fuel and load page, confirm block fuel and ZFW
+MCDU, complete the performance takeoff page, enter V1, VR, V2 and flap setting
+Initial climb altitude set through the FCU
+
+[Before Start Check]
+Beacon light on
+Parking brake set
+Strobe lights auto
+Crossbleed selector auto
+Engine mode selector set to ignition or start in the Engines panel
+Engine master 1 on
+Engine master 2 on
+Engine master 3 on
+Engine master 4 on
+Monitor engine start in the ECAM System Display window
+Engine mode selector back to normal once all four are running
+
+[After Start Check]
+Set flaps as required for takeoff
+Ground spoilers armed
+APU bleed off
+APU master off
+Anti ice as required
+Runway turnoff lights on
+Nose light set to taxi
+Weather radar predictive windshear auto
+Autobrake set to runway takeoff, RTO
+Check and set the FCU, heading, speed and altitude
+
+[Taxi Check]
+Contact ATC
+If flying online, use input mode then shift R to position the aircraft on the runway
+Confirm aligned on the runway by reading heading with output mode then H
+Read flaps with output mode then L to confirm takeoff setting
+
+[Before Takeoff Check]
+Transponder ident sent
+Transponder TCAS set to TA RA
+Landing lights on
+Nose light set to takeoff
+Parking brake released
+Takeoff configuration test, no audible warning
+Departure clearance received
+
+[Takeoff Procedure]
+Apply Flex MCT or TOGA, set the All Thrust Levers combo or move the levers
+Monitor airspeed with output mode then W
+Rotate at VR speed
+Gear up
+Autopilot 1 on with input mode then shift A as soon as practical
+Set thrust levers to the Climb detent, the app announces the detent
+Flaps up on schedule
+Ground spoilers disarmed
+Adjust the FCU and follow ATC
+
+[Climbing Checks]
+MCDU performance climb page checked
+Flight plan page checked
+Landing lights off passing ten thousand feet
+Both barometer references pulled to standard at transition altitude
+Seat belts sign off when stable
+
+[Descent Check]
+FCU altitude set, knob pushed for managed or pulled for selected
+MCDU, set arrival runway and STAR per ATC if not already set
+MCDU radio nav page checked for ILS frequency and course
+Select destination runway through input mode then shift D
+Optional, check runway threshold distance with output mode then control D
+Activate the approach phase on the MCDU performance page about forty miles out
+Landing lights on passing ten thousand feet
+Seat belts sign on
+
+[Approach and Landing Check]
+Speed managed by the FCU, adjust if required or per ATC
+Flaps 1
+Approach mode on to establish on the localizer and glide slope
+Autopilot 2 on after established for autoland if desired
+Flaps 2 on final
+Gear down
+Ground spoilers armed
+Autobrake set
+Runway turnoff lights on
+Nose light set to takeoff
+Flaps 3
+Flaps full
+Confirm land mode on the flight mode annunciator, read with output mode then the PFD hotkey
+
+[On Ground]
+Apply reverse thrust as required, set the All Thrust Levers to Reverse
+Parking brake set once stopped or at taxi speed
+Flaps up
+Autopilot disconnect, press the FCU disconnect button
+Teleport to a gate through input mode then shift G if desired
+
+[Shutdown and Secure Aircraft]
+Engine masters 1 to 4 off
+Beacon light off
+Parking brake set
+APU master off when no longer needed
+External power or APU as required for ground services
+Complete the secure or turnaround procedure on the flyPad
