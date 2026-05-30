@@ -318,7 +318,8 @@ public partial class MainForm : Form
         // because it lives outside this poll loop.
         groundTrafficMonitor.SuppressCheck = () =>
             takeoffAssistManager.IsActive
-            || taxiGuidanceManager.State == TaxiGuidanceState.Inactive;
+            || taxiGuidanceManager.State == TaxiGuidanceState.Inactive
+            || taxiGuidanceManager.State == TaxiGuidanceState.LandingRollout;
 
         // Per-aircraft rollout-anticipation lead for the taxi steering tone
         // (see IAircraftDefinition.TaxiTurnLeadSeconds).
