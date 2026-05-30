@@ -690,7 +690,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             ReadEnum($"A32NX_OVHD_ELEC_IDG_{n}_PB_IS_DISC", $"IDG {n} Disconnected", new Dictionary<double, string> { [0] = "No", [1] = "Disconnected" });
             ReadEnum($"A32NX_OVHD_ELEC_ENG_GEN_{n}_PB_HAS_FAULT", $"Engine Gen {n} Fault", fault);
             ReadEnum($"A32NX_ELEC_ENG_GEN_{n}_IDG_IS_CONNECTED", $"IDG {n} Connected", connVd);
-            ReadEnum($"A32NX_EXT_PWR_AVAIL:{n}", $"Ext Power {n} Available", new Dictionary<double, string> { [0] = "No", [1] = "Available" });
+            // (External-power availability is NOT duplicated here — it's the single
+            //  "GPU {n} Available" readout in Ground Services, same A32NX_EXT_PWR_
+            //  AVAIL:{n} SimVar. Having both double-announced when a GPU connects.)
         }
         foreach (var bus in new[] { "AC_1", "AC_2", "AC_3", "AC_4", "AC_ESS", "AC_ESS_SCHED", "AC_247XP",
                                     "DC_1", "DC_2", "DC_ESS", "DC_247PP", "DC_HOT_1", "DC_HOT_2", "DC_HOT_3", "DC_HOT_4", "DC_GND_FLT_SVC" })
@@ -786,10 +788,16 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         ReadEnum("A32NX_FWS1_IS_HEALTHY", "FWS 1 Healthy", new Dictionary<double, string> { [0] = "Failed", [1] = "Healthy" });
         ReadEnum("A32NX_FWS2_IS_HEALTHY", "FWS 2 Healthy", new Dictionary<double, string> { [0] = "Failed", [1] = "Healthy" });
 
-        // GEAR
-        foreach (var lc in new[] { "1", "2" })
-            foreach (var sd in new[] { "LEFT", "RIGHT" })
-                ReadEnum($"A32NX_LGCIU_{lc}_{sd}_GEAR_DOWNLOCKED", $"LGCIU {lc} {sd} Downlock", downlk);
+        // GEAR. Two LGCIUs (dual-channel) monitor the same gear, so announcing
+        // BOTH on every gear cycle is redundant chatter. Channel 1 auto-announces
+        // the downlock per side; channel 2 stays panel-visible (ReadEnumQuiet) for
+        // cross-check, so a rare LGCIU 1/2 disagreement is still readable without
+        // doubling every routine gear callout.
+        foreach (var sd in new[] { "LEFT", "RIGHT" })
+        {
+            ReadEnum($"A32NX_LGCIU_1_{sd}_GEAR_DOWNLOCKED", $"LGCIU 1 {sd} Downlock", downlk);
+            ReadEnumQuiet($"A32NX_LGCIU_2_{sd}_GEAR_DOWNLOCKED", $"LGCIU 2 {sd} Downlock", downlk);
+        }
         ReadEnum("A32NX_LGCIU_1_NOSE_GEAR_COMPRESSED", "Nose Gear Compressed", new Dictionary<double, string> { [0] = "No", [1] = "Compressed" });
 
         // ============================ FCU / AFS + EFIS BARO ============================
@@ -1654,7 +1662,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             elec.Add($"A32NX_OVHD_ELEC_IDG_{n}_PB_IS_DISC");
             elec.Add($"A32NX_OVHD_ELEC_ENG_GEN_{n}_PB_HAS_FAULT");
             elec.Add($"A32NX_ELEC_ENG_GEN_{n}_IDG_IS_CONNECTED");
-            elec.Add($"A32NX_EXT_PWR_AVAIL:{n}");
+            // (A32NX_EXT_PWR_AVAIL:{n} shows once as "GPU {n} Available" in Ground
+            //  Services — not duplicated in the ELEC panel.)
         }
         foreach (var bus in new[] { "AC_1", "AC_2", "AC_3", "AC_4", "AC_ESS", "AC_ESS_SCHED", "AC_247XP",
                                     "DC_1", "DC_2", "DC_ESS", "DC_247PP", "DC_HOT_1", "DC_HOT_2", "DC_HOT_3", "DC_HOT_4", "DC_GND_FLT_SVC" })
