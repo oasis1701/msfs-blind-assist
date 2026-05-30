@@ -892,6 +892,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // STD(push)/QNH(pull) flag per side — drives the push/pull announcement.
         MonNum("A32NX_FCU_LEFT_EIS_BARO_IS_STD", "Capt Baro STD");
         MonNum("A32NX_FCU_RIGHT_EIS_BARO_IS_STD", "F/O Baro STD");
+        // hPa/inHg unit flag per side — so the baro is announced in the unit the
+        // pilot selected (and re-announced when they switch units).
+        MonNum("A32NX_FCU_EFIS_L_BARO_IS_INHG", "Capt Baro inHg");
+        MonNum("A32NX_FCU_EFIS_R_BARO_IS_INHG", "F/O Baro inHg");
         Read("A380X_EFIS_L_BARO_PRESELECTED", "Capt Preselected QNH");
         Read("A380X_EFIS_R_BARO_PRESELECTED", "F/O Preselected QNH");
 
@@ -1933,20 +1937,19 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             _readoutKey = null; _readoutMap = null;
             return true;
         }
-        // Live EFIS baro auto-announce — spoken as the pilot turns the knob.
-        // A32NX_FCU_*_EIS_BARO_HPA is an ARINC429 word (NOT a plain hPa), so it
-        // must be decoded; deduped to whole hPa. Only spoken in QNH (in STD the
-        // window shows "Std", announced by the IS_STD handler below).
+        // Live EFIS baro auto-announce — spoken as the pilot turns the knob, in
+        // whichever unit the EFIS is set to. The HPA var is an ARINC429 word
+        // (decode it); BaroHpa range-detects so it still works if the value ever
+        // comes through in inHg. Only spoken in QNH (STD is handled below).
         if (varName == "A32NX_FCU_LEFT_EIS_BARO_HPA" || varName == "A32NX_FCU_RIGHT_EIS_BARO_HPA")
         {
             bool capt = varName.Contains("LEFT");
-            int hpa = (int)Math.Round(new Arinc429Word(value).ValueOr(0));
-            if (hpa < 800 || hpa > 1100) return true; // no valid QNH (STD / no data)
+            if (!BaroHpa(new Arinc429Word(value).ValueOr(0), out int hpa)) return true; // STD / no data
             if (hpa != (capt ? _lastBaroL : _lastBaroR))
             {
                 if (capt) _lastBaroL = hpa; else _lastBaroR = hpa;
                 if ((capt ? _baroStdL : _baroStdR) != true)
-                    announcer.Announce($"{(capt ? "Captain" : "First officer")} altimeter {hpa} hectopascals, {hpa / 33.8639:0.00} inches");
+                    announcer.Announce(BaroPhrase(capt, hpa, false));
             }
             return true;
         }
@@ -1958,12 +1961,22 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             bool? prev = capt ? _baroStdL : _baroStdR;
             if (capt) _baroStdL = std; else _baroStdR = std;
             if (prev.HasValue && prev.Value != std) // skip the baseline read
-            {
-                string who = capt ? "Captain" : "First officer";
                 announcer.Announce(std
-                    ? $"{who} altimeter standard"
-                    : $"{who} altimeter Q N H {(capt ? _lastBaroL : _lastBaroR)} hectopascals");
-            }
+                    ? $"{(capt ? "Captain" : "First officer")} altimeter standard"
+                    : BaroPhrase(capt, capt ? _lastBaroL : _lastBaroR, true));
+            return true;
+        }
+        // EFIS baro unit toggled (hPa <-> inHg) — re-announce the setting in the
+        // new unit so the pilot hears it the way they just selected.
+        if (varName == "A32NX_FCU_EFIS_L_BARO_IS_INHG" || varName == "A32NX_FCU_EFIS_R_BARO_IS_INHG")
+        {
+            bool capt = varName.Contains("_EFIS_L_");
+            bool inHg = value > 0.5;
+            bool? prev = capt ? _baroInHgL : _baroInHgR;
+            if (capt) _baroInHgL = inHg; else _baroInHgR = inHg;
+            int last = capt ? _lastBaroL : _lastBaroR;
+            if (prev.HasValue && prev.Value != inHg && last > 0 && (capt ? _baroStdL : _baroStdR) != true)
+                announcer.Announce(BaroPhrase(capt, last, false));
             return true;
         }
         if (_reqBaro && varName == "KOHLSMAN_HG")
@@ -2205,6 +2218,26 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     private bool _reqFlaps, _reqGear, _reqBaro, _reqGw;
     private int _lastBaroL = -1, _lastBaroR = -1; // last announced EFIS baro (whole hPa)
     private bool? _baroStdL, _baroStdR; // last EFIS baro STD(true)/QNH(false) per side
+    private bool? _baroInHgL, _baroInHgR; // last EFIS baro unit inHg(true)/hPa(false) per side
+
+    // Decode/normalise an EFIS baro setting to whole hPa; false for STD/no-data.
+    // The FBW _HPA var is hPa, but range-detect inHg too so the read-out still
+    // works if the EFIS is switched to inches and the value comes through scaled.
+    private static bool BaroHpa(double raw, out int hpa)
+    {
+        if (raw >= 800 && raw <= 1100) { hpa = (int)Math.Round(raw); return true; }
+        if (raw >= 22 && raw <= 33) { hpa = (int)Math.Round(raw * 33.8639); return true; }
+        hpa = 0; return false;
+    }
+    // Speak the baro setting in the side's selected unit (hPa or inHg).
+    private string BaroPhrase(bool capt, int hpa, bool qnh)
+    {
+        string who = capt ? "Captain" : "First officer";
+        string pre = qnh ? "Q N H " : "";
+        return (capt ? _baroInHgL : _baroInHgR) == true
+            ? $"{who} altimeter {pre}{hpa / 33.8639:0.00} inches"
+            : $"{who} altimeter {pre}{hpa} hectopascals";
+    }
 
     // FCU engage/mode toggle combos -> the input event that flips them. The
     // combo's backing var is read-only engage state, so a set fires the event
