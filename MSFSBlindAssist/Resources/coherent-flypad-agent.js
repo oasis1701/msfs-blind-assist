@@ -171,6 +171,52 @@
     return kind === "link" || kind === "button" || kind === "tab";
   };
 
+  // Heading level 1-6 for an h1..h6 node, else 0. Lets the WebView2 renderer
+  // emit real <h1>..<h6> so a screen reader's heading quick-nav (H key) works.
+  A.headingLevel = function (n) {
+    var tag = n.tagName.toLowerCase();
+    var m = /^h([1-6])$/.exec(tag);
+    return m ? parseInt(m[1], 10) : 0;
+  };
+
+  // aria-live politeness for this node or its nearest ancestor with one, so the
+  // renderer can mirror live regions ("polite"/"assertive"); "" when none.
+  A.liveFor = function (n) {
+    var cur = n, guard = 0;
+    while (cur && guard < 40) {
+      guard++;
+      if (cur.getAttribute) {
+        var v = lower(cur.getAttribute("aria-live") || "");
+        if (v === "polite" || v === "assertive") return v;
+        if (lower(cur.getAttribute("role") || "") === "alert") return "assertive";
+      }
+      cur = cur.parentElement;
+    }
+    return "";
+  };
+
+  // True when the control is disabled (native disabled or aria-disabled), so the
+  // renderer can mark it and a screen reader announces it as unavailable.
+  A.disabledFor = function (n) {
+    try {
+      if (n.disabled === true) return true;
+      if (n.getAttribute && lower(n.getAttribute("aria-disabled") || "") === "true") return true;
+    } catch (e) {}
+    return false;
+  };
+
+  // Option labels for a real <select>, so the renderer can build a true
+  // <select> with <option>s instead of a free-text field. [] when not a select.
+  A.optionsFor = function (n) {
+    var out = [];
+    try {
+      if (n.tagName.toLowerCase() === "select" && n.options) {
+        for (var i = 0; i < n.options.length; i++) out.push(clean(n.options[i].text || n.options[i].value || ""));
+      }
+    } catch (e) {}
+    return out;
+  };
+
   // True when this node sits inside an already-stamped interactive control —
   // avoids reporting a button's inner text as its own separate line.
   A.isInsideStamped = function (n) {
@@ -226,7 +272,9 @@
         idx: thisIdx, kind: kind, tag: n.tagName.toLowerCase(),
         role: lower(n.getAttribute && n.getAttribute("role") || ""),
         text: text, value: A.valueOf(kind, n),
-        controlType: ctype, clickable: clickable
+        controlType: ctype, clickable: clickable,
+        level: A.headingLevel(n), live: A.liveFor(n),
+        disabled: A.disabledFor(n), options: A.optionsFor(n)
       });
     }
 

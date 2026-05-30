@@ -30,6 +30,8 @@ namespace MSFSBlindAssist.SimConnect
         private const int PollIntervalMs = 400;
         private const int ReconnectDelayMs = 2000;
         private const int EvalTimeoutMs = 5000;
+        // Unit-separator used to join a <select>'s option labels into one state value.
+        private const char OptionSeparator = (char)0x1f;
 
         public event EventHandler<EFBStateUpdateEventArgs>? StateUpdated;
         public event Action<string>? Error;
@@ -219,7 +221,9 @@ namespace MSFSBlindAssist.SimConnect
             var sb = new StringBuilder((result.page ?? "") + "|" + elements.Count + "|");
             foreach (var e in elements)
                 sb.Append(e.idx).Append(':').Append(e.text).Append('/').Append(e.value)
-                  .Append('/').Append(e.controlType).Append('/').Append(e.clickable ? '1' : '0').Append('|');
+                  .Append('/').Append(e.controlType).Append('/').Append(e.clickable ? '1' : '0')
+                  .Append('/').Append(e.kind).Append('/').Append(e.level)
+                  .Append('/').Append(e.disabled ? '1' : '0').Append('|');
             string elHash = sb.ToString();
             if (elHash != _lastElementsHash)
             {
@@ -237,6 +241,13 @@ namespace MSFSBlindAssist.SimConnect
                     data[$"items.{i}.value"] = elements[i].value ?? "";
                     data[$"items.{i}.type"] = elements[i].controlType ?? "";
                     data[$"items.{i}.clickable"] = elements[i].clickable ? "true" : "false";
+                    data[$"items.{i}.kind"] = elements[i].kind ?? "";
+                    data[$"items.{i}.level"] = elements[i].level.ToString();
+                    data[$"items.{i}.live"] = elements[i].live ?? "";
+                    data[$"items.{i}.disabled"] = elements[i].disabled ? "true" : "false";
+                    // Options for a real <select>; unit-separator joined (rare on the flyPad).
+                    if (elements[i].options is { Count: > 0 })
+                        data[$"items.{i}.options"] = string.Join(OptionSeparator, elements[i].options!);
                 }
                 Raise("fbwa380_efb_elements", data);
             }
@@ -388,6 +399,10 @@ namespace MSFSBlindAssist.SimConnect
             public string? value { get; set; }
             public string? controlType { get; set; }
             public bool clickable { get; set; }
+            public int level { get; set; }
+            public string? live { get; set; }
+            public bool disabled { get; set; }
+            public List<string>? options { get; set; }
         }
     }
 }
