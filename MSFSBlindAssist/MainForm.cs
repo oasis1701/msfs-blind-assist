@@ -1577,7 +1577,7 @@ public partial class MainForm : Form
                 AnnounceWhereAmI();
                 break;
             case HotkeyAction.AnnounceGroundTraffic:
-                announcer.AnnounceImmediate(groundTrafficMonitor.GetNearestTrafficSummary());
+                groundTrafficMonitor.AnnounceNearestTrafficSummary();
                 break;
             case HotkeyAction.LandingExitPlanner:
                 ShowLandingExitForm();
@@ -1642,6 +1642,7 @@ public partial class MainForm : Form
             announcer.AnnounceImmediate("Access GSX: not connected to the simulator.");
             return;
         }
+        _gsxService.RefreshTooltip();
         string tooltip = _gsxService.LastTooltip;
         if (string.IsNullOrWhiteSpace(tooltip))
         {

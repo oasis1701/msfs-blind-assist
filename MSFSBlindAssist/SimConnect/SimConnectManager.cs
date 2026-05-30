@@ -323,6 +323,7 @@ public class SimConnectManager
         public double MagneticVariation;
         public double GroundSpeedKnots;
         public double VerticalSpeedFPM;
+        public double SimOnGround;
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
@@ -584,6 +585,8 @@ public class SimConnectManager
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)5);
         sc.AddToDataDefinition(DATA_DEFINITIONS.AIRCRAFT_POSITION, "VERTICAL SPEED", "feet per minute",
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)6);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.AIRCRAFT_POSITION, "SIM ON GROUND", "bool",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)7);
         sc.RegisterDataDefineStruct<AircraftPosition>(DATA_DEFINITIONS.AIRCRAFT_POSITION);
 
         // Register AI traffic data (used by RequestDataOnSimObjectType → OnRecvSimobjectDataBytype)
@@ -2454,6 +2457,7 @@ public class SimConnectManager
         {
             // Always store the last known position and fire the event
             lastKnownPosition = data;
+            LastKnownOnGround = data.SimOnGround >= 0.5;
             AircraftPositionReceived?.Invoke(this, data);
         }
         catch (Exception ex)
@@ -3660,6 +3664,13 @@ public class SimConnectManager
             {
                 // SimConnect became null between check and call - log and ignore
                 System.Diagnostics.Debug.WriteLine($"SimConnect ReceiveMessage null reference (expected during disconnect): {ex.Message}");
+            }
+            catch (AccessViolationException ex)
+            {
+                // SimConnect's native marshaller can occasionally throw a corrupted
+                // packet/access violation while the sim or another SimConnect client
+                // is busy. Drop the packet instead of taking down the whole app.
+                System.Diagnostics.Debug.WriteLine($"SimConnect ReceiveMessage access violation ignored: {ex.Message}");
             }
             catch (Exception ex)
             {

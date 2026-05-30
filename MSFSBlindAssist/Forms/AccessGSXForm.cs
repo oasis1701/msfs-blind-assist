@@ -27,6 +27,7 @@ public sealed class AccessGSXForm : Form
     private TextBox _statusTextBox = null!;
     private TextBox _menuTextBox = null!;
     private TextBox _tooltipTextBox = null!;
+    private GsxSettingsForm? _settingsForm;
 
     public AccessGSXForm(GsxService gsxService, ScreenReaderAnnouncer announcer)
     {
@@ -157,6 +158,7 @@ public sealed class AccessGSXForm : Form
         _gsxService.MenuHidden += OnMenuHidden;
         _gsxService.MenuTimedOut += OnMenuTimedOut;
         _gsxService.TooltipChanged += OnTooltipChanged;
+        _gsxService.SettingsChanged += OnSettingsChanged;
 
         // Hide-not-close — same pattern as HS787FMCForm. Keeps the service
         // subscriptions live so background tooltip announcements still work
@@ -189,6 +191,34 @@ public sealed class AccessGSXForm : Form
     // ─────────────────────────────────────────────────────────────────────
     // Keyboard.
     // ─────────────────────────────────────────────────────────────────────
+    protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+    {
+        Keys keyCode = keyData & Keys.KeyCode;
+        bool control = (keyData & Keys.Control) == Keys.Control;
+        bool alt = (keyData & Keys.Alt) == Keys.Alt;
+        bool shift = (keyData & Keys.Shift) == Keys.Shift;
+
+        if (keyCode == Keys.C && !control && !alt && !shift && _gsxService.MenuOptions.Count > 0)
+        {
+            _gsxService.OpenSettings();
+            return true;
+        }
+
+        if (keyCode == Keys.F5)
+        {
+            _gsxService.OpenMenu();
+            return true;
+        }
+
+        if (keyCode == Keys.Escape)
+        {
+            Hide();
+            return true;
+        }
+
+        return base.ProcessCmdKey(ref msg, keyData);
+    }
+
     private void AccessGSXForm_KeyDown(object? sender, KeyEventArgs e)
     {
         // F5: ask GSX to open / reopen its menu.
@@ -213,7 +243,9 @@ public sealed class AccessGSXForm : Form
         // when there's a menu open — otherwise the keystrokes are no-ops so
         // the user doesn't accidentally choose a stale option.
         if (_gsxService.MenuOptions.Count == 0)
+        {
             return;
+        }
 
         int choice = -1;
         if (e.KeyCode >= Keys.D0 && e.KeyCode <= Keys.D9)
@@ -340,6 +372,36 @@ public sealed class AccessGSXForm : Form
         }
     }
 
+    private void OnSettingsChanged(object? sender, EventArgs e)
+    {
+        if (!IsHandleCreated || IsDisposed) return;
+        if (InvokeRequired) { BeginInvoke(new Action(OnSettingsChangedUi)); return; }
+        OnSettingsChangedUi();
+    }
+
+    private void OnSettingsChangedUi()
+    {
+        if (_settingsForm is { IsDisposed: false })
+        {
+            _settingsForm.Close();
+        }
+
+        _settingsForm = new GsxSettingsForm(_gsxService, _announcer, _gsxService.SettingsItems);
+        _settingsForm.FormClosed += (_, _) =>
+        {
+            _settingsForm = null;
+            _gsxService.HideMenu();
+            OnMenuHiddenUi();
+        };
+        _settingsForm.ShowForm();
+
+        try { _announcer.Announce("GSX Settings opened."); }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[AccessGSXForm] settings announce failed: {ex.Message}");
+        }
+    }
+
     // ─────────────────────────────────────────────────────────────────────
     // UI population helpers.
     // ─────────────────────────────────────────────────────────────────────
@@ -387,6 +449,9 @@ public sealed class AccessGSXForm : Form
             _gsxService.MenuHidden -= OnMenuHidden;
             _gsxService.MenuTimedOut -= OnMenuTimedOut;
             _gsxService.TooltipChanged -= OnTooltipChanged;
+            _gsxService.SettingsChanged -= OnSettingsChanged;
+            if (_settingsForm is { IsDisposed: false })
+                _settingsForm.Close();
             // Restore background-announce policy to the user setting when
             // the form goes away entirely (e.g. app shutdown). The service
             // may outlive the form — without this it would stay in

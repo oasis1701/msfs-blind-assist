@@ -355,6 +355,41 @@ public sealed class GroundTrafficMonitor : IDisposable
         return sb.ToString().TrimEnd();
     }
 
+    public void AnnounceNearestTrafficSummary()
+    {
+        if (!_sim.IsConnected)
+        {
+            _announcer.AnnounceImmediate("Ground traffic monitor not connected to the simulator.");
+            return;
+        }
+
+        _sim.RequestAircraftPositionAsync(position =>
+        {
+            bool onGround = position.SimOnGround >= 0.5;
+            _sim.LastKnownOnGround = onGround;
+
+            if (!onGround)
+            {
+                _announcer.AnnounceImmediate("Ground traffic monitor not active in flight.");
+                return;
+            }
+
+            double hdgTrue = NormalizeDeg(position.HeadingMagnetic + position.MagneticVariation);
+            lock (_lock)
+            {
+                _ownLat = position.Latitude;
+                _ownLon = position.Longitude;
+                _ownHeadingTrue = hdgTrue;
+                _ownGS = position.GroundSpeedKnots;
+                _positionValid = true;
+            }
+
+            _sim.RequestAiTrafficData();
+            PruneStaleAircraft();
+            _announcer.AnnounceImmediate(GetNearestTrafficSummary());
+        });
+    }
+
     // ──────────────────────────────────────────────────────────────────────────
     // Geometry helpers
 
