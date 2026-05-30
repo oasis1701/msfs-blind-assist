@@ -181,6 +181,22 @@
     return /^[\d.,%/+\-\s]+$/.test((s || "").trim()) && /\d/.test(s || "");
   };
 
+  // Caption for an icon control with no own text: flyPad's TooltipWrapper puts
+  // the label in an adjacent NON-interactive sibling span ("Reduce Font Size").
+  // Prefer the NEXT sibling (each button's own tooltip follows it). Guarded so a
+  // neighbouring button's text is never borrowed.
+  A.tooltipSibling = function (n) {
+    function ok(s){ s = (s || "").replace(/\s+/g, " ").trim();
+      return (s && s.length <= 30 && /[a-zA-Z]/.test(s) && !A.unitToken(s) && !A.numericish(s) && !/[a-z][A-Z]/.test(s)) ? s : ""; }
+    function passive(el){ var c = (el && el.className && el.className.toString) ? el.className.toString() : "";
+      return el && c.indexOf("hover:") < 0 && c.indexOf("cursor-pointer") < 0; }
+    var ns = n.nextElementSibling;
+    if (passive(ns)) { var t = ok(ns.textContent); if (t) return t; }
+    var ps = n.previousElementSibling;
+    if (passive(ps)) { var t2 = ok(ps.textContent); if (t2) return t2; }
+    return "";
+  };
+
   // The field's NAME (not its unit/value). flyPad value inputs put the caption
   // either as a PRECEDING sibling somewhere up the ancestor chain (flex rows:
   // "Current Altitude", "Angle", "Per Passenger Weight") or as the FIRST cell of
@@ -208,6 +224,20 @@
       }
       a = a.parentElement;
       guard++;
+    }
+    // Fallback: some layouts put the caption AFTER the field (label-after-input,
+    // e.g. the throttle "Deadband +/-"). Only reached when NO preceding label was
+    // found, so it never overrides the table/altitude (preceding) convention.
+    var b = n, g2 = 0;
+    while (b && g2 < 3) {
+      var nx = b.nextElementSibling;
+      while (nx) {
+        var nt = clean2(nx.textContent);
+        if (good(nt)) return nt;
+        nx = nx.nextElementSibling;
+      }
+      b = b.parentElement;
+      g2++;
     }
     return "";
   };
@@ -264,6 +294,11 @@
       // every toggle on the page identically.
       if (isToggle) return A.toggleLabel(n);
       if (href) return A.prettifyHref(href);   // icon nav-rail link -> "Dashboard" etc.
+      // Icon button with no own text: a flyPad TooltipWrapper renders the caption
+      // as an adjacent sibling span ("Reduce Font Size"). Prefer it over the page
+      // heading, which would label every icon button with the page name.
+      var tip = A.tooltipSibling(n);
+      if (tip) return tip;
       if (heading) return heading;
       return "";
     }
