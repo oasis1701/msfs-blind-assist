@@ -86,12 +86,16 @@ public class SimConnectManager
     // batchNumber: 1-5, indexWithinBatch: 0-99
     private Dictionary<string, (int batchNum, int index)> continuousVariableIndexMap = new Dictionary<string, (int batchNum, int index)>();
 
-    // Panel batch tracking for OnRequest variables
-    private Dictionary<string, int> panelVariableIndexMap = new Dictionary<string, int>();  // Maps panel variable keys to batch field indices
-
     // Event handling
     private Dictionary<string, uint> eventIds = new Dictionary<string, uint>();
     private uint nextEventId = 1000;
+
+    // SimConnect InputEvent (B:) — name → hash, populated by EnumerateInputEvents on
+    // every aircraft load. The hash is required by SetInputEvent / SubscribeInputEvent.
+    // OrdinalIgnoreCase so callers don't have to worry about exact casing of the WT/Asobo
+    // InputEvent names. Reset on aircraft change so per-aircraft InputEvents don't leak.
+    private readonly Dictionary<string, ulong> inputEventHashes =
+        new Dictionary<string, ulong>(StringComparer.OrdinalIgnoreCase);
 
     // Destination runway for distance calculations
     private Runway? destinationRunway;
@@ -177,6 +181,8 @@ public class SimConnectManager
         REQUEST_ZULU_TIME = 339,
         REQUEST_ECAM_MESSAGES = 350,
         REQUEST_AI_TRAFFIC = 500,
+        // Aircraft-specific InputEvent (B:) catalog enumeration.
+        REQUEST_ENUMERATE_INPUT_EVENTS = 700,
         // Individual variable requests start from 1000
         INDIVIDUAL_VARIABLE_BASE = 1000
     }
@@ -731,6 +737,25 @@ public class SimConnectManager
                 variableDataDefinitions.TryAdd(kvp.Key, dataDefId);
                 registeredCount++;
 
+                // If the var asked to be excluded from the batched continuous monitoring
+                // (because batch reads were observed delivering wrong/oscillating values),
+                // set up a per-var continuous subscription right here. Same data def, but
+                // SIMCONNECT_PERIOD.SECOND instead of one-shot ONCE — gives us auto-announce
+                // without any batch-struct position drift.
+                if (varDef.UpdateFrequency == UpdateFrequency.Continuous &&
+                    varDef.IsAnnounced &&
+                    varDef.ExcludeFromBatch)
+                {
+                    sc.RequestDataOnSimObject(
+                        (DATA_REQUESTS)dataDefId,
+                        (DATA_DEFINITIONS)dataDefId,
+                        SIMCONNECT_OBJECT_ID_USER,
+                        SIMCONNECT_PERIOD.SECOND,
+                        SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT,
+                        0, 0, 0);
+                    System.Diagnostics.Debug.WriteLine($"[RegisterAllVariables] Individual continuous subscription set up for {kvp.Key} -> ID {dataDefId}");
+                }
+
                 // Log visual guidance variables specifically
                 if (kvp.Key.StartsWith("VISUAL_GUIDANCE"))
                 {
@@ -789,6 +814,11 @@ public class SimConnectManager
                 if (kvp.Value.Type == SimVarType.PMDGVar)
                     continue;
 
+                // Skip vars flagged ExcludeFromBatch — they use per-var continuous subscriptions
+                // set up in RegisterAllVariables, avoiding any batch-struct alignment risk.
+                if (kvp.Value.ExcludeFromBatch)
+                    continue;
+
                 continuousVariables.Add(kvp);
             }
         }
@@ -816,58 +846,64 @@ public class SimConnectManager
             // Continue anyway - we'll use as many batches as needed
         }
 
-        try
+        // Split variables into 5 batches (up to 100 variables per batch).
+        const int BATCH_SIZE = 100;
+        const int NUM_BATCHES = 5;
+
+        // Batch configuration: (batchNum, dataDefinition, dataRequest, structType)
+        var batchConfigs = new[]
         {
-            // Split variables into 5 batches (up to 100 variables per batch)
-            const int BATCH_SIZE = 100;
-            const int NUM_BATCHES = 5;
+            (1, DATA_DEFINITIONS.CONTINUOUS_BATCH_1, DATA_REQUESTS.REQUEST_CONTINUOUS_BATCH_1, typeof(GenericBatch1)),
+            (2, DATA_DEFINITIONS.CONTINUOUS_BATCH_2, DATA_REQUESTS.REQUEST_CONTINUOUS_BATCH_2, typeof(GenericBatch2)),
+            (3, DATA_DEFINITIONS.CONTINUOUS_BATCH_3, DATA_REQUESTS.REQUEST_CONTINUOUS_BATCH_3, typeof(GenericBatch3)),
+            (4, DATA_DEFINITIONS.CONTINUOUS_BATCH_4, DATA_REQUESTS.REQUEST_CONTINUOUS_BATCH_4, typeof(GenericBatch4)),
+            (5, DATA_DEFINITIONS.CONTINUOUS_BATCH_5, DATA_REQUESTS.REQUEST_CONTINUOUS_BATCH_5, typeof(GenericBatch5))
+        };
 
-            // Batch configuration: (batchNum, dataDefinition, dataRequest, structType)
-            var batchConfigs = new[]
+        int totalVariablesAdded = 0;
+        int batchesStarted = 0;
+
+        // Per-batch try/catch: a failure in one batch (e.g. AddToDataDefinition throwing
+        // mid-way through batch 2) must NOT silently skip batches 3+. The previous outer
+        // try/catch would leave entries in continuousVariableIndexMap that pointed at
+        // batches whose RequestDataOnSimObject never fired, so their values stayed at 0
+        // forever — silently breaking auto-announce for everything after the failure point.
+        for (int batchNum = 1; batchNum <= NUM_BATCHES; batchNum++)
+        {
+            // Calculate variable range for this batch
+            int startIdx = (batchNum - 1) * BATCH_SIZE;
+            int endIdx = Math.Min(startIdx + BATCH_SIZE, continuousVariables.Count);
+            int batchVarCount = endIdx - startIdx;
+
+            if (batchVarCount <= 0) break; // No more variables
+
+            var config = batchConfigs[batchNum - 1];
+            System.Diagnostics.Debug.WriteLine($"[StartContinuousMonitoring] Setting up Batch {batchNum}: variables {startIdx}-{endIdx - 1} ({batchVarCount} vars)");
+
+            // Clear previous batch definition. Done outside the try because a failure here
+            // (typically a no-op on first call) shouldn't abort the batch setup.
+            SafelyClearDataDefinition(
+                config.Item2, // DATA_DEFINITIONS
+                config.Item3, // DATA_REQUESTS
+                delayMs: 300  // 300ms for batch cleanup
+            );
+
+            // Track entries added to the map for THIS batch so we can roll them back on failure.
+            var batchMapKeys = new List<string>(batchVarCount);
+
+            try
             {
-                (1, DATA_DEFINITIONS.CONTINUOUS_BATCH_1, DATA_REQUESTS.REQUEST_CONTINUOUS_BATCH_1, typeof(GenericBatch1)),
-                (2, DATA_DEFINITIONS.CONTINUOUS_BATCH_2, DATA_REQUESTS.REQUEST_CONTINUOUS_BATCH_2, typeof(GenericBatch2)),
-                (3, DATA_DEFINITIONS.CONTINUOUS_BATCH_3, DATA_REQUESTS.REQUEST_CONTINUOUS_BATCH_3, typeof(GenericBatch3)),
-                (4, DATA_DEFINITIONS.CONTINUOUS_BATCH_4, DATA_REQUESTS.REQUEST_CONTINUOUS_BATCH_4, typeof(GenericBatch4)),
-                (5, DATA_DEFINITIONS.CONTINUOUS_BATCH_5, DATA_REQUESTS.REQUEST_CONTINUOUS_BATCH_5, typeof(GenericBatch5))
-            };
-
-            int totalVariablesAdded = 0;
-
-            // Process each batch
-            for (int batchNum = 1; batchNum <= NUM_BATCHES; batchNum++)
-            {
-                // Calculate variable range for this batch
-                int startIdx = (batchNum - 1) * BATCH_SIZE;
-                int endIdx = Math.Min(startIdx + BATCH_SIZE, continuousVariables.Count);
-                int batchVarCount = endIdx - startIdx;
-
-                if (batchVarCount <= 0) break; // No more variables
-
-                var config = batchConfigs[batchNum - 1];
-                System.Diagnostics.Debug.WriteLine($"[StartContinuousMonitoring] Setting up Batch {batchNum}: variables {startIdx}-{endIdx - 1} ({batchVarCount} vars)");
-
-                // Clear previous batch definition
-                SafelyClearDataDefinition(
-                    config.Item2, // DATA_DEFINITIONS
-                    config.Item3, // DATA_REQUESTS
-                    delayMs: 300  // 300ms for batch cleanup
-                );
-
-                // Add variables to this batch
                 int indexWithinBatch = 0;
                 for (int i = startIdx; i < endIdx; i++)
                 {
                     var kvp = continuousVariables[i];
                     var varDef = kvp.Value;
 
-                    // Build SimConnect variable name with L: prefix for LVars
                     string simVarName = varDef.Type == SimVarType.LVar ? $"L:{varDef.Name}" : varDef.Name;
                     string units = varDef.Units ?? "number";
 
-                    // Add to batch data definition
                     sc.AddToDataDefinition(
-                        config.Item2, // DATA_DEFINITIONS
+                        config.Item2,
                         simVarName,
                         units,
                         SIMCONNECT_DATATYPE.FLOAT64,
@@ -875,12 +911,12 @@ public class SimConnectManager
                         SIMCONNECT_UNUSED
                     );
 
-                    // Store mapping: variable key -> (batchNum, indexWithinBatch)
                     continuousVariableIndexMap[kvp.Key] = (batchNum, indexWithinBatch);
+                    batchMapKeys.Add(kvp.Key);
                     indexWithinBatch++;
                     totalVariablesAdded++;
 
-                    // THROTTLE: Give SimConnect time to process every 50 variables
+                    // Throttle every 50 vars so SimConnect can drain its incoming queue
                     if (totalVariablesAdded % 50 == 0)
                     {
                         System.Diagnostics.Debug.WriteLine($"[StartContinuousMonitoring] Throttling after {totalVariablesAdded} total variables");
@@ -888,39 +924,38 @@ public class SimConnectManager
                     }
                 }
 
-                // Register the batch struct using reflection (C# doesn't support dynamic generic types easily)
                 var registerMethod = typeof(Microsoft.FlightSimulator.SimConnect.SimConnect)
                     .GetMethod("RegisterDataDefineStruct")
-                    ?.MakeGenericMethod(config.Item4); // GenericBatch1-5
+                    ?.MakeGenericMethod(config.Item4);
                 registerMethod?.Invoke(sc, new object[] { config.Item2 });
 
-                // Request data with SIMCONNECT_PERIOD.SECOND
-                // All batches update simultaneously every second
                 sc.RequestDataOnSimObject(
-                    config.Item3, // DATA_REQUESTS
-                    config.Item2, // DATA_DEFINITIONS
+                    config.Item3,
+                    config.Item2,
                     SIMCONNECT_OBJECT_ID_USER,
                     SIMCONNECT_PERIOD.SECOND,
                     SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT,
                     0, 0, 0
                 );
 
+                batchesStarted++;
                 System.Diagnostics.Debug.WriteLine($"[StartContinuousMonitoring] Batch {batchNum} monitoring started for {batchVarCount} variables");
             }
-
-            System.Diagnostics.Debug.WriteLine($"[StartContinuousMonitoring] Multi-batch monitoring started for {totalVariablesAdded} variables across {Math.Min(NUM_BATCHES, (continuousVariables.Count + BATCH_SIZE - 1) / BATCH_SIZE)} batches");
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] CRITICAL ERROR setting up batched continuous monitoring!");
-            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Exception Type: {ex.GetType().Name}");
-            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Message: {ex.Message}");
-            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Stack Trace: {ex.StackTrace}");
-            if (ex.InnerException != null)
+            catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Inner Exception: {ex.InnerException.Message}");
+                System.Diagnostics.Debug.WriteLine($"[StartContinuousMonitoring] Batch {batchNum} setup FAILED: {ex.GetType().Name}: {ex.Message}");
+
+                // Roll back the index map entries for THIS batch so callers don't try to
+                // read from a batch that won't fire — better to have the var be silently
+                // un-monitored than to dereference a stale (batchNum, index) pair forever.
+                foreach (var key in batchMapKeys)
+                    continuousVariableIndexMap.Remove(key);
+
+                // Continue with the next batch.
             }
         }
+
+        System.Diagnostics.Debug.WriteLine($"[StartContinuousMonitoring] Multi-batch monitoring started for {totalVariablesAdded} variables across {batchesStarted} batches (of {Math.Min(NUM_BATCHES, (continuousVariables.Count + BATCH_SIZE - 1) / BATCH_SIZE)} attempted)");
     }
 
     /// <summary>
@@ -1039,6 +1074,119 @@ public class SimConnectManager
         sc.OnRecvSimobjectDataBytype += SimConnect_OnRecvSimobjectDataBytype;
         sc.OnRecvClientData += SimConnect_OnRecvClientData;
         sc.OnRecvException += SimConnect_OnRecvException;
+        sc.OnRecvEnumerateInputEvents += SimConnect_OnRecvEnumerateInputEvents;
+    }
+
+    /// <summary>
+    /// Requests the full list of InputEvents (B: events) the currently loaded aircraft
+    /// exposes. The names→hashes arrive asynchronously in SimConnect_OnRecvEnumerateInputEvents.
+    /// Called once per aircraft load so per-aircraft InputEvents are picked up (e.g. WT
+    /// Boeing 787 AT_Arm, Bleed_Air toggles, engine-start rotaries).
+    /// </summary>
+    public void RequestEnumerateInputEvents()
+    {
+        if (!IsConnected || simConnect == null) return;
+        try
+        {
+            inputEventHashes.Clear();
+            simConnect.EnumerateInputEvents(DATA_REQUESTS.REQUEST_ENUMERATE_INPUT_EVENTS);
+            System.Diagnostics.Debug.WriteLine("[SimConnectManager] Requested InputEvent enumeration");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] EnumerateInputEvents failed: {ex.Message}");
+        }
+    }
+
+    private void SimConnect_OnRecvEnumerateInputEvents(
+        Microsoft.FlightSimulator.SimConnect.SimConnect sender,
+        SIMCONNECT_RECV_ENUMERATE_INPUT_EVENTS data)
+    {
+        try
+        {
+            if (data.rgData != null)
+            {
+                foreach (var item in data.rgData)
+                {
+                    if (item is SIMCONNECT_INPUT_EVENT_DESCRIPTOR desc &&
+                        !string.IsNullOrEmpty(desc.Name))
+                    {
+                        inputEventHashes[desc.Name] = desc.Hash;
+                    }
+                }
+            }
+
+            // EnumerateInputEvents pages results. The "complete" signal is dwEntryNumber+1 == dwOutOf.
+            if (data.dwEntryNumber + 1 >= data.dwOutOf)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"[SimConnectManager] InputEvent enumeration complete: {inputEventHashes.Count} events");
+                DumpInputEventCatalog();
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] InputEvent enumerate handler error: {ex.Message}");
+        }
+    }
+
+    private void DumpInputEventCatalog()
+    {
+        try
+        {
+            string appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            string dir = System.IO.Path.Combine(appData, "MSFSBlindAssist", "logs");
+            System.IO.Directory.CreateDirectory(dir);
+            string path = System.IO.Path.Combine(dir, "input_events.txt");
+            using var writer = new System.IO.StreamWriter(path, append: false);
+            writer.WriteLine($"# InputEvent catalog — generated {DateTime.Now:s}");
+            writer.WriteLine($"# Aircraft: {CurrentAircraft?.AircraftName ?? "(unknown)"}");
+            writer.WriteLine($"# Total events: {inputEventHashes.Count}");
+            writer.WriteLine();
+            foreach (var kvp in inputEventHashes.OrderBy(k => k.Key, StringComparer.OrdinalIgnoreCase))
+            {
+                writer.WriteLine($"{kvp.Key}\t0x{kvp.Value:X16}");
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] Failed to dump InputEvent catalog: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Returns true if the named B: InputEvent is known for the current aircraft.
+    /// Use this from aircraft definitions to gate fallback paths (K-event fallback when
+    /// the InputEvent isn't present in the loaded model).
+    /// </summary>
+    public bool HasInputEvent(string name) =>
+        !string.IsNullOrEmpty(name) && inputEventHashes.ContainsKey(name);
+
+    /// <summary>
+    /// Fires a SimConnect InputEvent (B: event) by name with a numeric value.
+    /// Returns false if the InputEvent name isn't known for the current aircraft (caller
+    /// can fall back to a K event). Most WT/Asobo switch InputEvents take 1 for press / 0 for
+    /// release; rotaries take the target detent index.
+    /// </summary>
+    public bool TrySetInputEvent(string name, double value)
+    {
+        if (!IsConnected || simConnect == null || string.IsNullOrEmpty(name)) return false;
+        if (!inputEventHashes.TryGetValue(name, out ulong hash))
+        {
+            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] InputEvent not found: {name}");
+            return false;
+        }
+        try
+        {
+            simConnect.SetInputEvent(hash, value);
+            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] SetInputEvent {name} = {value}");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] SetInputEvent {name} failed: {ex.Message}");
+            return false;
+        }
     }
 
     private void RegisterClientEvents()
@@ -2053,7 +2201,7 @@ public class SimConnectManager
                 isForceUpdate = forceUpdateVariables.Remove(varKey);
             }
 
-            // Check for value changes (for announced variables)
+            // Check for value changes
             bool hasChanged = true;
             if (lastVariableValues.ContainsKey(varKey))
             {
@@ -2061,8 +2209,34 @@ public class SimConnectManager
             }
             lastVariableValues.AddOrUpdate(varKey, currentValue, (key, oldValue) => currentValue);
 
-            // Always fire SimVarUpdated event - displays need current values even if unchanged
-            // The event recipients will decide what to do based on IsAnnounced and hasChanged
+            // Suppress SimVarUpdated for unchanged ANNOUNCED CONTINUOUS variables. Previously we
+            // fired unconditionally so that displays would refresh; the unintended consequence was
+            // double-firing aircraft-specific announce handlers (e.g. HS787's tri-state transition
+            // handlers) whenever a panel opened and RequestPanelVariables produced a ONCE response
+            // shortly after the continuous stream had already delivered the same value.
+            //
+            // The UpdateFrequency.Continuous qualifier is a deliberate safety narrowing (vs. a bare
+            // IsAnnounced check). The double-fire only happens for continuously-monitored vars,
+            // because those are the ones whose value also arrives via the continuous stream — so a
+            // matching ONCE response is genuinely redundant. An OnRequest announced variable, by
+            // contrast, has the ONCE response as its ONLY data source; suppressing it would strand
+            // any display/control that depends on it. No existing aircraft ships such a variable
+            // today (audited FBW/Fenix/PMDG: announced controls are all Continuous, and PMDG vars
+            // never reach this path — they're CDA-broadcast), but the qualifier makes the safety
+            // explicit and future-proofs the rule.
+            //
+            // This does NOT regress control/display population for continuous vars: panel controls
+            // initialize from MainForm's currentSimVarValues cache at build time (kept current by
+            // the continuous stream, which fires on first delivery and every change), display fields
+            // fall back to SimConnectManager's lastVariableValues cache (populated just above, before
+            // this return), and a forceUpdate caller (panel Refresh, state announcements) always
+            // fires regardless. Non-announced variables also fire on every response.
+            if (!hasChanged && varDef.IsAnnounced &&
+                varDef.UpdateFrequency == UpdateFrequency.Continuous && !isForceUpdate)
+            {
+                return;
+            }
+
             string description = FormatVariableValue(varKey, varDef, currentValue);
 
             System.Diagnostics.Debug.WriteLine($"[ProcessIndividualVariableResponse] Firing SimVarUpdated for {varKey}: Value={currentValue}, IsAnnounced={varDef.IsAnnounced}, HasChanged={hasChanged}, ForceUpdate={isForceUpdate}");
@@ -2742,6 +2916,11 @@ public class SimConnectManager
         ConnectionStatusChanged?.Invoke(this, $"Connected to {info.title}{identification}");
         wasConnected = true; // Mark that we're now successfully connected
         IsFullyConnected = true; // Aircraft detection complete, hotkeys are now safe to use
+
+        // Aircraft-specific InputEvents (WT Boeing 787 AT_Arm, bleed-air, engine start
+        // rotaries, etc.) only exist in the catalog after the cockpit model is loaded.
+        // This is the earliest reliable moment to enumerate them.
+        RequestEnumerateInputEvents();
 
         // Log whether this is the expected FBW A32NX aircraft
         if (info.title.Contains("A32NX") || info.title.Contains("A320"))
@@ -4123,7 +4302,6 @@ public class SimConnectManager
         pendingRequests.Clear();
         lastVariableValues.Clear();
         continuousVariableIndexMap.Clear();
-        panelVariableIndexMap.Clear();
         eventIds.Clear();
         forceUpdateVariables.Clear();
         ecamStringData.Clear();
