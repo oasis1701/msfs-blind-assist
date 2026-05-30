@@ -144,6 +144,27 @@
     return l || v || clean(n.textContent);
   };
 
+  // The descriptive label for a control that sits in the PREVIOUS column/sibling
+  // of the same row (e.g. the "ADS-C" / "ADS-C EMERGENCY" text beside an
+  // AdscButton toggle, which carries no label of its own).
+  A.contextLabel = function (n) {
+    var col = n, guard = 0;
+    while (col && guard < 5) {
+      guard++;
+      var prev = col.previousElementSibling;
+      while (prev) {
+        if (prev.classList && prev.classList.contains("mfd-label")) {
+          var t0 = clean(prev.textContent); if (t0) return t0;
+        }
+        var lbl = prev.querySelector ? prev.querySelector(".mfd-label") : null;
+        if (lbl) { var t = clean(lbl.textContent); if (t) return t; }
+        prev = prev.previousElementSibling;
+      }
+      col = col.parentElement;
+    }
+    return "";
+  };
+
   A.readInputValue = function (node) {
     var inner = node.querySelector(".mfd-input-field-text-input");
     return inner ? clean(inner.textContent) : "";
@@ -234,7 +255,24 @@
       var st = clean(lab ? lab.textContent : n.textContent);
       return (st || "(tab)") + (active ? " (active tab)" : "");
     }
-    if (kind === "surv" || kind === "survstatus" || kind === "adsc") {
+    if (kind === "adsc") {
+      // AdscButton is a TOGGLE that renders BOTH labels stacked (e.g. ARMED over
+      // OFF). The DIMMED (inactive) label carries .mfd-adsc-label-off; the ACTIVE
+      // one is the other div. It has no own name, so borrow the row's label
+      // (ADS-C / ADS-C EMERGENCY).
+      var active = "", other = "";
+      var kids = n.children;
+      for (var k = 0; k < kids.length; k++) {
+        var tx = clean(kids[k].textContent);
+        if (!tx) continue;
+        if (kids[k].classList && kids[k].classList.contains("mfd-adsc-label-off")) other = tx;
+        else active = tx;
+      }
+      var ctx = A.contextLabel(n);
+      var head = (ctx ? ctx + " " : "") + (active || "(state)");
+      return other ? head + ", toggle, other option " + other : head + ", toggle";
+    }
+    if (kind === "surv" || kind === "survstatus") {
       return A.labelValueText(n) || "(button)";
     }
     var bt = clean(n.textContent);
