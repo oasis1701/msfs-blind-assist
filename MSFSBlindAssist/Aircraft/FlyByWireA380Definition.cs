@@ -2188,6 +2188,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 new Forms.FBWA380.FBWA380ISISForm(announcer, simConnect).Show();
                 return true;
             case HotkeyAction.ReadDisplayUpperECAM:
+                // Upper ECAM IS the E/WD: read ALL current memo/warning lines on
+                // demand (decoded), regardless of the live-call-out mute. (Alt+E)
+                ReadAllEwdWarnings(announcer);
+                return true;
             case HotkeyAction.ReadDisplayLowerECAM:
             case HotkeyAction.ReadFuelInfo:
                 hotkeyManager.ExitOutputHotkeyMode();
@@ -2237,6 +2241,32 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     {
         var dialog = new Forms.A32NX.PFDForm(announcer, simConnect) { CurrentAircraft = this };
         dialog.Show();
+    }
+
+    // Read ALL current upper-ECAM (E/WD) memo/warning lines on demand (Alt+E),
+    // decoded via EWDMessageLookupA380. Reads the live cache of line codes
+    // (_lastEwdCode, kept current by ProcessSimVarUpdate). Ignores the live
+    // call-out mute — an explicit request should always speak.
+    private void ReadAllEwdWarnings(ScreenReaderAnnouncer announcer)
+    {
+        var lines = new List<string>();
+        foreach (var lr in new[] { "LEFT", "RIGHT" })
+            for (int i = 1; i <= 10; i++)
+            {
+                if (_lastEwdCode.TryGetValue($"A32NX_EWD_LOWER_{lr}_LINE_{i}", out var code) && code != 0)
+                {
+                    string text = EWDMessageLookupA380.GetMessage(code);
+                    if (!string.IsNullOrWhiteSpace(text) &&
+                        !text.Equals("NORMAL", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string priority = EWDMessageLookupA380.GetMessagePriority(code);
+                        lines.Add(string.IsNullOrEmpty(priority) ? text : $"{text} {priority}");
+                    }
+                }
+            }
+        announcer.Announce(lines.Count == 0
+            ? "No ECAM warnings or memos."
+            : $"ECAM E W D, {lines.Count} line{(lines.Count == 1 ? "" : "s")}: {string.Join(". ", lines)}");
     }
 
     // ECAM System Display (SD) window — decodes the FQMS/PRESS/APU ARINC429 words
