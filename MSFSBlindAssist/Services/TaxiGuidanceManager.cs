@@ -204,15 +204,21 @@ public class TaxiGuidanceManager : IDisposable
 
     // Diagnostic per-frame trace for steering-tone troubleshooting. Captures the inputs
     // and outputs of the heading-error pipeline so erratic L/R tone flipping can be
-    // analysed post-hoc. Truncated and re-headered on every LoadRoute. Rate-limited
-    // to ~10 Hz to keep the file under ~100 KB for a typical 5-10 min taxi.
-    // Always on while Taxiing — cheap (one File.AppendAllText per ~100 ms) and the
-    // log is overwritten each new route, so no growth across sessions.
+    // analysed post-hoc. Re-headered on every LoadRoute. Rate-limited to ~10 Hz to keep
+    // the file under ~100 KB for a typical 5-10 min taxi.
+    // Always on while Taxiing — cheap (one File.AppendAllText per ~100 ms). Each LoadRoute
+    // APPENDS a session header (preserving prior sessions' traces for post-flight analysis),
+    // so the file grows across sessions. To bound that growth it is truncated at LoadRoute
+    // time once it exceeds MAX_GUIDANCE_LOG_BYTES.
     private static readonly string GuidanceLogPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "MSFSBlindAssist", "taxi_guidance.log");
     private DateTime _lastGuidanceLogTime = DateTime.MinValue;
     private const double GUIDANCE_LOG_INTERVAL_MS = 100.0;
+    // Size cap for the cross-session diagnostic trace. A single taxi tops out ≈2 MB
+    // (10-min taxi at ~10 Hz ≈ 18k lines), so a 5 MB cap holds a few recent sessions
+    // while preventing unbounded growth over months of daily use. Checked at LoadRoute.
+    private const long MAX_GUIDANCE_LOG_BYTES = 5L * 1024 * 1024;
 
     // Last actionable instruction announced (for the Ctrl+Y "Repeat" hotkey).
     // Only TACTICAL announcements update this — turn callouts, hold-shorts,
@@ -957,16 +963,21 @@ public class TaxiGuidanceManager : IDisposable
             _holdShortAtDestination = false;
 
             // Append a session-start header + CSV column row to the diagnostic
-            // frame trace. Previously this used WriteAllText which OVERWROTE the
-            // file on every LoadRoute — so if a buggy session was followed by
-            // another route load, the buggy session's trace was lost before it
-            // could be examined. Appending preserves history across sessions:
-            // each "=== Guidance ... ===" line acts as a session separator so a
-            // post-flight reader can split on it. The file is bounded by typical
-            // session lengths (a 10-minute taxi at 30 Hz ≈ 18k lines ≈ 2 MB) and
-            // grows slowly enough to not be a concern in normal use.
+            // frame trace. Appending (vs the old WriteAllText, which OVERWROTE the
+            // file on every LoadRoute) preserves history across sessions: each
+            // "=== Guidance ... ===" line acts as a session separator so a
+            // post-flight reader can split on it, and a buggy session's trace
+            // survives a subsequent route load. To stop the file growing without
+            // bound over months of use, truncate it here once it exceeds
+            // MAX_GUIDANCE_LOG_BYTES — checked only at LoadRoute, so a single
+            // in-progress taxi (≈2 MB worst case) is never cut mid-session.
             try
             {
+                if (File.Exists(GuidanceLogPath) &&
+                    new FileInfo(GuidanceLogPath).Length > MAX_GUIDANCE_LOG_BYTES)
+                {
+                    File.WriteAllText(GuidanceLogPath, string.Empty);  // start fresh; oldest sessions dropped
+                }
                 File.AppendAllText(GuidanceLogPath,
                     $"=== Guidance {DateTime.Now:yyyy-MM-dd HH:mm:ss} icao={_icao} dest={_destinationName} segments={_route.Segments.Count} totalM={_route.TotalDistanceMeters:F0} ===" + Environment.NewLine
                     + "time,lat,lon,hdg,gs,seg,segBrg,w,nxtTurn,tLat,tLon,raw,smooth" + Environment.NewLine);

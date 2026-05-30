@@ -303,7 +303,7 @@ public class LittleNavMapProvider : IAirportDataProvider
             Frequency = Convert.ToDouble(reader["frequency"] ?? 0.0) / 1000.0, // Convert kHz to MHz
             Range = Convert.ToInt32(reader["range"] ?? 0),
             GlideslopeRange = Convert.ToInt32(reader["gs_range"] ?? 0),
-            GlideslopePitch = Convert.ToDouble(reader["gs_pitch"] ?? 3.0),
+            GlideslopePitch = SafeReadDouble(reader, "gs_pitch", 3.0),  // NULL on LOC-only rows
             LocalizerHeading = Convert.ToDouble(reader["loc_heading"] ?? 0.0),
             LocalizerWidth = Convert.ToDouble(reader["loc_width"] ?? 0.0),
             AntennaLatitude = Convert.ToDouble(reader["laty"] ?? 0.0),
@@ -716,6 +716,28 @@ public class LittleNavMapProvider : IAirportDataProvider
         }
     }
 
+    /// <summary>
+    /// Safely reads a floating-point column that may be missing or NULL. Mirrors
+    /// <see cref="SafeReadBool"/>. Critically, the bare <c>Convert.ToDouble(reader["col"] ?? def)</c>
+    /// pattern does NOT guard DBNull — a SQL NULL surfaces as <c>DBNull.Value</c> (not <c>null</c>),
+    /// the <c>??</c> doesn't catch it, and <c>Convert.ToDouble(DBNull.Value)</c> throws. This
+    /// matters for nullable columns like <c>ils.gs_pitch</c>, which is NULL on localizer-only
+    /// (no glideslope) approaches — feeding that through the unsafe pattern crashes ILS lookup.
+    /// </summary>
+    private static double SafeReadDouble(SqliteDataReader reader, string columnName, double defaultValue)
+    {
+        try
+        {
+            int ord = reader.GetOrdinal(columnName);
+            if (reader.IsDBNull(ord)) return defaultValue;
+            return Convert.ToDouble(reader.GetValue(ord));
+        }
+        catch
+        {
+            return defaultValue;
+        }
+    }
+
     private (double freq, double heading, double gsPitch) GetILSData(SqliteConnection connection, string ilsIdent, string? icao = null)
     {
         // Airport-scoped lookup first: multiple airports can share the same ILS ident
@@ -737,7 +759,7 @@ public class LittleNavMapProvider : IAirportDataProvider
                     {
                         double freq = Convert.ToDouble(rdr["frequency"] ?? 0.0) / 1000.0;
                         double heading = Convert.ToDouble(rdr["loc_heading"] ?? 0.0);
-                        double gsPitch = Convert.ToDouble(rdr["gs_pitch"] ?? 0.0);
+                        double gsPitch = SafeReadDouble(rdr, "gs_pitch", 0.0);  // NULL on LOC-only rows
                         return (freq, heading, gsPitch);
                     }
                 }
@@ -755,7 +777,7 @@ public class LittleNavMapProvider : IAirportDataProvider
                 {
                     double freq = Convert.ToDouble(reader["frequency"] ?? 0.0) / 1000.0;
                     double heading = Convert.ToDouble(reader["loc_heading"] ?? 0.0);
-                    double gsPitch = Convert.ToDouble(reader["gs_pitch"] ?? 0.0);
+                    double gsPitch = SafeReadDouble(reader, "gs_pitch", 0.0);  // NULL on LOC-only rows
                     return (freq, heading, gsPitch);
                 }
             }
