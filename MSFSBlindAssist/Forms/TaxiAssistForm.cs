@@ -220,11 +220,10 @@ public class TaxiAssistForm : Form
             Width = controlWidth,
             DropDownStyle = ComboBoxStyle.DropDownList,
             AccessibleName = "Destination type",
-            AccessibleDescription = "Select whether to taxi to a runway or a gate/parking position"
+            AccessibleDescription = "Select whether to taxi to a runway, a gate/parking position, or to cross a runway"
         };
         cmbDestType.Items.AddRange(new object[] { "Runway", "Gate / Parking", "Cross Runway" });
         cmbDestType.SelectedIndex = 0;
-        cmbDestType.AccessibleDescription = "Select whether to taxi to a runway, a gate/parking position, or to cross a runway";
         cmbDestType.SelectedIndexChanged += OnDestTypeChanged;
         y += 30;
 
@@ -247,7 +246,7 @@ public class TaxiAssistForm : Form
             AccessibleName = "Show only fitting parking spots",
             AccessibleDescription = "When checked, only shows parking spots large enough for your aircraft"
         };
-        chkFitFilter.CheckedChanged += (s, e) => { if (cmbDestType.SelectedIndex != 0) PopulateDestinations(); };
+        chkFitFilter.CheckedChanged += (s, e) => { if (cmbDestType.SelectedIndex == 1) PopulateDestinations(); };
         y += 20;
         cmbDestination = new ComboBox
         {
@@ -745,6 +744,10 @@ public class TaxiAssistForm : Form
             // Cross Runway: list all non-closed runways. No pre-computed destination node —
             // FindFarSideRunwayNode() resolves it at Calculate time using the aircraft's
             // actual position so we can determine which side of the runway it's on.
+            // GetRunways returns BOTH ends as separate entries (e.g. "10R" and "28L" for
+            // the same pavement). That is intentional here: crossing direction is
+            // irrelevant, and listing both ends lets the pilot pick whichever designator
+            // ATC actually said without converting to the reciprocal.
             foreach (var rwy in _dataProvider.GetRunways(_currentIcao).Where(r => !r.IsClosed))
             {
                 string label = $"Runway {rwy.RunwayID}";
