@@ -4169,12 +4169,6 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         dialog.Show();
     }
 
-    private void ShowA320FuelPayloadWindow(SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
-    {
-        var dialog = new FuelPayloadDisplayForm(announcer, simConnect);
-        dialog.Show();
-    }
-
     private void ShowFBWBaroSetDialog(
         SimConnect.SimConnectManager simConnect,
         ScreenReaderAnnouncer announcer,
@@ -4835,34 +4829,6 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"Error requesting waypoint info: {ex.Message}");
-            }
-        }
-    }
-
-    private void RequestFuelAndPayloadData(SimConnect.SimConnectManager simConnectMgr)
-    {
-        var simConnect = simConnectMgr.SimConnectInstance;
-        if (simConnectMgr.IsConnected && simConnect != null)
-        {
-            try
-            {
-                simConnectMgr.RequestSingleValue(346, "L:A32NX_PAX_A", "number", "PAX_A");
-                simConnectMgr.RequestSingleValue(347, "L:A32NX_PAX_B", "number", "PAX_B");
-                simConnectMgr.RequestSingleValue(348, "L:A32NX_PAX_C", "number", "PAX_C");
-                simConnectMgr.RequestSingleValue(349, "L:A32NX_PAX_D", "number", "PAX_D");
-                simConnectMgr.RequestSingleValue(350, "L:A32NX_WB_PER_PAX_WEIGHT", "kilograms", "PAX_WEIGHT");
-                simConnectMgr.RequestSingleValue(351, "L:A32NX_WB_PER_BAG_WEIGHT", "kilograms", "BAG_WEIGHT");
-                simConnectMgr.RequestSingleValue(357, "L:A32NX_AIRFRAME_ZFW", "number", "ZFW");
-                simConnectMgr.RequestSingleValue(358, "L:A32NX_AIRFRAME_GW", "number", "GW");
-                simConnectMgr.RequestSingleValue(359, "L:A32NX_AIRFRAME_ZFW_CG_PERCENT_MAC", "number", "ZFW_CG_MAC");
-                simConnectMgr.RequestSingleValue(360, "L:A32NX_AIRFRAME_GW_CG_PERCENT_MAC", "number", "GW_CG_MAC");
-                simConnectMgr.RequestSingleValue(362, "L:A32NX_FM1_ZERO_FUEL_WEIGHT", "number", "FMS_ZFW");
-                simConnectMgr.RequestSingleValue(363, "L:A32NX_FM_GROSS_WEIGHT", "number", "FMS_GW");
-                simConnectMgr.RequestSingleValue(364, "L:A32NX_FM1_ZERO_FUEL_WEIGHT_CG", "number", "FMS_CG");
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error requesting fuel and payload data: {ex.Message}");
             }
         }
     }

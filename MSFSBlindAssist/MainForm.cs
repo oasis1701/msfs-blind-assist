@@ -2887,15 +2887,6 @@ public partial class MainForm : Form
         dialog.Show();
     }
 
-    private void ShowFuelPayloadDialog()
-    {
-        // Ensure output hotkey mode is deactivated before showing window
-        hotkeyManager.ExitOutputHotkeyMode();
-
-        var dialog = new FuelPayloadDisplayForm(announcer, simConnectManager);
-        dialog.Show();
-    }
-
     private void ShowStatusDialog()
     {
         // Ensure output hotkey mode is deactivated before showing window
