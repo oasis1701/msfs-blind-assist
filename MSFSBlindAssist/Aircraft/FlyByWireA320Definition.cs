@@ -3964,6 +3964,10 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             case HotkeyAction.ToggleECAMMonitoring:
                 ToggleA320ECAMMonitoring(simConnect, announcer);
                 return true;
+
+            case HotkeyAction.ReadGrossWeightKg:
+                RequestGrossWeightKg(simConnect);
+                return true;
         }
 
         // Fall back to base class for simple variable mappings
@@ -4585,6 +4589,31 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"Error requesting fuel quantity kg: {ex.Message}");
+            }
+        }
+    }
+
+    private void RequestGrossWeightKg(SimConnect.SimConnectManager simConnectMgr)
+    {
+        var simConnect = simConnectMgr.SimConnectInstance;
+        if (simConnectMgr.IsConnected && simConnect != null)
+        {
+            try
+            {
+                var tempDefId = SimConnect.SimConnectManager.DATA_DEFINITIONS.DEF_GROSS_WEIGHT_KG;
+                simConnect.ClearDataDefinition(tempDefId);
+                simConnect.AddToDataDefinition(tempDefId,
+                    "TOTAL WEIGHT", "pounds",
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
+                simConnect.RegisterDataDefineStruct<SimConnect.SimConnectManager.SingleValue>(tempDefId);
+                simConnect.RequestDataOnSimObject(SimConnect.SimConnectManager.DATA_REQUESTS.REQUEST_GROSS_WEIGHT_KG,
+                    tempDefId, Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_OBJECT_ID_USER,
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_PERIOD.ONCE,
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error requesting gross weight kg: {ex.Message}");
             }
         }
     }
