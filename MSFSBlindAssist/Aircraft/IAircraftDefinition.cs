@@ -234,6 +234,12 @@ public interface IAircraftDefinition
     /// </summary>
     void RequestFCUVerticalSpeed(SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer announcer);
 
+    /// <summary>
+    /// Called after a panel Event-type button is pressed, for an aircraft-specific
+    /// post-press read-out (e.g. FCU knob push/pull buttons speak their value).
+    /// </summary>
+    void OnPanelButtonFired(string varKey, SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer announcer);
+
     // Variable Update Processing
 
     /// <summary>

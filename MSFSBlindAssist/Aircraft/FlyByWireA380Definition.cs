@@ -2715,4 +2715,23 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     public override void RequestFCUSpeed(SimConnectManager simConnect, ScreenReaderAnnouncer announcer) => RequestFCUSpeedWithStatus(simConnect);
     public override void RequestFCUAltitude(SimConnectManager simConnect, ScreenReaderAnnouncer announcer) => RequestFCUAltitudeWithStatus(simConnect);
     public override void RequestFCUVerticalSpeed(SimConnectManager simConnect, ScreenReaderAnnouncer announcer) => RequestFCUVSWithStatus(simConnect);
+
+    // Panel FCU knob push/pull buttons fire their A32NX.FCU_* event (which works),
+    // but the generic panel-button path doesn't read anything back, so they were
+    // silent. Speak the resulting selected/managed value here — identical to what
+    // the Shift+1-4 (push) / Ctrl+1-4 (pull) hotkeys announce.
+    public override void OnPanelButtonFired(string varKey, SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
+    {
+        switch (varKey)
+        {
+            case "A32NX.FCU_TO_AP_HDG_PUSH":
+            case "A32NX.FCU_TO_AP_HDG_PULL": RequestFCUHeadingWithStatus(simConnect); break;
+            case "A32NX.FCU_SPD_PUSH":
+            case "A32NX.FCU_SPD_PULL": RequestFCUSpeedWithStatus(simConnect); break;
+            case "A32NX.FCU_ALT_PUSH":
+            case "A32NX.FCU_ALT_PULL": RequestFCUAltitudeWithStatus(simConnect); break;
+            case "A32NX.FCU_VS_PUSH":
+            case "A32NX.FCU_TO_AP_VS_PULL": RequestFCUVSWithStatus(simConnect); break;
+        }
+    }
 }

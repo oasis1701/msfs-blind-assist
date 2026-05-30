@@ -5322,6 +5322,9 @@ public partial class MainForm : Form
 
                         // Handle button state announcements for all panels
                         HandleButtonStateAnnouncement(varKey);
+                        // Aircraft-specific post-press read-out (e.g. FCU push/pull
+                        // buttons speak the resulting value like their hotkeys do).
+                        currentAircraft.OnPanelButtonFired(varKey, simConnectManager, announcer);
                     }
                     else if (varDef.Type == SimVarType.HVar)
                     {

@@ -468,6 +468,17 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
         // Default: do nothing (aircraft has no FCU)
     }
 
+    /// <summary>
+    /// Called after a panel Event-type button is pressed (after the event is sent
+    /// and GetButtonStateMapping is handled). Lets an aircraft run a custom
+    /// post-press read-out — e.g. the FCU knob push/pull buttons speak the
+    /// resulting selected/managed value the same way their hotkeys do.
+    /// Default: no-op.
+    /// </summary>
+    public virtual void OnPanelButtonFired(string varKey, SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
+    {
+    }
+
     // Variable Update Processing
 
     /// <summary>
