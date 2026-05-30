@@ -296,8 +296,13 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Press("XMLVAR_MOMENTARY_PUSH_OVHD_ANTIICE_WING_PRESSED", "Wing Anti-Ice");
         for (int n = 1; n <= 4; n++)
         {
-            Stock($"ENG_ANTI_ICE:{n}", $"ENG ANTI ICE:{n}", $"Engine {n} Anti-Ice", "bool", onOff);
-            Press($"XMLVAR_MOMENTARY_PUSH_OVHD_ANTIICE_ENG{n}_PRESSED", $"Engine {n} Anti-Ice Push");
+            // Settable On/Off combo — fires K:ANTI_ICE_SET_ENGn via
+            // HandleUIVariableSet. Verified live: the stock "ENG ANTI ICE:n"
+            // SimVar AND the XMLVAR momentary push both fail to drive the A380
+            // engine anti-ice; only the SET event toggles it.
+            Sel($"ENG{n}_ANTI_ICE", $"Engine {n} Anti-Ice", onOff);
+            // Live state readout from the stock SimVar.
+            Stock($"ENG_ANTI_ICE:{n}", $"ENG ANTI ICE:{n}", $"Engine {n} Anti-Ice State", "bool", onOff);
         }
         Mon("A32NX_ICING_STATE_ICING_STICK_INDICATOR", "Icing Conditions",
             new Dictionary<double, string> { [0] = "None", [1] = "Icing" });
@@ -1330,7 +1335,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         p["Anti Ice"] = new List<string>
         {
             "A32NX_MAN_PITOT_HEAT", "XMLVAR_MOMENTARY_PUSH_OVHD_ANTIICE_WING_PRESSED",
-            "ENG_ANTI_ICE:1", "ENG_ANTI_ICE:2", "ENG_ANTI_ICE:3", "ENG_ANTI_ICE:4"
+            "ENG1_ANTI_ICE", "ENG2_ANTI_ICE", "ENG3_ANTI_ICE", "ENG4_ANTI_ICE"
         };
         p["Fire"] = new List<string>
         {
@@ -1728,6 +1733,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         d["Hydraulics"].Add("A32NX_OVHD_HYD_PTU_PB_HAS_FAULT");
         d["Ventilation"].AddRange(new[] { "A32NX_VENTILATION_BLOWER_FAULT", "A32NX_VENTILATION_EXTRACT_FAULT" });
         d["Anti Ice"].AddRange(new[] { "A32NX_PNEU_WING_ANTI_ICE_SYSTEM_ON", "A32NX_PNEU_WING_ANTI_ICE_HAS_FAULT" });
+        d["Anti Ice"].AddRange(new[] { "ENG_ANTI_ICE:1", "ENG_ANTI_ICE:2", "ENG_ANTI_ICE:3", "ENG_ANTI_ICE:4" });
         d["Fire"].AddRange(new[] { "A32NX_CARGOSMOKE_FWD_DISCHARGED", "A32NX_CARGOSMOKE_AFT_DISCHARGED" });
         d["Status"].Add("A380X_FMS_DEST_EFOB_BELOW_MIN");
 
@@ -2063,6 +2069,15 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         {
             int circuit = varKey == "WIPER_LEFT" ? 141 : 143;
             simConnect.SendEvent($"ELECTRICAL_CIRCUIT_POWER_SETTING_SET:{circuit}", (uint)Math.Round(value));
+            return true;
+        }
+        // Engine anti-ice combo "ENGn_ANTI_ICE" -> stock K:ANTI_ICE_SET_ENGn
+        // (the SimVar / XMLVAR can't be written directly on the A380).
+        if (varKey.Length == 13 && varKey.StartsWith("ENG", StringComparison.Ordinal)
+            && varKey.EndsWith("_ANTI_ICE", StringComparison.Ordinal)
+            && varKey[3] >= '1' && varKey[3] <= '4')
+        {
+            simConnect.SendEvent($"ANTI_ICE_SET_ENG{varKey[3]}", (uint)Math.Round(value));
             return true;
         }
         return base.HandleUIVariableSet(varKey, value, varDef, simConnect, announcer);
