@@ -909,6 +909,21 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         MonNum("A32NX_FCU_EFIS_R_BARO_IS_INHG", "F/O Baro inHg");
         Read("A380X_EFIS_L_BARO_PRESELECTED", "Capt Preselected QNH");
         Read("A380X_EFIS_R_BARO_PRESELECTED", "F/O Preselected QNH");
+        // Settable QNH — numeric input in the side's CURRENT unit (hPa or inHg).
+        // HandleUIVariableSet validates, converts to millibars*16 and fires the
+        // stock K:KOHLSMAN_SET (verified live: 16320 -> 1020 hPa; works in both
+        // units since the event value is always mb*16). KOHLSMAN_SET moves both
+        // altimeters together. Key ends "_SET" -> MainForm renders a numeric box.
+        vars["CAPT_QNH_SET"] = new SimVarDefinition
+        {
+            Name = "CAPT_QNH_SET", DisplayName = "Set QNH (in Capt unit)",
+            Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest, Units = "number"
+        };
+        vars["FO_QNH_SET"] = new SimVarDefinition
+        {
+            Name = "FO_QNH_SET", DisplayName = "Set QNH (in F/O unit)",
+            Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest, Units = "number"
+        };
 
         // (The A380X_EFIS_CP_BARO_PUSH/PULL H-events are NON-functional on the
         //  A380X — verified live — removed. STD/QNH is the IS_STD combo above.)
@@ -943,8 +958,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
 
         // ============================ MINIMUMS ============================
         // FMS-set decision minimums (best-effort; var reused from A32NX FM).
-        Read("A32NX_FM1_MINIMUM_DESCENT_ALTITUDE", "Baro Minimum", "feet");
-        Read("A32NX_FM1_DECISION_HEIGHT", "Radio Minimum (DH)", "feet");
+        // Minimums are ARINC429 words (decoded + announced in ProcessSimVarUpdate);
+        // monitored so a minimum set/cleared on the MCDU PERF APPR page is spoken.
+        MonNum("A32NX_FM1_MINIMUM_DESCENT_ALTITUDE", "Baro Minimum", "feet");
+        MonNum("A32NX_FM1_DECISION_HEIGHT", "Radio Minimum (DH)", "feet");
 
         // ============================ A32NX SHARED GAP CONTROLS/READOUTS ============================
         // Pulled from the FBW A32NX API docs (shared with the A380); see
@@ -1440,7 +1457,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "A32NX_EFIS_L_ND_MODE", "A32NX_EFIS_L_ND_RANGE",
             "A380X_EFIS_L_ACTIVE_FILTER", "A380X_EFIS_L_ACTIVE_OVERLAY",
             "A32NX_EFIS_L_NAVAID_1_MODE", "A32NX_EFIS_L_NAVAID_2_MODE",
-            "A32NX_FCU_LEFT_EIS_BARO_IS_STD", "XMLVAR_Baro_Selector_HPA_1",
+            "A32NX_FCU_LEFT_EIS_BARO_IS_STD", "CAPT_QNH_SET", "XMLVAR_Baro_Selector_HPA_1",
             "A32NX_EFIS_L_OANS_RANGE",
             "TOGGLE_FLIGHT_DIRECTOR" // FD (single/broken; per-side fix pending source audit)
         };
@@ -1451,7 +1468,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "A32NX_EFIS_R_ND_MODE", "A32NX_EFIS_R_ND_RANGE",
             "A380X_EFIS_R_ACTIVE_FILTER", "A380X_EFIS_R_ACTIVE_OVERLAY",
             "A32NX_EFIS_R_NAVAID_1_MODE", "A32NX_EFIS_R_NAVAID_2_MODE",
-            "A32NX_FCU_RIGHT_EIS_BARO_IS_STD", "XMLVAR_Baro_Selector_HPA_2",
+            "A32NX_FCU_RIGHT_EIS_BARO_IS_STD", "FO_QNH_SET", "XMLVAR_Baro_Selector_HPA_2",
             "A32NX_EFIS_R_OANS_RANGE"
         };
         p["FCU"] = new List<string>
@@ -1777,7 +1794,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "COM_ACTIVE_FREQUENCY:3", "COM_STANDBY_FREQUENCY:3"
         };
         d["Transponder"] = new List<string> { "XPNDR_CODE", "A32NX_DCDU_ATC_MSG_WAITING" };
-        d["Minimums"] = new List<string> { "A32NX_FM1_MINIMUM_DESCENT_ALTITUDE", "A32NX_FM1_DECISION_HEIGHT" };
+        // Minimums are ARINC429 words — not shown as raw display fields (they'd
+        // read ~4.29e9); the decoded value auto-announces when set on the MCDU.
+        d["Minimums"] = new List<string>();
 
         // ---- A32NX shared gap readouts ----
         d["Autobrake"].AddRange(new[]
@@ -2031,6 +2050,20 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 announcer.Announce(BaroPhrase(capt, last, false));
             return true;
         }
+        // Minimums are ARINC429 words — decode and announce when a minimum is set
+        // or changed on the MCDU PERF APPR page (no announce on clear/NCD).
+        if (varName == "A32NX_FM1_MINIMUM_DESCENT_ALTITUDE" || varName == "A32NX_FM1_DECISION_HEIGHT")
+        {
+            bool baro = varName.EndsWith("DESCENT_ALTITUDE", StringComparison.Ordinal);
+            var w = new Arinc429Word(value);
+            int ft = (w.IsNormalOperation || w.IsFunctionalTest) ? (int)(Math.Round(w.Value / 10.0) * 10) : -1;
+            if (ft != (baro ? _lastBaroMin : _lastDh))
+            {
+                if (baro) _lastBaroMin = ft; else _lastDh = ft;
+                if (ft > 0) announcer.Announce($"{(baro ? "Baro minimum" : "Decision height")} {ft} feet");
+            }
+            return true;
+        }
         if (_reqBaro && varName == "KOHLSMAN_HG")
         {
             _reqBaro = false;
@@ -2253,6 +2286,26 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             simConnect.ExecuteCalculatorCode($"{(value > 0.5 ? 1 : 0)} (>L:{varKey})");
             return true;
         }
+        // Set QNH: the entered value is in the side's current unit (hPa or inHg).
+        // Convert to hPa, validate, then fire K:KOHLSMAN_SET with millibars*16
+        // (verified live). KOHLSMAN_SET moves both altimeters together.
+        if (varKey == "CAPT_QNH_SET" || varKey == "FO_QNH_SET")
+        {
+            bool inHg = (varKey == "CAPT_QNH_SET" ? _baroInHgL : _baroInHgR) == true;
+            double hpa = inHg ? value * 33.8639 : value;
+            if (hpa < 900 || hpa > 1100)
+            {
+                announcer.AnnounceImmediate(inHg
+                    ? "QNH must be between 26.6 and 32.5 inches."
+                    : "QNH must be between 900 and 1100 hectopascals.");
+                return true;
+            }
+            simConnect.SendEvent("KOHLSMAN_SET", (uint)Math.Round(hpa * 16.0));
+            announcer.Announce(inHg
+                ? $"Altimeter set {hpa / 33.8639:0.00} inches"
+                : $"Altimeter set {hpa:0} hectopascals");
+            return true;
+        }
         // EFIS Control Panel controls are ALL direct L:var writes on the A380X
         // (no events — confirmed from efis-cp.xml: ND mode/range, navaid 1/2, the
         // LS/VV/CSTR/ARPT/TRAF option buttons, the WPT/VOR/NDB filter + WX/TERR
@@ -2292,6 +2345,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     private int _lastBaroL = -1, _lastBaroR = -1; // last announced EFIS baro (whole hPa)
     private bool? _baroStdL, _baroStdR; // last EFIS baro STD(true)/QNH(false) per side
     private bool? _baroInHgL, _baroInHgR; // last EFIS baro unit inHg(true)/hPa(false) per side
+    private int _lastBaroMin = -2, _lastDh = -2; // last announced minimums (ft; -1 = none/NCD)
 
     // Decode/normalise an EFIS baro setting to whole hPa; false for STD/no-data.
     // The FBW _HPA var is hPa, but range-detect inHg too so the read-out still
