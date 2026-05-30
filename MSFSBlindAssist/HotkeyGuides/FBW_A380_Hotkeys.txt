@@ -176,15 +176,14 @@ FCU Set Values (opens an edit box):
   Ctrl+V     Set VS Value
 
 flyPad EFB:
-  Shift+T    Open the A380 flyPad EFB window. By default the page is shown in a
-             BROWSER VIEW — a real web document your screen reader browses like
-             any web page: use heading navigation (H), links list (K), arrow keys
-             to read line by line, real edit fields, and live page-change
-             announcements. Tab/Shift+Tab still moves between controls. Activating
-             a link or button changes the flyPad page and the view updates; F5
-             refreshes. Press Ctrl+L to switch to the simpler LIST VIEW (a flat
-             list of native controls) and Ctrl+L again to switch back — the list
-             view is also used automatically if the browser view can't start.
+  Shift+T    Open the A380 flyPad EFB window. The page is shown as a real web
+             document your screen reader browses like any web page: use heading
+             navigation (H), links list (K), arrow keys to read line by line,
+             real edit fields, and live page-change announcements. Tab/Shift+Tab
+             also moves between controls. Activating a link or button changes the
+             flyPad page and the view updates; F5 refreshes. (If the embedded
+             browser ever fails to start, the window falls back automatically to
+             a plain list of native controls.)
 
 Taxi Guidance:
   Shift+Y    Open Taxi Assist Form (enter ATC taxi clearance, start guidance)
@@ -203,6 +202,19 @@ A380 MCDU / MFD Window (open with Input mode, then Shift+M):
   field "3: 195.3, edit", menu "2: FMS 1, menu"); un-numbered lines are static
   text. The page title is announced once when the page changes; the scratchpad /
   message line is announced when it changes.
+
+  Reaching pages — three ways, all keyboard accessible:
+   1. "Go to MFD page" combo box (top of the window): lists ALL 20 pages
+      grouped by tab (ACTIVE: F-PLN / PERF / FUEL & LOAD / WIND / INIT;
+      POSITION: MONITOR / REPORT / NAVAIDS / IRS / GNSS / TIME; SEC INDEX:
+      SEC 1-3; DATA: STATUS / WAYPOINT / NAVAID / ROUTE / AIRPORT / PRINTER).
+      Pick one to jump straight to it.
+   2. The quick page buttons (INIT, F-PLN, PERF, RAD NAV, SEC FPL, ATC COM,
+      DIR) with their Alt+letter mnemonics, for the common pages.
+   3. The MFD's own top tabs, which appear in the page line list.
+  Some pages (e.g. WIND, REPORT, GNSS, TIME, the DATA sub-pages) only open
+  once the FMS has the flight plan / data they need — that is the real
+  aircraft behaviour.
 
   Up/Down Arrow   Move through the lines
   Enter           Activate the selected line; if you typed into the scratchpad

@@ -65,14 +65,24 @@ Other keys while on a field:
 
 ## 4. Moving between MFD pages
 
-Use the on-screen page buttons in the list (arrow to them and press Enter), or:
+Three keyboard-accessible ways to reach a page:
+
+1. **"Go to MFD page" combo box** at the top of the window — lists all 20 pages
+   grouped by tab (ACTIVE, POSITION, SEC INDEX, DATA). Choose one to jump
+   straight to it. This is the most reliable way to reach pages that have no
+   dedicated button (FUEL & LOAD, WIND, IRS, GNSS, TIME, STATUS, AIRPORT, …).
+2. The **quick page buttons** (INIT, F-PLN, PERF, RAD NAV, SEC FPL, ATC COM,
+   DIR) with their Alt+letter mnemonics, for the common pages.
+3. The MFD's **own top tabs**, which appear in the page line list.
+
+Also:
 
 - **Ctrl+Up / Page Up** — previous page
 - **Ctrl+Down / Page Down** — next page
 
-The main FMS pages are reached from the page selector tabs at the top of the MFD
-(ACTIVE, POSITION, SEC INDEX, DATA, …) and the function keys the page buttons
-expose (INIT, F-PLN, PERF, FUEL & LOAD, RAD NAV, etc.).
+Some pages (WIND, REPORT, GNSS, TIME, the DATA sub-pages) only open once the FMS
+has the flight plan or data they need — that is the real aircraft behaviour, not
+a limitation.
 
 ## 5. Loading the flight plan (already imported in the flyPad)
 
