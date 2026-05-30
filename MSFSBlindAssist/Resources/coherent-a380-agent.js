@@ -34,7 +34,13 @@
 
   A.INTERACTIVE_SELECTOR = [
     ".mfd-input-field-container", ".mfd-button", ".mfd-icon-button",
-    ".mfd-dropdown-outer", ".mfd-dropdown-menu-element", ".mfd-page-selector-outer"
+    ".mfd-dropdown-outer", ".mfd-dropdown-menu-element", ".mfd-page-selector-outer",
+    // Additional interactive MFD widgets (RadioButtonGroup, in-page sub-tabs via
+    // TopTabNavigator, SURV/ADS-C buttons, context-menu items) — without these
+    // whole controls (e.g. the PERF phase tabs, SURV switches) are unreachable.
+    ".mfd-radio-button", ".mfd-top-tab-navigator-bar-element-outer",
+    ".mfd-surv-button", ".mfd-surv-status-button", ".mfd-adsc-button",
+    ".mfd-context-menu-element"
   ].join(",");
 
   A.LEAF_SELECTOR = [
@@ -115,12 +121,27 @@
   A.classify = function (node) {
     var c = node.classList;
     if (c.contains("mfd-input-field-container")) return "input";
+    if (c.contains("mfd-radio-button")) return "radio";
+    if (c.contains("mfd-top-tab-navigator-bar-element-outer")) return "subtab";
+    if (c.contains("mfd-surv-status-button")) return "survstatus";
+    if (c.contains("mfd-surv-button")) return "surv";
+    if (c.contains("mfd-adsc-button")) return "adsc";
     if (c.contains("mfd-button")) return "button";
     if (c.contains("mfd-icon-button")) return "icon";
     if (c.contains("mfd-dropdown-outer")) return "dropdown";
-    if (c.contains("mfd-dropdown-menu-element")) return "menu";
+    if (c.contains("mfd-dropdown-menu-element") || c.contains("mfd-context-menu-element")) return "menu";
     if (c.contains("mfd-page-selector-outer")) return "tab";
     return "other";
+  };
+
+  // For a label+value widget (SURV / ADS-C), join the label and its value span.
+  A.labelValueText = function (n) {
+    var lbl = n.querySelector(".mfd-label, .mfd-surv-status-button-label");
+    var val = n.querySelector(".mfd-value, .mfd-surv-status-indicator");
+    var l = clean(lbl ? lbl.textContent : "");
+    var v = clean(val ? val.textContent : "");
+    if (l && v) return l + ": " + v;
+    return l || v || clean(n.textContent);
   };
 
   A.readInputValue = function (node) {
@@ -190,6 +211,24 @@
     if (kind === "tab") {
       var t = n.querySelector(".mfd-page-selector-label");
       return clean(t ? t.textContent : n.textContent);
+    }
+    if (kind === "radio") {
+      // The <label class="mfd-radio-button"> text is the option name; the inner
+      // <input type=radio> .checked marks the selection.
+      var ri = n.querySelector("input[type=radio]");
+      var sel = ri && ri.checked;
+      var rt = clean(n.textContent);
+      return (rt || "(option)") + (sel ? " (selected)" : "");
+    }
+    if (kind === "subtab") {
+      // In-page TopTabNavigator tab (e.g. PERF T.O / CLB / CRZ / DES / APPR / GA).
+      var lab = n.querySelector(".mfd-top-tab-navigator-bar-element-label");
+      var active = n.classList.contains("active") || (lab && lab.classList.contains("active"));
+      var st = clean(lab ? lab.textContent : n.textContent);
+      return (st || "(tab)") + (active ? " (active tab)" : "");
+    }
+    if (kind === "surv" || kind === "survstatus" || kind === "adsc") {
+      return A.labelValueText(n) || "(button)";
     }
     var bt = clean(n.textContent);
     if (!bt && n.getAttribute) bt = clean(n.getAttribute("aria-label") || n.getAttribute("title") || "");
