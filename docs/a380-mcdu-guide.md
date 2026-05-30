@@ -88,26 +88,34 @@ a limitation.
 
 ## 5. Loading the flight plan — SimBrief first
 
-**The fast, recommended way is to import your SimBrief OFP through the flyPad.**
-The A380X reads the imported flight plan into the FMS for you, so you do **not**
-type the route in by hand — you only review it and fill the performance numbers.
+**The fast way is to import your SimBrief OFP — but importing it into the flyPad
+is NOT enough on its own.** You finish the import with **INIT REQUEST on the MCDU
+INIT page**, which is the step that actually pulls the route into the FMS. After
+that you only review the data and fill the performance numbers — no hand-typing
+the route.
+
+> Important: do **not** set a destination on the MSFS World Map before the flight.
+> If you do, the aircraft imports that MSFS plan instead and the **INIT REQUEST**
+> option will not appear.
 
 ### 5a. Import from SimBrief (recommended)
 
-1. Open the **flyPad EFB**: input mode → **Shift+T**. It opens as a web page your
-   screen reader browses normally (H for headings, arrow keys per line, real
-   buttons/links).
-2. The first time, set your **SimBrief username** in the flyPad **Settings** →
-   *SimBrief* (the same SimBrief account you generated the OFP with).
-3. Go to the flyPad **Dispatch / OFP** page and choose **Import** (or
-   *Load Flight Plan*). The flyPad pulls your latest SimBrief OFP — route,
-   cruise level, weights and fuel — and loads the flight plan into the **FMS**.
-4. Switch to the MCDU (Shift+M). The **F-PLN** and **INIT** pages are now
-   populated from the OFP: city pair, company route, cruise FL, and the
-   SID/STAR/airways from your SimBrief plan. Arrow through F-PLN to confirm the
-   route reads as expected.
+1. Generate your **SimBrief OFP with "Detailed Navlog" enabled** (a checkbox when
+   you create the dispatch) — the FMS import needs it.
+2. Open the **flyPad EFB** (input mode → **Shift+T**) and, the first time, set
+   your **SimBrief username / Navigraph account** in flyPad **Settings →
+   SimBrief**. It opens as a web page your screen reader browses normally.
+3. *(Optional)* On the flyPad **Dispatch / OFP** page, **Import** your latest OFP
+   so the flyPad shows the route, fuel and weights for reference.
+4. Open the **MCDU** (Shift+M), go to the **INIT** page (Alt+I, or the ACTIVE
+   dropdown), and activate **INIT REQUEST** (the field that fetches the SimBrief
+   route). **This is the step that loads the route into the FMS** — city pair,
+   cruise FL, and the SID/STAR/airways from your plan.
+5. Arrow through **F-PLN** to confirm the route reads as expected. If you see
+   "NOT IN DATABASE" / "AWY/WPT MISMATCH", your SimBrief AIRAC is older than the
+   sim's nav data — regenerate the OFP on the matching cycle.
 
-After the import you still **review and complete** three things in the FMS:
+After INIT REQUEST you still **review and complete** three things in the FMS:
 
 - **INIT** — confirm FROM/TO, ALTN, CI and CRZ FL; type any that are blank.
 - **FUEL & LOAD** — confirm ZFW, ZFWCG, BLOCK fuel, TAXI, PAX, ALTN and FINAL
@@ -116,7 +124,8 @@ After the import you still **review and complete** three things in the FMS:
   ANTI ICE and TRANS altitude. The V-speeds and FLEX come from the SimBrief
   *Takeoff Performance* calculator (or the in-sim PERF calc).
 
-That's the whole FMS prep when you fly with SimBrief — no manual route building.
+That's the whole FMS prep when you fly with SimBrief — flyPad SimBrief setup,
+then **INIT REQUEST** on the MCDU, then review.
 
 ### 5b. Without SimBrief — build the plan by hand
 
