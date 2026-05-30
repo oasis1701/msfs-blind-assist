@@ -2510,12 +2510,14 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     {
         if (!s.IsConnected) return;
         _reqVs = true; _pVsVal = _pFpaVal = _pVsMode = null;
+        // All three via the SimConnect data-def path, same as the heading/speed/alt
+        // readouts that work. (VS is non-angular so it reads back unscaled — the
+        // earlier "15 vs -2000" that prompted a MobiFlight read was a paused-sim
+        // artifact, and routing VS through MobiFlight ReadLedVariable regressed the
+        // read-out to silence: its numeric response was being consumed by the
+        // shared ECAM string-read channel before the LED-value handler saw it.)
         s.RequestVariable("A32NX_TRK_FPA_MODE_ACTIVE", forceUpdate: true);
-        // A32NX_AUTOPILOT_VS_SELECTED reads back as garbage over the SimConnect
-        // data-def path (verified: MobiFlight = -2000, SimConnect read = 15), so
-        // fetch it via MobiFlight (the value flows back under the same var name
-        // through the key-match fallback in MobiFlightWasm_LedValueReceived).
-        s.ReadLedVariable("A32NX_AUTOPILOT_VS_SELECTED");
+        s.RequestVariable("A32NX_AUTOPILOT_VS_SELECTED", forceUpdate: true);
         s.RequestVariable("A32NX_AUTOPILOT_FPA_SELECTED", forceUpdate: true);
     }
 
