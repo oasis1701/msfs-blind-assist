@@ -26,9 +26,9 @@ namespace MSFSBlindAssist.Forms.FBWA380;
 ///     (click / type) are posted back to C# via window.chrome.webview and
 ///     proxied to the live flyPad through the same Coherent agent.
 ///
-///   • LIST MODE (fallback): the original flat list of native WinForms
-///     controls (Tab / Shift+Tab). Used automatically if WebView2 fails to
-///     initialise, and reachable any time with Ctrl+L for users who prefer it.
+///   • LIST MODE (silent fallback): the original flat list of native WinForms
+///     controls (Tab / Shift+Tab). Used automatically ONLY if WebView2 fails
+///     to initialise; there is no user-facing toggle.
 ///
 /// Both modes share the exact same data flow: elements arrive via
 /// IMcduBridge.StateUpdated; commands go out via IMcduBridge.EnqueueCommand
@@ -189,11 +189,6 @@ public class FBWA380EFBForm : Form
                 _bridgeServer.EnqueueCommand("get_display_elements");
                 e.Handled = true;
             }
-            else if (e.Control && e.KeyCode == Keys.L)
-            {
-                ToggleViewMode();
-                e.Handled = true;
-            }
         };
     }
 
@@ -223,27 +218,6 @@ public class FBWA380EFBForm : Form
             _webViewFailed = true;
             _useBrowser = false;
             if (IsHandleCreated) BeginInvoke(() => { SwitchToListMode(); ApplyElements(); });
-        }
-    }
-
-    private void ToggleViewMode()
-    {
-        if (_webViewFailed) { _announcer.Announce("Browser view unavailable; using list view."); return; }
-        _useBrowser = !_useBrowser;
-        if (_useBrowser)
-        {
-            _contentPanel.Visible = false;
-            _webView.Visible = true;
-            _announcer.Announce("Browser view");
-            _lastStructureSignature = ""; // force a fresh list rebuild next time
-            ApplyElements();
-            _webView.Focus();
-        }
-        else
-        {
-            SwitchToListMode();
-            _announcer.Announce("List view");
-            ApplyElements();
         }
     }
 
@@ -286,6 +260,7 @@ public class FBWA380EFBForm : Form
             }
             switch (parts[2])
             {
+                case "aidx":      el.AgentIdx = int.TryParse(kv.Value, out var ai) ? ai : 0; break;
                 case "text":      el.Text = kv.Value; break;
                 case "tag":       el.Tag = kv.Value; break;
                 case "role":      el.Role = kv.Value; break;
@@ -306,10 +281,9 @@ public class FBWA380EFBForm : Form
     private void UpdateStatusLabel()
     {
         bool reallyConnected = _bridgeConnected && _bridgeServer.IsBridgeConnected;
-        string view = _useBrowser ? "browser" : "list";
         string desired;
         if (reallyConnected && _initialPushReceived)
-            desired = $"flyPad connected ({_elements.Count} elements, {view} view — Ctrl+L to switch)";
+            desired = $"flyPad connected ({_elements.Count} elements)";
         else if (reallyConnected)
             desired = "flyPad connected — waiting for content (power on the tablet)…";
         else
@@ -350,7 +324,7 @@ public class FBWA380EFBForm : Form
     {
         var items = _elements.Select(e => new
         {
-            idx = e.Index,
+            idx = e.AgentIdx,
             kind = e.Kind,
             tag = e.Tag,
             role = e.Role,
@@ -628,7 +602,8 @@ public class FBWA380EFBForm : Form
 
     private class EFBElement
     {
-        public int Index;
+        public int Index;        // list position (stable dict / control key)
+        public int AgentIdx;     // agent's stamped data-fbwa380-efb-idx (for click/set)
         public string Text = "";
         public string Tag = "";
         public string Role = "";

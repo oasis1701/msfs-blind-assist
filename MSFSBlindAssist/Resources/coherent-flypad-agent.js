@@ -76,6 +76,15 @@
     if (role === "tab" || c.indexOf("tab-") >= 0 || c.indexOf("-tab") >= 0) return "tab";
     if (role === "button" || c.indexOf("button") >= 0 || c.indexOf("btn") >= 0 || tag === "button") return "button";
     if (n.getAttribute && n.getAttribute("contenteditable") === "true") return "input";
+    // flyPad action buttons are frequently styled <div>s with NO button/btn
+    // token and no role — e.g. the modal "Cancel" / "Confirm" buttons. They are
+    // distinguishable from static text by carrying Tailwind hover: styling
+    // (interactive elements get hover: classes; plain text never does). Treat a
+    // hover-styled leaf that has its own short text as a clickable button.
+    if (c.indexOf("hover:") >= 0) {
+      var dt = A.directText(n);
+      if (dt && dt.length <= 30) return "button";
+    }
     return null;
   };
 
@@ -125,6 +134,20 @@
     return "";
   };
 
+  // The short unit/label text wrapping a value input (e.g. "PAX", "KGS") — the
+  // input itself has no aria/own text, but its parent (or grandparent) holds the
+  // visible label. Only accept SHORT text so we never grab a whole container.
+  A.fieldUnitLabel = function (n) {
+    var hops = [n.parentElement, n.parentElement && n.parentElement.parentElement];
+    for (var h = 0; h < hops.length; h++) {
+      var p = hops[h];
+      if (!p) continue;
+      var t = clean(p.textContent);
+      if (t && t.length <= 24) return t;
+    }
+    return "";
+  };
+
   // A label good enough for a screen reader. The flyPad behaves like an app:
   // many controls have no text (icon nav-rail links) or a generic label
   // ("Go to Page"). Derive something meaningful from aria/title, then the
@@ -141,6 +164,16 @@
     var href = (n.getAttribute && n.getAttribute("href")) || "";
     var heading = A.nearestHeading(n);
     if (base === "") {
+      // Numeric/value inputs on the flyPad carry NO aria/own text; their visible
+      // label/unit (e.g. "PAX", "KGS") sits as the parent's own text next to the
+      // field. Prefer that over the section heading, which mislabels every field
+      // on the page with the same name (e.g. "Ground").
+      var tag = n.tagName.toLowerCase();
+      if (tag === "input" || tag === "textarea" ||
+          (n.getAttribute && n.getAttribute("contenteditable") === "true")) {
+        var fl = A.fieldUnitLabel(n);
+        if (fl) return fl;
+      }
       if (href) return A.prettifyHref(href);   // icon nav-rail link -> "Dashboard" etc.
       if (heading) return heading;
       return "";
