@@ -1772,9 +1772,11 @@ public partial class ElectronicFlightBagForm : Form
     {
         var settings = SettingsManager.Current;
         string simulatorVersion = settings.SimulatorVersion ?? "FS2020";
-        string dbPath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "FBWBA", "databases", $"{simulatorVersion.ToLower()}.sqlite");
+        // Use the central resolver — checks the canonical MSFSBlindAssist\databases
+        // location first, then falls back to the legacy FBWBA folder. Previously
+        // hardcoded to FBWBA, which silently broke the airport lookup for users
+        // who'd built into the new location (and vice-versa).
+        string dbPath = DatabasePathResolver.ResolveExistingDatabasePath(simulatorVersion);
 
         if (!File.Exists(dbPath))
         {
@@ -1939,9 +1941,8 @@ public partial class ElectronicFlightBagForm : Form
     {
         var settings = SettingsManager.Current;
         string simulatorVersion = settings.SimulatorVersion ?? "FS2020";
-        string dbPath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "FBWBA", "databases", $"{simulatorVersion.ToLower()}.sqlite");
+        // See note in GetAirportDetailedInfo — central resolver with legacy fallback.
+        string dbPath = DatabasePathResolver.ResolveExistingDatabasePath(simulatorVersion);
 
         if (!File.Exists(dbPath))
         {

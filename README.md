@@ -13,7 +13,8 @@ This application uses Windows standard controls, screen reader announcements and
 - Panels for supported aircraft that allow blind users to use their keyboard to scroll through switches, knobs, and similar controls and interact with them.
 - Global hotkeys for accessing a comprehensive set of features, such as on-demand readout of heading/speed/altitude/VS and many more
 - Continuous monitoring of aircraft systems and announcing changes, for example, Master Warning and Master Caution alerts and many more.
-- Capability to teleport to and from gates to runways. This is crucial for blind pilots because taxi operations are not possible to do right now.
+- Turn-by-turn taxi guidance with a stereo-panned audio steering tone ("taxiway localizer") and spoken announcements for turns, taxiway crossings, hold-shorts and arrivals. Enter your ATC clearance and the app routes you through the exact taxiways — works on any airport the user's database covers, not just major hubs.
+- Capability to teleport to and from gates to runways, still available for users who prefer it or for quick repositioning.
 - Additional tools to assist visually impaired pilots to fly, for example, take-off assistance which announces when the pilot is deviating from the runway, as well as pitch monitoring.
 - Aircraft-specific dedicated systems. On the FlyByWire A32NX for example, blind users can hear and read all engine and display warning messages, read fuel and payload and weight/balance details in full, hear Flight Mode Annunciator messages, get on-demand information on next waypoint, etc.
 - An extensive text-based location and map viewer. Configurable with filters, lets users read direction and distance to major and small cities, landmarks, terrain and water bodies while they fly!
@@ -45,16 +46,9 @@ MSFS Blind Assist now supports the Fenix A320. It allows totally blind individua
 - Comes with a hotkey list guide that shows all the global hotkeys that are currently supported through the input and output modes.
 - Work in progress checklist viewer, easily editable and readable by screen readers.
 
-#### Fenix A320 web MCDU accessibility browser extension
+#### Fenix A320 MCDU access
 
-The Fenix A320 comes with a web remote MCDU, but it is totally unreadable by screen readers. I've made an extension for chromium based browsers that completely transforms the interface for screen reader users, allowing to fully read the display of the MCDU and to control it with hotkeys.
-Please follow the instructions below to install the extension
-1. In your browser, go to about://extensions or  from the menu,  go to Extensions > Manage extensions
-2. Toggle developer mode on
-3. Press enter on "Load unpacked"
-4. When it asks you for a folder, select the "Fenix MCDU" folder inside your MSFS Blind Assist directory
-5. Enjoy! Now go to localhost:8083 when the aircraft is running, and through the tablet, access MCDU then left, to start using it!
-6. To know what hotkeys to use, read the hotkey guide either inside MSFS Blind Assist file menu > Hotkey List Guide, or see the text file inside the "hotkey guides" folder in your MSFS Blind Assist directory.
+The Fenix A320 MCDU is accessible directly through MSFS Blind Assist. See the Fenix hotkey guide (File menu > Hotkey List Guide inside the app, or the text file in the "hotkey guides" folder) for the relevant shortcuts. A standalone Chrome extension previously offered this functionality; the native integration supersedes it and is the recommended way to interact with the MCDU.
 
 #### How to read Fenix's displays with our AI-powered describer
 Please switch to the 8th instrument camera view by pressing Ctrl+8 on MSFS2020 or Shift+8 on MSFS2024, then:
@@ -65,6 +59,39 @@ Please switch to the 8th instrument camera view by pressing Ctrl+8 on MSFS2020 o
 Switch to the 9th instrument camera view and then:
 - Output mode > Alt+P to read PFD
 - Output mode > Alt+I to read the ISIS display
+
+### PMDG Boeing 777
+
+Full accessibility support for the PMDG 777.
+- Accessible panels across the overhead, glareshield, main instrument and pedestal sections for control of switches, knobs and selectors.
+- MCP (autopilot) controls with dedicated dialogs for entering speed, heading, altitude and vertical speed / flight path angle, plus live engaged-mode readouts.
+- Accessible CDU (Captain, First Officer and Observer) for full FMC programming.
+- Radio and transponder tuning, Master Warning / Caution annunciators, and continuous monitoring of annunciator lights and system states.
+- Accessible EFB (Electronic Flight Bag), opened with Shift+T — Dashboard, Preferences, Navdata, Performance, Ground Ops, Weights & Balance and Manuals.
+- Using the power of Google Gemini to read PMDG displays. Requires the user's own free AIStudio API key.
+- All our shared features are integrated as well, including taxi guidance, the landing exit planner, route viewer, gate/runway teleport, METAR report, location info and text-based map.
+
+### PMDG Boeing 737 (NG3)
+
+Full accessibility support for the PMDG 737, covering the 737-600, -700, -800 and -900.
+- Accessible panels across all systems — electrical, hydraulics, pressurization, APU, fuel, fire protection, anti-ice, lights and more.
+- Full MCP (autopilot) button set (CMD A/B and every mode) with live engaged-state readouts and direct-set dialogs for speed, heading, altitude and vertical speed.
+- Accessible CDU (Captain and First Officer) for full FMC programming.
+- NAV radio tuning (Ctrl+N), altimeter set and readout in both hPa and inches (B / Ctrl+B), and EFIS Minimums entry.
+- Spoken flap position, speed-brake lever position, real stab-trim units, fire-handle operation, and Master Warning / Caution recall.
+- Boris Audio Works sound-pack panel and the full set of system test buttons.
+- Accessible EFB (Electronic Flight Bag) across all four variants, opened with Shift+T — Dashboard, Preferences, Navdata, Performance, Ground Ops, Weights & Balance and Manuals.
+- Using the power of Google Gemini to read 737 displays. Requires the user's own free AIStudio API key.
+- All our shared features are integrated as well, including taxi guidance, the landing exit planner, route viewer, gate/runway teleport, METAR report, location info and text-based map.
+
+### HorizonSim Boeing 787-9
+
+Full accessibility support for the HorizonSim 787-9, including Microsoft Flight Simulator 2024.
+- Accessible FMC / CDU through a built-in bridge, working in both MSFS2020 and MSFS2024, with an alternate LSK key layout (F1–F12).
+- Accessible panels for IRS (with alignment-status readout), anti-ice, signs, lights, landing, pressurization, cooling, annunciators, APU, external power and ground services.
+- Autopilot and autothrottle controls, ALT INTV, mach input, baro/altimeter set and announcements, and TCAS gate lookup.
+- Accessible EFB (Electronic Flight Bag), opened with Shift+T.
+- All our shared features are integrated as well, including taxi guidance, the landing exit planner, route viewer, gate/runway teleport, METAR report, location info and text-based map.
 
 ## Discord
 Please join us on discord for support or to hang out with us:
@@ -93,6 +120,10 @@ In our case, a person who is totally blind or lacks the vision to interact with 
 Developed and maintained by Hadi Rezaei
 
 Navdata Reader command-line tool by Alexander Barthel to build the airport and navigation databases.
+
+## Contributors
+- Francesco Tissera ([@francescotissera1211](https://github.com/francescotissera1211)) — lead contributor: turn-by-turn taxi guidance, landing exit planner, ActiveSky weather radar integration, ActiveSky weather-update auto-announce, PMDG 777 enhancements (announcement monitor, FMC settings, alternate LSK keys, Nav Rad button, enhanced PROG-page distance), time hotkeys, hard-pan / invert-pan tone options, landing rollout phase
+- Tobias Heath ([@heath-toby](https://github.com/heath-toby), &lt;heathtobias@gmail.com&gt;) — accessibility testing and bug fixes: taxiway connectivity at KSFO and similar airports, KPHX 07R ILS spatial fallback, landing-exit activation freshness, taxi steering tone pulse / continuous transition, ground-speed announcer rounding and source-field correction, turn direction from aircraft heading, ActiveSky visibility unit preservation, PMDG PROG event-path fix
 
 ## Usage and Documentation
 MSFS Blind Assist is available to download in the releases page. It is currently in active development and a small group of testers are using it daily. A thorough documentation is in the works and a hotkey list is included in the application.

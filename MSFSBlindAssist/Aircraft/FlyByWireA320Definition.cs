@@ -38,6 +38,23 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     public override FCUControlType GetSpeedControlType() => FCUControlType.SetValue;
     public override FCUControlType GetVerticalSpeedControlType() => FCUControlType.SetValue;
 
+    // Visual-guidance profile — FlyByWire A320. Declared explicitly (not inherited from the
+    // base default) so the math is unambiguously keyed to this airframe and the glidepath
+    // biases can be calibrated for FBW independently of Fenix. Approach AoA / Vref / rate
+    // caps are the historically-tuned A320 numbers; the glidepath biases (GlideslopeAltitude
+    // / FlareAltitude) are estimates pending an in-sim coupled-ILS-autoland check.
+    public override VisualGuidanceProfile GetVisualGuidanceProfile() => new()
+    {
+        TypicalApproachAoaDeg     = 6.0,
+        ReferenceVrefKnots        = 140.0,
+        MaxPitchRateDegPerSec     = 2.5,
+        MaxBankRateDegPerSec      = 3.0,
+        GlideslopeAltitudeBiasFt  = 60.0,   // estimate — calibrate vs a coupled ILS autoland
+        FlareAltitudeBiasFt       = 12.0,   // estimate
+        FlareTriggerWheelHeightFt = 30.0,   // A320 FCTM: flare initiation at 30 ft RA
+        FlareTargetPitchDeg       = 6.0     // A320 FCTM: flare attitude ~+5–6°
+    };
+
     public override Dictionary<string, SimConnect.SimVarDefinition> GetVariables()
     {
         // Start with common base variables (e.g., SIM ON GROUND)
@@ -4464,8 +4481,8 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
 
             // Request both variables using existing registrations
             // ProcessSimVarUpdate will combine them when both arrive
-            simConnectMgr.RequestVariable("A32NX_FCU_AFS_DISPLAY_HDG_TRK_VALUE");
-            simConnectMgr.RequestVariable("A32NX_FCU_AFS_DISPLAY_HDG_TRK_MANAGED");
+            simConnectMgr.RequestVariable("A32NX_FCU_AFS_DISPLAY_HDG_TRK_VALUE", forceUpdate: true);
+            simConnectMgr.RequestVariable("A32NX_FCU_AFS_DISPLAY_HDG_TRK_MANAGED", forceUpdate: true);
         }
     }
 
@@ -4482,8 +4499,8 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
 
             // Request both variables using existing registrations
             // ProcessSimVarUpdate will combine them when both arrive
-            simConnectMgr.RequestVariable("A32NX_FCU_AFS_DISPLAY_SPD_MACH_VALUE");
-            simConnectMgr.RequestVariable("A32NX_FCU_AFS_DISPLAY_SPD_MACH_MANAGED");
+            simConnectMgr.RequestVariable("A32NX_FCU_AFS_DISPLAY_SPD_MACH_VALUE", forceUpdate: true);
+            simConnectMgr.RequestVariable("A32NX_FCU_AFS_DISPLAY_SPD_MACH_MANAGED", forceUpdate: true);
         }
     }
 
@@ -4500,8 +4517,8 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
 
             // Request both variables using existing registrations
             // ProcessSimVarUpdate will combine them when both arrive
-            simConnectMgr.RequestVariable("A32NX_FCU_AFS_DISPLAY_ALT_VALUE");
-            simConnectMgr.RequestVariable("A32NX_FCU_AFS_DISPLAY_LVL_CH_MANAGED");
+            simConnectMgr.RequestVariable("A32NX_FCU_AFS_DISPLAY_ALT_VALUE", forceUpdate: true);
+            simConnectMgr.RequestVariable("A32NX_FCU_AFS_DISPLAY_LVL_CH_MANAGED", forceUpdate: true);
         }
     }
 
@@ -4518,8 +4535,8 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
 
             // Request both variables using existing registrations
             // ProcessSimVarUpdate will combine them when both arrive
-            simConnectMgr.RequestVariable("A32NX_FCU_AFS_DISPLAY_VS_FPA_VALUE");
-            simConnectMgr.RequestVariable("A32NX_TRK_FPA_MODE_ACTIVE");
+            simConnectMgr.RequestVariable("A32NX_FCU_AFS_DISPLAY_VS_FPA_VALUE", forceUpdate: true);
+            simConnectMgr.RequestVariable("A32NX_TRK_FPA_MODE_ACTIVE", forceUpdate: true);
         }
     }
 

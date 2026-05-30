@@ -10,8 +10,11 @@ namespace MSFSBlindAssist.SimConnect;
 /// Owned by SimConnectManager; used by PMDG777Definition to read cockpit
 /// state and send control events.
 /// </summary>
-public class PMDG777DataManager : IDisposable
+public class PMDG777DataManager : IPMDGDataManager
 {
+    public string AircraftCode => "PMDG_777";
+    public int CDUSideCount => 3;
+
     private static readonly FieldInfo[] s_dataFields =
         typeof(PMDG777XDataStruct).GetFields(BindingFlags.Public | BindingFlags.Instance);
     // ------------------------------------------------------------------
@@ -62,6 +65,9 @@ public class PMDG777DataManager : IDisposable
 
     private PMDG777XDataStruct _lastDataSnapshot;
     private bool _hasSnapshot;
+
+    /// <inheritdoc />
+    public bool IsReady => _hasSnapshot;
 
     private readonly PMDG777CDUScreen?[] _lastCDUScreen = new PMDG777CDUScreen?[3];
     private System.Windows.Forms.Timer? _pollTimer;
@@ -369,6 +375,76 @@ public class PMDG777DataManager : IDisposable
         }
     }
 
+    /// <summary>
+    /// Sends a PMDG control event via the legacy TransmitClientEvent path (the
+    /// event is mapped under a numeric "#eventId" alias and dispatched with
+    /// the given mouse-click parameter — typically MOUSE_FLAG_LEFTSINGLE
+    /// = 0x20000000, a complete press+release single click).
+    ///
+    /// Why this exists alongside <see cref="SendEvent"/>: the CDA path writes
+    /// {EventId, Parameter=1} (a button-DOWN that is never released). The PMDG
+    /// SDK opens a CDU page on the down-edge but will not re-trigger the same
+    /// key until it sees a release — so FMCCOMM and HOLD work exactly once,
+    /// then go dead (no sound, page never refreshes) when the user navigates
+    /// away and presses the same key again. TransmitClientEvent with
+    /// MOUSE_FLAG_LEFTSINGLE delivers a self-contained click every call, so
+    /// repeated presses register. TFM uses TransmitClientEvent for every CDU
+    /// key and never sees this. GitHub issue #46 (and the repeat-press
+    /// regression after the CDA-only "fix" in f55d157).
+    /// </summary>
+    public void SendEventViaTransmit(string eventName, uint eventId, uint mouseFlag)
+    {
+        if (_simConnect == null) return;
+        try
+        {
+            // Register the event under the "#<id>" name on first use. PMDG's
+            // SDK header recommends this convention for any TransmitClientEvent
+            // dispatch of an event whose name isn't in the standard SimConnect
+            // event registry.
+            string aliasName = "#" + eventId;
+            uint id;
+            // CDU dispatches are UI-thread today so this isn't a live hazard,
+            // but lock the registry mutation to match how SimConnectManager
+            // registers events and to stay safe if a non-UI caller is ever added.
+            lock (_transmitLock)
+            {
+                if (!_transmitEventIds.ContainsKey(aliasName))
+                {
+                    uint mappedId = _nextTransmitEventId++;
+                    _transmitEventIds[aliasName] = mappedId;
+                    _simConnect.MapClientEventToSimEvent(
+                        (TRANSMIT_EVENT_GROUP)mappedId, aliasName);
+                }
+                id = _transmitEventIds[aliasName];
+            }
+            _simConnect.TransmitClientEvent(
+                SIMCONNECT_OBJECT_ID_USER,
+                (TRANSMIT_EVENT_GROUP)id,
+                mouseFlag,
+                TRANSMIT_GROUP_PRIORITY.HIGHEST, // same value SimConnectManager uses
+                SIMCONNECT_EVENT_FLAG.GROUPID_IS_PRIORITY);
+
+            System.Diagnostics.Debug.WriteLine(
+                $"[PMDG777DataManager] SendEventViaTransmit: '{eventName}' eventId=0x{eventId:X} mouseFlag=0x{mouseFlag:X8}");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"[PMDG777DataManager] SendEventViaTransmit '{eventName}' failed: {ex.Message}");
+        }
+    }
+
+    // Local registry for events mapped through TransmitClientEvent. Distinct
+    // from SimConnectManager.eventIds so we don't collide with the global
+    // event-name table; PMDG's "#id" alias is purely numeric and would clash
+    // with normal event-name semantics there. _nextTransmitEventId starts
+    // high enough to leave room for the standard ranges.
+    private readonly Dictionary<string, uint> _transmitEventIds = new();
+    private readonly object _transmitLock = new();
+    private uint _nextTransmitEventId = 90000;
+    private enum TRANSMIT_EVENT_GROUP : uint { }
+    private enum TRANSMIT_GROUP_PRIORITY : uint { HIGHEST = 1 }
+
     private void SendViaCDA(uint eventId, uint parameter)
     {
         if (_simConnect == null)
@@ -390,17 +466,110 @@ public class PMDG777DataManager : IDisposable
     }
 
     /// <summary>
-    /// Guarded toggle: guard event → 150 ms delay → switch event → 150 ms delay → guard event.
+    /// TransmitClientEvent dispatch for absolute-position selectors that PMDG's CDA
+    /// handler does not honor (treats CDA parameter as a "step one detent" trigger,
+    /// not an absolute position). The standard SimConnect path with the event mapped
+    /// to "#&lt;eventId&gt;" accepts the target position directly as dwData and PMDG's
+    /// event handler routes it to the correct detent in one shot. See the 777
+    /// LTS_EmerLights case in PMDG777Definition for the prior art.
     /// </summary>
-    public async Task SendGuardedToggle(
-        string guardEventName, uint guardEventId,
-        string switchEventName, uint switchEventId)
+    public void SendEventViaTransmitWithTarget(uint eventId, uint targetPosition)
     {
-        SendEvent(guardEventName,  guardEventId,  null);
+        if (_simConnect == null) return;
+        try
+        {
+            string aliasName = "#" + eventId;
+            uint id;
+            lock (_transmitLock)
+            {
+                if (!_transmitEventIds.ContainsKey(aliasName))
+                {
+                    uint mappedId = _nextTransmitEventId++;
+                    _transmitEventIds[aliasName] = mappedId;
+                    _simConnect.MapClientEventToSimEvent(
+                        (TRANSMIT_EVENT_GROUP)mappedId, aliasName);
+                }
+                id = _transmitEventIds[aliasName];
+            }
+            _simConnect.TransmitClientEvent(
+                SIMCONNECT_OBJECT_ID_USER,
+                (TRANSMIT_EVENT_GROUP)id,
+                targetPosition,
+                TRANSMIT_GROUP_PRIORITY.HIGHEST,
+                SIMCONNECT_EVENT_FLAG.GROUPID_IS_PRIORITY);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"[PMDG777DataManager] SendEventViaTransmitWithTarget eventId=0x{eventId:X} failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// 777 currently uses CDA-set-position for selectors (commit e1682ae is the
+    /// proven working pattern). This walker is provided to satisfy the interface
+    /// in case a future control needs TFM-style click-walking; not wired into the
+    /// 777 HandleUIVariableSet dispatch.
+    /// </summary>
+    public async Task WalkSelectorViaClicks(uint eventId, int currentPosition, int targetPosition)
+    {
+        if (currentPosition == targetPosition) return;
+        const uint LEFTSINGLE  = 0x20000000;
+        const uint RIGHTSINGLE = 0x80000000;
+        uint clickFlag = currentPosition > targetPosition ? RIGHTSINGLE : LEFTSINGLE;
+        int steps = Math.Abs(targetPosition - currentPosition);
+        for (int i = 0; i < steps; i++)
+        {
+            SendEventViaTransmitWithTarget(eventId, clickFlag);
+            if (i < steps - 1) await Task.Delay(60);
+        }
+    }
+
+    /// <summary>
+    /// 777 doesn't currently need the momentary press+release pattern — its
+    /// switches accept CDA direct-position. Provided to satisfy the interface
+    /// in case a future PMDG 777 control needs the FD-switch dispatch shape.
+    /// </summary>
+    public async Task SendMomentaryToggle(uint eventId, int targetPosition)
+    {
+        const uint LEFTSINGLE   = 0x20000000;
+        const uint RIGHTSINGLE  = 0x80000000;
+        const uint LEFTRELEASE  = 0x00020000;
+        const uint RIGHTRELEASE = 0x00080000;
+        bool up = targetPosition != 0;
+        uint press   = up ? LEFTSINGLE  : RIGHTSINGLE;
+        uint release = up ? LEFTRELEASE : RIGHTRELEASE;
+        SendEventViaTransmitWithTarget(eventId, press);
+        await Task.Delay(60);
+        SendEventViaTransmitWithTarget(eventId, release);
+    }
+
+    /// <summary>
+    /// Guarded set: open guard → set switch to targetPosition → close guard.
+    /// Each sub-step writes the CDA control area with the appropriate parameter:
+    ///   guard event with parameter=1 → opens the spring-loaded cover
+    ///   switch event with parameter=targetPosition → moves the switch to the target detent
+    ///   guard event with parameter=0 → snaps the cover back down
+    /// 150 ms gaps let PMDG's frame loop service each transition. The guard-close runs
+    /// inside a try/finally so a thrown mid-sequence does not strand the cover open on
+    /// a safety-critical switch.
+    /// </summary>
+    public async Task SendGuardedSet(
+        string guardEventName, uint guardEventId,
+        string switchEventName, uint switchEventId,
+        int targetPosition)
+    {
+        SendEvent(guardEventName,  guardEventId,  1);
         await Task.Delay(150);
-        SendEvent(switchEventName, switchEventId, null);
-        await Task.Delay(150);
-        SendEvent(guardEventName,  guardEventId,  null);
+        try
+        {
+            SendEvent(switchEventName, switchEventId, targetPosition);
+        }
+        finally
+        {
+            await Task.Delay(150);
+            SendEvent(guardEventName, guardEventId, 0);
+        }
     }
 
     // ------------------------------------------------------------------
@@ -516,15 +685,3 @@ public class PMDG777DataManager : IDisposable
     }
 }
 
-// ------------------------------------------------------------------
-// Event args
-// ------------------------------------------------------------------
-
-/// <summary>
-/// Carries a single PMDG 777X variable change notification.
-/// </summary>
-public class PMDGVarUpdateEventArgs : EventArgs
-{
-    public string FieldName { get; set; } = string.Empty;
-    public double Value     { get; set; }
-}

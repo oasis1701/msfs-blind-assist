@@ -50,6 +50,23 @@ This document contains development notes, key files, and dependencies for MSFS B
 - **`Database/Models/Airport.cs`**: Airport data model
 - **`Database/Models/Runway.cs`**: Runway data model
 - **`Database/Models/ParkingSpot.cs`**: Gate/parking data model
+- **`Database/Models/TaxiPath.cs`**: Taxi path data model (start/end coords, name, type)
+- **`Database/Models/TaxiNode.cs`**: Graph node (Normal / HoldShort / ILSHoldShort / Parking)
+- **`Database/Models/TaxiRoute.cs`**: Route with segments, hold-shorts, lineup target
+- **`Database/Models/StartPosition.cs`**: Runway start position data model
+- **`Database/LittleNavMapProvider.cs`**: `GetTaxiPaths()` / `GetRunwayStarts()` queries + taxiway name normalization + parking abbreviation mapping
+
+### Taxi Guidance
+
+- **`Navigation/TaxiGraph.cs`**: Builds the airport taxi graph from navdatareader rows (spatial hash node merge, taxiway name index)
+- **`Navigation/TaxiRouter.cs`**: ATC-constrained A* pathfinding — follows the user-entered taxiway sequence in order, falls back to shortest path only when the sequence doesn't connect
+- **`Navigation/RunwayCenterlineTracker.cs`**: Shared cross-track math used by taxi lineup AND takeoff-assist
+- **`Services/TaxiGuidanceManager.cs`**: Real-time state machine, position tracking, announcements, re-routing
+- **`Services/TaxiSteeringTone.cs`**: Stereo-panned steering tone with hysteresis + min sustain + low-pass smoothing
+- **`Forms/TaxiAssistForm.cs`**: Route entry UI (destination combo, filtered taxiway ComboBoxes, hold-short checkboxes)
+- **`Forms/TaxiGuidanceOptionsForm.cs`**: User settings (waveform, volume, crossing announcements)
+
+See [Taxi Guidance](taxi-guidance.md) for the full feature reference.
 
 ### User Interface
 

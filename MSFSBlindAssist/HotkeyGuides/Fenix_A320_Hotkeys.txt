@@ -63,6 +63,17 @@ Weather:
   I          Wind Info
   O          Read Outside Temperature (Celsius)
 
+Time:
+  Z          Read Local Time at aircraft position. Spoken as
+             "HH:MM <time-zone name>" (e.g. "16:38 Eastern Daylight Time"
+             near KJFK), or "HH:MM:SS <time-zone name>" (e.g.
+             "20:30:45 British Summer Time") if "Include seconds in
+             time announcements" is ticked in Announcement Settings.
+             The time-zone name is looked up from the aircraft's
+             geographic position and is DST-aware.
+  Shift+Z    Read Zulu / UTC Time. Spoken as "HH:MMZ" (e.g. "03:30Z"),
+             or "HH:MM:SSZ" (e.g. "00:15:30Z") when seconds are on.
+
 Transponder:
   X          Read Squawk Code
 
@@ -71,10 +82,16 @@ Location:
 
 Tools:
 CTRL+h, Activate/deactivate Hand fly mode, Note, enables more hotkeys, advanced feature.
-CTRL+v, activate/deactivate visual guidance mode, note, requires hand fly mode to be on. Enables more hotkeys.
+CTRL+v, activate/deactivate visual guidance mode, note, does not require hand fly mode. Enables the same single-letter quick-access hotkeys hand fly mode does, plus F for target VS.
 CTRL+T, activate/deactivate Takeoff Assistance
 CTRL+D, read Distance to Selected Runway
 CTRL+I, read ILS guidance system report
+
+Taxi Guidance (turn-by-turn taxi assistance with audio steering tone):
+  Y          Taxi Status (current taxiway, next turn, distance to destination)
+  Ctrl+Y     Repeat Current Taxi Instruction
+  Alt+Y      Where Am I (announces current taxiway, gate, or runway at nearest airport)
+  (Open the form with Input mode > Shift+Y)
 
 Waypoint tracking, use Fix track window or Electronic flight bag route viewer window to add:
 1. track slot 1
@@ -86,13 +103,20 @@ Waypoint tracking, use Fix track window or Electronic flight bag route viewer wi
 Traffic and Weather:
   R          Announce Tracked TCAS Traffic
   Ctrl+R     Open TCAS Traffic Window
-  Shift+R    Open Weather Radar Window
+  Shift+R    Open Weather Radar Window (auto-detects ActiveSky and silently
+             uses richer data — surface wind+gust, ceiling, QNH, turbulence,
+             METAR-decoded precipitation — when running. Falls back to MSFS
+             SimVars when AS isn't running. Visibility shown in both km and
+             statute miles either way.)
+  Alt+G      Announce nearest ground traffic (up to 3 aircraft on ground with
+             direction and distance; auto-alerts also fire at 500/250/100 ft
+             zone transitions while taxiing)
 
 Displays and windows:
 control+m, Fenix Monitor Manager
   Shift+E, Route viewer, procedure planner and airport lookup
   Shift+L,    Location Info
-  Shift+M,    Show VATSIM METAR Report
+  Shift+M,    Show METAR Report (VATSIM, plus ActiveSky METAR if AS detected)
   Shift+T,    Toggle Trim Announcements
   Shift+B,    SimBrief Briefing
   Shift+C,    Show Checklist
@@ -107,8 +131,21 @@ B, Read aircraft's bank
 Q, read AGL
 V, Read VS
 
-Visual guidance mode hotkeys:
+Visual guidance mode hotkeys (same single-letter set as hand fly mode, plus F):
+A, read MSL
+S, Read IAS
+D, Read distance to destination runway
+H, Read MH
+P, Read aircraft's pitch
+B, Read aircraft's bank
+Q, read AGL
+V, Read VS
 F, Read target VS
+
+Note: both modes share the quick-access hotkeys. Activate hand fly mode, visual guidance mode, or both — the single-letter keys H, V, Q, S, D, B, P, A work in either. F is visual-guidance-specific (announces "visual guidance not active" if pressed when VG is off).
+
+Ground Services:
+  Ctrl+G     Read latest GSX tooltip (no need to open the Access GSX window)
 
 INPUT MODE - Press [ to activate
 
@@ -138,6 +175,18 @@ FCU Set Values:
   Ctrl+V     Set VS Value
   Ctrl+B     Set Altimeter Value
 
+Taxi Guidance:
+  Shift+Y    Open Taxi Assist Form (enter ATC taxi clearance, start guidance)
+  Y          Continue past current hold-short point
+  Ctrl+Y     Stop Taxi Guidance
+  Shift+X    Open Landing Exit Planner (pick a runway exit taxiway before
+             touchdown; guidance auto-starts when you land — reuses the ILS
+             destination runway if one is set; announces headwind/tailwind on
+             runway selection so you can pick an exit that matches the rollout)
+
+Ground Services:
+  Alt+G      Open Access GSX window (accessible GSX Ground Services Pro menu)
+
 
 General:
   Escape     Exit active hotkey mode
@@ -151,9 +200,13 @@ Navigation:
   PageDown     MCDU scroll down
   Backspace    Clear scratchpad
 
-Line Select Keys:
+Line Select Keys (default):
   Ctrl+1-6     Left LSK 1-6
   Alt+1-6      Right LSK 1-6
+
+Alternate line select keys (enable via Settings > FMC Settings):
+  F1-F6        Left LSK 1-6
+  F7-F12       Right LSK 1-6
 
 Text Input:
   Alt+S        Focus scratchpad input field
@@ -180,66 +233,3 @@ Alt+Arrow Navigation:
   Alt+Right    Next section
   Alt+Up       Scroll up
   Alt+Down     Scroll down
-
-Fenix A320 web MCDU accessibility extension hotkeys (browser add-on):
-
-  Line Select Keys
-
-  Left Side (Ctrl + number):
-  - Ctrl+1: LSK1L (Line Select Key 1 Left)
-  - Ctrl+2: LSK2L (Line Select Key 2 Left)
-  - Ctrl+3: LSK3L (Line Select Key 3 Left)
-  - Ctrl+4: LSK4L (Line Select Key 4 Left)
-  - Ctrl+5: LSK5L (Line Select Key 5 Left)
-  - Ctrl+6: LSK6L (Line Select Key 6 Left)
-
-  Right Side (Alt + number):
-  - Alt+1: LSK1R (Line Select Key 1 Right)
-  - Alt+2: LSK2R (Line Select Key 2 Right)
-  - Alt+3: LSK3R (Line Select Key 3 Right)
-  - Alt+4: LSK4R (Line Select Key 4 Right)
-  - Alt+5: LSK5R (Line Select Key 5 Right)
-  - Alt+6: LSK6R (Line Select Key 6 Right)
-
-  Alphanumeric Keys
-
-  Letters: A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z
-
-  Numbers: 0, 1, 2, 3, 4, 5, 6, 7, 8, 9
-
-  Special Characters
-
-  - Space: SPACE
-  - /: SLASH
-  - .: DOT
-  - -: MINUS
-  - Backspace: CLR (Clear)
-
-  Arrow Keys
-
-  - ArrowUp: UP
-  - ArrowDown: DOWN
-  - ArrowLeft: LEFT
-  - ArrowRight: RIGHT
-
-  Function Buttons (Ctrl + letter)
-
-  - Ctrl+I: INIT
-  - Ctrl+M: MENU
-  - Ctrl+D: DIR
-  - Ctrl+P: PROG
-  - Ctrl+F: FPLN (Flight Plan)
-  - Ctrl+R: RAD_NAV (Radio Navigation)
-  - Ctrl+E: PERF (Performance)
-  - Ctrl+S: SEC_FPLN (Secondary Flight Plan)
-  - Ctrl+C: ATC_COM (ATC Communication)
-  - Ctrl+O: OVFY (Overflight)
-  - Ctrl+U: FUEL_PRED (Fuel Prediction)
-  - Ctrl+A: AIRPORT
-  - Ctrl+T: DATA
-  - Ctrl+ArrowUp: BRT (Brightness Up)
-  - Ctrl+ArrowDown: DIM (Brightness Down)
-
-  Interface Control
-
-  - Alt+M: Toggle interface visibility (minimize/show)

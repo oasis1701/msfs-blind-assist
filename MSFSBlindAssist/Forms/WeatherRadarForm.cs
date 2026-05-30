@@ -14,6 +14,12 @@ public class WeatherRadarForm : Form
 
     private readonly ScreenReaderAnnouncer _announcer;
     private readonly SimConnectManager _simConnect;
+    private readonly ActiveSkyClient _activeSky = new();
+    // Cached liveness check for ActiveSky. Re-check on every Refresh, but
+    // within a single Refresh call don't re-check because we may make multiple
+    // queries to AS (current conditions, METAR, etc.) and we don't need to
+    // ping /GetMode for each one.
+    private bool? _activeSkyAvailable;
     private readonly IntPtr _previousWindow;
 
     private Label _currentWeatherLabel = null!;
@@ -201,6 +207,11 @@ public class WeatherRadarForm : Form
 
         try
         {
+            // Re-check ActiveSky availability on each refresh — the user may
+            // have started/stopped AS between refreshes. Cached for the rest
+            // of THIS refresh so we don't ping /GetMode for every sub-query.
+            _activeSkyAvailable = await _activeSky.IsRunningAsync();
+
             // Get aircraft position (needed for advisories and winds aloft)
             (double lat, double lon, int altFt) = await GetPositionAsync();
 
@@ -215,6 +226,11 @@ public class WeatherRadarForm : Form
             _advisoriesBox.Text     = advisoriesTask.Result;
             _windsAloftBox.Text     = windsTask.Result;
 
+            // Silent fallback by design — user shouldn't have to know whether
+            // ActiveSky is the source or the SimConnect AMBIENT_* fallback is.
+            // If they want to diagnose, the AS-only fields (cloud ceiling,
+            // surface wind+gust, QNH, turbulence) appear when AS is up and
+            // silently disappear when it isn't.
             SetStatus($"Last updated: {DateTime.Now:HH:mm:ss}");
         }
         catch (Exception ex)
@@ -253,24 +269,259 @@ public class WeatherRadarForm : Form
 
     // ── Ambient weather ───────────────────────────────────────────────────────
 
-    private Task<string> FetchAmbientAsync()
+    /// <summary>
+    /// Fetches ambient weather. When ActiveSky is running we prefer its API —
+    /// SimConnect's `AMBIENT_*` SimVars are unreliable under AS (precipitation
+    /// type stuck on snow, in-cloud flag jittery, lagging values). When AS is
+    /// NOT running, fall back to SimConnect (still useful with default MSFS
+    /// live weather or static weather). The "in cloud" flag specifically
+    /// is supplemented from SimConnect even when AS is the primary source,
+    /// because AS's HTTP API doesn't expose that bit directly — MSFS knows
+    /// where its rendered clouds are regardless of who set them, so reading
+    /// AMBIENT IN CLOUD remains valid.
+    /// </summary>
+    private async Task<string> FetchAmbientAsync()
     {
-        var tcs = new TaskCompletionSource<string>();
-
-        if (!_simConnect.IsConnected)
-        { tcs.SetResult("Not connected to simulator."); return tcs.Task; }
-
-        _simConnect.RequestWeatherInfo(data =>
+        // Always grab SimConnect ambient too — needed for in-cloud and as a
+        // fallback. simConnected tracks whether we actually got data so we can
+        // distinguish "in-cloud=false" from "in-cloud unknown" downstream.
+        SimConnectManager.AmbientWeatherData simData = default;
+        bool simConnected = _simConnect.IsConnected;
+        if (simConnected)
         {
-            string text = WeatherService.FormatAmbientWeather(data);
-            if (IsHandleCreated && !IsDisposed) Invoke(() => tcs.TrySetResult(text));
-            else tcs.TrySetResult(text);
-        });
+            var tcs = new TaskCompletionSource<SimConnectManager.AmbientWeatherData>();
+            _simConnect.RequestWeatherInfo(d => tcs.TrySetResult(d));
+            _ = Task.Delay(3000).ContinueWith(_ => tcs.TrySetResult(default));
+            simData = await tcs.Task;
+        }
 
-        _ = Task.Delay(5000).ContinueWith(_ =>
-            tcs.TrySetResult("Timed out waiting for simulator weather data."));
+        if (_activeSkyAvailable == true)
+        {
+            // Fetch the JSON conditions and the position METAR in parallel.
+            // The JSON gives us structured numbers; the METAR gives us the
+            // precipitation tokens (`-RA`, `+SN`, `TSRA`, etc.) which the AS
+            // JSON does NOT expose and which the SimConnect bitmask gets
+            // wrong under ActiveSky.
+            var conditionsTask = _activeSky.GetCurrentConditionsAsync();
+            var posMetarTask   = _activeSky.GetPositionMetarAsync();
+            await Task.WhenAll(conditionsTask, posMetarTask);
+            var asConditions = conditionsTask.Result;
+            string? posMetar = posMetarTask.Result;
 
-        return tcs.Task;
+            if (asConditions != null)
+                return FormatAmbientFromActiveSky(asConditions, simData, simConnected, posMetar);
+            // AS pinged OK earlier but the conditions call failed — fall
+            // through to SimConnect rather than returning an error.
+        }
+
+        if (!simConnected)
+            return "Not connected to simulator.";
+
+        return WeatherService.FormatAmbientWeather(simData);
+    }
+
+    /// <summary>
+    /// Format ActiveSky's ambient conditions into the screen-reader-friendly
+    /// block. We include the data ActiveSky has that SimConnect doesn't
+    /// surface cleanly — surface wind, gusts, QNH, cloud ceiling, turbulence
+    /// intensity. In-cloud is read from SimConnect (same caveat as in
+    /// FetchAmbientAsync). Precipitation is parsed from the closest METAR
+    /// when available — much more accurate than the SimConnect bitmask
+    /// under ActiveSky, which the user reports stuck on "extreme snow".
+    /// </summary>
+    private static string FormatAmbientFromActiveSky(
+        ActiveSkyClient.Conditions c,
+        SimConnectManager.AmbientWeatherData simAmbient,
+        bool simConnected,
+        string? positionMetar)
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"Wind (at altitude): {c.AmbientWindDirection:F0}° at {c.AmbientWindSpeed:F0} knots");
+        // Turbulence: AS reports 1-100. In practice it sits at ~25 in calm
+        // conditions (atmospheric baseline / numerical noise), so a raw
+        // "25/100" reads as alarming when nothing is actually happening. We
+        // bucket into the standard pilot categories and hide the line when
+        // the value is below the "light" threshold — matching the FAA AIM
+        // 7-1-23 turbulence reporting criteria, which only call out turbulence
+        // from light upwards.
+        string? turbCategory = CategorizeTurbulence(c.AmbientTurbulence);
+        if (turbCategory != null)
+            sb.AppendLine($"Turbulence: {turbCategory}");
+        sb.AppendLine($"Surface wind: {c.SurfaceWindDirection:F0}° at {c.SurfaceWindSpeed:F0} knots" +
+            (c.SurfaceGustSpeed > 0 ? $", gusting {c.SurfaceGustSpeed:F0}" : ""));
+        // Visibility: AS reports it in statute miles. Show both SM and km — US
+        // pilots think in SM, ICAO/rest-of-world thinks in km/meters (METAR
+        // "9999" means ≥10 km). Cap at 10 SM / 16 km because AS clamps there
+        // and the underlying weather data resolution is meaningless past it.
+        double visKm = c.SurfaceVisibility * 1.609344;
+        string visStr = c.SurfaceVisibility >= 10
+            ? "10+ statute miles (16+ km)"
+            : $"{c.SurfaceVisibility:F1} statute miles ({visKm:F1} km)";
+        sb.AppendLine($"Visibility: {visStr}");
+        sb.AppendLine($"Temperature (at altitude): {c.AmbientTemperature:F0}°C");
+        sb.AppendLine($"Surface temperature: {c.SurfaceTemperature:F0}°C");
+        if (c.CloudCeilingFtAgl > 0)
+            sb.AppendLine($"Cloud ceiling: {c.CloudCeilingFtAgl:N0} ft AGL");
+        else
+            sb.AppendLine("Cloud ceiling: above 8,000 ft AGL or no broken/overcast layer");
+        if (c.QnhMb > 0)
+            sb.AppendLine($"QNH: {c.QnhMb:F0} hPa / {(c.QnhMb * 0.02953):F2} inHg");
+
+        // In-cloud from SimConnect (the only reliable source — AS API doesn't
+        // expose it). MSFS knows where its rendered clouds are regardless of
+        // who set them. If SimConnect isn't connected we genuinely don't know,
+        // so say so rather than printing "No" (which would be a lie when
+        // sitting inside an overcast layer with the sim disconnected).
+        sb.AppendLine(simConnected
+            ? $"In cloud: {(simAmbient.InCloud >= 0.5 ? "Yes" : "No")}"
+            : "In cloud: unknown (sim not connected)");
+
+        // Precipitation parsed from the position METAR returned by AS's
+        // /GetCurrentConditions endpoint. That endpoint returns a string like
+        // "@POS 070835Z 14707KT 9999 -RA FEW311 29/23 Q1006 RMK ADVANCED
+        // INTERPOLATION" — position-specific weather tokens (-RA = light rain,
+        // +SN = heavy snow, TSRA = thunderstorm with rain). This is what fixes
+        // the user-reported "always says extreme snow" bug — the SimConnect
+        // AMBIENT_PRECIP_STATE bitmask gets stuck under ActiveSky; the METAR
+        // is what the actual weather engine reports. Falls back to:
+        //   1. The closest-station METAR from the JSON response (if a station
+        //      list was supplied — currently we don't, but kept as belt-and-
+        //      braces in case we add station-aware fetching later).
+        //   2. The SimConnect bitmask, which is wrong under AS but better
+        //      than nothing if both METAR sources fail.
+        // Order of preference:
+        //   1. Position METAR (most accurate — aircraft position, AS-derived).
+        //   2. Closest-station METAR from JSON (only populated if we asked for
+        //      stations — currently empty, kept for future).
+        //   3. SimConnect bitmask (wrong under AS, but the only fallback if
+        //      both METAR sources fail).
+        // Important: "METAR present, no precip token" = "None", NOT a fall-
+        // through. Only an entirely missing METAR triggers the next source.
+        string precip;
+        if (!string.IsNullOrWhiteSpace(positionMetar))
+        {
+            string parsed = ParsePrecipFromMetar(positionMetar);
+            precip = string.IsNullOrEmpty(parsed) ? "None" : parsed;
+        }
+        else if (!string.IsNullOrWhiteSpace(c.ClosestMetar))
+        {
+            string parsed = ParsePrecipFromMetar(c.ClosestMetar);
+            precip = string.IsNullOrEmpty(parsed) ? "None" : parsed;
+        }
+        else if (simConnected)
+        {
+            precip = DescribeSimPrecip(simAmbient.PrecipState, simAmbient.PrecipRate);
+        }
+        else
+        {
+            precip = "Unknown";
+        }
+        sb.AppendLine($"Precipitation: {precip}");
+
+        return sb.ToString().TrimEnd();
+    }
+
+    /// <summary>
+    /// Looks for METAR precipitation tokens (RA, SN, FZRA, TS, etc., with
+    /// intensity prefixes - = light, none = moderate, + = heavy) and returns
+    /// a plain-English summary. Returns empty string if no precip token
+    /// found OR no METAR was provided. METAR format reference: WMO AMC 4444
+    /// + ICAO Annex 3 weather phenomenon codes.
+    /// </summary>
+    private static string ParsePrecipFromMetar(string metar)
+    {
+        if (string.IsNullOrWhiteSpace(metar)) return "";
+        // Strip any annotation lines (Active Sky appends "(Cloned by: ...)" etc.)
+        string firstLine = metar.Split('\r', '\n')[0].ToUpperInvariant();
+
+        // Tokenize on whitespace; look for tokens matching the standard
+        // weather group: optional [+-VC], optional descriptor (BC/BL/DR/FZ/MI/PR/SH/TS),
+        // weather phenomenon (RA/SN/GR/GS/PL/IC/UP/FG/BR/HZ/FU etc.).
+        // Cheap matcher: just look for known precip phenomena with intensity.
+        // This is intentionally simple — full METAR parsing is overkill here.
+        string[] tokens = firstLine.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        foreach (string t in tokens)
+        {
+            string token = t;
+            string intensity = "moderate";
+            if (token.StartsWith("-")) { intensity = "light"; token = token[1..]; }
+            else if (token.StartsWith("+")) { intensity = "heavy"; token = token[1..]; }
+            else if (token.StartsWith("VC")) { intensity = "in vicinity"; token = token[2..]; }
+
+            // Skip descriptor (TS/SH/FZ/etc.) but remember it
+            string descriptor = "";
+            if (token.Length >= 2)
+            {
+                string head = token[..2];
+                if (head is "TS" or "SH" or "FZ" or "BL" or "DR" or "MI" or "BC" or "PR")
+                {
+                    descriptor = head;
+                    token = token[2..];
+                }
+            }
+
+            string phenom = token.Length >= 2 ? token[..2] : "";
+            string phenomName = phenom switch
+            {
+                "RA" => "rain",
+                "SN" => "snow",
+                "GR" => "hail",
+                "GS" => "small hail",
+                "PL" => "ice pellets",
+                "IC" => "ice crystals",
+                "UP" => "unknown precipitation",
+                "DZ" => "drizzle",
+                "SG" => "snow grains",
+                _ => ""
+            };
+            if (string.IsNullOrEmpty(phenomName)) continue;
+
+            string descriptorName = descriptor switch
+            {
+                "TS" => "thunderstorm with ",
+                "SH" => "showers of ",
+                "FZ" => "freezing ",
+                _ => ""
+            };
+            return $"{intensity} {descriptorName}{phenomName}";
+        }
+        return "";  // no precipitation token found
+    }
+
+    /// <summary>
+    /// Maps ActiveSky's 1-100 turbulence number to a pilot-category word
+    /// (or null = "don't show the line"). The thresholds:
+    ///   ≤ 25  → null (calm — AS sits here as a baseline; showing a number
+    ///           reads as alarming when nothing is happening)
+    ///   26-50 → "light"
+    ///   51-75 → "moderate"
+    ///   76-90 → "severe"
+    ///   91+   → "extreme"
+    /// Categories follow FAA AIM 7-1-23 phraseology so a pilot reading the
+    /// box hears the same words ATC and PIREPs would use. We don't include
+    /// the raw 1-100 number — it isn't a published scale anyone would
+    /// recognise, and the category alone is what's actionable.
+    /// </summary>
+    private static string? CategorizeTurbulence(double t)
+    {
+        if (t <= 25) return null;
+        if (t <= 50) return "light";
+        if (t <= 75) return "moderate";
+        if (t <= 90) return "severe";
+        return "extreme";
+    }
+
+    /// <summary>
+    /// Same logic as WeatherService.DescribePrecip but local — used as a
+    /// fallback when the AS METAR doesn't yield a clear precip phrase.
+    /// </summary>
+    private static string DescribeSimPrecip(double state, double rate)
+    {
+        int s = (int)Math.Round(state);
+        if (s == 0 || rate < 1.0) return "None";
+        string intensity = rate switch { < 20 => "Light", < 50 => "Moderate", < 80 => "Heavy", _ => "Extreme" };
+        string type = s switch { 1 or 2 => "rain", 4 => "snow", 8 => "freezing rain", _ => "precipitation" };
+        return $"{intensity} {type} ({rate:F0}%)";
     }
 
     // ── Advisories (SIGMETs + PIREPs) ────────────────────────────────────────

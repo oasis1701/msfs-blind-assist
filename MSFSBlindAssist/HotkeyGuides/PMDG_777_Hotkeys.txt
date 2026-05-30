@@ -55,12 +55,26 @@ Weather:
   I          Wind Info
   O          Read Outside Temperature (Celsius)
 
+Time:
+  Z          Read Local Time at aircraft position. Spoken as
+             "HH:MM <time-zone name>" (e.g. "16:38 Eastern Daylight Time"
+             near KJFK), or "HH:MM:SS <time-zone name>" (e.g.
+             "20:30:45 British Summer Time") if "Include seconds in
+             time announcements" is ticked in Announcement Settings.
+             The time-zone name is looked up from the aircraft's
+             geographic position and is DST-aware.
+  Shift+Z    Read Zulu / UTC Time. Spoken as "HH:MMZ" (e.g. "03:30Z"),
+             or "HH:MM:SSZ" (e.g. "00:15:30Z") when seconds are on.
+
 Transponder:
   X          Read Squawk Code
 
 Distance:
-  D          Read Distance to Destination
-  Shift+D    Read Distance to Top of Descent
+  D          Read Distance to Destination (with FMC Settings > Enhanced
+             distance: speaks PROG-page distance + ETA in Z time + landing fuel)
+  Shift+D    Read Distance to Top of Descent (Enhanced mode: TOC if not yet
+             passed, then step climb if not "NONE", then TOD — all with PROG
+             ETA in Z time)
 
 Location:
   C          Read Nearest City
@@ -70,11 +84,19 @@ Trim:
 
 Tools:
   Ctrl+H     Activate/deactivate Hand Fly mode
-  Ctrl+V     Activate/deactivate Visual Guidance mode (requires Hand Fly mode)
+  Ctrl+V     Activate/deactivate Visual Guidance mode. Does not require Hand
+             Fly mode. Enables the same single-letter quick-access hotkeys
+             Hand Fly mode does, plus F for target VS.
   Ctrl+T     Activate/deactivate Takeoff Assistance
   Ctrl+D     Read Distance to Selected Runway
   Ctrl+I     Read ILS Guidance System Report
   Ctrl+0     Read Approach Capability
+
+Taxi Guidance (turn-by-turn taxi assistance with audio steering tone):
+  Y          Taxi Status (current taxiway, next turn, distance to destination)
+  Ctrl+Y     Repeat Current Taxi Instruction
+  Alt+Y      Where Am I (announces current taxiway, gate, or runway at nearest airport)
+  (Open the form with Input mode > Shift+Y)
 
 Waypoint Tracking (use Fix Track window or EFB route viewer to add):
   1          Track Slot 1
@@ -93,14 +115,21 @@ AI Display Reading (requires Gemini API key in File > Gemini Settings):
 Traffic and Weather:
   R          Announce Tracked TCAS Traffic
   Ctrl+R     Open TCAS Traffic Window
-  Shift+R    Open Weather Radar Window
+  Shift+R    Open Weather Radar Window (auto-detects ActiveSky and silently
+             uses richer data — surface wind+gust, ceiling, QNH, turbulence,
+             METAR-decoded precipitation — when running. Falls back to MSFS
+             SimVars when AS isn't running. Visibility shown in both km and
+             statute miles either way.)
+  Alt+G      Announce nearest ground traffic (up to 3 aircraft on ground with
+             direction and distance; auto-alerts also fire at 500/250/100 ft
+             zone transitions while taxiing)
 
 Displays and Windows:
   Ctrl+M     PMDG Monitor Manager
   Shift+E    Route viewer, procedure planner and airport lookup
   Shift+T    PMDG EFB Tablet (SimBrief uplink, Navigraph, preferences)
   Shift+L    Location Info
-  Shift+M    Show VATSIM METAR Report
+  Shift+M    Show METAR Report (VATSIM, plus ActiveSky METAR if AS detected)
   Shift+B    SimBrief Briefing
   Shift+C    Show Checklist
   Shift+N    Navigation Display
@@ -116,8 +145,24 @@ Hand Fly Mode Hotkeys:
   Q          Read AGL
   V          Read VS
 
-Visual Guidance Mode Hotkeys:
+Visual Guidance Mode Hotkeys (same single-letter set as Hand Fly mode, plus F):
+  A          Read MSL
+  S          Read IAS
+  D          Read Distance to Destination Runway
+  H          Read Magnetic Heading
+  P          Read Aircraft Pitch
+  B          Read Aircraft Bank
+  Q          Read AGL
+  V          Read VS
   F          Read Target VS
+
+Note: both modes share the quick-access hotkeys. Activate Hand Fly mode,
+Visual Guidance mode, or both — the single-letter keys H, V, Q, S, D, B,
+P, A work in either. F is Visual-Guidance-specific (announces "Visual
+guidance not active" if pressed when VG is off).
+
+Ground Services:
+  Ctrl+G     Read latest GSX tooltip (no need to open the Access GSX window)
 
 INPUT MODE - Press [ to activate
 
@@ -134,6 +179,18 @@ MCP Set Values:
   Ctrl+S     Set Speed (opens dialog with Intervene, IAS/Mach Mode toggles)
   Ctrl+A     Set Altitude (opens dialog with Intervene, VNAV, Level Change, ALT HOLD toggles)
   Ctrl+V     Set Vertical Speed (opens dialog with VS/FPA Engage and Mode toggles)
+
+Taxi Guidance:
+  Shift+Y    Open Taxi Assist Form (enter ATC taxi clearance, start guidance)
+  Y          Continue past current hold-short point
+  Ctrl+Y     Stop Taxi Guidance
+  Shift+X    Open Landing Exit Planner (pick a runway exit taxiway before
+             touchdown; guidance auto-starts when you land — reuses the ILS
+             destination runway if one is set; announces headwind/tailwind on
+             runway selection so you can pick an exit that matches the rollout)
+
+Ground Services:
+  Alt+G      Open Access GSX window (accessible GSX Ground Services Pro menu)
 
 General:
   Escape     Exit active hotkey mode
@@ -169,8 +226,13 @@ CDU Page Buttons:
   Alt+P          Prog (Progress)
   Alt+M          Menu
   Alt+O          FMC Comm
+  Alt+N          Nav Rad
   Alt+E          Execute
   Alt+C          CLR/DEL (Clear or Delete)
+
+Note: in FMC Settings (File > FMC Settings) you can switch to alternate
+line-select keys: F1-F6 for L1-L6 and F7-F12 for R1-R6. With this on,
+the default Ctrl+1-6 / Alt+1-6 chords are disabled.
 
 Automatic Announcements:
   - MCP value changes (speed, heading, altitude, vertical speed)

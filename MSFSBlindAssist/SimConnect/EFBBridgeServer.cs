@@ -20,16 +20,19 @@ namespace MSFSBlindAssist.SimConnect
 
     public class EFBBridgeServer : IDisposable
     {
-        private const int Port = 19777;
-        private const string Prefix = "http://localhost:19777/";
+        private readonly int _port;
+        private string Prefix => $"http://localhost:{_port}/";
         private const int HeartbeatTimeoutSeconds = 15;
         private const int CommandExpirySeconds = 30;
-        private const int MaxRequestBodyBytes = 64 * 1024; // 64 KB
+        private const int MaxRequestBodyBytes = 512 * 1024; // 512 KB — raised for page_html which can be 200-500 KB
         private const int MaxQueueSize = 50;
 
         private HttpListener? _listener;
         private CancellationTokenSource? _cts;
+        // Default queue — used by PMDG EFB bridge (polls /commands) and 787 EFB bridge (polls /commands/efb)
         private readonly ConcurrentQueue<(EFBCommand Command, DateTime EnqueuedAt)> _commandQueue = new();
+        // MFD-specific queue — used by 787 MFD bridge (polls /commands/mfd)
+        private readonly ConcurrentQueue<(EFBCommand Command, DateTime EnqueuedAt)> _mfdCommandQueue = new();
         private readonly SynchronizationContext? _syncContext;
         private DateTime _lastHeartbeat = DateTime.MinValue;
         private bool _disposed;
@@ -38,14 +41,59 @@ namespace MSFSBlindAssist.SimConnect
         private const int MaxRestartAttempts = 5;
         private const int RestartDelayMs = 2000;
 
+        // Cached display elements for serving via /display-data
+        private string _cachedDisplayElementsJson = "[]";
+        private readonly object _displayLock = new();
+
+#if DEBUG
+        // Last eval_result posted by a bridge (HS787 MFD or PMDG EFB). Backs the live bridge REPL:
+        // POST /mfd-eval enqueues an eval_js MFD command, the bridge polls it, evals, and posts
+        // eval_result back here; GET /mfd-eval-result reads it. DEBUG-only — this is an
+        // arbitrary-JS-execution surface and must not exist in shipped builds. With CORS
+        // Allow-Origin:* and Allow-Private-Network:true on every response, a Release-build endpoint
+        // would let any local webpage the user visits drive JS execution inside the EFB (the
+        // classic localhost/DNS-rebinding attack the Private-Network-Access header is meant to
+        // block). The eval_js command itself is likewise only reachable via the DEBUG /debug-enqueue
+        // path, so gating these two endpoints to DEBUG restores the pre-787 security posture.
+        private volatile string _lastMfdEvalResultJson = "{\"status\":\"none\"}";
+#endif
+
+#if DEBUG
+        // Debug: ring buffer of recent state updates keyed by type, for
+        // external test harnesses to inspect what the bridge has posted
+        // without having to hook into the UI. Accessible via
+        // GET /debug-state-last?type=<type> and GET /debug-states.
+        // Debug builds only — /debug-enqueue accepts arbitrary bridge
+        // commands with no auth, which is a local-access-only dev aid.
+        private readonly ConcurrentDictionary<string, DebugStateRecord> _debugLastState = new();
+        private class DebugStateRecord
+        {
+            public string Type { get; set; } = "";
+            public Dictionary<string, string> Data { get; set; } = new();
+            public DateTime ReceivedAt { get; set; }
+        }
+#endif
+
+        /// <summary>
+        /// Updates the cached display elements JSON. Called from the form when display_elements state arrives.
+        /// </summary>
+        public void UpdateDisplayElements(string itemsJson)
+        {
+            lock (_displayLock)
+            {
+                _cachedDisplayElementsJson = itemsJson ?? "[]";
+            }
+        }
+
         public event EventHandler<EFBStateUpdateEventArgs>? StateUpdated;
         public event Action<string>? Error;
 
         public bool IsRunning => _listener?.IsListening == true;
         public bool IsBridgeConnected => (DateTime.UtcNow - _lastHeartbeat).TotalSeconds < HeartbeatTimeoutSeconds;
 
-        public EFBBridgeServer()
+        public EFBBridgeServer(int port = 19777)
         {
+            _port = port;
             _syncContext = SynchronizationContext.Current;
         }
 
@@ -91,6 +139,7 @@ namespace MSFSBlindAssist.SimConnect
             }
         }
 
+        /// <summary>Enqueue a command for the EFB bridge (or PMDG EFB). Polled at /commands.</summary>
         public void EnqueueCommand(string command, Dictionary<string, string>? payload = null)
         {
             while (_commandQueue.Count >= MaxQueueSize)
@@ -101,6 +150,12 @@ namespace MSFSBlindAssist.SimConnect
                 }
             }
             _commandQueue.Enqueue((new EFBCommand { Command = command, Payload = payload }, DateTime.UtcNow));
+        }
+
+        /// <summary>Enqueue a command exclusively for the 787 MFD bridge. Polled at /commands/mfd.</summary>
+        public void EnqueueMfdCommand(string command, Dictionary<string, string>? payload = null)
+        {
+            _mfdCommandQueue.Enqueue((new EFBCommand { Command = command, Payload = payload }, DateTime.UtcNow));
         }
 
         public bool HasPendingCommand(string commandName)
@@ -187,6 +242,7 @@ namespace MSFSBlindAssist.SimConnect
             response.Headers.Add("Access-Control-Allow-Origin", "*");
             response.Headers.Add("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
             response.Headers.Add("Access-Control-Allow-Headers", "Content-Type");
+            response.Headers.Add("Access-Control-Allow-Private-Network", "true");
 
             try
             {
@@ -208,8 +264,52 @@ namespace MSFSBlindAssist.SimConnect
                         await HandleStateUpdate(request, response);
                         break;
                     case "/commands" when request.HttpMethod == "GET":
-                        await HandleGetCommands(response);
+                        await HandleGetCommands(response, _commandQueue);
                         break;
+                    case "/commands/mfd" when request.HttpMethod == "GET":
+                        await HandleGetCommands(response, _mfdCommandQueue);
+                        break;
+                    case "/commands/efb" when request.HttpMethod == "GET":
+                        await HandleGetCommands(response, _commandQueue);
+                        break;
+                    case "/display":
+                        await ServeDisplayPage(response);
+                        break;
+                    case "/display-data":
+                        await ServeDisplayData(response);
+                        break;
+                    case "/display-click" when request.HttpMethod == "POST":
+                        await HandleDisplayClick(request, response);
+                        break;
+                    case "/display-set-value" when request.HttpMethod == "POST":
+                        await HandleDisplaySetValue(request, response);
+                        break;
+#if DEBUG
+                    // Live bridge REPL — DEBUG-only (arbitrary JS execution surface; see the
+                    // _lastMfdEvalResultJson field comment). POST a JS snippet, the MFD bridge
+                    // polls + evals + posts eval_result back; GET reads it. Lets us iterate bridge
+                    // JS without sim/MSFSBA restarts during development.
+                    case "/mfd-eval" when request.HttpMethod == "POST":
+                        await HandleMfdEval(request, response);
+                        break;
+                    case "/mfd-eval-result" when request.HttpMethod == "GET":
+                        await HandleMfdEvalResult(response);
+                        break;
+
+                    // Debug endpoints gated to Debug builds only. /debug-enqueue
+                    // accepts arbitrary bridge commands (including eval_js) with
+                    // no auth, which is fine for local development but should
+                    // never ship in Release builds.
+                    case "/debug-enqueue" when request.HttpMethod == "POST":
+                        await HandleDebugEnqueue(request, response);
+                        break;
+                    case "/debug-state-last" when request.HttpMethod == "GET":
+                        await HandleDebugStateLast(request, response);
+                        break;
+                    case "/debug-states" when request.HttpMethod == "GET":
+                        await HandleDebugStates(response);
+                        break;
+#endif
                     default:
                         response.StatusCode = 404;
                         await WriteJson(response, new { error = "Not found" });
@@ -268,6 +368,27 @@ namespace MSFSBlindAssist.SimConnect
 
                 var args = new EFBStateUpdateEventArgs { Type = type, Data = data };
 
+#if DEBUG
+                // Capture eval_result for the DEBUG-only GET /mfd-eval-result readback (live REPL).
+                if (type == "eval_result")
+                {
+                    _lastMfdEvalResultJson = JsonSerializer.Serialize(new
+                    {
+                        status = "ok",
+                        receivedAt = DateTime.UtcNow.ToString("O"),
+                        data
+                    });
+                }
+
+                // Record for debug introspection (external test access).
+                _debugLastState[type] = new DebugStateRecord
+                {
+                    Type = type,
+                    Data = new Dictionary<string, string>(data),
+                    ReceivedAt = DateTime.UtcNow
+                };
+#endif
+
                 if (_syncContext != null)
                 {
                     _syncContext.Post(_ => StateUpdated?.Invoke(this, args), null);
@@ -285,14 +406,15 @@ namespace MSFSBlindAssist.SimConnect
             await WriteJson(response, new { received = true });
         }
 
-        private async Task HandleGetCommands(HttpListenerResponse response)
+        private async Task HandleGetCommands(HttpListenerResponse response,
+            ConcurrentQueue<(EFBCommand Command, DateTime EnqueuedAt)> queue)
         {
             _lastHeartbeat = DateTime.UtcNow;
 
             var commands = new List<object>();
             var now = DateTime.UtcNow;
 
-            while (_commandQueue.TryDequeue(out var item))
+            while (queue.TryDequeue(out var item))
             {
                 if ((now - item.EnqueuedAt).TotalSeconds > CommandExpirySeconds)
                     continue;
@@ -309,6 +431,423 @@ namespace MSFSBlindAssist.SimConnect
 
             await WriteJson(response, commands);
         }
+
+        private async Task ServeDisplayPage(HttpListenerResponse response)
+        {
+            string html = @"<!DOCTYPE html>
+<html lang=""en"">
+<head>
+<meta charset=""utf-8"">
+<title>PMDG 777 EFB</title>
+<style>
+  body { font-family: -apple-system, 'Segoe UI', Tahoma, sans-serif; margin: 0; padding: 10px; background: #1a1a2e; color: #eee; }
+  #status { font-size: 12px; color: #666; margin-bottom: 8px; }
+  #content { margin: 0; }
+  h1, h2, h3 { color: #ccc; margin: 12px 0 4px 0; }
+  h1 { font-size: 18px; } h2 { font-size: 16px; } h3 { font-size: 14px; }
+  p.efb-text { margin: 2px 0; padding: 2px 0; color: #ddd; }
+  button.efb-btn { display: block; width: 100%; text-align: left; padding: 8px 12px; margin: 4px 0; border: 1px solid #445; border-radius: 6px; cursor: pointer; font-size: 14px; background: #0e4d92; color: white; font-family: inherit; }
+  button.efb-btn:hover { background: #1a6fc4; }
+  button.efb-btn:focus { outline: 3px solid #FFD700; }
+  label.efb-label { display: block; margin: 6px 0; color: #ccc; font-size: 14px; }
+  input.efb-input { display: block; width: 90%; padding: 6px 8px; margin-top: 2px; border: 1px solid #555; border-radius: 4px; background: #1a1a30; color: #eee; font-size: 14px; font-family: inherit; }
+  input.efb-input:focus { outline: 3px solid #FFD700; border-color: #0078D4; }
+  select.efb-select { display: block; width: 90%; padding: 6px 8px; margin-top: 2px; border: 1px solid #555; border-radius: 4px; background: #1a1a30; color: #eee; font-size: 14px; font-family: inherit; }
+  select.efb-select:focus { outline: 3px solid #FFD700; }
+  label.efb-checkbox-label { display: block; margin: 6px 0; color: #ccc; font-size: 14px; cursor: pointer; }
+  label.efb-checkbox-label input[type=checkbox] { width: 18px; height: 18px; margin-right: 8px; vertical-align: middle; }
+  :focus { outline: 3px solid #0078D4; }
+</style>
+</head>
+<body>
+<div id=""status"" aria-live=""polite"">Loading...</div>
+<div id=""content""></div>
+
+<script>
+function loadItems() {
+  fetch('/display-data')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var container = document.getElementById('content');
+      var focused = document.activeElement;
+      var focusIdx = focused ? focused.getAttribute('data-idx') : null;
+
+      container.innerHTML = '';
+      var items = data.items || [];
+      document.getElementById('status').textContent = 'Connected';
+
+      for (var i = 0; i < items.length; i++) {
+        var item = items[i];
+        var el;
+
+        // Render form controls as proper interactive elements
+        if (item.controlType === 'text') {
+          // Text input with label
+          var lbl = document.createElement('label');
+          lbl.className = 'efb-label';
+          lbl.textContent = item.text + ': ';
+          var inp = document.createElement('input');
+          inp.type = 'text';
+          inp.className = 'efb-input';
+          inp.value = item.controlValue || '';
+          inp.setAttribute('data-idx', String(item.index));
+          inp.setAttribute('aria-label', item.text);
+          inp.addEventListener('change', function() {
+            fetch('/display-set-value', {
+              method: 'POST', headers: {'Content-Type':'application/json'},
+              body: JSON.stringify({index: this.getAttribute('data-idx'), value: this.value, controlType: 'text'})
+            });
+          });
+          lbl.appendChild(inp);
+          el = lbl;
+        } else if (item.controlType === 'checkbox') {
+          var wrap = document.createElement('label');
+          wrap.className = 'efb-checkbox-label';
+          var cb = document.createElement('input');
+          cb.type = 'checkbox';
+          cb.checked = item.controlValue === 'true';
+          cb.setAttribute('data-idx', String(item.index));
+          cb.addEventListener('change', function() {
+            fetch('/display-set-value', {
+              method: 'POST', headers: {'Content-Type':'application/json'},
+              body: JSON.stringify({index: this.getAttribute('data-idx'), value: String(this.checked), controlType: 'checkbox'})
+            });
+          });
+          wrap.appendChild(cb);
+          wrap.appendChild(document.createTextNode(' ' + item.text));
+          el = wrap;
+        } else if (item.controlType === 'select' && item.controlOptions) {
+          var slbl = document.createElement('label');
+          slbl.className = 'efb-label';
+          slbl.textContent = item.text + ': ';
+          var sel = document.createElement('select');
+          sel.className = 'efb-select';
+          sel.setAttribute('data-idx', String(item.index));
+          sel.setAttribute('aria-label', item.text);
+          for (var oi = 0; oi < item.controlOptions.length; oi++) {
+            var opt = document.createElement('option');
+            opt.value = item.controlOptions[oi];
+            opt.textContent = item.controlOptions[oi];
+            if (item.controlOptions[oi] === item.controlValue) opt.selected = true;
+            sel.appendChild(opt);
+          }
+          sel.addEventListener('change', function() {
+            fetch('/display-set-value', {
+              method: 'POST', headers: {'Content-Type':'application/json'},
+              body: JSON.stringify({index: this.getAttribute('data-idx'), value: this.value, controlType: 'select', optionIndex: String(this.selectedIndex)})
+            });
+          });
+          slbl.appendChild(sel);
+          el = slbl;
+        } else if (item.clickable || item.tag === 'button' || item.role === 'button' || item.tag === 'a') {
+          el = document.createElement('button');
+          el.className = 'efb-btn';
+          el.textContent = item.text;
+          el.setAttribute('data-idx', String(item.index));
+          el.addEventListener('click', doClick);
+        } else if (item.tag === 'h1' || item.tag === 'h2' || item.tag === 'h3') {
+          el = document.createElement(item.tag);
+          el.textContent = item.text;
+          el.setAttribute('data-idx', String(item.index));
+        } else {
+          el = document.createElement('p');
+          el.className = 'efb-text';
+          el.textContent = item.text;
+          el.setAttribute('data-idx', String(item.index));
+          el.addEventListener('click', doClick);
+          el.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') { doClick.call(this, e); }
+          });
+        }
+
+        container.appendChild(el);
+      }
+
+      // Restore focus
+      if (focusIdx) {
+        var target = container.querySelector('[data-idx=""' + focusIdx + '""]');
+        if (target) target.focus();
+      }
+    })
+    .catch(function(err) {
+      document.getElementById('status').textContent = 'Error: ' + err.message;
+    });
+}
+
+function doClick(e) {
+  var idx = this.getAttribute('data-idx');
+  var text = this.textContent;
+  // Announce via aria-live
+  document.getElementById('status').textContent = 'Clicking: ' + text;
+
+  fetch('/display-click', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({index: idx})
+  }).then(function() {
+    // Refresh after click (500ms for EFB to process)
+    setTimeout(loadItems, 500);
+  });
+}
+
+// F5 to refresh
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'F5') { e.preventDefault(); loadItems(); }
+});
+
+// NO auto-refresh — only refresh on click or F5 to prevent cursor jumping.
+// Initial load
+loadItems();
+</script>
+</body>
+</html>";
+
+            byte[] buffer = Encoding.UTF8.GetBytes(html);
+            response.ContentType = "text/html; charset=utf-8";
+            response.ContentLength64 = buffer.Length;
+            await response.OutputStream.WriteAsync(buffer);
+            response.Close();
+        }
+
+        private async Task ServeDisplayData(HttpListenerResponse response)
+        {
+            string json;
+            lock (_displayLock)
+            {
+                json = $"{{\"items\":{_cachedDisplayElementsJson}}}";
+            }
+            byte[] buffer = Encoding.UTF8.GetBytes(json);
+            response.ContentType = "application/json";
+            response.ContentLength64 = buffer.Length;
+            await response.OutputStream.WriteAsync(buffer);
+            response.Close();
+        }
+
+        private async Task HandleDisplayClick(HttpListenerRequest request, HttpListenerResponse response)
+        {
+            using var reader = new StreamReader(request.InputStream, request.ContentEncoding);
+            string body = await reader.ReadToEndAsync();
+
+            try
+            {
+                var json = JsonDocument.Parse(body);
+                string index = json.RootElement.GetProperty("index").GetString() ?? "";
+
+                // Route the click to the real EFB via the bridge
+                EnqueueCommand("click_display_element", new Dictionary<string, string> { ["index"] = index });
+
+                // Refresh twice — once quickly for fast actions, once after delay for slow ones (Calculate, Import Weather)
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(600);
+                    EnqueueCommand("get_display_elements");
+                    await Task.Delay(2000);
+                    EnqueueCommand("get_display_elements");
+                });
+
+                await WriteJson(response, new { clicked = true });
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"EFBBridgeServer: Display click error: {ex.Message}");
+                await WriteJson(response, new { clicked = false, error = ex.Message });
+            }
+        }
+
+        private async Task HandleDisplaySetValue(HttpListenerRequest request, HttpListenerResponse response)
+        {
+            using var reader = new StreamReader(request.InputStream, request.ContentEncoding);
+            string body = await reader.ReadToEndAsync();
+
+            try
+            {
+                var json = JsonDocument.Parse(body);
+                string index = json.RootElement.GetProperty("index").GetString() ?? "";
+                string value = json.RootElement.GetProperty("value").GetString() ?? "";
+                string controlType = json.RootElement.TryGetProperty("controlType", out var ct) ? ct.GetString() ?? "" : "";
+
+                // For unit-toggle selects (rendered from checkboxes), convert back to checkbox logic
+                // The select options are [unchecked_label, checked_label]
+                // If user picks the second option, the checkbox should be checked
+                string optionIndex = "";
+                if (json.RootElement.TryGetProperty("optionIndex", out var oiProp))
+                    optionIndex = oiProp.GetString() ?? "";
+
+                EnqueueCommand("set_element_value", new Dictionary<string, string>
+                {
+                    ["index"] = index,
+                    ["value"] = value,
+                    ["controlType"] = controlType,
+                    ["optionIndex"] = optionIndex
+                });
+
+                // Refresh display after change
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(400);
+                    EnqueueCommand("get_display_elements");
+                });
+
+                await WriteJson(response, new { set = true });
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"EFBBridgeServer: Set value error: {ex.Message}");
+                await WriteJson(response, new { set = false, error = ex.Message });
+            }
+        }
+
+#if DEBUG
+        // --- Live bridge REPL — DEBUG BUILDS ONLY ---
+        //
+        // The HS787 MFD bridge (and PMDG EFB bridge) ship an eval_js command.
+        // These two endpoints expose it for restart-free iteration:
+        //
+        //   POST /mfd-eval         body: {"code":"document.querySelector('.x')&&1"}
+        //   GET  /mfd-eval-result  -> {"status":"ok","data":{"result":"…"}}
+        //
+        // Flow: POST a snippet (enqueued as an eval_js MFD command) -> the MFD
+        // bridge polls /commands/mfd, evals it, posts eval_result back -> GET
+        // /mfd-eval-result returns the latest. Although HttpListener binds
+        // 127.0.0.1, the responses carry Access-Control-Allow-Origin:* AND
+        // Access-Control-Allow-Private-Network:true, so a malicious web page the
+        // user merely visits could POST arbitrary JS here for execution inside
+        // the EFB. That is why this is DEBUG-gated and never shipped. NOTE: the
+        // MFD bridge only dequeues commands while a CDU page is visible.
+
+        private async Task HandleMfdEval(HttpListenerRequest request, HttpListenerResponse response)
+        {
+            if (request.ContentLength64 > MaxRequestBodyBytes)
+            {
+                response.StatusCode = 413;
+                await WriteJson(response, new { error = "Request too large" });
+                return;
+            }
+            using var reader = new StreamReader(request.InputStream, request.ContentEncoding);
+            string body = await reader.ReadToEndAsync();
+            try
+            {
+                var json = JsonDocument.Parse(body);
+                string code = json.RootElement.GetProperty("code").GetString() ?? "";
+                if (string.IsNullOrEmpty(code))
+                {
+                    response.StatusCode = 400;
+                    await WriteJson(response, new { error = "code required" });
+                    return;
+                }
+                EnqueueMfdCommand("eval_js", new Dictionary<string, string> { ["code"] = code });
+                await WriteJson(response, new { enqueued = true, bytes = code.Length });
+            }
+            catch (Exception ex)
+            {
+                response.StatusCode = 500;
+                await WriteJson(response, new { error = ex.Message });
+            }
+        }
+
+        private async Task HandleMfdEvalResult(HttpListenerResponse response)
+        {
+            response.ContentType = "application/json";
+            byte[] bytes = Encoding.UTF8.GetBytes(_lastMfdEvalResultJson);
+            response.ContentLength64 = bytes.Length;
+            await response.OutputStream.WriteAsync(bytes);
+            response.Close();
+        }
+
+        // --- Debug endpoints for external test harnesses ---
+        //
+        // DEBUG BUILDS ONLY. These let tools outside the MSFSBA process
+        // (e.g. curl scripts) drive the bridge directly:
+        //
+        //   POST /debug-enqueue   body: {"command":"dump_preferences","payload":{}}
+        //   GET  /debug-state-last?type=preferences_debug
+        //   GET  /debug-states
+        //
+        // The flow is: POST a command to enqueue it, wait briefly for the
+        // JS bridge to poll/execute and post back a state update, then GET
+        // the latest state for the expected response type.
+        //
+        // Not in Release builds — /debug-enqueue has no auth and accepts
+        // arbitrary bridge commands including eval_js.
+
+        private async Task HandleDebugEnqueue(HttpListenerRequest request, HttpListenerResponse response)
+        {
+            using var reader = new StreamReader(request.InputStream, request.ContentEncoding);
+            string body = await reader.ReadToEndAsync();
+            try
+            {
+                var json = JsonDocument.Parse(body);
+                string command = json.RootElement.GetProperty("command").GetString() ?? "";
+                if (string.IsNullOrEmpty(command))
+                {
+                    response.StatusCode = 400;
+                    await WriteJson(response, new { error = "command required" });
+                    return;
+                }
+
+                Dictionary<string, string>? payload = null;
+                if (json.RootElement.TryGetProperty("payload", out var payloadEl)
+                    && payloadEl.ValueKind == JsonValueKind.Object)
+                {
+                    payload = new Dictionary<string, string>();
+                    foreach (var prop in payloadEl.EnumerateObject())
+                    {
+                        payload[prop.Name] = prop.Value.ValueKind == JsonValueKind.String
+                            ? prop.Value.GetString() ?? ""
+                            : prop.Value.ToString();
+                    }
+                }
+
+                EnqueueCommand(command, payload);
+                await WriteJson(response, new { enqueued = true, command });
+            }
+            catch (Exception ex)
+            {
+                response.StatusCode = 500;
+                await WriteJson(response, new { error = ex.Message });
+            }
+        }
+
+        private async Task HandleDebugStateLast(HttpListenerRequest request, HttpListenerResponse response)
+        {
+            string type = request.QueryString["type"] ?? "";
+            if (string.IsNullOrEmpty(type))
+            {
+                response.StatusCode = 400;
+                await WriteJson(response, new { error = "type query parameter required" });
+                return;
+            }
+
+            if (_debugLastState.TryGetValue(type, out var record))
+            {
+                await WriteJson(response, new
+                {
+                    type = record.Type,
+                    data = record.Data,
+                    receivedAt = record.ReceivedAt.ToString("O")
+                });
+            }
+            else
+            {
+                response.StatusCode = 404;
+                await WriteJson(response, new { error = "no state recorded for type: " + type });
+            }
+        }
+
+        private async Task HandleDebugStates(HttpListenerResponse response)
+        {
+            var summary = new Dictionary<string, object>();
+            foreach (var kvp in _debugLastState)
+            {
+                summary[kvp.Key] = new
+                {
+                    receivedAt = kvp.Value.ReceivedAt.ToString("O"),
+                    dataKeys = kvp.Value.Data.Keys.ToArray()
+                };
+            }
+            await WriteJson(response, new { states = summary });
+        }
+#endif
 
         private static async Task WriteJson(HttpListenerResponse response, object data)
         {

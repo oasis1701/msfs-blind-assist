@@ -1,4 +1,5 @@
 using MSFSBlindAssist.Accessibility;
+using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation;
 using MSFSBlindAssist.Settings;
@@ -7,7 +8,12 @@ namespace MSFSBlindAssist.Services;
 
 /// <summary>
 /// Manages visual landing guidance using dual audio tones.
-/// Provides real-time guidance from intercept through touchdown using current and desired attitude tones.
+/// The DESIRED tone encodes the PID-commanded pitch (frequency, default 200–800 Hz over ±10°) and
+/// commanded bank (stereo pan over ±10°). The CURRENT tone always plays alongside it, mirroring
+/// the same mapping against the aircraft's *actual* pitch and bank, so frequency match
+/// (zero-beat) means correct pitch attitude / vertical speed and pan match means correct bank.
+/// Aircraft-specific tunables (approach AoA, Vref, rate caps, tone frequency range) come from
+/// <see cref="VisualGuidanceProfile"/>.
 /// </summary>
 public class VisualGuidanceManager : IDisposable
 {
@@ -21,10 +27,23 @@ public class VisualGuidanceManager : IDisposable
     private double magneticVariation = 0.0;
     private double thresholdElevationMSL = 0.0;
 
-    // Audio generators
-    private AudioToneGenerator? desiredAttitudeTone;  // Guidance tone
+    // Audio generators — both always run while guidance is active.
+    private AudioToneGenerator? desiredAttitudeTone;  // PID-commanded attitude
+    private AudioToneGenerator? currentAttitudeTone;  // Aircraft's actual attitude (follower; matched by ear)
     private HandFlyWaveType guidanceWaveType = HandFlyWaveType.Triangle;
     private double guidanceVolume = 0.05; // Default 5%
+    private HandFlyWaveType currentToneWaveType = HandFlyWaveType.Sine;
+    private double currentToneVolume = 0.05;
+    private bool hardPanTone = false;  // see VisualGuidanceHardPanTone setting
+    // Defer audible Start() until the first ProcessUpdate computes real pitch/bank — otherwise
+    // the user hears ~33 ms of fused 500 Hz center-pan tone that represents nothing. Both tones
+    // are instantiated in Initialize so disposal/lifecycle stays simple; this flag controls
+    // when WaveOut actually fires up.
+    private bool tonesNeedStart = false;
+
+    // Bank (degrees, standard convention) at which hard-pan mode snaps to full left / right.
+    // Below this magnitude the tone stays centered, avoiding twitchy flips around 0°.
+    private const double HARD_PAN_DEADBAND_DEG = 1.0;
 
     // Position tracking
     private double? cachedLatitude;
@@ -45,7 +64,6 @@ public class VisualGuidanceManager : IDisposable
     private double lastCalculatedAltitudeError = 0.0;  // Last calculated altitude error for hotkey announcement (positive = high, negative = low)
 
     // State tracking for derivative term and rate limiting (lateral)
-    private double? previousCrossTrackError = null;  // Used for integral anti-windup sign change detection
     private double previousDesiredBank = 0.0;
     private double? smoothedCrossTrackRate = null;  // Smoothed rate to prevent oscillation during handoff
     private Queue<(double xte, DateTime timestamp)> crossTrackHistory = new Queue<(double, DateTime)>();
@@ -69,6 +87,17 @@ public class VisualGuidanceManager : IDisposable
     private const int ANNOUNCEMENT_INTERVAL_MS = 1000;
     private const int EXTENDING_PROGRESS_INTERVAL_MS = 10000;  // 10 seconds
 
+    // Manual-query grace window. When the pilot fires a readout hotkey (F target FPM,
+    // P pitch, S speed, etc.) while VG is active, the per-second bank-guidance and
+    // centerline-deviation callouts — both AnnounceImmediate — would cut the readout
+    // off mid-sentence. NotifyManualQuery() sets this timestamp; the two chatty
+    // callouts skip while DateTime.Now is before it. Skipped callouts lose nothing:
+    // both always reflect CURRENT state, so the next un-suppressed one carries fresh
+    // data. One-shot announcements (phase changes, distance callouts) are NOT
+    // suppressed — they're rare and important enough to let through.
+    private DateTime routineAnnouncementsSuppressedUntil = DateTime.MinValue;
+    private const double MANUAL_QUERY_GRACE_SECONDS = 3.0;
+
     // Debouncing for behind threshold detection
     private DateTime lastBehindStateChange = DateTime.MinValue;
     private bool wasBehindLastCheck = false;
@@ -83,11 +112,13 @@ public class VisualGuidanceManager : IDisposable
     // Flare rate limiting constant
     private const double MAX_FLARE_PITCH_RATE = 1.5;        // Maximum pitch change rate during flare (deg/sec)
 
-    // Stabilization gate: Target 3000 ft AGL at 9 NM for terrain clearance
-    private const double STABILIZATION_GATE_NM = 9.0;     // Distance from threshold for stabilization gate
-    private const double STABILIZATION_GATE_AGL_FT = 3000.0;  // Target altitude at stabilization gate
-    // Standard ILS glideslope angle
-    private const double GLIDESLOPE_ANGLE_DEG = 3.0;   // Standard 3° glideslope angle
+    // ILS glideslope angle — usually 3°, but published per-runway (LCY 5.5°, Aspen 6.59°,
+    // Innsbruck 3.8°). Populated in Initialize() from runway.GlideslopeAngleDeg with a 3.0°
+    // fallback if the runway has no ILS or the navdata doesn't carry the angle. Used by the
+    // ideal-glidepath altitude, the natural-3°-descent-rate FPM target, the phase-capture
+    // deviation test, and the nominal-pitch baseline.
+    private const double DEFAULT_GLIDESLOPE_ANGLE_DEG = 3.0;
+    private double glideslopeAngleDeg = DEFAULT_GLIDESLOPE_ANGLE_DEG;
 
     // New vertical guidance constants
     private const double GLIDESLOPE_LOCK_DISTANCE_NM = 1.0;  // Distance at which to lock to steady 3° angle
@@ -100,8 +131,10 @@ public class VisualGuidanceManager : IDisposable
     private const double LATERAL_GAIN_TRACKING = 120.0;    // Cross-track error (NM) to bank for tracking (increased for faster convergence)
     private const double LATERAL_RATE_DAMPING = 12.0;    // Cross-track rate damping
     private const double LATERAL_HEADING_GAIN = 1.0;     // Track/heading error to bank for alignment (Boeing 747: 1.0-2.8)
-    private const double AIRSPEED_REFERENCE_KNOTS = 140.0;  // Reference speed for gain scaling
-    private const double MAX_BANK_RATE_DEG_PER_SEC = 3.0;   // Maximum bank command change rate (reduced from 5.0 to prevent oscillations)
+    // Aircraft-specific tunables — populated from IAircraftDefinition.GetVisualGuidanceProfile() in Initialize().
+    // Defaults below are the A320 numbers used historically (preserved when no profile is supplied).
+    private double airspeedReferenceKnots = 140.0;       // Reference Vref for sqrt(GS/Vref) lateral gain scaling
+    private double maxBankRateDegPerSec = 3.0;           // Cap on commanded bank change rate (deg/sec)
 
     // Arc mode guidance constants (replaces problematic P/H balance in CAPTURE mode)
     private const double ARC_MODE_ENTRY_NM = 1.5;           // Start arc capture at 1.5 NM (matches INTERCEPT_45 angle)
@@ -111,9 +144,45 @@ public class VisualGuidanceManager : IDisposable
     private const double ARC_RATE_DAMPING = 12.0;           // Damping to prevent overshoot if pilot overbanks
     private const double ARC_BANK_LIMIT = 15.0;             // Gentle bank limit for comfort during arc
 
-    // Vertical guidance constants
-    private const double TYPICAL_APPROACH_AOA = 6.0;     // Typical angle of attack for A320 approach configuration
-    private const double MAX_PITCH_RATE_DEG_PER_SEC = 2.5;  // Maximum pitch command change rate
+    // Vertical guidance — aircraft-specific (set from VisualGuidanceProfile in Initialize).
+    // typicalApproachAoaDeg is now only a FALLBACK used when measured AoA is unavailable or
+    // outside the sanity band. Live AoA from SimConnect (INCIDENCE ALPHA) is preferred — it
+    // inherently encodes weight + flap + speed and makes the nominal-pitch baseline converge
+    // on whatever the airplane is actually trimmed for.
+    private double typicalApproachAoaDeg = 6.0;
+    private double maxPitchRateDegPerSec = 2.5;          // Cap on commanded pitch change rate (deg/sec)
+
+    // Live angle of attack (degrees, right-handed: positive = nose pitched above relative
+    // wind). Updated each frame from VISUAL_GUIDANCE_AOA. Smoothed with an EMA to remove
+    // sim/sensor jitter (gust-driven AoA wiggle would otherwise modulate the desired-tone
+    // frequency around the true trimmed value).
+    private double? cachedAoaDeg;
+    private double? smoothedAoaDeg;
+    private const double AOA_SMOOTHING_FACTOR = 0.7;     // Same characteristic as FPM smoothing
+    // Sanity band on the measured AoA. Stabilized-approach AoA sits in ~3–8° band; flare
+    // briefly spikes to ~8–10°. Outside [-5°, 20°] we treat the reading as a sim glitch and
+    // fall back to typicalApproachAoaDeg. -5° lower bound covers nose-low cruise descent;
+    // 20° upper bound is well past stall AoA for any transport airframe.
+    private const double AOA_MIN_VALID_DEG = -5.0;
+    private const double AOA_MAX_VALID_DEG = 20.0;
+    // Glidepath/flare altitude calibration — see VisualGuidanceProfile for the full rationale.
+    // glideslopeAltitudeBiasFt is ADDED to the ideal distance×tan(3°) glidepath so VG's
+    // "on glideslope" matches the real ILS (which crosses the threshold at the ~50 ft TCH).
+    // flareAltitudeBiasFt is SUBTRACTED from the measured datum altitude before the flare /
+    // touchdown thresholds are tested so they fire at true main-gear height. The two are
+    // applied in DIFFERENT code paths (glideslope-error vs phase-detection) and are NOT a
+    // single shared constant — they were measured separately (on the beam vs near the
+    // ground, different attitudes), so do not "reconcile" them into one value.
+    private double glideslopeAltitudeBiasFt = 60.0;      // A320 estimate; 777 measured = 80
+    private double flareAltitudeBiasFt = 12.0;           // A320 estimate; 777 measured = 30
+    // True main-gear height (ft) at which the flare phase fires. Per-aircraft: A320 default
+    // 30 (FCTM), PMDG 777 = 40 (matches the autopilot's autoland flare initiation).
+    private double flareTriggerWheelHeightFt = 30.0;
+    // Target pitch commanded during the Flare phase. A320 default 6° per FCTM, 777 lower
+    // (~4.5° per Boeing FCTM, "2–3° pitch increase from approach attitude" — 777 approach
+    // pitch is ~+1.5°). FLARE_TARGET_PITCH_DEG below is now a legacy default; the profile
+    // field is authoritative.
+    private double flareTargetPitchDeg = 6.0;
     private const double CROSS_TRACK_RATE_SMOOTHING_FACTOR = 0.85;  // Exponential smoothing for cross-track rate (0.85 = strong filtering to prevent noise spikes)
 
     // FPM-based vertical guidance constants
@@ -155,31 +224,99 @@ public class VisualGuidanceManager : IDisposable
     }
 
     /// <summary>
-    /// Toggles visual guidance mode on/off
+    /// Toggles visual guidance mode on/off. On activation, flips isActive=true and fires the
+    /// event so MainForm's handler can validate state + call <see cref="Initialize"/>. On
+    /// deactivation, delegates fully to <see cref="Stop"/> which owns the entire teardown
+    /// sequence (tones, state, event, announcement) — keeping the active→inactive transition
+    /// identical regardless of trigger (hotkey, on-ground auto-deactivate, HandFly disable).
     /// </summary>
     public void Toggle()
     {
-        isActive = !isActive;
-        VisualGuidanceActiveChanged?.Invoke(this, isActive);
-
-        if (!isActive)
+        if (isActive)
         {
-            Stop();
+            Stop();  // performs the flip, event, announce in one place
+        }
+        else
+        {
+            isActive = true;
+            VisualGuidanceActiveChanged?.Invoke(this, true);
         }
     }
 
     /// <summary>
-    /// Initializes visual guidance with runway and preferences
+    /// Called by MainForm when the pilot fires a manual readout hotkey (F target FPM, P pitch,
+    /// S airspeed, etc.) while VG is active. Opens a short grace window during which the
+    /// per-second bank-guidance and centerline-deviation callouts are suppressed, so the
+    /// readout the pilot asked for plays to completion instead of being cut off. No-op when
+    /// VG is inactive.
+    /// </summary>
+    public void NotifyManualQuery()
+    {
+        if (!isActive) return;
+        routineAnnouncementsSuppressedUntil = DateTime.Now.AddSeconds(MANUAL_QUERY_GRACE_SECONDS);
+    }
+
+    /// <summary>True while a manual-query grace window is open (see <see cref="NotifyManualQuery"/>).</summary>
+    private bool RoutineAnnouncementsSuppressed => DateTime.Now < routineAnnouncementsSuppressedUntil;
+
+    /// <summary>
+    /// Initializes visual guidance with runway, audio preferences, and aircraft-specific tunables.
+    /// Two tones always play: the desired tone encodes PID-commanded attitude (frequency = pitch
+    /// command, pan = bank command); the current tone mirrors the same mapping against the
+    /// aircraft's actual attitude. The pilot matches pans (lateral) and zero-beats frequencies
+    /// (vertical) by ear.
     /// </summary>
     public void Initialize(Runway destinationRunway, Airport destinationAirport,
-                          HandFlyWaveType guidanceToneWaveform, double toneVolume)
+                          HandFlyWaveType guidanceToneWaveform, double toneVolume,
+                          HandFlyWaveType currentToneWaveform, double currentToneVol,
+                          bool hardPan,
+                          VisualGuidanceProfile profile)
     {
+        // Defensive: if Initialize is called twice without an intervening Stop
+        // (Toggle's flow guarantees Stop runs first today, but a future caller
+        // might not), dispose any existing tones so we don't leak audio handles.
+        // Do NOT call Stop() — Stop announces "Visual guidance off", which would
+        // be followed immediately by Initialize's "Visual guidance active"
+        // announcement, and that confusing sequence is exactly what defensive
+        // re-init should avoid. Stop also nulls isActive / runway / airport
+        // which are about to be re-set below.
+        DisposeTones();
+
         runway = destinationRunway;
         airport = destinationAirport;
         guidanceWaveType = guidanceToneWaveform;
         guidanceVolume = toneVolume;
+        currentToneWaveType = currentToneWaveform;
+        currentToneVolume = currentToneVol;
+        hardPanTone = hardPan;
         magneticVariation = destinationAirport.MagVar;
-        thresholdElevationMSL = destinationAirport.Altitude;
+        // Prefer the runway end's own elevation (runway_end.altitude) over the airport's
+        // published field elevation — matters at airports with sloped runways or different
+        // threshold elevations between ends (KASE, LSZS, KSEA 16L/34R). Fall back to airport
+        // altitude when the runway value is unknown (older DB builds, soft runways, etc.).
+        thresholdElevationMSL = destinationRunway.ThresholdElevation > 0
+            ? destinationRunway.ThresholdElevation
+            : destinationAirport.Altitude;
+        // Use the published per-runway glideslope angle (LCY 5.5°, Aspen 6.59°, Innsbruck
+        // 3.8°, ...) when navdata has it. Fall back to 3° for runways without an ILS row
+        // or DB builds that don't populate ils.gs_pitch. Sanity-clamp to [2°, 8°] to reject
+        // corrupt navdata (a 0.1° or 30° value would yield nonsense guidance); real-world
+        // ILS angles fit comfortably inside this band — Aspen at 6.59° is the steepest
+        // certified Cat I in the world.
+        double rawGsAngle = destinationRunway.GlideslopeAngleDeg;
+        glideslopeAngleDeg = (rawGsAngle >= 2.0 && rawGsAngle <= 8.0)
+            ? rawGsAngle
+            : DEFAULT_GLIDESLOPE_ANGLE_DEG;
+
+        // Apply aircraft-specific tunables (preserves A320 defaults if profile is the base instance).
+        typicalApproachAoaDeg = profile.TypicalApproachAoaDeg;
+        airspeedReferenceKnots = profile.ReferenceVrefKnots;
+        maxPitchRateDegPerSec = profile.MaxPitchRateDegPerSec;
+        maxBankRateDegPerSec = profile.MaxBankRateDegPerSec;
+        glideslopeAltitudeBiasFt = profile.GlideslopeAltitudeBiasFt;
+        flareAltitudeBiasFt = profile.FlareAltitudeBiasFt;
+        flareTriggerWheelHeightFt = profile.FlareTriggerWheelHeightFt;
+        flareTargetPitchDeg = profile.FlareTargetPitchDeg;
 
         // Reset state
         currentPhase = GuidancePhase.NotStarted;
@@ -188,6 +325,7 @@ public class VisualGuidanceManager : IDisposable
         lastAnnouncedDistance = double.MaxValue;
         lastExtendingProgressAnnouncement = DateTime.MinValue;
         lastAnnouncedBankError = null;
+        routineAnnouncementsSuppressedUntil = DateTime.MinValue;
         cachedLatitude = null;
         cachedLongitude = null;
         cachedAGL = null;
@@ -196,9 +334,10 @@ public class VisualGuidanceManager : IDisposable
         cachedBank = null;
         cachedHeading = null;
         cachedGroundTrack = null;
+        cachedAoaDeg = null;
+        smoothedAoaDeg = null;
 
         // Reset derivative term tracking (lateral)
-        previousCrossTrackError = null;
         previousDesiredBank = 0.0;
         smoothedCrossTrackRate = null;
         crossTrackHistory.Clear();  // Clear multi-sample history buffer
@@ -212,18 +351,30 @@ public class VisualGuidanceManager : IDisposable
         // Reset flare state
         lastFlarePitch = 3.0;
 
-        // Start desired attitude tone
+        // Instantiate both generators and apply the aircraft's pitch→frequency mapping. We do
+        // NOT Start() them yet — the first ProcessUpdate call kicks off audio output once real
+        // pitch/bank values exist, avoiding ~33 ms of meaningless fused-tone playback at the
+        // default center frequency / center pan. Configure() must run before Start(), so we
+        // call it here even though Start is deferred.
         try
         {
             desiredAttitudeTone = new AudioToneGenerator();
-            desiredAttitudeTone.Start(guidanceWaveType, guidanceVolume);
-            System.Diagnostics.Debug.WriteLine("[VisualGuidanceManager] Guidance tone started");
+            currentAttitudeTone = new AudioToneGenerator();
+            desiredAttitudeTone.Configure(profile.ToneMinFrequencyHz, profile.ToneMaxFrequencyHz,
+                                          profile.TonePitchRangeDeg, profile.ToneBankRangeDeg);
+            currentAttitudeTone.Configure(profile.ToneMinFrequencyHz, profile.ToneMaxFrequencyHz,
+                                          profile.TonePitchRangeDeg, profile.ToneBankRangeDeg);
+            tonesNeedStart = true;
+            System.Diagnostics.Debug.WriteLine($"[VisualGuidanceManager] Tones instantiated ({profile.ToneMinFrequencyHz}–{profile.ToneMaxFrequencyHz} Hz over ±{profile.TonePitchRangeDeg}° pitch, pan ±{profile.ToneBankRangeDeg}° bank); deferring Start until first ProcessUpdate");
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[VisualGuidanceManager] Failed to start guidance tone: {ex.Message}");
+            System.Diagnostics.Debug.WriteLine($"[VisualGuidanceManager] Failed to instantiate tones: {ex.Message}");
             desiredAttitudeTone?.Dispose();
             desiredAttitudeTone = null;
+            currentAttitudeTone?.Dispose();
+            currentAttitudeTone = null;
+            tonesNeedStart = false;
         }
 
         announcer.AnnounceImmediate($"Visual guidance active, runway {runway.RunwayID}");
@@ -231,9 +382,45 @@ public class VisualGuidanceManager : IDisposable
     }
 
     /// <summary>
-    /// Stops visual guidance
+    /// Stops visual guidance: tears down both tones, clears runway state, fires the
+    /// <see cref="VisualGuidanceActiveChanged"/> event with <c>false</c>, and (by default)
+    /// announces "off". Idempotent — calling when already inactive is a no-op (no spurious
+    /// event, no double announce). Always fires the event when a real transition happens, so
+    /// every caller — hotkey toggle, on-ground auto-deactivate, HandFly disable, validation
+    /// failure — gets MainForm's monitoring cleanup automatically.
+    ///
+    /// Pass <paramref name="announce"/> = false for activation-failure paths (validation errors
+    /// in the event handler). Toggle has already flipped isActive=true but no guidance ever
+    /// actually ran, so the misleading "Visual guidance off" callout is suppressed; the event
+    /// still fires so MainForm can clean up any monitoring it queued.
+    ///
+    /// Internal callers that need silent tone-only teardown (e.g. the defensive re-init path
+    /// in <see cref="Initialize"/>) should use <see cref="DisposeTones"/> directly.
     /// </summary>
-    public void Stop()
+    public void Stop(bool announce = true)
+    {
+        if (!isActive)
+            return;  // idempotent — no double-event, no double-announce
+
+        DisposeTones();
+
+        runway = null;
+        airport = null;
+        isActive = false;
+
+        VisualGuidanceActiveChanged?.Invoke(this, false);
+        if (announce)
+            announcer.Announce("Visual guidance off");
+        System.Diagnostics.Debug.WriteLine($"[VisualGuidanceManager] Stopped (announce={announce})");
+    }
+
+    /// <summary>
+    /// Silently dispose both tones and clear the deferred-Start flag. Used by <see cref="Stop"/>
+    /// (which adds the public-facing announcement + lifecycle bits) and by the defensive path
+    /// in <see cref="Initialize"/> (which should NOT announce because the next line announces
+    /// "Visual guidance active").
+    /// </summary>
+    private void DisposeTones()
     {
         if (desiredAttitudeTone != null)
         {
@@ -241,13 +428,105 @@ public class VisualGuidanceManager : IDisposable
             desiredAttitudeTone.Dispose();
             desiredAttitudeTone = null;
         }
+        if (currentAttitudeTone != null)
+        {
+            currentAttitudeTone.Stop();
+            currentAttitudeTone.Dispose();
+            currentAttitudeTone = null;
+        }
+        tonesNeedStart = false;  // re-armed by next Initialize
+    }
 
-        runway = null;
-        airport = null;
-        isActive = false;
+    /// <summary>
+    /// First-call audible-Start for both tones. Honors the "follower starts only if reference
+    /// started" rule from Initialize. After this returns, both tones are either playing (and
+    /// ready to be modulated by UpdatePitch/UpdateBank in the same frame) or null (init failure).
+    /// </summary>
+    private void StartTonesIfNeeded()
+    {
+        if (!tonesNeedStart) return;
+        tonesNeedStart = false;
 
-        announcer.Announce("Visual guidance off");
-        System.Diagnostics.Debug.WriteLine("[VisualGuidanceManager] Stopped");
+        // AudioToneGenerator.Start catches its own exceptions and leaves the instance in a
+        // no-op state (isPlaying=false, internal providers nulled by Cleanup). It does NOT
+        // throw, so the outer try/catch here is defensive against future changes only —
+        // the meaningful signal is the IsPlaying property after Start returns.
+        try
+        {
+            desiredAttitudeTone?.Start(guidanceWaveType, guidanceVolume);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[VisualGuidanceManager] Desired-attitude tone Start threw (unexpected): {ex.Message}");
+        }
+
+        // If the desired tone failed to actually start (audio device error, driver issue),
+        // dispose it AND skip starting the follower — a current-tone-only setup is useless
+        // (nothing to match against) and would just play a constant 500 Hz background drone.
+        if (desiredAttitudeTone == null || !desiredAttitudeTone.IsPlaying)
+        {
+            System.Diagnostics.Debug.WriteLine("[VisualGuidanceManager] Desired-attitude tone did not start (or failed); tearing both down");
+            desiredAttitudeTone?.Dispose();
+            desiredAttitudeTone = null;
+            currentAttitudeTone?.Dispose();
+            currentAttitudeTone = null;
+            return;
+        }
+
+        System.Diagnostics.Debug.WriteLine("[VisualGuidanceManager] Desired-attitude tone started");
+
+        if (currentAttitudeTone != null)
+        {
+            try
+            {
+                currentAttitudeTone.Start(currentToneWaveType, currentToneVolume);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[VisualGuidanceManager] Current-attitude tone Start threw (unexpected): {ex.Message}");
+            }
+
+            if (currentAttitudeTone.IsPlaying)
+            {
+                System.Diagnostics.Debug.WriteLine("[VisualGuidanceManager] Current-attitude tone started");
+            }
+            else
+            {
+                // Follower failed to start — desired tone still plays alone, which is at least
+                // useful (pilot has the PID commands; just no current-attitude reference).
+                System.Diagnostics.Debug.WriteLine("[VisualGuidanceManager] Current-attitude tone did not start; desired tone running alone");
+                currentAttitudeTone.Dispose();
+                currentAttitudeTone = null;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Converts a SimConnect bank reading (positive = left wing down) into the standard
+    /// right-positive convention <see cref="AudioToneGenerator.UpdateBank"/> expects. Centralizes
+    /// the sign flip so every consumer of <see cref="cachedBank"/> can use the same name and
+    /// reviewers immediately see when the conversion is missing.
+    /// </summary>
+    private static double StandardBank(double simConnectBank) => -simConnectBank;
+
+    /// <summary>
+    /// Applies a bank command to a tone, honoring the hard-pan setting. In hard-pan mode the
+    /// pan snaps to ±1.0 once bank magnitude exceeds <see cref="HARD_PAN_DEADBAND_DEG"/> — useful
+    /// for stereo-speaker setups where partial pan is hard to distinguish from centred.
+    /// </summary>
+    private void ApplyBank(AudioToneGenerator tone, double bankDegreesStandard)
+    {
+        if (hardPanTone)
+        {
+            float pan = Math.Abs(bankDegreesStandard) < HARD_PAN_DEADBAND_DEG
+                ? 0f
+                : (bankDegreesStandard > 0 ? 1f : -1f);
+            tone.SetPan(pan);
+        }
+        else
+        {
+            tone.UpdateBank(bankDegreesStandard);
+        }
     }
 
     /// <summary>
@@ -267,6 +546,32 @@ public class VisualGuidanceManager : IDisposable
         currentPitch = pitchDegrees;  // Also update for dynamic pitch calculation
     }
     public void UpdateBank(double bankDegrees) => cachedBank = bankDegrees;
+
+    /// <summary>
+    /// Updates the cached angle of attack (degrees) from SimConnect's INCIDENCE ALPHA. Used
+    /// in <see cref="CalculateDesiredPitch"/> to bias the nominal pitch baseline. Smoothing
+    /// and validity gating are applied at consumption time (not here) so the raw cache stays
+    /// honest about whether a sample exists.
+    /// </summary>
+    public void UpdateAoA(double aoaDegrees) => cachedAoaDeg = aoaDegrees;
+
+    /// <summary>
+    /// Optional live override for the lateral airspeed-compensation Vref. Aircraft models
+    /// that publish their pilot-entered landing Vref (e.g., PMDG 777's FMC_LandingVREF in
+    /// the CDA broadcast) can push it here to replace the profile-default reference. Values
+    /// ≤0 are ignored — the profile default is preserved when no FMC entry exists. Used by
+    /// the lateral PID's sqrt(GS / Vref) scaler; the effect on bank command is second-order
+    /// (a ±10 kt Vref error shifts speedFactor by ~3%), so this is a polish improvement
+    /// rather than a correctness fix.
+    /// </summary>
+    public void UpdateReferenceVref(double knots)
+    {
+        if (knots > 0)
+        {
+            airspeedReferenceKnots = knots;
+            System.Diagnostics.Debug.WriteLine($"[VisualGuidanceManager] ReferenceVref updated to {knots:F0} kt (live override)");
+        }
+    }
     public void UpdateHeading(double headingDegrees) => cachedHeading = headingDegrees;
     public void UpdateGroundTrack(double groundTrackDegrees) => cachedGroundTrack = groundTrackDegrees;
 
@@ -309,10 +614,32 @@ public class VisualGuidanceManager : IDisposable
             // Calculate guidance
             double desiredBank = CalculateDesiredBank(lat, lon, heading);
             double desiredPitch = CalculateDesiredPitch(lat, lon, agl, altMSL);
+            double currentBankStandard = StandardBank(cachedBank ?? 0.0);
 
-            // Update guidance tone
-            desiredAttitudeTone.UpdatePitch(desiredPitch);
-            desiredAttitudeTone.UpdateBank(desiredBank);
+            // First-frame deferred Start — by the time WaveOut's 150 ms buffer fills, the
+            // phase-continuous oscillator's portamento has reached the target frequency
+            // (~0.23 ms at 44.1 kHz), so the very first audible note already reflects the
+            // commanded / actual attitude. No fused-tone glitch at session start.
+            // NOTE: StartTonesIfNeeded can null out desiredAttitudeTone if WaveOut.Init throws
+            // (bad audio device, driver issue). Re-check both tones after this point — the
+            // early-out at the top of ProcessUpdate only proves they were non-null on entry.
+            StartTonesIfNeeded();
+
+            // Update desired (PID-commanded) attitude tone
+            if (desiredAttitudeTone != null)
+            {
+                desiredAttitudeTone.UpdatePitch(desiredPitch);
+                ApplyBank(desiredAttitudeTone, desiredBank);
+            }
+
+            // Update current (actual) attitude tone — same Hz / pan mappings, so frequency match
+            // ⇒ correct pitch attitude (and thus correct VS for the glideslope), pan match ⇒
+            // correct bank. Pilot zero-beats the two by ear.
+            if (currentAttitudeTone != null)
+            {
+                currentAttitudeTone.UpdatePitch(currentPitch);
+                ApplyBank(currentAttitudeTone, currentBankStandard);
+            }
 
             // Announce commanded bank angle
             AnnounceBankGuidance(desiredBank);
@@ -343,14 +670,25 @@ public class VisualGuidanceManager : IDisposable
         // SimConnect AGL sensor can be stale/inaccurate when on ground
         double calculatedAGL = altMSL - thresholdElevationMSL;
 
+        // calculatedAGL is the SimConnect reference-datum height; the main gear sits
+        // flareAltitudeBiasFt below it in the flare attitude. The touchdown (5 ft) and
+        // flare (30 ft) thresholds are true main-gear heights, so test them against the
+        // corrected wheel height — otherwise the flare cue fires ~one bias too late and,
+        // on a widebody, the datum never gets within 5 ft of the runway so the touchdown
+        // phase would never trigger via altitude at all. Coarser gates further below
+        // (e.g. the 500 ft "behind runway" check) keep using raw calculatedAGL — a ~20 ft
+        // bias is irrelevant there.
+        double wheelHeightAGL = calculatedAGL - flareAltitudeBiasFt;
+
         // Diagnostic logging to help identify sensor issues
         System.Diagnostics.Debug.WriteLine(
-            $"[VisualGuidance] AGL: SimConnect={agl:F1}ft, Calculated={calculatedAGL:F1}ft, Diff={Math.Abs(agl - calculatedAGL):F1}ft");
+            $"[VisualGuidance] AGL: SimConnect={agl:F1}ft, Calculated={calculatedAGL:F1}ft, " +
+            $"WheelHeight={wheelHeightAGL:F1}ft, Diff={Math.Abs(agl - calculatedAGL):F1}ft");
 
         GuidancePhase previousPhase = currentPhase;
 
         // Check for touchdown first
-        if (calculatedAGL <= TOUCHDOWN_ALTITUDE_FT)
+        if (wheelHeightAGL <= TOUCHDOWN_ALTITUDE_FT)
         {
             currentPhase = GuidancePhase.Touchdown;
             if (previousPhase != currentPhase)
@@ -361,8 +699,9 @@ public class VisualGuidanceManager : IDisposable
             return;
         }
 
-        // Check for flare
-        if (calculatedAGL <= FLARE_ALTITUDE_FT)
+        // Check for flare. Trigger height is per-aircraft (777 = 40 to match autopilot
+        // autoland; A320 = 30 from FCTM). FLARE_ALTITUDE_FT is now legacy / a sanity fallback.
+        if (wheelHeightAGL <= flareTriggerWheelHeightFt)
         {
             currentPhase = GuidancePhase.Flare;
             if (previousPhase != currentPhase)
@@ -412,12 +751,18 @@ public class VisualGuidanceManager : IDisposable
             return;
         }
 
-        // On centerline - check glideslope
+        // On centerline - check glideslope.
+        // CalculateGlideslopeDeviation measures against a bare path crossing the threshold at
+        // 0 ft; subtract glideslopeAltitudeBiasFt so this phase-capture test uses the SAME
+        // TCH-corrected reference as the FPM vertical guidance (idealAltitudeAGL above).
+        // Without this the "On vertical profile" capture would be offset by ~one TCH from the
+        // glideslope the tone actually flies — announcing "on profile" while ~80 ft low.
         double glideslopeDeviation = NavigationCalculator.CalculateGlideslopeDeviation(
             altMSL,                                      // Aircraft altitude MSL
             distance,                                     // Distance from threshold in NM
-            GLIDESLOPE_ANGLE_DEG,                        // 3-degree glideslope
-            thresholdElevationMSL);                      // Threshold elevation MSL
+            glideslopeAngleDeg,                          // per-runway glideslope (3° default)
+            thresholdElevationMSL)                       // Threshold elevation MSL
+            - glideslopeAltitudeBiasFt;
 
         if (Math.Abs(glideslopeDeviation) < GLIDESLOPE_CAPTURE_FT)
         {
@@ -503,9 +848,6 @@ public class VisualGuidanceManager : IDisposable
                 }
             }
 
-            // Update tracking state for integral anti-windup logic (sign change detection)
-            previousCrossTrackError = signedCrossTrackNM;
-
             // Ground track vs heading selection based on altitude
             // High altitude (>100 ft AGL): Use ground track to maintain centerline (allows crab in wind)
             // Low altitude (≤100 ft AGL): Use heading to align nose with runway (decrab for landing)
@@ -522,7 +864,7 @@ public class VisualGuidanceManager : IDisposable
 
             // Airspeed compensation scaling
             // Higher speeds need stronger corrections (compensates for larger turn radius)
-            double speedFactor = Math.Sqrt(Math.Max(currentGroundSpeedKnots, 80.0) / AIRSPEED_REFERENCE_KNOTS);
+            double speedFactor = Math.Sqrt(Math.Max(currentGroundSpeedKnots, 80.0) / airspeedReferenceKnots);
 
             // **TARGET HEADING INTERCEPT LOGIC**
             // Phase-based approach matching real autopilot behavior
@@ -589,7 +931,7 @@ public class VisualGuidanceManager : IDisposable
                 double rawDesiredBank = headingError * LATERAL_HEADING_GAIN * speedFactor;
 
                 // Apply bank rate limiting
-                double maxBankChange = MAX_BANK_RATE_DEG_PER_SEC * 1.0;
+                double maxBankChange = maxBankRateDegPerSec * 1.0;
                 double bankChange = rawDesiredBank - previousDesiredBank;
                 if (Math.Abs(bankChange) > maxBankChange)
                 {
@@ -631,7 +973,7 @@ public class VisualGuidanceManager : IDisposable
                 double rawDesiredBank = proportionalTerm + derivativeTerm + headingTerm;
 
                 // Apply bank rate limiting
-                double maxBankChange = MAX_BANK_RATE_DEG_PER_SEC * 1.0;
+                double maxBankChange = maxBankRateDegPerSec * 1.0;
                 double bankChange = rawDesiredBank - previousDesiredBank;
                 if (Math.Abs(bankChange) > maxBankChange)
                 {
@@ -695,7 +1037,7 @@ public class VisualGuidanceManager : IDisposable
         double desiredBank = Math.Clamp(baseBank, -25.0, 25.0);
 
         // Apply bank rate limiting to prevent sudden changes
-        double maxBankChange = MAX_BANK_RATE_DEG_PER_SEC * 1.0;  // 1 second update rate
+        double maxBankChange = maxBankRateDegPerSec * 1.0;  // 1 second update rate
         double bankChange = desiredBank - previousDesiredBank;
         if (Math.Abs(bankChange) > maxBankChange)
         {
@@ -721,7 +1063,7 @@ public class VisualGuidanceManager : IDisposable
         if (currentPhase == GuidancePhase.Flare)
         {
             // Simplified flare: Command constant +6° pitch
-            double targetPitch = FLARE_TARGET_PITCH_DEG;
+            double targetPitch = flareTargetPitchDeg;
 
             // Apply rate limiting for smooth transition from approach to flare
             double maxPitchChange = MAX_FLARE_PITCH_RATE * 1.0;  // 1 second update rate
@@ -749,11 +1091,17 @@ public class VisualGuidanceManager : IDisposable
             // Get current AGL relative to threshold
             double currentAGL = altMSL - thresholdElevationMSL;
 
-            // Calculate ideal altitude on 3° glideslope from threshold
-            // idealAltitude = distanceToThreshold × tan(3°) + thresholdElevation
+            // Calculate ideal altitude on 3° glideslope.
+            // A bare distance×tan(3°) path crosses the threshold at 0 ft — but a real ILS
+            // glideslope crosses it at the ~50 ft reference datum height (TCH), and VG's
+            // altitude is the SimConnect reference datum, which sits above the GS antenna.
+            // glideslopeAltitudeBiasFt (per-aircraft, see VisualGuidanceProfile) folds both
+            // terms in, so VG's "on glideslope" coincides with the real ILS path the
+            // autopilot flies — instead of a path one TCH too low, which previously biased
+            // the commanded vertical speed into commanding excess descent.
             double distanceFt = distanceToThresholdNM * 6076.12;
-            double glideslopeAngleRad = GLIDESLOPE_ANGLE_DEG * Math.PI / 180.0;
-            double idealAltitudeAGL = distanceFt * Math.Tan(glideslopeAngleRad);
+            double glideslopeAngleRad = glideslopeAngleDeg * Math.PI / 180.0;
+            double idealAltitudeAGL = distanceFt * Math.Tan(glideslopeAngleRad) + glideslopeAltitudeBiasFt;
 
             // Calculate altitude error (positive = too high, negative = too low)
             double altitudeError = currentAGL - idealAltitudeAGL;
@@ -795,8 +1143,14 @@ public class VisualGuidanceManager : IDisposable
                 double correctionRateFPM = -altitudeError * GLIDESLOPE_GAIN;
                 targetFPM = natural3DegDescentRateFPM + correctionRateFPM;
 
-                // Apply safety limits (never command climb, limit max descent)
-                targetFPM = Math.Clamp(targetFPM, MAX_DESCENT_RATE_FPM, 0.0);
+                // Apply safety limits (never command climb, limit max descent). The clamp is
+                // dynamic: -1500 fpm is the typical-3°-approach safety ceiling, but at steep
+                // approaches (Aspen 6.59°, London City 5.5°) the natural rate can approach or
+                // exceed it. Allow up to 1.3× the natural rate (whichever is more negative)
+                // so the controller has headroom for catch-up corrections without clipping
+                // the legitimate per-runway descent profile.
+                double effectiveMaxDescent = Math.Min(MAX_DESCENT_RATE_FPM, natural3DegDescentRateFPM * 1.3);
+                targetFPM = Math.Clamp(targetFPM, effectiveMaxDescent, 0.0);
 
                 System.Diagnostics.Debug.WriteLine(
                     $"[VisualGuidance] CORRECTION MODE: AltErr={altitudeError:F0}ft, " +
@@ -827,19 +1181,62 @@ public class VisualGuidanceManager : IDisposable
             previousGlideslopeDeviation = fpmError;  // Reusing field for FPM error history
             previousGlideslopeTimestamp = DateTime.Now;
 
-            // Calculate nominal pitch for descent
-            double nominalPitch = -GLIDESLOPE_ANGLE_DEG + TYPICAL_APPROACH_AOA;  // ≈ +3°
+            // Calculate nominal pitch for descent.
+            // Prefer LIVE angle of attack (SimConnect INCIDENCE ALPHA) over the static profile
+            // estimate: measured AoA inherently encodes weight + flap + speed, so the nominal
+            // converges on whatever the airplane is actually trimmed for. Fall back to the
+            // profile value when (a) we haven't received an AoA sample yet, or (b) the reading
+            // is outside the sanity band (sim glitches, on-ground oddities).
+            // Smooth the AoA with an EMA to suppress gust-driven jitter that would otherwise
+            // modulate the desired-tone frequency around the true trimmed value.
+            double effectiveAoaDeg;
+            if (cachedAoaDeg.HasValue &&
+                cachedAoaDeg.Value >= AOA_MIN_VALID_DEG &&
+                cachedAoaDeg.Value <= AOA_MAX_VALID_DEG)
+            {
+                if (smoothedAoaDeg.HasValue)
+                {
+                    smoothedAoaDeg = AOA_SMOOTHING_FACTOR * smoothedAoaDeg.Value +
+                                     (1.0 - AOA_SMOOTHING_FACTOR) * cachedAoaDeg.Value;
+                }
+                else
+                {
+                    smoothedAoaDeg = cachedAoaDeg.Value;
+                }
+                effectiveAoaDeg = smoothedAoaDeg.Value;
+            }
+            else
+            {
+                // No valid measurement — use the per-aircraft estimate. Do NOT update
+                // smoothedAoaDeg; we want it to resume from the last good value when
+                // measurements come back.
+                effectiveAoaDeg = typicalApproachAoaDeg;
+            }
+            double nominalPitch = -glideslopeAngleDeg + effectiveAoaDeg;  // A320 default ≈ +3°; 777 ≈ +1.5°; LCY steep ≈ +0.5°
 
-            // PD controller on FPM error:
-            // Proportional: Correct based on FPM error
-            // Derivative: Dampen based on rate of FPM error change
-            double proportionalTerm = -fpmError * FPM_P_GAIN;
-            double derivativeTerm = -fpmErrorRate * FPM_D_GAIN;
+            // PD controller on FPM error.
+            // Sign convention (verified): fpmError = targetFPM − actualFPM. Negative fpmError
+            // means actualFPM is more positive than target — the airplane is descending less
+            // than the target rate — so we need to descend MORE, which (with autothrust holding
+            // airspeed) means LESS pitch, i.e. a NEGATIVE correction. So proportionalTerm has
+            // the SAME sign as fpmError: positive coefficient on fpmError. Same logic for the
+            // derivative term: if fpmError is becoming more negative (we're falling further
+            // behind on descent), the rate is negative, and we want the correction to push
+            // pitch further negative — positive coefficient on the rate.
+            //
+            // The previous implementation had `-fpmError * gain` and `-fpmErrorRate * gain`,
+            // which produced wrong-direction guidance: when the airplane was HIGH on glideslope
+            // VG commanded MORE pitch (less descent — staying high). With autopilot active
+            // fpmError stays near zero and the wrong-direction correction was negligible, so
+            // the bug never manifested in autopilot tests; in manual flying it would steer the
+            // pilot away from the glideslope.
+            double proportionalTerm = fpmError * FPM_P_GAIN;
+            double derivativeTerm = fpmErrorRate * FPM_D_GAIN;
 
             double rawDesiredPitch = nominalPitch + proportionalTerm + derivativeTerm;
 
             // Pitch rate limiting - prevent sudden tone frequency jumps
-            double maxPitchChange = MAX_PITCH_RATE_DEG_PER_SEC * 1.0;  // 1 second update rate
+            double maxPitchChange = maxPitchRateDegPerSec * 1.0;  // 1 second update rate
             double pitchChange = rawDesiredPitch - previousDesiredPitch;
             if (Math.Abs(pitchChange) > maxPitchChange)
             {
@@ -1020,15 +1417,23 @@ public class VisualGuidanceManager : IDisposable
     /// </summary>
     private void AnnounceBankGuidance(double desiredBankDegrees)
     {
+        // Skip during a manual-query grace window so the pilot's readout isn't cut off.
+        // lastAnnouncedBankError is intentionally NOT updated here — once the window
+        // closes, the next call compares current error against the pre-window value
+        // and announces immediately if it drifted, so the pilot gets fresh data right
+        // after their query finishes.
+        if (RoutineAnnouncementsSuppressed)
+            return;
+
         string announcement;
         int roundedError;
 
         // If actual bank angle is available, use error-based announcements
         if (cachedBank.HasValue)
         {
-            // Calculate bank error: positive means need to bank right, negative means need to bank left
-            // Note: cachedBank is in SimConnect convention (pos=left), so we add to negate it to standard convention
-            double bankError = desiredBankDegrees + cachedBank.Value;
+            // Bank error: positive ⇒ need to roll right, negative ⇒ need to roll left.
+            // Both operands now in the same (right-positive standard) convention via StandardBank().
+            double bankError = desiredBankDegrees - StandardBank(cachedBank.Value);
             roundedError = (int)Math.Round(bankError);
 
             // Round commanded bank to check if on correct path
@@ -1092,6 +1497,10 @@ public class VisualGuidanceManager : IDisposable
     private void AnnounceCenterlineDeviation(double lat, double lon)
     {
         if (runway == null) return;
+
+        // Skip during a manual-query grace window (see AnnounceBankGuidance).
+        if (RoutineAnnouncementsSuppressed)
+            return;
 
         // Calculate cross-track error (distance from centerline)
         double crossTrackErrorNM = NavigationCalculator.CalculateDistanceToLocalizer(

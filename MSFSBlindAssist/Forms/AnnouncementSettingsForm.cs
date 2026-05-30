@@ -11,9 +11,12 @@ public partial class AnnouncementSettingsForm : Form
     private RadioButton _sapiRadio = null!;
     private Label _statusLabel = null!;
     private ComboBox _nearestCityIntervalCombo = null!;
+    private CheckBox _timeWithSecondsCheck = null!;
+    private CheckBox _gsxBackgroundMonitoring = null!;
 
     // ── Weather tab controls ────────────────────────────────────────────────
     private CheckBox _weatherAutoAnnounce = null!;
+    private ComboBox _weatherIntervalCombo = null!;
     private CheckBox _sigmetAlerts = null!;
     private CheckBox _pirepAlerts = null!;
     private NumericUpDown _proximityRange = null!;
@@ -26,24 +29,36 @@ public partial class AnnouncementSettingsForm : Form
     public AnnouncementMode SelectedMode { get; private set; }
     public int NearestCityAnnouncementInterval { get; private set; }
     public bool WeatherAutoAnnounceEnabled { get; private set; }
+    public int WeatherAutoAnnounceIntervalMinutes { get; private set; }
     public bool SigmetProximityAlertsEnabled { get; private set; }
     public bool PirepProximityAlertsEnabled { get; private set; }
     public int SigmetProximityRangeNm { get; private set; }
+    public bool AnnounceTimeWithSeconds { get; private set; }
+    public bool GsxBackgroundMonitoring { get; private set; }
+
+    /// <summary>Combo entries: minutes (0 = AS download interval, no extra throttle).</summary>
+    private static readonly int[] IntervalChoicesMinutes = { 0, 5, 10, 15, 20, 30, 45, 60 };
 
     public AnnouncementSettingsForm(
         AnnouncementMode currentMode,
         int nearestCityInterval,
         bool weatherAutoAnnounce,
+        int weatherAutoAnnounceIntervalMinutes,
         bool sigmetAlerts,
         bool pirepAlerts,
-        int proximityRangeNm)
+        int proximityRangeNm,
+        bool announceTimeWithSeconds,
+        bool gsxBackgroundMonitoring)
     {
         SelectedMode = currentMode;
         NearestCityAnnouncementInterval = nearestCityInterval;
         WeatherAutoAnnounceEnabled = weatherAutoAnnounce;
+        WeatherAutoAnnounceIntervalMinutes = weatherAutoAnnounceIntervalMinutes;
         SigmetProximityAlertsEnabled = sigmetAlerts;
         PirepProximityAlertsEnabled = pirepAlerts;
         SigmetProximityRangeNm = proximityRangeNm;
+        AnnounceTimeWithSeconds = announceTimeWithSeconds;
+        GsxBackgroundMonitoring = gsxBackgroundMonitoring;
         InitializeComponent();
         SetupAccessibility();
         UpdateScreenReaderStatus();
@@ -52,7 +67,7 @@ public partial class AnnouncementSettingsForm : Form
     private void InitializeComponent()
     {
         Text = "Announcement Settings";
-        Size = new Size(480, 380);
+        Size = new Size(480, 420);
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -177,10 +192,40 @@ public partial class AnnouncementSettingsForm : Form
         });
         _nearestCityIntervalCombo.SelectedIndex = IntervalToIndex(NearestCityAnnouncementInterval);
 
+        // Time-of-day seconds toggle (controls Output Z / Output Shift+Z format).
+        _timeWithSecondsCheck = new CheckBox
+        {
+            Text = "Include seconds in time announcements (Output Z / Shift+Z)",
+            Location = new Point(12, 195),
+            Size = new Size(420, 25),
+            Checked = AnnounceTimeWithSeconds,
+            AccessibleName = "Include seconds in time announcements",
+            AccessibleDescription = "When checked, the local-time and Zulu-time hotkeys speak hours, minutes, and seconds. Default is hours and minutes only."
+        };
+        _timeWithSecondsCheck.CheckedChanged += (s, e) =>
+            AnnounceTimeWithSeconds = _timeWithSecondsCheck.Checked;
+
+        // GSX background-monitoring toggle. When checked, GSX tooltip
+        // updates are spoken even when the Access GSX window is closed.
+        _gsxBackgroundMonitoring = new CheckBox
+        {
+            Text = "Announce GSX tooltips when Access GSX window is closed",
+            Location = new Point(12, 225),
+            Size = new Size(440, 40),
+            Checked = GsxBackgroundMonitoring,
+            AutoSize = false,
+            AccessibleName = "Announce GSX tooltips in background",
+            AccessibleDescription = "When checked, GSX tooltip updates (boarding, fuel, pushback) are read aloud by the screen reader even when the Access GSX window is hidden."
+        };
+        _gsxBackgroundMonitoring.CheckedChanged += (s, e) =>
+            GsxBackgroundMonitoring = _gsxBackgroundMonitoring.Checked;
+
         tab.Controls.AddRange(new Control[]
         {
             modeLabel, _screenReaderRadio, _sapiRadio, _statusLabel,
-            intervalLabel, _nearestCityIntervalCombo
+            intervalLabel, _nearestCityIntervalCombo,
+            _timeWithSecondsCheck,
+            _gsxBackgroundMonitoring
         });
 
         return tab;
@@ -244,14 +289,44 @@ public partial class AnnouncementSettingsForm : Form
             AccessibleDescription = "Distance at which to announce approaching SIGMETs, AIRMETs, and PIREPs"
         };
 
+        var intervalLabel = new Label
+        {
+            Text = "Weather announcement &interval:",
+            Location = new Point(12, 166),
+            Size = new Size(250, 20),
+            AccessibleName = "Weather announcement interval label"
+        };
+
+        _weatherIntervalCombo = new ComboBox
+        {
+            Location = new Point(12, 190),
+            Size = new Size(338, 24),
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            AccessibleName = "Weather announcement interval",
+            AccessibleDescription = "Minimum minutes between auto-announced ActiveSky weather updates. Active Sky download interval means no extra throttle; the announcer follows ActiveSky's own refresh cadence."
+        };
+        foreach (int minutes in IntervalChoicesMinutes)
+        {
+            _weatherIntervalCombo.Items.Add(IntervalChoiceLabel(minutes));
+        }
+        _weatherIntervalCombo.SelectedIndex = Math.Max(0, Array.IndexOf(IntervalChoicesMinutes, WeatherAutoAnnounceIntervalMinutes));
+
         tab.Controls.AddRange(new Control[]
         {
             _weatherAutoAnnounce, _sigmetAlerts, _pirepAlerts,
-            rangeLabel, _proximityRange
+            rangeLabel, _proximityRange,
+            intervalLabel, _weatherIntervalCombo
         });
 
         return tab;
     }
+
+    private static string IntervalChoiceLabel(int minutes)
+        => minutes == 0
+            ? "Active Sky download interval"
+            : minutes == 60
+                ? "1 hour"
+                : $"{minutes} minutes";
 
     private void UpdateScreenReaderStatus()
     {
@@ -326,9 +401,12 @@ public partial class AnnouncementSettingsForm : Form
             : AnnouncementMode.SAPI;
         NearestCityAnnouncementInterval = IndexToInterval(_nearestCityIntervalCombo.SelectedIndex);
         WeatherAutoAnnounceEnabled = _weatherAutoAnnounce.Checked;
+        WeatherAutoAnnounceIntervalMinutes = IntervalChoicesMinutes[
+            Math.Clamp(_weatherIntervalCombo.SelectedIndex, 0, IntervalChoicesMinutes.Length - 1)];
         SigmetProximityAlertsEnabled = _sigmetAlerts.Checked;
         PirepProximityAlertsEnabled = _pirepAlerts.Checked;
         SigmetProximityRangeNm = (int)_proximityRange.Value;
+        GsxBackgroundMonitoring = _gsxBackgroundMonitoring.Checked;
     }
 
     protected override bool ProcessDialogKey(Keys keyData)

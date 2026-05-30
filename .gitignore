@@ -6,6 +6,9 @@ obj/
 *.pdb
 *.cache
 
+# Diagnostic-tool build outputs are covered by the bin/ obj/ *.exe *.dll rules
+# above; the tool *source* under tools/ (PMDGDispatchTester, CDUTest) is tracked.
+
 # Visual Studio user-specific files
 .vs/
 *.user
@@ -102,6 +105,7 @@ $RECYCLE.BIN/
 # User-specific development notes
 *.private.md
 *.local.md
+docs/superpowers
 
 # Temporary files
 *.tmp
