@@ -6,8 +6,10 @@ using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Forms;
 using MSFSBlindAssist.Forms.A32NX;
 using MSFSBlindAssist.Forms.FenixA320;
+using MSFSBlindAssist.Forms.PMDG737;
 using MSFSBlindAssist.Forms.PMDG777;
 using MSFSBlindAssist.Forms.HS787;
+using MSFSBlindAssist.Forms.PMDGEFB;
 using MSFSBlindAssist.Hotkeys;
 using MSFSBlindAssist.Services;
 using MSFSBlindAssist.Settings;
@@ -34,8 +36,8 @@ public partial class MainForm : Form
     private MSFSBlindAssist.Services.PMDGProgPageMonitor? pmdgProgPageMonitor;
     private FenixMCDUForm? fenixMCDUForm;
     private FenixMCDUService? fenixMCDUService;
-    private PMDG777CDUForm? pmdg777CDUForm;
-    private PMDG777EFBForm? pmdg777EFBForm;
+    private System.Windows.Forms.Form? pmdgCDUForm;
+    private System.Windows.Forms.Form? pmdgEFBForm;
     private EFBBridgeServer? efbBridgeServer;
     private EFBBridgeServer? hs787BridgeServer;
     private HS787FMCForm? hs787FMCForm;
@@ -59,6 +61,13 @@ public partial class MainForm : Form
     private TaxiAssistForm? taxiAssistForm;
     private LandingExitPlanner landingExitPlanner = null!;
     private GroundTrafficMonitor groundTrafficMonitor = null!;
+
+    // Access GSX integration — owns its own SimConnect client (distinct
+    // WM_USER id 0x0403). The form is created lazily on first hotkey use and
+    // hidden (not closed) on dismiss so the service can keep speaking
+    // tooltip updates in the background when configured.
+    private GsxService? _gsxService;
+    private Forms.AccessGSXForm? _accessGsxForm;
 
     // Latest SIM_ON_GROUND sample. Cached unconditionally from the SIM_ON_GROUND
     // event so any feature that needs to know "on ground vs airborne" right now
@@ -141,7 +150,9 @@ public partial class MainForm : Form
             "A320" => new FlyByWireA320Definition(),
             "FENIX_A320CEO" => new FenixA320Definition(),
             "PMDG_777" => new PMDG777Definition(),
+            "PMDG_737" => new PMDG737Definition(),
             "HS_787" => new HorizonSim787Definition(),
+            // Future aircraft will be added here
             _ => new FlyByWireA320Definition() // Default to A320
         };
     }
@@ -169,8 +180,8 @@ public partial class MainForm : Form
         // Sync menu items with the loaded aircraft (fixes first-launch menu mismatch)
         UpdateAircraftMenuItems();
 
-        // Initialize EFB bridge if starting with PMDG 777
-        if (currentAircraft?.AircraftCode == "PMDG_777")
+        // Initialize EFB bridge if starting with a PMDG aircraft that has EFB support wired up
+        if (currentAircraft is IPMDGAircraft pmdgStartup && pmdgStartup.HasEFBSupport)
         {
             CheckAndOfferEFBModPackage();
             StartEFBBridgeServer();
@@ -203,6 +214,14 @@ public partial class MainForm : Form
         simConnectManager.SimulatorVersionDetected += OnSimulatorVersionDetected;
         simConnectManager.SimVarUpdated += OnSimVarUpdated;
         simConnectManager.TakeoffRunwayReferenceSet += OnTakeoffRunwayReferenceSet;
+
+        // Access GSX integration — separate SimConnect client (WM_USER 0x0403),
+        // routed alongside the main client in WndProc. Started on connect and
+        // stopped on disconnect; tolerates GSX not being installed (the
+        // service logs and exposes a status string for the form to bind to).
+        _gsxService = new GsxService(this.Handle, announcer);
+        _gsxService.AnnounceWhenFormHidden =
+            MSFSBlindAssist.Settings.SettingsManager.Current.GsxBackgroundMonitoring;
 
         simVarMonitor = new SimVarMonitor();
         simVarMonitor.ValueChanged += OnSimVarValueChanged;
@@ -253,6 +272,14 @@ public partial class MainForm : Form
         // Ground traffic monitor — proximity alerts for on-ground AI/multiplayer traffic.
         // Starts its own 3-second poll timer; gates on LastKnownOnGround each tick.
         groundTrafficMonitor = new GroundTrafficMonitor(announcer, simConnectManager);
+        // Suppress traffic auto-alerts in two contexts: during takeoff roll
+        // (pilot's hands are on rudder + throttle, can't act on a callout)
+        // and when Taxi Guidance is not engaged (no route loaded / pre-pushback
+        // / post-stop). Hotkey summary (Alt+G) remains available in both cases
+        // because it lives outside this poll loop.
+        groundTrafficMonitor.SuppressCheck = () =>
+            takeoffAssistManager.IsActive
+            || taxiGuidanceManager.State == TaxiGuidanceState.Inactive;
 
         // Initialize airport database provider (optional - can be null if database not built yet)
         airportDataProvider = DatabaseSelector.SelectProvider();
@@ -275,6 +302,8 @@ public partial class MainForm : Form
         // within ~1 minute. Silent for non-AS users.
         activeSkyWeatherMonitor = new MSFSBlindAssist.Services.ActiveSkyWeatherMonitor(
             new MSFSBlindAssist.Services.ActiveSkyClient(), announcer);
+        activeSkyWeatherMonitor.IntervalMinutes =
+            MSFSBlindAssist.Settings.SettingsManager.Current.WeatherAutoAnnounceIntervalMinutes;
         activeSkyWeatherMonitor.Start();
 
         // Initialize event batching timer for high-volume variable updates
@@ -348,13 +377,22 @@ public partial class MainForm : Form
             announcer.Announce(status);
             announcer.Announce($"{currentAircraft.AircraftName} Profile and panels active");
 
-            // After SimConnect connects, if current aircraft is PMDG 777, initialize data manager
-            if (currentAircraft?.AircraftCode == "PMDG_777")
+            // Start the Access GSX service alongside the main SimConnect
+            // client. Safe to call repeatedly — it no-ops if already open.
+            try { _gsxService?.Start(); }
+            catch (Exception ex)
             {
-                simConnectManager.InitializePMDG777();
-                if (simConnectManager.PMDG777DataManager != null)
+                System.Diagnostics.Debug.WriteLine($"[MainForm] GsxService.Start failed: {ex.Message}");
+            }
+
+            // After SimConnect connects, if current aircraft is a PMDG type, initialize data manager.
+            // Use IPMDGAircraft (not == "PMDG_777") so the 737 NG3 is initialized too.
+            if (currentAircraft is IPMDGAircraft)
+            {
+                simConnectManager.InitializePMDG(currentAircraft);
+                if (simConnectManager.PMDGDataManager != null)
                 {
-                    simConnectManager.PMDG777DataManager.VariableChanged += OnPMDGVariableChanged;
+                    simConnectManager.PMDGDataManager.VariableChanged += OnPMDGVariableChanged;
                 }
                 // Dispose any existing PROG monitor — it holds a reference
                 // to the previous data-manager instance (which is now
@@ -428,6 +466,14 @@ public partial class MainForm : Form
             simVarMonitor.Reset();
             // Reset ECAM suppression flag for next connection
             simConnectManager.SuppressECAMAnnouncements = true;
+
+            // Stop the GSX SimConnect client so we don't leak it across
+            // reconnects. Start() will be called again on the next connect.
+            try { _gsxService?.Stop(); }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[MainForm] GsxService.Stop failed: {ex.Message}");
+            }
         }
     }
 
@@ -459,6 +505,23 @@ public partial class MainForm : Form
         // CONSUMER: Process event on UI thread (called from ProcessEventBatch)
         // Step 1: ALWAYS store the value first (needed by all consumers)
         currentSimVarValues[e.VarName] = e.Value;
+
+        // Initial-snapshot fast path: populate caches and refresh UI controls
+        // but skip all announcement paths. These events represent "what the
+        // cockpit looked like when the app started", not user-triggered
+        // transitions, so announcing them would spam the user on every launch.
+        if (e.IsInitialSnapshot)
+        {
+            UpdateControlFromSimVar(e.VarName, e.Value);
+            // Also mirror to displayValues so panel display textboxes have
+            // the right initial content when first rendered.
+            if (currentAircraft.GetVariables().ContainsKey(e.VarName) &&
+                currentAircraft.GetPanelDisplayVariables().Values.Any(list => list.Contains(e.VarName)))
+            {
+                displayValues[e.VarName] = e.Value;
+            }
+            return;
+        }
 
         // Step 2: Handle special one-off announcements (terminal cases only)
         if (HandleSpecialAnnouncements(e))
@@ -986,6 +1049,39 @@ public partial class MainForm : Form
                     }
                 }
             }
+            else if (control is TextBox textBox && textBox.ReadOnly)
+            {
+                // Read-only status TextBox. Two flavors:
+                //  (a) Continuous-numeric readout (RenderAsReadOnlyStatus + Units +
+                //      no ValueDescriptions) — format as "<value:Format> <Units>".
+                //  (b) Enum-style status field (door state, annunciator, etc.) —
+                //      mirror the value through ValueDescriptions; fall back to
+                //      raw numeric if the cached value isn't in the map.
+                if (currentAircraft.GetVariables().ContainsKey(varName))
+                {
+                    var varDef = currentAircraft.GetVariables()[varName];
+                    string newText;
+                    bool isContinuousReadout =
+                        varDef.RenderAsReadOnlyStatus &&
+                        (varDef.ValueDescriptions == null || varDef.ValueDescriptions.Count == 0) &&
+                        !string.IsNullOrEmpty(varDef.Units);
+                    if (isContinuousReadout)
+                    {
+                        double displayValue = value * varDef.Scale + varDef.Offset;
+                        newText = $"{displayValue.ToString(varDef.Format, System.Globalization.CultureInfo.InvariantCulture)} {varDef.Units}";
+                    }
+                    else if (varDef.ValueDescriptions.TryGetValue(value, out string? desc))
+                    {
+                        newText = desc;
+                    }
+                    else
+                    {
+                        newText = value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                    }
+                    if (textBox.Text != newText)
+                        textBox.Text = newText;
+                }
+            }
             else if (control is Button btn)
             {
                 // Update stateful button label from StateVariable or ValueDescriptions
@@ -1251,7 +1347,7 @@ public partial class MainForm : Form
         // For PMDG aircraft, IsInitialValue is always true on first change because the
         // simVarMonitor has never seen the variable before. But PMDG data manager already
         // suppresses the initial snapshot, so any change that reaches here IS a real change.
-        bool isPMDG = currentAircraft?.AircraftCode == "PMDG_777";
+        bool isPMDG = currentAircraft is IPMDGAircraft;
         bool shouldAnnounce = isPMDG ? !updatingFromSim : (!e.IsInitialValue && !updatingFromSim);
 
         if (shouldAnnounce && !string.IsNullOrEmpty(e.Description))
@@ -1279,15 +1375,21 @@ public partial class MainForm : Form
         // Translate struct field name to variable key
         if (!_pmdgFieldToKeyMap!.TryGetValue(e.FieldName, out string? varKey))
         {
+            if (e.FieldName is "ELEC_GrdPwrSw" or "ELEC_GenSw_0" or "ELEC_GenSw_1" or "ELEC_APUGenSw_0" or "ELEC_APUGenSw_1")
+                System.Diagnostics.Debug.WriteLine($"[MainForm] PMDG event {e.FieldName} DROPPED (varKey not found in map)");
             return;
         }
+
+        if (e.FieldName is "ELEC_GrdPwrSw" or "ELEC_GenSw_0" or "ELEC_GenSw_1" or "ELEC_APUGenSw_0" or "ELEC_APUGenSw_1")
+            System.Diagnostics.Debug.WriteLine($"[MainForm] PMDG event {e.FieldName} -> varKey={varKey} value={e.Value} initial={e.IsInitialSnapshot}");
 
         // Route PMDG variable changes through the same pipeline as SimVar updates
         var simVarEvent = new SimVarUpdateEventArgs
         {
             VarName = varKey,
             Value   = e.Value,
-            Description = string.Empty
+            Description = string.Empty,
+            IsInitialSnapshot = e.IsInitialSnapshot,
         };
         OnSimVarUpdated(this, simVarEvent);
     }
@@ -1426,9 +1528,9 @@ public partial class MainForm : Form
                 ShowElectronicFlightBagDialog();
                 break;
             case HotkeyAction.ShowFenixMCDU:
-                if (currentAircraft?.AircraftCode == "PMDG_777" && simConnectManager.PMDG777DataManager != null)
+                if (currentAircraft is IPMDGAircraft && simConnectManager.PMDGDataManager != null)
                 {
-                    ShowPMDG777CDUDialog();
+                    ShowPMDGCDUDialog();
                 }
                 else if (currentAircraft?.AircraftCode == "HS_787")
                 {
@@ -1439,10 +1541,10 @@ public partial class MainForm : Form
                     ShowFenixMCDUDialog();
                 }
                 break;
-            case HotkeyAction.ShowPMDG777EFB:
-                if (currentAircraft?.AircraftCode == "PMDG_777")
+            case HotkeyAction.ShowPMDGEFB:
+                if (currentAircraft is IPMDGAircraft pmdgEFB && pmdgEFB.HasEFBSupport)
                 {
-                    ShowPMDG777EFBDialog();
+                    ShowPMDGEFBDialog();
                 }
                 else if (currentAircraft?.AircraftCode == "HS_787")
                 {
@@ -1529,9 +1631,73 @@ public partial class MainForm : Form
             case HotkeyAction.LandingExitPlanner:
                 ShowLandingExitForm();
                 break;
+            case HotkeyAction.ShowAccessGSX:
+                ShowAccessGSXForm();
+                break;
+            case HotkeyAction.ReadGsxTooltip:
+                ReadLatestGsxTooltip();
+                break;
             // Note: FCU push/pull, autopilot toggles, FCU set value dialogs, and A32NX-specific hotkeys
             // are now handled by the aircraft definition via HandleHotkeyAction()
         }
+    }
+
+    /// <summary>
+    /// Open (or refocus) the Access GSX form. The underlying GsxService runs
+    /// from connect-time, independently of this form, so the form is just a
+    /// UI surface for the existing connection.
+    /// </summary>
+    private void ShowAccessGSXForm()
+    {
+        if (_gsxService == null)
+        {
+            announcer.AnnounceImmediate("Access GSX: service not initialized.");
+            return;
+        }
+
+        if (!_gsxService.IsConnected)
+        {
+            announcer.AnnounceImmediate("Access GSX: not connected to the simulator.");
+            return;
+        }
+
+        if (_accessGsxForm == null || _accessGsxForm.IsDisposed)
+        {
+            _accessGsxForm = new Forms.AccessGSXForm(_gsxService, announcer);
+        }
+
+        // Show ownerless so the window is an independent top-level — MainForm
+        // stays usable, and the GSX window gets its own taskbar entry. The
+        // brief TopMost flash brings it to the foreground without keeping it
+        // pinned (same pattern as HS787FMCForm.ShowForm).
+        if (!_accessGsxForm.Visible)
+            _accessGsxForm.Show();
+        _accessGsxForm.TopMost = true;
+        _accessGsxForm.TopMost = false;
+        _accessGsxForm.BringToFront();
+        _accessGsxForm.Activate();
+    }
+
+    /// <summary>
+    /// Output Ctrl+G: speak the most recent GSX tooltip without opening the
+    /// AccessGSX window. The GsxService keeps the last tooltip cached for the
+    /// duration of the SimConnect connection, so this works whether or not the
+    /// AccessGSX form has been opened this session.
+    /// </summary>
+    private void ReadLatestGsxTooltip()
+    {
+        if (_gsxService == null || !_gsxService.IsConnected)
+        {
+            announcer.AnnounceImmediate("Access GSX: not connected to the simulator.");
+            return;
+        }
+        string tooltip = _gsxService.LastTooltip;
+        if (string.IsNullOrWhiteSpace(tooltip))
+        {
+            announcer.AnnounceImmediate("No GSX tooltip yet.");
+            return;
+        }
+        announcer.AnnounceImmediate(tooltip);
     }
 
     private void OnOutputHotkeyModeChanged(object? sender, HotkeyModeEventArgs e)
@@ -1851,10 +2017,13 @@ public partial class MainForm : Form
         if (wantRunning)
         {
             // Lazy-create on first need. Recreated whenever the
-            // PMDG777DataManager changes (e.g., after aircraft swap)
+            // PMDG data manager changes (e.g., after aircraft swap)
             // because the monitor holds a reference to a specific
             // data-manager instance.
-            var dm = simConnectManager?.PMDG777DataManager;
+            // The PROG-page monitor is currently 777-specific; cast
+            // through the interface slot. Non-777 PMDG aircraft will
+            // need their own monitor wiring (Phase D).
+            var dm = simConnectManager?.PMDGDataManager as PMDG777DataManager;
             if (dm == null) return;
             if (pmdgProgPageMonitor == null)
             {
@@ -1910,22 +2079,38 @@ public partial class MainForm : Form
         fenixMCDUForm.ShowForm();
     }
 
-    private void ShowPMDG777CDUDialog()
+    private void ShowPMDGCDUDialog()
     {
         // Deactivate input hotkey mode before showing dialog
         hotkeyManager.ExitInputHotkeyMode();
 
-        // Create form if it doesn't exist or has been disposed
-        if (pmdg777CDUForm == null || pmdg777CDUForm.IsDisposed)
+        if (simConnectManager?.PMDGDataManager == null) return;
+
+        // Create form if it doesn't exist or has been disposed.
+        // Dispatch by aircraft code: the 777 form takes a concrete
+        // PMDG777DataManager (cast through the abstraction); the 737
+        // form accepts IPMDGDataManager directly.
+        if (pmdgCDUForm == null || pmdgCDUForm.IsDisposed)
         {
-            pmdg777CDUForm = new PMDG777CDUForm(simConnectManager.PMDG777DataManager!, announcer);
+            if (currentAircraft?.AircraftCode == "PMDG_737")
+            {
+                pmdgCDUForm = new PMDG737CDUForm(simConnectManager.PMDGDataManager, announcer);
+            }
+            else
+            {
+                pmdgCDUForm = new PMDG777CDUForm((PMDG777DataManager)simConnectManager.PMDGDataManager, announcer);
+            }
         }
 
         // Show the form (reuses same instance to preserve state)
-        pmdg777CDUForm.ShowForm();
+        switch (pmdgCDUForm)
+        {
+            case PMDG737CDUForm f737: f737.ShowForm(); break;
+            case PMDG777CDUForm f777: f777.ShowForm(); break;
+        }
     }
 
-    private void ShowPMDG777EFBDialog()
+    private void ShowPMDGEFBDialog()
     {
         hotkeyManager.ExitInputHotkeyMode();
 
@@ -1935,12 +2120,12 @@ public partial class MainForm : Form
             return;
         }
 
-        if (pmdg777EFBForm == null || pmdg777EFBForm.IsDisposed)
+        if (pmdgEFBForm == null || pmdgEFBForm.IsDisposed)
         {
-            pmdg777EFBForm = new PMDG777EFBForm(efbBridgeServer, announcer);
+            pmdgEFBForm = new PMDGEFBForm(efbBridgeServer, announcer, currentAircraft.AircraftCode);
         }
 
-        pmdg777EFBForm.ShowForm();
+        ((PMDGEFBForm)pmdgEFBForm).ShowForm();
     }
 
     private void ShowHS787EFBFormDialog()
@@ -2323,10 +2508,10 @@ public partial class MainForm : Form
 
     private void StopEFBBridgeServer()
     {
-        if (pmdg777EFBForm != null && !pmdg777EFBForm.IsDisposed)
+        if (pmdgEFBForm != null && !pmdgEFBForm.IsDisposed)
         {
-            pmdg777EFBForm.Dispose();
-            pmdg777EFBForm = null;
+            pmdgEFBForm.Dispose();
+            pmdgEFBForm = null;
         }
 
         efbBridgeServer?.Stop();
@@ -2441,7 +2626,8 @@ public partial class MainForm : Form
         if (taxiAssistForm == null || taxiAssistForm.IsDisposed)
         {
             taxiAssistForm = new TaxiAssistForm(
-                airportDataProvider!, announcer, taxiGuidanceManager, simConnectManager, tcasService);
+                airportDataProvider!, announcer, taxiGuidanceManager, simConnectManager, tcasService,
+                simConnectManager.AircraftWingSpan);
         }
 
         // Find nearest airport. Filter to 4-char canonical ICAO at the call site —
@@ -3138,10 +3324,12 @@ public partial class MainForm : Form
             currentMode,
             settings.NearestCityAnnouncementInterval,
             settings.WeatherAutoAnnounceEnabled,
+            settings.WeatherAutoAnnounceIntervalMinutes,
             settings.SigmetProximityAlertsEnabled,
             settings.PirepProximityAlertsEnabled,
             settings.SigmetProximityRangeNm,
-            settings.AnnounceTimeWithSeconds))
+            settings.AnnounceTimeWithSeconds,
+            settings.GsxBackgroundMonitoring))
         {
             if (settingsForm.ShowDialog(this) == DialogResult.OK)
             {
@@ -3155,12 +3343,27 @@ public partial class MainForm : Form
 
                 // Weather announcements
                 settings.WeatherAutoAnnounceEnabled = settingsForm.WeatherAutoAnnounceEnabled;
+                settings.WeatherAutoAnnounceIntervalMinutes = settingsForm.WeatherAutoAnnounceIntervalMinutes;
                 settings.SigmetProximityAlertsEnabled = settingsForm.SigmetProximityAlertsEnabled;
                 settings.PirepProximityAlertsEnabled = settingsForm.PirepProximityAlertsEnabled;
                 settings.SigmetProximityRangeNm = settingsForm.SigmetProximityRangeNm;
 
+                // Push the new interval to the live monitor so the change
+                // takes effect without restarting the app.
+                if (activeSkyWeatherMonitor != null)
+                    activeSkyWeatherMonitor.IntervalMinutes = settings.WeatherAutoAnnounceIntervalMinutes;
+
                 // Time-of-day format toggle (Output Z / Shift+Z).
                 settings.AnnounceTimeWithSeconds = settingsForm.AnnounceTimeWithSeconds;
+
+                // GSX background-monitoring toggle. Push the new value into
+                // the live service. The form's VisibleChanged handler will
+                // overwrite this when the form is open/hidden — that's
+                // intentional (form open = form drives speech). When the
+                // form is hidden the saved setting wins.
+                settings.GsxBackgroundMonitoring = settingsForm.GsxBackgroundMonitoring;
+                if (_gsxService != null && (_accessGsxForm == null || !_accessGsxForm.Visible))
+                    _gsxService.AnnounceWhenFormHidden = settings.GsxBackgroundMonitoring;
 
                 MSFSBlindAssist.Settings.SettingsManager.Save();
 
@@ -3375,6 +3578,11 @@ public partial class MainForm : Form
         SwitchAircraft(new PMDG777Definition());
     }
 
+    private void PMDG737MenuItem_Click(object? sender, EventArgs e)
+    {
+        SwitchAircraft(new PMDG737Definition());
+    }
+
     private void HorizonSim787MenuItem_Click(object? sender, EventArgs e)
     {
         SwitchAircraft(new HorizonSim787Definition());
@@ -3390,7 +3598,7 @@ public partial class MainForm : Form
 
         // Dispose the old PROG-page monitor — it references the previous
         // aircraft's data manager. Recreation happens later, AFTER
-        // InitializePMDG777() has produced a fresh data manager for the new
+        // InitializePMDG() has produced a fresh data manager for the new
         // aircraft (see EnsurePMDGProgPageMonitor call near the end of this
         // method). Calling EnsurePMDGProgPageMonitor here would no-op for a
         // PMDG-to-PMDG swap because the new data manager doesn't yet exist.
@@ -3476,18 +3684,18 @@ public partial class MainForm : Form
             fenixMCDUService = null;
         }
 
-        // Dispose PMDG 777 CDU form when switching aircraft
-        if (pmdg777CDUForm != null && !pmdg777CDUForm.IsDisposed)
+        // Dispose PMDG CDU form when switching aircraft
+        if (pmdgCDUForm != null && !pmdgCDUForm.IsDisposed)
         {
-            pmdg777CDUForm.Dispose();
-            pmdg777CDUForm = null;
+            pmdgCDUForm.Dispose();
+            pmdgCDUForm = null;
         }
 
-        // Dispose PMDG 777 EFB form when switching aircraft
-        if (pmdg777EFBForm != null && !pmdg777EFBForm.IsDisposed)
+        // Dispose PMDG EFB form when switching aircraft
+        if (pmdgEFBForm != null && !pmdgEFBForm.IsDisposed)
         {
-            pmdg777EFBForm.Dispose();
-            pmdg777EFBForm = null;
+            pmdgEFBForm.Dispose();
+            pmdgEFBForm = null;
         }
 
         // Dispose HS 787 forms when switching aircraft
@@ -3509,34 +3717,34 @@ public partial class MainForm : Form
             hs787EFBForm = null;
         }
 
-        // PMDG 777 data manager lifecycle
-        if (newAircraft.AircraftCode == "PMDG_777" && simConnectManager.IsConnected)
+        // PMDG data manager lifecycle
+        if (newAircraft is IPMDGAircraft && simConnectManager.IsConnected)
         {
-            simConnectManager.InitializePMDG777();
-            if (simConnectManager.PMDG777DataManager != null)
+            simConnectManager.InitializePMDG(newAircraft);
+            if (simConnectManager.PMDGDataManager != null)
             {
-                simConnectManager.PMDG777DataManager.VariableChanged += OnPMDGVariableChanged;
+                simConnectManager.PMDGDataManager.VariableChanged += OnPMDGVariableChanged;
             }
         }
         else
         {
             // Unwire events before disposing
-            if (simConnectManager.PMDG777DataManager != null)
+            if (simConnectManager.PMDGDataManager != null)
             {
-                simConnectManager.PMDG777DataManager.VariableChanged -= OnPMDGVariableChanged;
+                simConnectManager.PMDGDataManager.VariableChanged -= OnPMDGVariableChanged;
             }
-            simConnectManager.DisposePMDG777();
+            simConnectManager.DisposePMDG();
         }
 
         // Start the PROG-page monitor now that the new aircraft's data
         // manager exists (or stop it cleanly if we just left PMDG). This
-        // must happen AFTER InitializePMDG777 so EnsurePMDGProgPageMonitor
+        // must happen AFTER InitializePMDG so EnsurePMDGProgPageMonitor
         // can see the freshly-created data manager — calling it before the
         // init would silently no-op (see comment above the dispose block).
         EnsurePMDGProgPageMonitor();
 
-        // EFB bridge: mod package check and server start
-        if (newAircraft.AircraftCode == "PMDG_777")
+        // EFB bridge: mod package check and server start (only for aircraft that have EFB support wired up)
+        if (newAircraft is IPMDGAircraft pmdgChange && pmdgChange.HasEFBSupport)
         {
             CheckAndOfferEFBModPackage();
             StartEFBBridgeServer();
@@ -3608,6 +3816,7 @@ public partial class MainForm : Form
         flyByWireA320MenuItem.Checked = false;
         fenixA320MenuItem.Checked = false;
         pmdg777MenuItem.Checked = false;
+        pmdg737MenuItem.Checked = false;
         horizonSim787MenuItem.Checked = false;
 
         // Set the check on the current aircraft's menu item
@@ -3622,6 +3831,10 @@ public partial class MainForm : Form
         else if (currentAircraft is PMDG777Definition)
         {
             pmdg777MenuItem.Checked = true;
+        }
+        else if (currentAircraft is PMDG737Definition)
+        {
+            pmdg737MenuItem.Checked = true;
         }
         else if (currentAircraft is HorizonSim787Definition)
         {
@@ -3932,7 +4145,11 @@ public partial class MainForm : Form
         {
             simConnectManager.ProcessWindowMessage(ref m);
         }
-        
+
+        // Route messages destined for the GSX SimConnect client (distinct
+        // WM_USER id 0x0403). Safe to call unconditionally; it filters on id.
+        _gsxService?.ProcessWindowMessage(ref m);
+
         base.WndProc(ref m);
     }
 
@@ -4131,6 +4348,62 @@ public partial class MainForm : Form
 
                 layout.Controls.Add(controlButton, 1, rowIndex);
                 currentControls[varKey] = controlButton;
+            }
+            else if (varDef.RenderAsReadOnlyStatus &&
+                     (varDef.ValueDescriptions == null || varDef.ValueDescriptions.Count == 0) &&
+                     !string.IsNullOrEmpty(varDef.Units))
+            {
+                // Continuous-numeric read-only TextBox. Used for cockpit gauges
+                // exposed by the PMDG NG3 SDK as float fields (cabin altitude,
+                // DP, duct pressure, APU EGT, fuel temp, etc.). Text is
+                // "{value:Format} {Units}" and is silently refreshed on each
+                // continuous broadcast via UpdateControlFromSimVar — the user
+                // reads the current value by Tab-focusing the field.
+                TextBox readoutBox = new TextBox();
+                readoutBox.ReadOnly = true;
+                readoutBox.TabStop = true;
+                readoutBox.Size = new Size(240, 25);
+                readoutBox.Name = varKey;
+                readoutBox.AccessibleName = varDef.DisplayName;
+
+                string initial = "—";
+                if (currentSimVarValues.ContainsKey(varKey))
+                {
+                    double cur = currentSimVarValues[varKey] * varDef.Scale + varDef.Offset;
+                    initial = $"{cur.ToString(varDef.Format, System.Globalization.CultureInfo.InvariantCulture)} {varDef.Units}";
+                }
+                readoutBox.Text = initial;
+
+                layout.Controls.Add(readoutBox, 1, rowIndex);
+                currentControls[varKey] = readoutBox;
+            }
+            else if (varDef.ValueDescriptions != null && varDef.ValueDescriptions.Count > 1 &&
+                     (varDef.RenderAsReadOnlyStatus || varDef.OnlyAnnounceValueDescriptionMatches))
+            {
+                // Read-only status field (annunciators, door state, etc.).
+                // ValueDescriptions still drive the text; the user can focus the
+                // field for the screen reader to read it, but cannot change it.
+                TextBox statusBox = new TextBox();
+                statusBox.ReadOnly = true;
+                statusBox.TabStop = true;
+                statusBox.Size = new Size(240, 25);
+                statusBox.Name = varKey;
+                statusBox.AccessibleName = varDef.DisplayName;
+
+                // Seed initial text from cached value, falling back to numeric string
+                // and finally to "—" if no value is known yet.
+                string initial = "—";
+                if (currentSimVarValues.ContainsKey(varKey))
+                {
+                    double cur = currentSimVarValues[varKey];
+                    initial = varDef.ValueDescriptions.TryGetValue(cur, out string? desc)
+                        ? desc
+                        : cur.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                }
+                statusBox.Text = initial;
+
+                layout.Controls.Add(statusBox, 1, rowIndex);
+                currentControls[varKey] = statusBox;
             }
             else if (varDef.ValueDescriptions != null && varDef.ValueDescriptions.Count > 1)
             {
@@ -4563,6 +4836,22 @@ public partial class MainForm : Form
                 
                 button.Click += (s2, e2) =>
                 {
+                    // Aircraft delegation: let the loaded aircraft claim _SET keys
+                    // (e.g., PMDG 737's EFIS_MinsValueFt_*_SET vars need RST-then-rotate
+                    // dispatch). The aircraft parses textBox.Text itself; we pass the
+                    // double value when parseable, else 0.
+                    double parsedValue = 0;
+                    double.TryParse(
+                        textBox.Text.Replace(',', '.'),
+                        System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture,
+                        out parsedValue);
+                    if (currentAircraft.HandleUIVariableSet(
+                            varKey, parsedValue, varDef, simConnectManager, announcer))
+                    {
+                        return;
+                    }
+
                     // Special handling for transponder code (requires BCD encoding)
                     if (varKey == "TRANSPONDER_CODE_SET")
                     {
@@ -4884,9 +5173,9 @@ public partial class MainForm : Form
             controlsContainer.Controls.Add(layout);
 
             // For PMDG aircraft, populate controls with current data from the data manager
-            if (currentAircraft?.AircraftCode == "PMDG_777" && simConnectManager?.PMDG777DataManager != null)
+            if (currentAircraft is IPMDGAircraft && simConnectManager?.PMDGDataManager != null)
             {
-                var dm = simConnectManager.PMDG777DataManager;
+                var dm = simConnectManager.PMDGDataManager;
                 foreach (var varKey in currentAircraft.GetPanelControls()[currentPanel])
                 {
                     if (!currentAircraft.GetVariables().ContainsKey(varKey)) continue;

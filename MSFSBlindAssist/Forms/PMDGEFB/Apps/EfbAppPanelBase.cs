@@ -1,7 +1,7 @@
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.SimConnect;
 
-namespace MSFSBlindAssist.Forms.PMDG777.Apps
+namespace MSFSBlindAssist.Forms.PMDGEFB.Apps
 {
     /// <summary>
     /// Base UserControl for EFB app panels. Owns the bridge/announcer references,

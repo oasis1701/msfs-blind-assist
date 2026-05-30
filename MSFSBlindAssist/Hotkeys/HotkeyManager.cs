@@ -82,6 +82,7 @@ public class HotkeyManager : IDisposable
         private const int HOTKEY_DISTANCE_TO_DEST = 9101;
         private const int HOTKEY_DISTANCE_TO_TOD = 9102;
         private const int HOTKEY_NAV_RADIO_INFO = 9103;
+        private const int HOTKEY_NAV_RADIOS_SET = 9212;   // Input mode: Ctrl+N (Set NAV radios)
         private const int HOTKEY_TAKEOFF_ASSIST = 9058;
         private const int HOTKEY_TOGGLE_ECAM_MONITORING = 9059;
         private const int HOTKEY_HAND_FLY_MODE = 9075;
@@ -128,8 +129,8 @@ public class HotkeyManager : IDisposable
         // Fenix MCDU hotkey ID
         private const int HOTKEY_FENIX_MCDU = 9092;
 
-        // PMDG 777 EFB hotkey ID
-        private const int HOTKEY_PMDG_777_EFB = 9094;
+        // PMDG EFB hotkey ID
+        private const int HOTKEY_PMDG_EFB = 9094;
 
         // Nearest city announcement hotkey ID
         private const int HOTKEY_NEAREST_CITY = 9093;
@@ -154,6 +155,8 @@ public class HotkeyManager : IDisposable
         private const int HOTKEY_TAXI_WHERE_AM_I = 9205;    // Output mode: Alt+Y (Describe current location)
         private const int HOTKEY_LANDING_EXIT = 9206;       // Input mode: Shift+X (Landing Exit Planner)
         private const int HOTKEY_GROUND_TRAFFIC = 9207;     // Output mode: Alt+G (Nearest ground traffic)
+        private const int HOTKEY_ACCESS_GSX = 9208;         // Input mode: Alt+G (Open Access GSX window)
+        private const int HOTKEY_READ_GSX_TOOLTIP = 9209;   // Output mode: Ctrl+G (Read latest GSX tooltip)
 
         // Time-of-day hotkey IDs (Output mode). Local time = aircraft position
         // local time (sim handles tz mapping); Zulu = UTC. HH:MM by default,
@@ -448,6 +451,9 @@ public class HotkeyManager : IDisposable
                         case HOTKEY_GROUND_TRAFFIC:
                             TriggerHotkey(HotkeyAction.AnnounceGroundTraffic);
                             break;
+                        case HOTKEY_READ_GSX_TOOLTIP:
+                            TriggerHotkey(HotkeyAction.ReadGsxTooltip);
+                            break;
                     }
                     DeactivateOutputHotkeyMode();
                     return true;
@@ -513,6 +519,9 @@ public class HotkeyManager : IDisposable
                         case HOTKEY_FCU_SET_BARO:
                             TriggerHotkey(HotkeyAction.FCUSetBaro);
                             break;
+                        case HOTKEY_NAV_RADIOS_SET:
+                            TriggerHotkey(HotkeyAction.SetNavRadios);
+                            break;
                         case HOTKEY_TOGGLE_AP2:
                             TriggerHotkey(HotkeyAction.ToggleAutopilot2);
                             break;
@@ -522,8 +531,8 @@ public class HotkeyManager : IDisposable
                         case HOTKEY_FENIX_MCDU:
                             TriggerHotkey(HotkeyAction.ShowFenixMCDU);
                             break;
-                        case HOTKEY_PMDG_777_EFB:
-                            TriggerHotkey(HotkeyAction.ShowPMDG777EFB);
+                        case HOTKEY_PMDG_EFB:
+                            TriggerHotkey(HotkeyAction.ShowPMDGEFB);
                             break;
                         case HOTKEY_TAXI_FORM:
                             TriggerHotkey(HotkeyAction.TaxiAssistForm);
@@ -536,6 +545,9 @@ public class HotkeyManager : IDisposable
                             break;
                         case HOTKEY_LANDING_EXIT:
                             TriggerHotkey(HotkeyAction.LandingExitPlanner);
+                            break;
+                        case HOTKEY_ACCESS_GSX:
+                            TriggerHotkey(HotkeyAction.ShowAccessGSX);
                             break;
                     }
                     DeactivateInputHotkeyMode();
@@ -714,6 +726,7 @@ public class HotkeyManager : IDisposable
             // so Where Am I moves to Alt+Y. Stays on the same physical key — easy to remember.
             RegisterHotKey(windowHandle, HOTKEY_TAXI_WHERE_AM_I, MOD_ALT, 0x59);          // Alt+Y (Where Am I)
             RegisterHotKey(windowHandle, HOTKEY_GROUND_TRAFFIC, MOD_ALT, 0x47);           // Alt+G (Nearest ground traffic)
+            RegisterHotKey(windowHandle, HOTKEY_READ_GSX_TOOLTIP, MOD_CONTROL, 0x47);     // Ctrl+G (Read latest GSX tooltip)
 
             // Auto-timeout disabled - hotkey mode stays active until used or escape pressed
 
@@ -810,6 +823,7 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_TAXI_REPEAT);
             UnregisterHotKey(windowHandle, HOTKEY_TAXI_WHERE_AM_I);
             UnregisterHotKey(windowHandle, HOTKEY_GROUND_TRAFFIC);
+            UnregisterHotKey(windowHandle, HOTKEY_READ_GSX_TOOLTIP);
 
             OutputHotkeyModeChanged?.Invoke(this, new HotkeyModeEventArgs(wasCancelled ? HotkeyModeStatus.Cancelled : HotkeyModeStatus.Deactivated));
         }
@@ -842,16 +856,22 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_FCU_SET_VS, MOD_CONTROL, 0x56);      // Ctrl+V (Set VS)
             RegisterHotKey(windowHandle, HOTKEY_FCU_SET_AUTOPILOT, MOD_CONTROL, 0x50); // Ctrl+P (Set Autopilot)
             RegisterHotKey(windowHandle, HOTKEY_FCU_SET_BARO, MOD_CONTROL, 0x42);     // Ctrl+B (Set Baro)
+            RegisterHotKey(windowHandle, HOTKEY_NAV_RADIOS_SET, MOD_CONTROL, 0x4E);   // Ctrl+N (Set NAV Radios)
             RegisterHotKey(windowHandle, HOTKEY_TOGGLE_AP2, MOD_CONTROL, 0x4F);      // Ctrl+O (Toggle Autopilot 2)
             RegisterHotKey(windowHandle, HOTKEY_TRACK_FIX, MOD_SHIFT, 0x46);         // Shift+F (Track Fix Window)
             RegisterHotKey(windowHandle, HOTKEY_FENIX_MCDU, MOD_SHIFT, 0x4D);       // Shift+M (Fenix MCDU)
-            RegisterHotKey(windowHandle, HOTKEY_PMDG_777_EFB, MOD_SHIFT, 0x54);    // Shift+T (PMDG 777 EFB Tablet)
+            RegisterHotKey(windowHandle, HOTKEY_PMDG_EFB, MOD_SHIFT, 0x54);        // Shift+T (PMDG EFB Tablet)
 
             // Taxi guidance hotkeys (Input mode)
             RegisterHotKey(windowHandle, HOTKEY_TAXI_FORM, MOD_SHIFT, 0x59);            // Shift+Y (Open Taxi Form)
             RegisterHotKey(windowHandle, HOTKEY_TAXI_CONTINUE, MOD_NONE, 0x59);         // Y (Continue past hold-short)
             RegisterHotKey(windowHandle, HOTKEY_TAXI_STOP, MOD_CONTROL, 0x59);          // Ctrl+Y (Stop guidance)
             RegisterHotKey(windowHandle, HOTKEY_LANDING_EXIT, MOD_SHIFT, 0x58);         // Shift+X (Landing Exit Planner)
+
+            // Access GSX hotkey (Input mode). Alt+G is free here — output mode
+            // Alt+G is taken by Nearest Ground Traffic, but each mode has its
+            // own registration set so they don't collide.
+            RegisterHotKey(windowHandle, HOTKEY_ACCESS_GSX, MOD_ALT, 0x47);             // Alt+G (Open Access GSX window)
 
             InputHotkeyModeChanged?.Invoke(this, new HotkeyModeEventArgs(HotkeyModeStatus.Activated));
         }
@@ -886,16 +906,20 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_FCU_SET_VS);
             UnregisterHotKey(windowHandle, HOTKEY_FCU_SET_AUTOPILOT);
             UnregisterHotKey(windowHandle, HOTKEY_FCU_SET_BARO);
+            UnregisterHotKey(windowHandle, HOTKEY_NAV_RADIOS_SET);
             UnregisterHotKey(windowHandle, HOTKEY_TOGGLE_AP2);
             UnregisterHotKey(windowHandle, HOTKEY_TRACK_FIX);
             UnregisterHotKey(windowHandle, HOTKEY_FENIX_MCDU);
-            UnregisterHotKey(windowHandle, HOTKEY_PMDG_777_EFB);
+            UnregisterHotKey(windowHandle, HOTKEY_PMDG_EFB);
 
             // Taxi guidance hotkeys
             UnregisterHotKey(windowHandle, HOTKEY_TAXI_FORM);
             UnregisterHotKey(windowHandle, HOTKEY_TAXI_CONTINUE);
             UnregisterHotKey(windowHandle, HOTKEY_TAXI_STOP);
             UnregisterHotKey(windowHandle, HOTKEY_LANDING_EXIT);
+
+            // Access GSX (Input mode Alt+G).
+            UnregisterHotKey(windowHandle, HOTKEY_ACCESS_GSX);
 
             InputHotkeyModeChanged?.Invoke(this, new HotkeyModeEventArgs(wasCancelled ? HotkeyModeStatus.Cancelled : HotkeyModeStatus.Deactivated));
         }
@@ -1195,6 +1219,7 @@ public class HotkeyManager : IDisposable
         ReadGear,
         ReadAltimeter,
         FCUSetBaro,
+        SetNavRadios,
         ReadGrossWeightKg,
         ShowNavigationDisplay,
         ReadWaypointInfo,
@@ -1223,7 +1248,7 @@ public class HotkeyManager : IDisposable
         ReadPitch,
         ReadTargetFPM,
         ShowFenixMCDU,
-        ShowPMDG777EFB,
+        ShowPMDGEFB,
         ReadNearestCity,
         ReadDistanceToTOD,
         ReadDistanceToDest,
@@ -1242,4 +1267,6 @@ public class HotkeyManager : IDisposable
         TaxiWhereAmI,
         LandingExitPlanner,
         AnnounceGroundTraffic,
+        ShowAccessGSX,
+        ReadGsxTooltip,
     }

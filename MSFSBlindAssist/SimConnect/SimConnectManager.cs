@@ -46,9 +46,9 @@ public class SimConnectManager
     public bool CanSendHVars => mobiFlightWasm?.CanSendHVars == true;
     public string MobiFlightStatus => mobiFlightWasm?.ConnectionStatus ?? "Not Available";
 
-    // PMDG 777 data manager
-    private PMDG777DataManager? pmdg777DataManager;
-    public PMDG777DataManager? PMDG777DataManager => pmdg777DataManager;
+    // PMDG data manager (generic slot; populated by InitializePMDG factory)
+    private IPMDGDataManager? pmdgDataManager;
+    public IPMDGDataManager? PMDGDataManager => pmdgDataManager;
 
     // ECAM data collection via MobiFlight
     private Dictionary<string, string> ecamStringData = new Dictionary<string, string>();
@@ -397,6 +397,7 @@ public class SimConnectManager
         public string Nav1Ident;
         [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)]
         public string Nav1Name;
+        public double Nav1Obs;
         public double Nav2Freq;
         public double Nav2HasNav;
         public double Nav2HasLocalizer;
@@ -409,6 +410,7 @@ public class SimConnectManager
         public string Nav2Ident;
         [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)]
         public string Nav2Name;
+        public double Nav2Obs;
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
@@ -679,6 +681,7 @@ public class SimConnectManager
         sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_NAV_RADIO, "NAV RAW GLIDE SLOPE:1", "Degrees", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
         sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_NAV_RADIO, "NAV IDENT:1", null, SIMCONNECT_DATATYPE.STRING256, 0.0f, SIMCONNECT_UNUSED);
         sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_NAV_RADIO, "NAV NAME:1", null, SIMCONNECT_DATATYPE.STRING256, 0.0f, SIMCONNECT_UNUSED);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_NAV_RADIO, "NAV OBS:1", "Degrees", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
         sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_NAV_RADIO, "NAV ACTIVE FREQUENCY:2", "MHz", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
         sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_NAV_RADIO, "NAV HAS NAV:2", "Bool", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
         sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_NAV_RADIO, "NAV HAS LOCALIZER:2", "Bool", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
@@ -689,6 +692,7 @@ public class SimConnectManager
         sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_NAV_RADIO, "NAV RAW GLIDE SLOPE:2", "Degrees", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
         sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_NAV_RADIO, "NAV IDENT:2", null, SIMCONNECT_DATATYPE.STRING256, 0.0f, SIMCONNECT_UNUSED);
         sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_NAV_RADIO, "NAV NAME:2", null, SIMCONNECT_DATATYPE.STRING256, 0.0f, SIMCONNECT_UNUSED);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_NAV_RADIO, "NAV OBS:2", "Degrees", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
         sc.RegisterDataDefineStruct<NavRadioData>(DATA_DEFINITIONS.DEF_NAV_RADIO);
     }
 
@@ -705,7 +709,7 @@ public class SimConnectManager
         {
             var varDef = kvp.Value;
 
-            // Skip write-only variables (Never frequency), H-variables, AND PMDG variables (handled by PMDG777DataManager)
+            // Skip write-only variables (Never frequency), H-variables, AND PMDG variables (handled by IPMDGDataManager)
             if (varDef.UpdateFrequency == UpdateFrequency.Never || varDef.Type == SimVarType.HVar || varDef.Type == SimVarType.PMDGVar)
                 continue;
 
@@ -806,7 +810,7 @@ public class SimConnectManager
             if (kvp.Value.UpdateFrequency == UpdateFrequency.Continuous &&
                 kvp.Value.IsAnnounced)
             {
-                // Skip PMDGVar - these are monitored by PMDG777DataManager, not SimConnect batches
+                // Skip PMDGVar - these are monitored by IPMDGDataManager, not SimConnect batches
                 if (kvp.Value.Type == SimVarType.PMDGVar)
                     continue;
 
@@ -3075,10 +3079,10 @@ public class SimConnectManager
             mobiFlightWasm.ProcessClientDataResponse(data);
         }
 
-        // Forward client data to PMDG 777 data manager
-        if (pmdg777DataManager != null)
+        // Forward client data to PMDG data manager
+        if (pmdgDataManager != null)
         {
-            pmdg777DataManager.ProcessClientData(data);
+            pmdgDataManager.ProcessClientData(data);
         }
     }
 
@@ -4100,29 +4104,70 @@ public class SimConnectManager
         }
     }
 
-    public void InitializePMDG777()
+    public void InitializePMDG(IAircraftDefinition aircraft)
     {
         if (simConnect == null || !IsConnected) return;
-        pmdg777DataManager = new PMDG777DataManager();
-        pmdg777DataManager.Initialize(simConnect, mobiFlightWasm);
+        DisposePMDG();
+        pmdgDataManager = aircraft.AircraftCode switch
+        {
+            "PMDG_777" => new PMDG777DataManager(),
+            "PMDG_737" => new PMDGNG3DataManager(),
+            _ => null
+        };
+
+        pmdgDataManager?.Initialize(simConnect, mobiFlightWasm);
     }
 
-    public void DisposePMDG777()
+    public void DisposePMDG()
     {
-        pmdg777DataManager?.Dispose();
-        pmdg777DataManager = null;
+        pmdgDataManager?.Dispose();
+        pmdgDataManager = null;
     }
 
     public void SendPMDGEvent(string eventName, uint eventId, int? parameter = null)
     {
-        pmdg777DataManager?.SendEvent(eventName, eventId, parameter);
+        pmdgDataManager?.SendEvent(eventName, eventId, parameter);
     }
 
-    public async Task SendPMDGGuardedToggle(string guardEventName, uint guardEventId,
-                                              string switchEventName, uint switchEventId)
+    public async Task SendPMDGGuardedSet(string guardEventName, uint guardEventId,
+                                          string switchEventName, uint switchEventId,
+                                          int targetPosition)
     {
-        if (pmdg777DataManager != null)
-            await pmdg777DataManager.SendGuardedToggle(guardEventName, guardEventId, switchEventName, switchEventId);
+        if (pmdgDataManager != null)
+            await pmdgDataManager.SendGuardedSet(guardEventName, guardEventId, switchEventName, switchEventId, targetPosition);
+    }
+
+    /// <summary>
+    /// TransmitClientEvent dispatch for absolute-position selectors (3+ detents) whose
+    /// CDA selector handler does not accept the target position directly. PMDG accepts
+    /// the absolute target position via the standard SimConnect event path.
+    /// </summary>
+    public void SendPMDGEventViaTransmitWithTarget(uint eventId, uint targetPosition)
+    {
+        pmdgDataManager?.SendEventViaTransmitWithTarget(eventId, targetPosition);
+    }
+
+    /// <summary>
+    /// Walks an NG3 switch to a target position via mouse-click TransmitClientEvents
+    /// (TFM convention). PMDG NG3 handles guard physics transparently — no explicit
+    /// guard manipulation needed.
+    /// </summary>
+    public async Task WalkPMDGSelector(uint eventId, int currentPosition, int targetPosition)
+    {
+        if (pmdgDataManager != null)
+            await pmdgDataManager.WalkSelectorViaClicks(eventId, currentPosition, targetPosition);
+    }
+
+    /// <summary>
+    /// Sends a press-and-release dispatch pair for a momentary spring-loaded
+    /// toggle. Used by the PMDG 737 NG3 for GRD POWER, GEN, and APU GEN
+    /// switches — bare clicks without RELEASE play the switch sound but the
+    /// state springs back. See <see cref="IPMDGDataManager.SendMomentaryToggle"/>.
+    /// </summary>
+    public async Task SendPMDGMomentaryToggle(uint eventId, int targetPosition)
+    {
+        if (pmdgDataManager != null)
+            await pmdgDataManager.SendMomentaryToggle(eventId, targetPosition);
     }
 
     public void Disconnect()
@@ -4934,6 +4979,15 @@ public class SimVarUpdateEventArgs : EventArgs
     public double Value { get; set; }
     public string Description { get; set; } = string.Empty;
     public SimConnectManager.AircraftPosition? PositionData { get; set; }  // For visual guidance position updates
+
+    /// <summary>
+    /// True for events sourced from a PMDG initial baseline snapshot. UI
+    /// caches should populate and controls should refresh, but announcers
+    /// must skip — these represent app-load state, not user-triggered
+    /// transitions. Other update paths (regular SimVar polls, hotkey
+    /// requests) always leave this false.
+    /// </summary>
+    public bool IsInitialSnapshot { get; set; }
 }
 
 public class ECAMDataEventArgs : EventArgs

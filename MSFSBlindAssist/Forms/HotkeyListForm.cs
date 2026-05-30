@@ -102,6 +102,7 @@ public partial class HotkeyListForm : Form
             { "A320", "FBW_A320_Hotkeys.txt" },
             { "FENIX_A320CEO", "Fenix_A320_Hotkeys.txt" },
             { "PMDG_777", "PMDG_777_Hotkeys.txt" },
+            { "PMDG_737", "PMDG_737_Hotkeys.txt" },
             { "HS_787", "HS787_Hotkeys.txt" }
         };
 

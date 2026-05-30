@@ -206,6 +206,17 @@ public class UserSettings
 
         // Weather Settings
         public bool WeatherAutoAnnounceEnabled { get; set; } = false;
+
+        /// <summary>
+        /// Minimum minutes between weather auto-announcements. 0 = follow
+        /// ActiveSky's own download interval (no extra throttle; rely on the
+        /// monitor's TimeStamp + content-change detection). Positive values
+        /// add a hard floor — useful when teleporting / repositioning makes
+        /// the position-specific METAR change spatially and the smart
+        /// detection can't tell that from a real AS download.
+        /// Allowed: 0, 5, 10, 15, 20, 30, 45, 60.
+        /// </summary>
+        public int WeatherAutoAnnounceIntervalMinutes { get; set; } = 0;
         public bool SigmetProximityAlertsEnabled { get; set; } = false;
         public bool PirepProximityAlertsEnabled { get; set; } = false;
         public int SigmetProximityRangeNm { get; set; } = 100;
@@ -215,6 +226,14 @@ public class UserSettings
         public string? Hs787CommunityFolderOverride { get; set; } = null;
         // "FS2024" or "FS2020" — set when Hs787CommunityFolderOverride was entered manually
         public string? Hs787SimVersionOverride { get; set; } = null;
+
+        /// <summary>
+        /// When true, the AccessGSX service continues to announce GSX tooltip
+        /// updates through the screen reader even after the AccessGSX form is
+        /// closed (hidden). When false (default), tooltip speech is silenced
+        /// while the form is hidden — the form is the only speech surface.
+        /// </summary>
+        public bool GsxBackgroundMonitoring { get; set; } = false;
 
         /// <summary>
         /// Creates a new UserSettings instance with default values.
@@ -279,6 +298,7 @@ public class UserSettings
             MCDUUseAlternateLSKKeys = MCDUUseAlternateLSKKeys,
             PMDGEnhancedDistanceMode = PMDGEnhancedDistanceMode,
             WeatherAutoAnnounceEnabled = WeatherAutoAnnounceEnabled,
+            WeatherAutoAnnounceIntervalMinutes = WeatherAutoAnnounceIntervalMinutes,
             SigmetProximityAlertsEnabled = SigmetProximityAlertsEnabled,
             PirepProximityAlertsEnabled = PirepProximityAlertsEnabled,
             SigmetProximityRangeNm = SigmetProximityRangeNm,
@@ -291,7 +311,8 @@ public class UserSettings
             TaxiGuidanceGroundSpeedAnnounceInterval = TaxiGuidanceGroundSpeedAnnounceInterval,
             GroundTrafficUseMetres = GroundTrafficUseMetres,
             Hs787CommunityFolderOverride = Hs787CommunityFolderOverride,
-            Hs787SimVersionOverride = Hs787SimVersionOverride
+            Hs787SimVersionOverride = Hs787SimVersionOverride,
+            GsxBackgroundMonitoring = GsxBackgroundMonitoring
         };
     }
 }

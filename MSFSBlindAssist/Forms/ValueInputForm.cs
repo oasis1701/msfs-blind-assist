@@ -39,7 +39,9 @@ public partial class ValueInputForm : Form
         private readonly IntPtr previousWindow;
         private readonly List<ToggleButtonDef> _toggleDefs;
         private readonly List<Button> _toggleButtons = new();
+        private System.Windows.Forms.Timer? _toggleRefreshTimer;
         private readonly Func<bool>? _inputEnabledCheck;
+        private bool? _lastInputEnabledState;
 
         public ValueInputForm(string title, string parameterType, string rangeText,
             ScreenReaderAnnouncer announcer, Func<string, (bool, string)> validator)
@@ -62,6 +64,18 @@ public partial class ValueInputForm : Form
 
             InitializeComponent(title, rangeText);
             SetupAccessibility();
+            if (_toggleDefs.Count > 0)
+            {
+                _toggleRefreshTimer = new System.Windows.Forms.Timer { Interval = 400 };
+                _toggleRefreshTimer.Tick += (_, _) => RefreshToggleLabels();
+                _toggleRefreshTimer.Start();
+                FormClosed += (_, _) =>
+                {
+                    _toggleRefreshTimer?.Stop();
+                    _toggleRefreshTimer?.Dispose();
+                    _toggleRefreshTimer = null;
+                };
+            }
         }
 
         private void InitializeComponent(string title, string rangeText)
@@ -192,15 +206,49 @@ public partial class ValueInputForm : Form
             CancelButton = cancelButton;
         }
 
+        // Idempotent: only mutates control state when the gate flips. Safe to
+        // call every timer tick. The 1200 ms post-click refresh missed the
+        // state change when the sim took longer than that to commit (the
+        // PMDG NG3 broadcast plus AP-side animation can exceed 1200 ms for
+        // some MCP modes — e.g. 737 V/S), leaving the textbox stuck read-only
+        // even after the engage button's label correctly flipped to "Engaged"
+        // via the 400 ms label-refresh timer. Running this check on the same
+        // timer keeps both in sync.
         private void UpdateInputEnabled()
         {
             if (_inputEnabledCheck == null) return;
             bool enabled = _inputEnabledCheck();
+            if (_lastInputEnabledState == enabled) return;
+            _lastInputEnabledState = enabled;
             valueTextBox.ReadOnly = !enabled;
             okButton.Enabled = enabled;
             valueTextBox.AccessibleDescription = enabled
                 ? $"Enter {parameterType} value and press Enter to set"
                 : $"Engage mode first to enter a value";
+        }
+
+        // Keeps every toggle button's label AND the input-enabled gate in sync
+        // with live mode state while the dialog is open. Pressing one mode can
+        // change others (e.g. LNAV drops Heading Select), the AP can change
+        // modes on its own, and on the 737 V/S engagement can take longer than
+        // the click handler's 1200 ms one-shot refresh window. Updates only on
+        // change to avoid screen-reader churn. Never announces — that stays in
+        // the click handler for the button the user actually pressed.
+        private void RefreshToggleLabels()
+        {
+            for (int j = 0; j < _toggleButtons.Count; j++)
+            {
+                var b = _toggleButtons[j];
+                var d = _toggleDefs[j];
+                string s = d.GetCurrentState();
+                string lbl = string.IsNullOrEmpty(s) ? d.Label : $"{d.Label}: {s}";
+                if (b.Text != lbl)
+                {
+                    b.Text = lbl;
+                    b.AccessibleName = lbl.Replace("&", "");
+                }
+            }
+            UpdateInputEnabled();
         }
 
         private void SetupAccessibility()

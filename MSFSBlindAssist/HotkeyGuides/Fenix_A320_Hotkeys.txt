@@ -134,6 +134,9 @@ V, Read VS
 Visual guidance mode hotkeys:
 F, Read target VS
 
+Ground Services:
+  Ctrl+G     Read latest GSX tooltip (no need to open the Access GSX window)
+
 INPUT MODE - Press [ to activate
 
 Teleport:
@@ -170,6 +173,9 @@ Taxi Guidance:
              touchdown; guidance auto-starts when you land — reuses the ILS
              destination runway if one is set; announces headwind/tailwind on
              runway selection so you can pick an exit that matches the rollout)
+
+Ground Services:
+  Alt+G      Open Access GSX window (accessible GSX Ground Services Pro menu)
 
 
 General:

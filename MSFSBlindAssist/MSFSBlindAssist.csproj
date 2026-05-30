@@ -92,6 +92,9 @@
     <None Update="HotkeyGuides\Fenix_A320_Hotkeys.txt">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Update="HotkeyGuides\PMDG_737_Hotkeys.txt">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <None Update="HotkeyGuides\PMDG_777_Hotkeys.txt">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>

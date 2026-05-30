@@ -34,6 +34,11 @@ public class TaxiAssistForm : Form
     // off that route, and off-route detection recalcs immediately.
     private readonly MSFSBlindAssist.SimConnect.SimConnectManager? _simConnectManager;
     private readonly TcasService? _tcasService;
+    // Refreshed at the top of LoadAirportData from _simConnectManager?.AircraftWingSpan
+    // so a mid-session aircraft swap (multi-aircraft architecture) is honored on the
+    // next form open. Constructor parameter is preserved as a fallback for callers
+    // that don't pass a SimConnectManager.
+    private double _aircraftWingspan;
 
     // Form controls
     private Label lblAirport = null!;
@@ -41,6 +46,7 @@ public class TaxiAssistForm : Form
     private Label lblDestType = null!;
     private ComboBox cmbDestType = null!;
     private Label lblDestination = null!;
+    private CheckBox chkFitFilter = null!;
     private ComboBox cmbDestination = null!;
     private Label lblFirstTaxiway = null!;
     private ComboBox cmbFirstTaxiway = null!;
@@ -98,13 +104,15 @@ public class TaxiAssistForm : Form
         ScreenReaderAnnouncer announcer,
         TaxiGuidanceManager guidanceManager,
         MSFSBlindAssist.SimConnect.SimConnectManager? simConnectManager = null,
-        TcasService? tcasService = null)
+        TcasService? tcasService = null,
+        double aircraftWingspan = 0)
     {
         _dataProvider = dataProvider;
         _announcer = announcer;
         _guidanceManager = guidanceManager;
         _simConnectManager = simConnectManager;
         _tcasService = tcasService;
+        _aircraftWingspan = aircraftWingspan;
         InitializeFormControls();
     }
 
@@ -225,6 +233,18 @@ public class TaxiAssistForm : Form
             AutoSize = true,
             AccessibleName = "Destination Label"
         };
+        chkFitFilter = new CheckBox
+        {
+            Text = "Show &fitting only",
+            Location = new System.Drawing.Point(200, y),
+            AutoSize = true,
+            Visible = false,
+            Checked = _aircraftWingspan > 0,
+            Enabled = _aircraftWingspan > 0,
+            AccessibleName = "Show only fitting parking spots",
+            AccessibleDescription = "When checked, only shows parking spots large enough for your aircraft"
+        };
+        chkFitFilter.CheckedChanged += (s, e) => { if (cmbDestType.SelectedIndex != 0) PopulateDestinations(); };
         y += 20;
         cmbDestination = new ComboBox
         {
@@ -397,6 +417,7 @@ public class TaxiAssistForm : Form
         this.Controls.Add(lblDestType);
         this.Controls.Add(cmbDestType);
         this.Controls.Add(lblDestination);
+        this.Controls.Add(chkFitFilter);
         this.Controls.Add(cmbDestination);
         this.Controls.Add(lblFirstTaxiway);
         this.Controls.Add(cmbFirstTaxiway);
@@ -425,6 +446,7 @@ public class TaxiAssistForm : Form
         txtAirport.TabIndex = tabIdx++;
         cmbDestType.TabIndex = tabIdx++;
         cmbDestination.TabIndex = tabIdx++;
+        chkFitFilter.TabIndex = tabIdx++;
         cmbFirstTaxiway.TabIndex = tabIdx++;
         chkFirstHoldShort.TabIndex = tabIdx++;
         cmbFirstHoldShortRunway.TabIndex = tabIdx++;
@@ -447,6 +469,21 @@ public class TaxiAssistForm : Form
     private async void LoadAirportData(string icao)
     {
         if (string.IsNullOrWhiteSpace(icao)) return;
+
+        // Refresh wingspan from the live SimConnectManager. This form persists
+        // across opens (hide-on-close), so the constructor-time wingspan can be
+        // stale after a mid-session aircraft swap or after SimConnect connected.
+        // _simConnectManager is null only when the form was constructed without
+        // one (test/standalone) — fall back to the constructor value in that case.
+        if (_simConnectManager != null && _simConnectManager.AircraftWingSpan > 0)
+            _aircraftWingspan = _simConnectManager.AircraftWingSpan;
+
+        // Re-enable the "fitting only" checkbox if wingspan data has become
+        // available since the form was constructed. The Visible state is
+        // refreshed by OnDestTypeChanged when the user selects a parking
+        // destination type; the Enabled state needs its own refresh here.
+        chkFitFilter.Enabled = _aircraftWingspan > 0;
+
         if (icao.Equals(_currentIcao, StringComparison.OrdinalIgnoreCase) && _graph != null) return;
 
         _currentIcao = icao.ToUpperInvariant();
@@ -597,11 +634,8 @@ public class TaxiAssistForm : Form
                 // are permissive (closed=false, can-takeoff=true) so DBs that
                 // don't populate these columns still see every runway. Users
                 // with Navigraph or third-party scenery — which DOES populate
-                // these — won't see closed runways or takeoff-prohibited ends
-                // in the destination dropdown. Avoids routing to a closed
-                // runway and getting "WTF" looks on VATSIM.
+                // these — won't see closed runways in the destination dropdown.
                 if (rwy.IsClosed) continue;
-                if (!rwy.IsTakeoff) continue;
 
                 // Prefer the start-table lineup point (handles displaced
                 // thresholds correctly). Fall back to the physical pavement
@@ -658,9 +692,27 @@ public class TaxiAssistForm : Form
             // radius, the spot is dropped — there's no way to taxi there.
             const double MAX_PARKING_TO_GRAPH_M = 100.0;
 
-            var parkingSpots = _dataProvider.GetParkingSpots(_currentIcao)
-                .OrderBy(p => TaxiGraph.CalculateDistanceMeters(
-                    _aircraftLat, _aircraftLon, p.Latitude, p.Longitude))
+            // Category display order matching GateTeleportForm: gates first
+            // (small → extra), then ramp types, then dock/other.
+            var categoryOrder = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["Gate Small"] = 1, ["Gate Medium"] = 2, ["Gate Large"] = 3,
+                ["Gate Heavy"] = 4, ["Gate Extra"] = 5,
+                ["Ramp GA"] = 6, ["Ramp Cargo"] = 7, ["Ramp Military"] = 8,
+                ["Dock"] = 9, ["Other"] = 10
+            };
+
+            var allSpots = _dataProvider.GetParkingSpots(_currentIcao);
+
+            // Wingspan filter: spot must be large enough for the aircraft.
+            // Radius is centre-to-edge; half-wingspan must fit within it.
+            if (chkFitFilter.Checked && _aircraftWingspan > 0)
+                allSpots = allSpots.Where(p => p.Radius >= _aircraftWingspan / 2.0).ToList();
+
+            var parkingSpots = allSpots
+                .OrderBy(p => categoryOrder.TryGetValue(p.GetFilterCategory(), out int o) ? o : 99)
+                .ThenBy(p => p.Number > 0 ? p.Number : int.MaxValue)
+                .ThenBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
             foreach (var spot in parkingSpots)
@@ -721,6 +773,7 @@ public class TaxiAssistForm : Form
 
     private void OnDestTypeChanged(object? sender, EventArgs e)
     {
+        chkFitFilter.Visible = cmbDestType.SelectedIndex != 0 && _aircraftWingspan > 0;
         PopulateDestinations();
     }
 
@@ -1303,5 +1356,16 @@ public class TaxiAssistForm : Form
         _guidanceManager.StopGuidance();
         _announcer.Announce("Taxi guidance stopped.");
         lblStatus.Text = "Guidance stopped.";
+    }
+
+    protected override void OnFormClosing(FormClosingEventArgs e)
+    {
+        if (e.CloseReason == CloseReason.UserClosing)
+        {
+            e.Cancel = true;
+            Hide();
+            return;
+        }
+        base.OnFormClosing(e);
     }
 }

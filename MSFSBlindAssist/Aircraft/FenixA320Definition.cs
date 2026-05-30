@@ -12207,8 +12207,8 @@ public class FenixA320Definition : BaseAircraftDefinition
             pendingHeadingValue = null;
             pendingHeadingStatus = null;
 
-            simConnectMgr.RequestVariable("N_FCU_HEADING");
-            simConnectMgr.RequestVariable("I_FCU_HEADING_MANAGED");
+            simConnectMgr.RequestVariable("N_FCU_HEADING", forceUpdate: true);
+            simConnectMgr.RequestVariable("I_FCU_HEADING_MANAGED", forceUpdate: true);
         }
     }
 
@@ -12224,8 +12224,8 @@ public class FenixA320Definition : BaseAircraftDefinition
             pendingSpeedValue = null;
             pendingSpeedStatus = null;
 
-            simConnectMgr.RequestVariable("N_FCU_SPEED");
-            simConnectMgr.RequestVariable("I_FCU_SPEED_MANAGED");
+            simConnectMgr.RequestVariable("N_FCU_SPEED", forceUpdate: true);
+            simConnectMgr.RequestVariable("I_FCU_SPEED_MANAGED", forceUpdate: true);
         }
     }
 
@@ -12241,8 +12241,8 @@ public class FenixA320Definition : BaseAircraftDefinition
             pendingAltitudeValue = null;
             pendingAltitudeStatus = null;
 
-            simConnectMgr.RequestVariable("N_FCU_ALTITUDE");
-            simConnectMgr.RequestVariable("I_FCU_ALTITUDE_MANAGED");
+            simConnectMgr.RequestVariable("N_FCU_ALTITUDE", forceUpdate: true);
+            simConnectMgr.RequestVariable("I_FCU_ALTITUDE_MANAGED", forceUpdate: true);
         }
     }
 
@@ -12259,8 +12259,8 @@ public class FenixA320Definition : BaseAircraftDefinition
             pendingVSValue = null;
             pendingVSStatus = null;
 
-            simConnectMgr.RequestVariable("N_FCU_VS");
-            simConnectMgr.RequestVariable("B_FCU_VERTICALSPEED_DASHED");
+            simConnectMgr.RequestVariable("N_FCU_VS", forceUpdate: true);
+            simConnectMgr.RequestVariable("B_FCU_VERTICALSPEED_DASHED", forceUpdate: true);
         }
     }
 
@@ -12280,8 +12280,8 @@ public class FenixA320Definition : BaseAircraftDefinition
             isRequestingBaro = true;
             pendingBaroHpa = null;
             pendingBaroInch = null;
-            simConnectMgr.RequestVariable("N_FCU_EFIS1_BARO_HPA");
-            simConnectMgr.RequestVariable("N_FCU_EFIS1_BARO_INCH");
+            simConnectMgr.RequestVariable("N_FCU_EFIS1_BARO_HPA", forceUpdate: true);
+            simConnectMgr.RequestVariable("N_FCU_EFIS1_BARO_INCH", forceUpdate: true);
         }
     }
 
@@ -13193,70 +13193,6 @@ public class FenixA320Definition : BaseAircraftDefinition
             default:
                 // Let base class handle other actions
                 return base.HandleHotkeyAction(action, simConnect, announcer, parentForm, hotkeyManager);
-        }
-    }
-
-    /// <summary>
-    /// Captures screenshot and analyzes cockpit display using Gemini AI.
-    /// </summary>
-    private async void ReadDisplay(Services.GeminiService.DisplayType displayType,
-                                    string displayName,
-                                    ScreenReaderAnnouncer announcer,
-                                    System.Windows.Forms.Form parentForm)
-    {
-        try
-        {
-            announcer.Announce($"Capturing {displayName}...");
-
-            var screenshotService = new Services.ScreenshotService();
-            var geminiService = new Services.GeminiService();
-
-            // Check if MSFS window is available
-            if (!screenshotService.IsMsfsWindowAvailable())
-            {
-                announcer.Announce("Microsoft Flight Simulator window not found. Make sure the simulator is running.");
-                return;
-            }
-
-            // Capture screenshot
-            byte[]? screenshot = await screenshotService.CaptureAsync();
-            if (screenshot == null || screenshot.Length == 0)
-            {
-                announcer.Announce($"Failed to capture {displayName} screenshot.");
-                return;
-            }
-
-            // Analyze with Gemini
-            string analysis = await geminiService.AnalyzeDisplayAsync(screenshot, displayType);
-
-            // Show result in window (independent window with synchronous focus)
-            var resultForm = new Forms.DisplayReadingResultForm(displayName, analysis);
-            resultForm.ShowForm();
-
-            announcer.Announce($"{displayName} analysis ready.");
-        }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("API key"))
-        {
-            announcer.Announce("Gemini API key not configured. Please go to File menu, Gemini Settings.");
-            System.Windows.Forms.MessageBox.Show(
-                parentForm,
-                "Gemini API key is not configured.\n\n" +
-                "Please configure your API key in:\n" +
-                "File > Gemini Settings\n\n" +
-                "Get a free API key at: https://aistudio.google.com/apikey",
-                "API Key Required",
-                System.Windows.Forms.MessageBoxButtons.OK,
-                System.Windows.Forms.MessageBoxIcon.Warning);
-        }
-        catch (Exception ex)
-        {
-            announcer.Announce($"Error analyzing {displayName}: {ex.Message}");
-            System.Windows.Forms.MessageBox.Show(
-                parentForm,
-                $"Error analyzing {displayName}:\n\n{ex.Message}",
-                "Error",
-                System.Windows.Forms.MessageBoxButtons.OK,
-                System.Windows.Forms.MessageBoxIcon.Error);
         }
     }
 

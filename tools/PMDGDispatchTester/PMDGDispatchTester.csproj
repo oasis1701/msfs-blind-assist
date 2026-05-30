@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <Nullable>disable</Nullable>
+    <!-- Match the main project so the linked PMDGNG3DataStruct.cs (which relies on
+         implicit `using System;` for [Flags] etc.) compiles identically here. -->
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>PMDGDispatchTester</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Single source of truth: compile the main app's NG3 data struct directly
+         (linked, not copied) so the tester's CDA layout can never drift from
+         PMDGNG3DataManager's. The file declares the MSFSBlindAssist.SimConnect
+         namespace, which Program.cs already references. -->
+    <Compile Include="..\..\MSFSBlindAssist\SimConnect\PMDGNG3DataStruct.cs" Link="PMDGNG3DataStruct.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Include="Microsoft.FlightSimulator.SimConnect">
+      <HintPath Condition="Exists('$(MSFS_SDK)\SimConnect SDK\lib\managed\Microsoft.FlightSimulator.SimConnect.dll')">$(MSFS_SDK)\SimConnect SDK\lib\managed\Microsoft.FlightSimulator.SimConnect.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="$(MSFS_SDK)\SimConnect SDK\lib\SimConnect.dll" Condition="Exists('$(MSFS_SDK)\SimConnect SDK\lib\SimConnect.dll')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+</Project>
