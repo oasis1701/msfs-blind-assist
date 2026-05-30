@@ -1923,11 +1923,16 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // through so the FCU panel's display readouts work normally.
         if (_reqHdg && (varName == "A32NX_AUTOPILOT_HEADING_SELECTED" || varName == "A32NX_FCU_HDG_MANAGED_DASHES"))
         {
-            // A32NX_AUTOPILOT_HEADING_SELECTED is stored in RADIANS (verified live:
-            // a 250° set reads 4.363, a 300° set reads 5.236). MSFSBA's read path
-            // returns the raw radians, so convert to degrees and wrap to 0-360.
+            // SimConnect's native L-var read returns this ANGULAR var in RADIANS
+            // (verified live: 250° reads 4.363, 300° reads 5.236) — non-angular FCU
+            // vars like VS/speed come through unscaled. Convert to degrees only when
+            // the magnitude is in the radian range (<= 2pi), so a future build/path
+            // that returns degrees directly is handled correctly too.
             if (varName.EndsWith("HEADING_SELECTED"))
-                _pHdgVal = ((value * 180.0 / Math.PI % 360) + 360) % 360;
+            {
+                double hv = Math.Abs(value) <= (Math.PI * 2 + 0.05) ? value * 180.0 / Math.PI : value;
+                _pHdgVal = ((hv % 360) + 360) % 360;
+            }
             else _pHdgMgd = value;
             if (_pHdgVal.HasValue && _pHdgMgd.HasValue)
             {
@@ -1942,11 +1947,17 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             if (varName.EndsWith("SPEED_SELECTED")) _pSpdVal = value; else _pSpdMgd = value;
             if (_pSpdVal.HasValue && _pSpdMgd.HasValue)
             {
-                string st = _pSpdMgd.Value > 0 ? "managed" : "selected";
-                // The A380 SPEED_SELECTED carries mach (< 1) when in mach mode.
-                string spoken = _pSpdVal.Value < 10
-                    ? $"FCU speed mach {_pSpdVal.Value:0.00}, {st}"
-                    : $"FCU speed {_pSpdVal.Value:000} knots, {st}";
+                // Managed speed parks SPEED_SELECTED at -1 (dashes on the FCU). Don't
+                // format that as a bogus "mach -1.00" — announce the managed state.
+                bool managed = _pSpdMgd.Value > 0 || _pSpdVal.Value < 0;
+                string spoken;
+                if (managed)
+                    spoken = "FCU speed managed";
+                else
+                    // SPEED_SELECTED carries mach (< 1) when in mach mode, knots otherwise.
+                    spoken = _pSpdVal.Value < 10
+                        ? $"FCU speed mach {_pSpdVal.Value:0.00}, selected"
+                        : $"FCU speed {_pSpdVal.Value:000} knots, selected";
                 announcer.AnnounceImmediate(spoken);
                 _pSpdVal = _pSpdMgd = null; _reqSpd = false;
             }
@@ -1966,8 +1977,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         if (_reqVs && (varName == "A32NX_AUTOPILOT_VS_SELECTED" || varName == "A32NX_AUTOPILOT_FPA_SELECTED" ||
                        varName == "A32NX_TRK_FPA_MODE_ACTIVE"))
         {
-            if (varName.EndsWith("VS_SELECTED")) _pVsVal = value;
-            else if (varName.EndsWith("FPA_SELECTED")) _pFpaVal = value;
+            if (varName.EndsWith("VS_SELECTED")) _pVsVal = value; // fpm, non-angular: unscaled
+            // FPA is angular, so SimConnect returns it in radians (like heading);
+            // convert when the magnitude is in the radian range (FPA maxes at ~9.9°).
+            else if (varName.EndsWith("FPA_SELECTED")) _pFpaVal = Math.Abs(value) <= 0.2 ? value * 180.0 / Math.PI : value;
             else _pVsMode = value;
             if (_pVsMode.HasValue && ((_pVsMode.Value > 0 && _pFpaVal.HasValue) || (_pVsMode.Value <= 0 && _pVsVal.HasValue)))
             {
