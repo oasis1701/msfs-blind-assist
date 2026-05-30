@@ -176,10 +176,15 @@ FCU Set Values (opens an edit box):
   Ctrl+V     Set VS Value
 
 flyPad EFB:
-  Shift+T    Open the A380 flyPad EFB window. Lists the current flyPad page as
-             native controls (links, checkboxes, edit fields, buttons). Tab
-             between them; F5 refreshes. Activating a navigation link changes the
-             flyPad page and the list updates.
+  Shift+T    Open the A380 flyPad EFB window. By default the page is shown in a
+             BROWSER VIEW — a real web document your screen reader browses like
+             any web page: use heading navigation (H), links list (K), arrow keys
+             to read line by line, real edit fields, and live page-change
+             announcements. Tab/Shift+Tab still moves between controls. Activating
+             a link or button changes the flyPad page and the view updates; F5
+             refreshes. Press Ctrl+L to switch to the simpler LIST VIEW (a flat
+             list of native controls) and Ctrl+L again to switch back — the list
+             view is also used automatically if the browser view can't start.
 
 Taxi Guidance:
   Shift+Y    Open Taxi Assist Form (enter ATC taxi clearance, start guidance)
