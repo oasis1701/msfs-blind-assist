@@ -351,14 +351,18 @@
       if (interactive) { thisIdx = idx; n.setAttribute("data-fbwa380-efb-idx", String(idx)); idx++; }
 
       var r = n.getBoundingClientRect();
+      var topRel = r.top - rootRect.top, leftRel = r.left - rootRect.left;
       items.push({
-        top: r.top - rootRect.top, left: r.left - rootRect.left,
+        top: topRel, left: leftRel,
         idx: thisIdx, kind: kind, tag: n.tagName.toLowerCase(),
         role: lower(n.getAttribute && n.getAttribute("role") || ""),
         text: text, value: A.valueOf(kind, n),
         controlType: ctype, clickable: clickable,
         level: A.headingLevel(n), live: A.liveFor(n),
-        disabled: A.disabledFor(n), options: A.optionsFor(n)
+        disabled: A.disabledFor(n), options: A.optionsFor(n),
+        // The left nav rail (page links in the far-left column) is grouped at the
+        // END so it stops interleaving with the page content row-by-row.
+        navRail: (kind === "link" && leftRel < 100 && topRel > 40)
       });
     }
 
@@ -378,15 +382,23 @@
       // that control's label), so don't surface it as its own line.
       if (own.charAt(0) === "(" && own.charAt(own.length - 1) === ")") continue;
       var tr = tn.getBoundingClientRect();
+      var tTop = tr.top - rootRect.top, tLeft = tr.left - rootRect.left;
+      // Skip text in the far-left nav-rail column (below the top status bar): these
+      // are the rail's full-name tooltips (e.g. "Navigation & Charts", "Air Traffic
+      // Control") that duplicate the nav LINKS and aren't clickable.
+      if (tLeft < 100 && tTop > 12) continue;
       items.push({
-        top: tr.top - rootRect.top, left: tr.left - rootRect.left,
+        top: tTop, left: tLeft,
         idx: 0, kind: "text", tag: tn.tagName.toLowerCase(), role: "",
         text: own, value: "", controlType: "", clickable: false,
-        level: 0, live: A.liveFor(tn), disabled: false, options: []
+        level: 0, live: A.liveFor(tn), disabled: false, options: [], navRail: false
       });
     }
 
     items.sort(function (a, b) {
+      // Nav rail goes after all content so it stops interleaving row-by-row.
+      var ng = (a.navRail ? 1 : 0) - (b.navRail ? 1 : 0);
+      if (ng) return ng;
       var dy = Math.round(a.top / A.ROW_Y_TOLERANCE_PX) - Math.round(b.top / A.ROW_Y_TOLERANCE_PX);
       return dy || (a.left - b.left);
     });
