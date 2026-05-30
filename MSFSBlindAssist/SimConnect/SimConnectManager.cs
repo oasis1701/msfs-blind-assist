@@ -3628,16 +3628,26 @@ public class SimConnectManager
 
         System.Diagnostics.Debug.WriteLine($"Sending event: {eventName} with data: {data}");
 
-        // FlyByWire custom input events use a dotted namespace (e.g.
-        // "A32NX.FCU_HDG_SET", "A32NX.FCU_AP_1_PUSH"). These are NOT resolvable
-        // via MapClientEventToSimEvent + TransmitClientEvent — that path silently
-        // no-ops (verified live: SimConnect returns "event not found", so the
-        // whole A380/A320 FCU, AP, ATHR etc. did nothing). They MUST be fired as
-        // calculator code "<data> (>K:A32NX....)", which works. Route them there.
-        if (eventName.Contains('.') && mobiFlightWasm != null)
+        // Two FlyByWire event classes are NOT dispatchable via
+        // MapClientEventToSimEvent + TransmitClientEvent — that path silently
+        // no-ops (verified live: SimConnect returns "event not found"). They MUST
+        // be fired as calculator code via the MobiFlight WASM bridge:
+        //   1. "H:" gauge/HTML events (e.g. H:A380X_EFIS_CP_BARO_PUSH_1) — the
+        //      EFIS baro STD/QNH push-pull and similar.
+        //   2. Dotted custom input events (e.g. A32NX.FCU_HDG_SET,
+        //      A32NX.FCU_AP_1_PUSH) — the whole A380/A320 FCU/AP/ATHR.
+        if (mobiFlightWasm != null)
         {
-            ExecuteCalculatorCode($"{data} (>K:{eventName})");
-            return;
+            if (eventName.StartsWith("H:", StringComparison.Ordinal))
+            {
+                ExecuteCalculatorCode($"(>{eventName})");   // momentary; no param
+                return;
+            }
+            if (eventName.Contains('.'))
+            {
+                ExecuteCalculatorCode($"{data} (>K:{eventName})");
+                return;
+            }
         }
 
         // Map the event name to an ID if not already mapped
