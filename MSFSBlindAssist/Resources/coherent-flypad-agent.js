@@ -190,7 +190,12 @@
                   || clz.indexOf("toggle") >= 0 || clz.indexOf("switch") >= 0;
       if (tag === "input" || tag === "textarea" ||
           (n.getAttribute && n.getAttribute("contenteditable") === "true")) {
-        // A value field with no own text — borrow its parent unit label (PAX/KGS).
+        // The field's own placeholder is usually its best hint (e.g. a METAR box
+        // placeholder is the airport ICAO "LIMC"/"EDDF"). Prefer it over the
+        // parent text, which can be a neighbouring control's caption.
+        var ph = clean((n.getAttribute && n.getAttribute("placeholder")) || "");
+        if (ph) return ph;
+        // Otherwise borrow the parent unit label (PAX/KGS).
         var fl = A.fieldUnitLabel(n);
         if (fl) return fl;
       }
@@ -357,6 +362,9 @@
       if (A.isInsideStamped(tn)) continue; // text inside a captured control
       var own = A.directText(tn);          // immediate text only -> leaf labels/values
       if (!own || own.length > 80) continue;
+      // A pure "(...)" sub-label belongs to an adjacent control (it is folded into
+      // that control's label), so don't surface it as its own line.
+      if (own.charAt(0) === "(" && own.charAt(own.length - 1) === ")") continue;
       var tr = tn.getBoundingClientRect();
       items.push({
         top: tr.top - rootRect.top, left: tr.left - rootRect.left,
@@ -391,15 +399,30 @@
     return "";
   };
 
+  // First parenthetical sub-label in a row, e.g. "(Unrealistic)".
+  A.firstParenthetical = function (root) {
+    var all = root.getElementsByTagName("*");
+    for (var i = 0; i < all.length; i++) {
+      if (!A.isVisible(all[i])) continue;
+      var t = A.directText(all[i]);
+      if (t && t.charAt(0) === "(" && t.charAt(t.length - 1) === ")") return t;
+    }
+    return "";
+  };
+
   A.toggleLabel = function (n) {
     // Walk up to the row container (a parent that holds text besides the toggle),
-    // then take its first real text leaf as the setting name.
+    // then take its first real text leaf as the setting name, plus any "(...)"
+    // sub-label (so "(Unrealistic)" reads as part of the setting, not its own line).
     var row = n.parentElement, guard = 0;
     while (row && guard < 4) {
       guard++;
       if (clean(row.textContent).length >= 2) {
         var name = A.firstTextLeaf(row);
-        if (name) return name;
+        if (name) {
+          var sub = A.firstParenthetical(row);
+          return sub ? name + " " + sub : name;
+        }
       }
       row = row.parentElement;
     }
@@ -429,6 +452,7 @@
 
     var interactiveByRow = {};
     var interactiveAll = {};
+    var interactivePrefix = {};
     for (var a = 0; a < items.length; a++) {
       if (items[a].idx > 0) {
         var rb = rowBucket(items[a]);
@@ -437,6 +461,10 @@
         if (!interactiveByRow[rb]) interactiveByRow[rb] = {};
         interactiveByRow[rb][key] = true;
         interactiveAll[key] = true;
+        // A control labelled "NAME (SUBLABEL)" makes the separate "NAME" text line
+        // redundant — record the NAME prefix so it is dropped below.
+        var pi = key.indexOf(" (");
+        if (pi > 0) interactivePrefix[key.substring(0, pi)] = true;
       }
     }
 
@@ -447,8 +475,9 @@
         var k = norm(it.text);
         // A descriptive-text line whose exact text is ALSO an interactive control
         // anywhere on the page is redundant (e.g. nav-rail icon labels duplicated
-        // by their links, or a card title repeated as its link). Drop it.
-        if (k && interactiveAll[k]) continue;
+        // by their links, or a card title repeated as its link). Also drop a NAME
+        // line already folded into a "NAME (SUBLABEL)" control. Drop it.
+        if (k && (interactiveAll[k] || interactivePrefix[k])) continue;
         var here = rowBucket(it);
         var dup = false;
         for (var d = -1; d <= 1; d++) {
