@@ -253,7 +253,9 @@
       var lab = n.querySelector(".mfd-top-tab-navigator-bar-element-label");
       var active = n.classList.contains("active") || (lab && lab.classList.contains("active"));
       var st = clean(lab ? lab.textContent : n.textContent);
-      return (st || "(tab)") + (active ? " (active tab)" : "");
+      // NB: the form appends the role word "tab" (RoleWord), so the active marker
+      // must NOT also contain "tab" or the line reads "... active tab tab".
+      return (st || "(tab)") + (active ? " (active)" : "");
     }
     if (kind === "adsc") {
       // AdscButton is a TOGGLE that renders BOTH labels stacked (e.g. ARMED over

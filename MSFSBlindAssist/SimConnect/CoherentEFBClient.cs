@@ -168,6 +168,15 @@ namespace MSFSBlindAssist.SimConnect
             string install = await EvalAsync(_agentJs, ct);
             _agentInstalled = install.IndexOf("MSFSBA_FLYPAD_INSTALLED", StringComparison.Ordinal) >= 0;
             _connected = _agentInstalled;
+
+            if (_agentInstalled)
+            {
+                // The flyPad screen is usually powered off; turn it on so the form
+                // shows content instead of a blank tablet. Idempotent — sets
+                // L:A32NX_EFB_TURNED_ON = 1 (the same state a cockpit tap sets).
+                try { await EvalAsync("window.__MSFSBA_FLYPAD && __MSFSBA_FLYPAD.powerOn && __MSFSBA_FLYPAD.powerOn()", ct); }
+                catch { /* best-effort; the form still works once the user wakes it */ }
+            }
             return _agentInstalled;
         }
 

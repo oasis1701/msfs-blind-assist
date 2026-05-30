@@ -653,6 +653,19 @@
 
   A.ping = function () { return "MSFSBA_FLYPAD_OK"; };
 
+  // Power the flyPad/EFB screen on. The tablet boots off (L:A32NX_EFB_TURNED_ON
+  // = 0) and is otherwise woken by tapping it in the 3D cockpit; setting the
+  // L-var here replaces that so the form has content instead of a blank screen.
+  // Idempotent — safe to call on every (re)connect.
+  A.powerOn = function () {
+    try {
+      if (typeof SimVar !== "undefined" && SimVar.SetSimVarValue) {
+        SimVar.SetSimVarValue("L:A32NX_EFB_TURNED_ON", "number", 1);
+      }
+    } catch (e) {}
+    return "ok";
+  };
+
   window.__MSFSBA_FLYPAD = A;
   return "MSFSBA_FLYPAD_INSTALLED";
 })();

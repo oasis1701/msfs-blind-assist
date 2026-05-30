@@ -643,7 +643,7 @@ public class FBWA380EFBForm : Form
   a.lnk { display: inline-block; margin: 4px 0; color: #7fbfff; }
   a.lnk:focus, button.btn:focus, input:focus, select:focus { outline: 3px solid #FFD700; }
   button.btn { display: block; width: 100%; text-align: left; padding: 8px 12px; margin: 4px 0; border: 1px solid #445; border-radius: 6px; cursor: pointer; font-size: 14px; background: #0e4d92; color: #fff; font-family: inherit; }
-  button.btn[aria-disabled=""true""] { background: #333; color: #999; cursor: default; }
+  button.btn[data-disabled=""true""] { background: #333; color: #999; cursor: default; }
   label.fld { display: block; margin: 8px 0; color: #cfe3ff; font-size: 14px; }
   input.in, select.sel { display: block; width: 92%; padding: 6px 8px; margin-top: 2px; border: 1px solid #555; border-radius: 4px; background: #1a1a30; color: #eee; font-size: 14px; font-family: inherit; }
   label.chk { display: block; margin: 8px 0; color: #ddd; font-size: 14px; cursor: pointer; }
@@ -732,14 +732,14 @@ public class FBWA380EFBForm : Form
         el = document.createElement('button'); el.className = 'btn';
         el.textContent = it.text || '(button)';
         el.setAttribute('data-idx', String(it.idx));
-        if (it.disabled) { el.setAttribute('aria-disabled', 'true'); }
+        if (it.disabled) { el.setAttribute('data-disabled', 'true'); el.textContent += ', dimmed'; }
         el.addEventListener('click', onActivate);
         el.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { onActivate.call(this, e); } });
       } else if (it.kind === 'link' || it.tag === 'a') {
         el = document.createElement('a'); el.className = 'lnk'; el.href = '#';
         el.textContent = it.text || '(link)';
         el.setAttribute('data-idx', String(it.idx));
-        if (it.disabled) el.setAttribute('aria-disabled', 'true');
+        if (it.disabled) { el.setAttribute('data-disabled', 'true'); el.textContent += ', dimmed'; }
         el.addEventListener('click', function (e) { e.preventDefault(); onActivate.call(this, e); });
       } else {
         el = document.createElement('p'); el.className = 'txt';
@@ -768,7 +768,7 @@ public class FBWA380EFBForm : Form
 
   function onActivate(e) {
     var idx = this.getAttribute('data-idx');
-    if (this.getAttribute('aria-disabled') === 'true') { announce('Unavailable'); return; }
+    if (this.getAttribute('data-disabled') === 'true') { announce('Unavailable'); return; }
     announce('Activating ' + (this.textContent || ''));
     post({ type: 'click', idx: idx });
   }
