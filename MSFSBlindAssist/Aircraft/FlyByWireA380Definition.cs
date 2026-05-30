@@ -1921,8 +1921,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     // ===================================================================
     // Update hook (bridge diagnostics)
     // ===================================================================
-    // Last announced E/WD code per line, so a line only speaks when it changes.
+    // Last seen E/WD code per line (live cache for ReadAllEwdWarnings).
     private readonly Dictionary<string, long> _lastEwdCode = new();
+    // The set of E/WD codes currently on screen (across all lines) that have been
+    // announced — so a message that scrolls between lines isn't re-announced.
+    private readonly HashSet<long> _announcedEwdCodes = new();
     private readonly double[] _tla = { double.NaN, double.NaN, double.NaN, double.NaN };
     private readonly string?[] _lastEngDetent = new string?[4];
     private string? _lastAllDetent;
@@ -1989,16 +1992,30 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             if (!_lastEwdCode.TryGetValue(varName, out var prev) || prev != code)
             {
                 _lastEwdCode[varName] = code;
-                // Honour the "ECAM E/WD call-outs" mute from the Monitor Manager.
-                if (Settings.SettingsManager.Current.A380DisabledMonitorVariables.Contains("FBWA380_ECAM_MEMOS"))
-                    return true;
-                string text = EWDMessageLookupA380.GetMessage(code);
-                if (!string.IsNullOrWhiteSpace(text) &&
-                    !text.Equals("NORMAL", StringComparison.OrdinalIgnoreCase))
+                // De-dup by the MESSAGE SET across ALL E/WD lines, not per line.
+                // A message that merely scrolls to a different line (because a
+                // higher one cleared) stays in the set, so it is NOT re-announced;
+                // only a message that's NEWLY present anywhere is spoken. This
+                // kills the "same caution repeats as it shifts lines" spam.
+                var current = new HashSet<long>();
+                foreach (var kv in _lastEwdCode) if (kv.Value != 0) current.Add(kv.Value);
+                bool muted = Settings.SettingsManager.Current.A380DisabledMonitorVariables.Contains("FBWA380_ECAM_MEMOS");
+                foreach (var c in current)
                 {
-                    string priority = EWDMessageLookupA380.GetMessagePriority(code);
-                    announcer.Announce(string.IsNullOrEmpty(priority) ? text : $"{text}, {priority}");
+                    if (_announcedEwdCodes.Contains(c)) continue;   // already on screen
+                    if (muted) continue;                            // honour Ctrl+M mute
+                    string text = EWDMessageLookupA380.GetMessage(c);
+                    if (!string.IsNullOrWhiteSpace(text) &&
+                        !text.Equals("NORMAL", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string priority = EWDMessageLookupA380.GetMessagePriority(c);
+                        announcer.Announce(string.IsNullOrEmpty(priority) ? text : $"{text}, {priority}");
+                    }
                 }
+                // Snapshot the on-screen set so a cleared message can re-announce
+                // if it genuinely returns later (but a moved one does not).
+                _announcedEwdCodes.Clear();
+                foreach (var c in current) _announcedEwdCodes.Add(c);
             }
             return true;
         }
