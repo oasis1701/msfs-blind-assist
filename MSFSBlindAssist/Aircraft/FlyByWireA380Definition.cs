@@ -2020,6 +2020,21 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             announcer.AnnounceImmediate(value > 0.5 ? "Gear down" : "Gear up");
             return true;
         }
+        // Doors read the stock INTERACTIVE POINT OPEN, a 0..1 FRACTION — so a
+        // half-open door is e.g. 0.6, which matches neither the Closed(0) nor
+        // Open(1) value description and would otherwise read as "0.6". Announce
+        // open/closed once per transition (>0.05 = cracked open). The decoded
+        // state + percentage is shown in the panel via TryGetDisplayOverride.
+        if (varName.StartsWith("A380X_GND_DOOR_", StringComparison.Ordinal)
+            && !varName.EndsWith("_TOGGLE", StringComparison.Ordinal))
+        {
+            bool open = value > 0.05;
+            bool? prev = _doorOpen.TryGetValue(varName, out var p) ? p : null;
+            _doorOpen[varName] = open;
+            if (prev.HasValue && prev.Value != open && _doorNames.TryGetValue(varName, out var dn))
+                announcer.Announce($"{dn} {(open ? "open" : "closed")}");
+            return true;
+        }
         if (_readoutKey != null && varName == _readoutKey)
         {
             string lbl = _readoutLabel ?? varName;
@@ -2399,6 +2414,15 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     private bool? _baroStdL, _baroStdR; // last EFIS baro STD(true)/QNH(false) per side
     private bool? _baroInHgL, _baroInHgR; // last EFIS baro unit inHg(true)/hPa(false) per side
     private int _lastBaroMin = -2, _lastDh = -2; // last announced minimums (ft; -1 = none/NCD)
+    private readonly Dictionary<string, bool> _doorOpen = new(); // last open/closed state per door key
+    private static readonly Dictionary<string, string> _doorNames = new()
+    {
+        ["A380X_GND_DOOR_MAIN1L"] = "Main 1 Left Door",
+        ["A380X_GND_DOOR_MAIN2L"] = "Main 2 Left Door",
+        ["A380X_GND_DOOR_MAIN4R"] = "Main 4 Right Door",
+        ["A380X_GND_DOOR_UPPER1L"] = "Upper 1 Left Door",
+        ["A380X_GND_DOOR_FWDCARGO"] = "Forward Cargo Door",
+    };
 
     // Decode/normalise an EFIS baro setting to whole hPa; false for STD/no-data.
     // The FBW _HPA var is hPa, but range-detect inHg too so the read-out still
@@ -2425,6 +2449,16 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     public override bool TryGetDisplayOverride(string varKey, double value, out string displayText)
     {
         displayText = "";
+        // Doors: INTERACTIVE POINT OPEN is a 0..1 fraction — show a meaningful
+        // state ("Open (60%)") instead of the bare "0.6".
+        if (varKey.StartsWith("A380X_GND_DOOR_", StringComparison.Ordinal)
+            && !varKey.EndsWith("_TOGGLE", StringComparison.Ordinal))
+        {
+            displayText = value < 0.05 ? "Closed"
+                        : value > 0.95 ? "Open"
+                        : $"Open ({(int)Math.Round(value * 100)}%)";
+            return true;
+        }
         switch (varKey)
         {
             case "A32NX_FCU_LEFT_EIS_BARO_HPA":
