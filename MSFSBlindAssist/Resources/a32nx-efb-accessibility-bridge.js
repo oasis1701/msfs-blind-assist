@@ -4,6 +4,10 @@
 // var not let/const, top-level try-catch.
 try {
 
+if (window._a32nx_efb_bridge_loaded) {
+    console.log('[A32NX EFB Bridge] Already loaded, skipping');
+} else { window._a32nx_efb_bridge_loaded = true;
+
 // ── DOM Selectors ─────────────────────────────────────────────────────────────
 // CRITICAL: FBW source has ZERO data-test-id attributes. All DOM selectors below
 // must be verified in MSFS DevTools against the minified deployed bundle.
@@ -611,7 +615,7 @@ _efb.cmdRunDiagnostics = function() {
     var navItem = document.querySelector(_SEL.NAV_ACTIVE_ITEM);
     var activePage = navItem ? navItem.textContent.trim() : 'none';
     var hasFetchBtn = !!_efb.findBtnByText('Import');
-    var hasJetwayBtn = !!_efb.findBtnByText(_GND_LABELS.jetway);
+    var hasJetwayBtn = !!_efb.findBtnByText('Jetway');
     _efb.postState('diagnostics', {
         bridge_js_version: '2',
         app_root_found: String(!!appRoot),
@@ -630,6 +634,8 @@ _efb.cmdRunDiagnostics = function() {
 
 // ── Bootstrap ────────────────────────────────────────────────────────────────
 _efb.waitForApp();
+
+} // end double-load guard
 
 } catch(e) {
     console.error('[A32NX EFB Bridge] Fatal error:', e);
