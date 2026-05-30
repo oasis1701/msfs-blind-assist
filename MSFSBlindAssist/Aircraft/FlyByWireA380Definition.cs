@@ -610,8 +610,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             ReadEnum($"A380X_RMP_{r}_STATE", $"RMP {r} State", rmpState);
         for (int v = 1; v <= 3; v++)
         {
-            Read($"FBW_RMP_FREQUENCY_ACTIVE_{v}", $"COM {v} Active Frequency");
-            Read($"FBW_RMP_FREQUENCY_STANDBY_{v}", $"COM {v} Standby Frequency");
+            Read($"FBW_RMP_FREQUENCY_ACTIVE_{v}", $"VHF {v} Active Frequency");
+            Read($"FBW_RMP_FREQUENCY_STANDBY_{v}", $"VHF {v} Standby Frequency");
         }
 
         // ---- Cockpit door ----
@@ -940,12 +940,12 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         {
             vars[$"COM_STANDBY_FREQUENCY_SET:{n}"] = new SimVarDefinition
             {
-                Name = "COM_STANDBY_FREQUENCY_SET", DisplayName = $"COM {n} Standby (set)",
+                Name = "COM_STANDBY_FREQUENCY_SET", DisplayName = $"VHF {n} Standby (set)",
                 Type = SimVarType.Event, EventParam = (uint)n
             };
-            Evt($"COM{n}_RADIO_SWAP", $"COM{n}_RADIO_SWAP", $"COM {n} Swap");
-            Stock($"COM_ACTIVE_FREQUENCY:{n}", $"COM ACTIVE FREQUENCY:{n}", $"COM {n} Active", "MHz");
-            Stock($"COM_STANDBY_FREQUENCY:{n}", $"COM STANDBY FREQUENCY:{n}", $"COM {n} Standby", "MHz");
+            Evt($"COM{n}_RADIO_SWAP", $"COM{n}_RADIO_SWAP", $"VHF {n} Swap");
+            Stock($"COM_ACTIVE_FREQUENCY:{n}", $"COM ACTIVE FREQUENCY:{n}", $"VHF {n} Active", "MHz");
+            Stock($"COM_STANDBY_FREQUENCY:{n}", $"COM STANDBY FREQUENCY:{n}", $"VHF {n} Standby", "MHz");
         }
 
         // ============================ TRANSPONDER / ATC ============================
