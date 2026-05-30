@@ -203,6 +203,16 @@ namespace MSFSBlindAssist.SimConnect
                 if (!_seen.Add(clean)) continue;                // already spoken / at baseline
                 fresh.Add(clean);
             }
+            // Memos (PARK BRK ON, ELEC EXT PWR, …) — announced from the SAME scrape so
+            // the whole E/WD auto-call-out comes from one source (the SimVar
+            // EWD_LOWER decode auto-announce is disabled while this monitor runs).
+            foreach (var m in result.memos ?? new List<string>())
+            {
+                string clean = Clean(m);
+                if (clean.Length == 0) continue;
+                if (!_seen.Add(clean)) continue;
+                fresh.Add(clean);
+            }
 
             // First successful scrape establishes the baseline silently — only
             // failures that appear AFTER connect are announced (matches every other

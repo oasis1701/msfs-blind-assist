@@ -2336,6 +2336,9 @@ public partial class MainForm : Form
     private void StartA380EWDMonitor()
     {
         if (coherentEWDClient != null) return;
+        // Hand E/WD call-outs to the scrape: suppress the SimVar EWD_LOWER memo
+        // auto-announce so failures AND memos come from the one DOM source.
+        if (currentAircraft is FlyByWireA380Definition a380def) a380def.EwdScrapeHandlesAnnounce = true;
         coherentEWDClient = new CoherentEWDClient();
         coherentEWDClient.LineAnnounced += line =>
         {
@@ -2351,6 +2354,7 @@ public partial class MainForm : Form
 
     private void StopA380EWDMonitor()
     {
+        if (currentAircraft is FlyByWireA380Definition a380def) a380def.EwdScrapeHandlesAnnounce = false;
         if (coherentEWDClient == null) return;
         coherentEWDClient.Dispose();
         coherentEWDClient = null;

@@ -1954,6 +1954,12 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     // The set of E/WD codes currently on screen (across all lines) that have been
     // announced — so a message that scrolls between lines isn't re-announced.
     private readonly HashSet<long> _announcedEwdCodes = new();
+    /// <summary>Set by MainForm when the E/WD DOM-scrape monitor (CoherentEWDClient)
+    /// is running. While true, the SimVar EWD_LOWER memo auto-announce is suppressed
+    /// so the scrape is the single source for E/WD call-outs (it announces both the
+    /// memos and the DOM-only failure procedures). Default false = SimVar announces
+    /// (safe fallback when no scrape monitor is active).</summary>
+    public bool EwdScrapeHandlesAnnounce;
     private readonly double[] _tla = { double.NaN, double.NaN, double.NaN, double.NaN };
     private readonly string?[] _lastEngDetent = new string?[4];
     private string? _lastAllDetent;
@@ -2032,6 +2038,14 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 {
                     if (_announcedEwdCodes.Contains(c)) continue;   // already on screen
                     if (muted) continue;                            // honour Ctrl+M mute
+                    // When the E/WD DOM-scrape monitor (CoherentEWDClient) is running
+                    // it is the single source for the E/WD auto-call-outs (failures
+                    // AND memos), so suppress this SimVar announce to avoid double
+                    // speech. The dedup sets below are still maintained so the
+                    // on-demand ReadAllEwdWarnings (Alt+E) decode keeps working, and
+                    // if the scrape monitor is NOT active this SimVar path still
+                    // announces (safe default).
+                    if (EwdScrapeHandlesAnnounce) continue;
                     string text = EWDMessageLookupA380.GetMessage(c);
                     if (!string.IsNullOrWhiteSpace(text) &&
                         !text.Equals("NORMAL", StringComparison.OrdinalIgnoreCase))
