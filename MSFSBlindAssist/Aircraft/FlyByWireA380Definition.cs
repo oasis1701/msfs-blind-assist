@@ -882,16 +882,20 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // ---- EFIS Control Panel: flight director + baro (per side) ----
         Evt("TOGGLE_FLIGHT_DIRECTOR", "TOGGLE_FLIGHT_DIRECTOR", "Flight Director Toggle");
         Stock("FD_ACTIVE", "AUTOPILOT FLIGHT DIRECTOR ACTIVE", "Flight Director", "bool", onOff);
-        var baroMode = new Dictionary<double, string> { [0] = "QFE", [1] = "QNH", [2] = "Standard" };
-        Sel("XMLVAR_Baro1_Mode", "Capt Baro Mode", baroMode);
-        Sel("XMLVAR_Baro2_Mode", "F/O Baro Mode", baroMode);
+        // (Legacy XMLVAR_BaroN_Mode combos are DEAD on the A380X — verified live
+        //  that writing them changes nothing. STD/QNH is the IS_STD combo below.)
         // Auto-announced live as the pilot turns the baro knob (the EFIS baro
         // setting is non-visual; spoken on change, deduped to whole hPa).
         MonNum("A32NX_FCU_LEFT_EIS_BARO_HPA", "Capt Baro (hPa)", "hectopascals");
         MonNum("A32NX_FCU_RIGHT_EIS_BARO_HPA", "F/O Baro (hPa)", "hectopascals");
-        // STD(push)/QNH(pull) flag per side — drives the push/pull announcement.
-        MonNum("A32NX_FCU_LEFT_EIS_BARO_IS_STD", "Capt Baro STD");
-        MonNum("A32NX_FCU_RIGHT_EIS_BARO_IS_STD", "F/O Baro STD");
+        // STD(push)/QNH(pull) per side — SETTABLE combo (push=Standard, pull=QNH).
+        // The A380X has NO event for this; HandleUIVariableSet writes the L:var
+        // directly (verified live). This is the real "baro push/pull" control,
+        // replacing the dead XMLVAR mode combo + the non-functional
+        // A380X_EFIS_CP_BARO_PUSH/PULL events. Also drives the live announce.
+        var baroStd = new Dictionary<double, string> { [0] = "QNH", [1] = "Standard" };
+        Sel("A32NX_FCU_LEFT_EIS_BARO_IS_STD", "Capt Altimeter STD", baroStd);
+        Sel("A32NX_FCU_RIGHT_EIS_BARO_IS_STD", "F/O Altimeter STD", baroStd);
         // hPa/inHg unit flag per side — so the baro is announced in the unit the
         // pilot selected (and re-announced when they switch units).
         MonNum("A32NX_FCU_EFIS_L_BARO_IS_INHG", "Capt Baro inHg");
@@ -899,11 +903,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Read("A380X_EFIS_L_BARO_PRESELECTED", "Capt Preselected QNH");
         Read("A380X_EFIS_R_BARO_PRESELECTED", "F/O Preselected QNH");
 
-        // ---- EFIS-CP baro set (best-effort; spelling unconfirmed on dev build) ----
-        Evt("A380X_EFIS_CP_BARO_PUSH_1", "H:A380X_EFIS_CP_BARO_PUSH_1", "Capt Baro Push (STD)");
-        Evt("A380X_EFIS_CP_BARO_PULL_1", "H:A380X_EFIS_CP_BARO_PULL_1", "Capt Baro Pull (QNH)");
-        Evt("A380X_EFIS_CP_BARO_PUSH_2", "H:A380X_EFIS_CP_BARO_PUSH_2", "F/O Baro Push (STD)");
-        Evt("A380X_EFIS_CP_BARO_PULL_2", "H:A380X_EFIS_CP_BARO_PULL_2", "F/O Baro Pull (QNH)");
+        // (The A380X_EFIS_CP_BARO_PUSH/PULL H-events are NON-functional on the
+        //  A380X — verified live — removed. STD/QNH is the IS_STD combo above.)
 
         // ============================ RADIOS (RMP) ============================
         // The A380 RMPs manage the radios on-screen, but the aircraft sits on
@@ -1434,9 +1435,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "A380X_EFIS_R_ARPT_BUTTON_IS_ON", "A380X_EFIS_R_TRAF_BUTTON_IS_ON",
             "A32NX_EFIS_R_ND_MODE", "A32NX_EFIS_R_ND_RANGE",
             "A32NX_EFIS_R_NAVAID_1_MODE", "A32NX_EFIS_R_NAVAID_2_MODE",
-            "TOGGLE_FLIGHT_DIRECTOR", "XMLVAR_Baro1_Mode", "XMLVAR_Baro2_Mode",
-            "A380X_EFIS_CP_BARO_PUSH_1", "A380X_EFIS_CP_BARO_PULL_1",
-            "A380X_EFIS_CP_BARO_PUSH_2", "A380X_EFIS_CP_BARO_PULL_2"
+            "TOGGLE_FLIGHT_DIRECTOR",
+            "A32NX_FCU_LEFT_EIS_BARO_IS_STD", "A32NX_FCU_RIGHT_EIS_BARO_IS_STD"
         };
         p["FCU"] = new List<string>
         {
@@ -2192,6 +2192,13 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         if (varKey == "A32NX_TRK_FPA_MODE_ACTIVE")
         {
             simConnect.ExecuteCalculatorCode($"{(value > 0.5 ? 1 : 0)} (>L:A32NX_TRK_FPA_MODE_ACTIVE)");
+            return true;
+        }
+        // EFIS baro STD(push)/QNH(pull): also no event on the A380X — write the
+        // IS_STD L:var directly (verified live), same as TRK/FPA.
+        if (varKey == "A32NX_FCU_LEFT_EIS_BARO_IS_STD" || varKey == "A32NX_FCU_RIGHT_EIS_BARO_IS_STD")
+        {
+            simConnect.ExecuteCalculatorCode($"{(value > 0.5 ? 1 : 0)} (>L:{varKey})");
             return true;
         }
         // FCU engage/mode toggle combos: the backing L:var is read-only state, so
