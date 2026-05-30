@@ -2422,6 +2422,32 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             if (desiredOn != currentOn) simConnect.SendEvent(fcuEvt);
             return true; // never SetLVar the read-only state var
         }
+        // Catch-all for the remaining settable FBW overhead / system pushbutton +
+        // selector L:vars (the OnOff/OffAuto/Press/Sel combos for ELEC, FUEL, HYD,
+        // PNEU, COND, PRESS, VENT, anti-ice, lighting). MainForm's generic fallback
+        // would SetLVar these over the SimConnect data-def, which is unreliable for
+        // FBW L:vars (same as the reads) — so route them through the MobiFlight
+        // calculator path, which is the established reliable write for this aircraft.
+        //
+        // #60 finding (live MCP write-then-readback, 2026-05): a SUBSET of these
+        // revert no matter how they are written — PACK/HOT-AIR, ENGINE BLEED,
+        // CABIN/AIR-EXTRACT FANS, and the HYD ENGINE/ELEC PUMP PBs. Those L:vars are
+        // CONTINUOUSLY RE-COMPUTED and re-written by their Rust system controller
+        // (e.g. acs_controller.rs writes OVHD_COND_PACK_1_PB_IS_ON every frame), so
+        // an external write is clobbered on the next tick. The cockpit model drives
+        // them only with <TOGGLE_SIMVAR> (no K/H/B-event exists on this build), so
+        // they are reachable ONLY by the in-sim mouse and cannot be actuated
+        // externally. Single-writer PBs (COMMERCIAL, IDG, EXT PWR, BAT, FUEL XFR /
+        // JETTISON, DITCHING, RAM AIR) ARE writable and stick — verified live. The
+        // calculator path below makes those reliable; the computed-output ones are a
+        // documented FBW limitation, not a bug here.
+        if (varKey.StartsWith("A32NX_OVHD_", StringComparison.Ordinal)
+            || varKey.StartsWith("A380X_OVHD_", StringComparison.Ordinal)
+            || varKey.StartsWith("A32NX_KNOB_OVHD_", StringComparison.Ordinal))
+        {
+            simConnect.ExecuteCalculatorCode($"{(int)Math.Round(value)} (>L:{varKey})");
+            return true;
+        }
         return base.HandleUIVariableSet(varKey, value, varDef, simConnect, announcer);
     }
 
