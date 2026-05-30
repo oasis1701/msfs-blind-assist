@@ -32,7 +32,8 @@ public class CoherentGTInjector : IDisposable
     private readonly object _lock = new();
     private static readonly HttpClient _http = new() { Timeout = TimeSpan.FromMilliseconds(HttpTimeoutMs) };
 
-    public bool IsConnected { get; private set; }
+    private volatile bool _isConnected;
+    public bool IsConnected => _isConnected;
     public event EventHandler? Connected;
     public event EventHandler? Disconnected;
 
@@ -103,7 +104,7 @@ public class CoherentGTInjector : IDisposable
         string bridgeJs = await File.ReadAllTextAsync(_bridgeJsPath, ct);
 
         // 5. Inject
-        bool ok = await InjectAsync(pageId, bridgeJs);
+        bool ok = await InjectAsync(pageId, bridgeJs, ct);
         if (ok)
         {
             _lastInjectedPageId = pageId;
@@ -139,13 +140,13 @@ public class CoherentGTInjector : IDisposable
     /// Opens a raw TCP connection to Coherent GT devtools, upgrades to WebSocket,
     /// sends a single CDP Runtime.evaluate command, and closes.
     /// </summary>
-    private static async Task<bool> InjectAsync(string pageId, string bridgeJs)
+    private static async Task<bool> InjectAsync(string pageId, string bridgeJs, CancellationToken ct)
     {
         try
         {
             using var tcp = new TcpClient();
             var connectTask = tcp.ConnectAsync("127.0.0.1", 19999);
-            if (await Task.WhenAny(connectTask, Task.Delay(WsConnectTimeoutMs)) != connectTask)
+            if (await Task.WhenAny(connectTask, Task.Delay(WsConnectTimeoutMs, ct)) != connectTask)
                 return false;
             await connectTask; // rethrow any connect exception
 
@@ -161,7 +162,7 @@ public class CoherentGTInjector : IDisposable
                 $"Sec-WebSocket-Key: {wsKey}\r\n" +
                 "Sec-WebSocket-Version: 13\r\n\r\n";
 
-            await stream.WriteAsync(Encoding.ASCII.GetBytes(handshake));
+            await stream.WriteAsync(Encoding.ASCII.GetBytes(handshake), ct);
 
             // Read until end-of-headers marker
             var buf = new byte[4096];
@@ -171,12 +172,12 @@ public class CoherentGTInjector : IDisposable
             {
                 if (stream.DataAvailable)
                 {
-                    int n = await stream.ReadAsync(buf.AsMemory(total));
+                    int n = await stream.ReadAsync(buf.AsMemory(total), ct);
                     if (n == 0) break;
                     total += n;
                     if (Encoding.ASCII.GetString(buf, 0, total).Contains("\r\n\r\n")) break;
                 }
-                else { await Task.Delay(20); }
+                else { await Task.Delay(20, ct); }
             }
 
             if (!Encoding.ASCII.GetString(buf, 0, total).Contains("101"))
@@ -190,10 +191,10 @@ public class CoherentGTInjector : IDisposable
                 @params = new { expression = bridgeJs, returnByValue = false }
             });
 
-            await stream.WriteAsync(BuildWebSocketTextFrame(Encoding.UTF8.GetBytes(cdp)));
+            await stream.WriteAsync(BuildWebSocketTextFrame(Encoding.UTF8.GetBytes(cdp)), ct);
 
             // Give the eval time to run before we close the socket
-            await Task.Delay(WsEvalSettleMs);
+            await Task.Delay(WsEvalSettleMs, ct);
             return true;
         }
         catch (Exception ex)
@@ -242,8 +243,8 @@ public class CoherentGTInjector : IDisposable
 
     private void SetConnected(bool value)
     {
-        if (IsConnected == value) return;
-        IsConnected = value;
+        if (_isConnected == value) return;
+        _isConnected = value;
         var evt = value ? Connected : Disconnected;
         if (_syncContext != null) _syncContext.Post(_ => evt?.Invoke(this, EventArgs.Empty), null);
         else evt?.Invoke(this, EventArgs.Empty);
