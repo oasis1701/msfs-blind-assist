@@ -1494,11 +1494,22 @@ public class TaxiAssistForm : Form
             : TaxiGraph.CalculateDistanceMeters(
                 runway.StartLat, runway.StartLon, runway.EndLat, runway.EndLon);
 
+        // Restrict candidates to the aircraft's own connected component so the
+        // chosen far node is actually reachable. Without this, the nearest
+        // far-side node can land in an isolated navdata island (e.g. GCLP S5)
+        // and LoadRoute then fails with the generic "Could not calculate a
+        // route." When the far side is a genuinely separate component this
+        // leaves bestNode null, so the caller surfaces the specific
+        // "far side of runway X" message instead — a better diagnostic.
+        int? aircraftComponentId = _graph.FindNearestNode(_aircraftLat, _aircraftLon)?.ComponentId;
+
         TaxiNode? bestNode = null;
         double bestDist = double.MaxValue;
 
         foreach (var node in _graph.Nodes.Values)
         {
+            if (aircraftComponentId.HasValue && node.ComponentId != aircraftComponentId.Value) continue;
+
             double nodeSignedCT = NodeSignedCT(node);
 
             if (Math.Sign(nodeSignedCT) != targetSign) continue;
