@@ -45,6 +45,8 @@ public class FBWA380EFBForm : Form
 
     private readonly IMcduBridge _bridgeServer;
     private readonly ScreenReaderAnnouncer _announcer;
+    private readonly string _windowTitle;
+    private readonly string _deviceNoun; // "flyPad" or "OANS" — used in status text
 
     private Label _statusLabel = null!;
     private Label _pageLabel = null!;
@@ -72,10 +74,13 @@ public class FBWA380EFBForm : Form
 
     private System.Windows.Forms.Timer _statusTimer = null!;
 
-    public FBWA380EFBForm(IMcduBridge bridgeServer, ScreenReaderAnnouncer announcer)
+    public FBWA380EFBForm(IMcduBridge bridgeServer, ScreenReaderAnnouncer announcer,
+                          string? windowTitle = null, string? deviceNoun = null)
     {
         _bridgeServer = bridgeServer;
         _announcer = announcer;
+        _windowTitle = windowTitle ?? "A380X flyPad EFB";
+        _deviceNoun = deviceNoun ?? "flyPad";
 
         InitializeComponent();
         WireEvents();
@@ -104,7 +109,7 @@ public class FBWA380EFBForm : Form
     {
         SuspendLayout();
 
-        Text = "A380X flyPad EFB";
+        Text = _windowTitle;
         ClientSize = new Size(720, 620);
         FormBorderStyle = FormBorderStyle.Sizable;
         StartPosition = FormStartPosition.CenterScreen;
@@ -283,11 +288,11 @@ public class FBWA380EFBForm : Form
         bool reallyConnected = _bridgeConnected && _bridgeServer.IsBridgeConnected;
         string desired;
         if (reallyConnected && _initialPushReceived)
-            desired = $"flyPad connected ({_elements.Count} elements)";
+            desired = $"{_deviceNoun} connected ({_elements.Count} elements)";
         else if (reallyConnected)
-            desired = "flyPad connected — waiting for content (power on the tablet)…";
+            desired = $"{_deviceNoun} connected — waiting for content…";
         else
-            desired = "flyPad not connected. Make sure MSFS is running with Developer Mode on, the A380X is loaded, and the flyPad tablet is powered up.";
+            desired = $"{_deviceNoun} not connected. Make sure MSFS is running with Developer Mode on, the A380X is loaded, and the displays are powered up.";
         if (_statusLabel.Text != desired) _statusLabel.Text = desired;
     }
 

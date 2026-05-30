@@ -109,6 +109,7 @@ public class HotkeyManager : IDisposable
         private const int HOTKEY_READ_DISPLAY_ND = 9072;
         private const int HOTKEY_READ_DISPLAY_ISIS = 9073;
         private const int HOTKEY_DESCRIBE_SCENE = 9074;
+        private const int HOTKEY_SHOW_OANS = 9099; // A380 ND OANS / BTV control panel
 
         // Hand fly mode global hotkey IDs (separate from output mode)
         private const int HOTKEY_HANDFLY_HEADING = 9077;
@@ -369,6 +370,9 @@ public class HotkeyManager : IDisposable
                             break;
                         case HOTKEY_TOGGLE_ECAM_MONITORING:
                             TriggerHotkey(HotkeyAction.ToggleECAMMonitoring);
+                            break;
+                        case HOTKEY_SHOW_OANS:
+                            TriggerHotkey(HotkeyAction.ShowOANS);
                             break;
                         case HOTKEY_MONITOR_MANAGER:
                             TriggerHotkey(HotkeyAction.MonitorManager);
@@ -682,6 +686,7 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_TOGGLE_TRIM, MOD_SHIFT, 0x54);   // Shift+T (Toggle Trim Announcements)
             RegisterHotKey(windowHandle, HOTKEY_TAKEOFF_ASSIST, MOD_CONTROL, 0x54); // Ctrl+T (Takeoff Assist)
             RegisterHotKey(windowHandle, HOTKEY_TOGGLE_ECAM_MONITORING, MOD_CONTROL, 0x45); // Ctrl+E (Toggle ECAM Monitoring)
+            RegisterHotKey(windowHandle, HOTKEY_SHOW_OANS, MOD_CONTROL | MOD_SHIFT, 0x42);  // Ctrl+Shift+B (A380 OANS / BTV)
             RegisterHotKey(windowHandle, HOTKEY_MONITOR_MANAGER, MOD_CONTROL, 0x4D); // Ctrl+M (Monitor Manager - per-aircraft)
             RegisterHotKey(windowHandle, HOTKEY_HAND_FLY_MODE, MOD_CONTROL, 0x48); // Ctrl+H (Hand Fly Mode)
             RegisterHotKey(windowHandle, HOTKEY_VISUAL_GUIDANCE, MOD_CONTROL, 0x56); // Ctrl+V (Visual Guidance)
@@ -789,6 +794,7 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_TOGGLE_TRIM);
             UnregisterHotKey(windowHandle, HOTKEY_TAKEOFF_ASSIST);
             UnregisterHotKey(windowHandle, HOTKEY_TOGGLE_ECAM_MONITORING);
+            UnregisterHotKey(windowHandle, HOTKEY_SHOW_OANS);
             UnregisterHotKey(windowHandle, HOTKEY_MONITOR_MANAGER);
             UnregisterHotKey(windowHandle, HOTKEY_HAND_FLY_MODE);
             UnregisterHotKey(windowHandle, HOTKEY_VISUAL_GUIDANCE);
@@ -1249,6 +1255,7 @@ public class HotkeyManager : IDisposable
         ReadTargetFPM,
         ShowFenixMCDU,
         ShowPMDGEFB,
+        ShowOANS,
         ReadNearestCity,
         ReadDistanceToTOD,
         ReadDistanceToDest,

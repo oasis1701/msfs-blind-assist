@@ -49,6 +49,10 @@ public partial class MainForm : Form
     // same Coherent GT debugger, resolved to the flyPad view ("- EFB" title).
     // Replaces the injection bridge for the flyPad.
     private CoherentEFBClient? coherentEFBClient;
+    // No-injection A380X ND OANS transport (BTV exit selection / airport map),
+    // resolved to the Captain ND view ("A380X_ND_1"). Reuses FBWA380EFBForm.
+    private CoherentNDClient? coherentNDClient;
+    private Forms.FBWA380.FBWA380EFBForm? fbwA380OansForm;
     private TakeoffAssistManager takeoffAssistManager = null!;
     private HandFlyManager handFlyManager = null!;
     private VisualGuidanceManager visualGuidanceManager = null!;
@@ -1548,6 +1552,16 @@ public partial class MainForm : Form
                     ShowFBWA380EFBDialog();
                 }
                 break;
+            case HotkeyAction.ShowOANS:
+                if (currentAircraft?.AircraftCode == "FBW_A380")
+                {
+                    ShowFBWA380OansDialog();
+                }
+                else
+                {
+                    announcer.Announce("OANS airport map is only available on the A380.");
+                }
+                break;
             case HotkeyAction.ShowTrackFixWindow:
                 ShowTrackFixDialog();
                 break;
@@ -2173,6 +2187,28 @@ public partial class MainForm : Form
             fbwA380EFBForm = new Forms.FBWA380.FBWA380EFBForm(coherentEFBClient, announcer);
         }
         fbwA380EFBForm.ShowForm();
+    }
+
+    // A380 ND OANS / BTV control panel — reuses the WebView2 EFB form, but driven
+    // by the ND Coherent view through CoherentNDClient (no injection). Used for
+    // BTV (Brake-To-Vacate) exit selection and airport/runway/exit search.
+    private void ShowFBWA380OansDialog()
+    {
+        hotkeyManager.ExitOutputHotkeyMode();
+
+        if (coherentNDClient == null)
+        {
+            coherentNDClient = new CoherentNDClient();
+            coherentNDClient.Start();
+        }
+
+        if (fbwA380OansForm == null || fbwA380OansForm.IsDisposed)
+        {
+            fbwA380OansForm = new Forms.FBWA380.FBWA380EFBForm(
+                coherentNDClient, announcer,
+                "A380 Airport Map and BTV (OANS)", "OANS");
+        }
+        fbwA380OansForm.ShowForm();
     }
 
     private void CheckAndOfferEFBModPackage()
