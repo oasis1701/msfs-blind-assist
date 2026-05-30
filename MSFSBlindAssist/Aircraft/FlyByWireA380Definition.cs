@@ -797,9 +797,12 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         OnOff("A32NX_METRIC_ALT_TOGGLE", "Metric Altitude");
 
         // Selected value readouts (OnRequest; read on demand via Shift+H/S/A/V).
-        Read("A32NX_AUTOPILOT_HEADING_SELECTED", "Selected Heading", "degrees");
+        // NB: units MUST be "number" — this is an L:var. Reading it with the
+        // SimVar angle-unit "degrees" returns a wrong/normalised value (e.g. 300
+        // read back as 005), since the L:var read path doesn't apply SimVar units.
+        Read("A32NX_AUTOPILOT_HEADING_SELECTED", "Selected Heading", "number");
         Read("A32NX_AUTOPILOT_SPEED_SELECTED", "Selected Speed");
-        Read("A32NX_AUTOPILOT_VS_SELECTED", "Selected Vertical Speed", "feet per minute");
+        Read("A32NX_AUTOPILOT_VS_SELECTED", "Selected Vertical Speed", "number"); // L:var — must be "number"
         Read("A32NX_AUTOPILOT_FPA_SELECTED", "Selected FPA");
         // Managed-vs-selected indicators — AUTO-ANNOUNCED so a knob PUSH (managed)
         // or PULL (selected) speaks the resulting mode. Previously OnRequest/silent,
