@@ -1464,8 +1464,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "A380X_EFIS_L_ACTIVE_FILTER", "A380X_EFIS_L_ACTIVE_OVERLAY",
             "A32NX_EFIS_L_NAVAID_1_MODE", "A32NX_EFIS_L_NAVAID_2_MODE",
             "A32NX_FCU_LEFT_EIS_BARO_IS_STD", "CAPT_QNH_SET", "XMLVAR_Baro_Selector_HPA_1",
-            "A32NX_EFIS_L_OANS_RANGE",
-            "TOGGLE_FLIGHT_DIRECTOR" // FD (single/broken; per-side fix pending source audit)
+            "A32NX_EFIS_L_OANS_RANGE"
+            // Flight Director toggle removed: TOGGLE_FLIGHT_DIRECTOR (indexed or
+            // not), the H-event, and direct L:var writes ALL fail to engage the FD
+            // on this A380X build — the button did nothing but announce confusing
+            // FMA-mode chatter. Re-add when FBW wires a working control.
         };
         p["EFIS First Officer"] = new List<string>
         {
@@ -1785,14 +1788,12 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "A32NX_FMA_LATERAL_MODE", "A32NX_FMA_VERTICAL_MODE", "A32NX_APPROACH_CAPABILITY",
             "FD_ACTIVE"
         };
-        d["EFIS Captain"] = new List<string>
-        {
-            "A32NX_FCU_LEFT_EIS_BARO_HPA", "A380X_EFIS_L_BARO_PRESELECTED"
-        };
-        d["EFIS First Officer"] = new List<string>
-        {
-            "A32NX_FCU_RIGHT_EIS_BARO_HPA", "A380X_EFIS_R_BARO_PRESELECTED"
-        };
+        // The EIS baro value is an ARINC429 word — NOT shown as a raw display field
+        // (it reads ~14 billion); it's decoded and auto-announced on change (and
+        // queryable via the altimeter read hotkey). Only the plain preselected QNH
+        // is a display readout.
+        d["EFIS Captain"] = new List<string> { "A380X_EFIS_L_BARO_PRESELECTED" };
+        d["EFIS First Officer"] = new List<string> { "A380X_EFIS_R_BARO_PRESELECTED" };
         d["Radios"] = new List<string>
         {
             "COM_ACTIVE_FREQUENCY:1", "COM_STANDBY_FREQUENCY:1",
