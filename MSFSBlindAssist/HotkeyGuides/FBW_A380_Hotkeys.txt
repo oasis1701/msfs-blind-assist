@@ -3,8 +3,8 @@ FLYBYWIRE A380X HOTKEY REFERENCE
 This is the FlyByWire A380X (development build). The MCDU is actually the MFD
 (driven by the KCCU cursor, not classic line-select keys); the EFB is the
 flyPad. Both are read and driven live through the MSFS Coherent GT debugger —
-no add-on install is required, but MSFS must be in Developer Mode and the
-A380X must be loaded with the displays powered up.
+no add-on install and no Developer Mode are required; the A380X just needs to
+be loaded with the cockpit displays powered up.
 
 Panels: use the main window's Sections and Panels lists (Ctrl+1 / Ctrl+2) to
 browse every system. Most controls are combo boxes or buttons; many panels also

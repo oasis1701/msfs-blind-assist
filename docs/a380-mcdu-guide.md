@@ -4,26 +4,28 @@ This guide explains how to use the A380X flight management system (FMS) through
 MSFS Blind Assist, from start-up to landing. On the A380 the "MCDU" is part of
 the **MFD** (Multi-Function Display) and is driven by the KCCU cursor, not the
 classic A320 line-select keys. MSFS Blind Assist reads and drives it live
-through the MSFS Coherent GT debugger — **no add-on install is needed**, but
-**MSFS must be in Developer Mode** and the A380X must be loaded with the
-displays powered up.
+through the MSFS Coherent GT debugger — **no add-on install and no Developer
+Mode are needed**. You just need the A380X loaded with the cockpit displays
+powered up (the debugger port is opened by the sim itself).
 
 > Prerequisite: load the A380X profile in MSFS Blind Assist (Aircraft menu →
-> FlyByWire Airbus A380X). On startup the app connects to the MFD automatically.
+> FlyByWire Airbus A380X). On startup the app connects to the MFD and flyPad
+> automatically. If the cockpit is cold and dark, power up first (batteries +
+> external/APU power) so the displays come alive.
 
 ## 1. Opening the MCDU window
 
-Press **Shift+M** (input mode is not required — it is a direct chord). A window
-opens with three parts:
+In **input mode** press **Shift+M**. A window opens with these parts:
 
 - **MCDU selector** — choose Captain or First Officer side (start with Captain).
+- **"Go to MFD page" combo** — jump to any of the 20 MFD pages (see section 4).
 - **Display list** — the live page contents, one item per line.
 - **Scratchpad** — a text box at the bottom where you type values before sending
   them to a field.
 
 A **status line** tells you whether the MCDU is connected. If it says "not
-connected", make sure MSFS is running with Developer Mode on, the A380X is
-loaded, and the displays are powered up, then press the **Refresh** button.
+connected", make sure MSFS is running, the A380X is loaded, and the displays are
+powered up, then press the **Refresh** button.
 
 ## 2. Reading the page
 
@@ -35,8 +37,8 @@ Arrow up and down through the **display list**. Each line is one thing:
   field is for, so you always know what to type where. An empty mandatory field
   shows question marks; an empty optional field shows dashes.
 - **Buttons / tabs** are announced with their role, e.g. `IRS, button`. A
-  control that cannot be used right now reads `…, button, disabled` — activating
-  it just says "Unavailable" rather than doing nothing.
+  control that cannot be used right now reads `…, button, dimmed` — activating it
+  just says "Unavailable" rather than doing nothing.
 
 The current page name is shown above the list (e.g. `ACTIVE / ACTIVE/INIT`), and
 the MFD scratchpad message (if any) is read on the last line.
@@ -84,59 +86,81 @@ Some pages (WIND, REPORT, GNSS, TIME, the DATA sub-pages) only open once the FMS
 has the flight plan or data they need — that is the real aircraft behaviour, not
 a limitation.
 
-## 5. Preparing the FMS — the FlyByWire flow
+## 5. Loading the flight plan — SimBrief first
 
-This follows FlyByWire's own **A380X Beginner Guide → Preparing the FMS**
-(linked at the end), in the same order, but described for the accessible MCDU
-window. It assumes your SimBrief/OFP flight plan is already imported into the
-**flyPad** and IFR clearance is obtained. Open the MCDU (Shift+M), select the
-**Captain** side, then work the pages in this order:
+**The fast, recommended way is to import your SimBrief OFP through the flyPad.**
+The A380X reads the imported flight plan into the FMS for you, so you do **not**
+type the route in by hand — you only review it and fill the performance numbers.
 
-1. **INIT page** (from the ACTIVE dropdown, or the INIT button at the bottom of
-   F-PLN). Enter, one field at a time (type into the scratchpad, arrow to the
-   field, Enter):
-   - **FLT NBR** — flight number
-   - **FROM** and **TO** — departure and destination ICAO (the city pair builds
-     the flight plan)
-   - **ALTN** — alternate airport
-   - **CI** — cost index
-   - **CRZ FL** — cruise flight level
-2. **F-PLN / DEPARTURE** (DEPARTURE button). Select the **RUNWAY**, then the
-   **SID**, leave **TRANS** unless required, then **TMPY F-PLN** to stage it.
-3. **F-PLN / EN ROUTE.** Click the start waypoint, choose **AIRWAYS**, enter
-   **VIA** (airway) then **TO** (next waypoint); repeat for each leg, then
-   **TMPY F-PLN**.
-4. **F-PLN / ARRIVAL.** Click the destination, select arrival **RUNWAY**,
-   **APPR** (approach), **VIA** (transition) and **STAR**, then **TMPY F-PLN**
-   and **INSERT TMPY** to activate the whole plan.
-5. **NAVAIDS** (from INIT). Set **VOR1 IDENT** / frequency and the **LS IDENT**
-   for departure if needed; the arrival ILS auto-tunes within ~250 nm.
-6. **FUEL & LOAD** (from INIT). Enter **ZFW**, **ZFWCG**, **BLOCK** fuel,
-   **TAXI**, **PAX NBR**, verify **CI**, **ALTN** fuel and **FINAL** reserve.
-7. **T.O PERF** (from INIT). Enter **V1**, **VR**, **V2**; select **FLEX/TOGA**
-   (FBW's guide uses FLEX with a temperature) or DERATED; set **FLAPS**,
-   **THS FOR** (trim), **PACKS**, **ANTI ICE**, and **TRANS** altitude. V-speeds
-   and FLEX come from the SimBrief Takeoff Performance calculator.
+### 5a. Import from SimBrief (recommended)
 
-If a button does nothing and reads "disabled", the FMS isn't ready for it yet
-(e.g. the company request needs a loaded flight plan first).
+1. Open the **flyPad EFB**: input mode → **Shift+T**. It opens as a web page your
+   screen reader browses normally (H for headings, arrow keys per line, real
+   buttons/links).
+2. The first time, set your **SimBrief username** in the flyPad **Settings** →
+   *SimBrief* (the same SimBrief account you generated the OFP with).
+3. Go to the flyPad **Dispatch / OFP** page and choose **Import** (or
+   *Load Flight Plan*). The flyPad pulls your latest SimBrief OFP — route,
+   cruise level, weights and fuel — and loads the flight plan into the **FMS**.
+4. Switch to the MCDU (Shift+M). The **F-PLN** and **INIT** pages are now
+   populated from the OFP: city pair, company route, cruise FL, and the
+   SID/STAR/airways from your SimBrief plan. Arrow through F-PLN to confirm the
+   route reads as expected.
+
+After the import you still **review and complete** three things in the FMS:
+
+- **INIT** — confirm FROM/TO, ALTN, CI and CRZ FL; type any that are blank.
+- **FUEL & LOAD** — confirm ZFW, ZFWCG, BLOCK fuel, TAXI, PAX, ALTN and FINAL
+  reserve against the SimBrief figures.
+- **T.O PERF** — enter V1/VR/V2, FLEX temp (or TOGA), FLAPS, THS trim, PACKS,
+  ANTI ICE and TRANS altitude. The V-speeds and FLEX come from the SimBrief
+  *Takeoff Performance* calculator (or the in-sim PERF calc).
+
+That's the whole FMS prep when you fly with SimBrief — no manual route building.
+
+### 5b. Without SimBrief — build the plan by hand
+
+If you are not using SimBrief, enter the plan manually in this order (this
+mirrors FlyByWire's **A380X Beginner Guide → Preparing the FMS**). Open the MCDU,
+select the **Captain** side, then work the pages:
+
+1. **INIT page** (ACTIVE dropdown, or the INIT button on F-PLN). Enter, one field
+   at a time: **FLT NBR**, **FROM** and **TO** (the city pair seeds the plan),
+   **ALTN**, **CI**, **CRZ FL**.
+2. **F-PLN / DEPARTURE.** Select **RUNWAY**, then **SID**, leave **TRANS** unless
+   required, then **TMPY F-PLN** to stage it.
+3. **F-PLN / EN ROUTE.** Select the start waypoint, choose **AIRWAYS**, enter
+   **VIA** (airway) then **TO** (next waypoint); repeat per leg, then **TMPY
+   F-PLN**.
+4. **F-PLN / ARRIVAL.** Select the destination, choose arrival **RUNWAY**,
+   **APPR**, **VIA** (transition) and **STAR**, then **TMPY F-PLN** and **INSERT
+   TMPY** to activate the whole plan.
+5. **NAVAIDS** (from INIT) — set **VOR1 IDENT**/frequency and the departure
+   **LS IDENT** if needed; the arrival ILS auto-tunes within ~250 nm.
+6. **FUEL & LOAD** and **T.O PERF** — same as the review steps in 5a above.
+
+If a button does nothing and reads "dimmed", the FMS isn't ready for it yet
+(e.g. a company request needs a loaded flight plan first).
 
 ## 6. From start to landing — FMS flow
 
-- **Before start:** INIT complete, F-PLN checked, FUEL & LOAD confirmed, PERF
-  TAKEOFF entered, initial climb altitude set on the **FCU** (use the FCU set
-  dialogs — input mode then Shift+A for heading, etc., or read with output mode
-  then the FCU read keys).
+- **Before start:** flight plan loaded (5a or 5b), F-PLN checked, FUEL & LOAD
+  confirmed, T.O PERF entered, initial climb altitude set on the **FCU**. Set the
+  FCU with input mode then **Ctrl+A** (altitude), **Ctrl+H** (heading), **Ctrl+S**
+  (speed), **Ctrl+V** (V/S); read any back in output mode with **Shift+A / H / S
+  / V**. The AP/ATHR/LOC/APPR/EXPED controls are **stateful combos** in the FCU
+  panel — they read their live state (On/Off, Armed/Active) and you pick to
+  toggle.
 - **Climb:** check the **PERF / CLB** page; the FMS manages speed and the
-  vertical profile. The flight-mode annunciator changes (OP CLB, CLB, ALT…) are
+  vertical profile. Flight-mode annunciator changes (OP CLB, CLB, ALT…) are
   announced automatically.
 - **Cruise:** confirm **CRZ FL** and cost index on the INIT/PERF pages.
 - **Descent:** set the arrival runway and STAR if not done; check the **RAD NAV**
   page for the ILS frequency and course; **activate the approach phase** on the
   **PERF** page about 40 miles out.
-- **Approach & landing:** the FMS manages the approach speed; the **APPR** mode
-  on the FCU establishes on the localizer and glide slope. FMA mode changes
-  (G/S, LAND, FLARE) are announced automatically.
+- **Approach & landing:** the FMS manages the approach speed; **APPR** mode on
+  the FCU establishes on the localizer and glide slope. FMA mode changes (G/S,
+  LAND, FLARE) are announced automatically.
 
 ## Source
 
@@ -144,6 +168,7 @@ The FMS flow above mirrors FlyByWire's official **A380X Beginner Guide**, which
 is reviewed by an A380 type-rated pilot:
 
 - Preparing the FMS — https://docs.flybywiresim.com/pilots-corner/a380x/a380x-beginner-guide/03_preparing-fms/
+- SimBrief / flyPad import — https://docs.flybywiresim.com/pilots-corner/a380x/a380x-beginner-guide/
 - Full beginner guide (cockpit prep → powering down) — https://docs.flybywiresim.com/pilots-corner/a380x/a380x-beginner-guide/overview/
 
 The `Checklists/FBW_A380_Checklist.txt` cold-and-dark and shutdown flows follow
@@ -151,6 +176,8 @@ the same guide's **Cockpit Preparation** and **Powering Down** pages.
 
 ## Related
 
+- **flyPad EFB window** (input mode → Shift+T) — SimBrief/OFP import, ground
+  services, performance, and settings, shown as an accessible web page.
 - **System Display window** (ShowStatusPage / ShowECAM hotkey) — decoded fuel,
   engine, pressurization, APU, electrical, hydraulic and air-conditioning
   readouts, including the ARINC429 quantities (per-tank fuel, gross weight, CG).
