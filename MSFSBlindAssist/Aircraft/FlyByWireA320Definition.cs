@@ -3948,8 +3948,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
                 return true;
 
             case HotkeyAction.ReadFuelInfo:
-                hotkeyManager.ExitOutputHotkeyMode();
-                ShowA320FuelPayloadWindow(simConnect, announcer);
+                RequestFuelQuantityKg(simConnect);
                 return true;
 
             case HotkeyAction.ShowECAM:
@@ -4561,6 +4560,31 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"Error requesting fuel quantity: {ex.Message}");
+            }
+        }
+    }
+
+    private void RequestFuelQuantityKg(SimConnect.SimConnectManager simConnectMgr)
+    {
+        var simConnect = simConnectMgr.SimConnectInstance;
+        if (simConnectMgr.IsConnected && simConnect != null)
+        {
+            try
+            {
+                var tempDefId = SimConnect.SimConnectManager.DATA_DEFINITIONS.DEF_FUEL_QUANTITY_KG;
+                simConnect.ClearDataDefinition(tempDefId);
+                simConnect.AddToDataDefinition(tempDefId,
+                    "FUEL TOTAL QUANTITY WEIGHT", "pounds",
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
+                simConnect.RegisterDataDefineStruct<SimConnect.SimConnectManager.SingleValue>(tempDefId);
+                simConnect.RequestDataOnSimObject(SimConnect.SimConnectManager.DATA_REQUESTS.REQUEST_FUEL_QUANTITY_KG,
+                    tempDefId, Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_OBJECT_ID_USER,
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_PERIOD.ONCE,
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error requesting fuel quantity kg: {ex.Message}");
             }
         }
     }
