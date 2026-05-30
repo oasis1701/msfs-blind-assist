@@ -77,11 +77,14 @@
     if (role === "button" || c.indexOf("button") >= 0 || c.indexOf("btn") >= 0 || tag === "button") return "button";
     if (n.getAttribute && n.getAttribute("contenteditable") === "true") return "input";
     // flyPad action buttons are frequently styled <div>s with NO button/btn
-    // token and no role — e.g. the modal "Cancel" / "Confirm" buttons. They are
-    // distinguishable from static text by carrying Tailwind hover: styling
-    // (interactive elements get hover: classes; plain text never does). Treat a
-    // hover-styled leaf that has its own short text as a clickable button.
-    if (c.indexOf("hover:") >= 0) {
+    // token and no role — e.g. the modal "Cancel"/"Confirm" buttons and the
+    // segmented setting controls ("Instant / Fast / Real"). They are
+    // distinguishable from static text by carrying Tailwind interactivity
+    // classes: a hover: rule OR the cursor-pointer class. (The SELECTED segment
+    // of a group drops its hover: rule but keeps cursor-pointer, so checking
+    // both is what captures the currently-selected option too.) Treat such a
+    // leaf with its own short text as a clickable button.
+    if (c.indexOf("hover:") >= 0 || c.indexOf("cursor-pointer") >= 0) {
       var dt = A.directText(n);
       if (dt && dt.length <= 30) return "button";
     }
@@ -291,6 +294,10 @@
       var text = A.labelFor(n);
       var ctype = A.controlType(kind, n);
       var clickable = A.isClickable(kind);
+
+      // Mark the selected option of a segmented setting control (e.g. the chosen
+      // "Instant / Fast / Real"): the active segment carries bg-theme-highlight.
+      if (text && lower(A.cls(n)).indexOf("bg-theme-highlight") >= 0) text = text + " (selected)";
 
       // Drop empty, non-actionable noise. Inputs/checkboxes keep their slot
       // (their value carries meaning even with no label).
