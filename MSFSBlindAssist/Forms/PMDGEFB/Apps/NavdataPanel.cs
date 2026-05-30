@@ -1,6 +1,6 @@
 using MSFSBlindAssist.SimConnect;
 
-namespace MSFSBlindAssist.Forms.PMDG777.Apps
+namespace MSFSBlindAssist.Forms.PMDGEFB.Apps
 {
     /// <summary>
     /// Navigation Data sub-tab — AIRAC cycle status read directly from the

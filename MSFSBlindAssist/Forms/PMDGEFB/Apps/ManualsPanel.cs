@@ -1,6 +1,6 @@
 using System.Diagnostics;
 
-namespace MSFSBlindAssist.Forms.PMDG777.Apps
+namespace MSFSBlindAssist.Forms.PMDGEFB.Apps
 {
     /// <summary>
     /// Manuals panel. The tablet's Manuals page is just a QR code pointing to

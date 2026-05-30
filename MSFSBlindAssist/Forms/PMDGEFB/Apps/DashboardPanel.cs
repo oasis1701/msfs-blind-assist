@@ -1,6 +1,6 @@
 using MSFSBlindAssist.SimConnect;
 
-namespace MSFSBlindAssist.Forms.PMDG777.Apps
+namespace MSFSBlindAssist.Forms.PMDGEFB.Apps
 {
     /// <summary>
     /// EFB Dashboard sub-tab — SimBrief import and flight plan summary.

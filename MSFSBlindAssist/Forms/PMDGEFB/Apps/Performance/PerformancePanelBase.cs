@@ -1,6 +1,6 @@
 using MSFSBlindAssist.SimConnect;
 
-namespace MSFSBlindAssist.Forms.PMDG777.Apps.Performance
+namespace MSFSBlindAssist.Forms.PMDGEFB.Apps.Performance
 {
     /// <summary>
     /// Shared base class for the three Performance Tool panels (Takeoff,

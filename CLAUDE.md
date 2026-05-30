@@ -17,7 +17,7 @@ dotnet build MSFSBlindAssist.sln -c Release
 
 **Prerequisites:** MSFS_SDK environment variable, .NET 9 SDK
 
-The solution contains two projects: `MSFSBlindAssist` (main app) and `MSFSBlindAssistUpdater` (small WinForms auto-update helper). `dotnet build MSFSBlindAssist.sln` builds both.
+The solution contains three projects: `MSFSBlindAssist` (main app), `MSFSBlindAssistUpdater` (small WinForms auto-update helper), and `tools/PMDGDispatchTester` (a console diagnostic REPL for probing which PMDG NG3 dispatch shape a switch accepts against a live sim — e.g. used to confirm the 737 fire-handle UNLOCK→TOP sequence). The tester compiles the main app's `SimConnect/PMDGNG3DataStruct.cs` via a **linked** `<Compile>` (not a copy) so its CDA layout can never drift. `dotnet build MSFSBlindAssist.sln` builds all three. A second standalone probe, `tools/CDUTest`, fires a single CDA-write or TransmitClientEvent at one chosen PMDG event (used to prove the NG3 CDU keys need TransmitClientEvent, not the CDA write); it builds on its own (`dotnet build tools/CDUTest`), not as part of the solution.
 
 ## Testing
 
@@ -196,7 +196,11 @@ Details: [docs/taxi-guidance.md](docs/taxi-guidance.md).
 
 **Announcements:** Use `Announce()` (queued) in ProcessSimVarUpdate, `AnnounceImmediate()` only in HandleHotkeyAction. `IsAnnounced = true` is required for continuous monitoring registration. Suppress button push state (_Sw_Pushed) announcements via RenderAsButton check. Annunciator lights announce both on and off states. For variables needing cache but no auto-announcement, set `IsAnnounced = true` and return `true` from ProcessSimVarUpdate to suppress.
 
-### PMDG 777 EFB Bridge
+### PMDG 737-800 NG3 Specific Patterns
+
+Details: [docs/pmdg-737.md](docs/pmdg-737.md). Key gotchas: two CDUs (no observer), no FPA mode, annunciator names differ from 777 (LVL_CHG / HDG_SEL / VOR_LOC), DU selectors have "reverse sequence for FO", fire handles need an active fire to test, the 737 EFB has full parity with the 777 (Dashboard / Preferences / Navdata / Performance / Ground Ops / W&B / Manuals) via the shared `PMDGEFBForm`, opened with Shift+T — the EFB app is byte-identical across all four 737 variants and the 777, so one shared bridge JS + `zzz-pmdg-efb-accessibility` Community package serves them all.
+
+### PMDG EFB Bridge
 
 The EFB (Electronic Flight Bag) tablet is made accessible via a JavaScript bridge injected through an MSFS mod package override.
 
@@ -206,7 +210,7 @@ The EFB (Electronic Flight Bag) tablet is made accessible via a JavaScript bridg
 - **`EFBBridgeServer`** (`SimConnect/EFBBridgeServer.cs`) — HttpListener with `/ping`, `/state` (POST), `/commands` (GET) endpoints. JS pushes state, C# queues commands. Command queue capped at 50 entries; `HasPendingCommand()` enables deduplication. Auto-restarts listener on unexpected failures (5 retries, 2s delay). Start/Stop protected by lock. Fires `Error` event on server failures.
 - **`EFBModPackageManager`** (`Patching/EFBModPackageManager.cs`) — Installs/updates/removes the mod package. Reads original PMDG HTML at install time (no PMDG IP in repo), appends bridge script tag with double-patch guard (checks for existing script tag before appending). Auto-updates bridge JS on app startup via `BridgeVersion` constant.
 - **`pmdg-efb-accessibility-bridge.js`** (`Resources/`) — Runs inside MSFS Coherent GT. Hooks into EFB's `MessageService.messaging_bus` EventBus. Must be Coherent GT compatible (no `AbortSignal.timeout`, top-level try-catch, `var` not `let/const`, no arrow functions, `.indexOf()` not `.includes()`). Critical state types are queued on POST failure and flushed on reconnection (max 20 pending, 3 retries per entry). `tryConnect` has a connecting guard to prevent concurrent attempts; `navigraphStateSent` flag prevents duplicate Navigraph state posts.
-- **`PMDG777EFBForm`** (`Forms/PMDG777/`) — Accessible form with SimBrief, Navigraph, Preferences tabs. Opened via Shift+T in input mode. Shows connection status (always visible above tabs, announced on transitions). Buttons disable on click and re-enable on response or timeout. SimBrief fetch: 30s timeout. Navigraph auth: 60s timeout.
+- **`PMDGEFBForm`** (`Forms/PMDGEFB/`) — Accessible form shared across all PMDG 737 and 777 variants, hosting Dashboard, Preferences, Navdata, Performance, Ground Ops, Weights & Balance, Manuals, and a Display debug tab. Opened via Shift+T in input mode. Form title (`"PMDG 737 EFB"` / `"PMDG 777 EFB"`) and AccessibleName are set in the constructor from `currentAircraft.AircraftCode`. Shows connection status (always visible above tabs, announced on transitions). Buttons disable on click and re-enable on response or timeout. SimBrief fetch: 30s timeout. Navigraph auth: 60s timeout.
 
 **JS bridge constraints (Coherent GT):**
 - No `AbortSignal.timeout()` — use manual Promise-based timeout
@@ -232,6 +236,7 @@ The EFB (Electronic Flight Bag) tablet is made accessible via a JavaScript bridg
 - **Fenix rotary encoders (RMP, FCU)** → [Fenix Increment/Decrement](docs/fenix-increment-decrement.md)
 - **Tuning visual guidance PID controller** → [Visual Guidance](docs/visual-guidance.md)
 - **Working on taxi guidance (graph, router, tone, form)** → [Taxi Guidance](docs/taxi-guidance.md)
+- **Working on PMDG 737-800 panels, CDU, NG3 data struct** → [PMDG 737-800](docs/pmdg-737.md)
 - **Understanding variable patterns** → [Variable System](docs/variable-system.md)
 - **API reference** → [Aircraft Definitions](docs/aircraft-definitions.md)
 - **Dependencies and key files** → [Development](docs/development.md)
@@ -244,6 +249,7 @@ The EFB (Electronic Flight Bag) tablet is made accessible via a JavaScript bridg
 - **[Fenix Increment/Decrement](docs/fenix-increment-decrement.md)** - Counter-based pattern for Fenix rotary encoders
 - **[Visual Guidance](docs/visual-guidance.md)** - PID controller tuning and ground track monitoring
 - **[Taxi Guidance](docs/taxi-guidance.md)** - Turn-by-turn taxi assistance, steering tone, ATC-constrained routing
+- **[PMDG 737-800](docs/pmdg-737.md)** - NG3 SDK patterns, two-CDU convention, FIRE_HandlePos ordering, EFB gating
 - **[Aircraft Definitions](docs/aircraft-definitions.md)** - Multi-aircraft dictionary system API reference
 - **[Hotkey System](docs/hotkey-system.md)** - Dual-mode hotkeys and multi-aircraft routing
 - **[Development](docs/development.md)** - Dependencies, key files, development notes

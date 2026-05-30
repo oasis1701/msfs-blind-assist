@@ -1,7 +1,7 @@
 using MSFSBlindAssist.Controls;
 using MSFSBlindAssist.SimConnect;
 
-namespace MSFSBlindAssist.Forms.PMDG777.Apps
+namespace MSFSBlindAssist.Forms.PMDGEFB.Apps
 {
     /// <summary>
     /// Ground Operations panel. Exposes Ground Connections, Service Vehicles,

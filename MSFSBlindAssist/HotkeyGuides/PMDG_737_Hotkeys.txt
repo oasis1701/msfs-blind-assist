@@ -1,4 +1,4 @@
-PMDG 777 HOTKEY REFERENCE
+PMDG 737-800 HOTKEY REFERENCE
 
 Application Navigation:
   Ctrl+1     Focus Sections List
@@ -9,10 +9,10 @@ Tip: Press the same bracket key again to cancel a mode you activated by accident
 OUTPUT MODE - Press right bracket to activate
 
 MCP Readouts:
-  Shift+H    Read MCP Heading (includes HDG/TRK mode, LNAV/HDG HOLD status)
-  Shift+S    Read MCP Speed (includes FLCH status, shows blank if FMC-controlled)
-  Shift+A    Read MCP Altitude (includes VNAV/FLCH/ALT HOLD status)
-  Shift+V    Read MCP V/S or FPA (includes VS/FPA engaged status)
+  Shift+H    Read MCP Heading (includes HDG SEL/LNAV status)
+  Shift+S    Read MCP Speed (includes LVL CHG status, shows blank if FMC-controlled)
+  Shift+A    Read MCP Altitude (includes VNAV/LVL CHG/ALT HOLD status)
+  Shift+V    Read MCP Vertical Speed (includes VS engaged status)
 
 Altitude:
   Q          Read Altitude AGL
@@ -46,7 +46,8 @@ Landing Gear:
   Shift+G    Read Gear Position
 
 Altimeter:
-  B          Read Altimeter Setting (hPa and inHg, or Standard)
+  B          Read altimeter setting (announces in hPa and inHg;
+             "Altimeter standard" if at 29.92 inHg)
 
 Vertical:
   V          Read Vertical Speed
@@ -96,7 +97,7 @@ Taxi Guidance (turn-by-turn taxi assistance with audio steering tone):
   Alt+Y      Where Am I (announces current taxiway, gate, or runway at nearest airport)
   (Open the form with Input mode > Shift+Y)
 
-Waypoint Tracking (use Fix Track window or EFB route viewer to add):
+Waypoint Tracking (use Fix Track window to add):
   1          Track Slot 1
   2          Track Slot 2
   3          Track Slot 3
@@ -125,13 +126,15 @@ Traffic and Weather:
 Displays and Windows:
   Ctrl+M     PMDG Monitor Manager
   Shift+E    Route viewer, procedure planner and airport lookup
-  Shift+T    PMDG EFB Tablet (SimBrief uplink, Navigraph, preferences)
   Shift+L    Location Info
   Shift+M    Show METAR Report (VATSIM, plus ActiveSky METAR if AS detected)
   Shift+B    SimBrief Briefing
   Shift+C    Show Checklist
   Shift+N    Navigation Display
   Shift+P    PFD Window
+
+Note: The EFB tablet (Shift+T in Input mode on the 777) is not yet supported
+for the 737-800 — EFB bridge support is planned for a follow-up release.
 
 Hand Fly Mode Hotkeys:
   A          Read MSL
@@ -146,9 +149,6 @@ Hand Fly Mode Hotkeys:
 Visual Guidance Mode Hotkeys:
   F          Read Target VS
 
-Ground Services:
-  Ctrl+G     Read latest GSX tooltip (no need to open the Access GSX window)
-
 INPUT MODE - Press [ to activate
 
 Teleport:
@@ -160,10 +160,21 @@ Flight Planning:
   Shift+D    Select Destination Runway
 
 MCP Set Values:
-  Ctrl+H     Set Heading (opens dialog with Intervene, HDG/TRK Mode, LNAV, HDG HOLD toggles)
+  Ctrl+H     Set Heading (opens dialog with Intervene, HDG SEL, LNAV toggles)
   Ctrl+S     Set Speed (opens dialog with Intervene, IAS/Mach Mode toggles)
   Ctrl+A     Set Altitude (opens dialog with Intervene, VNAV, Level Change, ALT HOLD toggles)
-  Ctrl+V     Set Vertical Speed (opens dialog with VS/FPA Engage and Mode toggles)
+  Ctrl+V     Set Vertical Speed (opens dialog with VS Engage toggle)
+
+Altimeter:
+  Ctrl+B     Set altimeter (input dialog accepts hPa 900-1060 or
+             inHg 26.50-31.30; branches on entered magnitude, so both
+             "1013" and "29.92" work, locale-safe; includes a Standard
+             button that sets the altimeter to STD / 29.92)
+
+Radios:
+  Ctrl+N     Set NAV radios (input dialog with NAV 1 and NAV 2 frequency
+             and course; pre-filled with current values, applies all on
+             Set; frequency 108.00-117.95 MHz, course 0-359 degrees)
 
 Taxi Guidance:
   Shift+Y    Open Taxi Assist Form (enter ATC taxi clearance, start guidance)
@@ -173,9 +184,6 @@ Taxi Guidance:
              touchdown; guidance auto-starts when you land — reuses the ILS
              destination runway if one is set; announces headwind/tailwind on
              runway selection so you can pick an exit that matches the rollout)
-
-Ground Services:
-  Alt+G      Open Access GSX window (accessible GSX Ground Services Pro menu)
 
 General:
   Escape     Exit active hotkey mode
@@ -203,15 +211,16 @@ CDU Page Buttons:
   Alt+I          Init Ref
   Alt+R          RTE (Route)
   Alt+D          Dep/Arr (Departure/Arrival)
-  Alt+A          Altn (Alternate)
   Alt+V          VNAV
   Alt+F          Fix
   Alt+G          Legs
   Alt+H          Hold
   Alt+P          Prog (Progress)
   Alt+M          Menu
-  Alt+O          FMC Comm
-  Alt+N          Nav Rad
+  Alt+B          CLB (Climb)
+  Alt+Z          CRZ (Cruise)
+  Alt+X          DES (Descent)
+  Alt+N          N1 Limit
   Alt+E          Execute
   Alt+C          CLR/DEL (Clear or Delete)
 
@@ -221,7 +230,7 @@ the default Ctrl+1-6 / Alt+1-6 chords are disabled.
 
 Automatic Announcements:
   - MCP value changes (speed, heading, altitude, vertical speed)
-  - Autopilot mode changes (AP, AT, LNAV, VNAV, FLCH, HDG HOLD, VS/FPA, ALT HOLD, LOC, APP)
+  - Autopilot mode changes (AP, AT, LNAV, VNAV, LVL CHG, HDG SEL, VS, ALT HOLD, VOR/LOC, APP)
   - Master Warning / Master Caution (with cleared state)
   - All annunciator lights (on and off)
   - Speed brake position changes

@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using MSFSBlindAssist.SimConnect;
 
-namespace MSFSBlindAssist.Forms.PMDG777.Apps
+namespace MSFSBlindAssist.Forms.PMDGEFB.Apps
 {
     /// <summary>
     /// EFB Preferences sub-tab. Mirrors PMDG's own preferences page 1:1 in

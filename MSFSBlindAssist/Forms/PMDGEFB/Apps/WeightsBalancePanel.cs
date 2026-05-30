@@ -1,7 +1,7 @@
 using MSFSBlindAssist.Controls;
 using MSFSBlindAssist.SimConnect;
 
-namespace MSFSBlindAssist.Forms.PMDG777.Apps
+namespace MSFSBlindAssist.Forms.PMDGEFB.Apps
 {
     /// <summary>
     /// Weights &amp; Balance panel. Inner tabs for Overview (weights/CG +
