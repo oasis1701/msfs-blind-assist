@@ -61,9 +61,11 @@ public class FBWA380NavDisplayForm : Form
         };
         var refresh = new Button { Text = "&Refresh", Location = new Point(12, 400), Size = new Size(90, 30), AccessibleName = "Refresh" };
         refresh.Click += (_, _) => { Refresh_(); _announcer?.Announce("Refreshed"); };
-        var close = new Button { Text = "&Close", Location = new Point(110, 400), Size = new Size(90, 30), DialogResult = DialogResult.OK, AccessibleName = "Close" };
+        var live = new Button { Text = "&Live scrape", Location = new Point(110, 400), Size = new Size(110, 30), AccessibleName = "Live scrape view" };
+        live.Click += (_, _) => OpenLiveScrape();
+        var close = new Button { Text = "&Close", Location = new Point(228, 400), Size = new Size(90, 30), DialogResult = DialogResult.OK, AccessibleName = "Close" };
         close.Click += (_, _) => Close();
-        Controls.AddRange(new Control[] { _text, refresh, close });
+        Controls.AddRange(new Control[] { _text, refresh, live, close });
         CancelButton = close;
         AcceptButton = refresh;
         Load += (_, _) => _text.Focus();
@@ -151,9 +153,17 @@ public class FBWA380NavDisplayForm : Form
         if (!string.IsNullOrEmpty(e.VarName)) _raw[e.VarName] = e.Value;
     }
 
+    // Open the live DOM-scrape of the real ND Coherent view (mode/range, TO wpt,
+    // GS/TAS, TCAS/NAV flags as rendered). Augments the SimVar readout above — the
+    // graphical compass/needle values are positional so the SimVar view stays
+    // primary, but the scrape catches text the SimVar set doesn't model.
+    private void OpenLiveScrape()
+        => new FBWA380LiveDisplayForm(_announcer, "A380X_ND_1", "Navigation Display").Show();
+
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
     {
         if (keyData == Keys.F5) { Refresh_(); return true; }
+        if (keyData == Keys.F6) { OpenLiveScrape(); return true; }
         if (keyData == Keys.Escape) { Close(); return true; }
         return base.ProcessCmdKey(ref msg, keyData);
     }

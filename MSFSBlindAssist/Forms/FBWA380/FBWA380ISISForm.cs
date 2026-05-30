@@ -66,9 +66,11 @@ public class FBWA380ISISForm : Form
         };
         var refresh = new Button { Text = "&Refresh", Location = new Point(12, 360), Size = new Size(90, 30), AccessibleName = "Refresh" };
         refresh.Click += (_, _) => { Refresh_(); _announcer?.Announce("Refreshed"); };
-        var close = new Button { Text = "&Close", Location = new Point(110, 360), Size = new Size(90, 30), DialogResult = DialogResult.OK, AccessibleName = "Close" };
+        var live = new Button { Text = "&Live scrape", Location = new Point(110, 360), Size = new Size(110, 30), AccessibleName = "Live scrape view" };
+        live.Click += (_, _) => OpenLiveScrape();
+        var close = new Button { Text = "&Close", Location = new Point(228, 360), Size = new Size(90, 30), DialogResult = DialogResult.OK, AccessibleName = "Close" };
         close.Click += (_, _) => Close();
-        Controls.AddRange(new Control[] { _text, refresh, close });
+        Controls.AddRange(new Control[] { _text, refresh, live, close });
         CancelButton = close;
         AcceptButton = refresh;
         Load += (_, _) => _text.Focus();
@@ -141,9 +143,17 @@ public class FBWA380ISISForm : Form
         if (!string.IsNullOrEmpty(e.VarName)) _raw[e.VarName] = e.Value;
     }
 
+    // Live DOM-scrape of the real ISIS Coherent view. The standby instrument is a
+    // graphical tape (airspeed/altitude/attitude are positional), so the scrape
+    // mostly returns the fixed tape tick labels + baro — the SimVar air-data
+    // readout above remains the reliable source. Provided for completeness.
+    private void OpenLiveScrape()
+        => new FBWA380LiveDisplayForm(_announcer, "ISISlegacy", "Standby Instrument").Show();
+
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
     {
         if (keyData == Keys.F5) { Refresh_(); return true; }
+        if (keyData == Keys.F6) { OpenLiveScrape(); return true; }
         if (keyData == Keys.Escape) { Close(); return true; }
         return base.ProcessCmdKey(ref msg, keyData);
     }

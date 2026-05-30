@@ -2675,9 +2675,13 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 new Forms.FBWA380.FBWA380ISISForm(announcer, simConnect).Show();
                 return true;
             case HotkeyAction.ReadDisplayUpperECAM:
-                // Upper ECAM IS the E/WD: read ALL current memo/warning lines on
-                // demand (decoded), regardless of the live-call-out mute. (Alt+E)
+                // Upper ECAM IS the E/WD: speak ALL current memo/warning lines on
+                // demand (decoded, regardless of the live-call-out mute) for quick
+                // audio, AND open the live-scrape E/WD window (engine N1/EGT/FF,
+                // memos and active warnings/procedures, exactly as rendered). (Alt+E)
                 ReadAllEwdWarnings(announcer);
+                hotkeyManager.ExitOutputHotkeyMode();
+                new Forms.FBWA380.FBWA380LiveDisplayForm(announcer, "A380X_EWD", "Engine Warning Display").Show();
                 return true;
             case HotkeyAction.ReadDisplayLowerECAM:
             case HotkeyAction.ReadFuelInfo:
