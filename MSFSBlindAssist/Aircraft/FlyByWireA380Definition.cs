@@ -568,13 +568,16 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Detent("THROTTLE_ALL_DETENT", "All Thrust Levers");
         for (int n = 1; n <= 4; n++) Detent($"THROTTLE_{n}_DETENT", $"Thrust Lever {n}");
 
-        // Thrust lever angle — monitored so ProcessSimVarUpdate announces the
-        // detent when the levers move (handled there; the raw value is suppressed).
-        vars["A32NX_AUTOTHRUST_TLA:1"] = new SimVarDefinition
-        {
-            Name = "A32NX_AUTOTHRUST_TLA:1", DisplayName = "Thrust Lever Angle",
-            Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true
-        };
+        // Thrust lever angles — ALL FOUR monitored so ProcessSimVarUpdate
+        // announces the actual detent per engine as the levers move (the raw
+        // angle is suppressed there). Previously only engine 1 was monitored.
+        for (int n = 1; n <= 4; n++)
+            vars[$"A32NX_AUTOTHRUST_TLA:{n}"] = new SimVarDefinition
+            {
+                Name = $"A32NX_AUTOTHRUST_TLA:{n}", DisplayName = $"Thrust Lever {n} Angle",
+                Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.Continuous,
+                IsAnnounced = true, Units = "degrees"
+            };
 
         // ---- ECAM Control Panel ----
         Sel("A32NX_ECAM_SD_CURRENT_PAGE_INDEX", "System Display Page",
@@ -645,8 +648,12 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             Read($"A32NX_ENGINE_FF:{n}", $"Engine {n} Fuel Flow", "kilograms per hour");
             Stock($"ENG_OIL_PRESSURE:{n}", $"ENG OIL PRESSURE:{n}", $"Engine {n} Oil Pressure", "psi");
             Stock($"ENG_OIL_TEMP:{n}", $"GENERAL ENG OIL TEMPERATURE:{n}", $"Engine {n} Oil Temperature", "celsius");
-            ReadEnum($"A32NX_REVERSER_{n}_DEPLOYED", $"Engine {n} Reverser", revVd);
         }
+        // The A380 has thrust reversers ONLY on the inboard engines (2 and 3); the
+        // outboard 1 and 4 have none (their _REVERSER_ vars stay 0 forever), so only
+        // 2 and 3 are exposed/announced — "only engine 2 and 3 deploy" is correct.
+        ReadEnum("A32NX_REVERSER_2_DEPLOYED", "Engine 2 Reverser", revVd);
+        ReadEnum("A32NX_REVERSER_3_DEPLOYED", "Engine 3 Reverser", revVd);
         // Engine mode knob: combo writes via HandleUIVariableSet to all engines.
         vars["ENGINE_MODE_SELECTOR"] = new SimVarDefinition
         {
@@ -1722,9 +1729,18 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         {
             eng.Add($"A32NX_ENGINE_N1:{n}"); eng.Add($"A32NX_ENGINE_N2:{n}"); eng.Add($"A32NX_ENGINE_N3:{n}");
             eng.Add($"A32NX_ENGINE_EGT:{n}"); eng.Add($"A32NX_ENGINE_FF:{n}");
-            eng.Add($"ENG_OIL_PRESSURE:{n}"); eng.Add($"ENG_OIL_TEMP:{n}"); eng.Add($"A32NX_REVERSER_{n}_DEPLOYED");
+            eng.Add($"ENG_OIL_PRESSURE:{n}"); eng.Add($"ENG_OIL_TEMP:{n}");
+            if (n == 2 || n == 3) eng.Add($"A32NX_REVERSER_{n}_DEPLOYED"); // only inboard engines have reversers
         }
         d["Engines"] = eng;
+        // Live per-engine thrust-lever angle readouts (the detent is also spoken
+        // automatically as the levers move). The set combos in the panel are
+        // write-only, so these read-outs are the actual current state.
+        d["Thrust Levers"] = new List<string>
+        {
+            "A32NX_AUTOTHRUST_TLA:1", "A32NX_AUTOTHRUST_TLA:2",
+            "A32NX_AUTOTHRUST_TLA:3", "A32NX_AUTOTHRUST_TLA:4"
+        };
 
         d["Flaps and Brakes"] = new List<string>
         {
@@ -1864,7 +1880,17 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     // ===================================================================
     // Last announced E/WD code per line, so a line only speaks when it changes.
     private readonly Dictionary<string, long> _lastEwdCode = new();
-    private string? _lastThrottleDetent;
+    private readonly double[] _tla = { double.NaN, double.NaN, double.NaN, double.NaN };
+    private readonly string?[] _lastEngDetent = new string?[4];
+    private string? _lastAllDetent;
+    // FBW TLA detents: IDLE 0, CLB 25, FLX/MCT 35, TOGA 45, reverse negative.
+    private static string? TlaDetent(double v) =>
+        Math.Abs(v) < 1.5 ? "Idle" :
+        Math.Abs(v - 25) < 2.5 ? "Climb" :
+        Math.Abs(v - 35) < 2.5 ? "Flex M C T" :
+        Math.Abs(v - 45) < 2.5 ? "TOGA" :
+        v <= -15 ? "Maximum reverse" :
+        v < -2 ? "Reverse idle" : null;
 
     public override bool ProcessSimVarUpdate(string varName, double value, ScreenReaderAnnouncer announcer)
     {
@@ -1876,19 +1902,37 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // angle, which would spam). FBW TLA detents: IDLE 0, CLB 25, FLX/MCT 35,
         // TOGA 45, reverse negative. Only speak when the lever is AT a detent so
         // mid-travel doesn't false-announce. Returns true to suppress the raw value.
-        if (varName == "A32NX_AUTOTHRUST_TLA:1")
+        if (varName.StartsWith("A32NX_AUTOTHRUST_TLA:", StringComparison.Ordinal))
         {
-            string? detent =
-                Math.Abs(value - 0) < 1.5 ? "Idle" :
-                Math.Abs(value - 25) < 2.5 ? "Climb" :
-                Math.Abs(value - 35) < 2.5 ? "Flex M C T" :
-                Math.Abs(value - 45) < 2.5 ? "TOGA" :
-                value <= -15 ? "Maximum reverse" :
-                value < -2 ? "Reverse idle" : null;
-            if (detent != null && detent != _lastThrottleDetent)
+            int eng = varName[varName.Length - 1] - '0';
+            if (eng >= 1 && eng <= 4)
             {
-                _lastThrottleDetent = detent;
-                announcer.Announce($"Thrust levers {detent}");
+                _tla[eng - 1] = value;
+                string? det = TlaDetent(value);
+                if (det != null)
+                {
+                    // When all four levers sit at the same detent (the usual case)
+                    // announce once for "all"; when split, announce the engine that
+                    // moved. Mid-travel (det == null) is silent.
+                    bool allSame = true;
+                    for (int i = 0; i < 4; i++)
+                        if (double.IsNaN(_tla[i]) || TlaDetent(_tla[i]) != det) { allSame = false; break; }
+                    if (allSame)
+                    {
+                        if (det != _lastAllDetent)
+                        {
+                            _lastAllDetent = det;
+                            for (int i = 0; i < 4; i++) _lastEngDetent[i] = det;
+                            announcer.Announce($"All thrust levers {det}");
+                        }
+                    }
+                    else if (det != _lastEngDetent[eng - 1])
+                    {
+                        _lastEngDetent[eng - 1] = det;
+                        _lastAllDetent = null;
+                        announcer.Announce($"Thrust lever {eng} {det}");
+                    }
+                }
             }
             return true;
         }
