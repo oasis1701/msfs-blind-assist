@@ -43,7 +43,7 @@ Sources cited per row: **[FCU-src]** = the FCU instrument managers/components; *
 
 | A320 item | A380X equivalent | Status / source |
 |---|---|---|
-| `A32NX.FCU_EFIS_L_FD_PUSH` (+ `_R_`) | **NO `A32NX.FCU_EFIS_*` event on A380.** FD is toggled via standard `TOGGLE_FLIGHT_DIRECTOR` [api]. | NO direct A380 analog with that name. FD-on state read from `AUTOPILOT FLIGHT DIRECTOR ACTIVE` [api]. |
+| `A32NX.FCU_EFIS_L_FD_PUSH` (+ `_R_`) | **NO `A32NX.FCU_EFIS_*` event on A380, AND the FD is UNCONTROLLABLE on this build.** `TOGGLE_FLIGHT_DIRECTOR` (indexed or not), the `A320_Neo_FCU_FD_n_PUSH` H-event, and direct writes to `A380X_EFIS_L_FD_BUTTON_IS_ON` / `A32NX_FCU_LEFT_EIS_FD_ACTIVE` ALL fail — FBW recomputes the L-var every tick (verified live). The MSFSBA FD button + event were REMOVED. | FD-on STATE is still read-only via `AUTOPILOT FLIGHT DIRECTOR ACTIVE` (`FD_ACTIVE`, kept as a status readout). |
 | `A32NX.FCU_EFIS_L_BARO_SET/PUSH/PULL` (+ `_R_`) | **A380X-prefixed input events.** Per the FBW API catalog the A380 baro knob uses `H:A380X_EFIS_CP_BARO_PULL_{1\|2}` / `H:A380X_EFIS_CP_BARO_PUSH_{1\|2}` (ALTIMETER_INDEX 1=Capt/L, 2=F/O/R). | A380-SPECIFIC. NOTE: these H-events are referenced in the FBW input catalog; the local FCU `BaroManager` consumes them internally (onPush=STD, onPull=QNH/last, onRotate=±). They are **NOT** in `a380x-input-events.md` (which currently only documents RMP), so treat the exact `_PUSH_/_PULL_/_SET_` spelling as **UNCERTAIN — verify in-sim**. |
 
 ---
@@ -114,9 +114,9 @@ The A320 `A32NX_FCU_EFIS_L_*` baro family does **not exist** on the A380. Mappin
 
 ## Items with NO A380 analog (flag for the port)
 
-- `A32NX_FCU_AFS_DISPLAY_*` family (SPD/HDG/ALT/VS value + managed) — **does not exist**; use the `A32NX_AUTOPILOT_*_SELECTED` / `AUTOPILOT ALTITUDE LOCK VAR:3` value vars and the `A32NX_FCU_*_MANAGED[_DOT|_DASHES]` indicator vars instead.
+- `A32NX_FCU_AFS_DISPLAY_*` family (SPD/HDG/ALT/VS value + managed) — **does not exist**; use the `A32NX_AUTOPILOT_*_SELECTED` / `AUTOPILOT ALTITUDE LOCK VAR:3` value vars and the `A32NX_FCU_*_MANAGED[_DOT|_DASHES]` indicator vars instead. **The `_SELECTED` vars read in SI base units via the data-def read** — convert in `ProcessSimVarUpdate`: heading/track rad→deg (`×180/π`), FPA rad→deg, V/S m/s→fpm (`×196.8503937`), speed m/s→kt (`×1.943844`); altitude is already feet. (Missing this = "V/S reads 15 not 2000".)
 - `A32NX_FCU_*_LIGHT_ON` family — **does not exist**; derive from FG/FMA status vars (`AUTOPILOT_1/2_ACTIVE`, `AUTOTHRUST_STATUS`, `FCU_LOC/APPR_MODE_ACTIVE`, `FMA_EXPEDITE_MODE`, `AUTOPILOT FLIGHT DIRECTOR ACTIVE`).
-- `A32NX.FCU_EFIS_L_FD_PUSH` / `A32NX_FCU_EFIS_L_BARO_*` family — **does not exist**; FD via `TOGGLE_FLIGHT_DIRECTOR`, baro via `A380X_EFIS_CP_BARO_*` H-events + `A380X_EFIS_{L|R}_BARO_PRESELECTED` readout.
+- `A32NX.FCU_EFIS_L_FD_PUSH` / `A32NX_FCU_EFIS_L_BARO_*` family — **does not exist**; the **FD is uncontrollable on this build (button removed)** — see the EFIS table row above; baro via the EFIS-CP controls (driven through the MobiFlight calculator path, `ExecuteCalculatorCode("{val} (>L:{key})")`) + the decoded `A380X_EFIS_{L|R}_BARO_PRESELECTED` / ARINC `*_EIS_BARO_HPA` readout (decoded, never shown raw).
 
 ## Uncertain / to verify in-sim
 

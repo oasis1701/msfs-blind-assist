@@ -891,7 +891,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Sel("A32NX_FMA_EXPEDITE_MODE", "Expedite", onOff);
 
         // ---- EFIS Control Panel: flight director + baro (per side) ----
-        Evt("TOGGLE_FLIGHT_DIRECTOR", "TOGGLE_FLIGHT_DIRECTOR", "Flight Director Toggle");
+        // FD toggle event removed — non-functional on this A380X build (the sim
+        // recomputes the L-var every tick; see the note in BuildPanelControls).
+        // FD_ACTIVE is kept as a read-only STATUS so the pilot can still tell
+        // whether the flight director is on.
         Stock("FD_ACTIVE", "AUTOPILOT FLIGHT DIRECTOR ACTIVE", "Flight Director", "bool", onOff);
         // (Legacy XMLVAR_BaroN_Mode combos are DEAD on the A380X — verified live
         //  that writing them changes nothing. STD/QNH is the IS_STD combo below.)
