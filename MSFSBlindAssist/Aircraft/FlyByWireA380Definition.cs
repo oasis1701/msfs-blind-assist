@@ -910,10 +910,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         var baroStd = new Dictionary<double, string> { [0] = "QNH", [1] = "Standard" };
         Sel("A32NX_FCU_LEFT_EIS_BARO_IS_STD", "Capt Altimeter STD", baroStd);
         Sel("A32NX_FCU_RIGHT_EIS_BARO_IS_STD", "F/O Altimeter STD", baroStd);
-        // hPa/inHg unit flag per side — so the baro is announced in the unit the
-        // pilot selected (and re-announced when they switch units).
-        MonNum("A32NX_FCU_EFIS_L_BARO_IS_INHG", "Capt Baro inHg");
-        MonNum("A32NX_FCU_EFIS_R_BARO_IS_INHG", "F/O Baro inHg");
+        // hPa/inHg unit per side: the real selector is XMLVAR_Baro_Selector_HPA_
+        // {1,2} (registered as the "Baro Unit" combo in the EFIS-CP section).
+        // A32NX_FCU_EFIS_*_BARO_IS_INHG is stuck at 0 on the A380X (verified live:
+        // F/O reads XMLVAR=0/inHg while IS_INHG stays 0), so it is NOT used — the
+        // unit flag is tracked off the XMLVAR in ProcessSimVarUpdate.
         Read("A380X_EFIS_L_BARO_PRESELECTED", "Capt Preselected QNH");
         Read("A380X_EFIS_R_BARO_PRESELECTED", "F/O Preselected QNH");
         // Settable QNH — numeric input in the side's CURRENT unit (hPa or inHg).
@@ -2048,17 +2049,25 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                     : BaroPhrase(capt, capt ? _lastBaroL : _lastBaroR, true));
             return true;
         }
-        // EFIS baro unit toggled (hPa <-> inHg) — re-announce the setting in the
-        // new unit so the pilot hears it the way they just selected.
-        if (varName == "A32NX_FCU_EFIS_L_BARO_IS_INHG" || varName == "A32NX_FCU_EFIS_R_BARO_IS_INHG")
+        // EFIS baro UNIT lives on XMLVAR_Baro_Selector_HPA_{1,2} (1=hPa, 0=inHg) —
+        // NOT A32NX_FCU_EFIS_*_BARO_IS_INHG, which is stuck at 0 on the A380X
+        // (verified live: F/O reads XMLVAR=0/inHg while IS_INHG stays 0/hPa, so
+        // the readout always said hPa). Track the real unit here and re-announce
+        // the setting in the new unit when the pilot switches it.
+        if (varName == "XMLVAR_Baro_Selector_HPA_1" || varName == "XMLVAR_Baro_Selector_HPA_2")
         {
-            bool capt = varName.Contains("_EFIS_L_");
-            bool inHg = value > 0.5;
+            bool capt = varName.EndsWith("_1", StringComparison.Ordinal);
+            bool inHg = value < 0.5;
             bool? prev = capt ? _baroInHgL : _baroInHgR;
             if (capt) _baroInHgL = inHg; else _baroInHgR = inHg;
-            int last = capt ? _lastBaroL : _lastBaroR;
-            if (prev.HasValue && prev.Value != inHg && last > 0 && (capt ? _baroStdL : _baroStdR) != true)
-                announcer.Announce(BaroPhrase(capt, last, false));
+            if (prev.HasValue && prev.Value != inHg) // skip the baseline read
+            {
+                int last = capt ? _lastBaroL : _lastBaroR;
+                if (last > 0 && (capt ? _baroStdL : _baroStdR) != true)
+                    announcer.Announce(BaroPhrase(capt, last, false));
+                else
+                    announcer.Announce($"{(capt ? "Captain" : "First officer")} baro unit {(inHg ? "inches" : "hectopascals")}");
+            }
             return true;
         }
         // Minimums are ARINC429 words — decode and announce when a minimum is set
