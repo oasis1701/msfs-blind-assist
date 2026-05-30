@@ -88,6 +88,13 @@
     if (role === "tab" || c.indexOf("tab-") >= 0 || c.indexOf("-tab") >= 0) return "tab";
     if (role === "button" || c.indexOf("button") >= 0 || c.indexOf("btn") >= 0 || tag === "button") return "button";
     if (n.getAttribute && n.getAttribute("contenteditable") === "true") return "input";
+    // Electronic-checklist item row: a "flex-row ... space-x-4" row that wraps a
+    // small "checkbox box" (.border-4.border-current). Clicking the row toggles
+    // the item complete; a check icon (svg) appears in the box when done. Gate the
+    // querySelector on the cheap class signature so it only runs on candidate rows.
+    if (c.indexOf("space-x-4") >= 0 && c.indexOf("flex-row") >= 0) {
+      try { if (n.querySelector(".border-4.border-current")) return "checkitem"; } catch (e) {}
+    }
     // flyPad action buttons are frequently styled <div>s with NO button/btn
     // token and no role — e.g. the modal "Cancel"/"Confirm" buttons and the
     // segmented setting controls ("Instant / Fast / Real"). They are
@@ -111,7 +118,7 @@
       if (kind === "select") return "select";
       return "text";
     }
-    if (kind === "checkbox" || kind === "toggle") return "checkbox";
+    if (kind === "checkbox" || kind === "toggle" || kind === "checkitem") return "checkbox";
     return ""; // button/link/heading/tab handled via tag/clickable
   };
 
@@ -214,6 +221,11 @@
   };
 
   A.valueOf = function (kind, n) {
+    if (kind === "checkitem") {
+      // Completed = a check icon (svg) inside the item's checkbox box.
+      var box = n.querySelector(".border-4.border-current");
+      return (box && box.querySelector("svg")) ? "true" : "false";
+    }
     if (kind === "slider") return clean(n.getAttribute("aria-valuenow") || n.value || "");
     if (kind === "checkbox" || kind === "toggle") {
       var ck = n.getAttribute && n.getAttribute("aria-checked");
@@ -587,10 +599,10 @@
     var kind = A.classify(node);
     value = (value === null || value === undefined) ? "" : String(value);
 
-    if (kind === "checkbox" || kind === "toggle") {
+    if (kind === "checkbox" || kind === "toggle" || kind === "checkitem") {
       var want = value === "true";
       var cur = A.valueOf(kind, node) === "true";
-      if (want !== cur) A.clickNode(node);
+      if (want !== cur) A.clickNode(node);   // checklist item: clicking the row toggles complete
       return "ok";
     }
 
