@@ -47,7 +47,7 @@ public class FBWA380SystemDisplayForm : Form
             engRows.Add(new Row($"A32NX_ENGINE_N3:{e}", $"Engine {e} N3", VType.Plain, "%", "0.0"));
             engRows.Add(new Row($"A32NX_ENGINE_FF:{e}", $"Engine {e} fuel flow", VType.Plain, "kg per hour"));
             engRows.Add(new Row($"A32NX_ENGINE_OIL_QTY:{e}", $"Engine {e} oil quantity", VType.Plain, "qt", "0.0"));
-            engRows.Add(new Row($"A32NX_ENGINE_OIL_PRESSURE:{e}", $"Engine {e} oil pressure", VType.Plain, "psi"));
+            // Oil pressure omitted — not modelled on the FBW A380 dev build (reads 0).
         }
 
         var pressRows = new[]

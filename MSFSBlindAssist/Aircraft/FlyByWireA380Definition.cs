@@ -646,7 +646,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             Read($"A32NX_ENGINE_N3:{n}", $"Engine {n} N3", "percent");
             Read($"A32NX_ENGINE_EGT:{n}", $"Engine {n} EGT", "celsius");
             Read($"A32NX_ENGINE_FF:{n}", $"Engine {n} Fuel Flow", "kilograms per hour");
-            Stock($"ENG_OIL_PRESSURE:{n}", $"ENG OIL PRESSURE:{n}", $"Engine {n} Oil Pressure", "psi");
+            // Engine oil PRESSURE is not modelled on the FBW A380 dev build — every
+            // candidate var returns garbage (stock ENG OIL PRESSURE ~217000, GENERAL
+            // ~6061, A32NX_ENGINE_OIL_PRESSURE 0), so it's omitted rather than shown
+            // as a fake value. Oil quantity + temperature are real and kept.
             Stock($"ENG_OIL_TEMP:{n}", $"GENERAL ENG OIL TEMPERATURE:{n}", $"Engine {n} Oil Temperature", "celsius");
         }
         // The A380 has thrust reversers ONLY on the inboard engines (2 and 3); the
@@ -1746,7 +1749,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         {
             eng.Add($"A32NX_ENGINE_N1:{n}"); eng.Add($"A32NX_ENGINE_N2:{n}"); eng.Add($"A32NX_ENGINE_N3:{n}");
             eng.Add($"A32NX_ENGINE_EGT:{n}"); eng.Add($"A32NX_ENGINE_FF:{n}");
-            eng.Add($"ENG_OIL_PRESSURE:{n}"); eng.Add($"ENG_OIL_TEMP:{n}");
+            eng.Add($"ENG_OIL_TEMP:{n}"); // oil pressure omitted — not modelled (see GetVariables)
             if (n == 2 || n == 3) eng.Add($"A32NX_REVERSER_{n}_DEPLOYED"); // only inboard engines have reversers
         }
         d["Engines"] = eng;
