@@ -29,6 +29,26 @@ Displays and Windows (direct chords — no bracket mode needed):
              Ctrl+M chord the Fenix and PMDG use; your choices are saved between
              sessions.
 
+Read-out windows (open from OUTPUT mode — see the PFD/ND/ECAM keys below):
+  - PFD window: flight-mode annunciator (lateral/vertical mode), approach
+    capability (CAT 1/2/3), and PFD messages. FMA mode changes (OP CLB, V/S,
+    FPA, G/S, LAND, FLARE, SRS, NAV, LOC, RWY...) are also announced live.
+  - Navigation Display window: ND mode and range, the TO waypoint (ident,
+    distance, bearing, ETA), cross-track error, RNP, and ILS deviation.
+  - System Display window (ECAM/STATUS): decoded SD readouts grouped by page —
+    Fuel (per-tank quantities, fuel on board, gross weight, CG), Engine
+    (N2/N3/fuel flow/oil), Pressurization (cabin altitude/V-S/delta-P), APU,
+    Electrical, Hydraulics, and Air Conditioning zone temperatures. The ARINC429
+    quantities are decoded for you. Refresh button + F5.
+  Each window has a Refresh button and F5; Escape closes.
+
+Thrust levers: moving the levers announces the detent reached (Idle / Climb /
+  Flex MCT / TOGA / Reverse). You can also set a detent from the Thrust Levers
+  panel (All Thrust Levers, or per engine) in the Pedestal section.
+
+Checklist (Output mode then the checklist key) loads the A380 cold-and-dark to
+  shutdown checklist. A step-by-step MCDU guide is in docs/a380-mcdu-guide.md.
+
 
 OUTPUT MODE - Press right bracket to activate
 
