@@ -33,6 +33,17 @@ Displays and Windows (direct chords — no bracket mode needed):
              "ECAM E/WD call-outs" entry in the Monitor Manager, but as a quick
              chord. Announces "E W D monitoring enabled/disabled". Persisted.
 
+  Ctrl+Shift+B  A380 Airport Map and BTV (OANS) window — the Onboard Airport
+             Navigation System control panel from the ND, shown as an accessible
+             web page (same browser view as the flyPad). Use it for BTV
+             (Brake-To-Vacate): select the landing runway and the exit/taxiway to
+             vacate at, search airports/runways/taxiways/stands, LDG SHIFT, and
+             read RUNWAY LENGTH / LDA / BTV STOP DISTANCE. To ARM BTV itself, set
+             the Autobrake selector (Pedestal) to BTV. NOTE: the airport map
+             controls only populate once the OANS has an aircraft position — the
+             ADIRS must be aligned (NAV) and you must be at or near an airport;
+             until then the window says "OANS not available yet".
+
 Annunciators and fault lights are announced automatically as they change
   (master warning/caution, APU EGT warning, thrust-lever warning, performance
   warning, TCAS fault; overhead pushbutton FAULT lights for batteries, gens,
