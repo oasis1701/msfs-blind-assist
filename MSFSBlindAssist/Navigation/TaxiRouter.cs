@@ -94,7 +94,7 @@ public class TaxiRouter
                 // where the FIRST hop is across a runway (rare but possible —
                 // e.g., entering from a connector that crosses a runway to
                 // reach the named departure taxiway).
-                var (exitNode, entryNode) = FindRunwayBridge(taxiwaySequence[0], secondTaxiway);
+                var (exitNode, entryNode) = FindRunwayBridge(taxiwaySequence[0], secondTaxiway, startNodeId, distFromFinalDest);
                 if (exitNode != -1 && entryNode != -1)
                 {
                     firstTarget = exitNode;
@@ -212,7 +212,7 @@ public class TaxiRouter
                     // bailing to whole-route shortest path: this preserves
                     // the user's clearance for every taxiway except the
                     // crossing itself.
-                    var (exitNode, entryNode) = FindRunwayBridge(currentTaxiway, nextTaxiway);
+                    var (exitNode, entryNode) = FindRunwayBridge(currentTaxiway, nextTaxiway, currentNode, distFromFinalDest);
                     if (exitNode != -1 && entryNode != -1)
                     {
                         targetNode = exitNode;
@@ -481,26 +481,55 @@ public class TaxiRouter
     /// (extra-wide RWY + shoulder + pavement margins) without enabling
     /// silent half-airport jumps.
     /// </summary>
-    private (int exitOnCurrent, int entryOnNext) FindRunwayBridge(string currentTaxiway, string nextTaxiway)
+    private (int exitOnCurrent, int entryOnNext) FindRunwayBridge(
+        string currentTaxiway,
+        string nextTaxiway,
+        int currentNodeId,
+        Dictionary<int, double> distFromFinalDest)
     {
-        const double MAX_BRIDGE_METERS = 200.0;
+        // With total-cost scoring, a large bridge gap is naturally penalised:
+        // the entryDist (cost to reach the exit node on currentTaxiway) plus
+        // the destDist (cost from the entry node on nextTaxiway to the
+        // destination) will be huge if the bridge is the wrong one. The old
+        // Euclidean-only guard (200 m) was the sole filter and caused a
+        // pathological case at KDEN BN→G: the closest BN node to G is the
+        // western tip of BN's south loop arm (~73 m gap) but reaching it
+        // requires traversing the entire BN hairpin loop (~600 m detour),
+        // while the correct handoff point on BN's northern arm is ~330 m
+        // from G (gap exceeds the old 200 m cap) but reachable directly.
+        // Raising the cap to 400 m and scoring by total route cost picks the
+        // northern-arm handoff because its entryDist is much shorter.
+        const double MAX_BRIDGE_METERS = 400.0;
+
+        // Dijkstra from the current node: gives graph cost to reach each
+        // candidate exit on currentTaxiway. Paired with the caller-supplied
+        // distFromFinalDest (graph cost from each candidate entry on
+        // nextTaxiway to the destination), this scores every candidate bridge
+        // by total route length, not just gap width.
+        var distFromEntry = ComputeGraphDistancesFrom(currentNodeId);
 
         int bestExit = -1, bestEntry = -1;
-        double bestDist = double.MaxValue;
+        double bestScore = double.MaxValue;
 
-        // O(N×M) over the two taxiways' nodes. At a major hub each named
-        // taxiway has tens of nodes, so this is well under 10K ops — cheap.
+        // O(N×M) over the two taxiways' nodes — cheap at hub scale.
         foreach (var nA in _graph.Nodes.Values)
         {
             if (!nA.TaxiwayNames.Contains(currentTaxiway)) continue;
+            if (!distFromEntry.TryGetValue(nA.NodeId, out double entryDist)) continue;
+
             foreach (var nB in _graph.Nodes.Values)
             {
                 if (!nB.TaxiwayNames.Contains(nextTaxiway)) continue;
-                double d = TaxiGraph.CalculateDistanceMeters(
+                if (!distFromFinalDest.TryGetValue(nB.NodeId, out double destDist)) continue;
+
+                double bridgeGap = TaxiGraph.CalculateDistanceMeters(
                     nA.Latitude, nA.Longitude, nB.Latitude, nB.Longitude);
-                if (d < bestDist && d <= MAX_BRIDGE_METERS)
+                if (bridgeGap > MAX_BRIDGE_METERS) continue;
+
+                double score = entryDist + bridgeGap + destDist;
+                if (score < bestScore)
                 {
-                    bestDist = d;
+                    bestScore = score;
                     bestExit = nA.NodeId;
                     bestEntry = nB.NodeId;
                 }
@@ -508,7 +537,12 @@ public class TaxiRouter
         }
 
         if (bestExit != -1)
-            Log($"[TaxiRouter] Runway bridge candidate: '{currentTaxiway}' node {bestExit} → '{nextTaxiway}' node {bestEntry}, gap {bestDist:F1} m");
+        {
+            double gap = TaxiGraph.CalculateDistanceMeters(
+                _graph.Nodes[bestExit].Latitude, _graph.Nodes[bestExit].Longitude,
+                _graph.Nodes[bestEntry].Latitude, _graph.Nodes[bestEntry].Longitude);
+            Log($"[TaxiRouter] Runway bridge candidate: '{currentTaxiway}' node {bestExit} → '{nextTaxiway}' node {bestEntry}, gap {gap:F1} m, total score {bestScore:F0} m");
+        }
 
         return (bestExit, bestEntry);
     }
