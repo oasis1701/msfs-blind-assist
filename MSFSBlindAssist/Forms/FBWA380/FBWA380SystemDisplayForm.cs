@@ -5,12 +5,20 @@ using MSFSBlindAssist.SimConnect;
 namespace MSFSBlindAssist.Forms.FBWA380;
 
 /// <summary>
-/// On-demand A380X ECAM System Display (SD) readout window. Reads the FQMS /
-/// PRESS / APU ARINC429 words (decoded via <see cref="Arinc429Word"/>) plus the
-/// plain scalar SD L:vars, grouped by SD page (Fuel, Engine, Bleed, Hyd, Elec,
-/// Press, Cond, APU). The generic per-panel display path can't decode ARINC429,
-/// so this dedicated window exists. All names carry the A32NX_ prefix on the
-/// A380X (legacy). See tools/a380-sd-pages.md.
+/// A380X ECAM System Display (SD) readout window.
+///
+/// PRIMARY source is now a LIVE SCRAPE of the real SD Coherent view
+/// (A380X_SDv2) via <see cref="CoherentDisplayClient"/> + coherent-display-agent.js
+/// — it surfaces exactly the DECODED values the crew sees (oxygen PSI, GW/FOB,
+/// per-tank fuel, N1/EGT, temps, pressures, door states, …), reconstructed into
+/// readable rows. A page selector drives A32NX_ECAM_SD_CURRENT_PAGE_INDEX so the
+/// user can read ANY SD page (Engine / APU / Bleed / Cond / Press / Door / Elec /
+/// Fuel / Wheel / Hyd / F-CTL / C-B / Video), including the ones the old
+/// ARINC429-SimVar decode never covered.
+///
+/// FALLBACK: if the Coherent debugger / SD view is unreachable, the window falls
+/// back to the legacy SimVar + ARINC429 decode (kept below) so it always shows
+/// something. See tools/a380-sd-pages.md.
 /// </summary>
 public class FBWA380SystemDisplayForm : Form
 {
@@ -19,13 +27,29 @@ public class FBWA380SystemDisplayForm : Form
     private sealed record Row(string Var, string Label, VType Type = VType.Plain, string Unit = "", string Format = "0");
     private sealed record Section(string Title, Row[] Rows);
 
+    // SD page index -> name, from fbw-a380x SD/SystemDisplay.tsx PAGES map.
+    private static readonly (int Index, string Name)[] SdPages =
+    {
+        (-1, "Default (current)"), (0, "Engine"), (1, "APU"), (2, "Bleed"), (3, "Air Cond"),
+        (4, "Pressurization"), (5, "Doors"), (6, "Electrical AC"), (7, "Electrical DC"),
+        (8, "Fuel"), (9, "Wheel"), (10, "Hydraulics"), (11, "Flight Controls"),
+        (12, "Circuit Breakers"), (15, "Video"),
+    };
+    private const string SdPageVar = "A32NX_ECAM_SD_CURRENT_PAGE_INDEX";
+
     private readonly ScreenReaderAnnouncer _announcer;
     private readonly SimConnectManager _sim;
     private readonly Dictionary<string, double> _raw = new();
+    private readonly CoherentDisplayClient _disp;
+    private List<string> _scrapedRows = new();
+    private bool _haveScrape;
+
     private TextBox _text = null!;
+    private ComboBox _pageCombo = null!;
+    private Label _status = null!;
     private Button _refresh = null!;
 
-    // ---- the SD layout ----------------------------------------------------
+    // ---- the legacy SimVar SD layout (FALLBACK only) ----------------------
     private static readonly Section[] Sections = BuildSections();
 
     private static Section[] BuildSections()
@@ -47,7 +71,6 @@ public class FBWA380SystemDisplayForm : Form
             engRows.Add(new Row($"A32NX_ENGINE_N3:{e}", $"Engine {e} N3", VType.Plain, "%", "0.0"));
             engRows.Add(new Row($"A32NX_ENGINE_FF:{e}", $"Engine {e} fuel flow", VType.Plain, "kg per hour"));
             engRows.Add(new Row($"A32NX_ENGINE_OIL_QTY:{e}", $"Engine {e} oil quantity", VType.Plain, "qt", "0.0"));
-            // Oil pressure omitted — not modelled on the FBW A380 dev build (reads 0).
         }
 
         var pressRows = new[]
@@ -101,7 +124,7 @@ public class FBWA380SystemDisplayForm : Form
         };
     }
 
-    /// <summary>All distinct L:var names this window reads (for registration).</summary>
+    /// <summary>All distinct L:var names the fallback reads (for registration).</summary>
     public static IEnumerable<string> AllVariableNames()
     {
         foreach (var s in Sections)
@@ -113,23 +136,46 @@ public class FBWA380SystemDisplayForm : Form
     {
         _announcer = announcer;
         _sim = sim;
+        _disp = new CoherentDisplayClient("A380X_SDv2");
+        _disp.RowsUpdated += OnRowsUpdated;
         BuildUi();
         if (_sim != null) _sim.SimVarUpdated += OnSimVarUpdated;
+        _disp.Start();
         Refresh_();
     }
 
     private void BuildUi()
     {
         Text = "A380 System Display";
-        Size = new Size(820, 640);
+        Size = new Size(820, 660);
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.Sizable;
         ShowInTaskbar = false;
 
+        var pageLabel = new Label { Text = "SD &page:", Location = new Point(12, 15), Size = new Size(60, 22) };
+        _pageCombo = new ComboBox
+        {
+            Location = new Point(76, 12),
+            Size = new Size(200, 24),
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            AccessibleName = "System display page"
+        };
+        foreach (var p in SdPages) _pageCombo.Items.Add(p.Name);
+        _pageCombo.SelectedIndex = 0;
+        _pageCombo.SelectionChangeCommitted += (_, _) => OnPageSelected();
+
+        _status = new Label
+        {
+            Location = new Point(290, 15),
+            Size = new Size(510, 22),
+            Text = "Connecting to System Display…",
+            AccessibleName = "Status"
+        };
+
         _text = new TextBox
         {
-            Location = new Point(12, 12),
-            Size = new Size(780, 540),
+            Location = new Point(12, 44),
+            Size = new Size(780, 530),
             Multiline = true,
             ReadOnly = true,
             ScrollBars = ScrollBars.Vertical,
@@ -137,31 +183,77 @@ public class FBWA380SystemDisplayForm : Form
             AccessibleName = "System display readout",
             Text = "Loading…"
         };
-        _refresh = new Button { Text = "&Refresh", Location = new Point(12, 560), Size = new Size(90, 30), AccessibleName = "Refresh" };
-        _refresh.Click += (_, _) => { Refresh_(); _announcer?.Announce("Refreshed"); };
-        var close = new Button { Text = "&Close", Location = new Point(110, 560), Size = new Size(90, 30), DialogResult = DialogResult.OK, AccessibleName = "Close" };
+        _refresh = new Button { Text = "&Refresh", Location = new Point(12, 582), Size = new Size(90, 30), AccessibleName = "Refresh" };
+        _refresh.Click += (_, _) => { Refresh_(); };
+        var close = new Button { Text = "&Close", Location = new Point(110, 582), Size = new Size(90, 30), DialogResult = DialogResult.OK, AccessibleName = "Close" };
         close.Click += (_, _) => Close();
 
-        Controls.AddRange(new Control[] { _text, _refresh, close });
+        Controls.AddRange(new Control[] { pageLabel, _pageCombo, _status, _text, _refresh, close });
         CancelButton = close;
         AcceptButton = _refresh;
         Load += (_, _) => { _text.Focus(); };
     }
 
-    private async void Refresh_()
+    private async void OnPageSelected()
     {
-        // Seed from cache, then request fresh, then render.
-        foreach (var kvp in _sim.GetCachedVariableSnapshot(AllVariableNames().ToList()))
-            _raw[kvp.Key] = kvp.Value;
-        foreach (var v in AllVariableNames()) _sim.RequestVariable(v, forceUpdate: true);
-        await Task.Delay(500);
-        _text.Text = Render();
+        int idx = _pageCombo.SelectedIndex;
+        if (idx < 0 || idx >= SdPages.Length) return;
+        int pageIndex = SdPages[idx].Index;
+        // Drive the real SD to the chosen page (verified: writing the index switches
+        // the rendered page), then re-scrape it. Calculator path = reliable FBW write.
+        try { _sim?.ExecuteCalculatorCode($"{pageIndex} (>L:{SdPageVar})"); } catch { }
+        await Task.Delay(450);
+        var rows = await _disp.ScrapeNowAsync();
+        ApplyRows(rows);
+        _announcer?.Announce($"{SdPages[idx].Name} page");
     }
 
-    private string Render()
+    private void OnRowsUpdated(List<string> rows) => ApplyRows(rows);
+
+    private void ApplyRows(List<string> rows)
+    {
+        if (rows != null && rows.Count > 0)
+        {
+            _scrapedRows = rows;
+            _haveScrape = true;
+            _status.Text = "Live from System Display";
+            _text.Text = RenderScrape();
+        }
+    }
+
+    private string RenderScrape()
     {
         var sb = new StringBuilder();
-        sb.AppendLine("A380 SYSTEM DISPLAY");
+        string page = _pageCombo.SelectedIndex >= 0 ? SdPages[_pageCombo.SelectedIndex].Name : "";
+        sb.AppendLine($"A380 SYSTEM DISPLAY — {page}");
+        sb.AppendLine(new string('=', 50));
+        foreach (var r in _scrapedRows) sb.AppendLine(r);
+        return sb.ToString();
+    }
+
+    private async void Refresh_()
+    {
+        // Try a live scrape first.
+        var rows = await _disp.ScrapeNowAsync();
+        if (rows != null && rows.Count > 0) { ApplyRows(rows); _announcer?.Announce("Refreshed"); return; }
+
+        // Fallback: legacy SimVar + ARINC429 decode (Coherent SD view unreachable).
+        if (!_haveScrape)
+        {
+            _status.Text = "System Display view not reachable — showing SimVar decode";
+            foreach (var kvp in _sim.GetCachedVariableSnapshot(AllVariableNames().ToList()))
+                _raw[kvp.Key] = kvp.Value;
+            foreach (var v in AllVariableNames()) _sim.RequestVariable(v, forceUpdate: true);
+            await Task.Delay(500);
+            _text.Text = RenderSimVarFallback();
+        }
+        _announcer?.Announce("Refreshed");
+    }
+
+    private string RenderSimVarFallback()
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("A380 SYSTEM DISPLAY (SimVar fallback)");
         sb.AppendLine(new string('=', 50));
         foreach (var s in Sections)
         {
@@ -196,6 +288,7 @@ public class FBWA380SystemDisplayForm : Form
     protected override void OnFormClosed(FormClosedEventArgs e)
     {
         if (_sim != null) _sim.SimVarUpdated -= OnSimVarUpdated;
+        try { _disp.RowsUpdated -= OnRowsUpdated; _disp.Dispose(); } catch { }
         base.OnFormClosed(e);
     }
 }
