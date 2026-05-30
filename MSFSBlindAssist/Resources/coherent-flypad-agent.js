@@ -653,14 +653,31 @@
 
   A.ping = function () { return "MSFSBA_FLYPAD_OK"; };
 
-  // Power the flyPad/EFB screen on. The tablet boots off (L:A32NX_EFB_TURNED_ON
-  // = 0) and is otherwise woken by tapping it in the 3D cockpit; setting the
-  // L-var here replaces that so the form has content instead of a blank screen.
+  // Power the flyPad/EFB screen on. Two parts:
+  //   1. Set L:A32NX_EFB_TURNED_ON = 1 (the power state a cockpit tap sets).
+  //   2. The EFB gauge's render loop stays DORMANT until it receives an
+  //      interaction (this is what "tapping the tablet" actually does — the
+  //      L-var alone doesn't wake it). If the screen has no content yet, we
+  //      dispatch a benign synthetic pointer/mouse interaction on the root
+  //      container to resume rendering. While dormant the container is empty,
+  //      so this can't activate any control; once content exists we skip it.
   // Idempotent — safe to call on every (re)connect.
   A.powerOn = function () {
     try {
       if (typeof SimVar !== "undefined" && SimVar.SetSimVarValue) {
         SimVar.SetSimVarValue("L:A32NX_EFB_TURNED_ON", "number", 1);
+      }
+    } catch (e) {}
+    try {
+      var mount = document.getElementById("MSFS_REACT_MOUNT") || document.body;
+      var empty = !mount || (mount.innerText || "").replace(/\s+/g, "").length === 0;
+      if (empty) {
+        var root = (mount && mount.firstChild) || document.body;
+        var o = { bubbles: true, cancelable: true, clientX: 5, clientY: 5 };
+        var types = ["pointerdown", "mousedown", "pointerup", "mouseup", "click"];
+        for (var i = 0; i < types.length; i++) {
+          try { root.dispatchEvent(new MouseEvent(types[i], o)); } catch (e) {}
+        }
       }
     } catch (e) {}
     return "ok";
