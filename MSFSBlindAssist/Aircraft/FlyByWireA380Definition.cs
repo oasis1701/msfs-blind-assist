@@ -2020,7 +2020,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         if (_reqVs && (varName == "A32NX_AUTOPILOT_VS_SELECTED" || varName == "A32NX_AUTOPILOT_FPA_SELECTED" ||
                        varName == "A32NX_TRK_FPA_MODE_ACTIVE"))
         {
-            if (varName.EndsWith("VS_SELECTED")) _pVsVal = value; // fpm, non-angular: unscaled
+            // V/S is a RATE, so the SimConnect L:var read returns it in m/s (SI),
+            // NOT feet/min (verified live: MobiFlight=2000 fpm reads as 10.16 here).
+            // Convert m/s -> fpm (x196.85) and round to the FCU's 100-fpm step.
+            if (varName.EndsWith("VS_SELECTED")) _pVsVal = Math.Round(value * 196.8503937 / 100.0) * 100.0;
             // FPA is angular, so SimConnect returns it in radians (like heading);
             // convert when the magnitude is in the radian range (FPA maxes at ~9.9°).
             else if (varName.EndsWith("FPA_SELECTED")) _pFpaVal = Math.Abs(value) <= 0.2 ? value * 180.0 / Math.PI : value;
