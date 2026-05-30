@@ -53,6 +53,10 @@ public partial class MainForm : Form
     // No-injection A380X ND OANS transport (BTV exit selection / airport map),
     // resolved to the Captain ND view ("A380X_ND_1"). Reuses FBWA380EFBForm.
     private CoherentNDClient? coherentNDClient;
+    // Background A380X E/WD failure monitor: scrapes the abnormal/warning
+    // procedures (which have no SimVar) from the E/WD Coherent view and announces
+    // new failures. Runs whenever the A380X is active — no window needed.
+    private CoherentEWDClient? coherentEWDClient;
     private Forms.FBWA380.FBWA380EFBForm? fbwA380OansForm;
     private EFBBridgeServer? hs787BridgeServer;
     private HS787FMCForm? hs787FMCForm;
@@ -211,6 +215,7 @@ public partial class MainForm : Form
             coherentClient = new CoherentDebuggerClient();
             coherentClient.Start();
             StartEFBBridgeServer();
+            StartA380EWDMonitor();
         }
 
         // Initialize 787 bridge if starting with HS 787
@@ -2322,6 +2327,35 @@ public partial class MainForm : Form
         fbwA380OansForm.ShowForm();
     }
 
+    // Start the background A380X E/WD failure monitor. The sensed abnormal/warning
+    // PROCEDURES (failure titles + ECAM action items) have NO SimVar — the FwsCore
+    // publishes them on an in-process EventBus and only the E/WD instrument renders
+    // them — so they are scraped from the E/WD Coherent view and announced here.
+    // Memos (PARK BRK, etc.) are NOT announced by this client; the SimVar EWD_LOWER
+    // path already covers them.
+    private void StartA380EWDMonitor()
+    {
+        if (coherentEWDClient != null) return;
+        coherentEWDClient = new CoherentEWDClient();
+        coherentEWDClient.LineAnnounced += line =>
+        {
+            // Honour the Ctrl+M / Ctrl+E ECAM-monitor mute (same sentinel the
+            // SimVar EWD memo path consults), so the user can silence E/WD chatter.
+            if (Settings.SettingsManager.Current.A380DisabledMonitorVariables.Contains(
+                    Forms.FBWA380.FBWA380MonitorManagerForm.EcamMemosKey))
+                return;
+            announcer.Announce(line);
+        };
+        coherentEWDClient.Start();
+    }
+
+    private void StopA380EWDMonitor()
+    {
+        if (coherentEWDClient == null) return;
+        coherentEWDClient.Dispose();
+        coherentEWDClient = null;
+    }
+
     private void ShowHS787EFBFormDialog()
     {
         hotkeyManager.ExitInputHotkeyMode();
@@ -4000,6 +4034,12 @@ public partial class MainForm : Form
             coherentEFBClient.Dispose();
             coherentEFBClient = null;
         }
+        if (coherentNDClient != null)
+        {
+            coherentNDClient.Dispose();
+            coherentNDClient = null;
+        }
+        StopA380EWDMonitor();
 
         // Dispose HS 787 forms when switching aircraft
         if (hs787FMCForm != null && !hs787FMCForm.IsDisposed)
@@ -4061,6 +4101,7 @@ public partial class MainForm : Form
             // EFB form still uses the legacy bridge server until it moves to a
             // served accessible page; keep it running for now.
             StartEFBBridgeServer();
+            StartA380EWDMonitor();
         }
         else
         {
@@ -5865,6 +5906,12 @@ public partial class MainForm : Form
         // Clean up EFB bridge
         efbBridgeServer?.Dispose();
         efbBridgeServer = null;
+
+        // Clean up A380X Coherent clients
+        coherentClient?.Dispose();
+        coherentEFBClient?.Dispose();
+        coherentNDClient?.Dispose();
+        coherentEWDClient?.Dispose();
 
         // Clean up 787 bridge and forms
         hs787FMCForm?.Dispose();
