@@ -866,7 +866,8 @@ public sealed class GsxService : IDisposable
 
         _lastTooltip = text;
         _lastStatusStableText = stableText;
-        _lastTimerOnlyStatusAnnouncementUtc = DateTime.UtcNow;
+        if (timerOnlyChangeAllowed || IsTimerStatusText(text))
+            _lastTimerOnlyStatusAnnouncementUtc = DateTime.UtcNow;
 
         TooltipChanged?.Invoke(this, EventArgs.Empty);
 
@@ -1077,6 +1078,9 @@ public sealed class GsxService : IDisposable
         IsGroundConnectionService(text)
             ? GroundConnectionTimerAnnouncementInterval
             : TimerOnlyStatusAnnouncementInterval;
+
+    private static bool IsTimerStatusText(string text) =>
+        text.Contains("timer:", StringComparison.OrdinalIgnoreCase);
 
     private bool IsRepeatedBaggageProgress(string tooltip)
     {
@@ -1804,6 +1808,13 @@ public sealed class GsxService : IDisposable
         if (latestCompletedRow is not null)
             _lastCompletedStatusServiceText = latestCompletedRow.Text;
 
+        if (!shouldSpeakCompletedRow || (latestCompletedRow is not null && IsGroundConnectionService(latestCompletedRow.Text)))
+        {
+            string groundConnectionTimerText = FormatGroundConnectionTimerAnnouncement(activeRows, completedRows, chargeRows);
+            if (!string.IsNullOrWhiteSpace(groundConnectionTimerText))
+                return groundConnectionTimerText;
+        }
+
         StatusServiceRow? rowToSpeak = shouldSpeakCompletedRow
             ? latestCompletedRow
             : activeRows.Count > 0
@@ -1836,6 +1847,34 @@ public sealed class GsxService : IDisposable
     }
 
     private sealed record StatusServiceRow(string Text, bool IsCompleted, bool HasStarted);
+
+    private string FormatGroundConnectionTimerAnnouncement(
+        IReadOnlyList<StatusServiceRow> activeRows,
+        IReadOnlyList<StatusServiceRow> completedRows,
+        IReadOnlyList<string> chargeRows)
+    {
+        if (DateTime.UtcNow - _lastTimerOnlyStatusAnnouncementUtc < GroundConnectionTimerAnnouncementInterval)
+            return string.Empty;
+
+        var rowsToSpeak = new List<string>();
+        foreach (var row in activeRows
+                     .Concat(completedRows)
+                     .Where(row => IsGroundConnectionService(row.Text)))
+        {
+            var timerRows = FindMatchingChargeRows(row.Text, chargeRows)
+                .Where(IsTimerStatusLine)
+                .ToList();
+            if (timerRows.Count == 0)
+                continue;
+
+            rowsToSpeak.Add(row.Text);
+            rowsToSpeak.AddRange(timerRows);
+        }
+
+        return rowsToSpeak.Count == 0
+            ? string.Empty
+            : string.Join(Environment.NewLine, DeduplicateStatusRows(rowsToSpeak));
+    }
 
     private static List<string> ExtractStatusChargeRows(string html)
     {
@@ -1921,6 +1960,9 @@ public sealed class GsxService : IDisposable
             || normalized.Contains("$")
             || normalized.Contains("£");
     }
+
+    private static bool IsTimerStatusLine(string text) =>
+        text.Contains("timer:", StringComparison.OrdinalIgnoreCase);
 
     private static string FormatCompletedServiceTotal(string serviceText, IReadOnlyList<string> chargeRows)
     {
