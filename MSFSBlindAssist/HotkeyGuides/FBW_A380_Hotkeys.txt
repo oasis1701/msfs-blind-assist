@@ -46,6 +46,10 @@ Read-out windows (open from OUTPUT mode — see the PFD/ND/ECAM keys below):
     FPA, G/S, LAND, FLARE, SRS, NAV, LOC, RWY...) are also announced live.
   - Navigation Display window: ND mode and range, the TO waypoint (ident,
     distance, bearing, ETA), cross-track error, RNP, and ILS deviation.
+  - Standby Instruments window (ISIS) — Alt+I: standby attitude (pitch/bank),
+    heading, indicated airspeed + Mach, standby altitude with its baro reference
+    (STD/QNH) and setting, and the LS overlay state. Duplicates the universal
+    altitude/airspeed keys, gathered as one standby cross-check panel.
   - System Display window (ECAM/STATUS): decoded SD readouts grouped by page —
     Fuel (per-tank quantities, fuel on board, gross weight, CG), Engine
     (N2/N3/fuel flow/oil), Pressurization (cabin altitude/V-S/delta-P), APU,

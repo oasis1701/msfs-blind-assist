@@ -1,0 +1,156 @@
+using System.Text;
+using MSFSBlindAssist.Accessibility;
+using MSFSBlindAssist.SimConnect;
+
+namespace MSFSBlindAssist.Forms.FBWA380;
+
+/// <summary>
+/// On-demand A380X Integrated Standby Instrument System (ISIS) readout —
+/// standby attitude (pitch / bank), heading, indicated airspeed + Mach,
+/// standby altitude with its baro reference (STD / QNH), the baro setting,
+/// and the LS (ILS) overlay state.
+///
+/// The ISIS display values themselves are not published as dedicated L:vars
+/// (only its knob / baro-mode / LS controls are), so the standby figures are
+/// read from the standard attitude/air-data simvars — exactly what the standby
+/// instrument shows — combined with the A32NX_ISIS_* mode L:vars. This window
+/// duplicates the universal altitude/airspeed hotkeys by design; it gathers the
+/// standby picture in one place for cross-checking.
+/// </summary>
+public class FBWA380ISISForm : Form
+{
+    private readonly ScreenReaderAnnouncer _announcer;
+    private readonly SimConnectManager _sim;
+    private readonly Dictionary<string, double> _raw = new();
+    private TextBox _text = null!;
+
+    // Standby air-data / attitude simvars (registered with proper units in the
+    // aircraft def) plus the ISIS mode L:vars.
+    private static readonly string[] Vars =
+    {
+        "PLANE PITCH DEGREES", "PLANE BANK DEGREES",
+        "PLANE HEADING DEGREES MAGNETIC",
+        "AIRSPEED INDICATED", "AIRSPEED MACH",
+        "INDICATED ALTITUDE", "KOHLSMAN SETTING MB",
+        "A32NX_ISIS_BARO_MODE", "A32NX_ISIS_LS_ACTIVE",
+    };
+
+    /// <summary>L:var / simvar names this window reads (for registration in the aircraft def).</summary>
+    public static IEnumerable<string> AllVariableNames() => Vars;
+
+    public FBWA380ISISForm(ScreenReaderAnnouncer announcer, SimConnectManager sim)
+    {
+        _announcer = announcer;
+        _sim = sim;
+        BuildUi();
+        if (_sim != null) _sim.SimVarUpdated += OnSimVarUpdated;
+        Refresh_();
+    }
+
+    private void BuildUi()
+    {
+        Text = "A380 Standby Instruments (ISIS)";
+        Size = new Size(700, 440);
+        StartPosition = FormStartPosition.CenterParent;
+        ShowInTaskbar = false;
+        _text = new TextBox
+        {
+            Location = new Point(12, 12),
+            Size = new Size(660, 340),
+            Multiline = true,
+            ReadOnly = true,
+            ScrollBars = ScrollBars.Vertical,
+            Font = new Font("Consolas", 10),
+            AccessibleName = "Standby instrument readout",
+            Text = "Loading…"
+        };
+        var refresh = new Button { Text = "&Refresh", Location = new Point(12, 360), Size = new Size(90, 30), AccessibleName = "Refresh" };
+        refresh.Click += (_, _) => { Refresh_(); _announcer?.Announce("Refreshed"); };
+        var close = new Button { Text = "&Close", Location = new Point(110, 360), Size = new Size(90, 30), DialogResult = DialogResult.OK, AccessibleName = "Close" };
+        close.Click += (_, _) => Close();
+        Controls.AddRange(new Control[] { _text, refresh, close });
+        CancelButton = close;
+        AcceptButton = refresh;
+        Load += (_, _) => _text.Focus();
+    }
+
+    private async void Refresh_()
+    {
+        foreach (var kvp in _sim.GetCachedVariableSnapshot(Vars.ToList())) _raw[kvp.Key] = kvp.Value;
+        foreach (var v in Vars) _sim.RequestVariable(v, forceUpdate: true);
+        await Task.Delay(500);
+        _text.Text = Render();
+    }
+
+    private double R(string v) => _raw.TryGetValue(v, out double d) ? d : 0;
+
+    private string Render()
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("A380 STANDBY INSTRUMENTS (ISIS)");
+        sb.AppendLine(new string('=', 50));
+        sb.AppendLine();
+
+        // ATTITUDE. MSFS: PLANE PITCH DEGREES is positive nose-DOWN; PLANE BANK
+        // DEGREES is positive when banked LEFT. Present as magnitude + direction.
+        double pitch = R("PLANE PITCH DEGREES");
+        double bank = R("PLANE BANK DEGREES");
+        string pitchDir = pitch <= 0 ? "nose up" : "nose down";
+        string bankDir = bank >= 0 ? "left" : "right";
+        sb.AppendLine("ATTITUDE");
+        sb.AppendLine($"  Pitch: {Math.Abs(pitch):0.0} degrees {pitchDir}");
+        sb.AppendLine($"  Bank: {Math.Abs(bank):0.0} degrees {bankDir}");
+        sb.AppendLine();
+
+        // HEADING
+        double hdg = R("PLANE HEADING DEGREES MAGNETIC");
+        if (hdg < 0) hdg += 360;
+        int hdgInt = (int)Math.Round(hdg) % 360;
+        if (hdgInt == 0) hdgInt = 360;
+        sb.AppendLine($"Heading: {hdgInt:000} degrees magnetic");
+        sb.AppendLine();
+
+        // AIRSPEED
+        sb.AppendLine("AIRSPEED");
+        sb.AppendLine($"  Indicated: {R("AIRSPEED INDICATED"):0} knots");
+        double mach = R("AIRSPEED MACH");
+        if (mach >= 0.10) sb.AppendLine($"  Mach: {mach:0.00}");
+        sb.AppendLine();
+
+        // ALTITUDE + baro reference
+        int baroMode = (int)Math.Round(R("A32NX_ISIS_BARO_MODE"));
+        string baroRef = baroMode == 1 ? "STD" : "QNH";
+        sb.AppendLine("ALTITUDE");
+        sb.AppendLine($"  Indicated: {R("INDICATED ALTITUDE"):0} feet");
+        sb.AppendLine($"  Baro reference: {baroRef}");
+        if (baroMode != 1)
+        {
+            double hpa = R("KOHLSMAN SETTING MB");
+            sb.AppendLine($"  Baro setting: {hpa:0} hectopascals");
+        }
+        sb.AppendLine();
+
+        // LS overlay
+        sb.AppendLine($"LS (ILS) overlay: {(R("A32NX_ISIS_LS_ACTIVE") > 0.5 ? "On" : "Off")}");
+
+        return sb.ToString();
+    }
+
+    private void OnSimVarUpdated(object? sender, SimVarUpdateEventArgs e)
+    {
+        if (!string.IsNullOrEmpty(e.VarName)) _raw[e.VarName] = e.Value;
+    }
+
+    protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+    {
+        if (keyData == Keys.F5) { Refresh_(); return true; }
+        if (keyData == Keys.Escape) { Close(); return true; }
+        return base.ProcessCmdKey(ref msg, keyData);
+    }
+
+    protected override void OnFormClosed(FormClosedEventArgs e)
+    {
+        if (_sim != null) _sim.SimVarUpdated -= OnSimVarUpdated;
+        base.OnFormClosed(e);
+    }
+}

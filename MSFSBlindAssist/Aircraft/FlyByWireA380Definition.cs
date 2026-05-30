@@ -501,8 +501,19 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // decodes the ARINC429 words itself). Registered on-request, add-if-absent
         // so existing defs (e.g. engine vars) are not clobbered. The window
         // (FBWA380SystemDisplayForm) is the single source of truth for the names.
+        // ISIS standby simvars need explicit units (the generic auto-register below
+        // forces "number", which is wrong for pitch/altitude/baro).
+        Stock("PLANE PITCH DEGREES", "PLANE PITCH DEGREES", "Standby Pitch", "degrees");
+        Stock("PLANE BANK DEGREES", "PLANE BANK DEGREES", "Standby Bank", "degrees");
+        Stock("PLANE HEADING DEGREES MAGNETIC", "PLANE HEADING DEGREES MAGNETIC", "Standby Heading", "degrees");
+        Stock("AIRSPEED INDICATED", "AIRSPEED INDICATED", "Standby Airspeed", "knots");
+        Stock("AIRSPEED MACH", "AIRSPEED MACH", "Standby Mach", "mach");
+        Stock("INDICATED ALTITUDE", "INDICATED ALTITUDE", "Standby Altitude", "feet");
+        Stock("KOHLSMAN SETTING MB", "KOHLSMAN SETTING MB", "Standby Baro Setting", "millibars");
+
         var windowReadVars = Forms.FBWA380.FBWA380SystemDisplayForm.AllVariableNames()
-            .Concat(Forms.FBWA380.FBWA380NavDisplayForm.AllVariableNames());
+            .Concat(Forms.FBWA380.FBWA380NavDisplayForm.AllVariableNames())
+            .Concat(Forms.FBWA380.FBWA380ISISForm.AllVariableNames());
         foreach (var sdVar in windowReadVars)
         {
             if (vars.ContainsKey(sdVar)) continue;
@@ -2078,6 +2089,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             case HotkeyAction.ReadDisplayPFD:
                 hotkeyManager.ExitOutputHotkeyMode();
                 ShowPFDWindow(announcer, simConnect);
+                return true;
+            case HotkeyAction.ReadDisplayISIS:
+                hotkeyManager.ExitOutputHotkeyMode();
+                new Forms.FBWA380.FBWA380ISISForm(announcer, simConnect).Show();
                 return true;
             case HotkeyAction.ReadDisplayUpperECAM:
             case HotkeyAction.ReadDisplayLowerECAM:
