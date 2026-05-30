@@ -37,10 +37,10 @@ Arrow up and down through the **display list**. Each line is one thing:
   field is for, so you always know what to type where. An empty **mandatory**
   field reads **"(empty)"** (the amber entry boxes on screen); an empty
   **optional** field shows dashes (e.g. `CI: ---`).
-- **Choice-list fields** read as **"LABEL: value (choice list)"**, e.g.
-  `MODE: ECON (choice list)` or `CRZ: ECON (choice list)`. These are **dropdowns,
+- **Combobox fields** read as **"LABEL: value (combobox)"**, e.g.
+  `MODE: ECON (combobox)` or `CRZ: ECON (combobox)`. These are **dropdowns,
   not free-text** — you pick from a short fixed list rather than typing. (On
-  screen they have a little down-arrow.) The `(choice list)` tag is just the
+  screen they have a little down-arrow.) The `(combobox)` tag is just the
   control type, not part of the value. To change one: arrow to it and press
   **Enter** — the options appear immediately below as their own selectable lines
   (e.g. `LRC`, then `ECON`); arrow to the one you want and press **Enter** to

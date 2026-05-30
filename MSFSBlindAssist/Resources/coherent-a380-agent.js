@@ -257,7 +257,7 @@
       // An input wrapped in a DropdownMenu is really a CHOICE field (you pick a
       // value from a list — many, like ATC COM "NOTIFY TO ATC", don't accept
       // free text at all). Flag it so it doesn't read as a plain text box.
-      var choice = A.ancestorWithClass(n, "mfd-dropdown-outer") ? " (choice list)" : "";
+      var choice = A.ancestorWithClass(n, "mfd-dropdown-outer") ? " (combobox)" : "";
       return (v || "(empty)") + choice;
     }
     if (kind === "dropdown") {
@@ -342,7 +342,7 @@
       }
       if (best) {
         var val = inp.value || inp.text || "";
-        inp.text = clean(best.text) + ": " + (val || "(empty)") + (inp.isChoice ? " (choice list)" : "");
+        inp.text = clean(best.text) + ": " + (val || "(empty)") + (inp.isChoice ? " (combobox)" : "");
         best.consumed = true;
       }
     }

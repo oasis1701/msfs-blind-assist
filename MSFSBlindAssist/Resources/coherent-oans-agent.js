@@ -231,6 +231,26 @@
     return false;
   };
 
+  // A position-aware reason the OANS panel is empty/hidden, so we don't tell a
+  // pilot who has ALREADY aligned the ADIRS to "align the ADIRS". The OANS
+  // (airport map + BTV) only renders on the ground or in the terminal area near
+  // an airport — it's not active in the cruise. Uses SimVar (available in the ND
+  // view); falls back to the generic reason if SimVar is unreadable.
+  A.unavailableReason = function () {
+    var aligned = true, onGround = false;
+    try {
+      var s1 = SimVar.GetSimVarValue("L:A32NX_ADIRS_ADIRU_1_STATE", "number");
+      aligned = (s1 >= 2);  // 0=off, 1=aligning, 2=aligned/NAV
+    } catch (e) {}
+    try { onGround = SimVar.GetSimVarValue("SIM ON GROUND", "bool") > 0; } catch (e2) {}
+    if (!aligned) {
+      return "OANS airport map not available. Align the ADIRS first: set the ADIRS mode selectors to NAV and wait for alignment, then this page shows the airport map and the runway/exit (BTV) controls.";
+    }
+    // ADIRS aligned: it's a position/phase issue, not an ADIRS one.
+    return "OANS airport map not active right now. It's an on-ground and terminal-area tool: the airport map and its runway/exit (BTV) controls appear when you're on the ground or within range of an airport (for example on approach)" +
+      (onGround ? ", or once an airport is selected on the Navigation Display." : ", not in the cruise. Bring up an airport on the Navigation Display first.");
+  };
+
   // ---- read ----
   A.scrape = function () {
     try {
@@ -241,11 +261,11 @@
       if (!root) return JSON.stringify({ ok: false, error: "OANS not present on this ND view" });
       var els = A.enumerate(root);
       if (!A.hasInteractive(els)) {
-        // Panel is open but empty/collapsed: the OANS is not available yet (no GPS
-        // position / ADIRS not aligned / not near an airport). Tell the user.
+        // Panel is hidden/empty (OANS not rendering): give a position-aware
+        // reason instead of always blaming the ADIRS.
         els = [{
           top: 0, left: 0, idx: 0, kind: "text", tag: "div", role: "",
-          text: "OANS not available yet. The airport map needs an aircraft position: align the ADIRS (NAV) and be at or near an airport. The runway/exit (BTV) controls appear here once it is available.",
+          text: A.unavailableReason(),
           value: "", controlType: "", clickable: false, level: 0, live: "", disabled: false, options: []
         }];
       }
