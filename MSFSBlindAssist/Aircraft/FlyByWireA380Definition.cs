@@ -1997,10 +1997,14 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 if (managed)
                     spoken = "FCU speed managed";
                 else
-                    // SPEED_SELECTED carries mach (< 1) when in mach mode, knots otherwise.
+                    // SPEED_SELECTED carries mach (< 1, dimensionless — no SI scaling)
+                    // in mach mode; otherwise it's a velocity, so the SimConnect L:var
+                    // read returns m/s (SI) and must be converted to knots (x1.943844).
+                    // Unlike the A320 (which reads the pre-formatted A32NX_FCU_AFS_DISPLAY_*
+                    // value), the A380 has no display var and reads the raw target.
                     spoken = _pSpdVal.Value < 10
                         ? $"FCU speed mach {_pSpdVal.Value:0.00}, selected"
-                        : $"FCU speed {_pSpdVal.Value:000} knots, selected";
+                        : $"FCU speed {_pSpdVal.Value * 1.943844:000} knots, selected";
                 announcer.AnnounceImmediate(spoken);
                 _pSpdVal = _pSpdMgd = null; _reqSpd = false;
             }
