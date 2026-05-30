@@ -131,3 +131,12 @@ nul
 !nvda_controllerClient/
 !nvda_controllerClient/x64/
 !nvda_controllerClient/x64/nvdaControllerClient.dll
+# Private A380 flyPad/MCDU live-tour debugging scripts (local-only, not shipped)
+tools/coherent-eval.ps1
+tools/fp_run.ps1
+tools/fp_tour.ps1
+tools/fp_inspect.js
+tools/fp_scrape.js
+tools/mcdu_run.ps1
+tools/mcdu_tour.ps1
+tools/mcdu_scrape.js

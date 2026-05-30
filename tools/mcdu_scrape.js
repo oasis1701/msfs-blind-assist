@@ -1,1 +1,0 @@
-(window.__MSFSBA_A380 ? __MSFSBA_A380.scrape(1) : "noagent")
