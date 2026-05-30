@@ -171,6 +171,47 @@
     return "";
   };
 
+  // A bare unit token ("KGS", "feet", "degrees", "%", "NM"...) — never a field
+  // name, so it must not be used as a label on its own.
+  A.unitToken = function (s) {
+    return /^(kgs?|lbs?|feet|ft|degrees?|deg|%|nm|kt|kts|knots|hpa|inhg|psi|c|°c|x ?1000 ?kgs?)$/i.test((s || "").trim());
+  };
+  // Text that's just a number / punctuation (a value, not a name).
+  A.numericish = function (s) {
+    return /^[\d.,%/+\-\s]+$/.test((s || "").trim()) && /\d/.test(s || "");
+  };
+
+  // The field's NAME (not its unit/value). flyPad value inputs put the caption
+  // either as a PRECEDING sibling somewhere up the ancestor chain (flex rows:
+  // "Current Altitude", "Angle", "Per Passenger Weight") or as the FIRST cell of
+  // an enclosing table row (W&B: "Cargo", "ZFW", "Passengers"). Walk up looking
+  // for the first short, alphabetic, non-unit label.
+  A.fieldName = function (n) {
+    function clean2(t){ return (t || "").replace(/\s+/g, " ").trim(); }
+    // Reject bare units, pure numbers, and CONCATENATED multi-element text — a
+    // lowercase->Uppercase run with no space ("MainUpper", "SYNCSynchronize")
+    // means textContent merged several sibling controls, not one clean label.
+    function good(t){ return t && t.length <= 30 && /[a-zA-Z]/.test(t)
+      && !A.unitToken(t) && !A.numericish(t) && !/[a-z][A-Z]/.test(t); }
+    var a = n, guard = 0;
+    while (a && guard < 9) {
+      var ps = a.previousElementSibling;
+      while (ps) {
+        var st = clean2(ps.textContent);
+        if (good(st)) return st;
+        ps = ps.previousElementSibling;
+      }
+      // first cell of an enclosing table row
+      if (a.tagName && lower(a.tagName) === "tr" && a.firstElementChild) {
+        var ft = clean2(a.firstElementChild.textContent);
+        if (good(ft)) return ft;
+      }
+      a = a.parentElement;
+      guard++;
+    }
+    return "";
+  };
+
   // A label good enough for a screen reader. The flyPad behaves like an app:
   // many controls have no text (icon nav-rail links) or a generic label
   // ("Go to Page"). Derive something meaningful from aria/title, then the
@@ -197,12 +238,24 @@
                   || clz.indexOf("toggle") >= 0 || clz.indexOf("switch") >= 0;
       if (tag === "input" || tag === "textarea" ||
           (n.getAttribute && n.getAttribute("contenteditable") === "true")) {
-        // The field's own placeholder is usually its best hint (e.g. a METAR box
-        // placeholder is the airport ICAO "LIMC"/"EDDF"). Prefer it over the
-        // parent text, which can be a neighbouring control's caption.
         var ph = clean((n.getAttribute && n.getAttribute("placeholder")) || "");
-        if (ph) return ph;
-        // Otherwise borrow the parent unit label (PAX/KGS).
+        // A MEANINGFUL placeholder (an ICAO like "LIMC", a hint like "Search") is
+        // the field's best label. But a UNIT placeholder ("feet"/"KGS"/"degrees")
+        // or a default-value placeholder ("84"/"20") is NOT the field's name —
+        // fall through to derive the real name from a nearby label.
+        if (ph && !A.unitToken(ph) && !A.numericish(ph)) return ph;
+        // The field NAME sits as a preceding label / the first cell of the
+        // enclosing table row (e.g. "Cargo", "ZFW", "Current Altitude", "Angle",
+        // "Per Passenger Weight"). Append the unit when we can find one so the
+        // readout is "Cargo (KGS)", "Current Altitude (feet)", etc.
+        var name = A.fieldName(n);
+        if (name) {
+          var unit = A.unitToken(ph) ? ph
+                   : (A.unitToken(A.fieldUnitLabel(n)) ? clean(A.fieldUnitLabel(n)) : "");
+          return unit ? (name + " (" + unit + ")") : name;
+        }
+        // Last resort: the adjacent text (may be a bare unit, but better than
+        // the page heading which mislabels every field identically).
         var fl = A.fieldUnitLabel(n);
         if (fl) return fl;
       }
