@@ -24,10 +24,21 @@ Tip: Press the same bracket key again to cancel a mode you activated by accident
 Displays and Windows (direct chords — no bracket mode needed):
   Ctrl+M     A380 Monitor Manager — tick/untick which variables are announced
              automatically as they change (master warning/caution, engine state,
-             fire, flight phase, ATC message waiting, and a single "ECAM E/WD
-             call-outs" entry that mutes the live memo/warning read-out). Same
-             Ctrl+M chord the Fenix and PMDG use; your choices are saved between
-             sessions.
+             fire, flight phase, ATC message waiting, the annunciator/fault lights
+             below, and a single "ECAM E/WD call-outs" entry that mutes the live
+             memo/warning read-out). Same Ctrl+M chord the Fenix and PMDG use;
+             your choices are saved between sessions.
+
+  Ctrl+E     Toggle ECAM E/WD monitoring on/off — the same as un/re-ticking the
+             "ECAM E/WD call-outs" entry in the Monitor Manager, but as a quick
+             chord. Announces "E W D monitoring enabled/disabled". Persisted.
+
+Annunciators and fault lights are announced automatically as they change
+  (master warning/caution, APU EGT warning, thrust-lever warning, performance
+  warning, TCAS fault; overhead pushbutton FAULT lights for batteries, gens,
+  IDGs, engine + electric hydraulic pumps, bleeds, packs, hot air, ram air,
+  cargo isolation/heater, TADD/FDAC/OCSM/VCM channels, fire squibs, etc.). If
+  any of these are too chatty, un-tick them in the Monitor Manager (Ctrl+M).
 
 Read-out windows (open from OUTPUT mode — see the PFD/ND/ECAM keys below):
   - PFD window: flight-mode annunciator (lateral/vertical mode), approach
@@ -70,6 +81,14 @@ Airspeed:
   T          Read TAS (True Airspeed)
   G          Read Ground Speed
   M          Read Mach Number
+
+Characteristic speeds (FMS speed-tape bugs, A380 values):
+  Shift+1    Green Dot speed (best L/D / O speed)
+  Shift+2    S speed (slat retraction)
+  Shift+3    F speed (flap retraction)
+  Shift+4    VLS (minimum selectable speed)
+  Shift+5    VS (stall speed)
+  Shift+6    VFE next (next flap limit speed)
 
 Heading:
   H          Read Magnetic Heading
