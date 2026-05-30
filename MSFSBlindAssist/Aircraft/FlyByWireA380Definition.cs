@@ -118,6 +118,24 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 ValueDescriptions = vd
             };
         }
+        // Like ReadEnum but NOT auto-announced — for status the sim toggles rapidly
+        // (e.g. the A380 PACK_PB_HAS_FAULT oscillates 0/1 in flight, and the
+        // crossbleed valve open-state), which would otherwise spam the screen
+        // reader. Still registered + readable in the panel; just not spoken on
+        // every change. User can't re-enable via Ctrl+M (it's not in the announced
+        // monitor set) — that's intentional for known-noisy vars.
+        void ReadEnumQuiet(string key, string display, Dictionary<double, string> vd)
+        {
+            vars[key] = new SimVarDefinition
+            {
+                Name = key,
+                DisplayName = display,
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.Continuous,
+                IsAnnounced = false,
+                ValueDescriptions = vd
+            };
+        }
         // Continuously-monitored, auto-announced status L:var (warnings/state).
         void Mon(string key, string display, Dictionary<double, string> vd)
         {
@@ -678,12 +696,12 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             ReadEnum($"A32NX_OVHD_PNEU_ENG_{n}_BLEED_PB_HAS_FAULT", $"Engine {n} Bleed Fault", fault);
         ReadEnum("A32NX_OVHD_PNEU_APU_BLEED_PB_HAS_FAULT", "APU Bleed Fault", fault);
         foreach (var s in new[] { "L", "C", "R" })
-            ReadEnum($"A32NX_PNEU_XBLEED_VALVE_{s}_OPEN", $"Crossbleed Valve {s}", openVd);
+            ReadEnumQuiet($"A32NX_PNEU_XBLEED_VALVE_{s}_OPEN", $"Crossbleed Valve {s}", openVd);
 
         // AIR CONDITIONING
         for (int n = 1; n <= 2; n++)
         {
-            ReadEnum($"A32NX_OVHD_COND_PACK_{n}_PB_HAS_FAULT", $"Pack {n} Fault", fault);
+            ReadEnumQuiet($"A32NX_OVHD_COND_PACK_{n}_PB_HAS_FAULT", $"Pack {n} Fault", fault);
             ReadEnum($"A32NX_OVHD_COND_HOT_AIR_{n}_PB_HAS_FAULT", $"Hot Air {n} Fault", fault);
             for (int ch = 1; ch <= 2; ch++)
                 ReadEnum($"A32NX_COND_FDAC_{n}_CHANNEL_{ch}_FAILURE", $"FDAC {n} Channel {ch}", fault);

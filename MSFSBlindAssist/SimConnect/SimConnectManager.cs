@@ -3625,9 +3625,21 @@ public class SimConnectManager
     public void SendEvent(string eventName, uint data = 0)
     {
         if (!IsConnected || simConnect == null) return;
-        
+
         System.Diagnostics.Debug.WriteLine($"Sending event: {eventName} with data: {data}");
-        
+
+        // FlyByWire custom input events use a dotted namespace (e.g.
+        // "A32NX.FCU_HDG_SET", "A32NX.FCU_AP_1_PUSH"). These are NOT resolvable
+        // via MapClientEventToSimEvent + TransmitClientEvent — that path silently
+        // no-ops (verified live: SimConnect returns "event not found", so the
+        // whole A380/A320 FCU, AP, ATHR etc. did nothing). They MUST be fired as
+        // calculator code "<data> (>K:A32NX....)", which works. Route them there.
+        if (eventName.Contains('.') && mobiFlightWasm != null)
+        {
+            ExecuteCalculatorCode($"{data} (>K:{eventName})");
+            return;
+        }
+
         // Map the event name to an ID if not already mapped
         if (!eventIds.ContainsKey(eventName))
         {
