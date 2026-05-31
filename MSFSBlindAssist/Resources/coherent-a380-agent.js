@@ -776,21 +776,27 @@
   // KCCU keyboard-enable (that SimVar.Set doesn't even stick in-page anyway).
   A.ensureKccuKeyboardOn = function () {};
 
+  // The MFD instrument's own EventBus — the ONLY channel that delivers KCCU keys
+  // to the MFD from an external tool. The instrument is the <a380x-mfd> custom
+  // element; its `fsInstrument.bus` is the msfs-sdk EventBus the MFD subscribes to
+  // ('hEvent'). (Coherent.trigger / SimVar "H:" writes do NOT reach it — verified.)
+  A.mfdBus = function () {
+    try { var el = document.querySelector("a380x-mfd"); return el && el.fsInstrument ? el.fsInstrument.bus : null; }
+    catch (e) { return null; }
+  };
+
   A.fireKey = function (key) {
     try {
       if (key === "CLR" || key === "DEL") key = "BACKSPACE";
       else if (key === "SPACE") key = "SP";
       var eventName = "A32NX_KCCU_" + (A.activeMcdu === 1 ? "L" : "R") + "_" + key;
-      // Fire the H-event exactly ONCE. Firing via BOTH Coherent.trigger AND
-      // SetSimVarValue double-triggers the key — e.g. F-PLN page up/down jumps by
-      // two waypoints or behaves erratically ("weird/flaky"). Prefer Coherent.trigger
-      // (the real in-sim path); only fall back to the SimVar H: write when Coherent
-      // is absent (headless debugger eval).
-      if (typeof Coherent !== "undefined" && typeof Coherent.trigger === "function") {
-        Coherent.trigger("H:" + eventName);
-      } else if (typeof SimVar !== "undefined" && typeof SimVar.SetSimVarValue === "function") {
-        SimVar.SetSimVarValue("H:" + eventName, "number", 0);
-      }
+      // Publish the KCCU H-event on the MFD's OWN bus — this is what actually
+      // drives KCCU navigation AND the F-PLN line scroll. Fall back to the legacy
+      // Coherent/SimVar paths only if the instrument bus can't be reached.
+      var bus = A.mfdBus();
+      if (bus && typeof bus.pub === "function") { bus.pub("hEvent", eventName, true); return "ok"; }
+      if (typeof Coherent !== "undefined" && typeof Coherent.trigger === "function") Coherent.trigger("H:" + eventName);
+      else if (typeof SimVar !== "undefined" && typeof SimVar.SetSimVarValue === "function") SimVar.SetSimVarValue("H:" + eventName, "number", 0);
     } catch (e) {}
     return "ok";
   };
@@ -896,7 +902,13 @@
   A.pageCommand = function (command) {
     if (Object.prototype.hasOwnProperty.call(A.PAGE_TO_KCCU, command)) {
       var key = A.PAGE_TO_KCCU[command];
-      if (key) A.fireKey(key);
+      if (key) {
+        // F-PLN scrolling: KCCU UP/DOWN moves the window by ONE waypoint, so for a
+        // "page" up/down fire it several times to move a screen-worth (a couple of
+        // lines of overlap kept for continuity). Other keys fire once.
+        var n = (command === "key_next_page" || command === "key_prev_page") ? 6 : 1;
+        for (var i = 0; i < n; i++) A.fireKey(key);
+      }
       return "ok";
     }
     return "unknown";
