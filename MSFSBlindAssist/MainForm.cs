@@ -458,7 +458,10 @@ public partial class MainForm : Form
             // automatic paths so aircraft-specific ProcessSimVarUpdate branches (which
             // announce directly, bypassing simVarMonitor) stay silent on first detect —
             // e.g. the A380 altimeter setting. User hotkeys (AnnounceImmediate) still talk.
-            if (announcer != null) announcer.Suppressed = true;
+            // GATED TO THE A380: this extra announcer-level mute was added for the A380's
+            // direct-announce branches; other aircraft keep their prior behaviour (the
+            // simVarMonitor + ECAM grace below already applies to every aircraft).
+            if (announcer != null && currentAircraft?.AircraftCode == "FBW_A380") announcer.Suppressed = true;
             System.Windows.Forms.Timer announcementGracePeriodTimer = new System.Windows.Forms.Timer();
             announcementGracePeriodTimer.Interval = 5000; // 5 second grace period
             announcementGracePeriodTimer.Tick += (s, e) =>
