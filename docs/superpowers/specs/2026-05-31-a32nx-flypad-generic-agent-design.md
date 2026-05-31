@@ -27,6 +27,11 @@ pushes state over an HTTP server, and is rendered as curated per-feature tabs).
    re-scrape after each click/setValue.
 4. **No wake button.** `powerOn()` runs automatically on connect. A
    **status / self-test diagnostic** lets the user confirm the pipeline works.
+5. **Single-connection constraint.** Coherent GT's debugger accepts only ONE
+   devtools connection at a time. `CoherentEFBClient` is the sole owner of that
+   one connection; everything (install/scrape/click/setValue/ping/powerOn/
+   heartbeat) multiplexes over it via CDP message-id correlation. No other
+   component may hold a competing connection while it is active.
 
 ## Architecture
 
@@ -129,6 +134,13 @@ States: Disconnected → Discovering → Connecting → Installing → Ready
   `bool IsReady`. JSON parsed into `FlypadElement` records via `System.Text.Json`.
 - **Threading:** receive pump on a background task; captured
   `SynchronizationContext` marshals events/continuations to the UI thread.
+- **Single connection / lifecycle:** Coherent GT allows only one devtools
+  connection at a time, so this client holds THE one connection and is the only
+  CDP consumer for the flyPad page. The connection is opened when the EFB form
+  opens and **closed when the form closes**, releasing the single slot so other
+  consumers (the `efb-dom-tool.js` verification harness, ad-hoc debugging) can
+  use it when the form is not open. No per-call short-lived sockets — that model
+  is retired with `CoherentGTInjector`.
 
 ## The generic form (`A32NXEFBForm.cs`)
 
@@ -185,7 +197,14 @@ via the existing Shift+T input-mode hotkey.
 ## Testing / live verification
 
 No automated tests (repo convention for this SimConnect/UI app). Verification is
-live and incremental, with the sim up, via `efb-dom-tool.js`:
+live and incremental, with the sim up, via `efb-dom-tool.js`.
+
+**Single-connection caveat:** the verification tool and the app's
+`CoherentEFBClient` cannot both be connected at once. During agent development,
+run the tool with the app's EFB form closed (client disconnected) and the old
+`CoherentGTInjector` polling stopped. When testing in-app, close the tool first.
+
+Steps:
 
 1. **Agent unit-walk:** `scrape()` each key page (Dashboard, Ground, Payload,
    Settings/3rd-Party, Navigraph, Checklists); confirm labels/kinds/values;
