@@ -278,6 +278,7 @@ _efb.handleCommand = function(command, payload) {
             case 'stop_boarding':        SimVar.SetSimVarValue('L:A32NX_BOARDING_STARTED_BY_USR', 'Bool', 0); break;
             // Diagnostics
             case 'ping':             _efb.postState('pong', { version: 1 }); break;
+            case 'wake_efb':         _efb.cmdWakeEfb(); break;
             case 'get_page_text':    _efb.postState('page_text', { text: document.body.innerText.substring(0, 2000) }); break;
             case 'run_diagnostics':  _efb.cmdRunDiagnostics(); break;
             default: _efb.postState('error', { message: 'Unknown command: ' + command }); break;
@@ -514,7 +515,7 @@ _efb.cmdSetFuelTarget = function(payload) {
         right_aux:  'L:A32NX_FUEL_RIGHT_AUX_DESIRED'
     };
     var varName = varMap[payload.tank];
-    if (varName) SimVar.SetSimVarValue(varName, 'Number', _efb.kgToGal(parseFloat(payload.value) || 0));
+    if (varName) SimVar.SetSimVarValue(varName, 'Number', _efb.kgToGal(parseFloat(payload.kg) || 0));
     // Recompute total desired after changing any tank
     var total = SimVar.GetSimVarValue('L:A32NX_FUEL_CENTER_DESIRED', 'Number') +
                 SimVar.GetSimVarValue('L:A32NX_FUEL_LEFT_MAIN_DESIRED', 'Number') +
@@ -537,11 +538,12 @@ var _CARGO_VARS = {
     aft_baggage:           'L:A32NX_CARGO_AFT_BAGGAGE',
     aft_bulk_loose:        'L:A32NX_CARGO_AFT_BULK_LOOSE'
 };
+// Keys match zone IDs sent by C# WireCargoTarget
 var _CARGO_DESIRED_VARS = {
-    fwd_baggage_container: 'L:A32NX_CARGO_FWD_BAGGAGE_CONTAINER_DESIRED',
-    aft_container:         'L:A32NX_CARGO_AFT_CONTAINER_DESIRED',
-    aft_baggage:           'L:A32NX_CARGO_AFT_BAGGAGE_DESIRED',
-    aft_bulk_loose:        'L:A32NX_CARGO_AFT_BULK_LOOSE_DESIRED'
+    FWD_BAGGAGE:   'L:A32NX_CARGO_FWD_BAGGAGE_CONTAINER_DESIRED',
+    AFT_CONTAINER: 'L:A32NX_CARGO_AFT_CONTAINER_DESIRED',
+    AFT_BAGGAGE:   'L:A32NX_CARGO_AFT_BAGGAGE_DESIRED',
+    AFT_BULK:      'L:A32NX_CARGO_AFT_BULK_LOOSE_DESIRED'
 };
 
 // Pax distribution: fill stations front-to-back.
@@ -572,17 +574,17 @@ _efb.cmdGetPayloadState = function() {
         boarding_rate: _efb.boardingRateStr(SimVar.GetSimVarValue('L:A32NX_BOARDING_RATE', 'Number')),
         pax_count:     String(totalPax)
     };
-    var keys = Object.keys(_CARGO_DESIRED_VARS);
-    for (var i = 0; i < keys.length; i++) {
-        var k = keys[i];
-        state[k + '_kg'] = String(Math.round(SimVar.GetSimVarValue(_CARGO_DESIRED_VARS[k], 'Number')));
-    }
+    // State keys match what C# ApplyPayloadState expects
+    state['fwd_baggage']  = String(Math.round(SimVar.GetSimVarValue('L:A32NX_CARGO_FWD_BAGGAGE_CONTAINER_DESIRED', 'Number')));
+    state['aft_container'] = String(Math.round(SimVar.GetSimVarValue('L:A32NX_CARGO_AFT_CONTAINER_DESIRED', 'Number')));
+    state['aft_baggage']  = String(Math.round(SimVar.GetSimVarValue('L:A32NX_CARGO_AFT_BAGGAGE_DESIRED', 'Number')));
+    state['aft_bulk']     = String(Math.round(SimVar.GetSimVarValue('L:A32NX_CARGO_AFT_BULK_LOOSE_DESIRED', 'Number')));
     _efb.postState('payload_state', state);
 };
 
 _efb.cmdSetCargoWeight = function(payload) {
     var varName = _CARGO_DESIRED_VARS[payload.zone];
-    if (varName) SimVar.SetSimVarValue(varName, 'Number', parseFloat(payload.value) || 0);
+    if (varName) SimVar.SetSimVarValue(varName, 'Number', parseFloat(payload.kg) || 0);
 };
 
 _efb.cmdSetBoardingRate = function(payload) {
@@ -630,6 +632,13 @@ _efb.cmdRunDiagnostics = function() {
         jetway_btn_found: String(hasJetwayBtn),
         page_title: document.title || 'none'
     });
+};
+
+_efb.cmdWakeEfb = function() {
+    // H:A32NX_EFB_POWER fires the flypad power-toggle interaction event.
+    // Toggles STANDBY→LOADED (or LOADED→STANDBY). Only call when EFB is in standby.
+    SimVar.SetSimVarValue('H:A32NX_EFB_POWER', 'number', 1);
+    _efb.postState('wake_efb_sent', {});
 };
 
 // ── Bootstrap ────────────────────────────────────────────────────────────────
