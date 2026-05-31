@@ -1647,6 +1647,9 @@ public partial class MainForm : Form
             case HotkeyAction.ShowMETARReport:
                 ShowMETARReportDialog();
                 break;
+            case HotkeyAction.ShowChecklistECL:
+                ShowChecklistECLDialog();
+                break;
             case HotkeyAction.ShowChecklist:
                 ShowChecklistDialog();
                 break;
@@ -2116,20 +2119,9 @@ public partial class MainForm : Form
         // Ensure output hotkey mode is deactivated before showing dialog
         hotkeyManager.ExitOutputHotkeyMode();
 
-        // The A380X has a LIVE Electronic Checklist (read from the E/WD) with the
-        // real normal-checklist items and sensed auto-completion — far better than a
-        // static text file — so the Checklist hotkey opens that instead.
-        if (currentAircraft?.AircraftCode == "FBW_A380")
-        {
-            if (fbwA380ChecklistForm == null || fbwA380ChecklistForm.IsDisposed)
-                fbwA380ChecklistForm = new Forms.FBWA380.FBWA380ChecklistForm(announcer, simConnectManager);
-            fbwA380ChecklistForm.Show();
-            fbwA380ChecklistForm.BringToFront();
-            fbwA380ChecklistForm.Activate();
-            return;
-        }
-
-        // Create form if it doesn't exist or has been disposed
+        // Shift+C opens the static text checklist (same for every aircraft, including
+        // the A380). The A380's LIVE Electronic Checklist is on its own key,
+        // Ctrl+Shift+C (ShowChecklistECLDialog).
         if (checklistForm == null || checklistForm.IsDisposed)
         {
             checklistForm = new ChecklistForm(announcer, currentAircraft.AircraftCode);
@@ -2137,6 +2129,25 @@ public partial class MainForm : Form
 
         // Show the form (reuses same instance to preserve checkbox states)
         checklistForm.ShowForm();
+    }
+
+    // Ctrl+Shift+C on the A380: the LIVE Electronic Checklist (ECL) read from the
+    // E/WD — the real normal checklists + active ECAM procedures, with sensed
+    // auto-completion. A380-only; other aircraft have no ECL to drive.
+    private void ShowChecklistECLDialog()
+    {
+        hotkeyManager.ExitOutputHotkeyMode();
+
+        if (currentAircraft?.AircraftCode != "FBW_A380")
+        {
+            announcer.AnnounceImmediate("The live Electronic Checklist is only on the A380. Use Shift+C for the text checklist.");
+            return;
+        }
+        if (fbwA380ChecklistForm == null || fbwA380ChecklistForm.IsDisposed)
+            fbwA380ChecklistForm = new Forms.FBWA380.FBWA380ChecklistForm(announcer, simConnectManager);
+        fbwA380ChecklistForm.Show();
+        fbwA380ChecklistForm.BringToFront();
+        fbwA380ChecklistForm.Activate();
     }
 
     public void ShowFenixMonitorManagerDialog()

@@ -117,7 +117,7 @@
 <tr><td>E/WD (Engine/Warning Display)</td><td>(OUTPUT) <kbd>Alt</kbd>+<kbd>E</kbd></td><td>Engine readouts, memos and active warnings.</td></tr>
 <tr><td>Navigation Display</td><td>(OUTPUT) ND key</td><td>ND mode/range, the next waypoint, cross-track, ILS deviation.</td></tr>
 <tr><td>Standby Instruments (ISIS)</td><td>(OUTPUT) <kbd>Alt</kbd>+<kbd>I</kbd></td><td>Backup attitude, heading, speed, altitude, baro.</td></tr>
-<tr><td>Live Checklist (ECL)</td><td>(OUTPUT) checklist key</td><td>The real interactive electronic checklist (<a href="#part7">Part 7</a>).</td></tr>
+<tr><td>Live Checklist (ECL)</td><td>(OUTPUT) <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd></td><td>The real interactive electronic checklist; <kbd>Shift</kbd>+<kbd>C</kbd> is the static text checklist (<a href="#part7">Part 7</a>).</td></tr>
 <tr><td>Monitor Manager</td><td><kbd>Ctrl</kbd>+<kbd>M</kbd></td><td>Tick/untick which variables auto-announce (<a href="#part9">Part 9</a>).</td></tr>
 </table>
 <p>In every display window, <kbd>F5</kbd> refreshes the reading and <kbd>Escape</kbd> closes it. The PFD/ND/ISIS windows also offer a "live scrape" with <kbd>F6</kbd>.</p>
@@ -269,12 +269,14 @@
 
 <p>The A380's real checklists live on the <strong>Electronic Checklist (ECL)</strong>, shown on the Engine/Warning Display and driven by the ECAM Control Panel. MSFSBA opens it as a fully interactive list that always matches the real cockpit, including any abnormal procedure that an ECAM alert raises.</p>
 
+<div class="note">There are <strong>two</strong> checklist keys (both in OUTPUT mode, press <kbd>]</kbd> first): <kbd>Shift</kbd>+<kbd>C</kbd> opens a simple <strong>static text checklist</strong> (cold-and-dark to shutdown), and <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd> opens the <strong>live ECL</strong> described here.</div>
+
 <div class="step">
 <ol>
-  <li>Open the checklist with "Show / hide (C/L)" (<kbd>Alt</kbd>+<kbd>S</kbd> inside the checklist window). You must show it before the up/down/check actions do anything.</li>
+  <li>Open the live ECL with (OUTPUT) <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd>. The checklist is <strong>shown automatically</strong> when the window opens (and hidden again when you close it) — there is nothing to toggle.</li>
   <li><strong>Arrow Up/Down</strong> moves the real checklist cursor and reads each line, telling you whether it is checked and whether the item is manual or sensed.</li>
-  <li>Press <kbd>Enter</kbd> (or "Check / select", <kbd>Alt</kbd>+<kbd>C</kbd>): on the checklist menu this OPENS the highlighted checklist; inside a checklist it TICKS the highlighted manual item and moves on.</li>
-  <li>"Clear / back" (<kbd>Alt</kbd>+<kbd>L</kbd>) returns to the menu. "Abnormal" (<kbd>Alt</kbd>+<kbd>A</kbd>) opens the abnormal-procedure list.</li>
+  <li>Press <kbd>Enter</kbd>: on the checklist menu this OPENS the highlighted checklist; inside a checklist it TICKS the highlighted manual item and moves on.</li>
+  <li><kbd>Backspace</kbd> steps back to the menu. The <strong>Abnormal procedures</strong> button lists active ECAM procedures.</li>
 </ol>
 </div>
 <p>Sensed items tick themselves the moment the aircraft detects the action (set the park brake and the item reads "PARK BRK ON, checked"). Abnormal procedures present automatically when a failure occurs. <kbd>F5</kbd> refreshes, <kbd>Escape</kbd> closes.</p>

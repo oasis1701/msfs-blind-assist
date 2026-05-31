@@ -66,6 +66,11 @@ OUTPUT MODE  (press ] first)
   Alt+I         Standby Instruments (ISIS) window
   Alt+D         Describe Scene (AI)
 
+  Checklists
+  Shift+C       Static text checklist (cold-and-dark to shutdown)
+  Ctrl+Shift+C  Live Electronic Checklist (ECL) window -- the real cockpit
+                checklists + active ECAM procedures (see below)
+
   Taxi
   Y             Taxi status
   Ctrl+Y        Repeat taxi instruction
@@ -133,13 +138,14 @@ INSIDE THE MCDU / MFD WINDOW
   Alt+D  DIR      Alt+H  Refresh
 
 
-INSIDE THE LIVE CHECKLIST (ECL) WINDOW
-  Alt+S         Show / hide the checklist
+INSIDE THE LIVE CHECKLIST (ECL) WINDOW (Ctrl+Shift+C opens it)
+  The checklist is shown automatically when the window opens and hidden when it
+  closes -- no need to toggle it.
   Up / Down     Move the checklist cursor and read each line
-  Enter / Alt+C Open the highlighted checklist, or tick the highlighted item
-  Alt+L         Clear / back to the menu
-  Alt+A         Open the abnormal-procedure list
+  Enter         Open the highlighted checklist, or tick the highlighted item
+  Backspace     Step back to the menu
   F5            Refresh
+  (the Abnormal procedures button lists active ECAM procedures)
 
 Thrust levers auto-announce the detent reached (Idle / Climb / Flex MCT / TOGA /
 Reverse). Most cockpit controls are in the Sections/Panels lists (Ctrl+1/Ctrl+2).

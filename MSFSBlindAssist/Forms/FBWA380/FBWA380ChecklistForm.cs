@@ -35,6 +35,7 @@ public sealed class FBWA380ChecklistForm : Form
     private bool _haveRows;
     private bool _cursorActive;   // last scrape had a selected (cursor) line
     private bool _busy;           // guard against overlapping ECP pulses
+    private bool _weShowedOverlay; // we toggled the C/L overlay ON, so hide it on close
 
     public FBWA380ChecklistForm(ScreenReaderAnnouncer announcer, SimConnectManager sim)
     {
@@ -71,28 +72,20 @@ public sealed class FBWA380ChecklistForm : Form
         _list.PreviewKeyDown += (_, e) => { if (e.KeyCode is Keys.Up or Keys.Down) e.IsInputKey = true; };
         _list.KeyDown += OnListKeyDown;
 
-        // ECP controls — each pulses the matching real ECP button L-var.
+        // Only controls with NO keyboard equivalent get a button. The checklist is
+        // shown automatically when this window opens and hidden when it closes;
+        // arrow Up/Down move the cursor, Enter checks/selects, Backspace steps back —
+        // so the old Show/hide, Up, Down and Check/select buttons are gone (they only
+        // duplicated the keys and made the workflow confusing).
         var y = 480;
-        Button Btn(string text, int x, int w, string lvar, string say)
-        {
-            var b = new Button { Text = text, Location = new Point(x, y), Size = new Size(w, 30), AccessibleName = text.Replace("&", "") };
-            b.Click += (_, _) => PulseEcp(lvar, say);
-            Controls.Add(b);
-            return b;
-        }
-        Btn("&Show / hide (C/L)", 12, 140, "A32NX_BTN_CL", "Checklist toggled");
-        Btn("Cursor &Up", 158, 90, "A32NX_BTN_UP", "Up");
-        Btn("Cursor &Down", 252, 100, "A32NX_BTN_DOWN", "Down");
-        Btn("&Check / select", 356, 110, "A32NX_BTN_CHECK_LH", "Check");
-        Btn("C&lear / back", 470, 100, "A32NX_BTN_CLR", "Clear");
-        Btn("&Abnormal", 574, 122, "A32NX_BTN_ABNPROC", "Abnormal procedures");
-
-        var refresh = new Button { Text = "&Refresh", Location = new Point(12, y + 36), Size = new Size(90, 30), AccessibleName = "Refresh" };
+        var abn = new Button { Text = "&Abnormal procedures", Location = new Point(12, y), Size = new Size(180, 30), AccessibleName = "Abnormal procedures" };
+        abn.Click += (_, _) => PulseEcp("A32NX_BTN_ABNPROC", "Abnormal procedures");
+        var refresh = new Button { Text = "&Refresh", Location = new Point(200, y), Size = new Size(90, 30), AccessibleName = "Refresh" };
         refresh.Click += (_, _) => { _ = RefreshNow(); };
-        var close = new Button { Text = "Cl&ose", Location = new Point(110, y + 36), Size = new Size(90, 30), DialogResult = DialogResult.OK, AccessibleName = "Close" };
+        var close = new Button { Text = "Cl&ose", Location = new Point(298, y), Size = new Size(90, 30), DialogResult = DialogResult.OK, AccessibleName = "Close" };
         close.Click += (_, _) => Close();
 
-        Controls.AddRange(new Control[] { _status, _list, refresh, close });
+        Controls.AddRange(new Control[] { _status, _list, abn, refresh, close });
         CancelButton = close;
         Load += (_, _) => _list.Focus();
     }
@@ -105,11 +98,18 @@ public sealed class FBWA380ChecklistForm : Form
         if (e.KeyCode == Keys.Enter)
         {
             e.Handled = e.SuppressKeyPress = true;
+            // The overlay is auto-shown, so Enter opens the highlighted checklist /
+            // ticks the highlighted item. (Fallback: if it somehow isn't up, show it.)
             if (_cursorActive) PulseEcp("A32NX_BTN_CHECK_LH", "Check");
             else PulseEcp("A32NX_BTN_CL", "Checklist shown");
             return;
         }
-        if (!_cursorActive) return;   // let the list read normally until a checklist is up
+        if (e.KeyCode == Keys.Back)   // Backspace = Clear / step back to the menu
+        {
+            e.Handled = e.SuppressKeyPress = true;
+            PulseEcp("A32NX_BTN_CLR", "Back");
+            return;
+        }
         if (e.KeyCode == Keys.Down) { e.Handled = e.SuppressKeyPress = true; PulseEcp("A32NX_BTN_DOWN", "Down"); }
         else if (e.KeyCode == Keys.Up) { e.Handled = e.SuppressKeyPress = true; PulseEcp("A32NX_BTN_UP", "Up"); }
     }
@@ -138,7 +138,29 @@ public sealed class FBWA380ChecklistForm : Form
         finally { _busy = false; }
     }
 
-    private async Task InitialScrape() => Apply(await _ecl.ScrapeNowAsync(), announceChecks: false);
+    private async Task InitialScrape()
+    {
+        var rows = await _ecl.ScrapeNowAsync();
+        // The checklist is an E/WD overlay that exists only when C/L is toggled on.
+        // If it isn't up yet, show it automatically — this is also what fixes the old
+        // "not reachable" message, which only ever meant the overlay was hidden.
+        if (rows == null || rows.Count == 0)
+        {
+            _weShowedOverlay = true;
+            await PulseClRaw();
+            await Task.Delay(350);
+            rows = await _ecl.ScrapeNowAsync();
+        }
+        Apply(rows, announceChecks: false);
+    }
+
+    // Pulse the C/L button (1 -> 0) to toggle the checklist overlay, without the
+    // re-scrape/announce that PulseEcp does. Used for the auto show-on-open and
+    // hide-on-close.
+    private async Task PulseClRaw()
+    {
+        try { _sim?.ExecuteCalculatorCode("1 (>L:A32NX_BTN_CL)"); await Task.Delay(140); _sim?.ExecuteCalculatorCode("0 (>L:A32NX_BTN_CL)"); } catch { }
+    }
 
     private async Task RefreshNow()
     {
@@ -152,17 +174,17 @@ public sealed class FBWA380ChecklistForm : Form
     {
         if (rows == null || rows.Count == 0)
         {
-            if (!_haveRows) _status.Text = "Checklist not reachable — is the A380X loaded and the E/WD powered?";
+            if (!_haveRows) _status.Text = "Checklist not reachable. Make sure the A380X is loaded and its displays are powered (battery on), then press Refresh.";
             return;
         }
         _haveRows = true;
         _cursorActive = rows.Any(r => r.selected);
         _status.Text =
             "Live Electronic Checklist — normal checklists and any active ECAM procedure. "
-            + "Press Show / hide (C/L) to bring up the checklist, then arrow Up/Down to move "
-            + "the cursor and read each line; press Enter (or Check / select) to open the "
-            + "highlighted checklist or tick the highlighted item. Items also tick themselves "
-            + "as you perform the action. Clear / back returns to the menu.";
+            + "Arrow Up/Down move the cursor and read each line; Enter opens the highlighted "
+            + "checklist or ticks the highlighted item; Backspace steps back to the menu. "
+            + "Items also tick themselves as you perform the action. The Abnormal procedures "
+            + "button lists active ECAM procedures.";
 
         // Announce items that NEWLY became checked (sensed auto-completion as the
         // pilot performs actions) — the core accessibility win.
@@ -214,6 +236,16 @@ public sealed class FBWA380ChecklistForm : Form
 
     protected override void OnFormClosed(FormClosedEventArgs e)
     {
+        // If we turned the checklist overlay on when opening, turn it back off so the
+        // E/WD returns to what it was showing before (engine parameters / memos).
+        if (_weShowedOverlay && _sim != null)
+        {
+            var sim = _sim;
+            Task.Run(async () =>
+            {
+                try { sim.ExecuteCalculatorCode("1 (>L:A32NX_BTN_CL)"); await Task.Delay(140); sim.ExecuteCalculatorCode("0 (>L:A32NX_BTN_CL)"); } catch { }
+            });
+        }
         try { _ecl.RowsUpdated -= OnRowsUpdated; _ecl.Dispose(); } catch { }
         base.OnFormClosed(e);
     }
