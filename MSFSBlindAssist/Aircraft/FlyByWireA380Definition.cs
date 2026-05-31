@@ -375,7 +375,18 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             new Dictionary<double, string> { [0] = "Purser", [1] = "Capt and Purser" });
 
         // ---- SIGNS ----
-        Sel("XMLVAR_SWITCH_OVHD_INTLT_SEATBELT_Position", "Seat Belts", signSw);
+        // Seat-belt sign: the REAL state is the stock simvar CABIN SEATBELTS ALERT
+        // SWITCH (On/Off). The XMLVAR switch position is model-recomputed, so a direct
+        // L-var write to it just reverts (verified live) — that's why the old combo did
+        // nothing. Settable; the set fires CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE in
+        // HandleUIVariableSet when the desired state differs from current.
+        vars["SEATBELT_SIGN"] = new SimVarDefinition
+        {
+            Name = "CABIN SEATBELTS ALERT SWITCH", DisplayName = "Seat Belts",
+            Type = SimVarType.SimVar, Units = "bool",
+            UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        };
         Sel("XMLVAR_SWITCH_OVHD_INTLT_NOSMOKING_Position", "No Smoking", signSw);
         Sel("XMLVAR_SWITCH_OVHD_INTLT_EMEREXIT_Position", "Emergency Exit Lights", signSw);
 
@@ -1568,7 +1579,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         };
         p["Signs"] = new List<string>
         {
-            "XMLVAR_SWITCH_OVHD_INTLT_SEATBELT_Position", "XMLVAR_SWITCH_OVHD_INTLT_NOSMOKING_Position",
+            "SEATBELT_SIGN", "XMLVAR_SWITCH_OVHD_INTLT_NOSMOKING_Position",
             "XMLVAR_SWITCH_OVHD_INTLT_EMEREXIT_Position"
         };
         p["ADIRS"] = new List<string>
@@ -2097,6 +2108,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     // BTV (Brake-To-Vacate) rollout call-outs: current BTV state (gate) and which
     // distance thresholds have already been spoken this landing (reset between).
     private int _btvState = 0;
+    private readonly int[] _gpuAvail = { -1, -1, -1, -1 };   // last external-power-available state per GPU (-1 = unseen)
     private readonly HashSet<int> _btvExitSpoken = new();
     private readonly HashSet<int> _btvRwyEndSpoken = new();
     private static readonly int[] BtvExitThresholdsM   = { 1200, 800, 500, 300, 150 };
@@ -2255,6 +2267,25 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             {
                 int rounded = (int)(Math.Round(m / 10.0) * 10);
                 announcer.Announce(toExit ? $"{rounded} meters to exit" : $"{rounded} meters runway remaining");
+            }
+            return true;
+        }
+
+        // External power (GPU) available — explicit edge announce so connecting/
+        // disconnecting ground power (incl. via GSX) clearly speaks, rather than
+        // relying on the generic indexed-simvar path. The first-detect grace mutes the
+        // baseline (power already available at connect), so this only fires on a real
+        // connect/disconnect after startup. Honours the Ctrl+M mute.
+        if (varName.StartsWith("A380X_GND_GPU_AVAIL_", StringComparison.Ordinal)
+            && int.TryParse(varName.AsSpan("A380X_GND_GPU_AVAIL_".Length), out int gpuN)
+            && gpuN >= 1 && gpuN <= 4)
+        {
+            int now = value > 0.5 ? 1 : 0;
+            if (_gpuAvail[gpuN - 1] != now)
+            {
+                _gpuAvail[gpuN - 1] = now;
+                if (!Settings.SettingsManager.Current.A380DisabledMonitorVariables.Contains(varName))
+                    announcer.Announce(now == 1 ? $"External Power {gpuN} available" : $"External Power {gpuN} disconnected");
             }
             return true;
         }
@@ -2547,6 +2578,15 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         if (_extLightSetEvents.TryGetValue(varKey, out var lightEvent))
         {
             simConnect.SendEvent(lightEvent, (uint)Math.Round(value));
+            return true;
+        }
+        // Seat-belt sign: there is no SET event, only CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE,
+        // so toggle only when the desired state differs from the current (live) state.
+        if (varKey == "SEATBELT_SIGN")
+        {
+            bool desiredOn = value > 0.5;
+            bool currentOn = (simConnect.GetCachedVariableValue("SEATBELT_SIGN") ?? (desiredOn ? 0.0 : 1.0)) > 0.5;
+            if (desiredOn != currentOn) simConnect.SendEvent("CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE");
             return true;
         }
         // --- Combos whose STATE is a SimVar but whose CONTROL is a K-event
