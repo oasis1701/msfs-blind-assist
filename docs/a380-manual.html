@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MSFS Blind Assist — FlyByWire A380X Complete Manual</title>
+<style>
+  body { font-family: Georgia, "Times New Roman", serif; line-height: 1.6; max-width: 60em; margin: 0 auto; padding: 1em 2em; color: #111; background: #fff; }
+  h1 { font-size: 2em; border-bottom: 3px solid #333; padding-bottom: .2em; }
+  h2 { font-size: 1.5em; margin-top: 1.8em; border-bottom: 1px solid #999; padding-bottom: .15em; }
+  h3 { font-size: 1.2em; margin-top: 1.3em; }
+  h4 { font-size: 1.05em; margin-top: 1em; }
+  code, kbd { font-family: Consolas, "Courier New", monospace; background: #f0f0f0; padding: 0 .25em; border-radius: 3px; }
+  kbd { border: 1px solid #aaa; box-shadow: 0 1px 0 #aaa; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #bbb; padding: .35em .6em; text-align: left; vertical-align: top; }
+  th { background: #eee; }
+  nav.toc { background: #f7f7f7; border: 1px solid #ccc; padding: 1em 1.5em; border-radius: 6px; }
+  nav.toc ol { margin: .3em 0; }
+  .note { background: #eef6ff; border-left: 4px solid #4a90d9; padding: .6em 1em; margin: 1em 0; }
+  .warn { background: #fff7e6; border-left: 4px solid #e0a800; padding: .6em 1em; margin: 1em 0; }
+  .step { background: #f3fbf3; border-left: 4px solid #3aa655; padding: .6em 1em; margin: 1em 0; }
+  a { color: #14538c; }
+  .small { font-size: .9em; color: #555; }
+</style>
+</head>
+<body>
+
+<h1 id="top">MSFS Blind Assist — FlyByWire A380X Complete Manual</h1>
+
+<p class="small">A complete, screen-reader-first manual for flying the FlyByWire A380X in Microsoft Flight Simulator with MSFS Blind Assist (MSFSBA). It covers every feature MSFSBA exposes on the A380 — what it does and exactly how to use it, step by step — plus how the A380's avionics differ from a classic Airbus MCDU. Keyboard shortcuts are listed beside each feature and collected in one reference at the end. Built for total reliance on the screen reader: nothing here assumes you can see the screen.</p>
+
+<div class="note"><strong>How to read this manual.</strong> Use your screen reader's heading navigation (H, or 1–4 for heading levels) to jump between sections, and the links list to jump to the table of contents below. Every section is self-contained. Keyboard shortcuts appear like this: <kbd>Ctrl</kbd>+<kbd>M</kbd>.</div>
+
+<nav class="toc" aria-label="Table of contents">
+<h2 id="toc">Table of Contents</h2>
+<ol>
+  <li><a href="#part1">Orientation: what this is and what you need</a></li>
+  <li><a href="#part2">The A380 cockpit, and why it is NOT a classic MCDU</a></li>
+  <li><a href="#part3">MSFSBA basics: modes, windows, and the panel tree</a></li>
+  <li><a href="#part4">The MFD / MCDU in depth</a></li>
+  <li><a href="#part5">Flight planning, step by step (SimBrief, departure, arrival, discontinuities)</a></li>
+  <li><a href="#part6">The flyPad / EFB</a></li>
+  <li><a href="#part7">Checklists (the live ECL)</a></li>
+  <li><a href="#part8">Displays: PFD, ND, ISIS, System Display, E/WD</a></li>
+  <li><a href="#part9">Automatic announcements (and how to mute them)</a></li>
+  <li><a href="#part10">Settable controls and the systems panels</a></li>
+  <li><a href="#part11">OANS airport map and Brake-To-Vacate (BTV)</a></li>
+  <li><a href="#part12">A walkthrough: a complete flight</a></li>
+  <li><a href="#part13">Complete keyboard shortcut reference</a></li>
+  <li><a href="#part14">FlyByWire A380X feature status and limitations</a></li>
+  <li><a href="#sources">Sources</a></li>
+</ol>
+</nav>
+
+<!-- ===================================================================== -->
+<h2 id="part1">1. Orientation: what this is and what you need</h2>
+
+<p>The <strong>FlyByWire A380X</strong> is a free, high-fidelity simulation of the Airbus A380-842 (Rolls-Royce Trent 972 engines) for Microsoft Flight Simulator, made by FlyByWire Simulations — the same team behind the A32NX. Microsoft Flight Simulator does not ship its own A380, so the FBW A380X is the de-facto A380. It is officially in an <strong>alpha</strong> state: deeply simulated, but still evolving, and some features are incomplete (see <a href="#part14">Part 14</a>).</p>
+
+<p><strong>MSFS Blind Assist (MSFSBA)</strong> makes that aircraft flyable without sight. It reads the cockpit displays aloud, lets you operate the MFD/MCDU, flyPad, checklists and every system panel from the keyboard, and announces important changes as they happen. On the A380, MSFSBA reads the real cockpit displays <em>live</em> through the simulator's internal display engine (the "Coherent" debugger) — there is <strong>no add-on to install</strong>, no Community-folder mod and no Developer Mode required. You just need:</p>
+<ul>
+  <li>The FlyByWire A380X installed (via the FlyByWire installer) and loaded in the sim.</li>
+  <li>The cockpit displays powered (battery on, or a powered/ready preset) so there is something to read.</li>
+  <li>A screen reader running (NVDA is fully supported; others via Tolk; SAPI fallback otherwise).</li>
+</ul>
+
+<div class="note">MSFSBA detects the A380 automatically when you load it. The first time it connects there is a short silent grace period — on first detect <strong>nothing is announced</strong> (so you are not spammed with the starting cockpit state); only <em>changes</em> after that speak.</div>
+
+<!-- ===================================================================== -->
+<h2 id="part2">2. The A380 cockpit, and why it is NOT a classic MCDU</h2>
+
+<p>If you have flown the A320 (Fenix, FBW A32NX, or the default), you know the <strong>MCDU</strong>: one small unit per pilot that combines a screen and a hardware keypad, with six "line select keys" (LSKs) down each side. You type into a scratchpad and push the LSK next to a line to send it there.</p>
+
+<p><strong>The A380 has no MCDU.</strong> It uses Airbus's second-generation cockpit (later shared with the A350), which splits that one unit into two separate things:</p>
+
+<h3 id="mfd">The MFD (Multi-Function Display)</h3>
+<p>There are two large <strong>MFDs</strong> — one for the Captain, one for the First Officer — living on the main instrument panel. Each MFD hosts four domains: <strong>FMS</strong> (the flight-management pages — flight planning, performance, fuel), <strong>ATC COM</strong> (datalink), <strong>SURV</strong> (surveillance: TCAS, terrain, weather radar), and <strong>FCU BKUP</strong> (a backup way to drive the autoflight panel). The FMS domain is where you do almost everything.</p>
+
+<h3 id="kccu">The KCCU (Keyboard Cursor Control Unit)</h3>
+<p>On the pedestal there are two <strong>KCCUs</strong>. Each is a separate input device with a trackball + click button (a cursor), a QWERTY keyboard, and dedicated FMS jump-keys: <strong>DIR</strong> (direct-to), <strong>PERF</strong>, <strong>INIT</strong>, <strong>NAVAID</strong>, <strong>F-PLN</strong>, <strong>DEST</strong>, <strong>SEC INDEX</strong>. You move a cursor over the MFD and click fields, open dropdown menus, and pick choices — there are no LSKs.</p>
+
+<div class="note"><strong>What this means for you.</strong> MSFSBA hides all of that hardware complexity. You do <em>not</em> need the KCCU, the cursor, or the trackball. MSFSBA opens the MFD as a flat, screen-reader-friendly list and lets you arrow through it and press <kbd>Enter</kbd> — it drives the real display underneath for you. (Technically MSFSBA types directly into the focused field the same way the real cockpit keyboard does, so the KCCU "keyboard mode" does not need to be switched on.)</p></div>
+
+<h4>The key differences, summarised</h4>
+<table>
+<tr><th>Classic A320/A330 MCDU</th><th>A380 MFD + KCCU (as MSFSBA presents it)</th></tr>
+<tr><td>One combined unit: screen + keypad</td><td>Large display (MFD) separate from the input device (KCCU)</td></tr>
+<tr><td>Six line-select keys per side; push the key next to a line</td><td>Cursor-driven: any field is clickable; <strong>dropdown menus</strong> and on-screen buttons replace LSKs. In MSFSBA you arrow to a line and press Enter.</td></tr>
+<tr><td>Type into a scratchpad, then push an LSK to commit</td><td>Click a field, type, confirm. In MSFSBA: select the field, type, Enter.</td></tr>
+<tr><td>Mostly flat text lists</td><td>Windowed/tabbed pages, graphical revisions, dropdown choices, integration with the navigation display.</td></tr>
+<tr><td>MENU key + page keys</td><td>Direct FMS jump-keys (F-PLN, PERF, INIT…) — in MSFSBA these are the <kbd>Alt</kbd>+letter page buttons and a "go to page" combo.</td></tr>
+</table>
+
+<p>So when this manual says "the MCDU", it means the A380's <strong>MFD FMS pages</strong>, presented by MSFSBA as a list you arrow through.</p>
+
+<!-- ===================================================================== -->
+<h2 id="part3">3. MSFSBA basics: modes, windows, and the panel tree</h2>
+
+<h3>Hotkey modes</h3>
+<p>Most MSFSBA shortcuts live in one of two modes, so a handful of letter keys can do many things:</p>
+<ul>
+  <li>Press <kbd>]</kbd> (right bracket) to enter <strong>OUTPUT mode</strong> — reading things aloud (altitude, speed, displays, distances).</li>
+  <li>Press <kbd>[</kbd> (left bracket) to enter <strong>INPUT mode</strong> — doing things (opening the MCDU/flyPad, autopilot, teleports, taxi).</li>
+  <li><kbd>Escape</kbd> exits the active mode. Pressing the same bracket again cancels it.</li>
+  <li>A few chords are <strong>direct</strong> (no bracket needed): <kbd>Ctrl</kbd>+<kbd>M</kbd>, <kbd>Ctrl</kbd>+<kbd>E</kbd>, <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd>, <kbd>Ctrl</kbd>+<kbd>1</kbd>/<kbd>2</kbd>.</li>
+</ul>
+<p>The full list is in <a href="#part13">Part 13</a>. Throughout this manual, where a shortcut needs a mode it is noted as "(OUTPUT)" or "(INPUT)".</p>
+
+<h3>The windows you will use most</h3>
+<table>
+<tr><th>Window</th><th>Open with</th><th>What it is</th></tr>
+<tr><td>MCDU / MFD</td><td>(INPUT) <kbd>Shift</kbd>+<kbd>M</kbd></td><td>The FMS pages as a flat list — flight planning lives here (<a href="#part4">Part 4</a>).</td></tr>
+<tr><td>flyPad / EFB</td><td>(INPUT) <kbd>Shift</kbd>+<kbd>T</kbd></td><td>The tablet — loading, fuel, ground services, charts, settings, checklists (<a href="#part6">Part 6</a>).</td></tr>
+<tr><td>Airport Map &amp; BTV (OANS)</td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd></td><td>Airport map data and Brake-To-Vacate exit selection (<a href="#part11">Part 11</a>).</td></tr>
+<tr><td>System Display (ECAM/STATUS)</td><td>(OUTPUT) display keys</td><td>The SD pages read aloud (<a href="#part8">Part 8</a>).</td></tr>
+<tr><td>E/WD (Engine/Warning Display)</td><td>(OUTPUT) <kbd>Alt</kbd>+<kbd>E</kbd></td><td>Engine readouts, memos and active warnings.</td></tr>
+<tr><td>Navigation Display</td><td>(OUTPUT) ND key</td><td>ND mode/range, the next waypoint, cross-track, ILS deviation.</td></tr>
+<tr><td>Standby Instruments (ISIS)</td><td>(OUTPUT) <kbd>Alt</kbd>+<kbd>I</kbd></td><td>Backup attitude, heading, speed, altitude, baro.</td></tr>
+<tr><td>Live Checklist (ECL)</td><td>(OUTPUT) checklist key</td><td>The real interactive electronic checklist (<a href="#part7">Part 7</a>).</td></tr>
+<tr><td>Monitor Manager</td><td><kbd>Ctrl</kbd>+<kbd>M</kbd></td><td>Tick/untick which variables auto-announce (<a href="#part9">Part 9</a>).</td></tr>
+</table>
+<p>In every display window, <kbd>F5</kbd> refreshes the reading and <kbd>Escape</kbd> closes it. The PFD/ND/ISIS windows also offer a "live scrape" with <kbd>F6</kbd>.</p>
+
+<h3>The panel tree</h3>
+<p>Press <kbd>Ctrl</kbd>+<kbd>1</kbd> to focus the <strong>Sections</strong> list and <kbd>Ctrl</kbd>+<kbd>2</kbd> for the <strong>Panels</strong> list. Together they expose every cockpit system as a browsable tree. Many panels include a read-only "Status Display" field that lists live readouts one per line (press the panel's Refresh, or re-open it, to update). The sections are: Overhead, Glareshield, Instrument, Pedestal, Ground Services, and Displays. The settable controls inside them are catalogued in <a href="#part10">Part 10</a>.</p>
+
+<!-- ===================================================================== -->
+<h2 id="part4">4. The MFD / MCDU in depth</h2>
+
+<p>Open it with (INPUT) <kbd>Shift</kbd>+<kbd>M</kbd>. The window shows <strong>one thing per line</strong>. The page title is announced when the page changes; the scratchpad/message line is announced when it changes.</p>
+
+<h3 id="reading">How lines read</h3>
+<p>Actionable lines end with a <strong>role word</strong> that tells you what you can do:</p>
+<table>
+<tr><th>Role word</th><th>Meaning</th></tr>
+<tr><td>button</td><td>Press <kbd>Enter</kbd> to activate it. (Flight-plan waypoints and discontinuities are buttons too — Enter opens their menu.)</td></tr>
+<tr><td>edit</td><td>An editable field. Type a value and press Enter. An empty editable field reads <strong>"blank"</strong>.</td></tr>
+<tr><td>combo box</td><td>A dropdown. It also tells you whether it is <strong>collapsed</strong> or <strong>expanded</strong>, and reads its <strong>selected value</strong> (e.g. "RWY, 30R, combo box, collapsed"). Press Enter to expand; the choices then appear below as "option" lines.</td></tr>
+<tr><td>option</td><td>A choice inside an open menu or dropdown. Arrow to it and press Enter.</td></tr>
+<tr><td>tab / radio button</td><td>In-page tabs and radio choices.</td></tr>
+<tr><td>(no role word)</td><td>Static text — a label or readout, not actionable.</td></tr>
+<tr><td>… dimmed</td><td>The control is currently unavailable (the real MFD ignores it). This is usually correct aircraft behaviour, not a fault.</td></tr>
+</table>
+
+<div class="note"><strong>Combo boxes.</strong> A closed dropdown reads, for example, "RWY, 30R, combo box, collapsed" — so you hear the field, its current selection, and that it is closed. Press <kbd>Enter</kbd> and it reads "expanded", with each choice listed immediately below as an "option" line. Pick one with Enter; the dropdown closes. When a menu is open, MSFSBA groups all of its options <strong>together</strong> at the top of the list so they are easy to find (they would otherwise be scattered between other lines).</div>
+
+<h3 id="mcducontrols">Controls inside the MCDU window</h3>
+<table>
+<tr><th>Key</th><th>Action</th></tr>
+<tr><td>Up / Down arrow</td><td>Move through the lines.</td></tr>
+<tr><td>Enter</td><td>Activate the selected line. If you typed something into the scratchpad first, that text is sent to the selected field. On a combo box, opens it.</td></tr>
+<tr><td>(type)</td><td>Type into the scratchpad edit box, then Enter to send it to the selected field.</td></tr>
+<tr><td>Backspace</td><td>CLR — clears the scratchpad first; if it is already empty, clears the selected field.</td></tr>
+<tr><td>Delete</td><td>Clear the selected field on the MFD.</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>Up</kbd> or <kbd>PageUp</kbd></td><td>Previous page (announces "Previous page").</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>Down</kbd> or <kbd>PageDown</kbd></td><td>Next page (announces "Next page"). Within a long page like F-PLN, this also scrolls the waypoint window.</td></tr>
+<tr><td><kbd>F5</kbd></td><td>Refresh the reading.</td></tr>
+</table>
+<p>A "MCDU (Captain) / First Officer" selector chooses which side you are driving (they are independent in the real aircraft).</p>
+
+<h3 id="pagenav">Moving between pages — three ways</h3>
+<ol>
+  <li><strong>The "go to MFD page" combo</strong> at the top lists all 20 pages, grouped by tab: ACTIVE (F-PLN / PERF / FUEL &amp; LOAD / WIND / INIT); POSITION (MONITOR / REPORT / NAVAIDS / IRS / GNSS / TIME); SEC INDEX (SEC 1–3); DATA (STATUS / WAYPOINT / NAVAID / ROUTE / AIRPORT / PRINTER).</li>
+  <li><strong>Quick page buttons</strong> (Alt+letter): <kbd>Alt</kbd>+<kbd>I</kbd> INIT, <kbd>Alt</kbd>+<kbd>F</kbd> F-PLN, <kbd>Alt</kbd>+<kbd>P</kbd> PERF, <kbd>Alt</kbd>+<kbd>R</kbd> RAD NAV, <kbd>Alt</kbd>+<kbd>S</kbd> SEC FPL, <kbd>Alt</kbd>+<kbd>A</kbd> ATC COM, <kbd>Alt</kbd>+<kbd>D</kbd> DIR, <kbd>Alt</kbd>+<kbd>H</kbd> Refresh.</li>
+  <li>The MFD's own in-page tabs, which appear in the line list.</li>
+</ol>
+<p>Some pages (WIND, REPORT, GNSS, TIME, the DATA sub-pages) only open once the FMS has the data they need — that is real aircraft behaviour; they read "disabled" until then.</p>
+
+<h3 id="fplnreading">Reading the flight plan (F-PLN)</h3>
+<p>The F-PLN page lists the route as <strong>one line per waypoint, in order</strong>. MSFSBA folds each waypoint together with the leg that leads to it and any altitude constraint, so each line reads cleanly, for example:</p>
+<p><code>BI613, via BASU1D, 5 NM, track 294°, at or below 5000 feet</code></p>
+<ul>
+  <li><strong>BI613</strong> — the waypoint name.</li>
+  <li><strong>via BASU1D</strong> — the procedure or airway that leg belongs to (a SID, STAR or airway). It repeats on each leg it covers, so you always know which procedure you are in.</li>
+  <li><strong>5 NM</strong> — the leg distance from the previous waypoint, in nautical miles.</li>
+  <li><strong>track 294°</strong> — the leg track (computed in flight).</li>
+  <li><strong>at or below 5000 feet</strong> — an altitude constraint (decoded: <code>+</code> = "at or above", <code>-</code> = "at or below", plain = "at").</li>
+  <li>In flight, an <strong>ETA</strong> and speed/altitude predictions fold in as the FMS computes them.</li>
+</ul>
+<p><strong>Seeing the whole route.</strong> The page shows a window of about a dozen waypoints with the destination pinned at the bottom. The last waypoint you hear before DEST is the bottom of the <em>current window</em>, not the end of the route — press <kbd>Ctrl</kbd>+<kbd>Down</kbd> to scroll to the next set and <kbd>Ctrl</kbd>+<kbd>Up</kbd> to go back. Paging walks the entire route with a small overlap between windows, so nothing is skipped.</p>
+
+<h3 id="revisions">Revising the flight plan</h3>
+<p>Every waypoint line is a <strong>button</strong>. Land on it and press <kbd>Enter</kbd> to open that waypoint's <strong>lateral-revision menu</strong> — exactly like clicking the waypoint on the real MFD. The options then appear as a group of "option" lines; arrow to one and press Enter:</p>
+<ul>
+  <li><strong>FROM P.POS DIR TO</strong> — direct-to this waypoint (skip everything before it).</li>
+  <li><strong>INSERT NEXT WPT</strong> — insert a new waypoint after this one.</li>
+  <li><strong>DELETE *</strong> — remove this waypoint.</li>
+  <li><strong>HOLD</strong> — build a holding pattern here.</li>
+  <li><strong>AIRWAYS</strong> — join an airway onward from here.</li>
+  <li><strong>OVERFLY *</strong> — force the aircraft to fly directly over it.</li>
+  <li><strong>DEPARTURE / ARRIVAL</strong> — jump to the SID/STAR editor (enabled at the ends of the route).</li>
+</ul>
+<p>Disabled options read "dimmed". Some revisions stage a <strong>temporary (TMPY)</strong> plan: scroll to the bottom and press Enter on <strong>"TMPY INSERT"</strong> to commit it, or <strong>"TMPY ERASE"</strong> to cancel.</p>
+
+<h3 id="disco">Clearing a discontinuity</h3>
+<p>A gap in the route reads as a line that simply says <strong>"DISCONTINUITY, button"</strong>. The FMS inserts these where two procedure segments do not join (commonly between the end of a STAR and the approach). To clear one: land on that line, press <kbd>Enter</kbd> to open its menu, then arrow to <strong>"DELETE *"</strong> and press Enter — the two legs join and the discontinuity is gone. (If you would rather bridge it with a fix, open the <em>previous</em> waypoint instead and use "INSERT NEXT WPT".)</p>
+<div class="warn">A discontinuity that follows a <strong>manual</strong> leg cannot — and should not — be deleted; that one is intentional.</div>
+
+<!-- ===================================================================== -->
+<h2 id="part5">5. Flight planning, step by step</h2>
+
+<p>The recommended order is: load the route (SimBrief), set the departure, set performance and weights, set the arrival, then review.</p>
+
+<h3 id="simbrief">5a. Load the route from SimBrief</h3>
+<div class="step">
+<ol>
+  <li>Set your SimBrief user ID in the flyPad first (Settings), and generate an OFP on SimBrief for your flight.</li>
+  <li>Open the MCDU (INPUT <kbd>Shift</kbd>+<kbd>M</kbd>) and go to INIT (<kbd>Alt</kbd>+<kbd>I</kbd>).</li>
+  <li>Arrow to <strong>"CPNY F-PLN REQUEST"</strong> and press <kbd>Enter</kbd>. Wait until the scratchpad reads "COMPANY F-PLN RECEIVED WAITING FOR INSERTION".</li>
+  <li>The button now reads <strong>"RECEIVED CPNY F-PLN"</strong>. Press <kbd>Enter</kbd> on it; a small menu opens. Arrow to <strong>"INSERT*"</strong> and press Enter. The whole route loads — flight number, from/to, alternate, cruise level and cost index, all from SimBrief.</li>
+  <li>FLT NBR, destination and ALTN stay editable afterwards if you need to change them: arrow to the field, type, Enter.</li>
+</ol>
+</div>
+<p class="small">If "CPNY F-PLN REQUEST" reads "dimmed", it is because either a destination is already set on the world map or SimBrief/Navigraph is not configured — both are correct sim behaviour.</p>
+
+<h3 id="departure">5b. Set the departure (runway + SID)</h3>
+<div class="step">
+<ol>
+  <li>Go to F-PLN (<kbd>Alt</kbd>+<kbd>F</kbd>) and open the <strong>DEPARTURE</strong> button (or open the origin waypoint and choose DEPARTURE).</li>
+  <li>Open the <strong>RWY</strong> combo, pick your departure runway.</li>
+  <li>Open the <strong>SID</strong> combo, pick the departure. Leave <strong>TRANS</strong> unless your route needs one.</li>
+  <li>Scroll to the bottom and press Enter on <strong>"INSERT TMPY *"</strong> to commit.</li>
+</ol>
+</div>
+
+<h3 id="perf">5c. Performance and weights</h3>
+<p>Open <strong>FUEL &amp; LOAD</strong> (via INIT or the page combo) to set or confirm ZFW, ZFWCG, BLOCK fuel, TAXI, PAX and reserves — these usually come from the flyPad Dispatch page. Open <strong>PERF</strong> (<kbd>Alt</kbd>+<kbd>P</kbd>) for the takeoff, climb, cruise, descent and approach sub-tabs (V-speeds, FLEX temp, THS, transition altitude). FlyByWire's own takeoff-performance calculator (on the flyPad) is the easy way to get the takeoff numbers.</p>
+<p><strong>Minimums</strong> (baro MDA and radio DH) are entered on the PERF <strong>APPR</strong> tab — there is no separate panel for them, by design. MSFSBA reads them back and announces them when they change ("Baro minimum 200 feet", "Decision height 200 feet").</p>
+
+<h3 id="arrival">5d. Set the arrival (runway, approach, STAR)</h3>
+<div class="step">
+<ol>
+  <li>On F-PLN, press <kbd>Ctrl</kbd>+<kbd>Down</kbd> repeatedly to scroll to the <strong>destination airport line</strong> at the very end of the route, then press <kbd>Enter</kbd> on it. (The bottom "DEST" summary line is read-only — use the destination <em>waypoint</em> line, or its ARRIVAL revision.)</li>
+  <li>Open the <strong>RWY</strong> combo, pick the landing runway. Open <strong>APPR</strong> for the approach (ILS/RNAV), <strong>STAR</strong> for the arrival, and <strong>VIA</strong>/<strong>TRANS</strong> if required. Each combo announces its current selection and its choices.</li>
+  <li>Scroll down and press Enter on <strong>"INSERT TMPY *"</strong> to commit.</li>
+  <li>Arrow back through F-PLN to confirm the route reads continuously into the approach. If a <strong>discontinuity</strong> appears between the STAR and the approach, clear it (see <a href="#disco">Clearing a discontinuity</a>).</li>
+</ol>
+</div>
+<p class="small">Note: the A380 always keeps a destination runway — there is no "no runway" option. To change the arrival you pick a different runway/approach; you cannot remove it entirely.</p>
+
+<h3 id="radnav">5e. Radio navigation</h3>
+<p>On <strong>RAD NAV / NAVAIDS</strong> (<kbd>Alt</kbd>+<kbd>R</kbd>), VORs auto-tune when in range; you can enter a VOR/ILS by ident or frequency. The arrival ILS auto-tunes within about 250 nm once in the climb phase.</p>
+
+<!-- ===================================================================== -->
+<h2 id="part6">6. The flyPad / EFB</h2>
+
+<p>Open it with (INPUT) <kbd>Shift</kbd>+<kbd>T</kbd>. The flyPad (flyPadOS 3) is FlyByWire's tablet. MSFSBA renders it as a real web document in an embedded browser, so your screen reader gets full browse mode: use heading navigation (H), the links list (K), and arrow-by-line; edit fields are real edit fields; page changes are announced. <kbd>Tab</kbd>/<kbd>Shift</kbd>+<kbd>Tab</kbd> move between controls; activating a link or button changes the page; <kbd>F5</kbd> refreshes. (If the embedded browser is unavailable, it falls back automatically to a plain control list.)</p>
+
+<h3>The apps</h3>
+<table>
+<tr><th>App</th><th>What it does</th></tr>
+<tr><td>Dashboard ("Your Flight")</td><td>The landing page. MSFSBA reads it in column order: first the left "Your Flight" widget, then the right "Important Information" (Weather, Pinned Charts, Maintenance, Checklists).</td></tr>
+<tr><td>Dispatch</td><td>Loading &amp; fuel (set ZFW/payload/fuel — these sync to the aircraft and into the MFD FUEL &amp; LOAD page) and overall flight prep.</td></tr>
+<tr><td>Ground</td><td>Ground services without in-sim ATC: jetway/stairs, fuel truck, pushback, catering, GPU, baggage/cargo, doors.</td></tr>
+<tr><td>Performance</td><td>Automated calculations such as takeoff performance (V-speeds, FLEX).</td></tr>
+<tr><td>Navigation &amp; Charts</td><td>Navigraph charts and a moving map.</td></tr>
+<tr><td>ATC (Online)</td><td>Live online ATC frequencies (e.g. VATSIM/IVAO awareness).</td></tr>
+<tr><td>Failures</td><td>Arm and manage system failures for training.</td></tr>
+<tr><td>Checklists</td><td>A tablet-only checklist tracker (see the warning below).</td></tr>
+<tr><td>Presets</td><td>Save/restore aircraft configuration between flights.</td></tr>
+<tr><td>Settings</td><td>Brightness, realism options, ADIRS alignment time, units, and more.</td></tr>
+</table>
+
+<div class="warn"><strong>flyPad Checklists vs the real checklist.</strong> The flyPad <em>Checklists</em> page is a private tracker on the tablet — ticking items there does <strong>not</strong> touch the aircraft. The "auto-fill checklists" realism setting only auto-marks the tablet's own page. For the <strong>real</strong> aircraft checklist that the cockpit uses, use the live ECL — see <a href="#part7">Part 7</a>.</div>
+
+<!-- ===================================================================== -->
+<h2 id="part7">7. Checklists (the live ECL)</h2>
+
+<p>The A380's real checklists live on the <strong>Electronic Checklist (ECL)</strong>, shown on the Engine/Warning Display and driven by the ECAM Control Panel. MSFSBA opens it as a fully interactive list that always matches the real cockpit, including any abnormal procedure that an ECAM alert raises.</p>
+
+<div class="step">
+<ol>
+  <li>Open the checklist with "Show / hide (C/L)" (<kbd>Alt</kbd>+<kbd>S</kbd> inside the checklist window). You must show it before the up/down/check actions do anything.</li>
+  <li><strong>Arrow Up/Down</strong> moves the real checklist cursor and reads each line, telling you whether it is checked and whether the item is manual or sensed.</li>
+  <li>Press <kbd>Enter</kbd> (or "Check / select", <kbd>Alt</kbd>+<kbd>C</kbd>): on the checklist menu this OPENS the highlighted checklist; inside a checklist it TICKS the highlighted manual item and moves on.</li>
+  <li>"Clear / back" (<kbd>Alt</kbd>+<kbd>L</kbd>) returns to the menu. "Abnormal" (<kbd>Alt</kbd>+<kbd>A</kbd>) opens the abnormal-procedure list.</li>
+</ol>
+</div>
+<p>Sensed items tick themselves the moment the aircraft detects the action (set the park brake and the item reads "PARK BRK ON, checked"). Abnormal procedures present automatically when a failure occurs. <kbd>F5</kbd> refreshes, <kbd>Escape</kbd> closes.</p>
+
+<!-- ===================================================================== -->
+<h2 id="part8">8. Displays: PFD, ND, ISIS, System Display, E/WD</h2>
+
+<h3>PFD (Primary Flight Display)</h3>
+<p>The PFD window reads the <strong>Flight Mode Annunciator (FMA)</strong> — the autoflight modes — plus the approach capability and any PFD messages. The FMA is the most important readout in flight; MSFSBA also announces FMA changes automatically (see <a href="#part9">Part 9</a>). Tape values (speed, altitude, attitude) come from instruments and have their own hotkeys.</p>
+
+<h3>Navigation Display (ND)</h3>
+<p>Reads the ND mode (Rose ILS/VOR/Nav, Arc, Plan) and range, the active "TO" waypoint (ident, distance, bearing, ETA), cross-track error, RNP, and localizer/glideslope deviation.</p>
+
+<h3>Standby Instruments (ISIS)</h3>
+<p>Open with (OUTPUT) <kbd>Alt</kbd>+<kbd>I</kbd>: standby attitude (pitch and bank), magnetic heading, indicated airspeed and Mach, indicated altitude with its baro reference (STD or QNH and the setting), and the LS overlay state.</p>
+
+<h3>System Display (SD) — the ECAM system pages</h3>
+<p>The SD window reads any of the A380's <strong>16 system pages</strong>: ENG, APU, BLEED, COND (air conditioning), PRESS (cabin pressure), DOOR, ELEC AC, ELEC DC, FUEL, WHEEL (wheels/brakes), HYD, F/CTL (flight controls), C/B (circuit breakers), CRZ (cruise), STATUS, VIDEO. Pick a page from the "SD page" combo and it drives the real display there, then reads it (per-tank fuel across the 11 tanks, gross weight, CG, temperatures, pressures, door states, engine parameters, and so on). If the live display is briefly unreachable it falls back to a direct sensor decode.</p>
+
+<h3>E/WD (Engine/Warning Display)</h3>
+<p>Open with (OUTPUT) <kbd>Alt</kbd>+<kbd>E</kbd>: per-engine throttle/N1/EGT/fuel-flow, the memo lines, and the active warnings with their ECAM action items. <kbd>Alt</kbd>+<kbd>E</kbd> also speaks the current warnings immediately. ECAM warnings and memos are also announced automatically as they appear. You can toggle automatic E/WD call-outs with <kbd>Ctrl</kbd>+<kbd>E</kbd>.</p>
+
+<!-- ===================================================================== -->
+<h2 id="part9">9. Automatic announcements (and how to mute them)</h2>
+
+<p>MSFSBA speaks important changes as they happen — you do not have to poll for them. Everything below is announced on change; you can silence any of it from the <strong>Monitor Manager</strong> (<kbd>Ctrl</kbd>+<kbd>M</kbd>), which is a checkbox list of every monitored item and remembers your choices.</p>
+
+<h3>Warnings and cautions</h3>
+<p>Master Warning, Master Caution, Autoland Warning, TCAS Fault, engine and APU fire, icing, and the overhead pushbutton FAULT lights (batteries, generators, IDGs, pumps, bleeds, packs, and more).</p>
+
+<h3>Autoflight modes (the FMA, spoken like the PFD)</h3>
+<ul>
+  <li><strong>Vertical mode</strong>: ALT, ALT*, OP CLB, OP DES, V/S, FPA, CLB, DES, FINAL, G/S, LAND, FLARE, ROLL OUT, SRS, TCAS, and so on.</li>
+  <li><strong>Lateral mode</strong>: HDG, TRACK, NAV, LOC*, LOC, LAND, FLARE, ROLL OUT, RWY, GA TRK.</li>
+  <li><strong>Autothrust mode</strong>: Man TOGA/Flex/MCT/Thrust, Speed, Mach, Thrust Climb, Thrust Idle, Alpha Floor, TOGA Lock, and the lever prompts (Levers Climb, Thrust Lock, etc.).</li>
+  <li><strong>Approach capability</strong>: CAT 1, CAT 2, CAT 3 Single, CAT 3 Dual.</li>
+  <li><strong>Flight phase</strong>: Preflight, Takeoff, Climb, Cruise, Descent, Approach, Go Around, Done. And the FCU managed/selected indicators when you push or pull a knob.</li>
+</ul>
+
+<h3>Numeric callouts</h3>
+<p>Altimeter setting on the knob and on STD↔QNH / hPa↔inHg changes; the approach minimums; thrust-lever detents ("All thrust levers Idle"); flaps and gear; and the A380's runway-overrun protection (ROW/ROP): "Runway too short", "If wet, runway too short", "Max braking", and "Runway ahead" when taxiing toward a runway.</p>
+
+<h3>State changes</h3>
+<p>Engine state (Off/On/Starting/Shutting Down), engine masters and crossfeeds, doors, wheel chocks, safety cones, external power available, ATC message waiting, destination fuel OK/below-minimum, and the E/WD memo callouts (PARK BRK ON, APU AVAIL, ELEC EXT PWR, and so on).</p>
+
+<!-- ===================================================================== -->
+<h2 id="part10">10. Settable controls and the systems panels</h2>
+
+<p>Browse the systems with <kbd>Ctrl</kbd>+<kbd>1</kbd> (Sections) and <kbd>Ctrl</kbd>+<kbd>2</kbd> (Panels). Almost every cockpit control is a combo box you set by picking a value; numeric controls are edit fields. The highlights:</p>
+
+<h4>Altimeter / baro</h4>
+<p>Captain and First Officer baro: STD/QNH push-pull combos, a "Set QNH" numeric field (in your current unit; it drives both altimeters), and the unit readout. The standby (ISIS) baro is also settable.</p>
+
+<h4>EFIS (per side)</h4>
+<p>LS, V/V, Constraints, Airport, Traffic on/off; ND mode (Rose ILS/VOR/Nav, Arc, Plan); ND range; navaid 1 &amp; 2 (Off/ADF/VOR); ND filter (Waypoints/VOR-DME/NDB); overlay (Off/Weather/Terrain); OANS range.</p>
+
+<h4>Pressurization / air conditioning</h4>
+<p>Cabin altitude mode and V/S mode (Off/Auto), ditching, the manual cabin-altitude and V/S target knobs (numeric, in manual mode), pack/hot-air/ram-air/crossbleed, pack flow, cabin fans, air extract, cargo isolation and heater, and cockpit/cabin/cargo target temperatures.</p>
+
+<h4>ECAM control panel</h4>
+<p>ECAM ALL, Abnormal Proc, Checklist, Clear, Recall, T.O Config, Emergency Cancel, Up/Down/More, plus the SD page selector.</p>
+
+<h4>Transponder / radios</h4>
+<p>Squawk code (edit field), transponder mode and ident, ATC altitude reporting; VHF 1–3 standby/active and swap; RMP state.</p>
+
+<h4>Autoflight, gear, brakes, engines, lights, fuel, electrics, hydraulics</h4>
+<p>Autopilot 1/2, localizer, approach, expedite; autobrake (Disarm/BTV/Low/L2/L3/High) and RTO arm; gear and gravity extension; flaps, parking brake, speedbrake, thrust-lever detents; engine masters/mode/start; all exterior and interior lights; fuel transfer/jettison/crossfeed; ELEC, HYD, BLEED, ADIRS, the PRIM/SEC flight-control computers; GPWS/TAWS; weather radar; ground services (doors, jet bridge, stairs); and "Load Aircraft Preset" (Cold &amp; Dark / Powered / Pushback / Taxi / Takeoff).</p>
+
+<div class="note">A few overhead pushbuttons (Flight Director, some packs/bleeds/bus-ties and the like) are <strong>computed outputs</strong> on this build: the FBW systems recompute them every frame, so an external "set" reverts. MSFSBA still reads their true state and announces changes; they are simply not settable from outside until FBW provides a control. This is a platform limitation, not a missing feature.</div>
+
+<!-- ===================================================================== -->
+<h2 id="part11">11. OANS airport map and Brake-To-Vacate (BTV)</h2>
+
+<p>The A380's <strong>OANS</strong> (Onboard Airport Navigation System) shows a moving airport map on the navigation display, and <strong>BTV</strong> (Brake-To-Vacate) lets the autobrake stop the aircraft exactly at a chosen runway exit. Open the accessible OANS/BTV window with <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd>.</p>
+<p>The window lets you search the airport, runways, taxiways and stands, read runway length / LDA / BTV stopping distance, set a landing shift, and select a BTV exit. To arm BTV, set the autobrake selector to <strong>BTV</strong> (confirm on the FMA), choose the landing runway, then a runway exit beyond the "wet" stopping line. After touchdown BTV optimises braking to reach that exit at about 10 knots.</p>
+<div class="note">The OANS map needs airport data: it works best with a Navigraph subscription, and only populates once the inertial system (ADIRS) is aligned and you are at or near an airport. If it is not ready, MSFSBA says "OANS not available yet". For taxi guidance with turn-by-turn directions, MSFSBA's separate Taxi Assist feature (the <kbd>Y</kbd> / <kbd>Shift</kbd>+<kbd>Y</kbd> keys) is the primary tool — it uses the navigation database directly.</div>
+<p>Independently of BTV, the <strong>ROW/ROP</strong> runway-overrun protection is active whenever an autobrake mode is armed, and MSFSBA speaks its callouts on approach and rollout.</p>
+
+<!-- ===================================================================== -->
+<h2 id="part12">12. A walkthrough: a complete flight</h2>
+
+<p>This ties the pieces together. Adjust to your route and procedures.</p>
+
+<h3>On the ground (cold and dark → ready)</h3>
+<div class="step">
+<ol>
+  <li>Load the A380 and let MSFSBA detect it. If starting cold and dark, either run the checklist or load a Powered/Ready preset (Panels → Load Aircraft Preset, or the flyPad Presets app).</li>
+  <li>flyPad (INPUT <kbd>Shift</kbd>+<kbd>T</kbd>): on Dispatch, set your payload and fuel; in Settings, set ADIRS alignment time and your SimBrief ID.</li>
+  <li>MCDU (INPUT <kbd>Shift</kbd>+<kbd>M</kbd>): INIT → load the SimBrief route (5a). Then DEPARTURE (5b), FUEL &amp; LOAD and PERF (5c), and ARRIVAL (5d). Clear any discontinuity.</li>
+  <li>Use the live checklist (Part 7) to work the cockpit-prep and before-start items; sensed items tick as you do them.</li>
+</ol>
+</div>
+
+<h3>Taxi and takeoff</h3>
+<div class="step">
+<ol>
+  <li>Request pushback and engine start via the flyPad Ground app or the overhead.</li>
+  <li>For taxi, open Taxi Assist (INPUT <kbd>Shift</kbd>+<kbd>Y</kbd>), enter your ATC taxi clearance, and follow the turn-by-turn guidance (<kbd>Y</kbd> reads status, <kbd>Ctrl</kbd>+<kbd>Y</kbd> repeats).</li>
+  <li>Set takeoff config; the FMA, thrust-lever detents and flap settings all announce. On the takeoff roll, autothrust and SRS modes call out.</li>
+</ol>
+</div>
+
+<h3>Climb, cruise, descent</h3>
+<div class="step">
+<ol>
+  <li>The FMA announces every mode change. Check progress any time with <kbd>D</kbd> (distance to destination) and, once the FMS has computed the descent, <kbd>Shift</kbd>+<kbd>D</kbd> (distance to top of descent).</li>
+  <li>Use the FCU set/read keys (Part 13) to manage heading, speed, altitude and vertical speed; each push/pull confirms managed vs selected.</li>
+  <li>Monitor systems via the SD pages and the auto-announced cautions. "Top of descent reached" announces as a PFD message.</li>
+</ol>
+</div>
+
+<h3>Approach and landing</h3>
+<div class="step">
+<ol>
+  <li>Confirm the approach is set and the minimums are entered (PERF APPR). Arm the approach; the FMA announces capability (CAT 1/2/3).</li>
+  <li>If using BTV, arm it and pick your exit (Part 11). Otherwise an autobrake mode still gives you ROW/ROP overrun protection.</li>
+  <li>On final and rollout, listen for the overrun callouts and use the Landing Exit Planner (INPUT <kbd>Shift</kbd>+<kbd>X</kbd>) if you want exit guidance.</li>
+</ol>
+</div>
+
+<!-- ===================================================================== -->
+<h2 id="part13">13. Complete keyboard shortcut reference</h2>
+
+<p>This is the master list. "OUTPUT" means press <kbd>]</kbd> first; "INPUT" means press <kbd>[</kbd> first; "Direct" needs no mode. The quick-reference text file (FBW_A380_Hotkeys.txt) carries the same keys without the explanations.</p>
+
+<h3>Direct (no mode)</h3>
+<table>
+<tr><th>Key</th><th>Action</th></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>1</kbd> / <kbd>Ctrl</kbd>+<kbd>2</kbd></td><td>Focus the Sections / Panels list</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>M</kbd></td><td>Monitor Manager (choose what auto-announces)</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>E</kbd></td><td>Toggle ECAM E/WD call-outs</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd></td><td>Airport Map &amp; BTV (OANS) window</td></tr>
+</table>
+
+<h3>OUTPUT mode (press <kbd>]</kbd> first) — readouts</h3>
+<table>
+<tr><th>Key</th><th>Action</th></tr>
+<tr><td><kbd>Q</kbd> / <kbd>A</kbd></td><td>Altitude AGL / MSL</td></tr>
+<tr><td><kbd>S</kbd> / <kbd>T</kbd> / <kbd>G</kbd> / <kbd>M</kbd></td><td>IAS / TAS / Ground Speed / Mach</td></tr>
+<tr><td><kbd>H</kbd> / <kbd>U</kbd> / <kbd>V</kbd></td><td>Magnetic Heading / True Heading / Vertical Speed</td></tr>
+<tr><td><kbd>D</kbd></td><td>Distance to destination (from the FMS)</td></tr>
+<tr><td><kbd>Shift</kbd>+<kbd>D</kbd></td><td>Distance to Top of Descent (once computed in flight)</td></tr>
+<tr><td><kbd>Shift</kbd>+<kbd>H</kbd> / <kbd>Shift</kbd>+<kbd>S</kbd> / <kbd>Shift</kbd>+<kbd>A</kbd> / <kbd>Shift</kbd>+<kbd>V</kbd></td><td>Read FCU Heading / Speed / Altitude / Vertical Speed</td></tr>
+<tr><td><kbd>Shift</kbd>+<kbd>1</kbd>…<kbd>6</kbd></td><td>Characteristic speeds: Green Dot, S, F, VLS, VS, VFE-next</td></tr>
+<tr><td><kbd>I</kbd> / <kbd>O</kbd> / <kbd>Z</kbd> / <kbd>Shift</kbd>+<kbd>Z</kbd> / <kbd>X</kbd> / <kbd>C</kbd></td><td>Wind / Outside Temp / Local Time / Zulu Time / Squawk / Nearest City</td></tr>
+<tr><td><kbd>Shift</kbd>+<kbd>T</kbd></td><td>Toggle trim announcements</td></tr>
+<tr><td><kbd>R</kbd> / <kbd>Ctrl</kbd>+<kbd>R</kbd></td><td>Announce TCAS traffic / Show TCAS window</td></tr>
+<tr><td><kbd>Shift</kbd>+<kbd>W</kbd> / <kbd>Shift</kbd>+<kbd>M</kbd></td><td>Weather radar / METAR report</td></tr>
+<tr><td><kbd>Alt</kbd>+<kbd>E</kbd> / <kbd>Alt</kbd>+<kbd>I</kbd></td><td>Open E/WD window / Standby (ISIS) window</td></tr>
+<tr><td><kbd>Alt</kbd>+<kbd>D</kbd></td><td>Describe Scene (AI)</td></tr>
+<tr><td><kbd>Y</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd> / <kbd>Alt</kbd>+<kbd>Y</kbd></td><td>Taxi status / Repeat taxi instruction / Where am I</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>H</kbd> / <kbd>Ctrl</kbd>+<kbd>V</kbd> / <kbd>Ctrl</kbd>+<kbd>T</kbd> / <kbd>Ctrl</kbd>+<kbd>D</kbd> / <kbd>Ctrl</kbd>+<kbd>I</kbd></td><td>Hand-fly mode / Visual guidance / Takeoff assist / Distance to selected runway / ILS guidance</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>G</kbd></td><td>Read latest GSX tooltip</td></tr>
+</table>
+
+<h3>INPUT mode (press <kbd>[</kbd> first) — actions</h3>
+<table>
+<tr><th>Key</th><th>Action</th></tr>
+<tr><td><kbd>Shift</kbd>+<kbd>M</kbd></td><td>Open the MCDU / MFD window</td></tr>
+<tr><td><kbd>Shift</kbd>+<kbd>T</kbd></td><td>Open the flyPad EFB window</td></tr>
+<tr><td><kbd>Shift</kbd>+<kbd>Y</kbd> / <kbd>Y</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd></td><td>Open Taxi Assist / Continue past hold-short / Stop taxi guidance</td></tr>
+<tr><td><kbd>Shift</kbd>+<kbd>X</kbd></td><td>Open Landing Exit Planner</td></tr>
+<tr><td><kbd>Shift</kbd>+<kbd>R</kbd> / <kbd>Shift</kbd>+<kbd>G</kbd> / <kbd>Shift</kbd>+<kbd>F</kbd> / <kbd>Shift</kbd>+<kbd>D</kbd></td><td>Runway teleport / Gate teleport / Fix tracking / Select destination runway</td></tr>
+<tr><td><kbd>Shift</kbd>+<kbd>A</kbd> / <kbd>Ctrl</kbd>+<kbd>O</kbd> / <kbd>Shift</kbd>+<kbd>P</kbd></td><td>Autopilot 1 / Autopilot 2 / Approach mode</td></tr>
+<tr><td><kbd>Shift</kbd>+<kbd>1</kbd>…<kbd>4</kbd> / <kbd>Ctrl</kbd>+<kbd>1</kbd>…<kbd>4</kbd></td><td>Push / Pull the Heading, Altitude, Speed, VS knobs</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>H</kbd> / <kbd>Ctrl</kbd>+<kbd>S</kbd> / <kbd>Ctrl</kbd>+<kbd>A</kbd> / <kbd>Ctrl</kbd>+<kbd>V</kbd></td><td>Set Heading / Speed / Altitude / VS value (opens an edit box)</td></tr>
+<tr><td><kbd>Alt</kbd>+<kbd>G</kbd></td><td>Open GSX window</td></tr>
+</table>
+
+<h3>Inside the MCDU window</h3>
+<p>See <a href="#mcducontrols">the MCDU controls table</a> (arrows, Enter, type, Backspace, Delete, Ctrl+Up/Down, F5) and the <a href="#pagenav">Alt+letter page buttons</a>.</p>
+
+<!-- ===================================================================== -->
+<h2 id="part14">14. FlyByWire A380X feature status and limitations</h2>
+
+<p>The A380X is an alpha. Most of it works well, but a few things are incomplete on the FlyByWire side — not on MSFSBA's. Knowing what is and isn't finished saves confusion:</p>
+<ul>
+  <li><strong>Modeled:</strong> the FMS (with direct-to on airways, FIX INFO, step climbs), autothrust and full fly-by-wire, the EWD/SD ECAM with hundreds of procedures and memos, the 16 SD pages, Green/Yellow 5000-psi hydraulics, electrics/pneumatics/pressurization/APU/fire, Trent 972 engines, RMP, ISIS, OANS+BTV+ROW/ROP, and the flyPad.</li>
+  <li><strong>Experimental / in progress:</strong> a native MSFS 2024 build (current 2024 support is a compatibility layer), the Vertical Display, and the OIT/OIS onboard terminal (only a flight log and company-message inbox so far).</li>
+  <li><strong>Incomplete / disabled:</strong> FLS / F-G/S approaches (non-functional), the second ISIS (disabled), and OANS airport data that depends on a Navigraph subscription.</li>
+  <li><strong>Status/INOP/limitations lists:</strong> the data MSFSBA needs to read the STATUS page's inoperative-systems and limitations lists is reachable, but the FBW development build does not fully populate it yet; MSFSBA will surface it as soon as FBW ships the data.</li>
+  <li><strong>D / Shift+D distance hotkeys:</strong> distance to destination works on the ground and in flight; distance to top of descent only reads once the FMS has computed a descent (in flight). ETA and landing-fuel are planned additions once the in-flight prediction data is verified.</li>
+</ul>
+<p>Because it is a development build, occasional control or readout names may differ slightly from what is documented here; report anything that reads wrong and it can be corrected.</p>
+
+<!-- ===================================================================== -->
+<h2 id="sources">Sources</h2>
+<p class="small">This manual was compiled from the MSFS Blind Assist source code (the A380 definition, forms, hotkey manager and Coherent clients) and the official FlyByWire documentation, cross-checked against the A380X v0.14.0 release notes and reputable references. Key FlyByWire sources:</p>
+<ul class="small">
+  <li><a href="https://docs.flybywiresim.com/aircraft/a380x/">A380X overview</a> and <a href="https://docs.flybywiresim.com/release-notes/a380x/v0140/">v0.14.0 release notes</a></li>
+  <li><a href="https://docs.flybywiresim.com/pilots-corner/a380x/a380x-briefing/flight-deck/main-panel/mfd/">MFD</a>, <a href="https://docs.flybywiresim.com/pilots-corner/a380x/a380x-briefing/flight-deck/pedestal/kccu/">KCCU</a>, <a href="https://docs.flybywiresim.com/pilots-corner/a380x/a380x-briefing/flight-deck/main-panel/sd/">System Display</a>, <a href="https://docs.flybywiresim.com/pilots-corner/a380x/a380x-briefing/flight-deck/pedestal/ecam-cp/">ECAM control panel</a></li>
+  <li><a href="https://docs.flybywiresim.com/pilots-corner/a380x/a380x-beginner-guide/03_preparing-fms/">Preparing the FMS</a>, <a href="https://docs.flybywiresim.com/pilots-corner/a380x/a380x-advanced-guides/oans-btv/">OANS/BTV</a>, <a href="https://docs.flybywiresim.com/aircraft/common/flypados3/">flyPadOS 3</a></li>
+</ul>
+
+<p class="small"><a href="#top">Back to top</a></p>
+
+</body>
+</html>

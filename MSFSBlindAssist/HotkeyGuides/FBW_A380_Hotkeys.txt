@@ -1,344 +1,146 @@
-FLYBYWIRE A380X HOTKEY REFERENCE
+FLYBYWIRE A380X — HOTKEY REFERENCE
 
-This is the FlyByWire A380X (development build). The MCDU is actually the MFD
-(driven by the KCCU cursor, not classic line-select keys); the EFB is the
-flyPad. Both are read and driven live through the MSFS Coherent GT debugger —
-no add-on install and no Developer Mode are required; the A380X just needs to
-be loaded with the cockpit displays powered up.
+Quick key list only. For what each feature does and step-by-step how to use it
+(the MCDU, flyPad, checklists, displays, flight planning, systems, a full-flight
+walkthrough), see the full manual: docs/a380-manual.html.
 
-Panels: use the main window's Sections and Panels lists (Ctrl+1 / Ctrl+2) to
-browse every system. Most controls are combo boxes or buttons; many panels also
-have a read-only "Status Display" field listing the live readouts one per line
-(battery voltages, gen load, hydraulic pressures, bleed temps, brake temps,
-engine N2/N3/EGT/FF, fault lights, etc.). Press the panel's Refresh button (or
-re-open the panel) to update on demand; values also update automatically as the
-sim changes.
-
-Application Navigation:
-  Ctrl+1     Focus Sections List
-  Ctrl+2     Focus Panels List
-
-Tip: Press the same bracket key again to cancel a mode you activated by accident.
+Modes: press ] (right bracket) for OUTPUT mode, [ (left bracket) for INPUT mode,
+Escape to exit. A few chords are direct (no mode). Press the same bracket again
+to cancel a mode activated by accident.
 
 
-Displays and Windows (direct chords — no bracket mode needed):
-  Ctrl+M     A380 Monitor Manager — tick/untick which variables are announced
-             automatically as they change (master warning/caution, engine state,
-             fire, flight phase, ATC message waiting, the annunciator/fault lights
-             below, and a single "ECAM E/WD call-outs" entry that mutes the live
-             memo/warning read-out). Same Ctrl+M chord the Fenix and PMDG use;
-             your choices are saved between sessions.
-
-  Ctrl+E     Toggle ECAM E/WD monitoring on/off — the same as un/re-ticking the
-             "ECAM E/WD call-outs" entry in the Monitor Manager, but as a quick
-             chord. Announces "E W D monitoring enabled/disabled". Persisted.
-
-  Ctrl+Shift+B  A380 Airport Map and BTV (OANS) window — the Onboard Airport
-             Navigation System control panel from the ND, shown as an accessible
-             web page (same browser view as the flyPad). Use it for BTV
-             (Brake-To-Vacate): select the landing runway and the exit/taxiway to
-             vacate at, search airports/runways/taxiways/stands, LDG SHIFT, and
-             read RUNWAY LENGTH / LDA / BTV STOP DISTANCE. To ARM BTV itself, set
-             the Autobrake selector (Pedestal) to BTV. NOTE: the airport map
-             controls only populate once the OANS has an aircraft position — the
-             ADIRS must be aligned (NAV) and you must be at or near an airport;
-             until then the window says "OANS not available yet".
-
-Annunciators and fault lights are announced automatically as they change
-  (master warning/caution, APU EGT warning, thrust-lever warning, performance
-  warning, TCAS fault; overhead pushbutton FAULT lights for batteries, gens,
-  IDGs, engine + electric hydraulic pumps, bleeds, packs, hot air, ram air,
-  cargo isolation/heater, TADD/FDAC/OCSM/VCM channels, fire squibs, etc.). If
-  any of these are too chatty, un-tick them in the Monitor Manager (Ctrl+M).
-
-Read-out windows (open from OUTPUT mode — see the PFD/ND/ECAM keys below):
-  - PFD window: flight-mode annunciator (lateral/vertical mode), approach
-    capability (CAT 1/2/3), and PFD messages. FMA mode changes (OP CLB, V/S,
-    FPA, G/S, LAND, FLARE, SRS, NAV, LOC, RWY...) are also announced live.
-  - Navigation Display window: ND mode and range, the TO waypoint (ident,
-    distance, bearing, ETA), cross-track error, RNP, and ILS deviation.
-  - Standby Instruments window (ISIS) — Alt+I: standby attitude (pitch/bank),
-    heading, indicated airspeed + Mach, standby altitude with its baro reference
-    (STD/QNH) and setting, and the LS overlay state. Duplicates the universal
-    altitude/airspeed keys, gathered as one standby cross-check panel.
-  - System Display window (ECAM/STATUS): a LIVE read of the real System Display.
-    Pick any SD page from the "SD page" list (Engine, APU, Bleed, Air Cond,
-    Pressurization, Doors, Electrical AC/DC, Fuel, Wheel, Hydraulics, Flight
-    Controls, Circuit Breakers, Cruise, Status, Video) and the window commands the
-    real System Display to that page AND shows exactly what it displays, decoded
-    into readable lines (oxygen pressures, per-tank fuel, gross weight, CG,
-    temperatures, pressures, door states, ...). Refresh button + F5. (If the live
-    read can't reach the display it falls back to the SimVar decode. The Cruise and
-    Status pages are still being filled in by FlyByWire, so they may read mostly
-    placeholders for now.)
-  - E/WD window — Alt+E: a live read of the Engine/Warning Display (per-engine
-    throttle/N1/EGT/fuel-flow, the memo lines, and any active warnings and ECAM
-    action items). Alt+E also speaks the current warnings immediately.
-  Each window has a Refresh button and F5; Escape closes. The PFD, ND and ISIS
-  windows also have a "Live scrape" button (or F6) that opens a live read of the
-  real display — useful for text the SimVar readout doesn't cover (note the PFD/
-  ND/ISIS speed/altitude/attitude tapes read as scale marks, so the normal SimVar
-  readout stays the primary source for those).
-
-Thrust levers: moving the levers announces the detent reached (Idle / Climb /
-  Flex MCT / TOGA / Reverse). You can also set a detent from the Thrust Levers
-  panel (All Thrust Levers, or per engine) in the Pedestal section.
-
-Checklist (Output mode then the checklist key) opens the LIVE Electronic
-  Checklist (ECL) window — it reads the aircraft's own normal checklists and any
-  active ECAM abnormal procedure straight from the E/WD, so it always matches the
-  real cockpit, and it is FULLY interactive.
-  How to use it:
-    1. Press "Show / hide (C/L)" (Alt+S) to bring the checklist up.
-    2. Arrow Up/Down through the list — this moves the real checklist cursor and
-       reads each line, telling you whether an item is checked, and whether it is
-       a manual or sensed action.
-    3. Press Enter (or the "Check / select" button, Alt+C):
-         - on the checklist menu, this OPENS the highlighted checklist;
-         - inside a checklist, this TICKS the highlighted manual item and moves on.
-    4. "Clear / back" (Alt+L) returns to the menu; "Abnormal" (Alt+A) opens the
-       abnormal-procedure list.
-  Items also tick themselves the moment the aircraft senses the action (set the
-  park brake and PARK BRK ON ticks itself, announced as "PARK BRK ON, checked").
-  Abnormal procedures present automatically when a failure occurs. F5 refreshes,
-  Escape closes.
-
-  Which way do I access checklists? Use the Checklist hotkey above — that window
-  IS the workflow. You do NOT go through a combo box. The ECAM Control Panel does
-  have a "Checklist" entry (and Up / Down / Abnormal Proc / Clear), but those are
-  just the physical ECP push-buttons: the "Checklist" one only toggles the
-  checklist ON the E/WD screen (same as the window's Show / hide). It does not let
-  you read or tick anything. There is nothing to "set" in that combo and then Tab
-  to — everything you need (reading lines, opening a checklist, ticking items) is
-  in the Checklist window, driven by the arrow keys and Enter as described above.
-
-  Note on the flyPad's own Checklists page (the tablet has one too): that page is
-  a SEPARATE, tablet-only tracker. Ticking items there does not touch the real
-  aircraft, and the aircraft's E/WD checklist does not tick from it. Use the
-  Checklist window above for the real checklists. (The flyPad's "auto-fill
-  checklists" Realism setting only auto-marks the tablet's own page.)
-
-  The static cold-and-dark-to-shutdown text checklist and a step-by-step MCDU
-  guide are in docs/a380-mcdu-guide.md.
+DIRECT (no mode)
+  Ctrl+1        Focus Sections list
+  Ctrl+2        Focus Panels list
+  Ctrl+M        Monitor Manager (choose what auto-announces)
+  Ctrl+E        Toggle ECAM E/WD call-outs
+  Ctrl+Shift+B  Airport Map and BTV (OANS) window
 
 
-OUTPUT MODE - Press right bracket to activate
+OUTPUT MODE  (press ] first)
 
-AI features:
-  Alt+D      Describe Scene
+  FCU read
+  Shift+H       FCU Heading
+  Shift+S       FCU Speed (knots or Mach)
+  Shift+A       FCU Altitude
+  Shift+V       FCU Vertical Speed / FPA
 
-FCU Controls (read):
-  Shift+H    Read FCU Heading (selected/managed)
-  Shift+S    Read FCU Speed (knots or Mach, selected/managed)
-  Shift+A    Read FCU Altitude (selected/managed)
-  Shift+V    Read FCU Vertical Speed / FPA
+  Flight data
+  Q             Altitude AGL
+  A             Altitude MSL
+  S             IAS
+  T             TAS
+  G             Ground Speed
+  M             Mach Number
+  H             Magnetic Heading
+  U             True Heading
+  V             Vertical Speed
+  D             Distance to destination (from the FMS)
+  Shift+D       Distance to Top of Descent (once computed in flight)
 
-Altitude:
-  Q          Read Altitude AGL
-  A          Read Altitude MSL
+  Characteristic speeds
+  Shift+1       Green Dot speed
+  Shift+2       S speed (slat retraction)
+  Shift+3       F speed (flap retraction)
+  Shift+4       VLS (minimum selectable)
+  Shift+5       VS (stall)
+  Shift+6       VFE next (next flap limit)
 
-Airspeed:
-  S          Read IAS (Indicated Airspeed)
-  T          Read TAS (True Airspeed)
-  G          Read Ground Speed
-  M          Read Mach Number
-  D          Distance to destination (from the FMS flight plan)
-  Shift+D    Distance to Top of Descent (once the FMS has computed a descent)
+  Weather / time / misc
+  I             Wind info
+  O             Outside Temperature (Celsius)
+  Z             Local Time
+  Shift+Z       Zulu / UTC Time
+  X             Squawk Code
+  C             Nearest City
+  Shift+T       Toggle trim announcements
 
-Characteristic speeds (FMS speed-tape bugs, A380 values):
-  Shift+1    Green Dot speed (best L/D / O speed)
-  Shift+2    S speed (slat retraction)
-  Shift+3    F speed (flap retraction)
-  Shift+4    VLS (minimum selectable speed)
-  Shift+5    VS (stall speed)
-  Shift+6    VFE next (next flap limit speed)
+  Traffic / weather windows
+  R             Announce TCAS traffic
+  Ctrl+R        Show TCAS window
+  Shift+W       Weather Radar
+  Shift+M       METAR report
 
-Heading:
-  H          Read Magnetic Heading
-  U          Read True Heading
+  Display windows
+  Alt+E         E/WD (Engine/Warning Display) window
+  Alt+I         Standby Instruments (ISIS) window
+  Alt+D         Describe Scene (AI)
 
-Vertical:
-  V          Read Vertical Speed
+  Taxi
+  Y             Taxi status
+  Ctrl+Y        Repeat taxi instruction
+  Alt+Y         Where am I (ground)
 
-Weather:
-  I          Wind Info
-  O          Read Outside Temperature (Celsius)
-
-Time:
-  Z          Read Local Time at aircraft position
-  Shift+Z    Read Zulu / UTC Time
-
-Transponder:
-  X          Read Squawk Code
-
-Location:
-  C          Read Nearest City
-
-Announcements:
-  Shift+T    Toggle trim announcements on/off
-
-Tools:
-  Ctrl+H     Activate/deactivate Hand fly mode (enables more hotkeys)
-  Ctrl+V     Activate/deactivate Visual guidance mode (requires hand fly mode)
-  Ctrl+T     Takeoff Assistance
-  Ctrl+D     Distance to Selected Runway
-  Ctrl+I     ILS guidance system
-
-Taxi Guidance (turn-by-turn taxi assistance with audio steering tone):
-  Y          Taxi Status (current taxiway, next turn, distance to destination)
-  Ctrl+Y     Repeat Current Taxi Instruction
-  Alt+Y      Where Am I (current taxiway, gate, or runway at nearest airport)
-  (Open the Taxi Assist form with Input mode > Shift+Y)
-
-Traffic and Weather:
-  R          Announce Tracked TCAS Traffic
-  Ctrl+R     Show TCAS Window
-  Shift+W    Show Weather Radar
-  Shift+M    Show METAR Report
-
-Displays:
-  Shift+M    (Input mode) Open the A380 MCDU / MFD window — see below
-
-Ground Services:
-  Ctrl+G     Read latest GSX tooltip
+  Tools
+  Ctrl+H        Hand-fly mode
+  Ctrl+V        Visual guidance (needs hand-fly)
+  Ctrl+T        Takeoff Assistance
+  Ctrl+D        Distance to selected runway
+  Ctrl+I        ILS guidance
+  Ctrl+G        Read latest GSX tooltip
 
 
-INPUT MODE - Press left bracket to activate
+INPUT MODE  (press [ first)
 
-Teleport:
-  Shift+R    Runway Teleport
-  Shift+G    Gate Teleport
+  Windows
+  Shift+M       Open MCDU / MFD window
+  Shift+T       Open flyPad EFB window
+  Alt+G         Open GSX window
 
-Flight planning:
-  Shift+F    Fix/waypoint tracking
-  Shift+D    Select Destination Runway
+  Teleport / flight planning
+  Shift+R       Runway teleport
+  Shift+G       Gate teleport
+  Shift+F       Fix / waypoint tracking
+  Shift+D       Select destination runway
 
-Autopilot:
-  Shift+A    Toggle Autopilot 1
-  Ctrl+O     Toggle Autopilot 2
-  Shift+P    Toggle Approach Mode
+  Autopilot
+  Shift+A       Autopilot 1
+  Ctrl+O        Autopilot 2
+  Shift+P       Approach mode
 
-FCU Push/Pull:
-  Shift+1    Push Heading Knob
-  Ctrl+1     Pull Heading Knob
-  Shift+2    Push Altitude Knob
-  Ctrl+2     Pull Altitude Knob
-  Shift+3    Push Speed Knob
-  Ctrl+3     Pull Speed Knob
-  Shift+4    Push VS Knob
-  Ctrl+4     Pull VS Knob
+  FCU push / pull
+  Shift+1 / Ctrl+1   Push / Pull Heading knob
+  Shift+2 / Ctrl+2   Push / Pull Altitude knob
+  Shift+3 / Ctrl+3   Push / Pull Speed knob
+  Shift+4 / Ctrl+4   Push / Pull VS knob
 
-FCU Set Values (opens an edit box):
-  Ctrl+H     Set Heading Value
-  Ctrl+S     Set Speed Value
-  Ctrl+A     Set Altitude Value
-  Ctrl+V     Set VS Value
+  FCU set value (opens an edit box)
+  Ctrl+H        Set Heading
+  Ctrl+S        Set Speed
+  Ctrl+A        Set Altitude
+  Ctrl+V        Set VS
 
-flyPad EFB:
-  Shift+T    Open the A380 flyPad EFB window. The page is shown as a real web
-             document your screen reader browses like any web page: use heading
-             navigation (H), links list (K), arrow keys to read line by line,
-             real edit fields, and live page-change announcements. Tab/Shift+Tab
-             also moves between controls. Activating a link or button changes the
-             flyPad page and the view updates; F5 refreshes. (If the embedded
-             browser ever fails to start, the window falls back automatically to
-             a plain list of native controls.)
-
-Taxi Guidance:
-  Shift+Y    Open Taxi Assist Form (enter ATC taxi clearance, start guidance)
-  Y          Continue past current hold-short point
-  Ctrl+Y     Stop Taxi Guidance
-  Shift+X    Open Landing Exit Planner
-
-Ground Services:
-  Alt+G      Open Access GSX window
+  Taxi / landing
+  Shift+Y       Open Taxi Assist form
+  Y             Continue past hold-short
+  Ctrl+Y        Stop taxi guidance
+  Shift+X       Open Landing Exit Planner
 
 
-A380 MCDU / MFD Window (open with Input mode, then Shift+M):
+INSIDE THE MCDU / MFD WINDOW
+  Up / Down     Move through lines
+  Enter         Activate the line (send scratchpad to field; open a combo box)
+  (type)        Type into the scratchpad, then Enter
+  Backspace     CLR (scratchpad first, then the selected field)
+  Delete        Clear the selected field
+  Ctrl+Up       Previous page (PageUp also)
+  Ctrl+Down     Next page (PageDown also; scrolls the F-PLN window)
+  F5            Refresh
 
-  The A380 "MCDU" is the MFD — a cursor-driven display. The window shows one
-  thing per line. Actionable lines end with a role word — a button ("PERF,
-  button"), an edit field ("CI: 60, edit"), or a menu ("INSERT*, menu"); lines
-  with no role word are static text. An empty editable field reads as "blank".
-  The page title is announced once when the page changes; the scratchpad /
-  message line is announced when it changes.
-
-  Reaching pages — three ways, all keyboard accessible:
-   1. "Go to MFD page" combo box (top of the window): lists ALL 20 pages
-      grouped by tab (ACTIVE: F-PLN / PERF / FUEL & LOAD / WIND / INIT;
-      POSITION: MONITOR / REPORT / NAVAIDS / IRS / GNSS / TIME; SEC INDEX:
-      SEC 1-3; DATA: STATUS / WAYPOINT / NAVAID / ROUTE / AIRPORT / PRINTER).
-      Pick one to jump straight to it.
-   2. The quick page buttons (INIT, F-PLN, PERF, RAD NAV, SEC FPL, ATC COM,
-      DIR) with their Alt+letter mnemonics, for the common pages.
-   3. The MFD's own top tabs, which appear in the page line list.
-  Some pages (e.g. WIND, REPORT, GNSS, TIME, the DATA sub-pages) only open
-  once the FMS has the flight plan / data they need — that is the real
-  aircraft behaviour.
-
-  Up/Down Arrow   Move through the lines
-  Enter           Activate the selected line; if you typed into the scratchpad
-                  first, the text is sent to the selected field
-                  (A combo box reads "collapsed" when closed; Enter opens it and
-                  it reads "expanded", with its choices listed just below.)
-  (type)          Type into the scratchpad edit box, then Enter to send
-  Backspace       CLR (clears the scratchpad first, then the selected field)
-  Ctrl+Up         Previous page (PageUp also works)
-  Ctrl+Down       Next page (PageDown also works)
-  MCDU (Captain) / First Officer selector chooses which side you are driving.
-
-  Page buttons (mnemonics, Alt+letter):
-  Alt+I   INIT       Alt+F   F-PLN      Alt+P   PERF
-  Alt+R   RAD NAV    Alt+S   SEC FPL    Alt+A   ATC COM
-  Alt+D   DIR        Alt+H   Refresh
-
-  (Page buttons navigate by clicking the MFD's own page-selector menu items, so
-  they work whether or not the dropdown is open.)
-
-  Revising the flight plan (on the F-PLN page):
-   - Each waypoint line ends with "waypoint" — it is actionable. Enter on it opens
-     that waypoint's revision menu (DIR TO, INSERT NEXT WPT, DELETE, HOLD, AIRWAYS,
-     OVERFLY). The menu choices then appear below as "option" lines — arrow to one
-     and Enter. Disabled choices read "dimmed".
-   - A gap in the route reads "DISCONTINUITY, button". To clear it: Enter on that
-     line, then arrow to "DELETE *" and Enter — the two legs join.
-   - Some revisions stage a TMPY plan: scroll to the bottom and Enter "TMPY INSERT"
-     to commit (or "TMPY ERASE" to cancel).
-
-  Loading a SimBrief / company flight plan (on the INIT page, Alt+I):
-   1. Arrow to "CPNY F-PLN REQUEST" and Enter to request it (needs your SimBrief
-      user ID set in the flyPad). Wait for the scratchpad: "COMPANY F-PLN RECEIVED
-      WAITING FOR INSERTION".
-   2. The button now reads "RECEIVED CPNY F-PLN" — Enter on it to open a small
-      menu, arrow to "INSERT*" and Enter. The whole route loads (flight number,
-      from/to, alternate, cruise level, cost index all fill in from SimBrief).
-   3. FLT NBR, the destination, and ALTN stay editable afterwards if you want to
-      change them — arrow to the field, type, Enter. (Forgetting to type them
-      first is fine; SimBrief fills them in on insert.)
-   4. Departure runway + SID: Alt+F (F-PLN) then the DEPARTURE button, choose RWY,
-      then SID, then "INSERT TMPY *" to commit. (Runway/SID changes use a
-      temporary plan you confirm with INSERT TMPY; the SimBrief route itself does
-      not.)
-   5. Arrival (STAR / approach): on the F-PLN page, page down (Ctrl+Down) to the
-      destination airport line at the END of the route, activate it, choose
-      ARRIVAL, then pick the approach / STAR / VIA, and INSERT TMPY. (The bottom
-      "DEST OMDB" summary line is just a readout — it does not open the revision.)
-
-  Landing-rollout safety call-outs (announced automatically, no key): on approach
-  and rollout MSFSBA speaks the A380's runway-overrun protection — "Runway too
-  short", "If wet, runway too short", "Max braking" — and "Runway ahead" when you
-  taxi toward a runway. These come straight from the aircraft's ROW/ROP and OANS
-  systems, the same logic that drives the PFD warnings.
+  Page buttons (Alt+letter)
+  Alt+I  INIT     Alt+F  F-PLN    Alt+P  PERF
+  Alt+R  RAD NAV  Alt+S  SEC FPL  Alt+A  ATC COM
+  Alt+D  DIR      Alt+H  Refresh
 
 
-General:
-  Escape     Exit active hotkey mode
+INSIDE THE LIVE CHECKLIST (ECL) WINDOW
+  Alt+S         Show / hide the checklist
+  Up / Down     Move the checklist cursor and read each line
+  Enter / Alt+C Open the highlighted checklist, or tick the highlighted item
+  Alt+L         Clear / back to the menu
+  Alt+A         Open the abnormal-procedure list
+  F5            Refresh
 
-Notes:
-  - There is no FCU knob hardware difference to worry about: the A380 reuses the
-    same FCU set/read flow as the A320.
-  - Many overhead/pedestal systems are A380-specific (4 engines, Green/Yellow
-    hydraulics, 11 fuel tanks with transfer + jettison, PRIM/SEC flight-control
-    computers, BTV autobrake, 3 RMP radios). All are in the Sections/Panels tree.
-  - This is a development build; some control or readout names may not match
-    perfectly. Report anything that reads or sets wrong.
+Thrust levers auto-announce the detent reached (Idle / Climb / Flex MCT / TOGA /
+Reverse). Most cockpit controls are in the Sections/Panels lists (Ctrl+1/Ctrl+2).
+Full explanations: docs/a380-manual.html.
