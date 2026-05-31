@@ -390,6 +390,7 @@ public class FBWA380MCDUForm : Form
                 case "kind":     el.Kind = kv.Value; break;
                 case "value":    el.Value = kv.Value; break;
                 case "disabled": el.Disabled = kv.Value == "true"; break;
+                case "expandstate": el.ExpandState = kv.Value; break;
             }
         }
         _elements = byPos.Values.ToList();
@@ -432,11 +433,15 @@ public class FBWA380MCDUForm : Form
                 // when read aloud, so it is no longer shown (el.Index is still used
                 // internally to click the right element).
                 string role = AnnounceRoles ? RoleWord(el.Kind) : "";
+                // Combo boxes announce whether their option list is open, e.g.
+                // "RWY: 30R, combo box, collapsed" → press Enter → "… expanded".
+                string state = el.ExpandState.Length > 0 ? $", {el.ExpandState}" : "";
                 // Tell the user a control is unavailable, so a no-op activation
                 // reads as "dimmed" rather than "broken". (Matches the flyPad
                 // browser view, which also says "dimmed".)
-                string suffix = el.Disabled ? (role.Length > 0 ? $", {role}, dimmed" : ", dimmed")
-                                             : (role.Length > 0 ? $", {role}" : "");
+                string suffix = el.Disabled
+                    ? (role.Length > 0 ? $", {role}{state}, dimmed" : $"{state}, dimmed")
+                    : (role.Length > 0 ? $", {role}{state}" : state);
                 lines.Add($"{el.Text}{suffix}");
             }
             else
@@ -736,5 +741,7 @@ public class FBWA380MCDUForm : Form
         public string Kind = "";
         public string Value = "";
         public bool Disabled;
+        // "expanded" / "collapsed" for combo boxes; "" for everything else.
+        public string ExpandState = "";
     }
 }

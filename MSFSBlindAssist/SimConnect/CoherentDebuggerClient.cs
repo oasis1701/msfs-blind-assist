@@ -295,7 +295,7 @@ namespace MSFSBlindAssist.SimConnect
             // items.N.index carries the agent's stable handle (0 = static text).
             var elements = result.elements ?? new List<ScrapeElement>();
             var sb = new StringBuilder(result.mcdu + "|" + elements.Count + "|");
-            foreach (var e in elements) sb.Append(e.idx).Append(':').Append(e.text).Append('/').Append(e.value).Append('/').Append(e.disabled ? '1' : '0').Append('|');
+            foreach (var e in elements) sb.Append(e.idx).Append(':').Append(e.text).Append('/').Append(e.value).Append('/').Append(e.disabled ? '1' : '0').Append('/').Append(e.expanded == true ? 'E' : e.expanded == false ? 'c' : '-').Append('|');
             string elHash = sb.ToString();
             if (elHash != _lastElementsHash)
             {
@@ -312,6 +312,9 @@ namespace MSFSBlindAssist.SimConnect
                     data[$"items.{i}.kind"] = elements[i].kind ?? "";
                     data[$"items.{i}.value"] = elements[i].value ?? "";
                     data[$"items.{i}.disabled"] = elements[i].disabled ? "true" : "false";
+                    // Combo-box open state: "expanded" / "collapsed" / "" (not a combo).
+                    data[$"items.{i}.expandstate"] = elements[i].expanded == true ? "expanded"
+                                                   : elements[i].expanded == false ? "collapsed" : "";
                 }
                 Raise("fbwa380_mcdu_elements", data);
             }
@@ -467,6 +470,9 @@ namespace MSFSBlindAssist.SimConnect
             public string? text { get; set; }
             public string? value { get; set; }
             public bool disabled { get; set; }
+            // Tri-state for combo boxes: true = option list open, false = collapsed,
+            // null = not a combo box (no state announced).
+            public bool? expanded { get; set; }
         }
     }
 }

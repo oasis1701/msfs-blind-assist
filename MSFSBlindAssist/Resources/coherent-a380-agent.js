@@ -520,6 +520,28 @@
     return idx;
   };
 
+  // True/false when `n` is an expandable combo box and whether its option list is
+  // currently shown, else implicitly used only for combos. The FBW dropdown button
+  // gains an "opened" class and its sibling .mfd-dropdown-menu flips to
+  // display:block when expanded (MsfsAvionicsCommon DropdownMenu.tsx). Verified
+  // live: collapsed button = "mfd-button", expanded = "mfd-button opened" + menu
+  // display:block.
+  A.comboExpanded = function (n) {
+    var p = n, menu = null;
+    for (var k = 0; k < 6 && p; k++) {
+      var pc = (p.className && p.className.toString) ? p.className.toString() : "";
+      if (/(^| )opened( |$)/.test(pc)) return true;
+      if (!menu && pc.indexOf("mfd-dropdown-container") >= 0) menu = p.querySelector(".mfd-dropdown-menu");
+      p = p.parentElement;
+    }
+    if (menu) {
+      var d;
+      try { d = getComputedStyle(menu).display; } catch (e) { d = menu.style ? menu.style.display : ""; }
+      if (d && d !== "none") return true;
+    }
+    return false;
+  };
+
   A.enumerateLines = function (root) {
     var stale = root.querySelectorAll("[data-fbwa380-mcdu-idx]");
     for (var s = 0; s < stale.length; s++) stale[s].removeAttribute("data-fbwa380-mcdu-idx");
@@ -542,13 +564,18 @@
       if (kind !== "input" && label.length === 0) continue;
       n.setAttribute("data-fbwa380-mcdu-idx", String(idx));
       var r = n.getBoundingClientRect();
+      var isChoice = kind === "input" && !!A.ancestorWithClass(n, "mfd-dropdown-outer");
+      // For combo boxes, report whether the option list is open so the screen
+      // reader can say "combo box, collapsed" / "expanded".
+      var isCombo = kind === "dropdown" || isChoice;
       items.push({
         top: r.top - pageRect.top, left: r.left - pageRect.left,
         right: r.right - pageRect.left, bot: r.bottom - pageRect.top,
         idx: idx, kind: kind, text: label,
         value: kind === "input" ? A.readInputValue(n) : "",
-        isChoice: kind === "input" && !!A.ancestorWithClass(n, "mfd-dropdown-outer"),
-        disabled: n.classList.contains("disabled")
+        isChoice: isChoice,
+        disabled: n.classList.contains("disabled"),
+        expanded: isCombo ? A.comboExpanded(n) : null
       });
       idx++;
     }

@@ -277,6 +277,8 @@ A380 MCDU / MFD Window (open with Input mode, then Shift+M):
   Up/Down Arrow   Move through the lines
   Enter           Activate the selected line; if you typed into the scratchpad
                   first, the text is sent to the selected field
+                  (A combo box reads "collapsed" when closed; Enter opens it and
+                  it reads "expanded", with its choices listed just below.)
   (type)          Type into the scratchpad edit box, then Enter to send
   Backspace       CLR (clears the scratchpad first, then the selected field)
   Ctrl+Up         Previous page (PageUp also works)
