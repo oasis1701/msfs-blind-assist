@@ -118,9 +118,6 @@
     <None Update="Resources\hs787-efb-bridge.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="Resources\a32nx-efb-accessibility-bridge.js">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
     <None Update="Resources\coherent-a32nx-flypad-agent.js">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
