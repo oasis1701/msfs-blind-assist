@@ -91,9 +91,21 @@ Also:
 
 - **Ctrl+Up / Page Up** — previous page
 - **Ctrl+Down / Page Down** — next page
-- **Units** button (Alt+U) — toggles the FMS/EFB display units between **metric**
-  and **imperial** (weights and distances). MSFSBA announces the new setting
-  ("Metric units" / "Imperial units") and re-reads the page in the chosen units.
+- **Units** button (Alt+U) — toggles the **weight unit MSFSBA reads out**, between
+  **kilograms** and **pounds**, instantly. After pressing it, the **Read Gross
+  Weight** and **Read Fuel Quantity** hotkeys and the gross-weight/total-fuel panel
+  fields read in the chosen unit (MSFSBA announces "Weights in kilograms" /
+  "Weights in pounds").
+
+  This is a MSFSBA read-out preference; it does **not** change the aircraft's own
+  FMS/EFB display units. To change those (so the cockpit displays and the MCDU's
+  own fuel/weight fields switch), use the **flyPad EFB → Settings → Aircraft
+  Options → "US Units"** toggle (Shift+T) — MSFSBA then follows it automatically.
+  On connecting, MSFSBA seeds its read-out unit from the aircraft's current
+  setting. Note the FlyByWire units setting only affects **weights** (fuel, ZFW,
+  gross weight, payload) and short runway/BTV distances — **not** altitude (that's
+  a separate metric-altitude option), speed, or nautical-mile route distance, so
+  altitude read-outs are unchanged by it.
 
 Some pages (WIND, REPORT, GNSS, TIME, the DATA sub-pages) only open once the FMS
 has the flight plan or data they need — that is the real aircraft behaviour, not

@@ -2381,9 +2381,7 @@ public partial class MainForm : Form
         {
             fbwA380MCDUForm = new Forms.FBWA380.FBWA380MCDUForm(
                 bridge, announcer,
-                currentAircraft as Aircraft.FlyByWireA380Definition,
-                // Direct MFD-context eval for the units toggle (EFB persistent store).
-                coherentClient != null ? coherentClient.EvalForResultAsync : null);
+                currentAircraft as Aircraft.FlyByWireA380Definition);
         }
         fbwA380MCDUForm.ShowForm();
     }

@@ -560,6 +560,23 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Stock("KOHLSMAN_HG", "KOHLSMAN SETTING HG", "Altimeter", "inHg");
         Stock("GROSS_WEIGHT_KG", "TOTAL WEIGHT", "Gross Weight", "kilograms");
 
+        // Metric/imperial WEIGHT unit (kg vs lb). `CONFIG_USING_METRIC_UNIT` (the
+        // flyPad Units toggle, Alt+U) is an EFB persistent setting that the EFB
+        // continuously mirrors to L:var `A32NX_EFB_USING_METRIC_UNIT` (fbw-common
+        // EFB/Settings/sync.ts). MSFSBA reads its OWN raw kg simvars, so it bypasses
+        // the FMS/EFB display conversion — registering this lets every MSFSBA weight
+        // readout honour the pilot's choice (gross weight, total fuel, fuel flow).
+        // Per FBW `NXUnits`, the toggle ONLY affects WEIGHTS (kg/lb) and short
+        // distances (m/ft) — NOT altitude (that's A32NX_METRIC_ALT_TOGGLE), speed,
+        // or NM route distance. Continuous so it tracks live; announce handled in
+        // ProcessSimVarUpdate ("Weight units kilograms/pounds" on change).
+        vars["A32NX_EFB_USING_METRIC_UNIT"] = new SimVarDefinition
+        {
+            Name = "A32NX_EFB_USING_METRIC_UNIT", DisplayName = "Weight Units",
+            Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.Continuous,
+            IsAnnounced = true
+        };
+
         // ECAM System Display (SD) window read sources — raw doubles (the window
         // decodes the ARINC429 words itself). Registered on-request, add-if-absent
         // so existing defs (e.g. engine vars) are not clobbered. The window
@@ -2379,10 +2396,16 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             string spoken;
             if (_readoutMap != null && _readoutMap.TryGetValue(Math.Round(value), out var dsc))
                 spoken = lbl + " " + dsc;
+            else if (_readoutIsWeight)
+            {
+                // The raw var is kilograms; speak it in the pilot's selected unit.
+                var (wv, wu) = WeightUser(value);
+                spoken = $"{lbl} {wv:0} {wu}";
+            }
             else
                 spoken = string.IsNullOrEmpty(_readoutUnit) ? $"{lbl} {value:0}" : $"{lbl} {value:0} {_readoutUnit}";
             announcer.AnnounceImmediate(spoken);
-            _readoutKey = null; _readoutMap = null;
+            _readoutKey = null; _readoutMap = null; _readoutIsWeight = false;
             return true;
         }
         // Live EFIS baro auto-announce — spoken as the pilot turns the knob, in
@@ -2458,7 +2481,24 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         if (_reqGw && varName == "GROSS_WEIGHT_KG")
         {
             _reqGw = false;
-            announcer.AnnounceImmediate($"Gross weight {value:0} kilograms");
+            var (gw, gwu) = WeightUser(value);
+            announcer.AnnounceImmediate($"Gross weight {gw:0} {gwu}");
+            return true;
+        }
+        // Weight-unit selection (kg/lb) mirror of the EFB "US Units" toggle. Seed
+        // MSFSBA's read-out unit from the aircraft on first read (silent); on a
+        // genuine AIRCRAFT change (someone flipped it in the flyPad EFB Settings),
+        // follow it and announce. The MCDU "Units" button changes _metricWeight
+        // directly without touching _aircraftMetric, so it never fights this.
+        if (varName == "A32NX_EFB_USING_METRIC_UNIT")
+        {
+            bool m = value > 0.5;
+            if (!_metricKnown) { _metricKnown = true; _aircraftMetric = m; _metricWeight = m; return true; }
+            if (m != _aircraftMetric)
+            {
+                _aircraftMetric = m; _metricWeight = m;
+                announcer.Announce($"Weight units {(m ? "kilograms" : "pounds")}");
+            }
             return true;
         }
 
@@ -2937,6 +2977,18 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                     : $"{(deg > 0 ? "Left" : "Right")} {Math.Abs(deg):0.0} degrees";
                 return true;
             }
+            // Weight panel fields — show in the pilot's selected unit (kg/lb), the
+            // same choice the EFB Units toggle drives. The raw simvars are kg.
+            case "GROSS_WEIGHT_KG":
+            case "A32NX_TOTAL_FUEL_QUANTITY":
+            {
+                var (wv, wu) = WeightUser(value);
+                displayText = $"{wv:0} {wu}";
+                return true;
+            }
+            case "A32NX_EFB_USING_METRIC_UNIT":
+                displayText = value > 0.5 ? "Kilograms (metric)" : "Pounds (imperial)";
+                return true;
         }
         return false;
     }
@@ -2967,14 +3019,36 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     // request the var, then announce "<label> <value> <unit>" (or a mapped word)
     // when it arrives in ProcessSimVarUpdate.
     private string? _readoutKey, _readoutLabel, _readoutUnit;
+    private bool _readoutIsWeight;
     private Dictionary<double, string>? _readoutMap;
     private static readonly Dictionary<double, string> _apprCapMap = new Dictionary<double, string>
     { [0] = "None", [1] = "CAT 1", [2] = "CAT 2", [3] = "CAT 3 Single", [4] = "CAT 3 Dual" };
 
-    private void RequestReadout(SimConnectManager s, string key, string label, string unit = "", Dictionary<double, string>? map = null)
+    // Weight-unit state. `_metricWeight` is MSFSBA's EFFECTIVE read-out unit (what
+    // the GW/fuel read-outs use); `_aircraftMetric` tracks the aircraft's own
+    // setting via the EFB L:var mirror A32NX_EFB_USING_METRIC_UNIT. They are kept
+    // separate so the MCDU "Units" button (a local, instant MSFSBA preference) and
+    // the live L:var monitor don't fight: the monitor only re-syncs on a genuine
+    // AIRCRAFT change. Default kg (Airbus default); `_metricKnown` gates the first
+    // silent sync so connecting doesn't announce a "change".
+    private bool _metricWeight = true;
+    private bool _aircraftMetric = true;
+    private bool _metricKnown;
+
+    /// <summary>Convert a kilograms value to the pilot's selected weight unit + spoken word.</summary>
+    private (double value, string unit) WeightUser(double kg)
+        => _metricWeight ? (kg, "kilograms") : (kg * 2.204625, "pounds");
+
+    /// <summary>True if MSFSBA is currently reading weights in kilograms.</summary>
+    public bool MetricWeight => _metricWeight;
+
+    /// <summary>Flip MSFSBA's weight read-out unit (kg ⇄ lb) instantly; returns the new state (true = kg).</summary>
+    public bool ToggleMetricWeight() { _metricWeight = !_metricWeight; _metricKnown = true; return _metricWeight; }
+
+    private void RequestReadout(SimConnectManager s, string key, string label, string unit = "", Dictionary<double, string>? map = null, bool weight = false)
     {
         if (!s.IsConnected) return;
-        _readoutKey = key; _readoutLabel = label; _readoutUnit = unit; _readoutMap = map;
+        _readoutKey = key; _readoutLabel = label; _readoutUnit = unit; _readoutMap = map; _readoutIsWeight = weight;
         s.RequestVariable(key, forceUpdate: true);
     }
 
@@ -3043,7 +3117,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             case HotkeyAction.ReadSpeedS: RequestReadout(simConnect, "A32NX_SPEEDS_S", "S speed", "knots"); return true;
             case HotkeyAction.ReadSpeedVS: RequestReadout(simConnect, "A32NX_SPEEDS_VS", "V S", "knots"); return true;
             case HotkeyAction.ReadSpeedVFE: RequestReadout(simConnect, "A32NX_SPEEDS_VFEN", "V F E next", "knots"); return true;
-            case HotkeyAction.ReadFuelQuantity: RequestReadout(simConnect, "A32NX_TOTAL_FUEL_QUANTITY", "Total fuel", "kilograms"); return true;
+            case HotkeyAction.ReadFuelQuantity: RequestReadout(simConnect, "A32NX_TOTAL_FUEL_QUANTITY", "Total fuel", "kilograms", weight: true); return true;
             case HotkeyAction.ReadApproachCapability: RequestReadout(simConnect, "A32NX_APPROACH_CAPABILITY", "Approach capability", "", _apprCapMap); return true;
             case HotkeyAction.ShowPFD:
                 hotkeyManager.ExitOutputHotkeyMode();
