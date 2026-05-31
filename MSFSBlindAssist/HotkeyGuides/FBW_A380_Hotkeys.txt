@@ -81,8 +81,20 @@ Thrust levers: moving the levers announces the detent reached (Idle / Climb /
   Flex MCT / TOGA / Reverse). You can also set a detent from the Thrust Levers
   panel (All Thrust Levers, or per engine) in the Pedestal section.
 
-Checklist (Output mode then the checklist key) loads the A380 cold-and-dark to
-  shutdown checklist. A step-by-step MCDU guide is in docs/a380-mcdu-guide.md.
+Checklist (Output mode then the checklist key) opens the LIVE Electronic
+  Checklist (ECL) window — it reads the aircraft's own normal checklists and any
+  active ECAM abnormal procedure straight from the E/WD, so it always matches the
+  real cockpit. Arrow through the lines to read each step; items announce
+  "<step>, checked" automatically as the aircraft senses you complete them (set
+  the park brake and PARK BRK ON ticks itself). Buttons mirror the cockpit ECP
+  push-buttons: Show / Hide (C/L), Check item, Up, Down, Clear, Abnormal. F5
+  refreshes, Escape closes.
+  Note: picking a checklist from the menu and ticking an individual line by hand
+  use the cockpit cursor (a FlyByWire limitation) — but reading the whole
+  procedure and performing each action on the system panels work fully, and
+  abnormal procedures present automatically when a failure occurs.
+  The static cold-and-dark-to-shutdown text checklist and a step-by-step MCDU
+  guide are in docs/a380-mcdu-guide.md.
 
 
 OUTPUT MODE - Press right bracket to activate
