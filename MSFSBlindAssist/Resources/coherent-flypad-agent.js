@@ -418,6 +418,21 @@
   // one per line, in reading order, de-duplicated. Interactive/clickable items
   // get a stable index stamped on the node (data-fbwa380-efb-idx) so clicks and
   // value sets can find them again.
+  // True on the EFB Dashboard ("Your Flight" + "Important Information" two-column
+  // layout). Detected by the FlightWidget's heading so it survives the user
+  // reordering the right-column reminder sections. Used to switch enumerate() to a
+  // column-first read order (left widget fully, then right widget).
+  A.isDashboard = function (root) {
+    try {
+      var hs = root.getElementsByTagName("h1");
+      for (var i = 0; i < hs.length; i++) {
+        var t = clean(hs[i].textContent);
+        if (t && t.indexOf("Your Flight") >= 0) return true;
+      }
+    } catch (e) {}
+    return false;
+  };
+
   A.enumerate = function (root) {
     var stale = root.querySelectorAll("[data-fbwa380-efb-idx]");
     for (var s = 0; s < stale.length; s++) stale[s].removeAttribute("data-fbwa380-efb-idx");
@@ -518,9 +533,27 @@
       it._row = row;
       lastTop = it.top; lastNav = it.navRail;
     }
-    items.sort(function (a, b) {
-      return ((a.navRail ? 1 : 0) - (b.navRail ? 1 : 0)) || (a._row - b._row) || (a.left - b.left);
-    });
+
+    // The Dashboard is a TWO-COLUMN layout: left = "Your Flight" (FlightWidget),
+    // right = "Important Information" (RemindersWidget: Weather / Pinned Charts /
+    // Maintenance / Checklists). A plain row-by-row, left-to-right read interleaves
+    // the two columns into a jumble ("Your Flight ... Weather ... ZFW ... DUBAI ..."),
+    // so for the Dashboard ONLY we read the entire left column top-to-bottom, then
+    // the entire right column — each widget then reads as one coherent block under
+    // its own heading. Other pages (Settings rows, etc.) keep the row-wise order so
+    // a setting name and its control stay together on one line.
+    var dashMid = A.isDashboard(root) ? (rootRect.width * 0.48) : -1;
+    if (dashMid > 0) {
+      for (var ci = 0; ci < items.length; ci++)
+        items[ci]._col = (!items[ci].navRail && items[ci].left > dashMid) ? 1 : 0;
+      items.sort(function (a, b) {
+        return ((a.navRail ? 1 : 0) - (b.navRail ? 1 : 0)) || (a._col - b._col) || (a._row - b._row) || (a.left - b.left);
+      });
+    } else {
+      items.sort(function (a, b) {
+        return ((a.navRail ? 1 : 0) - (b.navRail ? 1 : 0)) || (a._row - b._row) || (a.left - b.left);
+      });
+    }
 
     items = A.dedupe(items);
     A._elements = items;

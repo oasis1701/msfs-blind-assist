@@ -172,12 +172,13 @@
 
   // The A380 MFD fills an empty entry field with U+25AF boxes (one per character
   // slot). A screen reader would read each as "white vertical rectangle". Render
-  // a field that's ONLY boxes + template punctuation as "(empty)"; for a
-  // partially-typed field, drop the leftover boxes. (The ▯ below is the literal
-  // U+25AF char; keep this file UTF-8.)
+  // a field that's ONLY boxes + template punctuation as "blank" (these are
+  // editable fields, so "blank" reads better than "empty"); for a partially-typed
+  // field, drop the leftover boxes. (The ▯ below is the literal U+25AF char; keep
+  // this file UTF-8.)
   A.normEmptyBoxes = function (v) {
     if (!v || v.indexOf("▯") < 0) return v;
-    if (/^[▯\s.\/:+\-]*$/.test(v)) return "(empty)";
+    if (/^[▯\s.\/:+\-]*$/.test(v)) return "blank";
     return clean(v.replace(/▯/g, ""));
   };
 
@@ -191,7 +192,7 @@
         var lbl = clean(label.textContent);
         if (lbl) text = lbl + ": " + text;
       }
-      return text || "(empty)";
+      return text || "blank";
     }
     if (kind === "button" || kind === "icon" || kind === "menu") {
       var t = clean(node.textContent);
@@ -200,7 +201,7 @@
     }
     if (kind === "dropdown") {
       var di = node.querySelector(".mfd-dropdown-inner");
-      return clean(di ? di.textContent : node.textContent) || "(empty dropdown)";
+      return clean(di ? di.textContent : node.textContent) || "blank";
     }
     if (kind === "tab") {
       var t = node.querySelector(".mfd-page-selector-label");
@@ -249,8 +250,8 @@
   };
 
   // Short label for an interactive control, ONE thing per line (no positional
-  // grid). Inputs show their current value (or "(empty)"); the field's text
-  // label, if any, is reported separately as its own static line above it.
+  // grid). Inputs show their current value (or "blank" when an editable field is
+  // empty); the field's text label, if any, is reported separately above it.
   A.lineText = function (n, kind) {
     if (kind === "input") {
       var v = A.readInputValue(n);
@@ -258,7 +259,7 @@
       // value from a list — many, like ATC COM "NOTIFY TO ATC", don't accept
       // free text at all). Flag it so it doesn't read as a plain text box.
       var choice = A.ancestorWithClass(n, "mfd-dropdown-outer") ? " (combobox)" : "";
-      return (v || "(empty)") + choice;
+      return (v || "blank") + choice;
     }
     if (kind === "dropdown") {
       var di = n.querySelector(".mfd-dropdown-inner");
@@ -342,7 +343,7 @@
       }
       if (best) {
         var val = inp.value || inp.text || "";
-        inp.text = clean(best.text) + ": " + (val || "(empty)") + (inp.isChoice ? " (combobox)" : "");
+        inp.text = clean(best.text) + ": " + (val || "blank") + (inp.isChoice ? " (combobox)" : "");
         best.consumed = true;
       }
     }
@@ -366,7 +367,7 @@
       if (n.querySelector(A.INTERACTIVE_SELECTOR)) continue;
       var kind = A.classify(n);
       var label = A.lineText(n, kind);
-      // Drop empty non-input controls (noise). Empty inputs stay as "(empty)".
+      // Drop empty non-input controls (noise). Empty inputs stay (read "blank").
       if (kind !== "input" && label.length === 0) continue;
       n.setAttribute("data-fbwa380-mcdu-idx", String(idx));
       var r = n.getBoundingClientRect();

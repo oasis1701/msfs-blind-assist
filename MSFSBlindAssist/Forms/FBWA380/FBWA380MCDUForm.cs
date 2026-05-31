@@ -411,10 +411,11 @@ public class FBWA380MCDUForm : Form
 
     private void RefreshDisplay()
     {
-        // One thing per line. Interactive elements are numbered ("N: <label>")
-        // so the user can act on them; static text lines carry no number.
-        // Completely empty lines are dropped. _displayedElements is kept 1:1
-        // with the rendered lines so the selected row maps to the right element.
+        // One thing per line. Interactive elements carry a trailing role word
+        // ("<label>, button" / ", edit" / …) so the user can tell what they can
+        // act on; static text lines carry no role word. Completely empty lines are
+        // dropped. _displayedElements is kept 1:1 with the rendered lines so the
+        // selected row maps to the right element.
         _displayedElements = new List<McduElement>(_elements.Count);
         var lines = new List<string>(_elements.Count);
         foreach (var el in _elements)
@@ -423,16 +424,20 @@ public class FBWA380MCDUForm : Form
             _displayedElements.Add(el);
             if (el.Index > 0)
             {
-                // Numbered = actionable. Append a role word so the screen reader
-                // tells the user what it is (a ListBox renders plain strings, so
-                // it doesn't get the automatic role a native control would).
+                // Actionable element. Append a role word so the screen reader tells
+                // the user what it is (a ListBox renders plain strings, so it
+                // doesn't get the automatic role a native control would). The role
+                // word ("button"/"edit"/…) is what marks a line as actionable — the
+                // old leading "N:" index was an internal handle and just added noise
+                // when read aloud, so it is no longer shown (el.Index is still used
+                // internally to click the right element).
                 string role = AnnounceRoles ? RoleWord(el.Kind) : "";
                 // Tell the user a control is unavailable, so a no-op activation
                 // reads as "dimmed" rather than "broken". (Matches the flyPad
                 // browser view, which also says "dimmed".)
                 string suffix = el.Disabled ? (role.Length > 0 ? $", {role}, dimmed" : ", dimmed")
                                              : (role.Length > 0 ? $", {role}" : "");
-                lines.Add($"{el.Index}: {el.Text}{suffix}");
+                lines.Add($"{el.Text}{suffix}");
             }
             else
             {

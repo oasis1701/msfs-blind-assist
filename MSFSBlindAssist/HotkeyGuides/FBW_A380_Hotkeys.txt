@@ -102,6 +102,22 @@ Checklist (Output mode then the checklist key) opens the LIVE Electronic
   park brake and PARK BRK ON ticks itself, announced as "PARK BRK ON, checked").
   Abnormal procedures present automatically when a failure occurs. F5 refreshes,
   Escape closes.
+
+  Which way do I access checklists? Use the Checklist hotkey above — that window
+  IS the workflow. You do NOT go through a combo box. The ECAM Control Panel does
+  have a "Checklist" entry (and Up / Down / Abnormal Proc / Clear), but those are
+  just the physical ECP push-buttons: the "Checklist" one only toggles the
+  checklist ON the E/WD screen (same as the window's Show / hide). It does not let
+  you read or tick anything. There is nothing to "set" in that combo and then Tab
+  to — everything you need (reading lines, opening a checklist, ticking items) is
+  in the Checklist window, driven by the arrow keys and Enter as described above.
+
+  Note on the flyPad's own Checklists page (the tablet has one too): that page is
+  a SEPARATE, tablet-only tracker. Ticking items there does not touch the real
+  aircraft, and the aircraft's E/WD checklist does not tick from it. Use the
+  Checklist window above for the real checklists. (The flyPad's "auto-fill
+  checklists" Realism setting only auto-marks the tablet's own page.)
+
   The static cold-and-dark-to-shutdown text checklist and a step-by-step MCDU
   guide are in docs/a380-mcdu-guide.md.
 
@@ -239,9 +255,10 @@ Ground Services:
 A380 MCDU / MFD Window (open with Input mode, then Shift+M):
 
   The A380 "MCDU" is the MFD — a cursor-driven display. The window shows one
-  thing per line; numbered lines are actionable (button "1: PERF, button", edit
-  field "3: 195.3, edit", menu "2: FMS 1, menu"); un-numbered lines are static
-  text. The page title is announced once when the page changes; the scratchpad /
+  thing per line. Actionable lines end with a role word — a button ("PERF,
+  button"), an edit field ("CI: 60, edit"), or a menu ("INSERT*, menu"); lines
+  with no role word are static text. An empty editable field reads as "blank".
+  The page title is announced once when the page changes; the scratchpad /
   message line is announced when it changes.
 
   Reaching pages — three ways, all keyboard accessible:
@@ -273,6 +290,21 @@ A380 MCDU / MFD Window (open with Input mode, then Shift+M):
 
   (Page buttons navigate by clicking the MFD's own page-selector menu items, so
   they work whether or not the dropdown is open.)
+
+  Loading a SimBrief / company flight plan (on the INIT page, Alt+I):
+   1. Arrow to "CPNY F-PLN REQUEST" and Enter to request it (needs your SimBrief
+      user ID set in the flyPad). Wait for the scratchpad: "COMPANY F-PLN RECEIVED
+      WAITING FOR INSERTION".
+   2. The button now reads "RECEIVED CPNY F-PLN" — Enter on it to open a small
+      menu, arrow to "INSERT*" and Enter. The whole route loads (flight number,
+      from/to, alternate, cruise level, cost index all fill in from SimBrief).
+   3. FLT NBR, the destination, and ALTN stay editable afterwards if you want to
+      change them — arrow to the field, type, Enter. (Forgetting to type them
+      first is fine; SimBrief fills them in on insert.)
+   4. Departure runway + SID: Alt+F (F-PLN) then the DEPARTURE button, choose RWY,
+      then SID, then "INSERT TMPY *" to commit. (Runway/SID changes use a
+      temporary plan you confirm with INSERT TMPY; the SimBrief route itself does
+      not.)
 
 
 General:
