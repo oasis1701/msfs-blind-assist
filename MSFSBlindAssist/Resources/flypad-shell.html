@@ -134,14 +134,28 @@
     if (e.clickable){ setText(c, e.text || "(button)"); c.disabled = !!e.disabled; return; }
   }
 
+  // Last page rendered — drives the full-teardown-on-page-change guard in render().
+  var _renderedPage = null;
+
   // Keyed in-place reconciliation. Reusing nodes (instead of wiping innerHTML) is
-  // what keeps NVDA's browse cursor from resetting to the top on every update.
+  // what keeps NVDA's browse cursor from resetting to the top on every update — but
+  // ONLY within a single page. The agent re-stamps data-fbwa32nx-efb-idx from 1 in
+  // DOM order on EVERY scrape, so the reconcile key ("i"+idx) is NOT stable across
+  // pages: dashboard idx 3 and settings idx 3 are different elements. Reconciling
+  // across a page change therefore patches new controls onto stale same-idx nodes
+  // (and patchEl can't change a node's type), stranding leftover prior-page controls
+  // and dropping new ones — the "settings half-loads, dashboard stuff lingers" bug.
+  // So: on a page change, wipe and rebuild (a focus reset on a real page change is
+  // expected and correct); keep the keyed reconcile for same-page polls.
   function render(data){
     var root = document.getElementById("root");
     var raw = data.elements || [];
     var els = [];
     for (var i = 0; i < raw.length; i++){ if (isRenderable(raw[i])) els.push(raw[i]); }
-    root.setAttribute("aria-label", (data.page || "flyPad") + " page");
+    var page = data.page || "flyPad";
+    root.setAttribute("aria-label", page + " page");
+
+    if (page !== _renderedPage){ root.innerHTML = ""; _renderedPage = page; }  // page change → clean rebuild
 
     var existing = {};
     for (var j = 0; j < root.children.length; j++){
