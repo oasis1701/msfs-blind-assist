@@ -131,16 +131,10 @@ nul
 !nvda_controllerClient/
 !nvda_controllerClient/x64/
 !nvda_controllerClient/x64/nvdaControllerClient.dll
-# Private A380 flyPad/MCDU live-tour debugging scripts (local-only, not shipped)
-tools/coherent-eval.ps1
-tools/fp_run.ps1
-tools/fp_tour.ps1
-tools/fp_inspect.js
-tools/fp_scrape.js
-tools/mcdu_run.ps1
-tools/mcdu_tour.ps1
-tools/mcdu_scrape.js
-tools/_probe/
+# A380 flyPad/MCDU live Coherent debugging tools are now TRACKED — they're the
+# primary way to read/write L:vars and scrape the cockpit DOM against the running
+# sim, and genuinely useful to co-developers. See tools/_probe/README.md and the
+# header of tools/coherent-eval.ps1.
 
 # Local-only ECAM port workspace (downloaded FBW source + generators); ships as MSFSBlindAssist/SimConnect/EWDMessageLookupA380.cs
 tools/_fbw_ecam/
