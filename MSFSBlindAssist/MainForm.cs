@@ -36,6 +36,8 @@ public partial class MainForm : Form
     private MSFSBlindAssist.Services.PMDGProgPageMonitor? pmdgProgPageMonitor;
     private FenixMCDUForm? fenixMCDUForm;
     private FenixMCDUService? fenixMCDUService;
+    private MSFSBlindAssist.Forms.FlyByWireA320.FlyByWireMCDUForm? flyByWireMCDUForm;
+    private MSFSBlindAssist.Services.FlyByWireMCDUService? flyByWireMCDUService;
     private System.Windows.Forms.Form? pmdgCDUForm;
     private System.Windows.Forms.Form? pmdgEFBForm;
     private EFBBridgeServer? efbBridgeServer;
@@ -1606,6 +1608,10 @@ public partial class MainForm : Form
                 {
                     ShowHS787FMCDialog();
                 }
+                else if (currentAircraft?.AircraftCode == "A320")
+                {
+                    ShowFlyByWireMCDUDialog();
+                }
                 else
                 {
                     ShowFenixMCDUDialog();
@@ -2151,6 +2157,25 @@ public partial class MainForm : Form
 
         // Show the form (reuses same instance to preserve state)
         fenixMCDUForm.ShowForm();
+    }
+
+    private void ShowFlyByWireMCDUDialog()
+    {
+        // Deactivate input hotkey mode before showing dialog
+        hotkeyManager.ExitInputHotkeyMode();
+
+        if (flyByWireMCDUService == null)
+        {
+            flyByWireMCDUService = new MSFSBlindAssist.Services.FlyByWireMCDUService();
+            flyByWireMCDUService.Connect();
+        }
+
+        if (flyByWireMCDUForm == null || flyByWireMCDUForm.IsDisposed)
+        {
+            flyByWireMCDUForm = new MSFSBlindAssist.Forms.FlyByWireA320.FlyByWireMCDUForm(flyByWireMCDUService, announcer);
+        }
+
+        flyByWireMCDUForm.ShowForm();
     }
 
     private void ShowPMDGCDUDialog()
@@ -3824,6 +3849,18 @@ public partial class MainForm : Form
         {
             fenixMCDUService.Dispose();
             fenixMCDUService = null;
+        }
+
+        // Dispose FlyByWire MCDU form and service when switching aircraft
+        if (flyByWireMCDUForm != null && !flyByWireMCDUForm.IsDisposed)
+        {
+            flyByWireMCDUForm.Dispose();
+            flyByWireMCDUForm = null;
+        }
+        if (flyByWireMCDUService != null)
+        {
+            flyByWireMCDUService.Dispose();
+            flyByWireMCDUService = null;
         }
 
         // Dispose PMDG CDU form when switching aircraft
