@@ -62,6 +62,36 @@
     return root;
   };
 
+  // True when n carries a React onClick handler. React routes events through its
+  // own delegated system, so the handler lives in the fiber props (own key
+  // "__reactProps$…" on React 17, "__reactEventHandlers$…" on 16) — NOT as an
+  // onclick attribute or property. Lets us detect clickable <div>s that have no
+  // role / cursor-pointer / onclick (e.g. the Fuel page refuel start/stop button).
+  A.hasReactClick = function (n) {
+    try {
+      var ks = Object.keys(n);
+      for (var i = 0; i < ks.length; i++) {
+        if (ks[i].indexOf("__reactProps") === 0 || ks[i].indexOf("__reactEventHandlers") === 0) {
+          var p = n[ks[i]];
+          if (p && typeof p.onClick === "function") return true;
+        }
+      }
+    } catch (e) {}
+    return false;
+  };
+
+  // The Fuel page refuel button stacks two state icons in a FIXED order — PlayFill
+  // (start, index 0) shown when stopped, StopCircleFill (stop, index 1) shown when
+  // refuelling — and hides the inactive one with the `hidden` class. The first
+  // VISIBLE icon reports the state, so we never have to parse icon path data.
+  A.refuelIconStarted = function (n) {
+    try {
+      var svgs = n.querySelectorAll("svg");
+      for (var i = 0; i < svgs.length; i++) { if (A.isVisible(svgs[i])) return i > 0; }
+    } catch (e) {}
+    return false;
+  };
+
   // Returns one of: link, input, slider, checkbox, select, heading, toggle,
   // tab, button, or null (not an element we surface as its own line).
   A.classify = function (n) {
@@ -114,6 +144,15 @@
     // skips it when it also wraps a more specific control (containsInteractive).
     if (typeof n.onclick === "function") {
       try { if (n.querySelector && n.querySelector("h1,h2,h3,h4,h5,h6")) return "button"; } catch (e) {}
+    }
+    // Refuel start/stop button (Fuel page): a `bg-current` <div> whose only content
+    // is Play/Stop SVG icons — no text, no role, no cursor-pointer, and a React
+    // onClick (so no onclick property), so every rule above misses it. Match its
+    // distinctive bg-current + icon + react-onClick shape; labelFor names it from the
+    // visible icon. Kept narrow to bg-current so other pages aren't flooded with
+    // every React-clickable icon wrapper.
+    if (A.hasClassToken(n, "bg-current")) {
+      try { if (n.querySelector && n.querySelector("svg") && A.hasReactClick(n)) return "button"; } catch (e) {}
     }
     return null;
   };
@@ -276,6 +315,11 @@
     var href = (n.getAttribute && n.getAttribute("href")) || "";
     var heading = A.nearestHeading(n);
     if (base === "") {
+      // Refuel start/stop button (bg-current icon button): no text/aria/title — name
+      // it from the visible state icon (Play = start, Stop = stop).
+      if (A.hasClassToken(n, "bg-current")) {
+        return A.refuelIconStarted(n) ? "Stop refueling" : "Start refueling";
+      }
       // Numeric/value inputs on the flyPad carry NO aria/own text; their visible
       // label/unit (e.g. "PAX", "KGS") sits as the parent's own text next to the
       // field. Prefer that over the section heading, which mislabels every field
