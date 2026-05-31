@@ -126,7 +126,14 @@
     if (c.contains("mfd-surv-status-button")) return "survstatus";
     if (c.contains("mfd-surv-button")) return "surv";
     if (c.contains("mfd-adsc-button")) return "adsc";
-    if (c.contains("mfd-button")) return "button";
+    if (c.contains("mfd-button")) {
+      // A button carrying a dropdown arrow is really a COMBO BOX / collapsible
+      // list — activating it expands a list of options (RWY / SID / TRANS / APPR /
+      // STAR / VIA on the departure & arrival pages, plus SPD ALT, F-PLN INFO).
+      // Classify it as a dropdown so it reads as a combo box, not a plain button.
+      try { if (node.querySelector('[class*="dropdown-arrow"]')) return "dropdown"; } catch (e) {}
+      return "button";
+    }
     if (c.contains("mfd-icon-button")) return "icon";
     if (c.contains("mfd-dropdown-outer")) return "dropdown";
     if (c.contains("mfd-dropdown-menu-element") || c.contains("mfd-context-menu-element")) return "menu";

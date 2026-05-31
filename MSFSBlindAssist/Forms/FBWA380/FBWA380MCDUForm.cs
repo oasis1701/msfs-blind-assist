@@ -482,7 +482,7 @@ public class FBWA380MCDUForm : Form
         "button" => "button",
         "icon"   => "button",
         "input"  => "edit",
-        "dropdown" => "menu",
+        "dropdown" => "combo box",   // expands a list of choices when activated
         "menu"   => "option",
         "tab"    => "tab",
         "radio"  => "radio button",
