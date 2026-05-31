@@ -48,11 +48,18 @@
     return !!e.text;
   }
 
-  // Stable identity for keyed reconciliation. Interactive controls have a stable
-  // idx; static text/headings (idx 0) use their content as identity.
+  // Stable identity for keyed reconciliation. Use the element's CONTENT (kind +
+  // controlType + label), NOT the scrape idx. The agent re-stamps data-idx from 1 in
+  // DOM order on EVERY scrape, so idx is unstable across pages AND across Ground
+  // sub-tabs (Services/Fuel/Payload/Pushback all report page "Ground", so the
+  // page-change teardown in render() can't catch a sub-tab switch). Content keys keep
+  // a node stable across same-page polls — value changes are patched in place, not in
+  // the key — while a sub-tab/page switch cleanly adds the new controls and drops the
+  // old ones instead of cross-patching a Payload input onto a stale Fuel button (the
+  // "duplicate rate selector / leftover Start refueling on Payload" bug). The live
+  // data-idx used for click/setValue is carried on each control and patched in place.
   function keyOf(e){
-    if (e.idx && e.idx > 0) return "i" + e.idx;
-    return "s|" + e.kind + "|" + (e.text || "");
+    return e.kind + "|" + (e.controlType || "") + "|" + (e.text || "");
   }
 
   function buildEl(e){

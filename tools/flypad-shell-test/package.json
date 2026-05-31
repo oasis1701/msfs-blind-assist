@@ -1,0 +1,8 @@
+{
+  "name": "flypad-shell-test",
+  "version": "1.0.0",
+  "private": true,
+  "description": "jsdom regression tests for the FBW flyPad WebView2 shell reconcile (MSFSBlindAssist accessibility).",
+  "scripts": { "test": "node --test" },
+  "dependencies": { "jsdom": "^24.1.0" }
+}

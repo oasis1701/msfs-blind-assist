@@ -134,3 +134,4 @@ tools/fbw-mcdu-probe/node_modules/
 !nvda_controllerClient/
 !nvda_controllerClient/x64/
 !nvda_controllerClient/x64/nvdaControllerClient.dll
+tools/flypad-shell-test/node_modules/
