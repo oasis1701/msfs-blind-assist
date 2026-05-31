@@ -410,13 +410,42 @@
   // container and fold it into "IDENT, via AIRWAY, N NM, track T°, <constraint>,
   // ETA hh:mm", dropping empty/dash fields and the repeated airway name. Universal
   // to any A380 flight plan (class-driven, nothing hard-coded).
-  A.buildFplnLines = function (page, pageRect, items) {
+  A.buildFplnLines = function (page, pageRect, items, startIdx) {
+    var idx = startIdx;
     var lines = page.querySelectorAll(".mfd-fms-fpln-line");
     function cellText(L, sel) { var n = L.querySelector(sel); return n ? clean(n.textContent) : ""; }
     function isDash(s) { return !s || /^[-:.\s]+$/.test(s); }
     for (var i = 0; i < lines.length; i++) {
       var L = lines[i];
       if (!A.isVisible(L)) continue;
+      var lcls = (L.className && L.className.toString) ? L.className.toString() : "";
+
+      // SPECIAL lines (DISCONTINUITY / END OF F-PLN / NO ALTN F-PLN …) are drawn
+      // as a delimiter band ("- - - DISCONTINUITY - - -") with NO
+      // .mfd-fms-fpln-line-ident child, so the waypoint path below would skip them
+      // and the pilot would never know a discontinuity exists. Surface the label.
+      // The line div itself carries the lateral-revision click handler, so a
+      // DISCONTINUITY is made actionable (Enter → menu → DELETE * clears it).
+      // Other markers (END OF F-PLN …) open no menu, so they stay plain text.
+      if (lcls.indexOf("mfd-fms-fpln-line-special") >= 0) {
+        var slr = L.getBoundingClientRect();
+        var sp = L.querySelector("span");
+        var slabel = sp ? clean(sp.textContent) : clean(L.textContent);
+        slabel = clean(slabel.replace(/[-–—]+/g, " "));   // drop the dash band
+        if (!slabel) continue;
+        var sIdx = 0, sKind = "text";
+        if (/DISCON/i.test(slabel)) {
+          L.setAttribute("data-fbwa380-mcdu-idx", String(idx));
+          sIdx = idx; sKind = "fplndisc"; idx++;
+        }
+        items.push({
+          top: slr.top - pageRect.top, left: 0,
+          right: slr.right - pageRect.left, bot: slr.bottom - pageRect.top,
+          idx: sIdx, kind: sKind, text: slabel, value: "", disabled: false, fpln: true
+        });
+        continue;
+      }
+
       var ident = cellText(L, ".mfd-fms-fpln-line-ident");
       // Strip the "@" overfly marker the MFD glues to the ident (a visual symbol;
       // it reads as "at" otherwise). The waypoint name is what matters here.
@@ -470,13 +499,25 @@
       if (alt) parts.push(/^FL/.test(alt) ? "flight level " + alt.substring(2) : alt + " feet");
       if (eta) parts.push("ETA " + eta);
 
+      // Make the waypoint actionable: its ident cell carries the lateral-revision
+      // click handler, so Enter opens the revisions menu (FROM P.POS DIR TO,
+      // INSERT NEXT WPT, DELETE *, HOLD, AIRWAYS, OVERFLY *, DEPARTURE, ARRIVAL).
+      // Stamp the ident as the click target and give the line a real idx so the
+      // form treats it as a control (role word "waypoint"). Text is unchanged.
+      var identEl = L.querySelector(".mfd-fms-fpln-line-ident");
+      var wIdx = 0, wKind = "text";
+      if (identEl) {
+        identEl.setAttribute("data-fbwa380-mcdu-idx", String(idx));
+        wIdx = idx; wKind = "fplnwpt"; idx++;
+      }
       var r = lr;
       items.push({
         top: r.top - pageRect.top, left: 0,
         right: r.right - pageRect.left, bot: r.bottom - pageRect.top,
-        idx: 0, kind: "text", text: parts.join(", "), value: "", disabled: false, fpln: true
+        idx: wIdx, kind: wKind, text: parts.join(", "), value: "", disabled: false, fpln: true
       });
     }
+    return idx;
   };
 
   A.enumerateLines = function (root) {
@@ -516,7 +557,7 @@
     //     line per waypoint) — the generic row scraper below then SKIPS the plan
     //     grid so it isn't read twice.
     var isFpln = !!page.querySelector(".mfd-fms-fpln-line");
-    if (isFpln) A.buildFplnLines(page, pageRect, items);
+    if (isFpln) idx = A.buildFplnLines(page, pageRect, items, idx);
 
     // 2) static-text leaves not inside an interactive control above.
     var all = page.getElementsByTagName("*");

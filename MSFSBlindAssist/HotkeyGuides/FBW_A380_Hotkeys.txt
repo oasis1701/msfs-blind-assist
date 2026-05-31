@@ -291,6 +291,16 @@ A380 MCDU / MFD Window (open with Input mode, then Shift+M):
   (Page buttons navigate by clicking the MFD's own page-selector menu items, so
   they work whether or not the dropdown is open.)
 
+  Revising the flight plan (on the F-PLN page):
+   - Each waypoint line ends with "waypoint" — it is actionable. Enter on it opens
+     that waypoint's revision menu (DIR TO, INSERT NEXT WPT, DELETE, HOLD, AIRWAYS,
+     OVERFLY). The menu choices then appear below as "option" lines — arrow to one
+     and Enter. Disabled choices read "dimmed".
+   - A gap in the route reads "DISCONTINUITY, button". To clear it: Enter on that
+     line, then arrow to "DELETE *" and Enter — the two legs join.
+   - Some revisions stage a TMPY plan: scroll to the bottom and Enter "TMPY INSERT"
+     to commit (or "TMPY ERASE" to cancel).
+
   Loading a SimBrief / company flight plan (on the INIT page, Alt+I):
    1. Arrow to "CPNY F-PLN REQUEST" and Enter to request it (needs your SimBrief
       user ID set in the flyPad). Wait for the scratchpad: "COMPANY F-PLN RECEIVED

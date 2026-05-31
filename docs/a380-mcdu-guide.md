@@ -134,6 +134,32 @@ paging down to walk the entire route to the destination. (Verified: paging shows
 every waypoint in sequence with a small overlap between windows — nothing is
 skipped.)
 
+**Revising a waypoint (DIR TO, HOLD, DELETE, AIRWAYS…).** Every F-PLN waypoint
+line ends with the role word **"waypoint"** — that means it is *actionable*. Land
+on it and press **Enter** to open that waypoint's **lateral-revision menu**,
+exactly like clicking the waypoint on the real MFD. The menu items then appear as
+**options** right below — arrow to one and press Enter:
+
+- **FROM P.POS DIR TO** — direct-to this waypoint (skip everything before it).
+- **INSERT NEXT WPT** — insert a new waypoint after this one.
+- **DELETE \*** — remove this waypoint from the route.
+- **HOLD** — build a holding pattern at this waypoint.
+- **AIRWAYS** — join an airway onward from this waypoint.
+- **OVERFLY \*** — force the aircraft to fly directly over it.
+- **DEPARTURE / ARRIVAL** — jump to the SID/STAR editor (enabled at the ends).
+
+Disabled options read as **"dimmed"**. After you pick one, the page re-reads so
+the result shows up. (Some revisions stage a **TMPY** plan — scroll to the bottom
+and activate **TMPY INSERT** to commit, or **TMPY ERASE** to cancel.)
+
+**Clearing a discontinuity.** A gap in the route reads as a line that simply says
+**"DISCONTINUITY, button"** (the FMS couldn't auto-join two legs — common between
+the end of a STAR and the approach). To clear it: land on that line, press
+**Enter** to open its menu, then choose **DELETE \*** — the two legs join and the
+discontinuity is gone. (If you would rather bridge it with a waypoint, open the
+*previous* waypoint instead and use **INSERT NEXT WPT**.) Discontinuities used to
+be invisible to the reader; they are now surfaced and clearable.
+
 ## 5. Loading the flight plan — SimBrief first
 
 **The fast way is to import your SimBrief OFP — but importing it into the flyPad
