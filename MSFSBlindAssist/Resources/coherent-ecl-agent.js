@@ -29,10 +29,15 @@
   // span (which carries the raw FWC colour codes <Nm/Nm/m and the □ checkbox glyph).
   function lineText(n) {
     var svg = n.querySelector("svg");
-    if (svg) { var t = clean(svg.textContent); if (t) return t; }
+    var t = svg ? clean(svg.textContent) : "";
+    // Normal line: the svg text is the rendered label. But FBW "deferred procedure"
+    // rows (e.g. <<DEPARTURE CHANGE>>) render only the << >> arrows, whose
+    // textContent collapses to "<>" with no letters — in that case fall back to the
+    // .EclLineText span and strip the arrow + FWC-code markers.
+    if (t && /[A-Za-z0-9]/.test(t)) return t;
     var span = n.querySelector(".EclLineText");
     var s = (span ? span.textContent : n.textContent) || "";
-    s = s.replace(/[▯□☐◻◼▮]/g, "").replace(/<\d+m/g, "").replace(/\d+m/g, "");
+    s = s.replace(/<\d+m/g, "").replace(/\d+m/g, "").replace(/[▯□☐◻◼▮<>]/g, "");
     return clean(s);
   }
 

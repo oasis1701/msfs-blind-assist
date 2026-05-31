@@ -244,12 +244,18 @@ namespace MSFSBlindAssist.SimConnect
             _connected = true;
 
             var fresh = new List<string>();
+            // Every spoken-category line present in THIS scrape. Used at the end to
+            // prune _seen down to what is still on screen, so a warning/memo that
+            // CLEARS and later RECURS is announced again (the old behaviour kept it in
+            // _seen forever, so the second occurrence was silently swallowed).
+            var currentLines = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var w in result.warnings ?? new List<Warning>())
             {
                 string clean = Clean(w.text);
                 if (clean.Length == 0) continue;
                 string key = WipTag.Replace(clean, "").Trim();
                 if (MenuLines.Contains(key)) continue;          // the ABN-PROC menu, not a failure
+                currentLines.Add(clean);
                 if (!_seen.Add(clean)) continue;                // already spoken / at baseline
                 fresh.Add(clean);
             }
@@ -260,6 +266,7 @@ namespace MSFSBlindAssist.SimConnect
             {
                 string clean = Clean(m);
                 if (clean.Length == 0) continue;
+                currentLines.Add(clean);
                 if (!_seen.Add(clean)) continue;
                 fresh.Add(clean);
             }
@@ -271,6 +278,7 @@ namespace MSFSBlindAssist.SimConnect
             {
                 string clean = Clean(p);
                 if (clean.Length == 0) continue;
+                currentLines.Add(clean);
                 if (!_seen.Add(clean)) continue;
                 fresh.Add(clean);
             }
@@ -300,6 +308,11 @@ namespace MSFSBlindAssist.SimConnect
 
             foreach (var line in fresh)
                 RaiseLine(line);
+
+            // Forget lines that are no longer on the E/WD, so the SAME warning/memo
+            // re-announces if it recurs later (e.g. a caution that clears then trips
+            // again). Keeps _seen bounded to what's actually displayed.
+            _seen.IntersectWith(currentLines);
 
             // Status boxes that newly appeared / newly cleared since the last poll.
             if (!curStatus.SetEquals(_lastStatus))

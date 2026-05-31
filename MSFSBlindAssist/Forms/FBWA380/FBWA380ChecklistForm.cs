@@ -77,7 +77,10 @@ public sealed class FBWA380ChecklistForm : Form
         };
         // Arrow keys drive the real ECL cursor (when a checklist is shown), so the
         // selection always mirrors the cockpit cursor — Enter then checks/selects it.
-        _list.PreviewKeyDown += (_, e) => { if (e.KeyCode is Keys.Up or Keys.Down) e.IsInputKey = true; };
+        // Claim Up/Down/Enter/Backspace so the ListBox delivers them to KeyDown
+        // instead of swallowing them (Enter = accept, Backspace = type-ahead) — they
+        // drive the real ECL cursor / check / step-back.
+        _list.PreviewKeyDown += (_, e) => { if (e.KeyCode is Keys.Up or Keys.Down or Keys.Enter or Keys.Back) e.IsInputKey = true; };
         _list.KeyDown += OnListKeyDown;
 
         // Only controls with NO keyboard equivalent get a button. The checklist is
@@ -132,9 +135,9 @@ public sealed class FBWA380ChecklistForm : Form
         try
         {
             _sim?.ExecuteCalculatorCode($"1 (>L:{lvar})");
-            await Task.Delay(110);
+            await Task.Delay(80);
             _sim?.ExecuteCalculatorCode($"0 (>L:{lvar})");
-            await Task.Delay(230);
+            await Task.Delay(150);
             var rows = await ScrapeEcl();
             // Apply rebuilds the list and moves the selection to the FWS cursor line,
             // which the screen reader reads on its own — so we do NOT also announce it
@@ -181,7 +184,9 @@ public sealed class FBWA380ChecklistForm : Form
 
     private async Task RefreshNow()
     {
-        Apply(await ScrapeEcl(), announceChecks: false);
+        // Explicit refresh: force a re-render even if the rows are unchanged, so the
+        // current line is re-read (otherwise the hash de-dup would make it a no-op).
+        Apply(await ScrapeEcl(), announceChecks: false, force: true);
         _announcer?.Announce("Refreshed");
     }
 
@@ -194,7 +199,7 @@ public sealed class FBWA380ChecklistForm : Form
 
     private void OnRowsUpdated(List<EclRow> rows) => Apply(rows, announceChecks: true);
 
-    private void Apply(List<EclRow> rows, bool announceChecks)
+    private void Apply(List<EclRow> rows, bool announceChecks, bool force = false)
     {
         if (rows == null || rows.Count == 0)
         {
@@ -206,7 +211,7 @@ public sealed class FBWA380ChecklistForm : Form
         // list (a rebuild moves the selection and makes the screen reader re-read the
         // current line) — only re-apply when the content or cursor genuinely moved.
         string hash = string.Join("", rows.Select(r => (r.Checked ? "1" : "0") + (r.selected ? "S" : "") + r.text));
-        if (hash == _lastAppliedHash) return;
+        if (!force && hash == _lastAppliedHash) return;
         _lastAppliedHash = hash;
         _haveRows = true;
         _cursorActive = rows.Any(r => r.selected);
@@ -220,10 +225,18 @@ public sealed class FBWA380ChecklistForm : Form
         // Announce items that NEWLY became checked (sensed auto-completion as the
         // pilot performs actions) — the core accessibility win.
         var nowChecked = new HashSet<string>(rows.Where(r => r.Checked && !string.IsNullOrEmpty(r.text)).Select(r => r.text));
+        var present = new HashSet<string>(rows.Where(r => !string.IsNullOrEmpty(r.text)).Select(r => r.text));
         if (announceChecks && _lastChecked.Count > 0)
         {
+            // Newly ticked (sensed auto-completion as the pilot performs the action,
+            // e.g. SEAT BELTS as the signs go on)...
             foreach (var t in nowChecked)
                 if (!_lastChecked.Contains(t)) _announcer?.Announce($"{t}, checked");
+            // ...and newly un-ticked while STILL on screen (a sensed item that toggles
+            // back, e.g. the seatbelt signs going off) — guard on `present` so an item
+            // that simply scrolled away / switched checklists is not called "unchecked".
+            foreach (var t in _lastChecked)
+                if (!nowChecked.Contains(t) && present.Contains(t)) _announcer?.Announce($"{t}, unchecked");
         }
         _lastChecked = nowChecked;
 
