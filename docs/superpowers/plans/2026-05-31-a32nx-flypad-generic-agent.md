@@ -17,7 +17,11 @@
 This repo has **no automated test project** and CLAUDE.md forbids speculative unit tests ("most code paths only execute against the real simulator"). So the TDD "write a failing test" step is replaced throughout by:
 
 - **Build gate:** `dotnet build MSFSBlindAssist.sln -c Debug` must succeed with 0 errors.
-- **Live CDP verification:** `node tools/efb-dom-tool.js <cmd>` against the running sim (FBW A32NX loaded, flyPad on, devtools `:19999` reachable).
+- **Live CDP verification:** against the running sim (FBW A32NX loaded, flyPad on, devtools `:19999` reachable), using whichever harness fits:
+  - `pwsh tools/fp_tour.ps1` — injects the agent once and tours every nav page, dumping a readable `[idx] kind/controlType :: text = value` list per page. **Primary tool for cross-page agent verification** (Task 2). Vendored + path-corrected from the proven A380 tools.
+  - `pwsh tools/coherent-eval.ps1 -Title "- EFB" -PreFile MSFSBlindAssist/Resources/coherent-a32nx-flypad-agent.js -ExprFile tools/fp_inspect.js` — installs the agent then runs an arbitrary expression; `fp_inspect.js` prints why an input field is mislabeled (parent/sibling chains). For debugging label divergences.
+  - `node tools/efb-dom-tool.js <cmd>` — Node equivalent for quick one-off `eval`/`state`/`click`; retargeted in Task 8.
+  - These resolve the page **by title** (`- EFB`), so session id shuffles don't matter.
 
 **Single-connection caveat:** the verification tool and the app's `CoherentEFBClient` cannot both be connected at once. When using `efb-dom-tool.js`, the A32NX EFB form must be **closed** (so the client has released the socket) and any old `CoherentGTInjector` polling must be stopped (it is deleted in Task 8, but until then, run verification with MSFSBlindAssist not running). When testing in-app, stop the tool first.
 
@@ -38,11 +42,35 @@ This repo has **no automated test project** and CLAUDE.md forbids speculative un
 - `MSFSBlindAssist/MSFSBlindAssist.csproj` — copy new agent JS; drop old bridge JS entry.
 - `tools/efb-dom-tool.js` — retarget `state`/`inject` to `__MSFSBA_FLYPAD`.
 
+**Already created (vendored from `D:\Documents\tools`, paths corrected to the A32NX agent — verification harness):**
+- `tools/fp_tour.ps1`, `tools/fp_inspect.js`, `tools/fp_scrape.js`, `tools/coherent-eval.ps1` — committed in Task 0.
+
 **Delete:**
 - `MSFSBlindAssist/Resources/a32nx-efb-accessibility-bridge.js`
 - `MSFSBlindAssist/SimConnect/CoherentGTInjector.cs`
 
 **Untouched (shared infra):** `SimConnect/EFBBridgeServer.cs` (still used by PMDG/HS787).
+
+---
+
+## Task 0: Commit the vendored verification tools
+
+**Files (already present in the working tree):**
+- `tools/fp_tour.ps1`, `tools/fp_inspect.js`, `tools/fp_scrape.js`, `tools/coherent-eval.ps1`
+
+These were vendored from `D:\Documents\tools` (the proven A380 dev harness) with the only change being the agent-path default repointed to `coherent-a32nx-flypad-agent.js` and headers noting the single-connection rule.
+
+- [ ] **Step 1: Sanity-check they parse**
+
+Run: `pwsh -NoProfile -Command "Get-Command tools/fp_tour.ps1; Get-Command tools/coherent-eval.ps1"`
+Expected: both resolve as ExternalScript with no parse error. (Functional test against the sim happens in Task 2.)
+
+- [ ] **Step 2: Commit**
+
+```bash
+git add tools/fp_tour.ps1 tools/fp_inspect.js tools/fp_scrape.js tools/coherent-eval.ps1
+git commit -m "chore(tools): vendor flyPad CDP tour/eval/inspect harness (A32NX agent paths)"
+```
 
 ---
 
@@ -100,54 +128,50 @@ git commit -m "feat(fbw-efb): add generic flyPad CDP agent (adapted from A380)"
 
 This task is verification-driven; patches go into `coherent-a32nx-flypad-agent.js`. Sim must be running, FBW A32NX loaded, flyPad powered on. **MSFSBlindAssist must NOT be running** (single-connection rule).
 
-- [ ] **Step 1: Install the agent live and confirm it loads**
+- [ ] **Step 1: Tour every page in one pass and capture the dump**
 
 ```bash
-node tools/efb-dom-tool.js eval "(function(){ /* paste nothing */ })()"   # sanity: tool reaches page
-node tools/efb-dom-tool.js inject                                          # NOTE: Task 8 retargets this; until then, inject the OLD bridge — instead use the eval below
+pwsh tools/fp_tour.ps1 *>&1 | Tee-Object tools/_fp_tour_a32nx.txt
 ```
+Expected: a `# flyPad = id N (… - EFB)` header, then a `===== <Page> (page='…' ok=True n=…) =====` block per nav page, each listing `[idx] kind/controlType :: text = value` lines. `fp_tour.ps1` installs the agent itself, so no separate inject step is needed. (If a page name in the A32NX nav rail differs from the default `-Pages` list, re-run with the corrected list, e.g. `pwsh tools/fp_tour.ps1 -Pages Dashboard,Ground,Settings`.)
 
-Preferred install for this task (independent of the tool's `inject` default path):
+- [ ] **Step 2: Review the dump for misclassification**
+
+Read `tools/_fp_tour_a32nx.txt` and check, per page: **Dashboard** (two-column read order, "Your Flight" + reminders), **Ground → Services / Pushback** (service buttons), **Ground → Fuel / Payload** (PAX/cargo/fuel numeric inputs labelled, not bare units), **Settings → 3rd Party** (SimBrief ID input, Navigraph link/unlink), **Checklists** (checkitem rows show `checkbox` controlType + `true/false` value). Flag any control that is mislabeled, missing, or wrong `kind`/`value`.
+
+- [ ] **Step 3: For any mislabeled input field, get the DOM context**
 
 ```bash
-node tools/efb-dom-tool.js eval "$(cat MSFSBlindAssist/Resources/coherent-a32nx-flypad-agent.js)"
-node tools/efb-dom-tool.js eval "window.__MSFSBA_FLYPAD ? __MSFSBA_FLYPAD.ping() : 'NOT INSTALLED'"
+pwsh tools/coherent-eval.ps1 -Title "- EFB" `
+  -PreFile MSFSBlindAssist/Resources/coherent-a32nx-flypad-agent.js `
+  -ExprFile tools/fp_inspect.js
 ```
-Expected: `MSFSBA_FLYPAD_OK`
+Expected: per visible input, `AGENT_LABEL='…'` plus the parent (`^p0..p4`) and `prevSibChain` text — shows why `labelFor`/`fieldName` picked the wrong text.
 
-- [ ] **Step 2: Scrape the current page and inspect the element list**
+- [ ] **Step 4: Patch the three known A32NX divergence risks if Steps 2-3 show them**
 
-```bash
-node tools/efb-dom-tool.js eval "__MSFSBA_FLYPAD.scrape()"
-```
-Expected: a JSON string `{"ok":true,"page":"...","elements":[...]}`. Confirm `page` names the current flyPad page and `elements` carry sensible `text`/`kind`/`value`.
-
-- [ ] **Step 3: Walk the key pages and record divergences**
-
-For each page (navigate the flyPad in-sim, or click nav links via `__MSFSBA_FLYPAD.clickElement(idx)`), scrape and check classification: **Dashboard** (two-column read order), **Ground → Services / Pushback** (service buttons + state), **Ground → Fuel / Payload** (PAX/cargo/fuel numeric inputs labelled), **Settings → 3rd Party** (SimBrief ID input, Navigraph link/unlink), **Checklists** (checkitem rows toggle + show check icon). Note any control that is mislabeled, missing, or wrong `kind`/`value`.
-
-- [ ] **Step 4: Patch the three known A32NX divergence risks if verification shows them**
-
-Edit `coherent-a32nx-flypad-agent.js` only where Step 3 found a real problem:
-- **Toggle pill shape:** the A380 `classify` matches `rounded-full` + `cursor-pointer` + `w-14`. If the A32NX Toggle uses a different width token, broaden the `w-14` check (e.g. also accept `w-12`) in both `classify` and the `isToggle` test in `labelFor`.
-- **Nav-rail width threshold:** the `navRail` flag and the Pass-2 nav-rail skip use `leftRel < 100` / `tLeft < 100`. If the A32NX rail sits at a different x, adjust the literal to match the observed rail column width.
+Edit `coherent-a32nx-flypad-agent.js` only where verification found a real problem:
+- **Toggle pill shape:** `classify` matches `rounded-full` + `cursor-pointer` + `w-14`. If the A32NX Toggle uses a different width token, broaden the `w-14` check (e.g. also accept `w-12`) in both `classify` and the `isToggle` test in `labelFor`.
+- **Nav-rail width threshold:** the `navRail` flag and the Pass-2 nav-rail skip use `leftRel < 100` / `tLeft < 100`. If the A32NX rail sits at a different x, adjust the literal to the observed rail column width.
 - **Segmented setting controls:** if a segmented option (e.g. ADIRS Align Time Instant/Fast/Real) is missed, confirm `isSelectedSegment`'s `bg-theme-highlight` / `bg-theme-accent` token pair still applies; adjust tokens to the observed class names.
 
-Re-run Step 2/3 after each patch until labels/kinds/values are correct on all key pages.
+Re-run Step 1 after each patch until the dump is correct on all key pages.
 
 - [ ] **Step 5: Verify click and setValue round-trips live**
 
 ```bash
-# Click a nav link (use an idx of a nav-rail link from the scrape), then re-scrape and confirm page changed:
-node tools/efb-dom-tool.js eval "__MSFSBA_FLYPAD.clickElement(IDX)"
-node tools/efb-dom-tool.js eval "JSON.parse(__MSFSBA_FLYPAD.scrape()).page"
-# Set a numeric input (PAX), then re-scrape and confirm the value committed:
-node tools/efb-dom-tool.js eval "__MSFSBA_FLYPAD.setValue(IDX, '150')"
-node tools/efb-dom-tool.js eval "JSON.parse(__MSFSBA_FLYPAD.scrape()).elements.filter(function(e){return e.idx===IDX})[0].value"
+# Confirm a click navigates (fp_tour already exercises clickElement on every nav link).
+# Set a numeric input by idx (read IDX from the Step 1 dump on the Payload/Ground page):
+pwsh tools/coherent-eval.ps1 -Title "- EFB" `
+  -PreFile MSFSBlindAssist/Resources/coherent-a32nx-flypad-agent.js `
+  -Expr "__MSFSBA_FLYPAD.setValue(IDX,'150'); JSON.parse(__MSFSBA_FLYPAD.scrape()).elements.filter(function(e){return e.idx===IDX})[0].value"
 ```
-Expected: page label changes after the click; the input's `value` reflects the set text.
+Expected: the printed value is `150` (set committed); nav clicks in Step 1 changed each page label.
 
-- [ ] **Step 6: Commit any patches**
+- [ ] **Step 6: Commit any patches (do not commit the scratch dump)**
+
+```bash
+rm -f tools/_fp_tour_a32nx.txt
 
 ```bash
 git add MSFSBlindAssist/Resources/coherent-a32nx-flypad-agent.js
@@ -1156,7 +1180,7 @@ Press **Shift+T** (input mode) to open the flyPad form. Confirm:
 
 - Press the **Status / Self-test** button → it announces connection state, agent presence, page, and control count.
 - Reload the EFB page in the sim (switch instrument view away and back, or reload) → the client reinstalls within a few seconds and the form recovers.
-- Close the form, then run `node tools/efb-dom-tool.js state` → confirm the tool can now connect (proving the form released the single connection on close).
+- Close the form, then run `pwsh tools/coherent-eval.ps1 -Title "- EFB" -Expr "window.__MSFSBA_FLYPAD?__MSFSBA_FLYPAD.ping():'gone'"` → confirm it connects and returns `MSFSBA_FLYPAD_OK` (proving the form released the single connection on close, and the agent it installed is still resident).
 
 - [ ] **Step 5: Update the project memory file**
 
