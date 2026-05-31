@@ -1117,8 +1117,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         var dischargedVd = new Dictionary<double, string> { [0] = "No", [1] = "Discharged" };
 
         // Clock / chrono (readouts pair with the ET switch already present).
-        Read("A32NX_CHRONO_ELAPSED_TIME", "Chronometer (seconds)", "seconds");
-        Read("A32NX_CHRONO_ET_ELAPSED_TIME", "Elapsed Time (seconds)", "seconds");
+        // Clock CHR stopwatch + ET counter. Real, live, FBW-Clock-written L:vars
+        // (seconds; -1 = blank) — formatted to MM:SS / HH:MM in TryGetDisplayOverride.
+        Read("A32NX_CHRONO_ELAPSED_TIME", "Chronometer", "seconds");
+        Read("A32NX_CHRONO_ET_ELAPSED_TIME", "Elapsed Time", "seconds");
 
         // ISIS standby instrument.
         ReadEnum("A32NX_ISIS_LS_ACTIVE", "ISIS LS", onOff);
@@ -2154,7 +2156,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "A380X_GND_GPU_AVAIL_1", "A380X_GND_GPU_AVAIL_2", "A380X_GND_GPU_AVAIL_3", "A380X_GND_GPU_AVAIL_4"
         };
 
-        d["Source Switching"] = new List<string> { "A32NX_CHRONO_ELAPSED_TIME", "A32NX_CHRONO_ET_ELAPSED_TIME" };
+        d["Clock"] = new List<string> { "A32NX_CHRONO_ELAPSED_TIME", "A32NX_CHRONO_ET_ELAPSED_TIME", "A32NX_CHRONO_ET_SWITCH_POS" };
         d["ISIS"] = new List<string> { "A32NX_ISIS_LS_ACTIVE", "A32NX_ISIS_BUGS_ACTIVE" };
         d["Oxygen"] = new List<string> { "A32NX_OXYGEN_TMR_RESET_FAULT" };
         d["Calls"] = new List<string> { "A32NX_SLIDES_ARMED", "A32NX_EVAC_COMMAND_FAULT" };
@@ -3167,6 +3169,29 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 displayText = Math.Abs(deg) < 0.05
                     ? "Neutral"
                     : $"{Math.Abs(deg):0.0} degrees {(deg > 0 ? "up" : "down")}";
+                return true;
+            }
+            case "A32NX_CHRONO_ELAPSED_TIME":
+            {
+                // The clock CHR stopwatch (FBW Clock instrument writes this in
+                // SECONDS, -1 = blank/reset). Spoken as minutes + seconds so a blind
+                // pilot can time an approach/hold instead of hearing raw seconds.
+                if (value < 0) { displayText = "Reset"; return true; }
+                int total = (int)Math.Round(value);
+                int mm = total / 60, ss = total % 60;
+                displayText = mm > 0 ? $"{mm} minute{(mm == 1 ? "" : "s")} {ss} second{(ss == 1 ? "" : "s")}"
+                                     : $"{ss} second{(ss == 1 ? "" : "s")}";
+                return true;
+            }
+            case "A32NX_CHRONO_ET_ELAPSED_TIME":
+            {
+                // The clock ET (elapsed-time) counter — SECONDS, displayed HH:MM,
+                // -1 = blank. Driven by the ET knob (A32NX_CHRONO_ET_SWITCH_POS).
+                if (value < 0) { displayText = "Reset"; return true; }
+                int total = (int)Math.Round(value);
+                int hh = total / 3600, mm = (total % 3600) / 60;
+                displayText = hh > 0 ? $"{hh} hour{(hh == 1 ? "" : "s")} {mm} minute{(mm == 1 ? "" : "s")}"
+                                     : $"{mm} minute{(mm == 1 ? "" : "s")}";
                 return true;
             }
         }
