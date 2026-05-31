@@ -144,8 +144,36 @@ States: Disconnected → Discovering → Connecting → Installing → Ready
 
 ## The generic form (`A32NXEFBForm.cs`)
 
-Renders `FlypadElement[]` as native accessible controls in reading order. No
-feature knowledge.
+> **REVISED after the live NVDA test (2026-05-31).** The first implementation
+> rendered the scrape as native WinForms controls (Button/Label/CheckBox/…) in a
+> FlowLayoutPanel. In-sim NVDA testing showed **only the focusable controls were
+> reachable** — headings and static text (WinForms `Label`s) were invisible to
+> NVDA, because a WinForms form is not a document and has no browse mode. The
+> renderer is therefore changed to host a **WebView2** that displays a generated
+> **accessible HTML document**, giving NVDA full browse mode (H-key heading nav,
+> arrow-key reading of all text, real form fields/links) — "an actual browsable
+> website." This is what the generic agent's `level`/`live`/`options`/`disabled`
+> fields were designed for. See [[feedback_efb_ui_needs_webview2]]. The
+> sync/diff/focus-preservation goals below are unchanged; only the rendering
+> surface moved from native controls to HTML-in-WebView2.
+
+**WebView2 rendering model.** A static HTML shell is loaded once
+(`NavigateToString`): a `#status` line, a Refresh + Status/Self-test button, and
+a `<main id="root">` for the page. On each *changed* scrape (signature diff), C#
+`PostWebMessageAsJson({type:'render', page, elements})`; the shell's JS rebuilds
+`#root` — `heading`→`<h{level}>`, clickable→`<button>`, checkbox/toggle/checkitem
+→`<input type=checkbox>`+`<label>`, select→`<select>`, text input→`<label>`+
+`<input>`, plain text→`<p>`. Each interactive element carries `data-idx`. JS
+posts `{action:'click'|'set'|'refresh'|'selftest', idx, value}` back via
+`window.chrome.webview.postMessage`; C# `WebMessageReceived` routes to
+`ClickAsync`/`SetValueAsync`(+quick re-scrape)/`PollOnce`/`SelfTest`. Focus is
+preserved in JS: record `document.activeElement`'s `data-idx` before rebuilding
+`innerHTML`, refocus `[data-idx=…]` after. Spoken announcements stay on
+`ScreenReaderAnnouncer` (page change, self-test, connect/disconnect); the status
+div is NOT an aria-live region (avoids per-poll double-speak). WebView2 is modern
+Chromium, so the shell JS may use modern syntax (unlike the ES5 Coherent agent).
+
+### (superseded) native-control rendering
 
 | `kind` / `controlType` | Rendered as |
 |---|---|
