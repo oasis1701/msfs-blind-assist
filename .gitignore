@@ -140,6 +140,7 @@ tools/fp_scrape.js
 tools/mcdu_run.ps1
 tools/mcdu_tour.ps1
 tools/mcdu_scrape.js
+tools/_probe/
 
 # Local-only ECAM port workspace (downloaded FBW source + generators); ships as MSFSBlindAssist/SimConnect/EWDMessageLookupA380.cs
 tools/_fbw_ecam/
