@@ -21,7 +21,7 @@ const path   = require('path');
 const CDP_HOST = '127.0.0.1';
 const CDP_PORT = 19999;
 const EFB_PAGE_TITLE_SUFFIX = '- EFB';
-const BRIDGE_JS_PATH = path.join(__dirname, '..', 'MSFSBlindAssist', 'Resources', 'a32nx-efb-accessibility-bridge.js');
+const BRIDGE_JS_PATH = path.join(__dirname, '..', 'MSFSBlindAssist', 'Resources', 'coherent-a32nx-flypad-agent.js');
 
 // ── WebSocket helpers ─────────────────────────────────────────────────────────
 
@@ -169,10 +169,9 @@ async function cmdPages() {
 }
 
 async function cmdState(pageId) {
-    const expr = 'JSON.stringify({ loaded: !!window._a32nx_efb_bridge_loaded, ' +
-        'connected: window._efb ? window._efb.serverConnected : null, ' +
-        'timers: window._efb ? { cmd: !!window._efb.commandPollTimer, hb: !!window._efb.heartbeatTimer } : null, ' +
-        'pending: window._efb ? window._efb.pendingStates.length : null })';
+    const expr = 'JSON.stringify({ installed: !!window.__MSFSBA_FLYPAD, ' +
+        'ping: window.__MSFSBA_FLYPAD ? window.__MSFSBA_FLYPAD.ping() : null, ' +
+        'page: window.__MSFSBA_FLYPAD ? JSON.parse(window.__MSFSBA_FLYPAD.scrape()).page : null })';
     const result = await cdpEval(pageId, expr);
     const raw = extractValue(result);
     console.log('Bridge state on page ' + pageId + ':');
@@ -253,6 +252,7 @@ async function main() {
             '  click <text>            Click first button-like element whose text contains <text>',
             '  eval <expression>       Eval JS expression and print result',
             '  inject                  Re-inject bridge JS from Resources/ into EFB page',
+            '  scrape                  Scrape the flyPad via the installed agent',
             '',
             'The EFB page is auto-detected by title suffix "- EFB" in the pagelist.',
             'Run from the repository root. MSFS must be running with FBW A32NX loaded.',
@@ -271,6 +271,7 @@ async function main() {
         case 'click':   await cmdClick(pageId, args.join(' ')); break;
         case 'eval':    await cmdEval(pageId, args.join(' ')); break;
         case 'inject':  await cmdInject(pageId); break;
+        case 'scrape':  await cmdEval(pageId, 'window.__MSFSBA_FLYPAD ? window.__MSFSBA_FLYPAD.scrape() : "NO_AGENT"'); break;
         default:
             console.error('Unknown command:', cmd);
             console.error('Run "node tools/efb-dom-tool.js help" for usage.');
