@@ -73,6 +73,12 @@ namespace MSFSBlindAssist.SimConnect
         private readonly HashSet<string> _seen = new(StringComparer.OrdinalIgnoreCase);
         private bool _baselineDone;
 
+        // The EWD status-area boxes (STS / ADV / FAILURE PENDING) + display
+        // self-test currently shown — tracked across polls so we can edge-detect
+        // appear vs clear (these persist, unlike one-shot failure/memo lines, so
+        // they are announced on BOTH transitions rather than deduped by text).
+        private HashSet<string> _lastStatus = new(StringComparer.OrdinalIgnoreCase);
+
         // The fixed ABN-PROC manual-procedure menu categories (shown only when the
         // pilot opens the ABN PROC page) — exact-match so they are not mistaken for
         // an active failure ("F/CTL PRIM 1 FAULT" != the bare "F/CTL" menu entry).
@@ -269,12 +275,24 @@ namespace MSFSBlindAssist.SimConnect
                 fresh.Add(clean);
             }
 
+            // EWD status-area indications (STS / ADV / FAILURE PENDING) + display
+            // self-test, normalised to spoken phrases. Unlike failures/memos these
+            // PERSIST, so they are edge-detected (announce on appear AND on clear)
+            // rather than deduped by text.
+            var curStatus = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var s in result.status ?? new List<string>())
+            {
+                string phrase = StatusPhrase(Clean(s));
+                if (phrase.Length > 0) curStatus.Add(phrase);
+            }
+
             // First successful scrape establishes the baseline silently — only
             // failures that appear AFTER connect are announced (matches every other
             // MSFSBA monitor and avoids re-reading the whole screen on reconnect).
             if (!_baselineDone)
             {
                 _baselineDone = true;
+                _lastStatus = curStatus;   // seed so a box already up at connect is silent
                 return;
             }
 
@@ -282,6 +300,16 @@ namespace MSFSBlindAssist.SimConnect
 
             foreach (var line in fresh)
                 RaiseLine(line);
+
+            // Status boxes that newly appeared / newly cleared since the last poll.
+            if (!curStatus.SetEquals(_lastStatus))
+            {
+                foreach (var appeared in curStatus)
+                    if (!_lastStatus.Contains(appeared)) RaiseLine(appeared);
+                foreach (var cleared in _lastStatus)
+                    if (!curStatus.Contains(cleared)) RaiseLine(cleared + " cleared");
+                _lastStatus = curStatus;
+            }
 
             // Live Electronic Checklist — only while the checklist window is open.
             if (EclActive && _eclAgentInstalled)
@@ -323,6 +351,28 @@ namespace MSFSBlindAssist.SimConnect
                 return res.rows ?? new List<EclRow>();
             }
             catch { return null; }
+        }
+
+        /// <summary>
+        /// Map a raw E/WD status-area token (box text or display-overlay class
+        /// token) to the phrase spoken to the pilot. STS = a STATUS-page reminder,
+        /// ADV = an advisory is on the SD, FAILURE PENDING = the FWS is still
+        /// processing; the overlays are the display power-up self-test / maintenance
+        /// screens. Unknown tokens pass through verbatim.
+        /// </summary>
+        private static string StatusPhrase(string token)
+        {
+            string t = (token ?? "").Trim();
+            string u = t.ToUpperInvariant();
+            if (u == "SELF TEST") return "Display safety test in progress";
+            if (u == "MAINTENANCE MODE") return "Display maintenance mode";
+            if (u == "ENGINEERING TEST") return "Display engineering test mode";
+            if (u == "FAILURE PENDING") return "Failure pending";
+            if (u == "ADV") return "Advisory, check the system display";
+            if (u == "STS") return "Status message, check the status page";
+            if (u.StartsWith("STS") && u.Contains("DEFRD"))
+                return "Status and deferred procedure, check the status page";
+            return t;
         }
 
         private static string Clean(string? s)
@@ -464,6 +514,7 @@ namespace MSFSBlindAssist.SimConnect
             public List<Warning>? warnings { get; set; }
             public List<string>? memos { get; set; }
             public List<string>? pfd { get; set; }
+            public List<string>? status { get; set; }
         }
 
         private sealed class Warning

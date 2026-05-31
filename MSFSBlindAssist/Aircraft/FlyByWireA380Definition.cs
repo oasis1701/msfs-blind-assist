@@ -3483,19 +3483,43 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     private bool ShowFCUAltitudeDialog(SimConnectManager simConnect, ScreenReaderAnnouncer announcer, System.Windows.Forms.Form parentForm)
     {
         if (!simConnect.IsConnected) { announcer.AnnounceImmediate("Not connected to simulator."); return false; }
+        // When the A380 is in metric-altitude mode (FCU MTRS / A32NX_METRIC_ALT_TOGGLE)
+        // the pilot thinks + is cleared in METRES, so the typed value is metres and we
+        // convert to the feet target the FCU actually selects (the real FCU is feet
+        // internally; the MTRS window just displays the metric equivalent). Off = feet,
+        // exactly as before. 100..49000 ft  <=>  ~30..14935 m.
+        bool metric = _metricAlt;
         var validator = new Func<string, (bool, string)>(input =>
-            double.TryParse(input, out double v)
-                ? (v >= 100 && v <= 49000 ? (true, "") : (false, "Altitude must be between 100 and 49000 feet"))
-                : (false, "Invalid number format"));
-        var dialog = new Forms.ValueInputForm("Set Altitude", "Altitude", "100-49000 feet", announcer, validator);
+        {
+            if (!double.TryParse(input, out double v)) return (false, "Invalid number format");
+            double ft = metric ? v / 0.3048 : v;
+            return (ft >= 100 && ft <= 49000)
+                ? (true, "")
+                : (false, metric ? "Altitude must be between 30 and 14935 metres"
+                                 : "Altitude must be between 100 and 49000 feet");
+        });
+        var dialog = new Forms.ValueInputForm("Set Altitude", "Altitude",
+            metric ? "30-14935 metres" : "100-49000 feet", announcer, validator);
         if (dialog.ShowDialog(parentForm) == System.Windows.Forms.DialogResult.OK && dialog.IsValidInput
             && double.TryParse(dialog.InputValue, out double value))
         {
-            uint rounded = (uint)(Math.Round(value / 100) * 100);
+            double feet = metric ? value / 0.3048 : value;
+            uint rounded = (uint)(Math.Round(feet / 100) * 100);
             simConnect.SendEvent("A32NX.FCU_ALT_INCREMENT_SET", 100);
             System.Threading.Thread.Sleep(50);
             simConnect.SendEvent("A32NX.FCU_ALT_SET", rounded);
-            announcer.AnnounceImmediate($"Altitude set to {rounded}");
+            if (metric)
+            {
+                // Echo what the FCU metric window will actually show: the feet target
+                // (rounded to 100) converted back to metres, plus the feet, so the
+                // pilot hears the achieved value rather than the raw request.
+                int m = (int)Math.Round(rounded * 0.3048);
+                announcer.AnnounceImmediate($"Altitude set to {m} metres, {rounded} feet");
+            }
+            else
+            {
+                announcer.AnnounceImmediate($"Altitude set to {rounded} feet");
+            }
             return true;
         }
         return false;

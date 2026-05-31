@@ -78,6 +78,36 @@
     return out;
   };
 
+  // EWD status-area indications (bottom of the display) + display self-test.
+  // - .StsArea .FailurePendingBox / .StsBox / .AdvBox : visibility-toggled boxes
+  //   that read "FAILURE PENDING" / "STS" (or "STS & DEFRD PROC") / "ADV" — the
+  //   reminders a sighted pilot sees at the bottom of the E/WD (STS = check the
+  //   STATUS page, ADV = an advisory is on the SD, FAILURE PENDING = the FWS is
+  //   still processing a failure).
+  // - .SelfTest / .MaintenanceMode / .EngineeringTestMode : the CdsDisplayUnit
+  //   power-up overlays ("SELF TEST IN PROGRESS (MAX 40 SECONDS)", etc.),
+  //   display-toggled. Returned as stable class tokens so the C# side speaks a
+  //   fixed phrase and edge-detects appear/clear.
+  A.statusBoxes = function () {
+    var out = [], i;
+    try {
+      var boxes = document.querySelectorAll(".StsArea .FailurePendingBox, .StsArea .StsBox, .StsArea .AdvBox");
+      for (i = 0; i < boxes.length; i++) {
+        if (!A.isVisible(boxes[i])) continue;
+        var t = clean(boxes[i].textContent);
+        if (t) out.push(t);
+      }
+      var ov = document.querySelectorAll(".SelfTest, .MaintenanceMode, .EngineeringTestMode");
+      for (i = 0; i < ov.length; i++) {
+        if (!A.isVisible(ov[i])) continue;
+        if (ov[i].classList && ov[i].classList.contains("SelfTest")) out.push("SELF TEST");
+        else if (ov[i].classList && ov[i].classList.contains("MaintenanceMode")) out.push("MAINTENANCE MODE");
+        else out.push("ENGINEERING TEST");
+      }
+    } catch (e) { /* view may lack the area */ }
+    return out;
+  };
+
   A.scrape = function () {
     try {
       var warnings = [], memos = [];
@@ -106,7 +136,7 @@
         var mt = clean(m.textContent);
         if (mt && !seen[mt]) { seen[mt] = 1; memos.push(mt); }
       }
-      return JSON.stringify({ ok: true, warnings: warnings, memos: memos, pfd: A.pfdLines() });
+      return JSON.stringify({ ok: true, warnings: warnings, memos: memos, pfd: A.pfdLines(), status: A.statusBoxes() });
     } catch (e) {
       return JSON.stringify({ ok: false, error: (e && e.message) ? e.message : String(e) });
     }
