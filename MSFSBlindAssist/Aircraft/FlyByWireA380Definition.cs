@@ -1023,6 +1023,13 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             [0] = "None", [1] = "Thrust Lock", [2] = "Levers TOGA", [3] = "Levers Climb",
             [4] = "Levers MCT", [5] = "Levers Asymmetric"
         });
+        // Flight Director 1 / 2 (captain + F/O FD command bars). The engage-state
+        // L:vars are DIRECTLY settable and STICK via the calculator path (live-verified
+        // they hold for seconds, unlike the stock TOGGLE_FLIGHT_DIRECTOR event used in
+        // an earlier attempt, which did not map) — written through the A32NX_ catch-all
+        // in HandleUIVariableSet. Continuous + announced, so FD on/off speaks on change.
+        OnOff("A32NX_FCU_EFIS_L_FD_ACTIVE", "Flight Director 1");
+        OnOff("A32NX_FCU_EFIS_R_FD_ACTIVE", "Flight Director 2");
         Read("A32NX_FMA_VERTICAL_ARMED", "Armed Vertical Modes");
         Read("A32NX_FMA_LATERAL_ARMED", "Armed Lateral Modes");
         Read("A32NX_FMA_CRUISE_ALT_MODE", "Cruise Altitude Mode");
@@ -1803,11 +1810,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "A380X_EFIS_L_ACTIVE_FILTER", "A380X_EFIS_L_ACTIVE_OVERLAY",
             "A32NX_EFIS_L_NAVAID_1_MODE", "A32NX_EFIS_L_NAVAID_2_MODE",
             "A32NX_FCU_LEFT_EIS_BARO_IS_STD", "CAPT_QNH_SET", "XMLVAR_Baro_Selector_HPA_1",
-            "A32NX_EFIS_L_OANS_RANGE"
-            // Flight Director toggle removed: TOGGLE_FLIGHT_DIRECTOR (indexed or
-            // not), the H-event, and direct L:var writes ALL fail to engage the FD
-            // on this A380X build — the button did nothing but announce confusing
-            // FMA-mode chatter. Re-add when FBW wires a working control.
+            "A32NX_EFIS_L_OANS_RANGE",
+            // Flight Director 1 (captain). The earlier removal said writes "fail",
+            // but the engage-state L:var IS settable and HOLDS via the calculator
+            // path (re-verified live: set 1 → still 1 after 2.5 s).
+            "A32NX_FCU_EFIS_L_FD_ACTIVE"
         };
         p["EFIS First Officer"] = new List<string>
         {
@@ -1817,7 +1824,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "A380X_EFIS_R_ACTIVE_FILTER", "A380X_EFIS_R_ACTIVE_OVERLAY",
             "A32NX_EFIS_R_NAVAID_1_MODE", "A32NX_EFIS_R_NAVAID_2_MODE",
             "A32NX_FCU_RIGHT_EIS_BARO_IS_STD", "FO_QNH_SET", "XMLVAR_Baro_Selector_HPA_2",
-            "A32NX_EFIS_R_OANS_RANGE"
+            "A32NX_EFIS_R_OANS_RANGE",
+            "A32NX_FCU_EFIS_R_FD_ACTIVE"   // Flight Director 2 (F/O) — see captain side
         };
         p["FCU"] = new List<string>
         {
