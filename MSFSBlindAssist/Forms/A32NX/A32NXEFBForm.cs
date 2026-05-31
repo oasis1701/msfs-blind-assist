@@ -23,6 +23,8 @@ public class A32NXEFBForm : Form
 
     private IntPtr _previousWindow = IntPtr.Zero;
     private bool _disposed;
+    private bool _updatingFromServer;
+    private CancellationTokenSource? _serviceRefreshCts;
 
     // Top-level tab indices (match flypad toolbar order)
     private const int TAB_DASHBOARD   = 0;
@@ -371,11 +373,16 @@ public class A32NXEFBForm : Form
         {
             _bridge.EnqueueCommand("toggle_ground_service",
                 new Dictionary<string, string> { ["service_id"] = serviceId });
-            Task.Delay(2000).ContinueWith(_ =>
+            _serviceRefreshCts?.Cancel();
+            _serviceRefreshCts?.Dispose();
+            _serviceRefreshCts = new CancellationTokenSource();
+            var token = _serviceRefreshCts.Token;
+            Task.Delay(2000, token).ContinueWith(_ =>
             {
+                if (token.IsCancellationRequested) return;
                 try { if (IsHandleCreated) BeginInvoke(() => _bridge.EnqueueCommand("get_ground_state")); }
                 catch (ObjectDisposedException) { }
-            });
+            }, token, TaskContinuationOptions.OnlyOnRanToCompletion, TaskScheduler.Default);
         };
     }
 
@@ -460,8 +467,11 @@ public class A32NXEFBForm : Form
     private void WireFuelTarget(NumericUpDown num, string tank)
     {
         num.ValueChanged += (_, _) =>
+        {
+            if (_updatingFromServer) return;
             _bridge.EnqueueCommand("set_fuel_target",
                 new Dictionary<string, string> { ["tank"] = tank, ["kg"] = num.Value.ToString("F0") });
+        };
     }
 
     private TabPage BuildGroundPayloadTab()
@@ -479,8 +489,11 @@ public class A32NXEFBForm : Form
             AccessibleName = "Passenger count"
         };
         _payPaxCount.ValueChanged += (_, _) =>
+        {
+            if (_updatingFromServer) return;
             _bridge.EnqueueCommand("set_passenger_count",
                 new Dictionary<string, string> { ["count"] = _payPaxCount.Value.ToString("F0") });
+        };
         p.Controls.Add(_payPaxCount);
         y += 30;
 
@@ -547,8 +560,11 @@ public class A32NXEFBForm : Form
     private void WireCargoTarget(NumericUpDown num, string zone)
     {
         num.ValueChanged += (_, _) =>
+        {
+            if (_updatingFromServer) return;
             _bridge.EnqueueCommand("set_cargo_weight",
                 new Dictionary<string, string> { ["zone"] = zone, ["kg"] = num.Value.ToString("F0") });
+        };
     }
 
     private TabPage BuildGroundPushbackTab()
@@ -1054,7 +1070,8 @@ public class A32NXEFBForm : Form
         void Upd(Button btn, string key)
         {
             string state = d.TryGetValue(key, out var v) ? v : "unknown";
-            string baseText = btn.AccessibleName ?? btn.Text.Split(' ')[0];
+            if (btn.Tag == null) btn.Tag = btn.Text; // cache original text on first call
+            string baseText = (string)btn.Tag;
             btn.Text = $"{baseText} ({state})";
             btn.AccessibleName = $"{baseText}, {state}";
         }
@@ -1082,17 +1099,25 @@ public class A32NXEFBForm : Form
 
     private void ApplyPayloadState(Dictionary<string, string> d)
     {
-        if (d.TryGetValue("pax_count", out var pax) && decimal.TryParse(pax, out var paxVal))
-            _payPaxCount.Value = Math.Clamp(paxVal, 0, 174);
-        if (d.TryGetValue("fwd_baggage", out var fb) && decimal.TryParse(fb, out var fbVal))
-            _payFwdBag.Value = Math.Clamp(fbVal, 0, 5000);
-        if (d.TryGetValue("aft_container", out var ac) && decimal.TryParse(ac, out var acVal))
-            _payAftCont.Value = Math.Clamp(acVal, 0, 5000);
-        if (d.TryGetValue("aft_baggage", out var ab) && decimal.TryParse(ab, out var abVal))
-            _payAftBag.Value = Math.Clamp(abVal, 0, 5000);
-        if (d.TryGetValue("aft_bulk", out var al) && decimal.TryParse(al, out var alVal))
-            _payAftBulk.Value = Math.Clamp(alVal, 0, 5000);
-        _payStatusLbl.Text = d.TryGetValue("boarding_status", out var bs) ? bs : "Unknown";
+        _updatingFromServer = true;
+        try
+        {
+            if (d.TryGetValue("pax_count", out var pax) && decimal.TryParse(pax, out var paxVal))
+                _payPaxCount.Value = Math.Clamp(paxVal, 0, 174);
+            if (d.TryGetValue("fwd_baggage", out var fb) && decimal.TryParse(fb, out var fbVal))
+                _payFwdBag.Value = Math.Clamp(fbVal, 0, 5000);
+            if (d.TryGetValue("aft_container", out var ac) && decimal.TryParse(ac, out var acVal))
+                _payAftCont.Value = Math.Clamp(acVal, 0, 5000);
+            if (d.TryGetValue("aft_baggage", out var ab) && decimal.TryParse(ab, out var abVal))
+                _payAftBag.Value = Math.Clamp(abVal, 0, 5000);
+            if (d.TryGetValue("aft_bulk", out var al) && decimal.TryParse(al, out var alVal))
+                _payAftBulk.Value = Math.Clamp(alVal, 0, 5000);
+            _payStatusLbl.Text = d.TryGetValue("boarding_status", out var bs) ? bs : "Unknown";
+        }
+        finally
+        {
+            _updatingFromServer = false;
+        }
     }
 
     private void ApplyPageText(Dictionary<string, string> d)
@@ -1202,16 +1227,19 @@ public class A32NXEFBForm : Form
         try
         {
             var ofp = await _simBriefService.FetchFullOFPAsync(username);
+            if (IsDisposed || !IsHandleCreated) return;
             _dispatchOfpBox.Text = FormatOFPSummary(ofp);
             _dispatchStatus.Text = $"OFP loaded — {ofp.OriginIcao} → {ofp.DestIcao}";
         }
         catch (Exception ex)
         {
+            if (IsDisposed || !IsHandleCreated) return;
             _dispatchStatus.Text = $"Error: {ex.Message}";
         }
         finally
         {
-            _dispatchFetchBtn.Enabled = true;
+            if (!IsDisposed && IsHandleCreated)
+                _dispatchFetchBtn.Enabled = true;
         }
     }
 
@@ -1243,17 +1271,20 @@ public class A32NXEFBForm : Form
         try
         {
             string metar = await VATSIMService.GetMETARAsync(icao);
+            if (IsDisposed || !IsHandleCreated) return;
             _atisResultBox.Text = string.IsNullOrWhiteSpace(metar)
                 ? $"No ATIS/METAR found for {icao}."
                 : metar;
         }
         catch (Exception ex)
         {
+            if (IsDisposed || !IsHandleCreated) return;
             _atisResultBox.Text = $"Error: {ex.Message}";
         }
         finally
         {
-            _atisFetchBtn.Enabled = true;
+            if (!IsDisposed && IsHandleCreated)
+                _atisFetchBtn.Enabled = true;
         }
     }
 
@@ -1298,6 +1329,9 @@ public class A32NXEFBForm : Form
         if (!_disposed && disposing)
         {
             _disposed = true;
+            _serviceRefreshCts?.Cancel();
+            _serviceRefreshCts?.Dispose();
+            _serviceRefreshCts = null;
             _healthTimer.Stop();
             _healthTimer.Dispose();
             _bridge.StateUpdated -= OnStateUpdated;
