@@ -2,16 +2,19 @@
 //
 // In-page agent for the FlyByWire A380X Electronic Checklist (ECL), installed via
 // the Coherent GT debugger (NO injection) in the A380X_EWD view. The ECL (normal
-// checklists + the abnormal-procedure menu) is rendered as `.EclLine` rows; the
-// crew drives it with the KCCU cursor + the ECP buttons (C/L, CHECK, UP, DOWN).
+// checklists + the abnormal-procedure menu) is rendered as `.EclLine` rows.
 //
-// The DOM has NO click handlers on the lines (they are pointer-events-free SVG
-// over the `ewd-main` background — interaction is entirely FWS-cursor/ECP-driven),
-// so this agent is READ-ONLY: it scrapes the lines into structured rows. The
-// ACTIONS (show/hide, scroll, check) are done in C# by pulsing the real ECP button
-// L-vars (A32NX_BTN_CL / _CHECK_LH / _UP / _DOWN / _CLR / _ABNPROC), which FwsCore
-// reads and applies. CoherentEclClient.cs sends this file, then calls
-// __MSFSBA_ECL.scrape() -> JSON { ok, rows:[{text,type,checked,style}] }.
+// This agent READS the lines into structured rows (including which line carries the
+// FWS cursor, via the `.EclLine.Selected` class). The ACTIONS are done in C# by
+// pulsing the real ECP button L-vars (A32NX_BTN_CL / _CHECK_LH / _UP / _DOWN /
+// _CLR / _ABNPROC) through the MobiFlight calculator path — FwsCore buffers those
+// inputs and drives the checklist, so the buttons FULLY navigate the menu and tick
+// items (verified live: C/L shows the menu, UP/DOWN move the cursor, CHECK opens
+// the selected checklist or ticks the selected manual item, sensed items auto-tick).
+// The DOM lines themselves have no click handlers, which is why interaction goes
+// through the ECP L-vars rather than synthetic clicks. CoherentEclClient.cs sends
+// this file, then calls __MSFSBA_ECL.scrape() -> JSON { ok, rows:[{text,type,
+// checked,style,selected}] }.
 //
 // ES5 ONLY (Coherent GT = Chromium 49): var, no arrow funcs, no String.includes.
 

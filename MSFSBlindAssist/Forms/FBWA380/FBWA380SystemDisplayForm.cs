@@ -33,7 +33,7 @@ public class FBWA380SystemDisplayForm : Form
         (-1, "Default (current)"), (0, "Engine"), (1, "APU"), (2, "Bleed"), (3, "Air Cond"),
         (4, "Pressurization"), (5, "Doors"), (6, "Electrical AC"), (7, "Electrical DC"),
         (8, "Fuel"), (9, "Wheel"), (10, "Hydraulics"), (11, "Flight Controls"),
-        (12, "Circuit Breakers"), (15, "Video"),
+        (12, "Circuit Breakers"), (13, "Cruise"), (14, "Status"), (15, "Video"),
     };
     private const string SdPageVar = "A32NX_ECAM_SD_CURRENT_PAGE_INDEX";
 

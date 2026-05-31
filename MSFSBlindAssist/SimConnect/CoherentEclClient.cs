@@ -20,10 +20,10 @@ namespace MSFSBlindAssist.SimConnect
     /// Live reader for the FlyByWire A380X Electronic Checklist (ECL) — the normal
     /// checklists + abnormal-procedure menu rendered on the A380X_EWD Coherent view.
     /// Installs coherent-ecl-agent.js (window.__MSFSBA_ECL) and polls scrape() for
-    /// the structured rows. READ-ONLY — the ECL lines have no DOM click handlers
-    /// (the FWS drives them from the KCCU cursor + ECP buttons), so the checklist
-    /// ACTIONS are done by pulsing the real ECP button L-vars in C# (see
-    /// FBWA380ChecklistForm), which FwsCore reads and applies.
+    /// the structured rows (including the FWS cursor line, via .EclLine.Selected).
+    /// This reader is read-only; the checklist ACTIONS are done by pulsing the real
+    /// ECP button L-vars in C# (see FBWA380ChecklistForm), which FwsCore buffers and
+    /// applies — those buttons fully navigate the menu and tick items.
     /// </summary>
     public sealed class CoherentEclClient : IDisposable
     {

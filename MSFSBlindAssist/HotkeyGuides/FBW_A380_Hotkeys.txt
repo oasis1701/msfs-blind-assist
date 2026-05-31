@@ -64,10 +64,13 @@ Read-out windows (open from OUTPUT mode — see the PFD/ND/ECAM keys below):
   - System Display window (ECAM/STATUS): a LIVE read of the real System Display.
     Pick any SD page from the "SD page" list (Engine, APU, Bleed, Air Cond,
     Pressurization, Doors, Electrical AC/DC, Fuel, Wheel, Hydraulics, Flight
-    Controls, Circuit Breakers, Video) and the window shows exactly what that page
-    displays, decoded into readable lines (oxygen pressures, per-tank fuel, gross
-    weight, CG, temperatures, pressures, door states, ...). Refresh button + F5.
-    (If the live read can't reach the display it falls back to the SimVar decode.)
+    Controls, Circuit Breakers, Cruise, Status, Video) and the window commands the
+    real System Display to that page AND shows exactly what it displays, decoded
+    into readable lines (oxygen pressures, per-tank fuel, gross weight, CG,
+    temperatures, pressures, door states, ...). Refresh button + F5. (If the live
+    read can't reach the display it falls back to the SimVar decode. The Cruise and
+    Status pages are still being filled in by FlyByWire, so they may read mostly
+    placeholders for now.)
   - E/WD window — Alt+E: a live read of the Engine/Warning Display (per-engine
     throttle/N1/EGT/fuel-flow, the memo lines, and any active warnings and ECAM
     action items). Alt+E also speaks the current warnings immediately.
@@ -84,15 +87,21 @@ Thrust levers: moving the levers announces the detent reached (Idle / Climb /
 Checklist (Output mode then the checklist key) opens the LIVE Electronic
   Checklist (ECL) window — it reads the aircraft's own normal checklists and any
   active ECAM abnormal procedure straight from the E/WD, so it always matches the
-  real cockpit. Arrow through the lines to read each step; items announce
-  "<step>, checked" automatically as the aircraft senses you complete them (set
-  the park brake and PARK BRK ON ticks itself). Buttons mirror the cockpit ECP
-  push-buttons: Show / Hide (C/L), Check item, Up, Down, Clear, Abnormal. F5
-  refreshes, Escape closes.
-  Note: picking a checklist from the menu and ticking an individual line by hand
-  use the cockpit cursor (a FlyByWire limitation) — but reading the whole
-  procedure and performing each action on the system panels work fully, and
-  abnormal procedures present automatically when a failure occurs.
+  real cockpit, and it is FULLY interactive.
+  How to use it:
+    1. Press "Show / hide (C/L)" (Alt+S) to bring the checklist up.
+    2. Arrow Up/Down through the list — this moves the real checklist cursor and
+       reads each line, telling you whether an item is checked, and whether it is
+       a manual or sensed action.
+    3. Press Enter (or the "Check / select" button, Alt+C):
+         - on the checklist menu, this OPENS the highlighted checklist;
+         - inside a checklist, this TICKS the highlighted manual item and moves on.
+    4. "Clear / back" (Alt+L) returns to the menu; "Abnormal" (Alt+A) opens the
+       abnormal-procedure list.
+  Items also tick themselves the moment the aircraft senses the action (set the
+  park brake and PARK BRK ON ticks itself, announced as "PARK BRK ON, checked").
+  Abnormal procedures present automatically when a failure occurs. F5 refreshes,
+  Escape closes.
   The static cold-and-dark-to-shutdown text checklist and a step-by-step MCDU
   guide are in docs/a380-mcdu-guide.md.
 
