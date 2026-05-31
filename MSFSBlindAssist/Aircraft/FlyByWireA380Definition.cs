@@ -441,6 +441,19 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Sel("A32NX_ENTERTAINMENT_CWS_OFF", "Cabin Crew Entertainment", new Dictionary<double, string> { [0] = "Normal", [1] = "Off" });
         Sel("A32NX_ENTERTAINMENT_IFEC_OFF", "Passenger Entertainment (IFE)", new Dictionary<double, string> { [0] = "Normal", [1] = "Off" });
         OnOff("A380X_REMOTE_CB_CTRL", "Remote Circuit Breaker Control");
+        // Chronometer start/stop + reset (the glareshield CHRONO push). #107 gap.
+        Press("A32NX_CHRONO_TOGGLE", "Chronometer Start / Stop");
+        Press("A32NX_CHRONO_RST", "Chronometer Reset");
+
+        // ---- AUDIO CONTROL PANEL (ACP) — receive selectors, RMP 1 ----
+        // Which sources the captain hears (#107 transcript: "ensure VHF1 + cabin
+        // interphone selected"). Settable L:vars via the calculator catch-all.
+        OnOff("A380X_RMP_1_VHF_VOL_RX_SWITCH_1", "VHF 1 Receive");
+        OnOff("A380X_RMP_1_VHF_VOL_RX_SWITCH_2", "VHF 2 Receive");
+        OnOff("A380X_RMP_1_CAB_VOL_RX_SWITCH", "Cabin Interphone Receive");
+        OnOff("A380X_RMP_1_INT_VOL_RX_SWITCH", "Interphone Receive");
+        OnOff("A380X_RMP_1_PA_VOL_RX_SWITCH", "PA Receive");
+        OnOff("A380X_RMP_1_NAV_VOL_RX_SWITCH", "Navaid Receive");
 
         // ---- INTERIOR LIGHTING ----
         Sel("A380X_OVHD_ANN_LT_POSITION", "Annunciator Lights",
@@ -1361,6 +1374,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         for (int n = 1; n <= 4; n++)
         {
             Read($"A32NX_ENGINE_OIL_QTY:{n}", $"Engine {n} Oil Quantity", "quarts");
+            // Per-engine fuel used since start (kg) — the post-flight even-burn check
+            // (#107 transcript: "fuel used for each engine"). Stock indexed simvar.
+            Stock($"ENG_FUEL_USED:{n}", $"GENERAL ENG FUEL USED SINCE START:{n}", $"Engine {n} Fuel Used", "kilograms");
             Stock($"ENG_VIBRATION:{n}", $"TURB ENG VIBRATION:{n}", $"Engine {n} Vibration", "number");
         }
 
@@ -1403,6 +1419,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // word A32NX_SEC_1_RUDDER_ACTUAL_POSITION (degrees, positive = nose-Left).
         // Decoded to "Left/Right X.X degrees" / "Neutral" in TryGetDisplayOverride.
         Read("A32NX_SEC_1_RUDDER_ACTUAL_POSITION", "Rudder Trim", "number");
+        // Rudder trim RESET (zeroes the trim) + nosewheel-steering pedal disconnect
+        // (held during the rudder flight-control check so the nose wheel doesn't
+        // scrub). #107 transcript gaps. Settable via the calculator catch-all.
+        Press("A32NX_RUDDER_TRIM_RESET", "Rudder Trim Reset");
+        Press("A32NX_TILLER_PEDAL_DISCONNECT", "Nosewheel Steering Pedal Disconnect");
         ReadEnum("A32NX_PRIORITY_TAKEOVER:1", "Capt Sidestick Priority", new Dictionary<double, string> { [0] = "Normal", [1] = "Priority Taken" });
         ReadEnum("A32NX_PRIORITY_TAKEOVER:2", "F/O Sidestick Priority", new Dictionary<double, string> { [0] = "Normal", [1] = "Priority Taken" });
 
@@ -1588,7 +1609,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             ["Pedestal"] = new List<string>
             {
                 "Engines", "Thrust Levers", "Flaps and Brakes", "ECAM Control Panel", "Weather Radar",
-                "Transponder", "Radios", "RMP", "Cockpit Door"
+                "Transponder", "Radios", "RMP", "Audio Control Panel", "Cockpit Door"
             },
             ["Ground Services"] = new List<string> { "Doors", "Ground Equipment" },
             ["Displays"] = new List<string> { "Status", "Speeds", "Minimums", "Ground" }
@@ -1704,7 +1725,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         p["Flight Control Computers"] = new List<string>
         {
             "A32NX_PRIM_1_PUSHBUTTON_PRESSED", "A32NX_PRIM_2_PUSHBUTTON_PRESSED", "A32NX_PRIM_3_PUSHBUTTON_PRESSED",
-            "A32NX_SEC_1_PUSHBUTTON_PRESSED", "A32NX_SEC_2_PUSHBUTTON_PRESSED", "A32NX_SEC_3_PUSHBUTTON_PRESSED"
+            "A32NX_SEC_1_PUSHBUTTON_PRESSED", "A32NX_SEC_2_PUSHBUTTON_PRESSED", "A32NX_SEC_3_PUSHBUTTON_PRESSED",
+            "A32NX_RUDDER_TRIM_RESET", "A32NX_TILLER_PEDAL_DISCONNECT"
         };
         p["Engine Start"] = new List<string>
         {
@@ -1718,7 +1740,14 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "A380X_OVHD_STORM_LT", "A32NX_OVHD_COCKPITDOORVIDEO_TOGGLE",
             "A32NX_ACMS_TRIGGER_ON", "A32NX_CREW_HEAD_SET", "A32NX_SVGEINT_OVRD_ON",
             "A32NX_ENGMANSTARTALTN_TOGGLE", "A32NX_ENTERTAINMENT_CWS_OFF",
-            "A32NX_ENTERTAINMENT_IFEC_OFF", "A380X_REMOTE_CB_CTRL"
+            "A32NX_ENTERTAINMENT_IFEC_OFF", "A380X_REMOTE_CB_CTRL",
+            "A32NX_CHRONO_TOGGLE", "A32NX_CHRONO_RST"
+        };
+        p["Audio Control Panel"] = new List<string>
+        {
+            "A380X_RMP_1_VHF_VOL_RX_SWITCH_1", "A380X_RMP_1_VHF_VOL_RX_SWITCH_2",
+            "A380X_RMP_1_CAB_VOL_RX_SWITCH", "A380X_RMP_1_INT_VOL_RX_SWITCH",
+            "A380X_RMP_1_PA_VOL_RX_SWITCH", "A380X_RMP_1_NAV_VOL_RX_SWITCH"
         };
         p["Interior Lighting"] = new List<string>
         {
@@ -2147,7 +2176,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         for (int n = 1; n <= 4; n++)
             // ENG_VALVE_SWITCH:n is now a settable control combo in the Engines panel,
             // so it is no longer listed here as a read-only display field.
-            d["Engines"].AddRange(new[] { $"A32NX_ENGINE_OIL_QTY:{n}", $"ENG_VIBRATION:{n}", $"ENG_IGN_POS:{n}" });
+            d["Engines"].AddRange(new[] { $"A32NX_ENGINE_OIL_QTY:{n}", $"ENG_FUEL_USED:{n}", $"ENG_VIBRATION:{n}", $"ENG_IGN_POS:{n}" });
 
         d["Air Conditioning"].AddRange(new[] { "A32NX_COND_CARGO_FWD_TEMP", "A32NX_COND_CARGO_BULK_TEMP", "A32NX_COND_CKPT_DUCT_TEMP" });
 
