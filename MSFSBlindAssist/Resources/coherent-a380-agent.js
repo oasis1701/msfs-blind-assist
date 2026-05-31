@@ -592,6 +592,7 @@
     var pageRect = page.getBoundingClientRect();
     var items = [];
     var idx = 1;
+    var menuConts = [];   // open menu containers seen this pass (index = group id)
 
     // 1) interactive controls (innermost only — a wrapper that contains
     //    another control is skipped so two controls never merge onto a line).
@@ -610,6 +611,22 @@
       // For combo boxes, report whether the option list is open so the screen
       // reader can say "combo box, collapsed" / "expanded".
       var isCombo = kind === "dropdown" || isChoice;
+      // When a context/dropdown menu is OPEN, its options pop up over other content,
+      // so the geometric sort scatters them between unrelated lines. Tag each option
+      // with its menu container (group id) + its order within that menu, so the
+      // regroup step below can pull them out into one contiguous block.
+      var menuGroup = -1, menuOrder = -1;
+      if (kind === "menu") {
+        var cont = A.ancestorWithClass(n, "mfd-context-menu") || A.ancestorWithClass(n, "mfd-dropdown-menu");
+        if (cont) {
+          var gi = -1;
+          for (var mc = 0; mc < menuConts.length; mc++) { if (menuConts[mc] === cont) { gi = mc; break; } }
+          if (gi < 0) { gi = menuConts.length; menuConts.push(cont); }
+          menuGroup = gi;
+          var opts = cont.querySelectorAll(".mfd-context-menu-element, .mfd-dropdown-menu-element");
+          for (var oi = 0; oi < opts.length; oi++) { if (opts[oi] === n) { menuOrder = oi; break; } }
+        }
+      }
       items.push({
         top: r.top - pageRect.top, left: r.left - pageRect.left,
         right: r.right - pageRect.left, bot: r.bottom - pageRect.top,
@@ -617,7 +634,8 @@
         value: kind === "input" ? A.readInputValue(n) : "",
         isChoice: isChoice,
         disabled: n.classList.contains("disabled"),
-        expanded: isCombo ? A.comboExpanded(n) : null
+        expanded: isCombo ? A.comboExpanded(n) : null,
+        menuGroup: menuGroup, menuOrder: menuOrder
       });
       idx++;
     }
@@ -716,6 +734,30 @@
     items = mergedLines;
 
     items = A.dedupeLines(items);
+
+    // Regroup open-menu options: a popped-up context/dropdown menu overlays other
+    // content, so the geometric sort leaves its options (DELETE *, DIR TO, HOLD …)
+    // scattered between unrelated lines — very confusing, especially on F-PLN. Pull
+    // every open menu's options out and place them, in menu order, as one contiguous
+    // block at the TOP of the list (when a menu is open its options are what the
+    // user wants). Each distinct menu keeps its own block.
+    var hasMenu = false;
+    for (var hm = 0; hm < items.length; hm++) { if (items[hm].menuGroup >= 0) { hasMenu = true; break; } }
+    if (hasMenu) {
+      var menuBlock = [], rest = [], seen = {};
+      for (var ri = 0; ri < items.length; ri++) {
+        var it = items[ri];
+        if (it.menuGroup != null && it.menuGroup >= 0) {
+          if (!seen[it.menuGroup]) {
+            seen[it.menuGroup] = true;
+            var grp = items.filter(function (x) { return x.menuGroup === it.menuGroup; });
+            grp.sort(function (a, b) { return a.menuOrder - b.menuOrder; });
+            for (var gi2 = 0; gi2 < grp.length; gi2++) menuBlock.push(grp[gi2]);
+          }
+        } else { rest.push(it); }
+      }
+      items = menuBlock.concat(rest);
+    }
 
     A._mcduElements = items;
     return items;

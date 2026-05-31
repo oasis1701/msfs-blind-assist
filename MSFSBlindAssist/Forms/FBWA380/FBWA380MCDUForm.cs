@@ -497,8 +497,9 @@ public class FBWA380MCDUForm : Form
         "adsc"   => "button",
         // F-PLN rows the MFD makes clickable: a waypoint (Enter → lateral-revision
         // menu: DIR TO, INSERT, DELETE, HOLD, AIRWAYS, OVERFLY) or a discontinuity
-        // (Enter → menu → DELETE * to clear it).
-        "fplnwpt"  => "waypoint",
+        // (Enter → menu → DELETE * to clear it). "button" reads cleaner than
+        // "waypoint" — the button role already implies it's actionable.
+        "fplnwpt"  => "button",
         "fplndisc" => "button",
         _ => ""
     };
