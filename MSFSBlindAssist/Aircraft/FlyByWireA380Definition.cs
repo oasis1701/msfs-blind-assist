@@ -1579,7 +1579,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         p["Gear"] = new List<string> { "A32NX_GEAR_HANDLE_POSITION", "A32NX_LG_GRVTY_SWITCH_POS" };
         p["Autobrake"] = new List<string>
         {
-            "A32NX_AUTOBRAKES_SELECTED_MODE", "A32NX_OVHD_AUTOBRK_RTO_ARM_IS_PRESSED", "ANTISKID_BRAKES_ACTIVE"
+            // ANTISKID_BRAKES_ACTIVE is a read-only sim state — it lives in the
+            // Autobrake read-out (d[...]), NOT here, so it never renders as a
+            // pointlessly-settable combo.
+            "A32NX_AUTOBRAKES_SELECTED_MODE", "A32NX_OVHD_AUTOBRK_RTO_ARM_IS_PRESSED"
         };
         p["Source Switching"] = new List<string>
         {
@@ -1636,17 +1639,18 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         };
         p["Ground Equipment"] = new List<string>
         {
-            "A380X_GND_JETWAY", "A380X_GND_STAIRS",
-            "A380X_GND_CHOCKS", "A380X_GND_CONES",
-            "A380X_GND_GPU_AVAIL_1", "A380X_GND_GPU_AVAIL_2",
-            "A380X_GND_GPU_AVAIL_3", "A380X_GND_GPU_AVAIL_4"
+            // Only jetway/stairs are user-callable. CHOCKS, CONES and GPU-available
+            // are read-only model/sim state (writing them reverts), so they live in
+            // the read-out (d["Ground Equipment"]) instead of rendering as settable
+            // combos a user could change to no effect.
+            "A380X_GND_JETWAY", "A380X_GND_STAIRS"
         };
 
         p["Status"] = new List<string>
         {
-            // A32NX_AUTOTHRUST_STATUS is a read-only state shown in the FCU display
-            // (not duplicated here as a settable control).
-            "A32NX_FMS_PAX_NUMBER", "A32NX_ECAM_FAILURE_ACTIVE",
+            // FMS_PAX_NUMBER and ECAM_FAILURE_ACTIVE are read-only — they belong in
+            // the Status read-out (d["Status"]), not here where they'd render as
+            // pointlessly-settable controls. Only the FMS switching knob is settable.
             "A32NX_FMS_SWITCHING_KNOB"
         };
 
@@ -1895,7 +1899,16 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         d["Anti Ice"].AddRange(new[] { "A32NX_PNEU_WING_ANTI_ICE_SYSTEM_ON", "A32NX_PNEU_WING_ANTI_ICE_HAS_FAULT" });
         d["Anti Ice"].AddRange(new[] { "ENG_ANTI_ICE:1", "ENG_ANTI_ICE:2", "ENG_ANTI_ICE:3", "ENG_ANTI_ICE:4" });
         d["Fire"].AddRange(new[] { "A32NX_CARGOSMOKE_FWD_DISCHARGED", "A32NX_CARGOSMOKE_AFT_DISCHARGED" });
-        d["Status"].Add("A380X_FMS_DEST_EFOB_BELOW_MIN");
+        d["Status"].AddRange(new[] { "A380X_FMS_DEST_EFOB_BELOW_MIN", "A32NX_FMS_PAX_NUMBER", "A32NX_ECAM_FAILURE_ACTIVE" });
+        // ANTISKID is a read-only sim state (moved out of the Autobrake controls).
+        d["Autobrake"].Add("ANTISKID_BRAKES_ACTIVE");
+        // Ground equipment read-outs: chocks/cones model state + per-receptacle GPU
+        // availability (all read-only; the GPU connect is the overhead EXT PWR PBs).
+        d["Ground Equipment"] = new List<string>
+        {
+            "A380X_GND_CHOCKS", "A380X_GND_CONES",
+            "A380X_GND_GPU_AVAIL_1", "A380X_GND_GPU_AVAIL_2", "A380X_GND_GPU_AVAIL_3", "A380X_GND_GPU_AVAIL_4"
+        };
 
         d["Source Switching"] = new List<string> { "A32NX_CHRONO_ELAPSED_TIME", "A32NX_CHRONO_ET_ELAPSED_TIME" };
         d["ISIS"] = new List<string> { "A32NX_ISIS_LS_ACTIVE", "A32NX_ISIS_BUGS_ACTIVE" };
