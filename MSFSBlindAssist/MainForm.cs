@@ -41,7 +41,6 @@ public partial class MainForm : Form
     private EFBBridgeServer? efbBridgeServer;
     private EFBBridgeServer? hs787BridgeServer;
     private A32NXEFBForm? a32nxEFBForm;
-    private CoherentGTInjector? coherentGTInjector;
     private HS787FMCForm? hs787FMCForm;
     private HS787SimBriefForm? hs787SimBriefForm;
     private HS787EFBForm? hs787EFBForm;
@@ -190,12 +189,7 @@ public partial class MainForm : Form
             StartEFBBridgeServer();
         }
 
-        // Initialize EFB bridge + CDP injector if starting with FBW A32NX
-        if (currentAircraft?.AircraftCode == "A320")
-        {
-            StartEFBBridgeServer();
-            StartCoherentGTInjector();
-        }
+        // FBW flyPad: the EFB form owns its CDP client; nothing to pre-start here.
 
         // Initialize 787 bridge if starting with HS 787
         if (currentAircraft?.AircraftCode == "HS_787")
@@ -2246,14 +2240,8 @@ public partial class MainForm : Form
     {
         hotkeyManager.ExitInputHotkeyMode();
 
-        if (efbBridgeServer == null || !efbBridgeServer.IsRunning)
-        {
-            announcer.Announce("EFB bridge server not running.");
-            return;
-        }
-
         if (a32nxEFBForm == null || a32nxEFBForm.IsDisposed)
-            a32nxEFBForm = new A32NXEFBForm(efbBridgeServer, announcer);
+            a32nxEFBForm = new A32NXEFBForm(announcer);
 
         a32nxEFBForm.ShowForm();
     }
@@ -2620,24 +2608,6 @@ public partial class MainForm : Form
         }
 
         efbBridgeServer?.Stop();
-    }
-
-    private void StartCoherentGTInjector()
-    {
-        string bridgeJsPath = Path.Combine(
-            AppDomain.CurrentDomain.BaseDirectory, "Resources", "a32nx-efb-accessibility-bridge.js");
-
-        if (coherentGTInjector == null)
-            coherentGTInjector = new CoherentGTInjector(bridgeJsPath);
-
-        coherentGTInjector.HeartbeatAlive = () => efbBridgeServer?.IsBridgeConnected == true;
-        coherentGTInjector.Start();
-    }
-
-    private void StopCoherentGTInjector()
-    {
-        CleanupA32NXEFBForm();
-        coherentGTInjector?.Stop();
     }
 
     private void ShowElectronicFlightBagDialog()
@@ -3915,22 +3885,21 @@ public partial class MainForm : Form
         // init would silently no-op (see comment above the dispose block).
         EnsurePMDGProgPageMonitor();
 
-        // EFB bridge: PMDG (mod package) or FBW A320 (CDP injection)
+        // EFB bridge: PMDG (mod package) or FBW A320 (CDP, owned by the EFB form)
         if (newAircraft is IPMDGAircraft pmdgChange && pmdgChange.HasEFBSupport)
         {
             CheckAndOfferEFBModPackage();
             StartEFBBridgeServer();
-            StopCoherentGTInjector(); // stop injector if switching away from FBW
+            CleanupA32NXEFBForm();   // release the FBW CDP connection if it was open
         }
         else if (newAircraft.AircraftCode == "A320")
         {
-            StartEFBBridgeServer(); // reuse port 19777 — no mod package needed
-            StartCoherentGTInjector();
+            // FBW flyPad: the EFB form owns its CDP client; nothing to pre-start here.
         }
         else
         {
             StopEFBBridgeServer();
-            StopCoherentGTInjector();
+            CleanupA32NXEFBForm();
         }
 
         // 787 FMC bridge: mod package check and server start
@@ -5650,10 +5619,8 @@ public partial class MainForm : Form
         hs787BridgeServer?.Dispose();
         hs787BridgeServer = null;
 
-        // Clean up A32NX EFB form and CDP injector
+        // Clean up A32NX EFB form (owns its CDP client)
         CleanupA32NXEFBForm();
-        coherentGTInjector?.Dispose();
-        coherentGTInjector = null;
 
         // Clean up managers and resources
         hotkeyManager?.Cleanup();
