@@ -91,6 +91,9 @@ Also:
 
 - **Ctrl+Up / Page Up** — previous page
 - **Ctrl+Down / Page Down** — next page
+- **Units** button (Alt+U) — toggles the FMS/EFB display units between **metric**
+  and **imperial** (weights and distances). MSFSBA announces the new setting
+  ("Metric units" / "Imperial units") and re-reads the page in the chosen units.
 
 Some pages (WIND, REPORT, GNSS, TIME, the DATA sub-pages) only open once the FMS
 has the flight plan or data they need — that is the real aircraft behaviour, not

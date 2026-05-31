@@ -116,6 +116,7 @@ public class FBWA380MCDUForm : Form
     private Button _btnDown = null!;
     private Button _btnClr = null!;
     private Button _btnRefresh = null!;
+    private Button _btnUnits = null!;
 
     private List<McduElement> _elements = new();
     // Elements actually rendered as display lines (empty-text lines dropped),
@@ -132,12 +133,20 @@ public class FBWA380MCDUForm : Form
     private IntPtr _previousWindow = IntPtr.Zero;
     private System.Windows.Forms.Timer _statusTimer = null!;
 
+    // Optional direct eval into the MFD Coherent context (CoherentDebuggerClient.
+    // EvalForResultAsync), used for the metric/imperial units toggle which writes
+    // the EFB persistent store (SetStoredData) — not expressible as a queued
+    // bridge command. Null when the bridge isn't the debugger client.
+    private readonly Func<string, Task<string>>? _evalAsync;
+
     public FBWA380MCDUForm(IMcduBridge bridgeServer, ScreenReaderAnnouncer announcer,
-        FlyByWireA380Definition? aircraftDefinition = null)
+        FlyByWireA380Definition? aircraftDefinition = null,
+        Func<string, Task<string>>? evalAsync = null)
     {
         _bridgeServer = bridgeServer;
         _announcer = announcer;
         _aircraftDefinition = aircraftDefinition;
+        _evalAsync = evalAsync;
 
         InitializeComponent();
         SetupEventHandlers();
@@ -266,6 +275,12 @@ public class FBWA380MCDUForm : Form
         _btnDown    = MakeBtn("DO&WN",    "DOWN");
         _btnClr     = MakeBtn("&CLR",     "CLR");
         _btnRefresh = MakeBtn("Refres&h", "Refresh");
+        // Toggle the FMS/EFB display units (metric / imperial). Disabled when this
+        // window's bridge can't run a direct eval (the units write goes to the EFB
+        // persistent store, not a queued command).
+        _btnUnits   = MakeBtn("&Units", "Toggle units, metric or imperial");
+        _btnUnits.Width = 110;
+        _btnUnits.Enabled = _evalAsync != null;
 
         ResumeLayout(true);
         // Open with the DISPLAY focused, not the MCDU-side combo (the first-added
@@ -311,6 +326,7 @@ public class FBWA380MCDUForm : Form
         _btnDown.Click    += (_, _) => SendCommand("key_next_page");
         _btnClr.Click     += (_, _) => PerformClear();
         _btnRefresh.Click += (_, _) => _bridgeServer.EnqueueCommand("get_mcdu_elements");
+        _btnUnits.Click   += (_, _) => ToggleUnits();
 
         _mcduSelector.SelectedIndexChanged += (_, _) =>
         {
@@ -571,6 +587,32 @@ public class FBWA380MCDUForm : Form
     private void SendNavigateUri(string uri) =>
         _bridgeServer.EnqueueCommand("navigate_uri",
             new Dictionary<string, string> { ["uri"] = uri });
+
+    /// <summary>
+    /// Toggle the FMS / EFB display units between metric and imperial by flipping
+    /// the EFB persistent setting A380X_CONFIG_USING_METRIC_UNIT (the same key the
+    /// flyPad Aircraft Options page writes). Done with a single direct eval in the
+    /// MFD Coherent context: read the stored value, flip it, write it back, return
+    /// the new state. NXDataStore subscribers (the FMS/EFB) pick the change up live.
+    /// </summary>
+    private async void ToggleUnits()
+    {
+        if (_evalAsync == null) { _announcer?.AnnounceImmediate("Units toggle not available."); return; }
+        try
+        {
+            const string js =
+                "(function(){try{var k='A380X_CONFIG_USING_METRIC_UNIT';" +
+                "var c=(typeof GetStoredData!=='undefined')?GetStoredData(k,'0'):'0';" +
+                "var nv=((''+c)==='1')?'0':'1';SetStoredData(k,nv);return nv;}catch(e){return 'ERR '+e;}})()";
+            string res = (await _evalAsync(js))?.Trim().Trim('"') ?? "";
+            if (res == "1") _announcer?.AnnounceImmediate("Metric units");
+            else if (res == "0") _announcer?.AnnounceImmediate("Imperial units");
+            else _announcer?.AnnounceImmediate("Could not change units.");
+            // Re-fetch so the page re-reads in the new units.
+            _bridgeServer.EnqueueCommand("get_mcdu_elements");
+        }
+        catch { _announcer?.AnnounceImmediate("Could not change units."); }
+    }
 
     /// <summary>
     /// Airbus CLR semantics. A real pilot pressing CLR first clears the
