@@ -432,6 +432,15 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         OnOff("A32NX_AVIONICS_COMPLT_ON", "Avionics Compartment Light");
         OnOff("A380X_OVHD_STORM_LT", "Storm Light");
         OnOff("A32NX_OVHD_COCKPITDOORVIDEO_TOGGLE", "Cockpit Door Video");
+        // Niche overhead/misc toggles (settable L:vars via the calculator catch-all;
+        // low day-to-day value but exposed for completeness — #104/user request).
+        OnOff("A32NX_ACMS_TRIGGER_ON", "ACMS Manual Trigger");
+        OnOff("A32NX_CREW_HEAD_SET", "Crew Headset");
+        OnOff("A32NX_SVGEINT_OVRD_ON", "Service Interphone Override");
+        OnOff("A32NX_ENGMANSTARTALTN_TOGGLE", "Engine Manual Start, Alternate");
+        Sel("A32NX_ENTERTAINMENT_CWS_OFF", "Cabin Crew Entertainment", new Dictionary<double, string> { [0] = "Normal", [1] = "Off" });
+        Sel("A32NX_ENTERTAINMENT_IFEC_OFF", "Passenger Entertainment (IFE)", new Dictionary<double, string> { [0] = "Normal", [1] = "Off" });
+        OnOff("A380X_REMOTE_CB_CTRL", "Remote Circuit Breaker Control");
 
         // ---- INTERIOR LIGHTING ----
         Sel("A380X_OVHD_ANN_LT_POSITION", "Annunciator Lights",
@@ -1154,6 +1163,38 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         ReadEnum("A380X_OVHD_FUEL_JETTISON_IS_OPEN", "Jettison Valve", openVd);
         Read("A32NX_TOTAL_FUEL_VOLUME", "Total Fuel Volume", "gallons");
 
+        // FEED-TANK FUEL PUMPS (4 tanks × MAIN + STBY = 8). On the FBW A380 the
+        // cockpit pump pushbuttons are modelled as ELECTRICAL CIRCUITS (state =
+        // `A:CIRCUIT CONNECTION ON:<id>`, toggled by `<id> 1
+        // (>K:2:ELECTRICAL_BUS_TO_CIRCUIT_CONNECTION_TOGGLE)`) — NOT the stock
+        // FUELSYSTEM pumps. Each is an Off/On combo: live state from the circuit
+        // simvar; the set toggles the circuit (only when desired != current) via
+        // HandleUIVariableSet + _fuelPumpCircuits. The circuit IDs are from the
+        // cockpit model (PUSH_OVHD_FUEL_FEEDTK*_MAIN/STBY). #107 transcript: "turn
+        // the fuel pumps on in sequence, main then standby." Calculator-path toggle
+        // verified live (circuit 2 flips 0↔1).
+        foreach (var (key, circuit, label) in new[]
+        {
+            ("FUELPUMP_FEEDTK1_MAIN", 2, "Feed Tank 1 Main Pump"),
+            ("FUELPUMP_FEEDTK1_STBY", 3, "Feed Tank 1 Standby Pump"),
+            ("FUELPUMP_FEEDTK2_MAIN", 64, "Feed Tank 2 Main Pump"),
+            ("FUELPUMP_FEEDTK2_STBY", 65, "Feed Tank 2 Standby Pump"),
+            ("FUELPUMP_FEEDTK3_MAIN", 66, "Feed Tank 3 Main Pump"),
+            ("FUELPUMP_FEEDTK3_STBY", 67, "Feed Tank 3 Standby Pump"),
+            ("FUELPUMP_FEEDTK4_MAIN", 68, "Feed Tank 4 Main Pump"),
+            ("FUELPUMP_FEEDTK4_STBY", 69, "Feed Tank 4 Standby Pump"),
+        })
+        {
+            _fuelPumpCircuits[key] = circuit;
+            vars[key] = new SimVarDefinition
+            {
+                Name = $"CIRCUIT CONNECTION ON:{circuit}", DisplayName = label,
+                Type = SimVarType.SimVar, Units = "bool",
+                UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            };
+        }
+
         // Hydraulics PTU.
         OffAuto("A32NX_OVHD_HYD_PTU_PB_IS_AUTO", "PTU");
         ReadEnum("A32NX_OVHD_HYD_PTU_PB_HAS_FAULT", "PTU Fault", fault);
@@ -1336,7 +1377,12 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             Read($"A32NX_{side}_FLAPS_POSITION_PERCENT", $"{who} Flaps Position", "percent");
             Read($"A32NX_{side}_SLATS_POSITION_PERCENT", $"{who} Slats Position", "percent");
         }
-        Stock("ELEVATOR_TRIM", "ELEVATOR TRIM INDICATOR", "Pitch Trim", "number");
+        // Pitch trim (THS). The A380 SD reads `ELEVATOR TRIM POSITION` in RADIANS
+        // and shows it as degrees UP/DN — the stock `ELEVATOR TRIM INDICATOR`
+        // (normalized -1..1) MSFSBA used before was the WRONG representation for the
+        // A380. Now reads the real THS position; decoded to "X.X degrees up/down" in
+        // TryGetDisplayOverride (positive = UP, matching the SD).
+        Stock("ELEVATOR_TRIM", "ELEVATOR TRIM POSITION", "Pitch Trim", "radians");
         // Flight-control SURFACE deflections (stock simvars, live-verified to give
         // real degrees) — for the accessible flight-control check (#107 transcript
         // gap): move the stick/pedals full travel and read each surface here. The
@@ -1575,7 +1621,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "A380X_OVHD_FUEL_OUTRTK_XFR_PB_IS_AUTO", "A380X_OVHD_FUEL_MIDTK_XFR_PB_IS_AUTO",
             "A380X_OVHD_FUEL_INRTK_XFR_PB_IS_AUTO", "A380X_OVHD_FUEL_TRIMTK_XFR_PB_IS_AUTO",
             "A380X_OVHD_FUEL_EMER_OUTR_XFR_PB_IS_ON", "A380X_OVHD_FUEL_JETTISON_ARM_PB_IS_ON",
-            "A380X_OVHD_FUEL_JETTISON_ACTIVE_PB_IS_ON"
+            "A380X_OVHD_FUEL_JETTISON_ACTIVE_PB_IS_ON",
+            "FUELPUMP_FEEDTK1_MAIN", "FUELPUMP_FEEDTK1_STBY",
+            "FUELPUMP_FEEDTK2_MAIN", "FUELPUMP_FEEDTK2_STBY",
+            "FUELPUMP_FEEDTK3_MAIN", "FUELPUMP_FEEDTK3_STBY",
+            "FUELPUMP_FEEDTK4_MAIN", "FUELPUMP_FEEDTK4_STBY"
         };
         p["Hydraulics"] = new List<string>
         {
@@ -1665,7 +1715,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         p["Recorder and Misc"] = new List<string>
         {
             "A32NX_RCDR_GROUND_CONTROL_ON", "A32NX_ELT_ON", "A32NX_AVIONICS_COMPLT_ON",
-            "A380X_OVHD_STORM_LT", "A32NX_OVHD_COCKPITDOORVIDEO_TOGGLE"
+            "A380X_OVHD_STORM_LT", "A32NX_OVHD_COCKPITDOORVIDEO_TOGGLE",
+            "A32NX_ACMS_TRIGGER_ON", "A32NX_CREW_HEAD_SET", "A32NX_SVGEINT_OVRD_ON",
+            "A32NX_ENGMANSTARTALTN_TOGGLE", "A32NX_ENTERTAINMENT_CWS_OFF",
+            "A32NX_ENTERTAINMENT_IFEC_OFF", "A380X_REMOTE_CB_CTRL"
         };
         p["Interior Lighting"] = new List<string>
         {
@@ -2883,6 +2936,16 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // is NO hard FBW limitation here. (The only PBs that still need a stock event
         // are the seatbelt sign — handled earlier via CABIN_SEATBELTS_ALERT_SWITCH_
         // TOGGLE — and any engine anti-ice, which uses ANTI_ICE_SET_ENGn.)
+        // Feed-tank fuel pumps: toggle the pump's electrical circuit only when the
+        // desired state differs from the live circuit (the event is a TOGGLE).
+        if (_fuelPumpCircuits.TryGetValue(varKey, out int pumpCircuit))
+        {
+            bool desiredOn = value > 0.5;
+            bool currentOn = (simConnect.GetCachedVariableValue(varKey) ?? (desiredOn ? 0.0 : 1.0)) > 0.5;
+            if (desiredOn != currentOn)
+                simConnect.ExecuteCalculatorCode($"{pumpCircuit} 1 (>K:2:ELECTRICAL_BUS_TO_CIRCUIT_CONNECTION_TOGGLE)");
+            return true;
+        }
         if (varKey.StartsWith("A32NX_OVHD_", StringComparison.Ordinal)
             || varKey.StartsWith("A380X_OVHD_", StringComparison.Ordinal)
             || varKey.StartsWith("A32NX_KNOB_OVHD_", StringComparison.Ordinal)
@@ -3043,6 +3106,16 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                     : $"{Math.Abs(deg):0.0} degrees {(deg > 0 ? "up" : "down")}";
                 return true;
             }
+            case "ELEVATOR_TRIM":
+            {
+                // Actual THS position: ELEVATOR TRIM POSITION (radians) -> degrees,
+                // positive = UP (matches the A380 SD PITCH TRIM block).
+                double deg = value * 180.0 / Math.PI;
+                displayText = Math.Abs(deg) < 0.05
+                    ? "Neutral"
+                    : $"{Math.Abs(deg):0.0} degrees {(deg > 0 ? "up" : "down")}";
+                return true;
+            }
         }
         return false;
     }
@@ -3074,6 +3147,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     // when it arrives in ProcessSimVarUpdate.
     private string? _readoutKey, _readoutLabel, _readoutUnit;
     private bool _readoutIsWeight;
+    // Feed-tank fuel-pump combo key -> electrical CIRCUIT id (set via toggle).
+    private readonly Dictionary<string, int> _fuelPumpCircuits = new();
     private Dictionary<double, string>? _readoutMap;
     private static readonly Dictionary<double, string> _apprCapMap = new Dictionary<double, string>
     { [0] = "None", [1] = "CAT 1", [2] = "CAT 2", [3] = "CAT 3 Single", [4] = "CAT 3 Dual" };
