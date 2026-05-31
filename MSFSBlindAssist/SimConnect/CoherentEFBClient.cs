@@ -31,6 +31,7 @@ public sealed class CoherentEFBClient : IDisposable
     private readonly string _agentJsPath;
     private readonly SynchronizationContext? _sync;
     private readonly ConcurrentDictionary<int, TaskCompletionSource<JsonElement>> _pending = new();
+    private readonly SemaphoreSlim _writeLock = new(1, 1);
 
     private CancellationTokenSource? _cts;
     private TcpClient? _tcp;
@@ -152,6 +153,7 @@ public sealed class CoherentEFBClient : IDisposable
             {
                 if (_stream.DataAvailable)
                 {
+                    if (total >= buf.Length) break;
                     int n = await _stream.ReadAsync(buf.AsMemory(total), ct);
                     if (n == 0) break;
                     total += n;
@@ -272,7 +274,10 @@ public sealed class CoherentEFBClient : IDisposable
             method = "Runtime.evaluate",
             @params = new { expression, returnByValue, awaitPromise = false }
         });
-        await stream.WriteAsync(BuildWebSocketTextFrame(Encoding.UTF8.GetBytes(cdp)), ct);
+        var frame = BuildWebSocketTextFrame(Encoding.UTF8.GetBytes(cdp));
+        await _writeLock.WaitAsync(ct);
+        try { await stream.WriteAsync(frame, ct); }
+        finally { _writeLock.Release(); }
 
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeoutCts.CancelAfter(EvalTimeoutMs);
@@ -409,5 +414,6 @@ public sealed class CoherentEFBClient : IDisposable
         if (_disposed) return;
         _disposed = true;
         Stop();
+        _writeLock.Dispose();
     }
 }
