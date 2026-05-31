@@ -305,6 +305,16 @@ A380 MCDU / MFD Window (open with Input mode, then Shift+M):
       then SID, then "INSERT TMPY *" to commit. (Runway/SID changes use a
       temporary plan you confirm with INSERT TMPY; the SimBrief route itself does
       not.)
+   5. Arrival (STAR / approach): on the F-PLN page, page down (Ctrl+Down) to the
+      destination airport line at the END of the route, activate it, choose
+      ARRIVAL, then pick the approach / STAR / VIA, and INSERT TMPY. (The bottom
+      "DEST OMDB" summary line is just a readout — it does not open the revision.)
+
+  Landing-rollout safety call-outs (announced automatically, no key): on approach
+  and rollout MSFSBA speaks the A380's runway-overrun protection — "Runway too
+  short", "If wet, runway too short", "Max braking" — and "Runway ahead" when you
+  taxi toward a runway. These come straight from the aircraft's ROW/ROP and OANS
+  systems, the same logic that drives the PFD warnings.
 
 
 General:
