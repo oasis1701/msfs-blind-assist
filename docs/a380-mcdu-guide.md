@@ -125,19 +125,14 @@ Empty fields are dropped: before takeoff the time/speed/altitude **predictions**
 are blank in the aircraft (shown as dashes), so MSFSBA simply omits them; once
 airborne an **ETA hh:mm** is added to each line.
 
-**Seeing the WHOLE route.** Two ways:
-
-- **"Whole route" button** (the easiest) — reads the ENTIRE flight plan straight
-  from the FMS, every waypoint from departure to destination in one list, with no
-  scrolling: e.g. "TVM, via P570, 80 NM" … "OMDB30R, 5 NM". Press it again ("Live
-  page") to return to the normal scrolling page. Use this for a quick review of
-  the complete route; it omits per-leg track (use the live page for that).
-- **Scrolling the live page** — the F-PLN page itself shows a *window* of about a
-  dozen waypoints with the **destination pinned at the bottom**. The last waypoint
-  before DEST is just the bottom of the current window, NOT the end of the route —
-  press **Ctrl+Down / Page Down** for the next set (and **Ctrl+Up / Page Up** to go
-  back). Keep paging to walk the route. The live page also carries the track for
-  each leg.
+**Seeing the WHOLE route.** The page shows a *window* of about a dozen waypoints
+at a time, with the **destination pinned at the bottom** (the DEST / arrival
+airport). The last waypoint you hear before DEST is just the bottom of the
+*current window*, NOT the end of the route — press **Ctrl+Down / Page Down** to
+scroll to the next set of waypoints (and **Ctrl+Up / Page Up** to go back). Keep
+paging down to walk the entire route to the destination. (Verified: paging shows
+every waypoint in sequence with a small overlap between windows — nothing is
+skipped.)
 
 ## 5. Loading the flight plan — SimBrief first
 

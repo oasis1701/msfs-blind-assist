@@ -101,8 +101,6 @@ public class FBWA380MCDUForm : Form
     private Button _btnDown = null!;
     private Button _btnClr = null!;
     private Button _btnRefresh = null!;
-    private Button _btnWholeRoute = null!;
-    private bool _wholeRoute;
 
     private List<McduElement> _elements = new();
     // Elements actually rendered as display lines (empty-text lines dropped),
@@ -253,7 +251,6 @@ public class FBWA380MCDUForm : Form
         _btnDown    = MakeBtn("DO&WN",    "DOWN");
         _btnClr     = MakeBtn("&CLR",     "CLR");
         _btnRefresh = MakeBtn("Refres&h", "Refresh");
-        _btnWholeRoute = MakeBtn("&Whole route", "Whole route");
 
         ResumeLayout(true);
         // Open with the DISPLAY focused, not the MCDU-side combo (the first-added
@@ -299,16 +296,6 @@ public class FBWA380MCDUForm : Form
         _btnDown.Click    += (_, _) => SendCommand("key_next_page");
         _btnClr.Click     += (_, _) => PerformClear();
         _btnRefresh.Click += (_, _) => _bridgeServer.EnqueueCommand("get_mcdu_elements");
-        _btnWholeRoute.Click += (_, _) =>
-        {
-            // Toggle the FMS "whole route" overview — the entire flight plan (every
-            // leg to the destination) read straight from the FMS, no scrolling.
-            _wholeRoute = !_wholeRoute;
-            _bridgeServer.EnqueueCommand(_wholeRoute ? "fullplan_on" : "fullplan_off");
-            _btnWholeRoute.Text = _wholeRoute ? "Live &page" : "&Whole route";
-            _announcer.Announce(_wholeRoute ? "Whole route" : "Live page");
-            ScheduleRefresh();
-        };
 
         _mcduSelector.SelectedIndexChanged += (_, _) =>
         {

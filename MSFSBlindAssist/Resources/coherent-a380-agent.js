@@ -721,56 +721,9 @@
   };
 
   // ---- public: read ------------------------------------------------------
-  // "Whole route" overview: read the ENTIRE active flight plan straight from the
-  // FMS (fmcService.master.flightPlanInterface.active.allLegs) instead of the
-  // ~12-waypoint F-PLN window — so the user can read every leg to the destination
-  // without scrolling. Reachable because the <a380x-mfd> element exposes
-  // fsInstrument.fmcService. Each leg folds into the same style as the F-PLN page
-  // ("IDENT, via AIRWAY, N NM, <constraint>"); the FMS doesn't carry per-leg track
-  // on the ground, so this overview omits it (use the F-PLN page for track).
-  A._fullPlanMode = false;
-  A.setFullPlan = function (on) { A._fullPlanMode = !!on; return A._fullPlanMode ? "on" : "off"; };
-
-  A.fullPlanElements = function () {
-    var out = [];
-    try {
-      var el = document.querySelector("a380x-mfd");
-      var m = el && el.fsInstrument && el.fsInstrument.fmcService ? el.fsInstrument.fmcService.master : null;
-      var plan = m && m.flightPlanInterface ? m.flightPlanInterface.active : null;
-      if (!plan || !plan.allLegs) return null;
-      var legs = plan.allLegs;
-      for (var i = 0; i < legs.length; i++) {
-        var L = legs[i];
-        if (L.isDiscontinuity) { out.push({ idx: 0, kind: "text", text: "— discontinuity —", value: "", disabled: false }); continue; }
-        var ident = L.ident || (L.definition && L.definition.waypoint ? L.definition.waypoint.ident : "");
-        if (!ident) continue;
-        ident = String(ident).replace(/@/g, "");
-        var parts = [ident];
-        if (L.annotation) parts.push("via " + L.annotation);
-        var dist = (L.calculated && typeof L.calculated.distance === "number") ? Math.round(L.calculated.distance) : 0;
-        if (dist) parts.push(dist + " NM");
-        if (L.definition && L.definition.altitude1) {
-          var d = L.definition.altitudeDescriptor, a = Math.round(L.definition.altitude1);
-          parts.push(d === "+" ? "at or above " + a + " feet" : d === "-" ? "at or below " + a + " feet" : "at " + a + " feet");
-        }
-        out.push({ idx: 0, kind: "text", text: parts.join(", "), value: "", disabled: false });
-      }
-      return out;
-    } catch (e) { return null; }
-  };
-
   A.scrape = function (mcduIndex) {
     try {
       if (mcduIndex === 1 || mcduIndex === 2) A.activeMcdu = mcduIndex;
-      // Whole-route overview mode (read the full flight plan from the FMS).
-      if (A._fullPlanMode) {
-        var fp = A.fullPlanElements();
-        if (fp) return JSON.stringify({ ok: true, mcdu: A.activeMcdu,
-          title: "FLIGHT PLAN — WHOLE ROUTE (" + fp.length + " points)",
-          scratchpad: "Reading the whole route from the FMS. Press Whole route again for the live page.",
-          elements: fp });
-        // fall through to the live page if the FMS plan can't be read
-      }
       var root = A.findRoot(A.activeMcdu);
       if (!root) return JSON.stringify({ ok: false, error: "MFD root not found (powered up?)" });
       var lines = A.enumerateLines(root);

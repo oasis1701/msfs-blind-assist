@@ -134,14 +134,6 @@ namespace MSFSBlindAssist.SimConnect
                         _mcduIndex = mi == 2 ? 2 : 1;
                     _lastScreenHash = ""; _lastElementsHash = "";
                     return $"window.__MSFSBA_A380 && __MSFSBA_A380.setMcdu({_mcduIndex})";
-                case "fullplan_on":
-                    // Switch the scrape to the FMS "whole route" overview (every leg).
-                    _lastScreenHash = ""; _lastElementsHash = "";
-                    return "window.__MSFSBA_A380 && __MSFSBA_A380.setFullPlan(true)";
-                case "fullplan_off":
-                    // Back to the live MFD page scrape.
-                    _lastScreenHash = ""; _lastElementsHash = "";
-                    return "window.__MSFSBA_A380 && __MSFSBA_A380.setFullPlan(false)";
                 case "click_mcdu_element":
                     return $"window.__MSFSBA_A380 && __MSFSBA_A380.clickElement({JsInt(Idx())})";
                 case "send_to_field":
