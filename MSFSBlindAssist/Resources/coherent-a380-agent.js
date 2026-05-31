@@ -394,6 +394,12 @@
       if (!own || own === "null" || own === "undefined") continue;
       var tr = t.getBoundingClientRect();
       var cls = (t.className && t.className.toString) ? t.className.toString() : "";
+      // F-PLN leg DISTANCE: a leg's upper row holds the track ("294°") and the
+      // distance (a bare integer). Tag the bare-integer one with "NM" so it reads
+      // as "80 NM" (nautical miles) instead of an ambiguous "80" (which sounds like
+      // a Mach number). Class+pattern based — universal to ANY leg, nothing
+      // hard-coded. Track carries "°", FPA carries a sign/decimal, so neither match.
+      if (cls.indexOf("mfd-fms-fpln-leg-upper-row") >= 0 && /^\d+$/.test(own)) own = own + " NM";
       items.push({
         top: tr.top - pageRect.top, left: tr.left - pageRect.left,
         right: tr.right - pageRect.left, bot: tr.bottom - pageRect.top,
@@ -439,7 +445,8 @@
     // line. Grid pages (esp. F-PLN, where each waypoint's name / airway / track /
     // distance / time / altitude are separate absolutely-positioned cells) would
     // otherwise read as a token-salad of one cell per line ("BASU1D" / "217°" /
-    // "2" / …). Joined with " · " they read as one row: "BASU1D · 217° · 2".
+    // "2" / …). Joined with ", " they read as one row with a screen-reader PAUSE
+    // between each column ("BASU1D, 217°, 2 NM"; "FROM, TIME, TRK, DIST, FPA").
     // Interactive controls (idx>0) always keep their own line, so a clickable
     // waypoint/field is never swallowed into a text row.
     var mergedLines = [];
@@ -449,7 +456,7 @@
         var prev = mergedLines[mergedLines.length - 1];
         if (prev.idx === 0 && prev.kind === "text"
             && Math.round(prev.top / A.ROW_Y_TOLERANCE_PX) === Math.round(cur.top / A.ROW_Y_TOLERANCE_PX)) {
-          prev.text = prev.text + " · " + cur.text;
+          prev.text = prev.text + ", " + cur.text;
           if (cur.right > prev.right) prev.right = cur.right;
           if (cur.bot > prev.bot) prev.bot = cur.bot;
           continue;
