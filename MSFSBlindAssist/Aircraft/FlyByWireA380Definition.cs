@@ -1034,7 +1034,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // BCD16-encodes the entered code (4242 -> 0x4242). Sending the raw decimal
         // via the generic event path produced a wrong squawk. Event name stays XPNDR_SET.
         Evt("TRANSPONDER_CODE_SET", "XPNDR_SET", "Squawk Code");
-        ReadEnum("A32NX_TRANSPONDER_MODE", "Transponder Mode",
+        // Settable: the mode L:var is writable and sticks (verified live — STBY/AUTO/
+        // ON all hold). Set via the calculator catch-all at the end of HandleUIVariableSet.
+        Sel("A32NX_TRANSPONDER_MODE", "Transponder Mode",
             new Dictionary<double, string> { [0] = "Standby", [1] = "Auto", [2] = "On" });
         Sel("A32NX_SWITCH_ATC_ALT", "ATC Altitude Reporting",
             new Dictionary<double, string> { [0] = "Off", [1] = "On" });
@@ -2794,6 +2796,20 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         if (varKey.StartsWith("A32NX_OVHD_", StringComparison.Ordinal)
             || varKey.StartsWith("A380X_OVHD_", StringComparison.Ordinal)
             || varKey.StartsWith("A32NX_KNOB_OVHD_", StringComparison.Ordinal))
+        {
+            simConnect.ExecuteCalculatorCode($"{(int)Math.Round(value)} (>L:{varKey})");
+            return true;
+        }
+        // General catch-all for every remaining writable FBW L:var combo whose KEY is
+        // the L:var itself (e.g. A32NX_TRANSPONDER_MODE, A32NX_SWITCH_ATC_ALT, ND mode/
+        // range, ISIS, EFIS filters). Route through the reliable MobiFlight calculator
+        // path rather than the base data-def SetLVar. Event-driven controls (engine
+        // masters, FCU toggles, seat-belt, lights, …) are all handled in cases above,
+        // so anything reaching here is a direct-write L:var. ARINC429/readout vars are
+        // never settable, so they never get here.
+        if (varKey.StartsWith("A32NX_", StringComparison.Ordinal)
+            || varKey.StartsWith("A380X_", StringComparison.Ordinal)
+            || varKey.StartsWith("FBW_", StringComparison.Ordinal))
         {
             simConnect.ExecuteCalculatorCode($"{(int)Math.Round(value)} (>L:{varKey})");
             return true;
