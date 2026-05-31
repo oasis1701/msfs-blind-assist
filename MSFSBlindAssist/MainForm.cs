@@ -1036,6 +1036,18 @@ public partial class MainForm : Form
         }
 
         // Handle aircraft variable hotkey announcements
+        // A380 metric-altitude mode (FCU MTRS / A32NX_METRIC_ALT_TOGGLE): when active, the
+        // current-altitude readouts (A = MSL, Q = AGL) speak metres instead of feet. Gated to
+        // the A380 by both the aircraft-type check and the MetricAlt flag — no other aircraft
+        // and no non-metric A380 state reach this branch, so feet behaviour is unchanged.
+        if ((e.VarName == "ALTITUDE_MSL" || e.VarName == "ALTITUDE_AGL")
+            && currentAircraft is Aircraft.FlyByWireA380Definition a380Alt && a380Alt.MetricAlt)
+        {
+            double metres = e.Value * 0.3048;
+            announcer.AnnounceImmediate($"{metres:0} meters");
+            return true;
+        }
+
         if (e.VarName == "ALTITUDE_AGL" || e.VarName == "ALTITUDE_MSL" || e.VarName == "AIRSPEED_INDICATED" ||
             e.VarName == "AIRSPEED_TRUE" || e.VarName == "GROUND_SPEED" || e.VarName == "MACH_SPEED" ||
             e.VarName == "VERTICAL_SPEED" || e.VarName == "HEADING_MAGNETIC" || e.VarName == "HEADING_TRUE" ||

@@ -930,7 +930,15 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Evt("A32NX.FCU_TRK_FPA_TOGGLE_PUSH", "A32NX.FCU_TRK_FPA_TOGGLE_PUSH", "TRK / FPA Toggle");
         Sel("XMLVAR_AUTOPILOT_ALTITUDE_INCREMENT", "Altitude Increment",
             new Dictionary<double, string> { [100] = "100", [1000] = "1000" });
-        OnOff("A32NX_METRIC_ALT_TOGGLE", "Metric Altitude");
+        // Metric altitude (the FCU MTRS button). Settable combo AND continuously
+        // monitored so MSFSBA's altitude read-outs can switch to metres when it's on
+        // (cached into _metricAlt in ProcessSimVarUpdate). A380-only feature.
+        vars["A32NX_METRIC_ALT_TOGGLE"] = new SimVarDefinition
+        {
+            Name = "A32NX_METRIC_ALT_TOGGLE", DisplayName = "Metric Altitude",
+            Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        };
 
         // Selected value readouts (OnRequest; read on demand via Shift+H/S/A/V).
         // NB: units MUST be "number" — this is an L:var. Reading it with the
@@ -1393,12 +1401,15 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             Read($"A32NX_{side}_FLAPS_POSITION_PERCENT", $"{who} Flaps Position", "percent");
             Read($"A32NX_{side}_SLATS_POSITION_PERCENT", $"{who} Slats Position", "percent");
         }
-        // Pitch trim (THS). The A380 SD reads `ELEVATOR TRIM POSITION` in RADIANS
-        // and shows it as degrees UP/DN — the stock `ELEVATOR TRIM INDICATOR`
-        // (normalized -1..1) MSFSBA used before was the WRONG representation for the
-        // A380. Now reads the real THS position; decoded to "X.X degrees up/down" in
-        // TryGetDisplayOverride (positive = UP, matching the SD).
-        Stock("ELEVATOR_TRIM", "ELEVATOR TRIM POSITION", "Pitch Trim", "radians");
+        // Pitch trim (THS). The A380 SD shows `ELEVATOR TRIM POSITION` as degrees
+        // UP/DN — the stock `ELEVATOR TRIM INDICATOR` (normalized -1..1) MSFSBA used
+        // before was the WRONG representation for the A380. Read it in DEGREES (the
+        // SAME unit the shared base `MON_ElevatorTrim` / Shift+T trim-announce uses —
+        // so there is no unit mismatch on the same simvar) and decode to
+        // "X.X degrees up/down" in TryGetDisplayOverride (positive = UP, matching SD).
+        // This is panel-display only (OnRequest) and does NOT touch the Shift+T
+        // continuous trim-announce, which runs entirely off the base MON_ElevatorTrim.
+        Stock("ELEVATOR_TRIM", "ELEVATOR TRIM POSITION", "Pitch Trim", "degrees");
         // Flight-control SURFACE deflections (stock simvars, live-verified to give
         // real degrees) — for the accessible flight-control check (#107 transcript
         // gap): move the stick/pedals full travel and read each surface here. The
@@ -2625,6 +2636,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             }
             return true;
         }
+        // Metric-altitude (FCU MTRS) state — cache it so every MSFSBA altitude
+        // read-out switches to metres; let the generic monitor announce On/Off.
+        if (varName == "A32NX_METRIC_ALT_TOGGLE") { _metricAlt = value > 0.5; return false; }
 
         // ---- FCU readouts: value + managed-indicator pairs ----
         // Each Read* hotkey requests the value var(s) and the managed indicator
@@ -2684,7 +2698,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             if (_pAltVal.HasValue && _pAltMgd.HasValue)
             {
                 string st = _pAltMgd.Value > 0 ? "managed" : "selected";
-                announcer.AnnounceImmediate($"FCU altitude {_pAltVal.Value:0} feet, {st}");
+                var (av, au) = AltUser(_pAltVal.Value);
+                announcer.AnnounceImmediate($"FCU altitude {av:0} {au}, {st}");
                 _pAltVal = _pAltMgd = null; _reqAlt = false;
             }
             return true;
@@ -3123,6 +3138,15 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             case "A32NX_EFB_USING_METRIC_UNIT":
                 displayText = value > 0.5 ? "Kilograms (metric)" : "Pounds (imperial)";
                 return true;
+            // Altitude panel fields honour the FCU metric-altitude (MTRS) selection
+            // — feet by default, metres when A32NX_METRIC_ALT_TOGGLE is on.
+            case "FCU_ALT_VALUE":
+            case "INDICATED ALTITUDE":
+            {
+                if (!_metricAlt) return false;   // feet — let the generic "N feet" render
+                displayText = $"{value * 0.3048:0} meters";
+                return true;
+            }
             case "A32NX_TO_PITCH_TRIM":
             {
                 // ARINC429 degrees; the FMS-computed takeoff trim. Positive = nose
@@ -3137,9 +3161,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             }
             case "ELEVATOR_TRIM":
             {
-                // Actual THS position: ELEVATOR TRIM POSITION (radians) -> degrees,
-                // positive = UP (matches the A380 SD PITCH TRIM block).
-                double deg = value * 180.0 / Math.PI;
+                // Actual THS position, read in DEGREES; positive = UP (matches the
+                // A380 SD PITCH TRIM block and the base Shift+T trim-announce unit).
+                double deg = value;
                 displayText = Math.Abs(deg) < 0.05
                     ? "Neutral"
                     : $"{Math.Abs(deg):0.0} degrees {(deg > 0 ? "up" : "down")}";
@@ -3199,6 +3223,14 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
 
     /// <summary>True if MSFSBA is currently reading weights in kilograms.</summary>
     public bool MetricWeight => _metricWeight;
+
+    // Metric ALTITUDE state (the A380 FCU MTRS button, A32NX_METRIC_ALT_TOGGLE).
+    private bool _metricAlt;
+    /// <summary>True when the A380 is in metric-altitude mode (FCU MTRS): MSFSBA reads altitudes in metres.</summary>
+    public bool MetricAlt => _metricAlt;
+    /// <summary>Convert a feet altitude to the pilot's selected unit + spoken word (A380 metric-alt).</summary>
+    private (double value, string unit) AltUser(double feet)
+        => _metricAlt ? (feet * 0.3048, "meters") : (feet, "feet");
 
     /// <summary>Flip MSFSBA's weight read-out unit (kg ⇄ lb) instantly; returns the new state (true = kg).</summary>
     public bool ToggleMetricWeight() { _metricWeight = !_metricWeight; _metricKnown = true; return _metricWeight; }
