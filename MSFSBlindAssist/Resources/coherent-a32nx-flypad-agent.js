@@ -107,6 +107,14 @@
       var dt = A.directText(n);
       if (dt && dt.length <= 30) return "button";
     }
+    // Clickable "tile" whose visible label sits in a CHILD heading (e.g. the
+    // flyPad Ground service tiles: a cursor-pointer/onclick <div> wrapping an
+    // <h_> name + an icon). directText is empty, so the branch above misses it;
+    // match the onclick handler plus a child heading instead. enumerate() still
+    // skips it when it also wraps a more specific control (containsInteractive).
+    if (typeof n.onclick === "function") {
+      try { if (n.querySelector && n.querySelector("h1,h2,h3,h4,h5,h6")) return "button"; } catch (e) {}
+    }
     return null;
   };
 
@@ -174,7 +182,12 @@
   // A bare unit token ("KGS", "feet", "degrees", "%", "NM"...) — never a field
   // name, so it must not be used as a label on its own.
   A.unitToken = function (s) {
-    return /^(kgs?|lbs?|feet|ft|degrees?|deg|%|nm|kt|kts|knots|hpa|inhg|psi|c|°c|x ?1000 ?kgs?)$/i.test((s || "").trim());
+    s = (s || "").trim();
+    if (!s) return false;
+    if (/^(kgs?|lbs?|feet|ft|ft amsl|m|degrees?|deg|°|%|nm|kt|kts|knots|kts or °\/kts|°\/kts|hpa|inhg|psi|c|°c|x ?1000 ?kgs?)$/i.test(s)) return true;
+    // A bare symbol-only token (e.g. "°") is a unit, never a field name.
+    if (s.length <= 6 && !/[a-z]/i.test(s)) return true;
+    return false;
   };
   // Text that's just a number / punctuation (a value, not a name).
   A.numericish = function (s) {
@@ -249,7 +262,12 @@
   A.labelFor = function (n) {
     var base = clean((n.getAttribute && (n.getAttribute("aria-label") || n.getAttribute("title"))) || "");
     if (!base) base = A.directText(n);
-    if (!base) base = clean(n.textContent);
+    if (!base) {
+      // A clickable tile (e.g. a Ground service) keeps its label in a child
+      // heading; prefer that clean name over the concatenated textContent.
+      var ch = n.querySelector && n.querySelector("h1,h2,h3,h4,h5,h6");
+      base = ch ? clean(ch.textContent) : clean(n.textContent);
+    }
 
     var lower = base.toLowerCase();
     var generic = (base === "" || lower === "go to page" || lower === "go to" || lower === "open");
