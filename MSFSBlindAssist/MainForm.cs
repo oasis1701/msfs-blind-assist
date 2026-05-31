@@ -40,6 +40,8 @@ public partial class MainForm : Form
     private System.Windows.Forms.Form? pmdgEFBForm;
     private EFBBridgeServer? efbBridgeServer;
     private EFBBridgeServer? hs787BridgeServer;
+    private A32NXEFBForm? a32nxEFBForm;
+    private CoherentGTInjector? coherentGTInjector;
     private HS787FMCForm? hs787FMCForm;
     private HS787SimBriefForm? hs787SimBriefForm;
     private HS787EFBForm? hs787EFBForm;
@@ -1617,6 +1619,10 @@ public partial class MainForm : Form
                 {
                     ShowHS787EFBFormDialog();
                 }
+                else if (currentAircraft?.AircraftCode == "A320")
+                {
+                    ShowA32NXEFBDialog();
+                }
                 break;
             case HotkeyAction.ShowTrackFixWindow:
                 ShowTrackFixDialog();
@@ -2229,6 +2235,31 @@ public partial class MainForm : Form
         hs787FMCForm.ShowForm();
     }
 
+    private void ShowA32NXEFBDialog()
+    {
+        hotkeyManager.ExitInputHotkeyMode();
+
+        if (efbBridgeServer == null || !efbBridgeServer.IsRunning)
+        {
+            announcer.Announce("EFB bridge server not running.");
+            return;
+        }
+
+        if (a32nxEFBForm == null || a32nxEFBForm.IsDisposed)
+            a32nxEFBForm = new A32NXEFBForm(efbBridgeServer, announcer);
+
+        a32nxEFBForm.ShowForm();
+    }
+
+    private void CleanupA32NXEFBForm()
+    {
+        if (a32nxEFBForm != null && !a32nxEFBForm.IsDisposed)
+        {
+            a32nxEFBForm.Dispose();
+            a32nxEFBForm = null;
+        }
+    }
+
     /// <summary>
     /// Builds the list of (simLabel, communityPath) tuples to try for the HS787 bridge.
     /// Saved override comes first (if the directory still exists); auto-detected paths follow,
@@ -2582,6 +2613,23 @@ public partial class MainForm : Form
         }
 
         efbBridgeServer?.Stop();
+    }
+
+    private void StartCoherentGTInjector()
+    {
+        string bridgeJsPath = Path.Combine(
+            AppDomain.CurrentDomain.BaseDirectory, "Resources", "a32nx-efb-accessibility-bridge.js");
+
+        if (coherentGTInjector == null)
+            coherentGTInjector = new CoherentGTInjector(bridgeJsPath);
+
+        coherentGTInjector.Start();
+    }
+
+    private void StopCoherentGTInjector()
+    {
+        CleanupA32NXEFBForm();
+        coherentGTInjector?.Stop();
     }
 
     private void ShowElectronicFlightBagDialog()
@@ -3859,15 +3907,22 @@ public partial class MainForm : Form
         // init would silently no-op (see comment above the dispose block).
         EnsurePMDGProgPageMonitor();
 
-        // EFB bridge: mod package check and server start (only for aircraft that have EFB support wired up)
+        // EFB bridge: PMDG (mod package) or FBW A320 (CDP injection)
         if (newAircraft is IPMDGAircraft pmdgChange && pmdgChange.HasEFBSupport)
         {
             CheckAndOfferEFBModPackage();
             StartEFBBridgeServer();
+            StopCoherentGTInjector(); // stop injector if switching away from FBW
+        }
+        else if (newAircraft.AircraftCode == "A320")
+        {
+            StartEFBBridgeServer(); // reuse port 19777 — no mod package needed
+            StartCoherentGTInjector();
         }
         else
         {
             StopEFBBridgeServer();
+            StopCoherentGTInjector();
         }
 
         // 787 FMC bridge: mod package check and server start
@@ -5585,6 +5640,11 @@ public partial class MainForm : Form
         hs787EFBForm?.Dispose();
         hs787BridgeServer?.Dispose();
         hs787BridgeServer = null;
+
+        // Clean up A32NX EFB form and CDP injector
+        CleanupA32NXEFBForm();
+        coherentGTInjector?.Dispose();
+        coherentGTInjector = null;
 
         // Clean up managers and resources
         hotkeyManager?.Cleanup();
