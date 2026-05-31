@@ -1,0 +1,9 @@
+{
+  "name": "fbw-mcdu-probe",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Probe/verify tool for the FlyByWire A32NX SimBridge MCDU websocket (accessibility dev tool for MSFS Blind Assist).",
+  "bin": { "fbw-mcdu-probe": "probe.js" },
+  "scripts": { "test": "node --test" },
+  "dependencies": { "ws": "^8.18.0" }
+}
