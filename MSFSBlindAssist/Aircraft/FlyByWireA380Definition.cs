@@ -235,7 +235,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // ---- APU ----
         OnOff("A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", "APU Master Switch");
         OnOff("A32NX_OVHD_APU_START_PB_IS_ON", "APU Start", button: true);
-        ReadEnum("A32NX_OVHD_APU_START_PB_IS_AVAILABLE", "APU Available",
+        // APU Available: NOT auto-announced — the E/WD memo "APU AVAIL" already
+        // announces availability (from the scrape), so a ReadEnum here would speak
+        // it twice ("APU Available: Available" AND "APU AVAIL"). Kept readable
+        // (ReadEnumQuiet) so it still shows on demand; the ECAM memo is the call-out.
+        ReadEnumQuiet("A32NX_OVHD_APU_START_PB_IS_AVAILABLE", "APU Available",
             new Dictionary<double, string> { [0] = "No", [1] = "Available" });
 
         // ---- FUEL ----
@@ -1365,8 +1369,13 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             };
         }
 
+        _varCache = vars;   // for ProcessSimVarUpdate lookups (ARINC429 enum decode)
         return vars;
     }
+
+    // Cached variable map + per-var last announced state for the ARINC429 enum guard.
+    private Dictionary<string, SimVarDefinition>? _varCache;
+    private readonly Dictionary<string, int> _arincEnumState = new();
 
     // ===================================================================
     // Panel structure
@@ -1997,6 +2006,28 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
 
     public override bool ProcessSimVarUpdate(string varName, double value, ScreenReaderAnnouncer announcer)
     {
+        // ARINC429 enum guard. Several FBW discretes (e.g. APU_LOW_FUEL_PRESSURE_FAULT,
+        // written `write_arinc429`) come through as a huge SSM-encoded word (e.g.
+        // 12884901888 = 0x3_00000000 = SSM NormalOp, payload 0) that matches no entry
+        // in the var's 0/1 ValueDescriptions, so the generic announce would say
+        // "<label>: 12884901888". Decode any ANNOUNCED enum var whose raw value is
+        // ARINC-large (>= 2^32 -> an SSM is present) to its payload (0/1) and announce
+        // the mapped state ON CHANGE only (default prev = 0 so the initial no-fault is
+        // silent). Honours the Ctrl+M mute; returns true to suppress the raw announce.
+        if (value >= 4294967296.0 && _varCache != null
+            && _varCache.TryGetValue(varName, out var arDef)
+            && arDef.IsAnnounced
+            && arDef.ValueDescriptions is { Count: > 0 } arDesc)
+        {
+            int st = (int)Math.Round(new SimConnect.Arinc429Word(value).ValueOr(0f));
+            int prevSt = _arincEnumState.TryGetValue(varName, out var ps) ? ps : 0;
+            _arincEnumState[varName] = st;
+            if (st != prevSt
+                && !Settings.SettingsManager.Current.A380DisabledMonitorVariables.Contains(varName)
+                && arDesc.TryGetValue(st, out var sdesc))
+                announcer.Announce($"{arDef.DisplayName}: {sdesc}");
+            return true;
+        }
         // Keep the live current state of the FCU engage/mode toggles so their
         // combos can decide whether a "set" needs to fire the toggle event. Fall
         // through so the base still auto-announces the state change.
