@@ -1300,7 +1300,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             Read($"A32NX_{side}_SLATS_POSITION_PERCENT", $"{who} Slats Position", "percent");
         }
         Stock("ELEVATOR_TRIM", "ELEVATOR TRIM INDICATOR", "Pitch Trim", "number");
-        Stock("RUDDER_TRIM_PCT", "RUDDER TRIM PCT", "Rudder Trim", "percent");
+        // Rudder trim ("weather trim"). The stock RUDDER TRIM PCT does not track the
+        // FBW SEC-computed value; the real figure the PFD/SD show is the ARINC429
+        // word A32NX_SEC_1_RUDDER_ACTUAL_POSITION (degrees, positive = nose-Left).
+        // Decoded to "Left/Right X.X degrees" / "Neutral" in TryGetDisplayOverride.
+        Read("A32NX_SEC_1_RUDDER_ACTUAL_POSITION", "Rudder Trim", "number");
         ReadEnum("A32NX_PRIORITY_TAKEOVER:1", "Capt Sidestick Priority", new Dictionary<double, string> { [0] = "Normal", [1] = "Priority Taken" });
         ReadEnum("A32NX_PRIORITY_TAKEOVER:2", "F/O Sidestick Priority", new Dictionary<double, string> { [0] = "Normal", [1] = "Priority Taken" });
 
@@ -2042,7 +2046,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         {
             "A32NX_LEFT_FLAPS_POSITION_PERCENT", "A32NX_RIGHT_FLAPS_POSITION_PERCENT",
             "A32NX_LEFT_SLATS_POSITION_PERCENT", "A32NX_RIGHT_SLATS_POSITION_PERCENT",
-            "ELEVATOR_TRIM", "RUDDER_TRIM_PCT", "A32NX_PRIORITY_TAKEOVER:1", "A32NX_PRIORITY_TAKEOVER:2"
+            "ELEVATOR_TRIM", "A32NX_SEC_1_RUDDER_ACTUAL_POSITION", "A32NX_PRIORITY_TAKEOVER:1", "A32NX_PRIORITY_TAKEOVER:2"
         });
 
         d["Gear"].AddRange(new[] { "GEAR_LEFT_POS", "GEAR_CENTER_POS", "GEAR_RIGHT_POS", "A32NX_AUTOBRAKES_RTO_ARMED" });
@@ -2910,6 +2914,17 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 int ft = (w.IsNormalOperation || w.IsFunctionalTest)
                     ? (int)(Math.Round(w.Value / 10.0) * 10) : -1;
                 displayText = ft > 0 ? $"{ft} feet" : "Not set";
+                return true;
+            }
+            case "A32NX_SEC_1_RUDDER_ACTUAL_POSITION":
+            {
+                // ARINC429 degrees, positive = nose-Left (matches PFD/SD: sign>0 -> L).
+                var w = new Arinc429Word(value);
+                if (!(w.IsNormalOperation || w.IsFunctionalTest)) { displayText = "Not available"; return true; }
+                double deg = w.Value;
+                displayText = Math.Abs(deg) < 0.1
+                    ? "Neutral"
+                    : $"{(deg > 0 ? "Left" : "Right")} {Math.Abs(deg):0.0} degrees";
                 return true;
             }
         }

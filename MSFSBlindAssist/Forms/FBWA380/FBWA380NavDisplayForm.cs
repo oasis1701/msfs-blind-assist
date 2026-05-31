@@ -28,6 +28,11 @@ public class FBWA380NavDisplayForm : Form
         "A32NX_FG_CROSS_TRACK_ERROR", "A32NX_FMGC_L_RNP",
         "A32NX_RADIO_RECEIVER_LOC_IS_VALID", "A32NX_RADIO_RECEIVER_LOC_DEVIATION",
         "A32NX_RADIO_RECEIVER_GS_IS_VALID", "A32NX_RADIO_RECEIVER_GS_DEVIATION",
+        // BTV (Brake-To-Vacate) predicted landing distances — plain metres L-vars
+        // (NOT ARINC429, unlike the in-rollout REMAINING distances). Computed by
+        // the autobrake controller while approaching, for the selected runway.
+        "A32NX_OANS_BTV_DRY_DISTANCE_ESTIMATED", "A32NX_OANS_BTV_WET_DISTANCE_ESTIMATED",
+        "A32NX_OANS_BTV_STOP_BAR_DISTANCE_ESTIMATED",
     };
 
     /// <summary>L:var names this window reads (for registration in the aircraft def).</summary>
@@ -81,6 +86,9 @@ public class FBWA380NavDisplayForm : Form
     }
 
     private double R(string v) => _raw.TryGetValue(v, out double d) ? d : 0;
+
+    // Format a metres distance as "NNNN meters (NNNN feet)".
+    private static string Mxf(double meters) => $"{meters:0} meters ({meters * 3.280839895:0} feet)";
 
     private static string UnpackIdent(double ident0, double ident1)
     {
@@ -145,6 +153,29 @@ public class FBWA380NavDisplayForm : Form
             sb.AppendLine($"  Glideslope deviation: {R("A32NX_RADIO_RECEIVER_GS_DEVIATION"):0.00}");
         else
             sb.AppendLine("  Glideslope: no signal");
+        sb.AppendLine();
+
+        // BTV (Brake-To-Vacate) predicted landing distances for the selected
+        // runway — useful on approach to judge runway/exit feasibility. These are
+        // predictions; they read 0 until the autobrake controller is computing
+        // them (BTV armed / on approach to a runway with an exit selected).
+        double dry = R("A32NX_OANS_BTV_DRY_DISTANCE_ESTIMATED");
+        double wet = R("A32NX_OANS_BTV_WET_DISTANCE_ESTIMATED");
+        double stopBar = R("A32NX_OANS_BTV_STOP_BAR_DISTANCE_ESTIMATED");
+        sb.AppendLine("BTV LANDING DISTANCE (predicted)");
+        // dry/wet are 0 until the controller is computing (on approach with a
+        // runway/exit). stopBar carries a constant ~40 m front-of-aircraft offset
+        // even at rest, so gate the whole block on dry/wet being live.
+        if (dry < 1 && wet < 1)
+        {
+            sb.AppendLine("  Not being computed (arm BTV / select a runway exit on approach)");
+        }
+        else
+        {
+            sb.AppendLine($"  Dry runway: {Mxf(dry)}");
+            sb.AppendLine($"  Wet runway: {Mxf(wet)}");
+            sb.AppendLine($"  Estimated stop point: {Mxf(stopBar)}");
+        }
 
         return sb.ToString();
     }

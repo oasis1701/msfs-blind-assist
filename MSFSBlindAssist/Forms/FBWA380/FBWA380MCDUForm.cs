@@ -81,9 +81,13 @@ public class FBWA380MCDUForm : Form
         new("POSITION: IRS",      "Position", 3, ""),
         new("POSITION: GNSS",     "Position", 4, ""),
         new("POSITION: TIME",     "Position", 5, ""),
-        new("SEC INDEX: SEC 1",   "SecIndex", 0, "SECINDEX"),
-        new("SEC INDEX: SEC 2",   "SecIndex", 1, ""),
-        new("SEC INDEX: SEC 3",   "SecIndex", 2, ""),
+        // Secondary flight plans. The SEC INDEX page hosts the SEC 1/2/3 subtabs
+        // plus F-PLN/PERF/INIT/WIND/FUEL buttons; the per-plan F-PLN URIs jump
+        // straight to each secondary route for reading (UIService, verified live).
+        new("SEC INDEX",          "", -1, "SECINDEX", "fms/sec/index"),
+        new("SEC 1: F-PLN",       "", -1, "", "fms/sec1/f-pln"),
+        new("SEC 2: F-PLN",       "", -1, "", "fms/sec2/f-pln"),
+        new("SEC 3: F-PLN",       "", -1, "", "fms/sec3/f-pln"),
         new("DATA: STATUS",       "Data",     0, ""),
         new("DATA: WAYPOINT",     "Data",     1, ""),
         new("DATA: NAVAID",       "Data",     2, ""),
@@ -300,7 +304,7 @@ public class FBWA380MCDUForm : Form
         _btnFPln.Click    += (_, _) => SendNavigateById("Active",   0, "FPLN");     // ACTIVE ▸ F-PLN
         _btnPerf.Click    += (_, _) => SendNavigateById("Active",   1, "PERF");     // ACTIVE ▸ PERF
         _btnRadNav.Click  += (_, _) => SendNavigateById("Position", 2, "NAVAID");   // POSITION ▸ NAVAIDS
-        _btnSecFPln.Click += (_, _) => SendNavigateById("SecIndex", 0, "SECINDEX"); // SEC INDEX ▸ SEC 1
+        _btnSecFPln.Click += (_, _) => SendNavigateUri("fms/sec/index");          // SEC INDEX (secondary flight plans)
         _btnAtc.Click     += (_, _) => SendNavigateUri("atccom/connect");          // ATC COM via UIService (reliable)
         _btnDir.Click     += (_, _) => SendNavigateById("",        -1, "DIR");      // KCCU only
         _btnUp.Click      += (_, _) => SendCommand("key_prev_page");
