@@ -199,6 +199,10 @@ namespace MSFSBlindAssist.SimConnect
                     _agentInstalled = false;
                     try { _ws?.Abort(); } catch { }
                     _ws = null;
+                    // Fail any in-flight Runtime.evaluate calls now instead of letting
+                    // them hang until their per-call timeout (the socket is dead).
+                    foreach (var kv in _pending) kv.Value.TrySetCanceled();
+                    _pending.Clear();
                     try { await Task.Delay(ReconnectDelayMs, ct); } catch { break; }
                 }
             }

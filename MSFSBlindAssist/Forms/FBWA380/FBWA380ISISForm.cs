@@ -78,6 +78,7 @@ public class FBWA380ISISForm : Form
 
     private async void Refresh_()
     {
+        if (_sim == null) return;   // same nullable contract as the ctor's event guard
         foreach (var kvp in _sim.GetCachedVariableSnapshot(Vars.ToList())) _raw[kvp.Key] = kvp.Value;
         foreach (var v in Vars) _sim.RequestVariable(v, forceUpdate: true);
         await Task.Delay(500);

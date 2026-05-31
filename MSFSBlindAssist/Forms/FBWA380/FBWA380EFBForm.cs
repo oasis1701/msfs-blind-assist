@@ -292,7 +292,7 @@ public class FBWA380EFBForm : Form
         else if (reallyConnected)
             desired = $"{_deviceNoun} connected — waiting for content…";
         else
-            desired = $"{_deviceNoun} not connected. Make sure MSFS is running with Developer Mode on, the A380X is loaded, and the displays are powered up.";
+            desired = $"{_deviceNoun} not connected. Make sure MSFS is running, the A380X is loaded, and the displays are powered up.";
         if (_statusLabel.Text != desired) _statusLabel.Text = desired;
     }
 

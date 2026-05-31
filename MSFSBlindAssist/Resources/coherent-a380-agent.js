@@ -1158,20 +1158,30 @@
       // Total active-plan length (last leg's cumulative distance from start), so a
       // pseudo-waypoint's distanceFromStart can be turned into distance-to-go:
       //   toGo = distToDest - (total - pwp.distanceFromStart)
+      // Total plan length = the DESTINATION leg's cumulative distance. Anchor it to
+      // the destination explicitly (NOT just the last leg with a number — that can be
+      // a missed-approach/hold leg past the runway, giving a wrong datum and a wrong
+      // T/D toGo). Fall back to the last finite cumulativeDistance.
       var total = null;
       try {
-        var legs = m.flightPlanInterface.active.allLegs;
-        for (var li = legs.length - 1; li >= 0; li--) {
-          var c = legs[li] && legs[li].calculated;
-          if (c && typeof c.cumulativeDistance === "number") { total = c.cumulativeDistance; break; }
-        }
+        var plan = m.flightPlanInterface.active;
+        var legs = plan.allLegs;
+        var di = (typeof plan.destinationLegIndex === "number") ? plan.destinationLegIndex : -1;
+        if (di >= 0 && legs[di] && legs[di].calculated && isFinite(legs[di].calculated.cumulativeDistance))
+          total = legs[di].calculated.cumulativeDistance;
+        if (total == null)
+          for (var li = legs.length - 1; li >= 0; li--) {
+            var c = legs[li] && legs[li].calculated;
+            if (c && typeof c.cumulativeDistance === "number" && isFinite(c.cumulativeDistance)) { total = c.cumulativeDistance; break; }
+          }
       } catch (e) {}
       var pw = gc.currentPseudoWaypoints || [];
       for (var p = 0; p < pw.length; p++) {
         var id = ((pw[p].ident || pw[p].mcduIdent || "") + "").toUpperCase();
         var dfs = pw[p].distanceFromStart;
-        if (typeof dfs !== "number" || info.distToDest == null || total == null) continue;
+        if (typeof dfs !== "number" || !isFinite(dfs) || info.distToDest == null || total == null) continue;
         var toGo = info.distToDest - (total - dfs);
+        if (!isFinite(toGo)) continue;
         if (id.indexOf("T/D") >= 0 || id.indexOf("DECEL") >= 0) { if (info.distToTD == null) info.distToTD = toGo; }
         else if (id.indexOf("T/C") >= 0) { if (info.distToTC == null) info.distToTC = toGo; }
       }

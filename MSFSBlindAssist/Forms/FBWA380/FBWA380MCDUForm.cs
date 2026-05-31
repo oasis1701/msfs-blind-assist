@@ -406,7 +406,7 @@ public class FBWA380MCDUForm : Form
         else if (reallyConnected)
             desired = "MCDU connected — reading MFD…";
         else
-            desired = "MCDU not connected. Make sure MSFS is running with Developer Mode on, the A380X is loaded, and the MFD is powered up.";
+            desired = "MCDU not connected. Make sure MSFS is running, the A380X is loaded, and the MFD is powered up.";
         if (_statusLabel.Text != desired) _statusLabel.Text = desired;
     }
 

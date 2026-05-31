@@ -140,15 +140,23 @@ public sealed class FBWA380ChecklistForm : Form
 
     private async Task InitialScrape()
     {
-        var rows = await _ecl.ScrapeNowAsync();
         // The checklist is an E/WD overlay that exists only when C/L is toggled on.
-        // If it isn't up yet, show it automatically — this is also what fixes the old
-        // "not reachable" message, which only ever meant the overlay was hidden.
+        // First give the ECL Coherent connection a moment to come up and poll (a cold
+        // open can take a second or two); only if still empty do we toggle the overlay
+        // on ourselves. This is what fixes the old "not reachable" message, which only
+        // ever meant the overlay was hidden / the read hadn't connected yet.
+        List<EclRow> rows = new();
+        for (int i = 0; i < 6; i++)
+        {
+            rows = await _ecl.ScrapeNowAsync();
+            if (rows != null && rows.Count > 0) break;
+            await Task.Delay(450);
+        }
         if (rows == null || rows.Count == 0)
         {
             _weShowedOverlay = true;
             await PulseClRaw();
-            await Task.Delay(350);
+            await Task.Delay(450);
             rows = await _ecl.ScrapeNowAsync();
         }
         Apply(rows, announceChecks: false);

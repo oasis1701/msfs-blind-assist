@@ -338,7 +338,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             // HandleUIVariableSet. Verified live: the stock "ENG ANTI ICE:n"
             // SimVar AND the XMLVAR momentary push both fail to drive the A380
             // engine anti-ice; only the SET event toggles it.
-            Sel($"ENG{n}_ANTI_ICE", $"Engine {n} Anti-Ice", onOff);
+            // Act() = action combo with NO backing var, so we don't monitor a dead
+            // synthetic L-var (ENG{n}_ANTI_ICE doesn't exist → it would read a stale
+            // 0). The set fires ANTI_ICE_SET_ENGn in HandleUIVariableSet; the live
+            // state is the separate stock readout below.
+            Act($"ENG{n}_ANTI_ICE", $"Engine {n} Anti-Ice", onOff);
             // Live state readout from the stock SimVar.
             Stock($"ENG_ANTI_ICE:{n}", $"ENG ANTI ICE:{n}", $"Engine {n} Anti-Ice State", "bool", onOff);
         }
@@ -648,8 +652,12 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         OnOff("A32NX_CABIN_READY", "Cabin Ready");
 
         // ============================ DISPLAYS / STATUS ============================
-        // Settable toggle combo — fires A32NX.FCU_ATHR_PUSH via HandleUIVariableSet
-        // when the picked engage state differs from current. "Active" is automatic.
+        // Settable toggle combo — fires K:AUTO_THROTTLE_ARM via HandleUIVariableSet
+        // (the A380X A/THR button uses the stock arm event, not A32NX.FCU_ATHR_PUSH).
+        // The toggle only commands Disengaged<->Armed; "Active" is an automatic state
+        // (it engages itself with thrust), so it's kept in the dict for the READOUT
+        // (so the combo reads "Active" when active) but picking it just arms — the
+        // real active/armed status also comes through the FMA autothrust-mode announce.
         Sel("A32NX_AUTOTHRUST_STATUS", "Autothrust",
             new Dictionary<double, string> { [0] = "Disengaged", [1] = "Armed", [2] = "Active" });
         Read("A32NX_FMS_PAX_NUMBER", "Passenger Number");
@@ -1008,7 +1016,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         }
 
         // ============================ TRANSPONDER / ATC ============================
-        Stock("XPNDR_CODE", "TRANSPONDER CODE:1", "Squawk Code", "number");
+        // "BCO16" makes SimConnect decode the BCD-packed code to the 4-digit squawk
+        // (e.g. 4242); reading it as "number" gave the raw BCD integer (0x4242=16962).
+        Stock("XPNDR_CODE", "TRANSPONDER CODE:1", "Squawk Code", "BCO16");
         // Key MUST be "TRANSPONDER_CODE_SET" so MainForm's squawk-input path
         // BCD16-encodes the entered code (4242 -> 0x4242). Sending the raw decimal
         // via the generic event path produced a wrong squawk. Event name stays XPNDR_SET.
@@ -1174,6 +1184,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Read("A32NX_SPEEDS_GD", "Green Dot Speed", "knots");
         Read("A32NX_SPEEDS_F", "F Speed", "knots");
         Read("A32NX_SPEEDS_S", "S Speed", "knots");
+        // VS + VFE-next back the Shift+5 / Shift+6 readout hotkeys (ReadSpeedVS /
+        // ReadSpeedVFE -> these keys). They MUST be registered or RequestReadout
+        // early-returns and the hotkey is silent (audit: dead hotkeys).
+        Read("A32NX_SPEEDS_VS", "V S (stall)", "knots");
+        Read("A32NX_SPEEDS_VFEN", "V F E next", "knots");
 
         // Lighting extras. (Strobe AUTO is part of the LIGHTING_STROBE_0
         // 3-position combo above — no separate STROBE_0_AUTO control needed.)
@@ -2229,17 +2244,17 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             double m = word.ValueOr(0);
             if (m <= 0 || m > 9000) return true;               // out of sensible range
             bool muted = Settings.SettingsManager.Current.A380DisabledMonitorVariables.Contains(varName);
+            // Mark EVERY band at/above the current distance as spoken in one pass —
+            // so if the rollout starts already below the top band (short exit/runway),
+            // the bands we skipped past don't each re-fire on later frames. Announce
+            // once if we newly entered any band this update.
+            bool announce = false;
             foreach (int t in (toExit ? BtvExitThresholdsM : BtvRwyEndThresholdsM))
+                if (m <= t && spoken.Add(t)) announce = true;
+            if (announce && !muted)
             {
-                if (m <= t && spoken.Add(t))
-                {
-                    if (!muted)
-                    {
-                        int rounded = (int)(Math.Round(m / 10.0) * 10);
-                        announcer.Announce(toExit ? $"{rounded} meters to exit" : $"{rounded} meters runway remaining");
-                    }
-                    break;   // only the highest just-crossed threshold per update
-                }
+                int rounded = (int)(Math.Round(m / 10.0) * 10);
+                announcer.Announce(toExit ? $"{rounded} meters to exit" : $"{rounded} meters runway remaining");
             }
             return true;
         }
@@ -3050,7 +3065,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                         !text.Equals("NORMAL", StringComparison.OrdinalIgnoreCase))
                     {
                         string priority = EWDMessageLookupA380.GetMessagePriority(code);
-                        lines.Add(string.IsNullOrEmpty(priority) ? text : $"{text} {priority}");
+                        lines.Add(string.IsNullOrEmpty(priority) ? text : $"{text}, {priority}");
                     }
                 }
             }
