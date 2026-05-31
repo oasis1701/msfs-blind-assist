@@ -2785,21 +2785,31 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // FBW L:vars (same as the reads) — so route them through the MobiFlight
         // calculator path, which is the established reliable write for this aircraft.
         //
-        // #60 finding (live MCP write-then-readback, 2026-05): a SUBSET of these
-        // revert no matter how they are written — PACK/HOT-AIR, ENGINE BLEED,
-        // CABIN/AIR-EXTRACT FANS, and the HYD ENGINE/ELEC PUMP PBs. Those L:vars are
-        // CONTINUOUSLY RE-COMPUTED and re-written by their Rust system controller
-        // (e.g. acs_controller.rs writes OVHD_COND_PACK_1_PB_IS_ON every frame), so
-        // an external write is clobbered on the next tick. The cockpit model drives
-        // them only with <TOGGLE_SIMVAR> (no K/H/B-event exists on this build), so
-        // they are reachable ONLY by the in-sim mouse and cannot be actuated
-        // externally. Single-writer PBs (COMMERCIAL, IDG, EXT PWR, BAT, FUEL XFR /
-        // JETTISON, DITCHING, RAM AIR) ARE writable and stick — verified live. The
-        // calculator path below makes those reliable; the computed-output ones are a
-        // documented FBW limitation, not a bug here.
+        // #103 CORRECTION (live Coherent SimVar write-then-readback, 2026-05): the
+        // earlier #60 verdict that PACK/HOT-AIR, ENGINE BLEED, CABIN/AIR-EXTRACT
+        // FANS, the HYD ENGINE/ELEC PUMP PBs, ELEC BUS-TIE/GALLEY, HYD PTU and the
+        // EMERGENCY-EXIT sign are "computed outputs that revert and cannot be set
+        // externally" was WRONG. It was an artifact of testing with the MCP's native
+        // data-def write (set_lvar / AddToDataDefinition), which is unreliable for
+        // FBW L:vars (exactly as the READS are). The MobiFlight CALCULATOR path
+        // (`{val} (>L:{var})`) — the one used below — sets ALL of them and they
+        // STICK in both directions for 3+ s (re-tested live: pack OFF stayed OFF,
+        // bus-tie/PTU/pumps/bleeds/fans all stuck). The Rust `OnOffFaultPushButton`
+        // READS `{name}_PB_IS_ON/_IS_AUTO` as the pilot input each frame (it only
+        // WRITES the *_HAS_FAULT output), so an external set IS the press. So these
+        // overhead combos all actuate correctly through the calculator path — there
+        // is NO hard FBW limitation here. (The only PBs that still need a stock event
+        // are the seatbelt sign — handled earlier via CABIN_SEATBELTS_ALERT_SWITCH_
+        // TOGGLE — and any engine anti-ice, which uses ANTI_ICE_SET_ENGn.)
         if (varKey.StartsWith("A32NX_OVHD_", StringComparison.Ordinal)
             || varKey.StartsWith("A380X_OVHD_", StringComparison.Ordinal)
-            || varKey.StartsWith("A32NX_KNOB_OVHD_", StringComparison.Ordinal))
+            || varKey.StartsWith("A32NX_KNOB_OVHD_", StringComparison.Ordinal)
+            // The overhead sign/increment XMLVARs (No Smoking, Emergency Exit,
+            // Altitude Increment) also set reliably via the calculator path — they
+            // were falling through to the unreliable data-def write before, which is
+            // why the Emergency Exit sign appeared to "revert". (Verified live: the
+            // EMEREXIT XMLVAR stuck via the calculator path.)
+            || varKey.StartsWith("XMLVAR_", StringComparison.Ordinal))
         {
             simConnect.ExecuteCalculatorCode($"{(int)Math.Round(value)} (>L:{varKey})");
             return true;

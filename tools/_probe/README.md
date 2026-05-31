@@ -55,6 +55,14 @@ Read an L:var directly (no agent needed):
 | `metric.js` / `metric_toggle.js` | A380X_MFD / "- EFB" | the metric/imperial EFB persistent store (`GetStoredData`/`SetStoredData`) |
 | `fpln_sanity.js` | A380X_MFD | sanity-scrape the active F-PLN with the agent injected |
 | `efb_scrape.js` / `efb_failnav.js` / `efb_ata.js` / `efb_dash.js` | "- EFB" | flyPad scrape + navigate (Failures app → ATA chapter → per-failure buttons) |
+| `pack_write.js` / `ovhd_flip.js` / `ovhd_flip2.js` / `ovhd_check.js` | A380X_MFD | **write-stick test**: flip overhead PB L:vars via the calculator path and read back after a delay (proved the "computed-output" PBs are actually settable — see CLAUDE.md #103) |
+| `ecl_diag.js` / `ecl_scrape.js` | A380X_EWD | ECL `.EclLine` presence + the agent's structured row scrape |
+
+**Write-stick testing rule (CLAUDE.md #103):** to decide whether an FBW L:var write
+sticks, ALWAYS write via the calculator path — `SimVar.SetSimVarValue('L:VAR','number',v)`
+in a Coherent view, or `(>L:VAR)` via `execute_calculator_code`. NEVER use the MCP
+`set_lvar` (native data-def) — it silently fails for many FBW L:vars and produces false
+"reverts / uncontrollable" conclusions.
 
 These are **reference examples**, not a test suite — copy one, tweak the var/page,
 and run it to probe whatever you're working on. Throwaway one-offs are fine; just
