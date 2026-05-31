@@ -153,6 +153,18 @@ Flight planning:
 shift+f, Fix/waypoint tracking
   Shift+D    Select Destination Runway
 
+Flight Management Displays:
+  Shift+T    Open flyPad EFB (accessible Electronic Flight Bag). Renders the live
+             A32NX flyPad tablet as a browsable document you read and operate with
+             your screen reader — navigate the real flyPad pages (Dashboard, Ground
+             Services, Payload, Settings, Navigraph, Checklists, etc.). The flyPad
+             powers on automatically; F5 refreshes; a Status / self-test button
+             reports the connection state.
+  Shift+M    Open MCDU (multifunction control display unit). Full page access with
+             line-select keys (Ctrl+1-6 / Alt+1-6 for left/right, or F1-6 / F7-12
+             in alternate-key mode), scratchpad text entry, and a Captain / First
+             Officer selector.
+
 Autopilot:
   Shift+A    Toggle Autopilot 1
   Ctrl+O     Toggle Autopilot 2

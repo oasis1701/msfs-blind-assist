@@ -321,6 +321,38 @@ Written by `hs787-mfd-bridge.js` via `SimVar.SetSimVarValue`; read by C# via Sim
 - C# → JS: `GET /commands/mfd` or `/commands/efb` polled every 400ms, returns JSON array of `{command, payload}`
 - Bridge retries every 5s on failure; heartbeat every 5s when connected
 
+### FlyByWire A32NX Accessible flyPad EFB
+
+**Feature:** Screen-reader-accessible Electronic Flight Bag (flyPad) for the FlyByWire A32NX, opened with **Shift+T** (input mode) — the shared `HotkeyAction.ShowPMDGEFB` dispatch, selected by `AircraftCode == "A320"` (parallel to the PMDG / HS787 EFB branches). It renders **whatever flyPad page is currently open** as a browsable document; there are no curated per-feature tabs.
+
+**Architecture — fundamentally different from the PMDG EFB bridge.** The PMDG/HS787 bridges inject JS via a Community mod package and talk over an HTTP server (`EFBBridgeServer`). The A32NX flyPad uses **CDP (Chrome DevTools Protocol) over Coherent GT's devtools port (`:19999`)** with **no mod package and no Community-folder patching** — a generic in-page agent is installed at runtime via `Runtime.evaluate`. `EFBBridgeServer` stays for PMDG/HS787; the A32NX does **not** use it.
+
+```
+MSFS FBW A32NX flyPad (React / Coherent GT, devtools :19999)
+   window.__MSFSBA_FLYPAD   ← generic in-page agent (installed at runtime)
+        ▲ CDP Runtime.evaluate over ONE persistent WebSocket
+CoherentEFBClient.cs   (request/response by CDP message id, reconnect/reinstall)
+        ▲ FlypadScrape / FlypadElement[]  (System.Text.Json)
+A32NXEFBForm.cs + Resources/flypad-shell.html (WebView2 hosting accessible HTML)
+        ▲ Shift+T (ShowPMDGEFB dispatch, AircraftCode == "A320")
+```
+
+**Key components:**
+- **`Resources/coherent-a32nx-flypad-agent.js`** — generic DOM scraper/clicker, adapted from the A380 agent. **ES5 / Coherent-GT-safe** (`var`, no arrow funcs, `.indexOf()` not `.includes()`, top-level try/catch — a scraper bug returns an error string, never throws into the flyPad). Public global `window.__MSFSBA_FLYPAD`: `ping()`, `scrape()` → `{ok,page,elements[]}`, `clickElement(idx)`, `setValue(idx,text)`, `powerOn()` (sets `L:A32NX_EFB_TURNED_ON=1` + a synthetic interaction to resume the dormant render loop; idempotent). Each element carries a stable stamped `idx`, plus `kind`/`text`/`value`/`controlType`/`clickable`/`level`/`live`/`disabled`/`options`.
+- **`SimConnect/CoherentEFBClient.cs`** — persistent **hand-rolled** WS→CDP client (Coherent's non-standard `Connection` header defeats `ClientWebSocket`). Single send/receive pump, request/response correlated by monotonic CDP message `id` via `TaskCompletionSource`, per-call ~4s timeout. **Multi-frame reassembly across TCP packets** — scrape JSON is many KB and won't fit one frame. Discovery polls `:19999/pagelist.json` for the `- EFB` page; install-once evals the agent then `ping()`→`powerOn()`; a heartbeat detects page reload (agent global gone) or socket death and reconnects+reinstalls. Public API: `ScrapeAsync()`, `ClickAsync(idx)`, `SetValueAsync(idx,text)`, `Connected`/`Disconnected`, `IsReady`. Background receive pump; captured `SynchronizationContext` marshals to the UI thread.
+- **`SimConnect/FlypadModels.cs`** — `FlypadScrape` / `FlypadElement` records.
+- **`Forms/A32NX/A32NXEFBForm.cs` + `Resources/flypad-shell.html`** — a **WebView2** hosting a generated **accessible HTML document**.
+
+**CRITICAL — single-connection constraint.** Coherent GT's debugger accepts only **ONE** devtools connection at a time. `CoherentEFBClient` is the sole owner; the connection opens when the EFB form opens and is **closed when the form closes** (`MainForm.CleanupA32NXEFBForm`, also called on aircraft switch) to release the slot. The `tools/efb-dom-tool.js` verification harness and the app's client **cannot both be connected at once** — close the form before using the tool, and vice-versa.
+
+**CRITICAL — why WebView2 HTML, not native WinForms controls.** The first implementation rendered the scrape as native WinForms controls; in-sim NVDA testing showed **only focusable controls were reachable — headings and static text were invisible** because a WinForms form is not a document and has no browse mode. The renderer hosts a WebView2 accessible HTML document instead, giving NVDA full browse mode (H-key heading nav, arrow-key reading of all text, real fields/links). The shell HTML is loaded once; C# `PostWebMessageAsJson({type:'render',page,elements})` on each changed scrape; JS posts `{action:'click'|'set'|'refresh'|'selftest',idx,value}` back. **The WebView2 shell JS may use modern Chromium syntax** (unlike the ES5 Coherent agent).
+
+**CRITICAL — keyed DOM reconcile + order-independent signature (stops NVDA focus jumps).** Do NOT wipe `#root.innerHTML` and rebuild every poll — that steals screen-reader focus once per second. The shell does a **keyed in-place reconcile** (reuse nodes by `data-idx`, only patch changed text/value/checked, never touch the focused element) and skips rendering entirely when an **order-independent signature** of the scrape is unchanged. Focus is preserved by `data-idx`. Spoken announcements stay on `ScreenReaderAnnouncer` (page change, self-test, connect/disconnect); the status div is intentionally NOT an aria-live region (avoids per-poll double-speak).
+
+**Sync:** ~1s auto-poll + F5 manual refresh + ~300ms delayed re-scrape after a click/setValue. `powerOn()` runs automatically on connect (no wake button); a Status / self-test action announces connection state, agent presence, page label, and control count on demand. Errors degrade gracefully: no `- EFB` page → "flyPad not detected" silent retry; dormant flyPad → `powerOn()` backoff; CDP timeout/malformed JSON → keep last good render, skip the cycle.
+
+**Dev tool:** `tools/efb-dom-tool.js` — live CDP DOM scraper/clicker targeting `window.__MSFSBA_FLYPAD`, for verifying the agent against the live page (subject to the single-connection constraint above).
+
 ### FlyByWire A32NX Accessible MCDU
 
 **Feature:** Screen-reader-accessible MCDU for the FlyByWire A32NX, opened with **Shift+M** (input mode) — same shared `HotkeyAction.ShowFenixMCDU` dispatch as the other CDUs, selected by `AircraftCode == "A320"` (Fenix is `FENIX_A320CEO`, so no collision). Supports both Captain (left/MCDU1) and First Officer (right/MCDU2) via a Left/Right selector.
