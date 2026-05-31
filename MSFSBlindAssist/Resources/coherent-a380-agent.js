@@ -348,9 +348,32 @@
         if (lb.right > inp.left + GAP) continue;
         if (lb.right > bestRight) { bestRight = lb.right; best = lb; }
       }
+      // No label to the left? Try a column HEADER directly ABOVE the field (same
+      // column, one row up) — e.g. the takeoff-config grid where FLAPS / THS FOR /
+      // PACKS / ANTI ICE sit over their value cells. Pairs them as "FLAPS: -" etc.
+      if (!best && typeof inp.right === "number") {
+        var bestBot = -1;
+        for (var k = 0; k < items.length; k++) {
+          var hd = items[k];
+          if (!hd.isLabel || hd.consumed) continue;
+          if (typeof hd.left !== "number" || typeof hd.right !== "number") continue;
+          if (hd.bot > inp.top) continue;                 // must be above the field
+          if (inp.top - hd.bot > 40) continue;            // immediately above (one row)
+          if (hd.right < inp.left || hd.left > inp.right) continue;  // same column
+          // Don't grab a bare UNIT sitting above a field (T / % / KT / FL / NM /
+          // KG / °, etc.) as if it were the field's name — only real word headers
+          // (FLAPS, THS FOR, PACKS, ANTI ICE …). Require >= 3 chars and not a unit.
+          var ht = clean(hd.text);
+          if (ht.length < 3 || /^(T|KG|LB|KT|FL|NM|FT|M|MIN|HR|UTC|%|°|CG|GW)$/i.test(ht)) continue;
+          if (hd.bot > bestBot) { bestBot = hd.bot; best = hd; }
+        }
+      }
       if (best) {
         var val = inp.value || inp.text || "";
-        inp.text = clean(best.text) + ": " + (val || "blank") + (inp.isChoice ? " (combobox)" : "");
+        // Strip a trailing colon the MFD already prints on the label (e.g.
+        // "NOTIFY TO ATC :") so we don't end up with a double colon.
+        var lbl = clean(best.text).replace(/\s*:\s*$/, "");
+        inp.text = lbl + ": " + (val || "blank") + (inp.isChoice ? " (combobox)" : "");
         best.consumed = true;
       }
     }
