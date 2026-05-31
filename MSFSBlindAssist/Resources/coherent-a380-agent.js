@@ -417,6 +417,30 @@
       return dy || (a.left - b.left);
     });
 
+    // Merge consecutive STATIC-TEXT cells that share one visual row into a single
+    // line. Grid pages (esp. F-PLN, where each waypoint's name / airway / track /
+    // distance / time / altitude are separate absolutely-positioned cells) would
+    // otherwise read as a token-salad of one cell per line ("BASU1D" / "217°" /
+    // "2" / …). Joined with " · " they read as one row: "BASU1D · 217° · 2".
+    // Interactive controls (idx>0) always keep their own line, so a clickable
+    // waypoint/field is never swallowed into a text row.
+    var mergedLines = [];
+    for (var mi = 0; mi < items.length; mi++) {
+      var cur = items[mi];
+      if (cur.idx === 0 && cur.kind === "text" && mergedLines.length > 0) {
+        var prev = mergedLines[mergedLines.length - 1];
+        if (prev.idx === 0 && prev.kind === "text"
+            && Math.round(prev.top / A.ROW_Y_TOLERANCE_PX) === Math.round(cur.top / A.ROW_Y_TOLERANCE_PX)) {
+          prev.text = prev.text + " · " + cur.text;
+          if (cur.right > prev.right) prev.right = cur.right;
+          if (cur.bot > prev.bot) prev.bot = cur.bot;
+          continue;
+        }
+      }
+      mergedLines.push(cur);
+    }
+    items = mergedLines;
+
     items = A.dedupeLines(items);
 
     A._mcduElements = items;

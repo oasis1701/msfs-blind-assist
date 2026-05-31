@@ -1355,15 +1355,24 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Removed", [1] = "Placed" }
         };
 
-        // External-power (GPU) availability per receptacle (read-only; the actual
-        // connect is the overhead EXT PWR pushbuttons). Announces when a GPU
-        // becomes available at the stand.
+        // External-power availability per receptacle (read-only; the actual connect
+        // is the overhead EXT PWR pushbuttons or a ground-handling add-on like GSX).
+        // Announces when external power becomes available at the stand.
+        //
+        // Read from the STOCK MSFS simvar EXTERNAL POWER AVAILABLE:n, NOT the FBW
+        // L-var A32NX_EXT_PWR_AVAIL:n: the FBW var's name literally contains a colon
+        // index, which the SimConnect data-definition path (how we read L-vars)
+        // mis-parses, so it never saw the change — GSX would connect ground power
+        // and nothing announced. The stock simvar is natively indexed (reliable via
+        // data defs) AND is exactly what GSX / stock ground power set, so it catches
+        // every way external power can be connected. (Verified live: with GSX ground
+        // power connected, EXTERNAL POWER AVAILABLE:1 reads 1.)
         for (int n = 1; n <= 4; n++)
         {
             vars[$"A380X_GND_GPU_AVAIL_{n}"] = new SimVarDefinition
             {
-                Name = $"A32NX_EXT_PWR_AVAIL:{n}", DisplayName = $"GPU {n} Available",
-                Type = SimVarType.LVar, Units = "bool",
+                Name = $"EXTERNAL POWER AVAILABLE:{n}", DisplayName = $"External Power {n} Available",
+                Type = SimVarType.SimVar, Units = "Bool",
                 UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "No", [1] = "Yes" }
             };

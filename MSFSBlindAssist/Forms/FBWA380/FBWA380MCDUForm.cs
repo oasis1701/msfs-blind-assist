@@ -613,6 +613,7 @@ public class FBWA380MCDUForm : Form
                     });
                     _scratchpad.Text = "";
                     _announcer.Announce(text);
+                    ScheduleRefresh();
                 }
                 else
                 {
@@ -628,6 +629,12 @@ public class FBWA380MCDUForm : Form
                     {
                         _bridgeServer.EnqueueCommand("click_mcdu_element",
                             new Dictionary<string, string> { ["index"] = fieldIdx.ToString() });
+                        // Re-read the page after the click so its RESULT shows up in
+                        // the list — e.g. activating the company-fpln dropdown button
+                        // makes its INSERT* / CLEAR* menu items appear, or a button
+                        // changes the page. Without this the list looked unchanged and
+                        // the action read as "didn't do anything".
+                        ScheduleRefresh();
                     }
                 }
             }
@@ -646,6 +653,7 @@ public class FBWA380MCDUForm : Form
                     ["text"]  = ""
                 });
                 _announcer.Announce("Cleared");
+                ScheduleRefresh();
             }
             e.Handled = true; e.SuppressKeyPress = true;
         }
@@ -662,16 +670,32 @@ public class FBWA380MCDUForm : Form
         }
     }
 
+    // Re-fetch the MFD page a short moment after a mutating action (a click, a
+    // field commit, a clear), so the action's RESULT is reflected in the list —
+    // dropdown menus that open (e.g. company-fpln INSERT*), buttons that change the
+    // page, fields that update. The delay lets the MFD apply the change first.
+    // Mirrors the page-selector's post-navigate refresh.
+    private void ScheduleRefresh()
+    {
+        var t = new System.Windows.Forms.Timer { Interval = 450 };
+        t.Tick += (_, _) => { t.Stop(); t.Dispose(); _bridgeServer.EnqueueCommand("get_mcdu_elements"); };
+        t.Start();
+    }
+
     private void FormKeyDown(object? sender, KeyEventArgs e)
     {
-        // Prev/next page: Ctrl+Up / Ctrl+Down (PageUp/PageDown also work).
-        if ((e.Control && e.KeyCode == Keys.Up) || e.KeyCode == Keys.PageUp)
+        // Page navigation. The plain arrows move the cursor through the lines, so
+        // page stepping is on Ctrl+arrow (and PageUp/PageDown). All four Ctrl+arrows
+        // step pages — Ctrl+Up/Left = previous page, Ctrl+Down/Right = next page —
+        // so whichever the user reaches for works (the MFD has a single linear page
+        // order, so there is no separate horizontal axis to map Left/Right to).
+        if ((e.Control && (e.KeyCode == Keys.Up || e.KeyCode == Keys.Left)) || e.KeyCode == Keys.PageUp)
         {
             SendCommand("key_prev_page");
             e.Handled = true; e.SuppressKeyPress = true;
             return;
         }
-        if ((e.Control && e.KeyCode == Keys.Down) || e.KeyCode == Keys.PageDown)
+        if ((e.Control && (e.KeyCode == Keys.Down || e.KeyCode == Keys.Right)) || e.KeyCode == Keys.PageDown)
         {
             SendCommand("key_next_page");
             e.Handled = true; e.SuppressKeyPress = true;
