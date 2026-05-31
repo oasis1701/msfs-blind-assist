@@ -677,9 +677,16 @@ public class FBWA380MCDUForm : Form
     // Mirrors the page-selector's post-navigate refresh.
     private void ScheduleRefresh()
     {
-        var t = new System.Windows.Forms.Timer { Interval = 450 };
-        t.Tick += (_, _) => { t.Stop(); t.Dispose(); _bridgeServer.EnqueueCommand("get_mcdu_elements"); };
-        t.Start();
+        // Re-fetch TWICE — once quickly, once after the MFD has fully settled — so a
+        // scroll / click / page-change result reliably lands even when the first
+        // read fires before the MFD has redrawn. (A single 450 ms read sometimes
+        // landed too early and the page looked unchanged.)
+        foreach (int delay in new[] { 250, 700 })
+        {
+            var t = new System.Windows.Forms.Timer { Interval = delay };
+            t.Tick += (_, _) => { t.Stop(); t.Dispose(); _bridgeServer.EnqueueCommand("get_mcdu_elements"); };
+            t.Start();
+        }
     }
 
     private void FormKeyDown(object? sender, KeyEventArgs e)

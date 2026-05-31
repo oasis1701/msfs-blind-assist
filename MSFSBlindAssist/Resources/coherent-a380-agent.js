@@ -398,7 +398,11 @@
         top: tr.top - pageRect.top, left: tr.left - pageRect.left,
         right: tr.right - pageRect.left, bot: tr.bottom - pageRect.top,
         idx: 0, kind: "text", text: own, value: "", disabled: false,
-        isLabel: cls.indexOf("mfd-label") >= 0
+        isLabel: cls.indexOf("mfd-label") >= 0,
+        // F-PLN leg/airway annotation (the SID/STAR/airway name printed to the
+        // left of every leg). The same procedure name repeats on every leg it
+        // covers, so flag it for consecutive-duplicate suppression below.
+        isAnno: cls.indexOf("mfd-fms-fpln-line-annotation") >= 0
       });
     }
 
@@ -415,6 +419,20 @@
     items.sort(function (a, b) {
       var dy = Math.round(a.top / A.ROW_Y_TOLERANCE_PX) - Math.round(b.top / A.ROW_Y_TOLERANCE_PX);
       return dy || (a.left - b.left);
+    });
+
+    // Suppress the REPEATED F-PLN procedure/airway annotation. The MFD prints the
+    // SID/STAR/airway name (e.g. "BASU1D") next to every leg it covers, so a flat
+    // read says "BASU1D" on six lines in a row. Keep it on the FIRST leg of each
+    // run and drop it until the procedure/airway CHANGES (BASU1D … then P570),
+    // exactly how a sighted pilot groups it. Tracked across waypoint rows (which
+    // sit between legs) so the whole SID collapses to one mention.
+    var lastAnno = null;
+    items = items.filter(function (it) {
+      if (!it.isAnno) return true;
+      if (it.text === lastAnno) return false;   // same procedure as the leg above
+      lastAnno = it.text;
+      return true;
     });
 
     // Merge consecutive STATIC-TEXT cells that share one visual row into a single
