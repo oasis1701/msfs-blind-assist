@@ -150,13 +150,19 @@ public sealed class A32NXEFBForm : Form
 
     private static string BuildSignature(FlypadScrape s)
     {
-        var sb = new System.Text.StringBuilder();
-        sb.Append(s.Page).Append('|');
+        // Order-INDEPENDENT content signature. The agent's spatial enumeration
+        // returns the same elements in a jittering order between polls; an
+        // order-sensitive signature flipped every poll and forced a full re-render
+        // (which reset the NVDA browse position). Sorting a per-element content key
+        // — and deliberately EXCLUDING idx, which is assigned by enumeration order —
+        // means a pure reorder of identical content yields the same signature, so no
+        // re-render fires. A genuine change (value/text/element-set/page) still does.
+        var keys = new List<string>(s.Elements.Count);
         foreach (var e in s.Elements)
-            sb.Append(e.Idx).Append(':').Append(e.Kind).Append(':')
-              .Append(e.Text).Append('=').Append(e.Value)
-              .Append(e.Disabled ? "#d" : "").Append(';');
-        return sb.ToString();
+            keys.Add(e.Kind + "" + e.Text + "" + e.Value + "" +
+                     e.ControlType + (e.Disabled ? "D" : ""));
+        keys.Sort(StringComparer.Ordinal);
+        return s.Page + "" + string.Join("", keys);
     }
 
     // ── push to web ────────────────────────────────────────────────────────────
