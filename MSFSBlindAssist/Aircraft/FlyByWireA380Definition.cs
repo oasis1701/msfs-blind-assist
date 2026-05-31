@@ -907,6 +907,23 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Mon("A32NX_PFD_MSG_SET_HOLD_SPEED", "Set Hold Speed", onOff);
         Mon("A32NX_PFD_MSG_TD_REACHED", "Top of Descent Reached", onOff);
         Mon("A32NX_PFD_MSG_CHECK_SPEED_MODE", "Check Speed Mode", onOff);
+        // Autothrust mode — FMA column 1 (what the thrust automation is doing).
+        // The third core automation cue alongside the vertical & lateral modes;
+        // announced live on change. Enum from the FBW PFD FMA component.
+        Mon("A32NX_AUTOTHRUST_MODE", "Autothrust Mode", new Dictionary<double, string>
+        {
+            [0] = "None", [1] = "Man TOGA", [2] = "Man GA Soft", [3] = "Man Flex",
+            [4] = "Man Derated", [5] = "Man MCT", [6] = "Man Thrust", [7] = "Speed",
+            [8] = "Mach", [9] = "Thrust MCT", [10] = "Thrust Climb", [11] = "Thrust Lever",
+            [12] = "Thrust Idle", [13] = "Alpha Floor", [14] = "TOGA Lock"
+        });
+        // Autothrust special message — the "LVR CLB" / "THR LK" prompts that tell
+        // the pilot to move the thrust levers (FMA column 1 lower line).
+        Mon("A32NX_AUTOTHRUST_MODE_MESSAGE", "Autothrust Message", new Dictionary<double, string>
+        {
+            [0] = "None", [1] = "Thrust Lock", [2] = "Levers TOGA", [3] = "Levers Climb",
+            [4] = "Levers MCT", [5] = "Levers Asymmetric"
+        });
         Read("A32NX_FMA_VERTICAL_ARMED", "Armed Vertical Modes");
         Read("A32NX_FMA_LATERAL_ARMED", "Armed Lateral Modes");
         Read("A32NX_FMA_CRUISE_ALT_MODE", "Cruise Altitude Mode");
@@ -1704,6 +1721,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // GetPanelStructure so it isn't shown as a UI panel.
         p["PFD"] = new List<string>
         {
+            "A32NX_AUTOTHRUST_MODE", "A32NX_AUTOTHRUST_MODE_MESSAGE",
             "A32NX_FMA_VERTICAL_MODE", "A32NX_FMA_LATERAL_MODE", "A32NX_FMA_VERTICAL_ARMED",
             "A32NX_FMA_LATERAL_ARMED", "A32NX_FMA_CRUISE_ALT_MODE", "A32NX_APPROACH_CAPABILITY",
             "A32NX_PFD_MSG_SET_HOLD_SPEED", "A32NX_PFD_MSG_TD_REACHED", "A32NX_PFD_MSG_CHECK_SPEED_MODE",
