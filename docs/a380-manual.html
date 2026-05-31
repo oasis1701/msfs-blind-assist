@@ -170,7 +170,7 @@
 <h3 id="atccom">ATC COM (datalink) and SEC flight plan</h3>
 <p>Beyond the FMS pages, the MFD's other domains are reachable as pages too:</p>
 <ul>
-  <li><strong>ATC COM</strong> (<kbd>Alt</kbd>+<kbd>A</kbd>) is the datalink: the CONNECT page (logon/active centre), the REQUEST and REPORT pages, the message record (the CPDLC message log), the <strong>D-ATIS</strong> list, and the emergency page. They read as line lists like the FMS pages; you arrow and press <kbd>Enter</kbd> on the buttons/fields the same way. This is how you read CPDLC uplinks and request/receive a digital ATIS without seeing the screen.</li>
+  <li><strong>ATC COM</strong> (<kbd>Alt</kbd>+<kbd>A</kbd>) is the datalink: the CONNECT page (logon/active centre), the REQUEST and REPORT pages, the message record (the CPDLC message log — when MSFSBA announces "ATC Message Waiting", open MSG RECORD to read the controller's clearance line by line), the <strong>D-ATIS</strong> list, and the emergency page. They read as line lists like the FMS pages; you arrow and press <kbd>Enter</kbd> on the buttons/fields the same way. This is how you read CPDLC uplinks and request/receive a digital ATIS without seeing the screen. <span class="small">Note: CONNECT, MSG RECORD and D-ATIS work; REQUEST, REPORT and EMERGENCY are still work-in-progress in the FlyByWire dev build and currently show "ERROR 404 NOT FOUND" — MSFSBA already navigates to them, so they will read normally once FBW implements them.</span></li>
   <li><strong>SEC flight plan</strong> (<kbd>Alt</kbd>+<kbd>S</kbd>) opens the SECONDARY flight plans (SEC 1–3) — the standby routes the A380 keeps for a runway change or alternate. They read exactly like the active F-PLN, so you can build and review a secondary plan and then activate it.</li>
 </ul>
 
@@ -212,14 +212,16 @@
 <h3 id="simbrief">5a. Load the route from SimBrief</h3>
 <div class="step">
 <ol>
-  <li>Set your SimBrief user ID in the flyPad first (Settings), and generate an OFP on SimBrief for your flight.</li>
+  <li>Set your SimBrief user ID in the flyPad first (Settings), and generate an OFP on SimBrief <strong>with "Detailed Navlog" enabled</strong> (the FMS import needs it). Do <strong>not</strong> set a destination on the MSFS World Map before the flight — if you do, the aircraft imports that plan instead and the company-request option below will not appear.</li>
   <li>Open the MCDU (INPUT <kbd>Shift</kbd>+<kbd>M</kbd>) and go to INIT (<kbd>Alt</kbd>+<kbd>I</kbd>).</li>
   <li>Arrow to <strong>"CPNY F-PLN REQUEST"</strong> and press <kbd>Enter</kbd>. Wait until the scratchpad reads "COMPANY F-PLN RECEIVED WAITING FOR INSERTION".</li>
   <li>The button now reads <strong>"RECEIVED CPNY F-PLN"</strong>. Press <kbd>Enter</kbd> on it; a small menu opens. Arrow to <strong>"INSERT*"</strong> and press Enter. The whole route loads — flight number, from/to, alternate, cruise level and cost index, all from SimBrief.</li>
+  <li>Arrow through <strong>F-PLN</strong> to confirm the route reads as expected. If a line reads "NOT IN DATABASE" or "AWY/WPT MISMATCH", your SimBrief AIRAC cycle is older than the sim's nav data — regenerate the OFP on the matching cycle.</li>
   <li>FLT NBR, destination and ALTN stay editable afterwards if you need to change them: arrow to the field, type, Enter.</li>
 </ol>
 </div>
 <p class="small">If "CPNY F-PLN REQUEST" reads "dimmed", it is because either a destination is already set on the world map or SimBrief/Navigraph is not configured — both are correct sim behaviour.</p>
+<p><strong>No SimBrief? Build the plan by hand</strong> in this order: on <strong>INIT</strong> type the city pair (FROM/TO) plus FLT NBR, ALTN, CI and CRZ FL; set the <strong>DEPARTURE</strong> (5b); add en-route legs by opening a waypoint and choosing <strong>AIRWAYS</strong>, entering VIA (airway) then TO (next waypoint) and repeating; set the <strong>ARRIVAL</strong> (5d); then INSERT the temporary plan. It is the same pages as the SimBrief flow, just typed in yourself.</p>
 
 <h3 id="departure">5b. Set the departure (runway + SID)</h3>
 <div class="step">
