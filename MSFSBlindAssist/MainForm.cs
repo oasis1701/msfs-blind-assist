@@ -454,13 +454,18 @@ public partial class MainForm : Form
 
             // Start a grace period before enabling continuous variable announcements
             // This prevents initial ECAM messages and other variables from being announced
-            // when connecting to a cold and dark aircraft
+            // when connecting to a cold and dark aircraft. Also mute the announcer's
+            // automatic paths so aircraft-specific ProcessSimVarUpdate branches (which
+            // announce directly, bypassing simVarMonitor) stay silent on first detect —
+            // e.g. the A380 altimeter setting. User hotkeys (AnnounceImmediate) still talk.
+            if (announcer != null) announcer.Suppressed = true;
             System.Windows.Forms.Timer announcementGracePeriodTimer = new System.Windows.Forms.Timer();
             announcementGracePeriodTimer.Interval = 5000; // 5 second grace period
             announcementGracePeriodTimer.Tick += (s, e) =>
             {
                 announcementGracePeriodTimer.Stop();
                 announcementGracePeriodTimer.Dispose();
+                if (announcer != null) announcer.Suppressed = false;
                 simVarMonitor.EnableAnnouncements();
                 simConnectManager.EnableECAMAnnouncements();
             };

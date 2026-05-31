@@ -270,7 +270,15 @@
     }
     if (kind === "dropdown") {
       var di = n.querySelector(".mfd-dropdown-inner");
-      return clean(di ? di.textContent : n.textContent) || "(choice)";
+      // DropdownMenu widget carries its selected value in .mfd-dropdown-inner.
+      if (di) return clean(di.textContent) || "(choice)";
+      // Button-style dropdown (ARRIVAL/DEPARTURE RWY/APPR/STAR/TRANS, etc.): the
+      // element text is just the field NAME; the selected value sits in the summary
+      // grid directly under the matching header. Fold it in so the combo announces
+      // "RWY, 30R" instead of a bare "RWY" (nothing appended when none is set).
+      var dlbl = clean(n.textContent);
+      var dval = A.comboSelectedValue(dlbl, n);
+      return dval ? (dlbl + ", " + dval) : (dlbl || "(choice)");
     }
     if (kind === "tab") {
       var t = n.querySelector(".mfd-page-selector-label");
@@ -540,6 +548,40 @@
       if (d && d !== "none") return true;
     }
     return false;
+  };
+
+  // Selected value for a BUTTON-style dropdown (no .mfd-dropdown-inner), e.g. the
+  // ARRIVAL/DEPARTURE RWY/APPR/STAR/TRANS selectors. The MFD draws these as a name
+  // header with the current selection in the cell directly beneath it (a summary
+  // grid), separate from the selector button. Find the header text cell that equals
+  // the button label, then read the value cell immediately below it (≤45px, x
+  // overlapping). Returns "" when nothing is selected (dashes) so callers append
+  // nothing. Verified live on ARRIVAL: RWY→"30R", APPR/VIA/STAR/TRANS→"" (unset).
+  A.comboSelectedValue = function (label, node) {
+    if (!label) return "";
+    var all = document.getElementsByTagName("*");
+    var hdr = null, i;
+    for (i = 0; i < all.length; i++) {
+      if (all[i] === node || (node.contains && node.contains(all[i]))) continue;
+      if (clean(A.directText(all[i])) === label) {
+        var r = all[i].getBoundingClientRect();
+        if (r.width > 0 && r.height > 0) { hdr = r; break; }
+      }
+    }
+    if (!hdr) return "";
+    var best = null, bg = 1e9;
+    for (i = 0; i < all.length; i++) {
+      var t = clean(A.directText(all[i]));
+      if (!t || t === label) continue;
+      var rr = all[i].getBoundingClientRect();
+      if (!(rr.width > 0 && rr.height > 0)) continue;
+      var g = rr.top - hdr.bottom;
+      if (g < 0 || g > 45) continue;                              // directly below
+      if (rr.right < hdr.left + 3 || rr.left > hdr.right - 3) continue;  // same column
+      if (g < bg) { bg = g; best = t; }
+    }
+    if (!best || /^[-:.\s]+$/.test(best)) return "";              // unset (dashes)
+    return best;
   };
 
   A.enumerateLines = function (root) {
