@@ -22,7 +22,7 @@ namespace MSFSBlindAssist.SimConnect
     {
         private readonly int _port;
         private string Prefix => $"http://localhost:{_port}/";
-        private const int HeartbeatTimeoutSeconds = 15;
+        private const int HeartbeatTimeoutSeconds = 6;
         private const int CommandExpirySeconds = 30;
         private const int MaxRequestBodyBytes = 512 * 1024; // 512 KB — raised for page_html which can be 200-500 KB
         private const int MaxQueueSize = 50;
