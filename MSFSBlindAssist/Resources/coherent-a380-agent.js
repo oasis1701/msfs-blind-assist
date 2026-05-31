@@ -382,7 +382,6 @@
   // to any A380 flight plan (class-driven, nothing hard-coded).
   A.buildFplnLines = function (page, pageRect, items) {
     var lines = page.querySelectorAll(".mfd-fms-fpln-line");
-    var lastAnno = null;
     function cellText(L, sel) { var n = L.querySelector(sel); return n ? clean(n.textContent) : ""; }
     function isDash(s) { return !s || /^[-:.\s]+$/.test(s); }
     for (var i = 0; i < lines.length; i++) {
@@ -406,19 +405,42 @@
       var con = "";
       var cons = L.querySelectorAll('[class*="fpln-leg-constraint"]');
       for (var c = 0; c < cons.length; c++) { var ct = clean(cons[c].textContent); if (!isDash(ct)) con = ct; }
+      var lr = L.getBoundingClientRect();
       // ETA in the lower row's leftmost cell — only meaningful once airborne
       var eta = cellText(L, ".mfd-fms-fpln-leg-lower-row");
       if (isDash(eta)) eta = "";
 
+      // SPEED + ALTITUDE predictions: classless cells in the lower row, right of
+      // the ETA. Blank (dashes) before takeoff, so nothing is added on the ground;
+      // once the FMS computes them in flight they fold in as ", 250 knots" /
+      // ", flight level 350". Captured by column position WITH a value-pattern
+      // guard so a mis-placed cell can never inject garbage. (Verify in flight.)
+      var spd = "", alt = "";
+      var cells = L.getElementsByTagName("*");
+      for (var p = 0; p < cells.length; p++) {
+        var pc = cells[p];
+        var pcls = (pc.className && pc.className.toString) ? pc.className.toString() : "";
+        if (pcls.indexOf("mfd-fms-fpln") >= 0) continue;   // skip the classed cells
+        var pt = clean(A.directText(pc));
+        if (!pt || isDash(pt)) continue;
+        var relX = pc.getBoundingClientRect().left - lr.left;
+        if (!spd && relX >= 300 && relX < 405 && /^(M?\.\d{2}|\d{2,3})$/.test(pt)) spd = pt;
+        else if (!alt && relX >= 405 && relX < 520 && /^(FL\d{2,3}|\d{3,5})$/.test(pt)) alt = pt;
+      }
+
       var parts = [ident];
-      if (anno && anno !== lastAnno) parts.push("via " + anno);
-      if (anno) lastAnno = anno;
+      // Keep the procedure/airway name on EVERY leg (NOT deduped) — for a blind
+      // pilot it is situational awareness about which points belong to the SID /
+      // STAR / airway, exactly as the MFD prints it next to each leg.
+      if (anno) parts.push("via " + anno);
       if (dist) parts.push(dist + " NM");
       if (track) parts.push("track " + track);
       if (con) parts.push(A.fplnConstraint(con));
+      if (spd) parts.push(/^M?\./.test(spd) ? "Mach " + spd.replace(/^M/, "") : spd + " knots");
+      if (alt) parts.push(/^FL/.test(alt) ? "flight level " + alt.substring(2) : alt + " feet");
       if (eta) parts.push("ETA " + eta);
 
-      var r = L.getBoundingClientRect();
+      var r = lr;
       items.push({
         top: r.top - pageRect.top, left: 0,
         right: r.right - pageRect.left, bot: r.bottom - pageRect.top,
