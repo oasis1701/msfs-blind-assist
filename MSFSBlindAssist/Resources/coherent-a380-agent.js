@@ -524,6 +524,32 @@
         right: r.right - pageRect.left, bot: r.bottom - pageRect.top,
         idx: wIdx, kind: wKind, text: parts.join(", "), value: "", disabled: false, fpln: true
       });
+
+      // HOLD immediate-exit / resume-hold button. On an active or decel-sequenced
+      // hold leg the MFD renders a Button into the leg's speed column
+      // (MfdFmsFpln.renderHoldExitLine) reading "IMMEDIATE EXIT" or "RESUME HOLD".
+      // buildFplnLines otherwise only emits the waypoint, so this control would be
+      // invisible — surface it as its own clickable line so the pilot can exit (or
+      // re-arm) the hold. Clicking it calls onImmediateExitHold (fms_set_hold_
+      // immediate_exit). Only present while a hold is active, so it's a no-op
+      // otherwise.
+      var hbtns = L.querySelectorAll(".mfd-button");
+      for (var hb = 0; hb < hbtns.length; hb++) {
+        var btn = hbtns[hb];
+        var bt = clean(btn.textContent).toUpperCase().replace(/\s/g, "");
+        if (bt.indexOf("IMMEDIATEEXIT") >= 0 || bt.indexOf("RESUMEHOLD") >= 0) {
+          var hlabel = bt.indexOf("RESUMEHOLD") >= 0 ? "Resume hold" : "Immediate exit";
+          btn.setAttribute("data-fbwa380-mcdu-idx", String(idx));
+          var hbr = btn.getBoundingClientRect();
+          items.push({
+            top: hbr.top - pageRect.top + 1, left: 0,
+            right: hbr.right - pageRect.left, bot: hbr.bottom - pageRect.top,
+            idx: idx, kind: "button", text: hlabel, value: "", disabled: false, fpln: true
+          });
+          idx++;
+          break;
+        }
+      }
     }
     return idx;
   };

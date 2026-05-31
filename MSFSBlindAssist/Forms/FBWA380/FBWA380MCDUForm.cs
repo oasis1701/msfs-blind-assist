@@ -101,6 +101,11 @@ public class FBWA380MCDUForm : Form
         new("ATC COM: MSG RECORD",    "", -1, "", "atccom/msg-record"),
         new("ATC COM: D-ATIS",        "", -1, "", "atccom/d-atis/list"),
         new("ATC COM: EMERGENCY",     "", -1, "", "atccom/emer"),
+        // SURV (surveillance) — XPDR/TCAS/WXR/TAWS controls + status & switching.
+        // Radios/inputs/buttons read and actuate via the standard click path
+        // (verified live: selecting XPDR AUTO enabled the TCAS sub-radios).
+        new("SURV: CONTROLS",         "", -1, "", "surv/controls"),
+        new("SURV: STATUS & SWITCHING","", -1, "", "surv/status-switching"),
     };
     private TextBox _scratchpad = null!;
 
