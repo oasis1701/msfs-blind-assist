@@ -551,6 +551,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Sel("A32NX_ATT_HDG_SWITCHING_KNOB", "Attitude / Heading Source", srcSw);
         Sel("A32NX_AIR_DATA_SWITCHING_KNOB", "Air Data Source", srcSw);
         Sel("A32NX_EIS_DMC_SWITCHING_KNOB", "EIS / DMC Source", srcSw);
+        // Magnetic vs True heading reference (the ND/FMS TRUE REF pushbutton). The
+        // pilot must confirm MAG unless TRUE is required. (#107 transcript gap.)
+        Sel("A32NX_FMGC_TRUE_REF", "Heading Reference", new Dictionary<double, string> { [0] = "Magnetic", [1] = "True" });
         Sel("A32NX_CHRONO_ET_SWITCH_POS", "Elapsed Time",
             new Dictionary<double, string> { [0] = "Run", [1] = "Stop", [2] = "Reset" });
 
@@ -1097,6 +1100,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         OnOff("A32NX_BRAKE_FAN_BTN_PRESSED", "Brake Fan", button: true);
         ReadEnum("A32NX_BRAKE_FAN_RUNNING", "Brake Fan Running", new Dictionary<double, string> { [0] = "Off", [1] = "Running" });
         ReadEnum("A32NX_BRAKES_HOT", "Brakes Hot", new Dictionary<double, string> { [0] = "Normal", [1] = "HOT" });
+        // Normal (green-system) brake pressure L/R — the "triple indicator". The
+        // taxi brake check wants this at ~0 while braking (brakes on the normal
+        // system) vs the accumulator below. (#107 transcript gap: brake check.)
+        Read("A32NX_HYD_BRAKE_NORM_LEFT_PRESS", "Normal Brake Left", "psi");
+        Read("A32NX_HYD_BRAKE_NORM_RIGHT_PRESS", "Normal Brake Right", "psi");
         Read("A32NX_HYD_BRAKE_ALTN_LEFT_PRESS", "Alternate Brake Left", "psi");
         Read("A32NX_HYD_BRAKE_ALTN_RIGHT_PRESS", "Alternate Brake Right", "psi");
         Read("A32NX_HYD_BRAKE_ALTN_ACC_PRESS", "Brake Accumulator", "psi");
@@ -1329,6 +1337,21 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             Read($"A32NX_{side}_SLATS_POSITION_PERCENT", $"{who} Slats Position", "percent");
         }
         Stock("ELEVATOR_TRIM", "ELEVATOR TRIM INDICATOR", "Pitch Trim", "number");
+        // Flight-control SURFACE deflections (stock simvars, live-verified to give
+        // real degrees) — for the accessible flight-control check (#107 transcript
+        // gap): move the stick/pedals full travel and read each surface here. The
+        // panel display refreshes on open; the values are also in Ctrl+M off (just
+        // panel reads, not announced — they'd be far too chatty as you fly).
+        Stock("ELEVATOR_DEFLECTION", "ELEVATOR DEFLECTION", "Elevator Deflection", "degrees");
+        Stock("AILERON_DEFLECTION", "AILERON AVERAGE DEFLECTION", "Aileron Deflection", "degrees");
+        Stock("RUDDER_DEFLECTION", "RUDDER DEFLECTION", "Rudder Deflection", "degrees");
+        Stock("SPOILERS_LEFT_POSITION", "SPOILERS LEFT POSITION", "Left Spoilers", "percent");
+        Stock("SPOILERS_RIGHT_POSITION", "SPOILERS RIGHT POSITION", "Right Spoilers", "percent");
+        // FMS-computed takeoff THS / pitch-trim target (ARINC429) — the value the
+        // pilot must set the trim wheel to before takeoff (auto-trim isn't modeled
+        // on this build). Decoded in TryGetDisplayOverride; reads "Not computed"
+        // until the FMS has the perf data. (#107 transcript gap: predicted T.O trim.)
+        Read("A32NX_TO_PITCH_TRIM", "Takeoff Trim Target", "number");
         // Rudder trim ("weather trim"). The stock RUDDER TRIM PCT does not track the
         // FBW SEC-computed value; the real figure the PFD/SD show is the ARINC429
         // word A32NX_SEC_1_RUDDER_ACTUAL_POSITION (degrees, positive = nose-Left).
@@ -1713,7 +1736,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         p["Source Switching"] = new List<string>
         {
             "A32NX_ATT_HDG_SWITCHING_KNOB", "A32NX_AIR_DATA_SWITCHING_KNOB",
-            "A32NX_EIS_DMC_SWITCHING_KNOB", "A32NX_CHRONO_ET_SWITCH_POS"
+            "A32NX_EIS_DMC_SWITCHING_KNOB", "A32NX_FMGC_TRUE_REF", "A32NX_CHRONO_ET_SWITCH_POS"
         };
 
         p["Engines"] = new List<string>
@@ -2016,6 +2039,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         d["Autobrake"].AddRange(new[]
         {
             "A32NX_BRAKE_FAN_RUNNING", "A32NX_BRAKES_HOT",
+            "A32NX_HYD_BRAKE_NORM_LEFT_PRESS", "A32NX_HYD_BRAKE_NORM_RIGHT_PRESS",
             "A32NX_HYD_BRAKE_ALTN_LEFT_PRESS", "A32NX_HYD_BRAKE_ALTN_RIGHT_PRESS", "A32NX_HYD_BRAKE_ALTN_ACC_PRESS"
         });
         d["Gear"].AddRange(new[] { "A32NX_GEAR_LEVER_LOCKED", "A32NX_LG_GRVTY_MASTER_SWITCH_GUARD" });
@@ -2078,7 +2102,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         {
             "A32NX_LEFT_FLAPS_POSITION_PERCENT", "A32NX_RIGHT_FLAPS_POSITION_PERCENT",
             "A32NX_LEFT_SLATS_POSITION_PERCENT", "A32NX_RIGHT_SLATS_POSITION_PERCENT",
-            "ELEVATOR_TRIM", "A32NX_SEC_1_RUDDER_ACTUAL_POSITION", "A32NX_PRIORITY_TAKEOVER:1", "A32NX_PRIORITY_TAKEOVER:2"
+            "ELEVATOR_TRIM", "A32NX_TO_PITCH_TRIM", "A32NX_SEC_1_RUDDER_ACTUAL_POSITION",
+            "ELEVATOR_DEFLECTION", "AILERON_DEFLECTION", "RUDDER_DEFLECTION",
+            "SPOILERS_LEFT_POSITION", "SPOILERS_RIGHT_POSITION",
+            "A32NX_PRIORITY_TAKEOVER:1", "A32NX_PRIORITY_TAKEOVER:2"
         });
 
         d["Gear"].AddRange(new[] { "GEAR_LEFT_POS", "GEAR_CENTER_POS", "GEAR_RIGHT_POS", "A32NX_AUTOBRAKES_RTO_ARMED" });
@@ -3004,6 +3031,18 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             case "A32NX_EFB_USING_METRIC_UNIT":
                 displayText = value > 0.5 ? "Kilograms (metric)" : "Pounds (imperial)";
                 return true;
+            case "A32NX_TO_PITCH_TRIM":
+            {
+                // ARINC429 degrees; the FMS-computed takeoff trim. Positive = nose
+                // UP. Reads "Not computed" until the FMS has perf data.
+                var w = new Arinc429Word(value);
+                if (!(w.IsNormalOperation || w.IsFunctionalTest)) { displayText = "Not computed"; return true; }
+                double deg = w.Value;
+                displayText = Math.Abs(deg) < 0.05
+                    ? "Neutral"
+                    : $"{Math.Abs(deg):0.0} degrees {(deg > 0 ? "up" : "down")}";
+                return true;
+            }
         }
         return false;
     }
