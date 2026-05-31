@@ -167,6 +167,13 @@
 </ol>
 <p>Some pages (WIND, REPORT, GNSS, TIME, the DATA sub-pages) only open once the FMS has the data they need — that is real aircraft behaviour; they read "disabled" until then.</p>
 
+<h3 id="atccom">ATC COM (datalink) and SEC flight plan</h3>
+<p>Beyond the FMS pages, the MFD's other domains are reachable as pages too:</p>
+<ul>
+  <li><strong>ATC COM</strong> (<kbd>Alt</kbd>+<kbd>A</kbd>) is the datalink: the CONNECT page (logon/active centre), the REQUEST and REPORT pages, the message record (the CPDLC message log), the <strong>D-ATIS</strong> list, and the emergency page. They read as line lists like the FMS pages; you arrow and press <kbd>Enter</kbd> on the buttons/fields the same way. This is how you read CPDLC uplinks and request/receive a digital ATIS without seeing the screen.</li>
+  <li><strong>SEC flight plan</strong> (<kbd>Alt</kbd>+<kbd>S</kbd>) opens the SECONDARY flight plans (SEC 1–3) — the standby routes the A380 keeps for a runway change or alternate. They read exactly like the active F-PLN, so you can build and review a secondary plan and then activate it.</li>
+</ul>
+
 <h3 id="fplnreading">Reading the flight plan (F-PLN)</h3>
 <p>The F-PLN page lists the route as <strong>one line per waypoint, in order</strong>. MSFSBA folds each waypoint together with the leg that leads to it and any altitude constraint, so each line reads cleanly, for example:</p>
 <p><code>BI613, via BASU1D, 5 NM, track 294°, at or below 5000 feet</code></p>
@@ -298,6 +305,7 @@
 
 <h3>E/WD (Engine/Warning Display)</h3>
 <p>Open with (OUTPUT) <kbd>Alt</kbd>+<kbd>E</kbd>: per-engine throttle/N1/EGT/fuel-flow, the memo lines, and the active warnings with their ECAM action items. <kbd>Alt</kbd>+<kbd>E</kbd> also speaks the current warnings immediately. ECAM warnings and memos are also announced automatically as they appear. You can toggle automatic E/WD call-outs with <kbd>Ctrl</kbd>+<kbd>E</kbd>.</p>
+<p>The A380's Flight Warning System (FWS) is read in full and announced as it changes: the failure <strong>titles and their action lines</strong> (in red/amber/white order, exactly as the crew would read them down the display), the green <strong>memos</strong> (both columns), and the <strong>PFD memo and limitations</strong> lines. MSFSBA also speaks the small status-area reminders at the bottom of the display when they appear and again when they clear: <strong>STS</strong> ("Status message, check the status page"), <strong>ADV</strong> ("Advisory, check the system display"), and <strong>FAILURE PENDING</strong>. The display power-up <strong>safety-test</strong> ("Display safety test in progress") is announced too, so you know when the screens are booting. All of these route through the same call-out channel, so <kbd>Ctrl</kbd>+<kbd>E</kbd> mutes them together.</p>
 
 <!-- ===================================================================== -->
 <h2 id="part9">9. Automatic announcements (and how to mute them)</h2>
@@ -305,7 +313,7 @@
 <p>MSFSBA speaks important changes as they happen — you do not have to poll for them. Everything below is announced on change; you can silence any of it from the <strong>Monitor Manager</strong> (<kbd>Ctrl</kbd>+<kbd>M</kbd>), which is a checkbox list of every monitored item and remembers your choices.</p>
 
 <h3>Warnings and cautions</h3>
-<p>Master Warning, Master Caution, Autoland Warning, TCAS Fault, engine and APU fire, icing, and the overhead pushbutton FAULT lights (batteries, generators, IDGs, pumps, bleeds, packs, and more).</p>
+<p>Master Warning, Master Caution, Autoland Warning, TCAS Fault, engine and APU fire, icing, and the overhead pushbutton FAULT lights (batteries, generators, IDGs, pumps, bleeds, packs, and more). The full E/WD failure stream — titles, action lines, memos and the STS/ADV/FAILURE-PENDING status reminders — is described in <a href="#part8">Part 8</a>. When a failure makes the System Display automatically switch to the relevant system page, that page change is announced too (for example "System Display Page, F-CTL"), the A380 equivalent of the classic "ECAM page" call-out.</p>
 
 <h3>Autoflight modes (the FMA, spoken like the PFD)</h3>
 <ul>
@@ -318,6 +326,9 @@
 
 <h3>Numeric callouts</h3>
 <p>Altimeter setting on the knob and on STD↔QNH / hPa↔inHg changes; the approach minimums; thrust-lever detents ("All thrust levers Idle"); flaps and gear; and the A380's runway-overrun protection (ROW/ROP): "Runway too short", "If wet, runway too short", "Max braking", and "Runway ahead" when taxiing toward a runway.</p>
+
+<h3>Units: metric altitude and weight</h3>
+<p>The A380 has two unit toggles that MSFSBA honours in <em>its own</em> readouts, so what you hear matches the cockpit. When the FCU <strong>metric-altitude</strong> button (MTRS) is on, <strong>every</strong> altitude MSFSBA speaks is in metres — the current-altitude keys (<kbd>A</kbd> MSL, <kbd>Q</kbd> AGL), the FCU selected-altitude read (<kbd>Shift</kbd>+<kbd>A</kbd>), and the selected/standby altitude panel fields — and, when you set the FCU altitude (<kbd>Ctrl</kbd>+<kbd>A</kbd>), the value you type is taken as metres. Turn MTRS off and everything is feet again. Separately, the flyPad <strong>US/metric weight</strong> setting (or the MCDU Units button, <kbd>Alt</kbd>+<kbd>U</kbd>, inside the MFD window) switches MSFSBA's weight readouts — gross weight and total fuel — between kilograms and pounds, and is announced when it changes. The standby ISIS altitude always stays in feet (it is the backup instrument).</p>
 
 <h3>State changes</h3>
 <p>Engine state (Off/On/Starting/Shutting Down), engine masters and crossfeeds, doors, wheel chocks, safety cones, external power available, ATC message waiting, destination fuel OK/below-minimum, and the E/WD memo callouts (PARK BRK ON, APU AVAIL, ELEC EXT PWR, and so on).</p>
@@ -339,8 +350,20 @@
 <h4>ECAM control panel</h4>
 <p>ECAM ALL, Abnormal Proc, Checklist, Clear, Recall, T.O Config, Emergency Cancel, Up/Down/More, plus the SD page selector.</p>
 
-<h4>Transponder / radios</h4>
-<p>Squawk code (edit field), transponder mode and ident, ATC altitude reporting; VHF 1–3 standby/active and swap; RMP state.</p>
+<h4>Transponder / radios / audio</h4>
+<p>Squawk code (edit field), transponder mode and ident, ATC altitude reporting; VHF 1–3 standby/active and swap; RMP state. The <strong>Audio Control Panel</strong> (Pedestal) exposes the captain's RMP-1 receive selectors — VHF 1, VHF 2, cabin interphone, interphone, PA and NAV — so you can confirm which sources you are listening to.</p>
+
+<h4>Fuel system</h4>
+<p>The feed-tank <strong>pumps</strong> are settable: Feed Tank 1–4 main and standby pumps (each on/off). MSFSBA toggles them through the aircraft's electrical-circuit model, so a set takes effect immediately and the true state is read back. Also here: fuel transfer and jettison, crossfeed valves, per-engine fuel used, and the total/per-tank fuel quantities (which honour the kg/lb unit toggle).</p>
+
+<h4>Flight controls and trim</h4>
+<p><strong>Pitch trim</strong> (the THS) reads in degrees up or down, matching the System Display. <strong>Rudder trim</strong> reads as left/right degrees with a <strong>Rudder Trim Reset</strong> control, and there is a <strong>nosewheel-steering pedal disconnect</strong> (held during a rudder-pedal flight-control check). Surface deflections (elevator, aileron, rudder, spoilers) and the sidestick <strong>priority-takeover</strong> indications are readable. The continuous trim-announce toggle is <kbd>Shift</kbd>+<kbd>T</kbd> in OUTPUT mode.</p>
+
+<h4>Clock and chronometer</h4>
+<p>The cockpit clock is fully readable in the <strong>Clock</strong> panel. The <strong>Chronometer</strong> (CHR stopwatch) reads as minutes and seconds; start/stop it with the <strong>Chronometer Start / Stop</strong> control and zero it with <strong>Chronometer Reset</strong>. The <strong>Elapsed Time</strong> counter reads as hours and minutes and is driven by the <strong>Elapsed Time</strong> knob (Run / Stop / Reset). A counter that has been reset reads "Reset".</p>
+
+<h4>Surveillance (SURV) and metric altitude</h4>
+<p>The MFD <strong>SURV</strong> pages (reach them with <kbd>Alt</kbd>+<kbd>A</kbd>'s neighbouring SURV page, or the page combo) expose the transponder/TCAS mode and range, the weather-radar and predictive-windshear/turbulence controls, and TAWS terrain/GPWS modes. The FCU <strong>metric-altitude (MTRS)</strong> button is a settable control here too; its effect on every altitude readout is described in <a href="#part9">Part 9</a>.</p>
 
 <h4>Autoflight, gear, brakes, engines, lights, fuel, electrics, hydraulics</h4>
 <p>Autopilot 1/2, localizer, approach, expedite; autobrake (Disarm/BTV/Low/L2/L3/High) and RTO arm; gear and gravity extension; flaps, parking brake, speedbrake, thrust-lever detents; engine masters/mode/start; all exterior and interior lights; fuel transfer/jettison/crossfeed; ELEC, HYD, BLEED, ADIRS, the PRIM/SEC flight-control computers; GPWS/TAWS; weather radar; ground services (doors, jet bridge, stairs); and "Load Aircraft Preset" (Cold &amp; Dark / Powered / Pushback / Taxi / Takeoff).</p>
@@ -415,7 +438,7 @@
 <h3>OUTPUT mode (press <kbd>]</kbd> first) — readouts</h3>
 <table>
 <tr><th>Key</th><th>Action</th></tr>
-<tr><td><kbd>Q</kbd> / <kbd>A</kbd></td><td>Altitude AGL / MSL</td></tr>
+<tr><td><kbd>Q</kbd> / <kbd>A</kbd></td><td>Altitude AGL / MSL (in metres when the FCU MTRS button is on — see <a href="#part9">Part 9</a>)</td></tr>
 <tr><td><kbd>S</kbd> / <kbd>T</kbd> / <kbd>G</kbd> / <kbd>M</kbd></td><td>IAS / TAS / Ground Speed / Mach</td></tr>
 <tr><td><kbd>H</kbd> / <kbd>U</kbd> / <kbd>V</kbd></td><td>Magnetic Heading / True Heading / Vertical Speed</td></tr>
 <tr><td><kbd>D</kbd></td><td>Distance to destination (from the FMS)</td></tr>
@@ -448,7 +471,7 @@
 </table>
 
 <h3>Inside the MCDU window</h3>
-<p>See <a href="#mcducontrols">the MCDU controls table</a> (arrows, Enter, type, Backspace, Delete, Ctrl+Up/Down, F5) and the <a href="#pagenav">Alt+letter page buttons</a>.</p>
+<p>See <a href="#mcducontrols">the MCDU controls table</a> (arrows, Enter, type, Backspace, Delete, Ctrl+Up/Down, F5) and the <a href="#pagenav">Alt+letter page buttons</a> (INIT, F-PLN, PERF, RAD NAV, SEC FPL, ATC COM, DIR, Refresh). <kbd>Alt</kbd>+<kbd>U</kbd> toggles MSFSBA's weight units (kilograms / pounds) for its own readouts.</p>
 
 <!-- ===================================================================== -->
 <h2 id="part14">14. FlyByWire A380X feature status and limitations</h2>
@@ -460,6 +483,9 @@
   <li><strong>Incomplete / disabled:</strong> FLS / F-G/S approaches (non-functional), the second ISIS (disabled), and OANS airport data that depends on a Navigraph subscription.</li>
   <li><strong>Status/INOP/limitations lists:</strong> the data MSFSBA needs to read the STATUS page's inoperative-systems and limitations lists is reachable, but the FBW development build does not fully populate it yet; MSFSBA will surface it as soon as FBW ships the data.</li>
   <li><strong>D / Shift+D distance hotkeys:</strong> distance to destination works on the ground and in flight; distance to top of descent only reads once the FMS has computed a descent (in flight). ETA and landing-fuel are planned additions once the in-flight prediction data is verified.</li>
+  <li><strong>Oxygen pressure (PSI) is not simulated.</strong> The FBW build shows a fixed crew/passenger oxygen pressure on the DOOR/OXY page — there is no underlying variable, so MSFSBA cannot read a live value. The oxygen <em>status</em> that <em>is</em> modelled (passenger masks deployed, passenger-oxygen light, the timer-reset control and its fault) is read and announced.</li>
+  <li><strong>Chronometer:</strong> the clock CHR stopwatch and ET elapsed-time counter <em>are</em> modelled and read live (formatted as minutes/seconds and hours/minutes) — they run only when the clock is powered (DC essential bus).</li>
+  <li><strong>Fluid quantities</strong> (hydraulic reservoirs in gallons, engine oil in quarts, fuel in kg) are read live and were verified against the FBW source; engine oil pressure is not exposed because the build's value is unreliable.</li>
 </ul>
 <p>Because it is a development build, occasional control or readout names may differ slightly from what is documented here; report anything that reads wrong and it can be corrected.</p>
 
