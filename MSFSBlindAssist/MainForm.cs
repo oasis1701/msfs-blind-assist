@@ -58,6 +58,9 @@ public partial class MainForm : Form
     // new failures. Runs whenever the A380X is active — no window needed.
     private CoherentEWDClient? coherentEWDClient;
     private Forms.FBWA380.FBWA380EFBForm? fbwA380OansForm;
+    // Live A380X Electronic Checklist window (normal checklists + ECP controls),
+    // read from the E/WD Coherent view. Opened by the Checklist hotkey on the A380.
+    private Forms.FBWA380.FBWA380ChecklistForm? fbwA380ChecklistForm;
     private EFBBridgeServer? hs787BridgeServer;
     private HS787FMCForm? hs787FMCForm;
     private HS787SimBriefForm? hs787SimBriefForm;
@@ -2107,6 +2110,19 @@ public partial class MainForm : Form
     {
         // Ensure output hotkey mode is deactivated before showing dialog
         hotkeyManager.ExitOutputHotkeyMode();
+
+        // The A380X has a LIVE Electronic Checklist (read from the E/WD) with the
+        // real normal-checklist items and sensed auto-completion — far better than a
+        // static text file — so the Checklist hotkey opens that instead.
+        if (currentAircraft?.AircraftCode == "FBW_A380")
+        {
+            if (fbwA380ChecklistForm == null || fbwA380ChecklistForm.IsDisposed)
+                fbwA380ChecklistForm = new Forms.FBWA380.FBWA380ChecklistForm(announcer, simConnectManager);
+            fbwA380ChecklistForm.Show();
+            fbwA380ChecklistForm.BringToFront();
+            fbwA380ChecklistForm.Activate();
+            return;
+        }
 
         // Create form if it doesn't exist or has been disposed
         if (checklistForm == null || checklistForm.IsDisposed)
