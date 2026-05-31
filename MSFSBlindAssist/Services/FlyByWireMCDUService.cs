@@ -5,14 +5,27 @@ using Newtonsoft.Json.Linq;
 namespace MSFSBlindAssist.Services;
 
 /// <summary>
-/// Connects to the FlyByWire SimBridge MCDU relay websocket and exposes the selected
-/// side's screen as <see cref="MCDUDisplayData"/>. Mirrors the FenixMCDUService shape
+/// Connects to the FlyByWire SimBridge MCDU relay websocket and exposes the Captain
+/// MCDU screen as <see cref="MCDUDisplayData"/>. Mirrors the FenixMCDUService shape
 /// (connect-loop + backoff + UI marshalling) but uses a single socket for both directions.
+///
+/// IMPORTANT — the protocol cannot separate Captain and First Officer MCDUs.
+/// FBW's A320_Neo_CDU_MainDisplay.sendUpdate() builds ONE screenState from its own
+/// display and assigns that same object to BOTH the "left" and "right" keys of every
+/// update message (only annunciators/brightness differ). The two MCDU instruments each
+/// broadcast their own screen into both keys with no sender tag, interleaved. So
+/// content.left == content.right in every message and a "side selector" cannot pick one
+/// MCDU. We therefore mirror FBW's own web remote MCDU exactly: only ever control the
+/// Captain MCDU (event:left) and read the single shared screen (content.left).
+/// Verified live: left == right in 100% of observed messages.
 /// </summary>
 public class FlyByWireMCDUService : IDisposable
 {
     private readonly string _host;
-    private string _side = "left"; // "left" = Captain (MCDU1), "right" = First Officer (MCDU2)
+
+    // The protocol's "left"/"right" keys both carry the same screen (see class remarks);
+    // we always control and read the Captain MCDU, matching FBW's own remote.
+    private const string CaptainSide = "left";
 
     private ClientWebSocket? _ws;
     private CancellationTokenSource? _cts;
@@ -26,7 +39,6 @@ public class FlyByWireMCDUService : IDisposable
     public event Action<bool>? ConnectionStatusChanged;
 
     public bool IsConnected => _isConnected;
-    public string Side => _side;
 
     public FlyByWireMCDUService(string host = "localhost:8380")
     {
@@ -48,15 +60,6 @@ public class FlyByWireMCDUService : IDisposable
         _cts?.Cancel();
         CloseWebSocket();
         SetConnected(false);
-    }
-
-    /// <summary>Switch the displayed side and pull a fresh screen for it.</summary>
-    public void SwitchSide(string side)
-    {
-        if (side != "left" && side != "right") { return; }
-        if (side == _side) { return; }
-        _side = side;
-        _ = RequestUpdate();
     }
 
     private async Task ConnectLoop(CancellationToken ct)
@@ -117,7 +120,7 @@ public class FlyByWireMCDUService : IDisposable
         try
         {
             var content = JObject.Parse(msg.Substring(idx + 1));
-            if (content[_side] is not JObject side) { return; }
+            if (content[CaptainSide] is not JObject side) { return; }
             var data = FbwMcduFormat.BuildDisplayData(side);
             PostToUI(() => DisplayUpdated?.Invoke(data));
         }
@@ -127,8 +130,8 @@ public class FlyByWireMCDUService : IDisposable
         }
     }
 
-    /// <summary>Send a single MCDU key (e.g. "L1", "INIT", "DOT", "CLR") to the current side.</summary>
-    public Task SendButtonPress(string key) => SendRaw($"event:{_side}:{key}", CancellationToken.None);
+    /// <summary>Send a single MCDU key (e.g. "L1", "INIT", "DOT", "CLR") to the Captain MCDU.</summary>
+    public Task SendButtonPress(string key) => SendRaw($"event:{CaptainSide}:{key}", CancellationToken.None);
 
     public Task RequestUpdate() => SendRaw("requestUpdate", CancellationToken.None);
 

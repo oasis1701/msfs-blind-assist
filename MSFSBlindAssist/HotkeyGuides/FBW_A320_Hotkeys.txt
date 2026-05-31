@@ -161,9 +161,10 @@ Flight Management Displays:
              powers on automatically; F5 refreshes; a Status / self-test button
              reports the connection state.
   Shift+M    Open MCDU (multifunction control display unit). Full page access with
-             line-select keys (Ctrl+1-6 / Alt+1-6 for left/right, or F1-6 / F7-12
-             in alternate-key mode), scratchpad text entry, and a Captain / First
-             Officer selector.
+             line-select keys (Ctrl+1-6 / Alt+1-6 for left/right keys, or F1-6 /
+             F7-12 in alternate-key mode) and scratchpad text entry. Mirrors the
+             Captain MCDU (the SimBridge remote protocol does not expose the First
+             Officer MCDU separately).
 
 Autopilot:
   Shift+A    Toggle Autopilot 1

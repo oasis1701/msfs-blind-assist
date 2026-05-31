@@ -5,8 +5,10 @@ using MSFSBlindAssist.Services;
 namespace MSFSBlindAssist.Forms.FlyByWireA320;
 
 /// <summary>
-/// Accessible MCDU for the FlyByWire A32NX. Mirrors FenixMCDUForm's UX (ListBox display,
-/// scratchpad input, page buttons, Left/Right selector) over the SimBridge websocket.
+/// Accessible MCDU for the FlyByWire A32NX (ListBox display, scratchpad input, page
+/// buttons) over the SimBridge websocket. Single MCDU (Captain) by design — the remote
+/// protocol cannot separate Captain and First Officer screens (both keys carry the same
+/// screen); see <see cref="FlyByWireMCDUService"/> remarks. This matches FBW's own remote.
 /// </summary>
 public class FlyByWireMCDUForm : Form
 {
@@ -23,7 +25,6 @@ public class FlyByWireMCDUForm : Form
     private ListBox mcduDisplay = null!;
     private TextBox scratchpadInput = null!;
     private Label connectionStatus = null!;
-    private ComboBox mcduSelector = null!;
 
     private System.Windows.Forms.Timer? _scratchpadDebounceTimer;
     private string _lastAnnouncedScratchpad = "";
@@ -53,7 +54,7 @@ public class FlyByWireMCDUForm : Form
     {
         this.SuspendLayout();
 
-        this.Text = "FlyByWire MCDU (Captain)";
+        this.Text = "FlyByWire MCDU";
         this.ClientSize = new Size(620, 760);
         this.FormBorderStyle = FormBorderStyle.FixedSingle;
         this.MaximizeBox = false;
@@ -64,22 +65,12 @@ public class FlyByWireMCDUForm : Form
 
         connectionStatus = new Label
         {
-            Text = "MCDU (Captain): Disconnected",
+            Text = "MCDU: Disconnected",
             Location = new Point(10, y),
-            Size = new Size(400, 20),
+            Size = new Size(600, 20),
             AccessibleName = "Connection status",
             AccessibleDescription = "Shows whether the MCDU is connected"
         };
-
-        mcduSelector = new ComboBox
-        {
-            Location = new Point(430, y),
-            Size = new Size(180, 25),
-            DropDownStyle = ComboBoxStyle.DropDownList,
-            AccessibleName = "MCDU selector"
-        };
-        mcduSelector.Items.AddRange(new object[] { "Captain (Left)", "First Officer (Right)" });
-        mcduSelector.SelectedIndex = 0;
         y += 28;
 
         mcduDisplay = new ListBox
@@ -125,13 +116,11 @@ public class FlyByWireMCDUForm : Form
         }
 
         this.Controls.Add(connectionStatus);
-        this.Controls.Add(mcduSelector);
         this.Controls.Add(mcduDisplay);
         this.Controls.Add(scratchpadInput);
         foreach (var b in buttons) { this.Controls.Add(b); }
 
         int tabIdx = 0;
-        mcduSelector.TabIndex = tabIdx++;
         mcduDisplay.TabIndex = tabIdx++;
         scratchpadInput.TabIndex = tabIdx++;
         foreach (var b in buttons) { b.TabIndex = tabIdx++; }
@@ -174,18 +163,6 @@ public class FlyByWireMCDUForm : Form
         scratchpadInput.KeyDown += ScratchpadInput_KeyDown;
         mcduDisplay.KeyDown += McduDisplay_KeyDown;
         this.KeyDown += Form_KeyDown;
-
-        mcduSelector.SelectedIndexChanged += (s, e) =>
-        {
-            string side = mcduSelector.SelectedIndex == 0 ? "left" : "right";
-            _service.SwitchSide(side);
-            _currentDisplay = null;
-            _lastAnnouncedScratchpad = "";
-            _lastAnnouncedTitle = "";
-            mcduDisplay.Items.Clear();
-            string name = mcduSelector.SelectedIndex == 0 ? "Captain" : "First Officer";
-            this.Text = $"FlyByWire MCDU ({name})";
-        };
     }
 
     private void McduDisplay_KeyDown(object? sender, KeyEventArgs e)
@@ -361,9 +338,8 @@ public class FlyByWireMCDUForm : Form
 
     private void OnConnectionStatusChanged(bool isConnected)
     {
-        string name = mcduSelector.SelectedIndex == 0 ? "Captain" : "First Officer";
-        connectionStatus.Text = isConnected ? $"MCDU ({name}): Connected" : $"MCDU ({name}): Disconnected";
-        _announcer.Announce(isConnected ? $"{name} MCDU connected" : $"{name} MCDU disconnected");
+        connectionStatus.Text = isConnected ? "MCDU: Connected" : "MCDU: Disconnected";
+        _announcer.Announce(isConnected ? "MCDU connected" : "MCDU disconnected");
     }
 
     public void ShowForm()
