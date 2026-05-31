@@ -37,6 +37,14 @@ public class CoherentGTInjector : IDisposable
     public event EventHandler? Connected;
     public event EventHandler? Disconnected;
 
+    /// <summary>
+    /// When set, called each poll cycle. If it returns false while the injector
+    /// believes it already injected, _lastInjectedPageId is cleared so the next
+    /// poll re-injects (handles silent eval failure and page reloads where the
+    /// Coherent GT page ID stays stable).
+    /// </summary>
+    public Func<bool>? HeartbeatAlive { get; set; }
+
     public CoherentGTInjector(string bridgeJsPath)
     {
         _bridgeJsPath = bridgeJsPath;
@@ -88,8 +96,22 @@ public class CoherentGTInjector : IDisposable
             return;
         }
 
-        // 2. Already injected into this page load — skip
-        if (pageId == _lastInjectedPageId) return;
+        // 2. Already injected — verify JS is still present in the page via a cheap CDP eval.
+        // Page reloads clear the window flag instantly; this detects the reload within one
+        // poll cycle (~3 s) instead of waiting for the 6 s heartbeat timeout.
+        if (pageId == _lastInjectedPageId)
+        {
+            bool? jsPresent = await CheckBridgeLoadedAsync(pageId, ct);
+            bool heartbeatDead = HeartbeatAlive?.Invoke() == false;
+
+            // JS confirmed present — no action; bridge's own reconnect interval handles
+            // any transient server disconnects without requiring re-injection.
+            if (jsPresent == true) return;
+            // Can't check CDP but heartbeat is still fresh — assume ok.
+            if (jsPresent == null && !heartbeatDead) return;
+            // JS is gone, or we can't check and the heartbeat is also stale — re-inject.
+            _lastInjectedPageId = null;
+        }
 
         // 3. Brief delay on re-injection so the page finishes reloading
         if (_lastInjectedPageId != null)
@@ -123,14 +145,29 @@ public class CoherentGTInjector : IDisposable
 
             string json = await resp.Content.ReadAsStringAsync(ct);
             using var doc = JsonDocument.Parse(json);
+
+            string? vcockpitEfbId = null;
+
             foreach (var page in doc.RootElement.EnumerateArray())
             {
                 string? title = page.TryGetProperty("title", out var t) ? t.GetString() : null;
-                string? id    = page.TryGetProperty("id",    out var i) ? i.GetString() : null;
-                if (title != null && id != null &&
-                    title.EndsWith("- EFB", StringComparison.OrdinalIgnoreCase))
-                    return id;
+
+                // id is a JSON number in Coherent GT's pagelist — GetString() returns null for numbers
+                string? id = null;
+                if (page.TryGetProperty("id", out var idProp))
+                    id = idProp.ValueKind == JsonValueKind.Number
+                        ? idProp.GetRawText()
+                        : idProp.GetString();
+
+                if (title == null || id == null) continue;
+
+                // FBW EFB runs as a VCockpit instrument in both FS2020 and FS2024.
+                // This page always has #MSFS_REACT_MOUNT; the MSFS EFB OS shell does not.
+                if (title.EndsWith("- EFB", StringComparison.OrdinalIgnoreCase))
+                    vcockpitEfbId = id;
             }
+
+            return vcockpitEfbId;
         }
         catch { /* devtools not available or not in EFB aircraft */ }
         return null;
@@ -145,10 +182,10 @@ public class CoherentGTInjector : IDisposable
         try
         {
             using var tcp = new TcpClient();
-            var connectTask = tcp.ConnectAsync("127.0.0.1", 19999);
-            if (await Task.WhenAny(connectTask, Task.Delay(WsConnectTimeoutMs, ct)) != connectTask)
-                return false;
-            await connectTask; // rethrow any connect exception
+            using var connectCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            connectCts.CancelAfter(WsConnectTimeoutMs);
+            try { await tcp.ConnectAsync("127.0.0.1", 19999, connectCts.Token); }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested) { return false; }
 
             using var stream = tcp.GetStream();
 
@@ -172,6 +209,7 @@ public class CoherentGTInjector : IDisposable
             {
                 if (stream.DataAvailable)
                 {
+                    if (total >= buf.Length) break;
                     int n = await stream.ReadAsync(buf.AsMemory(total), ct);
                     if (n == 0) break;
                     total += n;
@@ -202,6 +240,100 @@ public class CoherentGTInjector : IDisposable
             System.Diagnostics.Debug.WriteLine($"[CGTInjector] Inject failed: {ex.Message}");
             return false;
         }
+    }
+
+    /// <summary>
+    /// Opens a short-lived CDP connection to check if the bridge JS flag is still
+    /// set in the page. Returns true if loaded, false if definitely gone,
+    /// null if the check could not complete (treat as "unknown").
+    /// </summary>
+    private static async Task<bool?> CheckBridgeLoadedAsync(string pageId, CancellationToken ct)
+    {
+        try
+        {
+            using var tcp = new TcpClient();
+            using var connectCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            connectCts.CancelAfter(WsConnectTimeoutMs);
+            try { await tcp.ConnectAsync("127.0.0.1", 19999, connectCts.Token); }
+            catch { return null; }
+
+            using var stream = tcp.GetStream();
+
+            string wsKey = Convert.ToBase64String(Guid.NewGuid().ToByteArray());
+            string handshake =
+                $"GET /devtools/page/{pageId} HTTP/1.1\r\n" +
+                "Host: 127.0.0.1:19999\r\n" +
+                "Upgrade: websocket\r\n" +
+                "Connection: Upgrade\r\n" +
+                $"Sec-WebSocket-Key: {wsKey}\r\n" +
+                "Sec-WebSocket-Version: 13\r\n\r\n";
+            await stream.WriteAsync(Encoding.ASCII.GetBytes(handshake), ct);
+
+            var buf = new byte[2048];
+            int total = 0;
+            var deadline = DateTime.UtcNow.AddSeconds(2);
+            while (DateTime.UtcNow < deadline)
+            {
+                if (stream.DataAvailable)
+                {
+                    int n = await stream.ReadAsync(buf.AsMemory(total), ct);
+                    if (n == 0) break;
+                    total += n;
+                    if (Encoding.ASCII.GetString(buf, 0, total).Contains("\r\n\r\n")) break;
+                }
+                else await Task.Delay(20, ct);
+            }
+            if (!Encoding.ASCII.GetString(buf, 0, total).Contains("101")) return null;
+
+            string cdp = JsonSerializer.Serialize(new
+            {
+                id = 2,
+                method = "Runtime.evaluate",
+                @params = new { expression = "!!window._a32nx_efb_bridge_loaded", returnByValue = true }
+            });
+            await stream.WriteAsync(BuildWebSocketTextFrame(Encoding.UTF8.GetBytes(cdp)), ct);
+
+            // Read response frame (server→client, unmasked).
+            // Response is ~70 bytes; keep reading until we have the full payload.
+            total = 0;
+            deadline = DateTime.UtcNow.AddSeconds(2);
+            while (DateTime.UtcNow < deadline)
+            {
+                if (stream.DataAvailable)
+                {
+                    int n = await stream.ReadAsync(buf.AsMemory(total), ct);
+                    if (n == 0) break;
+                    total += n;
+                    if (total >= 2)
+                    {
+                        int lb = buf[1] & 0x7F;
+                        int hdrLen = lb <= 125 ? 2 : (lb == 126 ? 4 : 10);
+                        if (total >= hdrLen)
+                        {
+                            int pl = lb <= 125 ? lb : (lb == 126 ? ((buf[2] << 8) | buf[3]) : -1);
+                            if (pl >= 0 && total >= hdrLen + pl) break;
+                        }
+                    }
+                }
+                else await Task.Delay(20, ct);
+            }
+
+            if (total < 4) return null;
+            int lenByte = buf[1] & 0x7F;
+            int payloadStart = lenByte <= 125 ? 2 : 4;
+            int payloadLen  = lenByte <= 125 ? lenByte : ((buf[2] << 8) | buf[3]);
+            if (total < payloadStart + payloadLen) return null;
+
+            string json = Encoding.UTF8.GetString(buf, payloadStart, payloadLen);
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.TryGetProperty("result", out var r1) &&
+                r1.TryGetProperty("result", out var r2) &&
+                r2.TryGetProperty("value", out var val))
+                return val.GetBoolean();
+
+            return null;
+        }
+        catch { return null; }
     }
 
     /// <summary>
