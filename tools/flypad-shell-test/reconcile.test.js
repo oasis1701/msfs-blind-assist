@@ -39,6 +39,8 @@ function loadShell() {
   return {
     window,
     render(payload) { messageHandler({ data: Object.assign({ type: 'render' }, payload) }); },
+    message(obj) { messageHandler({ data: obj }); },
+    byId(id) { return window.document.getElementById(id); },
     root() { return window.document.getElementById('root'); },
     rootText() { return window.document.getElementById('root').textContent; },
     buttonsByText() {
@@ -130,4 +132,60 @@ test('page change to a different label rebuilds cleanly too', () => {
   const text = s.rootText();
   assert.ok(!text.includes('Start refueling'), 'Fuel control survived a full page change');
   assert.ok(text.includes('flyPad Settings'), 'Settings heading missing after page change');
+});
+
+test('field ids stay unique and correctly label-associated across a content shuffle', () => {
+  const s = loadShell();
+  // One input "Passengers" at scrape idx 5.
+  s.render({ page: 'Ground', elements: [
+    { idx: 5, kind: 'input', controlType: 'text', text: 'Passengers', value: '100' },
+  ] });
+  // Same page label: "Passengers" reused (now idx 7); a NEW "Cargo" input takes idx 5.
+  // Under the old "i"+idx id scheme this produced two elements with id "i5".
+  s.render({ page: 'Ground', elements: [
+    { idx: 7, kind: 'input', controlType: 'text', text: 'Passengers', value: '100' },
+    { idx: 5, kind: 'input', controlType: 'text', text: 'Cargo', value: '200' },
+  ] });
+
+  const root = s.root();
+  const ids = [...root.querySelectorAll('input,select')].map((c) => c.id);
+  assert.strictEqual(new Set(ids).size, ids.length, 'duplicate field ids: ' + ids.join(','));
+  // Every label points at an input that exists, inside its own .fld row.
+  [...root.querySelectorAll('label')].forEach((lab) => {
+    const target = s.byId(lab.htmlFor);
+    assert.ok(target, 'label points at a missing id: ' + lab.htmlFor);
+    assert.ok(lab.closest('.fld').contains(target), 'label associated with a control outside its own row');
+  });
+});
+
+test('reused control updates its data-idx so clicks route to the current element', () => {
+  const s = loadShell();
+  s.render({ page: 'Ground', elements: [{ idx: 5, kind: 'button', controlType: '', text: 'Start boarding', clickable: true }] });
+  const b1 = s.root().querySelector('button');
+  assert.strictEqual(b1.dataset.idx, '5');
+  // Same control, re-stamped to idx 9 next scrape.
+  s.render({ page: 'Ground', elements: [{ idx: 9, kind: 'button', controlType: '', text: 'Start boarding', clickable: true }] });
+  const b2 = s.root().querySelector('button');
+  assert.strictEqual(b2, b1, 'button was rebuilt instead of reused');
+  assert.strictEqual(b2.dataset.idx, '9', 'data-idx was not patched to the current scrape idx');
+});
+
+test('disabled-only change is patched in place (node reused, not rebuilt)', () => {
+  const s = loadShell();
+  s.render({ page: 'Ground', elements: [{ idx: 3, kind: 'button', controlType: '', text: 'Start deboarding', clickable: true, disabled: false }] });
+  const before = s.root().querySelector('button');
+  assert.strictEqual(before.disabled, false);
+  s.render({ page: 'Ground', elements: [{ idx: 3, kind: 'button', controlType: '', text: 'Start deboarding', clickable: true, disabled: true }] });
+  const after = s.root().querySelector('button');
+  assert.strictEqual(after, before, 'button rebuilt for a disabled-only change (would reset NVDA cursor)');
+  assert.strictEqual(after.disabled, true);
+});
+
+test('a status message never rebuilds or touches #root', () => {
+  const s = loadShell();
+  s.render(PAYLOAD);
+  const rootBefore = s.root().innerHTML;
+  s.message({ type: 'status', text: 'Live: "Ground" (updated 2s ago)' });
+  assert.strictEqual(s.byId('status').textContent, 'Live: "Ground" (updated 2s ago)', 'status text not applied');
+  assert.strictEqual(s.root().innerHTML, rootBefore, 'status message mutated #root');
 });

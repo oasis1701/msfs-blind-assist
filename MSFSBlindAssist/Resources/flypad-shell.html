@@ -40,6 +40,14 @@
   function post(o){ try { window.chrome.webview.postMessage(o); } catch (e) {} }
   function setText(node, t){ t = t || ""; if (node.textContent !== t) node.textContent = t; }
 
+  // Monotonic, globally-unique id for a field <-> <label for> pairing. NOT derived
+  // from the scrape idx: idx is re-stamped from 1 every scrape, and the reconcile
+  // reuses nodes by CONTENT, so a reused field keeps its original id while a newly
+  // built field could otherwise grab the same "i"+idx — a duplicate id that breaks
+  // the label association for a screen reader. A fresh uid per built node avoids it.
+  var _flduid = 0;
+  function fieldId(){ return "fld" + (++_flduid); }
+
   function isRenderable(e){
     if (e.kind === "heading") return true;
     var ct = e.controlType;
@@ -72,14 +80,14 @@
       var row = document.createElement("div"); row.className = "fld";
       var cb = document.createElement("input"); cb.type = "checkbox";
       cb.checked = (e.value === "true"); cb.disabled = !!e.disabled; cb.dataset.idx = e.idx;
-      cb.id = "c" + e.idx;
+      cb.id = fieldId();
       cb.addEventListener("change", function(){ post({ action:"set", idx: +cb.dataset.idx, value: cb.checked ? "true" : "false" }); });
       var lab = document.createElement("label"); lab.htmlFor = cb.id; lab.textContent = text || "(toggle)";
       row.appendChild(cb); row.appendChild(lab); return row;
     }
     if (ct === "select"){
       var row2 = document.createElement("div"); row2.className = "fld";
-      var sel = document.createElement("select"); sel.disabled = !!e.disabled; sel.dataset.idx = e.idx; sel.id = "s" + e.idx;
+      var sel = document.createElement("select"); sel.disabled = !!e.disabled; sel.dataset.idx = e.idx; sel.id = fieldId();
       var lab2 = document.createElement("label"); lab2.htmlFor = sel.id; lab2.textContent = text;
       (e.options || []).forEach(function(opt){ var o = document.createElement("option"); o.value = opt; o.textContent = opt; if (opt === e.value) o.selected = true; sel.appendChild(o); });
       sel.addEventListener("change", function(){ post({ action:"set", idx: +sel.dataset.idx, value: sel.value }); });
@@ -87,7 +95,7 @@
     }
     if (ct === "text"){
       var row3 = document.createElement("div"); row3.className = "fld";
-      var inp = document.createElement("input"); inp.type = "text"; inp.value = e.value || ""; inp.disabled = !!e.disabled; inp.dataset.idx = e.idx; inp.id = "i" + e.idx;
+      var inp = document.createElement("input"); inp.type = "text"; inp.value = e.value || ""; inp.disabled = !!e.disabled; inp.dataset.idx = e.idx; inp.id = fieldId();
       var lab3 = document.createElement("label"); lab3.htmlFor = inp.id; lab3.textContent = text;
       function commit(){ post({ action:"set", idx: +inp.dataset.idx, value: inp.value }); }
       inp.addEventListener("change", commit);
