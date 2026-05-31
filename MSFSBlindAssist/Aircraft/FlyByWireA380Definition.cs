@@ -235,11 +235,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // ---- APU ----
         OnOff("A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", "APU Master Switch");
         OnOff("A32NX_OVHD_APU_START_PB_IS_ON", "APU Start", button: true);
-        // APU Available: NOT auto-announced — the E/WD memo "APU AVAIL" already
-        // announces availability (from the scrape), so a ReadEnum here would speak
-        // it twice ("APU Available: Available" AND "APU AVAIL"). Kept readable
-        // (ReadEnumQuiet) so it still shows on demand; the ECAM memo is the call-out.
-        ReadEnumQuiet("A32NX_OVHD_APU_START_PB_IS_AVAILABLE", "APU Available",
+        // APU Available auto-announces ("APU Available: Available") AND shows in the
+        // APU status readout. It overlaps the E/WD "APU AVAIL" memo — that twin
+        // call-out is intentional (the user prefers both, the memo being a legit
+        // separate ECAM source).
+        ReadEnum("A32NX_OVHD_APU_START_PB_IS_AVAILABLE", "APU Available",
             new Dictionary<double, string> { [0] = "No", [1] = "Available" });
 
         // ---- FUEL ----
@@ -1943,23 +1943,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
 
         d["Gear"].AddRange(new[] { "GEAR_LEFT_POS", "GEAR_CENTER_POS", "GEAR_RIGHT_POS", "A32NX_AUTOBRAKES_RTO_ARMED" });
 
-        // ---- Annunciator policy ----
-        // Faults and other BINARY (2-state) indicator lights are announced on change
-        // (Continuous + IsAnnounced) and must NOT clutter the panel read-out fields —
-        // a pilot navigates a panel to operate its CONTROLS, not to scan dozens of
-        // "X Fault: Normal" / "Y Bus: Powered" rows. So strip every ANNOUNCED 2-state
-        // enum var from the display sets here. KEPT: numeric/analog read-outs (no
-        // ValueDescriptions), multi-state status read-outs (3+ states — ADIRU/engine
-        // state, autobrake/BTV mode, FMA modes), and the intentionally-silent
-        // ReadEnumQuiet binaries (IsAnnounced == false — their only surface, since
-        // they are too noisy to announce). The stripped annunciators stay registered,
-        // auto-announce on change, and remain in the Ctrl+M Monitor Manager.
-        var vmap = GetVariables();
-        foreach (var key in d.Keys.ToList())
-            d[key] = d[key].Where(v =>
-                !(vmap.TryGetValue(v, out var vd) && vd.IsAnnounced
-                  && vd.ValueDescriptions != null && vd.ValueDescriptions.Count == 2)).ToList();
-
+        // NOTE: annunciators (faults + non-fault state lights) ARE listed here on
+        // purpose. They render into the panel's single READ-ONLY "Status Display"
+        // text field (MainForm.UpdateDisplayText) — never as a settable combo — so
+        // they read on demand AND auto-announce on change. They legitimately overlap
+        // some E/WD memos; that twin call-out (annunciator + memo) is fine.
         return d;
     }
 
