@@ -95,6 +95,43 @@ Some pages (WIND, REPORT, GNSS, TIME, the DATA sub-pages) only open once the FMS
 has the flight plan or data they need — that is the real aircraft behaviour, not
 a limitation.
 
+## 4a. Reading the flight plan (F-PLN) — what the lines mean
+
+The F-PLN page lists the route as **one line per waypoint, in order**. MSFSBA
+folds each waypoint together with the *leg that leads to it* and any altitude
+restriction, so a line reads like:
+
+> **DER22, via BASU1D, 2 NM, track 217°**
+
+Breaking that down:
+
+- **DER22** — the waypoint name (a navaid, intersection, or runway like `VCBI22`).
+- **via BASU1D** — the airway or procedure you fly to reach it (here the BASU1D
+  departure). It is spoken **once** and then stays silent until it changes (so a
+  six-leg SID doesn't repeat "BASU1D" six times); when it changes you'll hear the
+  new one, e.g. **via P570**.
+- **2 NM** — the leg distance: how far this waypoint is from the previous one, in
+  nautical miles. (So "BASU1D, 2 NM" then later "BASU1D, 6 NM" are simply the
+  first and second legs of the SID — 2 nm to the first point, 6 nm to the next.)
+- **track 217°** — the magnetic track flown along that leg.
+
+Some lines add a **constraint**, e.g. *"500, via C220°, 1 NM, at or above 500
+feet"* or *"BI613, 5 NM, track 294°, at or below 5000 feet"* — an altitude you
+must cross at/above/below at that point. A line whose name is just a number (like
+**500**) is a computed point where the procedure levels or turns at that altitude,
+not a real navaid.
+
+Empty fields are dropped: before takeoff the time/speed/altitude **predictions**
+are blank in the aircraft (shown as dashes), so MSFSBA simply omits them; once
+airborne an **ETA hh:mm** is added to each line.
+
+**Seeing the WHOLE route.** The page shows a *window* of about a dozen waypoints
+at a time, with the **destination pinned at the bottom** (the DEST / arrival
+airport). The last waypoint you hear before DEST is just the bottom of the
+*current window*, NOT the end of the route — press **Ctrl+Down / Page Down** to
+scroll to the next set of waypoints (and **Ctrl+Up / Page Up** to go back). Keep
+paging down to walk the entire route to the destination.
+
 ## 5. Loading the flight plan — SimBrief first
 
 **The fast way is to import your SimBrief OFP — but importing it into the flyPad

@@ -349,6 +349,84 @@
     }
   };
 
+  // True if the node sits anywhere inside the F-PLN grid (any element whose class
+  // contains "mfd-fms-fpln" — line, header, leg, annotation, constraint, …). Used
+  // to keep the generic row scraper OUT of the flight plan, which buildFplnLines
+  // handles on its own.
+  A.insideFpln = function (n) {
+    var cur = n;
+    while (cur) {
+      var c = (cur.className && cur.className.toString) ? cur.className.toString() : "";
+      if (c.indexOf("mfd-fms-fpln") >= 0) return true;
+      cur = cur.parentElement;
+    }
+    return false;
+  };
+
+  // Decode an F-PLN altitude constraint token: "+N" = at or above N feet, "-N" =
+  // at or below N feet, plain "N" = at N feet. (Speed constraints live in the
+  // speed column, handled separately, not here.)
+  A.fplnConstraint = function (c) {
+    if (c.charAt(0) === "+") return "at or above " + c.substring(1) + " feet";
+    if (c.charAt(0) === "-") return "at or below " + c.substring(1) + " feet";
+    return "at " + c + " feet";
+  };
+
+  // Build ONE clean line per F-PLN waypoint. The MFD draws the flight plan as a
+  // dense grid: each `.mfd-fms-fpln-line` groups a waypoint with its INBOUND leg
+  // (airway/procedure name, track, distance) and any altitude constraint, but
+  // those cells sit at different x/y, so a plain row-by-row read scattered them
+  // into many lines full of empty "---"/"--:--" dashes. Here we read per waypoint
+  // container and fold it into "IDENT, via AIRWAY, N NM, track T°, <constraint>,
+  // ETA hh:mm", dropping empty/dash fields and the repeated airway name. Universal
+  // to any A380 flight plan (class-driven, nothing hard-coded).
+  A.buildFplnLines = function (page, pageRect, items) {
+    var lines = page.querySelectorAll(".mfd-fms-fpln-line");
+    var lastAnno = null;
+    function cellText(L, sel) { var n = L.querySelector(sel); return n ? clean(n.textContent) : ""; }
+    function isDash(s) { return !s || /^[-:.\s]+$/.test(s); }
+    for (var i = 0; i < lines.length; i++) {
+      var L = lines[i];
+      if (!A.isVisible(L)) continue;
+      var ident = cellText(L, ".mfd-fms-fpln-line-ident");
+      // Strip the "@" overfly marker the MFD glues to the ident (a visual symbol;
+      // it reads as "at" otherwise). The waypoint name is what matters here.
+      ident = ident.replace(/@/g, "").replace(/\s+/g, " ").replace(/^ | $/g, "");
+      if (!ident) continue;                       // a spacer / non-waypoint row
+      var anno = cellText(L, ".mfd-fms-fpln-line-annotation");
+      // leg upper row carries the track ("217°") and the distance (bare integer)
+      var track = "", dist = "";
+      var ups = L.querySelectorAll(".mfd-fms-fpln-leg-upper-row");
+      for (var u = 0; u < ups.length; u++) {
+        var ut = clean(ups[u].textContent);
+        if (ut.indexOf("°") >= 0) track = ut;
+        else if (/^\d+$/.test(ut)) dist = ut;
+      }
+      // altitude constraint cell ("+500" / "-5000"); ignore dash placeholders
+      var con = "";
+      var cons = L.querySelectorAll('[class*="fpln-leg-constraint"]');
+      for (var c = 0; c < cons.length; c++) { var ct = clean(cons[c].textContent); if (!isDash(ct)) con = ct; }
+      // ETA in the lower row's leftmost cell — only meaningful once airborne
+      var eta = cellText(L, ".mfd-fms-fpln-leg-lower-row");
+      if (isDash(eta)) eta = "";
+
+      var parts = [ident];
+      if (anno && anno !== lastAnno) parts.push("via " + anno);
+      if (anno) lastAnno = anno;
+      if (dist) parts.push(dist + " NM");
+      if (track) parts.push("track " + track);
+      if (con) parts.push(A.fplnConstraint(con));
+      if (eta) parts.push("ETA " + eta);
+
+      var r = L.getBoundingClientRect();
+      items.push({
+        top: r.top - pageRect.top, left: 0,
+        right: r.right - pageRect.left, bot: r.bottom - pageRect.top,
+        idx: 0, kind: "text", text: parts.join(", "), value: "", disabled: false, fpln: true
+      });
+    }
+  };
+
   A.enumerateLines = function (root) {
     var stale = root.querySelectorAll("[data-fbwa380-mcdu-idx]");
     for (var s = 0; s < stale.length; s++) stale[s].removeAttribute("data-fbwa380-mcdu-idx");
@@ -382,12 +460,19 @@
       idx++;
     }
 
+    // 1b) The FLIGHT PLAN, if shown, gets its own per-waypoint builder (one clean
+    //     line per waypoint) — the generic row scraper below then SKIPS the plan
+    //     grid so it isn't read twice.
+    var isFpln = !!page.querySelector(".mfd-fms-fpln-line");
+    if (isFpln) A.buildFplnLines(page, pageRect, items);
+
     // 2) static-text leaves not inside an interactive control above.
     var all = page.getElementsByTagName("*");
     for (var j = 0; j < all.length; j++) {
       var t = all[j];
       if (!A.isVisible(t)) continue;
       if (A.isInsideInteractive(t)) continue;
+      if (isFpln && A.insideFpln(t)) continue;   // plan grid handled by buildFplnLines
       var own = A.directText(t);
       // Skip empty leaves and FBW data-binding artifacts ("null"/"undefined"
       // rendered into empty MFD cells) — never meaningful to the pilot.
@@ -452,9 +537,11 @@
     var mergedLines = [];
     for (var mi = 0; mi < items.length; mi++) {
       var cur = items[mi];
-      if (cur.idx === 0 && cur.kind === "text" && mergedLines.length > 0) {
+      // Pre-built F-PLN waypoint lines (fpln:true) are already complete — never
+      // merge them with each other or with neighbouring text.
+      if (cur.idx === 0 && cur.kind === "text" && !cur.fpln && mergedLines.length > 0) {
         var prev = mergedLines[mergedLines.length - 1];
-        if (prev.idx === 0 && prev.kind === "text"
+        if (prev.idx === 0 && prev.kind === "text" && !prev.fpln
             && Math.round(prev.top / A.ROW_Y_TOLERANCE_PX) === Math.round(cur.top / A.ROW_Y_TOLERANCE_PX)) {
           prev.text = prev.text + ", " + cur.text;
           if (cur.right > prev.right) prev.right = cur.right;
