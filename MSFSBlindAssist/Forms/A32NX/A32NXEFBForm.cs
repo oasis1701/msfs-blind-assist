@@ -1,13 +1,17 @@
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.SimConnect;
+using Microsoft.Web.WebView2.Core;
+using Microsoft.Web.WebView2.WinForms;
 using System.Runtime.InteropServices;
+using System.Text.Json;
 
 namespace MSFSBlindAssist.Forms.A32NX;
 
 /// <summary>
-/// Accessible, generic live view of the FlyByWire A320 flyPad (EFB). Renders
-/// whatever page is open as a flat list of native accessible controls, scraped
-/// from the live DOM via the generic CDP agent. No per-feature knowledge.
+/// Accessible, generic live view of the FlyByWire A320 flyPad (EFB). Hosts a
+/// WebView2 that renders whatever flyPad page is open as an accessible HTML
+/// document (so NVDA gets full browse mode), built from the live DOM scrape via
+/// the generic CDP agent. No per-feature knowledge.
 /// </summary>
 public sealed class A32NXEFBForm : Form
 {
@@ -16,16 +20,14 @@ public sealed class A32NXEFBForm : Form
 
     private readonly ScreenReaderAnnouncer _announcer;
     private readonly CoherentEFBClient _client;
-
-    private Label _statusLabel = null!;
-    private Button _selfTestBtn = null!;
-    private FlowLayoutPanel _list = null!;
-    private System.Windows.Forms.Timer _pollTimer = null!;
+    private readonly WebView2 _web;
+    private readonly System.Windows.Forms.Timer _pollTimer;
 
     private IntPtr _previousWindow = IntPtr.Zero;
+    private bool _webReady;
+    private bool _polling;
     private string _renderSignature = "";
     private string _lastPage = "";
-    private bool _polling;
     private DateTime _lastScrapeUtc = DateTime.MinValue;
     private bool _lastScrapeOk;
     private string _lastScrapeError = "";
@@ -37,29 +39,27 @@ public sealed class A32NXEFBForm : Form
         string agentPath = Path.Combine(
             AppDomain.CurrentDomain.BaseDirectory, "Resources", "coherent-a32nx-flypad-agent.js");
         _client = new CoherentEFBClient(agentPath);
-        _client.Connected    += (_, _) => { if (IsHandleCreated) BeginInvoke(UpdateStatus); };
-        _client.Disconnected += (_, _) => { if (IsHandleCreated) BeginInvoke(UpdateStatus); };
+        _client.Connected    += (_, _) => OnConnChanged(true);
+        _client.Disconnected += (_, _) => OnConnChanged(false);
 
         Text = "FlyByWire A320 flyPad";
         AccessibleName = "FlyByWire A320 flyPad";
-        Size = new Size(700, 640);
-        MinimumSize = new Size(560, 480);
+        Size = new Size(820, 720);
+        MinimumSize = new Size(600, 480);
         KeyPreview = true;
 
-        BuildLayout();
+        _web = new WebView2 { Dock = DockStyle.Fill, TabIndex = 0, AccessibleName = "flyPad" };
+        Controls.Add(_web);
 
         _pollTimer = new System.Windows.Forms.Timer { Interval = 1000 };
         _pollTimer.Tick += async (_, _) => await PollOnce();
 
-        KeyDown += async (_, e) =>
-        {
-            if (e.KeyCode == Keys.F5) { e.Handled = true; await PollOnce(force: true); }
-        };
+        KeyDown += async (_, e) => { if (e.KeyCode == Keys.F5) { e.Handled = true; await PollOnce(force: true); } };
 
         FormClosing += (_, e) =>
         {
-            // Hide instead of dispose so reopening is instant; release the single
-            // CDP connection so the verification tool / other consumers can use it.
+            // Hide rather than dispose so reopening is instant; release the single
+            // CDP connection so other consumers can use it while the form is closed.
             e.Cancel = true;
             _pollTimer.Stop();
             _client.Stop();
@@ -74,78 +74,76 @@ public sealed class A32NXEFBForm : Form
         Show();
         BringToFront();
         Activate();
-        TopMost = true;
-        TopMost = false;
-
-        _client.Start();          // connect + install agent + powerOn
-        _pollTimer.Start();
-        UpdateStatus();
-        _selfTestBtn.Focus();
+        TopMost = true; TopMost = false;
+        _ = InitializeAndStartAsync();
     }
 
-    private void BuildLayout()
+    private async Task InitializeAndStartAsync()
     {
-        SuspendLayout();
-
-        _statusLabel = new Label
+        try
         {
-            Dock = DockStyle.Top, Height = 24, Text = "Connecting…",
-            AccessibleName = "Connection status", TabIndex = 0
-        };
-
-        _selfTestBtn = new Button
-        {
-            Dock = DockStyle.Top, Height = 28, Text = "Status / Self-test",
-            AccessibleName = "Status and self-test", TabIndex = 1
-        };
-        _selfTestBtn.Click += async (_, _) => await SelfTest();
-
-        _list = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Fill, AutoScroll = true,
-            FlowDirection = FlowDirection.TopDown, WrapContents = false,
-            Padding = new Padding(8), TabIndex = 2,
-            AccessibleName = "flyPad controls"
-        };
-
-        Controls.Add(_list);
-        Controls.Add(_selfTestBtn);
-        Controls.Add(_statusLabel);
-        ResumeLayout();
+            await InitializeWebAsync();
+            _client.Start();
+            _pollTimer.Start();
+            PushStatus();
+        }
+        catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[A32NX EFB] init: {ex.Message}"); }
     }
 
-    // ── polling ────────────────────────────────────────────────────────────────
+    private async Task InitializeWebAsync()
+    {
+        if (_webReady) return;
+        await _web.EnsureCoreWebView2Async();
+        var core = _web.CoreWebView2;
+        core.Settings.AreDevToolsEnabled = false;
+        core.Settings.AreDefaultContextMenusEnabled = false;
+        core.Settings.IsStatusBarEnabled = false;
+        core.WebMessageReceived += OnWebMessage;
+
+        string shellPath = Path.Combine(
+            AppDomain.CurrentDomain.BaseDirectory, "Resources", "flypad-shell.html");
+        string html = File.Exists(shellPath)
+            ? await File.ReadAllTextAsync(shellPath)
+            : "<html><body>flyPad shell missing</body></html>";
+
+        var nav = new TaskCompletionSource<bool>();
+        void onNav(object? s, CoreWebView2NavigationCompletedEventArgs e)
+        { core.NavigationCompleted -= onNav; nav.TrySetResult(true); }
+        core.NavigationCompleted += onNav;
+        core.NavigateToString(html);
+        await nav.Task;
+        _webReady = true;
+    }
+
+    private void OnConnChanged(bool connected)
+    {
+        if (!IsHandleCreated) return;
+        BeginInvoke(() =>
+        {
+            _announcer?.Announce(connected ? "flyPad connected." : "flyPad disconnected.");
+            PushStatus();
+        });
+    }
+
+    // ── polling ──────────────────────────────────────────────────────────────
 
     private async Task PollOnce(bool force = false)
     {
+        if (IsDisposed || Disposing || !_webReady) return;
         if (_polling) return;
         _polling = true;
         try
         {
-            if (!_client.IsReady) { UpdateStatus(); return; }
+            if (!_client.IsReady) { PushStatus(); return; }
             var scrape = await _client.ScrapeAsync();
             _lastScrapeUtc = DateTime.UtcNow;
             _lastScrapeOk = scrape.Ok;
             _lastScrapeError = scrape.Error ?? "";
-            if (!scrape.Ok)
-            {
-                // flyPad probably powered off — nudge it and keep last good render.
-                await _client.PowerOnAsync();
-                UpdateStatus();
-                return;
-            }
+            if (!scrape.Ok) { await _client.PowerOnAsync(); PushStatus(); return; }
             string sig = BuildSignature(scrape);
-            if (force || sig != _renderSignature)
-            {
-                Render(scrape);
-                _renderSignature = sig;
-            }
-            if (scrape.Page != _lastPage)
-            {
-                _lastPage = scrape.Page;
-                _announcer?.Announce(scrape.Page);
-            }
-            UpdateStatus();
+            if (force || sig != _renderSignature) { PushRender(scrape); _renderSignature = sig; }
+            if (scrape.Page != _lastPage) { _lastPage = scrape.Page; _announcer?.Announce(scrape.Page); }
+            PushStatus();
         }
         finally { _polling = false; }
     }
@@ -161,113 +159,72 @@ public sealed class A32NXEFBForm : Form
         return sb.ToString();
     }
 
-    // ── rendering ────────────────────────────────────────────────────────────
+    // ── push to web ────────────────────────────────────────────────────────────
 
-    private void Render(FlypadScrape scrape)
+    private void PushRender(FlypadScrape s)
     {
-        // Remember which scraped element had focus so we can restore it post-rebuild.
-        int focusedIdx = (_list.GetContainerControl() as ContainerControl)?.ActiveControl is Control c
-                         && c.Tag is int ti ? ti : -1;
-
-        _list.SuspendLayout();
-        _list.Controls.Clear();
-        Control? toFocus = null;
-
-        foreach (var e in scrape.Elements)
-        {
-            Control? ctrl = BuildControl(e);
-            if (ctrl == null) continue;
-            ctrl.Tag = e.Idx;
-            ctrl.Width = _list.ClientSize.Width - 28;
-            _list.Controls.Add(ctrl);
-            if (e.Idx == focusedIdx) toFocus = ctrl;
-        }
-
-        _list.ResumeLayout();
-        toFocus?.Focus();
+        if (!_webReady) return;
+        string payload = JsonSerializer.Serialize(new { type = "render", page = s.Page, elements = s.Elements });
+        _web.CoreWebView2?.PostWebMessageAsJson(payload);
     }
 
-    private Control? BuildControl(FlypadElement e)
+    private void PushStatus()
     {
-        // Headings → label with Heading role (NVDA H-key nav).
-        if (e.Kind == "heading")
-            return new Label { Text = e.Text, AutoSize = true, AccessibleRole = AccessibleRole.StaticText,
-                               Font = new Font(Font, FontStyle.Bold), AccessibleName = e.Text };
-
-        // Toggles / checkboxes / checklist items → CheckBox.
-        if (e.ControlType == "checkbox")
+        string text;
+        if (!_client.IsReady) text = "flyPad not detected — connecting…";
+        else if (!_lastScrapeOk && _lastScrapeUtc != DateTime.MinValue) text = $"flyPad off — {_lastScrapeError}";
+        else
         {
-            var cb = new CheckBox
+            string age = _lastScrapeUtc == DateTime.MinValue
+                ? "—" : $"{(int)(DateTime.UtcNow - _lastScrapeUtc).TotalSeconds}s ago";
+            text = $"Live: \"{_lastPage}\" (updated {age})";
+        }
+        if (!_webReady) return;
+        _web.CoreWebView2?.PostWebMessageAsJson(JsonSerializer.Serialize(new { type = "status", text }));
+    }
+
+    // ── messages from web ──────────────────────────────────────────────────────
+
+    private async void OnWebMessage(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(e.WebMessageAsJson);
+            var root = doc.RootElement;
+            string action = root.TryGetProperty("action", out var a) ? (a.GetString() ?? "") : "";
+            switch (action)
             {
-                Text = string.IsNullOrEmpty(e.Text) ? "(toggle)" : e.Text,
-                Checked = e.Value == "true", AutoSize = true,
-                Enabled = !e.Disabled, AccessibleName = e.Text
-            };
-            cb.Click += async (_, _) => { if (cb.Tag is int idx) await _client.SetValueAsync(idx, cb.Checked ? "true" : "false"); ScheduleQuickRescrape(); };
-            return cb;
+                case "click":
+                    if (TryIdx(root, out int cidx)) { await _client.ClickAsync(cidx); await DelayThenPoll(); }
+                    break;
+                case "set":
+                    if (TryIdx(root, out int sidx))
+                    {
+                        string val = root.TryGetProperty("value", out var v) ? (v.GetString() ?? "") : "";
+                        await _client.SetValueAsync(sidx, val);
+                        await DelayThenPoll();
+                    }
+                    break;
+                case "refresh": await PollOnce(force: true); break;
+                case "selftest": await SelfTest(); break;
+            }
         }
-
-        // Selects → ComboBox.
-        if (e.ControlType == "select")
-        {
-            var combo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Enabled = !e.Disabled,
-                                       AccessibleName = e.Text };
-            combo.Items.AddRange(e.Options.Cast<object>().ToArray());
-            combo.SelectedItem = e.Value;
-            combo.SelectionChangeCommitted += async (_, _) =>
-            { if (combo.Tag is int idx && combo.SelectedItem != null) await _client.SetValueAsync(idx, combo.SelectedItem.ToString()!); ScheduleQuickRescrape(); };
-            return combo;
-        }
-
-        // Text/numeric inputs → labeled TextBox (commit on Enter / leave).
-        if (e.ControlType == "text")
-        {
-            var panel = new Panel { Height = 26, AccessibleName = e.Text };
-            var box = new TextBox { Text = e.Value, Width = 160, Dock = DockStyle.Right,
-                                    Enabled = !e.Disabled, AccessibleName = e.Text };
-            async void Commit() { if (box.Tag is int idx) await _client.SetValueAsync(idx, box.Text); ScheduleQuickRescrape(); }
-            box.Leave += (_, _) => Commit();
-            box.KeyDown += (_, ke) => { if (ke.KeyCode == Keys.Enter) { ke.Handled = true; Commit(); } };
-            panel.Controls.Add(box);
-            panel.Controls.Add(new Label { Text = e.Text, Dock = DockStyle.Fill, AccessibleName = e.Text });
-            // Tag carries idx for both panel (focus restore) and box (commit).
-            box.Tag = e.Idx;
-            return panel;
-        }
-
-        // Clickable links/buttons/tabs → Button.
-        if (e.Clickable)
-        {
-            var btn = new Button { Text = string.IsNullOrEmpty(e.Text) ? "(button)" : e.Text,
-                                   AutoSize = true, Enabled = !e.Disabled, AccessibleName = e.Text };
-            btn.Click += async (_, _) => { if (btn.Tag is int idx) await _client.ClickAsync(idx); ScheduleQuickRescrape(); };
-            return btn;
-        }
-
-        // Plain descriptive text.
-        if (!string.IsNullOrEmpty(e.Text))
-            return new Label { Text = e.Text, AutoSize = true, AccessibleName = e.Text };
-
-        return null;
+        catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[A32NX EFB] web msg: {ex.Message}"); }
     }
 
-    private void ScheduleQuickRescrape()
+    private static bool TryIdx(JsonElement root, out int idx)
     {
-        var t = new System.Windows.Forms.Timer { Interval = 300 };
-        t.Tick += async (_, _) => { t.Stop(); t.Dispose(); await PollOnce(force: true); };
-        t.Start();
+        idx = 0;
+        if (!root.TryGetProperty("idx", out var i)) return false;
+        if (i.ValueKind == JsonValueKind.Number) { idx = i.GetInt32(); return true; }
+        if (i.ValueKind == JsonValueKind.String && int.TryParse(i.GetString(), out idx)) return true;
+        return false;
     }
 
-    // ── status / diagnostics ───────────────────────────────────────────────────
-
-    private void UpdateStatus()
+    private async Task DelayThenPoll()
     {
-        if (!_client.IsReady) { _statusLabel.Text = "flyPad not detected — connecting…"; return; }
-        if (!_lastScrapeOk && _lastScrapeUtc != DateTime.MinValue)
-        { _statusLabel.Text = $"flyPad off — {_lastScrapeError}"; return; }
-        int n = _list.Controls.Count;
-        string age = _lastScrapeUtc == DateTime.MinValue ? "—" : $"{(int)(DateTime.UtcNow - _lastScrapeUtc).TotalSeconds}s ago";
-        _statusLabel.Text = $"Live: \"{_lastPage}\", {n} controls (updated {age})";
+        try { await Task.Delay(300); } catch { }
+        await PollOnce(force: true);
     }
 
     private async Task SelfTest()
@@ -282,12 +239,12 @@ public sealed class A32NXEFBForm : Form
                 : "Connected, but agent not responding — reinstalling.")
             : "Not connected to the flyPad. Is the FBW A320 loaded and the tablet powered on?";
         _announcer?.Announce(msg);
-        UpdateStatus();
+        PushStatus();
     }
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) { _pollTimer?.Dispose(); _client?.Dispose(); }
+        if (disposing) { _pollTimer?.Dispose(); _client?.Dispose(); _web?.Dispose(); }
         base.Dispose(disposing);
     }
 }

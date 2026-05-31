@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FlyByWire A320 flyPad</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", system-ui, sans-serif; margin: 0; padding: 0; line-height: 1.45; }
+  header { position: sticky; top: 0; z-index: 5; background: Canvas; padding: 10px 16px; border-bottom: 2px solid Highlight; }
+  header h1 { font-size: 1.05rem; margin: 0 0 4px; }
+  #status { font-size: .9rem; color: GrayText; }
+  .toolbar { margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; }
+  main { padding: 12px 16px 28px; max-width: 70ch; }
+  h1,h2,h3,h4,h5,h6 { margin: 16px 0 6px; line-height: 1.25; }
+  main h1 { font-size: 1.4rem; } main h2 { font-size: 1.2rem; } main h3 { font-size: 1.07rem; }
+  p.txt { margin: 5px 0; }
+  .fld { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
+  .fld label { min-width: 12rem; }
+  button, input, select { font: inherit; padding: 5px 10px; }
+  button { cursor: pointer; border: 1px solid GrayText; border-radius: 6px; background: ButtonFace; color: ButtonText; }
+  button:hover { background: Highlight; color: HighlightText; }
+  input, select { border: 1px solid GrayText; border-radius: 6px; }
+  :disabled, [aria-disabled="true"] { opacity: .5; }
+  main > button, main > a { display: inline-block; margin: 4px 6px 4px 0; }
+</style>
+</head>
+<body>
+<header role="banner">
+  <h1>FlyByWire A320 flyPad</h1>
+  <div id="status">Connecting…</div>
+  <div class="toolbar">
+    <button id="btnRefresh" type="button">Refresh</button>
+    <button id="btnSelfTest" type="button">Status / Self-test</button>
+  </div>
+</header>
+<main id="root" aria-label="flyPad page"></main>
+<script>
+  function post(o){ try { window.chrome.webview.postMessage(o); } catch (e) {} }
+
+  function buildEl(e){
+    var idx = e.idx, kind = e.kind, ct = e.controlType, text = e.text || "";
+
+    if (kind === "heading"){
+      var lvl = (e.level >= 1 && e.level <= 6) ? e.level : 2;
+      var h = document.createElement("h" + lvl);
+      h.textContent = text;
+      return h;
+    }
+
+    if (ct === "checkbox"){
+      var row = document.createElement("div"); row.className = "fld";
+      var id = "c" + idx;
+      var cb = document.createElement("input"); cb.type = "checkbox"; cb.id = id;
+      cb.checked = (e.value === "true"); cb.disabled = !!e.disabled;
+      cb.dataset.idx = idx;
+      cb.addEventListener("change", function(){ post({ action:"set", idx:idx, value: cb.checked ? "true" : "false" }); });
+      var lab = document.createElement("label"); lab.htmlFor = id; lab.textContent = text || "(toggle)";
+      row.appendChild(cb); row.appendChild(lab);
+      return row;
+    }
+
+    if (ct === "select"){
+      var row2 = document.createElement("div"); row2.className = "fld";
+      var id2 = "s" + idx;
+      var lab2 = document.createElement("label"); lab2.htmlFor = id2; lab2.textContent = text;
+      var sel = document.createElement("select"); sel.id = id2; sel.dataset.idx = idx; sel.disabled = !!e.disabled;
+      (e.options || []).forEach(function(opt){
+        var o = document.createElement("option"); o.value = opt; o.textContent = opt;
+        if (opt === e.value) o.selected = true; sel.appendChild(o);
+      });
+      sel.addEventListener("change", function(){ post({ action:"set", idx:idx, value: sel.value }); });
+      row2.appendChild(lab2); row2.appendChild(sel);
+      return row2;
+    }
+
+    if (ct === "text"){
+      var row3 = document.createElement("div"); row3.className = "fld";
+      var id3 = "i" + idx;
+      var lab3 = document.createElement("label"); lab3.htmlFor = id3; lab3.textContent = text;
+      var inp = document.createElement("input"); inp.type = "text"; inp.id = id3;
+      inp.value = e.value || ""; inp.dataset.idx = idx; inp.disabled = !!e.disabled;
+      function commit(){ post({ action:"set", idx:idx, value: inp.value }); }
+      inp.addEventListener("change", commit);
+      inp.addEventListener("keydown", function(ev){ if (ev.key === "Enter"){ ev.preventDefault(); commit(); } });
+      row3.appendChild(lab3); row3.appendChild(inp);
+      return row3;
+    }
+
+    if (e.clickable){
+      var btn = document.createElement("button"); btn.type = "button";
+      btn.textContent = text || "(button)"; btn.dataset.idx = idx; btn.disabled = !!e.disabled;
+      btn.addEventListener("click", function(){ post({ action:"click", idx:idx }); });
+      return btn;
+    }
+
+    if (text){ var p = document.createElement("p"); p.className = "txt"; p.textContent = text; return p; }
+    return null;
+  }
+
+  function render(data){
+    var root = document.getElementById("root");
+    var active = document.activeElement;
+    var keep = (active && active.dataset) ? active.dataset.idx : null;
+    root.setAttribute("aria-label", (data.page || "flyPad") + " page");
+    root.innerHTML = "";
+    (data.elements || []).forEach(function(e){ var el = buildEl(e); if (el) root.appendChild(el); });
+    if (keep != null){
+      var again = root.querySelector('[data-idx="' + keep + '"]');
+      if (again){ try { again.focus(); } catch (e) {} }
+    }
+  }
+
+  window.chrome.webview.addEventListener("message", function(ev){
+    var d = ev.data; if (!d) return;
+    if (d.type === "render") render(d);
+    else if (d.type === "status"){ var s = document.getElementById("status"); if (s) s.textContent = d.text; }
+  });
+
+  document.getElementById("btnRefresh").addEventListener("click", function(){ post({ action:"refresh" }); });
+  document.getElementById("btnSelfTest").addEventListener("click", function(){ post({ action:"selftest" }); });
+</script>
+</body>
+</html>
