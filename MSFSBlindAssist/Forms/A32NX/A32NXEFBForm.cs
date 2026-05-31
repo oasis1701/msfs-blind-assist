@@ -56,6 +56,7 @@ public class A32NXEFBForm : Form
 
     // ── Top-level layout controls ──────────────────────────────────────────────
     private Label _statusLabel = null!;
+    private Button _wakeBtn = null!;
     private TabControl _tabs = null!;
     private System.Windows.Forms.Timer _healthTimer = null!;
 
@@ -145,6 +146,8 @@ public class A32NXEFBForm : Form
         _healthTimer.Tick += (_, _) => UpdateConnectionStatus();
         _healthTimer.Start();
 
+        Load += (_, _) => _bridge.EnqueueCommand("wake_efb");
+
         UpdateConnectionStatus();
 
         FormClosing += (_, e) =>
@@ -185,7 +188,21 @@ public class A32NXEFBForm : Form
             ForeColor = SystemColors.ControlText
         };
 
-        _tabs = new TabControl { Dock = DockStyle.Fill, TabIndex = 1 };
+        _wakeBtn = new Button
+        {
+            Dock = DockStyle.Top,
+            Height = 26,
+            Text = "Wake EFB (power on flypad)",
+            AccessibleName = "Wake EFB",
+            TabIndex = 1
+        };
+        _wakeBtn.Click += (_, _) =>
+        {
+            _bridge.EnqueueCommand("wake_efb");
+            _announcer?.Announce("Wake command sent.");
+        };
+
+        _tabs = new TabControl { Dock = DockStyle.Fill, TabIndex = 2 };
 
         _tabs.TabPages.Add(BuildDashboardTab());
         _tabs.TabPages.Add(BuildDispatchTab());
@@ -199,6 +216,7 @@ public class A32NXEFBForm : Form
         _tabs.TabPages.Add(BuildSettingsTab());
 
         Controls.Add(_tabs);
+        Controls.Add(_wakeBtn);
         Controls.Add(_statusLabel);
 
         ResumeLayout();
@@ -942,6 +960,7 @@ public class A32NXEFBForm : Form
         cb.Items.AddRange(options.Cast<object>().ToArray());
         cb.SelectedIndexChanged += (_, _) =>
         {
+            if (_updatingFromServer) return;
             if (cb.SelectedItem != null)
                 _bridge.EnqueueCommand("set_setting",
                     new Dictionary<string, string> { ["key"] = nxKey, ["value"] = cb.SelectedItem.ToString()! });
@@ -961,8 +980,11 @@ public class A32NXEFBForm : Form
             Tag = nxKey
         };
         cb.CheckedChanged += (_, _) =>
+        {
+            if (_updatingFromServer) return;
             _bridge.EnqueueCommand("set_setting",
                 new Dictionary<string, string> { ["key"] = nxKey, ["value"] = cb.Checked ? "true" : "false" });
+        };
         p.Controls.Add(cb);
         y += 30;
         return cb;
@@ -1161,7 +1183,9 @@ public class A32NXEFBForm : Form
         _aboutSimbridge.Text = d.TryGetValue("simbridge",      out var s) ? s : "—";
         if (d.TryGetValue("airac_cycle", out var ac))
             _airacLabel.Text = $"AIRAC: {ac}";
-        UpdateSettingControls(d);
+        _updatingFromServer = true;
+        try { UpdateSettingControls(d); }
+        finally { _updatingFromServer = false; }
     }
 
     private void UpdateSettingControls(Dictionary<string, string> d)
