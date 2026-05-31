@@ -1943,6 +1943,23 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
 
         d["Gear"].AddRange(new[] { "GEAR_LEFT_POS", "GEAR_CENTER_POS", "GEAR_RIGHT_POS", "A32NX_AUTOBRAKES_RTO_ARMED" });
 
+        // ---- Annunciator policy ----
+        // Faults and other BINARY (2-state) indicator lights are announced on change
+        // (Continuous + IsAnnounced) and must NOT clutter the panel read-out fields —
+        // a pilot navigates a panel to operate its CONTROLS, not to scan dozens of
+        // "X Fault: Normal" / "Y Bus: Powered" rows. So strip every ANNOUNCED 2-state
+        // enum var from the display sets here. KEPT: numeric/analog read-outs (no
+        // ValueDescriptions), multi-state status read-outs (3+ states — ADIRU/engine
+        // state, autobrake/BTV mode, FMA modes), and the intentionally-silent
+        // ReadEnumQuiet binaries (IsAnnounced == false — their only surface, since
+        // they are too noisy to announce). The stripped annunciators stay registered,
+        // auto-announce on change, and remain in the Ctrl+M Monitor Manager.
+        var vmap = GetVariables();
+        foreach (var key in d.Keys.ToList())
+            d[key] = d[key].Where(v =>
+                !(vmap.TryGetValue(v, out var vd) && vd.IsAnnounced
+                  && vd.ValueDescriptions != null && vd.ValueDescriptions.Count == 2)).ToList();
+
         return d;
     }
 
