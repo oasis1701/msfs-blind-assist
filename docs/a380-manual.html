@@ -56,7 +56,7 @@
 <!-- ===================================================================== -->
 <h2 id="part1">1. Orientation: what this is and what you need</h2>
 
-<p>The <strong>FlyByWire A380X</strong> is a free, high-fidelity simulation of the Airbus A380-842 (Rolls-Royce Trent 972 engines) for Microsoft Flight Simulator, made by FlyByWire Simulations — the same team behind the A32NX. Microsoft Flight Simulator does not ship its own A380, so the FBW A380X is the de-facto A380. It is officially in an <strong>alpha</strong> state: deeply simulated, but still evolving, and some features are incomplete (see <a href="#part14">Part 14</a>).</p>
+<p>The <strong>FlyByWire A380X</strong> is a free, high-fidelity simulation of the Airbus A380-842 (Rolls-Royce Trent 972 engines) for Microsoft Flight Simulator, made by FlyByWire Simulations — the same team behind the A32NX. Microsoft Flight Simulator does not ship its own A380, so the FBW A380X is the de-facto A380. <strong>This manual targets the FlyByWire A380X DEVELOPMENT build</strong> (the rolling dev/master release, updated continually) — not a specific numbered stable version. It is deeply simulated but still evolving, so some features are incomplete and details may change between dev updates (see <a href="#part14">Part 14</a>).</p>
 
 <p><strong>MSFS Blind Assist (MSFSBA)</strong> makes that aircraft flyable without sight. It reads the cockpit displays aloud, lets you operate the MFD/MCDU, flyPad, checklists and every system panel from the keyboard, and announces important changes as they happen. On the A380, MSFSBA reads the real cockpit displays <em>live</em> through the simulator's internal display engine (the "Coherent" debugger) — there is <strong>no add-on to install</strong>, no Community-folder mod and no Developer Mode required. You just need:</p>
 <ul>
@@ -453,7 +453,7 @@
 <!-- ===================================================================== -->
 <h2 id="part14">14. FlyByWire A380X feature status and limitations</h2>
 
-<p>The A380X is an alpha. Most of it works well, but a few things are incomplete on the FlyByWire side — not on MSFSBA's. Knowing what is and isn't finished saves confusion:</p>
+<p>The A380X (development build) is under active development. Most of it works well, but a few things are incomplete on the FlyByWire side — not on MSFSBA's — and because it is the rolling dev build, the exact status changes over time. Knowing what is and isn't finished saves confusion:</p>
 <ul>
   <li><strong>Modeled:</strong> the FMS (with direct-to on airways, FIX INFO, step climbs), autothrust and full fly-by-wire, the EWD/SD ECAM with hundreds of procedures and memos, the 16 SD pages, Green/Yellow 5000-psi hydraulics, electrics/pneumatics/pressurization/APU/fire, Trent 972 engines, RMP, ISIS, OANS+BTV+ROW/ROP, and the flyPad.</li>
   <li><strong>Experimental / in progress:</strong> a native MSFS 2024 build (current 2024 support is a compatibility layer), the Vertical Display, and the OIT/OIS onboard terminal (only a flight log and company-message inbox so far).</li>
@@ -465,7 +465,7 @@
 
 <!-- ===================================================================== -->
 <h2 id="sources">Sources</h2>
-<p class="small">This manual was compiled from the MSFS Blind Assist source code (the A380 definition, forms, hotkey manager and Coherent clients) and the official FlyByWire documentation, cross-checked against the A380X v0.14.0 release notes and reputable references. Key FlyByWire sources:</p>
+<p class="small">This manual was compiled from the MSFS Blind Assist source code (the A380 definition, forms, hotkey manager and Coherent clients) and the official FlyByWire documentation, cross-checked against the FlyByWire A380X development build and reputable references (the dev build moves continually, so treat specific version notes as a snapshot). Key FlyByWire sources:</p>
 <ul class="small">
   <li><a href="https://docs.flybywiresim.com/aircraft/a380x/">A380X overview</a> and <a href="https://docs.flybywiresim.com/release-notes/a380x/v0140/">v0.14.0 release notes</a></li>
   <li><a href="https://docs.flybywiresim.com/pilots-corner/a380x/a380x-briefing/flight-deck/main-panel/mfd/">MFD</a>, <a href="https://docs.flybywiresim.com/pilots-corner/a380x/a380x-briefing/flight-deck/pedestal/kccu/">KCCU</a>, <a href="https://docs.flybywiresim.com/pilots-corner/a380x/a380x-briefing/flight-deck/main-panel/sd/">System Display</a>, <a href="https://docs.flybywiresim.com/pilots-corner/a380x/a380x-briefing/flight-deck/pedestal/ecam-cp/">ECAM control panel</a></li>

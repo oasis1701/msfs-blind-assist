@@ -34,10 +34,10 @@ Arrow up and down through the **display list**. Each line is one thing:
 - **Static text** — labels, headings, values you cannot act on.
 - **Editable fields** read as **"LABEL: value"**, e.g. `FLT NBR: BVI214`,
   `FROM: EDDF`, `TO: LIMC`, `CRZ FL: 350`. The label tells you exactly what the
-  field is for, so you always know what to type where. An empty **mandatory**
-  field reads **"(empty)"** (the amber entry boxes on screen); an empty
-  **optional** field shows dashes (e.g. `CI: ---`).
-- **Combobox fields** read as **"LABEL: value (combobox)"**, e.g.
+  field is for, so you always know what to type where. An empty **editable**
+  field reads **"blank"**; a disabled field shows its native dashes (`----`).
+- **Combo boxes** read as **"LABEL, value, combo box, collapsed"** (the selected
+  value and open/closed state are spoken). For example, e.g.
   `MODE: ECON (combobox)` or `CRZ: ECON (combobox)`. These are **dropdowns,
   not free-text** — you pick from a short fixed list rather than typing. (On
   screen they have a little down-arrow.) The `(combobox)` tag is just the
