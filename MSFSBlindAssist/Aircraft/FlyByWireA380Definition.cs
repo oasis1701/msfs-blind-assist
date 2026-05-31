@@ -513,7 +513,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Stock("ANTISKID_BRAKES_ACTIVE", "ANTISKID BRAKES ACTIVE", "Anti-Skid", "bool", onOff);
         ReadEnum("A32NX_AUTOBRAKES_ARMED_MODE", "Autobrake Armed Mode",
             new Dictionary<double, string> { [0] = "Disarmed", [1] = "BTV", [2] = "Low", [3] = "L2", [4] = "L3", [5] = "High", [6] = "RTO" });
-        ReadEnum("A32NX_BTV_STATE", "Brake-To-Vacate State",
+        // Auto-announce BTV state transitions (Armed -> Rotation Optimised -> Decel
+        // -> End of Braking) so they frame the rollout distance call-outs below; the
+        // raw value is also captured in ProcessSimVarUpdate to gate those call-outs.
+        Mon("A32NX_BTV_STATE", "Brake To Vacate",
             new Dictionary<double, string> { [0] = "Disabled", [1] = "Armed", [2] = "Rotation Optimised", [3] = "Decel", [4] = "End of Braking" });
         for (int n = 1; n <= 16; n++) Read($"A32NX_BRAKE_TEMPERATURE_{n}", $"Brake {n} Temperature", "celsius");
 
@@ -1340,6 +1343,22 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true
         };
 
+        // ---- BTV (Brake-To-Vacate) rollout distances ----
+        // ARINC429 metres (decode with Arinc429Word.ValueOr; SSM-normal only while
+        // BTV is computing the rollout). Announced at descending thresholds during
+        // the braking rollout in ProcessSimVarUpdate, gated on the BTV state, so the
+        // user hears "X meters to exit" / "X meters runway remaining" as they slow.
+        vars["A32NX_OANS_BTV_REMAINING_DIST_TO_EXIT"] = new SimVarDefinition
+        {
+            Name = "A32NX_OANS_BTV_REMAINING_DIST_TO_EXIT", DisplayName = "BTV Distance to Exit",
+            Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true
+        };
+        vars["A32NX_OANS_BTV_REMAINING_DIST_TO_RWY_END"] = new SimVarDefinition
+        {
+            Name = "A32NX_OANS_BTV_REMAINING_DIST_TO_RWY_END", DisplayName = "Runway Remaining",
+            Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true
+        };
+
         // ---- Ground Services (flyPad Ground page, exposed as cockpit controls) ----
         // Doors: read the stock `INTERACTIVE POINT OPEN:n` as BOOL so the door
         // auto-announces Open/Closed exactly once per transition (a Percent read
@@ -2059,6 +2078,14 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     private string? _lastAllDetent;
     private bool _tlaBaselineDone;   // suppress the startup "thrust 1/2/3/4 / all" spam
     private readonly HashSet<string> _rowRopActive = new();   // active ROW/ROP/OANS warning bits
+
+    // BTV (Brake-To-Vacate) rollout call-outs: current BTV state (gate) and which
+    // distance thresholds have already been spoken this landing (reset between).
+    private int _btvState = 0;
+    private readonly HashSet<int> _btvExitSpoken = new();
+    private readonly HashSet<int> _btvRwyEndSpoken = new();
+    private static readonly int[] BtvExitThresholdsM   = { 1200, 800, 500, 300, 150 };
+    private static readonly int[] BtvRwyEndThresholdsM = { 900, 600, 300, 150 };
     // FBW TLA detents: IDLE 0, CLB 25, FLX/MCT 35, TOGA 45, reverse negative.
     private static string? TlaDetent(double v) =>
         Math.Abs(v) < 1.5 ? "Idle" :
@@ -2173,6 +2200,46 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 string k = varName + ":" + bit;
                 if (active && _rowRopActive.Add(k)) { if (!muted) announcer.Announce(phrase); }
                 else if (!active) _rowRopActive.Remove(k);
+            }
+            return true;
+        }
+
+        // Track the BTV state (gates the rollout distance call-outs below). Captured
+        // here but NOT consumed — fall through so the Mon registration still speaks
+        // the state transition. Leaving the rollout (state < 2) resets the spoken
+        // thresholds so the next landing starts fresh.
+        if (varName == "A32NX_BTV_STATE")
+        {
+            _btvState = (int)value;
+            if (_btvState < 2) { _btvExitSpoken.Clear(); _btvRwyEndSpoken.Clear(); }
+        }
+
+        // BTV rollout distances: distance to the selected exit, and runway remaining.
+        // Both are ARINC429 metres, valid (SSM normal) only while BTV is computing
+        // the rollout. Announce as each descends through fixed thresholds (once each),
+        // gated on the BTV state (Rotation Optimised / Decel) so it only speaks during
+        // the actual braking rollout. Verify the live numbers on a real landing.
+        if (varName is "A32NX_OANS_BTV_REMAINING_DIST_TO_EXIT" or "A32NX_OANS_BTV_REMAINING_DIST_TO_RWY_END")
+        {
+            bool toExit = varName.EndsWith("EXIT");
+            var spoken = toExit ? _btvExitSpoken : _btvRwyEndSpoken;
+            var word = new SimConnect.Arinc429Word(value);
+            bool rolling = _btvState == 2 || _btvState == 3;   // Rotation Optimised / Decel
+            if (!rolling || !word.IsNormalOperation) { spoken.Clear(); return true; }
+            double m = word.ValueOr(0);
+            if (m <= 0 || m > 9000) return true;               // out of sensible range
+            bool muted = Settings.SettingsManager.Current.A380DisabledMonitorVariables.Contains(varName);
+            foreach (int t in (toExit ? BtvExitThresholdsM : BtvRwyEndThresholdsM))
+            {
+                if (m <= t && spoken.Add(t))
+                {
+                    if (!muted)
+                    {
+                        int rounded = (int)(Math.Round(m / 10.0) * 10);
+                        announcer.Announce(toExit ? $"{rounded} meters to exit" : $"{rounded} meters runway remaining");
+                    }
+                    break;   // only the highest just-crossed threshold per update
+                }
             }
             return true;
         }
