@@ -58,6 +58,26 @@
     return "";
   };
 
+  // PFD memo (3) + limitations (8) lines are FBW 'string' SimVars (NOT numeric
+  // codes), so MSFSBA's numeric SimConnect read returns 0 for them — only a string
+  // read from the Coherent JS context works. Read them here so the same monitor can
+  // announce e.g. "SET HOLD SPD" / "SPEED LIM" when they appear. Strip the FWC codes.
+  A.pfdLines = function () {
+    var out = [];
+    try {
+      var i, s;
+      for (i = 1; i <= 3; i++) {
+        s = stripFwc(SimVar.GetSimVarValue("L:A32NX_PFD_MEMO_LINE_" + i, "string"));
+        if (s) out.push(s);
+      }
+      for (i = 1; i <= 8; i++) {
+        s = stripFwc(SimVar.GetSimVarValue("L:A32NX_PFD_LIMITATIONS_LINE_" + i, "string"));
+        if (s) out.push(s);
+      }
+    } catch (e) { /* SimVar may be unavailable on some views */ }
+    return out;
+  };
+
   A.scrape = function () {
     try {
       var warnings = [], memos = [];
@@ -86,7 +106,7 @@
         var mt = clean(m.textContent);
         if (mt && !seen[mt]) { seen[mt] = 1; memos.push(mt); }
       }
-      return JSON.stringify({ ok: true, warnings: warnings, memos: memos });
+      return JSON.stringify({ ok: true, warnings: warnings, memos: memos, pfd: A.pfdLines() });
     } catch (e) {
       return JSON.stringify({ ok: false, error: (e && e.message) ? e.message : String(e) });
     }

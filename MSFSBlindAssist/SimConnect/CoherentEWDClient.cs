@@ -213,6 +213,17 @@ namespace MSFSBlindAssist.SimConnect
                 if (!_seen.Add(clean)) continue;
                 fresh.Add(clean);
             }
+            // PFD memo + limitations lines (SET HOLD SPD, SPEED LIM, …). These are FBW
+            // 'string' SimVars the agent reads from the JS context — MSFSBA's numeric
+            // SimConnect can't (it reads 0), so this scrape is the only way to surface
+            // them. Announced on change, same baseline + dedup.
+            foreach (var p in result.pfd ?? new List<string>())
+            {
+                string clean = Clean(p);
+                if (clean.Length == 0) continue;
+                if (!_seen.Add(clean)) continue;
+                fresh.Add(clean);
+            }
 
             // First successful scrape establishes the baseline silently — only
             // failures that appear AFTER connect are announced (matches every other
@@ -361,6 +372,7 @@ namespace MSFSBlindAssist.SimConnect
             public string? error { get; set; }
             public List<Warning>? warnings { get; set; }
             public List<string>? memos { get; set; }
+            public List<string>? pfd { get; set; }
         }
 
         private sealed class Warning
