@@ -145,14 +145,18 @@
     if (typeof n.onclick === "function") {
       try { if (n.querySelector && n.querySelector("h1,h2,h3,h4,h5,h6")) return "button"; } catch (e) {}
     }
-    // Refuel start/stop button (Fuel page): a `bg-current` <div> whose only content
-    // is Play/Stop SVG icons — no text, no role, no cursor-pointer, and a React
-    // onClick (so no onclick property), so every rule above misses it. Match its
-    // distinctive bg-current + icon + react-onClick shape; labelFor names it from the
-    // visible icon. Kept narrow to bg-current so other pages aren't flooded with
-    // every React-clickable icon wrapper.
+    // Refuel / boarding / deboarding action button: a `bg-current` <div> whose only
+    // content is state icons (Play/Stop on Fuel, ArrowLeftRight/Stop on Payload) with
+    // a React onClick — no text, role, cursor-pointer, or onclick property, so every
+    // rule above misses it. Surface it ONLY when we can NAME it: a TooltipWrapper
+    // caption sibling ("Begin Boarding"/"Begin Deboarding") or a fuel/refuel section
+    // heading (the refuel button). That keeps random captionless icon toggles we
+    // can't label from flooding the list. labelFor names it from the caption/context.
     if (A.hasClassToken(n, "bg-current")) {
-      try { if (n.querySelector && n.querySelector("svg") && A.hasReactClick(n)) return "button"; } catch (e) {}
+      try {
+        if (n.querySelector && n.querySelector("svg") && A.hasReactClick(n) &&
+            (A.tooltipSibling(n) || /fuel|refuel/i.test(A.nearestHeading(n)))) return "button";
+      } catch (e) {}
     }
     return null;
   };
@@ -315,10 +319,27 @@
     var href = (n.getAttribute && n.getAttribute("href")) || "";
     var heading = A.nearestHeading(n);
     if (base === "") {
-      // Refuel start/stop button (bg-current icon button): no text/aria/title — name
-      // it from the visible state icon (Play = start, Stop = stop).
+      // Refuel / boarding / deboarding action button (bg-current icon button): no
+      // text/aria/title. Name it from its TooltipWrapper caption ("Begin Boarding" /
+      // "Begin Deboarding") when present, else the fuel context — prefixing the live
+      // verb from the visible state icon (first icon visible = not started => Start;
+      // the Stop icon visible => Stop).
       if (A.hasClassToken(n, "bg-current")) {
-        return A.refuelIconStarted(n) ? "Stop refueling" : "Start refueling";
+        var procCap = A.tooltipSibling(n);
+        if (procCap) {
+          var procNoun = procCap.replace(/^(begin|start|stop)\s+/i, "");
+          procNoun = procNoun.charAt(0).toLowerCase() + procNoun.slice(1);
+          return (A.refuelIconStarted(n) ? "Stop " : "Start ") + procNoun;
+        }
+        // Captionless bg-current button: ONLY the Fuel page refuel button qualifies
+        // for the "refueling" label (its section heading reads Refuel/Fuel). Any other
+        // captionless icon button (e.g. a small Payload toggle) is NOT a refuel
+        // control — return "" so enumerate drops it instead of mislabelling it
+        // "Start refueling".
+        if (/fuel|refuel/i.test(A.nearestHeading(n))) {
+          return A.refuelIconStarted(n) ? "Stop refueling" : "Start refueling";
+        }
+        return "";
       }
       // Numeric/value inputs on the flyPad carry NO aria/own text; their visible
       // label/unit (e.g. "PAX", "KGS") sits as the parent's own text next to the
@@ -509,6 +530,13 @@
       if (!A.isVisible(n)) continue;
       var kind = A.classify(n);
       if (!kind) continue;
+
+      // User-requested: hide the Fuel page refuel target SLIDER (rc-slider bar, which
+      // reads as an empty field for a screen reader) and the numeric edit box (it is
+      // redundant with the Instant/Fast/Real + Start refueling controls). Scoped to
+      // the refuel context via the section heading so Payload inputs (Passengers /
+      // Cargo / ZFW) and any sliders on other pages are untouched.
+      if ((kind === "slider" || kind === "input") && /refuel/i.test(A.nearestHeading(n))) continue;
 
       var interactive = kind !== "heading";
 
