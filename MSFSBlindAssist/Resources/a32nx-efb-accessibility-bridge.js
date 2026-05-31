@@ -198,13 +198,23 @@ _efb.setReactInput = function(el, value) {
     el.dispatchEvent(new Event('change', { bubbles: true }));
 };
 
-// ── Button text-search helper ─────────────────────────────────────────────────
-// Used when no stable selector exists. Walks all clickable elements for text match.
+// ── Button text-search helpers ────────────────────────────────────────────────
+// Partial match (substring). Used for most button lookups.
 _efb.findBtnByText = function(text) {
     var candidates = document.querySelectorAll('button, div[role="button"], div[tabindex], span[tabindex]');
     var lower = text.toLowerCase();
     for (var i = 0; i < candidates.length; i++) {
         if (candidates[i].textContent.trim().toLowerCase().indexOf(lower) !== -1) return candidates[i];
+    }
+    return null;
+};
+
+// Exact match — needed to distinguish "Link" from "Unlink".
+_efb.findBtnByExactText = function(text) {
+    var candidates = document.querySelectorAll('button, div[role="button"], div[tabindex], span[tabindex]');
+    var lower = text.toLowerCase();
+    for (var i = 0; i < candidates.length; i++) {
+        if (candidates[i].textContent.trim().toLowerCase() === lower) return candidates[i];
     }
     return null;
 };
@@ -279,7 +289,7 @@ _efb.handleCommand = function(command, payload) {
             // Diagnostics
             case 'ping':             _efb.postState('pong', { version: 1 }); break;
             case 'wake_efb':         _efb.cmdWakeEfb(); break;
-            case 'get_page_text':    _efb.postState('page_text', { text: document.body.innerText.substring(0, 2000) }); break;
+            case 'get_page_text':    _efb.cmdGetPageText(payload); break;
             case 'run_diagnostics':  _efb.cmdRunDiagnostics(); break;
             default: _efb.postState('error', { message: 'Unknown command: ' + command }); break;
         }
@@ -322,97 +332,215 @@ _efb.cmdGetSimbriefState = function() {
 };
 
 _efb.cmdFetchSimbrief = function() {
-    // Trigger the EFB's own SimBrief import so MCDU/FMS gets the flight plan.
-    // C# reads flight data directly from SimBrief API — not from this DOM.
-    var btn = _SEL.SB_FETCH_BTN ? document.querySelector(_SEL.SB_FETCH_BTN) : _efb.findBtnByText('Import');
-    if (btn) {
-        btn.click();
-        // Brief delay then confirm — C# is already fetching data directly
-        setTimeout(function() {
-            _efb.postState('simbrief_loaded', { triggered: 'true' });
-        }, 2000);
-    } else {
-        // Button not found on current page — post anyway so C# proceeds with direct fetch
-        _efb.postState('simbrief_loaded', { triggered: 'false', reason: 'button_not_found' });
-    }
+    // Navigate to Dashboard first so the Import button is in the DOM.
+    // C# fetches data directly from SimBrief API; this only triggers the EFB's own FMS import.
+    var dashLink = document.querySelector('a[href="/dashboard"]');
+    if (dashLink) dashLink.click();
+    setTimeout(function() {
+        var btn = _SEL.SB_FETCH_BTN ? document.querySelector(_SEL.SB_FETCH_BTN) : _efb.findBtnByText('Import');
+        if (btn) {
+            btn.click();
+            setTimeout(function() {
+                _efb.postState('simbrief_loaded', { triggered: 'true' });
+            }, 2000);
+        } else {
+            // Dashboard loaded but button still not found — post so C# proceeds with direct API fetch
+            _efb.postState('simbrief_loaded', { triggered: 'false', reason: 'button_not_found' });
+        }
+    }, 600);
 };
 
 _efb.cmdSendToMcdu = function() {
-    var btn = _SEL.SB_SEND_BTN ? document.querySelector(_SEL.SB_SEND_BTN) : _efb.findBtnByText('Send to FMS');
-    if (btn) { btn.click(); _efb.postState('mcdu_upload_result', { success: 'true' }); }
-    else _efb.postState('error', { message: 'Send to FMS button not found' });
+    // Navigate to Dashboard first so the Send to FMS button is in the DOM.
+    var dashLink = document.querySelector('a[href="/dashboard"]');
+    if (dashLink) dashLink.click();
+    setTimeout(function() {
+        var btn = _SEL.SB_SEND_BTN ? document.querySelector(_SEL.SB_SEND_BTN) : _efb.findBtnByText('Send to FMS');
+        if (btn) { btn.click(); _efb.postState('mcdu_upload_result', { success: 'true' }); }
+        else _efb.postState('error', { message: 'Send to FMS button not found on Dashboard' });
+    }, 600);
 };
 
-// Settings handlers
+// ── NXDataStore helpers (FBW A32NX stores settings in localStorage with A32NX_ prefix) ──
+_efb.nxGet = function(key) {
+    try { var v = localStorage.getItem('A32NX_' + key); return (v !== null && v !== undefined) ? v : null; } catch(e) { return null; }
+};
+_efb.nxSet = function(key, value) {
+    try { localStorage.setItem('A32NX_' + key, String(value)); } catch(e) {}
+};
+
+// All NX setting keys exposed in the C# form.
+// Keys verified against FBW A32NX source (fbw-common/src/systems/instruments/src/EFB/Settings/Pages/).
+_efb.NX_SETTINGS_KEYS = [
+    // Sim Options (SimOptionsPage.tsx)
+    'CONFIG_INIT_BARO_UNIT', 'FP_SYNC', 'CONFIG_AUTO_SIM_ROUTE_LOAD',
+    'CONFIG_SIMBRIDGE_ENABLED', 'CONFIG_SIMBRIDGE_REMOTE',
+    'DYNAMIC_REGISTRATION_DECAL', 'RADIO_RECEIVER_USAGE_ENABLED', 'FDR_ENABLED',
+    // Realism (RealismPage.tsx)
+    'CONFIG_ALIGN_TIME', 'CONFIG_SELF_TEST_TIME', 'CONFIG_BOARDING_RATE',
+    'EFB_AUTOFILL_CHECKLISTS', 'REALISTIC_TILLER_ENABLED', 'MCDU_KB_INPUT',
+    'FO_SYNC_EFIS_ENABLED', 'CONFIG_PILOT_AVATAR_VISIBLE', 'CONFIG_FIRST_OFFICER_AVATAR_VISIBLE', 'PAUSE_AT_TOD',
+    // 3rd Party (ThirdPartyOptionsPage.tsx)
+    'CONFIG_OVERRIDE_SIMBRIEF_USERID', 'CONFIG_AUTO_SIMBRIEF_IMPORT',
+    'GSX_FUEL_SYNC', 'GSX_PAYLOAD_SYNC', 'GSX_POWER_SYNC',
+    // ATSU / AOC (AtsuAocPage.tsx)
+    'CONFIG_HOPPIE_USERID', 'CONFIG_ATIS_SRC', 'CONFIG_METAR_SRC', 'ACARS_PROVIDER',
+    // Audio (AudioPage.tsx)
+    'SOUND_EXTERIOR_MASTER', 'SOUND_INTERIOR_ENGINE', 'SOUND_INTERIOR_WIND',
+    'SOUND_PTU_AUDIBLE_COCKPIT', 'SOUND_PASSENGER_AMBIENCE_ENABLED',
+    'SOUND_ANNOUNCEMENTS_ENABLED', 'SOUND_BOARDING_MUSIC_ENABLED',
+    // flyPad (FlyPadPage.tsx)
+    'EFB_LANGUAGE', 'EFB_KEYBOARD_LAYOUT_IDENT', 'EFB_AUTO_OSK', 'EFB_USING_AUTOBRIGHTNESS',
+    'EFB_BATTERY_LIFE_ENABLED', 'EFB_SHOW_STATUSBAR_FLIGHTPROGRESS', 'EFB_USING_COLOREDMETAR',
+    'EFB_TIME_DISPLAYED', 'EFB_TIME_FORMAT'
+];
+
+// Settings handlers — read/write via NXDataStore (localStorage A32NX_ prefix)
 _efb.cmdGetSettings = function() {
-    _efb.postState('settings_loaded', {
-        simbrief_id:  _efb.getValue(_SEL.SB_ID_INPUT),
-        weight_unit:  _efb.getValue(_SEL.WEIGHT_UNIT_SEL)
-    });
+    var state = {};
+    for (var i = 0; i < _efb.NX_SETTINGS_KEYS.length; i++) {
+        var v = _efb.nxGet(_efb.NX_SETTINGS_KEYS[i]);
+        if (v !== null) state[_efb.NX_SETTINGS_KEYS[i]] = v;
+    }
+    _efb.postState('settings', state);
 };
 
 _efb.cmdSetSetting = function(payload) {
-    var selMap = { simbrief_id: _SEL.SB_ID_INPUT, weight_unit: _SEL.WEIGHT_UNIT_SEL };
-    var sel = selMap[payload.id];
-    if (sel) _efb.cmdSetReactInput(sel, payload.value);
+    // C# sends ["key"], but accept ["id"] for backwards compat
+    var key = payload.key || payload.id;
+    if (!key || payload.value === undefined || payload.value === null) return;
+    _efb.nxSet(key, payload.value);
 };
 
 _efb.cmdSaveSettings = function() {
-    var btn = document.querySelector(_SEL.SETTINGS_SAVE);
-    if (btn) btn.click();
+    // localStorage saves are immediate; nothing to flush
 };
 
-// Navigraph handlers
+// Navigraph handlers — navigate EFB to Settings > 3rd Party, click Link, extract device-flow code.
 _efb.cmdStartNavigraphAuth = function() {
-    var btn = document.querySelector(_SEL.NAV_SIGN_IN);
-    if (btn) {
-        btn.click();
-        // Poll for device code appearing in DOM
-        var attempts = 0;
-        var poll = setInterval(function() {
-            attempts++;
-            var statusText = _efb.getText(_SEL.NAV_STATUS);
-            // FBW shows the device code in the status area; extract it
-            var codeMatch = statusText.match(/[A-Z0-9]{4,8}/);
-            if (codeMatch || attempts > 30) {
-                clearInterval(poll);
-                if (codeMatch) {
-                    _efb.postState('navigraph_code', { code: codeMatch[0], url: 'https://navigraph.com/activate' });
-                }
+    // Step 1: Navigate to /settings via ToolBar NavLink (href="/settings")
+    var settingsLink = document.querySelector('a[href="/settings"]');
+    if (settingsLink) settingsLink.click();
+
+    setTimeout(function() {
+        // Step 2: Navigate to 3rd Party Options (Link renders as <a href*="3rd-party-options">)
+        var thirdPartyLink = document.querySelector('a[href*="3rd-party-options"]');
+        if (thirdPartyLink) thirdPartyLink.click();
+
+        setTimeout(function() {
+            // Step 3: Click the Link button (exact text to avoid hitting Unlink)
+            var btn = _efb.findBtnByExactText('Link') || _efb.findBtnByText('Link');
+            if (!btn) {
+                _efb.postState('error', { message: 'Navigraph Link button not found. EFB may not be on Settings > 3rd Party.' });
+                return;
             }
-        }, 1000);
-    }
+            btn.click();
+
+            // Step 4: Poll for device-flow code rendered by NavigraphAuthUI.
+            // The code appears in an <h1 class*="tracking-wider"> element.
+            var attempts = 0;
+            var authPoll = setInterval(function() {
+                attempts++;
+                var code = '';
+                var url = '';
+
+                // NavigraphAuthUI: <h1 class="... text-4xl font-bold tracking-wider ...">USER_CODE</h1>
+                var h1s = document.querySelectorAll('h1');
+                for (var i = 0; i < h1s.length; i++) {
+                    var txt = h1s[i].textContent.trim();
+                    // Device-flow codes: uppercase alphanumeric, 4–12 chars, may include hyphen
+                    if (/^[A-Z0-9][A-Z0-9-]{3,11}$/.test(txt)) { code = txt; break; }
+                }
+
+                // Verification URL is in a span with class*="text-theme-highlight"
+                if (!url) {
+                    var spans = document.querySelectorAll('span');
+                    for (var j = 0; j < spans.length; j++) {
+                        var spanTxt = spans[j].textContent.trim();
+                        if (spanTxt.indexOf('navigraph') !== -1 || spanTxt.indexOf('navigate.chart') !== -1) {
+                            url = spanTxt; break;
+                        }
+                    }
+                }
+
+                if (code || attempts > 30) {
+                    clearInterval(authPoll);
+                    if (code) {
+                        _efb.postState('navigraph_code', {
+                            code: code,
+                            url: url || 'https://navigraph.com/activate'
+                        });
+                    } else {
+                        _efb.postState('error', { message: 'Navigraph auth code not found in DOM after ' + attempts + ' attempts' });
+                    }
+                }
+            }, 1000);
+        }, 700);
+    }, 700);
 };
 
 _efb.cmdSignOutNavigraph = function() {
-    var btn = document.querySelector(_SEL.NAV_SIGN_OUT);
+    var btn = _SEL.NAV_SIGN_OUT ? document.querySelector(_SEL.NAV_SIGN_OUT) : null;
+    if (!btn) btn = _efb.findBtnByText('Unlink');
     if (btn) {
         btn.click();
         setTimeout(function() {
-            _efb.postState('navigraph_auth_state', { authenticated: 'false', username: 'signed_out' });
+            _efb.postState('navigraph_status', { signed_in: 'false', username: '' });
         }, 1000);
+    } else {
+        // Clear local auth state even if DOM click fails
+        try { localStorage.removeItem('A32NX_NAVIGRAPH_USERNAME'); localStorage.removeItem('A32NX_navigraph_username'); } catch(e) {}
+        _efb.postState('navigraph_status', { signed_in: 'false', username: '' });
     }
 };
 
 _efb.cmdCheckNavigraphAuth = function() {
-    var statusText = _efb.getText(_SEL.NAV_STATUS);
-    // FBW shows username in status text when authenticated; check for sign-out button visibility
-    var signOutBtn = document.querySelector(_SEL.NAV_SIGN_OUT);
-    var authenticated = signOutBtn && !signOutBtn.disabled && signOutBtn.style.display !== 'none';
-    var username = '';
-    if (authenticated) {
-        // Extract username from status text — FBW typically renders "Signed in as <username>"
-        var match = statusText.match(/signed in as (.+)/i);
-        username = match ? match[1].trim() : 'navigraph user';
+    // Try NXDataStore variants FBW might use
+    var username = _efb.nxGet('NAVIGRAPH_USERNAME') || _efb.nxGet('navigraph_username') || '';
+
+    // Try raw localStorage keys (navigraph/auth SDK doesn't use A32NX_ prefix)
+    if (!username) {
+        try {
+            var rawKeys = ['navigraph_username', 'navigraph_user', 'ng_username'];
+            for (var i = 0; i < rawKeys.length; i++) {
+                var v = localStorage.getItem(rawKeys[i]);
+                if (v && v.length > 0) { username = v; break; }
+            }
+        } catch(e) {}
     }
-    _efb.postState('navigraph_auth_state', {
-        authenticated: authenticated ? 'true' : 'false',
+
+    // DOM fallback: if Unlink button is visible, user is signed in — try to read username from nearby text
+    if (!username) {
+        var unlinkBtn = _efb.findBtnByExactText('Unlink');
+        if (unlinkBtn) {
+            // ThirdPartyOptionsPage shows username text before the Unlink button
+            var parent = unlinkBtn.parentElement;
+            if (parent) {
+                var spans = parent.querySelectorAll('span');
+                for (var k = 0; k < spans.length; k++) {
+                    var t = spans[k].textContent.trim();
+                    // Username is short, doesn't contain "navigraph" or "unlink"
+                    if (t && t.length > 0 && t.length < 60 &&
+                        t.toLowerCase().indexOf('unlink') === -1 &&
+                        t.toLowerCase().indexOf('navigraph') === -1) {
+                        username = t; break;
+                    }
+                }
+            }
+            if (!username) username = 'Signed in';
+        }
+    }
+
+    _efb.postState('navigraph_status', {
+        signed_in: username.length > 0 ? 'true' : 'false',
         username: username
     });
 };
 
 _efb.cmdGetNavdataStatus = function() {
-    _efb.postState('navdata_status', { cycle: _efb.getText(_SEL.AIRAC_LABEL) });
+    var cycle = _efb.nxGet('AIRAC_CYCLE') || _efb.nxGet('NAVIGRAPH_AIRAC_CYCLE') ||
+                (_SEL.AIRAC_LABEL ? _efb.getText(_SEL.AIRAC_LABEL) : '') || '—';
+    _efb.postState('navdata_status', { cycle: cycle });
 };
 
 // Ground service handlers — SimVar K-events (source-verified from A320Services.tsx).
@@ -421,14 +549,15 @@ _efb.cmdGetNavdataStatus = function() {
 // GPU uses FBW's internal event bus (not a K-event); best-effort via K:REQUEST_POWER_SUPPLY.
 // INTERACTIVE POINT indices (confirmed from A320Services.tsx useSimVar calls):
 //   0 = cabin left door (jetway/stairs), 1 = cabin right door, 2 = aft left door
-//   3 = aft right door (catering), 5 = cargo door (baggage), 9 = fuel truck
+//   3 = aft right door (catering), 5 = cargo door (baggage), 8 = GPU, 9 = fuel truck
 var _GND_DOOR_IDX = {
     jetway:     0,
     stairs_fwd: 0,
     stairs_aft: 0,
-    gpu:        -1,   // state via L:A32NX_EXT_PWR_AVAIL:1
+    gpu:        -1,   // state via L:A32NX_EXT_PWR_AVAIL:1 (toggled separately in cmdToggleGroundService)
     fuel_truck: 9,
     catering:   3,
+    baggage:    5,    // cargo door; K:REQUEST_LUGGAGE fires the truck
     pushback:   -1,   // state via PUSHBACK ATTACHED
 };
 
@@ -463,16 +592,40 @@ _efb.cmdToggleGroundService = function(payload) {
         case 'stairs_aft':
             SimVar.SetSimVarValue('K:TOGGLE_RAMPTRUCK', 'bool', false);
             break;
-        // GPU: FBW uses an internal event bus (not a K-event). K:REQUEST_POWER_SUPPLY is the
-        // closest standard MSFS equivalent but FBW may not respond to it.
+        // GPU: replicates GPUManagement.toggleGPU() from fbw-common/src/systems/shared/src/GPUManagement.ts.
+        // INTERACTIVE POINT OPEN:8 = GPU door (physically connected); L:A32NX_EXT_PWR_AVAIL:1 = FBW power flag.
+        // Powered-stand path sets the L-var directly; cart path fires K:REQUEST_POWER_SUPPLY.
         case 'gpu':
-            SimVar.SetSimVarValue('K:REQUEST_POWER_SUPPLY', 'bool', true);
+            var gpuAvailNow = SimVar.GetSimVarValue('L:A32NX_EXT_PWR_AVAIL:1', 'bool') ? true : false;
+            var gpuDoorOpen = SimVar.GetSimVarValue('A:INTERACTIVE POINT OPEN:8', 'Percent over 100') >= 1.0;
+            if (!gpuAvailNow) {
+                if (gpuDoorOpen) {
+                    // Powered stand: directly set FBW's ext-power L-var
+                    SimVar.SetSimVarValue('L:A32NX_EXT_PWR_AVAIL:1', 'Bool', 1);
+                } else {
+                    // No GPU present: call the GPU cart
+                    SimVar.SetSimVarValue('K:REQUEST_POWER_SUPPLY', 'Bool', true);
+                }
+            } else {
+                if (gpuDoorOpen) {
+                    // Cart was called and connected: disconnect it
+                    SimVar.SetSimVarValue('K:REQUEST_POWER_SUPPLY', 'Bool', true);
+                } else {
+                    // Powered stand: clear ext-power and overhead PB
+                    SimVar.SetSimVarValue('L:A32NX_EXT_PWR_AVAIL:1', 'Bool', 0);
+                    SimVar.SetSimVarValue('L:A32NX_OVHD_ELEC_EXT_PWR_PB_IS_ON', 'Bool', 0);
+                }
+            }
             break;
         case 'fuel_truck':
             SimVar.SetSimVarValue('K:REQUEST_FUEL_KEY', 'bool', true);
             break;
         case 'catering':
             SimVar.SetSimVarValue('K:REQUEST_CATERING', 'bool', true);
+            break;
+        // baggage: K:REQUEST_LUGGAGE confirmed from A320Services.tsx line 157
+        case 'baggage':
+            SimVar.SetSimVarValue('K:REQUEST_LUGGAGE', 'bool', true);
             break;
         case 'pushback':
             SimVar.SetSimVarValue('K:TOGGLE_PUSHBACK', 'bool', true);
@@ -602,6 +755,35 @@ _efb.cmdSetPassengerCount = function(payload) {
         var bits = n >= 32 ? (Math.pow(2, n) - 1) : ((1 << n) - 1);
         SimVar.SetSimVarValue(_PAX_STATIONS[i].desiredVar, 'Number', bits);
         remaining -= n;
+    }
+};
+
+// Navigate to a specific EFB page route and return body text once there.
+// Without navigation the text reflects whatever page is currently visible,
+// which would be wrong if the user is on a different tab.
+_efb.cmdGetPageText = function(payload) {
+    var page = payload.page || 'unknown';
+    // NavLink hrefs from ToolBar.tsx — these are the actual React Router routes
+    var routeMap = {
+        'failures':   '/failures',
+        'checklists': '/checklists',
+        'presets':    '/presets',
+        'dashboard':  '/dashboard',
+        'dispatch':   '/dispatch',
+        'navigation': '/navigation',
+        'atc':        '/atc'
+    };
+    var route = routeMap[page];
+    if (route) {
+        var navLink = document.querySelector('a[href="' + route + '"]');
+        if (navLink) navLink.click();
+        // Wait for React to re-render the new page before scraping
+        setTimeout(function() {
+            _efb.postState('page_text', { page: page, text: document.body.innerText.substring(0, 2000) });
+        }, 700);
+    } else {
+        // Unknown page — scrape whatever is currently visible
+        _efb.postState('page_text', { page: page, text: document.body.innerText.substring(0, 2000) });
     }
 };
 

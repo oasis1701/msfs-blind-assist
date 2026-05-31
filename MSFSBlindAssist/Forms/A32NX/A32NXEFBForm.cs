@@ -146,7 +146,13 @@ public class A32NXEFBForm : Form
         _healthTimer.Tick += (_, _) => UpdateConnectionStatus();
         _healthTimer.Start();
 
-        Load += (_, _) => _bridge.EnqueueCommand("wake_efb");
+        Load += (_, _) =>
+        {
+            // Do NOT send wake_efb here — H:A32NX_EFB_POWER is a toggle, not a conditional wake.
+            // Sending it when the EFB is already on turns it off. The Wake EFB button handles this manually.
+            _bridge.EnqueueCommand("get_settings");
+            _bridge.EnqueueCommand("check_navigraph_auth");
+        };
 
         UpdateConnectionStatus();
 
@@ -298,9 +304,9 @@ public class A32NXEFBForm : Form
         _dbSendBtn    = MakeButton("Send to MCDU",          p, ref y);
         _dbRefreshBtn = MakeButton("Refresh",               p, ref y);
 
-        _dbImportBtn.Click  += (_, _) => _bridge.EnqueueCommand("fetch_simbrief");
+        _dbImportBtn.Click  += OnDashboardImportClicked;
         _dbSendBtn.Click    += (_, _) => _bridge.EnqueueCommand("send_to_mcdu");
-        _dbRefreshBtn.Click += (_, _) => _bridge.EnqueueCommand("get_simbrief_state");
+        _dbRefreshBtn.Click += OnDashboardRefreshClicked;
 
         tp.Controls.Add(p);
         return tp;
@@ -424,11 +430,11 @@ public class A32NXEFBForm : Form
         _fuelRmTgt  = MakeNumericTank("Right Main Target (kg)",p, ref y,"Set right main tank fuel target");
         _fuelRaTgt  = MakeNumericTank("Right Aux Target (kg)",p, ref y, "Set right aux tank fuel target");
 
-        WireFuelTarget(_fuelCtrTgt, "CTR");
-        WireFuelTarget(_fuelLmTgt,  "LEFT_MAIN");
-        WireFuelTarget(_fuelLaTgt,  "LEFT_AUX");
-        WireFuelTarget(_fuelRmTgt,  "RIGHT_MAIN");
-        WireFuelTarget(_fuelRaTgt,  "RIGHT_AUX");
+        WireFuelTarget(_fuelCtrTgt, "centre");
+        WireFuelTarget(_fuelLmTgt,  "left_main");
+        WireFuelTarget(_fuelLaTgt,  "left_aux");
+        WireFuelTarget(_fuelRmTgt,  "right_main");
+        WireFuelTarget(_fuelRaTgt,  "right_aux");
 
         y += 6;
         var modeGroup = new GroupBox { Text = "Fueling Mode", Location = new Point(10, y), Size = new Size(300, 60) };
@@ -443,7 +449,7 @@ public class A32NXEFBForm : Form
         {
             rb.CheckedChanged += (_, _) =>
             {
-                if (!rb.Checked) return;
+                if (_updatingFromServer || !rb.Checked) return;
                 string mode = rb == _fuelReal ? "real" : rb == _fuelFast ? "fast" : "instant";
                 _bridge.EnqueueCommand("set_fuel_mode", new Dictionary<string, string> { ["mode"] = mode });
             };
@@ -510,7 +516,7 @@ public class A32NXEFBForm : Form
         {
             if (_updatingFromServer) return;
             _bridge.EnqueueCommand("set_passenger_count",
-                new Dictionary<string, string> { ["count"] = _payPaxCount.Value.ToString("F0") });
+                new Dictionary<string, string> { ["value"] = _payPaxCount.Value.ToString("F0") });
         };
         p.Controls.Add(_payPaxCount);
         y += 30;
@@ -527,7 +533,7 @@ public class A32NXEFBForm : Form
         {
             rb.CheckedChanged += (_, _) =>
             {
-                if (!rb.Checked) return;
+                if (_updatingFromServer || !rb.Checked) return;
                 string rate = rb == _payInstant ? "instant" : rb == _payFast ? "fast" : "real";
                 _bridge.EnqueueCommand("set_boarding_rate", new Dictionary<string, string> { ["rate"] = rate });
             };
@@ -600,10 +606,10 @@ public class A32NXEFBForm : Form
 
         _pbStartBtn.Click += (_, _) =>
             _bridge.EnqueueCommand("toggle_ground_service",
-                new Dictionary<string, string> { ["service_id"] = "pushback_start" });
+                new Dictionary<string, string> { ["service_id"] = "pushback" });
         _pbStopBtn.Click += (_, _) =>
             _bridge.EnqueueCommand("toggle_ground_service",
-                new Dictionary<string, string> { ["service_id"] = "pushback_stop" });
+                new Dictionary<string, string> { ["service_id"] = "pushback" });
 
         tp.Controls.Add(p);
         return tp;
@@ -801,14 +807,19 @@ public class A32NXEFBForm : Form
         var p = MakeScrollPanel();
         int y = 10;
 
-        AddSettingCombo(p, ref y, "Default Barometer",        "EFB_BARO_UNIT",       new[] { "Auto", "inHg", "hPa" });
-        AddSettingCombo(p, ref y, "Sync MSFS Flight Plan",    "EFB_SYNC_MSFS_FP",    new[] { "off", "load", "save" });
-        AddSettingToggle(p, ref y,"Auto-load MSFS Route",     "EFB_AUTO_LOAD_ROUTE");
-        AddSettingCombo(p, ref y, "SimBridge",                "EFB_SIMBRIDGE_ENABLED",new[] { "Auto", "Off" });
-        AddSettingCombo(p, ref y, "SimBridge Machine",        "EFB_SIMBRIDGE_MACHINE",new[] { "Local", "Remote" });
-        AddSettingToggle(p, ref y,"Dynamic Registration Decal","EFB_DYNAMIC_DECAL");
-        AddSettingToggle(p, ref y,"Calculated ILS Signals",   "EFB_CALC_ILS");
-        AddSettingToggle(p, ref y,"FDR Enabled",              "EFB_FDR_ENABLED");
+        // Keys + values verified against fbw-common/.../Settings/Pages/SimOptionsPage.tsx
+        AddSettingCombo(p, ref y, "Default Barometer",         "CONFIG_INIT_BARO_UNIT",
+            new[] { "Auto", "inHg", "hPa" },    new[] { "AUTO", "IN HG", "HPA" });
+        AddSettingCombo(p, ref y, "Sync MSFS Flight Plan",     "FP_SYNC",
+            new[] { "None", "Load Only", "Save" }, new[] { "NONE", "LOAD", "SAVE" });
+        AddSettingToggle(p, ref y, "Auto-load MSFS Route",     "CONFIG_AUTO_SIM_ROUTE_LOAD");
+        AddSettingCombo(p, ref y, "SimBridge",                 "CONFIG_SIMBRIDGE_ENABLED",
+            new[] { "Auto", "Off" },              new[] { "AUTO ON", "PERM OFF" });
+        AddSettingCombo(p, ref y, "SimBridge Machine",         "CONFIG_SIMBRIDGE_REMOTE",
+            new[] { "Local", "Remote" },          new[] { "local", "remote" });
+        AddSettingToggle(p, ref y, "Dynamic Registration Decal", "DYNAMIC_REGISTRATION_DECAL", "1", "0");
+        AddSettingToggle(p, ref y, "Calculated ILS Signals",   "RADIO_RECEIVER_USAGE_ENABLED", "1", "0");
+        AddSettingToggle(p, ref y, "FDR Enabled",              "FDR_ENABLED", "1", "0");
 
         tp.Controls.Add(p);
         return tp;
@@ -820,16 +831,24 @@ public class A32NXEFBForm : Form
         var p = MakeScrollPanel();
         int y = 10;
 
-        AddSettingCombo(p, ref y, "ADIRS Align Time",        "CONFIG_ADIRS_IR_ALIGN_TIME",    new[] { "INSTANT", "FAST", "REAL" });
-        AddSettingCombo(p, ref y, "DMC Self-Test Time",      "CONFIG_SELF_TEST_TIME",         new[] { "INSTANT", "FAST", "REAL" });
-        AddSettingCombo(p, ref y, "Boarding Time",           "CONFIG_BOARDING_RATE",          new[] { "INSTANT", "FAST", "REAL" });
-        AddSettingToggle(p, ref y,"Autofill Checklists",     "EFB_AUTOFILL_CHECKLISTS");
-        AddSettingToggle(p, ref y,"Separate Tiller from Rudder","SEPARATE_TILLER_RUDDER_AXES");
-        AddSettingToggle(p, ref y,"MCDU Keyboard Input",     "MCDU_KEYBOARD_INPUT_ENABLED");
-        AddSettingToggle(p, ref y,"Sync EFIS",               "EFB_SYNC_EFIS");
-        AddSettingToggle(p, ref y,"Pilot Avatar",            "EFB_PILOT_AVATAR");
-        AddSettingToggle(p, ref y,"First Officer Avatar",    "EFB_FO_AVATAR");
-        AddSettingToggle(p, ref y,"Pause at TOD",            "EFB_PAUSE_AT_TOD");
+        // Keys + values verified against fbw-common/.../Settings/Pages/RealismPage.tsx
+        AddSettingCombo(p, ref y, "ADIRS Align Time",          "CONFIG_ALIGN_TIME",
+            new[] { "Instant", "Fast", "Real" },  new[] { "INSTANT", "FAST", "REAL" });
+        // Self-test uses numeric seconds in NXDataStore, not label strings
+        AddSettingCombo(p, ref y, "DMC Self-Test Time",        "CONFIG_SELF_TEST_TIME",
+            new[] { "Instant", "Fast (5s)", "Real (12s)" }, new[] { "0", "5", "12" });
+        AddSettingCombo(p, ref y, "Boarding Time",             "CONFIG_BOARDING_RATE",
+            new[] { "Instant", "Fast", "Real" },  new[] { "INSTANT", "FAST", "REAL" });
+        // Numeric toggles use 1/0 (usePersistentNumberProperty in FBW source)
+        AddSettingToggle(p, ref y, "Autofill Checklists",      "EFB_AUTOFILL_CHECKLISTS",             "1", "0");
+        AddSettingToggle(p, ref y, "Separate Tiller from Rudder", "REALISTIC_TILLER_ENABLED",         "1", "0");
+        // usePersistentBooleanProperty → stores "true"/"false"
+        AddSettingToggle(p, ref y, "MCDU Keyboard Input",      "MCDU_KB_INPUT");
+        AddSettingToggle(p, ref y, "Sync EFIS (FO)",           "FO_SYNC_EFIS_ENABLED",                "1", "0");
+        AddSettingToggle(p, ref y, "Pilot Avatar",             "CONFIG_PILOT_AVATAR_VISIBLE",         "1", "0");
+        AddSettingToggle(p, ref y, "First Officer Avatar",     "CONFIG_FIRST_OFFICER_AVATAR_VISIBLE", "1", "0");
+        // usePersistentBooleanProperty → stores "true"/"false"
+        AddSettingToggle(p, ref y, "Pause at TOD",             "PAUSE_AT_TOD");
 
         tp.Controls.Add(p);
         return tp;
@@ -856,19 +875,32 @@ public class A32NXEFBForm : Form
         y += 30;
 
         p.Controls.Add(new Label { Text = "SimBrief Pilot ID:", Location = new Point(10, y), Size = new Size(130, 20) });
-        _sbPilotIdBox = new TextBox { Location = new Point(145, y), Size = new Size(160, 24), AccessibleName = "SimBrief pilot ID" };
+        _sbPilotIdBox = new TextBox
+        {
+            Location = new Point(145, y), Size = new Size(160, 24),
+            AccessibleName = "SimBrief pilot ID",
+            Tag = "CONFIG_OVERRIDE_SIMBRIEF_USERID"  // populated by UpdateSettingControls on settings load
+        };
         p.Controls.Add(_sbPilotIdBox);
         y += 30;
 
-        _sbValidateBtn = MakeButton("Validate ID", p, ref y, 130);
+        _sbValidateBtn = MakeButton("Save Pilot ID", p, ref y, 130);
         _sbValidateBtn.Click += (_, _) =>
+        {
+            var id = _sbPilotIdBox.Text.Trim();
             _bridge.EnqueueCommand("set_setting",
-                new Dictionary<string, string> { ["key"] = "EFB_SIMBRIEF_USERID", ["value"] = _sbPilotIdBox.Text.Trim() });
+                new Dictionary<string, string> { ["key"] = "CONFIG_OVERRIDE_SIMBRIEF_USERID", ["value"] = id });
+            SettingsManager.Current.SimbriefUsername = id;
+            SettingsManager.Save();
+            _announcer?.Announce($"SimBrief pilot ID saved: {id}");
+        };
 
-        _sbAutoImport = AddSettingToggle(p, ref y, "Auto-import SimBrief data", "EFB_AUTO_SIMBRIEF");
-        _gsxFuel      = AddSettingToggle(p, ref y, "GSX Fuel enabled",          "GSX_FUEL_ENABLED");
-        _gsxPayload   = AddSettingToggle(p, ref y, "GSX Payload enabled",       "GSX_PAYLOAD_ENABLED");
-        _gsxPower     = AddSettingToggle(p, ref y, "GSX Power enabled",         "GSX_POWER_ENABLED");
+        // CONFIG_AUTO_SIMBRIEF_IMPORT uses ENABLED/DISABLED (not true/false)
+        _sbAutoImport = AddSettingToggle(p, ref y, "Auto-import SimBrief data", "CONFIG_AUTO_SIMBRIEF_IMPORT", "ENABLED", "DISABLED");
+        // GSX toggles use numeric 1/0 (usePersistentNumberProperty in FBW source)
+        _gsxFuel      = AddSettingToggle(p, ref y, "GSX Fuel enabled",   "GSX_FUEL_SYNC",    "1", "0");
+        _gsxPayload   = AddSettingToggle(p, ref y, "GSX Payload enabled", "GSX_PAYLOAD_SYNC", "1", "0");
+        _gsxPower     = AddSettingToggle(p, ref y, "GSX Power enabled",   "GSX_POWER_SYNC",   "1", "0");
 
         tp.Controls.Add(p);
         return tp;
@@ -880,10 +912,18 @@ public class A32NXEFBForm : Form
         var p = MakeScrollPanel();
         int y = 10;
 
-        AddSettingText(p, ref y, "Hoppie ACARS Network User ID", "ACARS_USER_ID");
-        AddSettingToggle(p, ref y, "Auto-import SimBrief data",  "ATSU_SIMBRIEF_IMPORT");
-        AddSettingCombo(p, ref y, "Weather Source", "EFB_WEATHER_SOURCE", new[] { "MSFS", "IVAO", "VATSIM", "PilotEdge" });
-        AddSettingCombo(p, ref y, "ATC Network",    "EFB_ATC_NETWORK",    new[] { "offline", "VATSIM", "IVAO", "POSCON" });
+        // Keys + values verified against fbw-common/.../Settings/Pages/AtsuAocPage.tsx
+        AddSettingText(p, ref y, "Hoppie ACARS User ID", "CONFIG_HOPPIE_USERID");
+        // FBW has separate ATIS source and METAR source selectors
+        AddSettingCombo(p, ref y, "ATIS Source",    "CONFIG_ATIS_SRC",
+            new[] { "FAA (US)", "PilotEdge", "IVAO", "VATSIM" },
+            new[] { "FAA", "PILOTEDGE", "IVAO", "VATSIM" });
+        AddSettingCombo(p, ref y, "METAR Source",   "CONFIG_METAR_SRC",
+            new[] { "MSFS", "NOAA", "PilotEdge", "VATSIM" },
+            new[] { "MSFS", "NOAA", "PILOTEDGE", "VATSIM" });
+        AddSettingCombo(p, ref y, "ACARS Provider", "ACARS_PROVIDER",
+            new[] { "None", "Hoppie", "BATC", "SAI" },
+            new[] { "NONE", "HOPPIE", "BATC", "SAI" });
 
         tp.Controls.Add(p);
         return tp;
@@ -895,13 +935,15 @@ public class A32NXEFBForm : Form
         var p = MakeScrollPanel();
         int y = 10;
 
-        AddVolumeSpinner(p, ref y, "Exterior Master Volume",     "EFB_EXTERIOR_MASTER_VOL");
-        AddVolumeSpinner(p, ref y, "Engine Interior Volume",     "EFB_ENGINE_INTERIOR_VOL");
-        AddVolumeSpinner(p, ref y, "Wind Interior Volume",       "EFB_WIND_INTERIOR_VOL");
-        AddSettingToggle(p, ref y, "PTU Audible in Cockpit",     "EFB_PTU_AUDIBLE");
-        AddSettingToggle(p, ref y, "Passenger Ambience",         "EFB_PAX_AMBIENCE");
-        AddSettingToggle(p, ref y, "Announcements",              "EFB_ANNOUNCEMENTS");
-        AddSettingToggle(p, ref y, "Boarding Music",             "EFB_BOARDING_MUSIC");
+        // Keys + values verified against fbw-common/.../Settings/Pages/AudioPage.tsx
+        // FBW stores volume as offset −50…+50 (0 = default); spinner range matches that
+        AddVolumeSpinner(p, ref y, "Exterior Master Volume",  "SOUND_EXTERIOR_MASTER");
+        AddVolumeSpinner(p, ref y, "Engine Interior Volume",  "SOUND_INTERIOR_ENGINE");
+        AddVolumeSpinner(p, ref y, "Wind Interior Volume",    "SOUND_INTERIOR_WIND");
+        AddSettingToggle(p, ref y, "PTU Audible in Cockpit",  "SOUND_PTU_AUDIBLE_COCKPIT",         "1", "0");
+        AddSettingToggle(p, ref y, "Passenger Ambience",      "SOUND_PASSENGER_AMBIENCE_ENABLED",  "1", "0");
+        AddSettingToggle(p, ref y, "Announcements",           "SOUND_ANNOUNCEMENTS_ENABLED",       "1", "0");
+        AddSettingToggle(p, ref y, "Boarding Music",          "SOUND_BOARDING_MUSIC_ENABLED",      "1", "0");
 
         tp.Controls.Add(p);
         return tp;
@@ -913,15 +955,25 @@ public class A32NXEFBForm : Form
         var p = MakeScrollPanel();
         int y = 10;
 
-        AddSettingCombo(p, ref y, "Language",              "EFB_LANGUAGE",       new[] { "en", "de", "fr", "es", "pt" });
-        AddSettingCombo(p, ref y, "Keyboard Layout",       "EFB_KB_LAYOUT",      new[] { "qwerty", "azerty", "qwertz" });
-        AddSettingToggle(p, ref y,"Auto-show Keyboard",    "EFB_AUTO_KEYBOARD");
-        AddSettingToggle(p, ref y,"Auto-brightness",       "EFB_AUTO_BRIGHTNESS");
-        AddSettingToggle(p, ref y,"Battery Life Enabled",  "EFB_BATTERY_LIFE");
-        AddSettingToggle(p, ref y,"Show Flight Progress",  "EFB_SHOW_PROGRESS");
-        AddSettingToggle(p, ref y,"Coloured Raw METAR",    "EFB_COLOUR_METAR");
-        AddSettingCombo(p, ref y, "Time Displayed",        "EFB_TIME_DISPLAY", new[] { "UTC", "Local", "Both" });
-        AddSettingCombo(p, ref y, "Time Format",           "EFB_TIME_FORMAT",  new[] { "12h", "24h" });
+        // Keys + values verified against fbw-common/.../Settings/Pages/FlyPadPage.tsx
+        AddSettingCombo(p, ref y, "Language", "EFB_LANGUAGE",
+            new[] { "English", "Deutsch", "Français", "Español", "Português", "Polski", "Русский", "Italiano", "中文", "日本語", "한국어" },
+            new[] { "en",      "de",      "fr",       "es",      "pt",        "pl",     "ru",      "it",      "zh",  "ja",    "ko"   });
+        // EFB_KEYBOARD_LAYOUT_IDENT uses name strings from keyboardLayoutOptions in KeyboardWrapper.tsx
+        AddSettingCombo(p, ref y, "Keyboard Layout", "EFB_KEYBOARD_LAYOUT_IDENT",
+            new[] { "English", "Arabic",  "Chinese", "Czech",  "French", "German", "Greek",  "Hindi",  "Italian", "Japanese", "Korean", "Norwegian", "Polish", "Russian", "Spanish", "Swedish", "Thai" },
+            new[] { "english", "arabic", "chinese", "czech",  "french", "german", "greek",  "hindi",  "italian", "japanese", "korean", "norwegian", "polish", "russian", "spanish", "swedish", "thai" });
+        // Numeric toggles (usePersistentNumberProperty in FBW source)
+        AddSettingToggle(p, ref y, "Auto-show Keyboard",   "EFB_AUTO_OSK",                      "1", "0");
+        AddSettingToggle(p, ref y, "Auto-brightness",      "EFB_USING_AUTOBRIGHTNESS",           "1", "0");
+        AddSettingToggle(p, ref y, "Battery Life Enabled", "EFB_BATTERY_LIFE_ENABLED",           "1", "0");
+        AddSettingToggle(p, ref y, "Show Flight Progress", "EFB_SHOW_STATUSBAR_FLIGHTPROGRESS",  "1", "0");
+        AddSettingToggle(p, ref y, "Coloured Raw METAR",   "EFB_USING_COLOREDMETAR",             "1", "0");
+        // Time displayed uses lowercase strings; time format uses "12"/"24" (no 'h' suffix)
+        AddSettingCombo(p, ref y, "Time Displayed",        "EFB_TIME_DISPLAYED",
+            new[] { "UTC", "Local", "UTC and Local" }, new[] { "utc", "local", "both" });
+        AddSettingCombo(p, ref y, "Time Format",           "EFB_TIME_FORMAT",
+            new[] { "12-hour", "24-hour" },            new[] { "12", "24" });
 
         tp.Controls.Add(p);
         return tp;
@@ -946,8 +998,12 @@ public class A32NXEFBForm : Form
 
     // ── Settings helpers ──────────────────────────────────────────────────────
 
-    private void AddSettingCombo(Panel p, ref int y, string label, string nxKey, string[] options)
+    // storedValues[i] is the NXDataStore value sent/matched for displayOptions[i].
+    // When null, displayOptions are used directly as both display text and stored value.
+    private void AddSettingCombo(Panel p, ref int y, string label, string nxKey,
+        string[] displayOptions, string[]? storedValues = null)
     {
+        var vals = storedValues ?? displayOptions;
         p.Controls.Add(new Label { Text = label + ":", Location = new Point(10, y), Size = new Size(200, 20) });
         var cb = new ComboBox
         {
@@ -957,19 +1013,27 @@ public class A32NXEFBForm : Form
             AccessibleName = label,
             Tag = nxKey
         };
-        cb.Items.AddRange(options.Cast<object>().ToArray());
+        cb.Items.AddRange(displayOptions.Cast<object>().ToArray());
+        // Store value array on the combo so UpdateSettingControlsInContainer can reverse-map
+        if (storedValues != null) cb.Items.Cast<object>(); // keeps reference live via closure below
         cb.SelectedIndexChanged += (_, _) =>
         {
             if (_updatingFromServer) return;
-            if (cb.SelectedItem != null)
+            int i = cb.SelectedIndex;
+            if (i >= 0 && i < vals.Length)
                 _bridge.EnqueueCommand("set_setting",
-                    new Dictionary<string, string> { ["key"] = nxKey, ["value"] = cb.SelectedItem.ToString()! });
+                    new Dictionary<string, string> { ["key"] = nxKey, ["value"] = vals[i] });
         };
+        // Tag: "nxKey\0val0\0val1\0..." — packed so UpdateSettingControlsInContainer can find the right index
+        cb.Tag = storedValues != null
+            ? nxKey + "\0" + string.Join("\0", storedValues)
+            : nxKey;
         p.Controls.Add(cb);
         y += 30;
     }
 
-    private CheckBox AddSettingToggle(Panel p, ref int y, string label, string nxKey)
+    private CheckBox AddSettingToggle(Panel p, ref int y, string label, string nxKey,
+        string onValue = "true", string offValue = "false")
     {
         var cb = new CheckBox
         {
@@ -983,7 +1047,7 @@ public class A32NXEFBForm : Form
         {
             if (_updatingFromServer) return;
             _bridge.EnqueueCommand("set_setting",
-                new Dictionary<string, string> { ["key"] = nxKey, ["value"] = cb.Checked ? "true" : "false" });
+                new Dictionary<string, string> { ["key"] = nxKey, ["value"] = cb.Checked ? onValue : offValue });
         };
         p.Controls.Add(cb);
         y += 30;
@@ -1001,14 +1065,16 @@ public class A32NXEFBForm : Form
         y += 30;
     }
 
+    // FBW AudioPage stores volume as an offset: −50 = quietest, 0 = default, +50 = loudest.
+    // This matches the range stored in NXDataStore (not the 1–100 display FBW shows in its UI).
     private void AddVolumeSpinner(Panel p, ref int y, string label, string nxKey)
     {
-        p.Controls.Add(new Label { Text = label + ":", Location = new Point(10, y), Size = new Size(220, 20) });
+        p.Controls.Add(new Label { Text = label + " (−50…+50):", Location = new Point(10, y), Size = new Size(230, 20) });
         var num = new NumericUpDown
         {
-            Location = new Point(235, y),
-            Size = new Size(80, 24),
-            Minimum = 0, Maximum = 100, Increment = 5,
+            Location = new Point(245, y),
+            Size = new Size(70, 24),
+            Minimum = -50, Maximum = 50, Increment = 5, Value = 0,
             AccessibleName = label,
             Tag = nxKey
         };
@@ -1056,13 +1122,23 @@ public class A32NXEFBForm : Form
                 ApplyPageText(data);
                 break;
             case "settings":
+            case "settings_loaded":   // legacy alias — JS now sends "settings"
                 ApplySettings(data);
                 break;
             case "navigraph_status":
+            case "navigraph_auth_state":   // legacy alias
                 ApplyNavigraphStatus(data);
                 break;
             case "navigraph_code":
-                _announcer.Announce($"Navigraph auth code: {data.GetValueOrDefault("code", "—")}. Enter this at Navigraph website.");
+            {
+                var code = data.GetValueOrDefault("code", "—");
+                var url  = data.GetValueOrDefault("url", "navigraph.com/activate");
+                _announcer.Announce($"Navigraph auth code: {code}. Go to {url} and enter this code.");
+                break;
+            }
+            case "navdata_status":
+                if (data.TryGetValue("cycle", out var navCycle) && !string.IsNullOrEmpty(navCycle) && navCycle != "—")
+                    _airacLabel.Text = $"AIRAC: {navCycle}";
                 break;
         }
     }
@@ -1110,13 +1186,39 @@ public class A32NXEFBForm : Form
     private void ApplyFuelState(Dictionary<string, string> d)
     {
         string G(string k) => d.TryGetValue(k, out var v) ? v : "—";
-        _fuelCtrCur.Text   = G("ctr_current");
-        _fuelLmCur.Text    = G("lm_current");
-        _fuelLaCur.Text    = G("la_current");
-        _fuelRmCur.Text    = G("rm_current");
-        _fuelRaCur.Text    = G("ra_current");
-        _fuelTotalCur.Text = G("total_current");
-        _fuelStatusLbl.Text = G("loading_status");
+        _fuelCtrCur.Text   = G("centre_actual_kg");
+        _fuelLmCur.Text    = G("left_main_actual_kg");
+        _fuelLaCur.Text    = G("left_aux_actual_kg");
+        _fuelRmCur.Text    = G("right_main_actual_kg");
+        _fuelRaCur.Text    = G("right_aux_actual_kg");
+        _fuelStatusLbl.Text = G("status");
+
+        double totalActual = 0;
+        foreach (string k in new[] { "centre_actual_kg", "left_main_actual_kg", "left_aux_actual_kg", "right_main_actual_kg", "right_aux_actual_kg" })
+            if (d.TryGetValue(k, out var v) && double.TryParse(v, out var n)) totalActual += n;
+        _fuelTotalCur.Text = totalActual > 0 ? ((int)Math.Round(totalActual)).ToString() : "—";
+
+        _updatingFromServer = true;
+        try
+        {
+            if (d.TryGetValue("mode", out var mode))
+            {
+                _fuelReal.Checked    = mode == "real";
+                _fuelFast.Checked    = mode == "fast";
+                _fuelInstant.Checked = mode == "instant";
+            }
+            void SetTgt(NumericUpDown num, string key)
+            {
+                if (d.TryGetValue(key, out var v) && decimal.TryParse(v, out var n))
+                    num.Value = Math.Clamp(n, num.Minimum, num.Maximum);
+            }
+            SetTgt(_fuelCtrTgt, "centre_target_kg");
+            SetTgt(_fuelLmTgt,  "left_main_target_kg");
+            SetTgt(_fuelLaTgt,  "left_aux_target_kg");
+            SetTgt(_fuelRmTgt,  "right_main_target_kg");
+            SetTgt(_fuelRaTgt,  "right_aux_target_kg");
+        }
+        finally { _updatingFromServer = false; }
     }
 
     private void ApplyPayloadState(Dictionary<string, string> d)
@@ -1134,7 +1236,13 @@ public class A32NXEFBForm : Form
                 _payAftBag.Value = Math.Clamp(abVal, 0, 5000);
             if (d.TryGetValue("aft_bulk", out var al) && decimal.TryParse(al, out var alVal))
                 _payAftBulk.Value = Math.Clamp(alVal, 0, 5000);
-            _payStatusLbl.Text = d.TryGetValue("boarding_status", out var bs) ? bs : "Unknown";
+            _payStatusLbl.Text = d.TryGetValue("status", out var bs) ? bs : "Unknown";
+            if (d.TryGetValue("boarding_rate", out var rate))
+            {
+                _payInstant.Checked = rate == "instant";
+                _payFast.Checked    = rate == "fast";
+                _payReal.Checked    = rate == "real";
+            }
         }
         finally
         {
@@ -1200,24 +1308,43 @@ public class A32NXEFBForm : Form
     {
         foreach (Control c in container.Controls)
         {
-            if (c.Tag is string key && d.TryGetValue(key, out var val))
+            if (c.Tag is string tagStr)
             {
-                switch (c)
+                // Tag format: either "nxKey" or "nxKey\0stored0\0stored1\0..."
+                var parts = tagStr.Split('\0');
+                var key   = parts[0];
+                if (d.TryGetValue(key, out var val))
                 {
-                    case ComboBox cb:
-                        int idx = cb.Items.IndexOf(val);
-                        if (idx >= 0) cb.SelectedIndex = idx;
-                        break;
-                    case CheckBox check:
-                        check.Checked = val == "true" || val == "1";
-                        break;
-                    case NumericUpDown num:
-                        if (decimal.TryParse(val, out var dec))
-                            num.Value = Math.Clamp(dec, num.Minimum, num.Maximum);
-                        break;
-                    case TextBox tb:
-                        tb.Text = val;
-                        break;
+                    switch (c)
+                    {
+                        case ComboBox cb:
+                            int idx = -1;
+                            if (parts.Length > 1)
+                            {
+                                // Reverse-map stored value → display index
+                                for (int k = 1; k < parts.Length; k++)
+                                {
+                                    if (parts[k] == val) { idx = k - 1; break; }
+                                }
+                            }
+                            else
+                            {
+                                idx = cb.Items.IndexOf(val);
+                            }
+                            if (idx >= 0 && idx < cb.Items.Count) cb.SelectedIndex = idx;
+                            break;
+                        case CheckBox check:
+                            check.Checked = val == "true" || val == "1" ||
+                                            val.Equals("ENABLED", StringComparison.OrdinalIgnoreCase);
+                            break;
+                        case NumericUpDown num:
+                            if (decimal.TryParse(val, out var dec))
+                                num.Value = Math.Clamp(dec, num.Minimum, num.Maximum);
+                            break;
+                        case TextBox tb:
+                            tb.Text = val;
+                            break;
+                    }
                 }
             }
             if (c.Controls.Count > 0)
@@ -1235,6 +1362,65 @@ public class A32NXEFBForm : Form
     }
 
     // ── Event handlers ────────────────────────────────────────────────────────
+
+    private async void OnDashboardImportClicked(object? sender, EventArgs e)
+        => await FetchAndDisplayDashboardDataAsync(triggerMcduImport: true);
+
+    private async void OnDashboardRefreshClicked(object? sender, EventArgs e)
+        => await FetchAndDisplayDashboardDataAsync(triggerMcduImport: false);
+
+    private async Task FetchAndDisplayDashboardDataAsync(bool triggerMcduImport)
+    {
+        string username = SettingsManager.Current.SimbriefUsername?.Trim() ?? "";
+        if (string.IsNullOrEmpty(username))
+        {
+            _announcer?.Announce("No SimBrief username set. Add it in Settings then try again.");
+            return;
+        }
+
+        _dbImportBtn.Enabled = false;
+        _dbRefreshBtn.Enabled = false;
+
+        try
+        {
+            if (triggerMcduImport)
+                _bridge.EnqueueCommand("fetch_simbrief");
+
+            var ofp = await _simBriefService.FetchFullOFPAsync(username);
+            if (IsDisposed || !IsHandleCreated) return;
+
+            ApplySimBriefState(new Dictionary<string, string>
+            {
+                ["callsign"]       = ofp.Callsign,
+                ["origin"]         = ofp.OriginIcao,
+                ["destination"]    = ofp.DestIcao,
+                ["alternate"]      = ofp.AltnIcao,
+                ["cruise_altitude"]= ofp.InitialAltitude,
+                ["cost_index"]     = ofp.CostIndex,
+                ["zfw"]            = ofp.WeightZfw,
+                ["fuel_kg"]        = ofp.FuelBlockRamp,
+                ["route_distance"] = ofp.RouteDistance,
+                ["avg_wind"]       = ofp.AvgWindComp,
+                ["ete"]            = ofp.AirTime,
+            });
+            _announcer?.Announce(triggerMcduImport
+                ? $"SimBrief imported: {ofp.OriginIcao} to {ofp.DestIcao}."
+                : $"SimBrief refreshed: {ofp.OriginIcao} to {ofp.DestIcao}.");
+        }
+        catch (Exception ex)
+        {
+            if (IsDisposed || !IsHandleCreated) return;
+            _announcer?.Announce($"SimBrief error: {ex.Message}");
+        }
+        finally
+        {
+            if (!IsDisposed && IsHandleCreated)
+            {
+                _dbImportBtn.Enabled = true;
+                _dbRefreshBtn.Enabled = true;
+            }
+        }
+    }
 
     private async void OnDispatchFetchClicked(object? sender, EventArgs e)
     {

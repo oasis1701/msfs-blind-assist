@@ -190,6 +190,13 @@ public partial class MainForm : Form
             StartEFBBridgeServer();
         }
 
+        // Initialize EFB bridge + CDP injector if starting with FBW A32NX
+        if (currentAircraft?.AircraftCode == "A320")
+        {
+            StartEFBBridgeServer();
+            StartCoherentGTInjector();
+        }
+
         // Initialize 787 bridge if starting with HS 787
         if (currentAircraft?.AircraftCode == "HS_787")
         {
@@ -2623,6 +2630,7 @@ public partial class MainForm : Form
         if (coherentGTInjector == null)
             coherentGTInjector = new CoherentGTInjector(bridgeJsPath);
 
+        coherentGTInjector.HeartbeatAlive = () => efbBridgeServer?.IsBridgeConnected == true;
         coherentGTInjector.Start();
     }
 
@@ -4774,7 +4782,7 @@ public partial class MainForm : Form
                                 else // Auto (1)
                                 {
                                     simConnectManager?.SetLVar("STROBE_0_AUTO", 1);
-                                    simConnectManager?.SendEvent("STROBES_ON", 0);
+                                    // STROBE_0_AUTO=1 is sufficient — FBW FMGC manages strobe state
                                 }
                             }
                             else if (capturedVarKey == "LIGHT BEACON") // Beacon Light
@@ -4801,7 +4809,8 @@ public partial class MainForm : Form
                                     ? currentSimVarValues["CIRCUIT_SWITCH_ON:21"] : -1;
                                 bool wantOn = selectedValue == 1;
                                 bool isOn = currentState == 1;
-                                if (wantOn != isOn)
+                                // When state is unknown (cache miss on first open), always send toggle
+                                if (currentState < 0 || wantOn != isOn)
                                     simConnectManager?.SendEvent("ELECTRICAL_CIRCUIT_TOGGLE", 21);
                             }
                             else if (capturedVarKey == "CIRCUIT_SWITCH_ON:22") // Right RWY Turn Off Light

@@ -28,6 +28,7 @@ public class CoherentGTInjector : IDisposable
     private readonly SynchronizationContext? _syncContext;
     private CancellationTokenSource? _cts;
     private string? _lastInjectedPageId;
+    private string? _lastInjectedHash;   // SHA-256 prefix of the last injected bridge JS content
     private bool _disposed;
     private readonly object _lock = new();
     private static readonly HttpClient _http = new() { Timeout = TimeSpan.FromMilliseconds(HttpTimeoutMs) };
@@ -69,6 +70,7 @@ public class CoherentGTInjector : IDisposable
             _cts?.Dispose();
             _cts = null;
             _lastInjectedPageId = null;
+            _lastInjectedHash = null;
         }
         SetConnected(false);
     }
@@ -96,43 +98,74 @@ public class CoherentGTInjector : IDisposable
             return;
         }
 
-        // 2. Already injected — verify JS is still present in the page via a cheap CDP eval.
-        // Page reloads clear the window flag instantly; this detects the reload within one
-        // poll cycle (~3 s) instead of waiting for the 6 s heartbeat timeout.
-        if (pageId == _lastInjectedPageId)
-        {
-            bool? jsPresent = await CheckBridgeLoadedAsync(pageId, ct);
-            bool heartbeatDead = HeartbeatAlive?.Invoke() == false;
-
-            // JS confirmed present — no action; bridge's own reconnect interval handles
-            // any transient server disconnects without requiring re-injection.
-            if (jsPresent == true) return;
-            // Can't check CDP but heartbeat is still fresh — assume ok.
-            if (jsPresent == null && !heartbeatDead) return;
-            // JS is gone, or we can't check and the heartbeat is also stale — re-inject.
-            _lastInjectedPageId = null;
-        }
-
-        // 3. Brief delay on re-injection so the page finishes reloading
-        if (_lastInjectedPageId != null)
-            await Task.Delay(ReinjectDelayMs, ct);
-
-        // 4. Read bridge JS from output directory
+        // 2. Read bridge JS now so we can hash it for version comparison
         if (!File.Exists(_bridgeJsPath))
         {
             System.Diagnostics.Debug.WriteLine($"[CGTInjector] Bridge JS not found: {_bridgeJsPath}");
             return;
         }
         string bridgeJs = await File.ReadAllTextAsync(_bridgeJsPath, ct);
+        string currentHash = ComputeBridgeHash(bridgeJs);
+
+        // 3. Already injected — verify JS is still present and up-to-date.
+        // Page reloads clear the window flag instantly; this detects the reload within one
+        // poll cycle (~3 s) instead of waiting for the 6 s heartbeat timeout.
+        // A changed bridge JS hash triggers automatic hot-reload without app restart.
+        if (pageId == _lastInjectedPageId)
+        {
+            bool? jsPresent = await CheckBridgeLoadedAsync(pageId, ct);
+            bool heartbeatDead = HeartbeatAlive?.Invoke() == false;
+            bool versionChanged = currentHash != _lastInjectedHash;
+
+            // JS present, heartbeat alive, same version — nothing to do.
+            if (jsPresent == true && !versionChanged) return;
+            // Can't check CDP, heartbeat fresh, same version — assume ok.
+            if (jsPresent == null && !heartbeatDead && !versionChanged) return;
+
+            // Bridge JS file was updated while running: clear the double-load guard
+            // (window._a32nx_efb_bridge_loaded) before reinjecting so the new version
+            // isn't silently skipped by the existing bridge's entry-point guard.
+            if (jsPresent == true && versionChanged)
+            {
+                System.Diagnostics.Debug.WriteLine($"[CGTInjector] Bridge JS updated (hash changed), hot-reloading");
+                await ClearLoadGuardAsync(pageId, ct);
+                await Task.Delay(200, ct);
+            }
+
+            // JS is gone, stale heartbeat, or version changed — fall through to reinject.
+            _lastInjectedPageId = null;
+        }
+
+        // 4. Brief delay on re-injection so the page finishes reloading
+        if (_lastInjectedPageId != null)
+            await Task.Delay(ReinjectDelayMs, ct);
 
         // 5. Inject
         bool ok = await InjectAsync(pageId, bridgeJs, ct);
         if (ok)
         {
             _lastInjectedPageId = pageId;
+            _lastInjectedHash = currentHash;
             SetConnected(true);
-            System.Diagnostics.Debug.WriteLine($"[CGTInjector] Injected into page {pageId}");
+            System.Diagnostics.Debug.WriteLine($"[CGTInjector] Injected into page {pageId} (hash={currentHash})");
         }
+    }
+
+    /// <summary>
+    /// Clears the bridge's double-load guard so a fresh injection isn't skipped
+    /// by the existing bridge's entry-point check.
+    /// </summary>
+    private async Task ClearLoadGuardAsync(string pageId, CancellationToken ct)
+    {
+        try { await InjectAsync(pageId, "window._a32nx_efb_bridge_loaded = false;", ct); }
+        catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[CGTInjector] ClearLoadGuard: {ex.Message}"); }
+    }
+
+    private static string ComputeBridgeHash(string content)
+    {
+        var bytes = System.Text.Encoding.UTF8.GetBytes(content);
+        using var sha = System.Security.Cryptography.SHA256.Create();
+        return Convert.ToHexString(sha.ComputeHash(bytes))[..16]; // first 16 hex chars is enough
     }
 
     private async Task<string?> FindEfbPageIdAsync(CancellationToken ct)
