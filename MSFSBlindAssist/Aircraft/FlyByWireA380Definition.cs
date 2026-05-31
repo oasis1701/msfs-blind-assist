@@ -207,6 +207,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         var normFault = new Dictionary<double, string> { [0] = "Normal", [1] = "Fault" };
         var signSw = new Dictionary<double, string> { [0] = "On", [1] = "Auto", [2] = "Off" };
         var srcSw = new Dictionary<double, string> { [0] = "Capt", [1] = "Norm", [2] = "F/O" };
+        var discSw = new Dictionary<double, string> { [0] = "Disconnected", [1] = "Normal" };
 
         // ============================ OVERHEAD ============================
 
@@ -262,6 +263,17 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             foreach (var ab in new[] { "A", "B" })
                 OffAuto($"A32NX_OVHD_HYD_EPUMP{sys}{ab}_ON_PB_IS_AUTO",
                         $"{(sys == "G" ? "Green" : "Yellow")} Electric Pump {ab}");
+        // The two MAIN electric hydraulic pumps on the HYD overhead (green "elec
+        // hyd pump" = EPUMPB, and the yellow elec pump = EPUMPY) — settable via the
+        // calculator path like the other OVHD PBs (#104 catalog diff: these were
+        // missing entirely; the cockpit clicks PUSH_OVHD_HYD_ELECPUMP/ELECPUMPY).
+        OffAuto("A32NX_OVHD_HYD_EPUMPB_PB_IS_AUTO", "Electric Hydraulic Pump");
+        OffAuto("A32NX_OVHD_HYD_EPUMPY_PB_IS_AUTO", "Yellow Electric Hydraulic Pump");
+        // Engine 1-4 hydraulic pump DISCONNECT pushbuttons (guarded). 1 = normal,
+        // 0 = disconnected (an in-flight-irreversible action on the real jet; the
+        // sim lets you reset it). #104: were missing entirely.
+        for (int n = 1; n <= 4; n++)
+            Sel($"A32NX_OVHD_HYD_ENG_{n}AB_PUMP_DISC_PB_IS_AUTO", $"Engine {n} Pumps Disconnect", discSw);
         Press("A32NX_OVHD_HYD_RAT_MAN_ON_IS_PRESSED", "RAT Manual On");
         Read("A32NX_RAT_RPM", "RAT R P M", "rpm"); // Ram Air Turbine speed (0 = stowed)
 
@@ -1550,6 +1562,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "A32NX_OVHD_HYD_ENG_4A_PUMP_PB_IS_AUTO", "A32NX_OVHD_HYD_ENG_4B_PUMP_PB_IS_AUTO",
             "A32NX_OVHD_HYD_EPUMPGA_ON_PB_IS_AUTO", "A32NX_OVHD_HYD_EPUMPGB_ON_PB_IS_AUTO",
             "A32NX_OVHD_HYD_EPUMPYA_ON_PB_IS_AUTO", "A32NX_OVHD_HYD_EPUMPYB_ON_PB_IS_AUTO",
+            "A32NX_OVHD_HYD_EPUMPB_PB_IS_AUTO", "A32NX_OVHD_HYD_EPUMPY_PB_IS_AUTO",
+            "A32NX_OVHD_HYD_ENG_1AB_PUMP_DISC_PB_IS_AUTO", "A32NX_OVHD_HYD_ENG_2AB_PUMP_DISC_PB_IS_AUTO",
+            "A32NX_OVHD_HYD_ENG_3AB_PUMP_DISC_PB_IS_AUTO", "A32NX_OVHD_HYD_ENG_4AB_PUMP_DISC_PB_IS_AUTO",
             "A32NX_OVHD_HYD_RAT_MAN_ON_IS_PRESSED"
         };
         p["Bleed Air"] = new List<string>
