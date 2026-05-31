@@ -13,6 +13,11 @@ public class MCDUDisplayData
     public string Scratchpad { get; set; } = "";
     public string[] RawLines { get; set; } = new string[14];
 
+    // FBW-specific extras (Fenix leaves these at their defaults — no behavior change).
+    public string Page { get; set; } = "";
+    public bool[] Arrows { get; set; } = new bool[4];
+    public List<string> Annunciators { get; set; } = new List<string>();
+
     public MCDUDisplayData()
     {
         for (int i = 0; i < 6; i++)
