@@ -6,6 +6,17 @@ using System.Text.RegularExpressions;
 
 namespace MSFSBlindAssist.SimConnect
 {
+    /// <summary>One scraped Electronic-Checklist line (read from the A380X_EWD view).</summary>
+    public sealed class EclRow
+    {
+        public string text { get; set; } = "";
+        public string type { get; set; } = "";   // headline | item | abnormal | completed | line
+        [System.Text.Json.Serialization.JsonPropertyName("checked")]
+        public bool Checked { get; set; }
+        public string style { get; set; } = "";   // done | action | caution | manual
+        public bool selected { get; set; }
+    }
+
     /// <summary>
     /// Background monitor that reads the FlyByWire A380X E/WD (Engine &amp; Warning
     /// Display) abnormal/warning PROCEDURES and announces new failures for a screen
@@ -36,6 +47,22 @@ namespace MSFSBlindAssist.SimConnect
         public event Action<string>? LineAnnounced;
         public event Action<string>? Error;
 
+        /// <summary>
+        /// Raised (on the creating thread) with the current Electronic-Checklist rows
+        /// while <see cref="EclActive"/> is true. The ECL renders on the SAME
+        /// A380X_EWD Coherent view, and Coherent GT (Chromium 49) allows only ONE
+        /// inspector connection per page — so the live ECL is read through THIS
+        /// already-connected monitor's socket (the ecl agent installed alongside the
+        /// E/WD agent) instead of a second, conflicting connection.
+        /// </summary>
+        public event Action<List<EclRow>>? EclRowsUpdated;
+
+        /// <summary>Set by the checklist window: poll + raise ECL rows only while open.</summary>
+        public bool EclActive { get; set; }
+
+        /// <summary>True once the shared A380X_EWD connection + agents are installed.</summary>
+        public bool IsConnected => _connected && _agentInstalled;
+
         private readonly SynchronizationContext? _syncContext;
         private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(4) };
         private readonly SemaphoreSlim _sendLock = new(1, 1);
@@ -63,6 +90,9 @@ namespace MSFSBlindAssist.SimConnect
         private CancellationTokenSource? _cts;
         private ClientWebSocket? _ws;
         private string _agentJs = "";
+        private string _eclAgentJs = "";
+        private bool _eclAgentInstalled;
+        private string _lastEclHash = "";
         private int _msgId;
         private volatile bool _connected;
         private volatile bool _agentInstalled;
@@ -81,6 +111,11 @@ namespace MSFSBlindAssist.SimConnect
             {
                 string path = Path.Combine(AppContext.BaseDirectory, "Resources", "coherent-ewd-agent.js");
                 _agentJs = File.ReadAllText(path);
+                // The live ECL agent is installed on the SAME connection (the ECL
+                // renders on this view too; Chromium 49 allows only one inspector
+                // socket per page, so we cannot open a second one for it).
+                string eclPath = Path.Combine(AppContext.BaseDirectory, "Resources", "coherent-ecl-agent.js");
+                _eclAgentJs = File.ReadAllText(eclPath);
             }
             catch (Exception ex)
             {
@@ -146,10 +181,19 @@ namespace MSFSBlindAssist.SimConnect
 
             string install = await EvalAsync(_agentJs, ct);
             _agentInstalled = install.IndexOf("MSFSBA_EWD_INSTALLED", StringComparison.Ordinal) >= 0;
+            // Install the ECL agent on the same socket (best-effort; the failure
+            // monitor still works even if this fails).
+            _eclAgentInstalled = false;
+            if (!string.IsNullOrEmpty(_eclAgentJs))
+            {
+                string eclInstall = await EvalAsync(_eclAgentJs, ct);
+                _eclAgentInstalled = eclInstall.IndexOf("MSFSBA_ECL_INSTALLED", StringComparison.Ordinal) >= 0;
+            }
             _connected = _agentInstalled;
             // A fresh agent install = a fresh page; take a new silent baseline so a
             // failure already on screen at connect time does not spam on every poll.
             _baselineDone = false;
+            _lastEclHash = "";
             return _agentInstalled;
         }
 
@@ -238,6 +282,47 @@ namespace MSFSBlindAssist.SimConnect
 
             foreach (var line in fresh)
                 RaiseLine(line);
+
+            // Live Electronic Checklist — only while the checklist window is open.
+            if (EclActive && _eclAgentInstalled)
+            {
+                var rows = await ScrapeEclInternal(ct);
+                if (rows != null)
+                {
+                    string hash = string.Join("\n", rows.Select(r => (r.Checked ? "1" : "0") + (r.selected ? "S" : "") + r.text));
+                    if (hash != _lastEclHash) { _lastEclHash = hash; RaiseEclRows(rows); }
+                }
+            }
+        }
+
+        /// <summary>
+        /// On-demand ECL scrape over the shared A380X_EWD socket (used by the
+        /// checklist window after it pulses an ECP button, so the user hears the
+        /// result on the now-selected line). Returns null if the agent isn't ready.
+        /// </summary>
+        public async Task<List<EclRow>?> ScrapeEclAsync()
+        {
+            try
+            {
+                var ct = _cts?.Token ?? CancellationToken.None;
+                if (!await EnsureConnected(ct)) return null;
+                return await ScrapeEclInternal(ct);
+            }
+            catch { return null; }
+        }
+
+        private async Task<List<EclRow>?> ScrapeEclInternal(CancellationToken ct)
+        {
+            if (!_eclAgentInstalled) return null;
+            string raw = await EvalAsync("window.__MSFSBA_ECL ? __MSFSBA_ECL.scrape() : ''", ct);
+            if (string.IsNullOrEmpty(raw)) { _eclAgentInstalled = false; return null; }
+            try
+            {
+                var res = JsonSerializer.Deserialize<EclScrapeResult>(raw);
+                if (res == null || !res.ok) return null;
+                return res.rows ?? new List<EclRow>();
+            }
+            catch { return null; }
         }
 
         private static string Clean(string? s)
@@ -356,6 +441,12 @@ namespace MSFSBlindAssist.SimConnect
             else Error?.Invoke(message);
         }
 
+        private void RaiseEclRows(List<EclRow> rows)
+        {
+            if (_syncContext != null) _syncContext.Post(_ => EclRowsUpdated?.Invoke(rows), null);
+            else EclRowsUpdated?.Invoke(rows);
+        }
+
         public void Dispose()
         {
             if (_disposed) return;
@@ -381,6 +472,13 @@ namespace MSFSBlindAssist.SimConnect
             public string? sev { get; set; }
             public bool headline { get; set; }
             public bool selected { get; set; }
+        }
+
+        private sealed class EclScrapeResult
+        {
+            public bool ok { get; set; }
+            public bool shown { get; set; }
+            public List<EclRow>? rows { get; set; }
         }
     }
 }

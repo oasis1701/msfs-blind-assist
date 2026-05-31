@@ -27,7 +27,11 @@ public sealed class FBWA380ChecklistForm : Form
 {
     private readonly ScreenReaderAnnouncer _announcer;
     private readonly SimConnectManager _sim;
-    private readonly CoherentEclClient _ecl;
+    // The live ECL is read through the SHARED A380X_EWD monitor connection — the
+    // ECL renders on the same Coherent view as the E/WD failures, and Coherent GT
+    // (Chromium 49) allows only ONE inspector socket per page, so a separate
+    // connection would be rejected (which is why the window used to show nothing).
+    private readonly CoherentEWDClient? _ewd;
     private ListBox _list = null!;
     private Label _status = null!;
     private List<EclRow> _rows = new();
@@ -37,14 +41,17 @@ public sealed class FBWA380ChecklistForm : Form
     private bool _busy;           // guard against overlapping ECP pulses
     private bool _weShowedOverlay; // we toggled the C/L overlay ON, so hide it on close
 
-    public FBWA380ChecklistForm(ScreenReaderAnnouncer announcer, SimConnectManager sim)
+    public FBWA380ChecklistForm(ScreenReaderAnnouncer announcer, SimConnectManager sim, CoherentEWDClient? ewd)
     {
         _announcer = announcer;
         _sim = sim;
-        _ecl = new CoherentEclClient();
-        _ecl.RowsUpdated += OnRowsUpdated;
+        _ewd = ewd;
+        if (_ewd != null)
+        {
+            _ewd.EclRowsUpdated += OnRowsUpdated;
+            _ewd.EclActive = true;   // tell the shared monitor to poll + push ECL rows
+        }
         BuildUi();
-        _ecl.Start();
         _ = InitialScrape();
     }
 
@@ -127,7 +134,7 @@ public sealed class FBWA380ChecklistForm : Form
             await Task.Delay(140);
             _sim?.ExecuteCalculatorCode($"0 (>L:{lvar})");
             await Task.Delay(320);
-            var rows = await _ecl.ScrapeNowAsync();
+            var rows = await ScrapeEcl();
             Apply(rows, announceChecks: true);
             // Announce the line the FWS cursor now sits on (what UP/DOWN/CHECK act on);
             // fall back to a generic confirmation if no line is selected.
@@ -146,18 +153,18 @@ public sealed class FBWA380ChecklistForm : Form
         // on ourselves. This is what fixes the old "not reachable" message, which only
         // ever meant the overlay was hidden / the read hadn't connected yet.
         List<EclRow> rows = new();
-        for (int i = 0; i < 6; i++)
+        for (int i = 0; i < 8; i++)
         {
-            rows = await _ecl.ScrapeNowAsync();
-            if (rows != null && rows.Count > 0) break;
+            rows = await ScrapeEcl();
+            if (rows.Count > 0) break;
             await Task.Delay(450);
         }
-        if (rows == null || rows.Count == 0)
+        if (rows.Count == 0)
         {
             _weShowedOverlay = true;
             await PulseClRaw();
-            await Task.Delay(450);
-            rows = await _ecl.ScrapeNowAsync();
+            await Task.Delay(500);
+            rows = await ScrapeEcl();
         }
         Apply(rows, announceChecks: false);
     }
@@ -172,8 +179,15 @@ public sealed class FBWA380ChecklistForm : Form
 
     private async Task RefreshNow()
     {
-        Apply(await _ecl.ScrapeNowAsync(), announceChecks: false);
+        Apply(await ScrapeEcl(), announceChecks: false);
         _announcer?.Announce("Refreshed");
+    }
+
+    // Scrape the ECL through the shared A380X_EWD monitor connection (never null).
+    private async Task<List<EclRow>> ScrapeEcl()
+    {
+        if (_ewd == null) return new List<EclRow>();
+        return (await _ewd.ScrapeEclAsync()) ?? new List<EclRow>();
     }
 
     private void OnRowsUpdated(List<EclRow> rows) => Apply(rows, announceChecks: true);
@@ -254,7 +268,9 @@ public sealed class FBWA380ChecklistForm : Form
                 try { sim.ExecuteCalculatorCode("1 (>L:A32NX_BTN_CL)"); await Task.Delay(140); sim.ExecuteCalculatorCode("0 (>L:A32NX_BTN_CL)"); } catch { }
             });
         }
-        try { _ecl.RowsUpdated -= OnRowsUpdated; _ecl.Dispose(); } catch { }
+        // The EWD client is SHARED (owned by MainForm) — only detach + stop the ECL
+        // polling, never dispose it.
+        try { if (_ewd != null) { _ewd.EclRowsUpdated -= OnRowsUpdated; _ewd.EclActive = false; } } catch { }
         base.OnFormClosed(e);
     }
 }

@@ -2143,8 +2143,11 @@ public partial class MainForm : Form
             announcer.AnnounceImmediate("The live Electronic Checklist is only on the A380. Use Shift+C for the text checklist.");
             return;
         }
+        // The live ECL reads through the SHARED A380X_EWD monitor connection (only
+        // one Coherent inspector socket per page is allowed). Ensure it's running.
+        if (coherentEWDClient == null) StartA380EWDMonitor();
         if (fbwA380ChecklistForm == null || fbwA380ChecklistForm.IsDisposed)
-            fbwA380ChecklistForm = new Forms.FBWA380.FBWA380ChecklistForm(announcer, simConnectManager);
+            fbwA380ChecklistForm = new Forms.FBWA380.FBWA380ChecklistForm(announcer, simConnectManager, coherentEWDClient);
         fbwA380ChecklistForm.Show();
         fbwA380ChecklistForm.BringToFront();
         fbwA380ChecklistForm.Activate();
