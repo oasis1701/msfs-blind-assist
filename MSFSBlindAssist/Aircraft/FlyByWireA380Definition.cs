@@ -1306,6 +1306,23 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             }
         }
 
+        // ---- Runway Overrun Warning / Protection (ROW/ROP) + OANS RWY AHEAD ----
+        // Landing-rollout and taxi safety call-outs. Both are ARINC429 discrete
+        // words (plain L-vars, no colon index); each warning is a single bit,
+        // decoded + announced on its rising edge in ProcessSimVarUpdate. Bits from
+        // the FBW PFD AttitudeIndicatorWarnings: ROW_ROP_WORD_1 13=MAX BRAKING,
+        // 14=IF WET RWY TOO SHORT, 15=RWY TOO SHORT; OANS_WORD_1 11=RWY AHEAD.
+        vars["A32NX_ROW_ROP_WORD_1"] = new SimVarDefinition
+        {
+            Name = "A32NX_ROW_ROP_WORD_1", DisplayName = "Runway Overrun Protection",
+            Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true
+        };
+        vars["A32NX_OANS_WORD_1"] = new SimVarDefinition
+        {
+            Name = "A32NX_OANS_WORD_1", DisplayName = "Runway Ahead Advisory",
+            Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true
+        };
+
         // ---- Ground Services (flyPad Ground page, exposed as cockpit controls) ----
         // Doors: read the stock `INTERACTIVE POINT OPEN:n` as BOOL so the door
         // auto-announces Open/Closed exactly once per transition (a Percent read
@@ -2022,6 +2039,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     private readonly double[] _tla = { double.NaN, double.NaN, double.NaN, double.NaN };
     private readonly string?[] _lastEngDetent = new string?[4];
     private string? _lastAllDetent;
+    private bool _tlaBaselineDone;   // suppress the startup "thrust 1/2/3/4 / all" spam
+    private readonly HashSet<string> _rowRopActive = new();   // active ROW/ROP/OANS warning bits
     // FBW TLA detents: IDLE 0, CLB 25, FLX/MCT 35, TOGA 45, reverse negative.
     private static string? TlaDetent(double v) =>
         Math.Abs(v) < 1.5 ? "Idle" :
@@ -2070,6 +2089,26 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             {
                 _tla[eng - 1] = value;
                 string? det = TlaDetent(value);
+                // Establish the baseline SILENTLY on first start: until all four
+                // levers have reported once, just record their detents and don't
+                // announce — otherwise MSFSBA reads out "Thrust lever 1 Idle …
+                // Thrust lever 4 Idle, All thrust levers Idle" every startup. Only
+                // real detent CHANGES after the baseline are announced.
+                if (!_tlaBaselineDone)
+                {
+                    if (det != null) _lastEngDetent[eng - 1] = det;
+                    bool allSeen = true;
+                    for (int i = 0; i < 4; i++) if (double.IsNaN(_tla[i])) { allSeen = false; break; }
+                    if (allSeen)
+                    {
+                        _tlaBaselineDone = true;
+                        string? d0 = TlaDetent(_tla[0]);
+                        bool same = d0 != null;
+                        for (int i = 1; i < 4 && same; i++) if (TlaDetent(_tla[i]) != d0) same = false;
+                        _lastAllDetent = same ? d0 : null;
+                    }
+                    return true;
+                }
                 if (det != null)
                 {
                     // When all four levers sit at the same detent (the usual case)
@@ -2094,6 +2133,28 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                         announcer.Announce($"Thrust lever {eng} {det}");
                     }
                 }
+            }
+            return true;
+        }
+
+        // Runway Overrun Warning / Protection (ROW/ROP) + OANS RWY AHEAD — decode
+        // the ARINC429 discrete word and announce each safety call-out on its rising
+        // edge (0->1). On the ground pre-flight every bit is 0, so this is silent at
+        // baseline and only speaks the real landing/taxi warnings ("Runway too
+        // short", "Max braking", "Runway ahead"). Honours the Ctrl+M mute.
+        if (varName is "A32NX_ROW_ROP_WORD_1" or "A32NX_OANS_WORD_1")
+        {
+            var word = new SimConnect.Arinc429Word(value);
+            (int bit, string phrase)[] bits = varName == "A32NX_ROW_ROP_WORD_1"
+                ? new[] { (13, "Max braking"), (14, "If wet, runway too short"), (15, "Runway too short") }
+                : new[] { (11, "Runway ahead") };
+            bool muted = Settings.SettingsManager.Current.A380DisabledMonitorVariables.Contains(varName);
+            foreach (var (bit, phrase) in bits)
+            {
+                bool active = word.BitValueOr(bit, false);
+                string k = varName + ":" + bit;
+                if (active && _rowRopActive.Add(k)) { if (!muted) announcer.Announce(phrase); }
+                else if (!active) _rowRopActive.Remove(k);
             }
             return true;
         }

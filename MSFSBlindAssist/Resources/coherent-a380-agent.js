@@ -647,8 +647,16 @@
       if (key === "CLR" || key === "DEL") key = "BACKSPACE";
       else if (key === "SPACE") key = "SP";
       var eventName = "A32NX_KCCU_" + (A.activeMcdu === 1 ? "L" : "R") + "_" + key;
-      if (typeof Coherent !== "undefined" && typeof Coherent.trigger === "function") Coherent.trigger("H:" + eventName);
-      if (typeof SimVar !== "undefined" && typeof SimVar.SetSimVarValue === "function") SimVar.SetSimVarValue("H:" + eventName, "number", 0);
+      // Fire the H-event exactly ONCE. Firing via BOTH Coherent.trigger AND
+      // SetSimVarValue double-triggers the key — e.g. F-PLN page up/down jumps by
+      // two waypoints or behaves erratically ("weird/flaky"). Prefer Coherent.trigger
+      // (the real in-sim path); only fall back to the SimVar H: write when Coherent
+      // is absent (headless debugger eval).
+      if (typeof Coherent !== "undefined" && typeof Coherent.trigger === "function") {
+        Coherent.trigger("H:" + eventName);
+      } else if (typeof SimVar !== "undefined" && typeof SimVar.SetSimVarValue === "function") {
+        SimVar.SetSimVarValue("H:" + eventName, "number", 0);
+      }
     } catch (e) {}
     return "ok";
   };

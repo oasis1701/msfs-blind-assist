@@ -692,12 +692,16 @@ public class FBWA380MCDUForm : Form
         if ((e.Control && (e.KeyCode == Keys.Up || e.KeyCode == Keys.Left)) || e.KeyCode == Keys.PageUp)
         {
             SendCommand("key_prev_page");
+            _announcer.Announce("Previous page");   // immediate feedback; the new
+            ScheduleRefresh();                       // page title also auto-announces
             e.Handled = true; e.SuppressKeyPress = true;
             return;
         }
         if ((e.Control && (e.KeyCode == Keys.Down || e.KeyCode == Keys.Right)) || e.KeyCode == Keys.PageDown)
         {
             SendCommand("key_next_page");
+            _announcer.Announce("Next page");
+            ScheduleRefresh();
             e.Handled = true; e.SuppressKeyPress = true;
         }
     }
