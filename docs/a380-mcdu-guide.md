@@ -78,10 +78,11 @@ Other keys while on a field:
 
 Three keyboard-accessible ways to reach a page:
 
-1. **"Go to MFD page" combo box** at the top of the window — lists all 20 pages
-   grouped by tab (ACTIVE, POSITION, SEC INDEX, DATA). Choose one to jump
-   straight to it. This is the most reliable way to reach pages that have no
-   dedicated button (FUEL & LOAD, WIND, IRS, GNSS, TIME, STATUS, AIRPORT, …).
+1. **"Go to MFD page" combo box** at the top of the window — lists every page
+   grouped by tab (ACTIVE, POSITION, SEC INDEX, DATA, and the **ATC COM** pages).
+   Choose one to jump straight to it. This is the most reliable way to reach
+   pages that have no dedicated button (FUEL & LOAD, WIND, IRS, GNSS, TIME,
+   STATUS, AIRPORT, the ATC COM pages, …).
 2. The **quick page buttons** (INIT, F-PLN, PERF, RAD NAV, SEC FPL, ATC COM,
    DIR) with their Alt+letter mnemonics, for the common pages.
 3. The MFD's **own top tabs**, which appear in the page line list.
@@ -94,6 +95,27 @@ Also:
 Some pages (WIND, REPORT, GNSS, TIME, the DATA sub-pages) only open once the FMS
 has the flight plan or data they need — that is the real aircraft behaviour, not
 a limitation.
+
+## 4b. ATC COM (CPDLC datalink) and D-ATIS
+
+The **ATC COM** button (Alt+A) opens the datalink suite, and the six ATC COM
+pages also appear in the "Go to MFD page" combo:
+
+- **ATC COM: CONNECT** — log on to / off from a controller (NOTIFY TO ATC,
+  ACTIVE ATC, NEXT ATC, DISCONNECT ALL) and arm ADS-C.
+- **ATC COM: MSG RECORD** — the CPDLC message log. **ALL MSG** lists every
+  uplinked/downlinked message; **MONITORED MSG** the monitored ones. This is
+  where the text of a controller's datalink clearance is read — when MSFSBA
+  announces *"ATC Message Waiting"*, open this page to read it line by line.
+- **ATC COM: D-ATIS** — request and read departure/arrival D-ATIS.
+- **ATC COM: REQUEST**, **REPORT & NOTIFY**, **EMERGENCY** — these are still
+  *work-in-progress in the FlyByWire development build* and currently show
+  "ERROR 404 NOT FOUND"; they will read normally once FlyByWire implements them
+  (MSFSBA already navigates to them, so nothing changes on our side).
+
+All ATC COM pages read as ordinary text/buttons/combo boxes — navigate the line
+list with the arrow keys and operate controls with Enter, exactly like any other
+MFD page.
 
 ## 4a. Reading the flight plan (F-PLN) — what the lines mean
 

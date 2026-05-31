@@ -890,6 +890,40 @@
     return "missing";
   };
 
+  // Resolve the MFD's UIService instance. The <a380x-mfd> custom element's
+  // fsInstrument does NOT always carry uiService directly; it lives on the
+  // mounted side's display instance (mfdCaptRef / mfdFoRef .instance.uiService).
+  // Verified live: navigateTo there changes the page from ANY current page,
+  // including cross-system jumps (FMS -> ATCCOM), which the page-selector-id
+  // click cannot do because the target system's header isn't mounted yet.
+  A.mfdUiService = function () {
+    try {
+      var mfd = document.querySelector("a380x-mfd");
+      if (!mfd || !mfd.fsInstrument) return null;
+      var fi = mfd.fsInstrument;
+      if (fi.uiService && fi.uiService.navigateTo) return fi.uiService;
+      var refs = ["mfdCaptRef", "mfdFoRef"];
+      for (var i = 0; i < refs.length; i++) {
+        var r = fi[refs[i]];
+        if (r && r.instance && r.instance.uiService && r.instance.uiService.navigateTo)
+          return r.instance.uiService;
+      }
+    } catch (e) {}
+    return null;
+  };
+
+  // Navigate to an MFD page by its UIService URI (e.g. "atccom/msg-record",
+  // "fms/active/f-pln"). The robust cross-system path: works from any current
+  // page, unlike navigateById (whose page-selector ids only exist while that
+  // system's header is mounted). Returns "ok"/"missing".
+  A.navigateUri = function (uri) {
+    try {
+      var u = A.mfdUiService();
+      if (u && uri) { u.navigateTo(uri); return "ok"; }
+    } catch (e) {}
+    return "missing";
+  };
+
   A.navigate = function (label, kccuKey) {
     try {
       var root = A.findRoot(A.activeMcdu);

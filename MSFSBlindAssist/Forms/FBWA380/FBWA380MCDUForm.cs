@@ -63,7 +63,11 @@ public class FBWA380MCDUForm : Form
     // (CAPT/FO_MFD_pageSelector{Prefix}_{Index}) and a KCCU-key fallback. Lets the
     // user jump to ANY of the 20 pages from one combo box (keyboard accessible),
     // in addition to the quick page buttons. (prefix,index) verified live.
-    private sealed record PageNav(string Label, string Prefix, int Index, string Key);
+    // Uri (when non-empty) navigates via the MFD UIService (navigateTo) — the
+    // robust cross-system path used for the ATC COM / D-ATIS pages, which the
+    // page-selector-id click can't reach from the FMS (their header isn't
+    // mounted). FMS pages keep the verified (prefix,index) page-selector click.
+    private sealed record PageNav(string Label, string Prefix, int Index, string Key, string Uri = "");
     private static readonly PageNav[] AllPages =
     {
         new("ACTIVE: F-PLN",      "Active",   0, "FPLN"),
@@ -86,6 +90,13 @@ public class FBWA380MCDUForm : Form
         new("DATA: ROUTE",        "Data",     3, ""),
         new("DATA: AIRPORT",      "Data",     4, ""),
         new("DATA: PRINTER",      "Data",     5, ""),
+        // ATC COM (CPDLC datalink) + D-ATIS — UIService URIs (cross-system).
+        new("ATC COM: CONNECT",       "", -1, "", "atccom/connect"),
+        new("ATC COM: REQUEST",       "", -1, "", "atccom/request"),
+        new("ATC COM: REPORT & NOTIFY","", -1, "", "atccom/report-modify/position"),
+        new("ATC COM: MSG RECORD",    "", -1, "", "atccom/msg-record"),
+        new("ATC COM: D-ATIS",        "", -1, "", "atccom/d-atis/list"),
+        new("ATC COM: EMERGENCY",     "", -1, "", "atccom/emer"),
     };
     private TextBox _scratchpad = null!;
 
@@ -290,7 +301,7 @@ public class FBWA380MCDUForm : Form
         _btnPerf.Click    += (_, _) => SendNavigateById("Active",   1, "PERF");     // ACTIVE ▸ PERF
         _btnRadNav.Click  += (_, _) => SendNavigateById("Position", 2, "NAVAID");   // POSITION ▸ NAVAIDS
         _btnSecFPln.Click += (_, _) => SendNavigateById("SecIndex", 0, "SECINDEX"); // SEC INDEX ▸ SEC 1
-        _btnAtc.Click     += (_, _) => SendNavigateById("",        -1, "ATCCOM");   // KCCU only
+        _btnAtc.Click     += (_, _) => SendNavigateUri("atccom/connect");          // ATC COM via UIService (reliable)
         _btnDir.Click     += (_, _) => SendNavigateById("",        -1, "DIR");      // KCCU only
         _btnUp.Click      += (_, _) => SendCommand("key_prev_page");
         _btnDown.Click    += (_, _) => SendCommand("key_next_page");
@@ -311,7 +322,8 @@ public class FBWA380MCDUForm : Form
             int i = _pageSelector.SelectedIndex;
             if (i < 0 || i >= AllPages.Length) return;
             var p = AllPages[i];
-            SendNavigateById(p.Prefix, p.Index, p.Key);
+            if (!string.IsNullOrEmpty(p.Uri)) SendNavigateUri(p.Uri);
+            else SendNavigateById(p.Prefix, p.Index, p.Key);
             // No explicit announce: the screen reader already speaks the chosen
             // combo item, and the MFD page title announces when the new page loads.
             // Pull the new page's elements shortly after the route switches.
@@ -545,6 +557,16 @@ public class FBWA380MCDUForm : Form
             ["index"] = index.ToString(),
             ["key"] = key
         });
+
+    /// <summary>
+    /// Navigate to a page by its MFD UIService URI (e.g. "atccom/msg-record").
+    /// The reliable cross-system path — works from any current page, used for the
+    /// ATC COM (CPDLC datalink) and D-ATIS pages that the page-selector-id click
+    /// can't reach while the FMS header is mounted.
+    /// </summary>
+    private void SendNavigateUri(string uri) =>
+        _bridgeServer.EnqueueCommand("navigate_uri",
+            new Dictionary<string, string> { ["uri"] = uri });
 
     /// <summary>
     /// Airbus CLR semantics. A real pilot pressing CLR first clears the

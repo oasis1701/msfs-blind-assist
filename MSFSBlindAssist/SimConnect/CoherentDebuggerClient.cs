@@ -151,6 +151,14 @@ namespace MSFSBlindAssist.SimConnect
                     var navKey = payload != null && payload.TryGetValue("key", out var nk) ? nk : "";
                     _lastScreenHash = ""; _lastElementsHash = "";
                     return $"window.__MSFSBA_A380 && __MSFSBA_A380.navigate({JsStr(navLabel)},{JsStr(navKey)})";
+                case "navigate_uri":
+                    // Navigate to a page by its MFD UIService URI (e.g.
+                    // "atccom/msg-record"). The robust cross-system path — works
+                    // from any current page (used for ATC COM / D-ATIS, which the
+                    // page-selector-id click can't reach when the FMS header is up).
+                    var navUri = payload != null && payload.TryGetValue("uri", out var nu) ? nu : "";
+                    _lastScreenHash = ""; _lastElementsHash = "";
+                    return $"window.__MSFSBA_A380 && __MSFSBA_A380.navigateUri({JsStr(navUri)})";
                 case "navigate_by_id":
                     // Click a page-selector menu item by its stable element id
                     // ({CAPT|FO}_MFD_pageSelector{prefix}_{index}); KCCU key is the
