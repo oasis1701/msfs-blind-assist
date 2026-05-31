@@ -142,6 +142,8 @@ Airspeed:
   T          Read TAS (True Airspeed)
   G          Read Ground Speed
   M          Read Mach Number
+  D          Distance to destination (from the FMS flight plan)
+  Shift+D    Distance to Top of Descent (once the FMS has computed a descent)
 
 Characteristic speeds (FMS speed-tape bugs, A380 values):
   Shift+1    Green Dot speed (best L/D / O speed)

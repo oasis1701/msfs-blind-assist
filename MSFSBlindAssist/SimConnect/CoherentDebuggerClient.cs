@@ -322,6 +322,14 @@ namespace MSFSBlindAssist.SimConnect
 
         // ---- Runtime.evaluate over the inspector socket -----------------
 
+        /// <summary>
+        /// Evaluate an arbitrary JS expression in the MFD page and return its string
+        /// value. For one-shot reads like <c>__MSFSBA_A380.flightInfo()</c> that need
+        /// a value back (not the event-based scrape pipeline). Returns "" if the
+        /// socket isn't connected.
+        /// </summary>
+        public Task<string> EvalForResultAsync(string expression) => EvalAsync(expression);
+
         private Task<string> EvalAsync(string expression) => EvalAsync(expression, _cts?.Token ?? CancellationToken.None);
 
         private async Task<string> EvalAsync(string expression, CancellationToken ct)

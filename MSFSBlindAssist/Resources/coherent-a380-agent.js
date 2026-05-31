@@ -1098,6 +1098,50 @@
 
   A.ping = function () { return "MSFSBA_A380_OK"; };
 
+  // FMS-computed flight progress for the D / Shift+D hotkeys. None of this is a
+  // stock SimVar — it comes from the FMS guidance controller (same numbers the MFD
+  // shows). Returns JSON:
+  //   distToDest : great-circle distance remaining along the active plan (NM)
+  //   distToTD   : NM from the aircraft to Top of Descent (negative = passed); null
+  //                until the FMS computes a descent (e.g. on the ground)
+  //   distToTC   : NM to Top of Climb (null when none)
+  // distToDest works on the ground (verified). The T/D and T/C pseudo-waypoints are
+  // only computed once airborne, so they read null pre-flight — VERIFY IN FLIGHT.
+  A.flightInfo = function () {
+    try {
+      var mfd = document.querySelector("a380x-mfd");
+      if (!mfd || !mfd.fsInstrument || !mfd.fsInstrument.fmcService) return JSON.stringify({ ok: false, error: "FMS not ready" });
+      var m = mfd.fsInstrument.fmcService.master;
+      var gc = m && m.guidanceController;
+      if (!gc) return JSON.stringify({ ok: false, error: "no guidance" });
+      var info = { ok: true, distToDest: null, distToTD: null, distToTC: null };
+      var map = gc.alongTrackDistancesToDestination;
+      var dtd = (map && map.get) ? map.get(0) : null;        // 0 = active plan
+      if (typeof dtd === "number" && isFinite(dtd)) info.distToDest = dtd;
+      // Total active-plan length (last leg's cumulative distance from start), so a
+      // pseudo-waypoint's distanceFromStart can be turned into distance-to-go:
+      //   toGo = distToDest - (total - pwp.distanceFromStart)
+      var total = null;
+      try {
+        var legs = m.flightPlanInterface.active.allLegs;
+        for (var li = legs.length - 1; li >= 0; li--) {
+          var c = legs[li] && legs[li].calculated;
+          if (c && typeof c.cumulativeDistance === "number") { total = c.cumulativeDistance; break; }
+        }
+      } catch (e) {}
+      var pw = gc.currentPseudoWaypoints || [];
+      for (var p = 0; p < pw.length; p++) {
+        var id = ((pw[p].ident || pw[p].mcduIdent || "") + "").toUpperCase();
+        var dfs = pw[p].distanceFromStart;
+        if (typeof dfs !== "number" || info.distToDest == null || total == null) continue;
+        var toGo = info.distToDest - (total - dfs);
+        if (id.indexOf("T/D") >= 0 || id.indexOf("DECEL") >= 0) { if (info.distToTD == null) info.distToTD = toGo; }
+        else if (id.indexOf("T/C") >= 0) { if (info.distToTC == null) info.distToTC = toGo; }
+      }
+      return JSON.stringify(info);
+    } catch (e) { return JSON.stringify({ ok: false, error: (e && e.message) ? e.message : String(e) }); }
+  };
+
   window.__MSFSBA_A380 = A;
   return "MSFSBA_A380_INSTALLED";
 })();

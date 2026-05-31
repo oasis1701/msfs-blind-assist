@@ -2299,6 +2299,63 @@ public partial class MainForm : Form
         ((PMDGEFBForm)pmdgEFBForm).ShowForm();
     }
 
+    /// <summary>
+    /// Speaks FMS flight progress for the A380 D / Shift+D hotkeys. The numbers come
+    /// from the FMS guidance controller in the MFD page (no stock SimVar exposes
+    /// them), read via the Coherent debugger. <paramref name="tod"/> selects Top of
+    /// Descent (Shift+D) vs distance to destination (D). Async fire-and-forget; the
+    /// announcement lands when the eval returns.
+    /// </summary>
+    public async void AnnounceA380FlightInfo(bool tod)
+    {
+        try
+        {
+            if (coherentClient == null) { announcer.AnnounceImmediate("A380 flight info unavailable."); return; }
+            string raw = await coherentClient.EvalForResultAsync(
+                "window.__MSFSBA_A380 ? __MSFSBA_A380.flightInfo() : ''");
+            if (string.IsNullOrEmpty(raw)) { announcer.AnnounceImmediate("Flight management not ready."); return; }
+
+            using var doc = System.Text.Json.JsonDocument.Parse(raw);
+            var r = doc.RootElement;
+            if (!r.TryGetProperty("ok", out var okEl) || okEl.ValueKind != System.Text.Json.JsonValueKind.True)
+            {
+                announcer.AnnounceImmediate("Flight management not ready.");
+                return;
+            }
+
+            double? Num(string key) =>
+                r.TryGetProperty(key, out var e) && e.ValueKind == System.Text.Json.JsonValueKind.Number
+                    ? e.GetDouble() : (double?)null;
+
+            if (tod)
+            {
+                double? td = Num("distToTD");
+                double? tc = Num("distToTC");
+                if (td.HasValue)
+                    announcer.AnnounceImmediate(td.Value <= 0.5
+                        ? "Past top of descent"
+                        : $"{Math.Round(td.Value)} miles to top of descent");
+                else if (tc.HasValue && tc.Value > 0.5)
+                    announcer.AnnounceImmediate($"{Math.Round(tc.Value)} miles to top of climb");
+                else
+                    announcer.AnnounceImmediate("Top of descent not yet computed");
+            }
+            else
+            {
+                double? dd = Num("distToDest");
+                if (dd.HasValue && dd.Value >= 0)
+                    announcer.AnnounceImmediate($"{Math.Round(dd.Value)} miles to destination");
+                else
+                    announcer.AnnounceImmediate("Destination distance not available");
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[A380 flightInfo] {ex.Message}");
+            announcer.AnnounceImmediate("Flight info error.");
+        }
+    }
+
     private void ShowFBWA380MCDUDialog()
     {
         hotkeyManager.ExitInputHotkeyMode();

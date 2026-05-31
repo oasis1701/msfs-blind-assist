@@ -2821,6 +2821,17 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     {
         switch (action)
         {
+            // D / Shift+D — FMS flight progress (distance to destination / top of
+            // descent). The A380 has no PMDG-style SDK struct and no stock SimVar for
+            // these; they come from the MFD's FMS guidance controller, read live via
+            // the Coherent debugger. Delegate to MainForm, which owns that client.
+            case HotkeyAction.ReadDistanceToDest:
+                if (parentForm is MainForm mfDest) { mfDest.AnnounceA380FlightInfo(false); return true; }
+                return false;
+            case HotkeyAction.ReadDistanceToTOD:
+                if (parentForm is MainForm mfTod) { mfTod.AnnounceA380FlightInfo(true); return true; }
+                return false;
+
             case HotkeyAction.FCUSetHeading:
                 hotkeyManager.ExitInputHotkeyMode();
                 return ShowFCUHeadingDialog(simConnect, announcer, parentForm);
