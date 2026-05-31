@@ -735,28 +735,65 @@
 
     items = A.dedupeLines(items);
 
-    // Regroup open-menu options: a popped-up context/dropdown menu overlays other
-    // content, so the geometric sort leaves its options (DELETE *, DIR TO, HOLD …)
-    // scattered between unrelated lines — very confusing, especially on F-PLN. Pull
-    // every open menu's options out and place them, in menu order, as one contiguous
-    // block at the TOP of the list (when a menu is open its options are what the
-    // user wants). Each distinct menu keeps its own block.
+    // Regroup open-menu options: a popped-up combo/context menu overlays other
+    // content, so the geometric sort scatters its options (the dropdown choices, or
+    // DELETE */DIR TO/HOLD…) between unrelated lines. Pull each open menu's options
+    // into one contiguous block (in menu order) and place that block immediately
+    // AFTER the control that opened it, so the choices read right under it:
+    //   - combo box: the stamped control in the same .mfd-dropdown-container as the
+    //     open .mfd-dropdown-menu;
+    //   - F-PLN waypoint/discontinuity revision (.mfd-context-menu): the F-PLN line
+    //     the FWS marked '.selected' (set on the revised ident).
+    // A menu whose opener can't be found falls back to the TOP (it's the priority).
     var hasMenu = false;
     for (var hm = 0; hm < items.length; hm++) { if (items[hm].menuGroup >= 0) { hasMenu = true; break; } }
     if (hasMenu) {
-      var menuBlock = [], rest = [], seen = {};
+      var triggerIdxFor = function (cont) {
+        var c = (cont.className && cont.className.toString) ? cont.className.toString() : "";
+        if (c.indexOf("mfd-dropdown-menu") >= 0) {
+          var box = cont;
+          for (var k = 0; k < 6 && box; k++) {
+            var bc = (box.className && box.className.toString) ? box.className.toString() : "";
+            if (bc.indexOf("mfd-dropdown-container") >= 0) break;
+            box = box.parentElement;
+          }
+          if (box) {
+            var stamped = box.querySelectorAll("[data-fbwa380-mcdu-idx]");
+            for (var s = 0; s < stamped.length; s++) {
+              // the opener is the combo control, NOT one of the menu options
+              if (!A.ancestorWithClass(stamped[s], "mfd-dropdown-menu"))
+                return parseInt(stamped[s].getAttribute("data-fbwa380-mcdu-idx"), 10);
+            }
+          }
+        }
+        var sel = document.querySelector(".mfd-fms-fpln-line-ident.selected[data-fbwa380-mcdu-idx], .mfd-fms-fpln-line-special.selected[data-fbwa380-mcdu-idx], .mfd-button.opened[data-fbwa380-mcdu-idx]");
+        if (sel) return parseInt(sel.getAttribute("data-fbwa380-mcdu-idx"), 10);
+        return -1;
+      };
+
+      // collect each menu's options (menu order) and the opener idx of each group
+      var groups = {}, nonMenu = [];
       for (var ri = 0; ri < items.length; ri++) {
         var it = items[ri];
-        if (it.menuGroup != null && it.menuGroup >= 0) {
-          if (!seen[it.menuGroup]) {
-            seen[it.menuGroup] = true;
-            var grp = items.filter(function (x) { return x.menuGroup === it.menuGroup; });
-            grp.sort(function (a, b) { return a.menuOrder - b.menuOrder; });
-            for (var gi2 = 0; gi2 < grp.length; gi2++) menuBlock.push(grp[gi2]);
-          }
-        } else { rest.push(it); }
+        if (it.menuGroup != null && it.menuGroup >= 0) (groups[it.menuGroup] || (groups[it.menuGroup] = [])).push(it);
+        else nonMenu.push(it);
       }
-      items = menuBlock.concat(rest);
+      var gk;
+      for (gk in groups) groups[gk].sort(function (a, b) { return a.menuOrder - b.menuOrder; });
+      var trig = {};
+      for (var gc = 0; gc < menuConts.length; gc++) trig[gc] = triggerIdxFor(menuConts[gc]);
+
+      var out = [], placed = {};
+      // groups with no findable opener go to the top
+      for (gk in groups) if (!(trig[gk] >= 0)) { for (var z = 0; z < groups[gk].length; z++) out.push(groups[gk][z]); placed[gk] = true; }
+      // everything else: place each group right after its opener line
+      for (var ni = 0; ni < nonMenu.length; ni++) {
+        out.push(nonMenu[ni]);
+        for (gk in groups) if (!placed[gk] && trig[gk] === nonMenu[ni].idx) { for (var y = 0; y < groups[gk].length; y++) out.push(groups[gk][y]); placed[gk] = true; }
+      }
+      // any opener we never matched in the list: append (safety net)
+      for (gk in groups) if (!placed[gk]) { for (var w = 0; w < groups[gk].length; w++) out.push(groups[gk][w]); placed[gk] = true; }
+      items = out;
     }
 
     A._mcduElements = items;
