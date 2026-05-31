@@ -321,6 +321,18 @@ Written by `hs787-mfd-bridge.js` via `SimVar.SetSimVarValue`; read by C# via Sim
 - C# → JS: `GET /commands/mfd` or `/commands/efb` polled every 400ms, returns JSON array of `{command, payload}`
 - Bridge retries every 5s on failure; heartbeat every 5s when connected
 
+### FlyByWire A32NX Accessible MCDU
+
+**Feature:** Screen-reader-accessible MCDU for the FlyByWire A32NX, opened with **Shift+M** (input mode) — same shared `HotkeyAction.ShowFenixMCDU` dispatch as the other CDUs, selected by `AircraftCode == "A320"` (Fenix is `FENIX_A320CEO`, so no collision). Supports both Captain (left/MCDU1) and First Officer (right/MCDU2) via a Left/Right selector.
+
+**Transport:** Connects to SimBridge's existing MCDU relay websocket `ws://localhost:8380/interfaces/v1/mcdu` — the same socket the FBW remote-MCDU web UI uses. Sim → client: `update:{left:{...},right:{...}}` (each side carries `lines` 12×3 `[left,right,center]` even=label/odd=value, `scratchpad`, `title`, `page`, `arrows` `[up,down,left,right]`, `annunciators`). Client → sim: `event:<left|right>:<KEY>` and `requestUpdate`. The gateway echoes every message to all clients, so the receive loop filters on `type == "update"`. No press/release pair is needed — the sim sets the `H:A320_Neo_CDU_{1|2}_BTN_{KEY}` event directly.
+
+**Key components:**
+- **`Services/FlyByWireMCDUService.cs`** — `ClientWebSocket` client with connect-loop + backoff + `SynchronizationContext` UI marshalling (mirrors `FenixMCDUService`'s shape, single socket for both directions). `SwitchSide` changes side in place and re-`requestUpdate`s (no reconnect).
+- **`Services/FbwMcduFormat.cs`** — decodes curly-brace cell markup (`{green}`/`{small}`/`{sp}`/`{end}`/…) into accessible text and builds the shared `MCDUDisplayData` (extended with `Page`/`Arrows`/`Annunciators`). Mixed-color lines with a green segment mark the active option with `*` (same convention as Fenix). **This is a 1:1 mirror of `tools/fbw-mcdu-probe/mcdu-format.js` — keep both in sync.**
+- **`Forms/FlyByWireA320/FlyByWireMCDUForm.cs`** — ListBox display + scratchpad TextBox + page buttons + L/R selector. LSK keys use the shared `MCDUUseAlternateLSKKeys` setting (Ctrl/Alt+1–6 or F1–F12). Annunciators + page number + ▲▼◄► page-arrow hints render into the display. Only background-state changes are announced (title change, scratchpad debounce, connection) per the screen-reader rule.
+- **`tools/fbw-mcdu-probe/`** — standalone Node CLI (`watch`/`press`/`type`/`replay`, `--export` JSONL captures) to inspect, drive, and capture the MCDU over the websocket without the C# app. `replay` re-renders an exported capture offline (shareable for diagnosing a page without a live sim). `mcdu-format.js` is the authoritative decode reference; `node --test` covers it.
+
 ## Detailed Documentation
 
 **Claude: Read these docs only when the task specifically requires them.**
