@@ -37,6 +37,7 @@ OUTPUT MODE  (press ] first)
   V             Vertical Speed
   D             Distance to destination (from the FMS)
   Shift+D       Distance to Top of Descent (once computed in flight)
+                (Q / A / Shift+A read in metres when the FCU MTRS button is on)
 
   Characteristic speeds
   Shift+1       Green Dot speed
@@ -136,6 +137,7 @@ INSIDE THE MCDU / MFD WINDOW
   Alt+I  INIT     Alt+F  F-PLN    Alt+P  PERF
   Alt+R  RAD NAV  Alt+S  SEC FPL  Alt+A  ATC COM
   Alt+D  DIR      Alt+H  Refresh
+  Alt+U  Toggle weight units (kilograms / pounds) for MSFSBA read-outs
 
 
 INSIDE THE LIVE CHECKLIST (ECL) WINDOW (Ctrl+Shift+C opens it)

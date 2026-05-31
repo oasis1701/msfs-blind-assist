@@ -93,6 +93,20 @@ Full accessibility support for the HorizonSim 787-9, including Microsoft Flight 
 - Accessible EFB (Electronic Flight Bag), opened with Shift+T.
 - All our shared features are integrated as well, including taxi guidance, the landing exit planner, route viewer, gate/runway teleport, METAR report, location info and text-based map.
 
+### FlyByWire Airbus A380X
+
+Full accessibility support for the FlyByWire A380X — the free, high-fidelity A380-842. **No add-on or Developer Mode is required**: MSFS Blind Assist reads the real cockpit displays live through the simulator's internal display engine, so there is nothing to install.
+
+- The A380's second-generation cockpit — the **MFD** (multi-function display) replacing the classic MCDU, driven through the KCCU — is presented as a flat, screen-reader-friendly list you arrow through and operate with Enter. Full FMS flight planning: SimBrief route load, departure/arrival (runway, SID, STAR, approach), performance and weights, airways, holds, and clearing discontinuities.
+- **ATC COM** datalink (CPDLC, D-ATIS), **SEC** secondary flight plans, and the **SURV** surveillance pages (transponder, TCAS, weather radar, TAWS).
+- The **flyPad / EFB** (loading, fuel, ground services, charts, failures, settings) rendered as a real accessible web document.
+- The live **Electronic Checklist (ECL)** — the real cockpit checklists and any active abnormal ECAM procedure — fully interactive, with sensed items ticking themselves as you perform them.
+- Accessible panels across the overhead, glareshield, pedestal and displays for every system; the **16 System Display (SD) pages** and the **E/WD** read aloud, including the full Flight Warning System stream — failure titles, action lines, memos, and the STS / ADV / FAILURE-PENDING status reminders.
+- Automatic announcements: Master Warning/Caution, the full **FMA**, autopilot, approach capability, ROW/ROP runway-overrun protection, and **OANS + Brake-To-Vacate (BTV)** with dry/wet stopping distance and rollout call-outs.
+- Honours the A380's own units in MSFSBA's read-outs: **metric altitude** (FCU MTRS — every altitude reads, and the FCU altitude input is entered, in metres) and **kg/lb weight**; the clock chronometer and elapsed-time counter; pitch/rudder trim; fuel pumps; and the audio control panel.
+- All our shared features are integrated as well, including taxi guidance, the landing exit planner, route viewer, gate/runway teleport, METAR report, location info and text-based map.
+- A complete screen-reader-first manual ships in `docs/a380-manual.html`.
+
 ## Discord
 Please join us on discord for support or to hang out with us:
 https://discord.gg/7udKUYFFY7
