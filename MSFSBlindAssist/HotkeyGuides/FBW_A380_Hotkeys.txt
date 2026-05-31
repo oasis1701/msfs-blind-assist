@@ -279,8 +279,8 @@ A380 MCDU / MFD Window (open with Input mode, then Shift+M):
                   first, the text is sent to the selected field
   (type)          Type into the scratchpad edit box, then Enter to send
   Backspace       CLR (clears the scratchpad first, then the selected field)
-  Ctrl+Up/Left    Previous page (PageUp also works)
-  Ctrl+Down/Right Next page (PageDown also works)
+  Ctrl+Up         Previous page (PageUp also works)
+  Ctrl+Down       Next page (PageDown also works)
   MCDU (Captain) / First Officer selector chooses which side you are driving.
 
   Page buttons (mnemonics, Alt+letter):

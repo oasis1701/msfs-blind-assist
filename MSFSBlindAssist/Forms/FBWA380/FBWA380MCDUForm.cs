@@ -685,11 +685,11 @@ public class FBWA380MCDUForm : Form
     private void FormKeyDown(object? sender, KeyEventArgs e)
     {
         // Page navigation. The plain arrows move the cursor through the lines, so
-        // page stepping is on Ctrl+arrow (and PageUp/PageDown). All four Ctrl+arrows
-        // step pages — Ctrl+Up/Left = previous page, Ctrl+Down/Right = next page —
-        // so whichever the user reaches for works (the MFD has a single linear page
-        // order, so there is no separate horizontal axis to map Left/Right to).
-        if ((e.Control && (e.KeyCode == Keys.Up || e.KeyCode == Keys.Left)) || e.KeyCode == Keys.PageUp)
+        // page stepping is on Ctrl+Up/Down (and PageUp/PageDown) = previous/next
+        // page. The MFD has only a single LINEAR page order (and vertical scroll
+        // within a page) — there is no horizontal page axis — so Left/Right are NOT
+        // bound to paging (they would just duplicate Up/Down).
+        if ((e.Control && e.KeyCode == Keys.Up) || e.KeyCode == Keys.PageUp)
         {
             SendCommand("key_prev_page");
             _announcer.Announce("Previous page");   // immediate feedback; the new
@@ -697,7 +697,7 @@ public class FBWA380MCDUForm : Form
             e.Handled = true; e.SuppressKeyPress = true;
             return;
         }
-        if ((e.Control && (e.KeyCode == Keys.Down || e.KeyCode == Keys.Right)) || e.KeyCode == Keys.PageDown)
+        if ((e.Control && e.KeyCode == Keys.Down) || e.KeyCode == Keys.PageDown)
         {
             SendCommand("key_next_page");
             _announcer.Announce("Next page");
