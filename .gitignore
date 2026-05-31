@@ -123,6 +123,9 @@ Navdatareader-win-1.2.3/
 # nul
 nul
 
+# Node tool dependencies
+tools/fbw-mcdu-probe/node_modules/
+
 # External DLLs required for CI builds
 !lib/managed/Microsoft.FlightSimulator.SimConnect.dll
 !SimConnect_msfs_2020.dll
