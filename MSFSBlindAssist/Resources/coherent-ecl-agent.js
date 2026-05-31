@@ -43,6 +43,14 @@
       for (i = 0; i < lines.length; i++) {
         var n = lines[i], c = n.getAttribute("class") || "";
         if (c.indexOf("HiddenElement") >= 0 || c.indexOf("Invisible") >= 0 || c.indexOf("Inactive") >= 0) continue;
+        // CRITICAL: the E/WD keeps the normal-checklist AND the abnormal-procedure
+        // sections all as .EclLine in the DOM at once; only the active one's parent
+        // container is shown (the others are display:none on an ancestor, e.g.
+        // ".ProceduresContainer"). Those hidden rows pass the class filter above but
+        // their offsetParent is null — without this check the abnormal items (e.g. a
+        // bare "ACTIVATE") leak into the normal checklist read. Keep only rows that
+        // are actually laid out. (offsetParent is null iff an ancestor is hidden.)
+        if (n.offsetParent === null) continue;
         var t = lineText(n);
         var type =
           has(n, "Headline") || c.indexOf("Headline") >= 0 ? "headline" :

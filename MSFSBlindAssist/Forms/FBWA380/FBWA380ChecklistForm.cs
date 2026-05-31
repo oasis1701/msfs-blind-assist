@@ -36,6 +36,7 @@ public sealed class FBWA380ChecklistForm : Form
     private Label _status = null!;
     private List<EclRow> _rows = new();
     private HashSet<string> _lastChecked = new();
+    private string _lastAppliedHash = "";   // last row-set rendered — skip identical re-applies
     private bool _haveRows;
     private bool _cursorActive;   // last scrape had a selected (cursor) line
     private bool _busy;           // guard against overlapping ECP pulses
@@ -131,15 +132,16 @@ public sealed class FBWA380ChecklistForm : Form
         try
         {
             _sim?.ExecuteCalculatorCode($"1 (>L:{lvar})");
-            await Task.Delay(140);
+            await Task.Delay(110);
             _sim?.ExecuteCalculatorCode($"0 (>L:{lvar})");
-            await Task.Delay(320);
+            await Task.Delay(230);
             var rows = await ScrapeEcl();
+            // Apply rebuilds the list and moves the selection to the FWS cursor line,
+            // which the screen reader reads on its own — so we do NOT also announce it
+            // here (that produced the duplicate read). Only fall back to a generic
+            // confirmation if the scrape came back empty (nothing to read).
             Apply(rows, announceChecks: true);
-            // Announce the line the FWS cursor now sits on (what UP/DOWN/CHECK act on);
-            // fall back to a generic confirmation if no line is selected.
-            var sel = _rows.FirstOrDefault(r => r.selected);
-            _announcer?.Announce(sel != null && !string.IsNullOrEmpty(sel.text) ? Speakable(sel) : say);
+            if (_rows.Count == 0) _announcer?.Announce(say);
         }
         catch { _announcer?.Announce(say); }
         finally { _busy = false; }
@@ -199,6 +201,13 @@ public sealed class FBWA380ChecklistForm : Form
             if (!_haveRows) _status.Text = "Checklist not reachable. Make sure the A380X is loaded and its displays are powered (battery on), then press Refresh.";
             return;
         }
+        // The shared E/WD monitor polls ~1 Hz and re-delivers the same rows; a manual
+        // ECP pulse also applies them. If nothing actually changed, do NOT rebuild the
+        // list (a rebuild moves the selection and makes the screen reader re-read the
+        // current line) — only re-apply when the content or cursor genuinely moved.
+        string hash = string.Join("", rows.Select(r => (r.Checked ? "1" : "0") + (r.selected ? "S" : "") + r.text));
+        if (hash == _lastAppliedHash) return;
+        _lastAppliedHash = hash;
         _haveRows = true;
         _cursorActive = rows.Any(r => r.selected);
         _status.Text =
@@ -233,20 +242,18 @@ public sealed class FBWA380ChecklistForm : Form
         else if (_list.Items.Count > 0) _list.SelectedIndex = 0;
     }
 
-    private static string Speakable(EclRow r)
-    {
-        string box = r.Checked ? ", checked" : (r.type is "item" or "abnormal" ? ", not checked" : "");
-        string note = r.style == "manual" ? ", manual" : r.style == "action" ? ", action" : r.style == "caution" ? ", caution" : "";
-        return $"{r.text}{box}{note}";
-    }
-
+    // The text the screen reader speaks for one ECL line. Screen-reader-first: no
+    // visual cursor marker (the list selection is the cursor), no bracket glyphs.
+    // A checklist MENU name (plain item, no colour/checkbox → style "") gets no
+    // checked/unchecked suffix; an actual checklist ACTION item or abnormal item
+    // does, so you hear whether it still needs doing.
     private static string Format(EclRow r)
     {
         if (r.type == "headline") return r.text;
-        string box = r.Checked ? "[done] " : (r.type == "item" || r.type == "abnormal" ? "[ ] " : "");
-        string sel = r.selected ? "> " : "";
-        string note = r.style == "manual" ? "  (manual)" : r.style == "action" ? "  (action)" : r.style == "caution" ? "  (caution)" : "";
-        return $"{sel}{box}{r.text}{note}";
+        bool actionable = r.type == "abnormal" || r.style.Length > 0;
+        string state = r.Checked ? ", checked" : (actionable ? ", not checked" : "");
+        string note = r.style == "manual" ? ", manual" : r.style == "caution" ? ", caution" : "";
+        return $"{r.text}{state}{note}";
     }
 
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)

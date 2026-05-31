@@ -90,6 +90,21 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // Latching/momentary PB L:var as a combo (Released / Pressed).
         void Press(string key, string display) =>
             Sel(key, display, new Dictionary<double, string> { [0] = "Released", [1] = "Pressed" });
+        // Momentary ECP push-button: settable + readable on demand, but NEVER
+        // auto-announced. MSFSBA pulses these itself to drive the live ECL (the
+        // checklist window) and the SD pages, so a transient "Pressed"/"Released"
+        // call-out on every keystroke is pure noise — the meaningful result (the SD
+        // page, the checklist line) is announced by its own var / the ECL scrape.
+        void PressSilent(string key, string display)
+        {
+            vars[key] = new SimVarDefinition
+            {
+                Name = key, DisplayName = display, Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest, IsAnnounced = false,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Released", [1] = "Pressed" },
+                RenderAsButton = false
+            };
+        }
         // Action / toggle combo — renders as a combo but has NO real backing var; its
         // set is fully handled in HandleUIVariableSet (fires a K-event). OnRequest so
         // the framework never spam-monitors a non-existent L:var. Used to standardise
@@ -691,7 +706,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             ("CLR2", "Clear 2"), ("RCL", "Recall"), ("TOCONFIG", "T.O Config"), ("EMERCANC", "Emergency Cancel"),
             ("UP", "Up"), ("DOWN", "Down"), ("MORE", "More")
         })
-            Press($"A32NX_BTN_{k}", $"ECAM {d}");
+            PressSilent($"A32NX_BTN_{k}", $"ECAM {d}");
 
         // ---- Weather radar / SURV ----
         Sel("A32NX_SWITCH_RADAR_PWS_Position", "Predictive Windshear",
@@ -1277,9 +1292,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 new Dictionary<double, string> { [0] = "inHg", [1] = "hPa" });
         }
 
-        // ECAM control panel — checklist buttons + SD more.
-        Press("A32NX_BTN_CHECK_LH", "ECAM Check Left");
-        Press("A32NX_BTN_CHECK_RH", "ECAM Check Right");
+        // ECAM control panel — checklist buttons + SD more. Silent: the ECL window
+        // pulses CHECK to tick items, and announcing "ECAM Check, Pressed/Released"
+        // on every Enter is noise (the ticked line is announced by the ECL scrape).
+        PressSilent("A32NX_BTN_CHECK_LH", "ECAM Check Left");
+        PressSilent("A32NX_BTN_CHECK_RH", "ECAM Check Right");
         ReadEnum("A32NX_SD_MORE_SHOWN", "SD More Page", new Dictionary<double, string> { [0] = "No", [1] = "Shown" });
 
         // ATC datalink (DCDU).
