@@ -37,6 +37,7 @@ function parseSegments(cell) {
         continue;
       }
     }
+    // No closing '}' (or not at a '{'): treat this char (incl. a lone '{') as literal text.
     text += cell[i];
     i++;
   }
@@ -51,13 +52,15 @@ function decodeCell(cell) {
   for (var s = 0; s < segments.length; s++) {
     if (segments[s].text.trim().length > 0) { colors[segments[s].color] = true; }
   }
-  var distinct = Object.keys(colors);
-  var mixedGreen = distinct.length > 1 && colors['green'];
+  var colorCount = Object.keys(colors).length;
+  var mixedGreen = colorCount > 1 && colors['green'];
   var out = '';
   for (var k = 0; k < segments.length; k++) {
     var seg = segments[k];
     if (mixedGreen && seg.color === 'green' && seg.text.trim().length > 0) {
-      out += '*' + seg.text;
+      var trimmed = seg.text.replace(/^\s+/, '');
+      var leading = seg.text.slice(0, seg.text.length - trimmed.length);
+      out += leading + '*' + trimmed;
     } else {
       out += seg.text;
     }
@@ -120,9 +123,11 @@ function renderLines(decoded) {
   if (decoded.page) { titleLine += '   ' + decoded.page; }
   if (decoded.arrows[0]) { titleLine += ' ▲'; }
   if (decoded.arrows[1]) { titleLine += ' ▼'; }
+  if (decoded.arrows[2]) { titleLine += ' ◄'; }
+  if (decoded.arrows[3]) { titleLine += ' ►'; }
   out.push(titleLine);
   for (var k = 0; k < 6; k++) {
-    var r = decoded.rows[k];
+    var r = decoded.rows[k] || { labelLeft: '', labelRight: '', labelCenter: '', valueLeft: '', valueRight: '', valueCenter: '' };
     var labelText = joinColumns(r.labelLeft, r.labelCenter, r.labelRight);
     var valueText = joinColumns(r.valueLeft, r.valueCenter, r.valueRight);
     if (labelText.trim().length) { out.push('   ' + labelText); }

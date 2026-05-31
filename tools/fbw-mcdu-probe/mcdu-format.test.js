@@ -77,3 +77,36 @@ test('renderLines builds the accessible ListBox text', () => {
   assert.strictEqual(out[3], '1: CLB');
   assert.strictEqual(out[out.length - 1], 'Scratchpad: ');
 });
+
+test('decodeCell treats an unterminated brace as literal text', () => {
+  assert.strictEqual(fmt.decodeCell('abc{green'), 'abc{green');
+});
+
+test('decodeCell keeps the * marker adjacent when a green segment has a leading space', () => {
+  assert.strictEqual(fmt.decodeCell('{cyan}X{end}/{green}{sp}ON{end}'), 'X/ *ON');
+});
+
+test('renderLines suppresses empty label rows and renders all rows', () => {
+  const decoded = {
+    title: 'F-PLN', page: '1/3', scratchpad: '',
+    arrows: [false, false, true, true], annunciators: [],
+    rows: [
+      { labelLeft: 'FROM', labelRight: '', labelCenter: '', valueLeft: 'EGLL', valueRight: '', valueCenter: '' },
+      { labelLeft: '', labelRight: '', labelCenter: '', valueLeft: 'KJFK', valueRight: '', valueCenter: '' },
+      { labelLeft: '', labelRight: '', labelCenter: '', valueLeft: '', valueRight: '', valueCenter: '' },
+      { labelLeft: '', labelRight: '', labelCenter: '', valueLeft: '', valueRight: '', valueCenter: '' },
+      { labelLeft: '', labelRight: '', labelCenter: '', valueLeft: '', valueRight: '', valueCenter: '' },
+      { labelLeft: '', labelRight: '', labelCenter: '', valueLeft: '', valueRight: '', valueCenter: '' },
+    ],
+  };
+  const out = fmt.renderLines(decoded);
+  // Title shows left+right arrows (◄ ►), no up/down.
+  assert.strictEqual(out[0], 'Title: F-PLN   1/3 ◄ ►');
+  // Row 1 has a label → its label line is present; row 2 has no label → only its value line.
+  assert.strictEqual(out[1], '   FROM');
+  assert.strictEqual(out[2], '1: EGLL');
+  assert.strictEqual(out[3], '2: KJFK');
+  // 6 value lines + 1 title + 1 label line + 1 scratchpad = 9 total.
+  assert.strictEqual(out.length, 9);
+  assert.strictEqual(out[out.length - 1], 'Scratchpad: ');
+});
