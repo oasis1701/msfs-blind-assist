@@ -64,7 +64,6 @@ public partial class MainForm : Form
     // read from the E/WD Coherent view. Opened by the Checklist hotkey on the A380.
     private Forms.FBWA380.FBWA380ChecklistForm? fbwA380ChecklistForm;
     private EFBBridgeServer? hs787BridgeServer;
-    private A32NXEFBForm? a32nxEFBForm;
     private HS787FMCForm? hs787FMCForm;
     private HS787SimBriefForm? hs787SimBriefForm;
     private HS787EFBForm? hs787EFBForm;
@@ -1716,7 +1715,10 @@ public partial class MainForm : Form
                 }
                 else if (currentAircraft?.AircraftCode == "A320")
                 {
-                    ShowA32NXEFBDialog();
+                    // Unified flyPad: the A320 uses the SAME generic WebView2 form +
+                    // CoherentEFBClient as the A380 (both drive the one shared
+                    // coherent-flypad-agent.js over the "- EFB" Coherent view).
+                    ShowFBWA380EFBDialog();
                 }
                 break;
             case HotkeyAction.ShowOANS:
@@ -2442,7 +2444,12 @@ public partial class MainForm : Form
 
         if (fbwA380EFBForm == null || fbwA380EFBForm.IsDisposed)
         {
-            fbwA380EFBForm = new Forms.FBWA380.FBWA380EFBForm(bridge, announcer);
+            // One generic flyPad form serves both FBW aircraft; only the window
+            // title differs. The form is disposed on aircraft swap (see the swap
+            // handler), so it is always recreated with the correct title.
+            string title = currentAircraft?.AircraftCode == "A320"
+                ? "A320 flyPad EFB" : "A380X flyPad EFB";
+            fbwA380EFBForm = new Forms.FBWA380.FBWA380EFBForm(bridge, announcer, title, "flyPad");
         }
         fbwA380EFBForm.ShowForm();
     }
@@ -2531,25 +2538,6 @@ public partial class MainForm : Form
         }
 
         hs787FMCForm.ShowForm();
-    }
-
-    private void ShowA32NXEFBDialog()
-    {
-        hotkeyManager.ExitInputHotkeyMode();
-
-        if (a32nxEFBForm == null || a32nxEFBForm.IsDisposed)
-            a32nxEFBForm = new A32NXEFBForm(announcer);
-
-        a32nxEFBForm.ShowForm();
-    }
-
-    private void CleanupA32NXEFBForm()
-    {
-        if (a32nxEFBForm != null && !a32nxEFBForm.IsDisposed)
-        {
-            a32nxEFBForm.Dispose();
-            a32nxEFBForm = null;
-        }
     }
 
     /// <summary>
@@ -4256,11 +4244,12 @@ public partial class MainForm : Form
         {
             CheckAndOfferEFBModPackage();
             StartEFBBridgeServer();
-            CleanupA32NXEFBForm();   // release the FBW CDP connection if it was open
         }
         else if (newAircraft.AircraftCode == "A320")
         {
-            // FBW flyPad: the EFB form owns its CDP client; nothing to pre-start here.
+            // FBW A320 flyPad: uses the shared CoherentEFBClient + generic EFB form
+            // (same as the A380). The client is created lazily when the user opens
+            // the flyPad, and is disposed by the unconditional swap cleanup above.
         }
         else if (newAircraft.AircraftCode == "FBW_A380")
         {
@@ -4276,7 +4265,6 @@ public partial class MainForm : Form
         else
         {
             StopEFBBridgeServer();
-            CleanupA32NXEFBForm();
         }
 
         // 787 FMC bridge: mod package check and server start
@@ -6032,9 +6020,6 @@ public partial class MainForm : Form
         hs787EFBForm?.Dispose();
         hs787BridgeServer?.Dispose();
         hs787BridgeServer = null;
-
-        // Clean up A32NX EFB form (owns its CDP client)
-        CleanupA32NXEFBForm();
 
         // Clean up managers and resources
         hotkeyManager?.Cleanup();
