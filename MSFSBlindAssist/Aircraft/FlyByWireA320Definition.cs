@@ -3461,6 +3461,23 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             variables[kvp.Key] = kvp.Value;
         }
 
+        // Make discrete control/state combos AUTO-ANNOUNCE on change (cockpit-side or
+        // system changes), not just update their panel combo — mirroring the A380's
+        // Sel() pattern (Continuous + IsAnnounced). Without this, e.g. a battery PB
+        // toggled in the cockpit was silent. Curated to discrete on/off/auto/mode
+        // state controls (NOT momentary buttons or analog readouts). Each becomes
+        // muteable in the Ctrl+M monitor. The guard skips any var lacking value
+        // descriptions, so a bad key can't turn a numeric var into spoken noise.
+        foreach (var key in _autoAnnounceControlVars)
+        {
+            if (variables.TryGetValue(key, out var cdef)
+                && cdef.ValueDescriptions != null && cdef.ValueDescriptions.Count > 0)
+            {
+                cdef.UpdateFrequency = SimConnect.UpdateFrequency.Continuous;
+                cdef.IsAnnounced = true;
+            }
+        }
+
         // Auto-register every System Display page L:var (OnRequest) so the accessible
         // SD status box can read it. RequestVariable SILENTLY no-ops on any var that
         // has no data definition, so an SD var that isn't registered here reads as
@@ -4369,6 +4386,28 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     // the SD system pages (ELEC/HYD/... added one at a time) read decoded SimVars. The
     // status box shows the selected page's content, populated on selection — no
     // auto-speech, no manual refresh. Combo backed by an MSFSBA-internal L:var.
+    // Discrete control/state combos that should ALSO auto-announce on change (see the
+    // post-process loop in GetVariables). Curated, expanded panel-by-panel — discrete
+    // on/off/auto/mode controls only; momentary buttons and analog readouts excluded.
+    private static readonly HashSet<string> _autoAnnounceControlVars = new()
+    {
+        // ELEC
+        "A32NX_OVHD_ELEC_BAT_1_PB_IS_AUTO", "A32NX_OVHD_ELEC_BAT_2_PB_IS_AUTO",
+        "A32NX_OVHD_ELEC_EXT_PWR_PB_IS_ON",
+        // APU
+        "A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", "A32NX_OVHD_APU_START_PB_IS_ON",
+        // Air conditioning / bleed
+        "A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON",
+        "A32NX_OVHD_COND_PACK_1_PB_IS_ON", "A32NX_OVHD_COND_PACK_2_PB_IS_ON",
+        // Hydraulics
+        "A32NX_OVHD_HYD_ENG_1_PUMP_PB_IS_AUTO", "A32NX_OVHD_HYD_ENG_2_PUMP_PB_IS_AUTO",
+        "A32NX_OVHD_HYD_EPUMPB_PB_IS_AUTO", "A32NX_OVHD_HYD_EPUMPY_PB_IS_AUTO",
+        "A32NX_OVHD_HYD_PTU_PB_IS_AUTO",
+        // ADIRS IR mode selectors
+        "A32NX_OVHD_ADIRS_IR_1_MODE_SELECTOR_KNOB", "A32NX_OVHD_ADIRS_IR_2_MODE_SELECTOR_KNOB",
+        "A32NX_OVHD_ADIRS_IR_3_MODE_SELECTOR_KNOB",
+    };
+
     public const string SdPageVar = "A32NX_MSFSBA_SD_PAGE";
     private SimConnect.CoherentDisplayClient? _ewdScrapeClient;
     private string _sdBoxContent = "";
