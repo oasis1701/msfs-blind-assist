@@ -472,8 +472,13 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Sel("A32NX_ENTERTAINMENT_IFEC_OFF", "Passenger Entertainment (IFE)", new Dictionary<double, string> { [0] = "Normal", [1] = "Off" });
         OnOff("A380X_REMOTE_CB_CTRL", "Remote Circuit Breaker Control");
         // Chronometer start/stop + reset (the glareshield CHRONO push). #107 gap.
-        Press("A32NX_CHRONO_TOGGLE", "Chronometer Start / Stop");
-        Press("A32NX_CHRONO_RST", "Chronometer Reset");
+        // Chronometer start/stop + reset are momentary BUTTONS driven by H-EVENTS
+        // (the FBW Clock subscribes to the hEvent, NOT the L:var — writing the L:var
+        // does nothing). Rendered as buttons; HandleUIVariableSet fires (>H:VAR).
+        vars["A32NX_CHRONO_TOGGLE"] = new SimVarDefinition
+        { Name = "A32NX_CHRONO_TOGGLE", DisplayName = "Chronometer Start / Stop", Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest, RenderAsButton = true };
+        vars["A32NX_CHRONO_RST"] = new SimVarDefinition
+        { Name = "A32NX_CHRONO_RST", DisplayName = "Chronometer Reset", Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest, RenderAsButton = true };
 
         // ---- AUDIO CONTROL PANEL (ACP) — receive selectors, RMP 1 ----
         // Which sources the captain hears (#107 transcript: "ensure VHF1 + cabin
@@ -760,7 +765,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
 
         // ---- Cockpit door ----
         OnOff("A32NX_COCKPIT_DOOR_LOCKED", "Cockpit Door Locked");
-        OnOff("A32NX_CABIN_READY", "Cabin Ready");
+        // Cabin Ready is a READ-ONLY status (the cabin/purser signals it via the EFB;
+        // the cockpit just shows the light) — live-verified a cockpit write reverts
+        // 0→1 within 2 s. So it's an auto-announced monitor var, not a settable combo.
+        Mon("A32NX_CABIN_READY", "Cabin Ready", new Dictionary<double, string> { [0] = "Not Ready", [1] = "Ready" });
 
         // ============================ DISPLAYS / STATUS ============================
         // Settable toggle combo — fires K:AUTO_THROTTLE_ARM via HandleUIVariableSet
@@ -1684,7 +1692,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 "Recorder and Misc", "GPWS", "Interior Lighting", "Exterior Lighting"
             },
             ["Glareshield"] = new List<string> { "FCU", "EFIS Captain", "EFIS First Officer", "Warnings", "OIT" },
-            ["Instrument"] = new List<string> { "Gear", "Autobrake", "ISIS", "Source Switching" },
+            ["Instrument"] = new List<string> { "Gear", "Autobrake", "ISIS", "Source Switching", "Clock" },
             ["Pedestal"] = new List<string>
             {
                 "Engines", "Thrust Levers", "Flaps and Brakes", "ECAM Control Panel", "Weather Radar",
@@ -1820,7 +1828,6 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "A32NX_ACMS_TRIGGER_ON", "A32NX_CREW_HEAD_SET", "A32NX_SVGEINT_OVRD_ON",
             "A32NX_ENGMANSTARTALTN_TOGGLE", "A32NX_ENTERTAINMENT_CWS_OFF",
             "A32NX_ENTERTAINMENT_IFEC_OFF", "A380X_REMOTE_CB_CTRL",
-            "A32NX_CHRONO_TOGGLE", "A32NX_CHRONO_RST"
         };
         p["Audio Control Panel Captain"] = new List<string>
         {
@@ -1906,7 +1913,14 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         p["Source Switching"] = new List<string>
         {
             "A32NX_ATT_HDG_SWITCHING_KNOB", "A32NX_AIR_DATA_SWITCHING_KNOB",
-            "A32NX_EIS_DMC_SWITCHING_KNOB", "A32NX_FMGC_TRUE_REF", "A32NX_CHRONO_ET_SWITCH_POS"
+            "A32NX_EIS_DMC_SWITCHING_KNOB", "A32NX_FMGC_TRUE_REF"
+        };
+        // Clock panel: the chronometer start/stop + reset buttons and the elapsed-time
+        // (ET) Run/Stop/Reset knob are the controls; the elapsed-time readouts are the
+        // status display (d["Clock"]).
+        p["Clock"] = new List<string>
+        {
+            "A32NX_CHRONO_TOGGLE", "A32NX_CHRONO_RST", "A32NX_CHRONO_ET_SWITCH_POS"
         };
 
         p["Engines"] = new List<string>
@@ -1948,7 +1962,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "A380X_RMP_1_STATE", "A380X_RMP_2_STATE", "A380X_RMP_3_STATE"
         };
         p["Minimums"] = new List<string>();
-        p["Cockpit Door"] = new List<string> { "A32NX_COCKPIT_DOOR_LOCKED", "A32NX_CABIN_READY" };
+        // Cabin Ready is read-only (auto-announced via Mon) — surfaced as a status
+        // readout (d["Cockpit Door"], in the display section below), not a settable
+        // control. Cockpit Door lock IS settable.
+        p["Cockpit Door"] = new List<string> { "A32NX_COCKPIT_DOOR_LOCKED" };
 
         // ---- Ground Services (flyPad Ground page) ----
         p["Doors"] = new List<string>
@@ -2231,7 +2248,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "A380X_GND_GPU_AVAIL_1", "A380X_GND_GPU_AVAIL_2", "A380X_GND_GPU_AVAIL_3", "A380X_GND_GPU_AVAIL_4"
         };
 
-        d["Clock"] = new List<string> { "A32NX_CHRONO_ELAPSED_TIME", "A32NX_CHRONO_ET_ELAPSED_TIME", "A32NX_CHRONO_ET_SWITCH_POS" };
+        // Clock readouts (the chrono + elapsed-time fields shown read-only in the
+        // Clock panel; the controls live in p["Clock"]).
+        d["Clock"] = new List<string> { "A32NX_CHRONO_ELAPSED_TIME", "A32NX_CHRONO_ET_ELAPSED_TIME" };
+        d["Cockpit Door"] = new List<string> { "A32NX_CABIN_READY" };
         d["ISIS"] = new List<string> { "A32NX_ISIS_LS_ACTIVE", "A32NX_ISIS_BUGS_ACTIVE" };
         d["Oxygen"] = new List<string> { "A32NX_OXYGEN_TMR_RESET_FAULT" };
         d["Calls"] = new List<string> { "A32NX_SLIDES_ARMED", "A32NX_EVAC_COMMAND_FAULT" };
@@ -2837,6 +2857,15 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     public override bool HandleUIVariableSet(string varKey, double value, SimVarDefinition varDef,
         SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
     {
+        // Chronometer start/stop + reset fire H-EVENTS (the FBW Clock listens for the
+        // hEvent, not an L:var write — live-verified: the H-event advances the elapsed
+        // time, an L:var write does nothing).
+        if (varKey == "A32NX_CHRONO_TOGGLE" || varKey == "A32NX_CHRONO_RST")
+        {
+            simConnect.ExecuteCalculatorCode($"(>H:{varKey})");
+            announcer.Announce(varKey == "A32NX_CHRONO_RST" ? "Chronometer reset" : "Chronometer start stop");
+            return true;
+        }
         // Momentary L:var push-buttons (TEST / ident / ack / trim reset / tiller /
         // rain repellent): pulse the L:var 1→0 so the sim registers the press edge
         // rather than leaving it latched on. ~250 ms is long enough for the FWS /
