@@ -87,6 +87,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // Bool L:var: Off / Auto (FBW "_IS_AUTO" pushbuttons).
         void OffAuto(string key, string display, bool button = false) =>
             Sel(key, display, new Dictionary<double, string> { [0] = "Off", [1] = "Auto" });
+        // Bool L:var: On / Auto (FBW "_ON_PB_IS_AUTO" pushbuttons — 0 = manually ON,
+        // 1 = AUTO; the OFF-button variant uses OffAuto). Labelling the ON pushbutton
+        // "Off/Auto" was wrong: selecting "Off" actually forced the pump ON.
+        void OnAuto(string key, string display) =>
+            Sel(key, display, new Dictionary<double, string> { [0] = "On", [1] = "Auto" });
         // True momentary push-BUTTON on an L:var (renders as a Button, not a combo).
         // A press pulses the L:var 1→0 in HandleUIVariableSet so the sim sees the
         // edge — for TEST buttons, transponder ident, ATC message ack, rudder-trim
@@ -98,7 +103,15 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             vars[key] = new SimVarDefinition
             {
                 Name = key, DisplayName = display, Type = SimVarType.LVar,
-                UpdateFrequency = UpdateFrequency.OnRequest, RenderAsButton = true
+                UpdateFrequency = UpdateFrequency.OnRequest,
+                // Rendered as a COMBO (Off / Activate), NOT a hardware button — every
+                // panel control in MSFSBA is a combo box (user request). Selecting
+                // "Activate" pulses the L:var 1→0 in HandleUIVariableSet (the
+                // _momentaryButtons path); the momentary pulse returns it to "Off".
+                // Not auto-announced — the handler speaks "<name> pressed" on activate.
+                IsAnnounced = false,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Activate" },
+                RenderAsButton = false
             };
             _momentaryButtons.Add(key);
         }
@@ -303,13 +316,18 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             OffAuto($"A32NX_OVHD_HYD_ENG_{n}B_PUMP_PB_IS_AUTO", $"Engine {n} Pump B");
         }
         // Each green/yellow electric hydraulic pump (A, B) has SEPARATE ON and OFF
-        // pushbuttons on the A380 HYD overhead — expose both so the pump can be
-        // commanded on AND off (the def previously had only the ON button).
+        // pushbuttons on the A380 HYD overhead (faithful to the real cockpit's two
+        // physical buttons per pump). The ON button is Auto/On, the OFF button is
+        // Auto/Off. NOTE: these per-pump A/B buttons are managed by the FBW pump
+        // controller — on the ground with the EDPs pressurising the system, a forced
+        // ON/OFF is returned to AUTO by the system (correct behaviour; the
+        // auto-announce re-reads the true state). The ENG-driven pumps and the two
+        // main electric pumps (below) hold a manual command and are fully settable.
         foreach (var sys in new[] { "G", "Y" })
             foreach (var ab in new[] { "A", "B" })
             {
                 string col = sys == "G" ? "Green" : "Yellow";
-                OffAuto($"A32NX_OVHD_HYD_EPUMP{sys}{ab}_ON_PB_IS_AUTO", $"{col} Electric Pump {ab} On");
+                OnAuto($"A32NX_OVHD_HYD_EPUMP{sys}{ab}_ON_PB_IS_AUTO", $"{col} Electric Pump {ab} On");
                 OffAuto($"A32NX_OVHD_HYD_EPUMP{sys}{ab}_OFF_PB_IS_AUTO", $"{col} Electric Pump {ab} Off");
             }
         // The two MAIN electric hydraulic pumps on the HYD overhead (green "elec
@@ -496,13 +514,14 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Sel("A32NX_ENTERTAINMENT_IFEC_OFF", "Passenger Entertainment (IFE)", new Dictionary<double, string> { [0] = "Normal", [1] = "Off" });
         OnOff("A380X_REMOTE_CB_CTRL", "Remote Circuit Breaker Control");
         // Chronometer start/stop + reset (the glareshield CHRONO push). #107 gap.
-        // Chronometer start/stop + reset are momentary BUTTONS driven by H-EVENTS
-        // (the FBW Clock subscribes to the hEvent, NOT the L:var — writing the L:var
-        // does nothing). Rendered as buttons; HandleUIVariableSet fires (>H:VAR).
+        // Momentary actions driven by H-EVENTS (the FBW Clock subscribes to the
+        // hEvent, NOT the L:var — writing the L:var does nothing). Rendered as COMBOS
+        // (Idle / Activate, like every other control); HandleUIVariableSet fires
+        // (>H:VAR) when "Activate" is chosen.
         vars["A32NX_CHRONO_TOGGLE"] = new SimVarDefinition
-        { Name = "A32NX_CHRONO_TOGGLE", DisplayName = "Chronometer Start / Stop", Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest, RenderAsButton = true };
+        { Name = "A32NX_CHRONO_TOGGLE", DisplayName = "Chronometer Start / Stop", Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest, IsAnnounced = false, ValueDescriptions = new Dictionary<double, string> { [0] = "Idle", [1] = "Activate" }, RenderAsButton = false };
         vars["A32NX_CHRONO_RST"] = new SimVarDefinition
-        { Name = "A32NX_CHRONO_RST", DisplayName = "Chronometer Reset", Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest, RenderAsButton = true };
+        { Name = "A32NX_CHRONO_RST", DisplayName = "Chronometer Reset", Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest, IsAnnounced = false, ValueDescriptions = new Dictionary<double, string> { [0] = "Idle", [1] = "Activate" }, RenderAsButton = false };
 
         // ---- AUDIO CONTROL PANEL (ACP) — receive selectors, RMP 1 ----
         // Which sources the captain hears (#107 transcript: "ensure VHF1 + cabin
@@ -2960,27 +2979,26 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             AnnounceSdPageAsync(announcer);
             return true;
         }
-        // Annunciator / integral lights TEST is a bulb test — it illuminates every
-        // overhead fault/annunciator light, changing NO readable var, so a blind pilot
-        // would get no feedback. When TEST is selected, write the knob AND announce a
-        // synthesised list of the light groups that light up, so the test is meaningful.
-        if (varKey == "A380X_OVHD_ANN_LT_POSITION" || varKey == "A32NX_OVHD_INTLT_ANN")
-        {
-            simConnect.ExecuteCalculatorCode($"{(int)Math.Round(value)} (>L:{varKey})");
-            if ((int)Math.Round(value) == 0)   // Test position
-                announcer.Announce("Annunciator test. All overhead fault and annunciator lights "
-                    + "illuminated for bulb check: A D I R S, electrical, generators and batteries, "
-                    + "hydraulic, fuel, bleed air, air conditioning, pressurization, ventilation, "
-                    + "anti-ice, fire, A P U, oxygen, calls, and the cabin signs.");
-            return true;
-        }
+        // Annunciator / integral lights knob (Test / Bright / Dim) is handled by the
+        // generic catch-all below: it writes the L:var and the combo's Continuous +
+        // IsAnnounced monitoring speaks the position ("Test" / "Bright" / "Dim").
+        // We deliberately do NOT synthesise a spoken list of lights for the TEST
+        // position: the bulb test is render-only in the FBW model (live-verified —
+        // setting the knob to TEST changes NO _PB_HAS_FAULT or annunciator L:var), so
+        // there is nothing real to announce. The actual annunciator/fault lights are
+        // the per-system _PB_HAS_FAULT vars (already registered, announce-on-change),
+        // which speak when a genuine fault appears — MSFSBA announces real state, it
+        // does not fabricate a bulb-check narration.
         // Chronometer start/stop + reset fire H-EVENTS (the FBW Clock listens for the
         // hEvent, not an L:var write — live-verified: the H-event advances the elapsed
         // time, an L:var write does nothing).
         if (varKey == "A32NX_CHRONO_TOGGLE" || varKey == "A32NX_CHRONO_RST")
         {
-            simConnect.ExecuteCalculatorCode($"(>H:{varKey})");
-            announcer.Announce(varKey == "A32NX_CHRONO_RST" ? "Chronometer reset" : "Chronometer start stop");
+            if (value > 0.5)   // only the "Activate" option fires
+            {
+                simConnect.ExecuteCalculatorCode($"(>H:{varKey})");
+                announcer.Announce(varKey == "A32NX_CHRONO_RST" ? "Chronometer reset" : "Chronometer start stop");
+            }
             return true;
         }
         // Momentary L:var push-buttons (TEST / ident / ack / trim reset / tiller /
@@ -2989,12 +3007,17 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // systems to act on the rising edge, then it auto-releases.
         if (_momentaryButtons.Contains(varKey))
         {
-            simConnect.ExecuteCalculatorCode($"1 (>L:{varKey})");
-            _ = Task.Run(async () =>
+            // Combo now (Off / Activate): only the "Activate" option fires; choosing
+            // "Off" does nothing (the pulse already returned the var to 0).
+            if (value > 0.5)
             {
-                try { await Task.Delay(250); simConnect.ExecuteCalculatorCode($"0 (>L:{varKey})"); } catch { }
-            });
-            announcer.Announce($"{varDef.DisplayName} pressed");
+                simConnect.ExecuteCalculatorCode($"1 (>L:{varKey})");
+                _ = Task.Run(async () =>
+                {
+                    try { await Task.Delay(250); simConnect.ExecuteCalculatorCode($"0 (>L:{varKey})"); } catch { }
+                });
+                announcer.Announce($"{varDef.DisplayName} pressed");
+            }
             return true;
         }
         if (_extLightSetEvents.TryGetValue(varKey, out var lightEvent))
