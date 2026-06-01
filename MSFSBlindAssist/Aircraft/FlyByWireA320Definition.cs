@@ -2266,7 +2266,11 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             Units = "number",
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Upper E/WD", [1] = "Electrical" }
+            ValueDescriptions = new Dictionary<double, string>
+            {
+                [0] = "Upper E/WD", [1] = "Electrical", [2] = "Hydraulics", [3] = "Pressurization",
+                [4] = "APU", [5] = "Air Conditioning"
+            }
         },
         ["A32NX_FM1_MINIMUM_DESCENT_ALTITUDE"] = new SimConnect.SimVarDefinition
         {
@@ -4285,17 +4289,71 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     private string _sdBoxContent = "";
     private static readonly Dictionary<double, string> SdPageNames = new()
     {
-        [0] = "Upper E/WD", [1] = "Electrical"
+        [0] = "Upper E/WD", [1] = "Electrical", [2] = "Hydraulics", [3] = "Pressurization",
+        [4] = "APU", [5] = "Air Conditioning"
     };
 
     // Per-system SD readout rows (decoded SimVars). Added one system at a time.
     private static List<(string label, string var, Func<double, string> fmt)> SdSystemRows(int page)
     {
+        // Decode an ARINC429 word when present (raw value >= 2^32 carries an SSM),
+        // else use the plain value — several FBW SD vars (e.g. APU N/EGT) are ARINC.
+        static double Dec(double v) => v >= 4294967296.0 ? new SimConnect.Arinc429Word(v).ValueOr(0f) : v;
         string V(double v) => $"{v:0} V";
         string Pct(double v) => $"{v:0} %";
+        string Psi(double v) => $"{v:0} psi";
+        string PsiD(double v) => $"{Dec(v):0.0} psi";
+        string C(double v) => $"{Dec(v):0} degrees";
+        string PctD(double v) => $"{Dec(v):0} %";
+        string Ft(double v) => $"{v:0} feet";
+        string Fpm(double v) => $"{v:0} feet per minute";
+        string Lvl(double v) => $"{v:0.0}";
         string OnOff(double v) => v > 0.5 ? "powered" : "not powered";
+        string OpenShut(double v) => v > 0.5 ? "open" : "closed";
+        string YesNo(double v) => v > 0.5 ? "yes" : "no";
         var r = new List<(string, string, Func<double, string>)>();
-        if (page == 1) // ELEC
+        if (page == 2) // HYDRAULICS
+        {
+            r.Add(("Green pressure", "A32NX_HYD_GREEN_SYSTEM_1_SECTION_PRESSURE", Psi));
+            r.Add(("Green reservoir", "A32NX_HYD_GREEN_RESERVOIR_LEVEL", Lvl));
+            r.Add(("Yellow pressure", "A32NX_HYD_YELLOW_SYSTEM_1_SECTION_PRESSURE", Psi));
+            r.Add(("Yellow reservoir", "A32NX_HYD_YELLOW_RESERVOIR_LEVEL", Lvl));
+            r.Add(("Yellow elec pump", "A32NX_HYD_YELLOW_EPUMP_ACTIVE", v => v > 0.5 ? "running" : "off"));
+            r.Add(("Blue pressure", "A32NX_HYD_BLUE_SYSTEM_1_SECTION_PRESSURE", Psi));
+            r.Add(("Blue reservoir", "A32NX_HYD_BLUE_RESERVOIR_LEVEL", Lvl));
+            r.Add(("Blue elec pump", "A32NX_HYD_BLUE_EPUMP_ACTIVE", v => v > 0.5 ? "running" : "off"));
+            r.Add(("PTU valve", "A32NX_HYD_PTU_VALVE_OPENED", OpenShut));
+            r.Add(("RAT stowed", "A32NX_RAT_STOW_POSITION", v => v < 0.05 ? "stowed" : $"deployed {v * 100:0}%"));
+        }
+        else if (page == 3) // PRESSURIZATION
+        {
+            r.Add(("Cabin altitude", "A32NX_PRESS_CABIN_ALTITUDE", Ft));
+            r.Add(("Cabin vertical speed", "A32NX_PRESS_CABIN_VS", Fpm));
+            r.Add(("Differential pressure", "A32NX_PRESS_CABIN_DELTA_PRESSURE", v => $"{v:0.0} psi"));
+            r.Add(("Outflow valve", "A32NX_PRESS_MAN_OUTFLOW_VALVE_OPEN_PERCENTAGE", Pct));
+            r.Add(("Safety valve", "A32NX_PRESS_SAFETY_VALVE_OPEN_PERCENTAGE", Pct));
+            r.Add(("Landing elevation", "A32NX_FM1_LANDING_ELEVATION", Ft));
+        }
+        else if (page == 4) // APU
+        {
+            r.Add(("APU N", "A32NX_APU_N", PctD));
+            r.Add(("APU EGT", "A32NX_APU_EGT", C));
+            r.Add(("Inlet flap", "A32NX_APU_FLAP_OPEN_PERCENTAGE", PctD));
+            r.Add(("Bleed valve", "A32NX_APU_BLEED_AIR_VALVE_OPEN", OpenShut));
+            r.Add(("Low fuel pressure", "A32NX_APU_LOW_FUEL_PRESSURE_FAULT", YesNo));
+            r.Add(("Gen voltage", "A32NX_ELEC_APU_GEN_1_POTENTIAL", V));
+            r.Add(("Gen load", "A32NX_ELEC_APU_GEN_1_LOAD", Pct));
+        }
+        else if (page == 5) // AIR CONDITIONING (COND)
+        {
+            r.Add(("Cockpit temp", "A32NX_COND_CKPT_TEMP", C));
+            r.Add(("Forward cabin temp", "A32NX_COND_FWD_TEMP", C));
+            r.Add(("Aft cabin temp", "A32NX_COND_AFT_TEMP", C));
+            r.Add(("Cockpit duct temp", "A32NX_COND_CKPT_DUCT_TEMP", C));
+            r.Add(("Forward duct temp", "A32NX_COND_FWD_DUCT_TEMP", C));
+            r.Add(("Aft duct temp", "A32NX_COND_AFT_DUCT_TEMP", C));
+        }
+        else if (page == 1) // ELEC
         {
             r.Add(("Gen 1", "A32NX_ELEC_ENG_GEN_1_POTENTIAL", V));
             r.Add(("Gen 1 load", "A32NX_ELEC_ENG_GEN_1_LOAD", Pct));
