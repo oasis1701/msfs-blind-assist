@@ -27,7 +27,12 @@ namespace MSFSBlindAssist.SimConnect
     {
         private const string DebuggerBase = "http://127.0.0.1:19999";
         private const string EfbTitleNeedle = "- EFB";
-        private const int PollIntervalMs = 400;
+        // Background scrape cadence. Kept moderate: a user click forces an immediate
+        // re-scrape (the form posts get_display_elements), so this only governs how
+        // fast AMBIENT changes (clock, live values) are picked up. 600ms eases the
+        // WebSocket/JSON load vs the old 400ms without feeling sluggish, and the form
+        // coalesces renders so polls can never pile up overlapping WebView2 updates.
+        private const int PollIntervalMs = 600;
         private const int ReconnectDelayMs = 2000;
         private const int EvalTimeoutMs = 5000;
         // Unit-separator used to join a <select>'s option labels into one state value.

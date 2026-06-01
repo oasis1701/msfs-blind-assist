@@ -70,6 +70,12 @@ public class FbwEfbForm : Form
     private bool _webViewReady;
     private bool _webViewFailed;
     private string? _pendingRenderJson;
+    // Render coalescing: the ~400ms scrape poll can push renders faster than the
+    // WebView2 applies them. We run ONE ExecuteScriptAsync at a time and keep only
+    // the LATEST queued render — so navigation never piles up dozens of overlapping
+    // script executions (the "crashes when moving through the EFB" / refresh-rate issue).
+    private bool _renderInFlight;
+    private string? _queuedRender;
 
     // Maps a flyPad element index to the native control rendering it (list mode).
     private readonly Dictionary<int, RenderedControl> _rendered = new();
@@ -235,6 +241,16 @@ public class FbwEfbForm : Form
             s.IsZoomControlEnabled = false;
             s.AreBrowserAcceleratorKeysEnabled = false;
             _webView.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
+            // If the WebView2 render/browser process dies, don't let it take the host
+            // with it: mark not-ready (so pushes queue instead of throwing) and try one
+            // reload. The native list view remains as a backstop if it can't recover.
+            _webView.CoreWebView2.ProcessFailed += (_, args) =>
+            {
+                System.Diagnostics.Debug.WriteLine($"[FBW flyPad] WebView2 process failed: {args.ProcessFailedKind}");
+                _webViewReady = false;
+                _renderInFlight = false;
+                try { if (!IsDisposed && _webView?.CoreWebView2 != null) _webView.CoreWebView2.Reload(); } catch { }
+            };
             _webView.CoreWebView2.NavigationCompleted += (_, _) =>
             {
                 _webViewReady = true;
@@ -370,20 +386,44 @@ public class FbwEfbForm : Form
         return JsonSerializer.Serialize(new { page = _currentPage, items });
     }
 
-    private void PushToBrowser(string json)
+    private async void PushToBrowser(string json)
     {
-        if (!_webViewReady || _webView.CoreWebView2 == null)
+        // Disposed/closing guard — the poll runs on a background thread and marshals
+        // here; the form/WebView can be torn down between the check and the call.
+        if (IsDisposed || Disposing || _webView == null || _webView.IsDisposed
+            || !_webViewReady || _webView.CoreWebView2 == null)
         {
             _pendingRenderJson = json;
             return;
         }
+        // Coalesce: if a render is already running, keep only the newest and bail.
+        if (_renderInFlight) { _queuedRender = json; return; }
+        _renderInFlight = true;
         try
         {
-            _ = _webView.CoreWebView2.ExecuteScriptAsync("window.__render(" + json + ")");
+            // AWAIT it (not fire-and-forget) so a fault — e.g. the WebView2 went away
+            // mid-navigation — is caught HERE instead of becoming an unobserved task
+            // exception that could crash the process.
+            await _webView.CoreWebView2.ExecuteScriptAsync("window.__render(" + json + ")");
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[A380 flyPad] render push failed: {ex.Message}");
+            System.Diagnostics.Debug.WriteLine($"[FBW flyPad] render push failed: {ex.Message}");
+        }
+        finally
+        {
+            _renderInFlight = false;
+            // Apply the most recent render that arrived while this one was running.
+            if (_queuedRender != null && !IsDisposed && !Disposing)
+            {
+                string next = _queuedRender;
+                _queuedRender = null;
+                PushToBrowser(next);
+            }
+            else
+            {
+                _queuedRender = null;
+            }
         }
     }
 
