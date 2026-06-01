@@ -909,6 +909,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             // not supplying air) — the real running indication, distinct from the PB.
             ReadEnum($"A32NX_COND_PACK_{n}_IS_OPERATING", $"Pack {n} Operating",
                 new Dictionary<double, string> { [0] = "Off", [1] = "Operating" });
+            // Pack flow control valves (each pack has 2) — open/closed status.
+            for (int v = 1; v <= 2; v++)
+                ReadEnum($"A32NX_COND_PACK_{n}_FLOW_VALVE_{v}_IS_OPEN", $"Pack {n} Flow Valve {v}", openVd);
             for (int ch = 1; ch <= 2; ch++)
                 ReadEnum($"A32NX_COND_FDAC_{n}_CHANNEL_{ch}_FAILURE", $"FDAC {n} Channel {ch}", fault);
         }
@@ -2124,6 +2127,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         {
             cond.Add($"A32NX_OVHD_COND_PACK_{n}_PB_HAS_FAULT");
             cond.Add($"A32NX_COND_PACK_{n}_IS_OPERATING");
+            cond.Add($"A32NX_COND_PACK_{n}_FLOW_VALVE_1_IS_OPEN");
+            cond.Add($"A32NX_COND_PACK_{n}_FLOW_VALVE_2_IS_OPEN");
             cond.Add($"A32NX_OVHD_COND_HOT_AIR_{n}_PB_HAS_FAULT");
             for (int ch = 1; ch <= 2; ch++) cond.Add($"A32NX_COND_FDAC_{n}_CHANNEL_{ch}_FAILURE");
         }
