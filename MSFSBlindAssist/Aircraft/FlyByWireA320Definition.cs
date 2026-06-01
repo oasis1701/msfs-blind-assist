@@ -850,6 +850,46 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         },
 
+        // ---- Audio Control Panel (parity with the A380 ACP). The A32NX models radio
+        // reception as per-channel VOLUME (0..100, live-verified settable: VHF1 held 42),
+        // surfaced here as 5-step combos. RMP-L = Captain, RMP-R = First Officer. ----
+        ["A32NX_RMP_L_VHF1_VOLUME"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_RMP_L_VHF1_VOLUME", DisplayName = "VHF 1 Volume",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [25] = "Low", [50] = "Medium", [75] = "High", [100] = "Full" }
+        },
+        ["A32NX_RMP_L_VHF2_VOLUME"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_RMP_L_VHF2_VOLUME", DisplayName = "VHF 2 Volume",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [25] = "Low", [50] = "Medium", [75] = "High", [100] = "Full" }
+        },
+        ["A32NX_RMP_L_VHF3_VOLUME"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_RMP_L_VHF3_VOLUME", DisplayName = "VHF 3 Volume",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [25] = "Low", [50] = "Medium", [75] = "High", [100] = "Full" }
+        },
+        ["A32NX_RMP_R_VHF1_VOLUME"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_RMP_R_VHF1_VOLUME", DisplayName = "VHF 1 Volume",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [25] = "Low", [50] = "Medium", [75] = "High", [100] = "Full" }
+        },
+        ["A32NX_RMP_R_VHF2_VOLUME"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_RMP_R_VHF2_VOLUME", DisplayName = "VHF 2 Volume",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [25] = "Low", [50] = "Medium", [75] = "High", [100] = "Full" }
+        },
+        ["A32NX_RMP_R_VHF3_VOLUME"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_RMP_R_VHF3_VOLUME", DisplayName = "VHF 3 Volume",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [25] = "Low", [50] = "Medium", [75] = "High", [100] = "Full" }
+        },
+
         // ---- Wipers panel (parity with A380 Overhead > Wipers) — Captain + F/O wiper
         // selectors. Live-verified settable via the calculator path (held a 0->2 write).
         ["XMLVAR_A320_WiperSwitch_1"] = new SimConnect.SimVarDefinition
@@ -4178,7 +4218,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
 ["Overhead"] = new List<string> { "ELEC", "ADIRS", "APU", "Oxygen", "Fire", "Hydraulics", "Fuel", "Air Conditioning", "Bleed Air", "Pressurization", "Ventilation", "Cargo Air", "Anti Ice", "Wipers", "Signs", "Interior Lighting", "Exterior Lighting", "Calls", "GPWS", "Flight Control Computers", "Cockpit Door", "Evacuation", "Cargo Smoke", "Recorder and Misc", "Engine Start" },
         ["Glareshield"] = new List<string> { "FCU", "EFIS Captain", "EFIS First Officer", "Warnings" },
         ["Instrument"] = new List<string> { "Gear", "Autobrake", "PFD", "ND", "ISIS", "Source Switching", "Clock", "System Display" },
-        ["Pedestal"] = new List<string> { "Flight Controls", "Speed Brake", "Parking Brake", "Engines", "Thrust Levers", "ECAM Control Panel", "Weather Radar", "Transponder", "Radios", "RMP" },
+        ["Pedestal"] = new List<string> { "Flight Controls", "Speed Brake", "Parking Brake", "Engines", "Thrust Levers", "ECAM Control Panel", "Weather Radar", "Transponder", "Radios", "RMP", "Audio Control Panel Captain", "Audio Control Panel First Officer" },
         ["Ground Services"] = new List<string> { "Doors" }
         };
     }
@@ -4520,6 +4560,14 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             "A32NX_RMP_L_TOGGLE_SWITCH",
             "A32NX_RMP_L_SELECTED_MODE"
+        },
+        ["Audio Control Panel Captain"] = new List<string>
+        {
+            "A32NX_RMP_L_VHF1_VOLUME", "A32NX_RMP_L_VHF2_VOLUME", "A32NX_RMP_L_VHF3_VOLUME"
+        },
+        ["Audio Control Panel First Officer"] = new List<string>
+        {
+            "A32NX_RMP_R_VHF1_VOLUME", "A32NX_RMP_R_VHF2_VOLUME", "A32NX_RMP_R_VHF3_VOLUME"
         },
         // PFD / ND are status-box-only panels (no interactive controls — the readout
         // lives in GetPanelDisplayVariables); FCU/EFIS controls live in their own panels.
