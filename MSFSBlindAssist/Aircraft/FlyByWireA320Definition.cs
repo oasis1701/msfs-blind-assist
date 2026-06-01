@@ -3968,6 +3968,11 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         // Handle aircraft-specific actions
         switch (action)
         {
+            // Ctrl+M variable monitor manager (parity with the A380/Fenix/PMDG).
+            case HotkeyAction.MonitorManager:
+                hotkeyManager.ExitOutputHotkeyMode();
+                if (parentForm is MainForm mfMon) mfMon.ShowA320MonitorManagerDialog();
+                return true;
             // FCU set value dialogs (these need custom logic)
             case HotkeyAction.FCUSetHeading:
                 hotkeyManager.ExitInputHotkeyMode();

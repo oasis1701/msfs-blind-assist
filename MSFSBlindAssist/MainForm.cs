@@ -33,6 +33,7 @@ public partial class MainForm : Form
     private ChecklistForm? checklistForm;
     private FenixMonitorManagerForm? fenixMonitorManagerForm;
     private Forms.FBWA380.FBWA380MonitorManagerForm? fbwA380MonitorManagerForm;
+    private Forms.FlyByWireA320.FlyByWireA320MonitorManagerForm? fbwA320MonitorManagerForm;
     private PMDGAnnouncementMonitorForm? pmdgAnnouncementMonitorForm;
     private MSFSBlindAssist.Services.PMDGProgPageMonitor? pmdgProgPageMonitor;
     private FenixMCDUForm? fenixMCDUForm;
@@ -660,6 +661,13 @@ public partial class MainForm : Form
                 // Check if disabled in the A380 Monitor Manager.
                 if (currentAircraft.AircraftCode == "FBW_A380" &&
                     Settings.SettingsManager.Current.A380DisabledMonitorVariables.Contains(e.VarName))
+                {
+                    return; // Skip announcement for disabled variable
+                }
+
+                // Check if disabled in the A32NX Monitor Manager.
+                if (currentAircraft.AircraftCode == "A320" &&
+                    Settings.SettingsManager.Current.A32NXDisabledMonitorVariables.Contains(e.VarName))
                 {
                     return; // Skip announcement for disabled variable
                 }
@@ -2207,6 +2215,17 @@ public partial class MainForm : Form
                 announcer, currentAircraft.GetVariables());
         }
         fbwA380MonitorManagerForm.ShowForm();
+    }
+
+    public void ShowA320MonitorManagerDialog()
+    {
+        hotkeyManager.ExitOutputHotkeyMode();
+        if (fbwA320MonitorManagerForm == null || fbwA320MonitorManagerForm.IsDisposed)
+        {
+            fbwA320MonitorManagerForm = new Forms.FlyByWireA320.FlyByWireA320MonitorManagerForm(
+                announcer, currentAircraft.GetVariables());
+        }
+        fbwA320MonitorManagerForm.ShowForm();
     }
 
     /// <summary>

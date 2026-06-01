@@ -156,6 +156,11 @@ public class UserSettings
         // when AircraftCode == "FBW_A380". Persisted across sessions.
         public List<string> A380DisabledMonitorVariables { get; set; } = new List<string>();
 
+        // FlyByWire A32NX Monitor Manager — variable keys the user has un-checked in
+        // FlyByWireA320MonitorManagerForm. Consulted (and ECAM-memo sentinel honoured)
+        // when AircraftCode == "A320". Persisted across sessions.
+        public List<string> A32NXDisabledMonitorVariables { get; set; } = new List<string>();
+
         // FMC settings — meaningful when a PMDG aircraft or the Fenix A320 is
         // loaded; the FMC Settings menu item is gated on
         // AircraftCode.StartsWith("PMDG_") || AircraftCode.StartsWith("FENIX_").
@@ -316,6 +321,7 @@ public class UserSettings
             FenixDisabledMonitorVariables = new List<string>(FenixDisabledMonitorVariables),
             PMDGDisabledMonitorVariables = new List<string>(PMDGDisabledMonitorVariables),
             A380DisabledMonitorVariables = new List<string>(A380DisabledMonitorVariables),
+            A32NXDisabledMonitorVariables = new List<string>(A32NXDisabledMonitorVariables),
             MCDUUseAlternateLSKKeys = MCDUUseAlternateLSKKeys,
             PMDGEnhancedDistanceMode = PMDGEnhancedDistanceMode,
             WeatherAutoAnnounceEnabled = WeatherAutoAnnounceEnabled,
