@@ -719,8 +719,19 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // set flaps from the panel without relying on keyboard flap commands.
         Sel("A32NX_FLAPS_HANDLE_INDEX", "Flaps",
             new Dictionary<double, string> { [0] = "Up", [1] = "1", [2] = "2", [3] = "3", [4] = "Full" });
-        Read("A32NX_SPOILERS_HANDLE_POSITION", "Speed Brake Handle");
+        // Speed brake: the handle position is a 0..1 computed output, now auto-announced
+        // by band via ProcessSimVarUpdate (it had no control + no announce before). The
+        // SETTABLE control is a synthetic combo that drives the stock SPOILERS_SET event
+        // (Retract 0 / Half 8192 / Full 16383), mirroring the flaps Sel->FLAPS_SET
+        // pattern; ground-spoiler ARM is a synthetic Disarm/Arm combo driving
+        // SPOILERS_ARM_OFF/ON. (Speculative — added without a live A380 to verify; the
+        // events are stock MSFS and the pattern matches the verified flaps lever.)
+        MonNum("A32NX_SPOILERS_HANDLE_POSITION", "Speed Brake Handle");
+        Act("A380X_MSFSBA_SPEEDBRAKE", "Speed Brake",
+            new Dictionary<double, string> { [0] = "Retracted", [1] = "Half", [2] = "Full" });
         ReadEnum("A32NX_SPOILERS_ARMED", "Ground Spoilers", new Dictionary<double, string> { [0] = "Disarmed", [1] = "Armed" });
+        Act("A380X_MSFSBA_SPOILERS_ARM", "Ground Spoilers Arm",
+            new Dictionary<double, string> { [0] = "Disarm", [1] = "Arm" });
         OnOff("A32NX_PARK_BRAKE_LEVER_POS", "Parking Brake");
 
         // On-demand readout sources for global hotkeys (not paneled, not announced).
@@ -1824,7 +1835,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             ["Instrument"] = new List<string> { "Gear", "Autobrake", "ISIS", "Source Switching", "Clock" },
             ["Pedestal"] = new List<string>
             {
-                "Engines", "Thrust Levers", "Flaps and Brakes", "ECAM Control Panel", "Weather Radar",
+                "Engines", "Thrust Levers", "Flaps and Brakes", "Speed Brake", "ECAM Control Panel", "Weather Radar",
                 "Transponder", "Radios", "RMP", "Audio Control Panel Captain", "Audio Control Panel First Officer", "Cockpit Door"
             },
             ["Ground Services"] = new List<string> { "Doors", "Ground Equipment" },
@@ -2070,6 +2081,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "THROTTLE_3_DETENT", "THROTTLE_4_DETENT"
         };
         p["Flaps and Brakes"] = new List<string> { "A32NX_FLAPS_HANDLE_INDEX", "A32NX_PARK_BRAKE_LEVER_POS" };
+        p["Speed Brake"] = new List<string> { "A380X_MSFSBA_SPEEDBRAKE", "A380X_MSFSBA_SPOILERS_ARM" };
         p["ECAM Control Panel"] = new List<string>
         {
             "A32NX_ECAM_SD_CURRENT_PAGE_INDEX", "A32NX_BTN_ALL", "A32NX_BTN_ABNPROC", "A32NX_BTN_CL",
@@ -2322,12 +2334,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "A32NX_AUTOTHRUST_TLA:3", "A32NX_AUTOTHRUST_TLA:4"
         };
 
-        d["Flaps and Brakes"] = new List<string>
-        {
-            // Flaps handle is now a settable, auto-announced combo in the panel, so
-            // it's not duplicated here as a read-only field.
-            "A32NX_SPOILERS_HANDLE_POSITION", "A32NX_SPOILERS_ARMED"
-        };
+        // Flaps handle is a settable, auto-announced combo in the panel; the speed-brake
+        // readouts moved to their own panel below.
+        d["Speed Brake"] = new List<string> { "A32NX_SPOILERS_HANDLE_POSITION", "A32NX_SPOILERS_ARMED" };
         // Exterior lights are now On/Off combos in the panel itself (auto-announced),
         // so they are NOT duplicated as read-only display variables here.
         d["RMP"] = new List<string>
@@ -2591,6 +2600,24 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // (no announcement; fall through to normal processing).
         if (varName == "A32NX_EFIS_L_TO_WPT_IDENT_0") _ndIdent0 = value;
         else if (varName == "A32NX_EFIS_L_TO_WPT_IDENT_1") _ndIdent1 = value;
+
+        // Speed-brake handle: a 0..1 fraction. Announce by 10% band (with Retracted/Full
+        // at the ends) so a steady lever doesn't spam, but movement is spoken. Silent
+        // baseline on the first sample. (Speculative A380 addition.)
+        if (varName == "A32NX_SPOILERS_HANDLE_POSITION")
+        {
+            int band = (int)Math.Round(Math.Max(0.0, Math.Min(1.0, value)) * 10.0);
+            if (_lastSpoilerBand < 0) { _lastSpoilerBand = band; return true; }
+            if (band != _lastSpoilerBand)
+            {
+                _lastSpoilerBand = band;
+                string phrase = band == 0 ? "Speed brake retracted"
+                              : band == 10 ? "Speed brake full"
+                              : $"Speed brake {band * 10} percent";
+                announcer.Announce(phrase);
+            }
+            return true;
+        }
 
         // FMA armed modes — decode the legacy bitmask and announce NEWLY-armed modes
         // on change (so arming ALT/NAV speaks "Altitude armed"/"NAV armed"). Parity
@@ -3186,6 +3213,21 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             simConnect.ExecuteCalculatorCode($"{axis} (>K:FLAPS_SET)");
             return true;
         }
+        // Speed brake: synthetic Retracted/Half/Full combo -> stock SPOILERS_SET
+        // (0 / 8192 / 16383), mirroring the flaps lever. (Speculative — stock event.)
+        if (varKey == "A380X_MSFSBA_SPEEDBRAKE")
+        {
+            int pos = Math.Max(0, Math.Min(2, (int)Math.Round(value)));
+            int[] axis = { 0, 8192, 16383 };
+            simConnect.ExecuteCalculatorCode($"{axis[pos]} (>K:SPOILERS_SET)");
+            return true;
+        }
+        // Ground-spoiler arm: synthetic Disarm/Arm combo -> SPOILERS_ARM_OFF / _ON.
+        if (varKey == "A380X_MSFSBA_SPOILERS_ARM")
+        {
+            simConnect.ExecuteCalculatorCode(value > 0.5 ? "(>K:SPOILERS_ARM_ON)" : "(>K:SPOILERS_ARM_OFF)");
+            return true;
+        }
         // ENG GEN 1-4: combo state is the stock GENERAL ENG MASTER ALTERNATOR:n; the
         // working actuator is the stock TOGGLE_MASTER_ALTERNATOR event (engine index).
         // Toggle only when the desired state differs from the live SimVar state.
@@ -3486,6 +3528,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     private double? _pHdgVal, _pHdgMgd, _pSpdVal, _pSpdMgd, _pAltVal, _pAltMgd, _pVsVal, _pFpaVal, _pVsMode;
     private bool _reqHdg, _reqSpd, _reqAlt, _reqVs;
     private bool _reqFlaps, _reqGear, _reqBaro, _reqGw;
+    private int _lastSpoilerBand = -1;   // speed-brake handle band (10% steps) last announced
     private int _lastBaroL = -1, _lastBaroR = -1; // last announced EFIS baro (whole hPa)
     private bool? _baroStdL, _baroStdR; // last EFIS baro STD(true)/QNH(false) per side
     private bool? _baroInHgL, _baroInHgR; // last EFIS baro unit inHg(true)/hPa(false) per side
@@ -3535,6 +3578,12 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     public override bool TryGetDisplayOverride(string varKey, double value, out string displayText)
     {
         displayText = "";
+        // Speed-brake handle: a 0..1 fraction — show "Retracted" / "Full" / "N percent".
+        if (varKey == "A32NX_SPOILERS_HANDLE_POSITION")
+        {
+            displayText = value < 0.05 ? "Retracted" : value > 0.95 ? "Full" : $"{(int)Math.Round(value * 100)} percent";
+            return true;
+        }
         // Doors: INTERACTIVE POINT OPEN is a 0..1 fraction — show a meaningful
         // state ("Open (60%)") instead of the bare "0.6".
         if (varKey.StartsWith("A380X_GND_DOOR_", StringComparison.Ordinal)
