@@ -2794,7 +2794,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ["A32NX_EFIS_L_TO_WPT_IDENT_0"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_EFIS_L_TO_WPT_IDENT_0",
-            DisplayName = "Waypoint Ident Part 1",
+            DisplayName = "To Waypoint",
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             Units = "number"
@@ -2946,7 +2946,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ["A32NX_EFIS_L_APPR_MSG_0"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_EFIS_L_APPR_MSG_0",
-            DisplayName = "Approach Message Part 1",
+            DisplayName = "Approach Message",
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             Units = "number"
@@ -3536,6 +3536,25 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             "A32NX_PFD_MSG_TD_REACHED",
             "A32NX_PFD_MSG_CHECK_SPEED_MODE",
             "A32NX_PFD_LINEAR_DEVIATION_ACTIVE"
+        },
+        // ND accessible snapshot — the navigation picture: mode/range, the TO
+        // waypoint (decoded ident + distance/bearing/ETA), cross-track, RNP, and
+        // ILS LOC/GS validity + deviation, plus the approach message. Single status
+        // box (force-read on F5). Idents/messages decoded via TryGetDisplayOverride.
+        ["ND"] = new List<string>
+        {
+            "A32NX_EFIS_L_ND_MODE",
+            "A32NX_EFIS_L_ND_RANGE",
+            "A32NX_EFIS_L_TO_WPT_IDENT_0",
+            "A32NX_EFIS_L_TO_WPT_DISTANCE",
+            "A32NX_EFIS_L_TO_WPT_BEARING",
+            "A32NX_EFIS_L_TO_WPT_ETA",
+            "A32NX_FG_CROSS_TRACK_ERROR",
+            "A32NX_FMGC_L_RNP",
+            "A32NX_RADIO_RECEIVER_LOC_IS_VALID",
+            "A32NX_RADIO_RECEIVER_LOC_DEVIATION",
+            "A32NX_RADIO_RECEIVER_GS_IS_VALID",
+            "A32NX_RADIO_RECEIVER_GS_DEVIATION"
         }
         // Add more panels and their display variables here as needed
         };
@@ -3547,7 +3566,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
 ["Overhead Forward"] = new List<string> { "ELEC", "ADIRS", "APU", "Oxygen", "Fire", "Hydraulic", "Fuel", "Air Con", "Anti Ice", "Signs", "Exterior Lighting", "Calls", "GPWS", "Cockpit Door", "Evacuation", "Cargo Smoke", "Engine" },
         ["Glareshield"] = new List<string> { "FCU", "EFIS Control Panel", "Warnings" },
-        ["Instrument"] = new List<string> { "Autobrake and Gear", "PFD", "ISIS", "System Display" },
+        ["Instrument"] = new List<string> { "Autobrake and Gear", "PFD", "ND", "ISIS", "System Display" },
         ["Pedestal"] = new List<string> { "Flight Controls", "Speed Brake", "Parking Brake", "Engines", "ECAM", "WX", "ATC-TCAS", "RMP" }
         };
     }
@@ -3804,9 +3823,10 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             "A32NX_RMP_L_TOGGLE_SWITCH",
             "A32NX_RMP_L_SELECTED_MODE"
         },
-        // PFD is a status-box-only panel (no interactive controls — the readout lives
-        // in GetPanelDisplayVariables["PFD"]); FCU/EFIS controls live in their own panels.
+        // PFD / ND are status-box-only panels (no interactive controls — the readout
+        // lives in GetPanelDisplayVariables); FCU/EFIS controls live in their own panels.
         ["PFD"] = new List<string>(),
+        ["ND"] = new List<string>(),
         ["Flight Controls"] = new List<string>
         {
             "A32NX_SPOILERS_ARMED",
@@ -4305,6 +4325,25 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     public const string SdPageVar = "A32NX_MSFSBA_SD_PAGE";
     private SimConnect.CoherentDisplayClient? _ewdScrapeClient;
     private string _sdBoxContent = "";
+
+    // ---- ND status-box cache ---------------------------------------------------
+    // The TO-waypoint ident is packed 6-bit-per-char (8 chars in word 0 — enough for
+    // any real ident; word 1 cached for completeness). Cached as it flows through
+    // ProcessSimVarUpdate; TryGetDisplayOverride on the *_0 word decodes it.
+    private double _ndIdent0, _ndIdent1;
+    // FBW packs idents/messages 6 bits per char, 8 chars per word (low bits first),
+    // char = code + 31 (matches the old NavigationDisplayForm decoder).
+    private static string UnpackSixBit(double w0, double w1)
+    {
+        double[] words = { w0, w1 };
+        string s = "";
+        for (int i = 0; i < words.Length * 8; i++)
+        {
+            int code = (int)(words[i / 8] / Math.Pow(2, (i % 8) * 6)) & 0x3F;
+            if (code > 0) s += (char)(code + 31);
+        }
+        return s.Trim();
+    }
     private static readonly Dictionary<double, string> SdPageNames = new()
     {
         [0] = "Upper E/WD", [1] = "Electrical", [2] = "Hydraulics", [3] = "Pressurization",
@@ -4519,12 +4558,59 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             return true;
         }
 
+        // ---- ND status box ----------------------------------------------------
+        if (varKey == "A32NX_EFIS_L_TO_WPT_IDENT_0")
+        {
+            string wpt = UnpackSixBit(_ndIdent0, _ndIdent1);
+            displayText = string.IsNullOrWhiteSpace(wpt) ? "None" : wpt;
+            return true;
+        }
+        if (varKey == "A32NX_EFIS_L_TO_WPT_DISTANCE")
+        {
+            displayText = value <= 0 ? "--" : $"{value:F1} NM";
+            return true;
+        }
+        if (varKey == "A32NX_EFIS_L_TO_WPT_BEARING")
+        {
+            double deg = value * 180.0 / Math.PI;
+            deg = ((deg % 360) + 360) % 360;
+            displayText = $"{(int)Math.Round(deg):000} magnetic";
+            return true;
+        }
+        if (varKey == "A32NX_EFIS_L_TO_WPT_ETA")
+        {
+            if (value <= 0) { displayText = "--"; return true; }
+            int h = (int)(value / 3600), m = (int)((value % 3600) / 60), s = (int)(value % 60);
+            displayText = $"{h}:{m:D2}:{s:D2} UTC";
+            return true;
+        }
+        if (varKey == "A32NX_FG_CROSS_TRACK_ERROR")
+        {
+            double nm = value / 1852.0;   // metres -> NM (sign: + = right of track)
+            displayText = Math.Abs(nm) < 0.01 ? "On track"
+                : $"{Math.Abs(nm):F2} NM {(nm > 0 ? "right" : "left")}";
+            return true;
+        }
+        if (varKey == "A32NX_RADIO_RECEIVER_LOC_DEVIATION" || varKey == "A32NX_RADIO_RECEIVER_GS_DEVIATION")
+        {
+            displayText = $"{value:F2} degrees";
+            return true;
+        }
+
         return base.TryGetDisplayOverride(varKey, value, out displayText);
     }
 
     public override bool ProcessSimVarUpdate(string varName, double value, Accessibility.ScreenReaderAnnouncer announcer)
     {
         lastAnnouncer = announcer; // Store for when we announce
+
+        // Cache the ND packed-word halves so TryGetDisplayOverride can decode the
+        // To-Waypoint ident (no announcement; fall through to normal processing).
+        switch (varName)
+        {
+            case "A32NX_EFIS_L_TO_WPT_IDENT_0": _ndIdent0 = value; break;
+            case "A32NX_EFIS_L_TO_WPT_IDENT_1": _ndIdent1 = value; break;
+        }
 
         // FMA armed modes — decode the bitmask and announce NEWLY-armed modes on change
         // (suppresses the old raw "Armed Vertical Mode 1" generic announce).
