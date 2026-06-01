@@ -916,7 +916,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 ReadEnum($"A32NX_COND_FDAC_{n}_CHANNEL_{ch}_FAILURE", $"FDAC {n} Channel {ch}", fault);
         }
         foreach (var z in new[] { "FWD", "BULK" })
+        {
             ReadEnum($"A32NX_OVHD_CARGO_AIR_ISOL_VALVES_{z}_PB_HAS_FAULT", $"Cargo {z} Isolation Fault", fault);
+            // Actual isolation-valve open state (distinct from the pushbutton command).
+            ReadEnum($"A32NX_OVHD_CARGO_AIR_ISOL_VALVES_{z}_IS_ON", $"Cargo {z} Isolation Valve", openVd);
+        }
         ReadEnum("A32NX_OVHD_CARGO_AIR_HEATER_PB_HAS_FAULT", "Cargo Heater Fault", fault);
         ReadEnum("A32NX_OVHD_COND_RAM_AIR_PB_HAS_FAULT", "Ram Air Fault", fault);
         for (int ch = 1; ch <= 2; ch++)
@@ -2138,7 +2142,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             cond.Add($"A32NX_OVHD_COND_HOT_AIR_{n}_PB_HAS_FAULT");
             for (int ch = 1; ch <= 2; ch++) cond.Add($"A32NX_COND_FDAC_{n}_CHANNEL_{ch}_FAILURE");
         }
-        foreach (var z in new[] { "FWD", "BULK" }) cond.Add($"A32NX_OVHD_CARGO_AIR_ISOL_VALVES_{z}_PB_HAS_FAULT");
+        foreach (var z in new[] { "FWD", "BULK" })
+        {
+            cond.Add($"A32NX_OVHD_CARGO_AIR_ISOL_VALVES_{z}_PB_HAS_FAULT");
+            cond.Add($"A32NX_OVHD_CARGO_AIR_ISOL_VALVES_{z}_IS_ON");
+        }
         cond.Add("A32NX_OVHD_CARGO_AIR_HEATER_PB_HAS_FAULT");
         d["Air Conditioning"] = cond;
 
