@@ -520,6 +520,46 @@
     return false;
   };
 
+  // General two-column detector. Many flyPad pages are a LEFT control column beside
+  // a RIGHT control column (the Checklist phase-menu beside its item list; a
+  // two-column input form like Performance). A plain row-by-row, left-to-right read
+  // ZIPPERS them ("menu1, item1, menu2, item2, …") — the reported "checklist items
+  // interspersed between checklists". If the interactive items (excluding the nav
+  // rail) split across ONE clear horizontal gap into a left group and a right group,
+  // each substantial, return the x boundary so enumerate() reads each column fully
+  // top-to-bottom. A single-column page (or a label+control settings page, whose
+  // left side is non-interactive TEXT and so isn't counted here) has no such gap and
+  // keeps the row-wise order. NOTE: position-based, NOT a fixed fraction of width —
+  // both checklist columns sit in the left half, so a midline split misses them.
+  A.splitColumns = function (items) {
+    var pts = [];
+    for (var i = 0; i < items.length; i++)
+      if (items[i].idx > 0 && !items[i].navRail) pts.push(items[i]);
+    if (pts.length < 6) return -1;
+    var xs = pts.map(function (p) { return p.left; }).sort(function (a, b) { return a - b; });
+    var gi = -1, gv = 0;
+    for (var k = 1; k < xs.length; k++) { var g = xs[k] - xs[k - 1]; if (g > gv) { gv = g; gi = k; } }
+    if (gv < 150) return -1;                       // no clear column gutter
+    var boundary = (xs[gi - 1] + xs[gi]) / 2;
+    // Both columns must be substantial AND vertically OVERLAP. The overlap test is
+    // what separates a true side-by-side layout (checklist menu beside its items —
+    // each menu row sits at the same height as an item row, so a row-wise read
+    // zippers them) from a STACKED layout (Ground's sub-tab strip ABOVE its payload
+    // form — row-wise already reads the tabs row, then the form rows, correctly).
+    // Only the side-by-side case needs column-first; reordering a stacked page would
+    // wrongly bury its top toolbar at the end.
+    var lMin = 1e9, lMax = -1e9, rMin = 1e9, rMax = -1e9, nl = 0, nr = 0;
+    for (var j = 0; j < pts.length; j++) {
+      if (pts[j].left < boundary) { nl++; if (pts[j].top < lMin) lMin = pts[j].top; if (pts[j].top > lMax) lMax = pts[j].top; }
+      else { nr++; if (pts[j].top < rMin) rMin = pts[j].top; if (pts[j].top > rMax) rMax = pts[j].top; }
+    }
+    if (nl < 3 || nr < 3) return -1;
+    var overlap = Math.min(lMax, rMax) - Math.max(lMin, rMin);
+    var minRange = Math.min(lMax - lMin, rMax - rMin);
+    if (overlap < 0.3 * minRange) return -1;       // stacked, not side-by-side → row-wise
+    return boundary;
+  };
+
   A.enumerate = function (root) {
     var stale = root.querySelectorAll("[data-fbw-efb-idx]");
     for (var s = 0; s < stale.length; s++) stale[s].removeAttribute("data-fbw-efb-idx");
@@ -636,7 +676,11 @@
     // the entire right column — each widget then reads as one coherent block under
     // its own heading. Other pages (Settings rows, etc.) keep the row-wise order so
     // a setting name and its control stay together on one line.
-    var dashMid = A.isDashboard(root) ? (rootRect.width * 0.48) : -1;
+    // Dashboard keeps its dedicated 48%-width split (its right column is reminder
+    // widgets, detected by heading); every other page uses the general gap-based
+    // column detector so two-column pages (Checklists menu+items, etc.) read
+    // column-first instead of zippering. Single-column pages return -1 → row-wise.
+    var dashMid = A.isDashboard(root) ? (rootRect.width * 0.48) : A.splitColumns(items);
     if (dashMid > 0) {
       for (var ci = 0; ci < items.length; ci++)
         items[ci]._col = (!items[ci].navRail && items[ci].left > dashMid) ? 1 : 0;
