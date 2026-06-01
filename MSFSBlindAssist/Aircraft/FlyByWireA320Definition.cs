@@ -3924,6 +3924,54 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Dim", [2] = "Bright" }
         },
+
+        // ---- Ground Services > Doors (parity with A380). One Closed/Open combo per
+        // exit: live state from INTERACTIVE POINT OPEN:n (a 0..1 fraction during the
+        // open/close animation), set toggles via TOGGLE_AIRCRAFT_EXIT:n in
+        // HandleUIVariableSet. ProcessSimVarUpdate announces Open/Closed once per
+        // transition; TryGetDisplayOverride renders the state cleanly. ----
+        ["A32NX_MSFSBA_DOOR_0"] = new SimConnect.SimVarDefinition
+        {
+            Name = "INTERACTIVE POINT OPEN:0", DisplayName = "Front Left Door",
+            Type = SimConnect.SimVarType.SimVar, Units = "percent over 100",
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+        },
+        ["A32NX_MSFSBA_DOOR_1"] = new SimConnect.SimVarDefinition
+        {
+            Name = "INTERACTIVE POINT OPEN:1", DisplayName = "Front Right Door",
+            Type = SimConnect.SimVarType.SimVar, Units = "percent over 100",
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+        },
+        ["A32NX_MSFSBA_DOOR_2"] = new SimConnect.SimVarDefinition
+        {
+            Name = "INTERACTIVE POINT OPEN:2", DisplayName = "Rear Left Door",
+            Type = SimConnect.SimVarType.SimVar, Units = "percent over 100",
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+        },
+        ["A32NX_MSFSBA_DOOR_3"] = new SimConnect.SimVarDefinition
+        {
+            Name = "INTERACTIVE POINT OPEN:3", DisplayName = "Rear Right Door",
+            Type = SimConnect.SimVarType.SimVar, Units = "percent over 100",
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+        },
+        ["A32NX_MSFSBA_DOOR_4"] = new SimConnect.SimVarDefinition
+        {
+            Name = "INTERACTIVE POINT OPEN:4", DisplayName = "Forward Cargo Door",
+            Type = SimConnect.SimVarType.SimVar, Units = "percent over 100",
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+        },
+        ["A32NX_MSFSBA_DOOR_5"] = new SimConnect.SimVarDefinition
+        {
+            Name = "INTERACTIVE POINT OPEN:5", DisplayName = "Aft Cargo Door",
+            Type = SimConnect.SimVarType.SimVar, Units = "percent over 100",
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+        },
         };
 
         // Merge aircraft-specific variables into base variables
@@ -4130,7 +4178,8 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
 ["Overhead"] = new List<string> { "ELEC", "ADIRS", "APU", "Oxygen", "Fire", "Hydraulics", "Fuel", "Air Conditioning", "Bleed Air", "Pressurization", "Ventilation", "Cargo Air", "Anti Ice", "Wipers", "Signs", "Interior Lighting", "Exterior Lighting", "Calls", "GPWS", "Flight Control Computers", "Cockpit Door", "Evacuation", "Cargo Smoke", "Recorder and Misc", "Engine Start" },
         ["Glareshield"] = new List<string> { "FCU", "EFIS Captain", "EFIS First Officer", "Warnings" },
         ["Instrument"] = new List<string> { "Gear", "Autobrake", "PFD", "ND", "ISIS", "Source Switching", "Clock", "System Display" },
-        ["Pedestal"] = new List<string> { "Flight Controls", "Speed Brake", "Parking Brake", "Engines", "Thrust Levers", "ECAM Control Panel", "Weather Radar", "Transponder", "Radios", "RMP" }
+        ["Pedestal"] = new List<string> { "Flight Controls", "Speed Brake", "Parking Brake", "Engines", "Thrust Levers", "ECAM Control Panel", "Weather Radar", "Transponder", "Radios", "RMP" },
+        ["Ground Services"] = new List<string> { "Doors" }
         };
     }
 
@@ -4415,6 +4464,11 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ["Thrust Levers"] = new List<string>
         {
             "THROTTLE_ALL_DETENT", "THROTTLE_1_DETENT", "THROTTLE_2_DETENT"
+        },
+        ["Doors"] = new List<string>
+        {
+            "A32NX_MSFSBA_DOOR_0", "A32NX_MSFSBA_DOOR_1", "A32NX_MSFSBA_DOOR_2",
+            "A32NX_MSFSBA_DOOR_3", "A32NX_MSFSBA_DOOR_4", "A32NX_MSFSBA_DOOR_5"
         },
         ["ECAM Control Panel"] = new List<string>
         {
@@ -4963,6 +5017,23 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     // any real ident; word 1 cached for completeness). Cached as it flows through
     // ProcessSimVarUpdate; TryGetDisplayOverride on the *_0 word decodes it.
     private double _ndIdent0, _ndIdent1;
+
+    // ---- Ground-service doors ----
+    // The A320's exits toggle via the stock K:TOGGLE_AIRCRAFT_EXIT with the exit index,
+    // and state reads from INTERACTIVE POINT OPEN:index (1:1 mapping, verified live —
+    // toggling exit 0 set INTERACTIVE POINT OPEN:0 = 1). Exit types: 0-3 = passenger,
+    // 4-5 = cargo (verified via EXIT TYPE:n).
+    private static readonly Dictionary<string, string> _doorNames = new()
+    {
+        ["A32NX_MSFSBA_DOOR_0"] = "Front Left Door",
+        ["A32NX_MSFSBA_DOOR_1"] = "Front Right Door",
+        ["A32NX_MSFSBA_DOOR_2"] = "Rear Left Door",
+        ["A32NX_MSFSBA_DOOR_3"] = "Rear Right Door",
+        ["A32NX_MSFSBA_DOOR_4"] = "Forward Cargo Door",
+        ["A32NX_MSFSBA_DOOR_5"] = "Aft Cargo Door",
+    };
+    private readonly Dictionary<string, bool> _doorOpen = new();
+
     // FBW packs idents/messages 6 bits per char, 8 chars per word (low bits first),
     // char = code + 31 (matches the old NavigationDisplayForm decoder).
     private static string UnpackSixBit(double w0, double w1)
@@ -5163,6 +5234,13 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     public override bool TryGetDisplayOverride(string varKey, double value, out string displayText)
     {
         displayText = "";
+        // Doors: INTERACTIVE POINT OPEN is a 0..1 fraction; render the state cleanly
+        // (Open / Closed / mid-animation percentage) instead of "0.6".
+        if (varKey.StartsWith("A32NX_MSFSBA_DOOR_", StringComparison.Ordinal))
+        {
+            displayText = value > 0.95 ? "Open" : value < 0.05 ? "Closed" : $"{value * 100:0}% open";
+            return true;
+        }
         if (varKey == SdPageVar)
         {
             int p = (int)Math.Round(value);
@@ -5266,6 +5344,19 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     public override bool ProcessSimVarUpdate(string varName, double value, Accessibility.ScreenReaderAnnouncer announcer)
     {
         lastAnnouncer = announcer; // Store for when we announce
+
+        // Doors read INTERACTIVE POINT OPEN, a 0..1 FRACTION (a half-open door is e.g.
+        // 0.6, matching neither Closed(0) nor Open(1)), so announce Open/Closed once per
+        // transition (>0.05 = cracked open) instead of spamming the animation.
+        if (varName.StartsWith("A32NX_MSFSBA_DOOR_", StringComparison.Ordinal))
+        {
+            bool open = value > 0.05;
+            bool? prev = _doorOpen.TryGetValue(varName, out var pv) ? pv : null;
+            _doorOpen[varName] = open;
+            if (prev.HasValue && prev.Value != open && _doorNames.TryGetValue(varName, out var dn))
+                announcer.Announce($"{dn} {(open ? "open" : "closed")}");
+            return true;
+        }
 
         // Cache the ND packed-word halves so TryGetDisplayOverride can decode the
         // To-Waypoint ident (no announcement; fall through to normal processing).
@@ -5557,6 +5648,16 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         if (varKey == "A32NX_CHRONO_ET_SWITCH_POS")
         {
             simConnect.ExecuteCalculatorCode($"{(int)Math.Round(value)} (>L:A32NX_CHRONO_ET_SWITCH_POS)");
+            return true;
+        }
+
+        // Door combos: the combo shows the live INTERACTIVE POINT OPEN state, so any
+        // change means "toggle" -> fire TOGGLE_AIRCRAFT_EXIT with the exit index (1:1
+        // with the door number, verified live).
+        if (varKey.StartsWith("A32NX_MSFSBA_DOOR_", StringComparison.Ordinal))
+        {
+            if (int.TryParse(varKey.AsSpan("A32NX_MSFSBA_DOOR_".Length), out int exitIdx))
+                simConnect.SendEvent("TOGGLE_AIRCRAFT_EXIT", (uint)exitIdx);
             return true;
         }
 
