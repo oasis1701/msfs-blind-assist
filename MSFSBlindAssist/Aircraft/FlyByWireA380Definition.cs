@@ -3779,43 +3779,16 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             case HotkeyAction.ReadSpeedVFE: RequestReadout(simConnect, "A32NX_SPEEDS_VFEN", "V F E next", "knots"); return true;
             case HotkeyAction.ReadFuelQuantity: RequestReadout(simConnect, "A32NX_TOTAL_FUEL_QUANTITY", "Total fuel", "kilograms", weight: true); return true;
             case HotkeyAction.ReadApproachCapability: RequestReadout(simConnect, "A32NX_APPROACH_CAPABILITY", "Approach capability", "", _apprCapMap); return true;
-            case HotkeyAction.ShowPFD:
-                hotkeyManager.ExitOutputHotkeyMode();
-                ShowPFDWindow(announcer, simConnect);
-                return true;
-            case HotkeyAction.ShowStatusPage:
-            case HotkeyAction.ShowECAM:
-                hotkeyManager.ExitOutputHotkeyMode();
-                ShowSystemDisplayWindow(announcer, simConnect);
-                return true;
-            case HotkeyAction.ShowNavigationDisplay:
-            case HotkeyAction.ReadDisplayND:
-                hotkeyManager.ExitOutputHotkeyMode();
-                new Forms.FBWA380.FBWA380NavDisplayForm(announcer, simConnect).Show();
-                return true;
-            // The A320/PMDG "read display" hotkeys map onto the A380's readout
-            // windows (same data, screen-reader friendly).
-            case HotkeyAction.ReadDisplayPFD:
-                hotkeyManager.ExitOutputHotkeyMode();
-                ShowPFDWindow(announcer, simConnect);
-                return true;
-            case HotkeyAction.ReadDisplayISIS:
-                hotkeyManager.ExitOutputHotkeyMode();
-                new Forms.FBWA380.FBWA380ISISForm(announcer, simConnect).Show();
-                return true;
+            // Dedicated display WINDOWS were removed for the FBW aircraft: the SD reads
+            // via the ECAM Control Panel page combo + status box, the E/WD has its own
+            // status box (Displays > E/WD panel), and PFD/ND/ISIS flight values stay on
+            // the individual readout hotkeys (ReadAltimeter/ReadSpeed/... — kept). The
+            // ShowPFD/ShowNavigationDisplay/ShowECAM/ShowStatusPage hotkeys are gone;
+            // the shared ReadDisplay* actions fall through to no-op on the FBW jets
+            // (still used by PMDG/Fenix). Alt+E still speaks the current E/WD lines.
             case HotkeyAction.ReadDisplayUpperECAM:
-                // Upper ECAM IS the E/WD: speak ALL current memo/warning lines on
-                // demand (decoded, regardless of the live-call-out mute) for quick
-                // audio, AND open the live-scrape E/WD window (engine N1/EGT/FF,
-                // memos and active warnings/procedures, exactly as rendered). (Alt+E)
                 ReadAllEwdWarnings(announcer);
                 hotkeyManager.ExitOutputHotkeyMode();
-                new Forms.FBWA380.FBWA380LiveDisplayForm(announcer, "A380X_EWD", "Engine Warning Display").Show();
-                return true;
-            case HotkeyAction.ReadDisplayLowerECAM:
-            case HotkeyAction.ReadFuelInfo:
-                hotkeyManager.ExitOutputHotkeyMode();
-                ShowSystemDisplayWindow(announcer, simConnect);
                 return true;
             case HotkeyAction.ReadWaypointInfo:
                 RequestWaypointInfo(simConnect);
