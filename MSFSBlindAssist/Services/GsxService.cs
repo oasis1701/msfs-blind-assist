@@ -2233,6 +2233,16 @@ public sealed class GsxService : IDisposable
             return "Fueling";
         }
 
+        string lower = normalized.ToLowerInvariant();
+        if (IsDeicingService(lower))
+            return "De-icing";
+        if (IsLavatoryService(lower))
+            return "Lavatory";
+        if (IsPotableWaterService(lower))
+            return "Potable water";
+        if (IsCleaningService(lower))
+            return "Cleaning";
+
         return CultureInfo.CurrentCulture.TextInfo.ToTitleCase(normalized.ToLowerInvariant());
     }
 
@@ -2315,6 +2325,10 @@ public sealed class GsxService : IDisposable
         return normalized.Contains("catering")
             || normalized.Contains("fuel")
             || normalized.Contains("refuel")
+            || IsDeicingService(normalized)
+            || IsLavatoryService(normalized)
+            || IsPotableWaterService(normalized)
+            || IsCleaningService(normalized)
             || normalized.Contains("baggage")
             || normalized.Contains("cargo")
             || normalized.Contains("boarding")
@@ -2344,8 +2358,10 @@ public sealed class GsxService : IDisposable
             || normalized.Contains("cargo")
             || normalized.Contains("boarding")
             || normalized.Contains("deboarding")
-            || normalized.Contains("de-icing")
-            || normalized.Contains("deicing");
+            || IsDeicingService(normalized)
+            || IsLavatoryService(normalized)
+            || IsPotableWaterService(normalized)
+            || IsCleaningService(normalized);
     }
 
     private static string InferInvoiceServiceName(string invoiceRow)
@@ -2355,8 +2371,14 @@ public sealed class GsxService : IDisposable
             return "Fueling";
         if (normalized.Contains("catering"))
             return "Catering";
-        if (normalized.Contains("de-ic") || normalized.Contains("deic"))
+        if (IsDeicingService(normalized))
             return "De-icing";
+        if (IsLavatoryService(normalized))
+            return "Lavatory";
+        if (IsPotableWaterService(normalized))
+            return "Potable water";
+        if (IsCleaningService(normalized))
+            return "Cleaning";
         if (normalized.Contains("baggage") || normalized.Contains("cargo")
             || normalized.Contains("handling") || normalized.Contains("boarding")
             || normalized.Contains("deboarding"))
@@ -2426,10 +2448,29 @@ public sealed class GsxService : IDisposable
         if (normalized.Contains("catering"))
             yield return "catering";
 
-        if (normalized.Contains("de-ic") || normalized.Contains("deic"))
+        if (IsDeicingService(normalized))
         {
             yield return "de-icing";
             yield return "deicing";
+        }
+
+        if (IsLavatoryService(normalized))
+        {
+            yield return "lavatory";
+            yield return "toilet";
+        }
+
+        if (IsPotableWaterService(normalized))
+        {
+            yield return "potable water";
+            yield return "water service";
+            yield return "water";
+        }
+
+        if (IsCleaningService(normalized))
+        {
+            yield return "cleaning";
+            yield return "cabin cleaning";
         }
 
         if (normalized.Contains("fuel") || normalized.Contains("refuel"))
@@ -2450,6 +2491,25 @@ public sealed class GsxService : IDisposable
         if (normalized.Contains("pushback"))
             yield return "pushback";
     }
+
+    private static bool IsDeicingService(string normalized) =>
+        normalized.Contains("de-ic") || normalized.Contains("deic");
+
+    private static bool IsLavatoryService(string normalized) =>
+        normalized.Contains("lavatory")
+        || normalized.Contains("lavitory")
+        || normalized.Contains("toilet");
+
+    private static bool IsPotableWaterService(string normalized) =>
+        normalized.Contains("potable")
+        || normalized.Contains("water service")
+        || normalized.Contains("water truck")
+        || normalized.Contains("water");
+
+    private static bool IsCleaningService(string normalized) =>
+        normalized.Contains("cleaning")
+        || normalized.Contains("cabin clean")
+        || normalized.Contains("clean cabin");
 
     private static string ExtractMoneySummary(string text)
     {
