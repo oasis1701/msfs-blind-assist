@@ -4804,6 +4804,11 @@ public partial class MainForm : Form
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 250));
         layout.AutoSize = true;
         layout.Location = new Point(10, 10);
+        // PERF: build the whole panel with layout suspended. This TableLayoutPanel
+        // is AutoSize, so every Controls.Add otherwise forces a full re-layout — an
+        // O(N^2) thrash that lagged large panels (the A380 overhead has dozens of
+        // controls). Suspend now, resume once after all rows are added (below).
+        layout.SuspendLayout();
 
         foreach (var varKey in currentAircraft.GetPanelControls()[currentPanel])
         {
@@ -5644,7 +5649,11 @@ public partial class MainForm : Form
             currentControls["_REFRESH_"] = refreshButton;
         }
 
+            // Resume + lay out ONCE now that every row exists, then attach.
+            layout.ResumeLayout(true);
+            controlsContainer.SuspendLayout();
             controlsContainer.Controls.Add(layout);
+            controlsContainer.ResumeLayout(true);
 
             // For PMDG aircraft, populate controls with current data from the data manager
             if (currentAircraft is IPMDGAircraft && simConnectManager?.PMDGDataManager != null)
