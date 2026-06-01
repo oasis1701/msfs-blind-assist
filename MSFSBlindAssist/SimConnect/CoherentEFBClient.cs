@@ -17,9 +17,9 @@ namespace MSFSBlindAssist.SimConnect
     /// TITLE every (re)connect — never hardcoded (the VCockpit index is load
     /// order dependent; only the title/coui:// path is stable).
     ///
-    /// Implements IMcduBridge so FBWA380EFBForm can consume it exactly like the
+    /// Implements IMcduBridge so FbwEfbForm can consume it exactly like the
     /// old injection-based EFBBridgeServer: it raises the same
-    /// fbwa380_efb_connected / fbwa380_efb_elements state pushes and accepts the
+    /// fbw_efb_connected / fbw_efb_elements state pushes and accepts the
     /// same command vocabulary (get_display_elements / set_element_value /
     /// click_display_element), translating each into an agent call.
     /// </summary>
@@ -223,7 +223,7 @@ namespace MSFSBlindAssist.SimConnect
             if (!_connectedPushSent)
             {
                 _connectedPushSent = true;
-                Raise("fbwa380_efb_connected", new Dictionary<string, string>());
+                Raise("fbw_efb_connected", new Dictionary<string, string>());
             }
 
             var elements = result.elements ?? new List<ScrapeElement>();
@@ -265,7 +265,7 @@ namespace MSFSBlindAssist.SimConnect
                     if (elements[i].options is { Count: > 0 })
                         data[$"items.{i}.options"] = string.Join(OptionSeparator, elements[i].options!);
                 }
-                Raise("fbwa380_efb_elements", data);
+                Raise("fbw_efb_elements", data);
             }
         }
 

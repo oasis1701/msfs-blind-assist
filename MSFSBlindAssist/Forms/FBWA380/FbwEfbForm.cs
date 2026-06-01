@@ -9,7 +9,11 @@ using MSFSBlindAssist.SimConnect;
 namespace MSFSBlindAssist.Forms.FBWA380;
 
 /// <summary>
-/// Accessible reader for the FlyByWire A380X flyPad EFB (flyPadOS 3).
+/// Accessible reader for the FlyByWire flyPad EFB (flyPadOS 3) — SHARED by the
+/// A32NX and A380X flyPads, and reused a third time for the A380 OANS airport map
+/// (driven by CoherentNDClient instead of CoherentEFBClient). The window title and
+/// device noun ("flyPad" / "OANS") are constructor parameters; everything else is
+/// generic over IMcduBridge, so it is not A380-specific despite the folder.
 ///
 /// DESIGN — WebView2 "browser mode" with a native-control fallback
 /// ---------------------------------------------------------------
@@ -34,13 +38,13 @@ namespace MSFSBlindAssist.Forms.FBWA380;
 /// IMcduBridge.StateUpdated; commands go out via IMcduBridge.EnqueueCommand
 /// (get_display_elements / click_display_element / set_element_value).
 /// </summary>
-public class FBWA380EFBForm : Form
+public class FbwEfbForm : Form
 {
     [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr hWnd);
 
-    private const string StateTypeElements = "fbwa380_efb_elements";
-    private const string StateTypeConnected = "fbwa380_efb_connected";
+    private const string StateTypeElements = "fbw_efb_elements";
+    private const string StateTypeConnected = "fbw_efb_connected";
     private const char OptionSeparator = (char)0x1f;
 
     private readonly IMcduBridge _bridgeServer;
@@ -74,12 +78,12 @@ public class FBWA380EFBForm : Form
 
     private System.Windows.Forms.Timer _statusTimer = null!;
 
-    public FBWA380EFBForm(IMcduBridge bridgeServer, ScreenReaderAnnouncer announcer,
+    public FbwEfbForm(IMcduBridge bridgeServer, ScreenReaderAnnouncer announcer,
                           string? windowTitle = null, string? deviceNoun = null)
     {
         _bridgeServer = bridgeServer;
         _announcer = announcer;
-        _windowTitle = windowTitle ?? "A380X flyPad EFB";
+        _windowTitle = windowTitle ?? "FBW flyPad EFB";
         _deviceNoun = deviceNoun ?? "flyPad";
 
         InitializeComponent();

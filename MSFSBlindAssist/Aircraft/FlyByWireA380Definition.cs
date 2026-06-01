@@ -32,7 +32,7 @@ namespace MSFSBlindAssist.Aircraft;
 ///
 /// MCD U / flyPad are driven live through the Coherent GT debugger (no
 /// injection) — see CoherentDebuggerClient / CoherentEFBClient and the
-/// FBWA380MCDUForm / FBWA380EFBForm.
+/// FBWA380MCDUForm / FbwEfbForm.
 /// </summary>
 public class FlyByWireA380Definition : BaseAircraftDefinition,
     ISupportsBridgedMCDU,

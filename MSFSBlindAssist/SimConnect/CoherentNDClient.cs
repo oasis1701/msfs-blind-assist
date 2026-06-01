@@ -16,8 +16,8 @@ namespace MSFSBlindAssist.SimConnect
     /// The OANS control panel is built from the same MFD UI widgets as the MCDU
     /// (.mfd-input-field / .mfd-dropdown / .mfd-button / tabs), and the agent emits
     /// elements in the SAME shape the flyPad agent uses — so this client raises the
-    /// identical fbwa380_efb_connected / fbwa380_efb_elements pushes and command
-    /// vocabulary, letting FBWA380EFBForm (the WebView2 browser view) render it with
+    /// identical fbw_efb_connected / fbw_efb_elements pushes and command
+    /// vocabulary, letting FbwEfbForm (the WebView2 browser view) render it with
     /// no changes. The agent auto-opens the panel (it is toggled by the ND map
     /// "MAP DATA" context-menu item) and reports when the OANS is not yet available
     /// (no aircraft position / ADIRS not aligned).
@@ -212,7 +212,7 @@ namespace MSFSBlindAssist.SimConnect
             if (!_connectedPushSent)
             {
                 _connectedPushSent = true;
-                Raise("fbwa380_efb_connected", new Dictionary<string, string>());
+                Raise("fbw_efb_connected", new Dictionary<string, string>());
             }
 
             var elements = result.elements ?? new List<ScrapeElement>();
@@ -247,7 +247,7 @@ namespace MSFSBlindAssist.SimConnect
                     if (elements[i].options is { Count: > 0 })
                         data[$"items.{i}.options"] = string.Join(OptionSeparator, elements[i].options!);
                 }
-                Raise("fbwa380_efb_elements", data);
+                Raise("fbw_efb_elements", data);
             }
         }
 

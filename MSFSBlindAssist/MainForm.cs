@@ -42,7 +42,7 @@ public partial class MainForm : Form
     private System.Windows.Forms.Form? pmdgCDUForm;
     private System.Windows.Forms.Form? pmdgEFBForm;
     private Forms.FBWA380.FBWA380MCDUForm? fbwA380MCDUForm;
-    private Forms.FBWA380.FBWA380EFBForm? fbwA380EFBForm;
+    private Forms.FBWA380.FbwEfbForm? fbwEfbForm;
     private EFBBridgeServer? efbBridgeServer;
     // No-injection A380X transport: reads/drives the MFD live through the
     // MSFS Coherent GT debugger (127.0.0.1:19999). Created when the A380X
@@ -53,13 +53,13 @@ public partial class MainForm : Form
     // Replaces the injection bridge for the flyPad.
     private CoherentEFBClient? coherentEFBClient;
     // No-injection A380X ND OANS transport (BTV exit selection / airport map),
-    // resolved to the Captain ND view ("A380X_ND_1"). Reuses FBWA380EFBForm.
+    // resolved to the Captain ND view ("A380X_ND_1"). Reuses FbwEfbForm.
     private CoherentNDClient? coherentNDClient;
     // Background A380X E/WD failure monitor: scrapes the abnormal/warning
     // procedures (which have no SimVar) from the E/WD Coherent view and announces
     // new failures. Runs whenever the A380X is active — no window needed.
     private CoherentEWDClient? coherentEWDClient;
-    private Forms.FBWA380.FBWA380EFBForm? fbwA380OansForm;
+    private Forms.FBWA380.FbwEfbForm? fbwA380OansForm;
     // Live A380X Electronic Checklist window (normal checklists + ECP controls),
     // read from the E/WD Coherent view. Opened by the Checklist hotkey on the A380.
     private Forms.FBWA380.FBWA380ChecklistForm? fbwA380ChecklistForm;
@@ -1707,7 +1707,7 @@ public partial class MainForm : Form
                 }
                 else if (currentAircraft?.AircraftCode == "FBW_A380")
                 {
-                    ShowFBWA380EFBDialog();
+                    ShowFbwEfbDialog();
                 }
                 else if (currentAircraft?.AircraftCode == "HS_787")
                 {
@@ -1718,7 +1718,7 @@ public partial class MainForm : Form
                     // Unified flyPad: the A320 uses the SAME generic WebView2 form +
                     // CoherentEFBClient as the A380 (both drive the one shared
                     // coherent-flypad-agent.js over the "- EFB" Coherent view).
-                    ShowFBWA380EFBDialog();
+                    ShowFbwEfbDialog();
                 }
                 break;
             case HotkeyAction.ShowOANS:
@@ -2435,23 +2435,23 @@ public partial class MainForm : Form
         fbwA380MCDUForm.ShowForm();
     }
 
-    private void ShowFBWA380EFBDialog()
+    private void ShowFbwEfbDialog()
     {
         hotkeyManager.ExitInputHotkeyMode();
 
         if (coherentEFBClient == null) { coherentEFBClient = new CoherentEFBClient(); coherentEFBClient.Start(); }
         IMcduBridge bridge = coherentEFBClient;
 
-        if (fbwA380EFBForm == null || fbwA380EFBForm.IsDisposed)
+        if (fbwEfbForm == null || fbwEfbForm.IsDisposed)
         {
             // One generic flyPad form serves both FBW aircraft; only the window
             // title differs. The form is disposed on aircraft swap (see the swap
             // handler), so it is always recreated with the correct title.
             string title = currentAircraft?.AircraftCode == "A320"
                 ? "A320 flyPad EFB" : "A380X flyPad EFB";
-            fbwA380EFBForm = new Forms.FBWA380.FBWA380EFBForm(bridge, announcer, title, "flyPad");
+            fbwEfbForm = new Forms.FBWA380.FbwEfbForm(bridge, announcer, title, "flyPad");
         }
-        fbwA380EFBForm.ShowForm();
+        fbwEfbForm.ShowForm();
     }
 
     // A380 ND OANS / BTV control panel — reuses the WebView2 EFB form, but driven
@@ -2466,7 +2466,7 @@ public partial class MainForm : Form
 
         if (fbwA380OansForm == null || fbwA380OansForm.IsDisposed)
         {
-            fbwA380OansForm = new Forms.FBWA380.FBWA380EFBForm(
+            fbwA380OansForm = new Forms.FBWA380.FbwEfbForm(
                 bridge, announcer,
                 "A380 Airport Map and BTV (OANS)", "OANS");
         }
@@ -2898,10 +2898,10 @@ public partial class MainForm : Form
             fbwA380MCDUForm.Dispose();
             fbwA380MCDUForm = null;
         }
-        if (fbwA380EFBForm != null && !fbwA380EFBForm.IsDisposed)
+        if (fbwEfbForm != null && !fbwEfbForm.IsDisposed)
         {
-            fbwA380EFBForm.Dispose();
-            fbwA380EFBForm = null;
+            fbwEfbForm.Dispose();
+            fbwEfbForm = null;
         }
 
         efbBridgeServer?.Stop();
@@ -4170,10 +4170,10 @@ public partial class MainForm : Form
             fbwA380MCDUForm.Dispose();
             fbwA380MCDUForm = null;
         }
-        if (fbwA380EFBForm != null && !fbwA380EFBForm.IsDisposed)
+        if (fbwEfbForm != null && !fbwEfbForm.IsDisposed)
         {
-            fbwA380EFBForm.Dispose();
-            fbwA380EFBForm = null;
+            fbwEfbForm.Dispose();
+            fbwEfbForm = null;
         }
         // Tear down the Coherent debugger client on every swap; it is
         // recreated below only when the new aircraft is the A380X.
