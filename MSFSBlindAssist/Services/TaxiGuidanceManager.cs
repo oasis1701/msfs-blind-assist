@@ -940,7 +940,7 @@ public class TaxiGuidanceManager : IDisposable
             // radius of the threshold, which is often PAST the hold-short markings
             // (real hold-short lines sit ~150-200 ft / 46-61 m back from the threshold).
             if (isRunwayDestination)
-                TruncateToHoldShort(route, destinationName);
+                TruncateToHoldShort(route, destinationName, taxiwaySequence?.LastOrDefault());
 
             // Auto-insert hold-shorts for INTERMEDIATE runway crossings.
             // FAA AIM 4-3-18 & ICAO Doc 4444: an aircraft must hold short of every
@@ -2420,7 +2420,7 @@ public class TaxiGuidanceManager : IDisposable
         // after an auto-recalc the pilot would roll straight onto the runway instead
         // of stopping at the hold-short line.
         if (_isRunwayLineup)
-            TruncateToHoldShort(newRoute, _destinationName);
+            TruncateToHoldShort(newRoute, _destinationName, remainingSequence?.LastOrDefault());
 
         _route = newRoute;
         _currentSegmentIndex = 0;
@@ -4313,9 +4313,17 @@ public class TaxiGuidanceManager : IDisposable
     /// on the runway itself, and gets the 300/150/50 ft countdown on approach.
     /// Safe to call multiple times — idempotent when already truncated.
     /// </summary>
-    private void TruncateToHoldShort(TaxiRoute route, string destinationName)
+    private void TruncateToHoldShort(TaxiRoute route, string destinationName, string? finalClearedTaxiway = null)
     {
         if (route.Segments.Count == 0) return;
+
+        int preferredClearanceHoldShort = FindClearanceHoldShortSegment(route, finalClearedTaxiway);
+        if (preferredClearanceHoldShort >= 0)
+        {
+            TruncateRouteAfterSegment(route, preferredClearanceHoldShort);
+            TagDestinationHoldShort(route, destinationName);
+            return;
+        }
 
         // Pass 1: prefer an IHS (ILSHoldShort) node over plain HS when both
         // exist. IHS sits further back from the threshold to clear the ILS
@@ -4361,12 +4369,7 @@ public class TaxiGuidanceManager : IDisposable
         }
 
         if (truncateAt >= 0 && truncateAt < route.Segments.Count - 1)
-        {
-            route.Segments.RemoveRange(truncateAt + 1, route.Segments.Count - truncateAt - 1);
-            double total = 0;
-            foreach (var s in route.Segments) total += s.DistanceMeters;
-            route.TotalDistanceMeters = total;
-        }
+            TruncateRouteAfterSegment(route, truncateAt);
 
         // Only tag the last segment if we actually found a truncation point
         // (real HS/IHS node OR synthetic back-off). If neither succeeded — no
@@ -4380,6 +4383,64 @@ public class TaxiGuidanceManager : IDisposable
         // Tag the (now-last) segment so the 300/150/50 ft hold-short countdown fires.
         // AdvanceSegment explicitly skips the last segment, so this does NOT cause a
         // double HandleHoldShort — HandleArrival owns the runway-destination flow.
+        TagDestinationHoldShort(route, destinationName);
+    }
+
+    private int FindClearanceHoldShortSegment(TaxiRoute route, string? finalClearedTaxiway)
+    {
+        if (string.IsNullOrWhiteSpace(finalClearedTaxiway))
+            return -1;
+
+        string target = finalClearedTaxiway.Trim();
+        for (int i = route.Segments.Count - 1; i >= 0; i--)
+        {
+            var to = route.Segments[i].ToNode;
+            if (to == null)
+                continue;
+
+            if (to.Type != TaxiNodeType.HoldShort && to.Type != TaxiNodeType.ILSHoldShort)
+                continue;
+
+            if (NodeBelongsToTaxiway(to, target))
+                return i;
+        }
+
+        return -1;
+    }
+
+    private bool NodeBelongsToTaxiway(TaxiNode node, string taxiwayName)
+    {
+        if (node.TaxiwayNames.Contains(taxiwayName))
+            return true;
+
+        if (_graph?.Adjacency.TryGetValue(node.NodeId, out var edges) == true)
+        {
+            foreach (var edge in edges)
+            {
+                if (string.Equals(edge.TaxiwayName, taxiwayName, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static void TruncateRouteAfterSegment(TaxiRoute route, int segmentIndex)
+    {
+        if (segmentIndex < 0 || segmentIndex >= route.Segments.Count - 1)
+            return;
+
+        route.Segments.RemoveRange(segmentIndex + 1, route.Segments.Count - segmentIndex - 1);
+        double total = 0;
+        foreach (var s in route.Segments) total += s.DistanceMeters;
+        route.TotalDistanceMeters = total;
+    }
+
+    private static void TagDestinationHoldShort(TaxiRoute route, string destinationName)
+    {
+        if (route.Segments.Count == 0)
+            return;
+
         var lastSeg = route.Segments[^1];
         lastSeg.IsHoldShortPoint = true;
         if (string.IsNullOrEmpty(lastSeg.HoldShortRunway))
