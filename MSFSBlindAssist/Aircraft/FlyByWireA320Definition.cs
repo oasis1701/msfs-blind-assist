@@ -4012,6 +4012,23 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
         },
+
+        // ---- Ground Services > Ground Equipment (parity with A380). The A320 has no
+        // clean jetway/stairs state var (unlike the A380's A380X_GND_*), so these are
+        // momentary "Activate" combos that fire the stock toggle events in
+        // HandleUIVariableSet. The flyPad Ground page remains the richer interface. ----
+        ["A32NX_MSFSBA_JETWAY"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_MSFSBA_JETWAY", DisplayName = "Jet Bridge",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Idle", [1] = "Activate" }
+        },
+        ["A32NX_MSFSBA_STAIRS"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_MSFSBA_STAIRS", DisplayName = "Stairs",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Idle", [1] = "Activate" }
+        },
         };
 
         // Merge aircraft-specific variables into base variables
@@ -4219,7 +4236,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ["Glareshield"] = new List<string> { "FCU", "EFIS Captain", "EFIS First Officer", "Warnings" },
         ["Instrument"] = new List<string> { "Gear", "Autobrake", "PFD", "ND", "ISIS", "Source Switching", "Clock", "System Display" },
         ["Pedestal"] = new List<string> { "Flight Controls", "Speed Brake", "Parking Brake", "Engines", "Thrust Levers", "ECAM Control Panel", "Weather Radar", "Transponder", "Radios", "RMP", "Audio Control Panel Captain", "Audio Control Panel First Officer" },
-        ["Ground Services"] = new List<string> { "Doors" }
+        ["Ground Services"] = new List<string> { "Doors", "Ground Equipment" }
         };
     }
 
@@ -4509,6 +4526,10 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             "A32NX_MSFSBA_DOOR_0", "A32NX_MSFSBA_DOOR_1", "A32NX_MSFSBA_DOOR_2",
             "A32NX_MSFSBA_DOOR_3", "A32NX_MSFSBA_DOOR_4", "A32NX_MSFSBA_DOOR_5"
+        },
+        ["Ground Equipment"] = new List<string>
+        {
+            "A32NX_MSFSBA_JETWAY", "A32NX_MSFSBA_STAIRS"
         },
         ["ECAM Control Panel"] = new List<string>
         {
@@ -5706,6 +5727,17 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             if (int.TryParse(varKey.AsSpan("A32NX_MSFSBA_DOOR_".Length), out int exitIdx))
                 simConnect.SendEvent("TOGGLE_AIRCRAFT_EXIT", (uint)exitIdx);
+            return true;
+        }
+        // Ground equipment: momentary toggles (no clean A320 state var).
+        if (varKey == "A32NX_MSFSBA_JETWAY")
+        {
+            if (value > 0.5) simConnect.SendEvent("TOGGLE_JETWAY");
+            return true;
+        }
+        if (varKey == "A32NX_MSFSBA_STAIRS")
+        {
+            if (value > 0.5) simConnect.SendEvent("TOGGLE_RAMPTRUCK");
             return true;
         }
 
