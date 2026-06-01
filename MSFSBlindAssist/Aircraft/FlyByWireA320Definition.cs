@@ -850,6 +850,21 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         },
 
+        // ---- Wipers panel (parity with A380 Overhead > Wipers) — Captain + F/O wiper
+        // selectors. Live-verified settable via the calculator path (held a 0->2 write).
+        ["XMLVAR_A320_WiperSwitch_1"] = new SimConnect.SimVarDefinition
+        {
+            Name = "XMLVAR_A320_WiperSwitch_1", DisplayName = "Wiper Captain",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Slow", [2] = "Fast" }
+        },
+        ["XMLVAR_A320_WiperSwitch_2"] = new SimConnect.SimVarDefinition
+        {
+            Name = "XMLVAR_A320_WiperSwitch_2", DisplayName = "Wiper First Officer",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Slow", [2] = "Fast" }
+        },
+
         // OVERHEAD FORWARD SECTION - Calls Panel
         ["PUSH_OVHD_CALLS_MECH"] = new SimConnect.SimVarDefinition
         {
@@ -4074,7 +4089,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     {
         return new Dictionary<string, List<string>>
         {
-["Overhead"] = new List<string> { "ELEC", "ADIRS", "APU", "Oxygen", "Fire", "Hydraulics", "Fuel", "Air Conditioning", "Bleed Air", "Pressurization", "Ventilation", "Cargo Air", "Anti Ice", "Signs", "Interior Lighting", "Exterior Lighting", "Calls", "GPWS", "Flight Control Computers", "Cockpit Door", "Evacuation", "Cargo Smoke", "Recorder and Misc", "Engine Start" },
+["Overhead"] = new List<string> { "ELEC", "ADIRS", "APU", "Oxygen", "Fire", "Hydraulics", "Fuel", "Air Conditioning", "Bleed Air", "Pressurization", "Ventilation", "Cargo Air", "Anti Ice", "Wipers", "Signs", "Interior Lighting", "Exterior Lighting", "Calls", "GPWS", "Flight Control Computers", "Cockpit Door", "Evacuation", "Cargo Smoke", "Recorder and Misc", "Engine Start" },
         ["Glareshield"] = new List<string> { "FCU", "EFIS Captain", "EFIS First Officer", "Warnings" },
         ["Instrument"] = new List<string> { "Gear", "Autobrake", "PFD", "ND", "ISIS", "Source Switching", "Clock", "System Display" },
         ["Pedestal"] = new List<string> { "Flight Controls", "Speed Brake", "Parking Brake", "Engines", "ECAM Control Panel", "Weather Radar", "Transponder", "Radios", "RMP" }
@@ -4210,6 +4225,11 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             "A32NX_PNEU_WING_ANTI_ICE_SYSTEM_SELECTED",
             "ENG_ANTI_ICE:1",
             "ENG_ANTI_ICE:2"
+        },
+        ["Wipers"] = new List<string>
+        {
+            "XMLVAR_A320_WiperSwitch_1",
+            "XMLVAR_A320_WiperSwitch_2"
         },
         ["Signs"] = new List<string>
         {
