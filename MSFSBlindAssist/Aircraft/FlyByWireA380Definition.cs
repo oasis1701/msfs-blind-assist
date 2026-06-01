@@ -460,6 +460,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             OnOff($"A32NX_OVHD_ADIRS_ADR_{n}_PB_IS_ON", $"ADR {n}");
         }
         Read("A32NX_ADIRS_REMAINING_IR_ALIGNMENT_TIME", "IR Alignment Time Remaining", "seconds");
+        // ADIRS ON BAT light: illuminates when the ADIRUs run on battery power (a
+        // normal ~few-second self-test flash early in alignment, or abnormally on
+        // electrical loss). Read-only annunciator, announce-on-change.
+        Mon("A32NX_OVHD_ADIRS_ON_BAT_IS_ILLUMINATED", "ADIRS On Battery",
+            new Dictionary<double, string> { [0] = "Off", [1] = "On Battery" });
 
         // ---- FLIGHT CONTROL COMPUTERS ----
         for (int n = 1; n <= 3; n++)
@@ -2217,6 +2222,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
 
         var adirs = new List<string> { "A32NX_ADIRS_REMAINING_IR_ALIGNMENT_TIME" };
         for (int n = 1; n <= 3; n++) adirs.Add($"A32NX_ADIRS_ADIRU_{n}_STATE");
+        adirs.Add("A32NX_OVHD_ADIRS_ON_BAT_IS_ILLUMINATED");
         d["ADIRS"] = adirs;
 
         var fcc = new List<string>();
