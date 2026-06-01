@@ -1772,7 +1772,8 @@ public sealed class GsxService : IDisposable
         if (string.IsNullOrWhiteSpace(html))
             return string.Empty;
 
-        bool hasReceiptData = HasStatusReceiptData(html);
+        var receiptInvoices = ExtractReceiptInvoices(html);
+        bool hasReceiptData = HasStatusReceiptData(html) || receiptInvoices.Count > 0;
         var receiptChargeRows = ExtractReceiptChargeRows(html);
         string withoutReceiptData = Regex.Replace(
             html,
@@ -1814,6 +1815,15 @@ public sealed class GsxService : IDisposable
         }
 
         StatusServiceRow? latestCompletedRow = completedRows.TakeLast(1).FirstOrDefault();
+        if (receiptInvoices.Count > 0)
+        {
+            string receiptAnnouncement = FormatReceiptInvoiceAnnouncement(receiptInvoices);
+            if (!string.IsNullOrWhiteSpace(receiptAnnouncement))
+                return receiptAnnouncement;
+
+            return string.Empty;
+        }
+
         bool hasInvoiceRows = chargeRows.Any(IsInvoiceChargeRow);
         if (hasReceiptData && hasInvoiceRows)
         {
@@ -1870,6 +1880,7 @@ public sealed class GsxService : IDisposable
     }
 
     private sealed record StatusServiceRow(string Text, bool IsCompleted, bool HasStarted);
+    private sealed record ReceiptInvoice(string ServiceName, string OperatorName, string Total, string Key);
 
     private string FormatGroundConnectionTimerAnnouncement(
         IReadOnlyList<StatusServiceRow> activeRows,
@@ -2112,6 +2123,136 @@ public sealed class GsxService : IDisposable
             : $" from {serviceOperator}";
 
         return $"{serviceName} invoice available{operatorPhrase}. Total {NormalizeWhitespace(total)}. More information can be found by viewing the invoice.";
+    }
+
+    private string FormatReceiptInvoiceAnnouncement(IReadOnlyList<ReceiptInvoice> receiptInvoices)
+    {
+        foreach (var receipt in receiptInvoices.Reverse())
+        {
+            string invoiceKey = NormalizeWhitespace(receipt.Key);
+            if (string.IsNullOrWhiteSpace(invoiceKey) || !_announcedInvoiceKeys.Add(invoiceKey))
+                continue;
+
+            string operatorPhrase = string.IsNullOrWhiteSpace(receipt.OperatorName)
+                ? string.Empty
+                : $" from {receipt.OperatorName}";
+            string totalPhrase = string.IsNullOrWhiteSpace(receipt.Total)
+                ? "the generated total"
+                : NormalizeWhitespace(receipt.Total);
+
+            return $"{receipt.ServiceName} invoice available{operatorPhrase}. Total {totalPhrase}. More information can be found by viewing the invoice.";
+        }
+
+        return string.Empty;
+    }
+
+    private static List<ReceiptInvoice> ExtractReceiptInvoices(string html)
+    {
+        var invoices = new List<ReceiptInvoice>();
+        foreach (Match match in Regex.Matches(
+                     html,
+                     @"<span\s+class=""[^""]*\bgsx-receipt-data\b[^""]*""(?<attrs>[^>]*)>",
+                     RegexOptions.Singleline | RegexOptions.IgnoreCase))
+        {
+            string attrs = match.Groups["attrs"].Value;
+            string operatorName = GetHtmlAttribute(attrs, "data-operator");
+            string path = GetHtmlAttribute(attrs, "data-path");
+            if (string.IsNullOrWhiteSpace(path))
+                continue;
+
+            string serviceName = InferReceiptServiceName(path);
+            string total = string.Empty;
+            try
+            {
+                if (File.Exists(path))
+                {
+                    string receiptHtml = File.ReadAllText(path, Encoding.UTF8);
+                    serviceName = InferReceiptServiceName(path, receiptHtml);
+                    if (string.IsNullOrWhiteSpace(operatorName))
+                        operatorName = ExtractReceiptOperator(receiptHtml);
+                    total = ExtractReceiptTotal(receiptHtml);
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[GsxService] Failed to read GSX receipt {path}: {ex.Message}");
+            }
+
+            invoices.Add(new ReceiptInvoice(
+                NormalizeWhitespace(serviceName),
+                NormalizeWhitespace(operatorName),
+                NormalizeWhitespace(total),
+                path));
+        }
+
+        return invoices;
+    }
+
+    private static string InferReceiptServiceName(string path, string receiptHtml = "")
+    {
+        string title = ExtractHtmlTitle(receiptHtml);
+        var titleMatch = Regex.Match(title, @"^\s*(?<service>[A-Z ]+?)\s+RECEIPT\b",
+            RegexOptions.IgnoreCase);
+        if (titleMatch.Success)
+            return HumanizeReceiptService(titleMatch.Groups["service"].Value);
+
+        string folderName = Path.GetFileName(Path.GetDirectoryName(path) ?? string.Empty);
+        return HumanizeReceiptService(folderName);
+    }
+
+    private static string HumanizeReceiptService(string value)
+    {
+        string normalized = NormalizeWhitespace(value);
+        if (normalized.Length == 0)
+            return "Service";
+
+        if (normalized.Equals("fuel", StringComparison.OrdinalIgnoreCase)
+            || normalized.Equals("refuel", StringComparison.OrdinalIgnoreCase)
+            || normalized.Equals("refueling", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Fueling";
+        }
+
+        return CultureInfo.CurrentCulture.TextInfo.ToTitleCase(normalized.ToLowerInvariant());
+    }
+
+    private static string ExtractHtmlTitle(string html)
+    {
+        if (string.IsNullOrWhiteSpace(html))
+            return string.Empty;
+
+        var match = Regex.Match(html, @"<title[^>]*>(?<title>.*?)</title>",
+            RegexOptions.Singleline | RegexOptions.IgnoreCase);
+        return match.Success ? RenderStatusFragmentAsText(match.Groups["title"].Value) : string.Empty;
+    }
+
+    private static string ExtractReceiptOperator(string html)
+    {
+        string title = ExtractHtmlTitle(html);
+        var match = Regex.Match(title, @"\bRECEIPT\s*-\s*(?<operator>.+)$",
+            RegexOptions.IgnoreCase);
+        if (match.Success)
+            return NormalizeWhitespace(match.Groups["operator"].Value);
+
+        match = Regex.Match(
+            html,
+            @"<div\s+class=""name""[^>]*>(?<operator>.*?)</div>",
+            RegexOptions.Singleline | RegexOptions.IgnoreCase);
+        return match.Success ? RenderStatusFragmentAsText(match.Groups["operator"].Value) : string.Empty;
+    }
+
+    private static string ExtractReceiptTotal(string html)
+    {
+        var match = Regex.Match(
+            html,
+            @"<tr\s+class=""[^""]*\btotal\b[^""]*""[^>]*>.*?<td\s+class=""[^""]*\bamount\b[^""]*""[^>]*>(?<amount>.*?)</td>.*?</tr>",
+            RegexOptions.Singleline | RegexOptions.IgnoreCase);
+        if (!match.Success)
+            return string.Empty;
+
+        string totalText = RenderStatusFragmentAsText(match.Groups["amount"].Value);
+        string money = ExtractMoneySummary(totalText);
+        return string.IsNullOrWhiteSpace(money) ? totalText : money;
     }
 
     private static List<string> ExtractReceiptChargeRows(string html)
