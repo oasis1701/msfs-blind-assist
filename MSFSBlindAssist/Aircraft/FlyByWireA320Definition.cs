@@ -199,6 +199,43 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "NAV", [2] = "ATT" }
         },
+        // ---- ADIRS parity with A380: IR + ADR pushbuttons (verified live) ----
+        ["A32NX_OVHD_ADIRS_IR_1_PB_IS_ON"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_OVHD_ADIRS_IR_1_PB_IS_ON", DisplayName = "IR 1",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        },
+        ["A32NX_OVHD_ADIRS_IR_2_PB_IS_ON"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_OVHD_ADIRS_IR_2_PB_IS_ON", DisplayName = "IR 2",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        },
+        ["A32NX_OVHD_ADIRS_IR_3_PB_IS_ON"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_OVHD_ADIRS_IR_3_PB_IS_ON", DisplayName = "IR 3",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        },
+        ["A32NX_OVHD_ADIRS_ADR_1_PB_IS_ON"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_OVHD_ADIRS_ADR_1_PB_IS_ON", DisplayName = "ADR 1",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        },
+        ["A32NX_OVHD_ADIRS_ADR_2_PB_IS_ON"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_OVHD_ADIRS_ADR_2_PB_IS_ON", DisplayName = "ADR 2",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        },
+        ["A32NX_OVHD_ADIRS_ADR_3_PB_IS_ON"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_OVHD_ADIRS_ADR_3_PB_IS_ON", DisplayName = "ADR 3",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        },
 
         // ADIRS Panel Display Variables
         ["A32NX_ADIRS_ADIRU_1_STATE"] = new SimConnect.SimVarDefinition
@@ -3771,11 +3808,17 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             "A32NX_OVHD_ELEC_IDG_2_PB_IS_RELEASED",
             "A32NX_OVHD_ELEC_COMMERCIAL_PB_IS_ON"
         },
-        ["ADIRS"] = new List<string> 
-        { 
-            "A32NX_OVHD_ADIRS_IR_1_MODE_SELECTOR_KNOB", 
-            "A32NX_OVHD_ADIRS_IR_2_MODE_SELECTOR_KNOB", 
-            "A32NX_OVHD_ADIRS_IR_3_MODE_SELECTOR_KNOB" 
+        ["ADIRS"] = new List<string>
+        {
+            "A32NX_OVHD_ADIRS_IR_1_MODE_SELECTOR_KNOB",
+            "A32NX_OVHD_ADIRS_IR_2_MODE_SELECTOR_KNOB",
+            "A32NX_OVHD_ADIRS_IR_3_MODE_SELECTOR_KNOB",
+            "A32NX_OVHD_ADIRS_IR_1_PB_IS_ON",
+            "A32NX_OVHD_ADIRS_IR_2_PB_IS_ON",
+            "A32NX_OVHD_ADIRS_IR_3_PB_IS_ON",
+            "A32NX_OVHD_ADIRS_ADR_1_PB_IS_ON",
+            "A32NX_OVHD_ADIRS_ADR_2_PB_IS_ON",
+            "A32NX_OVHD_ADIRS_ADR_3_PB_IS_ON"
         },
         ["APU"] = new List<string> 
         { 
