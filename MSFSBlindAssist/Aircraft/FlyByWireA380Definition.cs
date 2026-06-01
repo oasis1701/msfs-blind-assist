@@ -675,7 +675,12 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 new Dictionary<double, string> { [0] = "Off", [1] = "On", [2] = "Starting", [3] = "Restarting", [4] = "Shutting Down" });
 
         // ---- Flaps / Speedbrake / Trim / Park brake ----
-        ReadEnum("A32NX_FLAPS_HANDLE_INDEX", "Flaps",
+        // Flaps lever: settable 5-position detent (Up/1/2/3/Full). The handle index
+        // is a computed output, so the write goes through the stock FLAPS_SET event
+        // (axis value = index/4 * 16383) in HandleUIVariableSet — live-verified each
+        // detent (FLAPS_2 -> 2, FLAPS_SET 4096 -> 1, 16383 -> 4). Lets a blind pilot
+        // set flaps from the panel without relying on keyboard flap commands.
+        Sel("A32NX_FLAPS_HANDLE_INDEX", "Flaps",
             new Dictionary<double, string> { [0] = "Up", [1] = "1", [2] = "2", [3] = "3", [4] = "Full" });
         Read("A32NX_SPOILERS_HANDLE_POSITION", "Speed Brake Handle");
         ReadEnum("A32NX_SPOILERS_ARMED", "Ground Spoilers", new Dictionary<double, string> { [0] = "Disarmed", [1] = "Armed" });
@@ -2005,7 +2010,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "THROTTLE_ALL_DETENT", "THROTTLE_1_DETENT", "THROTTLE_2_DETENT",
             "THROTTLE_3_DETENT", "THROTTLE_4_DETENT"
         };
-        p["Flaps and Brakes"] = new List<string> { "A32NX_PARK_BRAKE_LEVER_POS" };
+        p["Flaps and Brakes"] = new List<string> { "A32NX_FLAPS_HANDLE_INDEX", "A32NX_PARK_BRAKE_LEVER_POS" };
         p["ECAM Control Panel"] = new List<string>
         {
             "A32NX_ECAM_SD_CURRENT_PAGE_INDEX", "A32NX_BTN_ALL", "A32NX_BTN_ABNPROC", "A32NX_BTN_CL",
@@ -2267,7 +2272,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
 
         d["Flaps and Brakes"] = new List<string>
         {
-            "A32NX_FLAPS_HANDLE_INDEX", "A32NX_SPOILERS_HANDLE_POSITION", "A32NX_SPOILERS_ARMED"
+            // Flaps handle is now a settable, auto-announced combo in the panel, so
+            // it's not duplicated here as a read-only field.
+            "A32NX_SPOILERS_HANDLE_POSITION", "A32NX_SPOILERS_ARMED"
         };
         // Exterior lights are now On/Off combos in the panel itself (auto-announced),
         // so they are NOT duplicated as read-only display variables here.
@@ -2993,6 +3000,16 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         if (_extLightSetEvents.TryGetValue(varKey, out var lightEvent))
         {
             simConnect.SendEvent(lightEvent, (uint)Math.Round(value));
+            return true;
+        }
+        // Flaps lever: the handle index is a computed output; the stock FLAPS_SET
+        // event (axis value 0-16383) drives the FBW handle. Map detent 0-4 to the
+        // axis value (index/4 * 16383) — live-verified each detent lands correctly.
+        if (varKey == "A32NX_FLAPS_HANDLE_INDEX")
+        {
+            int detent = Math.Max(0, Math.Min(4, (int)Math.Round(value)));
+            int axis = (int)Math.Round(detent / 4.0 * 16383.0);
+            simConnect.ExecuteCalculatorCode($"{axis} (>K:FLAPS_SET)");
             return true;
         }
         // ENG GEN 1-4 pushbutton: state mirrors stock GENERAL ENG MASTER ALTERNATOR:n;
