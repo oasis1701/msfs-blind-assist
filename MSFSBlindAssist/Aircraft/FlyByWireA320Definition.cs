@@ -1823,21 +1823,26 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             Units = "degrees"
         },
+        // Auto-announce AP1/AP2 engage state so an AUTOMATIC disconnect (override,
+        // failed autoland, etc.) is called out, not just a manual button press.
+        // Continuous + IsAnnounced -> appears in the Ctrl+M monitor (muteable there).
         ["A32NX_AUTOPILOT_1_ACTIVE"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_AUTOPILOT_1_ACTIVE",
-            DisplayName = "Autopilot 1 Active",
+            DisplayName = "Autopilot 1",
             Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            Units = "number"
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Autopilot 1 off", [1] = "Autopilot 1 on" }
         },
         ["A32NX_AUTOPILOT_2_ACTIVE"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_AUTOPILOT_2_ACTIVE",
-            DisplayName = "Autopilot 2 Active",
+            DisplayName = "Autopilot 2",
             Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            Units = "number"
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Autopilot 2 off", [1] = "Autopilot 2 on" }
         },
         ["A32NX_FCU_DISCRETE_WORD_1"] = new SimConnect.SimVarDefinition
         {
