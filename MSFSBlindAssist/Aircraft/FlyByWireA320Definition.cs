@@ -3667,6 +3667,40 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Magnetic", [1] = "True" }
         },
+
+        // ---- Pressurization panel (parity with A380 Overhead > Pressurization) ----
+        ["A32NX_OVHD_PRESS_MODE_SEL_PB_IS_AUTO"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_OVHD_PRESS_MODE_SEL_PB_IS_AUTO", DisplayName = "Pressurization Mode",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Manual", [1] = "Auto" }
+        },
+        ["A32NX_OVHD_PRESS_DITCHING_PB_IS_ON"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_OVHD_PRESS_DITCHING_PB_IS_ON", DisplayName = "Ditching",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        },
+
+        // ---- Ventilation panel (parity with A380 Overhead > Ventilation) ----
+        ["A32NX_OVHD_VENT_BLOWER_PB_IS_ON"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_OVHD_VENT_BLOWER_PB_IS_ON", DisplayName = "Blower",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Override" }
+        },
+        ["A32NX_OVHD_VENT_EXTRACT_PB_IS_ON"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_OVHD_VENT_EXTRACT_PB_IS_ON", DisplayName = "Extract",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Override" }
+        },
+        ["A32NX_OVHD_VENT_CAB_FANS_PB_IS_ON"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_OVHD_VENT_CAB_FANS_PB_IS_ON", DisplayName = "Cabin Fans",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        },
         };
 
         // Merge aircraft-specific variables into base variables
@@ -3849,7 +3883,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     {
         return new Dictionary<string, List<string>>
         {
-["Overhead"] = new List<string> { "ELEC", "ADIRS", "APU", "Oxygen", "Fire", "Hydraulics", "Fuel", "Air Conditioning", "Bleed Air", "Anti Ice", "Signs", "Exterior Lighting", "Calls", "GPWS", "Cockpit Door", "Evacuation", "Cargo Smoke", "Engine" },
+["Overhead"] = new List<string> { "ELEC", "ADIRS", "APU", "Oxygen", "Fire", "Hydraulics", "Fuel", "Air Conditioning", "Bleed Air", "Pressurization", "Ventilation", "Anti Ice", "Signs", "Exterior Lighting", "Calls", "GPWS", "Cockpit Door", "Evacuation", "Cargo Smoke", "Engine" },
         ["Glareshield"] = new List<string> { "FCU", "EFIS Control Panel", "Warnings" },
         ["Instrument"] = new List<string> { "Autobrake and Gear", "PFD", "ND", "ISIS", "Source Switching", "Clock", "System Display" },
         ["Pedestal"] = new List<string> { "Flight Controls", "Speed Brake", "Parking Brake", "Engines", "ECAM Control Panel", "Weather Radar", "Transponder", "RMP" }
@@ -3948,6 +3982,15 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             "A32NX_KNOB_OVHD_AIRCOND_PACKFLOW_Position",
             "A32NX_OVHD_COND_HOT_AIR_PB_IS_ON",
             "A32NX_OVHD_COND_RAM_AIR_PB_IS_ON"
+        },
+        ["Pressurization"] = new List<string>
+        {
+            "A32NX_OVHD_PRESS_MODE_SEL_PB_IS_AUTO", "A32NX_OVHD_PRESS_DITCHING_PB_IS_ON"
+        },
+        ["Ventilation"] = new List<string>
+        {
+            "A32NX_OVHD_VENT_BLOWER_PB_IS_ON", "A32NX_OVHD_VENT_EXTRACT_PB_IS_ON",
+            "A32NX_OVHD_VENT_CAB_FANS_PB_IS_ON"
         },
         ["Anti Ice"] = new List<string>
         {
