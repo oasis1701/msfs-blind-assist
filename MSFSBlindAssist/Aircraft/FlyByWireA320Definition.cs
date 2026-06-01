@@ -3479,6 +3479,40 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             Units = "number"
         },
+
+        // ---- Clock panel (parity with the A380 Instrument > Clock) ----
+        // CHR start/stop = H-event A32NX_CHRONO_TOGGLE; reset = H-event A32NX_CHRONO_RST
+        // (both fired in HandleUIVariableSet). ET counter knob = A32NX_CHRONO_ET_SWITCH_POS
+        // (settable L:var). Elapsed times in seconds (-1 = blank), formatted in
+        // TryGetDisplayOverride.
+        ["A32NX_MSFSBA_CHRONO_TOGGLE"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_MSFSBA_CHRONO_TOGGLE", DisplayName = "Chronometer Start/Stop",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Idle", [1] = "Activate" }
+        },
+        ["A32NX_MSFSBA_CHRONO_RESET"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_MSFSBA_CHRONO_RESET", DisplayName = "Chronometer Reset",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Idle", [1] = "Activate" }
+        },
+        ["A32NX_CHRONO_ET_SWITCH_POS"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_CHRONO_ET_SWITCH_POS", DisplayName = "Elapsed Time Knob",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Run", [1] = "Stop", [2] = "Reset" }
+        },
+        ["A32NX_CHRONO_ELAPSED_TIME"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_CHRONO_ELAPSED_TIME", DisplayName = "Chronometer",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, Units = "seconds"
+        },
+        ["A32NX_CHRONO_ET_ELAPSED_TIME"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_CHRONO_ET_ELAPSED_TIME", DisplayName = "Elapsed Time",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, Units = "seconds"
+        },
         };
 
         // Merge aircraft-specific variables into base variables
@@ -3650,7 +3684,9 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             "INDICATED_ALTITUDE",
             "A32NX_ISIS_BARO_MODE",
             "A32NX_ISIS_LS_ACTIVE"
-        }
+        },
+        // Clock readouts (chronometer + elapsed time), formatted via TryGetDisplayOverride.
+        ["Clock"] = new List<string> { "A32NX_CHRONO_ELAPSED_TIME", "A32NX_CHRONO_ET_ELAPSED_TIME" }
         // Add more panels and their display variables here as needed
         };
     }
@@ -3661,7 +3697,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
 ["Overhead"] = new List<string> { "ELEC", "ADIRS", "APU", "Oxygen", "Fire", "Hydraulics", "Fuel", "Air Conditioning", "Anti Ice", "Signs", "Exterior Lighting", "Calls", "GPWS", "Cockpit Door", "Evacuation", "Cargo Smoke", "Engine" },
         ["Glareshield"] = new List<string> { "FCU", "EFIS Control Panel", "Warnings" },
-        ["Instrument"] = new List<string> { "Autobrake and Gear", "PFD", "ND", "ISIS", "System Display" },
+        ["Instrument"] = new List<string> { "Autobrake and Gear", "PFD", "ND", "ISIS", "Clock", "System Display" },
         ["Pedestal"] = new List<string> { "Flight Controls", "Speed Brake", "Parking Brake", "Engines", "ECAM Control Panel", "Weather Radar", "Transponder", "RMP" }
         };
     }
@@ -3922,6 +3958,10 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         // lives in GetPanelDisplayVariables); FCU/EFIS controls live in their own panels.
         ["PFD"] = new List<string>(),
         ["ND"] = new List<string>(),
+        ["Clock"] = new List<string>
+        {
+            "A32NX_MSFSBA_CHRONO_TOGGLE", "A32NX_MSFSBA_CHRONO_RESET", "A32NX_CHRONO_ET_SWITCH_POS"
+        },
         ["Flight Controls"] = new List<string>
         {
             "A32NX_SPOILERS_ARMED",
@@ -4686,6 +4726,22 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             return true;
         }
 
+        // ---- Clock elapsed times (seconds; -1 = blank/reset) ------------------
+        if (varKey == "A32NX_CHRONO_ELAPSED_TIME")   // chronometer -> M minutes S seconds
+        {
+            if (value < 0) { displayText = "Reset"; return true; }
+            int t = (int)value;
+            displayText = $"{t / 60} minutes {t % 60} seconds";
+            return true;
+        }
+        if (varKey == "A32NX_CHRONO_ET_ELAPSED_TIME")   // elapsed time -> H hours M minutes
+        {
+            if (value < 0) { displayText = "Reset"; return true; }
+            int t = (int)value;
+            displayText = $"{t / 3600} hours {(t % 3600) / 60} minutes";
+            return true;
+        }
+
         return base.TryGetDisplayOverride(varKey, value, out displayText);
     }
 
@@ -4966,6 +5022,23 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
                 simConnect.ExecuteCalculatorCode("1 (>L:PUSH_AUTOPILOT_MASTERCAUT_L)");
                 simConnect.ExecuteCalculatorCode("0 (>L:PUSH_AUTOPILOT_MASTERCAUT_L)");
             }
+            return true;
+        }
+
+        // Clock: CHR start/stop + reset are H-events; the ET knob is a settable L:var.
+        if (varKey == "A32NX_MSFSBA_CHRONO_TOGGLE")
+        {
+            if (value > 0.5) simConnect.ExecuteCalculatorCode("(>H:A32NX_CHRONO_TOGGLE)");
+            return true;
+        }
+        if (varKey == "A32NX_MSFSBA_CHRONO_RESET")
+        {
+            if (value > 0.5) simConnect.ExecuteCalculatorCode("(>H:A32NX_CHRONO_RST)");
+            return true;
+        }
+        if (varKey == "A32NX_CHRONO_ET_SWITCH_POS")
+        {
+            simConnect.ExecuteCalculatorCode($"{(int)Math.Round(value)} (>L:A32NX_CHRONO_ET_SWITCH_POS)");
             return true;
         }
 
