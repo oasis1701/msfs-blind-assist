@@ -167,19 +167,11 @@ public class FlyByWireMCDUForm : Form
 
     private void McduDisplay_KeyDown(object? sender, KeyEventArgs e)
     {
+        // Backspace = CLR, but ONLY in the display (the scratchpad needs Backspace to
+        // edit text). Slew / page keys are handled globally in Form_KeyDown.
         if (e.KeyCode == Keys.Back)
         {
             _ = _service.SendButtonPress("CLR");
-            e.Handled = true; e.SuppressKeyPress = true;
-        }
-        else if (e.KeyCode == Keys.PageUp)
-        {
-            _ = _service.SendButtonPress("PREVPAGE");
-            e.Handled = true; e.SuppressKeyPress = true;
-        }
-        else if (e.KeyCode == Keys.PageDown)
-        {
-            _ = _service.SendButtonPress("NEXTPAGE");
             e.Handled = true; e.SuppressKeyPress = true;
         }
     }
@@ -220,6 +212,31 @@ public class FlyByWireMCDUForm : Form
                 _ = _service.SendButtonPress($"R{lsk}");
                 e.Handled = true; e.SuppressKeyPress = true; return;
             }
+        }
+
+        // MCDU vertical slew (↑↓) — scroll multi-line lists (F-PLN, DEP/ARR runways).
+        // Page Up/Down AND Alt+Up/Down both slew; plain arrows are left free to read
+        // display lines. Handled at the form (KeyPreview) so they work from any focus.
+        if (e.KeyCode == Keys.PageUp || (e.Alt && e.KeyCode == Keys.Up))
+        {
+            _ = _service.SendButtonPress("UP");
+            e.Handled = true; e.SuppressKeyPress = true; return;
+        }
+        if (e.KeyCode == Keys.PageDown || (e.Alt && e.KeyCode == Keys.Down))
+        {
+            _ = _service.SendButtonPress("DOWN");
+            e.Handled = true; e.SuppressKeyPress = true; return;
+        }
+        // MCDU horizontal page change (‹ ›) — multi-page forms (PERF 1/2, INIT, etc.).
+        if (e.Alt && e.KeyCode == Keys.Left)
+        {
+            _ = _service.SendButtonPress("PREVPAGE");
+            e.Handled = true; e.SuppressKeyPress = true; return;
+        }
+        if (e.Alt && e.KeyCode == Keys.Right)
+        {
+            _ = _service.SendButtonPress("NEXTPAGE");
+            e.Handled = true; e.SuppressKeyPress = true; return;
         }
 
         // Alt+S: focus scratchpad input
