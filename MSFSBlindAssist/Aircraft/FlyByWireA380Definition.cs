@@ -256,7 +256,20 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         {
             Press($"A32NX_OVHD_ELEC_IDG_{n}_PB_IS_RELEASED", $"IDG {n} Disconnect");
             OnOff($"A32NX_OVHD_ELEC_EXT_PWR_{n}_PB_IS_ON", $"External Power {n}");
+            // ENG GEN 1-4 pushbutton. The PB_IS_ON L:var is a COMPUTED MIRROR of the
+            // stock GENERAL ENG MASTER ALTERNATOR:n simvar (FBW copies simvar->L:var
+            // each frame), so a plain L:var write is overwritten. The working control
+            // is the stock TOGGLE_MASTER_ALTERNATOR event (engine index param) —
+            // live-verified: toggling engine 2 dropped GEN 2 to 0 V and the mirror
+            // followed. Routed via HandleUIVariableSet (toggle-to-target).
+            OnOff($"A32NX_OVHD_ELEC_ENG_GEN_{n}_PB_IS_ON", $"Generator {n}");
         }
+        // APU GEN 1-2 pushbuttons. PB_IS_ON mirrors APU GENERATOR SWITCH:i; the
+        // working control is the stock indexed APU_GENERATOR_SWITCH_SET event
+        // (live-verified: 0 (>K:1:APU_GENERATOR_SWITCH_SET) dropped APU GEN 1 and the
+        // mirror followed). Routed via HandleUIVariableSet.
+        for (int i = 1; i <= 2; i++)
+            OnOff($"A32NX_OVHD_ELEC_APU_GEN_{i}_PB_IS_ON", $"APU Generator {i}");
         OnOff("A32NX_OVHD_EMER_ELEC_GEN_1_LINE_PB_IS_ON", "Emergency Generator 1 Line");
         Press("A32NX_OVHD_EMER_ELEC_RAT_AND_EMER_GEN_IS_PRESSED", "RAT and Emergency Generator");
         Sel("A380X_OVHD_ELEC_BAT_SELECTOR_KNOB", "Battery Display Selector",
@@ -1763,6 +1776,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "A32NX_OVHD_ELEC_IDG_3_PB_IS_RELEASED", "A32NX_OVHD_ELEC_IDG_4_PB_IS_RELEASED",
             "A32NX_OVHD_ELEC_EXT_PWR_1_PB_IS_ON", "A32NX_OVHD_ELEC_EXT_PWR_2_PB_IS_ON",
             "A32NX_OVHD_ELEC_EXT_PWR_3_PB_IS_ON", "A32NX_OVHD_ELEC_EXT_PWR_4_PB_IS_ON",
+            "A32NX_OVHD_ELEC_ENG_GEN_1_PB_IS_ON", "A32NX_OVHD_ELEC_ENG_GEN_2_PB_IS_ON",
+            "A32NX_OVHD_ELEC_ENG_GEN_3_PB_IS_ON", "A32NX_OVHD_ELEC_ENG_GEN_4_PB_IS_ON",
+            "A32NX_OVHD_ELEC_APU_GEN_1_PB_IS_ON", "A32NX_OVHD_ELEC_APU_GEN_2_PB_IS_ON",
             "A32NX_OVHD_EMER_ELEC_GEN_1_LINE_PB_IS_ON", "A32NX_OVHD_EMER_ELEC_RAT_AND_EMER_GEN_IS_PRESSED",
             "A380X_OVHD_ELEC_BAT_SELECTOR_KNOB"
         };
@@ -2971,6 +2987,27 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         if (_extLightSetEvents.TryGetValue(varKey, out var lightEvent))
         {
             simConnect.SendEvent(lightEvent, (uint)Math.Round(value));
+            return true;
+        }
+        // ENG GEN 1-4 pushbutton: state mirrors stock GENERAL ENG MASTER ALTERNATOR:n;
+        // the working actuator is the stock TOGGLE_MASTER_ALTERNATOR event (engine
+        // index param). Toggle only when the desired state differs from the live state.
+        if (varKey.StartsWith("A32NX_OVHD_ELEC_ENG_GEN_", StringComparison.Ordinal)
+            && varKey.EndsWith("_PB_IS_ON", StringComparison.Ordinal)
+            && int.TryParse(varKey.AsSpan("A32NX_OVHD_ELEC_ENG_GEN_".Length, 1), out int genN))
+        {
+            bool desiredOn = value > 0.5;
+            bool currentOn = (simConnect.GetCachedVariableValue(varKey) ?? (desiredOn ? 0.0 : 1.0)) > 0.5;
+            if (desiredOn != currentOn) simConnect.SendEvent("TOGGLE_MASTER_ALTERNATOR", (uint)genN);
+            return true;
+        }
+        // APU GEN 1-2 pushbutton: state mirrors stock APU GENERATOR SWITCH:i; the
+        // working actuator is the stock indexed APU_GENERATOR_SWITCH_SET event.
+        if (varKey.StartsWith("A32NX_OVHD_ELEC_APU_GEN_", StringComparison.Ordinal)
+            && varKey.EndsWith("_PB_IS_ON", StringComparison.Ordinal)
+            && int.TryParse(varKey.AsSpan("A32NX_OVHD_ELEC_APU_GEN_".Length, 1), out int apuGenI))
+        {
+            simConnect.ExecuteCalculatorCode($"{(value > 0.5 ? 1 : 0)} (>K:{apuGenI}:APU_GENERATOR_SWITCH_SET)");
             return true;
         }
         // Taxi light: state mirrors LIGHT TAXI:2; the only working actuator is the
