@@ -13,8 +13,8 @@ namespace MSFSBlindAssist.Forms;
 ///
 /// Design:
 /// - Airport ICAO input with auto-fill from nearest airport
-/// - Destination type selection (Runway / Gate-Parking)
-/// - Destination combo (runways or gates sorted by distance)
+/// - Destination type selection (Runway / Holding Point / Gate-Parking)
+/// - Destination combo (runways, holding points, or gates sorted by distance)
 /// - First taxiway combo: all taxiways sorted closest to farthest, with "(None - calculate shortest path)" at top
 /// - "Add Taxiway" button to dynamically add connected taxiway combos
 /// - Each added taxiway shows only connected taxiways from the previous selection
@@ -218,9 +218,9 @@ public class TaxiAssistForm : Form
             Width = controlWidth,
             DropDownStyle = ComboBoxStyle.DropDownList,
             AccessibleName = "Destination type",
-            AccessibleDescription = "Select whether to taxi to a runway or a gate/parking position"
+            AccessibleDescription = "Select whether to taxi to a runway, holding point, or gate/parking position"
         };
-        cmbDestType.Items.AddRange(new object[] { "Runway", "Gate / Parking" });
+        cmbDestType.Items.AddRange(new object[] { "Runway", "Holding Point", "Gate / Parking" });
         cmbDestType.SelectedIndex = 0;
         cmbDestType.SelectedIndexChanged += OnDestTypeChanged;
         y += 30;
@@ -244,7 +244,7 @@ public class TaxiAssistForm : Form
             AccessibleName = "Show only fitting parking spots",
             AccessibleDescription = "When checked, only shows parking spots large enough for your aircraft"
         };
-        chkFitFilter.CheckedChanged += (s, e) => { if (cmbDestType.SelectedIndex != 0) PopulateDestinations(); };
+        chkFitFilter.CheckedChanged += (s, e) => { if (cmbDestType.SelectedIndex == 2) PopulateDestinations(); };
         y += 20;
         cmbDestination = new ComboBox
         {
@@ -589,6 +589,7 @@ public class TaxiAssistForm : Form
         if (_graph == null) return;
 
         bool isRunway = cmbDestType.SelectedIndex == 0;
+        bool isHoldingPoint = cmbDestType.SelectedIndex == 1;
 
         if (isRunway)
         {
@@ -667,6 +668,31 @@ public class TaxiAssistForm : Form
                         cmbDestination.Items.Add(name);
                     }
                 }
+            }
+        }
+        else if (isHoldingPoint)
+        {
+            var duplicateCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var point in _graph.GetHoldingPointsSortedByDistance(_aircraftLat, _aircraftLon))
+            {
+                string label = point.Label;
+                if (duplicateCounts.TryGetValue(point.Label, out int count))
+                {
+                    count++;
+                    duplicateCounts[point.Label] = count;
+                    label = $"{point.Label} ({count})";
+                }
+                else
+                {
+                    duplicateCounts[point.Label] = 1;
+                }
+
+                if (_destinationNodeMap.ContainsKey(label)) continue;
+
+                _destinationNodeMap[label] = point.NodeId;
+                _destinationThresholdMap[label] = (point.Latitude, point.Longitude);
+                cmbDestination.Items.Add(label);
             }
         }
         else
@@ -773,7 +799,7 @@ public class TaxiAssistForm : Form
 
     private void OnDestTypeChanged(object? sender, EventArgs e)
     {
-        chkFitFilter.Visible = cmbDestType.SelectedIndex != 0 && _aircraftWingspan > 0;
+        chkFitFilter.Visible = cmbDestType.SelectedIndex == 2 && _aircraftWingspan > 0;
         PopulateDestinations();
     }
 
@@ -1310,7 +1336,8 @@ public class TaxiAssistForm : Form
         txtRouteSummary.Text = _guidanceManager.LastRouteSummary;
         lblStatus.Text = "Route loaded. Guidance active.";
 
-        CheckGateOccupancy(isRunwayDest, thresholdLat, thresholdLon);
+        if (cmbDestType.SelectedIndex == 2)
+            CheckGateOccupancy(isRunwayDest, thresholdLat, thresholdLon);
 
         _guidanceManager.StartGuidance(settings);
         // Form stays open so the user can read the summary box while

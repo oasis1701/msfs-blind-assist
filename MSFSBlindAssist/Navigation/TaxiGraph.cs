@@ -948,6 +948,62 @@ public class TaxiGraph
         return Math.Sqrt(ex * ex + ey * ey);
     }
 
+    public sealed class HoldingPointDestination
+    {
+        public int NodeId { get; set; }
+        public string Label { get; set; } = "";
+        public double Latitude { get; set; }
+        public double Longitude { get; set; }
+        public double DistanceMeters { get; set; }
+    }
+
+    /// <summary>
+    /// Gets all real hold-short / ILS hold-short graph nodes as route destinations.
+    /// </summary>
+    public List<HoldingPointDestination> GetHoldingPointsSortedByDistance(double lat, double lon)
+    {
+        return Nodes.Values
+            .Where(n => n.Type == TaxiNodeType.HoldShort || n.Type == TaxiNodeType.ILSHoldShort)
+            .Select(n =>
+            {
+                string label = !string.IsNullOrWhiteSpace(n.HoldShortName)
+                    ? n.HoldShortName!
+                    : BuildHoldingPointFallbackLabel(n);
+
+                return new HoldingPointDestination
+                {
+                    NodeId = n.NodeId,
+                    Label = label,
+                    Latitude = n.Latitude,
+                    Longitude = n.Longitude,
+                    DistanceMeters = CalculateDistanceMeters(lat, lon, n.Latitude, n.Longitude)
+                };
+            })
+            .OrderBy(p => p.DistanceMeters)
+            .ThenBy(p => p.Label, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static string BuildHoldingPointFallbackLabel(TaxiNode node)
+    {
+        if (node.TaxiwayNames.Count == 0)
+            return $"Holding point {node.NodeId}";
+
+        var connectorName = node.TaxiwayNames
+            .Where(n => n.Any(char.IsLetter) && n.Any(char.IsDigit))
+            .OrderBy(n => n.Length)
+            .ThenBy(n => n, StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault();
+
+        if (!string.IsNullOrWhiteSpace(connectorName))
+            return connectorName;
+
+        return node.TaxiwayNames
+            .OrderByDescending(n => n.Length)
+            .ThenBy(n => n, StringComparer.OrdinalIgnoreCase)
+            .First();
+    }
+
     /// <summary>
     /// Gets all unique taxiway names in the graph, sorted.
     /// </summary>
