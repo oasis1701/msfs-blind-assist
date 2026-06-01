@@ -31,15 +31,18 @@ public class FlyByWireMCDUForm : Form
     private string _lastAnnouncedTitle = "";
     private MCDUDisplayData? _currentDisplay;
 
-    // Function/page keys: (button label with a UNIQUE Alt-accelerator, FBW key name).
-    // Every accelerator below is distinct so Alt+<letter> reliably activates exactly
-    // one key (previously Alt+F, Alt+C and Alt+U each collided across two buttons).
+    // Function/page keys: (button label with Alt-accelerator, FBW key name). The page
+    // accelerators MATCH the Fenix MCDU form so the muscle memory transfers: Alt+I/D/P/
+    // F/E/R/U/K/M/A/T/O for Init/Dir/Prog/Fpln/Perf/Rad/Fuel/Atc/Menu/Airport/Data/Ovfy.
+    // Sec F-PLN has no plain accelerator (Alt+Shift+F, handled in Form_KeyDown, like
+    // Fenix). Up/Down/Prev/Next carry no letter accelerator — they have dedicated keys
+    // (Page Up/Down, Alt+Up/Down/Left/Right).
     private static readonly (string Label, string Key)[] PageButtons =
     {
-        ("&Init", "INIT"), ("&Dir", "DIR"), ("Pro&g", "PROG"), ("&Fpln", "FPLN"), ("P&erf", "PERF"),
-        ("&Rad Nav", "RAD"), ("Sec Fpl&n", "SEC"), ("F&uel Pred", "FUEL"), ("At&c Com", "ATC"), ("&Menu", "MENU"),
-        ("&Airport", "AIRPORT"), ("Da&ta", "DATA"), ("&Ovfy", "OVFY"), ("C&lr", "CLR"),
-        ("Pre&v Page", "PREVPAGE"), ("Ne&xt Page", "NEXTPAGE"), ("U&p", "UP"), ("Do&wn", "DOWN"),
+        ("&Init", "INIT"), ("&Dir", "DIR"), ("&Prog", "PROG"), ("&Fpln", "FPLN"), ("P&erf", "PERF"),
+        ("&Rad Nav", "RAD"), ("Sec Fpln", "SEC"), ("F&uel Pred", "FUEL"), ("Atc &Kom", "ATC"), ("&Menu", "MENU"),
+        ("&Airport", "AIRPORT"), ("Da&ta", "DATA"), ("&Ovfy", "OVFY"), ("&Clr", "CLR"),
+        ("Prev Page", "PREVPAGE"), ("Next Page", "NEXTPAGE"), ("Up", "UP"), ("Down", "DOWN"),
     };
 
     public FlyByWireMCDUForm(FlyByWireMCDUService service, ScreenReaderAnnouncer announcer)
@@ -238,6 +241,14 @@ public class FlyByWireMCDUForm : Form
         if (e.Alt && e.KeyCode == Keys.Right)
         {
             _ = _service.SendButtonPress("NEXTPAGE");
+            e.Handled = true; e.SuppressKeyPress = true; return;
+        }
+
+        // Alt+Shift+F: SEC F-PLN — the Sec Fpln button has no plain accelerator (it
+        // would collide with Fpln = Alt+F). Matches the Fenix MCDU form.
+        if (e.Alt && e.Shift && e.KeyCode == Keys.F)
+        {
+            _ = _service.SendButtonPress("SEC");
             e.Handled = true; e.SuppressKeyPress = true; return;
         }
 
