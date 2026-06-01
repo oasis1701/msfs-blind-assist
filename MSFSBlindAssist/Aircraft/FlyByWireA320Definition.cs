@@ -4406,6 +4406,17 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         // ADIRS IR mode selectors
         "A32NX_OVHD_ADIRS_IR_1_MODE_SELECTOR_KNOB", "A32NX_OVHD_ADIRS_IR_2_MODE_SELECTOR_KNOB",
         "A32NX_OVHD_ADIRS_IR_3_MODE_SELECTOR_KNOB",
+        // Signs (no-smoking / emergency-exit position)
+        "XMLVAR_SWITCH_OVHD_INTLT_NOSMOKING_POSITION", "XMLVAR_SWITCH_OVHD_INTLT_EMEREXIT_POSITION",
+        // Transponder / TCAS / weather radar
+        "A32NX_TRANSPONDER_MODE", "A32NX_TRANSPONDER_SYSTEM", "A32NX_SWITCH_ATC_ALT",
+        "A32NX_SWITCH_TCAS_TRAFFIC_POSITION", "A32NX_SWITCH_TCAS_POSITION",
+        "A32NX_SWITCH_RADAR_PWS_POSITION",
+        // ISIS (baro reference + ILS)
+        "A32NX_ISIS_BARO_MODE", "A32NX_ISIS_LS_ACTIVE",
+        // GPWS off-switches
+        "A32NX_GPWS_SYS_OFF", "A32NX_GPWS_GS_OFF", "A32NX_GPWS_FLAP_OFF",
+        "A32NX_GPWS_TERR_OFF", "A32NX_GPWS_FLAPS3",
     };
 
     public const string SdPageVar = "A32NX_MSFSBA_SD_PAGE";
