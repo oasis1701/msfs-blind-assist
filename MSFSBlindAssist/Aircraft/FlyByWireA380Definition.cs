@@ -1828,7 +1828,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 "Transponder", "Radios", "RMP", "Audio Control Panel Captain", "Audio Control Panel First Officer", "Cockpit Door"
             },
             ["Ground Services"] = new List<string> { "Doors", "Ground Equipment" },
-            ["Displays"] = new List<string> { "Status", "Speeds", "Minimums", "Ground" }
+            ["Displays"] = new List<string> { "PFD", "ND", "Status", "Speeds", "Minimums", "Ground" }
         };
     }
 
@@ -2145,17 +2145,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // "PFD" is NOT a navigable control panel — it's the variable set the PFD
         // window (ShowPFD hotkey) requests/reads. Intentionally absent from
         // GetPanelStructure so it isn't shown as a UI panel.
-        p["PFD"] = new List<string>
-        {
-            "A32NX_AUTOTHRUST_MODE", "A32NX_AUTOTHRUST_MODE_MESSAGE",
-            "A32NX_FMA_VERTICAL_MODE", "A32NX_FMA_LATERAL_MODE", "A32NX_FMA_VERTICAL_ARMED",
-            "A32NX_FMA_LATERAL_ARMED", "A32NX_FMA_CRUISE_ALT_MODE", "A32NX_APPROACH_CAPABILITY",
-            "A32NX_PFD_MSG_SET_HOLD_SPEED", "A32NX_PFD_MSG_TD_REACHED", "A32NX_PFD_MSG_CHECK_SPEED_MODE",
-            "A32NX_PFD_LINEAR_DEVIATION_ACTIVE", "A32NX_FMGC_1_LDEV_REQUEST",
-            "A32NX_FM1_MINIMUM_DESCENT_ALTITUDE", "A32NX_DESTINATION_QNH",
-            "A32NX_AUTOTHRUST_STATUS", "A32NX_AUTOBRAKES_SELECTED_MODE",
-            "A32NX_AUTOPILOT_1_ACTIVE", "A32NX_AUTOPILOT_2_ACTIVE"
-        };
+        // PFD / ND are status-box-only display panels (the read-out lives in
+        // GetPanelDisplayVariables); no interactive controls.
+        p["PFD"] = new List<string>();
+        p["ND"] = new List<string>();
         p["Interior Lighting"].Add("A380X_OVHD_EXTLT_STBY_COMPASS_ICE_IND_SWITCH_POS");
         // (EFIS filter/overlay/baro-unit/OANS folded into the per-side EFIS panels above.)
         p["ECAM Control Panel"].AddRange(new[] { "A32NX_BTN_CHECK_LH", "A32NX_BTN_CHECK_RH" });
@@ -2400,7 +2393,39 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // Clock panel; the controls live in p["Clock"]).
         d["Clock"] = new List<string> { "A32NX_CHRONO_ELAPSED_TIME", "A32NX_CHRONO_ET_ELAPSED_TIME" };
         d["Cockpit Door"] = new List<string> { "A32NX_CABIN_READY" };
-        d["ISIS"] = new List<string> { "A32NX_ISIS_LS_ACTIVE", "A32NX_ISIS_BUGS_ACTIVE" };
+        // ISIS standby-instrument snapshot (attitude/heading/speed/altitude/baro +
+        // ILS), decoded in TryGetDisplayOverride. Standby simvars read in DEGREES on
+        // the A380 (registered with "degrees" units), unlike the A320 (radians).
+        d["ISIS"] = new List<string>
+        {
+            "PLANE PITCH DEGREES", "PLANE BANK DEGREES", "PLANE HEADING DEGREES MAGNETIC",
+            "AIRSPEED INDICATED", "INDICATED ALTITUDE",
+            "A32NX_ISIS_BARO_MODE", "A32NX_ISIS_LS_ACTIVE", "A32NX_ISIS_BUGS_ACTIVE"
+        };
+        // PFD accessible snapshot — FMA modes + armed, autothrust, approach capability,
+        // attitude/heading/speed/altitude, and the PFD message line. Single status box.
+        d["PFD"] = new List<string>
+        {
+            "A32NX_FMA_VERTICAL_MODE", "A32NX_FMA_VERTICAL_ARMED",
+            "A32NX_FMA_LATERAL_MODE", "A32NX_FMA_LATERAL_ARMED",
+            "A32NX_AUTOTHRUST_MODE", "A32NX_AUTOTHRUST_STATUS", "A32NX_APPROACH_CAPABILITY",
+            "A32NX_AUTOPILOT_1_ACTIVE", "A32NX_AUTOPILOT_2_ACTIVE",
+            "PLANE PITCH DEGREES", "PLANE BANK DEGREES", "PLANE HEADING DEGREES MAGNETIC",
+            "AIRSPEED INDICATED", "INDICATED ALTITUDE",
+            "A32NX_PFD_MSG_SET_HOLD_SPEED", "A32NX_PFD_MSG_TD_REACHED",
+            "A32NX_PFD_MSG_CHECK_SPEED_MODE", "A32NX_PFD_LINEAR_DEVIATION_ACTIVE"
+        };
+        // ND accessible snapshot — mode/range, TO waypoint (decoded ident + distance/
+        // bearing/ETA), cross-track, RNP, and ILS LOC/GS validity + deviation.
+        d["ND"] = new List<string>
+        {
+            "A32NX_EFIS_L_ND_MODE", "A32NX_EFIS_L_ND_RANGE",
+            "A32NX_EFIS_L_TO_WPT_IDENT_0", "A32NX_EFIS_L_TO_WPT_DISTANCE",
+            "A32NX_EFIS_L_TO_WPT_BEARING", "A32NX_EFIS_L_TO_WPT_ETA",
+            "A32NX_FG_CROSS_TRACK_ERROR", "A32NX_FMGC_L_RNP",
+            "A32NX_RADIO_RECEIVER_LOC_IS_VALID", "A32NX_RADIO_RECEIVER_LOC_DEVIATION",
+            "A32NX_RADIO_RECEIVER_GS_IS_VALID", "A32NX_RADIO_RECEIVER_GS_DEVIATION"
+        };
         d["Oxygen"] = new List<string> { "A32NX_OXYGEN_TMR_RESET_FAULT" };
         d["Calls"] = new List<string> { "A32NX_SLIDES_ARMED", "A32NX_EVAC_COMMAND_FAULT" };
         // The ECP "Status display" box shows the SELECTED SD page's live CONTENT,
@@ -2536,6 +2561,20 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     // decoding it, vs the A32NX's old raw-number announce). Bits per the FBW a32nx-api.
     private int _prevVertArmed = -1, _prevLatArmed = -1;
     private string _lastFlightPhaseA380 = "";
+    // ND TO-waypoint ident: packed 6 bits/char, 8 chars/word (low bits first),
+    // char = code + 31. Cached from ProcessSimVarUpdate; decoded in TryGetDisplayOverride.
+    private double _ndIdent0, _ndIdent1;
+    private static string UnpackSixBitIdent(double w0, double w1)
+    {
+        double[] words = { w0, w1 };
+        string s = "";
+        for (int i = 0; i < words.Length * 8; i++)
+        {
+            int code = (int)(words[i / 8] / Math.Pow(2, (i % 8) * 6)) & 0x3F;
+            if (code > 0) s += (char)(code + 31);
+        }
+        return s.Trim();
+    }
     private static readonly (int bit, string name)[] _vertArmedBits =
         { (1, "Altitude"), (2, "Altitude constraint"), (4, "Climb"), (8, "Descent"), (16, "Glideslope"), (32, "Final"), (64, "TCAS") };
     private static readonly (int bit, string name)[] _latArmedBits = { (1, "NAV"), (2, "Localizer") };
@@ -2548,6 +2587,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
 
     public override bool ProcessSimVarUpdate(string varName, double value, ScreenReaderAnnouncer announcer)
     {
+        // Cache the ND TO-waypoint packed-word halves for the ND status box decode
+        // (no announcement; fall through to normal processing).
+        if (varName == "A32NX_EFIS_L_TO_WPT_IDENT_0") _ndIdent0 = value;
+        else if (varName == "A32NX_EFIS_L_TO_WPT_IDENT_1") _ndIdent1 = value;
+
         // FMA armed modes — decode the legacy bitmask and announce NEWLY-armed modes
         // on change (so arming ALT/NAV speaks "Altitude armed"/"NAV armed"). Parity
         // with the A32NX, which the A380 previously lacked (it was read-only).
@@ -3527,6 +3571,56 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 displayText = string.IsNullOrEmpty(s) ? "None" : s;
                 return true;
             }
+            // ---- PFD / ISIS / ND status-box decode (A380 attitude is in DEGREES) ----
+            case "PLANE PITCH DEGREES":   // positive = nose down
+                displayText = Math.Abs(value) < 0.5 ? "Level" : $"{Math.Abs(value):F1} degrees {(value < 0 ? "up" : "down")}";
+                return true;
+            case "PLANE BANK DEGREES":    // positive = bank left
+                displayText = Math.Abs(value) < 0.5 ? "Wings level" : $"{Math.Abs(value):F1} degrees {(value > 0 ? "left" : "right")}";
+                return true;
+            case "PLANE HEADING DEGREES MAGNETIC":
+            {
+                double hdg = ((value % 360) + 360) % 360;
+                displayText = $"{(int)Math.Round(hdg):000}";
+                return true;
+            }
+            case "A32NX_EFIS_L_TO_WPT_IDENT_0":
+            {
+                string wpt = UnpackSixBitIdent(_ndIdent0, _ndIdent1);
+                displayText = string.IsNullOrWhiteSpace(wpt) ? "None" : wpt;
+                return true;
+            }
+            case "A32NX_EFIS_L_TO_WPT_DISTANCE":
+                displayText = value <= 0 ? "--" : $"{value:F1} NM";
+                return true;
+            case "A32NX_EFIS_L_TO_WPT_BEARING":   // stored as radians
+            {
+                double deg = value * 180.0 / Math.PI;
+                deg = ((deg % 360) + 360) % 360;
+                displayText = $"{(int)Math.Round(deg):000} magnetic";
+                return true;
+            }
+            case "A32NX_EFIS_L_TO_WPT_ETA":
+            {
+                if (value <= 0) { displayText = "--"; return true; }
+                int h = (int)(value / 3600), m = (int)((value % 3600) / 60), s2 = (int)(value % 60);
+                displayText = $"{h}:{m:D2}:{s2:D2} UTC";
+                return true;
+            }
+            case "A32NX_FG_CROSS_TRACK_ERROR":
+            {
+                double nm = value / 1852.0;
+                displayText = Math.Abs(nm) < 0.01 ? "On track" : $"{Math.Abs(nm):F2} NM {(nm > 0 ? "right" : "left")}";
+                return true;
+            }
+            case "A32NX_RADIO_RECEIVER_LOC_DEVIATION":
+            case "A32NX_RADIO_RECEIVER_GS_DEVIATION":
+                displayText = $"{value:F2} degrees";
+                return true;
+            case "A32NX_RADIO_RECEIVER_LOC_IS_VALID":
+            case "A32NX_RADIO_RECEIVER_GS_IS_VALID":
+                displayText = value > 0.5 ? "valid" : "invalid";
+                return true;
             case "A32NX_FCU_LEFT_EIS_BARO_HPA":
             case "A32NX_FCU_RIGHT_EIS_BARO_HPA":
             {
