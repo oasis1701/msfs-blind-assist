@@ -1031,6 +1031,30 @@ public struct GenericBatch
 [StructLayout(LayoutKind.Sequential, Pack = 8)]
 public struct GenericBatch1
 {
+    // Capacity extended to 200 doubles (BATCH_SIZE = 200). Field NAMES are
+    // irrelevant — ProcessContinuousBatchImpl reads the struct as a flat double[]
+    // by index, and the data definition is filled in add-order; only the total
+    // size (>= BATCH_SIZE doubles) matters.
+    public double V100; public double V101; public double V102; public double V103; public double V104;
+    public double V105; public double V106; public double V107; public double V108; public double V109;
+    public double V110; public double V111; public double V112; public double V113; public double V114;
+    public double V115; public double V116; public double V117; public double V118; public double V119;
+    public double V120; public double V121; public double V122; public double V123; public double V124;
+    public double V125; public double V126; public double V127; public double V128; public double V129;
+    public double V130; public double V131; public double V132; public double V133; public double V134;
+    public double V135; public double V136; public double V137; public double V138; public double V139;
+    public double V140; public double V141; public double V142; public double V143; public double V144;
+    public double V145; public double V146; public double V147; public double V148; public double V149;
+    public double V150; public double V151; public double V152; public double V153; public double V154;
+    public double V155; public double V156; public double V157; public double V158; public double V159;
+    public double V160; public double V161; public double V162; public double V163; public double V164;
+    public double V165; public double V166; public double V167; public double V168; public double V169;
+    public double V170; public double V171; public double V172; public double V173; public double V174;
+    public double V175; public double V176; public double V177; public double V178; public double V179;
+    public double V180; public double V181; public double V182; public double V183; public double V184;
+    public double V185; public double V186; public double V187; public double V188; public double V189;
+    public double V190; public double V191; public double V192; public double V193; public double V194;
+    public double V195; public double V196; public double V197; public double V198; public double V199;
     public double V0; public double V1; public double V2; public double V3; public double V4;
     public double V5; public double V6; public double V7; public double V8; public double V9;
     public double V10; public double V11; public double V12; public double V13; public double V14;
@@ -1064,6 +1088,27 @@ public struct GenericBatch1
 [StructLayout(LayoutKind.Sequential, Pack = 8)]
 public struct GenericBatch2
 {
+    // Capacity extended to 200 doubles (BATCH_SIZE = 200) — see GenericBatch1.
+    public double V100; public double V101; public double V102; public double V103; public double V104;
+    public double V105; public double V106; public double V107; public double V108; public double V109;
+    public double V110; public double V111; public double V112; public double V113; public double V114;
+    public double V115; public double V116; public double V117; public double V118; public double V119;
+    public double V120; public double V121; public double V122; public double V123; public double V124;
+    public double V125; public double V126; public double V127; public double V128; public double V129;
+    public double V130; public double V131; public double V132; public double V133; public double V134;
+    public double V135; public double V136; public double V137; public double V138; public double V139;
+    public double V140; public double V141; public double V142; public double V143; public double V144;
+    public double V145; public double V146; public double V147; public double V148; public double V149;
+    public double V150; public double V151; public double V152; public double V153; public double V154;
+    public double V155; public double V156; public double V157; public double V158; public double V159;
+    public double V160; public double V161; public double V162; public double V163; public double V164;
+    public double V165; public double V166; public double V167; public double V168; public double V169;
+    public double V170; public double V171; public double V172; public double V173; public double V174;
+    public double V175; public double V176; public double V177; public double V178; public double V179;
+    public double V180; public double V181; public double V182; public double V183; public double V184;
+    public double V185; public double V186; public double V187; public double V188; public double V189;
+    public double V190; public double V191; public double V192; public double V193; public double V194;
+    public double V195; public double V196; public double V197; public double V198; public double V199;
     public double V0; public double V1; public double V2; public double V3; public double V4;
     public double V5; public double V6; public double V7; public double V8; public double V9;
     public double V10; public double V11; public double V12; public double V13; public double V14;
@@ -1097,6 +1142,27 @@ public struct GenericBatch2
 [StructLayout(LayoutKind.Sequential, Pack = 8)]
 public struct GenericBatch3
 {
+    // Capacity extended to 200 doubles (BATCH_SIZE = 200) — see GenericBatch1.
+    public double V100; public double V101; public double V102; public double V103; public double V104;
+    public double V105; public double V106; public double V107; public double V108; public double V109;
+    public double V110; public double V111; public double V112; public double V113; public double V114;
+    public double V115; public double V116; public double V117; public double V118; public double V119;
+    public double V120; public double V121; public double V122; public double V123; public double V124;
+    public double V125; public double V126; public double V127; public double V128; public double V129;
+    public double V130; public double V131; public double V132; public double V133; public double V134;
+    public double V135; public double V136; public double V137; public double V138; public double V139;
+    public double V140; public double V141; public double V142; public double V143; public double V144;
+    public double V145; public double V146; public double V147; public double V148; public double V149;
+    public double V150; public double V151; public double V152; public double V153; public double V154;
+    public double V155; public double V156; public double V157; public double V158; public double V159;
+    public double V160; public double V161; public double V162; public double V163; public double V164;
+    public double V165; public double V166; public double V167; public double V168; public double V169;
+    public double V170; public double V171; public double V172; public double V173; public double V174;
+    public double V175; public double V176; public double V177; public double V178; public double V179;
+    public double V180; public double V181; public double V182; public double V183; public double V184;
+    public double V185; public double V186; public double V187; public double V188; public double V189;
+    public double V190; public double V191; public double V192; public double V193; public double V194;
+    public double V195; public double V196; public double V197; public double V198; public double V199;
     public double V0; public double V1; public double V2; public double V3; public double V4;
     public double V5; public double V6; public double V7; public double V8; public double V9;
     public double V10; public double V11; public double V12; public double V13; public double V14;
@@ -1130,6 +1196,27 @@ public struct GenericBatch3
 [StructLayout(LayoutKind.Sequential, Pack = 8)]
 public struct GenericBatch4
 {
+    // Capacity extended to 200 doubles (BATCH_SIZE = 200) — see GenericBatch1.
+    public double V100; public double V101; public double V102; public double V103; public double V104;
+    public double V105; public double V106; public double V107; public double V108; public double V109;
+    public double V110; public double V111; public double V112; public double V113; public double V114;
+    public double V115; public double V116; public double V117; public double V118; public double V119;
+    public double V120; public double V121; public double V122; public double V123; public double V124;
+    public double V125; public double V126; public double V127; public double V128; public double V129;
+    public double V130; public double V131; public double V132; public double V133; public double V134;
+    public double V135; public double V136; public double V137; public double V138; public double V139;
+    public double V140; public double V141; public double V142; public double V143; public double V144;
+    public double V145; public double V146; public double V147; public double V148; public double V149;
+    public double V150; public double V151; public double V152; public double V153; public double V154;
+    public double V155; public double V156; public double V157; public double V158; public double V159;
+    public double V160; public double V161; public double V162; public double V163; public double V164;
+    public double V165; public double V166; public double V167; public double V168; public double V169;
+    public double V170; public double V171; public double V172; public double V173; public double V174;
+    public double V175; public double V176; public double V177; public double V178; public double V179;
+    public double V180; public double V181; public double V182; public double V183; public double V184;
+    public double V185; public double V186; public double V187; public double V188; public double V189;
+    public double V190; public double V191; public double V192; public double V193; public double V194;
+    public double V195; public double V196; public double V197; public double V198; public double V199;
     public double V0; public double V1; public double V2; public double V3; public double V4;
     public double V5; public double V6; public double V7; public double V8; public double V9;
     public double V10; public double V11; public double V12; public double V13; public double V14;
@@ -1163,6 +1250,27 @@ public struct GenericBatch4
 [StructLayout(LayoutKind.Sequential, Pack = 8)]
 public struct GenericBatch5
 {
+    // Capacity extended to 200 doubles (BATCH_SIZE = 200) — see GenericBatch1.
+    public double V100; public double V101; public double V102; public double V103; public double V104;
+    public double V105; public double V106; public double V107; public double V108; public double V109;
+    public double V110; public double V111; public double V112; public double V113; public double V114;
+    public double V115; public double V116; public double V117; public double V118; public double V119;
+    public double V120; public double V121; public double V122; public double V123; public double V124;
+    public double V125; public double V126; public double V127; public double V128; public double V129;
+    public double V130; public double V131; public double V132; public double V133; public double V134;
+    public double V135; public double V136; public double V137; public double V138; public double V139;
+    public double V140; public double V141; public double V142; public double V143; public double V144;
+    public double V145; public double V146; public double V147; public double V148; public double V149;
+    public double V150; public double V151; public double V152; public double V153; public double V154;
+    public double V155; public double V156; public double V157; public double V158; public double V159;
+    public double V160; public double V161; public double V162; public double V163; public double V164;
+    public double V165; public double V166; public double V167; public double V168; public double V169;
+    public double V170; public double V171; public double V172; public double V173; public double V174;
+    public double V175; public double V176; public double V177; public double V178; public double V179;
+    public double V180; public double V181; public double V182; public double V183; public double V184;
+    public double V185; public double V186; public double V187; public double V188; public double V189;
+    public double V190; public double V191; public double V192; public double V193; public double V194;
+    public double V195; public double V196; public double V197; public double V198; public double V199;
     public double V0; public double V1; public double V2; public double V3; public double V4;
     public double V5; public double V6; public double V7; public double V8; public double V9;
     public double V10; public double V11; public double V12; public double V13; public double V14;

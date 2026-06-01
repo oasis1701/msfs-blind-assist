@@ -863,14 +863,15 @@ public class SimConnectManager
             return;
         }
 
-        if (continuousVariables.Count > 500)
+        if (continuousVariables.Count > 1000)
         {
-            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] WARNING: {continuousVariables.Count} continuous variables exceeds multi-batch capacity of 500 (5 batches × 100)!");
+            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] WARNING: {continuousVariables.Count} continuous variables exceeds multi-batch capacity of 1000 (5 batches × 200)! Variables past the cap (alphabetically last) will NOT auto-announce.");
             // Continue anyway - we'll use as many batches as needed
         }
 
-        // Split variables into 5 batches (up to 100 variables per batch).
-        const int BATCH_SIZE = 100;
+        // Split variables into 5 batches (up to 200 variables per batch = 1000 total).
+        // The GenericBatch1-5 structs each hold 200 doubles to match BATCH_SIZE.
+        const int BATCH_SIZE = 200;
         const int NUM_BATCHES = 5;
 
         // Batch configuration: (batchNum, dataDefinition, dataRequest, structType)
@@ -1388,7 +1389,7 @@ public class SimConnectManager
                 }
                 break;
 
-            // Multi-batch continuous variable monitoring (5 batches of ~100 variables each)
+            // Multi-batch continuous variable monitoring (5 batches of up to 200 variables each)
             case DATA_REQUESTS.REQUEST_CONTINUOUS_BATCH_1:
                 GenericBatch1 batch1Data = (GenericBatch1)data.dwData[0];
                 ProcessContinuousBatch(1, in batch1Data);
@@ -2517,10 +2518,10 @@ public class SimConnectManager
                         if (varBatchNum != batchNum) continue;
 
                         // SAFETY: Validate index is within bounds
-                        // Each batch struct has 100 doubles (V0-V99)
-                        if (index < 0 || index >= 100)
+                        // Each batch struct has 200 doubles (matches BATCH_SIZE = 200)
+                        if (index < 0 || index >= 200)
                         {
-                            System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] ERROR: Batch {batchNum} index {index} out of bounds [0-99] for variable '{varKey}'");
+                            System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] ERROR: Batch {batchNum} index {index} out of bounds [0-199] for variable '{varKey}'");
                             invalidIndexCount++;
                             continue;
                         }
