@@ -3015,19 +3015,24 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Not Latched", [1] = "Latched" }
         },
 
+        // "Activate" pulses the real glareshield MASTER WARN / CAUT pushbutton (handled
+        // in HandleUIVariableSet) to acknowledge + silence the aural. (Was wrongly wired
+        // to write the A32NX_MASTER_WARNING output var, which does nothing.)
         ["CLEAR_MASTER_WARNING"] = new SimConnect.SimVarDefinition
         {
-            Name = "A32NX_MASTER_WARNING",
+            Name = "PUSH_AUTOPILOT_MASTERWARN_L",
             DisplayName = "Clear Master Warning",
             Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.Never
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Idle", [1] = "Activate" }
         },
         ["CLEAR_MASTER_CAUTION"] = new SimConnect.SimVarDefinition
         {
-            Name = "A32NX_MASTER_CAUTION",
+            Name = "PUSH_AUTOPILOT_MASTERCAUT_L",
             DisplayName = "Clear Master Caution",
             Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.Never
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Idle", [1] = "Activate" }
         },
         ["A32NX_AUTOBRAKES_ARMED_MODE"] = new SimConnect.SimVarDefinition
         {
@@ -3497,7 +3502,11 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
                     && variables.TryGetValue(key, out var cdef)
                     && (cdef.Type == SimConnect.SimVarType.LVar || cdef.Type == SimConnect.SimVarType.SimVar)
                     && cdef.ValueDescriptions != null && cdef.ValueDescriptions.Count > 0
-                    && cdef.UpdateFrequency == SimConnect.UpdateFrequency.OnRequest)
+                    && cdef.UpdateFrequency == SimConnect.UpdateFrequency.OnRequest
+                    // Skip momentary ACTIONS (Activate / Pressed) — they fire-and-return,
+                    // so continuously monitoring + announcing them is noise.
+                    && !cdef.ValueDescriptions.ContainsValue("Activate")
+                    && !cdef.ValueDescriptions.ContainsValue("Pressed"))
                 {
                     cdef.UpdateFrequency = SimConnect.UpdateFrequency.Continuous;
                     cdef.IsAnnounced = true;
@@ -4975,6 +4984,30 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             int page = (int)Math.Round(value);
             simConnect.ExecuteCalculatorCode($"{page} (>L:A32NX_MSFSBA_SD_PAGE)");
             RefreshDisplayBoxAsync(page, simConnect);
+            return true;
+        }
+
+        // Acknowledge / silence the MASTER WARNING / MASTER CAUTION (and its aural — the
+        // repetitive "beep" / single chime). The real glareshield pushbutton is
+        // PUSH_AUTOPILOT_MASTERWARN_L / _MASTERCAUT_L (a HELD momentary), NOT the
+        // A32NX_MASTER_WARNING output the old "clear" wrongly wrote — so pulse 1->0
+        // (press + release) via the calculator path. Selecting "Activate" fires it.
+        if (varKey == "CLEAR_MASTER_WARNING")
+        {
+            if (value > 0.5)
+            {
+                simConnect.ExecuteCalculatorCode("1 (>L:PUSH_AUTOPILOT_MASTERWARN_L)");
+                simConnect.ExecuteCalculatorCode("0 (>L:PUSH_AUTOPILOT_MASTERWARN_L)");
+            }
+            return true;
+        }
+        if (varKey == "CLEAR_MASTER_CAUTION")
+        {
+            if (value > 0.5)
+            {
+                simConnect.ExecuteCalculatorCode("1 (>L:PUSH_AUTOPILOT_MASTERCAUT_L)");
+                simConnect.ExecuteCalculatorCode("0 (>L:PUSH_AUTOPILOT_MASTERCAUT_L)");
+            }
             return true;
         }
 
