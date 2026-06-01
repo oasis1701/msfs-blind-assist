@@ -40,6 +40,13 @@ public sealed class FBWA380ChecklistForm : Form
     private bool _haveRows;
     private bool _cursorActive;   // last scrape had a selected (cursor) line
     private bool _busy;           // guard against overlapping ECP pulses
+    // Pending ECP presses that arrived while a pulse+scrape was still running. We
+    // QUEUE them (in order, capped) and drain them when the current pulse finishes,
+    // instead of silently dropping them — that silent drop was why Backspace (Clear)
+    // felt "very unreliable", especially when tapping it to leave a C/L COMPLETE
+    // checklist faster than the ~300 ms pulse+scrape cycle.
+    private readonly Queue<(string lvar, string say)> _pending = new();
+    private const int MaxPending = 8;
     private bool _weShowedOverlay; // we toggled the C/L overlay ON, so hide it on close
 
     public FBWA380ChecklistForm(ScreenReaderAnnouncer announcer, SimConnectManager sim, CoherentEWDClient? ewd)
@@ -128,23 +135,43 @@ public sealed class FBWA380ChecklistForm : Form
     // Pulse a momentary ECP button L-var (1 -> 0) through the reliable MobiFlight
     // calculator path; the FWS reads it and drives the checklist. Re-scrape after a
     // short delay so the user hears the result on the now-selected line.
-    private async void PulseEcp(string lvar, string say)
+    // Entry point from the key handler. If a pulse is already running, enqueue this
+    // press (capped) so it runs next instead of being dropped; otherwise start the
+    // drain loop. This keeps Backspace/Up/Down responsive even when tapped quickly.
+    private void PulseEcp(string lvar, string say)
     {
-        if (_busy) return;
+        if (_busy)
+        {
+            if (_pending.Count < MaxPending) _pending.Enqueue((lvar, say));
+            return;
+        }
+        _ = DrainPulses(lvar, say);
+    }
+
+    // Pulse the given ECP button, re-scrape, then keep draining any presses that
+    // queued up while we were busy — preserving order and count.
+    private async Task DrainPulses(string lvar, string say)
+    {
         _busy = true;
         try
         {
-            _sim?.ExecuteCalculatorCode($"1 (>L:{lvar})");
-            await Task.Delay(60);
-            _sim?.ExecuteCalculatorCode($"0 (>L:{lvar})");
-            await Task.Delay(95);
-            var rows = await ScrapeEcl();
-            // Apply rebuilds the list and moves the selection to the FWS cursor line,
-            // which the screen reader reads on its own — so we do NOT also announce it
-            // here (that produced the duplicate read). Only fall back to a generic
-            // confirmation if the scrape came back empty (nothing to read).
-            Apply(rows, announceChecks: true);
-            if (_rows.Count == 0) _announcer?.Announce(say);
+            while (true)
+            {
+                _sim?.ExecuteCalculatorCode($"1 (>L:{lvar})");
+                await Task.Delay(60);
+                _sim?.ExecuteCalculatorCode($"0 (>L:{lvar})");
+                await Task.Delay(95);
+                var rows = await ScrapeEcl();
+                // Apply rebuilds the list and moves the selection to the FWS cursor line,
+                // which the screen reader reads on its own — so we do NOT also announce it
+                // here (that produced the duplicate read). Only fall back to a generic
+                // confirmation if the scrape came back empty (nothing to read).
+                Apply(rows, announceChecks: true);
+                if (_rows.Count == 0) _announcer?.Announce(say);
+
+                if (_pending.Count == 0) break;
+                (lvar, say) = _pending.Dequeue();
+            }
         }
         catch { _announcer?.Announce(say); }
         finally { _busy = false; }
