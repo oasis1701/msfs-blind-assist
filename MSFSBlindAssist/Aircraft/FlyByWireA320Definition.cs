@@ -1779,14 +1779,16 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
             IsAnnounced = true,
             Units = "number",
+            // Enum from the FBW EWD N1Limit component: ['', CLB, MCT, FLX, TOGA, MREV].
+            // Read as "Autothrust Thrust Limit Type: CLB" (no redundant "Thrust:" prefix).
             ValueDescriptions = new Dictionary<double, string>
             {
-                [0] = "Thrust: NONE",
-                [1] = "Thrust: CLB",
-                [2] = "Thrust: MCT",
-                [3] = "Thrust: FLEX",
-                [4] = "Thrust: TOGA",
-                [5] = "Thrust: REVERSE"
+                [0] = "None",
+                [1] = "CLB",
+                [2] = "MCT",
+                [3] = "FLEX",
+                [4] = "TOGA",
+                [5] = "Max Reverse"
             }
         },
         ["A32NX_AUTOTHRUST_THRUST_LIMIT_FLX"] = new SimConnect.SimVarDefinition

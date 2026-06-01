@@ -1168,6 +1168,13 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             [0] = "None", [1] = "Thrust Lock", [2] = "Levers TOGA", [3] = "Levers Climb",
             [4] = "Levers MCT", [5] = "Levers Asymmetric"
         });
+        // Thrust limit (rating) shown top-right on the E/WD — the active thrust
+        // ceiling the levers command at the TO/GA detent. Enum from the FBW EWD
+        // N1Limit component: ['', CLB, MCT, FLX, TOGA, MREV]. Announced on change.
+        Mon("A32NX_AUTOTHRUST_THRUST_LIMIT_TYPE", "Autothrust Thrust Limit Type", new Dictionary<double, string>
+        {
+            [0] = "None", [1] = "CLB", [2] = "MCT", [3] = "FLEX", [4] = "TOGA", [5] = "Max Reverse"
+        });
         // Flight Director 1 / 2 (captain + F/O FD command bars). The engage-state
         // L:vars are DIRECTLY settable and STICK via the calculator path (live-verified
         // they hold for seconds, unlike the stock TOGGLE_FLIGHT_DIRECTOR event used in
