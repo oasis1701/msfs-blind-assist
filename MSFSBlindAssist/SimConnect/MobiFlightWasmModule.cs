@@ -127,9 +127,15 @@ public class MobiFlightWasmModule
             public string Value { get; set; } = "";
         }
 
+        // Captured at construction (on the UI thread, where SimConnect is created).
+        // SimConnect is NOT thread-safe, but System.Timers.Timer fires Elapsed on a
+        // threadpool thread — so the heartbeat marshals its SimConnect call back here.
+        private readonly System.Threading.SynchronizationContext? _syncContext;
+
         public MobiFlightWasmModule(Microsoft.FlightSimulator.SimConnect.SimConnect simConnect)
         {
             this.simConnect = simConnect;
+            _syncContext = System.Threading.SynchronizationContext.Current;
 
             // Initialize heartbeat timer
             heartbeatTimer = new System.Timers.Timer(30000); // 30 seconds
@@ -613,17 +619,35 @@ public class MobiFlightWasmModule
 
         private void HeartbeatTimer_Elapsed(object? sender, ElapsedEventArgs e)
         {
-            if (IsConnected && IsRegistered)
+            // CRITICAL: on .NET an unhandled exception thrown from a System.Timers.Timer
+            // Elapsed handler runs on a threadpool thread and CRASHES the process. The
+            // heartbeat fires every 30s while connected, so an unguarded SimConnect call
+            // here (which throws the moment MSFS hiccups or is mid-disconnect) was a prime
+            // "crashes while sitting there" cause. Guard it, AND marshal the SimConnect
+            // ping to the UI thread — SimConnect is not thread-safe and all other I/O runs
+            // there, so calling it from the threadpool raced ReceiveMessage.
+            try
             {
-                SendMFCommand("MF.Ping");
+                if (!IsConnected || !IsRegistered) return;
+                if (_syncContext != null)
+                    _syncContext.Post(_ => { try { if (IsConnected && IsRegistered) SendMFCommand("MF.Ping"); } catch { } }, null);
+                else
+                    SendMFCommand("MF.Ping");
             }
+            catch { /* never let a heartbeat fault take down the app */ }
         }
 
         private void RegistrationTimer_Elapsed(object? sender, ElapsedEventArgs e)
         {
-            registrationTimeoutOccurred = true;
-            System.Diagnostics.Debug.WriteLine("[MobiFlight] Registration timeout - will allow H-variables through default channel");
-            ConnectionStatusChanged?.Invoke(this, "MobiFlight WASM registration timeout - using fallback");
+            // Also a threadpool callback — a throwing event subscriber would crash the
+            // process, so guard it.
+            try
+            {
+                registrationTimeoutOccurred = true;
+                System.Diagnostics.Debug.WriteLine("[MobiFlight] Registration timeout - will allow H-variables through default channel");
+                ConnectionStatusChanged?.Invoke(this, "MobiFlight WASM registration timeout - using fallback");
+            }
+            catch { /* never let the timeout callback take down the app */ }
         }
 
         public void Disconnect()

@@ -118,27 +118,33 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     // safe to call off the UI thread.
     private void OnSpeedBrakeSettle(object? state)
     {
-        double value;
-        ScreenReaderAnnouncer? announcer;
-        lock (_speedBrakeLock)
+        // Runs on a threadpool thread (System.Threading.Timer). An unhandled throw
+        // here would crash the process, so guard the whole callback.
+        try
         {
-            value = _speedBrakeLatestValue;
-            announcer = _speedBrakeAnnouncer;
-        }
-        if (announcer == null || double.IsNaN(value)) return;
+            double value;
+            ScreenReaderAnnouncer? announcer;
+            lock (_speedBrakeLock)
+            {
+                value = _speedBrakeLatestValue;
+                announcer = _speedBrakeAnnouncer;
+            }
+            if (announcer == null || double.IsNaN(value)) return;
 
-        int idx = SettledSpeedBrakeDetent(value);
-        if (idx < 0) return;  // resting between detents — say nothing
+            int idx = SettledSpeedBrakeDetent(value);
+            if (idx < 0) return;  // resting between detents — say nothing
 
-        bool announce;
-        lock (_speedBrakeLock)
-        {
-            if (idx == _lastSpeedBrakeDetentAnnounced) return;
-            announce = _lastSpeedBrakeDetentAnnounced != int.MinValue;  // skip baseline
-            _lastSpeedBrakeDetentAnnounced = idx;
+            bool announce;
+            lock (_speedBrakeLock)
+            {
+                if (idx == _lastSpeedBrakeDetentAnnounced) return;
+                announce = _lastSpeedBrakeDetentAnnounced != int.MinValue;  // skip baseline
+                _lastSpeedBrakeDetentAnnounced = idx;
+            }
+            if (announce)
+                announcer.Announce(SpeedBrakeDetents[idx].Label);
         }
-        if (announce)
-            announcer.Announce(SpeedBrakeDetents[idx].Label);
+        catch { /* never let a timer callback take down the app */ }
     }
 
     // Flap-position announcement state. The NG3 SDK exposes only the analog
