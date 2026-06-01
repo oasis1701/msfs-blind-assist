@@ -537,21 +537,37 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         }
         Light("LIGHT_BEACON", "LIGHT BEACON", "Beacon");
         Light("LIGHT_NAV", "LIGHT NAV", "Navigation Lights");
-        // Strobe is a 3-position switch (On / Auto / Off) backed by the writable
-        // FBW L:var LIGHTING_STROBE_0 (verified live), same as the A320 — a plain
-        // On/Off via STROBES_SET can't express AUTO. Rendered as a combo, written
-        // via SetLVar by the framework, auto-announced. ReverseDisplayOrder so the
-        // list reads Off / Auto / On top-to-bottom.
-        Sel("LIGHTING_STROBE_0", "Strobe",
-            new Dictionary<double, string> { [0] = "On", [1] = "Auto", [2] = "Off" }, false, true);
+        // Strobe: On / Off via the stock STROBES_SET event (state = LIGHT STROBE).
+        // The A380's real switch is 3-position (Off/Auto/On) on the FBW L:var
+        // LIGHTING_STROBE_0, but that L:var is OUTPUT-ONLY on the shipping model —
+        // writing it does NOT drive the strobe (live-verified: writing 0/1/2 leaves
+        // LIGHT STROBE:1 = 0). The installed A380X uses Asobo stock-simvar lighting,
+        // so the WORKING path is the stock SET event (live-verified: STROBES_SET 1 →
+        // LIGHT STROBE:1 = 1). AUTO isn't reachable via any writable var, so this is
+        // a functional On/Off — better than a dead 3-position combo.
+        Light("LIGHT_STROBE", "LIGHT STROBE", "Strobe");
         Light("LIGHT_WING", "LIGHT WING", "Wing Lights");
         Light("LIGHT_LOGO", "LIGHT LOGO", "Logo Lights");
         Light("LIGHT_LANDING", "LIGHT LANDING", "Landing Lights");
-        // Nose light is a 3-position switch (Takeoff / Taxi / Off) on the writable
-        // FBW L:var A380X_OVHD_EXTLT_NOSE — verified live that writing it drives the
-        // actual taxi/landing lights. Replaces the old on/off "Taxi Lights" proxy.
-        Sel("A380X_OVHD_EXTLT_NOSE", "Nose Light",
-            new Dictionary<double, string> { [0] = "Takeoff", [1] = "Taxi", [2] = "Off" }, false, true);
+        // Taxi light: On / Off. The real nose switch is 3-position (T.O/Taxi/Off) on
+        // the FBW L:var A380X_OVHD_EXTLT_NOSE, but that L:var is DEAD on the shipping
+        // model — writing it drives nothing (live-verified: writing 0/1/2 leaves
+        // LIGHT TAXI/LANDING unchanged; the var isn't read anywhere in the FBW
+        // source). The takeoff position lights the nose LANDING light, already
+        // covered by "Landing Lights". The taxi function is the stock taxi light
+        // (LIGHT TAXI:2), toggled by the stock TOGGLE_TAXI_LIGHTS event
+        // (live-verified). State-mirrored combo: selecting the other option toggles.
+        vars["LIGHT_TAXI_OVHD"] = new SimVarDefinition
+        {
+            Name = "LIGHT TAXI:2",
+            DisplayName = "Taxi Light",
+            Type = SimVarType.SimVar,
+            UpdateFrequency = UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            Units = "bool",
+            RenderAsButton = false,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        };
 
         // ============================ GLARESHIELD ============================
 
@@ -1408,8 +1424,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Read("A32NX_SPEEDS_VS", "V S (stall)", "knots");
         Read("A32NX_SPEEDS_VFEN", "V F E next", "knots");
 
-        // Lighting extras. (Strobe AUTO is part of the LIGHTING_STROBE_0
-        // 3-position combo above — no separate STROBE_0_AUTO control needed.)
+        // Lighting extras.
         Sel("A380X_OVHD_EXTLT_STBY_COMPASS_ICE_IND_SWITCH_POS", "Standby Compass / Ice Light",
             new Dictionary<double, string> { [0] = "Off", [1] = "On" });
 
@@ -1882,8 +1897,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         };
         p["Exterior Lighting"] = new List<string>
         {
-            "LIGHT_BEACON", "LIGHTING_STROBE_0", "LIGHT_NAV", "LIGHT_WING", "LIGHT_LOGO",
-            "LIGHT_LANDING", "A380X_OVHD_EXTLT_NOSE"
+            "LIGHT_BEACON", "LIGHT_STROBE", "LIGHT_NAV", "LIGHT_WING", "LIGHT_LOGO",
+            "LIGHT_LANDING", "LIGHT_TAXI_OVHD"
         };
 
         p["Warnings"] = new List<string>
@@ -2899,7 +2914,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         ["LIGHT_NAV"] = "NAV_LIGHTS_SET",
         ["LIGHT_WING"] = "WING_LIGHTS_SET",
         ["LIGHT_LOGO"] = "LOGO_LIGHTS_SET",
-        ["LIGHT_LANDING"] = "LANDING_LIGHTS_SET"
+        ["LIGHT_LANDING"] = "LANDING_LIGHTS_SET",
+        ["LIGHT_STROBE"] = "STROBES_SET"
     };
 
     public override bool HandleUIVariableSet(string varKey, double value, SimVarDefinition varDef,
@@ -2955,6 +2971,16 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         if (_extLightSetEvents.TryGetValue(varKey, out var lightEvent))
         {
             simConnect.SendEvent(lightEvent, (uint)Math.Round(value));
+            return true;
+        }
+        // Taxi light: state mirrors LIGHT TAXI:2; the only working actuator is the
+        // stock TOGGLE_TAXI_LIGHTS (no indexed SET reaches the shipping model), so
+        // toggle only when the desired state differs from the live state.
+        if (varKey == "LIGHT_TAXI_OVHD")
+        {
+            bool desiredOn = value > 0.5;
+            bool currentOn = (simConnect.GetCachedVariableValue("LIGHT_TAXI_OVHD") ?? (desiredOn ? 0.0 : 1.0)) > 0.5;
+            if (desiredOn != currentOn) simConnect.SendEvent("TOGGLE_TAXI_LIGHTS");
             return true;
         }
         // Seat-belt sign: there is no SET event, only CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE,
