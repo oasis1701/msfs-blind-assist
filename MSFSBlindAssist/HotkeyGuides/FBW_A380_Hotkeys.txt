@@ -103,6 +103,8 @@ INPUT MODE  (press [ first)
   Shift+A       Autopilot 1
   Ctrl+O        Autopilot 2
   Shift+P       Approach mode
+  Ctrl+J        Autothrust (A/THR arm / disconnect)
+  Ctrl+L        Localizer (LOC arm)
 
   FCU push / pull
   Shift+1 / Ctrl+1   Push / Pull Heading knob

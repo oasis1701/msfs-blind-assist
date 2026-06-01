@@ -180,6 +180,8 @@ Autopilot:
   Shift+A    Toggle Autopilot 1
   Ctrl+O     Toggle Autopilot 2
   Shift+P    Toggle Approach Mode
+  Ctrl+J     Toggle Autothrust (A/THR arm / disconnect)
+  Ctrl+L     Toggle Localizer (LOC arm)
 
 FCU Push/Pull:
   Shift+1    Push Heading Knob
