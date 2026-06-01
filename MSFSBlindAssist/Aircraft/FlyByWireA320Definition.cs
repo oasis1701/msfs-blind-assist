@@ -4793,6 +4793,13 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             // these through the accessible status-box panels (Instrument > PFD / ND /
             // ISIS / System Display), exactly like the A380. ShowPFD /
             // ShowNavigationDisplay / ShowECAM / ShowStatusPage fall through to no-op.
+            // EWD on-demand read (output mode → ReadDisplayUpperECAM) — speaks the live
+            // upper E/WD (engine row + memos + warnings) aloud, mirroring the A380's
+            // Alt+E ReadAllEwdWarnings. The EWD also stays available as the display
+            // (System Display page 0 status box + the continuous EWD monitor).
+            case HotkeyAction.ReadDisplayUpperECAM:
+                ReadEwdAloud(announcer);
+                return true;
             case HotkeyAction.ReadFuelInfo:
                 RequestFuelQuantityKg(simConnect);
                 return true;
@@ -5252,6 +5259,31 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             r.Add(("DC bat bus", "A32NX_ELEC_DC_BAT_BUS_IS_POWERED", OnOff));
         }
         return r;
+    }
+
+    // On-demand spoken EWD read (output mode → ReadDisplayUpperECAM). Scrapes the live
+    // upper E/WD (the same A32NX_EWD_1 view the System Display page-0 box uses) and
+    // speaks each row. Mirrors the A380's Alt+E ReadAllEwdWarnings. The EWD also stays
+    // on as the panel display + the continuous EWD-line monitor, so this is the
+    // "read it now" companion to the always-on auto-announce.
+    private async void ReadEwdAloud(ScreenReaderAnnouncer announcer)
+    {
+        try
+        {
+            if (_ewdScrapeClient == null)
+            {
+                _ewdScrapeClient = new SimConnect.CoherentDisplayClient("A32NX_EWD_1");
+                _ewdScrapeClient.Start();
+                _ewdScrapeClient.SetActive(false);   // on-demand only
+            }
+            await System.Threading.Tasks.Task.Delay(500);
+            var rows = await _ewdScrapeClient.ScrapeNowAsync();
+            if (rows == null || rows.Count == 0)
+                announcer.AnnounceImmediate("E W D not available. Power up the displays and try again.");
+            else
+                announcer.AnnounceImmediate("E W D. " + string.Join(". ", rows));
+        }
+        catch { announcer.AnnounceImmediate("E W D read failed."); }
     }
 
     // Populate the System Display status box for the selected page, then force the box
