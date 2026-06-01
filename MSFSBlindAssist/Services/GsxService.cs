@@ -762,7 +762,10 @@ public sealed class GsxService : IDisposable
         }
 
         if (statusWasReadable)
+        {
+            ClearLastTooltip();
             return;
+        }
 
         if (string.IsNullOrWhiteSpace(_tooltipFilePath))
         {
