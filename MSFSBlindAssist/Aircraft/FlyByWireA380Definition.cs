@@ -1764,20 +1764,23 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // is the overhead EXT PWR pushbuttons or a ground-handling add-on like GSX).
         // Announces when external power becomes available at the stand.
         //
-        // Read from the STOCK MSFS simvar EXTERNAL POWER AVAILABLE:n, NOT the FBW
-        // L-var A32NX_EXT_PWR_AVAIL:n: the FBW var's name literally contains a colon
-        // index, which the SimConnect data-definition path (how we read L-vars)
-        // mis-parses, so it never saw the change — GSX would connect ground power
-        // and nothing announced. The stock simvar is natively indexed (reliable via
-        // data defs) AND is exactly what GSX / stock ground power set, so it catches
-        // every way external power can be connected. (Verified live: with GSX ground
-        // power connected, EXTERNAL POWER AVAILABLE:1 reads 1.)
+        // Read the FBW availability L-var A32NX_OVHD_ELEC_EXT_PWR_n_PB_IS_AVAILABLE
+        // (the overhead EXT PWR "AVAIL" light), NOT the stock simvar EXTERNAL POWER
+        // AVAILABLE:n. The stock simvar means only "a GPU exists at this stand" — it
+        // sits at 1 at any suitable gate regardless of whether power is actually
+        // connected to the aircraft (verified live: it read 1 with engines running and
+        // no power feeding the jet), so watching it never fired on a real GSX connect/
+        // disconnect. The FBW aspect var reflects the actual AVAIL annunciation the
+        // pilot sees and is what GSX drives through the electrical model (verified live
+        // it read 0 in the same no-power state). It is colon-free, so the data-def read
+        // is reliable (the OLD note avoided the colon-INDEXED source var
+        // A32NX_EXT_PWR_AVAIL:n — this aspect var is the readable copy of it).
         for (int n = 1; n <= 4; n++)
         {
             vars[$"A380X_GND_GPU_AVAIL_{n}"] = new SimVarDefinition
             {
-                Name = $"EXTERNAL POWER AVAILABLE:{n}", DisplayName = $"External Power {n} Available",
-                Type = SimVarType.SimVar, Units = "Bool",
+                Name = $"A32NX_OVHD_ELEC_EXT_PWR_{n}_PB_IS_AVAILABLE", DisplayName = $"External Power {n} Available",
+                Type = SimVarType.LVar, Units = "Bool",
                 UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "No", [1] = "Yes" }
             };
