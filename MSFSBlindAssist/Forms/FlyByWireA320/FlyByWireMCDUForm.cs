@@ -31,13 +31,15 @@ public class FlyByWireMCDUForm : Form
     private string _lastAnnouncedTitle = "";
     private MCDUDisplayData? _currentDisplay;
 
-    // Function/page keys: (button label with accelerator, FBW key name)
+    // Function/page keys: (button label with a UNIQUE Alt-accelerator, FBW key name).
+    // Every accelerator below is distinct so Alt+<letter> reliably activates exactly
+    // one key (previously Alt+F, Alt+C and Alt+U each collided across two buttons).
     private static readonly (string Label, string Key)[] PageButtons =
     {
-        ("&Init", "INIT"), ("&Dir", "DIR"), ("&Prog", "PROG"), ("&Fpln", "FPLN"), ("P&erf", "PERF"),
-        ("&Rad Nav", "RAD"), ("Sec &Fpln", "SEC"), ("F&uel Pred", "FUEL"), ("At&c Com", "ATC"), ("&Menu", "MENU"),
-        ("&Airport", "AIRPORT"), ("Da&ta", "DATA"), ("&Ovfy", "OVFY"), ("&Clr", "CLR"),
-        ("Prev Pa&ge", "PREVPAGE"), ("&Next Page", "NEXTPAGE"), ("&Up", "UP"), ("Do&wn", "DOWN"),
+        ("&Init", "INIT"), ("&Dir", "DIR"), ("Pro&g", "PROG"), ("&Fpln", "FPLN"), ("P&erf", "PERF"),
+        ("&Rad Nav", "RAD"), ("Sec Fpl&n", "SEC"), ("F&uel Pred", "FUEL"), ("At&c Com", "ATC"), ("&Menu", "MENU"),
+        ("&Airport", "AIRPORT"), ("Da&ta", "DATA"), ("&Ovfy", "OVFY"), ("C&lr", "CLR"),
+        ("Pre&v Page", "PREVPAGE"), ("Ne&xt Page", "NEXTPAGE"), ("U&p", "UP"), ("Do&wn", "DOWN"),
     };
 
     public FlyByWireMCDUForm(FlyByWireMCDUService service, ScreenReaderAnnouncer announcer)
