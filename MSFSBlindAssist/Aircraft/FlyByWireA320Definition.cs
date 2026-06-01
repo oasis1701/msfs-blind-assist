@@ -4237,9 +4237,41 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     /// Called from MainForm.OnSimVarUpdated for every variable update to allow aircraft-specific processing.
     /// Returns true if the variable was fully processed and no further generic processing is needed.
     /// </summary>
+    // FMA armed-mode decode (legacy A32NX_FMA_*_ARMED bitmasks; bit 0 = ALT). Decodes
+    // to mode names so arming a mode speaks "Altitude armed" / "NAV armed" instead of
+    // the old raw bitmask number. Matches the A380.
+    private int _prevVertArmed = -1, _prevLatArmed = -1;
+    private static readonly (int bit, string name)[] _vertArmedBits =
+        { (1, "Altitude"), (2, "Altitude constraint"), (4, "Climb"), (8, "Descent"), (16, "Glideslope"), (32, "Final"), (64, "TCAS") };
+    private static readonly (int bit, string name)[] _latArmedBits = { (1, "NAV"), (2, "Localizer") };
+    private static string DecodeArmedModes(int v, (int bit, string name)[] bits)
+    {
+        var names = new List<string>();
+        foreach (var b in bits) if ((v & b.bit) != 0) names.Add(b.name);
+        return string.Join(", ", names);
+    }
+
     public override bool ProcessSimVarUpdate(string varName, double value, Accessibility.ScreenReaderAnnouncer announcer)
     {
         lastAnnouncer = announcer; // Store for when we announce
+
+        // FMA armed modes — decode the bitmask and announce NEWLY-armed modes on change
+        // (suppresses the old raw "Armed Vertical Mode 1" generic announce).
+        if (varName == "A32NX_FMA_VERTICAL_ARMED" || varName == "A32NX_FMA_LATERAL_ARMED")
+        {
+            bool vert = varName == "A32NX_FMA_VERTICAL_ARMED";
+            int iv = (int)Math.Round(value);
+            int prev = vert ? _prevVertArmed : _prevLatArmed;
+            if (vert) _prevVertArmed = iv; else _prevLatArmed = iv;
+            if (prev >= 0 && (iv & ~prev) != 0)
+            {
+                string nm = DecodeArmedModes(iv & ~prev, vert ? _vertArmedBits : _latArmedBits);
+                if (!string.IsNullOrEmpty(nm))
+                    foreach (var one in nm.Split(new[] { ", " }, StringSplitOptions.None))
+                        announcer.Announce($"{one} armed");
+            }
+            return true;
+        }
 
         // Flight phase tracking (A32NX-specific)
         if (varName == "A32NX_FMGC_FLIGHT_PHASE")

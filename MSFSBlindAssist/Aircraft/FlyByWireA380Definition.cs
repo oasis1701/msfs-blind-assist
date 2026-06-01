@@ -1182,8 +1182,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // in HandleUIVariableSet. Continuous + announced, so FD on/off speaks on change.
         OnOff("A32NX_FCU_EFIS_L_FD_ACTIVE", "Flight Director 1");
         OnOff("A32NX_FCU_EFIS_R_FD_ACTIVE", "Flight Director 2");
-        Read("A32NX_FMA_VERTICAL_ARMED", "Armed Vertical Modes");
-        Read("A32NX_FMA_LATERAL_ARMED", "Armed Lateral Modes");
+        // Monitored (so ProcessSimVarUpdate sees changes) + Ctrl+M-muteable; the raw
+        // generic announce is suppressed by the decoded handler returning true.
+        Mon("A32NX_FMA_VERTICAL_ARMED", "Armed Vertical Modes", new Dictionary<double, string>());
+        Mon("A32NX_FMA_LATERAL_ARMED", "Armed Lateral Modes", new Dictionary<double, string>());
         Read("A32NX_FMA_CRUISE_ALT_MODE", "Cruise Altitude Mode");
         Read("A32NX_PFD_LINEAR_DEVIATION_ACTIVE", "Linear Deviation Active");
         Read("A32NX_FMGC_1_LDEV_REQUEST", "FMGC L DEV Request");
@@ -2525,8 +2527,57 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         v <= -15 ? "Maximum reverse" :
         v < -2 ? "Reverse idle" : null;
 
+    // FMA armed-mode decode. The legacy A32NX_FMA_{VERTICAL|LATERAL}_ARMED bitmasks
+    // (bit 0 = ALT, live-verified = 1 at ready-for-taxi) are decoded to mode names so
+    // arming a mode speaks "Altitude armed" / "NAV armed" — matching the A32NX (and
+    // decoding it, vs the A32NX's old raw-number announce). Bits per the FBW a32nx-api.
+    private int _prevVertArmed = -1, _prevLatArmed = -1;
+    private string _lastFlightPhaseA380 = "";
+    private static readonly (int bit, string name)[] _vertArmedBits =
+        { (1, "Altitude"), (2, "Altitude constraint"), (4, "Climb"), (8, "Descent"), (16, "Glideslope"), (32, "Final"), (64, "TCAS") };
+    private static readonly (int bit, string name)[] _latArmedBits = { (1, "NAV"), (2, "Localizer") };
+    private static string DecodeArmedModes(int v, (int bit, string name)[] bits)
+    {
+        var names = new List<string>();
+        foreach (var b in bits) if ((v & b.bit) != 0) names.Add(b.name);
+        return string.Join(", ", names);
+    }
+
     public override bool ProcessSimVarUpdate(string varName, double value, ScreenReaderAnnouncer announcer)
     {
+        // FMA armed modes — decode the legacy bitmask and announce NEWLY-armed modes
+        // on change (so arming ALT/NAV speaks "Altitude armed"/"NAV armed"). Parity
+        // with the A32NX, which the A380 previously lacked (it was read-only).
+        if (varName == "A32NX_FMA_VERTICAL_ARMED" || varName == "A32NX_FMA_LATERAL_ARMED")
+        {
+            bool vert = varName == "A32NX_FMA_VERTICAL_ARMED";
+            int iv = (int)Math.Round(value);
+            int prev = vert ? _prevVertArmed : _prevLatArmed;
+            if (vert) _prevVertArmed = iv; else _prevLatArmed = iv;
+            if (prev >= 0 && (iv & ~prev) != 0
+                && !Settings.SettingsManager.Current.A380DisabledMonitorVariables.Contains(varName))
+            {
+                string nm = DecodeArmedModes(iv & ~prev, vert ? _vertArmedBits : _latArmedBits);
+                if (!string.IsNullOrEmpty(nm))
+                    foreach (var one in nm.Split(new[] { ", " }, StringSplitOptions.None))
+                        announcer.Announce($"{one} armed");
+            }
+            return true;
+        }
+        // Flight phase — match the A32NX "Entering X phase" wording (was the generic
+        // "Flight Phase: X" via the monitor).
+        if (varName == "A32NX_FMGC_FLIGHT_PHASE")
+        {
+            if (_varCache != null && _varCache.TryGetValue(varName, out var fpDef)
+                && fpDef.ValueDescriptions != null && fpDef.ValueDescriptions.TryGetValue(value, out var phase)
+                && _lastFlightPhaseA380 != phase)
+            {
+                _lastFlightPhaseA380 = phase;
+                if (!Settings.SettingsManager.Current.A380DisabledMonitorVariables.Contains(varName))
+                    announcer.Announce($"Entering {phase} phase");
+            }
+            return true;
+        }
         // ARINC429 enum guard. Several FBW discretes (e.g. APU_LOW_FUEL_PRESSURE_FAULT,
         // written `write_arinc429`) come through as a huge SSM-encoded word (e.g.
         // 12884901888 = 0x3_00000000 = SSM NormalOp, payload 0) that matches no entry
@@ -3455,6 +3506,18 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 displayText = string.IsNullOrEmpty(_sdPageContent)
                     ? $"{pname} page (select a page to load its content)"
                     : $"{pname} page\r\n{_sdPageContent}";
+                return true;
+            }
+            case "A32NX_FMA_VERTICAL_ARMED":
+            {
+                string s = DecodeArmedModes((int)Math.Round(value), _vertArmedBits);
+                displayText = string.IsNullOrEmpty(s) ? "None" : s;
+                return true;
+            }
+            case "A32NX_FMA_LATERAL_ARMED":
+            {
+                string s = DecodeArmedModes((int)Math.Round(value), _latArmedBits);
+                displayText = string.IsNullOrEmpty(s) ? "None" : s;
                 return true;
             }
             case "A32NX_FCU_LEFT_EIS_BARO_HPA":
