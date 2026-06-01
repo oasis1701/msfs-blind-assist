@@ -839,6 +839,16 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Type = SimConnect.SimVarType.SimVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         },
+        // Read-only wing anti-ice valve-open status (the actual flowing state). The
+        // SELECTED control reverts on the ground inhibit, so this is what tells the
+        // pilot whether wing anti-ice is genuinely flowing. Auto-announced on change.
+        ["A32NX_PNEU_WING_ANTI_ICE_SYSTEM_ON"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_PNEU_WING_ANTI_ICE_SYSTEM_ON", DisplayName = "Wing Anti-Ice Flowing",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        },
 
         // OVERHEAD FORWARD SECTION - Calls Panel
         ["PUSH_OVHD_CALLS_MECH"] = new SimConnect.SimVarDefinition
@@ -3943,6 +3953,12 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             "A32NX_ADIRS_ADIRU_1_STATE",
             "A32NX_ADIRS_ADIRU_2_STATE",
             "A32NX_ADIRS_ADIRU_3_STATE"
+        },
+        ["Anti Ice"] = new List<string>
+        {
+            // The actual wing-anti-ice flowing status (the SELECTED control reverts on
+            // the ground inhibit; this is what's really happening at the valve).
+            "A32NX_PNEU_WING_ANTI_ICE_SYSTEM_ON"
         },
         ["EFIS Captain"] = new List<string>
         {
