@@ -3555,6 +3555,20 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             "A32NX_RADIO_RECEIVER_LOC_DEVIATION",
             "A32NX_RADIO_RECEIVER_GS_IS_VALID",
             "A32NX_RADIO_RECEIVER_GS_DEVIATION"
+        },
+        // ISIS accessible snapshot — the standby instrument: attitude, heading,
+        // speed, altitude, baro reference, and ILS state, as a single status box
+        // (force-read on F5). The baro mode + ILS also remain settable controls
+        // (BuildPanelControls["ISIS"]). Attitude/heading decoded via TryGetDisplayOverride.
+        ["ISIS"] = new List<string>
+        {
+            "PLANE_PITCH_DEGREES",
+            "PLANE_BANK_DEGREES",
+            "PLANE_HEADING_DEGREES_MAGNETIC",
+            "AIRSPEED_INDICATED",
+            "INDICATED_ALTITUDE",
+            "A32NX_ISIS_BARO_MODE",
+            "A32NX_ISIS_LS_ACTIVE"
         }
         // Add more panels and their display variables here as needed
         };
