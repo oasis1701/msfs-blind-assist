@@ -3641,6 +3641,32 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         },
+
+        // ---- Source Switching panel (parity with A380 Instrument > Source Switching) ----
+        ["A32NX_ATT_HDG_SWITCHING_KNOB"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_ATT_HDG_SWITCHING_KNOB", DisplayName = "Attitude / Heading Source",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Captain on 3", [1] = "Normal", [2] = "First Officer on 3" }
+        },
+        ["A32NX_AIR_DATA_SWITCHING_KNOB"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_AIR_DATA_SWITCHING_KNOB", DisplayName = "Air Data Source",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Captain on 3", [1] = "Normal", [2] = "First Officer on 3" }
+        },
+        ["A32NX_EIS_DMC_SWITCHING_KNOB"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_EIS_DMC_SWITCHING_KNOB", DisplayName = "EIS DMC Source",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Captain on 3", [1] = "Normal", [2] = "First Officer on 3" }
+        },
+        ["A32NX_FMGC_TRUE_REF"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FMGC_TRUE_REF", DisplayName = "Heading Reference",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Magnetic", [1] = "True" }
+        },
         };
 
         // Merge aircraft-specific variables into base variables
@@ -3825,7 +3851,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
 ["Overhead"] = new List<string> { "ELEC", "ADIRS", "APU", "Oxygen", "Fire", "Hydraulics", "Fuel", "Air Conditioning", "Bleed Air", "Anti Ice", "Signs", "Exterior Lighting", "Calls", "GPWS", "Cockpit Door", "Evacuation", "Cargo Smoke", "Engine" },
         ["Glareshield"] = new List<string> { "FCU", "EFIS Control Panel", "Warnings" },
-        ["Instrument"] = new List<string> { "Autobrake and Gear", "PFD", "ND", "ISIS", "Clock", "System Display" },
+        ["Instrument"] = new List<string> { "Autobrake and Gear", "PFD", "ND", "ISIS", "Source Switching", "Clock", "System Display" },
         ["Pedestal"] = new List<string> { "Flight Controls", "Speed Brake", "Parking Brake", "Engines", "ECAM Control Panel", "Weather Radar", "Transponder", "RMP" }
         };
     }
@@ -4112,6 +4138,11 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ["Clock"] = new List<string>
         {
             "A32NX_MSFSBA_CHRONO_TOGGLE", "A32NX_MSFSBA_CHRONO_RESET", "A32NX_CHRONO_ET_SWITCH_POS"
+        },
+        ["Source Switching"] = new List<string>
+        {
+            "A32NX_ATT_HDG_SWITCHING_KNOB", "A32NX_AIR_DATA_SWITCHING_KNOB",
+            "A32NX_EIS_DMC_SWITCHING_KNOB", "A32NX_FMGC_TRUE_REF"
         },
         ["Flight Controls"] = new List<string>
         {
