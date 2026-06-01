@@ -2524,6 +2524,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             [HotkeyAction.ToggleAutopilot1] = "A32NX.FCU_AP_1_PUSH",
             [HotkeyAction.ToggleAutopilot2] = "A32NX.FCU_AP_2_PUSH",
             [HotkeyAction.ToggleApproachMode] = "A32NX.FCU_APPR_PUSH",
+            // Phase 4 parity with the A320: A/THR (Ctrl+J) + LOC (Ctrl+L). The A380 WASM
+            // handles the same FBW input events (SimConnectInterface.cpp).
+            [HotkeyAction.ToggleAutothrust] = "A32NX.FCU_ATHR_PUSH",
+            [HotkeyAction.ToggleLocalizer] = "A32NX.FCU_LOC_PUSH",
         };
     }
 
@@ -3943,6 +3947,29 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         s.RequestVariable(key, forceUpdate: true);
     }
 
+    // Ctrl+B "Set Altimeter" dialog (Phase 4 parity with the A320). The A380 baro is set
+    // through the stock KOHLSMAN_SET (param = millibars*16), the same path the EFIS
+    // Captain/F-O QNH combos use — NOT the A320's A32NX.FCU_EFIS_*_BARO_SET events.
+    private void ShowA380BaroSetDialog(SimConnectManager simConnect, ScreenReaderAnnouncer announcer,
+        System.Windows.Forms.Form parentForm)
+    {
+        var dialog = new MSFSBlindAssist.Forms.ValueInputForm(
+            "Set Altimeter", "Barometric pressure (hPa)", "745–1050", announcer,
+            input => (double.TryParse(input, out double v) && v >= 745 && v <= 1050)
+                ? (true, "") : (false, "Enter a value between 745 and 1050 hPa"),
+            new List<MSFSBlindAssist.Forms.ToggleButtonDef>(),
+            input =>
+            {
+                if (double.TryParse(input, out double hpa))
+                {
+                    simConnect.SendEvent("KOHLSMAN_SET", (uint)Math.Round(hpa * 16));
+                    announcer.AnnounceImmediate($"Altimeter set to {hpa:F0} hPa");
+                }
+            });
+        dialog.ShowCancelButton = false;
+        dialog.Show(parentForm);
+    }
+
     public override bool HandleHotkeyAction(
         HotkeyAction action, SimConnectManager simConnect, ScreenReaderAnnouncer announcer,
         System.Windows.Forms.Form parentForm, HotkeyManager hotkeyManager)
@@ -4009,6 +4036,14 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             case HotkeyAction.ReadSpeedVS: RequestReadout(simConnect, "A32NX_SPEEDS_VS", "V S", "knots"); return true;
             case HotkeyAction.ReadSpeedVFE: RequestReadout(simConnect, "A32NX_SPEEDS_VFEN", "V F E next", "knots"); return true;
             case HotkeyAction.ReadFuelQuantity: RequestReadout(simConnect, "A32NX_TOTAL_FUEL_QUANTITY", "Total fuel", "kilograms", weight: true); return true;
+            // Phase 4 parity with the A320: ReadFuelInfo (same as ReadFuelQuantity) + a
+            // Ctrl+B "Set Altimeter" dialog (the A380 baro uses the stock KOHLSMAN_SET,
+            // unit = millibars*16, NOT the A320's A32NX.FCU_EFIS_*_BARO_SET events).
+            case HotkeyAction.ReadFuelInfo: RequestReadout(simConnect, "A32NX_TOTAL_FUEL_QUANTITY", "Total fuel", "kilograms", weight: true); return true;
+            case HotkeyAction.FCUSetBaro:
+                hotkeyManager.ExitInputHotkeyMode();
+                ShowA380BaroSetDialog(simConnect, announcer, parentForm);
+                return true;
             case HotkeyAction.ReadApproachCapability: RequestReadout(simConnect, "A32NX_APPROACH_CAPABILITY", "Approach capability", "", _apprCapMap); return true;
             // Dedicated display WINDOWS were removed for the FBW aircraft: the SD reads
             // via the ECAM Control Panel page combo + status box, the E/WD has its own

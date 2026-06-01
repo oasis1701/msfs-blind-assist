@@ -46,6 +46,8 @@ public class HotkeyManager : IDisposable
         private const int HOTKEY_PFD = 9026;
         private const int HOTKEY_TOGGLE_AP1 = 9027;
         private const int HOTKEY_TOGGLE_APPR = 9028;
+        private const int HOTKEY_TOGGLE_ATHR = 9230;   // Ctrl+J (Autothrust)  — input mode
+        private const int HOTKEY_TOGGLE_LOC = 9231;    // Ctrl+L (Localizer)   — input mode
         private const int HOTKEY_FCU_VSFPA = 9029;
         private const int HOTKEY_APPROACH_CAPABILITY = 9030;
 
@@ -515,6 +517,12 @@ public class HotkeyManager : IDisposable
                         case HOTKEY_TOGGLE_APPR:
                             TriggerHotkey(HotkeyAction.ToggleApproachMode);
                             break;
+                        case HOTKEY_TOGGLE_ATHR:
+                            TriggerHotkey(HotkeyAction.ToggleAutothrust);
+                            break;
+                        case HOTKEY_TOGGLE_LOC:
+                            TriggerHotkey(HotkeyAction.ToggleLocalizer);
+                            break;
                         case HOTKEY_FCU_HDG_PUSH:
                             TriggerHotkey(HotkeyAction.FCUHeadingPush);
                             break;
@@ -857,6 +865,8 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_DESTINATION_RUNWAY, MOD_SHIFT, 0x44); // Shift+D (Destination Runway)
             RegisterHotKey(windowHandle, HOTKEY_TOGGLE_AP1, MOD_SHIFT, 0x41);        // Shift+A (Toggle Autopilot 1)
             RegisterHotKey(windowHandle, HOTKEY_TOGGLE_APPR, MOD_SHIFT, 0x50);       // Shift+P (Toggle Approach Mode)
+            RegisterHotKey(windowHandle, HOTKEY_TOGGLE_ATHR, MOD_CONTROL, 0x4A);     // Ctrl+J (Toggle Autothrust)
+            RegisterHotKey(windowHandle, HOTKEY_TOGGLE_LOC, MOD_CONTROL, 0x4C);      // Ctrl+L (Toggle Localizer)
 
             // Register FCU push/pull hotkeys
             RegisterHotKey(windowHandle, HOTKEY_FCU_HDG_PUSH, MOD_SHIFT, 0x31);     // Shift+1 (Push Heading Knob)
@@ -907,6 +917,8 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_DESTINATION_RUNWAY);
             UnregisterHotKey(windowHandle, HOTKEY_TOGGLE_AP1);
             UnregisterHotKey(windowHandle, HOTKEY_TOGGLE_APPR);
+            UnregisterHotKey(windowHandle, HOTKEY_TOGGLE_ATHR);
+            UnregisterHotKey(windowHandle, HOTKEY_TOGGLE_LOC);
 
             // Unregister FCU push/pull hotkeys
             UnregisterHotKey(windowHandle, HOTKEY_FCU_HDG_PUSH);
@@ -1212,6 +1224,8 @@ public class HotkeyManager : IDisposable
         ShowPFD,
         ToggleAutopilot1,
         ToggleApproachMode,
+        ToggleAutothrust,
+        ToggleLocalizer,
         ReadFCUVerticalSpeedFPA,
         ReadApproachCapability,
         FCUHeadingPush,

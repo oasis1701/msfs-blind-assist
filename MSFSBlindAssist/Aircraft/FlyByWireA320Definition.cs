@@ -4750,6 +4750,10 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             [HotkeyAction.ToggleAutopilot1] = "A32NX.FCU_AP_1_PUSH",
             [HotkeyAction.ToggleAutopilot2] = "A32NX.FCU_AP_2_PUSH",
             [HotkeyAction.ToggleApproachMode] = "A32NX.FCU_APPR_PUSH",
+            // Phase 4 parity: A/THR (Ctrl+J) + LOC (Ctrl+L) global hotkeys. The FCU
+            // A/THR pushbutton arms/disconnects A/THR; LOC arms localizer.
+            [HotkeyAction.ToggleAutothrust] = "A32NX.FCU_ATHR_PUSH",
+            [HotkeyAction.ToggleLocalizer] = "A32NX.FCU_LOC_PUSH",
         };
     }
 
@@ -4858,6 +4862,13 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             // (System Display page 0 status box + the continuous EWD monitor).
             case HotkeyAction.ReadDisplayUpperECAM:
                 ReadEwdAloud(announcer);
+                return true;
+            // On-demand flaps / gear read (parity with the A380; L and Shift+G).
+            case HotkeyAction.ReadFlaps:
+                if (simConnect.IsConnected) { _reqFlaps = true; simConnect.RequestVariable("A32NX_FLAPS_HANDLE_INDEX", forceUpdate: true); }
+                return true;
+            case HotkeyAction.ReadGear:
+                if (simConnect.IsConnected) { _reqGear = true; simConnect.RequestVariable("GEAR_HANDLE_POSITION", forceUpdate: true); }
                 return true;
             case HotkeyAction.ReadFuelInfo:
                 RequestFuelQuantityKg(simConnect);
@@ -5168,6 +5179,10 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ["A32NX_MSFSBA_DOOR_5"] = "Aft Cargo Door",
     };
     private readonly Dictionary<string, bool> _doorOpen = new();
+
+    // On-demand flaps/gear read (output-mode L / Shift+G) — request the var, announce
+    // when it arrives in ProcessSimVarUpdate (parity with the A380).
+    private bool _reqFlaps, _reqGear;
 
     // FBW packs idents/messages 6 bits per char, 8 chars per word (low bits first),
     // char = code + 31 (matches the old NavigationDisplayForm decoder).
@@ -5515,6 +5530,23 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             _doorOpen[varName] = open;
             if (prev.HasValue && prev.Value != open && _doorNames.TryGetValue(varName, out var dn))
                 announcer.Announce($"{dn} {(open ? "open" : "closed")}");
+            return true;
+        }
+
+        // On-demand flaps / gear readout (the L / Shift+G hotkeys request the var; we
+        // announce when the fresh value arrives). Parity with the A380.
+        if (_reqFlaps && varName == "A32NX_FLAPS_HANDLE_INDEX")
+        {
+            _reqFlaps = false;
+            string[] detents = { "Up", "1", "2", "3", "Full" };
+            int i = (int)Math.Round(value);
+            announcer.AnnounceImmediate("Flaps " + (i >= 0 && i < detents.Length ? detents[i] : value.ToString()));
+            return true;
+        }
+        if (_reqGear && varName == "GEAR_HANDLE_POSITION")
+        {
+            _reqGear = false;
+            announcer.AnnounceImmediate(value > 0.5 ? "Gear down" : "Gear up");
             return true;
         }
 
