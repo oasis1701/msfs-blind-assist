@@ -2857,6 +2857,20 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     public override bool HandleUIVariableSet(string varKey, double value, SimVarDefinition varDef,
         SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
     {
+        // Annunciator / integral lights TEST is a bulb test — it illuminates every
+        // overhead fault/annunciator light, changing NO readable var, so a blind pilot
+        // would get no feedback. When TEST is selected, write the knob AND announce a
+        // synthesised list of the light groups that light up, so the test is meaningful.
+        if (varKey == "A380X_OVHD_ANN_LT_POSITION" || varKey == "A32NX_OVHD_INTLT_ANN")
+        {
+            simConnect.ExecuteCalculatorCode($"{(int)Math.Round(value)} (>L:{varKey})");
+            if ((int)Math.Round(value) == 0)   // Test position
+                announcer.Announce("Annunciator test. All overhead fault and annunciator lights "
+                    + "illuminated for bulb check: A D I R S, electrical, generators and batteries, "
+                    + "hydraulic, fuel, bleed air, air conditioning, pressurization, ventilation, "
+                    + "anti-ice, fire, A P U, oxygen, calls, and the cabin signs.");
+            return true;
+        }
         // Chronometer start/stop + reset fire H-EVENTS (the FBW Clock listens for the
         // hEvent, not an L:var write — live-verified: the H-event advances the elapsed
         // time, an L:var write does nothing).

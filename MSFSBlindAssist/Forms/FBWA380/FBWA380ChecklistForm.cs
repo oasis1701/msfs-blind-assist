@@ -135,9 +135,9 @@ public sealed class FBWA380ChecklistForm : Form
         try
         {
             _sim?.ExecuteCalculatorCode($"1 (>L:{lvar})");
-            await Task.Delay(80);
+            await Task.Delay(60);
             _sim?.ExecuteCalculatorCode($"0 (>L:{lvar})");
-            await Task.Delay(150);
+            await Task.Delay(95);
             var rows = await ScrapeEcl();
             // Apply rebuilds the list and moves the selection to the FWS cursor line,
             // which the screen reader reads on its own — so we do NOT also announce it
