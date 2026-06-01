@@ -930,6 +930,12 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             ReadEnum($"A32NX_PRESS_OCSM_{n}_AUTO_PARTITION_FAILURE", $"OCSM {n} Auto Control", fault);
         }
         Read("A32NX_PRESS_MAN_CABIN_DELTA_PRESSURE", "Cabin Delta Pressure", "psi");
+        Read("A32NX_PRESS_MAN_CABIN_ALTITUDE", "Cabin Altitude", "feet");
+        Read("A32NX_PRESS_MAN_CABIN_VS", "Cabin Vertical Speed", "feet per minute");
+        Read("A32NX_PRESS_AUTO_LANDING_ELEVATION", "Landing Elevation", "feet");
+        // The four cabin outflow valves — open percentage.
+        for (int v = 1; v <= 4; v++)
+            Read($"A32NX_PRESS_OUTFLOW_VALVE_{v}_OPEN_PERCENTAGE_ANIM", $"Outflow Valve {v}", "percent");
 
         // VENTILATION
         foreach (var id in new[] { "FWD", "AFT" })
@@ -2143,6 +2149,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             press.Add($"A32NX_PRESS_OCSM_{n}_AUTO_PARTITION_FAILURE");
         }
         press.Add("A32NX_PRESS_MAN_CABIN_DELTA_PRESSURE");
+        press.Add("A32NX_PRESS_MAN_CABIN_ALTITUDE");
+        press.Add("A32NX_PRESS_MAN_CABIN_VS");
+        press.Add("A32NX_PRESS_AUTO_LANDING_ELEVATION");
+        for (int v = 1; v <= 4; v++) press.Add($"A32NX_PRESS_OUTFLOW_VALVE_{v}_OPEN_PERCENTAGE_ANIM");
         d["Pressurization"] = press;
 
         var vent = new List<string>();
