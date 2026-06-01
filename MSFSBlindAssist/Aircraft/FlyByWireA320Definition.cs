@@ -4391,15 +4391,19 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     // Per-system SD readout rows (decoded SimVars). Added one system at a time.
     private static List<(string label, string var, Func<double, string> fmt)> SdSystemRows(int page)
     {
-        // Decode an ARINC429 word when present (raw value >= 2^32 carries an SSM),
-        // else use the plain value — several FBW SD vars (e.g. APU N/EGT) are ARINC.
-        static double Dec(double v) => v >= 4294967296.0 ? new SimConnect.Arinc429Word(v).ValueOr(0f) : v;
+        // ARINC429 decoders — for vars FBW publishes as ARINC words (verified via
+        // useArinc429Var in the fbw-a32nx SD source: APU N/EGT/LOW_FUEL_PRESSURE_FAULT,
+        // brake temps, landing elevation). These ALWAYS decode — a magnitude gate is
+        // wrong because a valid no-data word (e.g. APU EGT with the APU off, ~1.1e9)
+        // is BELOW 2^32 yet still an ARINC word, so the gate rendered the raw number.
+        string CAir(double v) { var w = new SimConnect.Arinc429Word(v); return (w.IsNormalOperation || w.IsFunctionalTest) ? $"{w.Value:0} degrees" : "not available"; }
+        string PctAir(double v) { var w = new SimConnect.Arinc429Word(v); return (w.IsNormalOperation || w.IsFunctionalTest) ? $"{w.Value:0} %" : "not available"; }
+        string YesNoAir(double v) { var w = new SimConnect.Arinc429Word(v); return (w.IsNormalOperation || w.IsFunctionalTest) ? (w.Value > 0.5 ? "yes" : "no") : "not available"; }
+        // Plain (non-ARINC) formatters.
         string V(double v) => $"{v:0} V";
         string Pct(double v) => $"{v:0} %";
         string Psi(double v) => $"{v:0} psi";
-        string PsiD(double v) => $"{Dec(v):0.0} psi";
-        string C(double v) => $"{Dec(v):0} degrees";
-        string PctD(double v) => $"{Dec(v):0} %";
+        string C(double v) => $"{v:0} degrees";
         string Ft(double v) => $"{v:0} feet";
         string Fpm(double v) => $"{v:0} feet per minute";
         // Landing elevation is an ARINC429 word; the no-data sentinel (~2^32, SSM
@@ -4438,15 +4442,15 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             r.Add(("Differential pressure", "A32NX_PRESS_CABIN_DELTA_PRESSURE", v => $"{v:0.0} psi"));
             r.Add(("Outflow valve", "A32NX_PRESS_MAN_OUTFLOW_VALVE_OPEN_PERCENTAGE", Pct));
             r.Add(("Safety valve", "A32NX_PRESS_SAFETY_VALVE_OPEN_PERCENTAGE", Pct));
-            r.Add(("Landing elevation", "A32NX_FM1_LANDING_ELEVATION", Ft));
+            r.Add(("Landing elevation", "A32NX_FM1_LANDING_ELEVATION", LElev));
         }
         else if (page == 4) // APU
         {
-            r.Add(("APU N", "A32NX_APU_N", PctD));
-            r.Add(("APU EGT", "A32NX_APU_EGT", C));
-            r.Add(("Inlet flap", "A32NX_APU_FLAP_OPEN_PERCENTAGE", PctD));
+            r.Add(("APU N", "A32NX_APU_N", PctAir));
+            r.Add(("APU EGT", "A32NX_APU_EGT", CAir));
+            r.Add(("Inlet flap", "A32NX_APU_FLAP_OPEN_PERCENTAGE", Pct));
             r.Add(("Bleed valve", "A32NX_APU_BLEED_AIR_VALVE_OPEN", OpenShut));
-            r.Add(("Low fuel pressure", "A32NX_APU_LOW_FUEL_PRESSURE_FAULT", YesNo));
+            r.Add(("Low fuel pressure", "A32NX_APU_LOW_FUEL_PRESSURE_FAULT", YesNoAir));
             r.Add(("Gen voltage", "A32NX_ELEC_APU_GEN_1_POTENTIAL", V));
             r.Add(("Gen load", "A32NX_ELEC_APU_GEN_1_LOAD", Pct));
         }
@@ -4461,10 +4465,10 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         }
         else if (page == 6) // WHEEL / BRAKES
         {
-            r.Add(("Brake 1 temp", "A32NX_REPORTED_BRAKE_TEMPERATURE_1", C));
-            r.Add(("Brake 2 temp", "A32NX_REPORTED_BRAKE_TEMPERATURE_2", C));
-            r.Add(("Brake 3 temp", "A32NX_REPORTED_BRAKE_TEMPERATURE_3", C));
-            r.Add(("Brake 4 temp", "A32NX_REPORTED_BRAKE_TEMPERATURE_4", C));
+            r.Add(("Brake 1 temp", "A32NX_REPORTED_BRAKE_TEMPERATURE_1", CAir));
+            r.Add(("Brake 2 temp", "A32NX_REPORTED_BRAKE_TEMPERATURE_2", CAir));
+            r.Add(("Brake 3 temp", "A32NX_REPORTED_BRAKE_TEMPERATURE_3", CAir));
+            r.Add(("Brake 4 temp", "A32NX_REPORTED_BRAKE_TEMPERATURE_4", CAir));
             r.Add(("Autobrake mode", "A32NX_AUTOBRAKES_ARMED_MODE",
                 v => v < 0.5 ? "Off" : v < 1.5 ? "Low" : v < 2.5 ? "Medium" : "Max"));
             r.Add(("Autobrake active", "A32NX_AUTOBRAKES_ACTIVE", YesNo));
