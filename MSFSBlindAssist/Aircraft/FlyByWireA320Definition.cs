@@ -3456,6 +3456,29 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             variables[kvp.Key] = kvp.Value;
         }
 
+        // Auto-register every System Display page L:var (OnRequest) so the accessible
+        // SD status box can read it. RequestVariable SILENTLY no-ops on any var that
+        // has no data definition, so an SD var that isn't registered here reads as
+        // "--" in the box (this was the bug: only SD vars that happened to also be a
+        // panel control/display var elsewhere — battery, fuel flow, AC ESS — worked).
+        // The add-if-absent guard preserves the richer existing definitions.
+        for (int sdPage = 1; sdPage <= 9; sdPage++)
+        {
+            foreach (var (label, sdVar, _) in SdSystemRows(sdPage))
+            {
+                if (!variables.ContainsKey(sdVar))
+                {
+                    variables[sdVar] = new SimConnect.SimVarDefinition
+                    {
+                        Name = sdVar,
+                        DisplayName = label,
+                        Type = SimConnect.SimVarType.LVar,
+                        UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
+                    };
+                }
+            }
+        }
+
         return variables;
     }
 
@@ -4379,7 +4402,18 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         string PctD(double v) => $"{Dec(v):0} %";
         string Ft(double v) => $"{v:0} feet";
         string Fpm(double v) => $"{v:0} feet per minute";
-        string Lvl(double v) => $"{v:0.0}";
+        // Landing elevation is an ARINC429 word; the no-data sentinel (~2^32, SSM
+        // not NormalOp) means the FMS is in AUTO (computes it from the dest runway).
+        string LElev(double v)
+        {
+            if (v >= 4294967296.0)
+            {
+                var w = new SimConnect.Arinc429Word(v);
+                return w.IsNormalOperation || w.IsFunctionalTest ? $"{w.ValueOr(0f):0} feet" : "auto";
+            }
+            return $"{v:0} feet";
+        }
+        string Lvl(double v) => $"{v:0.0} gal";
         string OnOff(double v) => v > 0.5 ? "powered" : "not powered";
         string OpenShut(double v) => v > 0.5 ? "open" : "closed";
         string YesNo(double v) => v > 0.5 ? "yes" : "no";
@@ -4437,10 +4471,10 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         }
         else if (page == 7) // BLEED
         {
-            r.Add(("Eng 1 precooler temp", "A32NX_PNEU_ENG_1_PRECOOLER_OUTLET_TEMPERATURE", C));
+            r.Add(("Eng 1 precooler temp", "A32NX_PNEU_ENG_1_BLEED_TEMPERATURE_SENSOR_TEMPERATURE", C));
             r.Add(("Eng 1 bleed pressure", "A32NX_PNEU_ENG_1_REGULATED_TRANSDUCER_PRESSURE", Psi));
             r.Add(("Eng 1 bleed valve", "A32NX_PNEU_ENG_1_PR_VALVE_OPEN", OpenShut));
-            r.Add(("Eng 2 precooler temp", "A32NX_PNEU_ENG_2_PRECOOLER_OUTLET_TEMPERATURE", C));
+            r.Add(("Eng 2 precooler temp", "A32NX_PNEU_ENG_2_BLEED_TEMPERATURE_SENSOR_TEMPERATURE", C));
             r.Add(("Eng 2 bleed pressure", "A32NX_PNEU_ENG_2_REGULATED_TRANSDUCER_PRESSURE", Psi));
             r.Add(("Eng 2 bleed valve", "A32NX_PNEU_ENG_2_PR_VALVE_OPEN", OpenShut));
             r.Add(("Cross-bleed valve", "A32NX_PNEU_XBLEED_VALVE_FULLY_OPEN", OpenShut));
