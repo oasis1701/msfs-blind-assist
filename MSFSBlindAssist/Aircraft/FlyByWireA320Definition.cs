@@ -3601,6 +3601,46 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Name = "A32NX_CHRONO_ET_ELAPSED_TIME", DisplayName = "Elapsed Time",
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, Units = "seconds"
         },
+
+        // ---- Bleed Air panel (parity with the A380 Overhead > Bleed Air) ----
+        // All verified live. XBLEED/PACKFLOW are A32NX_KNOB_* selectors; eng bleeds +
+        // hot-air + ram-air are PBs. Settable via the calculator-path catch-all.
+        ["A32NX_OVHD_PNEU_ENG_1_BLEED_PB_IS_AUTO"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_OVHD_PNEU_ENG_1_BLEED_PB_IS_AUTO", DisplayName = "Engine 1 Bleed",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Auto" }
+        },
+        ["A32NX_OVHD_PNEU_ENG_2_BLEED_PB_IS_AUTO"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_OVHD_PNEU_ENG_2_BLEED_PB_IS_AUTO", DisplayName = "Engine 2 Bleed",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Auto" }
+        },
+        ["A32NX_KNOB_OVHD_AIRCOND_XBLEED_Position"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_KNOB_OVHD_AIRCOND_XBLEED_Position", DisplayName = "Cross Bleed",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Shut", [1] = "Auto", [2] = "Open" }
+        },
+        ["A32NX_KNOB_OVHD_AIRCOND_PACKFLOW_Position"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_KNOB_OVHD_AIRCOND_PACKFLOW_Position", DisplayName = "Pack Flow",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Low", [1] = "Normal", [2] = "High" }
+        },
+        ["A32NX_OVHD_COND_HOT_AIR_PB_IS_ON"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_OVHD_COND_HOT_AIR_PB_IS_ON", DisplayName = "Hot Air",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        },
+        ["A32NX_OVHD_COND_RAM_AIR_PB_IS_ON"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_OVHD_COND_RAM_AIR_PB_IS_ON", DisplayName = "Ram Air",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        },
         };
 
         // Merge aircraft-specific variables into base variables
@@ -3783,7 +3823,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     {
         return new Dictionary<string, List<string>>
         {
-["Overhead"] = new List<string> { "ELEC", "ADIRS", "APU", "Oxygen", "Fire", "Hydraulics", "Fuel", "Air Conditioning", "Anti Ice", "Signs", "Exterior Lighting", "Calls", "GPWS", "Cockpit Door", "Evacuation", "Cargo Smoke", "Engine" },
+["Overhead"] = new List<string> { "ELEC", "ADIRS", "APU", "Oxygen", "Fire", "Hydraulics", "Fuel", "Air Conditioning", "Bleed Air", "Anti Ice", "Signs", "Exterior Lighting", "Calls", "GPWS", "Cockpit Door", "Evacuation", "Cargo Smoke", "Engine" },
         ["Glareshield"] = new List<string> { "FCU", "EFIS Control Panel", "Warnings" },
         ["Instrument"] = new List<string> { "Autobrake and Gear", "PFD", "ND", "ISIS", "Clock", "System Display" },
         ["Pedestal"] = new List<string> { "Flight Controls", "Speed Brake", "Parking Brake", "Engines", "ECAM Control Panel", "Weather Radar", "Transponder", "RMP" }
@@ -3868,11 +3908,20 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             "FUELSYSTEM_VALVE_TOGGLE:10",
             "FUELSYSTEM_VALVE_TOGGLE:3" 
         },
-        ["Air Conditioning"] = new List<string> 
-        { 
-            "A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON", 
-            "A32NX_OVHD_COND_PACK_1_PB_IS_ON", 
-            "A32NX_OVHD_COND_PACK_2_PB_IS_ON" 
+        ["Air Conditioning"] = new List<string>
+        {
+            "A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON",
+            "A32NX_OVHD_COND_PACK_1_PB_IS_ON",
+            "A32NX_OVHD_COND_PACK_2_PB_IS_ON"
+        },
+        ["Bleed Air"] = new List<string>
+        {
+            "A32NX_OVHD_PNEU_ENG_1_BLEED_PB_IS_AUTO",
+            "A32NX_OVHD_PNEU_ENG_2_BLEED_PB_IS_AUTO",
+            "A32NX_KNOB_OVHD_AIRCOND_XBLEED_Position",
+            "A32NX_KNOB_OVHD_AIRCOND_PACKFLOW_Position",
+            "A32NX_OVHD_COND_HOT_AIR_PB_IS_ON",
+            "A32NX_OVHD_COND_RAM_AIR_PB_IS_ON"
         },
         ["Anti Ice"] = new List<string>
         {
