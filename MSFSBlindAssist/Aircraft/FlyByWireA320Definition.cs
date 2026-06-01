@@ -2009,6 +2009,37 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             Units = "degrees"
         },
+        // Thrust-lever DETENT combos (parity with the A380 Thrust Levers panel).
+        // Synthetic L:var keys — never read/written as L:vars; the set is intercepted
+        // in HandleUIVariableSet, which fires THROTTLEn_AXIS_SET_EX1 with the detent's
+        // axis value so the FBW throttle mapping snaps the lever to that detent.
+        // Idle (-0.44) verified live to snap to the A320 idle dead-zone; the rest mirror
+        // the A380 default-calibration values. The displayed value reflects the last
+        // command, not the live lever (the live angle is in d["Thrust Levers"]).
+        ["THROTTLE_ALL_DETENT"] = new SimConnect.SimVarDefinition
+        {
+            Name = "THROTTLE_ALL_DETENT", DisplayName = "All Thrust Levers",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            RenderAsButton = false,
+            ValueDescriptions = new Dictionary<double, string>
+            { [0] = "Reverse", [1] = "Reverse Idle", [2] = "Idle", [3] = "Climb", [4] = "Flex/MCT", [5] = "TOGA" }
+        },
+        ["THROTTLE_1_DETENT"] = new SimConnect.SimVarDefinition
+        {
+            Name = "THROTTLE_1_DETENT", DisplayName = "Thrust Lever 1",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            RenderAsButton = false,
+            ValueDescriptions = new Dictionary<double, string>
+            { [0] = "Reverse", [1] = "Reverse Idle", [2] = "Idle", [3] = "Climb", [4] = "Flex/MCT", [5] = "TOGA" }
+        },
+        ["THROTTLE_2_DETENT"] = new SimConnect.SimVarDefinition
+        {
+            Name = "THROTTLE_2_DETENT", DisplayName = "Thrust Lever 2",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            RenderAsButton = false,
+            ValueDescriptions = new Dictionary<double, string>
+            { [0] = "Reverse", [1] = "Reverse Idle", [2] = "Idle", [3] = "Climb", [4] = "Flex/MCT", [5] = "TOGA" }
+        },
         ["A32NX_FMGC_1_FD_ENGAGED"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_FMGC_1_FD_ENGAGED",
@@ -3913,6 +3944,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             foreach (var key in panelKeys)
             {
                 if (key != SdPageVar   // synthetic SD-page selector — drives the scrape, not a monitored state
+                    && !key.EndsWith("_DETENT", StringComparison.Ordinal)  // synthetic thrust-lever detent combos — no real L:var to monitor
                     && variables.TryGetValue(key, out var cdef)
                     && (cdef.Type == SimConnect.SimVarType.LVar || cdef.Type == SimConnect.SimVarType.SimVar)
                     && cdef.ValueDescriptions != null && cdef.ValueDescriptions.Count > 0
@@ -3974,6 +4006,12 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             // The actual wing-anti-ice flowing status (the SELECTED control reverts on
             // the ground inhibit; this is what's really happening at the valve).
             "A32NX_PNEU_WING_ANTI_ICE_SYSTEM_ON"
+        },
+        ["Thrust Levers"] = new List<string>
+        {
+            // Live lever angles (the detent set-combos in the panel show the last
+            // command, so the actual angle is read here).
+            "A32NX_AUTOTHRUST_TLA:1", "A32NX_AUTOTHRUST_TLA:2"
         },
         ["EFIS Captain"] = new List<string>
         {
@@ -4092,7 +4130,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
 ["Overhead"] = new List<string> { "ELEC", "ADIRS", "APU", "Oxygen", "Fire", "Hydraulics", "Fuel", "Air Conditioning", "Bleed Air", "Pressurization", "Ventilation", "Cargo Air", "Anti Ice", "Wipers", "Signs", "Interior Lighting", "Exterior Lighting", "Calls", "GPWS", "Flight Control Computers", "Cockpit Door", "Evacuation", "Cargo Smoke", "Recorder and Misc", "Engine Start" },
         ["Glareshield"] = new List<string> { "FCU", "EFIS Captain", "EFIS First Officer", "Warnings" },
         ["Instrument"] = new List<string> { "Gear", "Autobrake", "PFD", "ND", "ISIS", "Source Switching", "Clock", "System Display" },
-        ["Pedestal"] = new List<string> { "Flight Controls", "Speed Brake", "Parking Brake", "Engines", "ECAM Control Panel", "Weather Radar", "Transponder", "Radios", "RMP" }
+        ["Pedestal"] = new List<string> { "Flight Controls", "Speed Brake", "Parking Brake", "Engines", "Thrust Levers", "ECAM Control Panel", "Weather Radar", "Transponder", "Radios", "RMP" }
         };
     }
 
@@ -4366,13 +4404,17 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             "A32NX_PARK_BRAKE_LEVER_POS"
         },
-        ["Engines"] = new List<string> 
-        { 
-            "ENGINE_1_MASTER_ON", 
-            "ENGINE_1_MASTER_OFF", 
-            "ENGINE_2_MASTER_ON", 
+        ["Engines"] = new List<string>
+        {
+            "ENGINE_1_MASTER_ON",
+            "ENGINE_1_MASTER_OFF",
+            "ENGINE_2_MASTER_ON",
             "ENGINE_2_MASTER_OFF",
             "ENGINE_MODE_SELECTOR"
+        },
+        ["Thrust Levers"] = new List<string>
+        {
+            "THROTTLE_ALL_DETENT", "THROTTLE_1_DETENT", "THROTTLE_2_DETENT"
         },
         ["ECAM Control Panel"] = new List<string>
         {
@@ -5515,6 +5557,32 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         if (varKey == "A32NX_CHRONO_ET_SWITCH_POS")
         {
             simConnect.ExecuteCalculatorCode($"{(int)Math.Round(value)} (>L:A32NX_CHRONO_ET_SWITCH_POS)");
+            return true;
+        }
+
+        // Thrust-lever detent combos -> THROTTLEn_AXIS_SET_EX1 with the detent's axis
+        // value (-1..1 scaled to +-16384). FBW default-style calibration (Reverse -1.0 /
+        // Rev Idle -0.70 / Idle -0.44 / Climb -0.10 / Flex-MCT 0.53 / TOGA 1.0); the
+        // throttle mapping snaps the lever to the detent. Idle verified live to snap to
+        // the A320 idle dead-zone. Two engines on the A320.
+        if (varKey == "THROTTLE_ALL_DETENT" || (varKey.StartsWith("THROTTLE_") && varKey.EndsWith("_DETENT")))
+        {
+            int didx = (int)Math.Round(value);
+            double[] detentAxis = { -1.0, -0.70, -0.44, -0.10, 0.53, 1.0 };
+            string[] dnames = { "Reverse", "Reverse Idle", "Idle", "Climb", "Flex M C T", "TOGA" };
+            if (didx < 0 || didx >= detentAxis.Length) return true;
+            uint ex1 = unchecked((uint)(int)Math.Round(detentAxis[didx] * 16384));
+            if (varKey == "THROTTLE_ALL_DETENT")
+            {
+                for (int n = 1; n <= 2; n++) simConnect.SendEvent($"THROTTLE{n}_AXIS_SET_EX1", ex1);
+                announcer.Announce($"All thrust levers {dnames[didx]}");
+            }
+            else
+            {
+                int eng = varKey.Length > 9 && char.IsDigit(varKey[9]) ? varKey[9] - '0' : 1;
+                simConnect.SendEvent($"THROTTLE{eng}_AXIS_SET_EX1", ex1);
+                announcer.Announce($"Thrust lever {eng} {dnames[didx]}");
+            }
             return true;
         }
 
