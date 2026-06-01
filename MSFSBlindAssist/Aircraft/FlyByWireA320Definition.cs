@@ -2269,7 +2269,8 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             ValueDescriptions = new Dictionary<double, string>
             {
                 [0] = "Upper E/WD", [1] = "Electrical", [2] = "Hydraulics", [3] = "Pressurization",
-                [4] = "APU", [5] = "Air Conditioning"
+                [4] = "APU", [5] = "Air Conditioning", [6] = "Wheel / Brakes", [7] = "Bleed",
+                [8] = "Fuel", [9] = "Doors"
             }
         },
         ["A32NX_FM1_MINIMUM_DESCENT_ALTITUDE"] = new SimConnect.SimVarDefinition
@@ -4290,7 +4291,8 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     private static readonly Dictionary<double, string> SdPageNames = new()
     {
         [0] = "Upper E/WD", [1] = "Electrical", [2] = "Hydraulics", [3] = "Pressurization",
-        [4] = "APU", [5] = "Air Conditioning"
+        [4] = "APU", [5] = "Air Conditioning", [6] = "Wheel / Brakes", [7] = "Bleed",
+        [8] = "Fuel", [9] = "Doors"
     };
 
     // Per-system SD readout rows (decoded SimVars). Added one system at a time.
@@ -4352,6 +4354,41 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             r.Add(("Cockpit duct temp", "A32NX_COND_CKPT_DUCT_TEMP", C));
             r.Add(("Forward duct temp", "A32NX_COND_FWD_DUCT_TEMP", C));
             r.Add(("Aft duct temp", "A32NX_COND_AFT_DUCT_TEMP", C));
+        }
+        else if (page == 6) // WHEEL / BRAKES
+        {
+            r.Add(("Brake 1 temp", "A32NX_REPORTED_BRAKE_TEMPERATURE_1", C));
+            r.Add(("Brake 2 temp", "A32NX_REPORTED_BRAKE_TEMPERATURE_2", C));
+            r.Add(("Brake 3 temp", "A32NX_REPORTED_BRAKE_TEMPERATURE_3", C));
+            r.Add(("Brake 4 temp", "A32NX_REPORTED_BRAKE_TEMPERATURE_4", C));
+            r.Add(("Autobrake mode", "A32NX_AUTOBRAKES_ARMED_MODE",
+                v => v < 0.5 ? "Off" : v < 1.5 ? "Low" : v < 2.5 ? "Medium" : "Max"));
+            r.Add(("Autobrake active", "A32NX_AUTOBRAKES_ACTIVE", YesNo));
+        }
+        else if (page == 7) // BLEED
+        {
+            r.Add(("Eng 1 precooler temp", "A32NX_PNEU_ENG_1_PRECOOLER_OUTLET_TEMPERATURE", C));
+            r.Add(("Eng 1 bleed pressure", "A32NX_PNEU_ENG_1_REGULATED_TRANSDUCER_PRESSURE", Psi));
+            r.Add(("Eng 1 bleed valve", "A32NX_PNEU_ENG_1_PR_VALVE_OPEN", OpenShut));
+            r.Add(("Eng 2 precooler temp", "A32NX_PNEU_ENG_2_PRECOOLER_OUTLET_TEMPERATURE", C));
+            r.Add(("Eng 2 bleed pressure", "A32NX_PNEU_ENG_2_REGULATED_TRANSDUCER_PRESSURE", Psi));
+            r.Add(("Eng 2 bleed valve", "A32NX_PNEU_ENG_2_PR_VALVE_OPEN", OpenShut));
+            r.Add(("Cross-bleed valve", "A32NX_PNEU_XBLEED_VALVE_FULLY_OPEN", OpenShut));
+            r.Add(("APU bleed valve", "A32NX_APU_BLEED_AIR_VALVE_OPEN", OpenShut));
+            r.Add(("Wing anti-ice", "A32NX_PNEU_WING_ANTI_ICE_SYSTEM_ON", v => v > 0.5 ? "on" : "off"));
+        }
+        else if (page == 8) // FUEL
+        {
+            r.Add(("Fuel flow eng 1", "A32NX_ENGINE_FF:1", v => $"{v:0} kg per hour"));
+            r.Add(("Fuel flow eng 2", "A32NX_ENGINE_FF:2", v => $"{v:0} kg per hour"));
+            r.Add(("Fuel used eng 1", "A32NX_FUEL_USED:1", v => $"{v:0} kg"));
+            r.Add(("Fuel used eng 2", "A32NX_FUEL_USED:2", v => $"{v:0} kg"));
+            r.Add(("Total fuel on board", "A32NX_TOTAL_FUEL_QUANTITY", v => $"{v:0} kg"));
+        }
+        else if (page == 9) // DOORS
+        {
+            r.Add(("Forward cargo door", "A32NX_FWD_DOOR_CARGO_LOCKED", v => v > 0.5 ? "locked" : "unlocked"));
+            r.Add(("Escape slides", "A32NX_SLIDES_ARMED", v => v > 0.5 ? "armed" : "disarmed"));
         }
         else if (page == 1) // ELEC
         {
