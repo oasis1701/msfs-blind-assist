@@ -484,6 +484,19 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         OnOff("A380X_RMP_1_INT_VOL_RX_SWITCH", "Interphone Receive");
         OnOff("A380X_RMP_1_PA_VOL_RX_SWITCH", "PA Receive");
         OnOff("A380X_RMP_1_NAV_VOL_RX_SWITCH", "Navaid Receive");
+        // Transmit (which radio the PTT keys) — the captain's TX select. (live-verified the L:var exists.)
+        OnOff("A380X_RMP_1_VHF_TX_1", "VHF 1 Transmit");
+
+        // ---- AUDIO CONTROL PANEL — First Officer (RMP 2), captain/F-O split ----
+        // The RMP is identical hardware per seat; all RMP-2 switches live-verified to
+        // exist. Same receive selectors + transmit as the captain side.
+        OnOff("A380X_RMP_2_VHF_VOL_RX_SWITCH_1", "VHF 1 Receive");
+        OnOff("A380X_RMP_2_VHF_VOL_RX_SWITCH_2", "VHF 2 Receive");
+        OnOff("A380X_RMP_2_CAB_VOL_RX_SWITCH", "Cabin Interphone Receive");
+        OnOff("A380X_RMP_2_INT_VOL_RX_SWITCH", "Interphone Receive");
+        OnOff("A380X_RMP_2_PA_VOL_RX_SWITCH", "PA Receive");
+        OnOff("A380X_RMP_2_NAV_VOL_RX_SWITCH", "Navaid Receive");
+        OnOff("A380X_RMP_2_VHF_TX_1", "VHF 1 Transmit");
 
         // ---- INTERIOR LIGHTING ----
         Sel("A380X_OVHD_ANN_LT_POSITION", "Annunciator Lights",
@@ -1675,7 +1688,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             ["Pedestal"] = new List<string>
             {
                 "Engines", "Thrust Levers", "Flaps and Brakes", "ECAM Control Panel", "Weather Radar",
-                "Transponder", "Radios", "RMP", "Audio Control Panel", "Cockpit Door"
+                "Transponder", "Radios", "RMP", "Audio Control Panel Captain", "Audio Control Panel First Officer", "Cockpit Door"
             },
             ["Ground Services"] = new List<string> { "Doors", "Ground Equipment" },
             ["Displays"] = new List<string> { "Status", "Speeds", "Minimums", "Ground" }
@@ -1809,11 +1822,19 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "A32NX_ENTERTAINMENT_IFEC_OFF", "A380X_REMOTE_CB_CTRL",
             "A32NX_CHRONO_TOGGLE", "A32NX_CHRONO_RST"
         };
-        p["Audio Control Panel"] = new List<string>
+        p["Audio Control Panel Captain"] = new List<string>
         {
             "A380X_RMP_1_VHF_VOL_RX_SWITCH_1", "A380X_RMP_1_VHF_VOL_RX_SWITCH_2",
             "A380X_RMP_1_CAB_VOL_RX_SWITCH", "A380X_RMP_1_INT_VOL_RX_SWITCH",
-            "A380X_RMP_1_PA_VOL_RX_SWITCH", "A380X_RMP_1_NAV_VOL_RX_SWITCH"
+            "A380X_RMP_1_PA_VOL_RX_SWITCH", "A380X_RMP_1_NAV_VOL_RX_SWITCH",
+            "A380X_RMP_1_VHF_TX_1"
+        };
+        p["Audio Control Panel First Officer"] = new List<string>
+        {
+            "A380X_RMP_2_VHF_VOL_RX_SWITCH_1", "A380X_RMP_2_VHF_VOL_RX_SWITCH_2",
+            "A380X_RMP_2_CAB_VOL_RX_SWITCH", "A380X_RMP_2_INT_VOL_RX_SWITCH",
+            "A380X_RMP_2_PA_VOL_RX_SWITCH", "A380X_RMP_2_NAV_VOL_RX_SWITCH",
+            "A380X_RMP_2_VHF_TX_1"
         };
         p["Interior Lighting"] = new List<string>
         {
