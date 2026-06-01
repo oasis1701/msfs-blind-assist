@@ -656,9 +656,13 @@ public class FBWA380EFBForm : Form
 </head>
 <body>
 <div id=""live"" aria-live=""polite""></div>
-<main id=""content""><p class=""txt"">Waiting for the flyPad…</p></main>
+<main id=""content"">
+  <h1 id=""pgttl"" tabindex=""-1"">flyPad</h1>
+  <div id=""list""><p class=""txt"">Waiting for the flyPad…</p></div>
+</main>
 <script>
   var lastPage = '';
+  var renderedPage = null;   // last page whose list was built; drives teardown-on-page-change
   function post(obj) {
     try { window.chrome.webview.postMessage(JSON.stringify(obj)); } catch (e) {}
   }
@@ -667,115 +671,25 @@ public class FBWA380EFBForm : Form
     l.textContent = '';
     setTimeout(function () { l.textContent = msg; }, 30);
   }
-  window.__render = function (payload) {
-    // Skip the rebuild entirely when nothing changed. A poll-driven re-render
-    // does content.innerHTML='' which resets the screen reader's browse cursor to
-    // the TOP of the page (programmatic .focus() moves system focus but not the
-    // NVDA/JAWS virtual cursor) — so re-rendering identical content jumps the user
-    // back to the top. Only rebuild when the payload actually differs.
-    var sig = JSON.stringify(payload);
-    if (sig === window.__lastRenderSig) return;
-    window.__lastRenderSig = sig;
-    var content = document.getElementById('content');
-    // Remember focus so a re-render doesn't yank the cursor.
-    var act = document.activeElement;
-    var focusIdx = act ? act.getAttribute('data-idx') : null;
-    var caret = (act && typeof act.selectionStart === 'number') ? act.selectionStart : null;
+  function setText(node, t) { t = t || ''; if (node.textContent !== t) node.textContent = t; }
 
-    content.innerHTML = '';
-    var page = payload.page || '';
-    var h = document.createElement('h1');
-    h.setAttribute('tabindex', '-1');
-    h.textContent = page ? ('flyPad: ' + page) : 'flyPad';
-    content.appendChild(h);
-    if (page && page !== lastPage) { announce('flyPad page: ' + page); lastPage = page; }
-
-    var items = payload.items || [];
-    for (var i = 0; i < items.length; i++) {
-      var it = items[i];
-      var el;
-      var ct = it.controlType || '';
-
-      if (ct === 'checkbox') {
-        var lab = document.createElement('label'); lab.className = 'chk';
-        var cb = document.createElement('input'); cb.type = 'checkbox';
-        cb.checked = it.value === 'true';
-        cb.setAttribute('data-idx', String(it.idx));
-        if (it.disabled) cb.disabled = true;
-        cb.addEventListener('change', function () {
-          post({ type: 'set', idx: this.getAttribute('data-idx'), value: String(this.checked), controlType: 'checkbox' });
-        });
-        lab.appendChild(cb);
-        lab.appendChild(document.createTextNode(' ' + (it.text || '(checkbox)')));
-        el = lab;
-      } else if (ct === 'select' && it.options && it.options.length) {
-        var sl = document.createElement('label'); sl.className = 'fld';
-        sl.textContent = (it.text || 'Choice') + ': ';
-        var sel = document.createElement('select'); sel.className = 'sel';
-        sel.setAttribute('data-idx', String(it.idx));
-        sel.setAttribute('aria-label', it.text || 'Choice');
-        for (var o = 0; o < it.options.length; o++) {
-          var op = document.createElement('option');
-          op.value = it.options[o]; op.textContent = it.options[o];
-          if (it.options[o] === it.value) op.selected = true;
-          sel.appendChild(op);
-        }
-        sel.addEventListener('change', function () {
-          post({ type: 'set', idx: this.getAttribute('data-idx'), value: this.value, controlType: 'select' });
-        });
-        sl.appendChild(sel); el = sl;
-      } else if (ct === 'text' || ct === 'select') {
-        var fl = document.createElement('label'); fl.className = 'fld';
-        fl.textContent = (it.text || 'Field') + ': ';
-        var inp = document.createElement('input'); inp.type = 'text'; inp.className = 'in';
-        inp.value = it.value || '';
-        inp.setAttribute('data-idx', String(it.idx));
-        inp.setAttribute('aria-label', it.text || 'Field');
-        inp.addEventListener('change', function () {
-          post({ type: 'set', idx: this.getAttribute('data-idx'), value: this.value, controlType: 'text' });
-        });
-        fl.appendChild(inp); el = fl;
-      } else if (it.level >= 1 && it.level <= 6) {
-        el = document.createElement('h' + it.level);
-        el.textContent = it.text;
-        el.setAttribute('data-idx', String(it.idx));
-      } else if (it.clickable || it.kind === 'button' || it.kind === 'tab' || it.tag === 'button') {
-        el = document.createElement('button'); el.className = 'btn';
-        el.textContent = it.text || '(button)';
-        el.setAttribute('data-idx', String(it.idx));
-        if (it.disabled) { el.setAttribute('data-disabled', 'true'); el.textContent += ', dimmed'; }
-        el.addEventListener('click', onActivate);
-        el.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { onActivate.call(this, e); } });
-      } else if (it.kind === 'link' || it.tag === 'a') {
-        el = document.createElement('a'); el.className = 'lnk'; el.href = '#';
-        el.textContent = it.text || '(link)';
-        el.setAttribute('data-idx', String(it.idx));
-        if (it.disabled) { el.setAttribute('data-disabled', 'true'); el.textContent += ', dimmed'; }
-        el.addEventListener('click', function (e) { e.preventDefault(); onActivate.call(this, e); });
-      } else {
-        el = document.createElement('p'); el.className = 'txt';
-        el.textContent = it.text;
-        el.setAttribute('data-idx', String(it.idx));
-        if (it.live === 'assertive' || it.live === 'polite') el.setAttribute('aria-live', it.live);
-      }
-      content.appendChild(el);
-    }
-
-    // Restore focus.
-    if (focusIdx) {
-      var tgt = content.querySelector('[data-idx=""' + focusIdx + '""]');
-      if (tgt) {
-        tgt.focus();
-        if (caret !== null && typeof tgt.setSelectionRange === 'function') {
-          try { tgt.setSelectionRange(caret, caret); } catch (e) {}
-        }
-      } else {
-        h.focus();
-      }
-    } else {
-      h.focus();
-    }
-  };
+  // Classify an element to its rendered node TYPE — used to build AND to key.
+  function rk(it) {
+    var ct = it.controlType || '';
+    if (ct === 'checkbox') return 'cb';
+    if (ct === 'select' && it.options && it.options.length) return 'sel';
+    if (ct === 'text' || ct === 'select') return 'in';
+    if (it.level >= 1 && it.level <= 6) return 'h' + it.level;
+    if (it.clickable || it.kind === 'button' || it.kind === 'tab' || it.tag === 'button') return 'btn';
+    if (it.kind === 'link' || it.tag === 'a') return 'lnk';
+    return 'p';
+  }
+  // CONTENT key, NOT the scrape idx. The agent re-stamps data-idx from 1 in DOM
+  // order on EVERY scrape, so an idx key cross-patches controls across pages and
+  // across same-named sub-tabs. Keying by rendered-type + label keeps a node stable
+  // across same-page polls (values are patched in place) while a sub-tab/page switch
+  // cleanly swaps controls. The live data-idx for click/set is patched in place.
+  function keyOf(it) { return rk(it) + '|' + (it.text || ''); }
 
   function onActivate(e) {
     var idx = this.getAttribute('data-idx');
@@ -783,6 +697,141 @@ public class FBWA380EFBForm : Form
     announce('Activating ' + (this.textContent || ''));
     post({ type: 'click', idx: idx });
   }
+
+  // Build a fresh node for an element.
+  function buildEl(it) {
+    var type = rk(it), text = it.text || '';
+    if (type === 'cb') {
+      var lab = document.createElement('label'); lab.className = 'chk';
+      var cb = document.createElement('input'); cb.type = 'checkbox';
+      cb.checked = it.value === 'true'; if (it.disabled) cb.disabled = true;
+      cb.setAttribute('data-idx', String(it.idx));
+      cb.addEventListener('change', function () { post({ type: 'set', idx: this.getAttribute('data-idx'), value: String(this.checked), controlType: 'checkbox' }); });
+      lab.appendChild(cb); lab.appendChild(document.createTextNode(' ' + (text || '(checkbox)')));
+      return lab;
+    }
+    if (type === 'sel') {
+      var sl = document.createElement('label'); sl.className = 'fld';
+      var sp = document.createElement('span'); sp.textContent = (text || 'Choice') + ': '; sl.appendChild(sp);
+      var sel = document.createElement('select'); sel.className = 'sel';
+      sel.setAttribute('data-idx', String(it.idx)); sel.setAttribute('aria-label', text || 'Choice');
+      if (it.disabled) sel.disabled = true;
+      var opts = it.options || [];
+      for (var o = 0; o < opts.length; o++) { var op = document.createElement('option'); op.value = opts[o]; op.textContent = opts[o]; if (opts[o] === it.value) op.selected = true; sel.appendChild(op); }
+      sel.addEventListener('change', function () { post({ type: 'set', idx: this.getAttribute('data-idx'), value: this.value, controlType: 'select' }); });
+      sl.appendChild(sel); return sl;
+    }
+    if (type === 'in') {
+      var fl = document.createElement('label'); fl.className = 'fld';
+      var sp2 = document.createElement('span'); sp2.textContent = (text || 'Field') + ': '; fl.appendChild(sp2);
+      var inp = document.createElement('input'); inp.type = 'text'; inp.className = 'in';
+      inp.value = it.value || ''; if (it.disabled) inp.disabled = true;
+      inp.setAttribute('data-idx', String(it.idx)); inp.setAttribute('aria-label', text || 'Field');
+      function commit() { post({ type: 'set', idx: inp.getAttribute('data-idx'), value: inp.value, controlType: 'text' }); }
+      inp.addEventListener('change', commit);
+      inp.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); commit(); } });
+      fl.appendChild(inp); return fl;
+    }
+    if (type.charAt(0) === 'h' && type.length === 2) {
+      var hd = document.createElement(type); hd.textContent = text; hd.setAttribute('data-idx', String(it.idx)); return hd;
+    }
+    if (type === 'btn') {
+      var b = document.createElement('button'); b.className = 'btn'; b.textContent = text || '(button)';
+      b.setAttribute('data-idx', String(it.idx));
+      if (it.disabled) { b.setAttribute('data-disabled', 'true'); b.textContent += ', dimmed'; }
+      b.addEventListener('click', onActivate);
+      b.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { onActivate.call(this, e); } });
+      return b;
+    }
+    if (type === 'lnk') {
+      var a = document.createElement('a'); a.className = 'lnk'; a.href = '#'; a.textContent = text || '(link)';
+      a.setAttribute('data-idx', String(it.idx));
+      if (it.disabled) { a.setAttribute('data-disabled', 'true'); a.textContent += ', dimmed'; }
+      a.addEventListener('click', function (e) { e.preventDefault(); onActivate.call(this, e); });
+      return a;
+    }
+    var p = document.createElement('p'); p.className = 'txt'; p.textContent = text; p.setAttribute('data-idx', String(it.idx));
+    if (it.live === 'assertive' || it.live === 'polite') p.setAttribute('aria-live', it.live);
+    return p;
+  }
+
+  function ctrlOf(node) { if (node.matches && node.matches('[data-idx]')) return node; return node.querySelector ? node.querySelector('[data-idx]') : null; }
+
+  // Patch a reused node's mutable bits IN PLACE — never recreate it, never write to
+  // the control the user is currently editing (preserves the screen-reader cursor).
+  function patchEl(node, it) {
+    var type = rk(it), text = it.text || '';
+    var c = ctrlOf(node);
+    if (!c) { setText(node, text); return; }
+    if (c.dataset) c.dataset.idx = it.idx;            // keep the click/set handle current
+    if (type.charAt(0) === 'h' && type.length === 2) { setText(c, text); return; }
+    if (type === 'cb') {
+      var want = it.value === 'true';
+      if (document.activeElement !== c && c.checked !== want) c.checked = want;
+      c.disabled = !!it.disabled;
+      var tn = c.nextSibling; if (tn && tn.nodeType === 3) tn.nodeValue = ' ' + (text || '(checkbox)');
+      return;
+    }
+    if (type === 'sel') {
+      c.disabled = !!it.disabled;
+      var opts = it.options || [];
+      var same = c.options.length === opts.length;
+      if (same) { for (var k = 0; k < opts.length; k++) { if (c.options[k].value !== opts[k]) { same = false; break; } } }
+      if (!same) { c.innerHTML = ''; for (var j = 0; j < opts.length; j++) { var op = document.createElement('option'); op.value = opts[j]; op.textContent = opts[j]; c.appendChild(op); } }
+      if (document.activeElement !== c && c.value !== (it.value || '')) c.value = it.value || '';
+      var sp = node.querySelector('span'); if (sp) setText(sp, (text || 'Choice') + ': ');
+      return;
+    }
+    if (type === 'in') {
+      c.disabled = !!it.disabled;
+      if (document.activeElement !== c) { var nv = it.value || ''; if (c.value !== nv) c.value = nv; }
+      var sp2 = node.querySelector('span'); if (sp2) setText(sp2, (text || 'Field') + ': ');
+      return;
+    }
+    if (type === 'btn' || type === 'lnk') {
+      var label = text || (type === 'btn' ? '(button)' : '(link)');
+      if (it.disabled) { c.setAttribute('data-disabled', 'true'); label += ', dimmed'; }
+      else if (c.getAttribute('data-disabled') === 'true') { c.removeAttribute('data-disabled'); }
+      setText(c, label);
+      return;
+    }
+    setText(c, text);   // plain text <p>
+  }
+
+  // Keyed in-place reconciliation (adopted from Gus's A32NX flyPad). Reusing nodes
+  // instead of wiping innerHTML is what stops NVDA's browse cursor resetting to the
+  // top on every poll. Full teardown happens ONLY on a real page change.
+  window.__render = function (payload) {
+    var sig = JSON.stringify(payload);
+    if (sig === window.__lastRenderSig) return;        // identical payload — nothing to do
+    window.__lastRenderSig = sig;
+
+    var page = payload.page || '';
+    setText(document.getElementById('pgttl'), page ? ('flyPad: ' + page) : 'flyPad');
+    if (page && page !== lastPage) { announce('flyPad page: ' + page); lastPage = page; }
+
+    var list = document.getElementById('list');
+    if (page !== renderedPage) { list.innerHTML = ''; renderedPage = page; }   // page change → clean rebuild
+
+    var els = payload.items || [];
+    var existing = {};
+    for (var j = 0; j < list.children.length; j++) { var ck = list.children[j].getAttribute('data-key'); if (ck) existing[ck] = list.children[j]; }
+
+    var used = {}, seen = {}, prev = null;
+    for (var n = 0; n < els.length; n++) {
+      var it = els[n], base = keyOf(it);
+      var occ = (seen[base] = (seen[base] || 0) + 1);
+      var key = base + '#' + occ;                       // disambiguate duplicate labels
+      var node = existing[key];
+      if (node) { patchEl(node, it); }
+      else { node = buildEl(it); if (!node) continue; node.setAttribute('data-key', key); }
+      used[key] = true;
+      var ref = prev ? prev.nextSibling : list.firstChild;
+      if (node !== ref) list.insertBefore(node, ref);    // move only if out of place
+      prev = node;
+    }
+    for (var gone in existing) { if (!used[gone]) list.removeChild(existing[gone]); }
+  };
 
   document.addEventListener('keydown', function (e) {
     if (e.key === 'F5') { e.preventDefault(); post({ type: 'refresh' }); }
