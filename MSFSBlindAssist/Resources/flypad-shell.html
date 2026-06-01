@@ -154,7 +154,7 @@
 
   // Keyed in-place reconciliation. Reusing nodes (instead of wiping innerHTML) is
   // what keeps NVDA's browse cursor from resetting to the top on every update — but
-  // ONLY within a single page. The agent re-stamps data-fbwa32nx-efb-idx from 1 in
+  // ONLY within a single page. The agent re-stamps data-fbw-efb-idx from 1 in
   // DOM order on EVERY scrape, so the reconcile key ("i"+idx) is NOT stable across
   // pages: dashboard idx 3 and settings idx 3 are different elements. Reconciling
   // across a page change therefore patches new controls onto stale same-idx nodes

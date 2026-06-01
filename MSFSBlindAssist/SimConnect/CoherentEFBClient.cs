@@ -247,7 +247,7 @@ namespace MSFSBlindAssist.SimConnect
                 };
                 for (int i = 0; i < elements.Count; i++)
                 {
-                    // The agent's STAMPED idx (data-fbwa380-efb-idx) — this, not the
+                    // The agent's STAMPED idx (data-fbw-efb-idx) — this, not the
                     // list position i, is what clickElement/setValue look up. They
                     // diverge because the list is sorted+deduped after stamping.
                     data[$"items.{i}.aidx"] = elements[i].idx.ToString();

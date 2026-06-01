@@ -1,6 +1,6 @@
 // coherent-flypad-agent.js
 //
-// Persistent in-page agent for the FlyByWire A380X flyPad EFB (flyPadOS 3),
+// Persistent in-page agent for the FlyByWire flyPad EFB (A32NX + A380X — one shared agent) (flyPadOS 3),
 // installed via the Coherent GT debugger's Runtime.evaluate (NO injection, NO
 // Community-folder patching). Runs inside the live EFB view's own JS context,
 // so the React flyPad DOM is directly reachable.
@@ -62,6 +62,36 @@
     return root;
   };
 
+  // True when n carries a React onClick handler. React routes events through its
+  // own delegated system, so the handler lives in the fiber props (own key
+  // "__reactProps$…" on React 17, "__reactEventHandlers$…" on 16) — NOT as an
+  // onclick attribute or property. Lets us detect clickable <div>s that have no
+  // role / cursor-pointer / onclick (e.g. the Fuel page refuel start/stop button).
+  A.hasReactClick = function (n) {
+    try {
+      var ks = Object.keys(n);
+      for (var i = 0; i < ks.length; i++) {
+        if (ks[i].indexOf("__reactProps") === 0 || ks[i].indexOf("__reactEventHandlers") === 0) {
+          var p = n[ks[i]];
+          if (p && typeof p.onClick === "function") return true;
+        }
+      }
+    } catch (e) {}
+    return false;
+  };
+
+  // The Fuel page refuel button stacks two state icons in a FIXED order — PlayFill
+  // (start, index 0) shown when stopped, StopCircleFill (stop, index 1) shown when
+  // refuelling — and hides the inactive one with the `hidden` class. The first
+  // VISIBLE icon reports the state, so we never have to parse icon path data.
+  A.refuelIconStarted = function (n) {
+    try {
+      var svgs = n.querySelectorAll("svg");
+      for (var i = 0; i < svgs.length; i++) { if (A.isVisible(svgs[i])) return i > 0; }
+    } catch (e) {}
+    return false;
+  };
+
   // Returns one of: link, input, slider, checkbox, select, heading, toggle,
   // tab, button, or null (not an element we surface as its own line).
   A.classify = function (n) {
@@ -106,6 +136,27 @@
     if (c.indexOf("hover:") >= 0 || c.indexOf("cursor-pointer") >= 0) {
       var dt = A.directText(n);
       if (dt && dt.length <= 30) return "button";
+    }
+    // Clickable "tile" whose visible label sits in a CHILD heading (e.g. the
+    // flyPad Ground service tiles: a cursor-pointer/onclick <div> wrapping an
+    // <h_> name + an icon). directText is empty, so the branch above misses it;
+    // match the onclick handler plus a child heading instead. enumerate() still
+    // skips it when it also wraps a more specific control (containsInteractive).
+    if (typeof n.onclick === "function") {
+      try { if (n.querySelector && n.querySelector("h1,h2,h3,h4,h5,h6")) return "button"; } catch (e) {}
+    }
+    // Refuel / boarding / deboarding action button: a `bg-current` <div> whose only
+    // content is state icons (Play/Stop on Fuel, ArrowLeftRight/Stop on Payload) with
+    // a React onClick — no text, role, cursor-pointer, or onclick property, so every
+    // rule above misses it. Surface it ONLY when we can NAME it: a TooltipWrapper
+    // caption sibling ("Begin Boarding"/"Begin Deboarding") or a fuel/refuel section
+    // heading (the refuel button). That keeps random captionless icon toggles we
+    // can't label from flooding the list. labelFor names it from the caption/context.
+    if (A.hasClassToken(n, "bg-current")) {
+      try {
+        if (n.querySelector && n.querySelector("svg") && A.hasReactClick(n) &&
+            (A.tooltipSibling(n) || /fuel|refuel/i.test(A.nearestHeading(n)))) return "button";
+      } catch (e) {}
     }
     return null;
   };
@@ -174,7 +225,12 @@
   // A bare unit token ("KGS", "feet", "degrees", "%", "NM"...) — never a field
   // name, so it must not be used as a label on its own.
   A.unitToken = function (s) {
-    return /^(kgs?|lbs?|feet|ft|degrees?|deg|%|nm|kt|kts|knots|hpa|inhg|psi|c|°c|x ?1000 ?kgs?)$/i.test((s || "").trim());
+    s = (s || "").trim();
+    if (!s) return false;
+    if (/^(kgs?|lbs?|feet|ft|ft amsl|m|degrees?|deg|°|%|nm|kt|kts|knots|kts or °\/kts|°\/kts|hpa|inhg|psi|c|°c|x ?1000 ?kgs?)$/i.test(s)) return true;
+    // A bare symbol-only token (e.g. "°") is a unit, never a field name.
+    if (s.length <= 6 && !/[a-z]/i.test(s)) return true;
+    return false;
   };
   // Text that's just a number / punctuation (a value, not a name).
   A.numericish = function (s) {
@@ -249,7 +305,12 @@
   A.labelFor = function (n) {
     var base = clean((n.getAttribute && (n.getAttribute("aria-label") || n.getAttribute("title"))) || "");
     if (!base) base = A.directText(n);
-    if (!base) base = clean(n.textContent);
+    if (!base) {
+      // A clickable tile (e.g. a Ground service) keeps its label in a child
+      // heading; prefer that clean name over the concatenated textContent.
+      var ch = n.querySelector && n.querySelector("h1,h2,h3,h4,h5,h6");
+      base = ch ? clean(ch.textContent) : clean(n.textContent);
+    }
 
     var lower = base.toLowerCase();
     var generic = (base === "" || lower === "go to page" || lower === "go to" || lower === "open");
@@ -258,6 +319,28 @@
     var href = (n.getAttribute && n.getAttribute("href")) || "";
     var heading = A.nearestHeading(n);
     if (base === "") {
+      // Refuel / boarding / deboarding action button (bg-current icon button): no
+      // text/aria/title. Name it from its TooltipWrapper caption ("Begin Boarding" /
+      // "Begin Deboarding") when present, else the fuel context — prefixing the live
+      // verb from the visible state icon (first icon visible = not started => Start;
+      // the Stop icon visible => Stop).
+      if (A.hasClassToken(n, "bg-current")) {
+        var procCap = A.tooltipSibling(n);
+        if (procCap) {
+          var procNoun = procCap.replace(/^(begin|start|stop)\s+/i, "");
+          procNoun = procNoun.charAt(0).toLowerCase() + procNoun.slice(1);
+          return (A.refuelIconStarted(n) ? "Stop " : "Start ") + procNoun;
+        }
+        // Captionless bg-current button: ONLY the Fuel page refuel button qualifies
+        // for the "refueling" label (its section heading reads Refuel/Fuel). Any other
+        // captionless icon button (e.g. a small Payload toggle) is NOT a refuel
+        // control — return "" so enumerate drops it instead of mislabelling it
+        // "Start refueling".
+        if (/fuel|refuel/i.test(A.nearestHeading(n))) {
+          return A.refuelIconStarted(n) ? "Stop refueling" : "Start refueling";
+        }
+        return "";
+      }
       // Numeric/value inputs on the flyPad carry NO aria/own text; their visible
       // label/unit (e.g. "PAX", "KGS") sits as the parent's own text next to the
       // field. Prefer that over the section heading, which mislabels every field
@@ -388,7 +471,7 @@
   A.isInsideStamped = function (n) {
     var cur = n;
     while (cur) {
-      if (cur.getAttribute && cur.getAttribute("data-fbwa380-efb-idx")) return true;
+      if (cur.getAttribute && cur.getAttribute("data-fbw-efb-idx")) return true;
       cur = cur.parentElement;
     }
     return false;
@@ -416,7 +499,7 @@
   // Builds the flat, screen-reader-friendly element list for the current
   // flyPad page: every visible interactive control PLUS visible headings/text,
   // one per line, in reading order, de-duplicated. Interactive/clickable items
-  // get a stable index stamped on the node (data-fbwa380-efb-idx) so clicks and
+  // get a stable index stamped on the node (data-fbw-efb-idx) so clicks and
   // value sets can find them again.
   // True on the EFB Dashboard ("Your Flight" + "Important Information" two-column
   // layout). Detected by the FlightWidget's heading so it survives the user
@@ -434,8 +517,8 @@
   };
 
   A.enumerate = function (root) {
-    var stale = root.querySelectorAll("[data-fbwa380-efb-idx]");
-    for (var s = 0; s < stale.length; s++) stale[s].removeAttribute("data-fbwa380-efb-idx");
+    var stale = root.querySelectorAll("[data-fbw-efb-idx]");
+    for (var s = 0; s < stale.length; s++) stale[s].removeAttribute("data-fbw-efb-idx");
 
     var rootRect = root.getBoundingClientRect();
     var all = root.getElementsByTagName("*");
@@ -447,6 +530,13 @@
       if (!A.isVisible(n)) continue;
       var kind = A.classify(n);
       if (!kind) continue;
+
+      // User-requested: hide the Fuel page refuel target SLIDER (rc-slider bar, which
+      // reads as an empty field for a screen reader) and the numeric edit box (it is
+      // redundant with the Instant/Fast/Real + Start refueling controls). Scoped to
+      // the refuel context via the section heading so Payload inputs (Passengers /
+      // Cargo / ZFW) and any sliders on other pages are untouched.
+      if ((kind === "slider" || kind === "input") && /refuel/i.test(A.nearestHeading(n))) continue;
 
       var interactive = kind !== "heading";
 
@@ -471,7 +561,7 @@
       if (!text && ctype !== "text" && ctype !== "select" && ctype !== "checkbox") continue;
 
       var thisIdx = 0;
-      if (interactive) { thisIdx = idx; n.setAttribute("data-fbwa380-efb-idx", String(idx)); idx++; }
+      if (interactive) { thisIdx = idx; n.setAttribute("data-fbw-efb-idx", String(idx)); idx++; }
 
       var r = n.getBoundingClientRect();
       var topRel = r.top - rootRect.top, leftRel = r.left - rootRect.left;
@@ -725,7 +815,7 @@
 
   // ---- public: drive -----------------------------------------------------
   A.findByIdx = function (index) {
-    return document.querySelector('[data-fbwa380-efb-idx="' + index + '"]');
+    return document.querySelector('[data-fbw-efb-idx="' + index + '"]');
   };
 
   A.clickNode = function (node) {

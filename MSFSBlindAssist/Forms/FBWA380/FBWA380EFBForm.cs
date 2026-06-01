@@ -611,7 +611,7 @@ public class FBWA380EFBForm : Form
     private class EFBElement
     {
         public int Index;        // list position (stable dict / control key)
-        public int AgentIdx;     // agent's stamped data-fbwa380-efb-idx (for click/set)
+        public int AgentIdx;     // agent's stamped data-fbw-efb-idx (for click/set)
         public string Text = "";
         public string Tag = "";
         public string Role = "";

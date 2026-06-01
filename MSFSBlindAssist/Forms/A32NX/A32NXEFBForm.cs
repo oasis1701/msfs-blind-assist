@@ -37,7 +37,7 @@ public sealed class A32NXEFBForm : Form
         _announcer = announcer;
 
         string agentPath = Path.Combine(
-            AppDomain.CurrentDomain.BaseDirectory, "Resources", "coherent-a32nx-flypad-agent.js");
+            AppDomain.CurrentDomain.BaseDirectory, "Resources", "coherent-flypad-agent.js");
         _client = new CoherentEfbCdpClient(agentPath);
         _client.Connected    += (_, _) => OnConnChanged(true);
         _client.Disconnected += (_, _) => OnConnChanged(false);
