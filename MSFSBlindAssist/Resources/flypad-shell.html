@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FlyByWire A320 flyPad</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", system-ui, sans-serif; margin: 0; padding: 0; line-height: 1.45; }
+  header { position: sticky; top: 0; z-index: 5; background: Canvas; padding: 10px 16px; border-bottom: 2px solid Highlight; }
+  header h1 { font-size: 1.05rem; margin: 0 0 4px; }
+  #status { font-size: .9rem; color: GrayText; }
+  .toolbar { margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; }
+  main { padding: 12px 16px 28px; max-width: 70ch; }
+  h1,h2,h3,h4,h5,h6 { margin: 16px 0 6px; line-height: 1.25; }
+  main h1 { font-size: 1.4rem; } main h2 { font-size: 1.2rem; } main h3 { font-size: 1.07rem; }
+  p.txt { margin: 5px 0; }
+  .fld { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
+  .fld label { min-width: 12rem; }
+  button, input, select { font: inherit; padding: 5px 10px; }
+  button { cursor: pointer; border: 1px solid GrayText; border-radius: 6px; background: ButtonFace; color: ButtonText; }
+  button:hover { background: Highlight; color: HighlightText; }
+  input, select { border: 1px solid GrayText; border-radius: 6px; }
+  :disabled, [aria-disabled="true"] { opacity: .5; }
+  main > button, main > a { display: inline-block; margin: 4px 6px 4px 0; }
+</style>
+</head>
+<body>
+<header role="banner">
+  <h1>FlyByWire A320 flyPad</h1>
+  <div id="status">Connecting…</div>
+  <div class="toolbar">
+    <button id="btnRefresh" type="button">Refresh</button>
+    <button id="btnSelfTest" type="button">Status / Self-test</button>
+  </div>
+</header>
+<main id="root" aria-label="flyPad page"></main>
+<script>
+  function post(o){ try { window.chrome.webview.postMessage(o); } catch (e) {} }
+  function setText(node, t){ t = t || ""; if (node.textContent !== t) node.textContent = t; }
+
+  // Monotonic, globally-unique id for a field <-> <label for> pairing. NOT derived
+  // from the scrape idx: idx is re-stamped from 1 every scrape, and the reconcile
+  // reuses nodes by CONTENT, so a reused field keeps its original id while a newly
+  // built field could otherwise grab the same "i"+idx — a duplicate id that breaks
+  // the label association for a screen reader. A fresh uid per built node avoids it.
+  var _flduid = 0;
+  function fieldId(){ return "fld" + (++_flduid); }
+
+  function isRenderable(e){
+    if (e.kind === "heading") return true;
+    var ct = e.controlType;
+    if (ct === "checkbox" || ct === "select" || ct === "text") return true;
+    if (e.clickable) return true;
+    return !!e.text;
+  }
+
+  // Stable identity for keyed reconciliation. Use the element's CONTENT (kind +
+  // controlType + label), NOT the scrape idx. The agent re-stamps data-idx from 1 in
+  // DOM order on EVERY scrape, so idx is unstable across pages AND across Ground
+  // sub-tabs (Services/Fuel/Payload/Pushback all report page "Ground", so the
+  // page-change teardown in render() can't catch a sub-tab switch). Content keys keep
+  // a node stable across same-page polls — value changes are patched in place, not in
+  // the key — while a sub-tab/page switch cleanly adds the new controls and drops the
+  // old ones instead of cross-patching a Payload input onto a stale Fuel button (the
+  // "duplicate rate selector / leftover Start refueling on Payload" bug). The live
+  // data-idx used for click/setValue is carried on each control and patched in place.
+  function keyOf(e){
+    return e.kind + "|" + (e.controlType || "") + "|" + (e.text || "");
+  }
+
+  function buildEl(e){
+    var ct = e.controlType, text = e.text || "";
+    if (e.kind === "heading"){
+      var lvl = (e.level >= 1 && e.level <= 6) ? e.level : 2;
+      var h = document.createElement("h" + lvl); h.textContent = text; return h;
+    }
+    if (ct === "checkbox"){
+      var row = document.createElement("div"); row.className = "fld";
+      var cb = document.createElement("input"); cb.type = "checkbox";
+      cb.checked = (e.value === "true"); cb.disabled = !!e.disabled; cb.dataset.idx = e.idx;
+      cb.id = fieldId();
+      cb.addEventListener("change", function(){ post({ action:"set", idx: +cb.dataset.idx, value: cb.checked ? "true" : "false" }); });
+      var lab = document.createElement("label"); lab.htmlFor = cb.id; lab.textContent = text || "(toggle)";
+      row.appendChild(cb); row.appendChild(lab); return row;
+    }
+    if (ct === "select"){
+      var row2 = document.createElement("div"); row2.className = "fld";
+      var sel = document.createElement("select"); sel.disabled = !!e.disabled; sel.dataset.idx = e.idx; sel.id = fieldId();
+      var lab2 = document.createElement("label"); lab2.htmlFor = sel.id; lab2.textContent = text;
+      (e.options || []).forEach(function(opt){ var o = document.createElement("option"); o.value = opt; o.textContent = opt; if (opt === e.value) o.selected = true; sel.appendChild(o); });
+      sel.addEventListener("change", function(){ post({ action:"set", idx: +sel.dataset.idx, value: sel.value }); });
+      row2.appendChild(lab2); row2.appendChild(sel); return row2;
+    }
+    if (ct === "text"){
+      var row3 = document.createElement("div"); row3.className = "fld";
+      var inp = document.createElement("input"); inp.type = "text"; inp.value = e.value || ""; inp.disabled = !!e.disabled; inp.dataset.idx = e.idx; inp.id = fieldId();
+      var lab3 = document.createElement("label"); lab3.htmlFor = inp.id; lab3.textContent = text;
+      function commit(){ post({ action:"set", idx: +inp.dataset.idx, value: inp.value }); }
+      inp.addEventListener("change", commit);
+      inp.addEventListener("keydown", function(ev){ if (ev.key === "Enter"){ ev.preventDefault(); commit(); } });
+      row3.appendChild(lab3); row3.appendChild(inp); return row3;
+    }
+    if (e.clickable){
+      var btn = document.createElement("button"); btn.type = "button"; btn.textContent = text || "(button)"; btn.disabled = !!e.disabled; btn.dataset.idx = e.idx;
+      btn.addEventListener("click", function(){ post({ action:"click", idx: +btn.dataset.idx }); });
+      return btn;
+    }
+    var p = document.createElement("p"); p.className = "txt"; p.textContent = text; return p;
+  }
+
+  function ctrlOf(node){
+    if (node.matches && node.matches("[data-idx]")) return node;
+    return node.querySelector ? node.querySelector("[data-idx]") : null;
+  }
+
+  // Update an existing node's mutable bits in place (never recreate it). Skips
+  // value writes to the control the user is currently editing.
+  function patchEl(node, e){
+    if (e.kind === "heading"){ setText(node, e.text); return; }
+    var c = ctrlOf(node);
+    if (!c){ setText(node, e.text); return; }            // plain text <p>
+    if (c.dataset) c.dataset.idx = e.idx;                // keep interaction handle current
+    var ct = e.controlType;
+    if (ct === "checkbox"){
+      var want = (e.value === "true");
+      if (document.activeElement !== c && c.checked !== want) c.checked = want;
+      c.disabled = !!e.disabled;
+      var lab = node.querySelector("label"); if (lab) setText(lab, e.text || "(toggle)");
+      return;
+    }
+    if (ct === "select"){
+      c.disabled = !!e.disabled;
+      var opts = e.options || [];
+      var same = c.options.length === opts.length;
+      if (same){ for (var k = 0; k < opts.length; k++){ if (c.options[k].value !== opts[k]){ same = false; break; } } }
+      if (!same){ c.innerHTML = ""; for (var j = 0; j < opts.length; j++){ var op = document.createElement("option"); op.value = opts[j]; op.textContent = opts[j]; c.appendChild(op); } }
+      if (document.activeElement !== c && c.value !== (e.value || "")) c.value = e.value || "";
+      var lab2 = node.querySelector("label"); if (lab2) setText(lab2, e.text);
+      return;
+    }
+    if (ct === "text"){
+      c.disabled = !!e.disabled;
+      if (document.activeElement !== c){ var nv = e.value || ""; if (c.value !== nv) c.value = nv; }
+      var lab3 = node.querySelector("label"); if (lab3) setText(lab3, e.text);
+      return;
+    }
+    if (e.clickable){ setText(c, e.text || "(button)"); c.disabled = !!e.disabled; return; }
+  }
+
+  // Last page rendered — drives the full-teardown-on-page-change guard in render().
+  var _renderedPage = null;
+
+  // Keyed in-place reconciliation. Reusing nodes (instead of wiping innerHTML) is
+  // what keeps NVDA's browse cursor from resetting to the top on every update — but
+  // ONLY within a single page. The agent re-stamps data-fbwa32nx-efb-idx from 1 in
+  // DOM order on EVERY scrape, so the reconcile key ("i"+idx) is NOT stable across
+  // pages: dashboard idx 3 and settings idx 3 are different elements. Reconciling
+  // across a page change therefore patches new controls onto stale same-idx nodes
+  // (and patchEl can't change a node's type), stranding leftover prior-page controls
+  // and dropping new ones — the "settings half-loads, dashboard stuff lingers" bug.
+  // So: on a page change, wipe and rebuild (a focus reset on a real page change is
+  // expected and correct); keep the keyed reconcile for same-page polls.
+  function render(data){
+    var root = document.getElementById("root");
+    var raw = data.elements || [];
+    var els = [];
+    for (var i = 0; i < raw.length; i++){ if (isRenderable(raw[i])) els.push(raw[i]); }
+    var page = data.page || "flyPad";
+    root.setAttribute("aria-label", page + " page");
+
+    if (page !== _renderedPage){ root.innerHTML = ""; _renderedPage = page; }  // page change → clean rebuild
+
+    var existing = {};
+    for (var j = 0; j < root.children.length; j++){
+      var ck = root.children[j].getAttribute("data-key");
+      if (ck) existing[ck] = root.children[j];
+    }
+
+    var used = {}, seen = {}, prev = null;
+    for (var n = 0; n < els.length; n++){
+      var e = els[n], base = keyOf(e);
+      var occ = (seen[base] = (seen[base] || 0) + 1);
+      var key = base + "#" + occ;          // disambiguate duplicate static texts
+      var node = existing[key];
+      if (node){ patchEl(node, e); }
+      else { node = buildEl(e); if (!node) continue; node.setAttribute("data-key", key); }
+      used[key] = true;
+      var ref = prev ? prev.nextSibling : root.firstChild;
+      if (node !== ref) root.insertBefore(node, ref);    // move only if needed (preserves the node)
+      prev = node;
+    }
+    for (var gone in existing){ if (!used[gone]) root.removeChild(existing[gone]); }
+  }
+
+  window.chrome.webview.addEventListener("message", function(ev){
+    var d = ev.data; if (!d) return;
+    if (d.type === "render") render(d);
+    else if (d.type === "status"){ var s = document.getElementById("status"); if (s && s.textContent !== d.text) s.textContent = d.text; }
+  });
+
+  document.getElementById("btnRefresh").addEventListener("click", function(){ post({ action:"refresh" }); });
+  document.getElementById("btnSelfTest").addEventListener("click", function(){ post({ action:"selftest" }); });
+</script>
+</body>
+</html>

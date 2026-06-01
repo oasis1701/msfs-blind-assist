@@ -59,8 +59,10 @@ Location:
 Flight planning:
   W Next waypoint information
 
-Fuel:
-  F          Read Total Fuel Quantity
+Fuel and weight:
+  F          Read Total Fuel Quantity (pounds)
+  Shift+F    Read Total Fuel Quantity (kilograms)
+  Shift+W    Read Gross Weight (kilograms)
 
 Tools:
 CTRL+h, Activate/deactivate Hand fly mode, Note, enables more hotkeys, advanced feature.
@@ -90,7 +92,6 @@ Traffic and Weather:
 
 Displays and windows:
 shift+e, Route viewer, procedure planning and airport lookup
-  Shift+F, Fuel and payload window
   Shift+T,    Toggle Trim Announcements
   Shift+U,    Engine and warning display window
   Shift+Y,    SD Status window
@@ -152,6 +153,29 @@ Flight planning:
 shift+f, Fix/waypoint tracking
   Shift+D    Select Destination Runway
 
+Flight Management Displays:
+  Shift+T    Open flyPad EFB (accessible Electronic Flight Bag). Renders the live
+             A32NX flyPad tablet as a browsable document you read and operate with
+             your screen reader — navigate the real flyPad pages (Dashboard, Ground
+             Services, Payload, Settings, Navigraph, Checklists, etc.). The flyPad
+             powers on automatically; F5 refreshes; a Status / self-test button
+             reports the connection state.
+  Shift+M    Open MCDU (multifunction control display unit). Inside the MCDU window:
+             - Read the screen line by line with the Up/Down arrows.
+             - Line-select keys: Ctrl+1-6 (left, L1-L6), Alt+1-6 (right, R1-R6); or
+               F1-6 / F7-12 in alternate-key mode.
+             - Jump to a page (accelerators match the Fenix MCDU): Alt+I Init,
+               Alt+D Dir, Alt+P Prog, Alt+F Fpln, Alt+E Perf, Alt+R Rad Nav,
+               Alt+Shift+F Sec F-Pln, Alt+U Fuel Pred, Alt+K Atc, Alt+M Menu,
+               Alt+A Airport, Alt+T Data, Alt+O Ovfy.
+             - SCROLL a long list (flight plan, departure/arrival runways) with
+               Page Up / Page Down or Alt+Up / Alt+Down (vertical slew arrows).
+             - Change a multi-page form (e.g. PERF 1/2) with Alt+Left / Alt+Right
+               (horizontal page arrows).
+             - Scratchpad: Alt+S to focus it, type, Enter; Backspace = CLR.
+             Mirrors the Captain MCDU (the SimBridge remote protocol does not expose
+             the First Officer MCDU separately).
+
 Autopilot:
   Shift+A    Toggle Autopilot 1
   Ctrl+O     Toggle Autopilot 2
@@ -172,6 +196,7 @@ FCU Set Values:
   Ctrl+S     Set Speed Value
   Ctrl+A     Set Altitude Value
   Ctrl+V     Set VS Value
+  Ctrl+B     Set Both Altimeters (captain and F/O, in hPa)
 
 Taxi Guidance:
   Shift+Y    Open Taxi Assist Form (enter ATC taxi clearance, start guidance)

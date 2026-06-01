@@ -123,6 +123,9 @@ Navdatareader-win-1.2.3/
 # nul
 nul
 
+# Node tool dependencies
+tools/fbw-mcdu-probe/node_modules/
+
 # External DLLs required for CI builds
 !lib/managed/Microsoft.FlightSimulator.SimConnect.dll
 !SimConnect_msfs_2020.dll
@@ -138,3 +141,5 @@ nul
 
 # Local-only ECAM port workspace (downloaded FBW source + generators); ships as MSFSBlindAssist/SimConnect/EWDMessageLookupA380.cs
 tools/_fbw_ecam/
+# jsdom test deps for the flyPad shell reconcile (Gus A32NX)
+tools/flypad-shell-test/node_modules/

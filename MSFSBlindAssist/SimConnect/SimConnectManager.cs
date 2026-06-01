@@ -3590,65 +3590,6 @@ public class SimConnectManager
     }
 
     /// <summary>
-    /// A32NX-SPECIFIC: Requests fuel and payload data for FlyByWire Airbus A320neo.
-    /// Uses both standard SimVars and A32NX-specific L-variables for weight/balance calculations.
-    /// Called by Forms/A32NX/FuelPayloadDisplayForm.cs only.
-    ///
-    /// NOTE: This method is safe for multi-aircraft - it's only called when the A32NX Fuel/Payload window
-    /// is opened (via hotkey or menu). Other aircraft (Fenix, PMDG, etc.) would have their own methods
-    /// with their own variable names if they implement this feature.
-    /// </summary>
-    public void RequestFuelAndPayloadData()
-    {
-        if (IsConnected && simConnect != null)
-        {
-            try
-            {
-                // Request fuel data
-                RequestSingleValue(340, "FUEL WEIGHT PER GALLON", "kilograms", "FUEL_WEIGHT_PER_GALLON");
-                RequestSingleValue(341, "FUEL TANK LEFT AUX QUANTITY", "gallons", "FUEL_LEFT_AUX");
-                RequestSingleValue(342, "FUEL TANK LEFT MAIN QUANTITY", "gallons", "FUEL_LEFT_MAIN");
-                RequestSingleValue(343, "FUEL TANK CENTER QUANTITY", "gallons", "FUEL_CENTER");
-                RequestSingleValue(344, "FUEL TANK RIGHT MAIN QUANTITY", "gallons", "FUEL_RIGHT_MAIN");
-                RequestSingleValue(345, "FUEL TANK RIGHT AUX QUANTITY", "gallons", "FUEL_RIGHT_AUX");
-
-                // Request passenger data
-                RequestSingleValue(346, "L:A32NX_PAX_A", "number", "PAX_A");
-                RequestSingleValue(347, "L:A32NX_PAX_B", "number", "PAX_B");
-                RequestSingleValue(348, "L:A32NX_PAX_C", "number", "PAX_C");
-                RequestSingleValue(349, "L:A32NX_PAX_D", "number", "PAX_D");
-                RequestSingleValue(350, "L:A32NX_WB_PER_PAX_WEIGHT", "kilograms", "PAX_WEIGHT");
-                RequestSingleValue(351, "L:A32NX_WB_PER_BAG_WEIGHT", "kilograms", "BAG_WEIGHT");
-
-                // Request cargo data
-                RequestSingleValue(352, "PAYLOAD STATION WEIGHT:5", "kilograms", "CARGO_FWD");
-                RequestSingleValue(353, "PAYLOAD STATION WEIGHT:6", "kilograms", "CARGO_AFT_CONT");
-                RequestSingleValue(354, "PAYLOAD STATION WEIGHT:7", "kilograms", "CARGO_AFT_BAG");
-                RequestSingleValue(355, "PAYLOAD STATION WEIGHT:8", "kilograms", "CARGO_AFT_BULK");
-
-                // Request weights
-                RequestSingleValue(356, "EMPTY WEIGHT", "kilograms", "EMPTY_WEIGHT");
-                RequestSingleValue(357, "L:A32NX_AIRFRAME_ZFW", "number", "ZFW");
-                RequestSingleValue(358, "L:A32NX_AIRFRAME_GW", "number", "GW");
-                RequestSingleValue(359, "L:A32NX_AIRFRAME_ZFW_CG_PERCENT_MAC", "number", "ZFW_CG_MAC");
-                RequestSingleValue(360, "L:A32NX_AIRFRAME_GW_CG_PERCENT_MAC", "number", "GW_CG_MAC");
-
-                // Request FMS values (entered by pilot in MCDU)
-                RequestSingleValue(361, "L:A32NX_FMS_PAX_NUMBER", "number", "FMS_PAX");
-                RequestSingleValue(362, "L:A32NX_FM1_ZERO_FUEL_WEIGHT", "number", "FMS_ZFW");
-                RequestSingleValue(363, "L:A32NX_FM_GROSS_WEIGHT", "number", "FMS_GW");
-                RequestSingleValue(364, "L:A32NX_FM1_ZERO_FUEL_WEIGHT_CG", "number", "FMS_CG");
-
-                System.Diagnostics.Debug.WriteLine("[SimConnectManager] Fuel and payload data requested");
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error requesting fuel and payload data: {ex.Message}");
-            }
-        }
-    }
-
-    /// <summary>
     /// A32NX-SPECIFIC: Requests total fuel quantity for FlyByWire Airbus A320neo.
     /// Uses L:A32NX_TOTAL_FUEL_QUANTITY variable specific to FlyByWire implementation.
     /// Called by Forms/A32NX/ECAMDisplayForm.cs and FlyByWireA320Definition.cs.
@@ -3724,7 +3665,6 @@ public class SimConnectManager
             358 => "GW",
             359 => "ZFW_CG_MAC",
             360 => "GW_CG_MAC",
-            361 => "FMS_PAX",
             362 => "FMS_ZFW",
             363 => "FMS_GW",
             364 => "FMS_CG",
