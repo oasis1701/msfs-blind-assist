@@ -859,6 +859,13 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         ReadEnum("A32NX_APU_LOW_FUEL_PRESSURE_FAULT", "APU Low Fuel Pressure", fault);
         ReadEnum("A32NX_APU_BLEED_AIR_VALVE_OPEN", "APU Bleed Valve", openVd);
         Read("A32NX_APU_N_RAW", "APU N", "percent");
+        // APU running parameters (the start monitor: N2, EGT, inlet flap, fuel used).
+        // EGT is an ARINC429 word -> decoded to celsius in TryGetDisplayOverride; the
+        // rest are plain (0 when the APU is off).
+        Read("A32NX_APU_N2", "APU N2", "percent");
+        Read("A32NX_APU_EGT", "APU EGT", "celsius");
+        Read("A32NX_APU_FLAP_OPEN_PERCENTAGE", "APU Inlet Flap", "percent");
+        Read("A32NX_APU_FUEL_USED", "APU Fuel Used", "kilograms");
 
         // HYDRAULICS
         for (int n = 1; n <= 4; n++)
@@ -2075,7 +2082,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         d["APU"] = new List<string>
         {
             "A32NX_OVHD_APU_START_PB_IS_AVAILABLE", "A32NX_OVHD_APU_MASTER_SW_PB_HAS_FAULT",
-            "A32NX_APU_LOW_FUEL_PRESSURE_FAULT", "A32NX_APU_BLEED_AIR_VALVE_OPEN", "A32NX_APU_N_RAW"
+            "A32NX_APU_LOW_FUEL_PRESSURE_FAULT", "A32NX_APU_BLEED_AIR_VALVE_OPEN", "A32NX_APU_N_RAW",
+            "A32NX_APU_N2", "A32NX_APU_EGT", "A32NX_APU_FLAP_OPEN_PERCENTAGE", "A32NX_APU_FUEL_USED"
         };
 
         d["Fuel"] = new List<string> { "A32NX_TOTAL_FUEL_QUANTITY" };
@@ -3300,6 +3308,15 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             {
                 if (!_metricAlt) return false;   // feet — let the generic "N feet" render
                 displayText = $"{value * 0.3048:0} meters";
+                return true;
+            }
+            case "A32NX_APU_EGT":
+            {
+                // ARINC429 word -> APU exhaust gas temperature in celsius (the start
+                // monitor). "No data" until the APU FADEC is powered.
+                var we = new Arinc429Word(value);
+                if (!(we.IsNormalOperation || we.IsFunctionalTest)) { displayText = "No data"; return true; }
+                displayText = $"{we.Value:0} degrees celsius";
                 return true;
             }
             case "A32NX_TO_PITCH_TRIM":
