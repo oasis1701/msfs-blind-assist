@@ -2860,6 +2860,16 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     public override bool HandleUIVariableSet(string varKey, double value, SimVarDefinition varDef,
         SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
     {
+        // System Display PAGE combo: drive the SD to the chosen page, then read that
+        // page's decoded content off the real SD view and announce it (so the SD pages
+        // are usable from the panel, no separate window). The combo's own value change
+        // already announces the page NAME; this adds the page CONTENT.
+        if (varKey == "A32NX_ECAM_SD_CURRENT_PAGE_INDEX")
+        {
+            simConnect.ExecuteCalculatorCode($"{(int)Math.Round(value)} (>L:{varKey})");
+            AnnounceSdPageAsync(announcer);
+            return true;
+        }
         // Annunciator / integral lights TEST is a bulb test — it illuminates every
         // overhead fault/annunciator light, changing NO readable var, so a blind pilot
         // would get no feedback. When TEST is selected, write the knob AND announce a
@@ -3373,6 +3383,13 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     // L:var momentary push-buttons (registered via Btn) — a press pulses the L:var
     // 1→0 so the sim sees the rising edge, instead of latching it on like a combo.
     private readonly HashSet<string> _momentaryButtons = new();
+
+    // Lazy live-scrape client for the System Display: when the user picks an SD page
+    // in the ECAM Control Panel "System Display Page" combo, MSFSBA drives the page
+    // index then reads that page's DECODED content off the real SD Coherent view and
+    // announces it — so the SD pages are usable straight from the panel, no separate
+    // window or hotkey. On-demand scrapes only (background poll paused).
+    private SimConnect.CoherentDisplayClient? _sdScrapeClient;
     private Dictionary<double, string>? _readoutMap;
     private static readonly Dictionary<double, string> _apprCapMap = new Dictionary<double, string>
     { [0] = "None", [1] = "CAT 1", [2] = "CAT 2", [3] = "CAT 3 Single", [4] = "CAT 3 Dual" };
@@ -3402,6 +3419,42 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     /// <summary>Convert a feet altitude to the pilot's selected unit + spoken word (A380 metric-alt).</summary>
     private (double value, string unit) AltUser(double feet)
         => _metricAlt ? (feet * 0.3048, "meters") : (feet, "feet");
+
+    /// <summary>
+    /// Read the currently-selected SD page off the real System Display Coherent view
+    /// and announce its decoded content. Called when the ECAM-CP "System Display Page"
+    /// combo changes (after the page index has been driven), so the pilot can read any
+    /// SD page straight from the panel. The page NAME is announced by the combo itself;
+    /// this adds the CONTENT. On-demand scrape (the background poll stays paused).
+    /// </summary>
+    private async void AnnounceSdPageAsync(ScreenReaderAnnouncer announcer)
+    {
+        try
+        {
+            if (_sdScrapeClient == null)
+            {
+                _sdScrapeClient = new SimConnect.CoherentDisplayClient("A380X_SDv2");
+                _sdScrapeClient.Start();
+                _sdScrapeClient.SetActive(false);   // on-demand only, no 1.2 s poll
+            }
+            await Task.Delay(900);   // let the SD render the newly-selected page
+            var rows = await _sdScrapeClient.ScrapeNowAsync();
+            if (rows == null || rows.Count == 0)
+            {
+                announcer.Announce("System display content not available. Open the System Display window to read it.");
+                return;
+            }
+            // Drop the on-screen UI chrome (page buttons) so the read-out is just data.
+            var clean = rows.Where(r =>
+            {
+                string u = (r ?? "").Trim().ToUpperInvariant();
+                return u.Length > 0 && u != "CLOSE" && u != "MORE" && u != "PRINT"
+                       && u != "RECALL" && u != "RECALL PRINT" && u != "RECALL  PRINT";
+            });
+            announcer.Announce("System display. " + string.Join(". ", clean));
+        }
+        catch { /* scrape best-effort; the combo still set the page */ }
+    }
 
     /// <summary>Flip MSFSBA's weight read-out unit (kg ⇄ lb) instantly; returns the new state (true = kg).</summary>
     public bool ToggleMetricWeight() { _metricWeight = !_metricWeight; _metricKnown = true; return _metricWeight; }
