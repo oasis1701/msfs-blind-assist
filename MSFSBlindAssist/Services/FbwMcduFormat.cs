@@ -23,6 +23,12 @@ public static class FbwMcduFormat
         { "fm1", "FM1" }, { "fm2", "FM2" }, { "ind", "IND" }, { "rdy", "RDY" },
     };
 
+    // Size/align tags affect styling only; we drop them but still consume the {tag}.
+    private static readonly HashSet<string> DropTags = new() { "small", "big", "left", "right" };
+
+    private static bool IsKnownTag(string tag)
+        => tag == "sp" || tag == "end" || ColorTags.Contains(tag) || DropTags.Contains(tag);
+
     private readonly record struct Segment(string Color, string Text);
 
     private static List<Segment> ParseSegments(string cell)
@@ -33,37 +39,79 @@ public static class FbwMcduFormat
         int i = 0;
         while (i < cell.Length)
         {
-            if (cell[i] == '{')
+            char ch = cell[i];
+            if (ch == '{')
             {
                 int close = cell.IndexOf('}', i);
                 if (close != -1)
                 {
                     string tag = cell.Substring(i + 1, close - i - 1);
-                    if (tag == "sp")
+                    if (IsKnownTag(tag))
                     {
-                        text.Append(' ');
+                        if (tag == "sp")
+                        {
+                            text.Append(' ');
+                        }
+                        else if (ColorTags.Contains(tag))
+                        {
+                            if (text.Length > 0) { segments.Add(new Segment(color, text.ToString())); text.Clear(); }
+                            color = tag;
+                        }
+                        else if (tag == "end")
+                        {
+                            if (text.Length > 0) { segments.Add(new Segment(color, text.ToString())); text.Clear(); }
+                            color = "white";
+                        }
+                        // small/big/left/right: styling only, dropped
+                        i = close + 1;
+                        continue;
                     }
-                    else if (ColorTags.Contains(tag))
-                    {
-                        if (text.Length > 0) { segments.Add(new Segment(color, text.ToString())); text.Clear(); }
-                        color = tag;
-                    }
-                    else if (tag == "end")
-                    {
-                        if (text.Length > 0) { segments.Add(new Segment(color, text.ToString())); text.Clear(); }
-                        color = "white";
-                    }
-                    // small/big/left/right/unknown tags: dropped
-                    i = close + 1;
-                    continue;
                 }
+                // A lone '{' that does NOT open a known {tag} is the FBW MCDU's LSK arrow /
+                // bracket glyph (e.g. "{08L" = the selectable runway prompt). Drop the glyph
+                // and keep the content ("08L"); the old greedy parse ate everything up to the
+                // next '}', deleting the runway designator and breaking the DEP/ARR pages.
+                i++;
+                continue;
             }
-            // No closing '}' (or not at a '{'): treat this char (incl. a lone '{') as literal text.
-            text.Append(cell[i]);
+            if (ch == '}')
+            {
+                // Stray right-side arrow/bracket glyph (real {tag} closers are consumed above).
+                i++;
+                continue;
+            }
+            text.Append(ch);
             i++;
         }
         if (text.Length > 0) { segments.Add(new Segment(color, text.ToString())); }
         return segments;
+    }
+
+    /// <summary>
+    /// Reconstruct an MCDU line positionally (24 cols): left-aligned left, right-aligned
+    /// right, centred centre — instead of dropping blank columns and joining, which made a
+    /// right-only cell collapse onto the LEFT of the line. Trailing space trimmed; leading
+    /// space preserved so right-only content stays on the right.
+    /// </summary>
+    public static string PositionLine(string left, string center, string right, int width = 24)
+    {
+        var buf = new char[width];
+        for (int i = 0; i < width; i++) { buf[i] = ' '; }
+        Place(buf, (left ?? "").TrimEnd(), 0);
+        string c = (center ?? "").Trim();
+        if (c.Length > 0) { Place(buf, c, Math.Max(0, (width - c.Length) / 2)); }
+        string r = (right ?? "").TrimEnd();
+        if (r.Length > 0) { Place(buf, r, Math.Max(0, width - r.Length)); }
+        return new string(buf).TrimEnd();
+
+        static void Place(char[] dst, string s, int start)
+        {
+            for (int j = 0; j < s.Length; j++)
+            {
+                int p = start + j;
+                if (p >= 0 && p < dst.Length) { dst[p] = s[j]; }
+            }
+        }
     }
 
     public static string DecodeCell(string? cell)
@@ -159,8 +207,8 @@ public static class FbwMcduFormat
                 LeftValue = valueLeft,
                 RightValue = valueRight,
             };
-            data.RawLines[1 + 2 * k] = JoinColumns(labelLeft, labelCenter, labelRight);
-            data.RawLines[2 + 2 * k] = JoinColumns(valueLeft, valueCenter, valueRight);
+            data.RawLines[1 + 2 * k] = PositionLine(labelLeft, labelCenter, labelRight);
+            data.RawLines[2 + 2 * k] = PositionLine(valueLeft, valueCenter, valueRight);
         }
         data.RawLines[13] = data.Scratchpad;
         return data;

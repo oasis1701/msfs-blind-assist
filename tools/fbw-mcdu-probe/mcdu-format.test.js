@@ -78,8 +78,9 @@ test('renderLines builds the accessible ListBox text', () => {
   assert.strictEqual(out[out.length - 1], 'Scratchpad: ');
 });
 
-test('decodeCell treats an unterminated brace as literal text', () => {
-  assert.strictEqual(fmt.decodeCell('abc{green'), 'abc{green');
+test('decodeCell drops a lone "{" arrow glyph and keeps the text', () => {
+  // "{" is the FBW MCDU LSK arrow glyph, not a tag — drop it, keep the content.
+  assert.strictEqual(fmt.decodeCell('abc{green'), 'abcgreen');
 });
 
 test('decodeCell keeps the * marker adjacent when a green segment has a leading space', () => {
@@ -109,4 +110,36 @@ test('renderLines suppresses empty label rows and renders all rows', () => {
   // 6 value lines + 1 title + 1 label line + 1 scratchpad = 9 total.
   assert.strictEqual(out.length, 9);
   assert.strictEqual(out[out.length - 1], 'Scratchpad: ');
+});
+
+test('decodeCell keeps content after a non-tag "{" (FBW LSK arrow glyph)', () => {
+  // Real DEPARTURES cell: "{" before 08L is the LSK arrow, NOT a markup tag.
+  assert.strictEqual(
+    fmt.decodeCell('{white}{cyan}{08L{small}-ILS{end}  9012{small}FT{end}{end}{end}'),
+    '08L-ILS  9012FT'); // designator 08L must survive
+  assert.strictEqual(fmt.decodeCell('{white}{RETURN{end}'), 'RETURN'); // arrow dropped, text kept
+});
+
+test('decodeCell still strips genuine known tags and drops stray "}"', () => {
+  assert.strictEqual(fmt.decodeCell('{small}1/2{end}'), '1/2');
+  assert.strictEqual(fmt.decodeCell('{green}CLB{end}'), 'CLB');
+  assert.strictEqual(fmt.decodeCell('AB}'), 'AB'); // stray right-bracket glyph dropped
+});
+
+test('positionLine right-aligns a right-only cell (no more left-collapse)', () => {
+  // right value must sit at the END of the 24-col field, only spaces before it
+  assert.ok(/^ +FROM\/TO$/.test(fmt.positionLine('', '', 'FROM/TO')), 'FROM/TO not right-aligned');
+  assert.ok(/^ {21}XYZ$/.test(fmt.positionLine('', '', 'XYZ')), 'XYZ not at column 21');
+});
+
+test('positionLine keeps left on the left and right on the right', () => {
+  const out = fmt.positionLine('CO RTE', '', 'FROM/TO');
+  assert.ok(out.startsWith('CO RTE'), 'left not at start');
+  assert.ok(out.endsWith('FROM/TO'), 'right not at end');
+});
+
+test('positionLine centres a centre-only cell', () => {
+  const out = fmt.positionLine('', 'AVAILABLE RUNWAYS', '');
+  assert.strictEqual(out.trim(), 'AVAILABLE RUNWAYS');
+  assert.ok(out.startsWith('   '), 'centre cell not indented: ' + JSON.stringify(out));
 });
