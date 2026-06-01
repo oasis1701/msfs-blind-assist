@@ -1035,6 +1035,26 @@ public struct GenericBatch1
     // irrelevant — ProcessContinuousBatchImpl reads the struct as a flat double[]
     // by index, and the data definition is filled in add-order; only the total
     // size (>= BATCH_SIZE doubles) matters.
+    public double V200; public double V201; public double V202; public double V203; public double V204;
+    public double V205; public double V206; public double V207; public double V208; public double V209;
+    public double V210; public double V211; public double V212; public double V213; public double V214;
+    public double V215; public double V216; public double V217; public double V218; public double V219;
+    public double V220; public double V221; public double V222; public double V223; public double V224;
+    public double V225; public double V226; public double V227; public double V228; public double V229;
+    public double V230; public double V231; public double V232; public double V233; public double V234;
+    public double V235; public double V236; public double V237; public double V238; public double V239;
+    public double V240; public double V241; public double V242; public double V243; public double V244;
+    public double V245; public double V246; public double V247; public double V248; public double V249;
+    public double V250; public double V251; public double V252; public double V253; public double V254;
+    public double V255; public double V256; public double V257; public double V258; public double V259;
+    public double V260; public double V261; public double V262; public double V263; public double V264;
+    public double V265; public double V266; public double V267; public double V268; public double V269;
+    public double V270; public double V271; public double V272; public double V273; public double V274;
+    public double V275; public double V276; public double V277; public double V278; public double V279;
+    public double V280; public double V281; public double V282; public double V283; public double V284;
+    public double V285; public double V286; public double V287; public double V288; public double V289;
+    public double V290; public double V291; public double V292; public double V293; public double V294;
+    public double V295; public double V296; public double V297; public double V298; public double V299;
     public double V100; public double V101; public double V102; public double V103; public double V104;
     public double V105; public double V106; public double V107; public double V108; public double V109;
     public double V110; public double V111; public double V112; public double V113; public double V114;
@@ -1089,6 +1109,26 @@ public struct GenericBatch1
 public struct GenericBatch2
 {
     // Capacity extended to 200 doubles (BATCH_SIZE = 200) — see GenericBatch1.
+    public double V200; public double V201; public double V202; public double V203; public double V204;
+    public double V205; public double V206; public double V207; public double V208; public double V209;
+    public double V210; public double V211; public double V212; public double V213; public double V214;
+    public double V215; public double V216; public double V217; public double V218; public double V219;
+    public double V220; public double V221; public double V222; public double V223; public double V224;
+    public double V225; public double V226; public double V227; public double V228; public double V229;
+    public double V230; public double V231; public double V232; public double V233; public double V234;
+    public double V235; public double V236; public double V237; public double V238; public double V239;
+    public double V240; public double V241; public double V242; public double V243; public double V244;
+    public double V245; public double V246; public double V247; public double V248; public double V249;
+    public double V250; public double V251; public double V252; public double V253; public double V254;
+    public double V255; public double V256; public double V257; public double V258; public double V259;
+    public double V260; public double V261; public double V262; public double V263; public double V264;
+    public double V265; public double V266; public double V267; public double V268; public double V269;
+    public double V270; public double V271; public double V272; public double V273; public double V274;
+    public double V275; public double V276; public double V277; public double V278; public double V279;
+    public double V280; public double V281; public double V282; public double V283; public double V284;
+    public double V285; public double V286; public double V287; public double V288; public double V289;
+    public double V290; public double V291; public double V292; public double V293; public double V294;
+    public double V295; public double V296; public double V297; public double V298; public double V299;
     public double V100; public double V101; public double V102; public double V103; public double V104;
     public double V105; public double V106; public double V107; public double V108; public double V109;
     public double V110; public double V111; public double V112; public double V113; public double V114;
@@ -1143,6 +1183,26 @@ public struct GenericBatch2
 public struct GenericBatch3
 {
     // Capacity extended to 200 doubles (BATCH_SIZE = 200) — see GenericBatch1.
+    public double V200; public double V201; public double V202; public double V203; public double V204;
+    public double V205; public double V206; public double V207; public double V208; public double V209;
+    public double V210; public double V211; public double V212; public double V213; public double V214;
+    public double V215; public double V216; public double V217; public double V218; public double V219;
+    public double V220; public double V221; public double V222; public double V223; public double V224;
+    public double V225; public double V226; public double V227; public double V228; public double V229;
+    public double V230; public double V231; public double V232; public double V233; public double V234;
+    public double V235; public double V236; public double V237; public double V238; public double V239;
+    public double V240; public double V241; public double V242; public double V243; public double V244;
+    public double V245; public double V246; public double V247; public double V248; public double V249;
+    public double V250; public double V251; public double V252; public double V253; public double V254;
+    public double V255; public double V256; public double V257; public double V258; public double V259;
+    public double V260; public double V261; public double V262; public double V263; public double V264;
+    public double V265; public double V266; public double V267; public double V268; public double V269;
+    public double V270; public double V271; public double V272; public double V273; public double V274;
+    public double V275; public double V276; public double V277; public double V278; public double V279;
+    public double V280; public double V281; public double V282; public double V283; public double V284;
+    public double V285; public double V286; public double V287; public double V288; public double V289;
+    public double V290; public double V291; public double V292; public double V293; public double V294;
+    public double V295; public double V296; public double V297; public double V298; public double V299;
     public double V100; public double V101; public double V102; public double V103; public double V104;
     public double V105; public double V106; public double V107; public double V108; public double V109;
     public double V110; public double V111; public double V112; public double V113; public double V114;
@@ -1197,6 +1257,26 @@ public struct GenericBatch3
 public struct GenericBatch4
 {
     // Capacity extended to 200 doubles (BATCH_SIZE = 200) — see GenericBatch1.
+    public double V200; public double V201; public double V202; public double V203; public double V204;
+    public double V205; public double V206; public double V207; public double V208; public double V209;
+    public double V210; public double V211; public double V212; public double V213; public double V214;
+    public double V215; public double V216; public double V217; public double V218; public double V219;
+    public double V220; public double V221; public double V222; public double V223; public double V224;
+    public double V225; public double V226; public double V227; public double V228; public double V229;
+    public double V230; public double V231; public double V232; public double V233; public double V234;
+    public double V235; public double V236; public double V237; public double V238; public double V239;
+    public double V240; public double V241; public double V242; public double V243; public double V244;
+    public double V245; public double V246; public double V247; public double V248; public double V249;
+    public double V250; public double V251; public double V252; public double V253; public double V254;
+    public double V255; public double V256; public double V257; public double V258; public double V259;
+    public double V260; public double V261; public double V262; public double V263; public double V264;
+    public double V265; public double V266; public double V267; public double V268; public double V269;
+    public double V270; public double V271; public double V272; public double V273; public double V274;
+    public double V275; public double V276; public double V277; public double V278; public double V279;
+    public double V280; public double V281; public double V282; public double V283; public double V284;
+    public double V285; public double V286; public double V287; public double V288; public double V289;
+    public double V290; public double V291; public double V292; public double V293; public double V294;
+    public double V295; public double V296; public double V297; public double V298; public double V299;
     public double V100; public double V101; public double V102; public double V103; public double V104;
     public double V105; public double V106; public double V107; public double V108; public double V109;
     public double V110; public double V111; public double V112; public double V113; public double V114;
@@ -1251,6 +1331,26 @@ public struct GenericBatch4
 public struct GenericBatch5
 {
     // Capacity extended to 200 doubles (BATCH_SIZE = 200) — see GenericBatch1.
+    public double V200; public double V201; public double V202; public double V203; public double V204;
+    public double V205; public double V206; public double V207; public double V208; public double V209;
+    public double V210; public double V211; public double V212; public double V213; public double V214;
+    public double V215; public double V216; public double V217; public double V218; public double V219;
+    public double V220; public double V221; public double V222; public double V223; public double V224;
+    public double V225; public double V226; public double V227; public double V228; public double V229;
+    public double V230; public double V231; public double V232; public double V233; public double V234;
+    public double V235; public double V236; public double V237; public double V238; public double V239;
+    public double V240; public double V241; public double V242; public double V243; public double V244;
+    public double V245; public double V246; public double V247; public double V248; public double V249;
+    public double V250; public double V251; public double V252; public double V253; public double V254;
+    public double V255; public double V256; public double V257; public double V258; public double V259;
+    public double V260; public double V261; public double V262; public double V263; public double V264;
+    public double V265; public double V266; public double V267; public double V268; public double V269;
+    public double V270; public double V271; public double V272; public double V273; public double V274;
+    public double V275; public double V276; public double V277; public double V278; public double V279;
+    public double V280; public double V281; public double V282; public double V283; public double V284;
+    public double V285; public double V286; public double V287; public double V288; public double V289;
+    public double V290; public double V291; public double V292; public double V293; public double V294;
+    public double V295; public double V296; public double V297; public double V298; public double V299;
     public double V100; public double V101; public double V102; public double V103; public double V104;
     public double V105; public double V106; public double V107; public double V108; public double V109;
     public double V110; public double V111; public double V112; public double V113; public double V114;

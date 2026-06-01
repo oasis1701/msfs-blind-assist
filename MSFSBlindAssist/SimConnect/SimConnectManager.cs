@@ -863,15 +863,16 @@ public class SimConnectManager
             return;
         }
 
-        if (continuousVariables.Count > 1000)
+        if (continuousVariables.Count > 1500)
         {
-            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] WARNING: {continuousVariables.Count} continuous variables exceeds multi-batch capacity of 1000 (5 batches × 200)! Variables past the cap (alphabetically last) will NOT auto-announce.");
+            System.Diagnostics.Debug.WriteLine($"[SimConnectManager] WARNING: {continuousVariables.Count} continuous variables exceeds multi-batch capacity of 1500 (5 batches × 300)! Variables past the cap (alphabetically last) will NOT auto-announce.");
             // Continue anyway - we'll use as many batches as needed
         }
 
-        // Split variables into 5 batches (up to 200 variables per batch = 1000 total).
-        // The GenericBatch1-5 structs each hold 200 doubles to match BATCH_SIZE.
-        const int BATCH_SIZE = 200;
+        // Split variables into 5 batches (up to 300 variables per batch = 1500 total).
+        // The GenericBatch1-5 structs each hold 300 doubles to match BATCH_SIZE.
+        // (Headroom: the A380 currently uses ~700 continuous+announced vars.)
+        const int BATCH_SIZE = 300;
         const int NUM_BATCHES = 5;
 
         // Batch configuration: (batchNum, dataDefinition, dataRequest, structType)
@@ -2518,10 +2519,10 @@ public class SimConnectManager
                         if (varBatchNum != batchNum) continue;
 
                         // SAFETY: Validate index is within bounds
-                        // Each batch struct has 200 doubles (matches BATCH_SIZE = 200)
-                        if (index < 0 || index >= 200)
+                        // Each batch struct has 300 doubles (matches BATCH_SIZE = 300)
+                        if (index < 0 || index >= 300)
                         {
-                            System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] ERROR: Batch {batchNum} index {index} out of bounds [0-199] for variable '{varKey}'");
+                            System.Diagnostics.Debug.WriteLine($"[ProcessContinuousBatch] ERROR: Batch {batchNum} index {index} out of bounds [0-299] for variable '{varKey}'");
                             invalidIndexCount++;
                             continue;
                         }
