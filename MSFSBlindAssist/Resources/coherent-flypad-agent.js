@@ -754,8 +754,15 @@
       }
       if (out.length > 0 && norm(out[out.length - 1].text) === norm(it.text)) {
         var prev = out[out.length - 1];
-        if (prev.idx === 0 && it.idx > 0) out[out.length - 1] = it;
-        continue;
+        // Replace a non-interactive text line with the interactive control that
+        // echoes it; otherwise drop a non-interactive echo of the previous line.
+        // BUT two DISTINCT interactive controls that happen to share a label (e.g.
+        // the per-axis "Set from Throttle" button on each throttle calibration
+        // axis, or a "Set" button repeated per row) are SEPARATE controls — keep
+        // both. The shell disambiguates identical labels with an occurrence index.
+        if (prev.idx === 0 && it.idx > 0) { out[out.length - 1] = it; continue; }
+        if (it.idx === 0) continue;
+        // both interactive with identical label → fall through, keep both
       }
       out.push(it);
     }

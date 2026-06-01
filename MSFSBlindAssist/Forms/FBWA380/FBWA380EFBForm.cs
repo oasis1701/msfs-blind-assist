@@ -194,7 +194,28 @@ public class FBWA380EFBForm : Form
                 _bridgeServer.EnqueueCommand("get_display_elements");
                 e.Handled = true;
             }
+            else if (e.KeyCode == Keys.F6)
+            {
+                AnnounceSelfTest();
+                e.Handled = true;
+            }
         };
+    }
+
+    // On-demand spoken connection/self-test (F6). The status label is always live,
+    // but a blind user shouldn't have to hunt for it — F6 speaks the same state.
+    // Shared by both flyPads and the OANS view (uses _deviceNoun).
+    private void AnnounceSelfTest()
+    {
+        bool reallyConnected = _bridgeConnected && _bridgeServer.IsBridgeConnected;
+        string msg;
+        if (reallyConnected && _initialPushReceived)
+            msg = $"{_deviceNoun} connected. Page {(string.IsNullOrEmpty(_currentPage) ? "unknown" : _currentPage)}. {_elements.Count} elements.";
+        else if (reallyConnected)
+            msg = $"{_deviceNoun} connected, waiting for content.";
+        else
+            msg = $"{_deviceNoun} not connected. Make sure the aircraft is loaded and the tablet is powered on.";
+        _announcer.Announce(msg);
     }
 
     // ---- WebView2 setup ---------------------------------------------------
