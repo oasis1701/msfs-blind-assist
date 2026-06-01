@@ -3218,42 +3218,8 @@ public partial class MainForm : Form
         });
     }
 
-    private void ShowPFDDialog()
-    {
-        // Ensure output hotkey mode is deactivated before showing window
-        hotkeyManager.ExitOutputHotkeyMode();
-
-        var dialog = new PFDForm(announcer, simConnectManager);
-        dialog.CurrentAircraft = currentAircraft;
-        dialog.Show();
-    }
-
-    private void ShowNavigationDisplayDialog()
-    {
-        // Ensure output hotkey mode is deactivated before showing window
-        hotkeyManager.ExitOutputHotkeyMode();
-
-        var dialog = new NavigationDisplayForm(announcer, simConnectManager);
-        dialog.Show();
-    }
-
-    private void ShowECAMDialog()
-    {
-        // Ensure output hotkey mode is deactivated before showing window
-        hotkeyManager.ExitOutputHotkeyMode();
-
-        var dialog = new ECAMDisplayForm(announcer, simConnectManager);
-        dialog.Show();
-    }
-
-    private void ShowStatusDialog()
-    {
-        // Ensure output hotkey mode is deactivated before showing window
-        hotkeyManager.ExitOutputHotkeyMode();
-
-        var dialog = new StatusDisplayForm(announcer, simConnectManager);
-        dialog.Show();
-    }
+    // (Old PFD / ND / ECAM / Status display-window launchers removed — the FBW
+    // aircraft read these through the accessible status-box panels now.)
 
     private void RequestDestinationRunwayDistance()
     {
