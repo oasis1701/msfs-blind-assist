@@ -784,7 +784,10 @@ public sealed class GsxService : IDisposable
 
         tooltip = RemoveUnsupportedLegacyTooltipLines(tooltip);
         if (string.IsNullOrWhiteSpace(tooltip))
+        {
+            ClearLastTooltip();
             return;
+        }
 
         PublishLiveServiceText(tooltip, tooltip);
     }
@@ -910,7 +913,8 @@ public sealed class GsxService : IDisposable
 
     private static bool IsUnsupportedLegacyGsxTooltipLine(string line) =>
         IsLegacyGsxPricingTooltipLine(line)
-        || IsLegacyGsxCompletionTooltipLine(line);
+        || IsLegacyGsxCompletionTooltipLine(line)
+        || IsLegacyGsxInvoiceTooltipLine(line);
 
     private static bool IsLegacyGsxPricingTooltipLine(string line)
     {
@@ -951,6 +955,19 @@ public sealed class GsxService : IDisposable
             || normalized.Contains(" has completed")
             || normalized.Contains(" unloading complete")
             || normalized.Contains(" loading complete");
+    }
+
+    private static bool IsLegacyGsxInvoiceTooltipLine(string line)
+    {
+        string normalized = line.ToLowerInvariant();
+        if (!normalized.StartsWith("[gsx]", StringComparison.Ordinal))
+            return false;
+
+        return normalized.Contains("invoice")
+            && normalized.Contains("available")
+            && (normalized.Contains("see gsx menu")
+                || normalized.Contains("gsx menu")
+                || normalized.Contains("invoice from"));
     }
 
     private bool IsRepeatedLiveServiceAnnouncement(string stableText)
