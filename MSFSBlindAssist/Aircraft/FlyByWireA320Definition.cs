@@ -811,26 +811,32 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         },
 
-        // Anti Ice Panel
-        ["XMLVAR_MOMENTARY_PUSH_OVHD_ANTIICE_WING_PRESSED"] = new SimConnect.SimVarDefinition
+        // Anti Ice Panel. The old XMLVAR_MOMENTARY_PUSH_OVHD_ANTIICE_*_PRESSED vars are
+        // model-only press-animation flags that do NOT actuate the systems (same finding
+        // as the A380 #56 work). The real controls (live-verified on the A32NX):
+        //   - WING anti-ice = A32NX_PNEU_WING_ANTI_ICE_SYSTEM_SELECTED (calc-path write;
+        //     reverts on the ground due to the on-ground inhibit, holds in flight —
+        //     A32NX_PNEU_WING_ANTI_ICE_SYSTEM_ON is the read-only valve-open status).
+        //   - ENGINE 1/2 anti-ice = the stock K-event ANTI_ICE_SET_ENGn (state read from
+        //     the stock simvar ENG ANTI ICE:n; verified 0->1 actuates). Routed in
+        //     HandleUIVariableSet.
+        ["A32NX_PNEU_WING_ANTI_ICE_SYSTEM_SELECTED"] = new SimConnect.SimVarDefinition
         {
-            Name = "XMLVAR_MOMENTARY_PUSH_OVHD_ANTIICE_WING_PRESSED",
+            Name = "A32NX_PNEU_WING_ANTI_ICE_SYSTEM_SELECTED",
             DisplayName = "Wing Anti-Ice",
-            Type = SimConnect.SimVarType.LVar,
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         },
-        ["XMLVAR_MOMENTARY_PUSH_OVHD_ANTIICE_ENG1_PRESSED"] = new SimConnect.SimVarDefinition
+        ["ENG_ANTI_ICE:1"] = new SimConnect.SimVarDefinition
         {
-            Name = "XMLVAR_MOMENTARY_PUSH_OVHD_ANTIICE_ENG1_PRESSED",
-            DisplayName = "Engine 1 Anti-Ice",
-            Type = SimConnect.SimVarType.LVar,
+            Name = "ENG ANTI ICE:1", DisplayName = "Engine 1 Anti-Ice",
+            Type = SimConnect.SimVarType.SimVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         },
-        ["XMLVAR_MOMENTARY_PUSH_OVHD_ANTIICE_ENG2_PRESSED"] = new SimConnect.SimVarDefinition
+        ["ENG_ANTI_ICE:2"] = new SimConnect.SimVarDefinition
         {
-            Name = "XMLVAR_MOMENTARY_PUSH_OVHD_ANTIICE_ENG2_PRESSED",
-            DisplayName = "Engine 2 Anti-Ice",
-            Type = SimConnect.SimVarType.LVar,
+            Name = "ENG ANTI ICE:2", DisplayName = "Engine 2 Anti-Ice",
+            Type = SimConnect.SimVarType.SimVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         },
 
@@ -4185,9 +4191,9 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         },
         ["Anti Ice"] = new List<string>
         {
-            "XMLVAR_MOMENTARY_PUSH_OVHD_ANTIICE_WING_PRESSED",
-            "XMLVAR_MOMENTARY_PUSH_OVHD_ANTIICE_ENG1_PRESSED",
-            "XMLVAR_MOMENTARY_PUSH_OVHD_ANTIICE_ENG2_PRESSED"
+            "A32NX_PNEU_WING_ANTI_ICE_SYSTEM_SELECTED",
+            "ENG_ANTI_ICE:1",
+            "ENG_ANTI_ICE:2"
         },
         ["Signs"] = new List<string>
         {
@@ -5473,6 +5479,17 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         if (varKey == "A32NX_CHRONO_ET_SWITCH_POS")
         {
             simConnect.ExecuteCalculatorCode($"{(int)Math.Round(value)} (>L:A32NX_CHRONO_ET_SWITCH_POS)");
+            return true;
+        }
+
+        // Engine 1/2 anti-ice: the cockpit pushbutton drives the stock K-event
+        // ANTI_ICE_SET_ENGn (the XMLVAR _PRESSED flag is animation-only). State is read
+        // back from the stock simvar ENG ANTI ICE:n. Verified live: a calc-path
+        // "{val} (>K:ANTI_ICE_SET_ENG1)" flips ENG ANTI ICE:1 0<->1.
+        if (varKey == "ENG_ANTI_ICE:1" || varKey == "ENG_ANTI_ICE:2")
+        {
+            string eng = varKey.EndsWith(":2") ? "2" : "1";
+            simConnect.ExecuteCalculatorCode($"{(int)Math.Round(value)} (>K:ANTI_ICE_SET_ENG{eng})");
             return true;
         }
 
