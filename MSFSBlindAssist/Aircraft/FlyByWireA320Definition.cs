@@ -890,6 +890,43 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [25] = "Low", [50] = "Medium", [75] = "High", [100] = "Full" }
         },
 
+        // ---- Air-conditioning ZONE TEMPERATURE selectors (5th-audit gap: the A380 has
+        // these, the A320 didn't). The cockpit knob is A32NX_OVHD_COND_{CKPT,FWD,AFT}_
+        // SELECTOR_KNOB (0..300, live-verified settable: CKPT held 200), which maps to
+        // 18-30 C. Surfaced as numeric Celsius inputs (key ends "_SET" → MainForm numeric
+        // box); HandleUIVariableSet converts C → the 0..300 knob. The actual zone temps
+        // (A32NX_COND_{CKPT,FWD,AFT}_TEMP, celsius) are the read-only display. ----
+        ["COND_CKPT_TEMP_SET"] = new SimConnect.SimVarDefinition
+        {
+            Name = "COND_CKPT_TEMP_SET", DisplayName = "Cockpit Temperature",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, Units = "celsius"
+        },
+        ["COND_FWD_TEMP_SET"] = new SimConnect.SimVarDefinition
+        {
+            Name = "COND_FWD_TEMP_SET", DisplayName = "Forward Cabin Temperature",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, Units = "celsius"
+        },
+        ["COND_AFT_TEMP_SET"] = new SimConnect.SimVarDefinition
+        {
+            Name = "COND_AFT_TEMP_SET", DisplayName = "Aft Cabin Temperature",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, Units = "celsius"
+        },
+        ["A32NX_COND_CKPT_TEMP"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_COND_CKPT_TEMP", DisplayName = "Cockpit Temperature",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, Units = "celsius"
+        },
+        ["A32NX_COND_FWD_TEMP"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_COND_FWD_TEMP", DisplayName = "Forward Cabin Temperature",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, Units = "celsius"
+        },
+        ["A32NX_COND_AFT_TEMP"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_COND_AFT_TEMP", DisplayName = "Aft Cabin Temperature",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, Units = "celsius"
+        },
+
         // ---- Wipers panel (parity with A380 Overhead > Wipers) — Captain + F/O wiper
         // selectors. Live-verified settable via the calculator path (held a 0->2 write).
         ["XMLVAR_A320_WiperSwitch_1"] = new SimConnect.SimVarDefinition
@@ -4112,6 +4149,11 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             // the ground inhibit; this is what's really happening at the valve).
             "A32NX_PNEU_WING_ANTI_ICE_SYSTEM_ON"
         },
+        ["Air Conditioning"] = new List<string>
+        {
+            // Actual zone temperatures (the selectors in the panel set the target).
+            "A32NX_COND_CKPT_TEMP", "A32NX_COND_FWD_TEMP", "A32NX_COND_AFT_TEMP"
+        },
         ["Thrust Levers"] = new List<string>
         {
             // Live lever angles (the detent set-combos in the panel show the last
@@ -4322,7 +4364,10 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             "A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON",
             "A32NX_OVHD_COND_PACK_1_PB_IS_ON",
-            "A32NX_OVHD_COND_PACK_2_PB_IS_ON"
+            "A32NX_OVHD_COND_PACK_2_PB_IS_ON",
+            "COND_CKPT_TEMP_SET",
+            "COND_FWD_TEMP_SET",
+            "COND_AFT_TEMP_SET"
         },
         ["Bleed Air"] = new List<string>
         {
@@ -5796,6 +5841,18 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
                 simConnect.SendEvent($"THROTTLE{eng}_AXIS_SET_EX1", ex1);
                 announcer.Announce($"Thrust lever {eng} {dnames[didx]}");
             }
+            return true;
+        }
+
+        // Air-conditioning zone temperature: numeric Celsius input (18-30) -> the FBW
+        // 0..300 selector knob (knob = (C-18)/12*300). Live-verified the knob is settable.
+        if (varKey == "COND_CKPT_TEMP_SET" || varKey == "COND_FWD_TEMP_SET" || varKey == "COND_AFT_TEMP_SET")
+        {
+            double t = Math.Max(18.0, Math.Min(30.0, value));
+            int knob = (int)Math.Round((t - 18.0) / 12.0 * 300.0);
+            string zone = varKey.Contains("CKPT") ? "CKPT" : varKey.Contains("FWD") ? "FWD" : "AFT";
+            simConnect.ExecuteCalculatorCode($"{knob} (>L:A32NX_OVHD_COND_{zone}_SELECTOR_KNOB)");
+            announcer.Announce($"{(zone == "CKPT" ? "Cockpit" : zone == "FWD" ? "Forward cabin" : "Aft cabin")} temperature {t:0.#} degrees");
             return true;
         }
 
