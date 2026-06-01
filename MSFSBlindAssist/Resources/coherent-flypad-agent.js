@@ -119,11 +119,15 @@
     if (role === "button" || c.indexOf("button") >= 0 || c.indexOf("btn") >= 0 || tag === "button") return "button";
     if (n.getAttribute && n.getAttribute("contenteditable") === "true") return "input";
     // Electronic-checklist item row: a "flex-row ... space-x-4" row that wraps a
-    // small "checkbox box" (.border-4.border-current). Clicking the row toggles
-    // the item complete; a check icon (svg) appears in the box when done. Gate the
-    // querySelector on the cheap class signature so it only runs on candidate rows.
+    // small "checkbox box" (.border-4). Clicking the row toggles the item complete;
+    // a check icon (svg) appears in the box when done. Match the box in ANY border
+    // state — pending/current/completed/sensed items can use different border colors
+    // (e.g. border-current vs a muted/completed token), and gating on
+    // ".border-4.border-current" silently DROPPED every item that wasn't the current
+    // colour, which could leave a multi-item checklist showing only one row. Gate on
+    // the cheap class signature so the querySelector only runs on candidate rows.
     if (c.indexOf("space-x-4") >= 0 && c.indexOf("flex-row") >= 0) {
-      try { if (n.querySelector(".border-4.border-current")) return "checkitem"; } catch (e) {}
+      try { if (n.querySelector(".border-4")) return "checkitem"; } catch (e) {}
     }
     // flyPad action buttons are frequently styled <div>s with NO button/btn
     // token and no role — e.g. the modal "Cancel"/"Confirm" buttons and the
