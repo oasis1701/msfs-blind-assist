@@ -899,6 +899,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         {
             ReadEnumQuiet($"A32NX_OVHD_COND_PACK_{n}_PB_HAS_FAULT", $"Pack {n} Fault", fault);
             ReadEnum($"A32NX_OVHD_COND_HOT_AIR_{n}_PB_HAS_FAULT", $"Hot Air {n} Fault", fault);
+            // Pack ACTUAL operating state (true even if the PB is on but the pack is
+            // not supplying air) — the real running indication, distinct from the PB.
+            ReadEnum($"A32NX_COND_PACK_{n}_IS_OPERATING", $"Pack {n} Operating",
+                new Dictionary<double, string> { [0] = "Off", [1] = "Operating" });
             for (int ch = 1; ch <= 2; ch++)
                 ReadEnum($"A32NX_COND_FDAC_{n}_CHANNEL_{ch}_FAILURE", $"FDAC {n} Channel {ch}", fault);
         }
@@ -1398,6 +1402,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Sel("A32NX_GPWS_FLAP_OFF", "GPWS Flap Mode", normOff);
         Sel("A32NX_GPWS_TERR_OFF", "GPWS Terrain", normOff);
         Sel("A32NX_GPWS_FLAPS3", "Landing Flap 3", new Dictionary<double, string> { [0] = "Off", [1] = "On" });
+        Btn("A32NX_GPWS_TEST", "GPWS Test");   // momentary self-test (preflight)
 
         // Ground / automation helpers (whole-aircraft state + pushback).
         Sel("A32NX_AIRCRAFT_PRESET_LOAD", "Load Aircraft Preset",
@@ -2014,7 +2019,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         p["GPWS"] = new List<string>
         {
             "A32NX_GPWS_SYS_OFF", "A32NX_GPWS_GS_OFF", "A32NX_GPWS_FLAP_OFF",
-            "A32NX_GPWS_TERR_OFF", "A32NX_GPWS_FLAPS3"
+            "A32NX_GPWS_TERR_OFF", "A32NX_GPWS_FLAPS3", "A32NX_GPWS_TEST"
         };
         // "PFD" is NOT a navigable control panel — it's the variable set the PFD
         // window (ShowPFD hotkey) requests/reads. Intentionally absent from
@@ -2110,6 +2115,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         for (int n = 1; n <= 2; n++)
         {
             cond.Add($"A32NX_OVHD_COND_PACK_{n}_PB_HAS_FAULT");
+            cond.Add($"A32NX_COND_PACK_{n}_IS_OPERATING");
             cond.Add($"A32NX_OVHD_COND_HOT_AIR_{n}_PB_HAS_FAULT");
             for (int ch = 1; ch <= 2; ch++) cond.Add($"A32NX_COND_FDAC_{n}_CHANNEL_{ch}_FAILURE");
         }
