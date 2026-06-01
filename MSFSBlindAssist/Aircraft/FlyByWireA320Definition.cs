@@ -3329,6 +3329,30 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Units = "kHz",
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
         },
+        // ---- COM2 / VHF2 (parity: the Radios panel now exposes COM1 + COM2) ----
+        ["COM_STANDBY_FREQUENCY_SET:2"] = new SimConnect.SimVarDefinition
+        {
+            Name = "COM STANDBY FREQUENCY:2", DisplayName = "COM 2 Set Standby Frequency",
+            Type = SimConnect.SimVarType.SimVar, Units = "kHz",
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
+        },
+        ["COM2_RADIO_SWAP"] = new SimConnect.SimVarDefinition
+        {
+            Name = "COM2_RADIO_SWAP", DisplayName = "COM 2 XFER Frequency",
+            Type = SimConnect.SimVarType.Event
+        },
+        ["COM_ACTIVE_FREQUENCY:2"] = new SimConnect.SimVarDefinition
+        {
+            Name = "COM ACTIVE FREQUENCY:2", DisplayName = "COM 2 Active Frequency",
+            Type = SimConnect.SimVarType.SimVar, Units = "kHz",
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
+        },
+        ["COM_STANDBY_FREQUENCY:2"] = new SimConnect.SimVarDefinition
+        {
+            Name = "COM STANDBY FREQUENCY:2", DisplayName = "COM 2 Standby Frequency",
+            Type = SimConnect.SimVarType.SimVar, Units = "kHz",
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
+        },
         ["COM_TRANSMIT:1"] = new SimConnect.SimVarDefinition
         {
             Name = "COM TRANSMIT:1",
@@ -3923,10 +3947,15 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             "A32NX_MASTER_CAUTION",
             "A32NX_AUTOPILOT_AUTOLAND_WARNING"
         },
-        ["RMP"] = new List<string>
+        ["Radios"] = new List<string>
         {
             "COM_ACTIVE_FREQUENCY:1",
             "COM_STANDBY_FREQUENCY:1",
+            "COM_ACTIVE_FREQUENCY:2",
+            "COM_STANDBY_FREQUENCY:2"
+        },
+        ["RMP"] = new List<string>
+        {
             "COM_TRANSMIT:1",
             "COM_TRANSMIT:2",
             "COM_TRANSMIT:3"
@@ -4011,8 +4040,8 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
 ["Overhead"] = new List<string> { "ELEC", "ADIRS", "APU", "Oxygen", "Fire", "Hydraulics", "Fuel", "Air Conditioning", "Bleed Air", "Pressurization", "Ventilation", "Cargo Air", "Anti Ice", "Signs", "Interior Lighting", "Exterior Lighting", "Calls", "GPWS", "Flight Control Computers", "Cockpit Door", "Evacuation", "Cargo Smoke", "Recorder and Misc", "Engine" },
         ["Glareshield"] = new List<string> { "FCU", "EFIS Captain", "EFIS First Officer", "Warnings" },
-        ["Instrument"] = new List<string> { "Autobrake and Gear", "PFD", "ND", "ISIS", "Source Switching", "Clock", "System Display" },
-        ["Pedestal"] = new List<string> { "Flight Controls", "Speed Brake", "Parking Brake", "Engines", "ECAM Control Panel", "Weather Radar", "Transponder", "RMP" }
+        ["Instrument"] = new List<string> { "Gear", "Autobrake", "PFD", "ND", "ISIS", "Source Switching", "Clock", "System Display" },
+        ["Pedestal"] = new List<string> { "Flight Controls", "Speed Brake", "Parking Brake", "Engines", "ECAM Control Panel", "Weather Radar", "Transponder", "Radios", "RMP" }
         };
     }
 
@@ -4254,11 +4283,14 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             "CLEAR_MASTER_WARNING",
             "CLEAR_MASTER_CAUTION"
         },
-        ["Autobrake and Gear"] = new List<string>
+        ["Gear"] = new List<string>
+        {
+            "GEAR_HANDLE_POSITION"
+        },
+        ["Autobrake"] = new List<string>
         {
             "AUTOBRAKE_MODE",
-            "A32NX_BRAKE_FAN_BTN_PRESSED",
-            "GEAR_HANDLE_POSITION"
+            "A32NX_BRAKE_FAN_BTN_PRESSED"
         },
         ["ISIS"] = new List<string>
         {
@@ -4323,11 +4355,15 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             "A32NX_SWITCH_TCAS_TRAFFIC_POSITION",
             "A32NX_SWITCH_TCAS_POSITION"
         },
-        ["RMP"] = new List<string>
+        ["Radios"] = new List<string>
         {
-            "COM_ACTIVE_FREQUENCY_SET:1",
             "COM_STANDBY_FREQUENCY_SET:1",
             "COM1_RADIO_SWAP",
+            "COM_STANDBY_FREQUENCY_SET:2",
+            "COM2_RADIO_SWAP"
+        },
+        ["RMP"] = new List<string>
+        {
             "A32NX_RMP_L_TOGGLE_SWITCH",
             "A32NX_RMP_L_SELECTED_MODE"
         },

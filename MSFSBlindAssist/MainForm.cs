@@ -5373,8 +5373,10 @@ public partial class MainForm : Form
                                 if (varKey.Contains(":2")) comIndex = "2";
                                 else if (varKey.Contains(":3")) comIndex = "3";
 
-                                // Always set standby first, then swap if setting active
-                                string setEvent = "COM_STBY_RADIO_SET_HZ"; // Sets standby in Hz
+                                // Always set standby first, then swap if setting active.
+                                // The COM1 standby-set event is the un-numbered "COM_STBY_RADIO_SET_HZ";
+                                // COM2/COM3 use the numbered form so a COM2 set doesn't write COM1's standby.
+                                string setEvent = comIndex == "1" ? "COM_STBY_RADIO_SET_HZ" : $"COM{comIndex}_STBY_RADIO_SET_HZ";
                                 string swapEvent = $"COM{comIndex}_RADIO_SWAP";
 
                                 // For active frequency: set standby then swap
