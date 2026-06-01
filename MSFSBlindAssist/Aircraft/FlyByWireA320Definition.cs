@@ -3766,6 +3766,34 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         },
+
+        // ---- Recorder and Misc panel (parity with A380 Overhead > Recorder and Misc) ----
+        ["A32NX_RCDR_GROUND_CONTROL_ON"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_RCDR_GROUND_CONTROL_ON", DisplayName = "CVR Ground Control",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        },
+        ["A32NX_ELT_ON"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_ELT_ON", DisplayName = "ELT",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Armed", [1] = "On" }
+        },
+
+        // ---- Interior Lighting panel (parity with A380 Overhead > Interior Lighting) ----
+        ["A32NX_OVHD_INTLT_ANN"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_OVHD_INTLT_ANN", DisplayName = "Annunciator Lights",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Test", [1] = "Bright", [2] = "Dim" }
+        },
+        ["A32NX_OVHD_INTLT_DOME"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_OVHD_INTLT_DOME", DisplayName = "Dome Light",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Dim", [2] = "Bright" }
+        },
         };
 
         // Merge aircraft-specific variables into base variables
@@ -3948,7 +3976,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     {
         return new Dictionary<string, List<string>>
         {
-["Overhead"] = new List<string> { "ELEC", "ADIRS", "APU", "Oxygen", "Fire", "Hydraulics", "Fuel", "Air Conditioning", "Bleed Air", "Pressurization", "Ventilation", "Cargo Air", "Anti Ice", "Signs", "Exterior Lighting", "Calls", "GPWS", "Flight Control Computers", "Cockpit Door", "Evacuation", "Cargo Smoke", "Engine" },
+["Overhead"] = new List<string> { "ELEC", "ADIRS", "APU", "Oxygen", "Fire", "Hydraulics", "Fuel", "Air Conditioning", "Bleed Air", "Pressurization", "Ventilation", "Cargo Air", "Anti Ice", "Signs", "Interior Lighting", "Exterior Lighting", "Calls", "GPWS", "Flight Control Computers", "Cockpit Door", "Evacuation", "Cargo Smoke", "Recorder and Misc", "Engine" },
         ["Glareshield"] = new List<string> { "FCU", "EFIS Control Panel", "Warnings" },
         ["Instrument"] = new List<string> { "Autobrake and Gear", "PFD", "ND", "ISIS", "Source Switching", "Clock", "System Display" },
         ["Pedestal"] = new List<string> { "Flight Controls", "Speed Brake", "Parking Brake", "Engines", "ECAM Control Panel", "Weather Radar", "Transponder", "RMP" }
@@ -4062,6 +4090,16 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             "A32NX_OVHD_CARGO_AIR_HOT_AIR_PB_IS_ON",
             "A32NX_OVHD_CARGO_AIR_ISOL_VALVES_FWD_PB_IS_ON",
             "A32NX_OVHD_CARGO_AIR_ISOL_VALVES_AFT_PB_IS_ON"
+        },
+        ["Interior Lighting"] = new List<string>
+        {
+            "A32NX_OVHD_INTLT_ANN",
+            "A32NX_OVHD_INTLT_DOME"
+        },
+        ["Recorder and Misc"] = new List<string>
+        {
+            "A32NX_RCDR_GROUND_CONTROL_ON",
+            "A32NX_ELT_ON"
         },
         ["Flight Control Computers"] = new List<string>
         {
