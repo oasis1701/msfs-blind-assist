@@ -3583,7 +3583,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             "COM_TRANSMIT:2",
             "COM_TRANSMIT:3"
         },
-        ["ECAM"] = new List<string>
+        ["ECAM Control Panel"] = new List<string>
         {
             "A32NX_ECAM_SFAIL"
         },
@@ -3659,10 +3659,10 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     {
         return new Dictionary<string, List<string>>
         {
-["Overhead Forward"] = new List<string> { "ELEC", "ADIRS", "APU", "Oxygen", "Fire", "Hydraulic", "Fuel", "Air Con", "Anti Ice", "Signs", "Exterior Lighting", "Calls", "GPWS", "Cockpit Door", "Evacuation", "Cargo Smoke", "Engine" },
+["Overhead"] = new List<string> { "ELEC", "ADIRS", "APU", "Oxygen", "Fire", "Hydraulics", "Fuel", "Air Conditioning", "Anti Ice", "Signs", "Exterior Lighting", "Calls", "GPWS", "Cockpit Door", "Evacuation", "Cargo Smoke", "Engine" },
         ["Glareshield"] = new List<string> { "FCU", "EFIS Control Panel", "Warnings" },
         ["Instrument"] = new List<string> { "Autobrake and Gear", "PFD", "ND", "ISIS", "System Display" },
-        ["Pedestal"] = new List<string> { "Flight Controls", "Speed Brake", "Parking Brake", "Engines", "ECAM", "WX", "ATC-TCAS", "RMP" }
+        ["Pedestal"] = new List<string> { "Flight Controls", "Speed Brake", "Parking Brake", "Engines", "ECAM Control Panel", "Weather Radar", "Transponder", "RMP" }
         };
     }
 
@@ -3707,7 +3707,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             "A32NX_FIRE_ENG2_AGENT2_Discharge",
             "A32NX_FIRE_APU_AGENT1_Discharge",
         },
-        ["Hydraulic"] = new List<string>
+        ["Hydraulics"] = new List<string>
         {
             "A32NX_OVHD_HYD_ENG_1_PUMP_PB_IS_AUTO",
             "A32NX_OVHD_HYD_ENG_1_PUMP_PB_HAS_FAULT",
@@ -3730,7 +3730,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             "FUELSYSTEM_VALVE_TOGGLE:10",
             "FUELSYSTEM_VALVE_TOGGLE:3" 
         },
-        ["Air Con"] = new List<string> 
+        ["Air Conditioning"] = new List<string> 
         { 
             "A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON", 
             "A32NX_OVHD_COND_PACK_1_PB_IS_ON", 
@@ -3871,7 +3871,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             "ENGINE_2_MASTER_OFF",
             "ENGINE_MODE_SELECTOR"
         },
-        ["ECAM"] = new List<string>
+        ["ECAM Control Panel"] = new List<string>
         {
             "ECAM_ENG",
             "ECAM_APU",
@@ -3896,11 +3896,11 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             "A32NX_MSFSBA_SD_PAGE"
         },
-        ["WX"] = new List<string>
+        ["Weather Radar"] = new List<string>
         {
             "A32NX_SWITCH_RADAR_PWS_POSITION"
         },
-        ["ATC-TCAS"] = new List<string>
+        ["Transponder"] = new List<string>
         {
             "A32NX_TRANSPONDER_MODE",
             "A32NX_TRANSPONDER_SYSTEM",
