@@ -926,6 +926,15 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Name = "A32NX_COND_AFT_TEMP", DisplayName = "Aft Cabin Temperature",
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, Units = "celsius"
         },
+        // APU "AVAIL" status (5th-audit gap). Read-only display only — NOT auto-announced,
+        // because the EWD memo "APU AVAIL" already speaks it (avoids the A380 #62
+        // double-announce). Lets the pilot read whether the APU is ready on the APU panel.
+        ["A32NX_OVHD_APU_START_PB_IS_AVAILABLE"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_OVHD_APU_START_PB_IS_AVAILABLE", DisplayName = "APU Available",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "No", [1] = "Available" }
+        },
 
         // ---- Wipers panel (parity with A380 Overhead > Wipers) — Captain + F/O wiper
         // selectors. Live-verified settable via the calculator path (held a 0->2 write).
@@ -4153,6 +4162,11 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             // Actual zone temperatures (the selectors in the panel set the target).
             "A32NX_COND_CKPT_TEMP", "A32NX_COND_FWD_TEMP", "A32NX_COND_AFT_TEMP"
+        },
+        ["APU"] = new List<string>
+        {
+            // APU AVAIL annunciation (read-only; the EWD memo speaks it).
+            "A32NX_OVHD_APU_START_PB_IS_AVAILABLE"
         },
         ["Thrust Levers"] = new List<string>
         {
