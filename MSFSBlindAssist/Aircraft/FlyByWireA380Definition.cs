@@ -438,7 +438,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Press("A32NX_FIRE_BUTTON_APU", "APU Fire Button");
         Mon("A32NX_FIRE_DETECTED_APU", "APU Fire",
             new Dictionary<double, string> { [0] = "Normal", [1] = "FIRE" });
-        Btn("A32NX_OVHD_FIRE_TEST_PB_IS_PRESSED", "Fire Test");
+        // Fire Test is a HOLD button (FBW <HOLD_SIMVAR>): the test runs only WHILE the
+        // var is held at 1 (fire warnings + ECAM/EWD output appear), so a 250 ms
+        // momentary pulse was too brief to be useful. Render as On/Off so the user
+        // sets it On (test runs, the EWD speaks the fire-test result), then Off.
+        OnOff("A32NX_OVHD_FIRE_TEST_PB_IS_PRESSED", "Fire Test");
 
         // ---- OXYGEN ----
         Sel("PUSH_OVHD_OXYGEN_CREW", "Crew Oxygen",
@@ -1391,11 +1395,15 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         ReadEnum("A32NX_CARGOSMOKE_AFT_DISCHARGED", "Cargo Aft Smoke Agent", dischargedVd);
 
         // Recorder / misc overhead.
-        Btn("A32NX_RCDR_TEST", "Recorder Test");
-        Btn("A32NX_ELT_TEST_RESET", "ELT Test / Reset");
-        Btn("A32NX_DFDR_EVENT_ON", "DFDR Event");
-        Btn("A32NX_RAIN_REPELLENT_LEFT_ON", "Rain Repellent Left");
-        Btn("A32NX_RAIN_REPELLENT_RIGHT_ON", "Rain Repellent Right");
+        // These are all HOLD buttons in the FBW model (<HOLD_SIMVAR>): the action
+        // runs only WHILE held at 1 (CVR test tone, ELT test, FDR event mark, rain-
+        // repellent squirt), so render as On/Off — set On to run/hold, Off to stop —
+        // rather than a too-brief momentary pulse.
+        OnOff("A32NX_RCDR_TEST", "Recorder Test");
+        OnOff("A32NX_ELT_TEST_RESET", "ELT Test / Reset");
+        OnOff("A32NX_DFDR_EVENT_ON", "DFDR Event");
+        OnOff("A32NX_RAIN_REPELLENT_LEFT_ON", "Rain Repellent Left");
+        OnOff("A32NX_RAIN_REPELLENT_RIGHT_ON", "Rain Repellent Right");
         OnOff("A32NX_OVHD_NSS_DATA_TO_AVNCS_TOGGLE", "NSS Data to Avionics");
         OnOff("A32NX_NSS_MASTER_OFF", "NSS Master Off");
 
@@ -1478,7 +1486,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Sel("A32NX_GPWS_FLAP_OFF", "GPWS Flap Mode", normOff);
         Sel("A32NX_GPWS_TERR_OFF", "GPWS Terrain", normOff);
         Sel("A32NX_GPWS_FLAPS3", "Landing Flap 3", new Dictionary<double, string> { [0] = "Off", [1] = "On" });
-        Btn("A32NX_GPWS_TEST", "GPWS Test");   // momentary self-test (preflight)
+        OnOff("A32NX_GPWS_TEST", "GPWS Test");   // HOLD self-test: On runs the test audio, Off ends it
 
         // Ground / automation helpers (whole-aircraft state + pushback).
         Sel("A32NX_AIRCRAFT_PRESET_LOAD", "Load Aircraft Preset",
@@ -1597,7 +1605,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // Rudder trim RESET (zeroes the trim) + nosewheel-steering pedal disconnect
         // (held during the rudder flight-control check so the nose wheel doesn't
         // scrub). #107 transcript gaps. Settable via the calculator catch-all.
-        Btn("A32NX_RUDDER_TRIM_RESET", "Rudder Trim Reset");
+        // Rudder Trim Reset: the cockpit fires the stock K-event RUDDER_TRIM_RESET on
+        // press (NOT an L:var — pulsing A32NX_RUDDER_TRIM_RESET drove nothing). Render
+        // as an Idle/Reset action combo; the Reset option fires the K-event (verified).
+        Act("A32NX_RUDDER_TRIM_RESET", "Rudder Trim Reset",
+            new Dictionary<double, string> { [0] = "Idle", [1] = "Reset" });
         Btn("A32NX_TILLER_PEDAL_DISCONNECT", "Nosewheel Steering Pedal Disconnect");
         ReadEnum("A32NX_PRIORITY_TAKEOVER:1", "Capt Sidestick Priority", new Dictionary<double, string> { [0] = "Normal", [1] = "Priority Taken" });
         ReadEnum("A32NX_PRIORITY_TAKEOVER:2", "F/O Sidestick Priority", new Dictionary<double, string> { [0] = "Normal", [1] = "Priority Taken" });
@@ -3023,6 +3035,17 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         if (_extLightSetEvents.TryGetValue(varKey, out var lightEvent))
         {
             simConnect.SendEvent(lightEvent, (uint)Math.Round(value));
+            return true;
+        }
+        // Rudder Trim Reset: fire the stock K-event the cockpit uses (the L:var does
+        // nothing). Only the "Reset" option (value 1) fires.
+        if (varKey == "A32NX_RUDDER_TRIM_RESET")
+        {
+            if (value > 0.5)
+            {
+                simConnect.ExecuteCalculatorCode("(>K:RUDDER_TRIM_RESET)");
+                announcer.Announce("Rudder trim reset");
+            }
             return true;
         }
         // Flaps lever: the handle index is a computed output; the stock FLAPS_SET
