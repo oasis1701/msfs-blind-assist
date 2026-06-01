@@ -3467,20 +3467,26 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             variables[kvp.Key] = kvp.Value;
         }
 
-        // Make discrete control/state combos AUTO-ANNOUNCE on change (cockpit-side or
-        // system changes), not just update their panel combo — mirroring the A380's
-        // Sel() pattern (Continuous + IsAnnounced). Without this, e.g. a battery PB
-        // toggled in the cockpit was silent. Curated to discrete on/off/auto/mode
-        // state controls (NOT momentary buttons or analog readouts). Each becomes
-        // muteable in the Ctrl+M monitor. The guard skips any var lacking value
-        // descriptions, so a bad key can't turn a numeric var into spoken noise.
-        foreach (var key in _autoAnnounceControlVars)
+        // Make EVERY discrete control combo AUTO-ANNOUNCE on change (Continuous +
+        // IsAnnounced) — exactly like the A380 (Sel helper) and PMDG, where every
+        // writable switch combo is monitored and the user mutes any chatty one via the
+        // Ctrl+M monitor. NO hand-curated list: any panel-control var that is a readable
+        // discrete combo (LVar/SimVar WITH value descriptions, currently OnRequest) is
+        // flipped. The guards skip numeric input fields (_SET, no descriptions) and
+        // event-only controls (Type == Event), so only real readable state combos change.
+        foreach (var panelKeys in BuildPanelControls().Values)
         {
-            if (variables.TryGetValue(key, out var cdef)
-                && cdef.ValueDescriptions != null && cdef.ValueDescriptions.Count > 0)
+            foreach (var key in panelKeys)
             {
-                cdef.UpdateFrequency = SimConnect.UpdateFrequency.Continuous;
-                cdef.IsAnnounced = true;
+                if (key != SdPageVar   // synthetic SD-page selector — drives the scrape, not a monitored state
+                    && variables.TryGetValue(key, out var cdef)
+                    && (cdef.Type == SimConnect.SimVarType.LVar || cdef.Type == SimConnect.SimVarType.SimVar)
+                    && cdef.ValueDescriptions != null && cdef.ValueDescriptions.Count > 0
+                    && cdef.UpdateFrequency == SimConnect.UpdateFrequency.OnRequest)
+                {
+                    cdef.UpdateFrequency = SimConnect.UpdateFrequency.Continuous;
+                    cdef.IsAnnounced = true;
+                }
             }
         }
 
@@ -4392,41 +4398,6 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     // the SD system pages (ELEC/HYD/... added one at a time) read decoded SimVars. The
     // status box shows the selected page's content, populated on selection — no
     // auto-speech, no manual refresh. Combo backed by an MSFSBA-internal L:var.
-    // Discrete control/state combos that should ALSO auto-announce on change (see the
-    // post-process loop in GetVariables). Curated, expanded panel-by-panel — discrete
-    // on/off/auto/mode controls only; momentary buttons and analog readouts excluded.
-    private static readonly HashSet<string> _autoAnnounceControlVars = new()
-    {
-        // ELEC
-        "A32NX_OVHD_ELEC_BAT_1_PB_IS_AUTO", "A32NX_OVHD_ELEC_BAT_2_PB_IS_AUTO",
-        "A32NX_OVHD_ELEC_EXT_PWR_PB_IS_ON",
-        // APU
-        "A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", "A32NX_OVHD_APU_START_PB_IS_ON",
-        // Air conditioning / bleed
-        "A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON",
-        "A32NX_OVHD_COND_PACK_1_PB_IS_ON", "A32NX_OVHD_COND_PACK_2_PB_IS_ON",
-        // Hydraulics
-        "A32NX_OVHD_HYD_ENG_1_PUMP_PB_IS_AUTO", "A32NX_OVHD_HYD_ENG_2_PUMP_PB_IS_AUTO",
-        "A32NX_OVHD_HYD_EPUMPB_PB_IS_AUTO", "A32NX_OVHD_HYD_EPUMPY_PB_IS_AUTO",
-        "A32NX_OVHD_HYD_PTU_PB_IS_AUTO",
-        // ADIRS IR mode selectors
-        "A32NX_OVHD_ADIRS_IR_1_MODE_SELECTOR_KNOB", "A32NX_OVHD_ADIRS_IR_2_MODE_SELECTOR_KNOB",
-        "A32NX_OVHD_ADIRS_IR_3_MODE_SELECTOR_KNOB",
-        // Signs (no-smoking / emergency-exit position)
-        "XMLVAR_SWITCH_OVHD_INTLT_NOSMOKING_POSITION", "XMLVAR_SWITCH_OVHD_INTLT_EMEREXIT_POSITION",
-        // Transponder / TCAS / weather radar
-        "A32NX_TRANSPONDER_MODE", "A32NX_TRANSPONDER_SYSTEM", "A32NX_SWITCH_ATC_ALT",
-        "A32NX_SWITCH_TCAS_TRAFFIC_POSITION", "A32NX_SWITCH_TCAS_POSITION",
-        "A32NX_SWITCH_RADAR_PWS_POSITION",
-        // ISIS (baro reference + ILS)
-        "A32NX_ISIS_BARO_MODE", "A32NX_ISIS_LS_ACTIVE",
-        // GPWS off-switches
-        "A32NX_GPWS_SYS_OFF", "A32NX_GPWS_GS_OFF", "A32NX_GPWS_FLAP_OFF",
-        "A32NX_GPWS_TERR_OFF", "A32NX_GPWS_FLAPS3",
-        // Cabin / security background state
-        "A32NX_OXYGEN_MASKS_DEPLOYED", "A32NX_COCKPIT_DOOR_LOCKED", "A32NX_CALLS_EMER_ON",
-    };
-
     public const string SdPageVar = "A32NX_MSFSBA_SD_PAGE";
     private SimConnect.CoherentDisplayClient? _ewdScrapeClient;
     private string _sdBoxContent = "";
