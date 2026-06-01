@@ -108,6 +108,57 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         },
+        // ---- ELEC parity with the A380: generators, bus tie, AC ESS feed, IDG disc,
+        // commercial. All verified to exist live. (GEN PBs may be FBW computed mirrors;
+        // kept settable + readable either way — the readout/announce always works.)
+        ["A32NX_OVHD_ELEC_ENG_GEN_1_PB_IS_ON"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_OVHD_ELEC_ENG_GEN_1_PB_IS_ON", DisplayName = "Generator 1",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        },
+        ["A32NX_OVHD_ELEC_ENG_GEN_2_PB_IS_ON"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_OVHD_ELEC_ENG_GEN_2_PB_IS_ON", DisplayName = "Generator 2",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        },
+        ["A32NX_OVHD_ELEC_APU_GEN_PB_IS_ON"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_OVHD_ELEC_APU_GEN_PB_IS_ON", DisplayName = "APU Generator",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        },
+        ["A32NX_OVHD_ELEC_BUS_TIE_PB_IS_AUTO"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_OVHD_ELEC_BUS_TIE_PB_IS_AUTO", DisplayName = "Bus Tie",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Auto" }
+        },
+        ["A32NX_OVHD_ELEC_AC_ESS_FEED_PB_IS_NORMAL"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_OVHD_ELEC_AC_ESS_FEED_PB_IS_NORMAL", DisplayName = "AC ESS Feed",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Altn", [1] = "Normal" }
+        },
+        ["A32NX_OVHD_ELEC_IDG_1_PB_IS_RELEASED"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_OVHD_ELEC_IDG_1_PB_IS_RELEASED", DisplayName = "IDG 1 Disconnect",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Disconnected" }
+        },
+        ["A32NX_OVHD_ELEC_IDG_2_PB_IS_RELEASED"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_OVHD_ELEC_IDG_2_PB_IS_RELEASED", DisplayName = "IDG 2 Disconnect",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Disconnected" }
+        },
+        ["A32NX_OVHD_ELEC_COMMERCIAL_PB_IS_ON"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_OVHD_ELEC_COMMERCIAL_PB_IS_ON", DisplayName = "Commercial",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        },
 
         // ELEC Monitoring Variables (continuous monitoring with auto-announcement)
         ["A32NX_ELEC_AC_ESS_BUS_IS_POWERED"] = new SimConnect.SimVarDefinition
@@ -3710,7 +3761,15 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             "A32NX_OVHD_ELEC_BAT_1_PB_IS_AUTO",
             "A32NX_OVHD_ELEC_BAT_2_PB_IS_AUTO",
-            "A32NX_OVHD_ELEC_EXT_PWR_PB_IS_ON"
+            "A32NX_OVHD_ELEC_EXT_PWR_PB_IS_ON",
+            "A32NX_OVHD_ELEC_ENG_GEN_1_PB_IS_ON",
+            "A32NX_OVHD_ELEC_ENG_GEN_2_PB_IS_ON",
+            "A32NX_OVHD_ELEC_APU_GEN_PB_IS_ON",
+            "A32NX_OVHD_ELEC_BUS_TIE_PB_IS_AUTO",
+            "A32NX_OVHD_ELEC_AC_ESS_FEED_PB_IS_NORMAL",
+            "A32NX_OVHD_ELEC_IDG_1_PB_IS_RELEASED",
+            "A32NX_OVHD_ELEC_IDG_2_PB_IS_RELEASED",
+            "A32NX_OVHD_ELEC_COMMERCIAL_PB_IS_ON"
         },
         ["ADIRS"] = new List<string> 
         { 
@@ -5112,6 +5171,21 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             simConnect.SendEvent(varKey, convertedValue);
             announcer.Announce($"Right baro set to {value:F2} hPa");
             return true; // Handled
+        }
+
+        // Reliable write catch-all for FBW discrete L:var combos (mirrors the A380 #103
+        // fix): MainForm's generic data-def SetLVar is unreliable for FBW L:vars, so route
+        // any settable A32NX_/XMLVAR_ discrete combo through the MobiFlight calculator path.
+        // Only plain (non-indexed) L:vars with value descriptions reach here — all the
+        // special cases (events, _SET fields, scaled values) returned above.
+        if (varDef.Type == SimConnect.SimVarType.LVar
+            && varDef.ValueDescriptions != null && varDef.ValueDescriptions.Count > 0
+            && !varDef.Name.Contains(":")
+            && (varDef.Name.StartsWith("A32NX_", StringComparison.Ordinal)
+                || varDef.Name.StartsWith("XMLVAR_", StringComparison.Ordinal)))
+        {
+            simConnect.ExecuteCalculatorCode($"{(int)Math.Round(value)} (>L:{varDef.Name})");
+            return true;
         }
 
         return false; // Not handled - use generic logic
