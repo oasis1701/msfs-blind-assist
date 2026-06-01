@@ -55,7 +55,7 @@
       var key = tx + "@" + Math.round(x / 6) + "," + Math.round(y / 6);
       if (seen[key]) continue;
       seen[key] = 1;
-      out.push({ t: tx, x: x, y: y });
+      out.push({ t: tx, x: x, y: y, rt: Math.round(r.right) });
     }
     return out;
   };
@@ -87,9 +87,17 @@
       var lines = [];
       for (var j = 0; j < rows.length; j++) {
         rows[j].sort(function (a, b) { return a.x - b.x; });
-        var parts = [];
-        for (var k = 0; k < rows[j].length; k++) parts.push(rows[j][k].t);
-        var line = clean(parts.join("   "));
+        // GAP-AWARE join: fragments that are touching (split decimals/colons like
+        // "64" "." "8" or "06:48:" "30") have a tiny x-gap and join with NO space →
+        // "64.8" / "06:48:30"; genuinely separate values/labels get a single space.
+        var line = "";
+        for (var k = 0; k < rows[j].length; k++) {
+          var tok = rows[j][k].t;
+          if (k === 0) { line = tok; continue; }
+          var gap = rows[j][k].x - rows[j][k - 1].rt;
+          line += (gap < 6 ? "" : " ") + tok;
+        }
+        line = line.replace(/^\s+|\s+$/g, "");
         if (line) lines.push(line);
       }
       return JSON.stringify({ ok: true, rows: lines });
