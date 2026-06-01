@@ -3045,6 +3045,36 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
                 [0] = "10 NM", [1] = "20 NM", [2] = "40 NM", [3] = "80 NM", [4] = "160 NM", [5] = "320 NM"
             }
         },
+        // First Officer EFIS mode/range knobs (mirror of the captain's; the FCU knob
+        // var is the settable control — the A32NX_EFIS_R_ND_* vars are computed display
+        // outputs that revert, verified live). LS (ILS) buttons per side are directly
+        // settable L:vars (held a write live).
+        ["A32NX_FCU_EFIS_R_EFIS_MODE"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FCU_EFIS_R_EFIS_MODE", DisplayName = "EFIS Mode Control",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string>
+            { [0] = "ROSE ILS", [1] = "ROSE VOR", [2] = "ROSE NAV", [3] = "ARC", [4] = "PLAN" }
+        },
+        ["A32NX_FCU_EFIS_R_EFIS_RANGE"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FCU_EFIS_R_EFIS_RANGE", DisplayName = "EFIS Range Control",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string>
+            { [0] = "10 NM", [1] = "20 NM", [2] = "40 NM", [3] = "80 NM", [4] = "160 NM", [5] = "320 NM" }
+        },
+        ["A32NX_EFIS_L_LS_BUTTON_IS_ON"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_EFIS_L_LS_BUTTON_IS_ON", DisplayName = "ILS",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        },
+        ["A32NX_EFIS_R_LS_BUTTON_IS_ON"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_EFIS_R_LS_BUTTON_IS_ON", DisplayName = "ILS",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        },
 
         // Navigation Performance
         ["A32NX_FMGC_L_RNP"] = new SimConnect.SimVarDefinition
@@ -3870,11 +3900,14 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             "A32NX_ADIRS_ADIRU_2_STATE",
             "A32NX_ADIRS_ADIRU_3_STATE"
         },
-        ["EFIS Control Panel"] = new List<string>
+        ["EFIS Captain"] = new List<string>
         {
             "KOHLSMAN SETTING MB:1",
             "KOHLSMAN SETTING HG:1",
-            "A32NX_FCU_EFIS_L_DISPLAY_BARO_VALUE_MODE",
+            "A32NX_FCU_EFIS_L_DISPLAY_BARO_VALUE_MODE"
+        },
+        ["EFIS First Officer"] = new List<string>
+        {
             "KOHLSMAN SETTING MB:2",
             "KOHLSMAN SETTING HG:2",
             "A32NX_FCU_EFIS_R_DISPLAY_BARO_VALUE_MODE"
@@ -3977,7 +4010,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         return new Dictionary<string, List<string>>
         {
 ["Overhead"] = new List<string> { "ELEC", "ADIRS", "APU", "Oxygen", "Fire", "Hydraulics", "Fuel", "Air Conditioning", "Bleed Air", "Pressurization", "Ventilation", "Cargo Air", "Anti Ice", "Signs", "Interior Lighting", "Exterior Lighting", "Calls", "GPWS", "Flight Control Computers", "Cockpit Door", "Evacuation", "Cargo Smoke", "Recorder and Misc", "Engine" },
-        ["Glareshield"] = new List<string> { "FCU", "EFIS Control Panel", "Warnings" },
+        ["Glareshield"] = new List<string> { "FCU", "EFIS Captain", "EFIS First Officer", "Warnings" },
         ["Instrument"] = new List<string> { "Autobrake and Gear", "PFD", "ND", "ISIS", "Source Switching", "Clock", "System Display" },
         ["Pedestal"] = new List<string> { "Flight Controls", "Speed Brake", "Parking Brake", "Engines", "ECAM Control Panel", "Weather Radar", "Transponder", "RMP" }
         };
@@ -4194,14 +4227,23 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             "A32NX.FCU_SPD_MACH_TOGGLE_PUSH",
             "A32NX.FCU_TRK_FPA_TOGGLE_PUSH"
         },
-        ["EFIS Control Panel"] = new List<string>
+        ["EFIS Captain"] = new List<string>
         {
+            "A32NX_FCU_EFIS_L_EFIS_MODE",
+            "A32NX_FCU_EFIS_L_EFIS_RANGE",
+            "A32NX_EFIS_L_LS_BUTTON_IS_ON",
             "A32NX.FCU_EFIS_L_FD_PUSH",
-            "A32NX.FCU_EFIS_R_FD_PUSH",
             "A32NX_FCU_EFIS_L_BARO_IS_INHG",
             "A32NX.FCU_EFIS_L_BARO_SET",
             "A32NX.FCU_EFIS_L_BARO_PUSH",
-            "A32NX.FCU_EFIS_L_BARO_PULL",
+            "A32NX.FCU_EFIS_L_BARO_PULL"
+        },
+        ["EFIS First Officer"] = new List<string>
+        {
+            "A32NX_FCU_EFIS_R_EFIS_MODE",
+            "A32NX_FCU_EFIS_R_EFIS_RANGE",
+            "A32NX_EFIS_R_LS_BUTTON_IS_ON",
+            "A32NX.FCU_EFIS_R_FD_PUSH",
             "A32NX_FCU_EFIS_R_BARO_IS_INHG",
             "A32NX.FCU_EFIS_R_BARO_SET",
             "A32NX.FCU_EFIS_R_BARO_PUSH",
