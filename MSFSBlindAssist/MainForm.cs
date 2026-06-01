@@ -72,6 +72,7 @@ public partial class MainForm : Form
     private HandFlyManager handFlyManager = null!;
     private VisualGuidanceManager visualGuidanceManager = null!;
     private MSFSBlindAssist.Services.GroundSpeedAnnouncer groundSpeedAnnouncer = null!;
+    private MSFSBlindAssist.Services.AltitudeCalloutAnnouncer altitudeCalloutAnnouncer = null!;
     private ElectronicFlightBagForm? electronicFlightBagForm;
     private TrackFixForm? trackFixForm;
     private TcasForm? tcasForm;
@@ -293,6 +294,8 @@ public partial class MainForm : Form
         // variable, so callouts work in every phase (takeoff roll, landing rollout, taxi),
         // not just while taxi guidance is active.
         groundSpeedAnnouncer = new MSFSBlindAssist.Services.GroundSpeedAnnouncer(announcer);
+        // 1,000-foot crossing callouts, fed by the always-on INDICATED ALTITUDE var.
+        altitudeCalloutAnnouncer = new MSFSBlindAssist.Services.AltitudeCalloutAnnouncer(announcer);
 
         // Initialize taxi guidance manager
         taxiGuidanceManager = new TaxiGuidanceManager(announcer);
@@ -641,6 +644,11 @@ public partial class MainForm : Form
             var varDef = currentAircraft.GetVariables()[e.VarName];
             if (varDef.IsAnnounced && varDef.UpdateFrequency == UpdateFrequency.Continuous)
             {
+                // INDICATED_ALTITUDE is continuously monitored only to feed the 1,000-ft
+                // crossing announcer (HandleSpecialAnnouncements); never speak it as a raw
+                // "Altitude: 5234" through the generic gate. Display/feed already ran above.
+                if (e.VarName == "INDICATED_ALTITUDE") return;
+
                 // Check if disabled in Fenix Monitor Manager
                 if (currentAircraft.AircraftCode == "FENIX_A320CEO" &&
                     Settings.SettingsManager.Current.FenixDisabledMonitorVariables.Contains(e.VarName))
@@ -724,6 +732,15 @@ public partial class MainForm : Form
     {
         // NOTE: Aircraft-specific ProcessSimVarUpdate() is now called in the main flow (line 206)
         // to avoid duplicate calls. Flight phase window title updates happen there.
+
+        // 1,000-foot crossing callouts. INDICATED_ALTITUDE is also a panel-display var, so
+        // this is a NON-terminal feed (no early return) — processing continues so the
+        // display box still updates. The var is registered IsAnnounced=false (per aircraft),
+        // so the generic announce gate stays silent and only these callouts speak.
+        if (e.VarName == "INDICATED_ALTITUDE")
+        {
+            altitudeCalloutAnnouncer.ProcessAltitude(e.Value, _lastOnGround);
+        }
 
         // Handle FCU hotkey value announcements
         if (e.VarName == "FCU_HEADING" || e.VarName == "FCU_SPEED" || e.VarName == "FCU_ALTITUDE" ||

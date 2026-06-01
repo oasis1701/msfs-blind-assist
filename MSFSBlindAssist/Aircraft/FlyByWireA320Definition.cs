@@ -2091,12 +2091,18 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             Units = "percent"
         },
+        // Continuously monitored so the 1,000-ft crossing announcer (MainForm) is fed.
+        // IsAnnounced=true is required for continuous batched monitoring, but the generic
+        // announce gate skips INDICATED_ALTITUDE (it's spoken by the callout announcer, not
+        // as a raw "Altitude: 5234"). Still works as an OnRequest-style display var for the
+        // PFD/ISIS boxes (force-read + live update both function on a continuous var).
         ["INDICATED_ALTITUDE"] = new SimConnect.SimVarDefinition
         {
             Name = "INDICATED ALTITUDE",
             DisplayName = "Indicated Altitude",
             Type = SimConnect.SimVarType.SimVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,
             Units = "feet"
         },
         // Indicated airspeed — surfaced in the PFD + ISIS accessible status boxes

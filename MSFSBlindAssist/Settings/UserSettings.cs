@@ -161,6 +161,9 @@ public class UserSettings
         // when AircraftCode == "A320". Persisted across sessions.
         public List<string> A32NXDisabledMonitorVariables { get; set; } = new List<string>();
 
+        // Announce each 1,000-foot crossing while airborne ("5,000 feet", …). Default on.
+        public bool AltitudeCalloutsEnabled { get; set; } = true;
+
         // FMC settings — meaningful when a PMDG aircraft or the Fenix A320 is
         // loaded; the FMC Settings menu item is gated on
         // AircraftCode.StartsWith("PMDG_") || AircraftCode.StartsWith("FENIX_").
@@ -322,6 +325,7 @@ public class UserSettings
             PMDGDisabledMonitorVariables = new List<string>(PMDGDisabledMonitorVariables),
             A380DisabledMonitorVariables = new List<string>(A380DisabledMonitorVariables),
             A32NXDisabledMonitorVariables = new List<string>(A32NXDisabledMonitorVariables),
+            AltitudeCalloutsEnabled = AltitudeCalloutsEnabled,
             MCDUUseAlternateLSKKeys = MCDUUseAlternateLSKKeys,
             PMDGEnhancedDistanceMode = PMDGEnhancedDistanceMode,
             WeatherAutoAnnounceEnabled = WeatherAutoAnnounceEnabled,
