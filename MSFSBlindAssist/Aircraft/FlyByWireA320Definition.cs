@@ -4108,29 +4108,12 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
                 RequestSpeedVFE(simConnect);
                 return true;
 
-            // A32NX-specific windows
-            case HotkeyAction.ShowPFD:
-                hotkeyManager.ExitOutputHotkeyMode();
-                ShowA320PFDWindow(simConnect, announcer);
-                return true;
-
-            case HotkeyAction.ShowNavigationDisplay:
-                hotkeyManager.ExitOutputHotkeyMode();
-                ShowA320NavigationDisplay(simConnect, announcer);
-                return true;
-
+            // PFD / ND / ECAM / SD display WINDOWS are removed — the A32NX now reads
+            // these through the accessible status-box panels (Instrument > PFD / ND /
+            // ISIS / System Display), exactly like the A380. ShowPFD /
+            // ShowNavigationDisplay / ShowECAM / ShowStatusPage fall through to no-op.
             case HotkeyAction.ReadFuelInfo:
                 RequestFuelQuantityKg(simConnect);
-                return true;
-
-            case HotkeyAction.ShowECAM:
-                hotkeyManager.ExitOutputHotkeyMode();
-                ShowA320ECAMDisplay(simConnect, announcer);
-                return true;
-
-            case HotkeyAction.ShowStatusPage:
-                hotkeyManager.ExitOutputHotkeyMode();
-                ShowA320StatusDisplay(simConnect, announcer);
                 return true;
 
             case HotkeyAction.ToggleECAMMonitoring:
@@ -4327,19 +4310,6 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         }
     }
 
-    private void ShowA320PFDWindow(SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
-    {
-        var dialog = new PFDForm(announcer, simConnect);
-        dialog.CurrentAircraft = this;
-        dialog.Show();
-    }
-
-    private void ShowA320NavigationDisplay(SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
-    {
-        var dialog = new NavigationDisplayForm(announcer, simConnect);
-        dialog.Show();
-    }
-
     private void ShowFBWBaroSetDialog(
         SimConnect.SimConnectManager simConnect,
         ScreenReaderAnnouncer announcer,
@@ -4369,18 +4339,6 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             });
         dialog.ShowCancelButton = false;
         dialog.Show(parentForm);
-    }
-
-    private void ShowA320ECAMDisplay(SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
-    {
-        var dialog = new ECAMDisplayForm(announcer, simConnect);
-        dialog.Show();
-    }
-
-    private void ShowA320StatusDisplay(SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
-    {
-        var dialog = new StatusDisplayForm(announcer, simConnect);
-        dialog.Show();
     }
 
     private void ToggleA320ECAMMonitoring(SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
