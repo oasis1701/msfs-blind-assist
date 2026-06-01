@@ -2047,8 +2047,23 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Name = "A32NX_FCU_EFIS_L_DISPLAY_BARO_VALUE_MODE",
             DisplayName = "Left Baro Display Mode",
             Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            // Continuous so a unit/STD change re-announces the altimeter; the custom baro
+            // handler in ProcessSimVarUpdate speaks it (and suppresses the generic announce).
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "STD", [1] = "hPa", [2] = "inHg" }
+        },
+        // ARINC429 hPa word — the actual EFIS baro setting (same var the A380 uses).
+        // Decoded + auto-announced on the captain's knob turn (custom logic), and read
+        // on demand by the ReadAltimeter hotkey (output mode + B).
+        ["A32NX_FCU_LEFT_EIS_BARO_HPA"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FCU_LEFT_EIS_BARO_HPA",
+            DisplayName = "Altimeter",
+            Type = SimConnect.SimVarType.LVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            Units = "number"
         },
         ["KOHLSMAN SETTING MB:2"] = new SimConnect.SimVarDefinition
         {
@@ -4007,6 +4022,11 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
                 hotkeyManager.ExitOutputHotkeyMode();
                 if (parentForm is MainForm mfMon) mfMon.ShowA320MonitorManagerDialog();
                 return true;
+            // On-demand altimeter / baro setting (output mode + B). Reads the cached EFIS
+            // baro (continuously monitored), so it's instant.
+            case HotkeyAction.ReadAltimeter:
+                announcer.AnnounceImmediate(BaroPhrase(_baroHpa < 0 ? 1013 : _baroHpa, _baroMode < 0 ? 1 : _baroMode));
+                return true;
             // FCU set value dialogs (these need custom logic)
             case HotkeyAction.FCUSetHeading:
                 hotkeyManager.ExitInputHotkeyMode();
@@ -4398,6 +4418,17 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     // the SD system pages (ELEC/HYD/... added one at a time) read decoded SimVars. The
     // status box shows the selected page's content, populated on selection — no
     // auto-speech, no manual refresh. Combo backed by an MSFSBA-internal L:var.
+    // EFIS baro (altimeter) state — auto-announced on knob turn + read on demand (B).
+    private double _baroHpa = -1;          // last decoded captain baro, hectopascals
+    private int _baroMode = -1;            // A32NX_FCU_EFIS_L_DISPLAY_BARO_VALUE_MODE: 0=STD,1=hPa,2=inHg
+    private int _lastAnnouncedBaroHpa = -1;
+    private static string BaroPhrase(double hpa, int mode)
+    {
+        if (mode == 0) return "Altimeter standard";
+        if (mode == 2) return $"Altimeter {hpa * 0.0295299830714:F2} inches";
+        return $"Altimeter {hpa:F0} hectopascals";
+    }
+
     public const string SdPageVar = "A32NX_MSFSBA_SD_PAGE";
     private SimConnect.CoherentDisplayClient? _ewdScrapeClient;
     private string _sdBoxContent = "";
@@ -4701,6 +4732,33 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             case "A32NX_EFIS_L_TO_WPT_IDENT_0": _ndIdent0 = value; break;
             case "A32NX_EFIS_L_TO_WPT_IDENT_1": _ndIdent1 = value; break;
+        }
+
+        // EFIS baro (altimeter) — speak the setting on knob turn / unit change. The HPA
+        // var is an ARINC429 word. Deduped to whole hPa so a steady knob doesn't repeat;
+        // STD is spoken from the mode var. Returns true (the EFIS panel field still reads
+        // it via the cache fallback in UpdateDisplayText).
+        if (varName == "A32NX_FCU_LEFT_EIS_BARO_HPA")
+        {
+            double hpa = value >= 4294967296.0 ? new SimConnect.Arinc429Word(value).ValueOr(0f) : value;
+            if (hpa > 0) _baroHpa = hpa;
+            int mode = _baroMode < 0 ? 1 : _baroMode;
+            if (mode != 0 && _baroHpa > 0 && (int)System.Math.Round(_baroHpa) != _lastAnnouncedBaroHpa)
+            {
+                _lastAnnouncedBaroHpa = (int)System.Math.Round(_baroHpa);
+                announcer.Announce(BaroPhrase(_baroHpa, mode));
+            }
+            return true;
+        }
+        if (varName == "A32NX_FCU_EFIS_L_DISPLAY_BARO_VALUE_MODE")
+        {
+            int mode = (int)System.Math.Round(value);
+            if (mode != _baroMode)
+            {
+                _baroMode = mode;
+                announcer.Announce(BaroPhrase(_baroHpa < 0 ? 1013 : _baroHpa, mode));
+            }
+            return true;
         }
 
         // FMA armed modes — decode the bitmask and announce NEWLY-armed modes on change
