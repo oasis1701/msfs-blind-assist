@@ -719,6 +719,20 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Type = SimConnect.SimVarType.LVar,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Powered" }
         },
+        // ENG MAN START pushbuttons (parity with A380 Engine Start panel) — settable
+        // L:vars, live-verified to hold a write via the calculator path.
+        ["A32NX_ENGMANSTART1_TOGGLE"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_ENGMANSTART1_TOGGLE", DisplayName = "Engine 1 Manual Start",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        },
+        ["A32NX_ENGMANSTART2_TOGGLE"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_ENGMANSTART2_TOGGLE", DisplayName = "Engine 2 Manual Start",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        },
 
         // Fuel Panel (these are events with parameters)
         ["FUELSYSTEM_PUMP_TOGGLE:2"] = new SimConnect.SimVarDefinition
@@ -4038,7 +4052,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     {
         return new Dictionary<string, List<string>>
         {
-["Overhead"] = new List<string> { "ELEC", "ADIRS", "APU", "Oxygen", "Fire", "Hydraulics", "Fuel", "Air Conditioning", "Bleed Air", "Pressurization", "Ventilation", "Cargo Air", "Anti Ice", "Signs", "Interior Lighting", "Exterior Lighting", "Calls", "GPWS", "Flight Control Computers", "Cockpit Door", "Evacuation", "Cargo Smoke", "Recorder and Misc", "Engine" },
+["Overhead"] = new List<string> { "ELEC", "ADIRS", "APU", "Oxygen", "Fire", "Hydraulics", "Fuel", "Air Conditioning", "Bleed Air", "Pressurization", "Ventilation", "Cargo Air", "Anti Ice", "Signs", "Interior Lighting", "Exterior Lighting", "Calls", "GPWS", "Flight Control Computers", "Cockpit Door", "Evacuation", "Cargo Smoke", "Recorder and Misc", "Engine Start" },
         ["Glareshield"] = new List<string> { "FCU", "EFIS Captain", "EFIS First Officer", "Warnings" },
         ["Instrument"] = new List<string> { "Gear", "Autobrake", "PFD", "ND", "ISIS", "Source Switching", "Clock", "System Display" },
         ["Pedestal"] = new List<string> { "Flight Controls", "Speed Brake", "Parking Brake", "Engines", "ECAM Control Panel", "Weather Radar", "Transponder", "Radios", "RMP" }
@@ -4226,10 +4240,12 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             "A32NX_FIRE_TEST_CARGO",
             "A32NX_CARGOSMOKE_FWD_DISCHARGED",
         },
-        ["Engine"] = new List<string>
+        ["Engine Start"] = new List<string>
         {
             "A32NX_OVHD_FADEC_1",
             "A32NX_OVHD_FADEC_2",
+            "A32NX_ENGMANSTART1_TOGGLE",
+            "A32NX_ENGMANSTART2_TOGGLE",
         },
         ["FCU"] = new List<string>
         {
