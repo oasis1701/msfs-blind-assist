@@ -4417,6 +4417,8 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         // GPWS off-switches
         "A32NX_GPWS_SYS_OFF", "A32NX_GPWS_GS_OFF", "A32NX_GPWS_FLAP_OFF",
         "A32NX_GPWS_TERR_OFF", "A32NX_GPWS_FLAPS3",
+        // Cabin / security background state
+        "A32NX_OXYGEN_MASKS_DEPLOYED", "A32NX_COCKPIT_DOOR_LOCKED", "A32NX_CALLS_EMER_ON",
     };
 
     public const string SdPageVar = "A32NX_MSFSBA_SD_PAGE";
