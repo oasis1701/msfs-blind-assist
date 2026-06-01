@@ -160,15 +160,21 @@ Flight Management Displays:
              Services, Payload, Settings, Navigraph, Checklists, etc.). The flyPad
              powers on automatically; F5 refreshes; a Status / self-test button
              reports the connection state.
-  Shift+M    Open MCDU (multifunction control display unit). Full page access with
-             line-select keys (Ctrl+1-6 / Alt+1-6 for left/right keys, or F1-6 /
-             F7-12 in alternate-key mode) and scratchpad text entry. Inside the MCDU
-             window: read the screen line by line with the Up/Down arrows; SCROLL a
-             long list (flight plan, departure/arrival runways) with Page Up / Page
-             Down or Alt+Up / Alt+Down (the vertical slew arrows); change a multi-page
-             form (e.g. PERF 1/2) with Alt+Left / Alt+Right (the horizontal page
-             arrows); Backspace = CLR. Mirrors the Captain MCDU (the SimBridge remote
-             protocol does not expose the First Officer MCDU separately).
+  Shift+M    Open MCDU (multifunction control display unit). Inside the MCDU window:
+             - Read the screen line by line with the Up/Down arrows.
+             - Line-select keys: Ctrl+1-6 (left, L1-L6), Alt+1-6 (right, R1-R6); or
+               F1-6 / F7-12 in alternate-key mode.
+             - Jump to a page (accelerators match the Fenix MCDU): Alt+I Init,
+               Alt+D Dir, Alt+P Prog, Alt+F Fpln, Alt+E Perf, Alt+R Rad Nav,
+               Alt+Shift+F Sec F-Pln, Alt+U Fuel Pred, Alt+K Atc, Alt+M Menu,
+               Alt+A Airport, Alt+T Data, Alt+O Ovfy.
+             - SCROLL a long list (flight plan, departure/arrival runways) with
+               Page Up / Page Down or Alt+Up / Alt+Down (vertical slew arrows).
+             - Change a multi-page form (e.g. PERF 1/2) with Alt+Left / Alt+Right
+               (horizontal page arrows).
+             - Scratchpad: Alt+S to focus it, type, Enter; Backspace = CLR.
+             Mirrors the Captain MCDU (the SimBridge remote protocol does not expose
+             the First Officer MCDU separately).
 
 Autopilot:
   Shift+A    Toggle Autopilot 1
