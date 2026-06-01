@@ -87,6 +87,21 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // Bool L:var: Off / Auto (FBW "_IS_AUTO" pushbuttons).
         void OffAuto(string key, string display, bool button = false) =>
             Sel(key, display, new Dictionary<double, string> { [0] = "Off", [1] = "Auto" });
+        // True momentary push-BUTTON on an L:var (renders as a Button, not a combo).
+        // A press pulses the L:var 1→0 in HandleUIVariableSet so the sim sees the
+        // edge — for TEST buttons, transponder ident, ATC message ack, rudder-trim
+        // reset, tiller disconnect, rain repellent: actions with no meaningful
+        // resting state. (The old `button:true` flag on OnOff/Sel was a no-op, so
+        // these rendered as Released/Pressed combos.)
+        void Btn(string key, string display)
+        {
+            vars[key] = new SimVarDefinition
+            {
+                Name = key, DisplayName = display, Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest, RenderAsButton = true
+            };
+            _momentaryButtons.Add(key);
+        }
         // Latching/momentary PB L:var as a combo (Released / Pressed).
         void Press(string key, string display) =>
             Sel(key, display, new Dictionary<double, string> { [0] = "Released", [1] = "Pressed" });
@@ -386,7 +401,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Press("A32NX_FIRE_BUTTON_APU", "APU Fire Button");
         Mon("A32NX_FIRE_DETECTED_APU", "APU Fire",
             new Dictionary<double, string> { [0] = "Normal", [1] = "FIRE" });
-        Press("A32NX_OVHD_FIRE_TEST_PB_IS_PRESSED", "Fire Test");
+        Btn("A32NX_OVHD_FIRE_TEST_PB_IS_PRESSED", "Fire Test");
 
         // ---- OXYGEN ----
         Sel("PUSH_OVHD_OXYGEN_CREW", "Crew Oxygen",
@@ -715,7 +730,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         OnOff("A32NX_RADAR_GCS_AUTO", "WXR Ground Clutter Suppression");
 
         // ---- Transponder ----
-        Act("XPNDR_IDENT_ON", "Transponder Ident", new Dictionary<double, string> { [0] = "Off", [1] = "Ident" });
+        // Ident is a momentary action (squawk ident) — a BUTTON, not a combo. It's a
+        // stock K-event, so use Evt (fires XPNDR_IDENT_ON); HandleUIVariableSet also
+        // guards it. (Was an Off/Ident combo.)
+        Evt("XPNDR_IDENT_ON", "XPNDR_IDENT_ON", "Transponder Ident");
 
         // ---- RMP radios ----
         var rmpState = new Dictionary<double, string> { [0] = "Off (Failed)", [1] = "Off / Standby", [2] = "On", [3] = "On (Failed)" };
@@ -1264,20 +1282,31 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         ReadEnum("A32NX_CARGOSMOKE_AFT_DISCHARGED", "Cargo Aft Smoke Agent", dischargedVd);
 
         // Recorder / misc overhead.
-        OnOff("A32NX_RCDR_TEST", "Recorder Test", button: true);
-        OnOff("A32NX_ELT_TEST_RESET", "ELT Test / Reset", button: true);
-        OnOff("A32NX_DFDR_EVENT_ON", "DFDR Event", button: true);
-        OnOff("A32NX_RAIN_REPELLENT_LEFT_ON", "Rain Repellent Left", button: true);
-        OnOff("A32NX_RAIN_REPELLENT_RIGHT_ON", "Rain Repellent Right", button: true);
+        Btn("A32NX_RCDR_TEST", "Recorder Test");
+        Btn("A32NX_ELT_TEST_RESET", "ELT Test / Reset");
+        Btn("A32NX_DFDR_EVENT_ON", "DFDR Event");
+        Btn("A32NX_RAIN_REPELLENT_LEFT_ON", "Rain Repellent Left");
+        Btn("A32NX_RAIN_REPELLENT_RIGHT_ON", "Rain Repellent Right");
         OnOff("A32NX_OVHD_NSS_DATA_TO_AVNCS_TOGGLE", "NSS Data to Avionics");
         OnOff("A32NX_NSS_MASTER_OFF", "NSS Master Off");
 
         // Wipers (3-speed; written via HandleUIVariableSet → circuit power events).
-        var wiperVd = new Dictionary<double, string> { [0] = "Off", [75] = "Slow", [100] = "Fast" };
-        Sel("WIPER_LEFT", "Wiper Left", wiperVd);
-        Sel("WIPER_RIGHT", "Wiper Right", wiperVd);
-        Stock("WIPER_LEFT_ON", "CIRCUIT SWITCH ON:141", "Wiper Left State", "bool", onOff);
-        Stock("WIPER_RIGHT_ON", "CIRCUIT SWITCH ON:143", "Wiper Right State", "bool", onOff);
+        // Wipers (captain = electrical circuit 141, F/O = 143). The FBW wiper-knob
+        // template drives the circuit with K:ELECTRICAL_CIRCUIT_TOGGLE (on/off) +
+        // K:2:ELECTRICAL_CIRCUIT_POWER_SETTING_SET (speed) — live-verified the toggle
+        // flips CIRCUIT SWITCH ON:141 0<->1 and "<pct> <circuit> (>K:2:…)" sets the
+        // power. The PREVIOUS code only set the power and never toggled the circuit
+        // on, so the wipers never started — the "inop" bug. The combo now reads the
+        // REAL circuit-switch state (so it shows On/Off correctly and auto-announces
+        // on change); the set toggles the circuit (handled in HandleUIVariableSet).
+        foreach (var (key, who, circuit) in new[]
+                 { ("WIPER_LEFT", "Captain Wiper", 141), ("WIPER_RIGHT", "First Officer Wiper", 143) })
+            vars[key] = new SimVarDefinition
+            {
+                Name = $"CIRCUIT SWITCH ON:{circuit}", DisplayName = who, Type = SimVarType.SimVar,
+                Units = "bool", UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            };
 
         // EFIS-CP filter / overlay / baro unit (per side).
         foreach (var side in new[] { "L", "R" })
@@ -1307,7 +1336,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         ReadEnum("A32NX_SD_MORE_SHOWN", "SD More Page", new Dictionary<double, string> { [0] = "No", [1] = "Shown" });
 
         // ATC datalink (DCDU).
-        OnOff("A32NX_DCDU_ATC_MSG_ACK", "ATC Message Acknowledge", button: true);
+        Btn("A32NX_DCDU_ATC_MSG_ACK", "ATC Message Acknowledge");
         Mon("A32NX_DCDU_ATC_MSG_WAITING", "ATC Message Waiting", new Dictionary<double, string> { [0] = "No", [1] = "Message Waiting" });
 
         // FMS switching + destination fuel warning.
@@ -1459,8 +1488,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // Rudder trim RESET (zeroes the trim) + nosewheel-steering pedal disconnect
         // (held during the rudder flight-control check so the nose wheel doesn't
         // scrub). #107 transcript gaps. Settable via the calculator catch-all.
-        Press("A32NX_RUDDER_TRIM_RESET", "Rudder Trim Reset");
-        Press("A32NX_TILLER_PEDAL_DISCONNECT", "Nosewheel Steering Pedal Disconnect");
+        Btn("A32NX_RUDDER_TRIM_RESET", "Rudder Trim Reset");
+        Btn("A32NX_TILLER_PEDAL_DISCONNECT", "Nosewheel Steering Pedal Disconnect");
         ReadEnum("A32NX_PRIORITY_TAKEOVER:1", "Capt Sidestick Priority", new Dictionary<double, string> { [0] = "Normal", [1] = "Priority Taken" });
         ReadEnum("A32NX_PRIORITY_TAKEOVER:2", "F/O Sidestick Priority", new Dictionary<double, string> { [0] = "Normal", [1] = "Priority Taken" });
 
@@ -2186,7 +2215,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         d["Oxygen"] = new List<string> { "A32NX_OXYGEN_TMR_RESET_FAULT" };
         d["Calls"] = new List<string> { "A32NX_SLIDES_ARMED", "A32NX_EVAC_COMMAND_FAULT" };
         d["ECAM Control Panel"] = new List<string> { "A32NX_SD_MORE_SHOWN" };
-        d["Wipers"] = new List<string> { "WIPER_LEFT_ON", "WIPER_RIGHT_ON" };
+        d["Wipers"] = new List<string> { "WIPER_LEFT", "WIPER_RIGHT" };
         d["Speeds"] = new List<string> { "A32NX_SPEEDS_VLS", "A32NX_SPEEDS_VAPP", "A32NX_SPEEDS_GD", "A32NX_SPEEDS_F", "A32NX_SPEEDS_S" };
         d["Ground"] = new List<string> { "A32NX_AIRCRAFT_PRESET_LOAD_PROGRESS" };
 
@@ -2787,6 +2816,20 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     public override bool HandleUIVariableSet(string varKey, double value, SimVarDefinition varDef,
         SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
     {
+        // Momentary L:var push-buttons (TEST / ident / ack / trim reset / tiller /
+        // rain repellent): pulse the L:var 1→0 so the sim registers the press edge
+        // rather than leaving it latched on. ~250 ms is long enough for the FWS /
+        // systems to act on the rising edge, then it auto-releases.
+        if (_momentaryButtons.Contains(varKey))
+        {
+            simConnect.ExecuteCalculatorCode($"1 (>L:{varKey})");
+            _ = Task.Run(async () =>
+            {
+                try { await Task.Delay(250); simConnect.ExecuteCalculatorCode($"0 (>L:{varKey})"); } catch { }
+            });
+            announcer.Announce($"{varDef.DisplayName} pressed");
+            return true;
+        }
         if (_extLightSetEvents.TryGetValue(varKey, out var lightEvent))
         {
             simConnect.SendEvent(lightEvent, (uint)Math.Round(value));
@@ -2891,11 +2934,19 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             for (int n = 1; n <= 4; n++) simConnect.SendEvent($"TURBINE_IGNITION_SWITCH_SET{n}", mode);
             return true;
         }
-        // Wipers: 0=Off / 75=Slow / 100=Fast → the circuit-power-setting event.
+        // Wipers: ON/OFF by TOGGLING the electrical circuit (the FBW knob template's
+        // mechanism) — only toggle when the desired state differs from the live
+        // circuit-switch state, then drive a visible speed when turning on. The old
+        // code set power only and never toggled the circuit on, so it never started.
         if (varKey == "WIPER_LEFT" || varKey == "WIPER_RIGHT")
         {
             int circuit = varKey == "WIPER_LEFT" ? 141 : 143;
-            simConnect.SendEvent($"ELECTRICAL_CIRCUIT_POWER_SETTING_SET:{circuit}", (uint)Math.Round(value));
+            bool desiredOn = value > 0.5;
+            bool currentOn = (simConnect.GetCachedVariableValue(varKey) ?? 0.0) > 0.5;
+            if (desiredOn != currentOn)
+                simConnect.ExecuteCalculatorCode($"{circuit} (>K:ELECTRICAL_CIRCUIT_TOGGLE)");
+            if (desiredOn)   // percent then circuit index (verified order)
+                simConnect.ExecuteCalculatorCode($"100 {circuit} (>K:2:ELECTRICAL_CIRCUIT_POWER_SETTING_SET)");
             return true;
         }
         // Engine anti-ice combo "ENGn_ANTI_ICE" -> stock K:ANTI_ICE_SET_ENGn
@@ -3252,6 +3303,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     private bool _readoutIsWeight;
     // Feed-tank fuel-pump combo key -> electrical CIRCUIT id (set via toggle).
     private readonly Dictionary<string, int> _fuelPumpCircuits = new();
+    // L:var momentary push-buttons (registered via Btn) — a press pulses the L:var
+    // 1→0 so the sim sees the rising edge, instead of latching it on like a combo.
+    private readonly HashSet<string> _momentaryButtons = new();
     private Dictionary<double, string>? _readoutMap;
     private static readonly Dictionary<double, string> _apprCapMap = new Dictionary<double, string>
     { [0] = "None", [1] = "CAT 1", [2] = "CAT 2", [3] = "CAT 3 Single", [4] = "CAT 3 Dual" };
