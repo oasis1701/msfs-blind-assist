@@ -52,6 +52,8 @@ public sealed class GsxService : IDisposable
     private static readonly TimeSpan GroundConnectionTimerAnnouncementInterval = TimeSpan.FromMinutes(15);
     private static readonly TimeSpan FuelingProgressAnnouncementInterval = TimeSpan.FromSeconds(30);
     private const int BoardingPassengerAnnouncementInterval = 10;
+    private const string CurrencyTokenPattern =
+        @"(?:USD|EUR|GBP|JPY|CNY|RMB|CAD|AUD|NZD|CHF|SEK|NOK|DKK|PLN|CZK|HUF|RON|BGN|TRY|ILS|AED|SAR|QAR|INR|KRW|SGD|HKD|TWD|THB|MYR|IDR|PHP|VND|BRL|MXN|ARS|CLP|COP|ZAR|[$€£¥₩₹₽₺₪₫₴])";
 
     private const int ChoiceSettings = 12;
     private const int DynamicSettingDefinitionStart = 10000;
@@ -169,7 +171,7 @@ public sealed class GsxService : IDisposable
     private readonly Dictionary<string, string> _lastServiceOperatorByName = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, DateTime> _lastFuelingProgressAnnouncementByService = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, int> _lastBoardingPassengerAnnouncementByService = new(StringComparer.OrdinalIgnoreCase);
-    private static readonly TimeSpan BaggageProgressRepeatWindow = TimeSpan.FromMinutes(10);
+    private readonly HashSet<string> _announcedInvoiceKeys = new(StringComparer.OrdinalIgnoreCase);
     private static readonly TimeSpan LiveServiceRepeatWindow = TimeSpan.FromMinutes(10);
     private static readonly Regex PercentRegex = new(
         @"\b(\d{1,3})\s*%",
@@ -1017,9 +1019,7 @@ public sealed class GsxService : IDisposable
             return false;
         }
 
-        string serviceKey = ExtractServiceName(text);
-        if (string.IsNullOrWhiteSpace(serviceKey))
-            serviceKey = "fuel";
+        string serviceKey = BuildProgressThrottleKey(text, "fueling");
 
         DateTime now = DateTime.UtcNow;
         if (_lastFuelingProgressAnnouncementByService.TryGetValue(serviceKey, out DateTime seenAt)
@@ -1041,19 +1041,36 @@ public sealed class GsxService : IDisposable
         if (!TryParsePassengerCount(text, out int passengers))
             return false;
 
-        string serviceKey = ExtractServiceName(text);
-        if (string.IsNullOrWhiteSpace(serviceKey))
-            serviceKey = "boarding";
+        string serviceKey = BuildProgressThrottleKey(text, "boarding");
+        int passengerMilestone = passengers == 0
+            ? 0
+            : passengers >= 100
+                ? 100
+            : passengers / BoardingPassengerAnnouncementInterval;
 
-        if (_lastBoardingPassengerAnnouncementByService.TryGetValue(serviceKey, out int lastPassengers)
-            && Math.Abs(passengers - lastPassengers) < BoardingPassengerAnnouncementInterval
-            && passengers is not 0 and not 100)
+        if (passengers is not 0 and < 100 && passengerMilestone == 0)
+            return true;
+
+        if (_lastBoardingPassengerAnnouncementByService.TryGetValue(serviceKey, out int lastMilestone)
+            && passengerMilestone <= lastMilestone)
         {
             return true;
         }
 
-        _lastBoardingPassengerAnnouncementByService[serviceKey] = passengers;
+        _lastBoardingPassengerAnnouncementByService[serviceKey] = passengerMilestone;
         return false;
+    }
+
+    private static string BuildProgressThrottleKey(string text, string fallbackService)
+    {
+        string serviceName = ExtractServiceName(text);
+        if (string.IsNullOrWhiteSpace(serviceName) || serviceName.Length > 80)
+            serviceName = fallbackService;
+
+        string serviceOperator = ExtractServiceOperator(text);
+        return string.IsNullOrWhiteSpace(serviceOperator)
+            ? serviceName
+            : $"{serviceName}|{serviceOperator}";
     }
 
     private static bool TryParsePassengerCount(string text, out int passengers)
@@ -1089,8 +1106,7 @@ public sealed class GsxService : IDisposable
 
         DateTime now = DateTime.UtcNow;
         if (_lastBaggageProgressByOperation.TryGetValue(operation, out var lastProgress)
-            && percent == lastProgress.Percent
-            && now - lastProgress.SeenAt < BaggageProgressRepeatWindow)
+            && percent == lastProgress.Percent)
         {
             return true;
         }
@@ -1798,11 +1814,14 @@ public sealed class GsxService : IDisposable
         }
 
         StatusServiceRow? latestCompletedRow = completedRows.TakeLast(1).FirstOrDefault();
-        if (hasReceiptData)
+        bool hasInvoiceRows = chargeRows.Any(IsInvoiceChargeRow);
+        if (hasReceiptData && hasInvoiceRows)
         {
             string invoiceAnnouncement = FormatInvoiceAnnouncement(activeRows, completedRows, chargeRows);
             if (!string.IsNullOrWhiteSpace(invoiceAnnouncement))
                 return invoiceAnnouncement;
+
+            return string.Empty;
         }
 
         bool shouldSpeakCompletedRow = latestCompletedRow is not null
@@ -1812,7 +1831,7 @@ public sealed class GsxService : IDisposable
         if (latestCompletedRow is not null)
             _lastCompletedStatusServiceText = latestCompletedRow.Text;
 
-        if (!shouldSpeakCompletedRow || (latestCompletedRow is not null && IsGroundConnectionService(latestCompletedRow.Text)))
+        if (!shouldSpeakCompletedRow)
         {
             string groundConnectionTimerText = FormatGroundConnectionTimerAnnouncement(activeRows, completedRows, chargeRows);
             if (!string.IsNullOrWhiteSpace(groundConnectionTimerText))
@@ -1834,7 +1853,7 @@ public sealed class GsxService : IDisposable
             rowsToSpeak.Clear();
             rowsToSpeak.Add(FormatCompletedServiceAnnouncement(rowToSpeak.Text, total));
 
-            if (ShouldMentionReceipt(rowToSpeak.Text, chargeRows, hasReceiptData))
+            if (!hasInvoiceRows && ShouldMentionReceipt(rowToSpeak.Text, chargeRows, hasReceiptData))
                 rowsToSpeak.Add("A detailed receipt is available in the relevant GSX receipts folder.");
         }
         else if (rowToSpeak.HasStarted && chargeRows.Count > 0)
@@ -1962,8 +1981,15 @@ public sealed class GsxService : IDisposable
             || normalized.Contains("eur ")
             || normalized.Contains("â‚¬")
             || normalized.Contains("$")
-            || normalized.Contains("£");
+            || normalized.Contains("£")
+            || ContainsMoneyAmount(text);
     }
+
+    private static bool ContainsMoneyAmount(string text) =>
+        Regex.IsMatch(
+            text,
+            $@"{CurrencyTokenPattern}\s*\d|\d[\d,.]*\s*{CurrencyTokenPattern}",
+            RegexOptions.IgnoreCase);
 
     private static bool IsTimerStatusLine(string text) =>
         text.Contains("timer:", StringComparison.OrdinalIgnoreCase);
@@ -1991,6 +2017,9 @@ public sealed class GsxService : IDisposable
     {
         string serviceName = ExtractServiceName(serviceText);
         string serviceOperator = ExtractServiceOperator(serviceText);
+        if (IsGroundConnectionService(serviceText))
+            return $"{serviceName} disconnected.";
+
         if (string.IsNullOrWhiteSpace(serviceOperator)
             && !string.IsNullOrWhiteSpace(serviceName)
             && _lastServiceOperatorByName.TryGetValue(serviceName, out string? cachedOperator))
@@ -2074,11 +2103,15 @@ public sealed class GsxService : IDisposable
         if (string.IsNullOrWhiteSpace(total))
             total = invoiceRow;
 
+        string invoiceKey = NormalizeWhitespace($"{serviceName}|{serviceOperator}|{total}|{invoiceRow}");
+        if (!_announcedInvoiceKeys.Add(invoiceKey))
+            return string.Empty;
+
         string operatorPhrase = string.IsNullOrWhiteSpace(serviceOperator)
             ? string.Empty
             : $" from {serviceOperator}";
 
-        return $"{serviceName} invoice{operatorPhrase}, total {NormalizeWhitespace(total)}. More details can be found by viewing the invoice.";
+        return $"{serviceName} invoice available{operatorPhrase}. Total {NormalizeWhitespace(total)}. More information can be found by viewing the invoice.";
     }
 
     private static List<string> ExtractReceiptChargeRows(string html)
@@ -2261,7 +2294,7 @@ public sealed class GsxService : IDisposable
     {
         var matches = Regex.Matches(
             text,
-            @"(?:EUR|GBP|USD|\$|£)\s*\d[\d,.]*(?:\s*\(~?\$[\d,.]+\))?|\d[\d,.]*\s*(?:EUR|GBP|USD|£)",
+            $@"{CurrencyTokenPattern}\s*\d[\d,.]*(?:\s*\(~?\s*{CurrencyTokenPattern}?\s*\d[\d,.]*\))?|\d[\d,.]*\s*{CurrencyTokenPattern}",
             RegexOptions.IgnoreCase);
 
         if (matches.Count == 0)
@@ -2292,7 +2325,7 @@ public sealed class GsxService : IDisposable
         stable = Regex.Replace(stable, @"\b\d{1,2}:\d{2}(?::\d{2})?\b", "<time>");
         stable = Regex.Replace(stable, @"\b\d+(?:[.,]\d+)?\s*(?:sec|secs|seconds|min|mins|minutes)\b", "<duration>",
             RegexOptions.IgnoreCase);
-        stable = Regex.Replace(stable, @"(?:EUR|\$|£)\s*\d+(?:[.,]\d+)?|\d+(?:[.,]\d+)?\s*(?:EUR|\$|£)", "<price>",
+        stable = Regex.Replace(stable, $@"{CurrencyTokenPattern}\s*\d+(?:[.,]\d+)?|\d+(?:[.,]\d+)?\s*{CurrencyTokenPattern}", "<price>",
             RegexOptions.IgnoreCase);
         stable = Regex.Replace(stable, @"\(~?\s*<price>\)", "(<price>)",
             RegexOptions.IgnoreCase);
