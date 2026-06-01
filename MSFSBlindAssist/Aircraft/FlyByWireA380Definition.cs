@@ -289,10 +289,16 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             OffAuto($"A32NX_OVHD_HYD_ENG_{n}A_PUMP_PB_IS_AUTO", $"Engine {n} Pump A");
             OffAuto($"A32NX_OVHD_HYD_ENG_{n}B_PUMP_PB_IS_AUTO", $"Engine {n} Pump B");
         }
+        // Each green/yellow electric hydraulic pump (A, B) has SEPARATE ON and OFF
+        // pushbuttons on the A380 HYD overhead — expose both so the pump can be
+        // commanded on AND off (the def previously had only the ON button).
         foreach (var sys in new[] { "G", "Y" })
             foreach (var ab in new[] { "A", "B" })
-                OffAuto($"A32NX_OVHD_HYD_EPUMP{sys}{ab}_ON_PB_IS_AUTO",
-                        $"{(sys == "G" ? "Green" : "Yellow")} Electric Pump {ab}");
+            {
+                string col = sys == "G" ? "Green" : "Yellow";
+                OffAuto($"A32NX_OVHD_HYD_EPUMP{sys}{ab}_ON_PB_IS_AUTO", $"{col} Electric Pump {ab} On");
+                OffAuto($"A32NX_OVHD_HYD_EPUMP{sys}{ab}_OFF_PB_IS_AUTO", $"{col} Electric Pump {ab} Off");
+            }
         // The two MAIN electric hydraulic pumps on the HYD overhead (green "elec
         // hyd pump" = EPUMPB, and the yellow elec pump = EPUMPY) — settable via the
         // calculator path like the other OVHD PBs (#104 catalog diff: these were
@@ -1753,8 +1759,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "A32NX_OVHD_HYD_ENG_2A_PUMP_PB_IS_AUTO", "A32NX_OVHD_HYD_ENG_2B_PUMP_PB_IS_AUTO",
             "A32NX_OVHD_HYD_ENG_3A_PUMP_PB_IS_AUTO", "A32NX_OVHD_HYD_ENG_3B_PUMP_PB_IS_AUTO",
             "A32NX_OVHD_HYD_ENG_4A_PUMP_PB_IS_AUTO", "A32NX_OVHD_HYD_ENG_4B_PUMP_PB_IS_AUTO",
-            "A32NX_OVHD_HYD_EPUMPGA_ON_PB_IS_AUTO", "A32NX_OVHD_HYD_EPUMPGB_ON_PB_IS_AUTO",
-            "A32NX_OVHD_HYD_EPUMPYA_ON_PB_IS_AUTO", "A32NX_OVHD_HYD_EPUMPYB_ON_PB_IS_AUTO",
+            "A32NX_OVHD_HYD_EPUMPGA_ON_PB_IS_AUTO", "A32NX_OVHD_HYD_EPUMPGA_OFF_PB_IS_AUTO",
+            "A32NX_OVHD_HYD_EPUMPGB_ON_PB_IS_AUTO", "A32NX_OVHD_HYD_EPUMPGB_OFF_PB_IS_AUTO",
+            "A32NX_OVHD_HYD_EPUMPYA_ON_PB_IS_AUTO", "A32NX_OVHD_HYD_EPUMPYA_OFF_PB_IS_AUTO",
+            "A32NX_OVHD_HYD_EPUMPYB_ON_PB_IS_AUTO", "A32NX_OVHD_HYD_EPUMPYB_OFF_PB_IS_AUTO",
             "A32NX_OVHD_HYD_EPUMPB_PB_IS_AUTO", "A32NX_OVHD_HYD_EPUMPY_PB_IS_AUTO",
             "A32NX_OVHD_HYD_ENG_1AB_PUMP_DISC_PB_IS_AUTO", "A32NX_OVHD_HYD_ENG_2AB_PUMP_DISC_PB_IS_AUTO",
             "A32NX_OVHD_HYD_ENG_3AB_PUMP_DISC_PB_IS_AUTO", "A32NX_OVHD_HYD_ENG_4AB_PUMP_DISC_PB_IS_AUTO",
