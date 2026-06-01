@@ -2094,6 +2094,16 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             Units = "feet"
         },
+        // Indicated airspeed — surfaced in the PFD + ISIS accessible status boxes
+        // (the speed "tape" a sighted pilot reads off the glass).
+        ["AIRSPEED_INDICATED"] = new SimConnect.SimVarDefinition
+        {
+            Name = "AIRSPEED INDICATED",
+            DisplayName = "Indicated Airspeed",
+            Type = SimConnect.SimVarType.SimVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            Units = "knots"
+        },
 
         // TAKEOFF ASSIST VARIABLES (dynamically monitored when takeoff assist is active)
         // PLANE_PITCH_DEGREES and PLANE_BANK_DEGREES now in BaseAircraftDefinition.cs
@@ -3501,6 +3511,31 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ["System Display"] = new List<string>
         {
             "A32NX_MSFSBA_SD_PAGE"
+        },
+        // PFD accessible snapshot — the "glass" content a sighted pilot reads off the
+        // Primary Flight Display: FMA modes + armed, autothrust, approach capability,
+        // target altitude, attitude/heading/speed/altitude, and the PFD message line.
+        // Single status box (force-read on F5; FMA lines also auto-refresh). Decoded
+        // via TryGetDisplayOverride (armed bitmasks + radian attitude/heading).
+        ["PFD"] = new List<string>
+        {
+            "A32NX_FMA_VERTICAL_MODE",
+            "A32NX_FMA_VERTICAL_ARMED",
+            "A32NX_FMA_LATERAL_MODE",
+            "A32NX_FMA_LATERAL_ARMED",
+            "A32NX_AUTOTHRUST_MODE",
+            "A32NX_AUTOTHRUST_STATUS",
+            "A32NX_APPROACH_CAPABILITY",
+            "A32NX_PFD_TARGET_ALTITUDE",
+            "PLANE_PITCH_DEGREES",
+            "PLANE_BANK_DEGREES",
+            "PLANE_HEADING_DEGREES_MAGNETIC",
+            "AIRSPEED_INDICATED",
+            "INDICATED_ALTITUDE",
+            "A32NX_PFD_MSG_SET_HOLD_SPEED",
+            "A32NX_PFD_MSG_TD_REACHED",
+            "A32NX_PFD_MSG_CHECK_SPEED_MODE",
+            "A32NX_PFD_LINEAR_DEVIATION_ACTIVE"
         }
         // Add more panels and their display variables here as needed
         };
@@ -3512,7 +3547,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
 ["Overhead Forward"] = new List<string> { "ELEC", "ADIRS", "APU", "Oxygen", "Fire", "Hydraulic", "Fuel", "Air Con", "Anti Ice", "Signs", "Exterior Lighting", "Calls", "GPWS", "Cockpit Door", "Evacuation", "Cargo Smoke", "Engine" },
         ["Glareshield"] = new List<string> { "FCU", "EFIS Control Panel", "Warnings" },
-        ["Instrument"] = new List<string> { "Autobrake and Gear", "ISIS", "System Display" },
+        ["Instrument"] = new List<string> { "Autobrake and Gear", "PFD", "ISIS", "System Display" },
         ["Pedestal"] = new List<string> { "Flight Controls", "Speed Brake", "Parking Brake", "Engines", "ECAM", "WX", "ATC-TCAS", "RMP" }
         };
     }
@@ -3769,27 +3804,9 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             "A32NX_RMP_L_TOGGLE_SWITCH",
             "A32NX_RMP_L_SELECTED_MODE"
         },
-        ["PFD"] = new List<string>
-        {
-            "A32NX_AUTOTHRUST_MODE",
-            "A32NX_AUTOBRAKES_ARMED_MODE",
-            "A32NX_FMA_VERTICAL_MODE",
-            "A32NX_FMA_LATERAL_MODE",
-            "A32NX_APPROACH_CAPABILITY",
-            "A32NX_AUTOTHRUST_STATUS",
-            "A32NX_FCU_AP_1_LIGHT_ON",
-            "A32NX_FCU_AP_2_LIGHT_ON",
-            "A32NX_FMA_LATERAL_ARMED",
-            "A32NX_FMA_VERTICAL_ARMED",
-            "A32NX_FM1_MINIMUM_DESCENT_ALTITUDE",
-            "A32NX_DESTINATION_QNH",
-            "A32NX_PFD_MSG_SET_HOLD_SPEED",
-            "A32NX_PFD_MSG_TD_REACHED",
-            "A32NX_PFD_MSG_CHECK_SPEED_MODE",
-            "A32NX_PFD_LINEAR_DEVIATION_ACTIVE",
-            "A32NX_FMGC_1_LDEV_REQUEST",
-            "A32NX_FMA_CRUISE_ALT_MODE"
-        },
+        // PFD is a status-box-only panel (no interactive controls — the readout lives
+        // in GetPanelDisplayVariables["PFD"]); FCU/EFIS controls live in their own panels.
+        ["PFD"] = new List<string>(),
         ["Flight Controls"] = new List<string>
         {
             "A32NX_SPOILERS_ARMED",
@@ -4469,6 +4486,39 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
                 : $"{nm}\r\n{_sdBoxContent}";
             return true;
         }
+
+        // ---- PFD / ISIS / ND status-box decode --------------------------------
+        // FMA armed-mode bitmasks → readable list (e.g. "NAV, Glideslope" / "None").
+        if (varKey == "A32NX_FMA_VERTICAL_ARMED" || varKey == "A32NX_FMA_LATERAL_ARMED")
+        {
+            int iv = (int)Math.Round(value);
+            string modes = DecodeArmedModes(iv, varKey == "A32NX_FMA_VERTICAL_ARMED" ? _vertArmedBits : _latArmedBits);
+            displayText = string.IsNullOrEmpty(modes) ? "None" : modes;
+            return true;
+        }
+        // Attitude / heading are stored in RADIANS despite the simvar names.
+        if (varKey == "PLANE_PITCH_DEGREES")
+        {
+            double deg = value * 180.0 / Math.PI;   // SimConnect: positive = nose DOWN
+            displayText = Math.Abs(deg) < 0.5 ? "Level"
+                : $"{Math.Abs(deg):F1} degrees {(deg < 0 ? "up" : "down")}";
+            return true;
+        }
+        if (varKey == "PLANE_BANK_DEGREES")
+        {
+            double deg = value * 180.0 / Math.PI;   // SimConnect: positive = bank LEFT
+            displayText = Math.Abs(deg) < 0.5 ? "Wings level"
+                : $"{Math.Abs(deg):F1} degrees {(deg > 0 ? "left" : "right")}";
+            return true;
+        }
+        if (varKey == "PLANE_HEADING_DEGREES_MAGNETIC")
+        {
+            double deg = value * 180.0 / Math.PI;
+            deg = ((deg % 360) + 360) % 360;
+            displayText = $"{(int)Math.Round(deg):000}";
+            return true;
+        }
+
         return base.TryGetDisplayOverride(varKey, value, out displayText);
     }
 
