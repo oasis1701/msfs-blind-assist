@@ -2255,7 +2255,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         d["ISIS"] = new List<string> { "A32NX_ISIS_LS_ACTIVE", "A32NX_ISIS_BUGS_ACTIVE" };
         d["Oxygen"] = new List<string> { "A32NX_OXYGEN_TMR_RESET_FAULT" };
         d["Calls"] = new List<string> { "A32NX_SLIDES_ARMED", "A32NX_EVAC_COMMAND_FAULT" };
-        d["ECAM Control Panel"] = new List<string> { "A32NX_SD_MORE_SHOWN" };
+        // Status display shows which SD page is currently up (decoded to its name) +
+        // the More flag. For the page CONTENTS, open the System Display window (it
+        // live-scrapes any page); the combo here selects the page.
+        d["ECAM Control Panel"] = new List<string> { "A32NX_ECAM_SD_CURRENT_PAGE_INDEX", "A32NX_SD_MORE_SHOWN" };
         d["Wipers"] = new List<string> { "WIPER_LEFT", "WIPER_RIGHT" };
         d["Speeds"] = new List<string> { "A32NX_SPEEDS_VLS", "A32NX_SPEEDS_VAPP", "A32NX_SPEEDS_GD", "A32NX_SPEEDS_F", "A32NX_SPEEDS_S" };
         d["Ground"] = new List<string> { "A32NX_AIRCRAFT_PRESET_LOAD_PROGRESS" };
