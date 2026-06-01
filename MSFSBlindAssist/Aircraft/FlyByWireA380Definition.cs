@@ -2398,10 +2398,12 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         d["ISIS"] = new List<string> { "A32NX_ISIS_LS_ACTIVE", "A32NX_ISIS_BUGS_ACTIVE" };
         d["Oxygen"] = new List<string> { "A32NX_OXYGEN_TMR_RESET_FAULT" };
         d["Calls"] = new List<string> { "A32NX_SLIDES_ARMED", "A32NX_EVAC_COMMAND_FAULT" };
-        // Status display shows which SD page is currently up (decoded to its name) +
-        // the More flag. For the page CONTENTS, open the System Display window (it
-        // live-scrapes any page); the combo here selects the page.
-        d["ECAM Control Panel"] = new List<string> { "A32NX_ECAM_SD_CURRENT_PAGE_INDEX", "A32NX_SD_MORE_SHOWN" };
+        // The ECP "Status display" box shows the SELECTED SD page's live CONTENT,
+        // scraped on each page switch (see RefreshSdPageDisplayAsync + the
+        // TryGetDisplayOverride case for this var). The page name + rows render there;
+        // the old A32NX_SD_MORE_SHOWN "more flag" line was dropped (it read as the
+        // useless "SD more: no").
+        d["ECAM Control Panel"] = new List<string> { "A32NX_ECAM_SD_CURRENT_PAGE_INDEX" };
         d["Wipers"] = new List<string> { "WIPER_LEFT", "WIPER_RIGHT" };
         d["Speeds"] = new List<string> { "A32NX_SPEEDS_VLS", "A32NX_SPEEDS_VAPP", "A32NX_SPEEDS_GD", "A32NX_SPEEDS_F", "A32NX_SPEEDS_S" };
         d["Ground"] = new List<string> { "A32NX_AIRCRAFT_PRESET_LOAD_PROGRESS" };
@@ -3004,14 +3006,15 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     public override bool HandleUIVariableSet(string varKey, double value, SimVarDefinition varDef,
         SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
     {
-        // System Display PAGE combo: drive the SD to the chosen page, then read that
-        // page's decoded content off the real SD view and announce it (so the SD pages
-        // are usable from the panel, no separate window). The combo's own value change
-        // already announces the page NAME; this adds the page CONTENT.
+        // System Display PAGE combo: drive the SD to the chosen page, then scrape that
+        // page's decoded content off the real SD view INTO the panel "Status display"
+        // box (no separate window). The combo's own value change announces the page
+        // NAME; the CONTENT populates the box silently and updates on every page switch
+        // — NO auto-speech of the content, no manual refresh.
         if (varKey == "A32NX_ECAM_SD_CURRENT_PAGE_INDEX")
         {
             simConnect.ExecuteCalculatorCode($"{(int)Math.Round(value)} (>L:{varKey})");
-            AnnounceSdPageAsync(announcer);
+            RefreshSdPageDisplayAsync(simConnect);
             return true;
         }
         // Annunciator / integral lights knob (Test / Bright / Dim) is handled by the
@@ -3442,6 +3445,18 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         }
         switch (varKey)
         {
+            // ECAM Control Panel "Status display" box: show the SELECTED SD page name
+            // plus its live scraped CONTENT (populated by RefreshSdPageDisplayAsync on
+            // each page switch). Before the first scrape it prompts to switch a page.
+            case "A32NX_ECAM_SD_CURRENT_PAGE_INDEX":
+            {
+                int pi = (int)Math.Round(value);
+                string pname = _sdPageNames.TryGetValue(pi, out var pn) ? pn : $"Page {pi}";
+                displayText = string.IsNullOrEmpty(_sdPageContent)
+                    ? $"{pname} page (select a page to load its content)"
+                    : $"{pname} page\r\n{_sdPageContent}";
+                return true;
+            }
             case "A32NX_FCU_LEFT_EIS_BARO_HPA":
             case "A32NX_FCU_RIGHT_EIS_BARO_HPA":
             {
@@ -3597,6 +3612,20 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     // announces it — so the SD pages are usable straight from the panel, no separate
     // window or hotkey. On-demand scrapes only (background poll paused).
     private SimConnect.CoherentDisplayClient? _sdScrapeClient;
+    // Cached live System-Display content for the ECP "System Display Page" combo. On a
+    // page change we scrape the SD view ONCE, store the decoded rows here, then force a
+    // refresh of the ECAM Control Panel "Status display" box (via the page-index var) —
+    // TryGetDisplayOverride surfaces this content there. NO auto-speech: the combo
+    // announces the page NAME; the CONTENT is read on demand in the box, and it updates
+    // immediately on a page switch with no manual refresh.
+    private string _sdPageContent = "";
+    private static readonly Dictionary<int, string> _sdPageNames = new()
+    {
+        [-1] = "Default", [0] = "Engine", [1] = "APU", [2] = "Bleed", [3] = "Air Cond",
+        [4] = "Pressurization", [5] = "Doors", [6] = "Electrical AC", [7] = "Electrical DC",
+        [8] = "Fuel", [9] = "Wheel", [10] = "Hydraulics", [11] = "Flight Controls",
+        [12] = "Circuit Breakers", [13] = "Cruise", [14] = "Status", [15] = "Video"
+    };
     private Dictionary<double, string>? _readoutMap;
     private static readonly Dictionary<double, string> _apprCapMap = new Dictionary<double, string>
     { [0] = "None", [1] = "CAT 1", [2] = "CAT 2", [3] = "CAT 3 Single", [4] = "CAT 3 Dual" };
@@ -3634,7 +3663,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     /// SD page straight from the panel. The page NAME is announced by the combo itself;
     /// this adds the CONTENT. On-demand scrape (the background poll stays paused).
     /// </summary>
-    private async void AnnounceSdPageAsync(ScreenReaderAnnouncer announcer)
+    private async void RefreshSdPageDisplayAsync(SimConnectManager simConnect)
     {
         try
         {
@@ -3646,19 +3675,29 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             }
             await Task.Delay(900);   // let the SD render the newly-selected page
             var rows = await _sdScrapeClient.ScrapeNowAsync();
+            string content;
             if (rows == null || rows.Count == 0)
             {
-                announcer.Announce("System display content not available. Open the System Display window to read it.");
-                return;
+                content = "(content not available — power up the displays / try again)";
             }
-            // Drop the on-screen UI chrome (page buttons) so the read-out is just data.
-            var clean = rows.Where(r =>
+            else
             {
-                string u = (r ?? "").Trim().ToUpperInvariant();
-                return u.Length > 0 && u != "CLOSE" && u != "MORE" && u != "PRINT"
-                       && u != "RECALL" && u != "RECALL PRINT" && u != "RECALL  PRINT";
-            });
-            announcer.Announce("System display. " + string.Join(". ", clean));
+                // Drop the on-screen UI chrome (page buttons) so the read-out is just data.
+                var clean = rows.Where(r =>
+                {
+                    string u = (r ?? "").Trim().ToUpperInvariant();
+                    return u.Length > 0 && u != "CLOSE" && u != "MORE" && u != "PRINT"
+                           && u != "RECALL" && u != "RECALL PRINT" && u != "RECALL  PRINT";
+                });
+                content = string.Join("\r\n", clean);
+            }
+            _sdPageContent = content;
+            // Push the freshly-scraped content into the ECAM Control Panel "Status display"
+            // box by forcing a refresh of its display var — UpdateDisplayText then calls
+            // TryGetDisplayOverride, which returns _sdPageContent. NO speech: the page name
+            // was already announced by the combo; this only POPULATES the box, immediately,
+            // with no manual refresh.
+            simConnect.RequestVariable("A32NX_ECAM_SD_CURRENT_PAGE_INDEX", forceUpdate: true);
         }
         catch { /* scrape best-effort; the combo still set the page */ }
     }
