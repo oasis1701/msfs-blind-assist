@@ -3701,6 +3701,71 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         },
+
+        // ---- Flight Control Computers panel (parity with A380 Overhead > FCC) ----
+        // A32NX uses ELAC 1/2, SEC 1/2/3, FAC 1/2 (pushbutton pressed = computer on).
+        ["A32NX_ELAC_1_PUSHBUTTON_PRESSED"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_ELAC_1_PUSHBUTTON_PRESSED", DisplayName = "ELAC 1",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        },
+        ["A32NX_ELAC_2_PUSHBUTTON_PRESSED"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_ELAC_2_PUSHBUTTON_PRESSED", DisplayName = "ELAC 2",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        },
+        ["A32NX_SEC_1_PUSHBUTTON_PRESSED"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_SEC_1_PUSHBUTTON_PRESSED", DisplayName = "SEC 1",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        },
+        ["A32NX_SEC_2_PUSHBUTTON_PRESSED"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_SEC_2_PUSHBUTTON_PRESSED", DisplayName = "SEC 2",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        },
+        ["A32NX_SEC_3_PUSHBUTTON_PRESSED"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_SEC_3_PUSHBUTTON_PRESSED", DisplayName = "SEC 3",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        },
+        ["A32NX_FAC_1_PUSHBUTTON_PRESSED"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FAC_1_PUSHBUTTON_PRESSED", DisplayName = "FAC 1",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        },
+        ["A32NX_FAC_2_PUSHBUTTON_PRESSED"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FAC_2_PUSHBUTTON_PRESSED", DisplayName = "FAC 2",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        },
+
+        // ---- Cargo Air panel (parity with A380 Overhead > Cargo Air) ----
+        ["A32NX_OVHD_CARGO_AIR_HOT_AIR_PB_IS_ON"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_OVHD_CARGO_AIR_HOT_AIR_PB_IS_ON", DisplayName = "Cargo Hot Air",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        },
+        ["A32NX_OVHD_CARGO_AIR_ISOL_VALVES_FWD_PB_IS_ON"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_OVHD_CARGO_AIR_ISOL_VALVES_FWD_PB_IS_ON", DisplayName = "Forward Isolation Valve",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        },
+        ["A32NX_OVHD_CARGO_AIR_ISOL_VALVES_AFT_PB_IS_ON"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_OVHD_CARGO_AIR_ISOL_VALVES_AFT_PB_IS_ON", DisplayName = "Aft Isolation Valve",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        },
         };
 
         // Merge aircraft-specific variables into base variables
@@ -3883,7 +3948,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     {
         return new Dictionary<string, List<string>>
         {
-["Overhead"] = new List<string> { "ELEC", "ADIRS", "APU", "Oxygen", "Fire", "Hydraulics", "Fuel", "Air Conditioning", "Bleed Air", "Pressurization", "Ventilation", "Anti Ice", "Signs", "Exterior Lighting", "Calls", "GPWS", "Cockpit Door", "Evacuation", "Cargo Smoke", "Engine" },
+["Overhead"] = new List<string> { "ELEC", "ADIRS", "APU", "Oxygen", "Fire", "Hydraulics", "Fuel", "Air Conditioning", "Bleed Air", "Pressurization", "Ventilation", "Cargo Air", "Anti Ice", "Signs", "Exterior Lighting", "Calls", "GPWS", "Flight Control Computers", "Cockpit Door", "Evacuation", "Cargo Smoke", "Engine" },
         ["Glareshield"] = new List<string> { "FCU", "EFIS Control Panel", "Warnings" },
         ["Instrument"] = new List<string> { "Autobrake and Gear", "PFD", "ND", "ISIS", "Source Switching", "Clock", "System Display" },
         ["Pedestal"] = new List<string> { "Flight Controls", "Speed Brake", "Parking Brake", "Engines", "ECAM Control Panel", "Weather Radar", "Transponder", "RMP" }
@@ -3991,6 +4056,18 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             "A32NX_OVHD_VENT_BLOWER_PB_IS_ON", "A32NX_OVHD_VENT_EXTRACT_PB_IS_ON",
             "A32NX_OVHD_VENT_CAB_FANS_PB_IS_ON"
+        },
+        ["Cargo Air"] = new List<string>
+        {
+            "A32NX_OVHD_CARGO_AIR_HOT_AIR_PB_IS_ON",
+            "A32NX_OVHD_CARGO_AIR_ISOL_VALVES_FWD_PB_IS_ON",
+            "A32NX_OVHD_CARGO_AIR_ISOL_VALVES_AFT_PB_IS_ON"
+        },
+        ["Flight Control Computers"] = new List<string>
+        {
+            "A32NX_ELAC_1_PUSHBUTTON_PRESSED", "A32NX_ELAC_2_PUSHBUTTON_PRESSED",
+            "A32NX_SEC_1_PUSHBUTTON_PRESSED", "A32NX_SEC_2_PUSHBUTTON_PRESSED", "A32NX_SEC_3_PUSHBUTTON_PRESSED",
+            "A32NX_FAC_1_PUSHBUTTON_PRESSED", "A32NX_FAC_2_PUSHBUTTON_PRESSED"
         },
         ["Anti Ice"] = new List<string>
         {
