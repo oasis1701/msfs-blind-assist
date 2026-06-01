@@ -2256,6 +2256,18 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             IsAnnounced = true,
             Units = "number"
         },
+        // MSFSBA-internal System Display page selector (the A32NX SD index is read-only,
+        // so this drives the accessible status box, not the real SD). Selecting a page
+        // scrapes (E/WD) or reads decoded SimVars (system pages) into the status box.
+        ["A32NX_MSFSBA_SD_PAGE"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_MSFSBA_SD_PAGE",
+            DisplayName = "System Display Page",
+            Type = SimConnect.SimVarType.LVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            Units = "number",
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Upper E/WD", [1] = "Electrical" }
+        },
         ["A32NX_FM1_MINIMUM_DESCENT_ALTITUDE"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_FM1_MINIMUM_DESCENT_ALTITUDE",
@@ -3478,6 +3490,12 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ["ECAM"] = new List<string>
         {
             "A32NX_ECAM_SFAIL"
+        },
+        // System Display: the status box shows the selected page's content (E/WD scrape
+        // or decoded SD-system SimVars), via TryGetDisplayOverride on the page var.
+        ["System Display"] = new List<string>
+        {
+            "A32NX_MSFSBA_SD_PAGE"
         }
         // Add more panels and their display variables here as needed
         };
@@ -3489,7 +3507,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
 ["Overhead Forward"] = new List<string> { "ELEC", "ADIRS", "APU", "Oxygen", "Fire", "Hydraulic", "Fuel", "Air Con", "Anti Ice", "Signs", "Exterior Lighting", "Calls", "GPWS", "Cockpit Door", "Evacuation", "Cargo Smoke", "Engine" },
         ["Glareshield"] = new List<string> { "FCU", "EFIS Control Panel", "Warnings" },
-        ["Instrument"] = new List<string> { "Autobrake and Gear", "ISIS" },
+        ["Instrument"] = new List<string> { "Autobrake and Gear", "ISIS", "System Display" },
         ["Pedestal"] = new List<string> { "Flight Controls", "Speed Brake", "Parking Brake", "Engines", "ECAM", "WX", "ATC-TCAS", "RMP" }
         };
     }
@@ -3719,6 +3737,10 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             "ECAM_EMER_CANC",
             "ECAM_CLR_1",
             "ECAM_CLR_2"
+        },
+        ["System Display"] = new List<string>
+        {
+            "A32NX_MSFSBA_SD_PAGE"
         },
         ["WX"] = new List<string>
         {
@@ -4251,6 +4273,110 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         return string.Join(", ", names);
     }
 
+    // ---- A320 System Display (SD) + E/WD accessible read-out -------------------
+    // The A32NX SD page index is system-written/read-only (verified PagesContainer.tsx:111),
+    // so — unlike the A380 — we cannot force a page to scrape it. The "System Display"
+    // panel combo selects a page: the E/WD is SCRAPED (single page, no switching needed);
+    // the SD system pages (ELEC/HYD/... added one at a time) read decoded SimVars. The
+    // status box shows the selected page's content, populated on selection — no
+    // auto-speech, no manual refresh. Combo backed by an MSFSBA-internal L:var.
+    public const string SdPageVar = "A32NX_MSFSBA_SD_PAGE";
+    private SimConnect.CoherentDisplayClient? _ewdScrapeClient;
+    private string _sdBoxContent = "";
+    private static readonly Dictionary<double, string> SdPageNames = new()
+    {
+        [0] = "Upper E/WD", [1] = "Electrical"
+    };
+
+    // Per-system SD readout rows (decoded SimVars). Added one system at a time.
+    private static List<(string label, string var, Func<double, string> fmt)> SdSystemRows(int page)
+    {
+        string V(double v) => $"{v:0} V";
+        string Pct(double v) => $"{v:0} %";
+        string OnOff(double v) => v > 0.5 ? "powered" : "not powered";
+        var r = new List<(string, string, Func<double, string>)>();
+        if (page == 1) // ELEC
+        {
+            r.Add(("Gen 1", "A32NX_ELEC_ENG_GEN_1_POTENTIAL", V));
+            r.Add(("Gen 1 load", "A32NX_ELEC_ENG_GEN_1_LOAD", Pct));
+            r.Add(("Gen 2", "A32NX_ELEC_ENG_GEN_2_POTENTIAL", V));
+            r.Add(("Gen 2 load", "A32NX_ELEC_ENG_GEN_2_LOAD", Pct));
+            r.Add(("APU gen", "A32NX_ELEC_APU_GEN_1_POTENTIAL", V));
+            r.Add(("APU gen load", "A32NX_ELEC_APU_GEN_1_LOAD", Pct));
+            r.Add(("Battery 1", "A32NX_ELEC_BAT_1_POTENTIAL", V));
+            r.Add(("Battery 2", "A32NX_ELEC_BAT_2_POTENTIAL", V));
+            r.Add(("Emergency gen", "A32NX_ELEC_EMER_GEN_POTENTIAL", V));
+            r.Add(("AC bus 1", "A32NX_ELEC_AC_1_BUS_IS_POWERED", OnOff));
+            r.Add(("AC bus 2", "A32NX_ELEC_AC_2_BUS_IS_POWERED", OnOff));
+            r.Add(("AC ESS bus", "A32NX_ELEC_AC_ESS_BUS_IS_POWERED", OnOff));
+            r.Add(("DC bus 1", "A32NX_ELEC_DC_1_BUS_IS_POWERED", OnOff));
+            r.Add(("DC bus 2", "A32NX_ELEC_DC_2_BUS_IS_POWERED", OnOff));
+            r.Add(("DC bat bus", "A32NX_ELEC_DC_BAT_BUS_IS_POWERED", OnOff));
+        }
+        return r;
+    }
+
+    // Populate the System Display status box for the selected page, then force the box
+    // to re-render (RequestVariable → ProcessSimVarUpdate → UpdateDisplayText →
+    // TryGetDisplayOverride). No speech; the box just fills in on selection.
+    private async void RefreshDisplayBoxAsync(int page, SimConnect.SimConnectManager sim)
+    {
+        try
+        {
+            string content;
+            if (page == 0)   // E/WD — scrape the live display (engine row + memos/warnings)
+            {
+                if (_ewdScrapeClient == null)
+                {
+                    _ewdScrapeClient = new SimConnect.CoherentDisplayClient("A32NX_EWD_1");
+                    _ewdScrapeClient.Start();
+                    _ewdScrapeClient.SetActive(false);   // on-demand only
+                }
+                await System.Threading.Tasks.Task.Delay(700);
+                var rows = await _ewdScrapeClient.ScrapeNowAsync();
+                content = (rows == null || rows.Count == 0)
+                    ? "(content not available — power up the displays / try again)"
+                    : string.Join("\r\n", rows);
+            }
+            else
+            {
+                // SD system page — request its L:vars, let them arrive, then format.
+                var rows = SdSystemRows(page);
+                if (rows.Count == 0) { content = "(this SD page is not wired yet)"; }
+                else
+                {
+                    foreach (var row in rows) sim.RequestVariable(row.var, forceUpdate: true);
+                    await System.Threading.Tasks.Task.Delay(600);
+                    var sb = new System.Text.StringBuilder();
+                    foreach (var row in rows)
+                    {
+                        double? cv = sim.GetCachedVariableValue(row.var);
+                        sb.AppendLine(cv.HasValue ? $"{row.label}: {row.fmt(cv.Value)}" : $"{row.label}: --");
+                    }
+                    content = sb.ToString().TrimEnd();
+                }
+            }
+            _sdBoxContent = content;
+            sim.RequestVariable(SdPageVar, forceUpdate: true);
+        }
+        catch { /* best-effort; the combo still recorded the selection */ }
+    }
+
+    public override bool TryGetDisplayOverride(string varKey, double value, out string displayText)
+    {
+        displayText = "";
+        if (varKey == SdPageVar)
+        {
+            int p = (int)Math.Round(value);
+            string nm = SdPageNames.TryGetValue(p, out var n) ? n : $"Page {p}";
+            displayText = string.IsNullOrEmpty(_sdBoxContent)
+                ? $"{nm} — select this page to load its content"
+                : $"{nm}\r\n{_sdBoxContent}";
+            return true;
+        }
+        return base.TryGetDisplayOverride(varKey, value, out displayText);
+    }
+
     public override bool ProcessSimVarUpdate(string varName, double value, Accessibility.ScreenReaderAnnouncer announcer)
     {
         lastAnnouncer = announcer; // Store for when we announce
@@ -4461,6 +4587,17 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     public override bool HandleUIVariableSet(string varKey, double value, SimConnect.SimVarDefinition varDef,
         SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer announcer)
     {
+        // System Display page combo (MSFSBA-internal selector). Record the selection
+        // and populate the status box — scrape the E/WD or read decoded SD-system
+        // SimVars. The real A32NX SD index is read-only, so no real SD var is touched.
+        if (varKey == "A32NX_MSFSBA_SD_PAGE")
+        {
+            int page = (int)Math.Round(value);
+            simConnect.ExecuteCalculatorCode($"{page} (>L:A32NX_MSFSBA_SD_PAGE)");
+            RefreshDisplayBoxAsync(page, simConnect);
+            return true;
+        }
+
         // Special handling for autobrake mode - sends to multiple locations
         if (varKey == "AUTOBRAKE_MODE")
         {
