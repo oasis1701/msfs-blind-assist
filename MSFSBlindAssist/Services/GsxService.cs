@@ -1757,6 +1757,7 @@ public sealed class GsxService : IDisposable
             return string.Empty;
 
         bool hasReceiptData = HasStatusReceiptData(html);
+        var receiptChargeRows = ExtractReceiptChargeRows(html);
         string withoutReceiptData = Regex.Replace(
             html,
             @"<span\s+class=""[^""]*\bgsx-receipt-data\b[^""]*""[^>]*>.*?</span>",
@@ -1765,7 +1766,10 @@ public sealed class GsxService : IDisposable
 
         var activeRows = new List<StatusServiceRow>();
         var completedRows = new List<StatusServiceRow>();
-        var chargeRows = ExtractStatusChargeRows(withoutReceiptData);
+        var chargeRows = ExtractStatusChargeRows(withoutReceiptData)
+            .Concat(receiptChargeRows)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
 
         foreach (Match match in Regex.Matches(
                      withoutReceiptData,
@@ -2041,10 +2045,24 @@ public sealed class GsxService : IDisposable
         }
 
         if (serviceRow is null || string.IsNullOrWhiteSpace(invoiceRow))
-            return string.Empty;
+        {
+            invoiceRow = chargeRows.LastOrDefault(IsInvoiceChargeRow)
+                ?? chargeRows.LastOrDefault(row => !string.IsNullOrWhiteSpace(ExtractMoneySummary(row)))
+                ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(invoiceRow))
+                return string.Empty;
 
-        string serviceName = ExtractServiceName(serviceRow.Text);
-        string serviceOperator = ExtractServiceOperator(serviceRow.Text);
+            serviceRow = activeRows
+                .Concat(completedRows)
+                .LastOrDefault(row => IsInvoiceGeneratingService(row.Text));
+        }
+
+        string serviceName = serviceRow is null
+            ? InferInvoiceServiceName(invoiceRow)
+            : ExtractServiceName(serviceRow.Text);
+        string serviceOperator = serviceRow is null
+            ? ExtractServiceOperator(invoiceRow)
+            : ExtractServiceOperator(serviceRow.Text);
         if (string.IsNullOrWhiteSpace(serviceOperator)
             && !string.IsNullOrWhiteSpace(serviceName)
             && _lastServiceOperatorByName.TryGetValue(serviceName, out string? cachedOperator))
@@ -2061,6 +2079,22 @@ public sealed class GsxService : IDisposable
             : $" from {serviceOperator}";
 
         return $"{serviceName} invoice{operatorPhrase}, total {NormalizeWhitespace(total)}. More details can be found by viewing the invoice.";
+    }
+
+    private static List<string> ExtractReceiptChargeRows(string html)
+    {
+        var rows = new List<string>();
+        foreach (Match match in Regex.Matches(
+                     html,
+                     @"<span\s+class=""[^""]*\bgsx-receipt-data\b[^""]*""[^>]*>(?<body>.*?)</span>",
+                     RegexOptions.Singleline | RegexOptions.IgnoreCase))
+        {
+            string line = RenderStatusFragmentAsText(match.Groups["body"].Value);
+            if (line.Length > 0 && IsChargeStatusLine(line))
+                rows.Add(line);
+        }
+
+        return rows;
     }
 
     private static bool ShouldMentionReceipt(string serviceText, IReadOnlyList<string> chargeRows, bool hasReceiptData)
@@ -2111,8 +2145,30 @@ public sealed class GsxService : IDisposable
             || normalized.Contains("fuel")
             || normalized.Contains("refuel")
             || normalized.Contains("ground handling")
+            || normalized.Contains("handling")
+            || normalized.Contains("baggage")
+            || normalized.Contains("cargo")
+            || normalized.Contains("boarding")
+            || normalized.Contains("deboarding")
             || normalized.Contains("de-icing")
             || normalized.Contains("deicing");
+    }
+
+    private static string InferInvoiceServiceName(string invoiceRow)
+    {
+        string normalized = invoiceRow.ToLowerInvariant();
+        if (normalized.Contains("fuel") || normalized.Contains("refuel"))
+            return "Fueling";
+        if (normalized.Contains("catering"))
+            return "Catering";
+        if (normalized.Contains("de-ic") || normalized.Contains("deic"))
+            return "De-icing";
+        if (normalized.Contains("baggage") || normalized.Contains("cargo")
+            || normalized.Contains("handling") || normalized.Contains("boarding")
+            || normalized.Contains("deboarding"))
+            return "Handling";
+
+        return "Service";
     }
 
     private static string ExtractServiceName(string serviceText)
