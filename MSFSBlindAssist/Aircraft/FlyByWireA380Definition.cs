@@ -813,7 +813,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             {
                 [-1] = "None", [0] = "Engine", [1] = "APU", [2] = "Bleed", [3] = "Cond", [4] = "Press",
                 [5] = "Door", [6] = "Elec AC", [7] = "Elec DC", [8] = "Fuel", [9] = "Wheel", [10] = "Hyd",
-                [11] = "F/Ctl", [12] = "C/B", [13] = "Cruise", [14] = "Status", [15] = "Video"
+                [11] = "F/Ctl", [12] = "C/B", [13] = "Cruise", [14] = "Status", [15] = "Video",
+                // Not an SD page — selecting this scrapes the UPPER ECAM / E-WD instead
+                // (engine N1/EGT/N2/FF + memos/warnings) into the same status box.
+                [16] = "Upper E/WD"
             });
         foreach (var (k, d) in new[]
         {
@@ -3064,8 +3067,12 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // — NO auto-speech of the content, no manual refresh.
         if (varKey == "A32NX_ECAM_SD_CURRENT_PAGE_INDEX")
         {
-            simConnect.ExecuteCalculatorCode($"{(int)Math.Round(value)} (>L:{varKey})");
-            RefreshSdPageDisplayAsync(simConnect);
+            int idx = (int)Math.Round(value);
+            // 16 = our synthetic "Upper E/WD" option — scrape the E/WD view instead of an
+            // SD page. Still record the combo value (so the box header reads "Upper E/WD"
+            // and the selection persists); the real SD view ignores the out-of-range index.
+            simConnect.ExecuteCalculatorCode($"{idx} (>L:{varKey})");
+            RefreshSdPageDisplayAsync(simConnect, ewd: idx == 16);
             return true;
         }
         // Annunciator / integral lights knob (Test / Bright / Dim) is handled by the
@@ -3675,6 +3682,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     // announces it — so the SD pages are usable straight from the panel, no separate
     // window or hotkey. On-demand scrapes only (background poll paused).
     private SimConnect.CoherentDisplayClient? _sdScrapeClient;
+    private SimConnect.CoherentDisplayClient? _ewdScrapeClient;   // Upper ECAM / E-WD view
     // Cached live System-Display content for the ECP "System Display Page" combo. On a
     // page change we scrape the SD view ONCE, store the decoded rows here, then force a
     // refresh of the ECAM Control Panel "Status display" box (via the page-index var) —
@@ -3687,7 +3695,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         [-1] = "Default", [0] = "Engine", [1] = "APU", [2] = "Bleed", [3] = "Air Cond",
         [4] = "Pressurization", [5] = "Doors", [6] = "Electrical AC", [7] = "Electrical DC",
         [8] = "Fuel", [9] = "Wheel", [10] = "Hydraulics", [11] = "Flight Controls",
-        [12] = "Circuit Breakers", [13] = "Cruise", [14] = "Status", [15] = "Video"
+        [12] = "Circuit Breakers", [13] = "Cruise", [14] = "Status", [15] = "Video",
+        [16] = "Upper E/WD"
     };
     private Dictionary<double, string>? _readoutMap;
     private static readonly Dictionary<double, string> _apprCapMap = new Dictionary<double, string>
@@ -3726,18 +3735,34 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     /// SD page straight from the panel. The page NAME is announced by the combo itself;
     /// this adds the CONTENT. On-demand scrape (the background poll stays paused).
     /// </summary>
-    private async void RefreshSdPageDisplayAsync(SimConnectManager simConnect)
+    private async void RefreshSdPageDisplayAsync(SimConnectManager simConnect, bool ewd = false)
     {
         try
         {
-            if (_sdScrapeClient == null)
+            SimConnect.CoherentDisplayClient client;
+            if (ewd)
             {
-                _sdScrapeClient = new SimConnect.CoherentDisplayClient("A380X_SDv2");
-                _sdScrapeClient.Start();
-                _sdScrapeClient.SetActive(false);   // on-demand only, no 1.2 s poll
+                // Upper ECAM / E-WD: engine N1/EGT/N2/FF + memos/warnings (single page).
+                if (_ewdScrapeClient == null)
+                {
+                    _ewdScrapeClient = new SimConnect.CoherentDisplayClient("A380X_EWD");
+                    _ewdScrapeClient.Start();
+                    _ewdScrapeClient.SetActive(false);
+                }
+                client = _ewdScrapeClient;
             }
-            await Task.Delay(900);   // let the SD render the newly-selected page
-            var rows = await _sdScrapeClient.ScrapeNowAsync();
+            else
+            {
+                if (_sdScrapeClient == null)
+                {
+                    _sdScrapeClient = new SimConnect.CoherentDisplayClient("A380X_SDv2");
+                    _sdScrapeClient.Start();
+                    _sdScrapeClient.SetActive(false);   // on-demand only, no 1.2 s poll
+                }
+                client = _sdScrapeClient;
+            }
+            await Task.Delay(900);   // let the display render the newly-selected page
+            var rows = await client.ScrapeNowAsync();
             string content;
             if (rows == null || rows.Count == 0)
             {
