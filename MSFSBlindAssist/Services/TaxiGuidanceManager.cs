@@ -871,7 +871,18 @@ public class TaxiGuidanceManager : IDisposable
             // Snapping directly to the requested first taxiway lets the
             // route start where it's supposed to, regardless of the aircraft's
             // current orientation.
-            if (!_graph.Nodes.ContainsKey(destinationNodeId))
+            int routeDestinationNodeId = destinationNodeId;
+            if (isRunwayDestination && taxiwaySequence != null && taxiwaySequence.Count > 0)
+            {
+                var selectedHoldShort = FindSelectedRunwayHoldShortNode(
+                    taxiwaySequence[^1], destinationName);
+                if (selectedHoldShort != null)
+                    routeDestinationNodeId = selectedHoldShort.NodeId;
+            }
+
+            _destinationNodeId = routeDestinationNodeId;
+
+            if (!_graph.Nodes.ContainsKey(routeDestinationNodeId))
                 return "Destination node not found in taxi graph.";
 
             // Restrict start-node candidates to the destination's connected
@@ -879,7 +890,7 @@ public class TaxiGuidanceManager : IDisposable
             // taxiway is modelled as an isolated island (e.g. GCLP S5 in
             // fs2024) — without this filter, FindNearestNodeInDirection
             // would snap to the island and A* would fail with no path.
-            int destComponentId = _graph.Nodes[destinationNodeId].ComponentId;
+            int destComponentId = _graph.Nodes[routeDestinationNodeId].ComponentId;
 
             TaxiNode? startNode = null;
             if (taxiwaySequence != null && taxiwaySequence.Count > 0)
@@ -902,9 +913,9 @@ public class TaxiGuidanceManager : IDisposable
             TaxiRoute? route;
 
             if (taxiwaySequence != null && taxiwaySequence.Count > 0)
-                route = router.FindConstrainedPath(startNode.NodeId, destinationNodeId, taxiwaySequence);
+                route = router.FindConstrainedPath(startNode.NodeId, routeDestinationNodeId, taxiwaySequence);
             else
-                route = router.FindShortestPath(startNode.NodeId, destinationNodeId);
+                route = router.FindShortestPath(startNode.NodeId, routeDestinationNodeId);
 
             if (route == null || route.Segments.Count == 0)
                 return "Could not calculate a route to the destination.";
@@ -4406,6 +4417,43 @@ public class TaxiGuidanceManager : IDisposable
         }
 
         return -1;
+    }
+
+    private TaxiNode? FindSelectedRunwayHoldShortNode(string? finalClearedTaxiway, string destinationName)
+    {
+        if (_graph == null || string.IsNullOrWhiteSpace(finalClearedTaxiway))
+            return null;
+
+        string target = finalClearedTaxiway.Trim();
+        string runway = destinationName.StartsWith("Runway ", StringComparison.OrdinalIgnoreCase)
+            ? destinationName["Runway ".Length..].Trim()
+            : destinationName.Trim();
+
+        var candidates = _graph.Nodes.Values
+            .Where(n => n.Type == TaxiNodeType.HoldShort || n.Type == TaxiNodeType.ILSHoldShort)
+            .Where(n => NodeBelongsToTaxiway(n, target))
+            .Select(n =>
+            {
+                bool runwayMatches = !string.IsNullOrEmpty(runway) &&
+                    !string.IsNullOrEmpty(n.HoldShortName) &&
+                    n.HoldShortName.Contains($"Runway {runway}", StringComparison.OrdinalIgnoreCase);
+                double runwayDistance = _hasLineupTarget
+                    ? TaxiGraph.FastDistanceMeters(
+                        n.Latitude, n.Longitude, _lineupTargetLat, _lineupTargetLon)
+                    : 0.0;
+
+                return (Node: n, RunwayMatches: runwayMatches, RunwayDistance: runwayDistance);
+            })
+            .ToList();
+
+        if (candidates.Count == 0)
+            return null;
+
+        return candidates
+            .OrderByDescending(c => c.RunwayMatches)
+            .ThenBy(c => c.RunwayDistance)
+            .Select(c => c.Node)
+            .First();
     }
 
     private bool NodeBelongsToTaxiway(TaxiNode node, string taxiwayName)
