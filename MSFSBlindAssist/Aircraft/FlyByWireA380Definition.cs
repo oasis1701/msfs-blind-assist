@@ -882,13 +882,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Stock("GEAR_LEFT_POSITION", "GEAR LEFT POSITION", "Left Main Gear", "percent");
         Stock("GEAR_RIGHT_POSITION", "GEAR RIGHT POSITION", "Right Main Gear", "percent");
 
-        // DOORS SD page — all 16 passenger doors as the stock `INTERACTIVE POINT OPEN:n`
-        // (percent open; the FBW Door page treats >20% as open). Pre-declared OnRequest as
-        // SimVar so the A380SdRows auto-register loop leaves them stock. Read-only display
-        // data only. Indices 0-15 = MAIN 1L/1R/2L/2R/3L/3R/4L/4R/5L/5R, UPPER
-        // 1L/1R/2L/2R/3L/3R (from the FBW DoorPage source).
-        for (int ip = 0; ip <= 15; ip++)
-            Stock($"INTERACTIVE POINT OPEN:{ip}", $"INTERACTIVE POINT OPEN:{ip}", $"Door {ip}", "percent");
+        // NOTE: The DOORS SD page gets its door states from the live Coherent SD
+        // scrape (door states are part of the decoded scrape), so no INTERACTIVE
+        // POINT OPEN SimVars are registered here. Registering those as SimConnect
+        // data definitions was the root cause of the aircraft-detection break, and
+        // nothing in the SD form referenced them anyway.
 
         var windowReadVars = Forms.FBWA380.FBWA380SystemDisplayForm.AllVariableNames()
             .Concat(Forms.FBWA380.FBWA380NavDisplayForm.AllVariableNames())
@@ -908,15 +906,23 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         }
         // Register every decoded SD-page row var (A380SdRows) OnRequest so the ECAM-CP
         // "System Display Page" combo can read it (RequestVariable no-ops on any
-        // unregistered var). All A380SdRows vars are A32NX_/A380X_ L:vars.
+        // unregistered var). Most A380SdRows vars are L:vars (underscore identifiers),
+        // but DON'T blindly register everything as an L:var — a stock SimVar name
+        // (contains a space or colon, e.g. "INTERACTIVE POINT OPEN:0") MUST register as
+        // a SimVar: forcing a stock-SimVar name through the L:var/MobiFlight path
+        // corrupts SimConnect registration and breaks aircraft detection.
         for (int sdPage = 0; sdPage <= 13; sdPage++)
             foreach (var (_, rowVar, _) in A380SdRows(sdPage))
                 if (!vars.ContainsKey(rowVar))
+                {
+                    bool isStock = rowVar.Contains(' ') || rowVar.Contains(':');
                     vars[rowVar] = new SimVarDefinition
                     {
-                        Name = rowVar, DisplayName = rowVar, Type = SimVarType.LVar,
+                        Name = rowVar, DisplayName = rowVar,
+                        Type = isStock ? SimVarType.SimVar : SimVarType.LVar,
                         UpdateFrequency = UpdateFrequency.OnRequest, Units = "number"
                     };
+                }
 
         // ---- Thrust levers (detent combos) ----
         // Command a thrust-lever detent from a combo. The write is intercepted in
@@ -4338,7 +4344,6 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         string OnOff(double v) => v > 0.5 ? "powered" : "not powered";
         string OpenShut(double v) => v > 0.5 ? "open" : "closed";
         string Healthy(double v) => v > 0.5 ? "healthy" : "failed";
-        string DoorState(double pct) => pct > 20 ? "open" : "closed";   // FBW Door page threshold
         string Auto(double v) => v > 0.5 ? "auto" : "off";
         string Active(double v) => v > 0.5 ? "running" : "off";
         string Flag(double v, string set, string clr) => v > 0.5 ? set : clr;
@@ -4451,15 +4456,14 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 r.Add(("Pack 1", "A32NX_COND_PACK_1_FLOW_VALVE_1_IS_OPEN", v => v > 0.5 ? "on" : "off"));
                 r.Add(("Pack 2", "A32NX_COND_PACK_2_FLOW_VALVE_1_IS_OPEN", v => v > 0.5 ? "on" : "off"));
                 break;
-            case 5: // DOORS — all 16 passenger doors (FBW Door page, INTERACTIVE POINT OPEN:0-15)
-                {
-                    string[] dn = { "Main 1 left", "Main 1 right", "Main 2 left", "Main 2 right",
-                                    "Main 3 left", "Main 3 right", "Main 4 left", "Main 4 right",
-                                    "Main 5 left", "Main 5 right", "Upper 1 left", "Upper 1 right",
-                                    "Upper 2 left", "Upper 2 right", "Upper 3 left", "Upper 3 right" };
-                    for (int i = 0; i < dn.Length; i++)
-                        r.Add(($"{dn[i]} door", $"INTERACTIVE POINT OPEN:{i}", DoorState));
-                }
+            case 5: // DOORS
+                // NOTE: passenger-door states (the 16 `INTERACTIVE POINT OPEN:n` stock
+                // SimVars) are intentionally NOT listed here. This A380SdRows set is
+                // auto-registered as L:vars (see the loop in the ctor), and forcing a
+                // `INTERACTIVE POINT OPEN:n` stock-SimVar name through the L:var path
+                // corrupted SimConnect registration and broke aircraft detection. The
+                // live Coherent SD scrape already decodes passenger-door states, so the
+                // fallback only lists the real-L:var door/window items below.
                 r.Add(("Forward cargo door", "A32NX_FWD_DOOR_CARGO_LOCKED", v => v > 0.5 ? "closed" : "open"));
                 r.Add(("Aft cargo door", "A32NX_AFT_DOOR_CARGO_LOCKED", v => v > 0.5 ? "closed" : "open"));
                 r.Add(("Captain sliding window", "CPT_SLIDING_WINDOW", v => v > 0.05 ? "open" : "closed"));
