@@ -52,6 +52,12 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     // ===================================================================
     public override Dictionary<string, SimVarDefinition> GetVariables()
     {
+        // CACHE: the variable DEFINITIONS are static, but this method rebuilt the whole
+        // ~400-var dictionary (every Sel/Stock/Mon + the SD-register loops) on EVERY call
+        // — and the panel-build loop calls GetVariables() twice per control, so an A380
+        // overhead subpanel rebuilt the dict ~30× per switch. That was the subpanel lag.
+        // Build once, then return the cached instance (also reused by ProcessSimVarUpdate).
+        if (_varCache != null) return _varCache;
         var vars = GetBaseVariables();
 
         // ---- local builders ------------------------------------------
