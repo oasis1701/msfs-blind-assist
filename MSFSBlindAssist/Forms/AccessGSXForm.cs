@@ -419,6 +419,7 @@ public sealed class AccessGSXForm : Form
             foreach (var name in names)
                 _activeServicesCombo.Items.Add(name);
 
+            int targetIndex = -1;
             string? selected = _gsxService.SelectedActiveService;
             if (!string.IsNullOrWhiteSpace(selected))
             {
@@ -429,11 +430,24 @@ public sealed class AccessGSXForm : Form
                             selected,
                             StringComparison.OrdinalIgnoreCase))
                     {
-                        _activeServicesCombo.SelectedIndex = i;
+                        targetIndex = i;
                         break;
                     }
                 }
             }
+
+            // Default to row 0 when no explicit selection exists, so the
+            // user doesn't have to press Down once before the dropdown
+            // has anything highlighted. Done with the suppress flag still
+            // on, so GsxService.SelectedActiveService stays null — the
+            // service-row picker keeps using GSX-order (which happens to
+            // pick the same row 0), so the combo and announcer stay in
+            // visual sync without forcing an explicit re-announce.
+            if (targetIndex < 0 && _activeServicesCombo.Items.Count > 0)
+                targetIndex = 0;
+
+            if (targetIndex >= 0)
+                _activeServicesCombo.SelectedIndex = targetIndex;
         }
         finally
         {

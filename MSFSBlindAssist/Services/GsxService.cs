@@ -233,6 +233,11 @@ public sealed class GsxService : IDisposable
     // of the last one — transitions arriving in the same tooltip still pass.
     private readonly Dictionary<string, DateTime> _lastFuelingProgressAnnouncementByService = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, int> _lastBoardingPassengerAnnouncementByService = new(StringComparer.OrdinalIgnoreCase);
+    // Bags milestone (percent / 10) per operation (loading / unloading).
+    // Used by StripThrottledBagsSegments to silence within-bucket bag
+    // percentage ticks so the screen reader hears bags every ~10 %, not
+    // every percent.
+    private readonly Dictionary<string, int> _lastBagsMilestoneByOperation = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _announcedInvoiceKeys = new(StringComparer.OrdinalIgnoreCase);
     private static readonly TimeSpan LiveServiceRepeatWindow = TimeSpan.FromMinutes(10);
     private static readonly Regex PercentRegex = new(
@@ -674,6 +679,7 @@ public sealed class GsxService : IDisposable
     {
         _lastBoardingPassengerAnnouncementByService.Clear();
         _lastFuelingProgressAnnouncementByService.Clear();
+        _lastBagsMilestoneByOperation.Clear();
         _lastBaggageProgressByOperation.Clear();
         _recentLiveServiceAnnouncements.Clear();
         _announcedInvoiceKeys.Clear();
@@ -1069,6 +1075,7 @@ public sealed class GsxService : IDisposable
         // we hear that transition without "pax 69/70" being parroted along
         // with it.
         announceText = StripThrottledPaxSegments(announceText, text);
+        announceText = StripThrottledBagsSegments(announceText, text);
         announceText = StripThrottledFuelSegments(announceText, text);
         if (string.IsNullOrWhiteSpace(announceText))
             return;
@@ -1167,10 +1174,23 @@ public sealed class GsxService : IDisposable
         @"^\s*(?:\[gsx\]\s+)?(?:pax\s+\d{1,4}(?:\s*/\s*\d{1,4})?|\d{1,4}(?:\s*/\s*\d{1,4})?\s+(?:passengers?|pax)(?:\s+boarded)?)\s*$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-    // Fueling-progress-only segments (kg loaded / percentage). Same rule:
-    // whole-segment match so anything with a transition word survives.
+    // Fueling-progress-only segments (kg loaded / percentage / Bill $X).
+    // Whole-segment match so anything with a transition word survives.
+    // Three alternatives in the inner group:
+    //   "Bill $11617"             — currency only, no kg
+    //   "fuel 8823/13001 kg"      — fuel/refuel/refueling prefix + kg pair
+    //   "5000 / 20000 kg loaded"  — bare digits + kg/lbs/%
     private static readonly Regex FuelProgressSegmentRegex = new(
-        @"^\s*(?:\[gsx\]\s+)?(?:(?:fuel\s+)?uplift[\s:]+)?\d+(?:[.,]\d+)?(?:\s*/\s*\d+(?:[.,]\d+)?)?\s*(?:kg|lbs?|%)\s*(?:loaded|fueled|refueled|remaining|uplift(?:ed)?)?\s*$",
+        @"^\s*(?:" +
+            @"bill[\s:]*\$?\d+(?:[.,]\d+)?" +
+            @"|" +
+            @"(?:\[gsx\]\s+)?(?:(?:re)?fuel(?:ing)?\s+)?(?:(?:fuel\s+)?uplift[\s:]+)?\d+(?:[.,]\d+)?(?:\s*/\s*\d+(?:[.,]\d+)?)?\s*(?:kg|lbs?|%)\s*(?:loaded|fueled|refueled|remaining|uplift(?:ed)?)?" +
+        @")\s*$",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    // Whole-segment match for "bags N%" / "baggage N%".
+    private static readonly Regex BagsSegmentRegex = new(
+        @"^\s*(?:\[gsx\]\s+)?(?:bags|baggage)\s+\d{1,3}\s*%\s*$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private string StripThrottledPaxSegments(string announceText, string fullText)
@@ -1190,6 +1210,11 @@ public sealed class GsxService : IDisposable
         string serviceKey = BuildFixedProgressThrottleKey(fullText, "boarding");
         int currentMilestone = ComputeBoardingMilestone(passengers);
 
+        // Any change to the milestone (not just an increase) triggers a
+        // fresh announce. Catches turnaround / re-board cycles where pax
+        // drops from a high milestone back down to 0/1 — with the previous
+        // ">" rule, stale dict state from the earlier boarding silenced
+        // the next session's first-passenger marker.
         bool advanced;
         if (!_lastBoardingPassengerAnnouncementByService.TryGetValue(serviceKey, out int lastMilestone))
         {
@@ -1197,7 +1222,7 @@ public sealed class GsxService : IDisposable
         }
         else
         {
-            advanced = currentMilestone > lastMilestone;
+            advanced = currentMilestone != lastMilestone;
         }
 
         if (advanced)
@@ -1207,6 +1232,57 @@ public sealed class GsxService : IDisposable
         }
 
         return StripSegmentsMatching(announceText, PaxOnlySegmentRegex);
+    }
+
+    private string StripThrottledBagsSegments(string announceText, string fullText)
+    {
+        if (string.IsNullOrWhiteSpace(announceText))
+            return announceText;
+
+        string normalized = fullText.ToLowerInvariant();
+        if (!normalized.Contains("bags") && !normalized.Contains("baggage"))
+            return announceText;
+
+        if (!TryExtractBagsPercent(fullText, out int percent))
+            return announceText;
+
+        int currentMilestone = percent / 10;
+        // Track loading vs unloading separately so an arrival's bags-unload
+        // cycle doesn't silence the next departure's bags-load cycle.
+        string operation = normalized.Contains("unload") ? "bags-unloading" : "bags-loading";
+
+        bool advanced;
+        if (!_lastBagsMilestoneByOperation.TryGetValue(operation, out int lastMilestone))
+        {
+            advanced = true;
+        }
+        else
+        {
+            advanced = currentMilestone != lastMilestone;
+        }
+
+        if (advanced)
+        {
+            _lastBagsMilestoneByOperation[operation] = currentMilestone;
+            return announceText;
+        }
+
+        return StripSegmentsMatching(announceText, BagsSegmentRegex);
+    }
+
+    private static bool TryExtractBagsPercent(string text, out int percent)
+    {
+        percent = 0;
+        var match = Regex.Match(
+            text,
+            @"\b(?:bags|baggage)\s+(\d{1,3})\s*%",
+            RegexOptions.IgnoreCase);
+        if (!match.Success)
+            return false;
+        if (!int.TryParse(match.Groups[1].Value, out int p))
+            return false;
+        percent = Math.Clamp(p, 0, 100);
+        return true;
     }
 
     private string StripThrottledFuelSegments(string announceText, string fullText)
@@ -1256,6 +1332,12 @@ public sealed class GsxService : IDisposable
             || Regex.IsMatch(text, @"\b\d{1,3}\s*%", RegexOptions.IgnoreCase)
             || Regex.IsMatch(text,
                    @"\b\d+(?:[.,]\d+)?\s*(?:kg|lbs?)\s+(?:loaded|uplift(?:ed)?)\b",
+                   RegexOptions.IgnoreCase)
+            || Regex.IsMatch(text,
+                   @"\b(?:re)?fuel(?:ing)?\s+\d+(?:[.,]\d+)?\s*/\s*\d+(?:[.,]\d+)?\s*(?:kg|lbs?)\b",
+                   RegexOptions.IgnoreCase)
+            || Regex.IsMatch(text,
+                   @"\bbill[\s:]*\$\d+(?:[.,]\d+)?\b",
                    RegexOptions.IgnoreCase);
     }
 
