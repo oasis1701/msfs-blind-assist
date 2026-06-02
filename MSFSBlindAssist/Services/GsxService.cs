@@ -953,12 +953,16 @@ public sealed class GsxService : IDisposable
             return;
 
         // Trim the announcement to the parts that have actually changed
-        // since the last successful announce — so a bucket-boundary
-        // ETA update reads "ETA 6 min 0 secs" instead of repeating the
-        // operator / aircraft-fuel / etc. Empty _lastAnnouncedFullText
-        // (first run, COUATL restart, ClearLastTooltip) falls through to
-        // the full text.
+        // since the last successful announce — so a re-fire only adds the
+        // segments that differ. Empty _lastAnnouncedFullText (first run,
+        // COUATL restart, ClearLastTooltip) falls through to the full text.
         string announceText = ComputeAnnouncementDelta(text, _lastAnnouncedFullText);
+        // Strip ETA segments from the spoken text. The live ETA still
+        // appears in the AccessGSX tooltip textbox (so the user can read
+        // it on demand) but auto-announces don't read it back — ETA
+        // countdowns trigger near-identical re-announcements every few
+        // seconds and add no usable info to a screen reader.
+        announceText = StripEtaSegments(announceText);
         if (string.IsNullOrWhiteSpace(announceText))
             return;
 
@@ -1024,6 +1028,27 @@ public sealed class GsxService : IDisposable
             }
         }
         return parts;
+    }
+
+    private static readonly Regex EtaSegmentRegex = new(
+        @"\beta\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static string StripEtaSegments(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return text;
+
+        var parts = SplitTooltipParts(text);
+        if (parts.Count == 0)
+            return text;
+
+        var kept = parts.Where(p => !EtaSegmentRegex.IsMatch(p)).ToList();
+        if (kept.Count == 0)
+            return string.Empty;
+        if (kept.Count == parts.Count)
+            return text;
+        return string.Join(", ", kept);
     }
 
     private static bool IsPlaceholderLiveServiceText(string text)
