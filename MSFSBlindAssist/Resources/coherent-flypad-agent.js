@@ -519,6 +519,32 @@
     return false;
   };
 
+  // Ground-services tile state. The FBW GroundServiceButton (A320 + A380 share the
+  // ServiceButtonState styles) encodes its state in the Tailwind background color:
+  //   bg-green-*  = ACTIVE   (service connected / operating)
+  //   bg-amber-*  = CALLED   (requested / in transit / released)
+  // (DISABLED is opacity-20, already surfaced by disabledFor.) These tiles are plain
+  // "button" kinds with no value, so the state was invisible to the reader. Returns
+  // "active"/"called" (or "" for an ordinary button). Checks the tile element itself
+  // (where buttonsStyles is applied) plus an inner element as a fallback.
+  A.serviceClassString = function (e) {
+    var c = e && e.className;
+    if (c && typeof c !== "string" && c.baseVal != null) c = c.baseVal; // SVGAnimatedString
+    return typeof c === "string" ? c : "";
+  };
+  A.serviceState = function (n) {
+    var c = A.serviceClassString(n);
+    if (c.indexOf("bg-green") < 0 && c.indexOf("bg-amber") < 0 && n.querySelector) {
+      try {
+        if (n.querySelector('[class*="bg-green"]')) c = "bg-green";
+        else if (n.querySelector('[class*="bg-amber"]')) c = "bg-amber";
+      } catch (e) {}
+    }
+    if (c.indexOf("bg-green") >= 0) return "active";
+    if (c.indexOf("bg-amber") >= 0) return "called";
+    return "";
+  };
+
   // Throttle-calibration page relabel. The two axis panels (Axis 1 = Throttle
   // 1+2, Axis 2 = Throttle 3+4) are shown SIDE BY SIDE around a shared centre
   // detent-selector column, so several controls/values are DUPLICATED with
@@ -749,6 +775,12 @@
       // the same bg-theme-highlight background, so isSelectedSegment additionally
       // requires an unselected (bg-theme-accent) sibling to disambiguate.
       if (text && A.isSelectedSegment(n)) text = text + " (selected)";
+
+      // Ground-service tiles: append the connected/called state (see A.serviceState).
+      if (text && kind === "button") {
+        var svc = A.serviceState(n);
+        if (svc) text = text + " (" + svc + ")";
+      }
 
       // Drop empty, non-actionable noise. Inputs/checkboxes keep their slot
       // (their value carries meaning even with no label).

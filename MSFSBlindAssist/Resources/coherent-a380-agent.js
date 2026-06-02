@@ -695,7 +695,12 @@
         top: tr.top - pageRect.top, left: tr.left - pageRect.left,
         right: tr.right - pageRect.left, bot: tr.bottom - pageRect.top,
         idx: 0, kind: "text", text: own, value: "", disabled: false,
-        isLabel: cls.indexOf("mfd-label") >= 0,
+        // A naming label is `mfd-label`, NOT a `mfd-label-unit` UNIT span (KT/FL/°C/
+        // …). Excluding units here stops associateInputLabels from grabbing a
+        // neighbouring unit as a field's name — e.g. the PERF T.O FLEX TEMP input
+        // (a °C field) was inheriting the V-speed column's "KT" and reading as "kt".
+        // Unit spans still render via the row-merge as the value's trailing unit.
+        isLabel: cls.indexOf("mfd-label") >= 0 && cls.indexOf("mfd-label-unit") < 0,
         // F-PLN leg/airway annotation (the SID/STAR/airway name printed to the
         // left of every leg). The same procedure name repeats on every leg it
         // covers, so flag it for consecutive-duplicate suppression below.
