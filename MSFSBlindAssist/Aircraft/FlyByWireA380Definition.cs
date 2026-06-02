@@ -769,6 +769,16 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Stock("INDICATED ALTITUDE", "INDICATED ALTITUDE", "Standby Altitude", "feet");
         Stock("KOHLSMAN SETTING MB", "KOHLSMAN SETTING MB", "Standby Baro Setting", "millibars");
 
+        // ENGINE SD-page stock simvars (oil temp/press + vibration per engine — the
+        // FBW SD ENG page reads these, like the A32NX). Pre-declared as SimVar so the
+        // A380SdRows auto-register loop leaves them as SimVar (not L:var).
+        for (int e = 1; e <= 4; e++)
+        {
+            Stock($"GENERAL_ENG_OIL_TEMPERATURE:{e}", $"GENERAL ENG OIL TEMPERATURE:{e}", $"Engine {e} Oil Temperature", "celsius");
+            Stock($"ENG_OIL_PRESSURE:{e}", $"ENG OIL PRESSURE:{e}", $"Engine {e} Oil Pressure", "psi");
+            Stock($"TURB_ENG_VIBRATION:{e}", $"TURB ENG VIBRATION:{e}", $"Engine {e} Vibration", "number");
+        }
+
         var windowReadVars = Forms.FBWA380.FBWA380SystemDisplayForm.AllVariableNames()
             .Concat(Forms.FBWA380.FBWA380NavDisplayForm.AllVariableNames())
             .Concat(Forms.FBWA380.FBWA380ISISForm.AllVariableNames());
@@ -4026,6 +4036,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                     r.Add(($"Engine {e} N3", $"A32NX_ENGINE_N3:{e}", Pct1));
                     r.Add(($"Engine {e} fuel flow", $"A32NX_ENGINE_FF:{e}", Kgh));
                     r.Add(($"Engine {e} oil quantity", $"A32NX_ENGINE_OIL_QTY:{e}", Qt));
+                    r.Add(($"Engine {e} oil temperature", $"GENERAL_ENG_OIL_TEMPERATURE:{e}", C));
+                    r.Add(($"Engine {e} oil pressure", $"ENG_OIL_PRESSURE:{e}", Psi));
+                    r.Add(($"Engine {e} vibration", $"TURB_ENG_VIBRATION:{e}", v => $"{v:0.0}"));
                 }
                 break;
             case 1: // APU
@@ -4069,6 +4082,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 r.Add(("Forward cargo door", "A32NX_FWD_DOOR_CARGO_LOCKED", Locked));
                 r.Add(("Aft cargo door", "A32NX_AFT_DOOR_CARGO_LOCKED", Locked));
                 r.Add(("Escape slides", "A32NX_SLIDES_ARMED", v => v > 0.5 ? "armed" : "disarmed"));
+                r.Add(("Crew oxygen supply", "PUSH_OVHD_OXYGEN_CREW", v => v > 0.5 ? "on" : "off"));
                 break;
             case 6: // ELEC AC
                 for (int n = 1; n <= 4; n++)
@@ -4110,6 +4124,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 for (int n = 1; n <= 3; n++) r.Add(($"SEC {n}", $"A32NX_SEC_{n}_HEALTHY", Healthy));
                 r.Add(("Speed brake handle", "A32NX_SPOILERS_HANDLE_POSITION", v => $"{v * 100:0} %"));
                 r.Add(("Ground spoilers armed", "A32NX_SPOILERS_ARMED", v => v > 0.5 ? "armed" : "disarmed"));
+                r.Add(("Flaps angle", "A32NX_LEFT_FLAPS_ANGLE", v => $"{v:0.0} degrees"));
+                r.Add(("Slats angle", "A32NX_LEFT_SLATS_ANGLE", v => $"{v:0.0} degrees"));
                 break;
             case 13: // CRUISE — fuel + cabin summary
                 for (int e = 1; e <= 4; e++) r.Add(($"Engine {e} fuel flow", $"A32NX_ENGINE_FF:{e}", Kgh));
