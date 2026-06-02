@@ -1503,7 +1503,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         ReadEnum("A32NX_OXYGEN_TMR_RESET_FAULT", "Oxygen Timer Reset Fault", fault);
 
         // Calls / EVAC / cabin / cargo smoke.
-        ReadEnum("A32NX_SLIDES_ARMED", "Door Slides", armedVd);
+        // NOTE: A32NX_SLIDES_ARMED removed — it's an A320-only var (never written on the
+        // A380, so it read a static "Disarmed"). The A380 does NOT model escape-slide
+        // arming: the SD "S" indicator is faked from the beacon light, and the per-door
+        // ANIM_DOOR_*_DISARMED vars are animation-only. So slide arming is not exposed.
         ReadEnum("A32NX_EVAC_COMMAND_FAULT", "Evacuation Command Fault", fault);
         ReadEnum("A32NX_CARGOSMOKE_FWD_DISCHARGED", "Cargo Fwd Smoke Agent", dischargedVd);
         ReadEnum("A32NX_CARGOSMOKE_AFT_DISCHARGED", "Cargo Aft Smoke Agent", dischargedVd);
@@ -1725,6 +1728,17 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Act("A32NX_RUDDER_TRIM_RESET", "Rudder Trim Reset",
             new Dictionary<double, string> { [0] = "Idle", [1] = "Reset" });
         Btn("A32NX_TILLER_PEDAL_DISCONNECT", "Nosewheel Steering Pedal Disconnect");
+        // Rudder trim ADJUST — the A380 has no working "set to value" (the stock
+        // RUDDER_TRIM_SET is a no-op in the FBW WASM); the cockpit knob fires the stock
+        // RUDDER_TRIM_LEFT/RIGHT events (auto-repeat while held). Expose them as nudge
+        // BUTTONS — each press = one increment; read the result back from "Rudder Trim".
+        Evt("RUDDER_TRIM_LEFT", "RUDDER_TRIM_LEFT", "Rudder Trim Left (nudge)");
+        Evt("RUDDER_TRIM_RIGHT", "RUDDER_TRIM_RIGHT", "Rudder Trim Right (nudge)");
+        // Nosewheel steering ANGLE + tiller handle — taxi-awareness read-outs a blind
+        // pilot otherwise lacks. NOSE_WHEEL_POSITION: 0.5 = centred, ×140° = degrees
+        // (±70° authority); TILLER_HANDLE_POSITION: ±1. Decoded in TryGetDisplayOverride.
+        Read("A32NX_NOSE_WHEEL_POSITION", "Nose Wheel Steering Angle");
+        Read("A32NX_TILLER_HANDLE_POSITION", "Tiller Handle");
         ReadEnum("A32NX_PRIORITY_TAKEOVER:1", "Capt Sidestick Priority", new Dictionary<double, string> { [0] = "Normal", [1] = "Priority Taken" });
         ReadEnum("A32NX_PRIORITY_TAKEOVER:2", "F/O Sidestick Priority", new Dictionary<double, string> { [0] = "Normal", [1] = "Priority Taken" });
 
@@ -1831,11 +1845,25 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 ValueDescriptions = openShut
             };
         }
+        // Full door set — interactive-point index = exit id − 1 (see _doorExitIds/_doorNames).
         Door("A380X_GND_DOOR_MAIN1L", 0, 1, "Main 1 Left Door");
+        Door("A380X_GND_DOOR_MAIN1R", 1, 2, "Main 1 Right Door");
         Door("A380X_GND_DOOR_MAIN2L", 2, 3, "Main 2 Left Door");
-        Door("A380X_GND_DOOR_MAIN4R", 9, 10, "Main 4 Right Door");
+        Door("A380X_GND_DOOR_MAIN2R", 3, 4, "Main 2 Right Door");
+        Door("A380X_GND_DOOR_MAIN3L", 4, 5, "Main 3 Left Door");
+        Door("A380X_GND_DOOR_MAIN3R", 5, 6, "Main 3 Right Door");
+        Door("A380X_GND_DOOR_MAIN4L", 6, 7, "Main 4 Left Door");
+        Door("A380X_GND_DOOR_MAIN4R", 7, 8, "Main 4 Right Door");
+        Door("A380X_GND_DOOR_MAIN5L", 8, 9, "Main 5 Left Door");
+        Door("A380X_GND_DOOR_MAIN5R", 9, 10, "Main 5 Right Door");
         Door("A380X_GND_DOOR_UPPER1L", 10, 11, "Upper 1 Left Door");
+        Door("A380X_GND_DOOR_UPPER1R", 11, 12, "Upper 1 Right Door");
+        Door("A380X_GND_DOOR_UPPER2L", 12, 13, "Upper 2 Left Door");
+        Door("A380X_GND_DOOR_UPPER2R", 13, 14, "Upper 2 Right Door");
+        Door("A380X_GND_DOOR_UPPER3L", 14, 15, "Upper 3 Left Door");
+        Door("A380X_GND_DOOR_UPPER3R", 15, 16, "Upper 3 Right Door");
         Door("A380X_GND_DOOR_FWDCARGO", 16, 17, "Forward Cargo Door");
+        Door("A380X_GND_DOOR_AFTCARGO", 17, 18, "Aft Cargo Door");
 
         // Jet bridge + passenger stairs (stock MSFS ground-service events;
         // airport/parking dependent). Catering, fuel-truck, baggage and pushback
@@ -1848,6 +1876,34 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         var idleToggle = new Dictionary<double, string> { [0] = "Idle", [1] = "Toggle" };
         Act("A380X_GND_JETWAY", "Jet Bridge", idleToggle);
         Act("A380X_GND_STAIRS", "Passenger Stairs", idleToggle);
+        // Jet-bridge MOVING readout (stock SimVar — the only readable jetway state; the
+        // FBW EFB itself only infers connection from the fwd door). Auto-announces
+        // "Moving"/"Stopped" so a blind pilot gets feedback after a Toggle, since the
+        // toggle action has no other state. Stairs have no equivalent state simvar.
+        vars["JETWAY_MOVING_STATE"] = new SimVarDefinition
+        {
+            Name = "JETWAY MOVING", DisplayName = "Jet Bridge Motion",
+            Type = SimVarType.SimVar, Units = "bool",
+            UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Stopped", [1] = "Moving" }
+        };
+
+        // ---- WINDOWS + flight-deck door + cabin (interactive-parts.xml / overhead) ----
+        var closedOpen = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" };
+        // Cockpit sliding / DV windows — plain L:vars (0=closed, 1=open). Live-verified
+        // settable via the calculator path (a HandleUIVariableSet branch routes these
+        // prefix-less keys). In the sim, opening is pressure-gated (>=1.2 psi cabin delta
+        // snaps them shut), so they realistically open only on the ground / depressurised.
+        Sel("CPT_SLIDING_WINDOW", "Captain Sliding Window", closedOpen);
+        Sel("FO_SLIDING_WINDOW", "First Officer Sliding Window", closedOpen);
+        // Physical flight-deck door OPEN/close — distinct from the LOCK state
+        // (A32NX_COCKPIT_DOOR_LOCKED, kept on the Cockpit Door panel).
+        Sel("COCKPITDOOR_OPEN", "Cockpit Door Open", closedOpen);
+        // Cabin Ready signal (cabin-crew "cabin ready"; settable bool, read by the FMC /
+        // cabin-call logic). Live-verified the L:var exists. (EVAC command/capt are already
+        // exposed in the CALLS / EVAC section.)
+        Sel("A32NX_CABIN_READY", "Cabin Ready",
+            new Dictionary<double, string> { [0] = "Not Ready", [1] = "Ready" });
         // Ground-service vehicle requests (flyPad Ground page parity) — momentary Activate
         // combos firing the stock REQUEST_* events (the same the EFB uses). Handled in
         // HandleUIVariableSet.
@@ -2030,6 +2086,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         p["Calls"] = new List<string>
         {
             "A32NX_CALLS_EMER_ON", "A32NX_EVAC_COMMAND_TOGGLE", "A32NX_EVAC_CAPT_TOGGLE",
+            "A32NX_CABIN_READY",
             "PUSH_OVHD_CALLS_ALL", "PUSH_OVHD_CALLS_FWD", "PUSH_OVHD_CALLS_AFT", "PUSH_OVHD_CALLS_MECH"
         };
         p["Signs"] = new List<string>
@@ -2049,7 +2106,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         {
             "A32NX_PRIM_1_PUSHBUTTON_PRESSED", "A32NX_PRIM_2_PUSHBUTTON_PRESSED", "A32NX_PRIM_3_PUSHBUTTON_PRESSED",
             "A32NX_SEC_1_PUSHBUTTON_PRESSED", "A32NX_SEC_2_PUSHBUTTON_PRESSED", "A32NX_SEC_3_PUSHBUTTON_PRESSED",
-            "A32NX_RUDDER_TRIM_RESET", "A32NX_TILLER_PEDAL_DISCONNECT"
+            "A32NX_RUDDER_TRIM_RESET", "RUDDER_TRIM_LEFT", "RUDDER_TRIM_RIGHT",
+            "A32NX_TILLER_PEDAL_DISCONNECT"
         };
         p["Engine Start"] = new List<string>
         {
@@ -2208,8 +2266,20 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // ---- Ground Services (flyPad Ground page) ----
         p["Doors"] = new List<string>
         {
-            "A380X_GND_DOOR_MAIN1L", "A380X_GND_DOOR_MAIN2L", "A380X_GND_DOOR_MAIN4R",
-            "A380X_GND_DOOR_UPPER1L", "A380X_GND_DOOR_FWDCARGO"
+            "A380X_GND_DOOR_MAIN1L", "A380X_GND_DOOR_MAIN1R",
+            "A380X_GND_DOOR_MAIN2L", "A380X_GND_DOOR_MAIN2R",
+            "A380X_GND_DOOR_MAIN3L", "A380X_GND_DOOR_MAIN3R",
+            "A380X_GND_DOOR_MAIN4L", "A380X_GND_DOOR_MAIN4R",
+            "A380X_GND_DOOR_MAIN5L", "A380X_GND_DOOR_MAIN5R",
+            "A380X_GND_DOOR_UPPER1L", "A380X_GND_DOOR_UPPER1R",
+            "A380X_GND_DOOR_UPPER2L", "A380X_GND_DOOR_UPPER2R",
+            "A380X_GND_DOOR_UPPER3L", "A380X_GND_DOOR_UPPER3R",
+            "A380X_GND_DOOR_FWDCARGO", "A380X_GND_DOOR_AFTCARGO"
+        };
+        // Cockpit sliding windows + physical flight-deck door (settable open/close).
+        p["Windows"] = new List<string>
+        {
+            "CPT_SLIDING_WINDOW", "FO_SLIDING_WINDOW", "COCKPITDOOR_OPEN"
         };
         p["Ground Equipment"] = new List<string>
         {
@@ -2488,7 +2558,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // availability (all read-only; the GPU connect is the overhead EXT PWR PBs).
         d["Ground Equipment"] = new List<string>
         {
-            "A380X_GND_CHOCKS", "A380X_GND_CONES",
+            "A380X_GND_CHOCKS", "A380X_GND_CONES", "JETWAY_MOVING_STATE",
             "A380X_GND_GPU_AVAIL_1", "A380X_GND_GPU_AVAIL_2", "A380X_GND_GPU_AVAIL_3", "A380X_GND_GPU_AVAIL_4"
         };
 
@@ -2574,6 +2644,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "A32NX_LEFT_FLAPS_POSITION_PERCENT", "A32NX_RIGHT_FLAPS_POSITION_PERCENT",
             "A32NX_LEFT_SLATS_POSITION_PERCENT", "A32NX_RIGHT_SLATS_POSITION_PERCENT",
             "ELEVATOR_TRIM", "A32NX_TO_PITCH_TRIM", "A32NX_SEC_1_RUDDER_ACTUAL_POSITION",
+            "A32NX_NOSE_WHEEL_POSITION", "A32NX_TILLER_HANDLE_POSITION",
             "ELEVATOR_DEFLECTION", "AILERON_DEFLECTION", "RUDDER_DEFLECTION",
             "SPOILERS_LEFT_POSITION", "SPOILERS_RIGHT_POSITION",
             "A32NX_PRIORITY_TAKEOVER:1", "A32NX_PRIORITY_TAKEOVER:2"
@@ -3642,6 +3713,15 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // masters, FCU toggles, seat-belt, lights, …) are all handled in cases above,
         // so anything reaching here is a direct-write L:var. ARINC429/readout vars are
         // never settable, so they never get here.
+        // Prefix-less FBW L:vars (cockpit sliding windows + physical flight-deck door):
+        // their KEY is the L:var but they lack the A32NX_/A380X_/FBW_ prefix the catch-all
+        // below keys on, so route them through the calculator path explicitly (live-
+        // verified: 1 (>L:CPT_SLIDING_WINDOW) opens the window).
+        if (varKey == "CPT_SLIDING_WINDOW" || varKey == "FO_SLIDING_WINDOW" || varKey == "COCKPITDOOR_OPEN")
+        {
+            simConnect.ExecuteCalculatorCode($"{(int)Math.Round(value)} (>L:{varKey})");
+            return true;
+        }
         if (varKey.StartsWith("A32NX_", StringComparison.Ordinal)
             || varKey.StartsWith("A380X_", StringComparison.Ordinal)
             || varKey.StartsWith("FBW_", StringComparison.Ordinal))
@@ -3666,23 +3746,54 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     private bool? _baroInHgL, _baroInHgR; // last EFIS baro unit inHg(true)/hPa(false) per side
     private int _lastBaroMin = -2, _lastDh = -2; // last announced minimums (ft; -1 = none/NCD)
     private readonly Dictionary<string, bool> _doorOpen = new(); // last open/closed state per door key
+    // Full A380 door set. INTERACTIVE POINT OPEN:n indices are interleaved L/R
+    // (verified against FBW door_animations.xml + the SD DoorPage): main deck 1-5
+    // L/R = ip 0..9, upper deck 1-3 L/R = ip 10..15, fwd cargo = 16, aft cargo = 17.
+    // The TOGGLE_AIRCRAFT_EXIT id is always (ip + 1). NOTE the old map mislabeled
+    // ip9/exit10 as "Main 4 Right" — it is actually MAIN 5 RIGHT.
     private static readonly Dictionary<string, string> _doorNames = new()
     {
         ["A380X_GND_DOOR_MAIN1L"] = "Main 1 Left Door",
+        ["A380X_GND_DOOR_MAIN1R"] = "Main 1 Right Door",
         ["A380X_GND_DOOR_MAIN2L"] = "Main 2 Left Door",
+        ["A380X_GND_DOOR_MAIN2R"] = "Main 2 Right Door",
+        ["A380X_GND_DOOR_MAIN3L"] = "Main 3 Left Door",
+        ["A380X_GND_DOOR_MAIN3R"] = "Main 3 Right Door",
+        ["A380X_GND_DOOR_MAIN4L"] = "Main 4 Left Door",
         ["A380X_GND_DOOR_MAIN4R"] = "Main 4 Right Door",
+        ["A380X_GND_DOOR_MAIN5L"] = "Main 5 Left Door",
+        ["A380X_GND_DOOR_MAIN5R"] = "Main 5 Right Door",
         ["A380X_GND_DOOR_UPPER1L"] = "Upper 1 Left Door",
+        ["A380X_GND_DOOR_UPPER1R"] = "Upper 1 Right Door",
+        ["A380X_GND_DOOR_UPPER2L"] = "Upper 2 Left Door",
+        ["A380X_GND_DOOR_UPPER2R"] = "Upper 2 Right Door",
+        ["A380X_GND_DOOR_UPPER3L"] = "Upper 3 Left Door",
+        ["A380X_GND_DOOR_UPPER3R"] = "Upper 3 Right Door",
         ["A380X_GND_DOOR_FWDCARGO"] = "Forward Cargo Door",
+        ["A380X_GND_DOOR_AFTCARGO"] = "Aft Cargo Door",
     };
     // Door key -> TOGGLE_AIRCRAFT_EXIT interaction id, so the door COMBO itself
-    // drives the toggle (every control is a combo; no buttons).
+    // drives the toggle (every control is a combo; no buttons). id = ip + 1.
     private static readonly Dictionary<string, uint> _doorExitIds = new()
     {
         ["A380X_GND_DOOR_MAIN1L"] = 1,
+        ["A380X_GND_DOOR_MAIN1R"] = 2,
         ["A380X_GND_DOOR_MAIN2L"] = 3,
-        ["A380X_GND_DOOR_MAIN4R"] = 10,
+        ["A380X_GND_DOOR_MAIN2R"] = 4,
+        ["A380X_GND_DOOR_MAIN3L"] = 5,
+        ["A380X_GND_DOOR_MAIN3R"] = 6,
+        ["A380X_GND_DOOR_MAIN4L"] = 7,
+        ["A380X_GND_DOOR_MAIN4R"] = 8,
+        ["A380X_GND_DOOR_MAIN5L"] = 9,
+        ["A380X_GND_DOOR_MAIN5R"] = 10,
         ["A380X_GND_DOOR_UPPER1L"] = 11,
+        ["A380X_GND_DOOR_UPPER1R"] = 12,
+        ["A380X_GND_DOOR_UPPER2L"] = 13,
+        ["A380X_GND_DOOR_UPPER2R"] = 14,
+        ["A380X_GND_DOOR_UPPER3L"] = 15,
+        ["A380X_GND_DOOR_UPPER3R"] = 16,
         ["A380X_GND_DOOR_FWDCARGO"] = 17,
+        ["A380X_GND_DOOR_AFTCARGO"] = 18,
     };
 
     // Decode/normalise an EFIS baro setting to whole hPa; false for STD/no-data.
@@ -3724,6 +3835,21 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             displayText = value < 0.05 ? "Closed"
                         : value > 0.95 ? "Open"
                         : $"Open ({(int)Math.Round(value * 100)}%)";
+            return true;
+        }
+        // Nosewheel steering angle: 0.5 = centred, (v-0.5)*140 = degrees (±70° authority).
+        if (varKey == "A32NX_NOSE_WHEEL_POSITION")
+        {
+            double deg = (value - 0.5) * 140.0;
+            displayText = Math.Abs(deg) < 0.5 ? "Centred"
+                        : $"{Math.Abs(deg):0} degrees {(deg < 0 ? "left" : "right")}";
+            return true;
+        }
+        // Tiller handle: ±1 full-scale; show as a left/right percentage.
+        if (varKey == "A32NX_TILLER_HANDLE_POSITION")
+        {
+            int pct = (int)Math.Round(Math.Abs(value) * 100);
+            displayText = pct < 1 ? "Centred" : $"{pct}% {(value < 0 ? "left" : "right")}";
             return true;
         }
         switch (varKey)
