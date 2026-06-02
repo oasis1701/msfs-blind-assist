@@ -5166,7 +5166,8 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     };
 
     // Per-system SD readout rows (decoded SimVars). Added one system at a time.
-    private static List<(string label, string var, Func<double, string> fmt)> SdSystemRows(int page)
+    // Instance (not static) so the FUEL rows can follow the metric toggle via WeightUser.
+    private List<(string label, string var, Func<double, string> fmt)> SdSystemRows(int page)
     {
         // ARINC429 decoders — for vars FBW publishes as ARINC words (verified via
         // useArinc429Var in the fbw-a32nx SD source: APU N/EGT/LOW_FUEL_PRESSURE_FAULT,
@@ -5266,11 +5267,14 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         }
         else if (page == 8) // FUEL
         {
-            r.Add(("Fuel flow eng 1", "A32NX_ENGINE_FF:1", v => $"{v:0} kg per hour"));
-            r.Add(("Fuel flow eng 2", "A32NX_ENGINE_FF:2", v => $"{v:0} kg per hour"));
-            r.Add(("Fuel used eng 1", "A32NX_FUEL_USED:1", v => $"{v:0} kg"));
-            r.Add(("Fuel used eng 2", "A32NX_FUEL_USED:2", v => $"{v:0} kg"));
-            r.Add(("Total fuel on board", "A32NX_TOTAL_FUEL_QUANTITY", v => $"{v:0} kg"));
+            // Fuel rows follow the metric toggle (kg/lb per the EFB "US Units" setting).
+            string Wt(double kg) { var (val, u) = WeightUser(kg); return $"{val:0} {u}"; }
+            string Wth(double kgh) { var (val, u) = WeightUser(kgh); return $"{val:0} {u} per hour"; }
+            r.Add(("Fuel flow eng 1", "A32NX_ENGINE_FF:1", Wth));
+            r.Add(("Fuel flow eng 2", "A32NX_ENGINE_FF:2", Wth));
+            r.Add(("Fuel used eng 1", "A32NX_FUEL_USED:1", Wt));
+            r.Add(("Fuel used eng 2", "A32NX_FUEL_USED:2", Wt));
+            r.Add(("Total fuel on board", "A32NX_TOTAL_FUEL_QUANTITY", Wt));
         }
         else if (page == 9) // DOORS
         {

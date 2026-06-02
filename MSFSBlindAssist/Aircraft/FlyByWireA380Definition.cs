@@ -3993,21 +3993,27 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     // words (fuel/press/apu) decode via Arinc429Word; plain L:vars read directly. Pages
     // not decoded here (C/B, Status, Video) fall back to the live scrape. Var names are
     // from the fbw-a380x SD/Pages source; values spot-verified live.
-    public static List<(string label, string var, Func<double, string> fmt)> A380SdRows(int page)
+    public List<(string label, string var, Func<double, string> fmt)> A380SdRows(int page)
     {
         string Pct(double v) => $"{v:0} %";
         string Pct1(double v) => $"{v:0.0} %";
         string V(double v) => $"{v:0} volts";
         string Psi(double v) => $"{v:0} psi";
         string C(double v) => $"{v:0} degrees";
-        string Kgh(double v) => $"{v:0} kg per hour";
         string Qt(double v) => $"{v:0.0} quarts";
+        // Weight/fuel rows FOLLOW the metric toggle (WeightUser: kg or lb per the EFB
+        // "US Units" setting) so the displays change unit automatically, like the
+        // on-demand read-outs. Wt = plain kg in; AWt = ARINC429 kg word in.
+        string Wt(double kg) { var (val, u) = WeightUser(kg); return $"{val:0} {u}"; }
+        string Kgh(double kgh) { var (val, u) = WeightUser(kgh); return $"{val:0} {u} per hour"; }
         string OnOff(double v) => v > 0.5 ? "powered" : "not powered";
         string OpenShut(double v) => v > 0.5 ? "open" : "closed";
         string Healthy(double v) => v > 0.5 ? "healthy" : "failed";
         string Locked(double v) => v > 0.5 ? "locked" : "unlocked";
         // ARINC429 decoder: payload + unit, or "not available" when the SSM isn't normal.
         string A(double v, string unit, string fmt = "0") { var w = new SimConnect.Arinc429Word(v); return (w.IsNormalOperation || w.IsFunctionalTest) ? $"{w.Value.ToString(fmt)} {unit}" : "not available"; }
+        // ARINC429 kg word -> user weight units (kg/lb per the metric toggle).
+        string AWt(double v) { var w = new SimConnect.Arinc429Word(v); return (w.IsNormalOperation || w.IsFunctionalTest) ? Wt(w.Value) : "not available"; }
         var r = new List<(string, string, Func<double, string>)>();
         switch (page)
         {
@@ -4025,7 +4031,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 r.Add(("APU N", "A32NX_APU_N", Pct1));
                 r.Add(("APU N2", "A32NX_APU_N2", Pct1));
                 r.Add(("APU EGT", "A32NX_APU_EGT", v => A(v, "degrees")));
-                r.Add(("APU fuel used", "A32NX_APU_FUEL_USED", v => A(v, "kg")));
+                r.Add(("APU fuel used", "A32NX_APU_FUEL_USED", AWt));
                 r.Add(("APU flap open", "A32NX_APU_FLAP_OPEN_PERCENTAGE", Pct));
                 r.Add(("APU bleed valve", "A32NX_APU_BLEED_AIR_VALVE_OPEN", OpenShut));
                 r.Add(("APU bleed pressure", "A32NX_PNEU_APU_BLEED_CONTAINER_PRESSURE", Psi));
@@ -4086,8 +4092,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 break;
             case 8: // FUEL — FQDC per-tank quantities are ARINC429 words (kg)
                 foreach (var t in new[] { "FEED_1", "FEED_2", "FEED_3", "FEED_4", "LEFT_OUTER", "LEFT_MID", "LEFT_INNER", "RIGHT_OUTER", "RIGHT_MID", "RIGHT_INNER", "TRIM" })
-                    r.Add(($"{t.Replace('_', ' ')} tank", $"A32NX_FQDC_1_{t}_TANK_QUANTITY", v => A(v, "kg")));
-                r.Add(("Total fuel on board", "A32NX_FQMS_TOTAL_FUEL_ON_BOARD", v => A(v, "kg")));
+                    r.Add(($"{t.Replace('_', ' ')} tank", $"A32NX_FQDC_1_{t}_TANK_QUANTITY", AWt));
+                r.Add(("Total fuel on board", "A32NX_FQMS_TOTAL_FUEL_ON_BOARD", AWt));
                 break;
             case 9: // WHEEL — braked-wheel temperatures
                 for (int w = 1; w <= 16; w++) r.Add(($"Brake {w} temp", $"A32NX_REPORTED_BRAKE_TEMPERATURE_{w}", C));
