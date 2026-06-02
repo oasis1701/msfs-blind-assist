@@ -483,7 +483,10 @@ public sealed class GsxService : IDisposable
                 _couatlStarted = value.Value != 0;
                 System.Diagnostics.Debug.WriteLine($"[GsxService] COUATL_STARTED = {value.Value}");
                 if (wasStarted && !_couatlStarted)
+                {
                     ClearLastTooltip();
+                    ClearProgressTrackingState();
+                }
                 UpdateStatusText();
                 RaiseStateChanged();
                 break;
@@ -580,6 +583,21 @@ public sealed class GsxService : IDisposable
         _lastTooltip = string.Empty;
         _lastStatusStableText = string.Empty;
         TooltipChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    // Reset per-service throttle/dedup state on COUATL shutdown so the next
+    // flight starts fresh. Without this, milestones recorded on flight 1
+    // (e.g. "boarding|Operator A" = 5) would still silence flight 2's
+    // boarding announcements until they passed flight 1's high-water mark.
+    private void ClearProgressTrackingState()
+    {
+        _lastBoardingPassengerAnnouncementByService.Clear();
+        _lastFuelingProgressAnnouncementByService.Clear();
+        _lastBaggageProgressByOperation.Clear();
+        _recentLiveServiceAnnouncements.Clear();
+        _announcedInvoiceKeys.Clear();
+        _lastCompletedStatusServiceText = string.Empty;
+        _lastTimerOnlyStatusAnnouncementUtc = DateTime.MinValue;
     }
 
     public void SetSettingNumber(string key, double value)
@@ -1879,8 +1897,11 @@ public sealed class GsxService : IDisposable
             string receiptAnnouncement = FormatReceiptInvoiceAnnouncement(receiptInvoices);
             if (!string.IsNullOrWhiteSpace(receiptAnnouncement))
                 return receiptAnnouncement;
-
-            return string.Empty;
+            // Receipt was already announced (dedup'd in _announcedInvoiceKeys).
+            // Fall through to active / completed / timer rows — returning
+            // empty here would silence every subsequent status update for as
+            // long as the receipt-data span persists in status.html, which on
+            // GSX 4 stays visible across the rest of the session.
         }
 
         bool hasInvoiceRows = chargeRows.Any(IsInvoiceChargeRow);
@@ -1889,8 +1910,7 @@ public sealed class GsxService : IDisposable
             string invoiceAnnouncement = FormatInvoiceAnnouncement(activeRows, completedRows, chargeRows);
             if (!string.IsNullOrWhiteSpace(invoiceAnnouncement))
                 return invoiceAnnouncement;
-
-            return string.Empty;
+            // Same fall-through reasoning as the receipt block above.
         }
 
         bool shouldSpeakCompletedRow = latestCompletedRow is not null
