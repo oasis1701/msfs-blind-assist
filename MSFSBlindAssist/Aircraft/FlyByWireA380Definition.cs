@@ -4258,7 +4258,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         return false;
     }
 
-    private void RequestFCUHeadingWithStatus(SimConnectManager s)
+    public void RequestFCUHeadingWithStatus(SimConnectManager s)
     {
         if (!s.IsConnected) return;
         _reqHdg = true; _pHdgVal = _pHdgMgd = null;
@@ -4266,7 +4266,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         s.RequestVariable("A32NX_FCU_HDG_MANAGED_DASHES", forceUpdate: true);
     }
 
-    private void RequestFCUSpeedWithStatus(SimConnectManager s)
+    public void RequestFCUSpeedWithStatus(SimConnectManager s)
     {
         if (!s.IsConnected) return;
         _reqSpd = true; _pSpdVal = _pSpdMgd = null;
@@ -4274,7 +4274,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         s.RequestVariable("A32NX_FCU_SPD_MANAGED_DOT", forceUpdate: true);
     }
 
-    private void RequestFCUAltitudeWithStatus(SimConnectManager s)
+    public void RequestFCUAltitudeWithStatus(SimConnectManager s)
     {
         if (!s.IsConnected) return;
         _reqAlt = true; _pAltVal = _pAltMgd = null;
@@ -4282,7 +4282,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         s.RequestVariable("A32NX_FCU_ALT_MANAGED", forceUpdate: true);
     }
 
-    private void RequestFCUVSWithStatus(SimConnectManager s)
+    public void RequestFCUVSWithStatus(SimConnectManager s)
     {
         if (!s.IsConnected) return;
         _reqVs = true; _pVsVal = _pFpaVal = _pVsMode = null;
@@ -4322,11 +4322,98 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             // SPD/MACH toggle: re-read the speed — the read-out already says
             // "mach 0.78" vs "280 knots", so it announces the new mode.
             case "A32NX.FCU_SPD_MACH_TOGGLE_PUSH": RequestFCUSpeedWithStatus(simConnect); break;
+            // HDG·V/S <-> TRK·FPA toggle: re-read heading (its label flips HDG<->TRK).
+            case "A32NX.FCU_TRK_FPA_TOGGLE_PUSH": RequestFCUHeadingWithStatus(simConnect); break;
             // VHF active/standby swap: announce the swap (the new active is then on
             // the "VHF N Active" read-out in the panel).
             case "COM1_RADIO_SWAP": announcer.Announce("VHF 1 active and standby swapped"); break;
             case "COM2_RADIO_SWAP": announcer.Announce("VHF 2 active and standby swapped"); break;
             case "COM3_RADIO_SWAP": announcer.Announce("VHF 3 active and standby swapped"); break;
         }
+    }
+
+    // ---- Public FCU API for the dedicated A380 FCU windows (Forms/FBWA380/*) ----
+    // Forms validate input, then call these; all set/readback mechanism lives here
+    // (already live-verified). Each setter fires the event and speaks the readback.
+
+    // hdg: 0-360 whole degrees.
+    public bool SetFCUHeadingValue(int hdg, SimConnectManager s, ScreenReaderAnnouncer a)
+    {
+        if (!s.IsConnected) { a.AnnounceImmediate("Not connected to simulator."); return false; }
+        s.SendEvent("A32NX.FCU_HDG_SET", (uint)hdg);
+        RequestFCUHeadingWithStatus(s);
+        return true;
+    }
+
+    // internalSpeed: knots (100-399) OR Mach*100 (10-99). Caller does the *100.
+    public bool SetFCUSpeedValue(int internalSpeed, SimConnectManager s, ScreenReaderAnnouncer a)
+    {
+        if (!s.IsConnected) { a.AnnounceImmediate("Not connected to simulator."); return false; }
+        s.SendEvent("A32NX.FCU_SPD_SET", (uint)internalSpeed);
+        RequestFCUSpeedWithStatus(s);
+        return true;
+    }
+
+    // feet: already converted from metres by the caller if metric.
+    public bool SetFCUAltitudeValue(double feet, SimConnectManager s, ScreenReaderAnnouncer a)
+    {
+        if (!s.IsConnected) { a.AnnounceImmediate("Not connected to simulator."); return false; }
+        uint rounded = (uint)(Math.Round(feet / 100) * 100);
+        s.SendEvent("A32NX.FCU_ALT_INCREMENT_SET", 100);
+        System.Threading.Thread.Sleep(50);
+        s.SendEvent("A32NX.FCU_ALT_SET", rounded);
+        if (_metricAlt)
+        {
+            int m = (int)Math.Round(rounded * 0.3048);
+            a.AnnounceImmediate($"Altitude set to {m} metres, {rounded} feet");
+        }
+        else a.AnnounceImmediate($"Altitude set to {rounded} feet");
+        return true;
+    }
+
+    // value: signed V/S (-6000..6000 fpm) OR FPA (-9.9..9.9 deg). Same calc-code
+    // path the old dialog used (negatives overflow SendEvent's uint).
+    public bool SetFCUVSValue(double value, SimConnectManager s, ScreenReaderAnnouncer a)
+    {
+        if (!s.IsConnected) { a.AnnounceImmediate("Not connected to simulator."); return false; }
+        int toSend = Math.Abs(value) < 100 ? (int)(value * 100) : (int)value;
+        s.ExecuteCalculatorCode($"{toSend} (>K:A32NX.FCU_VS_SET)");
+        a.AnnounceImmediate($"Vertical speed set to {value}");
+        return true;
+    }
+
+    // Fire a push/pull/toggle event and speak the resulting value (readback routed
+    // through OnPanelButtonFired's switch — heading/speed/alt/vs/trk-fpa/spd-mach).
+    public void FireFCUButton(string evt, SimConnectManager s, ScreenReaderAnnouncer a)
+    {
+        if (!s.IsConnected) { a.AnnounceImmediate("Not connected to simulator."); return; }
+        s.SendEvent(evt);
+        OnPanelButtonFired(evt, s, a);
+    }
+
+    // Request the live AP/mode state vars so a window can refresh its button labels.
+    public void RequestAutopilotStates(SimConnectManager s)
+    {
+        if (!s.IsConnected) return;
+        foreach (var v in new[] {
+            "A32NX_AUTOPILOT_1_ACTIVE", "A32NX_AUTOPILOT_2_ACTIVE",
+            "A32NX_FCU_LOC_MODE_ACTIVE", "A32NX_FCU_APPR_MODE_ACTIVE",
+            "A32NX_FMA_EXPEDITE_MODE", "A32NX_FCU_EFIS_L_FD_ACTIVE",
+            "A32NX_FCU_EFIS_R_FD_ACTIVE" })
+            s.RequestVariable(v, forceUpdate: true);
+    }
+
+    // Toggle the FCU metric-altitude pushbutton (cockpit does !L then write-back).
+    public void ToggleMetricAltitude(SimConnectManager s, ScreenReaderAnnouncer a)
+    {
+        if (!s.IsConnected) return;
+        s.ExecuteCalculatorCode($"{(_metricAlt ? 0 : 1)} (>L:A32NX_METRIC_ALT_TOGGLE)");
+    }
+
+    // Set the FCU altitude increment (100 or 1000 ft).
+    public void SetAltIncrement(int inc, SimConnectManager s)
+    {
+        if (!s.IsConnected) return;
+        s.SendEvent("A32NX.FCU_ALT_INCREMENT_SET", (uint)inc);
     }
 }
