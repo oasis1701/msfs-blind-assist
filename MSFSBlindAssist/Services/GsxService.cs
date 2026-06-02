@@ -816,7 +816,10 @@ public sealed class GsxService : IDisposable
 
         if (!string.IsNullOrWhiteSpace(tooltip))
         {
-            PublishLiveServiceText(tooltip, tooltip);
+            // Normalize the stable text the same way the status.html path
+            // does — otherwise ETA tooltips ("…ETA 1 min 2 secs…") re-fire
+            // every tick because the raw text changes by the second.
+            PublishLiveServiceText(tooltip, NormalizeStatusStableText(tooltip));
             return;
         }
 
@@ -2657,13 +2660,38 @@ public sealed class GsxService : IDisposable
 
         string stable = text;
         stable = Regex.Replace(stable, @"\b\d{1,2}:\d{2}(?::\d{2})?\b", "<time>");
-        stable = Regex.Replace(stable, @"\b\d+(?:[.,]\d+)?\s*(?:sec|secs|seconds|min|mins|minutes)\b", "<duration>",
-            RegexOptions.IgnoreCase);
+        // Bucket durations into 5-minute groups so an ETA that counts down
+        // second-by-second doesn't re-announce on every tick. A re-announce
+        // fires only when the value crosses a 5-minute boundary (which
+        // approximates the user-requested "tell me again if the ETA changes
+        // by ~5 minutes" behaviour).
+        stable = DurationTokenRegex.Replace(stable, BucketDurationToken);
         stable = Regex.Replace(stable, $@"{CurrencyTokenPattern}\s*\d+(?:[.,]\d+)?|\d+(?:[.,]\d+)?\s*{CurrencyTokenPattern}", "<price>",
             RegexOptions.IgnoreCase);
         stable = Regex.Replace(stable, @"\(~?\s*<price>\)", "(<price>)",
             RegexOptions.IgnoreCase);
         return NormalizeWhitespace(stable);
+    }
+
+    private static readonly Regex DurationTokenRegex = new(
+        @"\b(?<num>\d+(?:[.,]\d+)?)\s*(?<unit>seconds?|secs?|minutes?|mins?)\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static string BucketDurationToken(Match match)
+    {
+        if (!double.TryParse(
+                match.Groups["num"].Value.Replace(',', '.'),
+                System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out double n))
+        {
+            return "<duration>";
+        }
+
+        string unit = match.Groups["unit"].Value.ToLowerInvariant();
+        double totalSeconds = unit.StartsWith("m") ? n * 60.0 : n;
+        int bucket = (int)Math.Floor(totalSeconds / 300.0);
+        return $"<duration-{bucket}>";
     }
 
     private void UpdateStatusText()
