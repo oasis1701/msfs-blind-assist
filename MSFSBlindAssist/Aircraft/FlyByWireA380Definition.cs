@@ -797,6 +797,21 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Stock("PFD_TRACK", "GPS GROUND MAGNETIC TRACK", "Track", "degrees");
         Stock("PFD_ILS_FREQ", "NAV ACTIVE FREQUENCY:3", "ILS Frequency", "MHz");
         Stock("PFD_ILS_DME", "NAV DME:3", "ILS DME", "nautical miles");
+        // Speed-tape protection bugs (FAC ARINC429 words, knots). OnRequest; auto-decoded by
+        // the generic ARINC path (raw ~14-billion when the FAC isn't computing -> "not
+        // available"). Local helper keeps the SSM-gated decode + knots unit consistent.
+        void ArincKt(string key, string name, string display) => vars[key] = new SimVarDefinition
+        {
+            Name = name, DisplayName = display, Type = SimVarType.LVar,
+            UpdateFrequency = UpdateFrequency.OnRequest,
+            IsArinc429 = true, Arinc429Unit = "knots", Arinc429Format = "0",
+            Arinc429NotAvailableText = "not available"
+        };
+        ArincKt("PFD_VMAX", "A32NX_FAC_1_V_MAX", "Vmax");
+        ArincKt("PFD_VLS", "A32NX_FAC_1_V_LS", "VLS lowest selectable speed");
+        ArincKt("PFD_VALPHAPROT", "A32NX_FAC_1_V_ALPHA_PROT", "Alpha Prot speed");
+        ArincKt("PFD_VALPHAMAX", "A32NX_FAC_1_V_ALPHA_LIM", "Alpha Max speed");
+        ArincKt("PFD_VSW", "A32NX_FAC_1_V_STALL_WARN", "Stall Warning speed");
         // Gross-weight CG (%MAC), cached for the W / Shift+W readouts (Gus's GW-CG; kept
         // across the doors/PFD revert). Plain numeric FBW L-var (~40% MAC live). MonNum
         // registers it Units="number" (required for the L-var read) and routes it to a
@@ -2630,7 +2645,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             // Source-confirmed PFD additions: weight/CG, takeoff V-speeds, Mach, track, ILS.
             "GROSS_WEIGHT_KG", "A32NX_AIRFRAME_GW_CG_PERCENT_MAC",
             "PFD_V1", "PFD_VR", "PFD_V2", "PFD_MACH", "PFD_TRACK",
-            "PFD_ILS_FREQ", "PFD_ILS_DME"
+            "PFD_ILS_FREQ", "PFD_ILS_DME",
+            "PFD_VMAX", "PFD_VLS", "PFD_VALPHAPROT", "PFD_VALPHAMAX", "PFD_VSW"
         };
         // ND accessible snapshot — mode/range, TO waypoint (decoded ident + distance/
         // bearing/ETA), cross-track, RNP, and ILS LOC/GS validity + deviation.
