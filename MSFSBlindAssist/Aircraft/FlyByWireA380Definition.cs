@@ -3975,6 +3975,16 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         catch { /* scrape best-effort; the combo still set the page */ }
     }
 
+    // Populate the ECAM-CP "System Display Page" status box with the combo's CURRENT
+    // page as soon as the panel is shown — so the user no longer has to cycle the combo
+    // down/up to get content on first display.
+    public override void OnDisplayPanelShown(string panelKey, SimConnectManager simConnect)
+    {
+        if (panelKey != "ECAM Control Panel" || !simConnect.IsConnected) return;
+        int idx = (int)Math.Round(simConnect.GetCachedVariableValue("A32NX_ECAM_SD_CURRENT_PAGE_INDEX") ?? -1);
+        RefreshSdPageDisplayAsync(simConnect, idx, ewd: idx == 16);
+    }
+
     // ---- Decoded SD-page rows (clean labelled SimVar read-out) -----------------
     // The A380 SD pages are SCHEMATIC: scraping the Coherent view and flat-joining the
     // X-sorted leaves interleaves the four engines'/generators' values with their

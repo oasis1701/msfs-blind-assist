@@ -241,6 +241,13 @@ public interface IAircraftDefinition
     void OnPanelButtonFired(string varKey, SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer announcer);
 
     /// <summary>
+    /// Called once after a panel is built/shown, so an aircraft with a multi-page
+    /// status box (driven by a page combo) can populate the box with the combo's
+    /// CURRENT page immediately, without the user having to cycle the combo.
+    /// </summary>
+    void OnDisplayPanelShown(string panelKey, SimConnect.SimConnectManager simConnect);
+
+    /// <summary>
     /// Lets an aircraft override the PANEL-DISPLAY string for a variable whose raw
     /// numeric value isn't directly presentable (e.g. an ARINC429 word that reads
     /// as ~14 billion, or a value that needs unit-aware decoding). Return true and

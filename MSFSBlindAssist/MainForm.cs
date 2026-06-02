@@ -5665,6 +5665,11 @@ public partial class MainForm : Form
             controlsContainer.Controls.Add(layout);
             controlsContainer.ResumeLayout(true);
 
+            // Auto-populate a multi-page status box (e.g. the SD-page combo) with the
+            // combo's CURRENT page, so the user doesn't have to cycle it to get content
+            // on first display. No-op for panels without such a box.
+            try { currentAircraft.OnDisplayPanelShown(currentPanel, simConnectManager); } catch { }
+
             // For PMDG aircraft, populate controls with current data from the data manager
             if (currentAircraft is IPMDGAircraft && simConnectManager?.PMDGDataManager != null)
             {

@@ -480,6 +480,16 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     }
 
     /// <summary>
+    /// Called once after a panel's controls are built/shown. Aircraft with a
+    /// multi-page status box driven by a page combo override this to POPULATE the box
+    /// with the combo's CURRENT page immediately — so the user doesn't have to cycle
+    /// the combo to get content on first display. Default: no-op.
+    /// </summary>
+    public virtual void OnDisplayPanelShown(string panelKey, SimConnect.SimConnectManager simConnect)
+    {
+    }
+
+    /// <summary>
     /// Default: no override — the panel display uses ValueDescriptions / numeric
     /// formatting. Aircraft with ARINC429 (or otherwise non-presentable) display
     /// fields override this to return a decoded string.

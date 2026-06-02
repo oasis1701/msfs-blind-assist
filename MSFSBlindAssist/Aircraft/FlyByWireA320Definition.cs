@@ -5374,6 +5374,16 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     // Populate the System Display status box for the selected page, then force the box
     // to re-render (RequestVariable → ProcessSimVarUpdate → UpdateDisplayText →
     // TryGetDisplayOverride). No speech; the box just fills in on selection.
+    // Populate the "System Display" status box with the combo's CURRENT page as soon
+    // as the panel is shown — so the user doesn't have to cycle the combo to get
+    // content on first display.
+    public override void OnDisplayPanelShown(string panelKey, SimConnect.SimConnectManager simConnect)
+    {
+        if (panelKey != "System Display" || !simConnect.IsConnected) return;
+        int page = (int)Math.Round(simConnect.GetCachedVariableValue(SdPageVar) ?? 0);
+        RefreshDisplayBoxAsync(page, simConnect);
+    }
+
     private async void RefreshDisplayBoxAsync(int page, SimConnect.SimConnectManager sim)
     {
         try
