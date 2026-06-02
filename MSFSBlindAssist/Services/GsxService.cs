@@ -45,6 +45,7 @@ public sealed class GsxService : IDisposable
     private const string GsxSettingsFileName = "settings.html";
     private const string GsxStatusFileName = "status.html";
     private const string CouatlConfigFolderName = "Virtuali";
+    private const string GsxReceiptsRelativePath = @"Virtuali\GSX\Receipts";
     private const string CouatlConfigFileName = "CouatlAddons.ini";
     private const string GsxConfigSectionName = "gsx";
     private const string CommonConfigSectionName = "common";
@@ -54,6 +55,13 @@ public sealed class GsxService : IDisposable
     private const int BoardingPassengerAnnouncementInterval = 10;
     private const string CurrencyTokenPattern =
         @"(?:USD|EUR|GBP|JPY|CNY|RMB|CAD|AUD|NZD|CHF|SEK|NOK|DKK|PLN|CZK|HUF|RON|BGN|TRY|ILS|AED|SAR|QAR|INR|KRW|SGD|HKD|TWD|THB|MYR|IDR|PHP|VND|BRL|MXN|ARS|CLP|COP|ZAR|[$€£¥₩₹₽₺₪₫₴])";
+    private static readonly HashSet<string> AnnounceableReceiptFolders = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Catering",
+        "Fuel",
+        "Handling",
+        "PassengerBus",
+    };
 
     private const int ChoiceSettings = 12;
     private const int DynamicSettingDefinitionStart = 10000;
@@ -2132,7 +2140,7 @@ public sealed class GsxService : IDisposable
 
         string total = ExtractMoneySummary(invoiceRow);
         if (string.IsNullOrWhiteSpace(total))
-            total = invoiceRow;
+            return string.Empty;
 
         string invoiceKey = NormalizeWhitespace($"{serviceName}|{serviceOperator}|{total}|{invoiceRow}");
         if (!_announcedInvoiceKeys.Add(invoiceKey))
@@ -2149,6 +2157,9 @@ public sealed class GsxService : IDisposable
     {
         foreach (var receipt in receiptInvoices.Reverse())
         {
+            if (string.IsNullOrWhiteSpace(receipt.Total))
+                continue;
+
             string invoiceKey = NormalizeWhitespace(receipt.Key);
             if (string.IsNullOrWhiteSpace(invoiceKey) || !_announcedInvoiceKeys.Add(invoiceKey))
                 continue;
@@ -2156,9 +2167,7 @@ public sealed class GsxService : IDisposable
             string operatorPhrase = string.IsNullOrWhiteSpace(receipt.OperatorName)
                 ? string.Empty
                 : $" from {receipt.OperatorName}";
-            string totalPhrase = string.IsNullOrWhiteSpace(receipt.Total)
-                ? "the generated total"
-                : NormalizeWhitespace(receipt.Total);
+            string totalPhrase = NormalizeWhitespace(receipt.Total);
 
             return $"{receipt.ServiceName} invoice available{operatorPhrase}. Total {totalPhrase}. More information can be found by viewing the invoice.";
         }
@@ -2177,7 +2186,7 @@ public sealed class GsxService : IDisposable
             string attrs = match.Groups["attrs"].Value;
             string operatorName = GetHtmlAttribute(attrs, "data-operator");
             string path = GetHtmlAttribute(attrs, "data-path");
-            if (string.IsNullOrWhiteSpace(path))
+            if (!IsAnnounceableReceiptPath(path))
                 continue;
 
             string serviceName = InferReceiptServiceName(path);
@@ -2206,6 +2215,36 @@ public sealed class GsxService : IDisposable
         }
 
         return invoices;
+    }
+
+    private static bool IsAnnounceableReceiptPath(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return false;
+
+        try
+        {
+            string receiptPath = Path.GetFullPath(path);
+            string receiptsFolder = Path.GetFullPath(
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), GsxReceiptsRelativePath));
+
+            if (!receiptsFolder.EndsWith(Path.DirectorySeparatorChar))
+                receiptsFolder += Path.DirectorySeparatorChar;
+
+            if (!receiptPath.StartsWith(receiptsFolder, StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            string relativePath = Path.GetRelativePath(receiptsFolder, receiptPath);
+            string receiptFolder = relativePath.Split(
+                new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar },
+                StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? string.Empty;
+
+            return AnnounceableReceiptFolders.Contains(receiptFolder);
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private static string InferReceiptServiceName(string path, string receiptHtml = "")
@@ -2317,23 +2356,11 @@ public sealed class GsxService : IDisposable
     private static bool IsInvoiceGeneratingService(string serviceText)
     {
         string normalized = serviceText.ToLowerInvariant();
-        if (IsGroundConnectionService(serviceText))
-        {
-            return false;
-        }
-
-        return normalized.Contains("catering")
-            || normalized.Contains("fuel")
-            || normalized.Contains("refuel")
-            || IsDeicingService(normalized)
-            || IsLavatoryService(normalized)
-            || IsPotableWaterService(normalized)
-            || IsCleaningService(normalized)
-            || normalized.Contains("baggage")
-            || normalized.Contains("cargo")
-            || normalized.Contains("boarding")
-            || normalized.Contains("deboarding")
-            || normalized.Contains("handling");
+        return !IsPriceListText(normalized)
+            && (IsCateringInvoiceText(normalized)
+            || IsFuelInvoiceText(normalized)
+            || IsHandlingInvoiceText(normalized)
+            || IsPassengerBusInvoiceText(normalized));
     }
 
     private static bool IsGroundConnectionService(string serviceText)
@@ -2349,42 +2376,68 @@ public sealed class GsxService : IDisposable
     {
         string normalized = chargeRow.ToLowerInvariant();
         return normalized.Contains("invoice:")
-            || normalized.Contains("catering")
-            || normalized.Contains("fuel")
-            || normalized.Contains("refuel")
-            || normalized.Contains("ground handling")
-            || normalized.Contains("handling")
-            || normalized.Contains("baggage")
-            || normalized.Contains("cargo")
-            || normalized.Contains("boarding")
-            || normalized.Contains("deboarding")
-            || IsDeicingService(normalized)
-            || IsLavatoryService(normalized)
-            || IsPotableWaterService(normalized)
-            || IsCleaningService(normalized);
+            && !IsPriceListText(normalized)
+            && (IsCateringInvoiceText(normalized)
+                || IsFuelInvoiceText(normalized)
+                || IsHandlingInvoiceText(normalized)
+                || IsPassengerBusInvoiceText(normalized));
     }
 
     private static string InferInvoiceServiceName(string invoiceRow)
     {
         string normalized = invoiceRow.ToLowerInvariant();
-        if (normalized.Contains("fuel") || normalized.Contains("refuel"))
+        if (IsFuelInvoiceText(normalized))
             return "Fueling";
-        if (normalized.Contains("catering"))
+        if (IsCateringInvoiceText(normalized))
             return "Catering";
-        if (IsDeicingService(normalized))
-            return "De-icing";
-        if (IsLavatoryService(normalized))
-            return "Lavatory";
-        if (IsPotableWaterService(normalized))
-            return "Potable water";
-        if (IsCleaningService(normalized))
-            return "Cleaning";
-        if (normalized.Contains("baggage") || normalized.Contains("cargo")
-            || normalized.Contains("handling") || normalized.Contains("boarding")
-            || normalized.Contains("deboarding"))
+        if (IsHandlingInvoiceText(normalized))
             return "Handling";
+        if (IsPassengerBusInvoiceText(normalized))
+            return "Passenger bus";
 
         return "Service";
+    }
+
+    private static bool IsCateringInvoiceText(string normalized) =>
+        normalized.Contains("catering");
+
+    private static bool IsFuelInvoiceText(string normalized) =>
+        normalized.Contains("fuel") || normalized.Contains("refuel");
+
+    private static bool IsPassengerBusInvoiceText(string normalized) =>
+        normalized.Contains("passengerbus")
+        || normalized.Contains("passenger bus");
+
+    private static bool IsPriceListText(string normalized) =>
+        normalized.Contains("pricelist")
+        || normalized.Contains("price list")
+        || normalized.Contains("price-list");
+
+    private static bool IsHandlingInvoiceText(string normalized)
+    {
+        if (IsPassengerBusInvoiceText(normalized))
+            return false;
+
+        if (normalized.Contains("boarding")
+            || normalized.Contains("deboarding")
+            || normalized.Contains("passenger")
+            || normalized.Contains("pax"))
+        {
+            return false;
+        }
+
+        return normalized.Contains("ground handling")
+            || normalized.Contains("handling")
+            || normalized.Contains("baggage")
+            || normalized.Contains("cargo")
+            || normalized.Contains("jetway")
+            || normalized.Contains("operatejetways")
+            || normalized.Contains("gpu")
+            || normalized.Contains("ground power")
+            || IsDeicingService(normalized)
+            || IsLavatoryService(normalized)
+            || IsPotableWaterService(normalized)
+            || IsCleaningService(normalized);
     }
 
     private static string ExtractServiceName(string serviceText)
