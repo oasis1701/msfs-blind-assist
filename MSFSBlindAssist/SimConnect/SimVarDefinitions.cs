@@ -56,6 +56,17 @@ public class SimVarDefinition
     // UI customization properties (aircraft-specific)
     public bool RenderAsButton { get; set; }  // True to render as button instead of combo box (e.g., APU Start)
     public string? StateVariable { get; set; }  // LVar name to read for actual button on/off state (e.g., I_ indicator for S_ switch buttons)
+
+    // ----- ARINC429 auto-decode -----
+    // When true, the raw double is a FlyByWire ARINC429 word (numeric-truncate to u64; low
+    // 32 bits = IEEE-754 float in engineering units, bits 32-33 = SSM). The generic decode
+    // hook (BaseAircraftDefinition.TryDecodeArinc429, called from MainForm's display + announce
+    // paths) renders "<value> <unit>" when the SSM is NormalOperation/FunctionalTest, else the
+    // not-available text — so any ARINC var surfaces decoded instead of a raw ~14-billion word.
+    public bool IsArinc429 { get; set; }
+    public string Arinc429Unit { get; set; } = string.Empty;          // suffix after the value, e.g. "psi", "feet", "kg"
+    public string Arinc429Format { get; set; } = "0";                 // .NET numeric format, e.g. "0.0"
+    public string Arinc429NotAvailableText { get; set; } = "not available";
     public bool PreventTextInput { get; set; }  // True to prevent text input UI for _SET variables (e.g., autobrake)
     /// <summary>
     /// When true, the panel renderer skips the ComboBox/Button path and renders a read-only TextBox

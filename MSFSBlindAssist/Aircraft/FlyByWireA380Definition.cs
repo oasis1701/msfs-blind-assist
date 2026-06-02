@@ -110,14 +110,13 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             {
                 Name = key, DisplayName = display, Type = SimVarType.LVar,
                 UpdateFrequency = UpdateFrequency.OnRequest,
-                // Rendered as a COMBO (Off / Activate), NOT a hardware button — every
-                // panel control in MSFSBA is a combo box (user request). Selecting
-                // "Activate" pulses the L:var 1→0 in HandleUIVariableSet (the
-                // _momentaryButtons path); the momentary pulse returns it to "Off".
-                // Not auto-announced — the handler speaks "<name> pressed" on activate.
+                // Rendered as a real push-BUTTON (user request 2026-06: the ECAM-CP and
+                // other momentary actions are buttons, not combos). Clicking it routes
+                // through HandleUIVariableSet's _momentaryButtons path, which pulses the
+                // L:var 1→0 and speaks "<name> pressed".
                 IsAnnounced = false,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Activate" },
-                RenderAsButton = false
+                RenderAsButton = true
             };
             _momentaryButtons.Add(key);
         }
@@ -136,8 +135,13 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 Name = key, DisplayName = display, Type = SimVarType.LVar,
                 UpdateFrequency = UpdateFrequency.OnRequest, IsAnnounced = false,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "Released", [1] = "Pressed" },
-                RenderAsButton = false
+                // The ECAM-CP keys (CLR/RCL/STS/ALL/…) are real push-BUTTONS (user request
+                // 2026-06). The click routes through _momentaryButtons → pulse 1→0 + speak
+                // "<name> pressed". MSFSBA's own ECL/SD code pulses these via the calculator
+                // path directly (not HandleUIVariableSet), so those internal pulses stay silent.
+                RenderAsButton = true
             };
+            _momentaryButtons.Add(key);
         }
         // Action / toggle combo — renders as a combo but has NO real backing var; its
         // set is fully handled in HandleUIVariableSet (fires a K-event). OnRequest so
@@ -151,6 +155,21 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 Name = key, DisplayName = display, Type = SimVarType.LVar,
                 UpdateFrequency = UpdateFrequency.OnRequest, ValueDescriptions = vd, RenderAsButton = false
             };
+        }
+        // Toggle BUTTON: renders as a push-button; the click toggles the L:var on/off and
+        // announces the new state (HandleUIVariableSet _toggleButtons branch). For HOLD
+        // tests (fire test, cargo smoke test) and similar on/off actions the user wants as
+        // buttons rather than combos.
+        void ToggleBtn(string key, string display)
+        {
+            vars[key] = new SimVarDefinition
+            {
+                Name = key, DisplayName = display, Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest, IsAnnounced = false,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" },
+                RenderAsButton = true
+            };
+            _toggleButtons.Add(key);
         }
         // Read-only numeric L:var readout.
         void Read(string key, string display, string units = "number")
@@ -458,11 +477,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Press("A32NX_FIRE_BUTTON_APU", "APU Fire Button");
         Mon("A32NX_FIRE_DETECTED_APU", "APU Fire",
             new Dictionary<double, string> { [0] = "Normal", [1] = "FIRE" });
-        // Fire Test is a HOLD button (FBW <HOLD_SIMVAR>): the test runs only WHILE the
-        // var is held at 1 (fire warnings + ECAM/EWD output appear), so a 250 ms
-        // momentary pulse was too brief to be useful. Render as On/Off so the user
-        // sets it On (test runs, the EWD speaks the fire-test result), then Off.
-        OnOff("A32NX_OVHD_FIRE_TEST_PB_IS_PRESSED", "Fire Test");
+        // Fire Test + Cargo Smoke Detection Test are HOLD buttons (FBW <HOLD_SIMVAR>): the
+        // test runs WHILE the var is held at 1. Rendered as toggle BUTTONS — click On (test
+        // runs, the EWD speaks the result), click Off. (User request 2026-06.)
+        ToggleBtn("A32NX_OVHD_FIRE_TEST_PB_IS_PRESSED", "Fire Test");
+        ToggleBtn("A32NX_FIRE_TEST_CARGO", "Cargo Smoke Detection Test");
 
         // ---- OXYGEN ----
         Sel("PUSH_OVHD_OXYGEN_CREW", "Crew Oxygen",
@@ -476,6 +495,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         OnOff("A32NX_EVAC_COMMAND_TOGGLE", "Evacuation Command");
         Sel("A32NX_EVAC_CAPT_TOGGLE", "Evacuation Capt / Purser",
             new Dictionary<double, string> { [0] = "Purser", [1] = "Capt and Purser" });
+        // Cabin-crew / ground-mechanic call push-buttons (momentary). Buttons that pulse.
+        Btn("PUSH_OVHD_CALLS_ALL", "Call All Stations");
+        Btn("PUSH_OVHD_CALLS_FWD", "Call Forward");
+        Btn("PUSH_OVHD_CALLS_AFT", "Call Aft");
+        Btn("PUSH_OVHD_CALLS_MECH", "Call Mechanic");
 
         // ---- SIGNS ----
         // Seat-belt sign: the REAL state is the stock simvar CABIN SEATBELTS ALERT
@@ -543,9 +567,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // (Idle / Activate, like every other control); HandleUIVariableSet fires
         // (>H:VAR) when "Activate" is chosen.
         vars["A32NX_CHRONO_TOGGLE"] = new SimVarDefinition
-        { Name = "A32NX_CHRONO_TOGGLE", DisplayName = "Chronometer Start / Stop", Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest, IsAnnounced = false, ValueDescriptions = new Dictionary<double, string> { [0] = "Idle", [1] = "Activate" }, RenderAsButton = false };
+        { Name = "A32NX_CHRONO_TOGGLE", DisplayName = "Chronometer Start / Stop", Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest, IsAnnounced = false, ValueDescriptions = new Dictionary<double, string> { [0] = "Idle", [1] = "Activate" }, RenderAsButton = true };
         vars["A32NX_CHRONO_RST"] = new SimVarDefinition
-        { Name = "A32NX_CHRONO_RST", DisplayName = "Chronometer Reset", Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest, IsAnnounced = false, ValueDescriptions = new Dictionary<double, string> { [0] = "Idle", [1] = "Activate" }, RenderAsButton = false };
+        { Name = "A32NX_CHRONO_RST", DisplayName = "Chronometer Reset", Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest, IsAnnounced = false, ValueDescriptions = new Dictionary<double, string> { [0] = "Idle", [1] = "Activate" }, RenderAsButton = true };
 
         // ---- AUDIO CONTROL PANEL (ACP) — receive selectors, RMP 1 ----
         // Which sources the captain hears (#107 transcript: "ensure VHF1 + cabin
@@ -1815,6 +1839,13 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         var retractExtend = new Dictionary<double, string> { [0] = "Retracted", [1] = "Extended" };
         Act("A380X_GND_JETWAY", "Jet Bridge", retractExtend);
         Act("A380X_GND_STAIRS", "Passenger Stairs", retractExtend);
+        // Ground-service vehicle requests (flyPad Ground page parity) — momentary Activate
+        // combos firing the stock REQUEST_* events (the same the EFB uses). Handled in
+        // HandleUIVariableSet.
+        var idleAct = new Dictionary<double, string> { [0] = "Idle", [1] = "Request" };
+        Act("A380X_GND_FUELTRUCK", "Fuel Truck", idleAct);
+        Act("A380X_GND_BAGGAGE", "Baggage Truck", idleAct);
+        Act("A380X_GND_CATERING", "Catering Truck", idleAct);
 
         // Wheel chocks + safety cones (FBW model state; auto-announced).
         vars["A380X_GND_CHOCKS"] = new SimVarDefinition
@@ -1979,7 +2010,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         p["Fire"] = new List<string>
         {
             "A32NX_FIRE_BUTTON_ENG1", "A32NX_FIRE_BUTTON_ENG2", "A32NX_FIRE_BUTTON_ENG3",
-            "A32NX_FIRE_BUTTON_ENG4", "A32NX_FIRE_BUTTON_APU", "A32NX_OVHD_FIRE_TEST_PB_IS_PRESSED"
+            "A32NX_FIRE_BUTTON_ENG4", "A32NX_FIRE_BUTTON_APU", "A32NX_OVHD_FIRE_TEST_PB_IS_PRESSED",
+            "A32NX_FIRE_TEST_CARGO"
         };
         p["Oxygen"] = new List<string>
         {
@@ -1987,7 +2019,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         };
         p["Calls"] = new List<string>
         {
-            "A32NX_CALLS_EMER_ON", "A32NX_EVAC_COMMAND_TOGGLE", "A32NX_EVAC_CAPT_TOGGLE"
+            "A32NX_CALLS_EMER_ON", "A32NX_EVAC_COMMAND_TOGGLE", "A32NX_EVAC_CAPT_TOGGLE",
+            "PUSH_OVHD_CALLS_ALL", "PUSH_OVHD_CALLS_FWD", "PUSH_OVHD_CALLS_AFT", "PUSH_OVHD_CALLS_MECH"
         };
         p["Signs"] = new List<string>
         {
@@ -2173,7 +2206,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             // are read-only model/sim state (writing them reverts), so they live in
             // the read-out (d["Ground Equipment"]) instead of rendering as settable
             // combos a user could change to no effect.
-            "A380X_GND_JETWAY", "A380X_GND_STAIRS"
+            "A380X_GND_JETWAY", "A380X_GND_STAIRS",
+            "A380X_GND_FUELTRUCK", "A380X_GND_BAGGAGE", "A380X_GND_CATERING"
         };
 
         p["Status"] = new List<string>
@@ -3223,6 +3257,16 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // rain repellent): pulse the L:var 1→0 so the sim registers the press edge
         // rather than leaving it latched on. ~250 ms is long enough for the FWS /
         // systems to act on the rising edge, then it auto-releases.
+        if (_toggleButtons.Contains(varKey))
+        {
+            // Toggle BUTTON: flip the current state, write via the calculator path, speak
+            // the new state. (Fire test / cargo smoke test HOLD pushbuttons etc.)
+            bool curOn = (simConnect.GetCachedVariableValue(varKey) ?? 0.0) > 0.5;
+            bool newOn = !curOn;
+            simConnect.ExecuteCalculatorCode($"{(newOn ? 1 : 0)} (>L:{varKey})");
+            announcer.Announce($"{varDef.DisplayName} {(newOn ? "on" : "off")}");
+            return true;
+        }
         if (_momentaryButtons.Contains(varKey))
         {
             // Combo now (Off / Activate): only the "Activate" option fires; choosing
@@ -3346,6 +3390,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // Ground-service toggle combos (no clean state SimVar) — any change toggles.
         if (varKey == "A380X_GND_JETWAY") { simConnect.SendEvent("TOGGLE_JETWAY"); return true; }
         if (varKey == "A380X_GND_STAIRS") { simConnect.SendEvent("TOGGLE_RAMPTRUCK"); return true; }
+        // Ground-service vehicle requests (flyPad Ground page parity) — fire the stock
+        // REQUEST_* events on "Request".
+        if (varKey == "A380X_GND_FUELTRUCK") { if (value > 0.5) simConnect.SendEvent("REQUEST_FUEL_KEY"); return true; }
+        if (varKey == "A380X_GND_BAGGAGE")   { if (value > 0.5) simConnect.SendEvent("REQUEST_LUGGAGE"); return true; }
+        if (varKey == "A380X_GND_CATERING")  { if (value > 0.5) simConnect.SendEvent("REQUEST_CATERING"); return true; }
         // Momentary ACTION combos: fire only when the action option (value 1) is
         // chosen; the idle option (0) does nothing.
         if (varKey == "XPNDR_IDENT_ON") { if (value > 0.5) simConnect.SendEvent("XPNDR_IDENT_ON"); return true; }
@@ -3875,6 +3924,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     // L:var momentary push-buttons (registered via Btn) — a press pulses the L:var
     // 1→0 so the sim sees the rising edge, instead of latching it on like a combo.
     private readonly HashSet<string> _momentaryButtons = new();
+    // Toggle BUTTONS (e.g. fire test / cargo smoke test HOLD pushbuttons): a click reads
+    // the current L:var, sets the opposite via the calculator path, and announces the new
+    // On/Off state. (User request 2026-06: these are buttons, not combos.)
+    private readonly HashSet<string> _toggleButtons = new();
 
     // Lazy live-scrape client for the System Display: when the user picks an SD page
     // in the ECAM Control Panel "System Display Page" combo, MSFSBA drives the page

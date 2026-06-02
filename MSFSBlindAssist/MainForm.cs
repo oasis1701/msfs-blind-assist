@@ -695,6 +695,16 @@ public partial class MainForm : Form
                     description = $"{varDef.DisplayName}: {e.Value}";
                 }
 
+                // Generic ARINC429 auto-decode for the announce path (only reached for vars
+                // the aircraft's ProcessSimVarUpdate did NOT handle, so existing ad-hoc ARINC
+                // announce branches are untouched — no double-decode). Renders the spoken value
+                // decoded instead of a raw word.
+                if (currentAircraft is BaseAircraftDefinition arincAnnDef &&
+                    arincAnnDef.TryDecodeArinc429(e.VarName, e.Value, out string arincSpoken))
+                {
+                    description = $"{varDef.DisplayName}: {arincSpoken}";
+                }
+
                 simVarMonitor.ProcessUpdate(e.VarName, e.Value, description);
             }
         }
@@ -1380,6 +1390,14 @@ public partial class MainForm : Form
                         if (currentAircraft.TryGetDisplayOverride(varKey, value, out string overrideText))
                         {
                             displayValue = overrideText;
+                        }
+                        // Generic ARINC429 auto-decode (after the ad-hoc override so baro/minimums/
+                        // rudder etc. keep their custom logic; covers any IsArinc429 var with just
+                        // value+unit, so a raw ~14-billion word never reaches a panel field).
+                        else if (currentAircraft is BaseAircraftDefinition arincDef &&
+                                 arincDef.TryDecodeArinc429(varKey, value, out string arincText))
+                        {
+                            displayValue = arincText;
                         }
                         // Check if we have value descriptions (like Off/Aligning/Aligned)
                         else if (varDef.ValueDescriptions != null && varDef.ValueDescriptions.ContainsKey(value))

@@ -500,6 +500,24 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
         return false;
     }
 
+    /// <summary>
+    /// Generic ARINC429 decode. If the var is flagged <see cref="SimConnect.SimVarDefinition.IsArinc429"/>,
+    /// decode the raw double via <see cref="SimConnect.Arinc429Word"/> and return "&lt;value&gt; &lt;unit&gt;"
+    /// (SSM NormalOperation/FunctionalTest) or the not-available text. Returns false for non-ARINC vars so
+    /// callers fall through to their existing logic. Central so the panel display field and the auto-announce
+    /// path share ONE decode — any ARINC var surfaces decoded instead of a raw ~14-billion word.
+    /// </summary>
+    public bool TryDecodeArinc429(string varKey, double value, out string text)
+    {
+        text = "";
+        if (!GetVariables().TryGetValue(varKey, out var def) || !def.IsArinc429) return false;
+        var w = new SimConnect.Arinc429Word(value);
+        if (!(w.IsNormalOperation || w.IsFunctionalTest)) { text = def.Arinc429NotAvailableText; return true; }
+        string v = w.Value.ToString(def.Arinc429Format, System.Globalization.CultureInfo.InvariantCulture);
+        text = string.IsNullOrEmpty(def.Arinc429Unit) ? v : $"{v} {def.Arinc429Unit}";
+        return true;
+    }
+
     // Variable Update Processing
 
     /// <summary>

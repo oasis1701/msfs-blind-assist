@@ -5228,12 +5228,19 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         }
         else if (page == 3) // PRESSURIZATION
         {
-            r.Add(("Cabin altitude", "A32NX_PRESS_CABIN_ALTITUDE", Ft));
-            r.Add(("Cabin vertical speed", "A32NX_PRESS_CABIN_VS", Fpm));
-            r.Add(("Differential pressure", "A32NX_PRESS_CABIN_DELTA_PRESSURE", v => $"{v:0.0} psi"));
-            r.Add(("Outflow valve", "A32NX_PRESS_MAN_OUTFLOW_VALVE_OPEN_PERCENTAGE", Pct));
+            // The plain A32NX_PRESS_CABIN_* names DO NOT EXIST (read static 0) — the A32NX
+            // publishes cab-press via the CPC ARINC429 words. Read CPC 1 (normally the active
+            // controller); "not available" when its SSM is invalid (matches the SD showing XX).
+            string FtAir(double v) { var w = new SimConnect.Arinc429Word(v); return (w.IsNormalOperation || w.IsFunctionalTest) ? $"{w.Value:0} feet" : "not available"; }
+            string FpmAir(double v) { var w = new SimConnect.Arinc429Word(v); return (w.IsNormalOperation || w.IsFunctionalTest) ? $"{w.Value:0} feet per minute" : "not available"; }
+            string PsiAir(double v) { var w = new SimConnect.Arinc429Word(v); return (w.IsNormalOperation || w.IsFunctionalTest) ? $"{w.Value:0.0} psi" : "not available"; }
+            r.Add(("Cabin altitude", "A32NX_PRESS_CPC_1_CABIN_ALTITUDE", FtAir));
+            r.Add(("Cabin vertical speed", "A32NX_PRESS_CPC_1_CABIN_VS", FpmAir));
+            r.Add(("Differential pressure", "A32NX_PRESS_CPC_1_CABIN_DELTA_PRESSURE", PsiAir));
+            r.Add(("Outflow valve", "A32NX_PRESS_CPC_1_OUTFLOW_VALVE_OPEN_PERCENTAGE", PctAir));
             r.Add(("Safety valve", "A32NX_PRESS_SAFETY_VALVE_OPEN_PERCENTAGE", Pct));
             r.Add(("Landing elevation", "A32NX_FM1_LANDING_ELEVATION", LElev));
+            r.Add(("Manual pressurization mode", "A32NX_OVHD_PRESS_MODE_SEL_PB_IS_AUTO", v => v > 0.5 ? "auto" : "manual"));
         }
         else if (page == 4) // APU
         {
