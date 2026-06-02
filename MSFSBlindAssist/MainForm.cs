@@ -5014,9 +5014,15 @@ public partial class MainForm : Form
                         if (!updatingFromSim && !_buildingPanel && combo.SelectedIndex >= 0)
                         {
                             uint mode = (uint)combo.SelectedIndex;
-                            // Set both engines to the same mode
+                            // Set both engines to the same mode. The combo reads back the
+                            // stock ignition simvar (TURB ENG IGNITION SWITCH EX1:1), which
+                            // these events DO move — so unlike the A380's old bug it never
+                            // went stale. Also nudge the FBW knob-position L:var so the
+                            // cockpit/EWD display matches (the events don't touch it), the
+                            // same display-sync the A380 fix added.
                             simConnectManager?.SendEvent("TURBINE_IGNITION_SWITCH_SET1", mode);
                             simConnectManager?.SendEvent("TURBINE_IGNITION_SWITCH_SET2", mode);
+                            simConnectManager?.ExecuteCalculatorCode($"{mode} (>L:XMLVAR_ENG_MODE_SEL)");
                             currentSimVarValues["TURB ENG IGNITION SWITCH EX1:1"] = mode;
                         }
                     };

@@ -1,8 +1,9 @@
 FBW A320 HOTKEY REFERENCE
 
-Application Navigation:
+Application Navigation (direct — no mode needed):
   Ctrl+1     Focus Sections List
   Ctrl+2     Focus Panels List
+  Ctrl+M     Monitor Manager (choose which variables auto-announce on change)
 
 Tip: Press the same bracket key again to cancel a mode you activated by accident.
 
@@ -73,7 +74,10 @@ CTRL+v, activate/deactivate visual guidance mode, note, does not require hand fl
 CTRL+T, Takeoff Assistance
 CTRL+D, Distance to Selected Runway
 CTRL+I, ILS guidance system
-CTRL+E, Enable Engine and warning display auto announcements
+CTRL+E, Toggle Engine/Warning Display (E/WD) auto call-outs — continuously monitors
+        and announces new warnings, cautions and memos as they appear.
+ALT+E,  Read the live E/WD aloud right now (engine row + memos + active warnings) —
+        the "what's going on" snapshot, same as the A380's Alt+E.
 
 Taxi Guidance (turn-by-turn taxi assistance with audio steering tone):
   Y          Taxi Status (current taxiway, next turn, distance to destination)
@@ -93,17 +97,20 @@ Traffic and Weather:
              direction and distance; auto-alerts also fire at 500/250/100 ft
              zone transitions while taxiing)
 
-Displays and windows:
+Displays:
+  The PFD, ND, Standby Instruments (ISIS) and System Display (SD) pages are read
+  through the accessible status-box panels — open the Panels list (Ctrl+2) and pick
+  them under the Instrument section. They have NO hotkeys (the same paradigm as the
+  A380). The E/WD is the one display that keeps hotkeys: Ctrl+E (monitor) and Alt+E
+  (read aloud), listed under Tools above.
+
+Other windows:
 shift+e, Route viewer, procedure planning and airport lookup
   Shift+T,    Toggle Trim Announcements
-  Shift+U,    Engine and warning display window
-  Shift+Y,    SD Status window
-  Shift+N,    Navigation display
   Shift+L,    Location Info
   Shift+M,    Show METAR Report (VATSIM, plus ActiveSky METAR if AS detected)
   Shift+B,    SimBrief Briefing
   Shift+C,    Show Checklist
-  Shift+P,    Show PFD Window
 
 Speed Tape:
   Shift+1    Read O Speed (GD)
@@ -196,12 +203,14 @@ FCU Push/Pull:
   Shift+4    Push VS Knob
   Ctrl+4     Pull VS Knob
 
-FCU Set Values:
-  Ctrl+H     Set Heading Value
-  Ctrl+S     Set Speed Value
-  Ctrl+A     Set Altitude Value
-  Ctrl+V     Set VS Value
-  Ctrl+B     Set Both Altimeters (captain and F/O, in hPa)
+FCU windows (value entry + knob Push/Pull buttons + mode toggles + spoken readout):
+  Ctrl+S     Speed window (set value; Push/Pull; SPD/MACH toggle)
+  Ctrl+H     Heading window (set value; Push/Pull; HDG-V/S / TRK-FPA toggle)
+  Ctrl+A     Altitude window (set value; Push/Pull; 100/1000 increment)
+  Ctrl+V     Vertical Speed / FPA window (set value; Push/Pull)
+  Ctrl+P     Autopilot panel (AP1/AP2; A/THR engage + disconnect; AP disconnect;
+             APPR/LOC/EXPED; live Flight Director status)
+  Ctrl+B     Altimeter window (enter QNH once -> both sides; STD/QNH; hPa/inHg toggle)
 
 Taxi Guidance:
   Shift+Y    Open Taxi Assist Form (enter ATC taxi clearance, start guidance)
