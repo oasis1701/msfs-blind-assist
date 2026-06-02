@@ -12,6 +12,7 @@ to cancel a mode activated by accident.
 DIRECT (no mode)
   Ctrl+1        Focus Sections list
   Ctrl+2        Focus Panels list
+  Ctrl+3        Focus Status Display field of the current panel (refreshes it if empty)
   Ctrl+M        Monitor Manager (choose what auto-announces)
   Ctrl+E        Toggle ECAM E/WD call-outs
   Ctrl+Shift+B  Airport Map and BTV (OANS) window

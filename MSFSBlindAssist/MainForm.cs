@@ -4642,6 +4642,38 @@ public partial class MainForm : Form
             panelsListBox.Focus();
             return true;
         }
+        // Ctrl+3 jumps straight to the current panel's Status Display field, mirroring
+        // Ctrl+1 (sections list) / Ctrl+2 (panels list). Status displays are the primary
+        // readout for the A320/A380, so a one-key jump to them is high-value.
+        //
+        // No conflict with the FCU "Pull Speed" global hotkey (also Ctrl+3): that hotkey
+        // is only registered while INPUT mode is active, and a registered global hotkey
+        // consumes the keystroke before ProcessCmdKey sees it — so this branch only fires
+        // when input mode is OFF. This is the exact same coexistence the existing Ctrl+1/
+        // Ctrl+2 panel-nav already relies on against FCU Pull-Heading/Pull-Altitude.
+        else if (keyData == (Keys.Control | Keys.D3))
+        {
+            if (currentControls.TryGetValue("_DISPLAY_", out var dispCtrl) && dispCtrl is TextBox dispBox)
+            {
+                dispBox.Focus();
+                // If the field is empty (OnRequest display vars don't auto-update until a
+                // refresh), pull live content so the user lands on real status rather than a
+                // blank box. The refresh is silent; the screen reader reads the field itself.
+                // If it already has content (continuously-monitored vars / a prior refresh),
+                // leave it untouched so NVDA reads the current value immediately.
+                if (string.IsNullOrWhiteSpace(dispBox.Text) &&
+                    currentControls.TryGetValue("_REFRESH_", out var refreshOnJump) &&
+                    refreshOnJump is Button jumpRefreshBtn && jumpRefreshBtn.Enabled)
+                {
+                    jumpRefreshBtn.PerformClick();
+                }
+            }
+            else
+            {
+                announcer.AnnounceImmediate("No status display on this panel.");
+            }
+            return true;
+        }
         // F5 refreshes the current panel's Status Display without leaving the
         // edit field/combo you're on (easier than tabbing to the Refresh button).
         else if (keyData == Keys.F5 &&
