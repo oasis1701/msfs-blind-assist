@@ -4860,8 +4860,11 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
                 RequestFuelQuantity(simConnect);
                 return true;
 
-            case HotkeyAction.ReadWaypointInfo:
-                RequestWaypointInfo(simConnect);
+            // W repurposed to gross weight in pounds (matches PMDG / Fenix, which also
+            // repurpose the waypoint key). Fuel (F=lb / Shift+F=kg) and Shift+W (kg)
+            // already use the shared fleet requests; this aligns W to the fleet too.
+            case HotkeyAction.ReadWaypointInfo: // W -> "Gross weight N pounds"
+                simConnect.RequestSingleValue((int)SimConnect.SimConnectManager.DATA_DEFINITIONS.DEF_GROSS_WEIGHT, "TOTAL WEIGHT", "pounds", "GROSS_WEIGHT");
                 return true;
 
             case HotkeyAction.ReadApproachCapability:
@@ -6390,40 +6393,6 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"Error requesting VS speed: {ex.Message}");
-            }
-        }
-    }
-
-    private void RequestWaypointInfo(SimConnect.SimConnectManager simConnectMgr)
-    {
-        var simConnect = simConnectMgr.SimConnectInstance;
-        if (simConnectMgr.IsConnected && simConnect != null)
-        {
-            try
-            {
-                var tempDefId = (SimConnect.SimConnectManager.DATA_DEFINITIONS)370;
-                simConnect.ClearDataDefinition(tempDefId);
-                simConnect.AddToDataDefinition(tempDefId,
-                    "L:A32NX_EFIS_L_TO_WPT_IDENT_0", "number",
-                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
-                simConnect.AddToDataDefinition(tempDefId,
-                    "L:A32NX_EFIS_L_TO_WPT_IDENT_1", "number",
-                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
-                simConnect.AddToDataDefinition(tempDefId,
-                    "L:A32NX_EFIS_L_TO_WPT_DISTANCE", "number",
-                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
-                simConnect.AddToDataDefinition(tempDefId,
-                    "L:A32NX_EFIS_L_TO_WPT_BEARING", "radians",
-                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
-                simConnect.RegisterDataDefineStruct<SimConnect.SimConnectManager.WaypointInfo>(tempDefId);
-                simConnect.RequestDataOnSimObject((SimConnect.SimConnectManager.DATA_REQUESTS)370,
-                    tempDefId, Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_OBJECT_ID_USER,
-                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_PERIOD.ONCE,
-                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error requesting waypoint info: {ex.Message}");
             }
         }
     }

@@ -112,11 +112,14 @@ INPUT MODE  (press [ first)
   Shift+3 / Ctrl+3   Push / Pull Speed knob
   Shift+4 / Ctrl+4   Push / Pull VS knob
 
-  FCU set value (opens an edit box)
-  Ctrl+H        Set Heading
-  Ctrl+S        Set Speed
-  Ctrl+A        Set Altitude
-  Ctrl+V        Set VS
+  FCU windows (value entry + knob buttons + spoken readout)
+  Ctrl+S        Speed window (set value; Push/Pull; SPD/MACH toggle)
+  Ctrl+H        Heading window (set value; Push/Pull; HDG-V/S / TRK-FPA toggle)
+  Ctrl+A        Altitude window (set value; Push/Pull; 100/1000; Metric toggle)
+  Ctrl+V        Vertical Speed / FPA window (set value; Push/Pull)
+  Ctrl+P        Autopilot panel (AP1/AP2; A/THR; AP + A/THR disconnect;
+                APPR/LOC/EXPED; Flight Director status)
+  Ctrl+B        Altimeter window (enter QNH once -> both sides; STD/QNH; hPa/inHg)
 
   Taxi / landing
   Shift+Y       Open Taxi Assist form
