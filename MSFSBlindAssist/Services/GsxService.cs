@@ -769,38 +769,45 @@ public sealed class GsxService : IDisposable
             return;
         }
 
-        if (statusWasReadable)
+        // Status produced no current text. Fall back to the legacy tooltip
+        // file — GSX 4 still publishes some live messages (notably refueling
+        // progress) there even when status.html is in use, so a short-circuit
+        // on `statusWasReadable` here silently swallowed those announcements.
+        // The legacy-line stripper + the dedup in PublishLiveServiceText
+        // together prevent stale-tooltip re-announcement.
+        string tooltip = string.Empty;
+        if (!string.IsNullOrWhiteSpace(_tooltipFilePath))
         {
-            ClearLastTooltip();
-            return;
-        }
+            try
+            {
+                var lines = File.ReadAllLines(_tooltipFilePath, Encoding.UTF8);
+                tooltip = string.Join(Environment.NewLine, lines);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[GsxService] Failed to read tooltip file: {ex.Message}");
+                tooltip = string.Empty;
+            }
 
-        if (string.IsNullOrWhiteSpace(_tooltipFilePath))
+            tooltip = RemoveUnsupportedLegacyTooltipLines(tooltip);
+        }
+        else
         {
             System.Diagnostics.Debug.WriteLine("[GsxService] Tooltip file path not set.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(tooltip))
+        {
+            PublishLiveServiceText(tooltip, tooltip);
             return;
         }
 
-        string tooltip;
-        try
-        {
-            var lines = File.ReadAllLines(_tooltipFilePath, Encoding.UTF8);
-            tooltip = string.Join(Environment.NewLine, lines);
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"[GsxService] Failed to read tooltip file: {ex.Message}");
-            return;
-        }
-
-        tooltip = RemoveUnsupportedLegacyTooltipLines(tooltip);
-        if (string.IsNullOrWhiteSpace(tooltip))
-        {
+        // Neither source produced text. Clear any stale tooltip we'd
+        // previously announced so callers see the current empty state —
+        // preserves the intent of the earlier "clear stale" guard without
+        // hiding live tooltip-file messages.
+        if (statusWasReadable)
             ClearLastTooltip();
-            return;
-        }
-
-        PublishLiveServiceText(tooltip, tooltip);
     }
 
     private bool TryReadStatusText(out string statusText, out string stableText, out bool statusWasReadable)
@@ -1047,7 +1054,11 @@ public sealed class GsxService : IDisposable
             return false;
         }
 
-        string serviceKey = BuildProgressThrottleKey(text, "fueling");
+        // Fixed-prefix key: BuildProgressThrottleKey falls back to the live
+        // text when ExtractServiceName can't find a " service" word, which
+        // would let the kg-loaded count vary the key on every tick and
+        // defeat the throttle entirely.
+        string serviceKey = BuildFixedProgressThrottleKey(text, "fueling");
 
         DateTime now = DateTime.UtcNow;
         if (_lastFuelingProgressAnnouncementByService.TryGetValue(serviceKey, out DateTime seenAt)
@@ -1069,7 +1080,13 @@ public sealed class GsxService : IDisposable
         if (!TryParsePassengerCount(text, out int passengers))
             return false;
 
-        string serviceKey = BuildProgressThrottleKey(text, "boarding");
+        // Fixed-prefix key (not BuildProgressThrottleKey) — see the matching
+        // comment in ShouldThrottleFuelingProgress. GSX 4's boarding tooltip
+        // is typically "Boarding: N passengers …" with no " service" word,
+        // so ExtractServiceName would return the whole live text and the
+        // passenger count would bake into the key, defeating the throttle
+        // and announcing every single passenger.
+        string serviceKey = BuildFixedProgressThrottleKey(text, "boarding");
         int passengerMilestone = passengers == 0
             ? 0
             : passengers >= 100
@@ -1099,6 +1116,20 @@ public sealed class GsxService : IDisposable
         return string.IsNullOrWhiteSpace(serviceOperator)
             ? serviceName
             : $"{serviceName}|{serviceOperator}";
+    }
+
+    // Variant used by the progress throttles (fueling, boarding). Always uses
+    // the fixed service prefix as the key root, optionally suffixed with the
+    // operator if one is extractable. This guarantees the dict key stays the
+    // same across successive progress ticks even when the tooltip text varies
+    // (kg loaded, passenger count, etc.) — the milestone comparison only
+    // works if the key is stable.
+    private static string BuildFixedProgressThrottleKey(string text, string fixedService)
+    {
+        string serviceOperator = ExtractServiceOperator(text);
+        return string.IsNullOrWhiteSpace(serviceOperator)
+            ? fixedService
+            : $"{fixedService}|{serviceOperator}";
     }
 
     private static bool TryParsePassengerCount(string text, out int passengers)
