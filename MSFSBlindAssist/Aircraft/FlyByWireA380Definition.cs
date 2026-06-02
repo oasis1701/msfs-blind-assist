@@ -1910,6 +1910,12 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Door("A380X_GND_DOOR_UPPER2R", 13, 14, "Upper 2 Right Door");
         Door("A380X_GND_DOOR_UPPER3L", 14, 15, "Upper 3 Left Door");
         Door("A380X_GND_DOOR_UPPER3R", 15, 16, "Upper 3 Right Door");
+        // Cargo doors (ip16/17, type 1). The FBW door_animations.xml doesn't fire the toggle
+        // for these, but the STOCK K:TOGGLE_AIRCRAFT_EXIT:17/18 DOES drive the interactive
+        // point — live-verified: exit 17 -> ip16 0→100% (A32NX_FWD_DOOR_CARGO_POSITION rose),
+        // exit 18 -> ip17 0→100%. So they ARE operable.
+        Door("A380X_GND_DOOR_FWDCARGO", 16, 17, "Forward Cargo Door");
+        Door("A380X_GND_DOOR_AFTCARGO", 17, 18, "Aft Cargo Door");
 
         // Jet bridge + passenger stairs (stock MSFS ground-service events;
         // airport/parking dependent). Catering, fuel-truck, baggage and pushback
@@ -2310,7 +2316,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "A380X_GND_DOOR_MAIN5L", "A380X_GND_DOOR_MAIN5R",
             "A380X_GND_DOOR_UPPER1L", "A380X_GND_DOOR_UPPER1R",
             "A380X_GND_DOOR_UPPER2L", "A380X_GND_DOOR_UPPER2R",
-            "A380X_GND_DOOR_UPPER3L", "A380X_GND_DOOR_UPPER3R"
+            "A380X_GND_DOOR_UPPER3L", "A380X_GND_DOOR_UPPER3R",
+            "A380X_GND_DOOR_FWDCARGO", "A380X_GND_DOOR_AFTCARGO"
         };
         p["Ground Equipment"] = new List<string>
         {
@@ -3834,6 +3841,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         ["A380X_GND_DOOR_UPPER2R"] = "Upper 2 Right Door",
         ["A380X_GND_DOOR_UPPER3L"] = "Upper 3 Left Door",
         ["A380X_GND_DOOR_UPPER3R"] = "Upper 3 Right Door",
+        ["A380X_GND_DOOR_FWDCARGO"] = "Forward Cargo Door",
+        ["A380X_GND_DOOR_AFTCARGO"] = "Aft Cargo Door",
     };
     // Door key -> TOGGLE_AIRCRAFT_EXIT interaction id (= interactive-point index + 1).
     private static readonly Dictionary<string, uint> _doorExitIds = new()
@@ -3854,6 +3863,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         ["A380X_GND_DOOR_UPPER2R"] = 14,
         ["A380X_GND_DOOR_UPPER3L"] = 15,
         ["A380X_GND_DOOR_UPPER3R"] = 16,
+        ["A380X_GND_DOOR_FWDCARGO"] = 17,
+        ["A380X_GND_DOOR_AFTCARGO"] = 18,
     };
 
     // Decode/normalise an EFIS baro setting to whole hPa; false for STD/no-data.
