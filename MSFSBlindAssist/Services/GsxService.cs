@@ -1237,14 +1237,30 @@ public sealed class GsxService : IDisposable
     {
         passengers = 0;
 
-        // GSX phrases this as either "5 passengers" / "5 pax" (count first)
-        // or "pax 5" / "pax 5/550" (keyword first). Without the second
-        // pattern the boarding throttle never sees a count for the "pax N"
-        // form and every passenger announces.
+        // GSX writes the boarding count several ways. The "N/M" forms must
+        // be tried first — the bare "\b\d{1,3}\s*passengers\b" pattern
+        // would otherwise greedily capture M (the total) out of "50/550
+        // passengers", poisoning the milestone throttle by recording
+        // milestone 100 (M/10) and silencing every subsequent milestone
+        // below that for the rest of the session.
         var match = Regex.Match(
             text,
-            @"\b(?<count>\d{1,3})\s*(?:passengers|pax)\b",
+            @"\b(?<count>\d{1,3})\s*/\s*\d+\s*(?:passengers|pax)\b",
             RegexOptions.IgnoreCase);
+        if (!match.Success)
+        {
+            match = Regex.Match(
+                text,
+                @"\bpax\s+(?<count>\d{1,3})\s*/\s*\d+\b",
+                RegexOptions.IgnoreCase);
+        }
+        if (!match.Success)
+        {
+            match = Regex.Match(
+                text,
+                @"\b(?<count>\d{1,3})\s*(?:passengers|pax)\b",
+                RegexOptions.IgnoreCase);
+        }
         if (!match.Success)
         {
             match = Regex.Match(
