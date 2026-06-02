@@ -2371,8 +2371,22 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Name = "A32NX_FCU_EFIS_R_DISPLAY_BARO_VALUE_MODE",
             DisplayName = "Right Baro Display Mode",
             Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            // Continuous so the F/O baro re-announces on a unit/STD change (the custom
+            // F/O baro handler in ProcessSimVarUpdate speaks it + suppresses the generic).
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "STD", [1] = "hPa", [2] = "inHg" }
+        },
+        // F/O EFIS baro (ARINC429 hPa word, same as the captain side) — auto-announced
+        // on the F/O knob turn, prefixed "First Officer" so the pilot knows the side.
+        ["A32NX_FCU_RIGHT_EIS_BARO_HPA"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FCU_RIGHT_EIS_BARO_HPA",
+            DisplayName = "First Officer Altimeter",
+            Type = SimConnect.SimVarType.LVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            Units = "number"
         },
 
         ["RADIO_HEIGHT"] = new SimConnect.SimVarDefinition
@@ -5191,6 +5205,9 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     private double _baroHpa = -1;          // last decoded captain baro, hectopascals
     private int _baroMode = -1;            // A32NX_FCU_EFIS_L_DISPLAY_BARO_VALUE_MODE: 0=STD,1=hPa,2=inHg
     private int _lastAnnouncedBaroHpa = -1;
+    private double _baroHpaR = -1;         // last decoded F/O baro, hectopascals
+    private int _baroModeR = -1;           // A32NX_FCU_EFIS_R_DISPLAY_BARO_VALUE_MODE
+    private int _lastAnnouncedBaroHpaR = -1;
     private static string BaroPhrase(double hpa, int mode)
     {
         if (mode == 0) return "Altimeter standard";
@@ -5657,20 +5674,61 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             double hpa = value >= 4294967296.0 ? new SimConnect.Arinc429Word(value).ValueOr(0f) : value;
             if (hpa > 0) _baroHpa = hpa;
             int mode = _baroMode < 0 ? 1 : _baroMode;
-            if (mode != 0 && _baroHpa > 0 && (int)System.Math.Round(_baroHpa) != _lastAnnouncedBaroHpa)
+            if (mode != 0 && _baroHpa > 0)
             {
-                _lastAnnouncedBaroHpa = (int)System.Math.Round(_baroHpa);
-                announcer.Announce(BaroPhrase(_baroHpa, mode));
+                int r = (int)System.Math.Round(_baroHpa);
+                // First valid read: seed the cache SILENTLY (no first-start announce —
+                // this + the mode handler below were each announcing on first detect,
+                // which is the "altimeter spoken twice on start" bug). Only a genuine
+                // later knob change speaks.
+                if (_lastAnnouncedBaroHpa == -1) _lastAnnouncedBaroHpa = r;
+                else if (r != _lastAnnouncedBaroHpa)
+                {
+                    _lastAnnouncedBaroHpa = r;
+                    announcer.Announce(BaroPhrase(_baroHpa, mode));
+                }
             }
             return true;
         }
         if (varName == "A32NX_FCU_EFIS_L_DISPLAY_BARO_VALUE_MODE")
         {
             int mode = (int)System.Math.Round(value);
+            bool firstMode = _baroMode < 0;   // first detect → seed silently, don't announce
             if (mode != _baroMode)
             {
                 _baroMode = mode;
-                announcer.Announce(BaroPhrase(_baroHpa < 0 ? 1013 : _baroHpa, mode));
+                if (!firstMode) announcer.Announce(BaroPhrase(_baroHpa < 0 ? 1013 : _baroHpa, mode));
+            }
+            return true;
+        }
+        // F/O EFIS baro — same logic as the captain side, prefixed "First Officer" so the
+        // pilot knows which side changed (each knob announces only its own side, so this
+        // is NOT chatty). Silent-seed on first detect (same first-start fix as captain).
+        if (varName == "A32NX_FCU_RIGHT_EIS_BARO_HPA")
+        {
+            double hpa = value >= 4294967296.0 ? new SimConnect.Arinc429Word(value).ValueOr(0f) : value;
+            if (hpa > 0) _baroHpaR = hpa;
+            int mode = _baroModeR < 0 ? 1 : _baroModeR;
+            if (mode != 0 && _baroHpaR > 0)
+            {
+                int r = (int)System.Math.Round(_baroHpaR);
+                if (_lastAnnouncedBaroHpaR == -1) _lastAnnouncedBaroHpaR = r;
+                else if (r != _lastAnnouncedBaroHpaR)
+                {
+                    _lastAnnouncedBaroHpaR = r;
+                    announcer.Announce("First Officer " + BaroPhrase(_baroHpaR, mode));
+                }
+            }
+            return true;
+        }
+        if (varName == "A32NX_FCU_EFIS_R_DISPLAY_BARO_VALUE_MODE")
+        {
+            int mode = (int)System.Math.Round(value);
+            bool firstMode = _baroModeR < 0;
+            if (mode != _baroModeR)
+            {
+                _baroModeR = mode;
+                if (!firstMode) announcer.Announce("First Officer " + BaroPhrase(_baroHpaR < 0 ? 1013 : _baroHpaR, mode));
             }
             return true;
         }
