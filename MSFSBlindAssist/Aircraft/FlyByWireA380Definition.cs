@@ -490,6 +490,20 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         OnOff("A32NX_EVAC_COMMAND_TOGGLE", "Evacuation Command");
         Sel("A32NX_EVAC_CAPT_TOGGLE", "Evacuation Capt / Purser",
             new Dictionary<double, string> { [0] = "Purser", [1] = "Capt and Purser" });
+        // ---- WINDOWS + flight-deck door + cabin (interactive-parts.xml) ----
+        var closedOpenW = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" };
+        // Cockpit sliding / DV windows — plain L:vars (0=closed, 1=open). Settable via the
+        // calc path (a HandleUIVariableSet branch routes these prefix-less keys). In the sim
+        // opening is pressure-gated (>=1.2 psi cabin delta snaps them shut), so realistically
+        // only on the ground / depressurised.
+        Sel("CPT_SLIDING_WINDOW", "Captain Sliding Window", closedOpenW);
+        Sel("FO_SLIDING_WINDOW", "First Officer Sliding Window", closedOpenW);
+        // Physical flight-deck door OPEN/close — distinct from the LOCK state
+        // (A32NX_COCKPIT_DOOR_LOCKED, kept on the Cockpit Door panel).
+        Sel("COCKPITDOOR_OPEN", "Cockpit Door Open", closedOpenW);
+        // Cabin Ready signal (cabin-crew "cabin ready"; settable bool).
+        Sel("A32NX_CABIN_READY", "Cabin Ready",
+            new Dictionary<double, string> { [0] = "Not Ready", [1] = "Ready" });
         // Cabin-crew / ground-mechanic call push-buttons (momentary). Buttons that pulse.
         Btn("PUSH_OVHD_CALLS_ALL", "Call All Stations");
         Btn("PUSH_OVHD_CALLS_FWD", "Call Forward");
@@ -2053,7 +2067,13 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         p["Calls"] = new List<string>
         {
             "A32NX_CALLS_EMER_ON", "A32NX_EVAC_COMMAND_TOGGLE", "A32NX_EVAC_CAPT_TOGGLE",
+            "A32NX_CABIN_READY",
             "PUSH_OVHD_CALLS_ALL", "PUSH_OVHD_CALLS_FWD", "PUSH_OVHD_CALLS_AFT", "PUSH_OVHD_CALLS_MECH"
+        };
+        // Cockpit sliding windows + physical flight-deck door (settable open/close).
+        p["Windows"] = new List<string>
+        {
+            "CPT_SLIDING_WINDOW", "FO_SLIDING_WINDOW", "COCKPITDOOR_OPEN"
         };
         p["Signs"] = new List<string>
         {
@@ -3694,6 +3714,14 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // masters, FCU toggles, seat-belt, lights, …) are all handled in cases above,
         // so anything reaching here is a direct-write L:var. ARINC429/readout vars are
         // never settable, so they never get here.
+        // Prefix-less FBW L:vars (cockpit sliding windows + physical flight-deck door):
+        // their KEY is the L:var but they lack the A32NX_/A380X_/FBW_ prefix the catch-all
+        // below keys on, so route them through the calculator path explicitly.
+        if (varKey == "CPT_SLIDING_WINDOW" || varKey == "FO_SLIDING_WINDOW" || varKey == "COCKPITDOOR_OPEN")
+        {
+            simConnect.ExecuteCalculatorCode($"{(int)Math.Round(value)} (>L:{varKey})");
+            return true;
+        }
         if (varKey.StartsWith("A32NX_", StringComparison.Ordinal)
             || varKey.StartsWith("A380X_", StringComparison.Ordinal)
             || varKey.StartsWith("FBW_", StringComparison.Ordinal))
