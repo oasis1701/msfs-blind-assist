@@ -62,7 +62,10 @@ Flight planning:
 Fuel and weight:
   F          Read Total Fuel Quantity (pounds)
   Shift+F    Read Total Fuel Quantity (kilograms)
-  Shift+W    Read Gross Weight (kilograms)
+  Shift+W    Read Gross Weight (in the selected weight unit)
+             (Gross weight + the fuel-info readout follow the EFB "US Units"
+              setting — kilograms by default, pounds when US Units is on; a unit
+              change is announced. Toggle it on the flyPad: Shift+T, Settings.)
 
 Tools:
 CTRL+h, Activate/deactivate Hand fly mode, Note, enables more hotkeys, advanced feature.
