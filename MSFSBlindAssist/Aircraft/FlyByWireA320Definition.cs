@@ -839,6 +839,26 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Type = SimConnect.SimVarType.SimVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         },
+        // ENGINE SD-page stock simvars (the FBW SD ENG page reads these, NOT A32NX_
+        // L:vars — verified in fbw-a32nx SD/Pages/Eng). Pre-declared as SimVar (key
+        // underscored, Name spaced + index) so the SD-page auto-register loop leaves
+        // them as SimVar rather than mis-registering them as L:vars.
+        ["GENERAL_ENG_OIL_TEMPERATURE:1"] = new SimConnect.SimVarDefinition
+        { Name = "GENERAL ENG OIL TEMPERATURE:1", DisplayName = "Engine 1 Oil Temperature", Type = SimConnect.SimVarType.SimVar, Units = "celsius", UpdateFrequency = SimConnect.UpdateFrequency.OnRequest },
+        ["GENERAL_ENG_OIL_TEMPERATURE:2"] = new SimConnect.SimVarDefinition
+        { Name = "GENERAL ENG OIL TEMPERATURE:2", DisplayName = "Engine 2 Oil Temperature", Type = SimConnect.SimVarType.SimVar, Units = "celsius", UpdateFrequency = SimConnect.UpdateFrequency.OnRequest },
+        ["ENG_OIL_PRESSURE:1"] = new SimConnect.SimVarDefinition
+        { Name = "ENG OIL PRESSURE:1", DisplayName = "Engine 1 Oil Pressure", Type = SimConnect.SimVarType.SimVar, Units = "psi", UpdateFrequency = SimConnect.UpdateFrequency.OnRequest },
+        ["ENG_OIL_PRESSURE:2"] = new SimConnect.SimVarDefinition
+        { Name = "ENG OIL PRESSURE:2", DisplayName = "Engine 2 Oil Pressure", Type = SimConnect.SimVarType.SimVar, Units = "psi", UpdateFrequency = SimConnect.UpdateFrequency.OnRequest },
+        ["ENG_OIL_QUANTITY:1"] = new SimConnect.SimVarDefinition
+        { Name = "ENG OIL QUANTITY:1", DisplayName = "Engine 1 Oil Quantity", Type = SimConnect.SimVarType.SimVar, Units = "percent", UpdateFrequency = SimConnect.UpdateFrequency.OnRequest },
+        ["ENG_OIL_QUANTITY:2"] = new SimConnect.SimVarDefinition
+        { Name = "ENG OIL QUANTITY:2", DisplayName = "Engine 2 Oil Quantity", Type = SimConnect.SimVarType.SimVar, Units = "percent", UpdateFrequency = SimConnect.UpdateFrequency.OnRequest },
+        ["TURB_ENG_VIBRATION:1"] = new SimConnect.SimVarDefinition
+        { Name = "TURB ENG VIBRATION:1", DisplayName = "Engine 1 Vibration", Type = SimConnect.SimVarType.SimVar, Units = "number", UpdateFrequency = SimConnect.UpdateFrequency.OnRequest },
+        ["TURB_ENG_VIBRATION:2"] = new SimConnect.SimVarDefinition
+        { Name = "TURB ENG VIBRATION:2", DisplayName = "Engine 2 Vibration", Type = SimConnect.SimVarType.SimVar, Units = "number", UpdateFrequency = SimConnect.UpdateFrequency.OnRequest },
         // Read-only wing anti-ice valve-open status (the actual flowing state). The
         // SELECTED control reverts on the ground inhibit, so this is what tells the
         // pilot whether wing anti-ice is genuinely flowing. Auto-announced on change.
@@ -2637,7 +2657,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             {
                 [0] = "Upper E/WD", [1] = "Electrical", [2] = "Hydraulics", [3] = "Pressurization",
                 [4] = "APU", [5] = "Air Conditioning", [6] = "Wheel / Brakes", [7] = "Bleed",
-                [8] = "Fuel", [9] = "Doors"
+                [8] = "Fuel", [9] = "Doors", [10] = "Engine", [11] = "Flight Controls"
             }
         },
         ["A32NX_FM1_MINIMUM_DESCENT_ALTITUDE"] = new SimConnect.SimVarDefinition
@@ -4198,7 +4218,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         // "--" in the box (this was the bug: only SD vars that happened to also be a
         // panel control/display var elsewhere — battery, fuel flow, AC ESS — worked).
         // The add-if-absent guard preserves the richer existing definitions.
-        for (int sdPage = 1; sdPage <= 9; sdPage++)
+        for (int sdPage = 1; sdPage <= 11; sdPage++)
         {
             foreach (var (label, sdVar, _) in SdSystemRows(sdPage))
             {
@@ -5138,7 +5158,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     {
         [0] = "Upper E/WD", [1] = "Electrical", [2] = "Hydraulics", [3] = "Pressurization",
         [4] = "APU", [5] = "Air Conditioning", [6] = "Wheel / Brakes", [7] = "Bleed",
-        [8] = "Fuel", [9] = "Doors"
+        [8] = "Fuel", [9] = "Doors", [10] = "Engine", [11] = "Flight Controls"
     };
 
     // Per-system SD readout rows (decoded SimVars). Added one system at a time.
@@ -5268,6 +5288,49 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             r.Add(("DC bus 1", "A32NX_ELEC_DC_1_BUS_IS_POWERED", OnOff));
             r.Add(("DC bus 2", "A32NX_ELEC_DC_2_BUS_IS_POWERED", OnOff));
             r.Add(("DC bat bus", "A32NX_ELEC_DC_BAT_BUS_IS_POWERED", OnOff));
+        }
+        else if (page == 10) // ENGINE — oil + vibration + igniters (N1/N2/EGT/FF are on the E/WD)
+        {
+            string Vib(double v) => $"{v:0.0}";
+            string IgOnOff(double v) => v > 0.5 ? "on" : "off";
+            r.Add(("Engine 1 oil quantity", "ENG_OIL_QUANTITY:1", Pct));
+            r.Add(("Engine 1 oil temperature", "GENERAL_ENG_OIL_TEMPERATURE:1", C));
+            r.Add(("Engine 1 oil pressure", "ENG_OIL_PRESSURE:1", Psi));
+            r.Add(("Engine 1 vibration", "TURB_ENG_VIBRATION:1", Vib));
+            r.Add(("Engine 1 igniter A", "A32NX_FADEC_IGNITER_A_ACTIVE_ENG1", IgOnOff));
+            r.Add(("Engine 1 igniter B", "A32NX_FADEC_IGNITER_B_ACTIVE_ENG1", IgOnOff));
+            r.Add(("Engine 2 oil quantity", "ENG_OIL_QUANTITY:2", Pct));
+            r.Add(("Engine 2 oil temperature", "GENERAL_ENG_OIL_TEMPERATURE:2", C));
+            r.Add(("Engine 2 oil pressure", "ENG_OIL_PRESSURE:2", Psi));
+            r.Add(("Engine 2 vibration", "TURB_ENG_VIBRATION:2", Vib));
+            r.Add(("Engine 2 igniter A", "A32NX_FADEC_IGNITER_A_ACTIVE_ENG2", IgOnOff));
+            r.Add(("Engine 2 igniter B", "A32NX_FADEC_IGNITER_B_ACTIVE_ENG2", IgOnOff));
+        }
+        else if (page == 11) // FLIGHT CONTROLS — surface positions + trims (FCDC/FAC ARINC words)
+        {
+            // FCDC/FAC surface words are ARINC429, value in degrees. Direction words per FBW.
+            string ArDeg(double v, string pos, string neg)
+            {
+                var w = new SimConnect.Arinc429Word(v);
+                if (!(w.IsNormalOperation || w.IsFunctionalTest)) return "not available";
+                double d = w.Value;
+                return Math.Abs(d) < 0.1 ? "neutral" : $"{Math.Abs(d):0.0} degrees {(d > 0 ? pos : neg)}";
+            }
+            // THS: FBW shows DN for positive (nose-down trim), UP for negative.
+            r.Add(("Pitch trim, THS", "A32NX_FCDC_1_ELEVATOR_TRIM_POS", v => ArDeg(v, "nose down", "nose up")));
+            r.Add(("Left elevator", "A32NX_FCDC_1_ELEVATOR_LEFT_POS", v => ArDeg(v, "down", "up")));
+            r.Add(("Right elevator", "A32NX_FCDC_1_ELEVATOR_RIGHT_POS", v => ArDeg(v, "down", "up")));
+            r.Add(("Left aileron", "A32NX_FCDC_1_AILERON_LEFT_POS", v => ArDeg(v, "down", "up")));
+            r.Add(("Right aileron", "A32NX_FCDC_1_AILERON_RIGHT_POS", v => ArDeg(v, "down", "up")));
+            // Rudder deflection is a plain percent L:var (±100% ≈ ±25°); positive = right.
+            r.Add(("Rudder", "A32NX_HYD_RUDDER_DEFLECTION",
+                v => Math.Abs(v) < 0.5 ? "neutral" : $"{Math.Abs(v * 0.25):0.0} degrees {(v > 0 ? "right" : "left")}"));
+            // Rudder trim ARINC word, positive = nose-left (matches the FCC-panel decode).
+            r.Add(("Rudder trim", "A32NX_FAC_1_RUDDER_TRIM_POS", v => ArDeg(v, "left", "right")));
+            r.Add(("Rudder travel limit", "A32NX_FAC_1_RUDDER_TRAVEL_LIMIT_COMMAND",
+                v => { var w = new SimConnect.Arinc429Word(v); return (w.IsNormalOperation || w.IsFunctionalTest) ? $"{w.Value:0} degrees" : "not available"; }));
+            r.Add(("Speed brake handle", "A32NX_SPOILERS_HANDLE_POSITION", v => $"{v * 100:0} %"));
+            r.Add(("Ground spoilers armed", "A32NX_SPOILERS_ARMED", v => v > 0.5 ? "armed" : "disarmed"));
         }
         return r;
     }
