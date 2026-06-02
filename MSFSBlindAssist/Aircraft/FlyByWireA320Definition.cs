@@ -4876,22 +4876,33 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             case HotkeyAction.ReadAltimeter:
                 announcer.AnnounceImmediate(BaroPhrase(_baroHpa < 0 ? 1013 : _baroHpa, _baroMode < 0 ? 1 : _baroMode));
                 return true;
-            // FCU set value dialogs (these need custom logic)
+            // FCU value windows (Fenix-style: value entry + knob Push/Pull + mode
+            // toggles + spoken read-out). Mirrors the A380's Ctrl+S/H/A/V/P/B windows;
+            // replaces the old single-field ShowA320*InputDialog dialogs.
             case HotkeyAction.FCUSetHeading:
                 hotkeyManager.ExitInputHotkeyMode();
-                return ShowA320HeadingInputDialog(simConnect, announcer, parentForm);
+                new Forms.FBWA320.FBWA320HeadingWindow(this, simConnect, announcer).ShowForm();
+                return true;
 
             case HotkeyAction.FCUSetSpeed:
                 hotkeyManager.ExitInputHotkeyMode();
-                return ShowA320SpeedInputDialog(simConnect, announcer, parentForm);
+                new Forms.FBWA320.FBWA320SpeedWindow(this, simConnect, announcer).ShowForm();
+                return true;
 
             case HotkeyAction.FCUSetAltitude:
                 hotkeyManager.ExitInputHotkeyMode();
-                return ShowA320AltitudeInputDialog(simConnect, announcer, parentForm);
+                new Forms.FBWA320.FBWA320AltitudeWindow(this, simConnect, announcer).ShowForm();
+                return true;
 
             case HotkeyAction.FCUSetVS:
                 hotkeyManager.ExitInputHotkeyMode();
-                return ShowA320VSInputDialog(simConnect, announcer, parentForm);
+                new Forms.FBWA320.FBWA320VSWindow(this, simConnect, announcer).ShowForm();
+                return true;
+
+            case HotkeyAction.FCUSetAutopilot:
+                hotkeyManager.ExitInputHotkeyMode();
+                new Forms.FBWA320.FBWA320AutopilotWindow(this, simConnect, announcer).ShowForm();
+                return true;
 
             // A32NX FCU value readouts
             case HotkeyAction.ReadHeading:
@@ -4983,164 +4994,12 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
 
             case HotkeyAction.FCUSetBaro:
                 hotkeyManager.ExitInputHotkeyMode();
-                ShowFBWBaroSetDialog(simConnect, announcer, parentForm);
+                new Forms.FBWA320.FBWA320BaroWindow(this, simConnect, announcer).ShowForm();
                 return true;
         }
 
         // Fall back to base class for simple variable mappings
         return base.HandleHotkeyAction(action, simConnect, announcer, parentForm, hotkeyManager);
-    }
-
-    // A320-specific FCU input dialog methods
-    private bool ShowA320HeadingInputDialog(
-        SimConnect.SimConnectManager simConnect,
-        ScreenReaderAnnouncer announcer,
-        Form parentForm)
-    {
-        var validator = new Func<string, (bool isValid, string message)>((input) =>
-        {
-            if (double.TryParse(input, out double value))
-            {
-                if (value >= 0 && value <= 360)
-                    return (true, "");
-                else
-                    return (false, "Heading must be between 0 and 360 degrees");
-            }
-            return (false, "Invalid number format");
-        });
-
-        return ShowFCUInputDialog(
-            "Set Heading",
-            "Heading",
-            "0-360 degrees",
-            "A32NX.FCU_HDG_SET",
-            simConnect,
-            announcer,
-            parentForm,
-            validator);
-    }
-
-    private bool ShowA320SpeedInputDialog(
-        SimConnect.SimConnectManager simConnect,
-        ScreenReaderAnnouncer announcer,
-        Form parentForm)
-    {
-        var validator = new Func<string, (bool isValid, string message)>((input) =>
-        {
-            if (double.TryParse(input, out double value))
-            {
-                // Check if it's a Mach number (0.10-0.99) or knots (100-399)
-                if ((value >= 0.10 && value <= 0.99) || (value >= 100 && value <= 399))
-                    return (true, "");
-                else
-                    return (false, "Speed must be 100-399 knots or 0.10-0.99 Mach");
-            }
-            return (false, "Invalid number format");
-        });
-
-        // Mach numbers need to be multiplied by 100, knots are sent as-is
-        Func<double, uint> converter = (value) => value < 1.0 ? (uint)(value * 100) : (uint)value;
-
-        return ShowFCUInputDialog(
-            "Set Speed",
-            "Speed",
-            "100-399 knots or 0.10-0.99 Mach",
-            "A32NX.FCU_SPD_SET",
-            simConnect,
-            announcer,
-            parentForm,
-            validator,
-            converter);
-    }
-
-    private bool ShowA320AltitudeInputDialog(
-        SimConnect.SimConnectManager simConnect,
-        ScreenReaderAnnouncer announcer,
-        Form parentForm)
-    {
-        if (!simConnect.IsConnected)
-        {
-            announcer.AnnounceImmediate("Not connected to simulator.");
-            return false;
-        }
-
-        var validator = new Func<string, (bool isValid, string message)>((input) =>
-        {
-            if (double.TryParse(input, out double value))
-            {
-                if (value >= 100 && value <= 49000)
-                    return (true, "");
-                else
-                    return (false, "Altitude must be between 100 and 49000 feet");
-            }
-            return (false, "Invalid number format");
-        });
-
-        var dialog = new Forms.ValueInputForm("Set Altitude", "Altitude", "100-49000 feet", announcer, validator);
-        if (dialog.ShowDialog(parentForm) == DialogResult.OK && dialog.IsValidInput)
-        {
-            if (double.TryParse(dialog.InputValue, out double value))
-            {
-                // FCU_ALT_SET requires values to be multiples of 100 feet
-                uint roundedValue = (uint)(Math.Round(value / 100) * 100);
-
-                // Set FCU altitude increment mode to 100ft before setting altitude
-                simConnect.SendEvent("A32NX.FCU_ALT_INCREMENT_SET", 100);
-                System.Threading.Thread.Sleep(50); // Brief delay for mode to activate
-
-                simConnect.SendEvent("A32NX.FCU_ALT_SET", roundedValue);
-                announcer.AnnounceImmediate($"Altitude set to {roundedValue}");
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private bool ShowA320VSInputDialog(
-        SimConnect.SimConnectManager simConnect,
-        ScreenReaderAnnouncer announcer,
-        Form parentForm)
-    {
-        if (!simConnect.IsConnected)
-        {
-            announcer.AnnounceImmediate("Not connected to simulator.");
-            return false;
-        }
-
-        // For A320, we need to check TRK/FPA mode but we don't have access to currentSimVarValues here
-        // Simplify by accepting both FPA and VS ranges
-        string rangeText = "-6000 to 6000 ft/min or -9.9 to 9.9 degrees FPA";
-
-        var validator = new Func<string, (bool isValid, string message)>((input) =>
-        {
-            if (double.TryParse(input, out double value))
-            {
-                // Accept both VS range (-6000 to 6000) and FPA range (-9.9 to 9.9)
-                if ((value >= -6000 && value <= 6000) || (value >= -9.9 && value <= 9.9))
-                    return (true, "");
-                else
-                    return (false, "Value must be -6000 to 6000 ft/min or -9.9 to 9.9 degrees FPA");
-            }
-            return (false, "Invalid number format");
-        });
-
-        var dialog = new Forms.ValueInputForm("Set Vertical Speed / FPA", "VS/FPA", rangeText, announcer, validator);
-        if (dialog.ShowDialog(parentForm) == DialogResult.OK && dialog.IsValidInput)
-        {
-            if (double.TryParse(dialog.InputValue, out double value))
-            {
-                // If value is small (< 100), assume it's FPA and multiply by 100
-                // Otherwise assume it's vertical speed feet per minute
-                uint valueToSend = Math.Abs(value) < 100 ? (uint)(value * 100) : (uint)value;
-
-                simConnect.SendEvent("A32NX.FCU_VS_SET", valueToSend);
-                announcer.AnnounceImmediate($"Vertical speed set to {value}");
-                return true;
-            }
-        }
-
-        return false;
     }
 
     // Helper methods for A32NX-specific hotkey actions
@@ -5165,37 +5024,6 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             announcer.AnnounceImmediate("Approach capability not available");
         }
-    }
-
-    private void ShowFBWBaroSetDialog(
-        SimConnect.SimConnectManager simConnect,
-        ScreenReaderAnnouncer announcer,
-        Form parentForm)
-    {
-        var dialog = new ValueInputForm(
-            "Set Altimeter",
-            "Barometric pressure (hPa)",
-            "745–1050",
-            announcer,
-            input =>
-            {
-                if (double.TryParse(input, out double val) && val >= 745 && val <= 1050)
-                    return (true, "");
-                return (false, "Enter a value between 745 and 1050 hPa");
-            },
-            new List<ToggleButtonDef>(),
-            input =>
-            {
-                if (double.TryParse(input, out double hpa))
-                {
-                    uint encoded = (uint)(hpa * 16);
-                    simConnect.SendEvent("A32NX.FCU_EFIS_L_BARO_SET", encoded);
-                    simConnect.SendEvent("A32NX.FCU_EFIS_R_BARO_SET", encoded);
-                    announcer.AnnounceImmediate($"Altimeter set to {hpa:F0} hPa");
-                }
-            });
-        dialog.ShowCancelButton = false;
-        dialog.Show(parentForm);
     }
 
     private void ToggleA320ECAMMonitoring(SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
@@ -6269,6 +6097,101 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             simConnectMgr.RequestVariable("A32NX_FCU_AFS_DISPLAY_VS_FPA_VALUE", forceUpdate: true);
             simConnectMgr.RequestVariable("A32NX_TRK_FPA_MODE_ACTIVE", forceUpdate: true);
         }
+    }
+
+    // ==================================================================================
+    // Public FCU API for the dedicated A320 FCU windows (Forms/FBWA320/*)
+    // Mirrors the A380 def's window API so the A32NX gets the same Fenix-style FCU
+    // value-entry windows. The windows validate input, then call these; the set/
+    // readback mechanism lives here. Each setter fires the (shared A32NX) event and
+    // re-requests the existing AFS_DISPLAY read-out so the new value is spoken.
+    // ==================================================================================
+
+    // Public readout wrappers (the windows call these on open + after a push/pull).
+    public void RequestFCUHeadingReadout(SimConnect.SimConnectManager s) => RequestFCUHeadingWithStatus(s);
+    public void RequestFCUSpeedReadout(SimConnect.SimConnectManager s) => RequestFCUSpeedWithStatus(s);
+    public void RequestFCUAltitudeReadout(SimConnect.SimConnectManager s) => RequestFCUAltitudeWithStatus(s);
+    public void RequestFCUVSReadout(SimConnect.SimConnectManager s) => RequestFCUVerticalSpeedFPA(s);
+
+    // hdg: 0-360 whole degrees.
+    public bool SetFCUHeadingValue(int hdg, SimConnect.SimConnectManager s, ScreenReaderAnnouncer a)
+    {
+        if (!s.IsConnected) { a.AnnounceImmediate("Not connected to simulator."); return false; }
+        s.SendEvent("A32NX.FCU_HDG_SET", (uint)hdg);
+        RequestFCUHeadingWithStatus(s);
+        return true;
+    }
+
+    // internalSpeed: knots (100-399) OR Mach*100 (10-99). Caller does the *100.
+    public bool SetFCUSpeedValue(int internalSpeed, SimConnect.SimConnectManager s, ScreenReaderAnnouncer a)
+    {
+        if (!s.IsConnected) { a.AnnounceImmediate("Not connected to simulator."); return false; }
+        s.SendEvent("A32NX.FCU_SPD_SET", (uint)internalSpeed);
+        RequestFCUSpeedWithStatus(s);
+        return true;
+    }
+
+    // feet: whole feet; rounded to the nearest 100 (FCU_ALT_SET requires multiples of 100).
+    public bool SetFCUAltitudeValue(double feet, SimConnect.SimConnectManager s, ScreenReaderAnnouncer a)
+    {
+        if (!s.IsConnected) { a.AnnounceImmediate("Not connected to simulator."); return false; }
+        uint rounded = (uint)(Math.Round(feet / 100) * 100);
+        s.SendEvent("A32NX.FCU_ALT_INCREMENT_SET", 100);
+        System.Threading.Thread.Sleep(50);
+        s.SendEvent("A32NX.FCU_ALT_SET", rounded);
+        a.AnnounceImmediate($"Altitude set to {rounded} feet");
+        return true;
+    }
+
+    // value: signed V/S (-6000..6000 fpm) OR FPA (-9.9..9.9 deg). Uses the calc-code
+    // K: path (negatives overflow SendEvent's uint).
+    public bool SetFCUVSValue(double value, SimConnect.SimConnectManager s, ScreenReaderAnnouncer a)
+    {
+        if (!s.IsConnected) { a.AnnounceImmediate("Not connected to simulator."); return false; }
+        int toSend = Math.Abs(value) < 100 ? (int)(value * 100) : (int)value;
+        s.ExecuteCalculatorCode($"{toSend} (>K:A32NX.FCU_VS_SET)");
+        a.AnnounceImmediate($"Vertical speed set to {value}");
+        return true;
+    }
+
+    // Fire a push/pull/toggle event and speak the resulting value (readback routed by
+    // the same event→readout mapping the Shift+1-4/Ctrl+1-4 knob hotkeys use).
+    public void FireFCUButton(string evt, SimConnect.SimConnectManager s, ScreenReaderAnnouncer a)
+    {
+        if (!s.IsConnected) { a.AnnounceImmediate("Not connected to simulator."); return; }
+        s.SendEvent(evt);
+        switch (evt)
+        {
+            case "A32NX.FCU_TO_AP_HDG_PUSH":
+            case "A32NX.FCU_TO_AP_HDG_PULL":
+            case "A32NX.FCU_TRK_FPA_TOGGLE_PUSH": RequestFCUHeadingWithStatus(s); break;
+            case "A32NX.FCU_SPD_PUSH":
+            case "A32NX.FCU_SPD_PULL":
+            case "A32NX.FCU_SPD_MACH_TOGGLE_PUSH": RequestFCUSpeedWithStatus(s); break;
+            case "A32NX.FCU_ALT_PUSH":
+            case "A32NX.FCU_ALT_PULL": RequestFCUAltitudeWithStatus(s); break;
+            case "A32NX.FCU_VS_PUSH":
+            case "A32NX.FCU_TO_AP_VS_PULL": RequestFCUVerticalSpeedFPA(s); break;
+        }
+    }
+
+    // Request the live AP/mode state vars so the Autopilot window can refresh labels.
+    public void RequestAutopilotStates(SimConnect.SimConnectManager s)
+    {
+        if (!s.IsConnected) return;
+        foreach (var v in new[] {
+            "A32NX_AUTOPILOT_1_ACTIVE", "A32NX_AUTOPILOT_2_ACTIVE",
+            "A32NX_FCU_LOC_MODE_ACTIVE", "A32NX_FCU_APPR_MODE_ACTIVE",
+            "A32NX_FMA_EXPEDITE_MODE", "A32NX_FCU_EFIS_L_FD_ACTIVE",
+            "A32NX_FCU_EFIS_R_FD_ACTIVE" })
+            s.RequestVariable(v, forceUpdate: true);
+    }
+
+    // Set the FCU altitude increment (100 or 1000 ft).
+    public void SetAltIncrement(int inc, SimConnect.SimConnectManager s)
+    {
+        if (!s.IsConnected) return;
+        s.SendEvent("A32NX.FCU_ALT_INCREMENT_SET", (uint)inc);
     }
 
     private void RequestFuelQuantity(SimConnect.SimConnectManager simConnectMgr)
