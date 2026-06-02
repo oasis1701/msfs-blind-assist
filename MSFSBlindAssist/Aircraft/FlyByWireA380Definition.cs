@@ -884,9 +884,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
 
         // DOORS SD page — all 16 passenger doors as the stock `INTERACTIVE POINT OPEN:n`
         // (percent open; the FBW Door page treats >20% as open). Pre-declared OnRequest as
-        // SimVar so the A380SdRows auto-register loop leaves them stock (the door-control
-        // combos register a few of the same points under A380X_GND_DOOR_* keys — distinct
-        // keys, no collision). Indices 0-15 = MAIN 1L/1R/2L/2R/3L/3R/4L/4R/5L/5R, UPPER
+        // SimVar so the A380SdRows auto-register loop leaves them stock. Read-only display
+        // data only. Indices 0-15 = MAIN 1L/1R/2L/2R/3L/3R/4L/4R/5L/5R, UPPER
         // 1L/1R/2L/2R/3L/3R (from the FBW DoorPage source).
         for (int ip = 0; ip <= 15; ip++)
             Stock($"INTERACTIVE POINT OPEN:{ip}", $"INTERACTIVE POINT OPEN:{ip}", $"Door {ip}", "percent");
@@ -1888,63 +1887,13 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         };
 
         // ---- Ground Services (flyPad Ground page, exposed as cockpit controls) ----
-        // Doors: read the stock `INTERACTIVE POINT OPEN:n` as BOOL so the door
-        // auto-announces Open/Closed exactly once per transition (a Percent read
-        // would spam every frame of the open/close animation). Toggle via the
-        // stock K:TOGGLE_AIRCRAFT_EXIT event with the door's interaction index —
-        // the same mechanism the FBW flyPad uses (verified from FBW source).
-        var openShut = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" };
-        void Door(string key, int ip, uint exitId, string display)
-        {
-            // A door is one Closed/Open COMBO: state from INTERACTIVE POINT OPEN:ip, and the
-            // set fires TOGGLE_AIRCRAFT_EXIT (exit id via _doorExitIds) through
-            // HandleUIVariableSet — no separate button.
-            //
-            // CONNECTION-SAFETY: UpdateFrequency.Never. Both Continuous AND OnRequest still
-            // REGISTER a SimConnect data definition for every door in RegisterAllVariables
-            // (AddToDataDefinition + RegisterDataDefineStruct). With all 18 doors that extra
-            // registration load at Connect() reliably broke aircraft detection (IsFullyConnected
-            // never set -> every hotkey "not connected"; even a detection retry didn't help).
-            // RegisterAllVariables SKIPS Never-frequency vars entirely, so the doors add ZERO
-            // data definitions. The door still WORKS: the combo's SET fires K:TOGGLE_AIRCRAFT_
-            // EXIT via the _doorExitIds branch in HandleUIVariableSet (a K-event needs no
-            // registered var), and an open door is still announced by the EWD "DOOR … NOT
-            // CLOSED" memo (its own monitor). Trade-off: the combo can't read live state, so it
-            // shows the default ("Closed") — toggling still opens/closes the actual door.
-            vars[key] = new SimVarDefinition
-            {
-                Name = $"INTERACTIVE POINT OPEN:{ip}", DisplayName = display,
-                Type = SimVarType.SimVar, Units = "bool",
-                UpdateFrequency = UpdateFrequency.Never,
-                ValueDescriptions = openShut
-            };
-        }
-        // All 16 passenger doors. interactive-point index = exit id − 1 (source: FBW
-        // door_animations.xml TOGGLE_IDs 1-16 + flight_model.cfg [INTERACTIVE POINTS]
-        // positions confirming L/R + deck). Cargo (ip16/17) are NOT TOGGLE_AIRCRAFT_EXIT
-        // exits (hydraulic-driven) — their state stays read-only in the SD DOORS page.
-        Door("A380X_GND_DOOR_MAIN1L", 0, 1, "Main 1 Left Door");
-        Door("A380X_GND_DOOR_MAIN1R", 1, 2, "Main 1 Right Door");
-        Door("A380X_GND_DOOR_MAIN2L", 2, 3, "Main 2 Left Door");
-        Door("A380X_GND_DOOR_MAIN2R", 3, 4, "Main 2 Right Door");
-        Door("A380X_GND_DOOR_MAIN3L", 4, 5, "Main 3 Left Door");
-        Door("A380X_GND_DOOR_MAIN3R", 5, 6, "Main 3 Right Door");
-        Door("A380X_GND_DOOR_MAIN4L", 6, 7, "Main 4 Left Door");
-        Door("A380X_GND_DOOR_MAIN4R", 7, 8, "Main 4 Right Door");
-        Door("A380X_GND_DOOR_MAIN5L", 8, 9, "Main 5 Left Door");
-        Door("A380X_GND_DOOR_MAIN5R", 9, 10, "Main 5 Right Door");
-        Door("A380X_GND_DOOR_UPPER1L", 10, 11, "Upper 1 Left Door");
-        Door("A380X_GND_DOOR_UPPER1R", 11, 12, "Upper 1 Right Door");
-        Door("A380X_GND_DOOR_UPPER2L", 12, 13, "Upper 2 Left Door");
-        Door("A380X_GND_DOOR_UPPER2R", 13, 14, "Upper 2 Right Door");
-        Door("A380X_GND_DOOR_UPPER3L", 14, 15, "Upper 3 Left Door");
-        Door("A380X_GND_DOOR_UPPER3R", 15, 16, "Upper 3 Right Door");
-        // Cargo doors (ip16/17, type 1). The FBW door_animations.xml doesn't fire the toggle
-        // for these, but the STOCK K:TOGGLE_AIRCRAFT_EXIT:17/18 DOES drive the interactive
-        // point — live-verified: exit 17 -> ip16 0→100% (A32NX_FWD_DOOR_CARGO_POSITION rose),
-        // exit 18 -> ip17 0→100%. So they ARE operable.
-        Door("A380X_GND_DOOR_FWDCARGO", 16, 17, "Forward Cargo Door");
-        Door("A380X_GND_DOOR_AFTCARGO", 17, 18, "Aft Cargo Door");
+        // NOTE: the cockpit door combos were REMOVED. Exposing the A380 doors (as Continuous,
+        // OnRequest, or even Never) consistently broke MSFSBA's aircraft detection on this
+        // machine — the app would report "MSFS detected" but never finish connecting, so every
+        // hotkey said "not connected". Removing them restored the connection. The door state is
+        // still readable in the SD DOORS page, and door-open warnings still announce via the
+        // EWD memo monitor. (Re-investigate the underlying cause with MSFSBA's debug log before
+        // re-adding any door control.)
 
         // Jet bridge + passenger stairs (stock MSFS ground-service events;
         // airport/parking dependent). Catering, fuel-truck, baggage and pushback
@@ -2049,7 +1998,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             },
             // All ground-related panels live under one category (doors, equipment, pushback/
             // presets) — the old standalone "Ground" panel under Displays was confusing.
-            ["Ground Services"] = new List<string> { "Doors", "Ground Equipment", "Pushback" },
+            ["Ground Services"] = new List<string> { "Ground Equipment", "Pushback" },
             ["Displays"] = new List<string> { "PFD", "ND", "Status", "Speeds", "Minimums" }
         };
     }
@@ -2344,18 +2293,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         p["Cockpit Door"] = new List<string> { "A32NX_COCKPIT_DOOR_LOCKED" };
 
         // ---- Ground Services (flyPad Ground page) ----
-        p["Doors"] = new List<string>
-        {
-            "A380X_GND_DOOR_MAIN1L", "A380X_GND_DOOR_MAIN1R",
-            "A380X_GND_DOOR_MAIN2L", "A380X_GND_DOOR_MAIN2R",
-            "A380X_GND_DOOR_MAIN3L", "A380X_GND_DOOR_MAIN3R",
-            "A380X_GND_DOOR_MAIN4L", "A380X_GND_DOOR_MAIN4R",
-            "A380X_GND_DOOR_MAIN5L", "A380X_GND_DOOR_MAIN5R",
-            "A380X_GND_DOOR_UPPER1L", "A380X_GND_DOOR_UPPER1R",
-            "A380X_GND_DOOR_UPPER2L", "A380X_GND_DOOR_UPPER2R",
-            "A380X_GND_DOOR_UPPER3L", "A380X_GND_DOOR_UPPER3R",
-            "A380X_GND_DOOR_FWDCARGO", "A380X_GND_DOOR_AFTCARGO"
-        };
+        // (Doors panel removed — see the note in BuildVariables; the door combos broke
+        // aircraft detection on this machine.)
         p["Ground Equipment"] = new List<string>
         {
             // Only jetway/stairs are user-callable. CHOCKS, CONES and GPU-available
@@ -3138,21 +3077,6 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             announcer.AnnounceImmediate(value > 0.5 ? "Gear down" : "Gear up");
             return true;
         }
-        // Doors read the stock INTERACTIVE POINT OPEN, a 0..1 FRACTION — so a
-        // half-open door is e.g. 0.6, which matches neither the Closed(0) nor
-        // Open(1) value description and would otherwise read as "0.6". Announce
-        // open/closed once per transition (>0.05 = cracked open). The decoded
-        // state + percentage is shown in the panel via TryGetDisplayOverride.
-        if (varName.StartsWith("A380X_GND_DOOR_", StringComparison.Ordinal)
-            && !varName.EndsWith("_TOGGLE", StringComparison.Ordinal))
-        {
-            bool open = value > 0.05;
-            bool? prev = _doorOpen.TryGetValue(varName, out var p) ? p : null;
-            _doorOpen[varName] = open;
-            if (prev.HasValue && prev.Value != open && _doorNames.TryGetValue(varName, out var dn))
-                announcer.Announce($"{dn} {(open ? "open" : "closed")}");
-            return true;
-        }
         if (_readoutKey != null && varName == _readoutKey)
         {
             string lbl = _readoutLabel ?? varName;
@@ -3586,13 +3510,6 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             simConnect.SendEvent(value > 0.5 ? "FUELSYSTEM_VALVE_OPEN" : "FUELSYSTEM_VALVE_CLOSE", (uint)(45 + xfn));
             return true;
         }
-        // Door combos: the combo shows the live SimVar open/closed state, so
-        // selecting the OTHER option means "toggle" — fire TOGGLE_AIRCRAFT_EXIT.
-        if (_doorExitIds.TryGetValue(varKey, out uint doorExit))
-        {
-            simConnect.SendEvent("TOGGLE_AIRCRAFT_EXIT", doorExit);
-            return true;
-        }
         // Ground-service toggle combos (no clean state SimVar) — any change toggles.
         if (varKey == "A380X_GND_JETWAY") { if (value > 0.5) simConnect.SendEvent("TOGGLE_JETWAY"); return true; }
         if (varKey == "A380X_GND_STAIRS") { if (value > 0.5) simConnect.SendEvent("TOGGLE_RAMPTRUCK"); return true; }
@@ -3864,51 +3781,6 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     private bool? _baroStdL, _baroStdR; // last EFIS baro STD(true)/QNH(false) per side
     private bool? _baroInHgL, _baroInHgR; // last EFIS baro unit inHg(true)/hPa(false) per side
     private int _lastBaroMin = -2, _lastDh = -2; // last announced minimums (ft; -1 = none/NCD)
-    private readonly Dictionary<string, bool> _doorOpen = new(); // last open/closed state per door key
-    private static readonly Dictionary<string, string> _doorNames = new()
-    {
-        ["A380X_GND_DOOR_MAIN1L"] = "Main 1 Left Door",
-        ["A380X_GND_DOOR_MAIN1R"] = "Main 1 Right Door",
-        ["A380X_GND_DOOR_MAIN2L"] = "Main 2 Left Door",
-        ["A380X_GND_DOOR_MAIN2R"] = "Main 2 Right Door",
-        ["A380X_GND_DOOR_MAIN3L"] = "Main 3 Left Door",
-        ["A380X_GND_DOOR_MAIN3R"] = "Main 3 Right Door",
-        ["A380X_GND_DOOR_MAIN4L"] = "Main 4 Left Door",
-        ["A380X_GND_DOOR_MAIN4R"] = "Main 4 Right Door",
-        ["A380X_GND_DOOR_MAIN5L"] = "Main 5 Left Door",
-        ["A380X_GND_DOOR_MAIN5R"] = "Main 5 Right Door",
-        ["A380X_GND_DOOR_UPPER1L"] = "Upper 1 Left Door",
-        ["A380X_GND_DOOR_UPPER1R"] = "Upper 1 Right Door",
-        ["A380X_GND_DOOR_UPPER2L"] = "Upper 2 Left Door",
-        ["A380X_GND_DOOR_UPPER2R"] = "Upper 2 Right Door",
-        ["A380X_GND_DOOR_UPPER3L"] = "Upper 3 Left Door",
-        ["A380X_GND_DOOR_UPPER3R"] = "Upper 3 Right Door",
-        ["A380X_GND_DOOR_FWDCARGO"] = "Forward Cargo Door",
-        ["A380X_GND_DOOR_AFTCARGO"] = "Aft Cargo Door",
-    };
-    // Door key -> TOGGLE_AIRCRAFT_EXIT interaction id (= interactive-point index + 1).
-    private static readonly Dictionary<string, uint> _doorExitIds = new()
-    {
-        ["A380X_GND_DOOR_MAIN1L"] = 1,
-        ["A380X_GND_DOOR_MAIN1R"] = 2,
-        ["A380X_GND_DOOR_MAIN2L"] = 3,
-        ["A380X_GND_DOOR_MAIN2R"] = 4,
-        ["A380X_GND_DOOR_MAIN3L"] = 5,
-        ["A380X_GND_DOOR_MAIN3R"] = 6,
-        ["A380X_GND_DOOR_MAIN4L"] = 7,
-        ["A380X_GND_DOOR_MAIN4R"] = 8,
-        ["A380X_GND_DOOR_MAIN5L"] = 9,
-        ["A380X_GND_DOOR_MAIN5R"] = 10,
-        ["A380X_GND_DOOR_UPPER1L"] = 11,
-        ["A380X_GND_DOOR_UPPER1R"] = 12,
-        ["A380X_GND_DOOR_UPPER2L"] = 13,
-        ["A380X_GND_DOOR_UPPER2R"] = 14,
-        ["A380X_GND_DOOR_UPPER3L"] = 15,
-        ["A380X_GND_DOOR_UPPER3R"] = 16,
-        ["A380X_GND_DOOR_FWDCARGO"] = 17,
-        ["A380X_GND_DOOR_AFTCARGO"] = 18,
-    };
-
     // Decode/normalise an EFIS baro setting to whole hPa; false for STD/no-data.
     // The FBW _HPA var is hPa, but range-detect inHg too so the read-out still
     // works if the EFIS is switched to inches and the value comes through scaled.
@@ -3938,16 +3810,6 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         if (varKey == "A32NX_SPOILERS_HANDLE_POSITION")
         {
             displayText = value < 0.05 ? "Retracted" : value > 0.95 ? "Full" : $"{(int)Math.Round(value * 100)} percent";
-            return true;
-        }
-        // Doors: INTERACTIVE POINT OPEN is a 0..1 fraction — show a meaningful
-        // state ("Open (60%)") instead of the bare "0.6".
-        if (varKey.StartsWith("A380X_GND_DOOR_", StringComparison.Ordinal)
-            && !varKey.EndsWith("_TOGGLE", StringComparison.Ordinal))
-        {
-            displayText = value < 0.05 ? "Closed"
-                        : value > 0.95 ? "Open"
-                        : $"Open ({(int)Math.Round(value * 100)}%)";
             return true;
         }
         // Nosewheel steering angle: 0.5 = centred, (v-0.5)*140 = degrees (±70° authority).
@@ -4476,7 +4338,6 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         string OnOff(double v) => v > 0.5 ? "powered" : "not powered";
         string OpenShut(double v) => v > 0.5 ? "open" : "closed";
         string Healthy(double v) => v > 0.5 ? "healthy" : "failed";
-        string Locked(double v) => v > 0.5 ? "locked" : "unlocked";
         string DoorState(double pct) => pct > 20 ? "open" : "closed";   // FBW Door page threshold
         string Auto(double v) => v > 0.5 ? "auto" : "off";
         string Active(double v) => v > 0.5 ? "running" : "off";
