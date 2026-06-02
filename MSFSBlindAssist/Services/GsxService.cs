@@ -2044,10 +2044,25 @@ public sealed class GsxService : IDisposable
     private static bool IsCompletedStatusService(string text)
     {
         string normalized = text.ToLowerInvariant();
-        return normalized.Contains("has been completed")
+        if (normalized.Contains("has been completed")
             || normalized.Contains("service completed")
-            || normalized.Contains("operation completed");
+            || normalized.Contains("operation completed")
+            || normalized.Contains("has completed"))
+        {
+            return true;
+        }
+
+        // GSX 4 also emits "<service> completed" (e.g. "Refueling completed",
+        // "Boarding completed") without a "service"/"operation"/"has been"
+        // connector. Without this match, those rows get misclassified as
+        // active and — if they contain progress keywords like "loaded" —
+        // can be silenced by the fueling/boarding throttle.
+        return CompletedTrailingRegex.IsMatch(text);
     }
+
+    private static readonly Regex CompletedTrailingRegex = new(
+        @"\bcomplete[ds]?\b\s*\.?\s*$",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static bool IsStartedStatusService(string cssClass, string text)
     {
