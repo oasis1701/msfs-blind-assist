@@ -196,7 +196,14 @@ public sealed class GsxService : IDisposable
     private readonly Dictionary<string, (int Percent, DateTime SeenAt)> _lastBaggageProgressByOperation = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, DateTime> _recentLiveServiceAnnouncements = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _lastServiceOperatorByName = new(StringComparer.OrdinalIgnoreCase);
+    // Was used by the time-based ShouldThrottleFuelingProgress (now removed).
+    // Kept as a typedef for back-compat; ClearProgressTrackingState still
+    // clears it so any straggler reference dies cleanly.
     private readonly Dictionary<string, DateTime> _lastFuelingProgressAnnouncementByService = new(StringComparer.OrdinalIgnoreCase);
+    // Milestone bucket per fueling-service key (loaded/total kg → percent/10
+    // or absolute-kg/1000). Strip-mode: a kg/percent segment is silenced
+    // when the bucket hasn't advanced.
+    private readonly Dictionary<string, int> _lastFuelingMilestoneByService = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, int> _lastBoardingPassengerAnnouncementByService = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _announcedInvoiceKeys = new(StringComparer.OrdinalIgnoreCase);
     private static readonly TimeSpan LiveServiceRepeatWindow = TimeSpan.FromMinutes(10);
@@ -639,6 +646,7 @@ public sealed class GsxService : IDisposable
     {
         _lastBoardingPassengerAnnouncementByService.Clear();
         _lastFuelingProgressAnnouncementByService.Clear();
+        _lastFuelingMilestoneByService.Clear();
         _lastBaggageProgressByOperation.Clear();
         _recentLiveServiceAnnouncements.Clear();
         _announcedInvoiceKeys.Clear();
@@ -924,6 +932,12 @@ public sealed class GsxService : IDisposable
         if (IsPlaceholderLiveServiceText(text))
             return;
 
+        // Note: boarding-pax-milestone and fueling-kg-milestone are no longer
+        // applied here as service-wide throttles. They're applied per-segment
+        // further down (StripThrottledPaxSegments / StripThrottledFuelSegments)
+        // so a tooltip that carries both a stale-milestone progress segment
+        // AND a fresh transition segment ("rear loader leaving") still
+        // announces the transition.
         bool isThrottled = IsRepeatedBaggageProgress(text)
             || IsRepeatedLiveServiceAnnouncement(stableText)
             || IsThrottledServiceProgress(text);
@@ -963,6 +977,15 @@ public sealed class GsxService : IDisposable
         // countdowns trigger near-identical re-announcements every few
         // seconds and add no usable info to a screen reader.
         announceText = StripEtaSegments(announceText);
+        // Per-segment milestone gating: silence the pax-count or kg-loaded
+        // segment when the milestone hasn't advanced since the last announce
+        // (so 51..59 / 61..69 don't re-read "pax X/Y", and within-30 s fuel
+        // ticks don't re-read kg). Crucially, the rest of the delta still
+        // gets through, so when a truck arrives or a loader leaves at pax 69
+        // we hear that transition without "pax 69/70" being parroted along
+        // with it.
+        announceText = StripThrottledPaxSegments(announceText, text);
+        announceText = StripThrottledFuelSegments(announceText, text);
         if (string.IsNullOrWhiteSpace(announceText))
             return;
 
@@ -1050,6 +1073,153 @@ public sealed class GsxService : IDisposable
             return text;
         return string.Join(", ", kept);
     }
+
+    // Pax-count-only segments (the things we silence when boarding's
+    // milestone hasn't advanced). Whole-segment match so any segment that
+    // carries additional info ("rear loader leaving while 5 boarded") is
+    // left alone — only standalone "pax 5/100" / "5 passengers" / "5 pax
+    // boarded" type lines are stripped.
+    private static readonly Regex PaxOnlySegmentRegex = new(
+        @"^\s*(?:\[gsx\]\s+)?(?:pax\s+\d{1,4}(?:\s*/\s*\d{1,4})?|\d{1,4}(?:\s*/\s*\d{1,4})?\s+(?:passengers?|pax)(?:\s+boarded)?)\s*$",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    // Fueling-progress-only segments (kg loaded / percentage). Same rule:
+    // whole-segment match so anything with a transition word survives.
+    private static readonly Regex FuelProgressSegmentRegex = new(
+        @"^\s*(?:\[gsx\]\s+)?(?:(?:fuel\s+)?uplift[\s:]+)?\d+(?:[.,]\d+)?(?:\s*/\s*\d+(?:[.,]\d+)?)?\s*(?:kg|lbs?|%)\s*(?:loaded|fueled|refueled|remaining|uplift(?:ed)?)?\s*$",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private string StripThrottledPaxSegments(string announceText, string fullText)
+    {
+        if (string.IsNullOrWhiteSpace(announceText))
+            return announceText;
+
+        string normalized = fullText.ToLowerInvariant();
+        if (!normalized.Contains("boarding")
+            && !normalized.Contains("passenger")
+            && !normalized.Contains("pax"))
+            return announceText;
+
+        if (!TryParsePassengerCount(fullText, out int passengers))
+            return announceText;
+
+        string serviceKey = BuildFixedProgressThrottleKey(fullText, "boarding");
+        int currentMilestone = ComputeBoardingMilestone(passengers);
+
+        bool advanced;
+        if (!_lastBoardingPassengerAnnouncementByService.TryGetValue(serviceKey, out int lastMilestone))
+        {
+            advanced = true;
+        }
+        else
+        {
+            advanced = currentMilestone > lastMilestone;
+        }
+
+        if (advanced)
+        {
+            _lastBoardingPassengerAnnouncementByService[serviceKey] = currentMilestone;
+            return announceText;
+        }
+
+        return StripSegmentsMatching(announceText, PaxOnlySegmentRegex);
+    }
+
+    private string StripThrottledFuelSegments(string announceText, string fullText)
+    {
+        if (string.IsNullOrWhiteSpace(announceText))
+            return announceText;
+
+        string normalized = fullText.ToLowerInvariant();
+        if (!normalized.Contains("fuel") && !normalized.Contains("refuel"))
+            return announceText;
+
+        int currentMilestone = ComputeFuelingMilestone(fullText);
+        if (currentMilestone < 0)
+            return announceText;
+
+        string serviceKey = BuildFixedProgressThrottleKey(fullText, "fueling");
+
+        bool advanced;
+        if (!_lastFuelingMilestoneByService.TryGetValue(serviceKey, out int lastMilestone))
+        {
+            advanced = true;
+        }
+        else
+        {
+            advanced = currentMilestone > lastMilestone;
+        }
+
+        if (advanced)
+        {
+            _lastFuelingMilestoneByService[serviceKey] = currentMilestone;
+            return announceText;
+        }
+
+        return StripSegmentsMatching(announceText, FuelProgressSegmentRegex);
+    }
+
+    private static string StripSegmentsMatching(string text, Regex regex)
+    {
+        var parts = SplitTooltipParts(text);
+        if (parts.Count == 0)
+            return text;
+
+        var kept = parts.Where(p => !regex.IsMatch(p)).ToList();
+        if (kept.Count == 0)
+            return string.Empty;
+        if (kept.Count == parts.Count)
+            return text;
+        return string.Join(", ", kept);
+    }
+
+    // Fueling milestone: prefer "loaded / total kg" → percent/10 (every 10%).
+    // Fall back to "%" form. Fall back to absolute "kg loaded" / "kg uplifted"
+    // bucketed by 1000 kg. Returns -1 when no progress info is parseable so
+    // the caller can leave the announcement untouched (e.g. the initial
+    // "Refueling service has been requested" tooltip).
+    private static int ComputeFuelingMilestone(string text)
+    {
+        var match = Regex.Match(
+            text,
+            @"\b(\d+(?:[.,]\d+)?)\s*/\s*(\d+(?:[.,]\d+)?)\s*(?:kg|lbs?)\b",
+            RegexOptions.IgnoreCase);
+        if (match.Success)
+        {
+            double loaded = ParseDoubleInvariant(match.Groups[1].Value);
+            double total = ParseDoubleInvariant(match.Groups[2].Value);
+            if (total > 0)
+            {
+                int pct = (int)Math.Min(100, Math.Floor(loaded * 100.0 / total));
+                return pct / 10;
+            }
+        }
+
+        match = Regex.Match(text, @"\b(\d{1,3})\s*%", RegexOptions.IgnoreCase);
+        if (match.Success && int.TryParse(match.Groups[1].Value, out int pctOnly))
+        {
+            return Math.Clamp(pctOnly, 0, 100) / 10;
+        }
+
+        match = Regex.Match(
+            text,
+            @"\b(\d+(?:[.,]\d+)?)\s*(?:kg|lbs?)\s+(?:loaded|uplift(?:ed)?)\b",
+            RegexOptions.IgnoreCase);
+        if (match.Success)
+        {
+            double kg = ParseDoubleInvariant(match.Groups[1].Value);
+            return (int)Math.Floor(kg / 1000.0);
+        }
+
+        return -1;
+    }
+
+    private static double ParseDoubleInvariant(string s) =>
+        double.TryParse(
+            s.Replace(',', '.'),
+            System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture,
+            out double v) ? v : 0.0;
 
     private static bool IsPlaceholderLiveServiceText(string text)
     {
@@ -1177,81 +1347,12 @@ public sealed class GsxService : IDisposable
         if (IsCompletedStatusService(text) || IsInvoiceAnnouncement(text))
             return false;
 
-        if (ShouldThrottleFuelingProgress(text))
-            return true;
-
-        if (ShouldThrottleBoardingProgress(text))
-            return true;
-
+        // Boarding-pax and fueling-kg progress are now milestone-gated
+        // per-segment in StripThrottledPaxSegments / StripThrottledFuelSegments,
+        // so a tooltip that pairs a stale-milestone progress segment with a
+        // fresh transition (truck arriving, loader leaving, etc.) still
+        // announces the transition.
         return false;
-    }
-
-    private bool ShouldThrottleFuelingProgress(string text)
-    {
-        string normalized = text.ToLowerInvariant();
-        if (!normalized.Contains("fuel") && !normalized.Contains("refuel"))
-            return false;
-
-        if (!normalized.Contains("being performed")
-            && !normalized.Contains("in progress")
-            && !normalized.Contains("current charges")
-            && !normalized.Contains("loaded")
-            && !normalized.Contains("uplift"))
-        {
-            return false;
-        }
-
-        // Fixed-prefix key: BuildProgressThrottleKey falls back to the live
-        // text when ExtractServiceName can't find a " service" word, which
-        // would let the kg-loaded count vary the key on every tick and
-        // defeat the throttle entirely.
-        string serviceKey = BuildFixedProgressThrottleKey(text, "fueling");
-
-        DateTime now = DateTime.UtcNow;
-        if (_lastFuelingProgressAnnouncementByService.TryGetValue(serviceKey, out DateTime seenAt)
-            && now - seenAt < FuelingProgressAnnouncementInterval)
-        {
-            return true;
-        }
-
-        _lastFuelingProgressAnnouncementByService[serviceKey] = now;
-        return false;
-    }
-
-    private bool ShouldThrottleBoardingProgress(string text)
-    {
-        string normalized = text.ToLowerInvariant();
-        if (!normalized.Contains("boarding") && !normalized.Contains("passenger"))
-            return false;
-
-        if (!TryParsePassengerCount(text, out int passengers))
-            return false;
-
-        // Fixed-prefix key (not BuildProgressThrottleKey) — see the matching
-        // comment in ShouldThrottleFuelingProgress. GSX 4's boarding tooltip
-        // is typically "Boarding: N passengers …" with no " service" word,
-        // so ExtractServiceName would return the whole live text and the
-        // passenger count would bake into the key, defeating the throttle
-        // and announcing every single passenger.
-        string serviceKey = BuildFixedProgressThrottleKey(text, "boarding");
-        int currentMilestone = ComputeBoardingMilestone(passengers);
-
-        // First time we've seen boarding progress for this service — let it
-        // through so the user always hears the initial tooltip (operator,
-        // current count, etc.) even if they joined mid-boarding.
-        if (!_lastBoardingPassengerAnnouncementByService.TryGetValue(serviceKey, out int lastMilestone))
-        {
-            _lastBoardingPassengerAnnouncementByService[serviceKey] = currentMilestone;
-            return false;
-        }
-
-        if (currentMilestone > lastMilestone)
-        {
-            _lastBoardingPassengerAnnouncementByService[serviceKey] = currentMilestone;
-            return false;
-        }
-
-        return true;
     }
 
     // Boarding-progress milestones — chosen so the user hears:
