@@ -4050,7 +4050,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             case HotkeyAction.ReadFuelInfo: RequestReadout(simConnect, "A32NX_TOTAL_FUEL_QUANTITY", "Total fuel", "kilograms", weight: true); return true;
             case HotkeyAction.FCUSetBaro:
                 hotkeyManager.ExitInputHotkeyMode();
-                ShowA380BaroSetDialog(simConnect, announcer, parentForm);
+                new Forms.FBWA380.FBWA380BaroWindow(this, simConnect, announcer).ShowForm();
                 return true;
             case HotkeyAction.ReadApproachCapability: RequestReadout(simConnect, "A32NX_APPROACH_CAPABILITY", "Approach capability", "", _apprCapMap); return true;
             // Dedicated display WINDOWS were removed for the FBW aircraft: the SD reads
@@ -4423,5 +4423,16 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     {
         if (!s.IsConnected) return;
         s.SendEvent("A32NX.FCU_ALT_INCREMENT_SET", (uint)inc);
+    }
+
+    // Apply a settable UI variable through the A380's existing HandleUIVariableSet
+    // routing, looking up its registered definition (so callers without a panel
+    // varDef can reuse the proven set paths). Used by the FCU Baro window for the
+    // CAPT_QNH_SET / *_EIS_BARO_IS_STD / XMLVAR_Baro_Selector routes.
+    public bool ApplyUIVariable(string varKey, double value, SimConnectManager s, ScreenReaderAnnouncer a)
+    {
+        SimVarDefinition def = (_varCache != null && _varCache.TryGetValue(varKey, out var d))
+            ? d : new SimVarDefinition { Name = varKey, DisplayName = varKey };
+        return HandleUIVariableSet(varKey, value, def, s, a);
     }
 }
