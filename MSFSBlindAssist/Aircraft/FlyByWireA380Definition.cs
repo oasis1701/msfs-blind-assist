@@ -3245,6 +3245,27 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     public override bool HandleUIVariableSet(string varKey, double value, SimVarDefinition varDef,
         SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
     {
+        // Fire Test / Cargo Smoke Test (HOLD on/off tests). Setting ON triggers the fire
+        // MASTER WARNING + the continuous repetitive chime (CRC) aural. Writing the var 0
+        // ends the test, but the CRC can keep sounding until the master warning is
+        // acknowledged — so on TEST OFF, also pulse the (correctly-spelled) MASTERAWARN
+        // acknowledge to guarantee the "beep beep beep" cancels. Write via the calc path.
+        if (varKey == "A32NX_OVHD_FIRE_TEST_PB_IS_PRESSED" || varKey == "A32NX_FIRE_TEST_CARGO")
+        {
+            int on = value > 0.5 ? 1 : 0;
+            simConnect.ExecuteCalculatorCode($"{on} (>L:{varKey})");
+            if (on == 0)
+            {
+                simConnect.ExecuteCalculatorCode("1 (>L:PUSH_AUTOPILOT_MASTERAWARN_L)");
+                simConnect.ExecuteCalculatorCode("0 (>L:PUSH_AUTOPILOT_MASTERAWARN_L)");
+                simConnect.ExecuteCalculatorCode("1 (>L:PUSH_AUTOPILOT_MASTERAWARN_R)");
+                simConnect.ExecuteCalculatorCode("0 (>L:PUSH_AUTOPILOT_MASTERAWARN_R)");
+            }
+            announcer.Announce(varKey == "A32NX_FIRE_TEST_CARGO"
+                ? (on == 1 ? "Cargo smoke test on" : "Cargo smoke test off")
+                : (on == 1 ? "Fire test on" : "Fire test off"));
+            return true;
+        }
         // System Display PAGE combo: drive the SD to the chosen page, then scrape that
         // page's decoded content off the real SD view INTO the panel "Status display"
         // box (no separate window). The combo's own value change announces the page
