@@ -91,28 +91,44 @@ See [Taxi Guidance](taxi-guidance.md) for the full feature reference.
 - C# 13 with nullable reference types enabled
 - **IMPORTANT - SimConnect Connection Timing:** `IsConnected = true` must be set immediately after SimConnect constructor, BEFORE calling `SetupDataDefinitions()`. This ensures `StartContinuousMonitoring()` can execute properly (it has a guard clause requiring `IsConnected == true`). See SimConnectManager.cs:251
 
-### A380 live-debugging tools (`tools/`)
+### A380/A32NX live-debugging tools (`tools/`)
 
-The FlyByWire A380X exposes its MCDU/flyPad/cockpit displays as Coherent GT views
-on the sim's remote inspector (`http://127.0.0.1:19999`). Two tracked helpers make
-this directly usable for development and debugging — they are how nearly every A380
-feature was discovered and verified against the running sim:
+The FlyByWire jets expose their MCDU/flyPad/cockpit displays as Coherent GT views on
+the sim's remote inspector (`http://127.0.0.1:19999`). **The full catalogue — every
+tool, how to run it, the shared transport, and crash diagnosis — is in
+[Developer Tooling Guide](tooling.md), with an index at [`tools/README.md`](../tools/README.md).**
+The essentials:
 
-- **`tools/coherent-eval.ps1`** — run a JS expression inside any Coherent view by
-  title-needle (ids shuffle every session, so never hardcode them). Read/write any
-  L:var (`SimVar.GetSimVarValue`/`SetSimVarValue`), scrape/click any cockpit DOM,
-  or inject an in-page agent (`-PreFile`) and call it. The script header lists every
+- **`tools/coherent-eval.ps1`** — the canonical entry point. Run a JS expression inside
+  any Coherent view by title-needle (ids shuffle every session, so never hardcode them).
+  Read/write any L:var (`SimVar.GetSimVarValue`/`SetSimVarValue`), scrape/click any
+  cockpit DOM, or inject an in-page agent (`-PreFile`) and call it. The header lists every
   view title-needle (A380X_MFD / A380X_ND_1 / A380X_EWD / A380X_SYSTEMSHOST / ISISlegacy /
-  "- EFB" / …) and worked usage examples. Requires MSFS running with the A380X loaded
-  (no Developer Mode needed — the sim opens port 19999 itself).
-- **`tools/_probe/`** — a catalogue of small probe scripts (one feature each) plus a
-  `README.md` explaining the IIFE-returns-a-string pattern. Copy one, tweak the var or
-  page, and run it via `coherent-eval.ps1`.
+  "- EFB" / …). No Developer Mode needed — the sim opens port 19999 itself.
+- **`tools/_probe/`** — ~42 worked probe scripts (one feature each) + `README.md` explaining
+  the IIFE-returns-a-string pattern. Copy one, tweak the var/page, run via `coherent-eval.ps1`.
+- **Drivers** (`mcdu_*`, `fp_*`, `sd-page-tour.ps1`, `mfd_import_and_scrape.ps1`, `fcu/`),
+  **Node projects** (`fbw-mcdu-probe/`, `flypad-shell-test/`, `efb-dom-tool.js`), and the
+  superseded **bootstrap probes** (`probe-*.ps1`, `prove-coherent-scrape.ps1`,
+  `test-coherent-ws.ps1`) — all detailed in [tooling.md](tooling.md).
 
 The `tools/*.md` files (e.g. `a380-simvars-catalog.md`, `a380-fcu-vars.md`,
 `a380-sd-pages.md`) are the reference catalogues mined from the FBW source. The
 `tools/_fbw_ecam/` workspace (downloaded FBW source + generators) stays gitignored;
 its product ships as `MSFSBlindAssist/SimConnect/EWDMessageLookupA380.cs`.
+
+> `tools/CDUTest` and `tools/PMDGDispatchTester` are **pre-existing PMDG console apps**,
+> not Coherent tooling — see [CLAUDE.md](../CLAUDE.md) → Build Commands. Leave them untouched.
+
+### Crashes & diagnosis
+
+Global exception handlers (`Program.cs` → `InstallGlobalExceptionHandlers`) catch UI-thread
+faults (recovered, app keeps running), background-thread faults (logged, CLR still terminates),
+and unobserved task exceptions. `StartupLogger` writes each line with `File.AppendAllText`
+(flushes per line), so **managed** crashes leave a stack trace at
+`%TEMP%\MSFSBlindAssist_Startup_<timestamp>.log`. A crash with **no** logged exception is
+almost certainly **native** (WebView2 / Coherent / SimConnect) — check Windows Event Viewer →
+Application for the faulting module. Full procedure in [tooling.md §8](tooling.md).
 
 ## Dependencies
 

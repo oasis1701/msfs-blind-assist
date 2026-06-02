@@ -623,6 +623,7 @@ The A32NX panel set in `FlyByWireA320Definition.cs` is now at parity with the A3
 **Claude: Read these docs only when the task specifically requires them.**
 
 **When to read detailed docs:**
+- **Debugging the A380/A32NX live (Coherent debugger, probes, scrapers, crash diagnosis)** → [Developer Tooling Guide](docs/tooling.md)
 - **Working on the HS787 FMC bridge (FS2024 compatibility)** → [HS787 Bridge Debugging](docs/hs787-bridge-debugging.md)
 - **Adding complex features or workflows** → [Adding Features](docs/adding-features.md), [Quick Reference](docs/QUICK-REFERENCE.md)
 - **Implementing new aircraft** → [Architecture](docs/architecture.md), [Adding Features](docs/adding-features.md)
@@ -648,6 +649,7 @@ The A32NX panel set in `FlyByWireA320Definition.cs` is now at parity with the A3
 - **[Aircraft Definitions](docs/aircraft-definitions.md)** - Multi-aircraft dictionary system API reference
 - **[Hotkey System](docs/hotkey-system.md)** - Dual-mode hotkeys and multi-aircraft routing
 - **[Development](docs/development.md)** - Dependencies, key files, development notes
+- **[Developer Tooling Guide](docs/tooling.md)** - Coherent debugger (`:19999`) probes/scrapers/drivers in `tools/`, how to run each, and crash diagnosis
 
 ## Technology Stack
 
