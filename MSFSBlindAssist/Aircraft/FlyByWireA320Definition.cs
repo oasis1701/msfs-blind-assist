@@ -5235,6 +5235,8 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             r.Add(("Cockpit duct temp", "A32NX_COND_CKPT_DUCT_TEMP", C));
             r.Add(("Forward duct temp", "A32NX_COND_FWD_DUCT_TEMP", C));
             r.Add(("Aft duct temp", "A32NX_COND_AFT_DUCT_TEMP", C));
+            r.Add(("Pack 1 flow valve", "A32NX_COND_PACK_FLOW_VALVE_1_IS_OPEN", OpenShut));
+            r.Add(("Pack 2 flow valve", "A32NX_COND_PACK_FLOW_VALVE_2_IS_OPEN", OpenShut));
         }
         else if (page == 6) // WHEEL / BRAKES
         {
@@ -5288,6 +5290,11 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             r.Add(("DC bus 1", "A32NX_ELEC_DC_1_BUS_IS_POWERED", OnOff));
             r.Add(("DC bus 2", "A32NX_ELEC_DC_2_BUS_IS_POWERED", OnOff));
             r.Add(("DC bat bus", "A32NX_ELEC_DC_BAT_BUS_IS_POWERED", OnOff));
+            r.Add(("DC ESS bus", "A32NX_ELEC_DC_ESS_BUS_IS_POWERED", OnOff));
+            r.Add(("AC ESS shed bus", "A32NX_ELEC_AC_ESS_SHED_BUS_IS_POWERED", OnOff));
+            r.Add(("DC ESS shed bus", "A32NX_ELEC_DC_ESS_SHED_BUS_IS_POWERED", OnOff));
+            r.Add(("APU gen frequency", "A32NX_ELEC_APU_GEN_1_FREQUENCY", v => $"{v:0} hertz"));
+            r.Add(("Emergency gen frequency", "A32NX_ELEC_EMER_GEN_FREQUENCY", v => $"{v:0} hertz"));
         }
         else if (page == 10) // ENGINE — oil + vibration + igniters (N1/N2/EGT/FF are on the E/WD)
         {
