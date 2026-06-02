@@ -277,7 +277,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         OnOff("A32NX_OVHD_ELEC_COMMERCIAL_PB_IS_ON", "Commercial");
         for (int n = 1; n <= 4; n++)
         {
-            Press($"A32NX_OVHD_ELEC_IDG_{n}_PB_IS_RELEASED", $"IDG {n} Disconnect");
+            // Momentary disconnect PUSH (FBW <MOMENTARY/>; the LATCHED result is the
+            // separate "IDG n Disconnected" readout, A32NX_OVHD_ELEC_IDG_n_PB_IS_DISC).
+            // A button (pulse 1→0) is the correct shape — a Released/Pressed combo never
+            // settles since this var is just the press edge.
+            Btn($"A32NX_OVHD_ELEC_IDG_{n}_PB_IS_RELEASED", $"IDG {n} Disconnect");
             OnOff($"A32NX_OVHD_ELEC_EXT_PWR_{n}_PB_IS_ON", $"External Power {n}");
             // ENG GEN 1-4 pushbutton. The L:var A32NX_OVHD_ELEC_ENG_GEN_n_PB_IS_ON is a
             // DEAD mirror on the shipping build — live-verified it stays 0 whether the
@@ -308,7 +312,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
             };
         OnOff("A32NX_OVHD_EMER_ELEC_GEN_1_LINE_PB_IS_ON", "Emergency Generator 1 Line");
-        Press("A32NX_OVHD_EMER_ELEC_RAT_AND_EMER_GEN_IS_PRESSED", "RAT and Emergency Generator");
+        // Momentary RAT/emer-gen manual-deploy PUSH (FBW <MOMENTARY/>) — a button, not a
+        // Released/Pressed combo. (Marked Inop in the current FBW build, but the render
+        // shape is now correct.)
+        Btn("A32NX_OVHD_EMER_ELEC_RAT_AND_EMER_GEN_IS_PRESSED", "RAT and Emergency Generator Deploy");
         Sel("A380X_OVHD_ELEC_BAT_SELECTOR_KNOB", "Battery Display Selector",
             new Dictionary<double, string> { [0] = "ESS", [1] = "APU", [2] = "Off", [3] = "Battery 1", [4] = "Battery 2" });
         for (int n = 1; n <= 4; n++) Read($"A32NX_ELEC_BAT_{n}_POTENTIAL", $"Battery {n} Voltage", "volts");
@@ -365,7 +372,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // sim lets you reset it). #104: were missing entirely.
         for (int n = 1; n <= 4; n++)
             Sel($"A32NX_OVHD_HYD_ENG_{n}AB_PUMP_DISC_PB_IS_AUTO", $"Engine {n} Pumps Disconnect", discSw);
-        Press("A32NX_OVHD_HYD_RAT_MAN_ON_IS_PRESSED", "RAT Manual On");
+        // Momentary RAT manual-deploy PUSH (FBW <MOMENTARY/>, tooltip "Deploys ram air
+        // turbine") — a button, not a Released/Pressed combo.
+        Btn("A32NX_OVHD_HYD_RAT_MAN_ON_IS_PRESSED", "RAT Manual On");
         Read("A32NX_RAT_RPM", "RAT R P M", "rpm"); // Ram Air Turbine speed (0 = stowed)
 
         // ---- BLEED / AIR ----
@@ -549,9 +558,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         OnOff("A380X_REMOTE_CB_CTRL", "Remote Circuit Breaker Control");
         // Chronometer start/stop + reset (the glareshield CHRONO push). #107 gap.
         // Momentary actions driven by H-EVENTS (the FBW Clock subscribes to the
-        // hEvent, NOT the L:var — writing the L:var does nothing). Rendered as COMBOS
-        // (Idle / Activate, like every other control); HandleUIVariableSet fires
-        // (>H:VAR) when "Activate" is chosen.
+        // hEvent, NOT the L:var — writing the L:var does nothing). Rendered as push-
+        // BUTTONS (RenderAsButton=true); the dedicated HandleUIVariableSet branch fires
+        // (>H:VAR) on press (checked before the generic _momentaryButtons pulse path, so
+        // the H-event mechanism runs instead of a no-op L:var pulse).
         vars["A32NX_CHRONO_TOGGLE"] = new SimVarDefinition
         { Name = "A32NX_CHRONO_TOGGLE", DisplayName = "Chronometer Start / Stop", Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest, IsAnnounced = false, ValueDescriptions = new Dictionary<double, string> { [0] = "Idle", [1] = "Activate" }, RenderAsButton = true };
         vars["A32NX_CHRONO_RST"] = new SimVarDefinition
@@ -704,7 +714,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // ---- Autobrake / Anti-skid ----
         Sel("A32NX_AUTOBRAKES_SELECTED_MODE", "Autobrake",
             new Dictionary<double, string> { [0] = "Disarm", [1] = "BTV", [2] = "Low", [3] = "L2", [4] = "L3", [5] = "High" });
-        Press("A32NX_OVHD_AUTOBRK_RTO_ARM_IS_PRESSED", "RTO Autobrake Arm");
+        // Momentary RTO-arm PUSH (FBW option_button_press, auto-resets to 0 after a 1.5 s
+        // debounce; the ARMED state is the separate "RTO Armed" readout). A button (pulse
+        // 1→0) is correct — the old Released/Pressed combo never held "Pressed".
+        Btn("A32NX_OVHD_AUTOBRK_RTO_ARM_IS_PRESSED", "RTO Autobrake Arm");
         Stock("ANTISKID_BRAKES_ACTIVE", "ANTISKID BRAKES ACTIVE", "Anti-Skid", "bool", onOff);
         ReadEnum("A32NX_AUTOBRAKES_ARMED_MODE", "Autobrake Armed Mode",
             new Dictionary<double, string> { [0] = "Disarmed", [1] = "BTV", [2] = "Low", [3] = "L2", [4] = "L3", [5] = "High", [6] = "RTO" });
@@ -1827,9 +1840,14 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // Jet bridge + passenger stairs (stock MSFS ground-service events;
         // airport/parking dependent). Catering, fuel-truck, baggage and pushback
         // are intentionally NOT exposed — GSX owns those.
-        var retractExtend = new Dictionary<double, string> { [0] = "Retracted", [1] = "Extended" };
-        Act("A380X_GND_JETWAY", "Jet Bridge", retractExtend);
-        Act("A380X_GND_STAIRS", "Passenger Stairs", retractExtend);
+        // Idle/Toggle action — NOT a Retracted/Extended state. There is no readable
+        // jetway/stairs position L:var, and the stock event only TOGGLES, so a two-state
+        // combo would announce a position it can't actually know (and either option fired
+        // the toggle). Present it honestly as a momentary "Toggle" action; only the Toggle
+        // option fires (guarded in HandleUIVariableSet).
+        var idleToggle = new Dictionary<double, string> { [0] = "Idle", [1] = "Toggle" };
+        Act("A380X_GND_JETWAY", "Jet Bridge", idleToggle);
+        Act("A380X_GND_STAIRS", "Passenger Stairs", idleToggle);
         // Ground-service vehicle requests (flyPad Ground page parity) — momentary Activate
         // combos firing the stock REQUEST_* events (the same the EFB uses). Handled in
         // HandleUIVariableSet.
@@ -3291,6 +3309,21 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             }
             return true;
         }
+        // Nosewheel-steering PEDAL DISCONNECT. The public L:var A32NX_TILLER_PEDAL_DISCONNECT
+        // is NOT consumed by the FBW NWS systems (live-verified: writing 1 sticks and is
+        // never read/reset), so the old momentary-button pulse on it did nothing. FBW maps
+        // the disconnect to the otherwise-unused stock event TOGGLE_WATER_RUDDER -> internal
+        // aspect (nose_wheel_steering.rs). Fire that instead. (Held in the real cockpit; a
+        // single momentary fire is the accessible equivalent — confirm effect on a taxi test.)
+        if (varKey == "A32NX_TILLER_PEDAL_DISCONNECT")
+        {
+            if (value > 0.5)
+            {
+                simConnect.ExecuteCalculatorCode("(>K:TOGGLE_WATER_RUDDER)");
+                announcer.Announce("Nosewheel steering pedal disconnect");
+            }
+            return true;
+        }
         // Flaps lever: the handle index is a computed output; the stock FLAPS_SET
         // event (axis value 0-16383) drives the FBW handle. Map detent 0-4 to the
         // axis value (index/4 * 16383) — live-verified each detent lands correctly.
@@ -3381,8 +3414,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             return true;
         }
         // Ground-service toggle combos (no clean state SimVar) — any change toggles.
-        if (varKey == "A380X_GND_JETWAY") { simConnect.SendEvent("TOGGLE_JETWAY"); return true; }
-        if (varKey == "A380X_GND_STAIRS") { simConnect.SendEvent("TOGGLE_RAMPTRUCK"); return true; }
+        if (varKey == "A380X_GND_JETWAY") { if (value > 0.5) simConnect.SendEvent("TOGGLE_JETWAY"); return true; }
+        if (varKey == "A380X_GND_STAIRS") { if (value > 0.5) simConnect.SendEvent("TOGGLE_RAMPTRUCK"); return true; }
         // Ground-service vehicle requests (flyPad Ground page parity) — fire the stock
         // REQUEST_* events on "Request".
         if (varKey == "A380X_GND_FUELTRUCK") { if (value > 0.5) simConnect.SendEvent("REQUEST_FUEL_KEY"); return true; }
