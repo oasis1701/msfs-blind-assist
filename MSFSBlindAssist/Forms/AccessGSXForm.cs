@@ -158,6 +158,7 @@ public sealed class AccessGSXForm : Form
         _gsxService.MenuHidden += OnMenuHidden;
         _gsxService.MenuTimedOut += OnMenuTimedOut;
         _gsxService.TooltipChanged += OnTooltipChanged;
+        _gsxService.AnnouncementReady += OnAnnouncementReady;
         _gsxService.SettingsChanged += OnSettingsChanged;
 
         // Hide-not-close — same pattern as HS787FMCForm. Keeps the service
@@ -358,17 +359,34 @@ public sealed class AccessGSXForm : Form
 
     private void OnTooltipChangedUi()
     {
+        // Live-text only — keeps the tooltip textbox in sync with whatever
+        // GSX is currently publishing (ETA, kg loaded, pax count, etc).
+        // The auto-announce path runs from OnAnnouncementReady so it only
+        // fires on a real delta rather than every text twitch.
         UpdateTooltip();
-        // Form is visible (the background-announce path in GsxService only
-        // fires when AnnounceWhenFormHidden is true). Speak the tooltip so
-        // the user hears it without having to focus the tooltip TextBox.
-        if (Visible)
+    }
+
+    private void OnAnnouncementReady(object? sender, EventArgs e)
+    {
+        if (!IsHandleCreated || IsDisposed) return;
+        if (InvokeRequired) { BeginInvoke(new Action(OnAnnouncementReadyUi)); return; }
+        OnAnnouncementReadyUi();
+    }
+
+    private void OnAnnouncementReadyUi()
+    {
+        // Form visible → speak the delta. Form hidden → GsxService speaks
+        // it itself via the AnnounceWhenFormHidden path, so we stay silent.
+        if (!Visible) return;
+
+        string announcement = _gsxService.LastAnnouncementText;
+        if (string.IsNullOrWhiteSpace(announcement))
+            return;
+
+        try { _announcer.Announce(announcement); }
+        catch (Exception ex)
         {
-            try { _announcer.Announce(_gsxService.LastTooltip); }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"[AccessGSXForm] tooltip announce failed: {ex.Message}");
-            }
+            System.Diagnostics.Debug.WriteLine($"[AccessGSXForm] tooltip announce failed: {ex.Message}");
         }
     }
 
@@ -449,6 +467,7 @@ public sealed class AccessGSXForm : Form
             _gsxService.MenuHidden -= OnMenuHidden;
             _gsxService.MenuTimedOut -= OnMenuTimedOut;
             _gsxService.TooltipChanged -= OnTooltipChanged;
+            _gsxService.AnnouncementReady -= OnAnnouncementReady;
             _gsxService.SettingsChanged -= OnSettingsChanged;
             if (_settingsForm is { IsDisposed: false })
                 _settingsForm.Close();

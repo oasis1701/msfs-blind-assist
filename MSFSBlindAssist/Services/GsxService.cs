@@ -128,6 +128,10 @@ public sealed class GsxService : IDisposable
     public string MenuTitle => _menuTitle;
     public IReadOnlyList<MenuOption> MenuOptions => _menuOptions;
     public string LastTooltip => _lastTooltip;
+    // Delta-trimmed text intended for the screen reader. Reset to the full
+    // tooltip whenever _lastAnnouncedFullText is empty (first announcement
+    // of a service / after ClearLastTooltip / after ClearProgressTrackingState).
+    public string LastAnnouncementText => _lastAnnouncementText;
     public string LastSettingsText => _lastSettingsText;
     public IReadOnlyList<GsxSettingItem> SettingsItems => _settingsItems;
 
@@ -144,6 +148,14 @@ public sealed class GsxService : IDisposable
     public event EventHandler? MenuHidden;
     public event EventHandler? MenuTimedOut;
     public event EventHandler? TooltipChanged;
+    // Fires when there is a delta to read out via the screen reader.
+    // TooltipChanged fires for every live-text change (so the AccessGSX
+    // tooltip textbox stays in sync); AnnouncementReady fires only when a
+    // re-announce should happen and LastAnnouncementText holds the
+    // delta-trimmed text to speak (full text on first appearance of a
+    // service, otherwise just the segments that changed since last
+    // announcement).
+    public event EventHandler? AnnouncementReady;
     public event EventHandler? SettingsChanged;
 
     // ─────────────────────────────────────────────────────────────────────
@@ -160,6 +172,13 @@ public sealed class GsxService : IDisposable
     private string _menuTitle = "GSX Menu";
     private string _lastTooltip = string.Empty;
     private string _lastStatusStableText = string.Empty;
+    // Full text of the most recent successful announcement — used as the
+    // baseline for ComputeAnnouncementDelta so a re-fire only reads back
+    // the segments that have actually changed.
+    private string _lastAnnouncedFullText = string.Empty;
+    // The (possibly trimmed) text passed to the screen reader on the most
+    // recent announcement.
+    private string _lastAnnouncementText = string.Empty;
     private string _lastCompletedStatusServiceText = string.Empty;
     private string _lastSettingsText = string.Empty;
     private string _statusText = "Status: Disconnected";
@@ -582,6 +601,12 @@ public sealed class GsxService : IDisposable
 
         _lastTooltip = string.Empty;
         _lastStatusStableText = string.Empty;
+        // Drop the delta baseline too — when the tooltip clears (both GSX
+        // sources empty), the next message is the start of something new
+        // and should be announced in full rather than diffed against the
+        // previous service's text.
+        _lastAnnouncedFullText = string.Empty;
+        _lastAnnouncementText = string.Empty;
         TooltipChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -598,6 +623,8 @@ public sealed class GsxService : IDisposable
         _announcedInvoiceKeys.Clear();
         _lastCompletedStatusServiceText = string.Empty;
         _lastTimerOnlyStatusAnnouncementUtc = DateTime.MinValue;
+        _lastAnnouncedFullText = string.Empty;
+        _lastAnnouncementText = string.Empty;
     }
 
     public void SetSettingNumber(string key, double value)
@@ -876,26 +903,9 @@ public sealed class GsxService : IDisposable
         if (IsPlaceholderLiveServiceText(text))
             return;
 
-        if (IsRepeatedBaggageProgress(text))
-        {
-            _lastTooltip = text;
-            _lastStatusStableText = stableText;
-            return;
-        }
-
-        if (IsRepeatedLiveServiceAnnouncement(stableText))
-        {
-            _lastTooltip = text;
-            _lastStatusStableText = stableText;
-            return;
-        }
-
-        if (IsThrottledServiceProgress(text))
-        {
-            _lastTooltip = text;
-            _lastStatusStableText = stableText;
-            return;
-        }
+        bool isThrottled = IsRepeatedBaggageProgress(text)
+            || IsRepeatedLiveServiceAnnouncement(stableText)
+            || IsThrottledServiceProgress(text);
 
         bool exactDuplicate = string.Equals(text, _lastTooltip, StringComparison.Ordinal);
         bool stableChanged = !string.Equals(stableText, _lastStatusStableText, StringComparison.Ordinal);
@@ -905,24 +915,94 @@ public sealed class GsxService : IDisposable
             && !stableChanged
             && DateTime.UtcNow - _lastTimerOnlyStatusAnnouncementUtc >= timerOnlyInterval;
 
-        if (exactDuplicate || (!stableChanged && !timerOnlyChangeAllowed))
-            return;
+        bool shouldAnnounce = !isThrottled
+            && !exactDuplicate
+            && (stableChanged || timerOnlyChangeAllowed);
 
+        // Always keep the visible-text state current so the AccessGSX
+        // tooltip textbox shows live ETA / kg / etc., even when the
+        // auto-announce path is suppressing the same content.
+        bool textChanged = !exactDuplicate;
         _lastTooltip = text;
         _lastStatusStableText = stableText;
+        if (textChanged)
+            TooltipChanged?.Invoke(this, EventArgs.Empty);
+
+        if (!shouldAnnounce)
+            return;
+
+        // Trim the announcement to the parts that have actually changed
+        // since the last successful announce — so a bucket-boundary
+        // ETA update reads "ETA 6 min 0 secs" instead of repeating the
+        // operator / aircraft-fuel / etc. Empty _lastAnnouncedFullText
+        // (first run, COUATL restart, ClearLastTooltip) falls through to
+        // the full text.
+        string announceText = ComputeAnnouncementDelta(text, _lastAnnouncedFullText);
+        if (string.IsNullOrWhiteSpace(announceText))
+            return;
+
         if (timerOnlyChangeAllowed || IsTimerStatusText(text))
             _lastTimerOnlyStatusAnnouncementUtc = DateTime.UtcNow;
 
-        TooltipChanged?.Invoke(this, EventArgs.Empty);
+        _lastAnnouncementText = announceText;
+        _lastAnnouncedFullText = text;
 
-        if (AnnounceWhenFormHidden && !string.IsNullOrWhiteSpace(_lastTooltip))
+        AnnouncementReady?.Invoke(this, EventArgs.Empty);
+
+        if (AnnounceWhenFormHidden && !string.IsNullOrWhiteSpace(_lastAnnouncementText))
         {
-            try { _announcer.Announce(_lastTooltip); }
+            try { _announcer.Announce(_lastAnnouncementText); }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[GsxService] Background announce failed: {ex.Message}");
             }
         }
+    }
+
+    private static string ComputeAnnouncementDelta(string newText, string lastAnnouncedFullText)
+    {
+        if (string.IsNullOrWhiteSpace(lastAnnouncedFullText))
+            return newText;
+
+        var newParts = SplitTooltipParts(newText);
+        if (newParts.Count == 0)
+            return newText;
+
+        var lastParts = new HashSet<string>(
+            SplitTooltipParts(lastAnnouncedFullText),
+            StringComparer.OrdinalIgnoreCase);
+
+        var changedParts = newParts.Where(p => !lastParts.Contains(p)).ToList();
+
+        if (changedParts.Count == 0)
+            return string.Empty;
+
+        // If every segment changed we're effectively looking at a fresh
+        // message (different service, different phase) — send the full
+        // text so the user gets the context rather than a comma-spliced
+        // delta that happens to equal the original.
+        if (changedParts.Count == newParts.Count)
+            return newText;
+
+        return string.Join(", ", changedParts);
+    }
+
+    private static List<string> SplitTooltipParts(string text)
+    {
+        var parts = new List<string>();
+        if (string.IsNullOrWhiteSpace(text))
+            return parts;
+
+        foreach (string line in text.ReplaceLineEndings("\n").Split('\n'))
+        {
+            foreach (string segment in line.Split(','))
+            {
+                string trimmed = segment.Trim();
+                if (trimmed.Length > 0)
+                    parts.Add(trimmed);
+            }
+        }
+        return parts;
     }
 
     private static bool IsPlaceholderLiveServiceText(string text)
@@ -1157,10 +1237,21 @@ public sealed class GsxService : IDisposable
     {
         passengers = 0;
 
+        // GSX phrases this as either "5 passengers" / "5 pax" (count first)
+        // or "pax 5" / "pax 5/550" (keyword first). Without the second
+        // pattern the boarding throttle never sees a count for the "pax N"
+        // form and every passenger announces.
         var match = Regex.Match(
             text,
             @"\b(?<count>\d{1,3})\s*(?:passengers|pax)\b",
             RegexOptions.IgnoreCase);
+        if (!match.Success)
+        {
+            match = Regex.Match(
+                text,
+                @"\bpax\s+(?<count>\d{1,3})\b",
+                RegexOptions.IgnoreCase);
+        }
         if (!match.Success)
             return false;
 
