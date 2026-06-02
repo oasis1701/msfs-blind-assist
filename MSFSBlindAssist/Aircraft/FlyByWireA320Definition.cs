@@ -935,6 +935,20 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             ValueDescriptions = new Dictionary<double, string> { [0] = "No", [1] = "Available" }
         },
+        // Rudder trim (parity with the A380). The FAC-computed trim position is an
+        // ARINC429 degrees word (positive = nose-Left), decoded in TryGetDisplayOverride.
+        // Reset fires the stock K-event RUDDER_TRIM_RESET (the cockpit's reset path).
+        ["A32NX_FAC_1_RUDDER_TRIM_POS"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FAC_1_RUDDER_TRIM_POS", DisplayName = "Rudder Trim",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, Units = "number"
+        },
+        ["A32NX_RUDDER_TRIM_RESET"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_RUDDER_TRIM_RESET", DisplayName = "Rudder Trim Reset",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Idle", [1] = "Activate" }
+        },
 
         // ---- Wipers panel (parity with A380 Overhead > Wipers) — Captain + F/O wiper
         // selectors. Live-verified settable via the calculator path (held a 0->2 write).
@@ -4163,6 +4177,11 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             // Actual zone temperatures (the selectors in the panel set the target).
             "A32NX_COND_CKPT_TEMP", "A32NX_COND_FWD_TEMP", "A32NX_COND_AFT_TEMP"
         },
+        ["Flight Control Computers"] = new List<string>
+        {
+            // FAC-computed rudder trim position (ARINC; decoded in TryGetDisplayOverride).
+            "A32NX_FAC_1_RUDDER_TRIM_POS"
+        },
         ["APU"] = new List<string>
         {
             // APU AVAIL annunciation (read-only; the EWD memo speaks it).
@@ -4421,7 +4440,8 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             "A32NX_ELAC_1_PUSHBUTTON_PRESSED", "A32NX_ELAC_2_PUSHBUTTON_PRESSED",
             "A32NX_SEC_1_PUSHBUTTON_PRESSED", "A32NX_SEC_2_PUSHBUTTON_PRESSED", "A32NX_SEC_3_PUSHBUTTON_PRESSED",
-            "A32NX_FAC_1_PUSHBUTTON_PRESSED", "A32NX_FAC_2_PUSHBUTTON_PRESSED"
+            "A32NX_FAC_1_PUSHBUTTON_PRESSED", "A32NX_FAC_2_PUSHBUTTON_PRESSED",
+            "A32NX_RUDDER_TRIM_RESET"
         },
         ["Anti Ice"] = new List<string>
         {
@@ -5416,6 +5436,16 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             displayText = value > 0.95 ? "Open" : value < 0.05 ? "Closed" : $"{value * 100:0}% open";
             return true;
         }
+        // Rudder trim: ARINC429 degrees word, positive = nose-Left (matches the A380).
+        if (varKey == "A32NX_FAC_1_RUDDER_TRIM_POS")
+        {
+            var w = new SimConnect.Arinc429Word(value);
+            if (!(w.IsNormalOperation || w.IsFunctionalTest)) { displayText = "Not available"; return true; }
+            double deg = w.Value;
+            displayText = Math.Abs(deg) < 0.1 ? "Neutral"
+                : $"{(deg > 0 ? "Left" : "Right")} {Math.Abs(deg):0.0} degrees";
+            return true;
+        }
         if (varKey == SdPageVar)
         {
             int p = (int)Math.Round(value);
@@ -5850,6 +5880,13 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             if (int.TryParse(varKey.AsSpan("A32NX_MSFSBA_DOOR_".Length), out int exitIdx))
                 simConnect.SendEvent("TOGGLE_AIRCRAFT_EXIT", (uint)exitIdx);
+            return true;
+        }
+        // Rudder trim reset: fire the stock K-event the cockpit uses (the L:var alone
+        // drives nothing). Only the "Activate" option (value > 0.5) fires.
+        if (varKey == "A32NX_RUDDER_TRIM_RESET")
+        {
+            if (value > 0.5) { simConnect.ExecuteCalculatorCode("(>K:RUDDER_TRIM_RESET)"); announcer.Announce("Rudder trim reset"); }
             return true;
         }
         // Ground equipment: momentary toggles (no clean A320 state var).
