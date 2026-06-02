@@ -3992,7 +3992,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 return ShowFCUHeadingDialog(simConnect, announcer, parentForm);
             case HotkeyAction.FCUSetSpeed:
                 hotkeyManager.ExitInputHotkeyMode();
-                return ShowFCUSpeedDialog(simConnect, announcer, parentForm);
+                new Forms.FBWA380.FBWA380SpeedWindow(this, simConnect, announcer).ShowForm();
+                return true;
             case HotkeyAction.FCUSetAltitude:
                 hotkeyManager.ExitInputHotkeyMode();
                 return ShowFCUAltitudeDialog(simConnect, announcer, parentForm);
