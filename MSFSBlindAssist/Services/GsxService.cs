@@ -208,6 +208,27 @@ public sealed class GsxService : IDisposable
     {
         _windowHandle = windowHandle;
         _announcer = announcer ?? throw new ArgumentNullException(nameof(announcer));
+
+        // Couatl can't parse a UTF-8 BOM at the start of CouatlAddons.ini —
+        // it errors with "invalid line '<BOM>[gsx]'" and drops the rest of
+        // the section. Earlier MSFSBA builds wrote the file with .NET's
+        // Encoding.UTF8 (BOM-emitting), so any user who hit SaveGsxSettingToIni
+        // has a corrupt config. Strip the BOM at startup so Couatl gets a
+        // clean read when it loads with the sim.
+        try
+        {
+            string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            if (!string.IsNullOrWhiteSpace(appData))
+            {
+                string configPath = Path.Combine(appData, CouatlConfigFolderName, CouatlConfigFileName);
+                if (File.Exists(configPath))
+                    StripUtf8BomIfPresent(configPath);
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[GsxService] Couatl config sanitization failed: {ex.Message}");
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -1623,6 +1644,45 @@ public sealed class GsxService : IDisposable
         return iniValue;
     }
 
+    // Couatl's INI parser doesn't tolerate a UTF-8 BOM at the start of the
+    // file — it treats the three BOM bytes as part of "[gsx]" and reports
+    // an invalid-line error, dropping the rest of the section. .NET's
+    // Encoding.UTF8 instance emits a BOM by default on write, so any
+    // SaveGsxSettingToIni call would corrupt the file. Use a BOM-less
+    // UTF-8 encoding everywhere we write, and run a one-shot strip in
+    // LoadSavedGsxSettings to clean files that previous builds already
+    // poisoned.
+    private static readonly Encoding Utf8NoBom = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+
+    private static void StripUtf8BomIfPresent(string path)
+    {
+        try
+        {
+            using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            Span<byte> head = stackalloc byte[3];
+            if (fs.Read(head) < 3)
+                return;
+            if (head[0] != 0xEF || head[1] != 0xBB || head[2] != 0xBF)
+                return;
+
+            byte[] body = new byte[fs.Length - 3];
+            int total = 0;
+            while (total < body.Length)
+            {
+                int n = fs.Read(body, total, body.Length - total);
+                if (n <= 0) break;
+                total += n;
+            }
+            fs.Close();
+            File.WriteAllBytes(path, body);
+            System.Diagnostics.Debug.WriteLine($"[GsxService] Stripped UTF-8 BOM from {path}");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[GsxService] BOM strip failed for {path}: {ex.Message}");
+        }
+    }
+
     private static Dictionary<string, string> LoadSavedGsxSettings()
     {
         var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -1634,6 +1694,8 @@ public sealed class GsxService : IDisposable
         string configPath = Path.Combine(appData, CouatlConfigFolderName, CouatlConfigFileName);
         if (!File.Exists(configPath))
             return result;
+
+        StripUtf8BomIfPresent(configPath);
 
         bool inSettingsSection = false;
         try
@@ -1684,6 +1746,9 @@ public sealed class GsxService : IDisposable
         string configFolder = Path.GetDirectoryName(configPath) ?? appData;
         Directory.CreateDirectory(configFolder);
 
+        if (File.Exists(configPath))
+            StripUtf8BomIfPresent(configPath);
+
         var target = GetIniTarget(item);
         string iniValue = FormatSettingValueForIni(item, value);
         var lines = File.Exists(configPath)
@@ -1698,7 +1763,7 @@ public sealed class GsxService : IDisposable
 
             lines.Add($"[{target.Section}]");
             lines.Add($"{target.Key} = {iniValue}");
-            File.WriteAllLines(configPath, lines, Encoding.UTF8);
+            File.WriteAllLines(configPath, lines, Utf8NoBom);
             return;
         }
 
@@ -1720,12 +1785,12 @@ public sealed class GsxService : IDisposable
             string prefix = lines[i][..(lines[i].IndexOf('=') + 1)];
             string spacing = prefix.EndsWith(" ", StringComparison.Ordinal) ? string.Empty : " ";
             lines[i] = $"{prefix}{spacing}{iniValue}";
-            File.WriteAllLines(configPath, lines, Encoding.UTF8);
+            File.WriteAllLines(configPath, lines, Utf8NoBom);
             return;
         }
 
         lines.Insert(sectionEnd, $"{target.Key} = {iniValue}");
-        File.WriteAllLines(configPath, lines, Encoding.UTF8);
+        File.WriteAllLines(configPath, lines, Utf8NoBom);
     }
 
     private static int FindIniSectionStart(IReadOnlyList<string> lines, string sectionName)
