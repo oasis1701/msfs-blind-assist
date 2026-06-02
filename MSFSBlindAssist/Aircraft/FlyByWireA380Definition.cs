@@ -1737,6 +1737,17 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Act("A32NX_RUDDER_TRIM_RESET", "Rudder Trim Reset",
             new Dictionary<double, string> { [0] = "Idle", [1] = "Reset" });
         Btn("A32NX_TILLER_PEDAL_DISCONNECT", "Nosewheel Steering Pedal Disconnect");
+        // Rudder trim ADJUST — the A380 has no working "set to value" (stock RUDDER_TRIM_SET
+        // is a no-op in the FBW WASM); the cockpit knob fires RUDDER_TRIM_LEFT/RIGHT. Expose
+        // them as nudge BUTTONS (Evt = stock K-event; not monitored, so no batch/connection
+        // impact). Read the result back from "Rudder Trim".
+        Evt("RUDDER_TRIM_LEFT", "RUDDER_TRIM_LEFT", "Rudder Trim Left (nudge)");
+        Evt("RUDDER_TRIM_RIGHT", "RUDDER_TRIM_RIGHT", "Rudder Trim Right (nudge)");
+        // Nosewheel steering ANGLE + tiller handle — taxi-awareness read-outs (OnRequest, not
+        // monitored). NOSE_WHEEL_POSITION: 0.5 = centred, (v−0.5)×140 = degrees (±70°);
+        // TILLER_HANDLE_POSITION: ±1. Decoded in TryGetDisplayOverride.
+        Read("A32NX_NOSE_WHEEL_POSITION", "Nose Wheel Steering Angle");
+        Read("A32NX_TILLER_HANDLE_POSITION", "Tiller Handle");
         ReadEnum("A32NX_PRIORITY_TAKEOVER:1", "Capt Sidestick Priority", new Dictionary<double, string> { [0] = "Normal", [1] = "Priority Taken" });
         ReadEnum("A32NX_PRIORITY_TAKEOVER:2", "F/O Sidestick Priority", new Dictionary<double, string> { [0] = "Normal", [1] = "Priority Taken" });
 
@@ -2061,7 +2072,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         {
             "A32NX_PRIM_1_PUSHBUTTON_PRESSED", "A32NX_PRIM_2_PUSHBUTTON_PRESSED", "A32NX_PRIM_3_PUSHBUTTON_PRESSED",
             "A32NX_SEC_1_PUSHBUTTON_PRESSED", "A32NX_SEC_2_PUSHBUTTON_PRESSED", "A32NX_SEC_3_PUSHBUTTON_PRESSED",
-            "A32NX_RUDDER_TRIM_RESET", "A32NX_TILLER_PEDAL_DISCONNECT"
+            "A32NX_RUDDER_TRIM_RESET", "RUDDER_TRIM_LEFT", "RUDDER_TRIM_RIGHT",
+            "A32NX_TILLER_PEDAL_DISCONNECT"
         };
         p["Engine Start"] = new List<string>
         {
@@ -2586,6 +2598,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "A32NX_LEFT_FLAPS_POSITION_PERCENT", "A32NX_RIGHT_FLAPS_POSITION_PERCENT",
             "A32NX_LEFT_SLATS_POSITION_PERCENT", "A32NX_RIGHT_SLATS_POSITION_PERCENT",
             "ELEVATOR_TRIM", "A32NX_TO_PITCH_TRIM", "A32NX_SEC_1_RUDDER_ACTUAL_POSITION",
+            "A32NX_NOSE_WHEEL_POSITION", "A32NX_TILLER_HANDLE_POSITION",
             "ELEVATOR_DEFLECTION", "AILERON_DEFLECTION", "RUDDER_DEFLECTION",
             "SPOILERS_LEFT_POSITION", "SPOILERS_RIGHT_POSITION",
             "A32NX_PRIORITY_TAKEOVER:1", "A32NX_PRIORITY_TAKEOVER:2"
@@ -3769,6 +3782,21 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             displayText = value < 0.05 ? "Closed"
                         : value > 0.95 ? "Open"
                         : $"Open ({(int)Math.Round(value * 100)}%)";
+            return true;
+        }
+        // Nosewheel steering angle: 0.5 = centred, (v-0.5)*140 = degrees (±70° authority).
+        if (varKey == "A32NX_NOSE_WHEEL_POSITION")
+        {
+            double deg = (value - 0.5) * 140.0;
+            displayText = Math.Abs(deg) < 0.5 ? "Centred"
+                        : $"{Math.Abs(deg):0} degrees {(deg < 0 ? "left" : "right")}";
+            return true;
+        }
+        // Tiller handle: ±1 full-scale; show as a left/right percentage.
+        if (varKey == "A32NX_TILLER_HANDLE_POSITION")
+        {
+            int pct = (int)Math.Round(Math.Abs(value) * 100);
+            displayText = pct < 1 ? "Centred" : $"{pct}% {(value < 0 ? "left" : "right")}";
             return true;
         }
         switch (varKey)
