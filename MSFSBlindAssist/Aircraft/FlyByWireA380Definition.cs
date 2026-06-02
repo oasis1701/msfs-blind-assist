@@ -785,6 +785,17 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 Units = "number"
             };
         }
+        // Register every decoded SD-page row var (A380SdRows) OnRequest so the ECAM-CP
+        // "System Display Page" combo can read it (RequestVariable no-ops on any
+        // unregistered var). All A380SdRows vars are A32NX_/A380X_ L:vars.
+        for (int sdPage = 0; sdPage <= 13; sdPage++)
+            foreach (var (_, rowVar, _) in A380SdRows(sdPage))
+                if (!vars.ContainsKey(rowVar))
+                    vars[rowVar] = new SimVarDefinition
+                    {
+                        Name = rowVar, DisplayName = rowVar, Type = SimVarType.LVar,
+                        UpdateFrequency = UpdateFrequency.OnRequest, Units = "number"
+                    };
 
         // ---- Thrust levers (detent combos) ----
         // Command a thrust-lever detent from a combo. The write is intercepted in
@@ -3147,7 +3158,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             // SD page. Still record the combo value (so the box header reads "Upper E/WD"
             // and the selection persists); the real SD view ignores the out-of-range index.
             simConnect.ExecuteCalculatorCode($"{idx} (>L:{varKey})");
-            RefreshSdPageDisplayAsync(simConnect, ewd: idx == 16);
+            RefreshSdPageDisplayAsync(simConnect, idx, ewd: idx == 16);
             return true;
         }
         // Annunciator / integral lights knob (Test / Bright / Dim) is handled by the
@@ -3887,10 +3898,32 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     /// SD page straight from the panel. The page NAME is announced by the combo itself;
     /// this adds the CONTENT. On-demand scrape (the background poll stays paused).
     /// </summary>
-    private async void RefreshSdPageDisplayAsync(SimConnectManager simConnect, bool ewd = false)
+    private async void RefreshSdPageDisplayAsync(SimConnectManager simConnect, int pageIndex = -99, bool ewd = false)
     {
         try
         {
+            // DECODED path (preferred): build clean "Label: value" rows from SimVars for
+            // the data pages, instead of the schematic Coherent scrape (which interleaves
+            // the 4 engines'/gens' values with their labels). Pages without a decode (C/B,
+            // Status, Video) and the E/WD fall through to the live scrape below.
+            if (!ewd)
+            {
+                var decoded = A380SdRows(pageIndex);
+                if (decoded.Count > 0)
+                {
+                    foreach (var row in decoded) simConnect.RequestVariable(row.var, forceUpdate: true);
+                    await Task.Delay(550);
+                    var sb = new System.Text.StringBuilder();
+                    foreach (var row in decoded)
+                    {
+                        double? cv = simConnect.GetCachedVariableValue(row.var);
+                        sb.AppendLine(cv.HasValue ? $"{row.label}: {row.fmt(cv.Value)}" : $"{row.label}: --");
+                    }
+                    _sdPageContent = sb.ToString().TrimEnd();
+                    simConnect.RequestVariable("A32NX_ECAM_SD_CURRENT_PAGE_INDEX", forceUpdate: true);
+                    return;
+                }
+            }
             SimConnect.CoherentDisplayClient client;
             if (ewd)
             {
@@ -3940,6 +3973,136 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             simConnect.RequestVariable("A32NX_ECAM_SD_CURRENT_PAGE_INDEX", forceUpdate: true);
         }
         catch { /* scrape best-effort; the combo still set the page */ }
+    }
+
+    // ---- Decoded SD-page rows (clean labelled SimVar read-out) -----------------
+    // The A380 SD pages are SCHEMATIC: scraping the Coherent view and flat-joining the
+    // X-sorted leaves interleaves the four engines'/generators' values with their
+    // labels ("115 V 115 APU 115 V 115") — nonsensical for a screen reader. So, like
+    // the A32NX, decode the underlying SimVars into clean "Label: value" rows. ARINC429
+    // words (fuel/press/apu) decode via Arinc429Word; plain L:vars read directly. Pages
+    // not decoded here (C/B, Status, Video) fall back to the live scrape. Var names are
+    // from the fbw-a380x SD/Pages source; values spot-verified live.
+    public static List<(string label, string var, Func<double, string> fmt)> A380SdRows(int page)
+    {
+        string Pct(double v) => $"{v:0} %";
+        string Pct1(double v) => $"{v:0.0} %";
+        string V(double v) => $"{v:0} volts";
+        string Psi(double v) => $"{v:0} psi";
+        string C(double v) => $"{v:0} degrees";
+        string Kgh(double v) => $"{v:0} kg per hour";
+        string Qt(double v) => $"{v:0.0} quarts";
+        string OnOff(double v) => v > 0.5 ? "powered" : "not powered";
+        string OpenShut(double v) => v > 0.5 ? "open" : "closed";
+        string Healthy(double v) => v > 0.5 ? "healthy" : "failed";
+        string Locked(double v) => v > 0.5 ? "locked" : "unlocked";
+        // ARINC429 decoder: payload + unit, or "not available" when the SSM isn't normal.
+        string A(double v, string unit, string fmt = "0") { var w = new SimConnect.Arinc429Word(v); return (w.IsNormalOperation || w.IsFunctionalTest) ? $"{w.Value.ToString(fmt)} {unit}" : "not available"; }
+        var r = new List<(string, string, Func<double, string>)>();
+        switch (page)
+        {
+            case 0: // ENGINE
+                for (int e = 1; e <= 4; e++)
+                {
+                    r.Add(($"Engine {e} N1", $"A32NX_ENGINE_N1:{e}", Pct1));
+                    r.Add(($"Engine {e} N2", $"A32NX_ENGINE_N2:{e}", Pct1));
+                    r.Add(($"Engine {e} N3", $"A32NX_ENGINE_N3:{e}", Pct1));
+                    r.Add(($"Engine {e} fuel flow", $"A32NX_ENGINE_FF:{e}", Kgh));
+                    r.Add(($"Engine {e} oil quantity", $"A32NX_ENGINE_OIL_QTY:{e}", Qt));
+                }
+                break;
+            case 1: // APU
+                r.Add(("APU N", "A32NX_APU_N", Pct1));
+                r.Add(("APU N2", "A32NX_APU_N2", Pct1));
+                r.Add(("APU EGT", "A32NX_APU_EGT", v => A(v, "degrees")));
+                r.Add(("APU fuel used", "A32NX_APU_FUEL_USED", v => A(v, "kg")));
+                r.Add(("APU flap open", "A32NX_APU_FLAP_OPEN_PERCENTAGE", Pct));
+                r.Add(("APU bleed valve", "A32NX_APU_BLEED_AIR_VALVE_OPEN", OpenShut));
+                r.Add(("APU bleed pressure", "A32NX_PNEU_APU_BLEED_CONTAINER_PRESSURE", Psi));
+                r.Add(("APU generator 1 voltage", "A32NX_ELEC_APU_GEN_1_POTENTIAL", V));
+                r.Add(("APU generator 2 voltage", "A32NX_ELEC_APU_GEN_2_POTENTIAL", V));
+                break;
+            case 2: // BLEED
+                r.Add(("Pack 1 flow valve 1", "A32NX_COND_PACK_1_FLOW_VALVE_1_IS_OPEN", OpenShut));
+                r.Add(("Pack 1 flow valve 2", "A32NX_COND_PACK_1_FLOW_VALVE_2_IS_OPEN", OpenShut));
+                r.Add(("Pack 2 flow valve 1", "A32NX_COND_PACK_2_FLOW_VALVE_1_IS_OPEN", OpenShut));
+                r.Add(("Pack 2 flow valve 2", "A32NX_COND_PACK_2_FLOW_VALVE_2_IS_OPEN", OpenShut));
+                r.Add(("Crossbleed valve left", "A32NX_PNEU_XBLEED_VALVE_L_OPEN", OpenShut));
+                r.Add(("Crossbleed valve centre", "A32NX_PNEU_XBLEED_VALVE_C_OPEN", OpenShut));
+                r.Add(("Crossbleed valve right", "A32NX_PNEU_XBLEED_VALVE_R_OPEN", OpenShut));
+                r.Add(("APU bleed valve", "A32NX_APU_BLEED_AIR_VALVE_OPEN", OpenShut));
+                for (int e = 1; e <= 4; e++)
+                    r.Add(($"Engine {e} bleed pressure", $"A32NX_PNEU_ENG_{e}_REGULATED_TRANSDUCER_PRESSURE", Psi));
+                break;
+            case 3: // COND (Air Conditioning)
+                r.Add(("Cockpit temp", "A32NX_COND_CKPT_TEMP", v => $"{v:0.0} degrees"));
+                for (int z = 1; z <= 8; z++) r.Add(($"Main deck zone {z} temp", $"A32NX_COND_MAIN_DECK_{z}_TEMP", v => $"{v:0.0} degrees"));
+                for (int z = 1; z <= 7; z++) r.Add(($"Upper deck zone {z} temp", $"A32NX_COND_UPPER_DECK_{z}_TEMP", v => $"{v:0.0} degrees"));
+                r.Add(("Forward cargo temp", "A32NX_COND_CARGO_FWD_TEMP", v => $"{v:0.0} degrees"));
+                r.Add(("Bulk cargo temp", "A32NX_COND_CARGO_BULK_TEMP", v => $"{v:0.0} degrees"));
+                break;
+            case 4: // PRESS (Pressurization) — block-1 ARINC words
+                r.Add(("Cabin altitude", "A32NX_PRESS_CABIN_ALTITUDE_B1", v => A(v, "feet")));
+                r.Add(("Cabin vertical speed", "A32NX_PRESS_CABIN_VS_B1", v => A(v, "feet per minute")));
+                r.Add(("Differential pressure", "A32NX_PRESS_CABIN_DELTA_PRESSURE_B1", v => A(v, "psi", "0.0")));
+                r.Add(("Cabin altitude target", "A32NX_PRESS_CABIN_ALTITUDE_TARGET_B1", v => A(v, "feet")));
+                r.Add(("Landing elevation", "A32NX_FM1_LANDING_ELEVATION", v => $"{v:0} feet"));
+                break;
+            case 5: // DOORS
+                r.Add(("Forward cargo door", "A32NX_FWD_DOOR_CARGO_LOCKED", Locked));
+                r.Add(("Aft cargo door", "A32NX_AFT_DOOR_CARGO_LOCKED", Locked));
+                r.Add(("Escape slides", "A32NX_SLIDES_ARMED", v => v > 0.5 ? "armed" : "disarmed"));
+                break;
+            case 6: // ELEC AC
+                for (int n = 1; n <= 4; n++)
+                {
+                    r.Add(($"Generator {n} voltage", $"A32NX_ELEC_ENG_GEN_{n}_POTENTIAL", V));
+                    r.Add(($"Generator {n} load", $"A32NX_ELEC_ENG_GEN_{n}_LOAD", Pct));
+                }
+                r.Add(("APU generator 1 voltage", "A32NX_ELEC_APU_GEN_1_POTENTIAL", V));
+                r.Add(("APU generator 2 voltage", "A32NX_ELEC_APU_GEN_2_POTENTIAL", V));
+                r.Add(("External power voltage", "A32NX_ELEC_EXT_PWR_POTENTIAL", V));
+                r.Add(("Emergency gen voltage", "A32NX_ELEC_EMER_GEN_POTENTIAL", V));
+                r.Add(("Static inverter voltage", "A32NX_ELEC_STAT_INV_POTENTIAL", V));
+                for (int n = 1; n <= 4; n++) r.Add(($"AC bus {n}", $"A32NX_ELEC_AC_{n}_BUS_IS_POWERED", OnOff));
+                r.Add(("AC ESS bus", "A32NX_ELEC_AC_ESS_BUS_IS_POWERED", OnOff));
+                break;
+            case 7: // ELEC DC
+                foreach (var b in new[] { "1", "2", "ESS", "APU" })
+                    r.Add(($"Battery {b} voltage", $"A32NX_ELEC_BAT_{b}_POTENTIAL", v => $"{v:0.0} volts"));
+                for (int n = 1; n <= 2; n++) r.Add(($"TR {n} voltage", $"A32NX_ELEC_TR_{n}_POTENTIAL", V));
+                for (int n = 1; n <= 2; n++) r.Add(($"DC bus {n}", $"A32NX_ELEC_DC_{n}_BUS_IS_POWERED", OnOff));
+                r.Add(("DC ESS bus", "A32NX_ELEC_DC_ESS_BUS_IS_POWERED", OnOff));
+                break;
+            case 8: // FUEL — FQDC per-tank quantities are ARINC429 words (kg)
+                foreach (var t in new[] { "FEED_1", "FEED_2", "FEED_3", "FEED_4", "LEFT_OUTER", "LEFT_MID", "LEFT_INNER", "RIGHT_OUTER", "RIGHT_MID", "RIGHT_INNER", "TRIM" })
+                    r.Add(($"{t.Replace('_', ' ')} tank", $"A32NX_FQDC_1_{t}_TANK_QUANTITY", v => A(v, "kg")));
+                r.Add(("Total fuel on board", "A32NX_FQMS_TOTAL_FUEL_ON_BOARD", v => A(v, "kg")));
+                break;
+            case 9: // WHEEL — braked-wheel temperatures
+                for (int w = 1; w <= 16; w++) r.Add(($"Brake {w} temp", $"A32NX_REPORTED_BRAKE_TEMPERATURE_{w}", C));
+                break;
+            case 10: // HYD (A380 has Green + Yellow)
+                r.Add(("Green pressure", "A32NX_HYD_GREEN_SYSTEM_1_SECTION_PRESSURE", Psi));
+                r.Add(("Green reservoir", "A32NX_HYD_GREEN_RESERVOIR_LEVEL", v => $"{v:0.0} gallons"));
+                r.Add(("Yellow pressure", "A32NX_HYD_YELLOW_SYSTEM_1_SECTION_PRESSURE", Psi));
+                r.Add(("Yellow reservoir", "A32NX_HYD_YELLOW_RESERVOIR_LEVEL", v => $"{v:0.0} gallons"));
+                break;
+            case 11: // F/CTL — flight-control computer health + speed brake
+                for (int n = 1; n <= 3; n++) r.Add(($"PRIM {n}", $"A32NX_PRIM_{n}_HEALTHY", Healthy));
+                for (int n = 1; n <= 3; n++) r.Add(($"SEC {n}", $"A32NX_SEC_{n}_HEALTHY", Healthy));
+                r.Add(("Speed brake handle", "A32NX_SPOILERS_HANDLE_POSITION", v => $"{v * 100:0} %"));
+                r.Add(("Ground spoilers armed", "A32NX_SPOILERS_ARMED", v => v > 0.5 ? "armed" : "disarmed"));
+                break;
+            case 13: // CRUISE — fuel + cabin summary
+                for (int e = 1; e <= 4; e++) r.Add(($"Engine {e} fuel flow", $"A32NX_ENGINE_FF:{e}", Kgh));
+                r.Add(("Cabin altitude", "A32NX_PRESS_CABIN_ALTITUDE_B1", v => A(v, "feet")));
+                r.Add(("Cabin vertical speed", "A32NX_PRESS_CABIN_VS_B1", v => A(v, "feet per minute")));
+                r.Add(("Differential pressure", "A32NX_PRESS_CABIN_DELTA_PRESSURE_B1", v => A(v, "psi", "0.0")));
+                r.Add(("Cockpit temp", "A32NX_COND_CKPT_TEMP", v => $"{v:0.0} degrees"));
+                break;
+        }
+        return r;
     }
 
     /// <summary>Flip MSFSBA's weight read-out unit (kg ⇄ lb) instantly; returns the new state (true = kg).</summary>
