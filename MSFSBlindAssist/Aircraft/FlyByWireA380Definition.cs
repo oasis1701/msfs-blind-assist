@@ -2811,20 +2811,21 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
 
         // External power (GPU) available — explicit edge announce so connecting/
         // disconnecting ground power (incl. via GSX) clearly speaks, rather than
-        // relying on the generic indexed-simvar path. The first-detect grace mutes the
-        // baseline (power already available at connect), so this only fires on a real
-        // connect/disconnect after startup. Honours the Ctrl+M mute.
+        // relying on the generic indexed-simvar path. SEED SILENTLY on the first read
+        // per GPU (prev < 0): the global timed first-detect grace can expire before all
+        // four AVAIL vars first arrive, which made MSFSBA call out "External Power 1..4"
+        // on startup. Now only a genuine post-startup connect/disconnect speaks. Ctrl+M
+        // mute honoured.
         if (varName.StartsWith("A380X_GND_GPU_AVAIL_", StringComparison.Ordinal)
             && int.TryParse(varName.AsSpan("A380X_GND_GPU_AVAIL_".Length), out int gpuN)
             && gpuN >= 1 && gpuN <= 4)
         {
             int now = value > 0.5 ? 1 : 0;
-            if (_gpuAvail[gpuN - 1] != now)
-            {
-                _gpuAvail[gpuN - 1] = now;
-                if (!Settings.SettingsManager.Current.A380DisabledMonitorVariables.Contains(varName))
-                    announcer.Announce(now == 1 ? $"External Power {gpuN} available" : $"External Power {gpuN} disconnected");
-            }
+            int prev = _gpuAvail[gpuN - 1];
+            _gpuAvail[gpuN - 1] = now;
+            if (prev >= 0 && prev != now
+                && !Settings.SettingsManager.Current.A380DisabledMonitorVariables.Contains(varName))
+                announcer.Announce(now == 1 ? $"External Power {gpuN} available" : $"External Power {gpuN} disconnected");
             return true;
         }
 

@@ -4200,7 +4200,11 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
                     && variables.TryGetValue(key, out var cdef)
                     && (cdef.Type == SimConnect.SimVarType.LVar || cdef.Type == SimConnect.SimVarType.SimVar)
                     && cdef.ValueDescriptions != null && cdef.ValueDescriptions.Count > 0
-                    && cdef.UpdateFrequency == SimConnect.UpdateFrequency.OnRequest
+                    // Flip ANY non-Continuous readable combo. Was "== OnRequest", which
+                    // MISSED combos that omit UpdateFrequency entirely — those default to
+                    // the enum's 0 = Never (e.g. the overhead Evacuation Command toggle),
+                    // so they never auto-announced. "!= Continuous" catches both.
+                    && cdef.UpdateFrequency != SimConnect.UpdateFrequency.Continuous
                     // Skip momentary ACTIONS (Activate / Pressed) — they fire-and-return,
                     // so continuously monitoring + announcing them is noise.
                     && !cdef.ValueDescriptions.ContainsValue("Activate")
