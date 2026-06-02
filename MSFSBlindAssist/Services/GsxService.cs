@@ -196,14 +196,11 @@ public sealed class GsxService : IDisposable
     private readonly Dictionary<string, (int Percent, DateTime SeenAt)> _lastBaggageProgressByOperation = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, DateTime> _recentLiveServiceAnnouncements = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _lastServiceOperatorByName = new(StringComparer.OrdinalIgnoreCase);
-    // Was used by the time-based ShouldThrottleFuelingProgress (now removed).
-    // Kept as a typedef for back-compat; ClearProgressTrackingState still
-    // clears it so any straggler reference dies cleanly.
+    // Timestamp per fueling-service key of the last announce that included
+    // a kg/% progress segment. Used by StripThrottledFuelSegments to drop
+    // *just the progress segment* when within FuelingProgressAnnouncementInterval
+    // of the last one — transitions arriving in the same tooltip still pass.
     private readonly Dictionary<string, DateTime> _lastFuelingProgressAnnouncementByService = new(StringComparer.OrdinalIgnoreCase);
-    // Milestone bucket per fueling-service key (loaded/total kg → percent/10
-    // or absolute-kg/1000). Strip-mode: a kg/percent segment is silenced
-    // when the bucket hasn't advanced.
-    private readonly Dictionary<string, int> _lastFuelingMilestoneByService = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, int> _lastBoardingPassengerAnnouncementByService = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _announcedInvoiceKeys = new(StringComparer.OrdinalIgnoreCase);
     private static readonly TimeSpan LiveServiceRepeatWindow = TimeSpan.FromMinutes(10);
@@ -646,7 +643,6 @@ public sealed class GsxService : IDisposable
     {
         _lastBoardingPassengerAnnouncementByService.Clear();
         _lastFuelingProgressAnnouncementByService.Clear();
-        _lastFuelingMilestoneByService.Clear();
         _lastBaggageProgressByOperation.Clear();
         _recentLiveServiceAnnouncements.Clear();
         _announcedInvoiceKeys.Clear();
@@ -1134,29 +1130,45 @@ public sealed class GsxService : IDisposable
         if (!normalized.Contains("fuel") && !normalized.Contains("refuel"))
             return announceText;
 
-        int currentMilestone = ComputeFuelingMilestone(fullText);
-        if (currentMilestone < 0)
+        // Only throttle when the tooltip actually carries kg/percent numbers
+        // — if it's a pure transition message ("hose connected", "truck
+        // departing") it goes through unchanged.
+        if (!HasFuelProgressNumbers(fullText))
             return announceText;
 
         string serviceKey = BuildFixedProgressThrottleKey(fullText, "fueling");
+        DateTime now = DateTime.UtcNow;
 
-        bool advanced;
-        if (!_lastFuelingMilestoneByService.TryGetValue(serviceKey, out int lastMilestone))
+        bool allowed;
+        if (!_lastFuelingProgressAnnouncementByService.TryGetValue(serviceKey, out DateTime seenAt))
         {
-            advanced = true;
+            allowed = true;
         }
         else
         {
-            advanced = currentMilestone > lastMilestone;
+            allowed = (now - seenAt) >= FuelingProgressAnnouncementInterval;
         }
 
-        if (advanced)
+        if (allowed)
         {
-            _lastFuelingMilestoneByService[serviceKey] = currentMilestone;
+            _lastFuelingProgressAnnouncementByService[serviceKey] = now;
             return announceText;
         }
 
+        // Within the throttle window — drop just the kg/percent segment so
+        // any transition segments in the same tooltip still announce.
         return StripSegmentsMatching(announceText, FuelProgressSegmentRegex);
+    }
+
+    private static bool HasFuelProgressNumbers(string text)
+    {
+        return Regex.IsMatch(text,
+                   @"\b\d+(?:[.,]\d+)?\s*/\s*\d+(?:[.,]\d+)?\s*(?:kg|lbs?)\b",
+                   RegexOptions.IgnoreCase)
+            || Regex.IsMatch(text, @"\b\d{1,3}\s*%", RegexOptions.IgnoreCase)
+            || Regex.IsMatch(text,
+                   @"\b\d+(?:[.,]\d+)?\s*(?:kg|lbs?)\s+(?:loaded|uplift(?:ed)?)\b",
+                   RegexOptions.IgnoreCase);
     }
 
     private static string StripSegmentsMatching(string text, Regex regex)
@@ -1173,53 +1185,6 @@ public sealed class GsxService : IDisposable
         return string.Join(", ", kept);
     }
 
-    // Fueling milestone: prefer "loaded / total kg" → percent/10 (every 10%).
-    // Fall back to "%" form. Fall back to absolute "kg loaded" / "kg uplifted"
-    // bucketed by 1000 kg. Returns -1 when no progress info is parseable so
-    // the caller can leave the announcement untouched (e.g. the initial
-    // "Refueling service has been requested" tooltip).
-    private static int ComputeFuelingMilestone(string text)
-    {
-        var match = Regex.Match(
-            text,
-            @"\b(\d+(?:[.,]\d+)?)\s*/\s*(\d+(?:[.,]\d+)?)\s*(?:kg|lbs?)\b",
-            RegexOptions.IgnoreCase);
-        if (match.Success)
-        {
-            double loaded = ParseDoubleInvariant(match.Groups[1].Value);
-            double total = ParseDoubleInvariant(match.Groups[2].Value);
-            if (total > 0)
-            {
-                int pct = (int)Math.Min(100, Math.Floor(loaded * 100.0 / total));
-                return pct / 10;
-            }
-        }
-
-        match = Regex.Match(text, @"\b(\d{1,3})\s*%", RegexOptions.IgnoreCase);
-        if (match.Success && int.TryParse(match.Groups[1].Value, out int pctOnly))
-        {
-            return Math.Clamp(pctOnly, 0, 100) / 10;
-        }
-
-        match = Regex.Match(
-            text,
-            @"\b(\d+(?:[.,]\d+)?)\s*(?:kg|lbs?)\s+(?:loaded|uplift(?:ed)?)\b",
-            RegexOptions.IgnoreCase);
-        if (match.Success)
-        {
-            double kg = ParseDoubleInvariant(match.Groups[1].Value);
-            return (int)Math.Floor(kg / 1000.0);
-        }
-
-        return -1;
-    }
-
-    private static double ParseDoubleInvariant(string s) =>
-        double.TryParse(
-            s.Replace(',', '.'),
-            System.Globalization.NumberStyles.Float,
-            System.Globalization.CultureInfo.InvariantCulture,
-            out double v) ? v : 0.0;
 
     private static bool IsPlaceholderLiveServiceText(string text)
     {
