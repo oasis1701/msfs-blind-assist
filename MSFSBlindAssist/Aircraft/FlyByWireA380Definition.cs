@@ -3328,15 +3328,16 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 announcer.AnnounceImmediate($"Temperature must be between {ts.Lo} and {ts.Hi} degrees Celsius.");
                 return true;
             }
-            simConnect.SetLVar(ts.Knob, (value - ts.Lo) / (ts.Hi - ts.Lo) * 300.0);
+            // Calculator path (not SetLVar — the data-def write is unreliable for FBW L:vars).
+            simConnect.ExecuteCalculatorCode($"{(value - ts.Lo) / (ts.Hi - ts.Lo) * 300.0} (>L:{ts.Knob})");
             announcer.Announce($"{ts.Label} temperature set to {value:0} degrees");
             return true;
         }
-        // Manual pressurization knobs — pass-through position write.
+        // Manual pressurization knobs — pass-through position write (calc path).
         if (varKey == "PRESS_MAN_ALT_SET" || varKey == "PRESS_MAN_VS_SET")
         {
-            simConnect.SetLVar(varKey == "PRESS_MAN_ALT_SET"
-                ? "A32NX_OVHD_PRESS_MAN_ALTITUDE_KNOB" : "A32NX_OVHD_PRESS_MAN_VS_CTL_KNOB", value);
+            string knob = varKey == "PRESS_MAN_ALT_SET" ? "A32NX_OVHD_PRESS_MAN_ALTITUDE_KNOB" : "A32NX_OVHD_PRESS_MAN_VS_CTL_KNOB";
+            simConnect.ExecuteCalculatorCode($"{value} (>L:{knob})");
             announcer.Announce($"Set to {value:0.0}");
             return true;
         }
