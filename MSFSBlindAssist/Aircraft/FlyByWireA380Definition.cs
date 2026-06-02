@@ -1882,6 +1882,16 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         var idleToggle = new Dictionary<double, string> { [0] = "Idle", [1] = "Toggle" };
         Act("A380X_GND_JETWAY", "Jet Bridge", idleToggle);
         Act("A380X_GND_STAIRS", "Passenger Stairs", idleToggle);
+        // Jet-bridge MOVING readout (stock SimVar — the only readable jetway state; the FBW
+        // EFB itself only infers connection from the fwd door). Auto-announces Moving/Stopped
+        // so a blind pilot gets feedback after a Jet Bridge toggle. Stairs have no equivalent.
+        vars["JETWAY_MOVING_STATE"] = new SimVarDefinition
+        {
+            Name = "JETWAY MOVING", DisplayName = "Jet Bridge Motion",
+            Type = SimVarType.SimVar, Units = "bool",
+            UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Stopped", [1] = "Moving" }
+        };
         // Ground-service vehicle requests (flyPad Ground page parity) — momentary Activate
         // combos firing the stock REQUEST_* events (the same the EFB uses). Handled in
         // HandleUIVariableSet.
@@ -2530,7 +2540,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // availability (all read-only; the GPU connect is the overhead EXT PWR PBs).
         d["Ground Equipment"] = new List<string>
         {
-            "A380X_GND_CHOCKS", "A380X_GND_CONES",
+            "A380X_GND_CHOCKS", "A380X_GND_CONES", "JETWAY_MOVING_STATE",
             "A380X_GND_GPU_AVAIL_1", "A380X_GND_GPU_AVAIL_2", "A380X_GND_GPU_AVAIL_3", "A380X_GND_GPU_AVAIL_4"
         };
 
