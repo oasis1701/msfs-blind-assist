@@ -10,134 +10,134 @@ to cancel a mode activated by accident.
 
 
 DIRECT (no mode)
-  Ctrl+1        Focus Sections list
-  Ctrl+2        Focus Panels list
-  Ctrl+3        Focus Status Display field of the current panel (refreshes it if empty)
-  Ctrl+M        Monitor Manager (choose what auto-announces)
-  Ctrl+E        Toggle ECAM E/WD call-outs
+  Ctrl+1     Focus Sections list
+  Ctrl+2     Focus Panels list
+  Ctrl+3     Focus Status Display field of the current panel (refreshes it if empty)
+  Ctrl+M     Monitor Manager (choose what auto-announces)
+  Ctrl+E     Toggle ECAM E/WD call-outs
   Ctrl+Shift+B  Airport Map and BTV (OANS) window
 
 
 OUTPUT MODE  (press ] first)
 
   FCU read
-  Shift+H       FCU Heading
-  Shift+S       FCU Speed (knots or Mach)
-  Shift+A       FCU Altitude
-  Shift+V       FCU Vertical Speed / FPA
+  Shift+H    FCU Heading
+  Shift+S    FCU Speed (knots or Mach)
+  Shift+A    FCU Altitude
+  Shift+V    FCU Vertical Speed / FPA
 
   Flight data
-  Q             Altitude AGL
-  A             Altitude MSL
-  S             IAS
-  T             TAS
-  G             Ground Speed
-  M             Mach Number
-  H             Magnetic Heading
-  U             True Heading
-  V             Vertical Speed
-  D             Distance to destination (from the FMS)
-  Shift+D       Distance to Top of Descent (once computed in flight)
-                (Q / A / Shift+A read in metres when the FCU MTRS button is on)
+  Q          Altitude AGL
+  A          Altitude MSL
+  S          IAS
+  T          TAS
+  G          Ground Speed
+  M          Mach Number
+  H          Magnetic Heading
+  U          True Heading
+  V          Vertical Speed
+  D          Distance to destination (from the FMS)
+  Shift+D    Distance to Top of Descent (once computed in flight)
+             (Q / A / Shift+A read in metres when the FCU MTRS button is on)
 
   Characteristic speeds
-  Shift+1       Green Dot speed
-  Shift+2       S speed (slat retraction)
-  Shift+3       F speed (flap retraction)
-  Shift+4       VLS (minimum selectable)
-  Shift+5       VS (stall)
-  Shift+6       VFE next (next flap limit)
+  Shift+1    Green Dot speed
+  Shift+2    S speed (slat retraction)
+  Shift+3    F speed (flap retraction)
+  Shift+4    VLS (minimum selectable)
+  Shift+5    VS (stall)
+  Shift+6    VFE next (next flap limit)
 
   Weather / time / misc
-  I             Wind info
-  O             Outside Temperature (Celsius)
-  Z             Local Time
-  Shift+Z       Zulu / UTC Time
-  X             Squawk Code
-  C             Nearest City
-  Shift+T       Toggle trim announcements
+  I          Wind info
+  O          Outside Temperature (Celsius)
+  Z          Local Time
+  Shift+Z    Zulu / UTC Time
+  X          Squawk Code
+  C          Nearest City
+  Shift+T    Toggle trim announcements
 
   Traffic / weather windows
-  R             Announce TCAS traffic
-  Ctrl+R        Show TCAS window
-  Shift+W       Weather Radar
-  Shift+M       METAR report
+  R          Announce TCAS traffic
+  Ctrl+R     Show TCAS window
+  Shift+W    Weather Radar
+  Shift+M    METAR report
 
   Display windows
-  Alt+E         E/WD (Engine/Warning Display) window
-  Alt+I         Standby Instruments (ISIS) window
-  Alt+D         Describe Scene (AI)
+  Alt+E      E/WD (Engine/Warning Display) window
+  Alt+I      Standby Instruments (ISIS) window
+  Alt+D      Describe Scene (AI)
 
   Checklists
-  Shift+C       Static text checklist (cold-and-dark to shutdown)
+  Shift+C    Static text checklist (cold-and-dark to shutdown)
   Ctrl+Shift+C  Live Electronic Checklist (ECL) window -- the real cockpit
                 checklists + active ECAM procedures (see below)
 
   Taxi
-  Y             Taxi status
-  Ctrl+Y        Repeat taxi instruction
-  Alt+Y         Where am I (ground)
+  Y          Taxi status
+  Ctrl+Y     Repeat taxi instruction
+  Alt+Y      Where am I (ground)
 
   Tools
-  Ctrl+H        Hand-fly mode
-  Ctrl+V        Visual guidance (needs hand-fly)
-  Ctrl+T        Takeoff Assistance
-  Ctrl+D        Distance to selected runway
-  Ctrl+I        ILS guidance
-  Ctrl+G        Read latest GSX tooltip
+  Ctrl+H     Hand-fly mode
+  Ctrl+V     Visual guidance (needs hand-fly)
+  Ctrl+T     Takeoff Assistance
+  Ctrl+D     Distance to selected runway
+  Ctrl+I     ILS guidance
+  Ctrl+G     Read latest GSX tooltip
 
 
 INPUT MODE  (press [ first)
 
   Windows
-  Shift+M       Open MCDU / MFD window
-  Shift+T       Open flyPad EFB window
-  Alt+G         Open GSX window
+  Shift+M    Open MCDU / MFD window
+  Shift+T    Open flyPad EFB window
+  Alt+G      Open GSX window
 
   Teleport / flight planning
-  Shift+R       Runway teleport
-  Shift+G       Gate teleport
-  Shift+F       Fix / waypoint tracking
-  Shift+D       Select destination runway
+  Shift+R    Runway teleport
+  Shift+G    Gate teleport
+  Shift+F    Fix / waypoint tracking
+  Shift+D    Select destination runway
 
   Autopilot
-  Shift+A       Autopilot 1
-  Ctrl+O        Autopilot 2
-  Shift+P       Approach mode
-  Ctrl+J        Autothrust (A/THR arm / disconnect)
-  Ctrl+L        Localizer (LOC arm)
+  Shift+A    Autopilot 1
+  Ctrl+O     Autopilot 2
+  Shift+P    Approach mode
+  Ctrl+J     Autothrust (A/THR arm / disconnect)
+  Ctrl+L     Localizer (LOC arm)
 
   FCU push / pull
-  Shift+1 / Ctrl+1   Push / Pull Heading knob
-  Shift+2 / Ctrl+2   Push / Pull Altitude knob
-  Shift+3 / Ctrl+3   Push / Pull Speed knob
-  Shift+4 / Ctrl+4   Push / Pull VS knob
+  Shift+1 / Ctrl+1  Push / Pull Heading knob
+  Shift+2 / Ctrl+2  Push / Pull Altitude knob
+  Shift+3 / Ctrl+3  Push / Pull Speed knob
+  Shift+4 / Ctrl+4  Push / Pull VS knob
 
   FCU windows (value entry + knob buttons + spoken readout)
-  Ctrl+S        Speed window (set value; Push/Pull; SPD/MACH toggle)
-  Ctrl+H        Heading window (set value; Push/Pull; HDG-V/S / TRK-FPA toggle)
-  Ctrl+A        Altitude window (set value; Push/Pull; 100/1000; Metric toggle)
-  Ctrl+V        Vertical Speed / FPA window (set value; Push/Pull)
-  Ctrl+P        Autopilot panel (AP1/AP2; A/THR; AP + A/THR disconnect;
-                APPR/LOC/EXPED; Flight Director status)
-  Ctrl+B        Altimeter window (enter QNH once -> both sides; STD/QNH; hPa/inHg)
+  Ctrl+S     Speed window (set value; Push/Pull; SPD/MACH toggle)
+  Ctrl+H     Heading window (set value; Push/Pull; HDG-V/S / TRK-FPA toggle)
+  Ctrl+A     Altitude window (set value; Push/Pull; 100/1000; Metric toggle)
+  Ctrl+V     Vertical Speed / FPA window (set value; Push/Pull)
+  Ctrl+P     Autopilot panel (AP1/AP2; A/THR; AP + A/THR disconnect;
+             APPR/LOC/EXPED; Flight Director status)
+  Ctrl+B     Altimeter window (enter QNH once -> both sides; STD/QNH; hPa/inHg)
 
   Taxi / landing
-  Shift+Y       Open Taxi Assist form
-  Y             Continue past hold-short
-  Ctrl+Y        Stop taxi guidance
-  Shift+X       Open Landing Exit Planner
+  Shift+Y    Open Taxi Assist form
+  Y          Continue past hold-short
+  Ctrl+Y     Stop taxi guidance
+  Shift+X    Open Landing Exit Planner
 
 
 INSIDE THE MCDU / MFD WINDOW
-  Up / Down     Move through lines
-  Enter         Activate the line (send scratchpad to field; open a combo box)
-  (type)        Type into the scratchpad, then Enter
-  Backspace     CLR (scratchpad first, then the selected field)
-  Delete        Clear the selected field
-  Ctrl+Up       Previous page (PageUp also)
-  Ctrl+Down     Next page (PageDown also; scrolls the F-PLN window)
-  F5            Refresh
+  Up / Down  Move through lines
+  Enter      Activate the line (send scratchpad to field; open a combo box)
+  (type)     Type into the scratchpad, then Enter
+  Backspace  CLR (scratchpad first, then the selected field)
+  Delete     Clear the selected field
+  Ctrl+Up    Previous page (PageUp also)
+  Ctrl+Down  Next page (PageDown also; scrolls the F-PLN window)
+  F5         Refresh
 
   Page buttons (Alt+letter)
   Alt+I  INIT     Alt+F  F-PLN    Alt+P  PERF
@@ -149,10 +149,10 @@ INSIDE THE MCDU / MFD WINDOW
 INSIDE THE LIVE CHECKLIST (ECL) WINDOW (Ctrl+Shift+C opens it)
   The checklist is shown automatically when the window opens and hidden when it
   closes -- no need to toggle it.
-  Up / Down     Move the checklist cursor and read each line
-  Enter         Open the highlighted checklist, or tick the highlighted item
-  Backspace     Step back to the menu
-  F5            Refresh
+  Up / Down  Move the checklist cursor and read each line
+  Enter      Open the highlighted checklist, or tick the highlighted item
+  Backspace  Step back to the menu
+  F5         Refresh
   (the Abnormal procedures button lists active ECAM procedures)
 
 Thrust levers auto-announce the detent reached (Idle / Climb / Flex MCT / TOGA /
