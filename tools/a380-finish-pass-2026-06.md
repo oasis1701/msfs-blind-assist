@@ -112,3 +112,22 @@ Audit "bug fixes" that were **false positives** (verified, correctly NOT changed
   duplicated into the SD ELEC AC rows.
 
 Files: `Aircraft/FlyByWireA380Definition.cs` (`A380SdRows` cases 0 + 4).
+
+---
+
+## EWD (Engine/Warning Display) — DONE
+
+The EWD's numeric set is small and already well-covered: per-engine N1, **N1-command**
+(`A32NX_AUTOTHRUST_N1_COMMANDED:n`), EGT, thrust-rating mode + FLEX, reverser-deployed
+(eng 2/3), plus the live-scrape memos/warnings/status boxes. (N2/N3/FF are SD-ENG-page
+data, not EWD, and are already exposed.) **Addition this pass (live-verified = 84.9%):**
+- **Thrust limit N1 %** `A32NX_AUTOTHRUST_THRUST_LIMIT` — the green max-N1 the current
+  thrust-rating mode allows (complements the already-announced limit TYPE).
+
+**Deferred (documented):** the computed **THR %** gauge headline (derivable from N1 +
+idle/max limits — N1 is already exposed), per-lever **TLA_N1** (≈ N1-command live, a
+near-duplicate), reverser **deploying/selected** transitional states (deployed already
+shown), the **BLEED supply** line (CPIOM AGS ARINC bits), and the **IDLE** memo. THR LK /
+A.FLOOR are FG-EventBus-only → available via the EWD live scrape, not a SimVar.
+
+Files: `Aircraft/FlyByWireA380Definition.cs` (autothrust readout + d["Thrust Levers"] + decode).

@@ -1078,6 +1078,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             Stock($"ENG_OIL_TEMP:{n}", $"GENERAL ENG OIL TEMPERATURE:{n}", $"Engine {n} Oil Temperature", "celsius");
         }
         Read("A32NX_AIRLINER_TO_FLEX_TEMP", "Flex Temperature", "celsius");   // Upper E/WD flex readout
+        // EWD thrust limit — the green max-N1 % shown beside the thrust-rating mode
+        // (CLB/FLX/TOGA). Tells the pilot how much thrust the current mode allows; the
+        // limit TYPE is already announced via A32NX_AUTOTHRUST_THRUST_LIMIT_TYPE.
+        Read("A32NX_AUTOTHRUST_THRUST_LIMIT", "Thrust limit N1", "percent");
         // The A380 has thrust reversers ONLY on the inboard engines (2 and 3); the
         // outboard 1 and 4 have none (their _REVERSER_ vars stay 0 forever), so only
         // 2 and 3 are exposed/announced — "only engine 2 and 3 deploy" is correct.
@@ -2549,7 +2553,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         d["Thrust Levers"] = new List<string>
         {
             "A32NX_AUTOTHRUST_TLA:1", "A32NX_AUTOTHRUST_TLA:2",
-            "A32NX_AUTOTHRUST_TLA:3", "A32NX_AUTOTHRUST_TLA:4"
+            "A32NX_AUTOTHRUST_TLA:3", "A32NX_AUTOTHRUST_TLA:4",
+            "A32NX_AUTOTHRUST_THRUST_LIMIT"   // EWD green N1-limit % for the current mode
         };
 
         // Flaps handle is a settable, auto-announced combo in the panel; the speed-brake
@@ -3886,6 +3891,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         if (varKey == "PFD_ILS_FREQ") { displayText = value < 100 ? "none" : $"{value:0.000} MHz"; return true; }
         // ILS/LS course — -1 (or any negative) means no course is set.
         if (varKey == "A32NX_FM_LS_COURSE") { displayText = value < 0 ? "no course set" : $"{value:000} degrees"; return true; }
+        // EWD thrust limit — the max-N1 % for the current thrust-rating mode.
+        if (varKey == "A32NX_AUTOTHRUST_THRUST_LIMIT") { displayText = $"{value:0} percent N1"; return true; }
         switch (varKey)
         {
             // ECAM Control Panel "Status display" box: show the SELECTED SD page name
