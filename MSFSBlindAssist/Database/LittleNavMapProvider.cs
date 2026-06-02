@@ -302,8 +302,8 @@ public class LittleNavMapProvider : IAirportDataProvider
             Ident = reader["ident"]?.ToString() ?? "",
             Frequency = Convert.ToDouble(reader["frequency"] ?? 0.0) / 1000.0, // Convert kHz to MHz
             Range = Convert.ToInt32(reader["range"] ?? 0),
-            GlideslopeRange = Convert.ToInt32(reader["gs_range"] ?? 0),
-            GlideslopePitch = Convert.ToDouble(reader["gs_pitch"] ?? 3.0),
+            GlideslopeRange = SafeReadInt(reader, "gs_range", 0),  // NULL on LOC-only rows
+            GlideslopePitch = SafeReadDouble(reader, "gs_pitch", 3.0),  // NULL on LOC-only rows
             LocalizerHeading = Convert.ToDouble(reader["loc_heading"] ?? 0.0),
             LocalizerWidth = Convert.ToDouble(reader["loc_width"] ?? 0.0),
             AntennaLatitude = Convert.ToDouble(reader["laty"] ?? 0.0),
@@ -632,12 +632,14 @@ public class LittleNavMapProvider : IAirportDataProvider
         // Get ILS frequency if ILS exists
         double ilsFreq = 0.0;
         double ilsHeading = 0.0;
+        double ilsGsPitch = 0.0;  // Published glideslope angle (deg); 0 = unknown, caller falls back to 3°
 
         if (!string.IsNullOrEmpty(ilsIdent))
         {
             var ilsData = GetILSData(connection, ilsIdent, icao);
-            ilsFreq = ilsData.Item1;
-            ilsHeading = ilsData.Item2;
+            ilsFreq = ilsData.freq;
+            ilsHeading = ilsData.heading;
+            ilsGsPitch = ilsData.gsPitch;
         }
         else
         {
@@ -655,6 +657,7 @@ public class LittleNavMapProvider : IAirportDataProvider
             {
                 ilsFreq = fallback.Frequency;
                 ilsHeading = fallback.LocalizerHeading;
+                ilsGsPitch = fallback.GlideslopePitch;
                 ilsIdent = fallback.Ident;
             }
         }
@@ -681,6 +684,8 @@ public class LittleNavMapProvider : IAirportDataProvider
             ILSFreq = ilsFreq,
             ILSHeading = ilsHeading,
             ThresholdOffset = thresholdOffset,
+            ThresholdElevation = altitude,
+            GlideslopeAngleDeg = ilsGsPitch,
             IsClosed = isClosed,
             IsLanding = isLanding,
             IsTakeoff = isTakeoff
@@ -711,15 +716,59 @@ public class LittleNavMapProvider : IAirportDataProvider
         }
     }
 
-    private (double, double) GetILSData(SqliteConnection connection, string ilsIdent, string? icao = null)
+    /// <summary>
+    /// Safely reads a floating-point column that may be missing or NULL. Mirrors
+    /// <see cref="SafeReadBool"/>. Critically, the bare <c>Convert.ToDouble(reader["col"] ?? def)</c>
+    /// pattern does NOT guard DBNull — a SQL NULL surfaces as <c>DBNull.Value</c> (not <c>null</c>),
+    /// the <c>??</c> doesn't catch it, and <c>Convert.ToDouble(DBNull.Value)</c> throws. This
+    /// matters for nullable columns like <c>ils.gs_pitch</c>, which is NULL on localizer-only
+    /// (no glideslope) approaches — feeding that through the unsafe pattern crashes ILS lookup.
+    /// </summary>
+    private static double SafeReadDouble(SqliteDataReader reader, string columnName, double defaultValue)
+    {
+        try
+        {
+            int ord = reader.GetOrdinal(columnName);
+            if (reader.IsDBNull(ord)) return defaultValue;
+            return Convert.ToDouble(reader.GetValue(ord));
+        }
+        catch
+        {
+            return defaultValue;
+        }
+    }
+
+    /// <summary>
+    /// Safely reads an integer column that may be missing or NULL. Integer twin of
+    /// <see cref="SafeReadDouble"/> — same DBNull caveat: <c>Convert.ToInt32(DBNull.Value)</c>
+    /// throws, so the bare <c>?? 0</c> pattern is unsafe for nullable columns like
+    /// <c>ils.gs_range</c> (NULL on localizer-only approaches).
+    /// </summary>
+    private static int SafeReadInt(SqliteDataReader reader, string columnName, int defaultValue)
+    {
+        try
+        {
+            int ord = reader.GetOrdinal(columnName);
+            if (reader.IsDBNull(ord)) return defaultValue;
+            return Convert.ToInt32(reader.GetValue(ord));
+        }
+        catch
+        {
+            return defaultValue;
+        }
+    }
+
+    private (double freq, double heading, double gsPitch) GetILSData(SqliteConnection connection, string ilsIdent, string? icao = null)
     {
         // Airport-scoped lookup first: multiple airports can share the same ILS ident
         // (e.g. 'IDE' exists at EIDW, OTHH, and ZUUU). Without the airport filter,
         // LIMIT 1 returns whichever row has the lowest row-id — typically a different
         // airport — giving the wrong heading and frequency for the actual runway.
+        // gs_pitch is the published glideslope angle (degrees) — usually 3.0, but not
+        // always (LCY 5.5°, Aspen 6.59°). Defaults to 0.0 when missing → caller falls back.
         if (!string.IsNullOrEmpty(icao))
         {
-            var scopedSql = "SELECT frequency, loc_heading FROM ils WHERE ident = @Ident AND loc_airport_ident = @ICAO LIMIT 1";
+            var scopedSql = "SELECT frequency, loc_heading, gs_pitch FROM ils WHERE ident = @Ident AND loc_airport_ident = @ICAO LIMIT 1";
             using (var cmd = new SqliteCommand(scopedSql, connection))
             {
                 cmd.Parameters.AddWithValue("@Ident", ilsIdent);
@@ -730,14 +779,15 @@ public class LittleNavMapProvider : IAirportDataProvider
                     {
                         double freq = Convert.ToDouble(rdr["frequency"] ?? 0.0) / 1000.0;
                         double heading = Convert.ToDouble(rdr["loc_heading"] ?? 0.0);
-                        return (freq, heading);
+                        double gsPitch = SafeReadDouble(rdr, "gs_pitch", 0.0);  // NULL on LOC-only rows
+                        return (freq, heading, gsPitch);
                     }
                 }
             }
         }
 
         // Fallback: no airport match (e.g. loc_airport_ident unpopulated in this DB build).
-        var sql = "SELECT frequency, loc_heading FROM ils WHERE ident = @Ident LIMIT 1";
+        var sql = "SELECT frequency, loc_heading, gs_pitch FROM ils WHERE ident = @Ident LIMIT 1";
         using (var command = new SqliteCommand(sql, connection))
         {
             command.Parameters.AddWithValue("@Ident", ilsIdent);
@@ -747,12 +797,13 @@ public class LittleNavMapProvider : IAirportDataProvider
                 {
                     double freq = Convert.ToDouble(reader["frequency"] ?? 0.0) / 1000.0;
                     double heading = Convert.ToDouble(reader["loc_heading"] ?? 0.0);
-                    return (freq, heading);
+                    double gsPitch = SafeReadDouble(reader, "gs_pitch", 0.0);  // NULL on LOC-only rows
+                    return (freq, heading, gsPitch);
                 }
             }
         }
 
-        return (0.0, 0.0);
+        return (0.0, 0.0, 0.0);
     }
 
     private int MapSurfaceType(string? littleNavMapSurface)

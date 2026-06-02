@@ -98,6 +98,8 @@ public class TaxiAssistForm : Form
     private Dictionary<string, double> _destinationHeadingMap = new();
     private Dictionary<string, double> _destinationHeadingTrueMap = new();
     private Dictionary<string, (double lat, double lon)> _destinationThresholdMap = new();
+    // Cross-runway mode: maps display name → Runway, used to compute the far-side node at Calculate time
+    private Dictionary<string, Runway> _crossRunwayMap = new();
 
     public TaxiAssistForm(
         IAirportDataProvider dataProvider,
@@ -218,9 +220,9 @@ public class TaxiAssistForm : Form
             Width = controlWidth,
             DropDownStyle = ComboBoxStyle.DropDownList,
             AccessibleName = "Destination type",
-            AccessibleDescription = "Select whether to taxi to a runway or a gate/parking position"
+            AccessibleDescription = "Select whether to taxi to a runway, a gate/parking position, or to cross a runway"
         };
-        cmbDestType.Items.AddRange(new object[] { "Runway", "Gate / Parking" });
+        cmbDestType.Items.AddRange(new object[] { "Runway", "Gate / Parking", "Cross Runway" });
         cmbDestType.SelectedIndex = 0;
         cmbDestType.SelectedIndexChanged += OnDestTypeChanged;
         y += 30;
@@ -244,7 +246,7 @@ public class TaxiAssistForm : Form
             AccessibleName = "Show only fitting parking spots",
             AccessibleDescription = "When checked, only shows parking spots large enough for your aircraft"
         };
-        chkFitFilter.CheckedChanged += (s, e) => { if (cmbDestType.SelectedIndex != 0) PopulateDestinations(); };
+        chkFitFilter.CheckedChanged += (s, e) => { if (cmbDestType.SelectedIndex == 1) PopulateDestinations(); };
         y += 20;
         cmbDestination = new ComboBox
         {
@@ -585,6 +587,7 @@ public class TaxiAssistForm : Form
         _destinationHeadingMap.Clear();
         _destinationHeadingTrueMap.Clear();
         _destinationThresholdMap.Clear();
+        _crossRunwayMap.Clear();
 
         if (_graph == null) return;
 
@@ -736,6 +739,26 @@ public class TaxiAssistForm : Form
             }
         }
 
+        if (cmbDestType.SelectedIndex == 2)
+        {
+            // Cross Runway: list all non-closed runways. No pre-computed destination node —
+            // FindFarSideRunwayNode() resolves it at Calculate time using the aircraft's
+            // actual position so we can determine which side of the runway it's on.
+            // GetRunways returns BOTH ends as separate entries (e.g. "10R" and "28L" for
+            // the same pavement). That is intentional here: crossing direction is
+            // irrelevant, and listing both ends lets the pilot pick whichever designator
+            // ATC actually said without converting to the reciprocal.
+            foreach (var rwy in _dataProvider.GetRunways(_currentIcao).Where(r => !r.IsClosed))
+            {
+                string label = $"Runway {rwy.RunwayID}";
+                if (!_crossRunwayMap.ContainsKey(label))
+                {
+                    _crossRunwayMap[label] = rwy;
+                    cmbDestination.Items.Add(label);
+                }
+            }
+        }
+
         if (cmbDestination.Items.Count > 0)
             cmbDestination.SelectedIndex = 0;
     }
@@ -773,7 +796,7 @@ public class TaxiAssistForm : Form
 
     private void OnDestTypeChanged(object? sender, EventArgs e)
     {
-        chkFitFilter.Visible = cmbDestType.SelectedIndex != 0 && _aircraftWingspan > 0;
+        chkFitFilter.Visible = cmbDestType.SelectedIndex == 1 && _aircraftWingspan > 0;
         PopulateDestinations();
     }
 
@@ -1258,6 +1281,58 @@ public class TaxiAssistForm : Form
             _aircraftHeading = pos.HeadingMagnetic;
         }
 
+        // Cross Runway: compute destination node dynamically from aircraft position.
+        if (cmbDestType.SelectedIndex == 2)
+        {
+            string? crossRwyName = cmbDestination.SelectedItem?.ToString();
+            if (string.IsNullOrEmpty(crossRwyName) || !_crossRunwayMap.TryGetValue(crossRwyName, out var crossRwy))
+            {
+                _announcer.Announce("Please select a runway to cross.");
+                return;
+            }
+
+            var farNode = FindFarSideRunwayNode(crossRwy);
+            if (farNode == null)
+            {
+                string msg = $"Could not find a taxiway on the far side of runway {crossRwy.RunwayID}.";
+                _announcer.Announce(msg);
+                lblStatus.Text = msg;
+                return;
+            }
+
+            var crossTaxiSeq = GetSelectedTaxiwayNames();
+            var crossHoldShorts = GetUserHoldShortIndices();
+            var crossRwyHoldShorts = GetUserRunwayHoldShorts();
+            var crossSettings = SettingsManager.Current;
+            string routeDestName = $"cross runway {crossRwy.RunwayID}";
+
+            string? crossError = _guidanceManager.LoadRoute(
+                _dataProvider, _currentIcao,
+                _aircraftLat, _aircraftLon, _aircraftHeading,
+                farNode.NodeId, routeDestName,
+                crossTaxiSeq.Count > 0 ? crossTaxiSeq : null,
+                crossHoldShorts,
+                destinationHeading: null,
+                destinationThresholdLat: null, destinationThresholdLon: null,
+                destinationHeadingTrue: null,
+                isRunwayDestination: false,
+                prebuiltGraph: _graph,
+                userRunwayHoldShorts: crossRwyHoldShorts.Count > 0 ? crossRwyHoldShorts : null);
+
+            if (crossError != null)
+            {
+                _announcer.Announce(crossError);
+                lblStatus.Text = crossError;
+                txtRouteSummary.Text = crossError;
+                return;
+            }
+
+            txtRouteSummary.Text = _guidanceManager.LastRouteSummary;
+            lblStatus.Text = "Route loaded. Guidance active.";
+            _guidanceManager.StartGuidance(crossSettings);
+            return;
+        }
+
         // Get destination
         string? destName = cmbDestination.SelectedItem?.ToString();
         if (string.IsNullOrEmpty(destName) || !_destinationNodeMap.TryGetValue(destName, out int destNodeId))
@@ -1349,6 +1424,121 @@ public class TaxiAssistForm : Form
         // StartGuidance, which announces the (long) route summary. A queued
         // gate warning would be drowned out behind it.
         _announcer.AnnounceImmediate($"Warning: {who} is at the destination gate.");
+    }
+
+    /// <summary>
+    /// Finds the nearest graph node on the opposite side of <paramref name="runway"/>
+    /// from the aircraft's current position. Used by the "Cross Runway" destination
+    /// type to produce a routing target that forces A* across the runway; the
+    /// InsertRunwayCrossingHoldShorts pass then auto-tags the hold-short point.
+    ///
+    /// If the aircraft is ON the runway (within half-width of the centerline), the
+    /// aircraft's heading is used to determine the intended exit side.
+    /// </summary>
+    private TaxiNode? FindFarSideRunwayNode(Runway runway)
+    {
+        if (_graph == null) return null;
+
+        double hdgRad = runway.Heading * Math.PI / 180.0;
+        // Runway unit vector in east-north space: (sin h, cos h)
+        double rwEast = Math.Sin(hdgRad);
+        double rwNorth = Math.Cos(hdgRad);
+
+        // Flat-earth scale factors at the aircraft latitude
+        const double DEG_TO_M_LAT = 111320.0;
+        double degToMLon = DEG_TO_M_LAT * Math.Cos(_aircraftLat * Math.PI / 180.0);
+
+        // Signed cross-track of a point P from the runway centerline:
+        //   positive = LEFT side looking down the runway heading
+        //   negative = RIGHT side
+        // Formula: rwEast * (P.lat - T.lat)_in_m  −  rwNorth * (P.lon - T.lon)_in_m
+        double AircraftSignedCT()
+        {
+            double pDy = (_aircraftLat - runway.StartLat) * DEG_TO_M_LAT;
+            double pDx = (_aircraftLon - runway.StartLon) * degToMLon;
+            return rwEast * pDy - rwNorth * pDx;
+        }
+
+        double NodeSignedCT(TaxiNode n)
+        {
+            double pDy = (n.Latitude - runway.StartLat) * DEG_TO_M_LAT;
+            double pDx = (n.Longitude - runway.StartLon) * degToMLon;
+            return rwEast * pDy - rwNorth * pDx;
+        }
+
+        double halfWidthM = runway.Width > 0 ? runway.Width / 2.0 : 30.0;
+        double minLateralM = Math.Max(halfWidthM, 15.0);
+
+        double acSignedCT = AircraftSignedCT();
+
+        // Determine which side to target
+        int targetSign;
+        if (Math.Abs(acSignedCT) >= minLateralM)
+        {
+            // Aircraft is off the runway: far side has opposite sign
+            targetSign = -Math.Sign(acSignedCT);
+        }
+        else
+        {
+            // Aircraft is on the runway: use heading to determine intended exit side.
+            // Perpendicular component of aircraft heading relative to runway heading:
+            // sin(runwayHdg - aircraftHdg) > 0 → aircraft heading toward left side.
+            // Use HeadingMag (not the TRUE Heading used for the geographic
+            // cross-track above) so both operands are in the magnetic frame that
+            // _aircraftHeading (PLANE HEADING DEGREES MAGNETIC) lives in.
+            double perpComp = Math.Sin((runway.HeadingMag - _aircraftHeading) * Math.PI / 180.0);
+            targetSign = perpComp >= 0 ? 1 : -1;
+        }
+
+        // Search geometry bounds
+        const double MAX_LATERAL_M = 600.0;      // max lateral distance from runway centerline
+        const double MAX_ALONG_PAST_END_M = 500.0; // buffer past each runway end
+
+        // Along-track extent of the runway (threshold → far end)
+        double runwayLengthM = runway.Length > 0
+            ? runway.Length * 0.3048  // stored in feet
+            : TaxiGraph.CalculateDistanceMeters(
+                runway.StartLat, runway.StartLon, runway.EndLat, runway.EndLon);
+
+        // Restrict candidates to the aircraft's own connected component so the
+        // chosen far node is actually reachable. Without this, the nearest
+        // far-side node can land in an isolated navdata island (e.g. GCLP S5)
+        // and LoadRoute then fails with the generic "Could not calculate a
+        // route." When the far side is a genuinely separate component this
+        // leaves bestNode null, so the caller surfaces the specific
+        // "far side of runway X" message instead — a better diagnostic.
+        int? aircraftComponentId = _graph.FindNearestNode(_aircraftLat, _aircraftLon)?.ComponentId;
+
+        TaxiNode? bestNode = null;
+        double bestDist = double.MaxValue;
+
+        foreach (var node in _graph.Nodes.Values)
+        {
+            if (aircraftComponentId.HasValue && node.ComponentId != aircraftComponentId.Value) continue;
+
+            double nodeSignedCT = NodeSignedCT(node);
+
+            if (Math.Sign(nodeSignedCT) != targetSign) continue;
+            if (Math.Abs(nodeSignedCT) < minLateralM) continue;
+            if (Math.Abs(nodeSignedCT) > MAX_LATERAL_M) continue;
+
+            // Along-track: must be within the runway's length + buffer
+            double nPDx = (node.Longitude - runway.StartLon) * degToMLon;
+            double nPDy = (node.Latitude - runway.StartLat) * DEG_TO_M_LAT;
+            double along = rwEast * nPDx + rwNorth * nPDy;
+            if (along < -MAX_ALONG_PAST_END_M) continue;
+            if (along > runwayLengthM + MAX_ALONG_PAST_END_M) continue;
+
+            double dist = TaxiGraph.CalculateDistanceMeters(
+                _aircraftLat, _aircraftLon, node.Latitude, node.Longitude);
+            if (dist < bestDist)
+            {
+                bestDist = dist;
+                bestNode = node;
+            }
+        }
+
+        return bestNode;
     }
 
     private void OnStopClicked(object? sender, EventArgs e)

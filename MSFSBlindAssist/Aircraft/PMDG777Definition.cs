@@ -45,6 +45,36 @@ public class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
     public override FCUControlType GetSpeedControlType() => FCUControlType.SetValue;
     public override FCUControlType GetVerticalSpeedControlType() => FCUControlType.SetValue;
 
+    // Heavy widebody — lower approach AoA, slightly higher Vref, slower pitch authority than
+    // A320. All values measured against the PMDG 777's coupled ILS autoland:
+    // - GlideslopeAltitudeBiasFt = 80: a correctly-flown glideslope reads near-zero on VG (the
+    //   first uncorrected run measured ~80 ft high; corrected residual is ±10 ft, acceptable).
+    // - FlareAltitudeBiasFt = 40: in flare attitude the SimConnect datum sits ~40 ft above the
+    //   wheels. Each in-sim test bumped the value by 10 ft to chase the actual fire-point:
+    //   run 1 (bias=0, trigger=30) → fired at RA 10. run 2 (bias=20, trigger=30) → fired at
+    //   RA 20. run 3 (bias=30, trigger=40) → fired at RA 30. The pattern is linear: each +10
+    //   of bias moves the fire-point up by +10. Real offset = 40, locking the cue at RA 40.
+    // - FlareTriggerWheelHeightFt = 40: the PMDG 777 autoland begins its flare at ~40 ft RA;
+    //   timing VG's cue to match lets a hand-flying pilot mirror the autoland.
+    // - FlareTargetPitchDeg = 4.5: Boeing FCTM specifies a 2–3° pitch increase from approach
+    //   attitude during flare. Approach pitch on the 777 is ~+1.5°, so flare ≈ +4–4.5°. The
+    //   shared default of 6° was tuned for Airbus and overshoots the 777 by ~1.5°.
+    // - TonePitchRangeDeg = 10: the default 6° gave 50 Hz/° of beat (too dissonant at the
+    //   ±0.1° pitch errors a stabilized approach produces). 10° = 30 Hz/° — gentler at small
+    //   errors, still clearly audible when off.
+    public override VisualGuidanceProfile GetVisualGuidanceProfile() => new()
+    {
+        TypicalApproachAoaDeg     = 4.5,
+        ReferenceVrefKnots        = 145.0,
+        MaxPitchRateDegPerSec     = 2.0,
+        MaxBankRateDegPerSec      = 3.0,
+        GlideslopeAltitudeBiasFt  = 80.0,
+        FlareAltitudeBiasFt       = 40.0,
+        FlareTriggerWheelHeightFt = 40.0,
+        FlareTargetPitchDeg       = 4.5,
+        TonePitchRangeDeg         = 10.0
+    };
+
     // =========================================================================
     // Panel Structure
     // =========================================================================

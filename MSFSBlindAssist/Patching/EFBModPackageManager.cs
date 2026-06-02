@@ -13,7 +13,8 @@ namespace MSFSBlindAssist.Patching
         BridgeJsSourceNotFound,
         PmdgPackageNotFound,
         InstallFailed,
-        Removed
+        Removed,
+        HS787PackageNotFound
     }
 
     public static class EFBModPackageManager
@@ -25,7 +26,8 @@ namespace MSFSBlindAssist.Patching
         // also fires when a variant installed in the sim is missing its override folder
         // (see HasMissingVariantOverride), so a variant the user installs later is picked
         // up without forcing a no-op re-patch on installs that are already complete.
-        private const int BridgeVersion = 6;
+        // v7: bridge JS gained the click_by_id fallbackText text-search path (PR #63).
+        private const int BridgeVersion = 7;
         private const string VersionFileName = "bridge-version.txt";
 
         private const string PackageFolderName = "zzz-pmdg-efb-accessibility";
@@ -163,6 +165,16 @@ namespace MSFSBlindAssist.Patching
                 }
             }
 
+            // Steam FS2024 default: %AppData%\Microsoft Flight Simulator 2024\Packages\Community
+            if (!results.Any(r => r.Item1 == "MSFS 2024"))
+            {
+                string steamFs2024 = System.IO.Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                    "Microsoft Flight Simulator 2024", "Packages", "Community");
+                if (Directory.Exists(steamFs2024))
+                    results.Add(("MSFS 2024", steamFs2024));
+            }
+
             if (!results.Any(r => r.Item1 == "MSFS 2020"))
             {
                 foreach (string path in DefaultMSStoreCommunityPaths)
@@ -235,6 +247,13 @@ namespace MSFSBlindAssist.Patching
                 if (Directory.Exists(path))
                     return path;
             }
+
+            // Steam FS2024 default
+            string steamDefault = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "Microsoft Flight Simulator 2024", "Packages", "Community");
+            if (Directory.Exists(steamDefault))
+                return steamDefault;
 
             // Fallback: common manual install paths
             foreach (string path in FallbackCommunityPaths)
@@ -518,6 +537,52 @@ namespace MSFSBlindAssist.Patching
             catch { }
 
             return null;
+        }
+
+        /// <summary>
+        /// Returns true if the given community folder path belongs to an FS2024 installation.
+        /// Three-tier check: UserCfg.opt content → MS Store path substring → Steam path substring.
+        /// </summary>
+        internal static bool IsPathFromFs2024(string communityFolderPath)
+        {
+            // Primary: check both FS2024 UserCfg.opt locations (covers custom/external paths for
+            // both Steam and MS Store once the sim has been run at least once).
+            string[] fs2024ConfigPaths =
+            {
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                    "Microsoft Flight Simulator 2024", "UserCfg.opt"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "Packages", "Microsoft.Limitless_8wekyb3d8bbwe", "LocalCache", "UserCfg.opt"),
+            };
+
+            foreach (string configPath in fs2024ConfigPaths)
+            {
+                string? basePath = TryParseInstalledPackagesPath(configPath);
+                if (basePath == null) continue;
+
+                string communityFromConfig = Path.Combine(basePath, "Community");
+                try
+                {
+                    if (string.Equals(
+                        Path.GetFullPath(communityFolderPath),
+                        Path.GetFullPath(communityFromConfig),
+                        StringComparison.OrdinalIgnoreCase))
+                        return true;
+                }
+                catch (ArgumentException) { } // invalid path — skip
+            }
+
+            // Fallback 1: MS Store default path contains "Limitless" in the package store name.
+            if (communityFolderPath.Contains("Limitless", StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            // Fallback 2: Steam default path contains "Microsoft Flight Simulator 2024".
+            // FS2020 Steam is "Microsoft Flight Simulator" (no year) — no false-match risk.
+            if (communityFolderPath.Contains("Microsoft Flight Simulator 2024",
+                StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            return false;
         }
     }
 }
