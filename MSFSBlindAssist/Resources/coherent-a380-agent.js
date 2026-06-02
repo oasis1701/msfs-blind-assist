@@ -177,6 +177,18 @@
     return A.normEmptyBoxes(inner ? clean(inner.textContent) : "");
   };
 
+  // An InputField may carry its OWN trailing unit span (.mfd-input-field-unit) —
+  // e.g. the PERF T.O FLEX TEMP field's "°C". Used to label an otherwise anonymous
+  // field that has no naming label in its cell. Returns "°C"/"KT"/… or "".
+  A.inputOwnUnit = function (node) {
+    var us = node.querySelectorAll(".mfd-input-field-unit.mfd-unit-trailing");
+    for (var i = 0; i < us.length; i++) {
+      var t = clean(us[i].textContent);
+      if (t) return t;
+    }
+    return "";
+  };
+
   // The A380 MFD fills an empty entry field with U+25AF boxes (one per character
   // slot). A screen reader would read each as "white vertical rectangle". Render
   // a field that's ONLY boxes + template punctuation as "blank" (these are
@@ -341,6 +353,12 @@
   // takes its nearest left-hand label.
   A.associateInputLabels = function (items) {
     var GAP = 28; // px tolerance between a label's right edge and its field's left edge
+    // A naming label sits in the SAME cell as its field, just to its left — never
+    // hundreds of px away in a different column. Without this cap, a right-column
+    // field grabs a left-column label that happens to share its row: e.g. the PERF
+    // T.O FLEX TEMP input (a °C field, left ~629) was grabbing the V-speed column's
+    // "S" slat-speed label (right ~130, ~500px away) and reading as a knots speed.
+    var MAX_LEFT = 220; // px the label's right edge may sit left of the field's left edge
     for (var i = 0; i < items.length; i++) {
       var inp = items[i];
       if (inp.kind !== "input") continue;
@@ -354,6 +372,8 @@
         if (!(lb.top < inp.bot && lb.bot > inp.top)) continue;
         // label must be to the left of the field, within tolerance
         if (lb.right > inp.left + GAP) continue;
+        // ...but not so far left that it belongs to another column.
+        if (inp.left - lb.right > MAX_LEFT) continue;
         if (lb.right > bestRight) { bestRight = lb.right; best = lb; }
       }
       // No label to the left? Try a column HEADER directly ABOVE the field (same
@@ -383,6 +403,11 @@
         var lbl = clean(best.text).replace(/\s*:\s*$/, "");
         inp.text = lbl + ": " + (val || "blank") + (inp.isChoice ? " (combobox)" : "");
         best.consumed = true;
+      } else if (inp.ownUnit) {
+        // No naming label in this cell, but the field carries its own unit (the PERF
+        // T.O FLEX TEMP °C field): show value + unit so it isn't an anonymous "---".
+        var v2 = inp.value || inp.text || "";
+        inp.text = (v2 || "blank") + " " + inp.ownUnit + (inp.isChoice ? " (combobox)" : "");
       }
     }
   };
@@ -658,6 +683,7 @@
         right: r.right - pageRect.left, bot: r.bottom - pageRect.top,
         idx: idx, kind: kind, text: label,
         value: kind === "input" ? A.readInputValue(n) : "",
+        ownUnit: kind === "input" ? A.inputOwnUnit(n) : "",
         isChoice: isChoice,
         disabled: n.classList.contains("disabled"),
         expanded: isCombo ? A.comboExpanded(n) : null,
