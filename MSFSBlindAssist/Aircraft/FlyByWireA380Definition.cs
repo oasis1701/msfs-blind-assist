@@ -1962,7 +1962,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             ["Pedestal"] = new List<string>
             {
                 "Engines", "Thrust Levers", "Flaps and Brakes", "Speed Brake", "ECAM Control Panel", "Weather Radar",
-                "Transponder", "Radios", "RMP", "Audio Control Panel Captain", "Audio Control Panel First Officer", "Cockpit Door"
+                "Transponder", "Radios", "RMP", "Audio Control Panel Captain", "Audio Control Panel First Officer",
+                "Cockpit Door", "Windows"
             },
             ["Ground Services"] = new List<string> { "Doors", "Ground Equipment" },
             ["Displays"] = new List<string> { "PFD", "ND", "Status", "Speeds", "Minimums", "Ground" }
