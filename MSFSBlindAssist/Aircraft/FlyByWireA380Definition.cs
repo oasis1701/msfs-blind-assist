@@ -1865,11 +1865,26 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 ValueDescriptions = openShut
             };
         }
+        // All 16 passenger doors. interactive-point index = exit id − 1 (source: FBW
+        // door_animations.xml TOGGLE_IDs 1-16 + flight_model.cfg [INTERACTIVE POINTS]
+        // positions confirming L/R + deck). Cargo (ip16/17) are NOT TOGGLE_AIRCRAFT_EXIT
+        // exits (hydraulic-driven) — their state stays read-only in the SD DOORS page.
         Door("A380X_GND_DOOR_MAIN1L", 0, 1, "Main 1 Left Door");
+        Door("A380X_GND_DOOR_MAIN1R", 1, 2, "Main 1 Right Door");
         Door("A380X_GND_DOOR_MAIN2L", 2, 3, "Main 2 Left Door");
-        Door("A380X_GND_DOOR_MAIN4R", 9, 10, "Main 4 Right Door");
+        Door("A380X_GND_DOOR_MAIN2R", 3, 4, "Main 2 Right Door");
+        Door("A380X_GND_DOOR_MAIN3L", 4, 5, "Main 3 Left Door");
+        Door("A380X_GND_DOOR_MAIN3R", 5, 6, "Main 3 Right Door");
+        Door("A380X_GND_DOOR_MAIN4L", 6, 7, "Main 4 Left Door");
+        Door("A380X_GND_DOOR_MAIN4R", 7, 8, "Main 4 Right Door");
+        Door("A380X_GND_DOOR_MAIN5L", 8, 9, "Main 5 Left Door");
+        Door("A380X_GND_DOOR_MAIN5R", 9, 10, "Main 5 Right Door");
         Door("A380X_GND_DOOR_UPPER1L", 10, 11, "Upper 1 Left Door");
-        Door("A380X_GND_DOOR_FWDCARGO", 16, 17, "Forward Cargo Door");
+        Door("A380X_GND_DOOR_UPPER1R", 11, 12, "Upper 1 Right Door");
+        Door("A380X_GND_DOOR_UPPER2L", 12, 13, "Upper 2 Left Door");
+        Door("A380X_GND_DOOR_UPPER2R", 13, 14, "Upper 2 Right Door");
+        Door("A380X_GND_DOOR_UPPER3L", 14, 15, "Upper 3 Left Door");
+        Door("A380X_GND_DOOR_UPPER3R", 15, 16, "Upper 3 Right Door");
 
         // Jet bridge + passenger stairs (stock MSFS ground-service events;
         // airport/parking dependent). Catering, fuel-truck, baggage and pushback
@@ -2260,8 +2275,14 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // ---- Ground Services (flyPad Ground page) ----
         p["Doors"] = new List<string>
         {
-            "A380X_GND_DOOR_MAIN1L", "A380X_GND_DOOR_MAIN2L", "A380X_GND_DOOR_MAIN4R",
-            "A380X_GND_DOOR_UPPER1L", "A380X_GND_DOOR_FWDCARGO"
+            "A380X_GND_DOOR_MAIN1L", "A380X_GND_DOOR_MAIN1R",
+            "A380X_GND_DOOR_MAIN2L", "A380X_GND_DOOR_MAIN2R",
+            "A380X_GND_DOOR_MAIN3L", "A380X_GND_DOOR_MAIN3R",
+            "A380X_GND_DOOR_MAIN4L", "A380X_GND_DOOR_MAIN4R",
+            "A380X_GND_DOOR_MAIN5L", "A380X_GND_DOOR_MAIN5R",
+            "A380X_GND_DOOR_UPPER1L", "A380X_GND_DOOR_UPPER1R",
+            "A380X_GND_DOOR_UPPER2L", "A380X_GND_DOOR_UPPER2R",
+            "A380X_GND_DOOR_UPPER3L", "A380X_GND_DOOR_UPPER3R"
         };
         p["Ground Equipment"] = new List<string>
         {
@@ -3763,20 +3784,41 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     private static readonly Dictionary<string, string> _doorNames = new()
     {
         ["A380X_GND_DOOR_MAIN1L"] = "Main 1 Left Door",
+        ["A380X_GND_DOOR_MAIN1R"] = "Main 1 Right Door",
         ["A380X_GND_DOOR_MAIN2L"] = "Main 2 Left Door",
+        ["A380X_GND_DOOR_MAIN2R"] = "Main 2 Right Door",
+        ["A380X_GND_DOOR_MAIN3L"] = "Main 3 Left Door",
+        ["A380X_GND_DOOR_MAIN3R"] = "Main 3 Right Door",
+        ["A380X_GND_DOOR_MAIN4L"] = "Main 4 Left Door",
         ["A380X_GND_DOOR_MAIN4R"] = "Main 4 Right Door",
+        ["A380X_GND_DOOR_MAIN5L"] = "Main 5 Left Door",
+        ["A380X_GND_DOOR_MAIN5R"] = "Main 5 Right Door",
         ["A380X_GND_DOOR_UPPER1L"] = "Upper 1 Left Door",
-        ["A380X_GND_DOOR_FWDCARGO"] = "Forward Cargo Door",
+        ["A380X_GND_DOOR_UPPER1R"] = "Upper 1 Right Door",
+        ["A380X_GND_DOOR_UPPER2L"] = "Upper 2 Left Door",
+        ["A380X_GND_DOOR_UPPER2R"] = "Upper 2 Right Door",
+        ["A380X_GND_DOOR_UPPER3L"] = "Upper 3 Left Door",
+        ["A380X_GND_DOOR_UPPER3R"] = "Upper 3 Right Door",
     };
-    // Door key -> TOGGLE_AIRCRAFT_EXIT interaction id, so the door COMBO itself
-    // drives the toggle (every control is a combo; no buttons).
+    // Door key -> TOGGLE_AIRCRAFT_EXIT interaction id (= interactive-point index + 1).
     private static readonly Dictionary<string, uint> _doorExitIds = new()
     {
         ["A380X_GND_DOOR_MAIN1L"] = 1,
+        ["A380X_GND_DOOR_MAIN1R"] = 2,
         ["A380X_GND_DOOR_MAIN2L"] = 3,
-        ["A380X_GND_DOOR_MAIN4R"] = 10,
+        ["A380X_GND_DOOR_MAIN2R"] = 4,
+        ["A380X_GND_DOOR_MAIN3L"] = 5,
+        ["A380X_GND_DOOR_MAIN3R"] = 6,
+        ["A380X_GND_DOOR_MAIN4L"] = 7,
+        ["A380X_GND_DOOR_MAIN4R"] = 8,
+        ["A380X_GND_DOOR_MAIN5L"] = 9,
+        ["A380X_GND_DOOR_MAIN5R"] = 10,
         ["A380X_GND_DOOR_UPPER1L"] = 11,
-        ["A380X_GND_DOOR_FWDCARGO"] = 17,
+        ["A380X_GND_DOOR_UPPER1R"] = 12,
+        ["A380X_GND_DOOR_UPPER2L"] = 13,
+        ["A380X_GND_DOOR_UPPER2R"] = 14,
+        ["A380X_GND_DOOR_UPPER3L"] = 15,
+        ["A380X_GND_DOOR_UPPER3R"] = 16,
     };
 
     // Decode/normalise an EFIS baro setting to whole hPa; false for STD/no-data.
