@@ -1121,6 +1121,22 @@
   A.clickElement = function (index) {
     var node = document.querySelector('[data-fbwa380-mcdu-idx="' + index + '"]');
     if (!node) return "missing";
+    // FBW RadioButtonGroup (e.g. PERF T.O TOGA/FLEX/DERATED) listens for the
+    // 'change' event on its inner <input type=radio>, NOT a click on the <label>
+    // (which is the stamped node). A programmatic label.click() in Coherent GT does
+    // NOT fire that 'change', so the selection never moved (DERATED/FLEX looked
+    // identical). Check the radio and dispatch 'change' directly. Verified live.
+    if (node.classList && node.classList.contains("mfd-radio-button")) {
+      var ri = node.querySelector('input[type="radio"]');
+      if (ri) {
+        ri.checked = true;
+        var ev;
+        try { ev = new Event("change", { bubbles: true }); }
+        catch (e2) { ev = document.createEvent("HTMLEvents"); ev.initEvent("change", true, false); }
+        ri.dispatchEvent(ev);
+        return "ok";
+      }
+    }
     // A DropdownMenu-wrapped input opens its option list when the DROPDOWN (not
     // the inert inner field) is clicked — so activating "NOTIFY TO ATC" etc.
     // shows the choices instead of doing nothing.
