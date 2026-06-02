@@ -27,6 +27,9 @@ public sealed class AccessGSXForm : Form
     private TextBox _statusTextBox = null!;
     private TextBox _menuTextBox = null!;
     private TextBox _tooltipTextBox = null!;
+    private ComboBox _activeServicesCombo = null!;
+    private Label _activeServicesLabel = null!;
+    private bool _suppressActiveServicesSelectionEvent;
     private GsxSettingsForm? _settingsForm;
 
     public AccessGSXForm(GsxService gsxService, ScreenReaderAnnouncer announcer)
@@ -117,6 +120,30 @@ public sealed class AccessGSXForm : Form
             AccessibleName = "GSX tooltip"
         };
 
+        // Active-services selector — hidden when GSX has zero or one active
+        // operation (avoids cluttering tab order for the common case), shown
+        // when two or more are running concurrently so the user can pick
+        // which one drives the tooltip + auto-announce.
+        _activeServicesLabel = new Label
+        {
+            Dock = DockStyle.Top,
+            Height = 22,
+            Padding = new Padding(8, 4, 8, 0),
+            Text = "Active &services:",
+            AccessibleName = "Active services label",
+            Visible = false
+        };
+
+        _activeServicesCombo = new ComboBox
+        {
+            Dock = DockStyle.Top,
+            Height = 26,
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            AccessibleName = "Active services",
+            Visible = false
+        };
+        _activeServicesCombo.SelectedIndexChanged += OnActiveServicesComboChanged;
+
         // Layout: status (top), menu list (center, fills), tooltip (bottom panel).
         // Use a TableLayoutPanel for predictable 60/40 split between menu and tooltip.
         var rootLayout = new TableLayoutPanel
@@ -134,8 +161,14 @@ public sealed class AccessGSXForm : Form
         menuPanel.Controls.Add(menuLabel);
 
         var tooltipPanel = new Panel { Dock = DockStyle.Fill };
+        // Stack order (later additions sit higher when docked Top): textbox
+        // fills, then tooltip label, then services combo + label above.
+        // The two services controls start hidden — they take zero space
+        // until ActiveServicesChanged makes them visible.
         tooltipPanel.Controls.Add(_tooltipTextBox);
         tooltipPanel.Controls.Add(tooltipLabel);
+        tooltipPanel.Controls.Add(_activeServicesCombo);
+        tooltipPanel.Controls.Add(_activeServicesLabel);
 
         rootLayout.Controls.Add(menuPanel, 0, 0);
         rootLayout.Controls.Add(tooltipPanel, 0, 1);
@@ -159,6 +192,7 @@ public sealed class AccessGSXForm : Form
         _gsxService.MenuTimedOut += OnMenuTimedOut;
         _gsxService.TooltipChanged += OnTooltipChanged;
         _gsxService.AnnouncementReady += OnAnnouncementReady;
+        _gsxService.ActiveServicesChanged += OnActiveServicesChanged;
         _gsxService.SettingsChanged += OnSettingsChanged;
 
         // Hide-not-close — same pattern as HS787FMCForm. Keeps the service
@@ -366,6 +400,58 @@ public sealed class AccessGSXForm : Form
         UpdateTooltip();
     }
 
+    private void OnActiveServicesChanged(object? sender, EventArgs e)
+    {
+        if (!IsHandleCreated || IsDisposed) return;
+        if (InvokeRequired) { BeginInvoke(new Action(OnActiveServicesChangedUi)); return; }
+        OnActiveServicesChangedUi();
+    }
+
+    private void OnActiveServicesChangedUi()
+    {
+        var names = _gsxService.ActiveServiceNames;
+        // Re-populating the items list fires SelectedIndexChanged; suppress
+        // it so we don't echo a synthetic selection back into GsxService.
+        _suppressActiveServicesSelectionEvent = true;
+        try
+        {
+            _activeServicesCombo.Items.Clear();
+            foreach (var name in names)
+                _activeServicesCombo.Items.Add(name);
+
+            string? selected = _gsxService.SelectedActiveService;
+            if (!string.IsNullOrWhiteSpace(selected))
+            {
+                for (int i = 0; i < _activeServicesCombo.Items.Count; i++)
+                {
+                    if (string.Equals(
+                            _activeServicesCombo.Items[i]?.ToString(),
+                            selected,
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        _activeServicesCombo.SelectedIndex = i;
+                        break;
+                    }
+                }
+            }
+        }
+        finally
+        {
+            _suppressActiveServicesSelectionEvent = false;
+        }
+
+        bool show = names.Count >= 2;
+        _activeServicesCombo.Visible = show;
+        _activeServicesLabel.Visible = show;
+    }
+
+    private void OnActiveServicesComboChanged(object? sender, EventArgs e)
+    {
+        if (_suppressActiveServicesSelectionEvent) return;
+        string? selected = _activeServicesCombo.SelectedItem?.ToString();
+        _gsxService.SelectedActiveService = selected;
+    }
+
     private void OnAnnouncementReady(object? sender, EventArgs e)
     {
         if (!IsHandleCreated || IsDisposed) return;
@@ -468,6 +554,7 @@ public sealed class AccessGSXForm : Form
             _gsxService.MenuTimedOut -= OnMenuTimedOut;
             _gsxService.TooltipChanged -= OnTooltipChanged;
             _gsxService.AnnouncementReady -= OnAnnouncementReady;
+            _gsxService.ActiveServicesChanged -= OnActiveServicesChanged;
             _gsxService.SettingsChanged -= OnSettingsChanged;
             if (_settingsForm is { IsDisposed: false })
                 _settingsForm.Close();

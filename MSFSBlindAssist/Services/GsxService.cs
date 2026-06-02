@@ -132,6 +132,29 @@ public sealed class GsxService : IDisposable
     // tooltip whenever _lastAnnouncedFullText is empty (first announcement
     // of a service / after ClearLastTooltip / after ClearProgressTrackingState).
     public string LastAnnouncementText => _lastAnnouncementText;
+
+    // Ordered list of currently-active GSX service names (e.g. "Refueling",
+    // "Boarding") parsed out of status.html. Updated by RenderStatusHtmlAsText
+    // on every poll tick that produces a different set; ActiveServicesChanged
+    // fires when the list changes.
+    public IReadOnlyList<string> ActiveServiceNames => _activeServiceNames;
+
+    // Currently selected active service for announcement / tooltip text.
+    // When null, the parser picks the first active row (GSX-order default).
+    // Setting it to a service name resets the delta baseline so the user
+    // hears the full text for the newly-focused service on the next tick.
+    public string? SelectedActiveService
+    {
+        get => _selectedActiveService;
+        set
+        {
+            string? normalized = string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+            if (string.Equals(_selectedActiveService, normalized, StringComparison.OrdinalIgnoreCase))
+                return;
+            _selectedActiveService = normalized;
+            _lastAnnouncedFullText = string.Empty;
+        }
+    }
     public string LastSettingsText => _lastSettingsText;
     public IReadOnlyList<GsxSettingItem> SettingsItems => _settingsItems;
 
@@ -156,6 +179,10 @@ public sealed class GsxService : IDisposable
     // service, otherwise just the segments that changed since last
     // announcement).
     public event EventHandler? AnnouncementReady;
+    // Fires when the list of currently-active GSX services changes (a new
+    // service starts, an active service completes, etc). Form binds to this
+    // to show / hide its service-selector combobox.
+    public event EventHandler? ActiveServicesChanged;
     public event EventHandler? SettingsChanged;
 
     // ─────────────────────────────────────────────────────────────────────
@@ -179,6 +206,10 @@ public sealed class GsxService : IDisposable
     // The (possibly trimmed) text passed to the screen reader on the most
     // recent announcement.
     private string _lastAnnouncementText = string.Empty;
+    // Ordered list of active service names from the most recent status.html
+    // parse, plus the user's current selection (null = follow GSX order).
+    private List<string> _activeServiceNames = new();
+    private string? _selectedActiveService;
     private string _lastCompletedStatusServiceText = string.Empty;
     private string _lastSettingsText = string.Empty;
     private string _statusText = "Status: Disconnected";
@@ -650,6 +681,63 @@ public sealed class GsxService : IDisposable
         _lastTimerOnlyStatusAnnouncementUtc = DateTime.MinValue;
         _lastAnnouncedFullText = string.Empty;
         _lastAnnouncementText = string.Empty;
+        if (_activeServiceNames.Count > 0)
+        {
+            _activeServiceNames = new List<string>();
+            _selectedActiveService = null;
+            ActiveServicesChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    private void UpdateActiveServiceRegistry(List<StatusServiceRow> activeRows)
+    {
+        var names = new List<string>(activeRows.Count);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var row in activeRows)
+        {
+            string name = ExtractServiceName(row.Text);
+            if (string.IsNullOrWhiteSpace(name) || name.Length > 80)
+                continue;
+            if (seen.Add(name))
+                names.Add(name);
+        }
+
+        bool changed = names.Count != _activeServiceNames.Count
+            || !names.SequenceEqual(_activeServiceNames, StringComparer.OrdinalIgnoreCase);
+        if (!changed)
+            return;
+
+        _activeServiceNames = names;
+
+        if (!string.IsNullOrWhiteSpace(_selectedActiveService)
+            && !names.Any(n => string.Equals(n, _selectedActiveService, StringComparison.OrdinalIgnoreCase)))
+        {
+            // Selected service is gone (completed, cancelled, etc) — fall back
+            // to default GSX order so the user starts hearing whatever's still
+            // running. Reset the delta baseline so the new focus reads in full.
+            _selectedActiveService = null;
+            _lastAnnouncedFullText = string.Empty;
+        }
+
+        ActiveServicesChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private StatusServiceRow SelectActiveRow(List<StatusServiceRow> activeRows)
+    {
+        if (!string.IsNullOrWhiteSpace(_selectedActiveService))
+        {
+            foreach (var row in activeRows)
+            {
+                if (string.Equals(
+                        ExtractServiceName(row.Text),
+                        _selectedActiveService,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    return row;
+                }
+            }
+        }
+        return activeRows[0];
     }
 
     public void SetSettingNumber(string key, double value)
@@ -2208,11 +2296,26 @@ public sealed class GsxService : IDisposable
                 return groundConnectionTimerText;
         }
 
-        StatusServiceRow? rowToSpeak = shouldSpeakCompletedRow
-            ? latestCompletedRow
-            : activeRows.Count > 0
-                ? activeRows[0]
-                : latestCompletedRow;
+        // Update the active-service registry so the form can show / hide
+        // its selector combobox. Service names come from ExtractServiceName
+        // (matches the existing throttle keys). Done here (after parsing
+        // but before row selection) so SelectedActiveService can drive the
+        // pick below.
+        UpdateActiveServiceRegistry(activeRows);
+
+        StatusServiceRow? rowToSpeak;
+        if (shouldSpeakCompletedRow)
+        {
+            rowToSpeak = latestCompletedRow;
+        }
+        else if (activeRows.Count > 0)
+        {
+            rowToSpeak = SelectActiveRow(activeRows);
+        }
+        else
+        {
+            rowToSpeak = latestCompletedRow;
+        }
         if (rowToSpeak is null)
             return string.Empty;
 
