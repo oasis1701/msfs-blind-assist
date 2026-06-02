@@ -949,6 +949,27 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Idle", [1] = "Activate" }
         },
+        // Metric / imperial WEIGHT units (parity with the A380). The A32NX EFB "US Units"
+        // setting is mirrored continuously to A32NX_EFB_USING_METRIC_UNIT (1=kg, 0=lb);
+        // MSFSBA follows it and speaks gross-weight + total-fuel read-outs in that unit
+        // (the EFB toggle, Shift+T, is the control — no separate MSFSBA toggle). The
+        // gross-weight/fuel readout vars are requested in kilograms; WeightUser converts.
+        ["A32NX_EFB_USING_METRIC_UNIT"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_EFB_USING_METRIC_UNIT", DisplayName = "Weight Units",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Pounds", [1] = "Kilograms" }
+        },
+        ["GROSS_WEIGHT_KG"] = new SimConnect.SimVarDefinition
+        {
+            Name = "TOTAL WEIGHT", DisplayName = "Gross Weight",
+            Type = SimConnect.SimVarType.SimVar, Units = "kilograms", UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
+        },
+        ["FUEL_QUANTITY_KG"] = new SimConnect.SimVarDefinition
+        {
+            Name = "FUEL TOTAL QUANTITY WEIGHT", DisplayName = "Fuel on board",
+            Type = SimConnect.SimVarType.SimVar, Units = "kilograms", UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
+        },
 
         // ---- Wipers panel (parity with A380 Overhead > Wipers) — Captain + F/O wiper
         // selectors. Live-verified settable via the calculator path (held a 0->2 write).
@@ -4891,7 +4912,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
                 if (simConnect.IsConnected) { _reqGear = true; simConnect.RequestVariable("GEAR_HANDLE_POSITION", forceUpdate: true); }
                 return true;
             case HotkeyAction.ReadFuelInfo:
-                RequestFuelQuantityKg(simConnect);
+                if (simConnect.IsConnected) { _reqFuelKg = true; simConnect.RequestVariable("FUEL_QUANTITY_KG", forceUpdate: true); }
                 return true;
 
             case HotkeyAction.ToggleECAMMonitoring:
@@ -4899,7 +4920,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
                 return true;
 
             case HotkeyAction.ReadGrossWeightKg:
-                RequestGrossWeightKg(simConnect);
+                if (simConnect.IsConnected) { _reqGw = true; simConnect.RequestVariable("GROSS_WEIGHT_KG", forceUpdate: true); }
                 return true;
 
             case HotkeyAction.FCUSetBaro:
@@ -5202,7 +5223,14 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
 
     // On-demand flaps/gear read (output-mode L / Shift+G) — request the var, announce
     // when it arrives in ProcessSimVarUpdate (parity with the A380).
-    private bool _reqFlaps, _reqGear;
+    private bool _reqFlaps, _reqGear, _reqGw, _reqFuelKg;
+
+    // Weight-unit read-out preference (kg/lb), followed from the A32NX EFB "US Units"
+    // setting (A32NX_EFB_USING_METRIC_UNIT). The raw GW/fuel vars are kilograms.
+    private bool _metricWeight = true;
+    private bool _metricWeightKnown;
+    private (double value, string unit) WeightUser(double kg)
+        => _metricWeight ? (kg, "kilograms") : (kg * 2.204625, "pounds");
 
     // FBW packs idents/messages 6 bits per char, 8 chars per word (low bits first),
     // char = code + 31 (matches the old NavigationDisplayForm decoder).
@@ -5577,6 +5605,35 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             _reqGear = false;
             announcer.AnnounceImmediate(value > 0.5 ? "Gear down" : "Gear up");
+            return true;
+        }
+
+        // Weight-unit (kg/lb) selection — follow the EFB "US Units" toggle. Seed silently
+        // on first read; announce on a genuine change. Mirrors the A380.
+        if (varName == "A32NX_EFB_USING_METRIC_UNIT")
+        {
+            bool m = value > 0.5;
+            if (!_metricWeightKnown) { _metricWeightKnown = true; _metricWeight = m; return true; }
+            if (m != _metricWeight)
+            {
+                _metricWeight = m;
+                announcer.Announce($"Weight units {(m ? "kilograms" : "pounds")}");
+            }
+            return true;
+        }
+        // On-demand gross-weight / fuel read (kilograms vars), spoken in the selected unit.
+        if (_reqGw && varName == "GROSS_WEIGHT_KG")
+        {
+            _reqGw = false;
+            var (gw, gu) = WeightUser(value);
+            announcer.AnnounceImmediate($"Gross weight {gw:0} {gu}");
+            return true;
+        }
+        if (_reqFuelKg && varName == "FUEL_QUANTITY_KG")
+        {
+            _reqFuelKg = false;
+            var (fv, fu) = WeightUser(value);
+            announcer.AnnounceImmediate($"Fuel on board {fv:0} {fu}");
             return true;
         }
 
