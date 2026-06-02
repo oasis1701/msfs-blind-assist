@@ -38,13 +38,6 @@ public class SimConnectManager
     public bool IsFullyConnected { get; private set; } // Set to true after aircraft detection completes
     public double AircraftWingSpan { get; private set; } // Wing span in feet, populated on connect
     private bool wasConnected = false; // Track if we've already announced connection state
-    // Aircraft-detection retry: RequestAircraftInfo() fires once at Connect() with PERIOD.ONCE
-    // and no retry. On a heavy aircraft still loading (or another SimConnect client
-    // contending) that one-shot response can be missed, so IsFullyConnected never gets set
-    // and every hotkey reports "not connected" even though continuous monitoring is alive.
-    // The batch-1 continuous response (≈1/s) re-fires the request until detection completes.
-    private int _lastAircraftInfoRetryTick = 0;
-    private int _aircraftInfoRetryCount = 0;
     private System.Windows.Forms.Timer reconnectTimer = null!;
 
     // MobiFlight WASM integration
@@ -1401,24 +1394,6 @@ public class SimConnectManager
             case DATA_REQUESTS.REQUEST_CONTINUOUS_BATCH_1:
                 GenericBatch1 batch1Data = (GenericBatch1)data.dwData[0];
                 ProcessContinuousBatch(1, in batch1Data);
-                // Heartbeat retry for aircraft detection. If the AIRCRAFT_INFO / ATC one-shot
-                // fired at Connect() was missed, IsFullyConnected stays false and all hotkeys
-                // say "not connected" even though THIS batch (continuous monitoring) is clearly
-                // alive. Re-request every ~2s until detection completes. Ultimate fallback: if
-                // aircraft info arrived but ATC never did after several retries, stop waiting on
-                // ATC and complete detection so hotkeys unblock.
-                if (!IsFullyConnected && IsConnected &&
-                    Environment.TickCount - _lastAircraftInfoRetryTick > 2000)
-                {
-                    _lastAircraftInfoRetryTick = Environment.TickCount;
-                    _aircraftInfoRetryCount++;
-                    RequestAircraftInfo();
-                    if (_aircraftInfoRetryCount >= 5 && pendingAircraftInfo.HasValue && !atcDataReceived)
-                    {
-                        atcDataReceived = true;
-                        TryAnnounceConnection();
-                    }
-                }
                 break;
 
             case DATA_REQUESTS.REQUEST_CONTINUOUS_BATCH_2:
@@ -4371,8 +4346,6 @@ public class SimConnectManager
 
         IsConnected = false;
         IsFullyConnected = false;
-        _aircraftInfoRetryCount = 0;
-        _lastAircraftInfoRetryTick = 0;
 
         // Only announce disconnection if we were previously connected
         if (wasConnected)
