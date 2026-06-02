@@ -643,10 +643,15 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // ============================ GLARESHIELD ============================
 
         // ---- Master Warning / Caution ----
-        Press("PUSH_AUTOPILOT_MASTERWARN_L", "Master Warning (Capt)");
-        Press("PUSH_AUTOPILOT_MASTERWARN_R", "Master Warning (F/O)");
-        Press("PUSH_AUTOPILOT_MASTERCAUT_L", "Master Caution (Capt)");
-        Press("PUSH_AUTOPILOT_MASTERCAUT_R", "Master Caution (F/O)");
+        // Momentary acknowledge BUTTONS (pulse 1→0 = a press) — clears the master
+        // warning/caution + cancels the aural. NOTE the FBW var is MASTER**A**WARN
+        // (an extra A — a typo in the FBW glareshield.xml HOLD_SIMVAR; verified live:
+        // pulsing PUSH_AUTOPILOT_MASTERAWARN_L/R clears A32NX_MASTER_WARNING, while the
+        // no-A name does nothing). Caution is spelled normally.
+        Btn("PUSH_AUTOPILOT_MASTERAWARN_L", "Master Warning Acknowledge (Capt)");
+        Btn("PUSH_AUTOPILOT_MASTERAWARN_R", "Master Warning Acknowledge (F/O)");
+        Btn("PUSH_AUTOPILOT_MASTERCAUT_L", "Master Caution Acknowledge (Capt)");
+        Btn("PUSH_AUTOPILOT_MASTERCAUT_R", "Master Caution Acknowledge (F/O)");
         Mon("A32NX_MASTER_WARNING", "Master Warning",
             new Dictionary<double, string> { [0] = "Off", [1] = "WARNING" });
         Mon("A32NX_MASTER_CAUTION", "Master Caution",
@@ -2068,8 +2073,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
 
         p["Warnings"] = new List<string>
         {
-            "PUSH_AUTOPILOT_MASTERWARN_L", "PUSH_AUTOPILOT_MASTERWARN_R",
-            "PUSH_AUTOPILOT_MASTERCAUT_L", "PUSH_AUTOPILOT_MASTERCAUT_R"
+            "PUSH_AUTOPILOT_MASTERAWARN_L", "PUSH_AUTOPILOT_MASTERAWARN_R",
+            "PUSH_AUTOPILOT_MASTERCAUT_L", "PUSH_AUTOPILOT_MASTERCAUT_R",
+            "A32NX_MASTER_WARNING", "A32NX_MASTER_CAUTION"
         };
         // EFIS Control Panel split per side (Captain / First Officer), PMDG-style.
         p["EFIS Captain"] = new List<string>

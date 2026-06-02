@@ -130,6 +130,15 @@ public partial class MainForm : Form
     // Weather auto-announcement timer
     private System.Windows.Forms.Timer? weatherAnnouncementTimer;
     private double _prevPrecipState = -1;
+
+    // Periodic auto-refresh for the currently-shown Status Display box. SD-page content
+    // (FOB, engine N1/N2, fuel per-tank, etc.) is an OnRequest snapshot — without this it
+    // freezes at whatever it read when the panel opened and never reflects live changes.
+    // While a panel with a "_REFRESH_" button is shown, this ticks every few seconds and
+    // (a) rebuilds any snapshot SD content via OnDisplayPanelShown and (b) re-pulls the
+    // panel's OnRequest display vars — silently (the "Loading..." placeholder only shows on
+    // the first empty populate, so the box updates in place with no flash).
+    private System.Windows.Forms.Timer? _sdAutoRefreshTimer;
     private double _prevPrecipRate = -1;
     private double _prevInCloud = -1;
     private double _prevVisibility = -1;      // meters; -1 = uninitialized
@@ -5660,7 +5669,12 @@ public partial class MainForm : Form
 
             refreshButton.Click += async (s2, e2) =>
             {
-                displayTextBox.Text = "Loading...";
+                // Only show the "Loading..." placeholder on the FIRST populate (empty box).
+                // On subsequent refreshes — manual F5 or the periodic auto-refresh timer —
+                // keep the existing content visible so the box doesn't flash/blank every
+                // cycle; the new values simply overwrite it when they arrive.
+                if (string.IsNullOrEmpty(displayTextBox.Text))
+                    displayTextBox.Text = "Loading...";
                 displayValues.Clear();  // Clear old values for this panel
 
                 // Get the display variables for this panel
@@ -5722,6 +5736,11 @@ public partial class MainForm : Form
             // combo's CURRENT page, so the user doesn't have to cycle it to get content
             // on first display. No-op for panels without such a box.
             try { currentAircraft.OnDisplayPanelShown(currentPanel, simConnectManager); } catch { }
+
+            // Start (or stop) the live status-box auto-refresh for THIS panel. Only panels
+            // that actually built a status display (have a "_REFRESH_" button) get the timer;
+            // everything else stops it so we don't poll in the background on a static panel.
+            StartOrStopSdAutoRefresh();
 
             // For PMDG aircraft, populate controls with current data from the data manager
             if (currentAircraft is IPMDGAircraft && simConnectManager?.PMDGDataManager != null)
@@ -5807,6 +5826,55 @@ public partial class MainForm : Form
     private void NearestCityAnnouncementTimer_Tick(object? sender, EventArgs e)
     {
         AnnounceNearestCity();
+    }
+
+    // Starts the live status-box auto-refresh when the currently-shown panel has a status
+    // display ("_REFRESH_" button); stops it otherwise. Called every time a panel is shown.
+    private void StartOrStopSdAutoRefresh()
+    {
+        bool hasDisplay = currentControls != null && currentControls.ContainsKey("_REFRESH_");
+        if (!hasDisplay)
+        {
+            _sdAutoRefreshTimer?.Stop();
+            return;
+        }
+        if (_sdAutoRefreshTimer == null)
+        {
+            // 3s: longer than the Refresh handler's 2s response timeout so ticks don't stack.
+            _sdAutoRefreshTimer = new System.Windows.Forms.Timer { Interval = 3000 };
+            _sdAutoRefreshTimer.Tick += SdAutoRefreshTimer_Tick;
+        }
+        _sdAutoRefreshTimer.Stop();
+        _sdAutoRefreshTimer.Start();
+    }
+
+    private void SdAutoRefreshTimer_Tick(object? sender, EventArgs e)
+    {
+        try
+        {
+            // Panel changed out from under us (or app tearing down) → stop polling.
+            if (currentAircraft == null || string.IsNullOrEmpty(currentPanel) ||
+                currentControls == null || !currentControls.ContainsKey("_REFRESH_"))
+            {
+                _sdAutoRefreshTimer?.Stop();
+                return;
+            }
+            if (simConnectManager == null || !simConnectManager.IsConnected) return;
+
+            // (a) Rebuild any snapshot SD-page content (FOB, engine, fuel, etc.) — silent,
+            //     no speech, pushes into the box via the page-index display var.
+            try { currentAircraft.OnDisplayPanelShown(currentPanel, simConnectManager); } catch { }
+
+            // (b) Re-pull the panel's OnRequest display vars for the generic status box.
+            //     The handler keeps existing content (no "Loading..." flash) and overwrites
+            //     in place when the fresh values arrive.
+            if (currentControls.TryGetValue("_REFRESH_", out var rc) && rc is Button rb &&
+                rb.Enabled && rb.IsHandleCreated)
+            {
+                rb.PerformClick();
+            }
+        }
+        catch { /* best-effort live refresh; never let a tick crash the UI */ }
     }
 
     private void WeatherAnnouncementTimer_Tick(object? sender, EventArgs e)
