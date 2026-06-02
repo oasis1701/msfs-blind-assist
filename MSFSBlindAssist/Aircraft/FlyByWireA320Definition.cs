@@ -970,6 +970,38 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Name = "FUEL TOTAL QUANTITY WEIGHT", DisplayName = "Fuel on board",
             Type = SimConnect.SimVarType.SimVar, Units = "kilograms", UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
         },
+        // Brake pressures (the "triple indicator" — normal/alternate/accumulator, psi) +
+        // brake status (parity with the A380; useful for the taxi brake check). Live:
+        // NORM 0 while not braking, ALTN ~2100, ACC ~3000.
+        ["A32NX_HYD_BRAKE_NORM_LEFT_PRESS"] = new SimConnect.SimVarDefinition
+        { Name = "A32NX_HYD_BRAKE_NORM_LEFT_PRESS", DisplayName = "Normal Brake Left", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, Units = "psi" },
+        ["A32NX_HYD_BRAKE_NORM_RIGHT_PRESS"] = new SimConnect.SimVarDefinition
+        { Name = "A32NX_HYD_BRAKE_NORM_RIGHT_PRESS", DisplayName = "Normal Brake Right", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, Units = "psi" },
+        ["A32NX_HYD_BRAKE_ALTN_LEFT_PRESS"] = new SimConnect.SimVarDefinition
+        { Name = "A32NX_HYD_BRAKE_ALTN_LEFT_PRESS", DisplayName = "Alternate Brake Left", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, Units = "psi" },
+        ["A32NX_HYD_BRAKE_ALTN_RIGHT_PRESS"] = new SimConnect.SimVarDefinition
+        { Name = "A32NX_HYD_BRAKE_ALTN_RIGHT_PRESS", DisplayName = "Alternate Brake Right", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, Units = "psi" },
+        ["A32NX_HYD_BRAKE_ALTN_ACC_PRESS"] = new SimConnect.SimVarDefinition
+        { Name = "A32NX_HYD_BRAKE_ALTN_ACC_PRESS", DisplayName = "Brake Accumulator", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, Units = "psi" },
+        ["A32NX_BRAKES_HOT"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_BRAKES_HOT", DisplayName = "Brakes Hot",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Hot" }
+        },
+        ["A32NX_BRAKE_FAN_RUNNING"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_BRAKE_FAN_RUNNING", DisplayName = "Brake Fan",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Running" }
+        },
+        // GPWS self-test (parity with the A380 GPWS panel). Settable via the catch-all.
+        ["A32NX_GPWS_TEST"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_GPWS_TEST", DisplayName = "GPWS Test",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Test" }
+        },
 
         // ---- Wipers panel (parity with A380 Overhead > Wipers) — Captain + F/O wiper
         // selectors. Live-verified settable via the calculator path (held a 0->2 write).
@@ -4217,6 +4249,14 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             // FAC-computed rudder trim position (ARINC; decoded in TryGetDisplayOverride).
             "A32NX_FAC_1_RUDDER_TRIM_POS"
         },
+        ["Autobrake"] = new List<string>
+        {
+            // Brake "triple indicator" (normal/alternate/accumulator pressures) + status
+            // — the taxi/landing brake check (parity with the A380).
+            "A32NX_HYD_BRAKE_NORM_LEFT_PRESS", "A32NX_HYD_BRAKE_NORM_RIGHT_PRESS",
+            "A32NX_HYD_BRAKE_ALTN_LEFT_PRESS", "A32NX_HYD_BRAKE_ALTN_RIGHT_PRESS",
+            "A32NX_HYD_BRAKE_ALTN_ACC_PRESS", "A32NX_BRAKES_HOT", "A32NX_BRAKE_FAN_RUNNING"
+        },
         ["APU"] = new List<string>
         {
             // APU AVAIL annunciation (read-only; the EWD memo speaks it).
@@ -4524,7 +4564,8 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             "A32NX_GPWS_FLAP_OFF",
             "A32NX_GPWS_GS_OFF",
             "A32NX_GPWS_SYS_OFF",
-            "A32NX_GPWS_TERR_OFF"
+            "A32NX_GPWS_TERR_OFF",
+            "A32NX_GPWS_TEST"
         },
         ["Cockpit Door"] = new List<string>
         {
