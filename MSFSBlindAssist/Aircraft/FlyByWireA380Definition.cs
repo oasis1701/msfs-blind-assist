@@ -1900,20 +1900,22 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             // set fires TOGGLE_AIRCRAFT_EXIT (exit id via _doorExitIds) through
             // HandleUIVariableSet — no separate button.
             //
-            // CONNECTION-SAFETY: these are OnRequest, NOT Continuous. Putting all 16 doors
-            // (16 stock SimVars) into the continuous-monitoring batch added enough setup
-            // load at Connect() to lose the one-shot AIRCRAFT_INFO/ATC response, so
-            // IsFullyConnected never got set and every hotkey said "not connected" (auto-
-            // announce still worked — that path is separate). OnRequest keeps the doors out
-            // of continuous monitoring entirely: they read when the Doors panel is shown /
-            // auto-refreshed, the combo selection gives the toggle feedback, and an external
-            // door-open is still announced by the EWD "DOOR … NOT CLOSED" memo (its own
-            // monitor). The jetway (1 SimVar) stayed Continuous and was safe; 16 was not.
+            // CONNECTION-SAFETY: UpdateFrequency.Never. Both Continuous AND OnRequest still
+            // REGISTER a SimConnect data definition for every door in RegisterAllVariables
+            // (AddToDataDefinition + RegisterDataDefineStruct). With all 18 doors that extra
+            // registration load at Connect() reliably broke aircraft detection (IsFullyConnected
+            // never set -> every hotkey "not connected"; even a detection retry didn't help).
+            // RegisterAllVariables SKIPS Never-frequency vars entirely, so the doors add ZERO
+            // data definitions. The door still WORKS: the combo's SET fires K:TOGGLE_AIRCRAFT_
+            // EXIT via the _doorExitIds branch in HandleUIVariableSet (a K-event needs no
+            // registered var), and an open door is still announced by the EWD "DOOR … NOT
+            // CLOSED" memo (its own monitor). Trade-off: the combo can't read live state, so it
+            // shows the default ("Closed") — toggling still opens/closes the actual door.
             vars[key] = new SimVarDefinition
             {
                 Name = $"INTERACTIVE POINT OPEN:{ip}", DisplayName = display,
                 Type = SimVarType.SimVar, Units = "bool",
-                UpdateFrequency = UpdateFrequency.OnRequest,
+                UpdateFrequency = UpdateFrequency.Never,
                 ValueDescriptions = openShut
             };
         }
