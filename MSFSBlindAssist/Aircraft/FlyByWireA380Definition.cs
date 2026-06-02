@@ -2987,13 +2987,6 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             announcer.AnnounceImmediate($"Altimeter {value * 33.8639:0} hectopascals, {value:0.00} inches");
             return true;
         }
-        if (_reqGw && varName == "GROSS_WEIGHT_KG")
-        {
-            _reqGw = false;
-            var (gw, gwu) = WeightUser(value);
-            announcer.AnnounceImmediate($"Gross weight {gw:0} {gwu}");
-            return true;
-        }
         // Weight-unit selection (kg/lb) mirror of the EFB "US Units" toggle. Seed
         // MSFSBA's read-out unit from the aircraft on first read (silent); on a
         // genuine AIRCRAFT change (someone flipped it in the flyPad EFB Settings),
@@ -3531,7 +3524,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     // ===================================================================
     private double? _pHdgVal, _pHdgMgd, _pSpdVal, _pSpdMgd, _pAltVal, _pAltMgd, _pVsVal, _pFpaVal, _pVsMode;
     private bool _reqHdg, _reqSpd, _reqAlt, _reqVs;
-    private bool _reqFlaps, _reqGear, _reqBaro, _reqGw;
+    private bool _reqFlaps, _reqGear, _reqBaro;
     private int _lastSpoilerBand = -1;   // speed-brake handle band (10% steps) last announced
     private int _lastBaroL = -1, _lastBaroR = -1; // last announced EFIS baro (whole hPa)
     private bool? _baroStdL, _baroStdR; // last EFIS baro STD(true)/QNH(false) per side
@@ -4020,11 +4013,17 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             case HotkeyAction.ReadSpeedS: RequestReadout(simConnect, "A32NX_SPEEDS_S", "S speed", "knots"); return true;
             case HotkeyAction.ReadSpeedVS: RequestReadout(simConnect, "A32NX_SPEEDS_VS", "V S", "knots"); return true;
             case HotkeyAction.ReadSpeedVFE: RequestReadout(simConnect, "A32NX_SPEEDS_VFEN", "V F E next", "knots"); return true;
-            case HotkeyAction.ReadFuelQuantity: RequestReadout(simConnect, "A32NX_TOTAL_FUEL_QUANTITY", "Total fuel", "kilograms", weight: true); return true;
+            // Fuel + gross weight are spoken fleet-consistently (matching PMDG / Fenix):
+            // plain key = pounds, Shift key = kilograms, via the shared SimConnectManager
+            // requests (identical phrasing across all aircraft). Deterministic units —
+            // NOT the EFB-following _metricWeight path, so they never surprise the pilot.
+            case HotkeyAction.ReadFuelQuantity: // F -> "Fuel on board N pounds"
+                simConnect.RequestSingleValue((int)SimConnectManager.DATA_DEFINITIONS.DEF_FUEL_QUANTITY, "FUEL TOTAL QUANTITY WEIGHT", "pounds", "FUEL_QUANTITY"); return true;
             // Phase 4 parity with the A320: ReadFuelInfo (same as ReadFuelQuantity) + a
             // Ctrl+B "Set Altimeter" dialog (the A380 baro uses the stock KOHLSMAN_SET,
             // unit = millibars*16, NOT the A320's A32NX.FCU_EFIS_*_BARO_SET events).
-            case HotkeyAction.ReadFuelInfo: RequestReadout(simConnect, "A32NX_TOTAL_FUEL_QUANTITY", "Total fuel", "kilograms", weight: true); return true;
+            case HotkeyAction.ReadFuelInfo: // Shift+F -> "Fuel on board N kilograms"
+                simConnect.RequestSingleValue((int)SimConnectManager.DATA_DEFINITIONS.DEF_FUEL_QUANTITY_KG, "FUEL TOTAL QUANTITY WEIGHT", "pounds", "FUEL_QUANTITY_KG"); return true;
             case HotkeyAction.FCUSetBaro:
                 hotkeyManager.ExitInputHotkeyMode();
                 new Forms.FBWA380.FBWA380BaroWindow(this, simConnect, announcer).ShowForm();
@@ -4041,15 +4040,15 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 ReadAllEwdWarnings(announcer);
                 hotkeyManager.ExitOutputHotkeyMode();
                 return true;
-            case HotkeyAction.ReadWaypointInfo:
-                RequestWaypointInfo(simConnect);
-                return true;
+            // W repurposed to gross weight in pounds (matches PMDG / Fenix, which also
+            // repurpose the waypoint key). The MCDU/MFD covers waypoint data.
+            case HotkeyAction.ReadWaypointInfo: // W -> "Gross weight N pounds"
+                simConnect.RequestSingleValue((int)SimConnectManager.DATA_DEFINITIONS.DEF_GROSS_WEIGHT, "TOTAL WEIGHT", "pounds", "GROSS_WEIGHT"); return true;
             case HotkeyAction.ReadAltimeter:
                 if (simConnect.IsConnected) { _reqBaro = true; simConnect.RequestVariable("KOHLSMAN_HG", forceUpdate: true); }
                 return true;
-            case HotkeyAction.ReadGrossWeightKg:
-                if (simConnect.IsConnected) { _reqGw = true; simConnect.RequestVariable("GROSS_WEIGHT_KG", forceUpdate: true); }
-                return true;
+            case HotkeyAction.ReadGrossWeightKg: // Shift+W -> "Gross weight N kilograms"
+                simConnect.RequestSingleValue((int)SimConnectManager.DATA_DEFINITIONS.DEF_GROSS_WEIGHT_KG, "TOTAL WEIGHT", "pounds", "GROSS_WEIGHT_KG"); return true;
             case HotkeyAction.ReadHeading: RequestFCUHeadingWithStatus(simConnect); return true;
             case HotkeyAction.ReadSpeed: RequestFCUSpeedWithStatus(simConnect); return true;
             case HotkeyAction.ReadAltitude: RequestFCUAltitudeWithStatus(simConnect); return true;
@@ -4120,37 +4119,6 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     {
         var dialog = new Forms.FBWA380.FBWA380SystemDisplayForm(announcer, simConnect);
         dialog.Show();
-    }
-
-    // TO waypoint readout (ident / distance / bearing). The A380X publishes the
-    // same A32NX_EFIS_L_TO_WPT_* vars (verified live); the shared SimConnectManager
-    // request-370 handler unpacks the ident and announces "WPT, X NM, Y degrees".
-    private void RequestWaypointInfo(SimConnectManager simConnectMgr)
-    {
-        var simConnect = simConnectMgr.SimConnectInstance;
-        if (!simConnectMgr.IsConnected || simConnect == null) return;
-        try
-        {
-            var tempDefId = (SimConnectManager.DATA_DEFINITIONS)370;
-            simConnect.ClearDataDefinition(tempDefId);
-            simConnect.AddToDataDefinition(tempDefId, "L:A32NX_EFIS_L_TO_WPT_IDENT_0", "number",
-                Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
-            simConnect.AddToDataDefinition(tempDefId, "L:A32NX_EFIS_L_TO_WPT_IDENT_1", "number",
-                Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
-            simConnect.AddToDataDefinition(tempDefId, "L:A32NX_EFIS_L_TO_WPT_DISTANCE", "number",
-                Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
-            simConnect.AddToDataDefinition(tempDefId, "L:A32NX_EFIS_L_TO_WPT_BEARING", "radians",
-                Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
-            simConnect.RegisterDataDefineStruct<SimConnectManager.WaypointInfo>(tempDefId);
-            simConnect.RequestDataOnSimObject((SimConnectManager.DATA_REQUESTS)370,
-                tempDefId, Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_OBJECT_ID_USER,
-                Microsoft.FlightSimulator.SimConnect.SIMCONNECT_PERIOD.ONCE,
-                Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"Error requesting A380 waypoint info: {ex.Message}");
-        }
     }
 
     public void RequestFCUHeadingWithStatus(SimConnectManager s)
