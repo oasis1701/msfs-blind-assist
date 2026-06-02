@@ -994,6 +994,19 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Name = "TOTAL WEIGHT", DisplayName = "Gross Weight",
             Type = SimConnect.SimVarType.SimVar, Units = "kilograms", UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
         },
+        // Gross weight (kg, stock) + CG (%MAC, FBW L-var) — monitored + cached for the
+        // W / Shift+W readouts. CG MUST read with Units="number" (L-var). Both are
+        // cached silently in ProcessSimVarUpdate (return true → never auto-announced).
+        ["GW_KG_CACHE"] = new SimConnect.SimVarDefinition
+        {
+            Name = "TOTAL WEIGHT", DisplayName = "Gross Weight (cache)",
+            Type = SimConnect.SimVarType.SimVar, Units = "kilograms", UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true
+        },
+        ["A32NX_AIRFRAME_GW_CG_PERCENT_MAC"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_AIRFRAME_GW_CG_PERCENT_MAC", DisplayName = "Gross Weight CG",
+            Type = SimConnect.SimVarType.LVar, Units = "number", UpdateFrequency = SimConnect.UpdateFrequency.Continuous, IsAnnounced = true
+        },
         ["FUEL_QUANTITY_KG"] = new SimConnect.SimVarDefinition
         {
             Name = "FUEL TOTAL QUANTITY WEIGHT", DisplayName = "Fuel on board",
@@ -4969,8 +4982,10 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             // W repurposed to gross weight in pounds (matches PMDG / Fenix, which also
             // repurpose the waypoint key). Fuel (F=lb / Shift+F=kg) and Shift+W (kg)
             // already use the shared fleet requests; this aligns W to the fleet too.
-            case HotkeyAction.ReadWaypointInfo: // W -> "Gross weight N pounds"
-                simConnect.RequestSingleValue((int)SimConnect.SimConnectManager.DATA_DEFINITIONS.DEF_GROSS_WEIGHT, "TOTAL WEIGHT", "pounds", "GROSS_WEIGHT");
+            case HotkeyAction.ReadWaypointInfo: // W -> "Gross weight N pounds, center of gravity X% MAC"
+                announcer.AnnounceImmediate(_gwKgCache > 0
+                    ? $"Gross weight {_gwKgCache * 2.204625:0} pounds{CgMacPhrase()}"
+                    : "Gross weight not available");
                 return true;
 
             case HotkeyAction.ReadApproachCapability:
@@ -5028,8 +5043,9 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
                 ToggleA320ECAMMonitoring(simConnect, announcer);
                 return true;
 
-            case HotkeyAction.ReadGrossWeightKg:
-                if (simConnect.IsConnected) { _reqGw = true; simConnect.RequestVariable("GROSS_WEIGHT_KG", forceUpdate: true); }
+            case HotkeyAction.ReadGrossWeightKg: // Shift+W -> gross weight (selected unit) + CG
+                if (_gwKgCache > 0) { var (gw, gu) = WeightUser(_gwKgCache); announcer.AnnounceImmediate($"Gross weight {gw:0} {gu}{CgMacPhrase()}"); }
+                else announcer.AnnounceImmediate("Gross weight not available");
                 return true;
 
             case HotkeyAction.FCUSetBaro:
@@ -5152,7 +5168,13 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
 
     // On-demand flaps/gear read (output-mode L / Shift+G) — request the var, announce
     // when it arrives in ProcessSimVarUpdate (parity with the A380).
-    private bool _reqFlaps, _reqGear, _reqGw, _reqFuelKg;
+    private bool _reqFlaps, _reqGear, _reqFuelKg;
+    private double _gwCgMac = -1;   // gross-weight CG %MAC (FBW L-var, cached)
+    private double _gwKgCache = -1; // gross weight in kg (stock TOTAL WEIGHT, cached)
+
+    // Spoken CG suffix for the gross-weight readouts. Empty (suppressed) when the CG
+    // isn't available/sane, so the gross-weight readout never breaks or says "CG 0".
+    private string CgMacPhrase() => (_gwCgMac > 5 && _gwCgMac < 60) ? $", center of gravity {_gwCgMac:0.0} percent MAC" : "";
 
     // Weight-unit read-out preference (kg/lb), followed from the A32NX EFB "US Units"
     // setting (A32NX_EFB_USING_METRIC_UNIT). The raw GW/fuel vars are kilograms.
@@ -5635,14 +5657,10 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             }
             return true;
         }
-        // On-demand gross-weight / fuel read (kilograms vars), spoken in the selected unit.
-        if (_reqGw && varName == "GROSS_WEIGHT_KG")
-        {
-            _reqGw = false;
-            var (gw, gu) = WeightUser(value);
-            announcer.AnnounceImmediate($"Gross weight {gw:0} {gu}");
-            return true;
-        }
+        // Cache gross weight (kg, stock) + CG (%MAC, FBW L-var) silently for the
+        // W / Shift+W readouts; the hotkeys read these caches and speak immediately.
+        if (varName == "GW_KG_CACHE") { _gwKgCache = value; return true; }
+        if (varName == "A32NX_AIRFRAME_GW_CG_PERCENT_MAC") { _gwCgMac = value; return true; }
         if (_reqFuelKg && varName == "FUEL_QUANTITY_KG")
         {
             _reqFuelKg = false;

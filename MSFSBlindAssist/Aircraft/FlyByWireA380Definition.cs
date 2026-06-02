@@ -775,6 +775,21 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // scale + the SD status band. The FBW A32NX_FQMS_* L:vars read null on the current
         // build, so use the stock CG PERCENT simvar (always published, longitudinal % MAC).
         Stock("CG_PERCENT_MAC", "CG PERCENT", "Center of Gravity", "percent");
+        // Gross-weight CG (%MAC), cached for the W / Shift+W readouts. Plain numeric
+        // FBW L-var (read live on the A380X = ~40% MAC, matching the flyPad chart dot).
+        // MonNum registers it with Units="number" (required for the L-var read) and routes
+        // it to a custom ProcessSimVarUpdate branch that caches it and returns true so it
+        // is never auto-announced. (Distinct from CG_PERCENT_MAC above: that is the stock
+        // CG PERCENT used by the PFD readout; this is the FBW airframe GW-CG.)
+        MonNum("A32NX_AIRFRAME_GW_CG_PERCENT_MAC", "Gross Weight CG");
+        // Gross weight (kg) — stock TOTAL WEIGHT, monitored + cached for the W / Shift+W
+        // readouts (reliable stock read; converted to pounds for W). IsAnnounced so the
+        // monitor reads it; ProcessSimVarUpdate caches it and returns true (no announce).
+        vars["GW_KG_CACHE"] = new SimVarDefinition
+        {
+            Name = "TOTAL WEIGHT", DisplayName = "Gross Weight (cache)", Type = SimVarType.SimVar,
+            Units = "kilograms", UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true
+        };
 
         // Metric/imperial WEIGHT unit (kg vs lb). `CONFIG_USING_METRIC_UNIT` (the
         // flyPad Units toggle, Alt+U) is an EFB persistent setting that the EFB
@@ -3041,6 +3056,12 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             return true;
         }
 
+        // Cache gross weight (kg, stock) + CG (%MAC, FBW L-var) silently for the
+        // W / Shift+W readouts. Both monitored continuously; the hotkeys read these
+        // caches and speak immediately (no async request, no flag timing).
+        if (varName == "GW_KG_CACHE") { _gwKgCache = value; return true; }
+        if (varName == "A32NX_AIRFRAME_GW_CG_PERCENT_MAC") { _gwCgMac = value; return true; }
+
         // ---- On-demand flaps / gear readouts (global hotkeys) ----
         // Only intercept while a readout is pending; otherwise fall through so the
         // normal continuous-monitor announcement (on change) still fires.
@@ -3770,6 +3791,12 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     private double? _pHdgVal, _pHdgMgd, _pSpdVal, _pSpdMgd, _pAltVal, _pAltMgd, _pVsVal, _pFpaVal, _pVsMode;
     private bool _reqHdg, _reqSpd, _reqAlt, _reqVs;
     private bool _reqFlaps, _reqGear, _reqBaro;
+    private double _gwCgMac = -1;   // gross-weight CG %MAC (FBW L-var, cached)
+    private double _gwKgCache = -1; // gross weight in kg (stock TOTAL WEIGHT, cached)
+
+    // Spoken CG suffix for the gross-weight readouts. Empty (suppressed) when the CG
+    // isn't available/sane, so the gross-weight readout never breaks or says "CG 0".
+    private string CgMacPhrase() => (_gwCgMac > 5 && _gwCgMac < 60) ? $", center of gravity {_gwCgMac:0.0} percent MAC" : "";
     private int _lastSpoilerBand = -1;   // speed-brake handle band (10% steps) last announced
     private int _lastBaroL = -1, _lastBaroR = -1; // last announced EFIS baro (whole hPa)
     private bool? _baroStdL, _baroStdR; // last EFIS baro STD(true)/QNH(false) per side
@@ -4754,13 +4781,19 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 return true;
             // W repurposed to gross weight in pounds (matches PMDG / Fenix, which also
             // repurpose the waypoint key). The MCDU/MFD covers waypoint data.
-            case HotkeyAction.ReadWaypointInfo: // W -> "Gross weight N pounds"
-                simConnect.RequestSingleValue((int)SimConnectManager.DATA_DEFINITIONS.DEF_GROSS_WEIGHT, "TOTAL WEIGHT", "pounds", "GROSS_WEIGHT"); return true;
+            case HotkeyAction.ReadWaypointInfo: // W -> "Gross weight N pounds, center of gravity X% MAC"
+                announcer.AnnounceImmediate(_gwKgCache > 0
+                    ? $"Gross weight {_gwKgCache * 2.204625:0} pounds{CgMacPhrase()}"
+                    : "Gross weight not available");
+                return true;
             case HotkeyAction.ReadAltimeter:
                 if (simConnect.IsConnected) { _reqBaro = true; simConnect.RequestVariable("KOHLSMAN_HG", forceUpdate: true); }
                 return true;
-            case HotkeyAction.ReadGrossWeightKg: // Shift+W -> "Gross weight N kilograms"
-                simConnect.RequestSingleValue((int)SimConnectManager.DATA_DEFINITIONS.DEF_GROSS_WEIGHT_KG, "TOTAL WEIGHT", "pounds", "GROSS_WEIGHT_KG"); return true;
+            case HotkeyAction.ReadGrossWeightKg: // Shift+W -> "Gross weight N kilograms, center of gravity X% MAC"
+                announcer.AnnounceImmediate(_gwKgCache > 0
+                    ? $"Gross weight {_gwKgCache:0} kilograms{CgMacPhrase()}"
+                    : "Gross weight not available");
+                return true;
             case HotkeyAction.ReadHeading: RequestFCUHeadingWithStatus(simConnect); return true;
             case HotkeyAction.ReadSpeed: RequestFCUSpeedWithStatus(simConnect); return true;
             case HotkeyAction.ReadAltitude: RequestFCUAltitudeWithStatus(simConnect); return true;
