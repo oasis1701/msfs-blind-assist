@@ -498,6 +498,12 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // only on the ground / depressurised.
         Sel("CPT_SLIDING_WINDOW", "Captain Sliding Window", closedOpenW);
         Sel("FO_SLIDING_WINDOW", "First Officer Sliding Window", closedOpenW);
+        // Cockpit window sunshades — plain L:var bool toggles (0 = stowed, 1 = placed over
+        // the side window). Source: interactive-parts.xml "Place Captain/First Officer
+        // Sunshade". Written via the same prefix-less calc-path branch as the windows.
+        var stowedPlaced = new Dictionary<double, string> { [0] = "Stowed", [1] = "Placed" };
+        Sel("SUNSHADE_CPT_OPENING", "Captain Sunshade", stowedPlaced);
+        Sel("SUNSHADE_FO_OPENING", "First Officer Sunshade", stowedPlaced);
         // Cabin Ready signal (cabin-crew "cabin ready"; settable bool).
         Sel("A32NX_CABIN_READY", "Cabin Ready",
             new Dictionary<double, string> { [0] = "Not Ready", [1] = "Ready" });
@@ -1985,10 +1991,12 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             {
                 "Engines", "Thrust Levers", "Flaps and Brakes", "Speed Brake", "ECAM Control Panel", "Weather Radar",
                 "Transponder", "Radios", "RMP", "Audio Control Panel Captain", "Audio Control Panel First Officer",
-                "Cockpit Door", "Windows"
+                "Cockpit Door", "Windows and Shades"
             },
-            ["Ground Services"] = new List<string> { "Doors", "Ground Equipment" },
-            ["Displays"] = new List<string> { "PFD", "ND", "Status", "Speeds", "Minimums", "Ground" }
+            // All ground-related panels live under one category (doors, equipment, pushback/
+            // presets) — the old standalone "Ground" panel under Displays was confusing.
+            ["Ground Services"] = new List<string> { "Doors", "Ground Equipment", "Pushback" },
+            ["Displays"] = new List<string> { "PFD", "ND", "Status", "Speeds", "Minimums" }
         };
     }
 
@@ -2093,10 +2101,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "A32NX_CABIN_READY",
             "PUSH_OVHD_CALLS_ALL", "PUSH_OVHD_CALLS_FWD", "PUSH_OVHD_CALLS_AFT", "PUSH_OVHD_CALLS_MECH"
         };
-        // Cockpit sliding windows (settable open/close).
-        p["Windows"] = new List<string>
+        // Cockpit sliding windows + sunshades (settable).
+        p["Windows and Shades"] = new List<string>
         {
-            "CPT_SLIDING_WINDOW", "FO_SLIDING_WINDOW"
+            "CPT_SLIDING_WINDOW", "FO_SLIDING_WINDOW",
+            "SUNSHADE_CPT_OPENING", "SUNSHADE_FO_OPENING"
         };
         p["Signs"] = new List<string>
         {
@@ -2340,7 +2349,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // KCCU (keyboard/cursor control unit) is the MCDU's input device — it is
         // driven through the MCDU form (Coherent agent), not as a standalone
         // control panel, so it is intentionally NOT exposed as a panel here.
-        p["Ground"] = new List<string>
+        // Pushback + aircraft-preset loading (was the standalone "Ground" panel; renamed and
+        // moved under the Ground Services category so all ground controls are together).
+        p["Pushback"] = new List<string>
         {
             "A32NX_AIRCRAFT_PRESET_LOAD", "A32NX_PUSHBACK_SYSTEM_ENABLED",
             "A32NX_PUSHBACK_SPD_FACTOR", "A32NX_PUSHBACK_HDG_FACTOR"
@@ -2612,7 +2623,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         d["ECAM Control Panel"] = new List<string> { "A32NX_ECAM_SD_CURRENT_PAGE_INDEX" };
         d["Wipers"] = new List<string> { "WIPER_LEFT", "WIPER_RIGHT" };
         d["Speeds"] = new List<string> { "A32NX_SPEEDS_VLS", "A32NX_SPEEDS_VAPP", "A32NX_SPEEDS_GD", "A32NX_SPEEDS_F", "A32NX_SPEEDS_S" };
-        d["Ground"] = new List<string> { "A32NX_AIRCRAFT_PRESET_LOAD_PROGRESS" };
+        d["Pushback"] = new List<string> { "A32NX_AIRCRAFT_PRESET_LOAD_PROGRESS" };
 
         // ---- plain SD-page scalar readouts ----
         for (int n = 1; n <= 4; n++)
@@ -3743,10 +3754,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // masters, FCU toggles, seat-belt, lights, …) are all handled in cases above,
         // so anything reaching here is a direct-write L:var. ARINC429/readout vars are
         // never settable, so they never get here.
-        // Prefix-less FBW L:vars (cockpit sliding windows): their KEY is the L:var but they
-        // lack the A32NX_/A380X_/FBW_ prefix the catch-all below keys on, so route them
-        // through the calculator path explicitly.
-        if (varKey == "CPT_SLIDING_WINDOW" || varKey == "FO_SLIDING_WINDOW")
+        // Prefix-less FBW L:vars (cockpit sliding windows + sunshades): their KEY is the
+        // L:var but they lack the A32NX_/A380X_/FBW_ prefix the catch-all below keys on, so
+        // route them through the calculator path explicitly.
+        if (varKey == "CPT_SLIDING_WINDOW" || varKey == "FO_SLIDING_WINDOW"
+            || varKey == "SUNSHADE_CPT_OPENING" || varKey == "SUNSHADE_FO_OPENING")
         {
             simConnect.ExecuteCalculatorCode($"{(int)Math.Round(value)} (>L:{varKey})");
             return true;
