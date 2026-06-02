@@ -837,37 +837,6 @@
       });
     }
 
-    // Pass 2b: the A380/A320 Weight & Balance (Ground > Payload) page renders the
-    // current GROSS WEIGHT and GW CG ONLY as a point on the CG-envelope chart — there
-    // is no text for them (the page shows ZFW / ZFWCG as text but not GW / GWCG). Read
-    // the FBW airframe loadsheet L-vars directly (SimVar access is reliable here; the
-    // C# data-def path is not for FBW L-vars) and surface them as readable lines,
-    // anchored just below the ZFWCG row so they read with the rest of the W&B block.
-    try {
-      var zcg = null;
-      for (var zi = 0; zi < all.length; zi++) {
-        if (A.isVisible(all[zi]) && A.directText(all[zi]) === "ZFWCG") { zcg = all[zi]; break; }
-      }
-      if (zcg && typeof SimVar !== "undefined") {
-        var gwKg = SimVar.GetSimVarValue("L:A32NX_AIRFRAME_GW", "number");                 // kg
-        var gwCg = SimVar.GetSimVarValue("L:A32NX_AIRFRAME_GW_CG_PERCENT_MAC", "number");  // %MAC
-        if (gwKg > 0) {
-          var metric = SimVar.GetSimVarValue("L:A32NX_EFB_USING_METRIC_UNIT", "number") > 0.5;
-          var gw = metric ? Math.round(gwKg) : Math.round(gwKg / 0.45359237);
-          var gwUnit = metric ? "KG" : "LBS";
-          var cgTxt = (Math.round(gwCg * 100) / 100) + " percent MAC";
-          var zr = zcg.getBoundingClientRect();
-          var aTop = zr.bottom - rootRect.top + 2, aLeft = zr.left - rootRect.left;
-          items.push({ top: aTop, left: aLeft, idx: 0, kind: "text", tag: "div", role: "",
-            text: "Gross Weight " + gw + " " + gwUnit, value: "", controlType: "", clickable: false,
-            level: 0, live: true, disabled: false, options: [], _axis: 0, navRail: false });
-          items.push({ top: aTop + 18, left: aLeft, idx: 0, kind: "text", tag: "div", role: "",
-            text: "Gross Weight CG " + cgTxt, value: "", controlType: "", clickable: false,
-            level: 0, live: true, disabled: false, options: [], _axis: 0, navRail: false });
-        }
-      }
-    } catch (e) { /* W&B enrichment is best-effort; never break the scrape */ }
-
     // Cluster items into visual ROWS by top-proximity (NOT a fixed grid) so a
     // label and its control on the same row never split across a bucket boundary
     // (e.g. a "Theme" label at top 727 and its options at 719 must read together,
