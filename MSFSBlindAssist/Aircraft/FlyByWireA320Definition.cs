@@ -500,14 +500,14 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ["A32NX_OXYGEN_MASKS_DEPLOYED"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_OXYGEN_MASKS_DEPLOYED",
-            DisplayName = "Mask Man On",
+            DisplayName = "Passenger Masks Deployed",
             Type = SimConnect.SimVarType.LVar,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Deployed" }
         },
         ["A32NX_OXYGEN_PASSENGER_LIGHT_ON"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_OXYGEN_PASSENGER_LIGHT_ON",
-            DisplayName = "Passenger Oxygen",
+            DisplayName = "Passenger Oxygen Light",
             Type = SimConnect.SimVarType.LVar,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         },
@@ -674,7 +674,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ["A32NX_OVHD_COCKPITDOORVIDEO_TOGGLE"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_OVHD_COCKPITDOORVIDEO_TOGGLE",
-            DisplayName = "Door Video",
+            DisplayName = "Cockpit Door Video",
             Type = SimConnect.SimVarType.LVar,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         },
@@ -683,7 +683,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ["A32NX_EVAC_COMMAND_TOGGLE"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_EVAC_COMMAND_TOGGLE",
-            DisplayName = "EVAC Command",
+            DisplayName = "Evacuation Command",
             Type = SimConnect.SimVarType.LVar,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         },
@@ -699,7 +699,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ["A32NX_CARGOSMOKE_FWD_DISCHARGED"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_CARGOSMOKE_FWD_DISCHARGED",
-            DisplayName = "FWD Extinguisher",
+            DisplayName = "Cargo Fwd Smoke Agent",
             Type = SimConnect.SimVarType.LVar,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Ready", [1] = "Discharged" }
         },
@@ -991,7 +991,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         },
         ["A32NX_BRAKE_FAN_RUNNING"] = new SimConnect.SimVarDefinition
         {
-            Name = "A32NX_BRAKE_FAN_RUNNING", DisplayName = "Brake Fan",
+            Name = "A32NX_BRAKE_FAN_RUNNING", DisplayName = "Brake Fan Running",
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Running" }
         },
@@ -1050,7 +1050,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ["A32NX_CALLS_EMER_ON"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_CALLS_EMER_ON",
-            DisplayName = "Call EMER",
+            DisplayName = "Emergency Call",
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
         },
@@ -1059,7 +1059,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ["A32NX_GPWS_FLAPS3"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_GPWS_FLAPS3",
-            DisplayName = "LDG FLAP 3 button",
+            DisplayName = "Landing Flap 3",
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
@@ -1067,7 +1067,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ["A32NX_GPWS_FLAP_OFF"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_GPWS_FLAP_OFF",
-            DisplayName = "Flaps warning disable button",
+            DisplayName = "GPWS Flap Mode",
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
@@ -1075,7 +1075,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ["A32NX_GPWS_GS_OFF"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_GPWS_GS_OFF",
-            DisplayName = "Glide slope mode 5 disable button",
+            DisplayName = "GPWS Glideslope Mode",
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
@@ -1083,7 +1083,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ["A32NX_GPWS_SYS_OFF"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_GPWS_SYS_OFF",
-            DisplayName = "GPWS SYS disable Button",
+            DisplayName = "GPWS System",
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
@@ -1091,7 +1091,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ["A32NX_GPWS_TERR_OFF"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_GPWS_TERR_OFF",
-            DisplayName = "GPWS TERR disable button",
+            DisplayName = "GPWS Terrain",
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
@@ -1108,14 +1108,14 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ["A32NX_ISIS_BUGS_ACTIVE"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_ISIS_BUGS_ACTIVE",
-            DisplayName = "ISIS Bugs",
+            DisplayName = "ISIS Bugs Page",
             Type = SimConnect.SimVarType.LVar,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Active" }
         },
         ["A32NX_ISIS_LS_ACTIVE"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_ISIS_LS_ACTIVE",
-            DisplayName = "ISIS ILS",
+            DisplayName = "ISIS LS",
             Type = SimConnect.SimVarType.LVar,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Active" }
         },
@@ -1418,7 +1418,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ["A32NX_PARK_BRAKE_LEVER_POS"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_PARK_BRAKE_LEVER_POS",
-            DisplayName = "Parking brake",
+            DisplayName = "Parking Brake",
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
             IsAnnounced = true,  // Critical for ground operations
@@ -2052,7 +2052,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ["A32NX_AUTOTHRUST_MODE_MESSAGE"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_AUTOTHRUST_MODE_MESSAGE",
-            DisplayName = "Autothrust Mode Message",
+            DisplayName = "Autothrust Message",
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             Units = "number"
@@ -2104,7 +2104,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ["A32NX_AUTOPILOT_FPA_SELECTED"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_AUTOPILOT_FPA_SELECTED",
-            DisplayName = "Selected Flight Path Angle",
+            DisplayName = "Selected FPA",
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             Units = "degrees"
@@ -2376,7 +2376,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ["A32NX_FCU_LEFT_EIS_BARO_HPA"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_FCU_LEFT_EIS_BARO_HPA",
-            DisplayName = "Altimeter",
+            DisplayName = "Captain Altimeter",
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
             IsAnnounced = true,
@@ -2567,7 +2567,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ["A32NX_FMA_VERTICAL_MODE"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_FMA_VERTICAL_MODE",
-            DisplayName = "Vertical FMA Mode",
+            DisplayName = "Vertical Mode",
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
             IsAnnounced = true,
@@ -2582,7 +2582,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ["A32NX_FMA_LATERAL_MODE"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_FMA_LATERAL_MODE",
-            DisplayName = "Lateral FMA Mode",
+            DisplayName = "Lateral Mode",
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
             IsAnnounced = true,
@@ -2608,7 +2608,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ["A32NX_FMA_LATERAL_ARMED"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_FMA_LATERAL_ARMED",
-            DisplayName = "Armed Lateral Mode",
+            DisplayName = "Armed Lateral Modes",
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
             IsAnnounced = true,
@@ -2617,7 +2617,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ["A32NX_FMA_VERTICAL_ARMED"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_FMA_VERTICAL_ARMED",
-            DisplayName = "Armed Vertical Mode",
+            DisplayName = "Armed Vertical Modes",
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
             IsAnnounced = true,
@@ -2643,7 +2643,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ["A32NX_FM1_MINIMUM_DESCENT_ALTITUDE"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_FM1_MINIMUM_DESCENT_ALTITUDE",
-            DisplayName = "Minimum Descent Altitude",
+            DisplayName = "Baro Minimum",
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
             IsAnnounced = true,
@@ -2661,7 +2661,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ["A32NX_PFD_MSG_SET_HOLD_SPEED"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_PFD_MSG_SET_HOLD_SPEED",
-            DisplayName = "PFD Message: SET HOLD SPEED",
+            DisplayName = "Set Hold Speed",
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
             IsAnnounced = true,
@@ -2673,7 +2673,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ["A32NX_PFD_MSG_TD_REACHED"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_PFD_MSG_TD_REACHED",
-            DisplayName = "PFD Message: T/D REACHED",
+            DisplayName = "Top of Descent Reached",
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
             IsAnnounced = true,
@@ -2685,7 +2685,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ["A32NX_PFD_MSG_CHECK_SPEED_MODE"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_PFD_MSG_CHECK_SPEED_MODE",
-            DisplayName = "PFD Message: CHECK SPEED MODE",
+            DisplayName = "Check Speed Mode",
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
             IsAnnounced = true,
@@ -2697,7 +2697,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ["A32NX_PFD_LINEAR_DEVIATION_ACTIVE"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_PFD_LINEAR_DEVIATION_ACTIVE",
-            DisplayName = "PFD Linear Deviation Active",
+            DisplayName = "Linear Deviation Active",
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
             IsAnnounced = true,
@@ -2709,7 +2709,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ["A32NX_FMGC_1_LDEV_REQUEST"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_FMGC_1_LDEV_REQUEST",
-            DisplayName = "FMGC L/DEV Request",
+            DisplayName = "FMGC L DEV Request",
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
             IsAnnounced = true,
@@ -2721,7 +2721,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ["A32NX_FMA_CRUISE_ALT_MODE"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_FMA_CRUISE_ALT_MODE",
-            DisplayName = "FMA Cruise Altitude Mode",
+            DisplayName = "Cruise Altitude Mode",
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
             IsAnnounced = true,
@@ -3526,7 +3526,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ["COM_STANDBY_FREQUENCY_SET:1"] = new SimConnect.SimVarDefinition
         {
             Name = "COM STANDBY FREQUENCY:1",
-            DisplayName = "Set Standby Frequency",
+            DisplayName = "COM 1 Set Standby Frequency",
             Type = SimConnect.SimVarType.SimVar,
             Units = "kHz",
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
@@ -3534,7 +3534,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ["COM1_RADIO_SWAP"] = new SimConnect.SimVarDefinition
         {
             Name = "COM1_RADIO_SWAP",
-            DisplayName = "XFER Frequency",
+            DisplayName = "COM 1 XFER Frequency",
             Type = SimConnect.SimVarType.Event
         },
         ["A32NX_RMP_L_TOGGLE_SWITCH"] = new SimConnect.SimVarDefinition
@@ -3559,7 +3559,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ["COM_ACTIVE_FREQUENCY:1"] = new SimConnect.SimVarDefinition
         {
             Name = "COM ACTIVE FREQUENCY:1",
-            DisplayName = "Active Frequency",
+            DisplayName = "COM 1 Active Frequency",
             Type = SimConnect.SimVarType.SimVar,
             Units = "kHz",
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
@@ -3567,7 +3567,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ["COM_STANDBY_FREQUENCY:1"] = new SimConnect.SimVarDefinition
         {
             Name = "COM STANDBY FREQUENCY:1",
-            DisplayName = "Standby Frequency",
+            DisplayName = "COM 1 Standby Frequency",
             Type = SimConnect.SimVarType.SimVar,
             Units = "kHz",
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
@@ -3650,7 +3650,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             Name = "A32NX_SPEEDS_GD",
             Type = SimConnect.SimVarType.LVar,
-            DisplayName = "O Speed",
+            DisplayName = "Green Dot Speed",
             Units = "knots",
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
         },
@@ -3658,7 +3658,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             Name = "A32NX_SPEEDS_S",
             Type = SimConnect.SimVarType.LVar,
-            DisplayName = "S-Speed",
+            DisplayName = "S Speed",
             Units = "knots",
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
         },
@@ -3666,7 +3666,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             Name = "A32NX_SPEEDS_F",
             Type = SimConnect.SimVarType.LVar,
-            DisplayName = "F-Speed",
+            DisplayName = "F Speed",
             Units = "knots",
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
         },
@@ -3682,7 +3682,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             Name = "A32NX_SPEEDS_VLS",
             Type = SimConnect.SimVarType.LVar,
-            DisplayName = "Minimum Selectable Speed",
+            DisplayName = "VLS (lowest selectable)",
             Units = "knots",
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
         },
@@ -3690,7 +3690,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             Name = "A32NX_SPEEDS_VS",
             Type = SimConnect.SimVarType.LVar,
-            DisplayName = "Stall Speed",
+            DisplayName = "V S (stall)",
             Units = "knots",
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
         },
@@ -3884,7 +3884,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         },
         ["A32NX_CHRONO_ET_SWITCH_POS"] = new SimConnect.SimVarDefinition
         {
-            Name = "A32NX_CHRONO_ET_SWITCH_POS", DisplayName = "Elapsed Time Knob",
+            Name = "A32NX_CHRONO_ET_SWITCH_POS", DisplayName = "Elapsed Time",
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Run", [1] = "Stop", [2] = "Reset" }
         },
@@ -3954,7 +3954,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         },
         ["A32NX_EIS_DMC_SWITCHING_KNOB"] = new SimConnect.SimVarDefinition
         {
-            Name = "A32NX_EIS_DMC_SWITCHING_KNOB", DisplayName = "EIS DMC Source",
+            Name = "A32NX_EIS_DMC_SWITCHING_KNOB", DisplayName = "EIS / DMC Source",
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Captain on 3", [1] = "Normal", [2] = "First Officer on 3" }
         },
@@ -4053,7 +4053,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         },
         ["A32NX_OVHD_CARGO_AIR_ISOL_VALVES_FWD_PB_IS_ON"] = new SimConnect.SimVarDefinition
         {
-            Name = "A32NX_OVHD_CARGO_AIR_ISOL_VALVES_FWD_PB_IS_ON", DisplayName = "Forward Isolation Valve",
+            Name = "A32NX_OVHD_CARGO_AIR_ISOL_VALVES_FWD_PB_IS_ON", DisplayName = "Cargo Fwd Isolation Valve",
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         },
@@ -4067,7 +4067,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         // ---- Recorder and Misc panel (parity with A380 Overhead > Recorder and Misc) ----
         ["A32NX_RCDR_GROUND_CONTROL_ON"] = new SimConnect.SimVarDefinition
         {
-            Name = "A32NX_RCDR_GROUND_CONTROL_ON", DisplayName = "CVR Ground Control",
+            Name = "A32NX_RCDR_GROUND_CONTROL_ON", DisplayName = "Recorder Ground Control",
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         },
