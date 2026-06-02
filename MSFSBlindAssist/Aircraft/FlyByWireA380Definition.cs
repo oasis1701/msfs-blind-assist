@@ -784,6 +784,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             Stock($"ENG_OIL_PRESSURE:{e}", $"ENG OIL PRESSURE:{e}", $"Engine {e} Oil Pressure", "psi");
             Stock($"TURB_ENG_VIBRATION:{e}", $"TURB ENG VIBRATION:{e}", $"Engine {e} Vibration", "number");
         }
+        // Landing-gear position (Wheel SD page) — stock simvars, percent extended.
+        Stock("GEAR_CENTER_POSITION", "GEAR CENTER POSITION", "Nose Gear", "percent");
+        Stock("GEAR_LEFT_POSITION", "GEAR LEFT POSITION", "Left Main Gear", "percent");
+        Stock("GEAR_RIGHT_POSITION", "GEAR RIGHT POSITION", "Right Main Gear", "percent");
 
         var windowReadVars = Forms.FBWA380.FBWA380SystemDisplayForm.AllVariableNames()
             .Concat(Forms.FBWA380.FBWA380NavDisplayForm.AllVariableNames())
@@ -4061,8 +4065,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 r.Add(("APU bleed pressure", "A32NX_PNEU_APU_BLEED_CONTAINER_PRESSURE", Psi));
                 r.Add(("APU generator 1 voltage", "A32NX_ELEC_APU_GEN_1_POTENTIAL", V));
                 r.Add(("APU generator 1 frequency", "A32NX_ELEC_APU_GEN_1_FREQUENCY", v => $"{v:0} hertz"));
+                r.Add(("APU generator 1 load", "A32NX_ELEC_APU_GEN_1_LOAD", Pct));
                 r.Add(("APU generator 2 voltage", "A32NX_ELEC_APU_GEN_2_POTENTIAL", V));
                 r.Add(("APU generator 2 frequency", "A32NX_ELEC_APU_GEN_2_FREQUENCY", v => $"{v:0} hertz"));
+                r.Add(("APU generator 2 load", "A32NX_ELEC_APU_GEN_2_LOAD", Pct));
                 break;
             case 2: // BLEED
                 r.Add(("Pack 1 flow valve 1", "A32NX_COND_PACK_1_FLOW_VALVE_1_IS_OPEN", OpenShut));
@@ -4089,6 +4095,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 r.Add(("Differential pressure", "A32NX_PRESS_CABIN_DELTA_PRESSURE_B1", v => A(v, "psi", "0.0")));
                 r.Add(("Cabin altitude target", "A32NX_PRESS_CABIN_ALTITUDE_TARGET_B1", v => A(v, "feet")));
                 r.Add(("Landing elevation", "A32NX_FM1_LANDING_ELEVATION", v => $"{v:0} feet"));
+                for (int n = 1; n <= 4; n++) r.Add(($"Outflow valve {n}", $"A32NX_PRESS_OUTFLOW_VALVE_{n}_OPEN_PERCENTAGE", Pct));
                 break;
             case 5: // DOORS
                 r.Add(("Forward cargo door", "A32NX_FWD_DOOR_CARGO_LOCKED", Locked));
@@ -4120,7 +4127,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 break;
             case 7: // ELEC DC
                 foreach (var b in new[] { "1", "2", "ESS", "APU" })
+                {
                     r.Add(($"Battery {b} voltage", $"A32NX_ELEC_BAT_{b}_POTENTIAL", v => $"{v:0.0} volts"));
+                    r.Add(($"Battery {b} current", $"A32NX_ELEC_BAT_{b}_CURRENT", v => $"{v:0} amps"));
+                }
                 for (int n = 1; n <= 2; n++) r.Add(($"TR {n} voltage", $"A32NX_ELEC_TR_{n}_POTENTIAL", V));
                 for (int n = 1; n <= 2; n++) r.Add(($"DC bus {n}", $"A32NX_ELEC_DC_{n}_BUS_IS_POWERED", OnOff));
                 r.Add(("DC ESS bus", "A32NX_ELEC_DC_ESS_BUS_IS_POWERED", OnOff));
@@ -4130,7 +4140,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                     r.Add(($"{t.Replace('_', ' ')} tank", $"A32NX_FQDC_1_{t}_TANK_QUANTITY", AWt));
                 r.Add(("Total fuel on board", "A32NX_FQMS_TOTAL_FUEL_ON_BOARD", AWt));
                 break;
-            case 9: // WHEEL — braked-wheel temperatures
+            case 9: // WHEEL — braked-wheel temperatures + gear position
+                r.Add(("Nose gear", "GEAR_CENTER_POSITION", Pct));
+                r.Add(("Left main gear", "GEAR_LEFT_POSITION", Pct));
+                r.Add(("Right main gear", "GEAR_RIGHT_POSITION", Pct));
                 for (int w = 1; w <= 16; w++) r.Add(($"Brake {w} temp", $"A32NX_REPORTED_BRAKE_TEMPERATURE_{w}", C));
                 break;
             case 10: // HYD (A380 has Green + Yellow)
