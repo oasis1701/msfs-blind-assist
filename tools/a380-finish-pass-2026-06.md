@@ -33,3 +33,32 @@ persistent-property flags, and the display-unit power/self-test state.
 
 Files: `Aircraft/FlyByWireA380Definition.cs` (ISIS Stock registrations),
 `Forms/FBWA380/FBWA380ISISForm.cs` (Vars + Render + DotsPhrase helper).
+
+---
+
+## ND (Navigation Display) — DONE
+
+**Bug fix:** ND range readout was wrong for the A380. `A32NX_EFIS_L_ND_RANGE` is an
+INDEX into the A380 array `[-1(ZOOM),10,20,40,80,160,320,640]`, but the form used the
+A320's 6-entry `10..320` array — so every range read one step high and 640/ZOOM were
+impossible. Fixed to the 8-entry A380 array (index 0 = ZOOM).
+
+**Additions** (all live-verified against the running A380X):
+- **Ground speed** `A32NX_ADIRS_IR_1_GROUND_SPEED`, **True airspeed**
+  `A32NX_ADIRS_ADR_1_TRUE_AIRSPEED`, **Wind** dir/speed
+  `A32NX_ADIRS_IR_1_WIND_DIRECTION_BNR` / `_WIND_SPEED_BNR` — all ARINC429 BNR words
+  decoded via `Arinc429Word`; render "---" when not in Normal Operation (e.g. TAS/wind
+  are No-Computed-Data on the ground).
+- **TRUE REF awareness** `A32NX_FMGC_TRUE_REF` — shows "Reference: TRUE" and switches the
+  TO-WPT bearing to `A32NX_EFIS_L_TO_WPT_TRUE_BEARING` (degrees) instead of the magnetic
+  bearing when true-north reference is selected.
+- **Approach capability** (e.g. "CAT3 DUAL") from `A32NX_EFIS_L_APPR_MSG_0/_1` (packed
+  6-bit, decoded with the existing ident unpacker).
+
+**Deferred (string-simvar limitation, documented):** the VOR1/2 + ADF1/2 nav-source
+block needs `NAV IDENT:n` / `ADF IDENT:n` (string simvars) which MSFSBA's numeric
+SimVar pipeline can't read; these idents remain available via the ND **F6 live scrape**.
+TCAS message state and ROSE-VOR/ROSE-ILS tuned-station blocks also deferred (mode-specific,
+lower value). RWY AHEAD already covered by ROW/ROP auto-announce.
+
+Files: `Forms/FBWA380/FBWA380NavDisplayForm.cs` (NdRanges array + Vars + Render).
