@@ -2522,6 +2522,9 @@ public partial class MainForm : Form
         // auto-announce so failures AND memos come from the one DOM source.
         if (currentAircraft is FlyByWireA380Definition a380def) a380def.EwdScrapeHandlesAnnounce = true;
         coherentEWDClient = new CoherentEWDClient();
+        // Let the SD "Upper E/WD" page read the live E/WD content through this one shared
+        // socket (a second client on A380X_EWD is rejected — one inspector per page).
+        if (currentAircraft is FlyByWireA380Definition a380ewd) a380ewd.EwdMonitor = coherentEWDClient;
         coherentEWDClient.LineAnnounced += line =>
         {
             // Honour the Ctrl+M / Ctrl+E ECAM-monitor mute (same sentinel the

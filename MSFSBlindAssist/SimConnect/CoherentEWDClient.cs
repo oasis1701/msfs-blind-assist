@@ -99,6 +99,14 @@ namespace MSFSBlindAssist.SimConnect
         private string _eclAgentJs = "";
         private bool _eclAgentInstalled;
         private string _lastEclHash = "";
+        // Generic display-scrape agent (coherent-display-agent.js, window.__MSFSBA_DISP),
+        // installed on this SAME shared A380X_EWD socket so the SD "Upper E/WD" page can
+        // read the full E/WD display content. A second CoherentDisplayClient on A380X_EWD
+        // would be rejected (Chromium 49 = one inspector socket per page), which is what
+        // produced the "content not available" box. Coexists with the EWD + ECL agents
+        // (all isolated-IIFE window.__MSFSBA_* globals).
+        private string _dispAgentJs = "";
+        private bool _dispAgentInstalled;
         private int _msgId;
         private volatile bool _connected;
         private volatile bool _agentInstalled;
@@ -122,6 +130,9 @@ namespace MSFSBlindAssist.SimConnect
                 // socket per page, so we cannot open a second one for it).
                 string eclPath = Path.Combine(AppContext.BaseDirectory, "Resources", "coherent-ecl-agent.js");
                 _eclAgentJs = File.ReadAllText(eclPath);
+                // Generic display agent on the same socket → SD "Upper E/WD" page content.
+                string dispPath = Path.Combine(AppContext.BaseDirectory, "Resources", "coherent-display-agent.js");
+                _dispAgentJs = File.ReadAllText(dispPath);
             }
             catch (Exception ex)
             {
@@ -137,6 +148,8 @@ namespace MSFSBlindAssist.SimConnect
             _ws = null;
             _connected = false;
             _agentInstalled = false;
+            _eclAgentInstalled = false;
+            _dispAgentInstalled = false;
         }
 
         // ---- connection + poll loop -------------------------------------
@@ -194,6 +207,14 @@ namespace MSFSBlindAssist.SimConnect
             {
                 string eclInstall = await EvalAsync(_eclAgentJs, ct);
                 _eclAgentInstalled = eclInstall.IndexOf("MSFSBA_ECL_INSTALLED", StringComparison.Ordinal) >= 0;
+            }
+            // Install the generic display agent on the same socket (best-effort) — used by
+            // the SD "Upper E/WD" page via ScrapeDisplayAsync.
+            _dispAgentInstalled = false;
+            if (!string.IsNullOrEmpty(_dispAgentJs))
+            {
+                string dispInstall = await EvalAsync(_dispAgentJs, ct);
+                _dispAgentInstalled = dispInstall.IndexOf("MSFSBA_DISP_INSTALLED", StringComparison.Ordinal) >= 0;
             }
             _connected = _agentInstalled;
             // A fresh agent install = a fresh page; take a new silent baseline so a
@@ -364,6 +385,34 @@ namespace MSFSBlindAssist.SimConnect
                 return res.rows ?? new List<EclRow>();
             }
             catch { return null; }
+        }
+
+        /// <summary>
+        /// On-demand generic display scrape of the E/WD over the shared A380X_EWD socket
+        /// (the SD "Upper E/WD" page). Returns the reconstructed rows, or null if the
+        /// agent isn't ready. Funnels through this one socket because a second
+        /// CoherentDisplayClient on A380X_EWD would be rejected (one inspector per page).
+        /// </summary>
+        public async Task<List<string>?> ScrapeDisplayAsync()
+        {
+            try
+            {
+                var ct = _cts?.Token ?? CancellationToken.None;
+                if (!await EnsureConnected(ct)) return null;
+                if (!_dispAgentInstalled) return null;
+                string raw = await EvalAsync("window.__MSFSBA_DISP ? __MSFSBA_DISP.scrape() : ''", ct);
+                if (string.IsNullOrEmpty(raw)) { _dispAgentInstalled = false; return null; }
+                var res = JsonSerializer.Deserialize<DispScrapeResult>(raw);
+                if (res == null || !res.ok) return null;
+                return res.rows ?? new List<string>();
+            }
+            catch { return null; }
+        }
+
+        private sealed class DispScrapeResult
+        {
+            public bool ok { get; set; }
+            public List<string>? rows { get; set; }
         }
 
         /// <summary>

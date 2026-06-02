@@ -3870,7 +3870,16 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     // announces it — so the SD pages are usable straight from the panel, no separate
     // window or hotkey. On-demand scrapes only (background poll paused).
     private SimConnect.CoherentDisplayClient? _sdScrapeClient;
-    private SimConnect.CoherentDisplayClient? _ewdScrapeClient;   // Upper ECAM / E-WD view
+    private SimConnect.CoherentDisplayClient? _ewdScrapeClient;   // legacy fallback only (see below)
+
+    /// <summary>
+    /// The always-on E/WD failure monitor (owns the ONLY inspector socket to the
+    /// A380X_EWD view). MainForm sets this when it starts the monitor. The SD "Upper
+    /// E/WD" page reads the live E/WD content through THIS shared socket — a second
+    /// CoherentDisplayClient on A380X_EWD is rejected (one inspector per page), which
+    /// is what produced the "content not available" box.
+    /// </summary>
+    public SimConnect.CoherentEWDClient? EwdMonitor { get; set; }
     // Cached live System-Display content for the ECP "System Display Page" combo. On a
     // page change we scrape the SD view ONCE, store the decoded rows here, then force a
     // refresh of the ECAM Control Panel "Status display" box (via the page-index var) —
@@ -3949,17 +3958,29 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                     return;
                 }
             }
-            SimConnect.CoherentDisplayClient client;
+            List<string>? rows;
             if (ewd)
             {
                 // Upper ECAM / E-WD: engine N1/EGT/N2/FF + memos/warnings (single page).
-                if (_ewdScrapeClient == null)
+                // The A380X_EWD view allows only ONE inspector socket, owned by the
+                // always-on CoherentEWDClient failure monitor — so scrape THROUGH it,
+                // never a second client (that rejection was the "content not available"
+                // bug). The E/WD is a single page (no page switch), so its content is
+                // already current; no render-settle delay needed.
+                rows = EwdMonitor != null ? await EwdMonitor.ScrapeDisplayAsync() : null;
+                if (rows == null)
                 {
-                    _ewdScrapeClient = new SimConnect.CoherentDisplayClient("A380X_EWD");
-                    _ewdScrapeClient.Start();
-                    _ewdScrapeClient.SetActive(false);
+                    // No monitor running (shouldn't happen on the A380) → legacy direct
+                    // client, which only works when nothing else owns the socket.
+                    if (_ewdScrapeClient == null)
+                    {
+                        _ewdScrapeClient = new SimConnect.CoherentDisplayClient("A380X_EWD");
+                        _ewdScrapeClient.Start();
+                        _ewdScrapeClient.SetActive(false);
+                    }
+                    await Task.Delay(900);
+                    rows = await _ewdScrapeClient.ScrapeNowAsync();
                 }
-                client = _ewdScrapeClient;
             }
             else
             {
@@ -3969,10 +3990,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                     _sdScrapeClient.Start();
                     _sdScrapeClient.SetActive(false);   // on-demand only, no 1.2 s poll
                 }
-                client = _sdScrapeClient;
+                await Task.Delay(900);   // let the display render the newly-selected page
+                rows = await _sdScrapeClient.ScrapeNowAsync();
             }
-            await Task.Delay(900);   // let the display render the newly-selected page
-            var rows = await client.ScrapeNowAsync();
             string content;
             if (rows == null || rows.Count == 0)
             {
