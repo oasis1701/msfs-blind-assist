@@ -1188,23 +1188,38 @@ public sealed class GsxService : IDisposable
         // passenger count would bake into the key, defeating the throttle
         // and announcing every single passenger.
         string serviceKey = BuildFixedProgressThrottleKey(text, "boarding");
-        int passengerMilestone = passengers == 0
-            ? 0
-            : passengers >= 100
-                ? 100
-            : passengers / BoardingPassengerAnnouncementInterval;
+        int currentMilestone = ComputeBoardingMilestone(passengers);
 
-        if (passengers is not 0 and < 100 && passengerMilestone == 0)
-            return true;
-
-        if (_lastBoardingPassengerAnnouncementByService.TryGetValue(serviceKey, out int lastMilestone)
-            && passengerMilestone <= lastMilestone)
+        // First time we've seen boarding progress for this service — let it
+        // through so the user always hears the initial tooltip (operator,
+        // current count, etc.) even if they joined mid-boarding.
+        if (!_lastBoardingPassengerAnnouncementByService.TryGetValue(serviceKey, out int lastMilestone))
         {
-            return true;
+            _lastBoardingPassengerAnnouncementByService[serviceKey] = currentMilestone;
+            return false;
         }
 
-        _lastBoardingPassengerAnnouncementByService[serviceKey] = passengerMilestone;
-        return false;
+        if (currentMilestone > lastMilestone)
+        {
+            _lastBoardingPassengerAnnouncementByService[serviceKey] = currentMilestone;
+            return false;
+        }
+
+        return true;
+    }
+
+    // Boarding-progress milestones — chosen so the user hears:
+    //   * pax 0 (service started, nobody on yet)
+    //   * pax 1 (boarding has actually begun)
+    //   * every multiple of BoardingPassengerAnnouncementInterval (10, 20, …)
+    // with no upper cap, so 110 / 120 / 130 / … keep announcing instead of
+    // collapsing into a single milestone-100 ceiling like Tower's original
+    // formula did.
+    private static int ComputeBoardingMilestone(int passengers)
+    {
+        if (passengers <= 0) return 0;
+        if (passengers < BoardingPassengerAnnouncementInterval) return 1;
+        return (passengers / BoardingPassengerAnnouncementInterval) + 1;
     }
 
     private static string BuildProgressThrottleKey(string text, string fallbackService)
