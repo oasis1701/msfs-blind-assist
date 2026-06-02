@@ -771,6 +771,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // On-demand readout sources for global hotkeys (not paneled, not announced).
         Stock("KOHLSMAN_HG", "KOHLSMAN SETTING HG", "Altimeter", "inHg");
         Stock("GROSS_WEIGHT_KG", "TOTAL WEIGHT", "Gross Weight", "kilograms");
+        // Center of gravity (% MAC) — the GWCG figure the A380 shows on the PFD pitch-trim
+        // scale + the SD status band. The FBW A32NX_FQMS_* L:vars read null on the current
+        // build, so use the stock CG PERCENT simvar (always published, longitudinal % MAC).
+        Stock("CG_PERCENT_MAC", "CG PERCENT", "Center of Gravity", "percent");
 
         // Metric/imperial WEIGHT unit (kg vs lb). `CONFIG_USING_METRIC_UNIT` (the
         // flyPad Units toggle, Alt+U) is an EFB persistent setting that the EFB
@@ -2589,7 +2593,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "PLANE PITCH DEGREES", "PLANE BANK DEGREES", "PLANE HEADING DEGREES MAGNETIC",
             "AIRSPEED INDICATED", "INDICATED ALTITUDE",
             "A32NX_PFD_MSG_SET_HOLD_SPEED", "A32NX_PFD_MSG_TD_REACHED",
-            "A32NX_PFD_MSG_CHECK_SPEED_MODE", "A32NX_PFD_LINEAR_DEVIATION_ACTIVE"
+            "A32NX_PFD_MSG_CHECK_SPEED_MODE", "A32NX_PFD_LINEAR_DEVIATION_ACTIVE",
+            "GROSS_WEIGHT_KG", "CG_PERCENT_MAC"
         };
         // ND accessible snapshot — mode/range, TO waypoint (decoded ident + distance/
         // bearing/ETA), cross-track, RNP, and ILS LOC/GS validity + deviation.
