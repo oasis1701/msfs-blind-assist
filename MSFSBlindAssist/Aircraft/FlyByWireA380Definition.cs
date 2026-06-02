@@ -4003,6 +4003,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 hotkeyManager.ExitInputHotkeyMode();
                 new Forms.FBWA380.FBWA380VSWindow(this, simConnect, announcer).ShowForm();
                 return true;
+            case HotkeyAction.FCUSetAutopilot:
+                hotkeyManager.ExitInputHotkeyMode();
+                new Forms.FBWA380.FBWA380AutopilotWindow(this, simConnect, announcer).ShowForm();
+                return true;
 
             // FCU knob push/pull (Shift+1..4 push, Ctrl+1..4 pull). Fire the
             // A32NX.FCU_* event (same events the A320 uses), then read back the
