@@ -1862,8 +1862,12 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Door("A380X_GND_DOOR_UPPER2R", 13, 14, "Upper 2 Right Door");
         Door("A380X_GND_DOOR_UPPER3L", 14, 15, "Upper 3 Left Door");
         Door("A380X_GND_DOOR_UPPER3R", 15, 16, "Upper 3 Right Door");
-        Door("A380X_GND_DOOR_FWDCARGO", 16, 17, "Forward Cargo Door");
-        Door("A380X_GND_DOOR_AFTCARGO", 17, 18, "Aft Cargo Door");
+        // NOTE: cargo doors are intentionally NOT operable combos. The authoritative FBW
+        // door_animations.xml only fires K:TOGGLE_AIRCRAFT_EXIT for IDs 1-16 (10 main + 6
+        // upper); the cargo doors are driven by the hydraulic system (cargo_doors.rs via
+        // FWD/AFT_DOOR_CARGO_OPEN_REQ), so a TOGGLE_AIRCRAFT_EXIT:17/18 does nothing. Their
+        // OPEN/LOCKED state is still read-only in the SD DOORS page (A32NX_FWD/AFT_DOOR_
+        // CARGO_LOCKED). (Re-add as operable later via the cargo-door L:var write if wanted.)
 
         // Jet bridge + passenger stairs (stock MSFS ground-service events;
         // airport/parking dependent). Catering, fuel-truck, baggage and pushback
@@ -2273,8 +2277,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "A380X_GND_DOOR_MAIN5L", "A380X_GND_DOOR_MAIN5R",
             "A380X_GND_DOOR_UPPER1L", "A380X_GND_DOOR_UPPER1R",
             "A380X_GND_DOOR_UPPER2L", "A380X_GND_DOOR_UPPER2R",
-            "A380X_GND_DOOR_UPPER3L", "A380X_GND_DOOR_UPPER3R",
-            "A380X_GND_DOOR_FWDCARGO", "A380X_GND_DOOR_AFTCARGO"
+            "A380X_GND_DOOR_UPPER3L", "A380X_GND_DOOR_UPPER3R"
         };
         // Cockpit sliding windows + physical flight-deck door (settable open/close).
         p["Windows"] = new List<string>
@@ -3298,6 +3301,28 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     public override bool HandleUIVariableSet(string varKey, double value, SimVarDefinition varDef,
         SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
     {
+        // Fire Test / Cargo Smoke Test (HOLD on/off tests). Setting ON triggers the fire
+        // MASTER WARNING + the continuous repetitive chime (CRC) aural. Writing the var 0
+        // ends the test, but the CRC can keep sounding until the master warning is
+        // acknowledged — so on TEST OFF, also pulse the (correctly-spelled) MASTERAWARN
+        // acknowledge to guarantee the "beep beep beep" cancels. Write via the calc path.
+        if (varKey == "A32NX_OVHD_FIRE_TEST_PB_IS_PRESSED" || varKey == "A32NX_FIRE_TEST_CARGO")
+        {
+            int on = value > 0.5 ? 1 : 0;
+            simConnect.ExecuteCalculatorCode($"{on} (>L:{varKey})");
+            if (on == 0)
+            {
+                // Acknowledge master warning + caution (both sides) to silence the aural.
+                simConnect.ExecuteCalculatorCode("1 (>L:PUSH_AUTOPILOT_MASTERAWARN_L)");
+                simConnect.ExecuteCalculatorCode("0 (>L:PUSH_AUTOPILOT_MASTERAWARN_L)");
+                simConnect.ExecuteCalculatorCode("1 (>L:PUSH_AUTOPILOT_MASTERAWARN_R)");
+                simConnect.ExecuteCalculatorCode("0 (>L:PUSH_AUTOPILOT_MASTERAWARN_R)");
+            }
+            announcer.Announce(varKey == "A32NX_FIRE_TEST_CARGO"
+                ? (on == 1 ? "Cargo smoke test on" : "Cargo smoke test off")
+                : (on == 1 ? "Fire test on" : "Fire test off"));
+            return true;
+        }
         // System Display PAGE combo: drive the SD to the chosen page, then scrape that
         // page's decoded content off the real SD view INTO the panel "Status display"
         // box (no separate window). The combo's own value change announces the page
@@ -3769,8 +3794,6 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         ["A380X_GND_DOOR_UPPER2R"] = "Upper 2 Right Door",
         ["A380X_GND_DOOR_UPPER3L"] = "Upper 3 Left Door",
         ["A380X_GND_DOOR_UPPER3R"] = "Upper 3 Right Door",
-        ["A380X_GND_DOOR_FWDCARGO"] = "Forward Cargo Door",
-        ["A380X_GND_DOOR_AFTCARGO"] = "Aft Cargo Door",
     };
     // Door key -> TOGGLE_AIRCRAFT_EXIT interaction id, so the door COMBO itself
     // drives the toggle (every control is a combo; no buttons). id = ip + 1.
@@ -3792,8 +3815,6 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         ["A380X_GND_DOOR_UPPER2R"] = 14,
         ["A380X_GND_DOOR_UPPER3L"] = 15,
         ["A380X_GND_DOOR_UPPER3R"] = 16,
-        ["A380X_GND_DOOR_FWDCARGO"] = 17,
-        ["A380X_GND_DOOR_AFTCARGO"] = 18,
     };
 
     // Decode/normalise an EFIS baro setting to whole hPa; false for STD/no-data.
