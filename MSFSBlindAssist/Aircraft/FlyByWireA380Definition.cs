@@ -3958,15 +3958,71 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                     return;
                 }
             }
+            // Upper ECAM / E-WD — DECODE into clean per-parameter rows from SimVars. The
+            // schematic A380X_EWD scrape flat-joined its X-sorted leaves and interleaved
+            // the four engines' values with their labels ("THR XX THR XX THR XX THR XX /
+            // N1 / XX XX % XX XX"), nonsensical for a screen reader. Mirrors the SD-page
+            // decode: engine primaries grouped per parameter, then the live ECAM memo/
+            // warning lines. Falls through to the scrape only if nothing is cached yet.
+            if (ewd)
+            {
+                int[] engs = { 1, 2, 3, 4 };
+                foreach (int e in engs)
+                    foreach (var p in new[] { "N1", "EGT", "N2", "N3", "FF" })
+                        simConnect.RequestVariable($"A32NX_ENGINE_{p}:{e}", forceUpdate: true);
+                await Task.Delay(550);
+
+                bool anyReal = false;
+                string Grp(string param, Func<double, string> fmt)
+                {
+                    var parts = new List<string>();
+                    foreach (int e in engs)
+                    {
+                        double? cv = simConnect.GetCachedVariableValue($"A32NX_ENGINE_{param}:{e}");
+                        if (cv.HasValue) anyReal = true;
+                        parts.Add($"Engine {e} " + (cv.HasValue ? fmt(cv.Value) : "--"));
+                    }
+                    return string.Join(", ", parts);
+                }
+
+                var ewdLines = new List<string>
+                {
+                    "N1: "        + Grp("N1",  v => $"{v:0.0}%"),
+                    "EGT: "       + Grp("EGT", v => $"{v:0}°C"),
+                    "N2: "        + Grp("N2",  v => $"{v:0.0}%"),
+                    "N3: "        + Grp("N3",  v => $"{v:0.0}%"),
+                    "Fuel Flow: " + Grp("FF",  v => $"{v:0} kg/h"),
+                };
+                // Live ECAM memo / warning lines — decoded from the EWD_LOWER code cache
+                // (the same source ReadAllEwdWarnings / Alt+E uses).
+                int memoCount = 0;
+                foreach (var lr in new[] { "LEFT", "RIGHT" })
+                    for (int i = 1; i <= 10; i++)
+                        if (_lastEwdCode.TryGetValue($"A32NX_EWD_LOWER_{lr}_LINE_{i}", out var code) && code != 0)
+                        {
+                            string mtext = EWDMessageLookupA380.GetMessage(code);
+                            if (!string.IsNullOrWhiteSpace(mtext) &&
+                                !mtext.Equals("NORMAL", StringComparison.OrdinalIgnoreCase))
+                            { ewdLines.Add(mtext); memoCount++; }
+                        }
+
+                if (anyReal || memoCount > 0)
+                {
+                    _sdPageContent = string.Join("\r\n", ewdLines);
+                    simConnect.RequestVariable("A32NX_ECAM_SD_CURRENT_PAGE_INDEX", forceUpdate: true);
+                    return;
+                }
+                // Nothing cached yet (SimConnect not ready / displays off) → fall through
+                // to the DOM scrape below (through the shared monitor socket).
+            }
+
             List<string>? rows;
             if (ewd)
             {
-                // Upper ECAM / E-WD: engine N1/EGT/N2/FF + memos/warnings (single page).
-                // The A380X_EWD view allows only ONE inspector socket, owned by the
-                // always-on CoherentEWDClient failure monitor — so scrape THROUGH it,
-                // never a second client (that rejection was the "content not available"
-                // bug). The E/WD is a single page (no page switch), so its content is
-                // already current; no render-settle delay needed.
+                // Fallback only (decode above returned nothing). The A380X_EWD view allows
+                // only ONE inspector socket, owned by the always-on CoherentEWDClient
+                // failure monitor — so scrape THROUGH it, never a second client (that
+                // rejection was the "content not available" bug).
                 rows = EwdMonitor != null ? await EwdMonitor.ScrapeDisplayAsync() : null;
                 if (rows == null)
                 {
