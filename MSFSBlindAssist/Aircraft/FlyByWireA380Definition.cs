@@ -504,6 +504,18 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         var stowedPlaced = new Dictionary<double, string> { [0] = "Stowed", [1] = "Placed" };
         Sel("SUNSHADE_CPT_OPENING", "Captain Sunshade", stowedPlaced);
         Sel("SUNSHADE_FO_OPENING", "First Officer Sunshade", stowedPlaced);
+        // ---- COCKPIT comfort/misc openables (interactive-parts.xml bool toggles, prefix-
+        // less L:vars -> calc-path write branch). Low day-to-day value but exposed per user
+        // request. The 0..100 drag-axis items (seats, armrests, forward visors) are skipped.
+        var closedOpenC = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" };
+        var stowedDeployed = new Dictionary<double, string> { [0] = "Stowed", [1] = "Deployed" };
+        Sel("CPT_OXY_FWD_OPENING", "Captain Oxygen Panel", closedOpenC);
+        Sel("AFT_OXY_OPENING", "Aft Oxygen Panel", closedOpenC);
+        Sel("A380_CPT_TABLE", "Captain Table", stowedDeployed);
+        Sel("A380_FO_TABLE", "First Officer Table", stowedDeployed);
+        Sel("A380_CPT_FOOTREST", "Captain Footrest", stowedDeployed);
+        Sel("A380_FO_FOOTREST", "First Officer Footrest", stowedDeployed);
+        Sel("A380_LGPIN_DOOR", "Landing Gear Pins Compartment", closedOpenC);
         // Cabin Ready signal (cabin-crew "cabin ready"; settable bool).
         Sel("A32NX_CABIN_READY", "Cabin Ready",
             new Dictionary<double, string> { [0] = "Not Ready", [1] = "Ready" });
@@ -2031,7 +2043,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             {
                 "Engines", "Thrust Levers", "Flaps and Brakes", "Speed Brake", "ECAM Control Panel", "Weather Radar",
                 "Transponder", "Radios", "RMP", "Audio Control Panel Captain", "Audio Control Panel First Officer",
-                "Cockpit Door", "Windows and Shades"
+                "Cockpit Door", "Windows and Shades", "Cockpit"
             },
             // All ground-related panels live under one category (doors, equipment, pushback/
             // presets) — the old standalone "Ground" panel under Displays was confusing.
@@ -2146,6 +2158,14 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         {
             "CPT_SLIDING_WINDOW", "FO_SLIDING_WINDOW",
             "SUNSHADE_CPT_OPENING", "SUNSHADE_FO_OPENING"
+        };
+        // Cockpit comfort/misc openables (oxygen panels, tables, footrests, LG-pins door).
+        p["Cockpit"] = new List<string>
+        {
+            "CPT_OXY_FWD_OPENING", "AFT_OXY_OPENING",
+            "A380_CPT_TABLE", "A380_FO_TABLE",
+            "A380_CPT_FOOTREST", "A380_FO_FOOTREST",
+            "A380_LGPIN_DOOR"
         };
         p["Signs"] = new List<string>
         {
@@ -3804,7 +3824,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // L:var but they lack the A32NX_/A380X_/FBW_ prefix the catch-all below keys on, so
         // route them through the calculator path explicitly.
         if (varKey == "CPT_SLIDING_WINDOW" || varKey == "FO_SLIDING_WINDOW"
-            || varKey == "SUNSHADE_CPT_OPENING" || varKey == "SUNSHADE_FO_OPENING")
+            || varKey == "SUNSHADE_CPT_OPENING" || varKey == "SUNSHADE_FO_OPENING"
+            || varKey == "CPT_OXY_FWD_OPENING" || varKey == "AFT_OXY_OPENING"
+            || varKey == "A380_CPT_TABLE" || varKey == "A380_FO_TABLE"
+            || varKey == "A380_CPT_FOOTREST" || varKey == "A380_FO_FOOTREST"
+            || varKey == "A380_LGPIN_DOOR")
         {
             simConnect.ExecuteCalculatorCode($"{(int)Math.Round(value)} (>L:{varKey})");
             return true;
