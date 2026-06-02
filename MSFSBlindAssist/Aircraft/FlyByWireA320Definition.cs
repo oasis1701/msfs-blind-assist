@@ -6000,15 +6000,15 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             return true;
         }
 
-        // Special handling for autobrake mode - sends to multiple locations
+        // Special handling for autobrake mode. Write the input L:var via the reliable
+        // MobiFlight CALCULATOR path (not SetLVar — the data-def SetLVar is unreliable
+        // for FBW L:vars). Verified live: "{mode} (>L:A32NX_AUTOBRAKES_ARMED_MODE_SET)"
+        // armed A32NX_AUTOBRAKES_ARMED_MODE to the requested mode (the SET var then
+        // auto-resets to -1 once consumed). The event is kept as a harmless backup.
         if (varKey == "AUTOBRAKE_MODE")
         {
-            // Try the write LVar first (most likely to work)
-            simConnect.SetLVar("A32NX_AUTOBRAKES_ARMED_MODE_SET", (uint)value);
-
-            // Also try the event as backup
+            simConnect.ExecuteCalculatorCode($"{(int)Math.Round(value)} (>L:A32NX_AUTOBRAKES_ARMED_MODE_SET)");
             simConnect.SendEvent("A32NX.AUTOBRAKE_SET", (uint)value);
-
             announcer.Announce($"{varDef.DisplayName} set to {varDef.ValueDescriptions[value]}");
             return true; // Handled
         }
