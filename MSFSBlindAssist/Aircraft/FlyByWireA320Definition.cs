@@ -4863,7 +4863,13 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     {
         return new Dictionary<HotkeyAction, string>
         {
-            // FCU push/pull buttons
+            // FCU push/pull buttons. Routed through the map so MainForm's post-handle
+            // HandleButtonStateAnnouncement fires the managed-state announce (the
+            // GetButtonStateMapping below points each event at its …_MANAGED var), i.e.
+            // the knob actuates and the resulting Managed/Selected change is spoken only
+            // when it actually changes — the same Fenix-style behaviour the user wants.
+            // Do NOT add a RequestFCU*WithStatus readback here: that speaks the value on
+            // every press like an output-mode read query and is misleading.
             [HotkeyAction.FCUHeadingPush] = "A32NX.FCU_HDG_PUSH",
             [HotkeyAction.FCUHeadingPull] = "A32NX.FCU_HDG_PULL",
             [HotkeyAction.FCUAltitudePush] = "A32NX.FCU_ALT_PUSH",
