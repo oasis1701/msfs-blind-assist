@@ -2955,8 +2955,12 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             if (!BaroHpa(new Arinc429Word(value).ValueOr(0), out int hpa)) return true; // STD / no data
             if (hpa != (capt ? _lastBaroL : _lastBaroR))
             {
+                // SEED SILENTLY on the first read (last == -1) so MSFSBA doesn't call out
+                // "Captain/First officer altimeter ..." on startup; only a genuine later
+                // knob turn speaks.
+                bool first = (capt ? _lastBaroL : _lastBaroR) < 0;
                 if (capt) _lastBaroL = hpa; else _lastBaroR = hpa;
-                if ((capt ? _baroStdL : _baroStdR) != true)
+                if (!first && (capt ? _baroStdL : _baroStdR) != true)
                     announcer.Announce(BaroPhrase(capt, hpa, false));
             }
             return true;
@@ -4050,7 +4054,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 r.Add(("APU bleed valve", "A32NX_APU_BLEED_AIR_VALVE_OPEN", OpenShut));
                 r.Add(("APU bleed pressure", "A32NX_PNEU_APU_BLEED_CONTAINER_PRESSURE", Psi));
                 r.Add(("APU generator 1 voltage", "A32NX_ELEC_APU_GEN_1_POTENTIAL", V));
+                r.Add(("APU generator 1 frequency", "A32NX_ELEC_APU_GEN_1_FREQUENCY", v => $"{v:0} hertz"));
                 r.Add(("APU generator 2 voltage", "A32NX_ELEC_APU_GEN_2_POTENTIAL", V));
+                r.Add(("APU generator 2 frequency", "A32NX_ELEC_APU_GEN_2_FREQUENCY", v => $"{v:0} hertz"));
                 break;
             case 2: // BLEED
                 r.Add(("Pack 1 flow valve 1", "A32NX_COND_PACK_1_FLOW_VALVE_1_IS_OPEN", OpenShut));
@@ -4090,9 +4096,17 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                     r.Add(($"Generator {n} voltage", $"A32NX_ELEC_ENG_GEN_{n}_POTENTIAL", V));
                     r.Add(($"Generator {n} load", $"A32NX_ELEC_ENG_GEN_{n}_LOAD", Pct));
                 }
+                // Engine gens are variable-frequency and the FBW ECAM shows only V + Load
+                // for them (no Hz). The APU gens / ext power / static inverter are the
+                // constant-~400 Hz sources the ECAM DOES show a frequency for.
+                string Hz(double v) => $"{v:0} hertz";
                 r.Add(("APU generator 1 voltage", "A32NX_ELEC_APU_GEN_1_POTENTIAL", V));
+                r.Add(("APU generator 1 frequency", "A32NX_ELEC_APU_GEN_1_FREQUENCY", Hz));
+                r.Add(("APU generator 1 load", "A32NX_ELEC_APU_GEN_1_LOAD", Pct));
                 r.Add(("APU generator 2 voltage", "A32NX_ELEC_APU_GEN_2_POTENTIAL", V));
+                r.Add(("APU generator 2 frequency", "A32NX_ELEC_APU_GEN_2_FREQUENCY", Hz));
                 r.Add(("External power voltage", "A32NX_ELEC_EXT_PWR_POTENTIAL", V));
+                r.Add(("External power frequency", "A32NX_ELEC_EXT_PWR_FREQUENCY", Hz));
                 r.Add(("Emergency gen voltage", "A32NX_ELEC_EMER_GEN_POTENTIAL", V));
                 r.Add(("Static inverter voltage", "A32NX_ELEC_STAT_INV_POTENTIAL", V));
                 for (int n = 1; n <= 4; n++) r.Add(($"AC bus {n}", $"A32NX_ELEC_AC_{n}_BUS_IS_POWERED", OnOff));
