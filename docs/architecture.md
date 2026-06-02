@@ -94,6 +94,8 @@ For custom data requests beyond the public API, aircraft definitions can access 
 
 **Refactored in 2025:** FCU (Flight Control Unit) logic moved from SimConnectManager to individual aircraft definitions. This allows different aircraft to have completely different FCU implementations with their own variable names.
 
+> **DOM-based glass cockpits (FBW A32NX/A380X and any Coherent GT aircraft).** When a display's content lives in a rendered web view rather than SimVars (the FBW MCDU/MFD, flyPad EFB, SD/EWD/ND/PFD/ISIS), it is read and driven through the **MSFS Coherent GT remote debugger**, not the SimVar path. The transport, the in-page agents (`Resources/coherent-*-agent.js`), the C# clients (`CoherentDebuggerClient` / `CoherentEFBClient` / `CoherentEWDClient` / `CoherentDisplayClient`), and the dev tooling are all documented in the **[Developer Tooling Guide](tooling.md)** — including **[§9 "Adaptability to other aircraft"](tooling.md)**, which explains which pieces are reusable for a new aircraft (transport + generic scrape core: universal; selectors/navigation/input: re-derive) and how. Crash diagnosis for the WebView2/Coherent layer is in [§8](tooling.md).
+
 ### Display Monitoring Architecture
 
 Display monitoring (ECAM, EICAS, etc.) remains aircraft-specific within SimConnectManager using variable name pattern matching. This design is safe because:

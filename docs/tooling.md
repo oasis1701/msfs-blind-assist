@@ -2,7 +2,7 @@
 
 A detailed reference to every dev/debug tool in `tools/`, written for **agents (Claude/Codex) and human contributors**. It explains the one transport almost all of them share (the MSFS Coherent GT remote debugger), which tool to reach for, how to run it, and how to diagnose the app's crashes.
 
-> **Read this when:** you need to read/write a live FlyByWire L:var, scrape or drive a cockpit display / MCDU / flyPad, verify whether a control's write "sticks", reproduce a `tools/_probe` finding, or investigate a crash. For the *methodology* of proving a control works (write-stick rules, the write-mechanism decision tree), this guide points you at the **VARIABLE / CONTROL TROUBLESHOOTING PLAYBOOK** in `CLAUDE.md` — that is the source of truth; this guide is the tool catalogue.
+> **Read this when:** you need to read/write a live FlyByWire L:var, scrape or drive a cockpit display / MCDU / flyPad, verify whether a control's write "sticks", reproduce a `tools/_probe` finding, **adapt a scraper to a different aircraft** (§9), or investigate a crash (§8). For the *methodology* of proving a control works (write-stick rules, the write-mechanism decision tree), this guide points you at the **VARIABLE / CONTROL TROUBLESHOOTING PLAYBOOK** in `CLAUDE.md` — that is the source of truth; this guide is the tool catalogue.
 
 ---
 
@@ -214,7 +214,81 @@ If the log shows no exception before the process vanished, the crash was almost 
 
 ---
 
-## 9. Quick decision guide
+## 9. Adaptability to other aircraft (PMDG / Fenix / WT / future add-ons)
+
+> **The question to always ask of a scraper/driver: can this serve another aircraft, yes or no — and if yes, how; if no, why; and how *could* a future agent make it adaptable?** This section answers it for every tool. The short version: the **transport and the generic scrape core are universal**; the **aircraft-specific selector/navigation/input layer is not** and must be re-derived per add-on. Whether that re-derivation is cheap or expensive depends entirely on how the target add-on is built.
+
+### 9.1 The three layers (where adaptability lives)
+
+Every Coherent scraping tool is really three stacked layers. Adaptability is a per-layer property:
+
+| Layer | What it is | Adaptable? |
+|---|---|---|
+| **L1 — Transport** | CDP `Runtime.evaluate` over `:19999`, resolve-by-title, one-socket-per-page. `coherent-eval.ps1`, `CoherentDebuggerClient.cs`, and the WebSocket plumbing copied into every `*.ps1` driver. | **Universal.** Works for **any** MSFS glass cockpit that renders in Coherent GT — PMDG, Fenix, WT/Asobo, FBW, all of them. Nothing here is aircraft-specific except the `-Title` needle you pass. |
+| **L2 — Generic scrape core** | Collect leaf text nodes, cluster by Y (row), sort by X (reading order), join. `coherent-display-agent.js` is *almost entirely* this layer (verified: ~0 aircraft-specific class needles). | **Universal for any DOM.** Point it at any Coherent view and it returns the on-screen text in reading order. The only inherent limit is **graphical/positional displays** (PFD/ND/ISIS tapes) — a flat scrape returns scale tick-marks, not the needle reading, on *every* aircraft. |
+| **L3 — Aircraft-specific semantics** | DOM-class selectors, element classification (combo vs radio vs field), page navigation, and the **input mechanism**. `coherent-a380-agent.js` is mostly this layer: `mfd-fms-fpln-*`, `mfd-dropdown-*`, `mfd-radio-button`, `_MFD_pageSelector`, the FBW `InputField` keypress path, `uiService.navigateTo`, `a380x-mfd`. | **NOT portable as-is.** These needles exist only in the FBW A380 instrument DOM. To serve another aircraft you keep L1+L2 and **rewrite L3** against the target's DOM/source. |
+
+The whole "is it adaptable" answer for any tool reduces to: *how much of it is L3, and how easy is the target add-on's L3 to re-derive?*
+
+### 9.2 Per-tool adaptability verdict
+
+| Tool / agent | Adaptable to other aircraft? | Why / How |
+|---|---|---|
+| **`coherent-eval.ps1`** (+ the `*.ps1` WebSocket plumbing) | **Yes — fully, no changes.** | Pure L1. Pass a different `-Title` (e.g. a PMDG/WT view) and any JS. It already reads/writes L:vars and scrapes DOM on any aircraft. This is the substrate every other adaptation builds on. |
+| **`coherent-display-agent.js`** (SD/EWD/PFD/ND/ISIS generic scraper) | **Yes — works on any Coherent display today.** | Almost pure L2. The header even says "Works on any display view." For a new aircraft: just point a `CoherentDisplayClient`/`coherent-eval.ps1 -PreFile` at that aircraft's display view. **Caveat (universal):** tape/graphical displays read as tick-marks — fall back to SimVars there, same as we do for the A380 PFD/ND/ISIS. |
+| **`coherent-flypad-agent.js`** (flyPad EFB) | **Yes for FBW aircraft (already proven); No for other vendors' EFBs.** | This agent serves **both** the A32NX and the A380X flyPad **with zero changes** — same React flyPadOS 3, same `- EFB` view, same `L:A32NX_EFB_TURNED_ON` power L:var. That *is* a successful cross-aircraft adaptation. It will **not** work on a non-FBW EFB (PMDG's tablet, the native MSFS EFB) — different DOM and framework; PMDG uses its own HTTP-bridge architecture instead (`EFBBridgeServer`). *(Verified live this session: scraped the A380 flyPad Payload page, set Passengers + Cargo via `setValue`, and watched the loadsheet ZFW recompute — see 9.4.)* |
+| **`coherent-a380-agent.js`** (MFD/MCDU scraper — **the one to study**) | **Partially — keep L1+L2, rewrite L3.** | The generic row-reconstruction (`enumerateLines`, the same-row merge) ports directly; everything else (`buildFplnLines`, the dropdown/radio/context-menu classifiers, `navigateById`/`navigateUri`, the `InputField` keypress input, the F-PLN special-line handling) is keyed to FBW A380 DOM classes and the FBW input path. To serve another aircraft's MFD/CDU you re-derive those from the target's source/DOM — see the recipe in 9.3. |
+| **`coherent-ewd-agent.js` / `coherent-ecl-agent.js`** | **No (FBW-specific), re-derivable.** | Keyed to FBW classes (`.EclLine`, `.AbnormalItem`, `.StsArea`, `.SelfTest`). The *pattern* (scrape rows, edge-detect persistent boxes, baseline silently) is reusable, but the selectors must be replaced for any other aircraft's warning display. |
+| **`coherent-oans-agent.js`** | **No — A380 ND/OANS-specific.** | The OANS control panel (`.oans-control-panel`, the ND "MAP DATA" menu) is an A380/A350-class feature. Only relevant to aircraft that model an equivalent airport-nav system. |
+| **`fbw-mcdu-probe/`** (Node, SimBridge websocket) | **No beyond FBW.** | Transport is the **SimBridge MCDU relay** `ws://localhost:8380/interfaces/v1/mcdu`, which only FBW aircraft expose. A non-FBW CDU has no SimBridge socket; you'd use L1 (CDP) instead. The `mcdu-format.js` decode logic is FBW curly-brace markup, also FBW-only. |
+| **`efb-dom-tool.js`** (Node CDP, A32NX EFB) | **Same as the flypad agent** — FBW EFB only; the CDP transport underneath is universal. |
+| **`flypad-shell-test/`** (keyed-reconcile spec) | **Yes — pattern is framework-agnostic.** | Pure jsdom; encodes the "key by content, not scrape idx" rule for any WebView2 accessible-mirror. Reuse it as the reconcile spec for *any* aircraft's scraped-DOM mirror form. |
+| **Convenience drivers** (`mcdu_*`, `fp_*`, `sd-page-tour`, `mfd_import_and_scrape`, `fcu/`) | **Plumbing yes; payload no.** | The WebSocket loop is L1 (universal). Each driver is hard-wired to one `-Title` + one `-AgentFile`; to retarget, swap those two and the agent-method calls. Easiest path for a new aircraft is usually `coherent-eval.ps1 -Title <new view> -PreFile <new agent>` rather than cloning a driver. |
+
+### 9.3 Recipe — adapt the MFD/CDU scraper to a new aircraft
+
+This is the concrete "how could another agent make it adaptable" answer for the MFD scrapers the user asked about. The effort is **proportional to how the target add-on is built**, so step 0 is triage.
+
+**Step 0 — Triage the add-on's architecture (decides feasibility):**
+- **Open-source instruments (FBW, headwind, any community jet with a public repo)** → *cheap.* You can read the TSX/JS to get exact DOM classes, the page-navigation API, and the input mechanism. This is how `coherent-a380-agent.js` was built.
+- **Closed glass that still renders in Coherent (WT/Asobo G1000/G3000, many study sims)** → *medium.* No source, but the DOM is live-inspectable via L1 — scrape `document.body.outerHTML` and reverse-engineer the class names and structure.
+- **Closed add-on with its own SDK surface (PMDG, Fenix)** → *don't scrape — use the SDK.* PMDG exposes a documented data struct + custom events (`get_pmdg_cdu`, `send_pmdg_event`); Fenix uses settable L:vars. The CDU text comes from the SDK far more reliably than from a DOM scrape. (PMDG's EFB *is* made accessible via a DOM bridge, but over its own HTTP server, not CDP.)
+
+**Step 1 — Find the view.** `coherent-eval.ps1`/pagelist → the target's MFD/CDU title needle (e.g. a WT `AS3000_*` view). Resolve by title; ids shuffle.
+
+**Step 2 — Dump the raw DOM** to learn the structure:
+```powershell
+./coherent-eval.ps1 -Title <NEEDLE> -Expr "document.body.outerHTML.slice(0,8000)"
+```
+Identify: the container class for a "line/cell", the field/input elements, the dropdown/menu markup, and how the page-selector is represented.
+
+**Step 3 — Start from the generic core.** Copy `coherent-display-agent.js` (L2) as the base — its Y-cluster/X-sort already gives readable rows for most pages with **zero** aircraft knowledge. For many displays that alone is enough.
+
+**Step 4 — Add L3 only where the generic scrape falls short** (grid pages, combos, the flight plan). Port the *shape* of the A380 agent's helpers but swap the selectors:
+- Row/grid merge → reuse as-is (geometry, not classes).
+- Combo/radio/field classification → replace `mfd-dropdown-*` / `mfd-radio-button` with the target's classes.
+- Flight-plan builder → replace `mfd-fms-fpln-*` with the target's leg-line container.
+
+**Step 5 — Find the input mechanism (the hardest part, always aircraft-specific).** The A380 lesson generalizes: *the visible widget is often not the thing you poke.* The A380 MFD takes text via the FBW `InputField` (focus-click + synthetic `keypress` with `keyCode`, Enter=13), **not** the KCCU cursor H-events. For a new aircraft, determine empirically (or from source) whether input is: a native `<input>` (set value + dispatch `input`/`change`), a synthetic keypress path, a SimVar/L:var the keypad writes, or an SDK event (PMDG). Prove it with a write-then-rescrape, exactly like `mfd_import_and_scrape.ps1` does for the A380.
+
+**Step 6 — Find the navigation mechanism.** A380 = click a stable page-selector id, or `uiService.navigateTo(uri)` for cross-system jumps. A new aircraft may use page-button clicks, a hardware-key event, or an SDK page command. Whatever it is, expose it as the agent's `navigate*` method so a driver can walk every page.
+
+**Step 7 — Verify by round-trip**, never by assumption: scrape → act → re-scrape and confirm the change landed (the universal write-stick discipline from the `CLAUDE.md` PLAYBOOK).
+
+### 9.4 Worked evidence — the flyPad scraper IS cross-aircraft (verified live)
+
+To ground the "flyPad agent serves both FBW jets" claim, this session drove the **A380X** flyPad Payload page with the *same* `coherent-flypad-agent.js` used for the A32NX:
+
+- **Scrape** read the page cleanly: actionable fields as `label = value` (`Passengers = 415`, `Cargo (KGS) = 8300`, `ZFW (KGS) = 343167`, `Per Passenger Weight (84) = 84`) plus limits (`Maximum Passengers 484`, `Maximum ZFW 373000 KGS`, `Maximum ZFWCG 43%`).
+- **Click** navigated the nav-rail (`Ground`) and the sub-tabs (`Services`/`Fuel`/`Payload`/`Pushback`).
+- **`setValue`** inserted test values (Passengers→484, Cargo→45000); the agent returned `ok` and the React form accepted them.
+- **Loadsheet recompute** was correct and live: **ZFW 343167 → 350343 KGS**. Values were then restored.
+
+**Formatting note (honest):** the *actionable inputs* and the *headline loadsheet numbers* read perfectly. The **CG-envelope chart** values (ZFWCG % planned/current, the axis tick labels, the MTOW/MLDW/MZFW markers) come through as **positioned text fragments** — inherent to scraping a graph; the key numbers are present but not joined to their label/unit on one line. The in-app WebView2 view bands them by row so they read in sequence; a pilot gets the loadsheet, just not a tidy single sentence for the CG chart. This is a display-is-a-graph limitation, not an agent bug, and it is identical across both FBW jets.
+
+---
+
+## 10. Quick decision guide
 
 - **Read/write one L:var, or scrape/click one view, ad-hoc** → `coherent-eval.ps1 -Title … -Expr/-ExprFile` (inject an agent with `-PreFile` if you call `__MSFSBA_*`).
 - **Reproduce a known finding** → the matching `tools/_probe/*.js` (see `_probe/README.md`).
@@ -224,4 +298,5 @@ If the log shows no exception before the process vanished, the crash was almost 
 - **Drive the A32NX MCDU without the app** → `tools/fbw-mcdu-probe/` (Node).
 - **Touch the flyPad reconcile** → mirror `tools/flypad-shell-test/`.
 - **A control "doesn't work"** → STOP. Read the **VARIABLE / CONTROL TROUBLESHOOTING PLAYBOOK** in `CLAUDE.md` (calculator-path write-stick test, write-mechanism decision tree, the case studies) before concluding anything.
+- **"Can I reuse this scraper for another aircraft?"** → §9: transport + generic scrape core are universal; the aircraft-specific selector/nav/input layer must be re-derived (recipe in §9.3).
 - **Crash** → §8: read `%TEMP%\MSFSBlindAssist_Startup_*.log`, then Event Viewer for native faults.
