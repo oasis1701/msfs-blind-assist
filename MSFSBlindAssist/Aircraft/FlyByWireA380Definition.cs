@@ -3947,29 +3947,6 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         s.RequestVariable(key, forceUpdate: true);
     }
 
-    // Ctrl+B "Set Altimeter" dialog (Phase 4 parity with the A320). The A380 baro is set
-    // through the stock KOHLSMAN_SET (param = millibars*16), the same path the EFIS
-    // Captain/F-O QNH combos use — NOT the A320's A32NX.FCU_EFIS_*_BARO_SET events.
-    private void ShowA380BaroSetDialog(SimConnectManager simConnect, ScreenReaderAnnouncer announcer,
-        System.Windows.Forms.Form parentForm)
-    {
-        var dialog = new MSFSBlindAssist.Forms.ValueInputForm(
-            "Set Altimeter", "Barometric pressure (hPa)", "745–1050", announcer,
-            input => (double.TryParse(input, out double v) && v >= 745 && v <= 1050)
-                ? (true, "") : (false, "Enter a value between 745 and 1050 hPa"),
-            new List<MSFSBlindAssist.Forms.ToggleButtonDef>(),
-            input =>
-            {
-                if (double.TryParse(input, out double hpa))
-                {
-                    simConnect.SendEvent("KOHLSMAN_SET", (uint)Math.Round(hpa * 16));
-                    announcer.AnnounceImmediate($"Altimeter set to {hpa:F0} hPa");
-                }
-            });
-        dialog.ShowCancelButton = false;
-        dialog.Show(parentForm);
-    }
-
     public override bool HandleHotkeyAction(
         HotkeyAction action, SimConnectManager simConnect, ScreenReaderAnnouncer announcer,
         System.Windows.Forms.Form parentForm, HotkeyManager hotkeyManager)
@@ -4174,96 +4151,6 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         {
             System.Diagnostics.Debug.WriteLine($"Error requesting A380 waypoint info: {ex.Message}");
         }
-    }
-
-    private bool ShowFCUHeadingDialog(SimConnectManager simConnect, ScreenReaderAnnouncer announcer, System.Windows.Forms.Form parentForm)
-    {
-        var validator = new Func<string, (bool, string)>(input =>
-            double.TryParse(input, out double v)
-                ? (v >= 0 && v <= 360 ? (true, "") : (false, "Heading must be between 0 and 360 degrees"))
-                : (false, "Invalid number format"));
-        return ShowFCUInputDialog("Set Heading", "Heading", "0-360 degrees",
-            "A32NX.FCU_HDG_SET", simConnect, announcer, parentForm, validator);
-    }
-
-    private bool ShowFCUSpeedDialog(SimConnectManager simConnect, ScreenReaderAnnouncer announcer, System.Windows.Forms.Form parentForm)
-    {
-        var validator = new Func<string, (bool, string)>(input =>
-            double.TryParse(input, out double v)
-                ? (((v >= 0.10 && v <= 0.99) || (v >= 100 && v <= 399)) ? (true, "") : (false, "Speed must be 100-399 knots or 0.10-0.99 Mach"))
-                : (false, "Invalid number format"));
-        Func<double, uint> converter = v => v < 1.0 ? (uint)(v * 100) : (uint)v;
-        return ShowFCUInputDialog("Set Speed", "Speed", "100-399 knots or 0.10-0.99 Mach",
-            "A32NX.FCU_SPD_SET", simConnect, announcer, parentForm, validator, converter);
-    }
-
-    private bool ShowFCUAltitudeDialog(SimConnectManager simConnect, ScreenReaderAnnouncer announcer, System.Windows.Forms.Form parentForm)
-    {
-        if (!simConnect.IsConnected) { announcer.AnnounceImmediate("Not connected to simulator."); return false; }
-        // When the A380 is in metric-altitude mode (FCU MTRS / A32NX_METRIC_ALT_TOGGLE)
-        // the pilot thinks + is cleared in METRES, so the typed value is metres and we
-        // convert to the feet target the FCU actually selects (the real FCU is feet
-        // internally; the MTRS window just displays the metric equivalent). Off = feet,
-        // exactly as before. 100..49000 ft  <=>  ~30..14935 m.
-        bool metric = _metricAlt;
-        var validator = new Func<string, (bool, string)>(input =>
-        {
-            if (!double.TryParse(input, out double v)) return (false, "Invalid number format");
-            double ft = metric ? v / 0.3048 : v;
-            return (ft >= 100 && ft <= 49000)
-                ? (true, "")
-                : (false, metric ? "Altitude must be between 30 and 14935 metres"
-                                 : "Altitude must be between 100 and 49000 feet");
-        });
-        var dialog = new Forms.ValueInputForm("Set Altitude", "Altitude",
-            metric ? "30-14935 metres" : "100-49000 feet", announcer, validator);
-        if (dialog.ShowDialog(parentForm) == System.Windows.Forms.DialogResult.OK && dialog.IsValidInput
-            && double.TryParse(dialog.InputValue, out double value))
-        {
-            double feet = metric ? value / 0.3048 : value;
-            uint rounded = (uint)(Math.Round(feet / 100) * 100);
-            simConnect.SendEvent("A32NX.FCU_ALT_INCREMENT_SET", 100);
-            System.Threading.Thread.Sleep(50);
-            simConnect.SendEvent("A32NX.FCU_ALT_SET", rounded);
-            if (metric)
-            {
-                // Echo what the FCU metric window will actually show: the feet target
-                // (rounded to 100) converted back to metres, plus the feet, so the
-                // pilot hears the achieved value rather than the raw request.
-                int m = (int)Math.Round(rounded * 0.3048);
-                announcer.AnnounceImmediate($"Altitude set to {m} metres, {rounded} feet");
-            }
-            else
-            {
-                announcer.AnnounceImmediate($"Altitude set to {rounded} feet");
-            }
-            return true;
-        }
-        return false;
-    }
-
-    private bool ShowFCUVSDialog(SimConnectManager simConnect, ScreenReaderAnnouncer announcer, System.Windows.Forms.Form parentForm)
-    {
-        if (!simConnect.IsConnected) { announcer.AnnounceImmediate("Not connected to simulator."); return false; }
-        var validator = new Func<string, (bool, string)>(input =>
-            double.TryParse(input, out double v)
-                ? (((v >= -6000 && v <= 6000) || (v >= -9.9 && v <= 9.9)) ? (true, "") : (false, "Value must be -6000 to 6000 ft/min or -9.9 to 9.9 degrees FPA"))
-                : (false, "Invalid number format"));
-        var dialog = new Forms.ValueInputForm("Set Vertical Speed / FPA", "VS/FPA",
-            "-6000 to 6000 ft/min or -9.9 to 9.9 degrees FPA", announcer, validator);
-        if (dialog.ShowDialog(parentForm) == System.Windows.Forms.DialogResult.OK && dialog.IsValidInput
-            && double.TryParse(dialog.InputValue, out double value))
-        {
-            // V/S and FPA are SIGNED (e.g. -3000 ft/min, -3.5° FPA). SendEvent's
-            // data is uint, so a negative value overflowed to a huge number and
-            // the set did nothing. Fire the signed value via calculator code (the
-            // dot-event path) instead. FPA is value*100 (deci-degrees), V/S is raw.
-            int toSend = Math.Abs(value) < 100 ? (int)(value * 100) : (int)value;
-            simConnect.ExecuteCalculatorCode($"{toSend} (>K:A32NX.FCU_VS_SET)");
-            announcer.AnnounceImmediate($"Vertical speed set to {value}");
-            return true;
-        }
-        return false;
     }
 
     public void RequestFCUHeadingWithStatus(SimConnectManager s)
