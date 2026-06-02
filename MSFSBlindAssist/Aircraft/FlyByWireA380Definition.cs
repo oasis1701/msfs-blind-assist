@@ -1860,14 +1860,24 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         var openShut = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" };
         void Door(string key, int ip, uint exitId, string display)
         {
-            // A door is one Closed/Open COMBO: live state from INTERACTIVE POINT
-            // OPEN:ip, and the set fires TOGGLE_AIRCRAFT_EXIT (exit id via the
-            // _doorExitIds map) through HandleUIVariableSet — no separate button.
+            // A door is one Closed/Open COMBO: state from INTERACTIVE POINT OPEN:ip, and the
+            // set fires TOGGLE_AIRCRAFT_EXIT (exit id via _doorExitIds) through
+            // HandleUIVariableSet — no separate button.
+            //
+            // CONNECTION-SAFETY: these are OnRequest, NOT Continuous. Putting all 16 doors
+            // (16 stock SimVars) into the continuous-monitoring batch added enough setup
+            // load at Connect() to lose the one-shot AIRCRAFT_INFO/ATC response, so
+            // IsFullyConnected never got set and every hotkey said "not connected" (auto-
+            // announce still worked — that path is separate). OnRequest keeps the doors out
+            // of continuous monitoring entirely: they read when the Doors panel is shown /
+            // auto-refreshed, the combo selection gives the toggle feedback, and an external
+            // door-open is still announced by the EWD "DOOR … NOT CLOSED" memo (its own
+            // monitor). The jetway (1 SimVar) stayed Continuous and was safe; 16 was not.
             vars[key] = new SimVarDefinition
             {
                 Name = $"INTERACTIVE POINT OPEN:{ip}", DisplayName = display,
                 Type = SimVarType.SimVar, Units = "bool",
-                UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true,
+                UpdateFrequency = UpdateFrequency.OnRequest,
                 ValueDescriptions = openShut
             };
         }
