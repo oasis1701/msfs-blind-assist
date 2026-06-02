@@ -498,9 +498,6 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // only on the ground / depressurised.
         Sel("CPT_SLIDING_WINDOW", "Captain Sliding Window", closedOpenW);
         Sel("FO_SLIDING_WINDOW", "First Officer Sliding Window", closedOpenW);
-        // Physical flight-deck door OPEN/close — distinct from the LOCK state
-        // (A32NX_COCKPIT_DOOR_LOCKED, kept on the Cockpit Door panel).
-        Sel("COCKPITDOOR_OPEN", "Cockpit Door Open", closedOpenW);
         // Cabin Ready signal (cabin-crew "cabin ready"; settable bool).
         Sel("A32NX_CABIN_READY", "Cabin Ready",
             new Dictionary<double, string> { [0] = "Not Ready", [1] = "Ready" });
@@ -2071,10 +2068,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "A32NX_CABIN_READY",
             "PUSH_OVHD_CALLS_ALL", "PUSH_OVHD_CALLS_FWD", "PUSH_OVHD_CALLS_AFT", "PUSH_OVHD_CALLS_MECH"
         };
-        // Cockpit sliding windows + physical flight-deck door (settable open/close).
+        // Cockpit sliding windows (settable open/close).
         p["Windows"] = new List<string>
         {
-            "CPT_SLIDING_WINDOW", "FO_SLIDING_WINDOW", "COCKPITDOOR_OPEN"
+            "CPT_SLIDING_WINDOW", "FO_SLIDING_WINDOW"
         };
         p["Signs"] = new List<string>
         {
@@ -3715,10 +3712,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // masters, FCU toggles, seat-belt, lights, …) are all handled in cases above,
         // so anything reaching here is a direct-write L:var. ARINC429/readout vars are
         // never settable, so they never get here.
-        // Prefix-less FBW L:vars (cockpit sliding windows + physical flight-deck door):
-        // their KEY is the L:var but they lack the A32NX_/A380X_/FBW_ prefix the catch-all
-        // below keys on, so route them through the calculator path explicitly.
-        if (varKey == "CPT_SLIDING_WINDOW" || varKey == "FO_SLIDING_WINDOW" || varKey == "COCKPITDOOR_OPEN")
+        // Prefix-less FBW L:vars (cockpit sliding windows): their KEY is the L:var but they
+        // lack the A32NX_/A380X_/FBW_ prefix the catch-all below keys on, so route them
+        // through the calculator path explicitly.
+        if (varKey == "CPT_SLIDING_WINDOW" || varKey == "FO_SLIDING_WINDOW")
         {
             simConnect.ExecuteCalculatorCode($"{(int)Math.Round(value)} (>L:{varKey})");
             return true;
