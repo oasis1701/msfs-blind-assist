@@ -62,3 +62,32 @@ TCAS message state and ROSE-VOR/ROSE-ILS tuned-station blocks also deferred (mod
 lower value). RWY AHEAD already covered by ROW/ROP auto-announce.
 
 Files: `Forms/FBWA380/FBWA380NavDisplayForm.cs` (NdRanges array + Vars + Render).
+
+---
+
+## PFD (Primary Flight Display) — DONE
+
+Already present (kept through the doors/PFD revert): FMA modes/armed, autothrust,
+approach capability, AP1/2, attitude/heading/IAS/altitude, PFD messages, GW + CG %MAC,
+V1/VR/V2, Mach, Track, ILS freq/DME, and the FAC speed-protection bugs Vmax/VLS/
+Vαprot/Vαmax/Vsw. **Additions this pass (all live-verified):**
+- **Radio altitude** `A32NX_RA_1_RADIO_ALTITUDE` (ARINC429, feet) — live-verified Normal
+  Operation. Highest-value missing number on short final.
+- **Vertical speed** `A32NX_ADIRS_IR_1_VERTICAL_SPEED` — live testing revealed this is an
+  ARINC429 word (the audit mis-called it "plain"); decoded ft/min, Normal Operation.
+- **Transition altitude** `A32NX_FM1_TRANS_ALT` (ARINC429, feet; "not available" when unset).
+- **Characteristic speed bugs** (FAC ARINC429, knots): green dot `_V_MAN`, F-speed `_V_3`,
+  S-speed `_V_4`, VFE-next `_V_FE_NEXT`.
+- **Marker beacon** `MARKER BEACON STATE` (stock enum → None/Outer/Middle/Inner).
+- **ILS/LS course** `A32NX_FM_LS_COURSE` (plain L:var; -1 = no course set) — completes the
+  ILS block alongside the existing freq/DME.
+
+Used a new `ArincUnit(key,name,display,unit)` helper (RA/VS/trans-alt) mirroring the
+existing `ArincKt`. All ARINC vars are OnRequest (no monitoring-batch / detection impact).
+
+**Deferred (documented):** ILS ident (`NAV IDENT:3`, string simvar — numeric pipeline
+can't read; via scrape), FCU selected ALT/HDG readouts (respecting "don't touch the FCU"),
+transition level (needs FL formatting), LOC/GS deviation (already in ND + ISIS), DH (already
+in Minimums), managed/preselect target speeds, FPV/FPA/drift, beta target, TCAS RA band.
+
+Files: `Aircraft/FlyByWireA380Definition.cs` (registrations + d["PFD"] + LS-course decode).

@@ -824,6 +824,30 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         ArincKt("PFD_VALPHAPROT", "A32NX_FAC_1_V_ALPHA_PROT", "Alpha Prot speed");
         ArincKt("PFD_VALPHAMAX", "A32NX_FAC_1_V_ALPHA_LIM", "Alpha Max speed");
         ArincKt("PFD_VSW", "A32NX_FAC_1_V_STALL_WARN", "Stall Warning speed");
+        // More PFD speed-tape characteristic bugs (FAC ARINC429 words, knots). Read
+        // "not available" when the FAC isn't computing (e.g. on the ground = NCD).
+        ArincKt("PFD_GREENDOT", "A32NX_FAC_1_V_MAN", "Green dot speed");
+        ArincKt("PFD_V3", "A32NX_FAC_1_V_3", "F speed (slat retract)");
+        ArincKt("PFD_V4", "A32NX_FAC_1_V_4", "S speed (flap retract)");
+        ArincKt("PFD_VFENEXT", "A32NX_FAC_1_V_FE_NEXT", "VFE next");
+        // ARINC429 words in non-knots units (RA, vertical speed, transition altitude).
+        // Same SSM-gated decode as ArincKt; live-verified RA1 + VS read Normal Operation.
+        void ArincUnit(string key, string name, string display, string unit) => vars[key] = new SimVarDefinition
+        {
+            Name = name, DisplayName = display, Type = SimVarType.LVar,
+            UpdateFrequency = UpdateFrequency.OnRequest,
+            IsArinc429 = true, Arinc429Unit = unit, Arinc429Format = "0",
+            Arinc429NotAvailableText = "not available"
+        };
+        ArincUnit("PFD_RA", "A32NX_RA_1_RADIO_ALTITUDE", "Radio altitude", "feet");
+        ArincUnit("PFD_VS", "A32NX_ADIRS_IR_1_VERTICAL_SPEED", "Vertical speed", "feet per minute");
+        ArincUnit("PFD_TRANS_ALT", "A32NX_FM1_TRANS_ALT", "Transition altitude", "feet");
+        // Marker beacon (stock enum) + ILS/LS course (plain L:var; -1 = no course set,
+        // decoded in TryGetDisplayOverride). These complete the ILS block alongside the
+        // existing PFD_ILS_FREQ / PFD_ILS_DME.
+        Stock("MARKER_BEACON", "MARKER BEACON STATE", "Marker beacon", "number",
+            new Dictionary<double, string> { [0] = "None", [1] = "Outer marker", [2] = "Middle marker", [3] = "Inner marker" });
+        Read("A32NX_FM_LS_COURSE", "ILS course");
         // Gross-weight CG (%MAC), cached for the W / Shift+W readouts (Gus's GW-CG; kept
         // across the doors/PFD revert). Plain numeric FBW L-var (~40% MAC live). MonNum
         // registers it Units="number" (required for the L-var read) and routes it to a
@@ -2620,8 +2644,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             // Source-confirmed PFD additions: weight/CG, takeoff V-speeds, Mach, track, ILS.
             "GROSS_WEIGHT_KG", "A32NX_AIRFRAME_GW_CG_PERCENT_MAC",
             "PFD_V1", "PFD_VR", "PFD_V2", "PFD_MACH", "PFD_TRACK",
-            "PFD_ILS_FREQ", "PFD_ILS_DME",
-            "PFD_VMAX", "PFD_VLS", "PFD_VALPHAPROT", "PFD_VALPHAMAX", "PFD_VSW"
+            "PFD_RA", "PFD_VS", "PFD_TRANS_ALT",
+            "PFD_ILS_FREQ", "PFD_ILS_DME", "A32NX_FM_LS_COURSE", "MARKER_BEACON",
+            "PFD_VMAX", "PFD_VLS", "PFD_VALPHAPROT", "PFD_VALPHAMAX", "PFD_VSW",
+            "PFD_GREENDOT", "PFD_V3", "PFD_V4", "PFD_VFENEXT"
         };
         // ND accessible snapshot — mode/range, TO waypoint (decoded ident + distance/
         // bearing/ETA), cross-track, RNP, and ILS LOC/GS validity + deviation.
@@ -3858,6 +3884,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // ILS DME — one decimal nm; ILS freq — three decimals MHz.
         if (varKey == "PFD_ILS_DME") { displayText = value < 0.05 ? "no DME" : $"{value:0.0} nautical miles"; return true; }
         if (varKey == "PFD_ILS_FREQ") { displayText = value < 100 ? "none" : $"{value:0.000} MHz"; return true; }
+        // ILS/LS course — -1 (or any negative) means no course is set.
+        if (varKey == "A32NX_FM_LS_COURSE") { displayText = value < 0 ? "no course set" : $"{value:000} degrees"; return true; }
         switch (varKey)
         {
             // ECAM Control Panel "Status display" box: show the SELECTED SD page name
