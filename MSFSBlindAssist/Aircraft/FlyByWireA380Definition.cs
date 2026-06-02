@@ -867,6 +867,14 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Stock("AIRSPEED MACH", "AIRSPEED MACH", "Standby Mach", "mach");
         Stock("INDICATED ALTITUDE", "INDICATED ALTITUDE", "Standby Altitude", "feet");
         Stock("KOHLSMAN SETTING MB", "KOHLSMAN SETTING MB", "Standby Baro Setting", "millibars");
+        // The real ISIS reads its OWN air-data source (index :3 = the standby ADM), not
+        // the PFD/baro source. During an ADR fault these differ — the whole point of a
+        // standby instrument. So the ISIS window reads the :3 altitude + baro (and shows
+        // both hPa and inHg, like the real ISIS) plus body-X accel for the slip/skid ball.
+        Stock("INDICATED ALTITUDE:3", "INDICATED ALTITUDE:3", "Standby Altitude (ISIS)", "feet");
+        Stock("KOHLSMAN SETTING MB:3", "KOHLSMAN SETTING MB:3", "Standby Baro hPa (ISIS)", "millibars");
+        Stock("KOHLSMAN_SETTING_INHG_3", "KOHLSMAN SETTING MB:3", "Standby Baro inHg (ISIS)", "inHg");
+        Stock("ACCELERATION BODY X", "ACCELERATION BODY X", "Standby Slip/Skid", "GFORCE");
 
         // ENGINE SD-page stock simvars (oil temp/press + vibration per engine — the
         // FBW SD ENG page reads these, like the A32NX). Pre-declared as SimVar so the
