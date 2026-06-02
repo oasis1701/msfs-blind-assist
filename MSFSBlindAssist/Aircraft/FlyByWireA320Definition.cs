@@ -318,7 +318,10 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" },
-            RenderAsButton = true  // Render as button instead of combo box
+            // COMBO, not a button: APU Start is an on/off STATE pushbutton. As a button its
+            // label never updated (press did X but the second press appeared to do nothing);
+            // a combo always shows the current Off/On and toggles correctly. (User request 2026-06.)
+            RenderAsButton = false
         },
 
         // Exterior Lighting Panel
@@ -5262,6 +5265,15 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             r.Add(("Aft duct temp", "A32NX_COND_AFT_DUCT_TEMP", C));
             r.Add(("Pack 1 flow valve", "A32NX_COND_PACK_FLOW_VALVE_1_IS_OPEN", OpenShut));
             r.Add(("Pack 2 flow valve", "A32NX_COND_PACK_FLOW_VALVE_2_IS_OPEN", OpenShut));
+            r.Add(("Cockpit trim air valve", "A32NX_COND_CKPT_TRIM_AIR_VALVE_POSITION", Pct));
+            r.Add(("Forward trim air valve", "A32NX_COND_FWD_TRIM_AIR_VALVE_POSITION", Pct));
+            r.Add(("Aft trim air valve", "A32NX_COND_AFT_TRIM_AIR_VALVE_POSITION", Pct));
+            // ACSC discrete word 1: hot-air valve open = bit 20 CLEAR (inverted); switch = bit 23;
+            // cabin fan 1/2 fault = bits 25/26. SSM-gated.
+            r.Add(("Hot air valve", "A32NX_COND_ACSC_1_DISCRETE_WORD_1", v => { var w = new SimConnect.Arinc429Word(v); return (w.IsNormalOperation || w.IsFunctionalTest) ? (w.BitValueOr(20, false) ? "closed" : "open") : "not available"; }));
+            r.Add(("Hot air switch", "A32NX_COND_ACSC_1_DISCRETE_WORD_1", v => { var w = new SimConnect.Arinc429Word(v); return (w.IsNormalOperation || w.IsFunctionalTest) ? (w.BitValueOr(23, false) ? "on" : "off") : "not available"; }));
+            r.Add(("Cabin fan 1", "A32NX_COND_ACSC_1_DISCRETE_WORD_1", v => { var w = new SimConnect.Arinc429Word(v); return (w.IsNormalOperation || w.IsFunctionalTest) ? (w.BitValueOr(25, false) ? "fault" : "normal") : "not available"; }));
+            r.Add(("Cabin fan 2", "A32NX_COND_ACSC_1_DISCRETE_WORD_1", v => { var w = new SimConnect.Arinc429Word(v); return (w.IsNormalOperation || w.IsFunctionalTest) ? (w.BitValueOr(26, false) ? "fault" : "normal") : "not available"; }));
         }
         else if (page == 6) // WHEEL / BRAKES
         {
@@ -5278,11 +5290,16 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             r.Add(("Eng 1 precooler temp", "A32NX_PNEU_ENG_1_BLEED_TEMPERATURE_SENSOR_TEMPERATURE", C));
             r.Add(("Eng 1 bleed pressure", "A32NX_PNEU_ENG_1_REGULATED_TRANSDUCER_PRESSURE", Psi));
             r.Add(("Eng 1 bleed valve", "A32NX_PNEU_ENG_1_PR_VALVE_OPEN", OpenShut));
+            r.Add(("Eng 1 HP valve", "A32NX_PNEU_ENG_1_HP_VALVE_OPEN", OpenShut));
             r.Add(("Eng 2 precooler temp", "A32NX_PNEU_ENG_2_BLEED_TEMPERATURE_SENSOR_TEMPERATURE", C));
             r.Add(("Eng 2 bleed pressure", "A32NX_PNEU_ENG_2_REGULATED_TRANSDUCER_PRESSURE", Psi));
             r.Add(("Eng 2 bleed valve", "A32NX_PNEU_ENG_2_PR_VALVE_OPEN", OpenShut));
+            r.Add(("Eng 2 HP valve", "A32NX_PNEU_ENG_2_HP_VALVE_OPEN", OpenShut));
+            r.Add(("Pack 1 flow", "A32NX_COND_PACK_FLOW_1", Pct));
+            r.Add(("Pack 2 flow", "A32NX_COND_PACK_FLOW_2", Pct));
             r.Add(("Cross-bleed valve", "A32NX_PNEU_XBLEED_VALVE_FULLY_OPEN", OpenShut));
             r.Add(("APU bleed valve", "A32NX_APU_BLEED_AIR_VALVE_OPEN", OpenShut));
+            r.Add(("Ram air valve", "A32NX_AIRCOND_RAMAIR_TOGGLE", v => v > 0.5 ? "open" : "closed"));
             r.Add(("Wing anti-ice", "A32NX_PNEU_WING_ANTI_ICE_SYSTEM_ON", v => v > 0.5 ? "on" : "off"));
         }
         else if (page == 8) // FUEL

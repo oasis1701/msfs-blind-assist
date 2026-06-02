@@ -156,21 +156,6 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 UpdateFrequency = UpdateFrequency.OnRequest, ValueDescriptions = vd, RenderAsButton = false
             };
         }
-        // Toggle BUTTON: renders as a push-button; the click toggles the L:var on/off and
-        // announces the new state (HandleUIVariableSet _toggleButtons branch). For HOLD
-        // tests (fire test, cargo smoke test) and similar on/off actions the user wants as
-        // buttons rather than combos.
-        void ToggleBtn(string key, string display)
-        {
-            vars[key] = new SimVarDefinition
-            {
-                Name = key, DisplayName = display, Type = SimVarType.LVar,
-                UpdateFrequency = UpdateFrequency.OnRequest, IsAnnounced = false,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" },
-                RenderAsButton = true
-            };
-            _toggleButtons.Add(key);
-        }
         // Read-only numeric L:var readout.
         void Read(string key, string display, string units = "number")
         {
@@ -477,11 +462,12 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Press("A32NX_FIRE_BUTTON_APU", "APU Fire Button");
         Mon("A32NX_FIRE_DETECTED_APU", "APU Fire",
             new Dictionary<double, string> { [0] = "Normal", [1] = "FIRE" });
-        // Fire Test + Cargo Smoke Detection Test are HOLD buttons (FBW <HOLD_SIMVAR>): the
-        // test runs WHILE the var is held at 1. Rendered as toggle BUTTONS — click On (test
-        // runs, the EWD speaks the result), click Off. (User request 2026-06.)
-        ToggleBtn("A32NX_OVHD_FIRE_TEST_PB_IS_PRESSED", "Fire Test");
-        ToggleBtn("A32NX_FIRE_TEST_CARGO", "Cargo Smoke Detection Test");
+        // Fire Test + Cargo Smoke Detection Test are HOLD on/off tests — they STAY combos
+        // (Off/On): the user picks On (test runs, the EWD speaks the result), then Off, and
+        // the combo always shows the current state. Only true one-shot momentary actions are
+        // buttons; a toggle belongs in a combo (the value is visible + always correct).
+        OnOff("A32NX_OVHD_FIRE_TEST_PB_IS_PRESSED", "Fire Test");
+        OnOff("A32NX_FIRE_TEST_CARGO", "Cargo Smoke Detection Test");
 
         // ---- OXYGEN ----
         Sel("PUSH_OVHD_OXYGEN_CREW", "Crew Oxygen",
@@ -1931,12 +1917,13 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         {
             "A32NX_OVHD_ELEC_BAT_1_PB_IS_AUTO", "A32NX_OVHD_ELEC_BAT_2_PB_IS_AUTO",
             "A32NX_OVHD_ELEC_BAT_ESS_PB_IS_AUTO", "A32NX_OVHD_ELEC_BAT_APU_PB_IS_AUTO",
+            // Ground / external power kept next to the battery controls (user request).
+            "A32NX_OVHD_ELEC_EXT_PWR_1_PB_IS_ON", "A32NX_OVHD_ELEC_EXT_PWR_2_PB_IS_ON",
+            "A32NX_OVHD_ELEC_EXT_PWR_3_PB_IS_ON", "A32NX_OVHD_ELEC_EXT_PWR_4_PB_IS_ON",
             "A32NX_OVHD_ELEC_BUS_TIE_PB_IS_AUTO", "A32NX_OVHD_ELEC_AC_ESS_FEED_PB_IS_NORMAL",
             "A32NX_OVHD_ELEC_GALY_AND_CAB_PB_IS_AUTO", "A32NX_OVHD_ELEC_COMMERCIAL_PB_IS_ON",
             "A32NX_OVHD_ELEC_IDG_1_PB_IS_RELEASED", "A32NX_OVHD_ELEC_IDG_2_PB_IS_RELEASED",
             "A32NX_OVHD_ELEC_IDG_3_PB_IS_RELEASED", "A32NX_OVHD_ELEC_IDG_4_PB_IS_RELEASED",
-            "A32NX_OVHD_ELEC_EXT_PWR_1_PB_IS_ON", "A32NX_OVHD_ELEC_EXT_PWR_2_PB_IS_ON",
-            "A32NX_OVHD_ELEC_EXT_PWR_3_PB_IS_ON", "A32NX_OVHD_ELEC_EXT_PWR_4_PB_IS_ON",
             "ELEC_ENG_GEN:1", "ELEC_ENG_GEN:2", "ELEC_ENG_GEN:3", "ELEC_ENG_GEN:4",
             "ELEC_APU_GEN:1", "ELEC_APU_GEN:2",
             "A32NX_OVHD_EMER_ELEC_GEN_1_LINE_PB_IS_ON", "A32NX_OVHD_EMER_ELEC_RAT_AND_EMER_GEN_IS_PRESSED",
@@ -4208,6 +4195,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         string OilP(double v) => v <= 0 ? "not available" : $"{v:0} psi";
         // ARINC429 decoder: payload + unit, or "not available" when the SSM isn't normal.
         string A(double v, string unit, string fmt = "0") { var w = new SimConnect.Arinc429Word(v); return (w.IsNormalOperation || w.IsFunctionalTest) ? $"{w.Value.ToString(fmt)} {unit}" : "not available"; }
+        // ARINC429 DISCRETE-word single-bit decoder (1-based bit, SSM-gated). For the CPIOM
+        // VCS/TCS/AGS discrete words (cabin fans, cargo isolation, hot air, pack operative).
+        Func<double, string> Bit(int bit, string set, string clr, bool invert = false)
+            => v => { var w = new SimConnect.Arinc429Word(v); if (!(w.IsNormalOperation || w.IsFunctionalTest)) return "not available"; bool b = w.BitValueOr(bit, false); if (invert) b = !b; return b ? set : clr; };
+        string FlowPct(double v) => $"{v * 100:0} %";   // PNEU pack flow-rate 0..1 -> percent
         // ARINC429 kg word -> user weight units (kg/lb per the metric toggle).
         string AWt(double v) { var w = new SimConnect.Arinc429Word(v); return (w.IsNormalOperation || w.IsFunctionalTest) ? Wt(w.Value) : "not available"; }
         var r = new List<(string, string, Func<double, string>)>();
@@ -4260,6 +4252,14 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 r.Add(("Crossbleed valve right", "A32NX_PNEU_XBLEED_VALVE_R_OPEN", OpenShut));
                 r.Add(("APU bleed valve", "A32NX_APU_BLEED_AIR_VALVE_OPEN", OpenShut));
                 r.Add(("Ram air valve", "A32NX_OVHD_COND_RAM_AIR_PB_IS_ON", v => v > 0.5 ? "open" : "closed"));
+                // Pack inlet flow per flow valve (PNEU FLOW_RATE 0..1 -> %).
+                r.Add(("Pack 1 valve 1 flow", "A32NX_PNEU_PACK_1_FLOW_VALVE_1_FLOW_RATE", FlowPct));
+                r.Add(("Pack 1 valve 2 flow", "A32NX_PNEU_PACK_1_FLOW_VALVE_2_FLOW_RATE", FlowPct));
+                r.Add(("Pack 2 valve 1 flow", "A32NX_PNEU_PACK_2_FLOW_VALVE_1_FLOW_RATE", FlowPct));
+                r.Add(("Pack 2 valve 2 flow", "A32NX_PNEU_PACK_2_FLOW_VALVE_2_FLOW_RATE", FlowPct));
+                // Pack operative (AGS discrete word bits 13/14).
+                r.Add(("Pack 1 operative", "A32NX_COND_CPIOM_B1_AGS_DISCRETE_WORD", Bit(13, "operative", "off")));
+                r.Add(("Pack 2 operative", "A32NX_COND_CPIOM_B1_AGS_DISCRETE_WORD", Bit(14, "operative", "off")));
                 break;
             case 3: // COND (Air Conditioning)
                 r.Add(("Cockpit temp", "A32NX_COND_CKPT_TEMP", v => $"{v:0.0} degrees"));
@@ -4269,6 +4269,18 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 r.Add(("Bulk cargo temp", "A32NX_COND_CARGO_BULK_TEMP", v => $"{v:0.0} degrees"));
                 r.Add(("Cabin air extract valve", "A32NX_VENT_OVERPRESSURE_RELIEF_VALVE_IS_OPEN", OpenShut));
                 r.Add(("Ram air valve", "A32NX_OVHD_COND_RAM_AIR_PB_IS_ON", v => v > 0.5 ? "open" : "closed"));
+                // CPIOM VCS/TCS/AGS discrete-word states (cabin fans, cargo isolation, hot air,
+                // pack operative). Bit numbers from the FBW a380x Cond source (1-based).
+                r.Add(("Cabin fans", "A32NX_COND_CPIOM_B1_VCS_DISCRETE_WORD", Bit(17, "enabled", "off")));
+                for (int f = 1; f <= 4; f++) r.Add(($"Cabin fan {f}", "A32NX_COND_CPIOM_B1_VCS_DISCRETE_WORD", Bit(17 + f, "fault", "normal")));
+                r.Add(("Forward cargo extract fan", "A32NX_COND_CPIOM_B1_VCS_DISCRETE_WORD", Bit(13, "on", "off")));
+                r.Add(("Bulk cargo extract fan", "A32NX_COND_CPIOM_B1_VCS_DISCRETE_WORD", Bit(15, "on", "off")));
+                r.Add(("Forward cargo isolation valve", "A32NX_COND_CPIOM_B1_VCS_DISCRETE_WORD", Bit(14, "open", "closed")));
+                r.Add(("Bulk cargo isolation valve", "A32NX_COND_CPIOM_B1_VCS_DISCRETE_WORD", Bit(16, "open", "closed")));
+                r.Add(("Hot air 1 valve", "A32NX_COND_CPIOM_B1_TCS_DISCRETE_WORD", Bit(15, "open", "closed")));
+                r.Add(("Hot air 2 valve", "A32NX_COND_CPIOM_B1_TCS_DISCRETE_WORD", Bit(16, "open", "closed")));
+                r.Add(("Pack 1 operative", "A32NX_COND_CPIOM_B1_AGS_DISCRETE_WORD", Bit(13, "operative", "off")));
+                r.Add(("Pack 2 operative", "A32NX_COND_CPIOM_B1_AGS_DISCRETE_WORD", Bit(14, "operative", "off")));
                 break;
             case 4: // PRESS (Pressurization) — block-1 ARINC words
                 r.Add(("Cabin altitude", "A32NX_PRESS_CABIN_ALTITUDE_B1", v => A(v, "feet")));
