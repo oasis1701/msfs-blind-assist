@@ -91,3 +91,24 @@ transition level (needs FL formatting), LOC/GS deviation (already in ND + ISIS),
 in Minimums), managed/preselect target speeds, FPV/FPA/drift, beta target, TCAS RA band.
 
 Files: `Aircraft/FlyByWireA380Definition.cs` (registrations + d["PFD"] + LS-course decode).
+
+---
+
+## SD pages — DONE
+
+The SD decode (`A380SdRows`) was already near-complete (pages 1/2/3/7/8/9/10/12 had no
+gaps). Genuine additions this pass (live-verified):
+- **PRESS page**: pressurization **AUTO/MAN mode** (`A32NX_OVHD_PRESS_MAN_ALTITUDE_PB_IS_AUTO`)
+  — the page's prominent mode label.
+- **ENGINE page**: per-engine **starter (cranking) valve** (`A32NX_PNEU_ENG_n_STARTER_VALVE_OPEN`)
+  — open while motoring/starting; useful start context for a blind pilot.
+
+Audit "bug fixes" that were **false positives** (verified, correctly NOT changed):
+- *Pitch-trim* — the SD row's `ELEVATOR_TRIM` key is already registered to the stock
+  `ELEVATOR TRIM POSITION` in **degrees** (def line ~1800); the audit only saw the key name.
+- *Landing-elevation ARINC* — `A32NX_FM1_LANDING_ELEVATION` reads a plain `0.0` live (not the
+  ~4.29e9 an ARINC NCD word shows), so the existing "not set (auto)" plain decode is correct.
+- *EXT PWR available* — already surfaced as "GPU n Available" under Ground Services; not
+  duplicated into the SD ELEC AC rows.
+
+Files: `Aircraft/FlyByWireA380Definition.cs` (`A380SdRows` cases 0 + 4).

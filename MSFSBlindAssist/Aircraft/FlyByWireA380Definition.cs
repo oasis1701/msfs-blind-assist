@@ -4413,6 +4413,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                     r.Add(($"Engine {e} oil temperature", $"GENERAL_ENG_OIL_TEMPERATURE:{e}", C));
                     r.Add(($"Engine {e} oil pressure", $"ENG_OIL_PRESSURE:{e}", OilP));
                     r.Add(($"Engine {e} vibration", $"TURB_ENG_VIBRATION:{e}", v => $"{v:0.0}"));
+                    // Starter (cranking) valve — open while motoring/starting the engine.
+                    r.Add(($"Engine {e} starter valve", $"A32NX_PNEU_ENG_{e}_STARTER_VALVE_OPEN", OpenShut));
                 }
                 break;
             case 1: // APU
@@ -4480,6 +4482,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 r.Add(("Pack 2 operative", "A32NX_COND_CPIOM_B1_AGS_DISCRETE_WORD", Bit(14, "operative", "off")));
                 break;
             case 4: // PRESS (Pressurization) — block-1 ARINC words
+                // The PRESS page's prominent AUTO/MAN cabin-pressure mode label.
+                r.Add(("Pressurization mode", "A32NX_OVHD_PRESS_MAN_ALTITUDE_PB_IS_AUTO", v => v > 0.5 ? "auto" : "manual"));
                 r.Add(("Cabin altitude", "A32NX_PRESS_CABIN_ALTITUDE_B1", v => A(v, "feet")));
                 r.Add(("Cabin vertical speed", "A32NX_PRESS_CABIN_VS_B1", v => A(v, "feet per minute")));
                 r.Add(("Differential pressure", "A32NX_PRESS_CABIN_DELTA_PRESSURE_B1", v => A(v, "psi", "0.0")));
