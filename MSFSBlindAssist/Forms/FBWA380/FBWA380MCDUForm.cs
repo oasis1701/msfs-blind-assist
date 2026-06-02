@@ -73,7 +73,12 @@ public class FBWA380MCDUForm : Form
         new("ACTIVE: F-PLN",      "Active",   0, "FPLN"),
         new("ACTIVE: PERF",       "Active",   1, "PERF"),
         new("ACTIVE: FUEL & LOAD","Active",   2, ""),
-        new("ACTIVE: WIND",       "Active",   3, ""),
+        // ACTIVE/WIND (pageSelectorActive_3) is DISABLED in the FBW A380X — the WIND
+        // page is not implemented (FmsHeader.tsx marks it disabled:true and there is no
+        // MfdFmsWind component / no 'fms/active/wind' route). Selecting it silently
+        // stayed on the previous page (verified live: it landed on FUEL & LOAD), so it's
+        // removed here until FBW ships it. Winds are entered via INIT > TRIP WIND and the
+        // F-PLN per-waypoint wind revision instead.
         new("ACTIVE: INIT",       "Active",   4, "INIT"),
         new("POSITION: MONITOR",  "Position", 0, ""),
         new("POSITION: REPORT",   "Position", 1, ""),
