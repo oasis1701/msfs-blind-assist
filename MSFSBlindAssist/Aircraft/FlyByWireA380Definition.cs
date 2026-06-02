@@ -911,10 +911,16 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         ReadEnum("A32NX_REVERSER_2_DEPLOYED", "Engine 2 Reverser", revVd);
         ReadEnum("A32NX_REVERSER_3_DEPLOYED", "Engine 3 Reverser", revVd);
         // Engine mode knob: combo writes via HandleUIVariableSet to all engines.
+        // READBACK is the stock ignition-switch simvar (TURB ENG IGNITION SWITCH EX1:1,
+        // Enum: 0=Crank/1=Norm/2=Ignition), NOT XMLVAR_ENG_MODE_SEL. Verified live: the
+        // TURBINE_IGNITION_SWITCH_SETn events the combo fires move the stock simvar but
+        // do NOT move XMLVAR_ENG_MODE_SEL (the knob-position var, only updated by cockpit
+        // interaction) — so reading XMLVAR left the combo stale and unable to cycle.
+        // Continuous so the combo tracks the real state + announces mode changes.
         vars["ENGINE_MODE_SELECTOR"] = new SimVarDefinition
         {
-            Name = "XMLVAR_ENG_MODE_SEL", DisplayName = "Engine Mode", Type = SimVarType.LVar,
-            UpdateFrequency = UpdateFrequency.OnRequest,
+            Name = "TURB ENG IGNITION SWITCH EX1:1", DisplayName = "Engine Mode", Type = SimVarType.SimVar,
+            Units = "Enum", UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Crank", [1] = "Norm", [2] = "Ignition / Start" }
         };
 
@@ -3350,7 +3356,12 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         if (varKey == "ENGINE_MODE_SELECTOR")
         {
             uint mode = (uint)Math.Round(value);
+            // Drive the real ignition state on all four engines (verified: this moves
+            // the stock TURB ENG IGNITION SWITCH simvar the combo now reads back).
             for (int n = 1; n <= 4; n++) simConnect.SendEvent($"TURBINE_IGNITION_SWITCH_SET{n}", mode);
+            // Also nudge the knob-position L:var the FWS/EWD reads, so the cockpit
+            // display matches (the events above don't touch it).
+            simConnect.ExecuteCalculatorCode($"{mode} (>L:XMLVAR_ENG_MODE_SEL)");
             return true;
         }
         // Wipers: ON/OFF by TOGGLING the electrical circuit (the FBW knob template's
