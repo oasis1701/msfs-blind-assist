@@ -4219,27 +4219,44 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 new Forms.FBWA380.FBWA380AutopilotWindow(this, simConnect, announcer).ShowForm();
                 return true;
 
-            // FCU knob push/pull (Shift+1..4 push, Ctrl+1..4 pull). Fire the
-            // A32NX.FCU_* event (same events the A320 uses), then read back the
-            // managed/selected state so the user gets spoken confirmation — the
-            // raw event is otherwise silent, which read as "doesn't work". Handled
-            // here rather than via GetHotkeyVariableMap so we can add the readout.
+            // FCU knob push/pull (Shift+1..4 push, Ctrl+1..4 pull). Drive the FCU via
+            // the legacy cockpit H-events `A320_Neo_FCU_<axis>_PUSH/PULL` — the same
+            // path the physical knob uses. The A380X FCU is a self-contained instrument
+            // whose managers listen to these H-events (verified live: firing
+            // A320_Neo_FCU_HDG_PUSH/PULL and _ALT_PUSH/PULL on the FCU bus moves the
+            // autopilot slot index 1<->2; SPEED/VS names confirmed from the FBW FCU
+            // source). The previously-fired `A32NX.FCU_TO_AP_*` events were the FCU's
+            // *internal* downstream events and do NOT route to the autopilot via
+            // TransmitClientEvent — a live probe confirmed A32NX.FCU_TO_AP_HDG_PUSH left
+            // the slot unchanged while the H-event moved it. Fired via the calculator
+            // (>H:) path (same as the clock CHR H-event and other cockpit controls).
+            //
+            // NO readback here (Fenix-style): the managed<->selected RESULT is announced
+            // by the always-on managed-state monitor (Mon "…_MANAGED…" -> "Heading Mode:
+            // Managed/Selected"), which fires only on a REAL transition. The old
+            // RequestFCU*WithStatus readback spoke the value on every press regardless of
+            // whether anything changed, which was identical to the output-mode read query
+            // and masked the dead actuation.
             case HotkeyAction.FCUHeadingPush:
-                simConnect.SendEvent("A32NX.FCU_TO_AP_HDG_PUSH"); RequestFCUHeadingWithStatus(simConnect); return true;
+                simConnect.ExecuteCalculatorCode("(>H:A320_Neo_FCU_HDG_PUSH)"); return true;
             case HotkeyAction.FCUHeadingPull:
-                simConnect.SendEvent("A32NX.FCU_TO_AP_HDG_PULL"); RequestFCUHeadingWithStatus(simConnect); return true;
+                simConnect.ExecuteCalculatorCode("(>H:A320_Neo_FCU_HDG_PULL)"); return true;
             case HotkeyAction.FCUSpeedPush:
-                simConnect.SendEvent("A32NX.FCU_SPD_PUSH"); RequestFCUSpeedWithStatus(simConnect); return true;
+                simConnect.ExecuteCalculatorCode("(>H:A320_Neo_FCU_SPEED_PUSH)"); return true;
             case HotkeyAction.FCUSpeedPull:
-                simConnect.SendEvent("A32NX.FCU_SPD_PULL"); RequestFCUSpeedWithStatus(simConnect); return true;
+                simConnect.ExecuteCalculatorCode("(>H:A320_Neo_FCU_SPEED_PULL)"); return true;
             case HotkeyAction.FCUAltitudePush:
-                simConnect.SendEvent("A32NX.FCU_ALT_PUSH"); RequestFCUAltitudeWithStatus(simConnect); return true;
+                simConnect.ExecuteCalculatorCode("(>H:A320_Neo_FCU_ALT_PUSH)"); return true;
             case HotkeyAction.FCUAltitudePull:
-                simConnect.SendEvent("A32NX.FCU_ALT_PULL"); RequestFCUAltitudeWithStatus(simConnect); return true;
+                simConnect.ExecuteCalculatorCode("(>H:A320_Neo_FCU_ALT_PULL)"); return true;
+            // The A380X V/S knob is pull-to-engage: the FBW VerticalSpeedManager handles
+            // VS_PULL + rotation but has NO VS_PUSH (no managed-V/S on the knob — managed
+            // vertical is armed via the ALT knob). VS push is therefore a no-op on the
+            // aircraft; we still fire the H-event for forward-compatibility.
             case HotkeyAction.FCUVSPush:
-                simConnect.SendEvent("A32NX.FCU_VS_PUSH"); RequestFCUVSWithStatus(simConnect); return true;
+                simConnect.ExecuteCalculatorCode("(>H:A320_Neo_FCU_VS_PUSH)"); return true;
             case HotkeyAction.FCUVSPull:
-                simConnect.SendEvent("A32NX.FCU_TO_AP_VS_PULL"); RequestFCUVSWithStatus(simConnect); return true;
+                simConnect.ExecuteCalculatorCode("(>H:A320_Neo_FCU_VS_PULL)"); return true;
 
             case HotkeyAction.ReadFlaps:
                 if (simConnect.IsConnected) { _reqFlaps = true; simConnect.RequestVariable("A32NX_FLAPS_HANDLE_INDEX", forceUpdate: true); }
