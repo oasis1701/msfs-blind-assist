@@ -789,6 +789,15 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Stock("GEAR_LEFT_POSITION", "GEAR LEFT POSITION", "Left Main Gear", "percent");
         Stock("GEAR_RIGHT_POSITION", "GEAR RIGHT POSITION", "Right Main Gear", "percent");
 
+        // DOORS SD page — all 16 passenger doors as the stock `INTERACTIVE POINT OPEN:n`
+        // (percent open; the FBW Door page treats >20% as open). Pre-declared OnRequest as
+        // SimVar so the A380SdRows auto-register loop leaves them stock (the door-control
+        // combos register a few of the same points under A380X_GND_DOOR_* keys — distinct
+        // keys, no collision). Indices 0-15 = MAIN 1L/1R/2L/2R/3L/3R/4L/4R/5L/5R, UPPER
+        // 1L/1R/2L/2R/3L/3R (from the FBW DoorPage source).
+        for (int ip = 0; ip <= 15; ip++)
+            Stock($"INTERACTIVE POINT OPEN:{ip}", $"INTERACTIVE POINT OPEN:{ip}", $"Door {ip}", "percent");
+
         var windowReadVars = Forms.FBWA380.FBWA380SystemDisplayForm.AllVariableNames()
             .Concat(Forms.FBWA380.FBWA380NavDisplayForm.AllVariableNames())
             .Concat(Forms.FBWA380.FBWA380ISISForm.AllVariableNames());
@@ -930,12 +939,15 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             Read($"A32NX_ENGINE_N3:{n}", $"Engine {n} N3", "percent");
             Read($"A32NX_ENGINE_EGT:{n}", $"Engine {n} EGT", "celsius");
             Read($"A32NX_ENGINE_FF:{n}", $"Engine {n} Fuel Flow", "kilograms per hour");
+            // Upper E/WD extras (N1 command target). Thrust-rating mode + flex below.
+            Read($"A32NX_AUTOTHRUST_N1_COMMANDED:{n}", $"Engine {n} N1 Command", "percent");
             // Engine oil PRESSURE is not modelled on the FBW A380 dev build — every
             // candidate var returns garbage (stock ENG OIL PRESSURE ~217000, GENERAL
             // ~6061, A32NX_ENGINE_OIL_PRESSURE 0), so it's omitted rather than shown
             // as a fake value. Oil quantity + temperature are real and kept.
             Stock($"ENG_OIL_TEMP:{n}", $"GENERAL ENG OIL TEMPERATURE:{n}", $"Engine {n} Oil Temperature", "celsius");
         }
+        Read("A32NX_AIRLINER_TO_FLEX_TEMP", "Flex Temperature", "celsius");   // Upper E/WD flex readout
         // The A380 has thrust reversers ONLY on the inboard engines (2 and 3); the
         // outboard 1 and 4 have none (their _REVERSER_ vars stay 0 forever), so only
         // 2 and 3 are exposed/announced — "only engine 2 and 3 deploy" is correct.
@@ -3968,30 +3980,49 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             {
                 int[] engs = { 1, 2, 3, 4 };
                 foreach (int e in engs)
+                {
                     foreach (var p in new[] { "N1", "EGT", "N2", "N3", "FF" })
                         simConnect.RequestVariable($"A32NX_ENGINE_{p}:{e}", forceUpdate: true);
+                    simConnect.RequestVariable($"A32NX_AUTOTHRUST_N1_COMMANDED:{e}", forceUpdate: true);
+                    simConnect.RequestVariable($"A32NX_ENGINE_STATE:{e}", forceUpdate: true);
+                }
+                foreach (var g in new[] { "A32NX_AUTOTHRUST_THRUST_LIMIT_TYPE", "A32NX_AIRLINER_TO_FLEX_TEMP" })
+                    simConnect.RequestVariable(g, forceUpdate: true);
                 await Task.Delay(550);
 
                 bool anyReal = false;
-                string Grp(string param, Func<double, string> fmt)
+                string Grp(string varFmt, Func<double, string> fmt)
                 {
                     var parts = new List<string>();
                     foreach (int e in engs)
                     {
-                        double? cv = simConnect.GetCachedVariableValue($"A32NX_ENGINE_{param}:{e}");
+                        double? cv = simConnect.GetCachedVariableValue(string.Format(varFmt, e));
                         if (cv.HasValue) anyReal = true;
                         parts.Add($"Engine {e} " + (cv.HasValue ? fmt(cv.Value) : "--"));
                     }
                     return string.Join(", ", parts);
                 }
 
+                // Thrust rating mode (the big EWD label) + optional FLEX temp.
+                string[] thrModes = { "", "CLB", "MCT", "FLX", "TOGA", "MREV" };
+                double? tlt = simConnect.GetCachedVariableValue("A32NX_AUTOTHRUST_THRUST_LIMIT_TYPE");
+                int tltI = (int)Math.Round(tlt ?? 0);
+                string thrMode = (tltI >= 1 && tltI < thrModes.Length) ? thrModes[tltI] : "none";
+                double? flex = simConnect.GetCachedVariableValue("A32NX_AIRLINER_TO_FLEX_TEMP");
+                if (thrMode == "FLX" && flex.HasValue && flex.Value > 0) thrMode += $" {flex.Value:0}°C";
+                // Engine state enum → text.
+                string EngState(double v) => v >= 2 ? "starting" : v >= 1 ? "on" : "off";
+
                 var ewdLines = new List<string>
                 {
-                    "N1: "        + Grp("N1",  v => $"{v:0.0}%"),
-                    "EGT: "       + Grp("EGT", v => $"{v:0}°C"),
-                    "N2: "        + Grp("N2",  v => $"{v:0.0}%"),
-                    "N3: "        + Grp("N3",  v => $"{v:0.0}%"),
-                    "Fuel Flow: " + Grp("FF",  v => $"{v:0} kg/h"),
+                    "Thrust rating: " + thrMode,
+                    "N1: "          + Grp("A32NX_ENGINE_N1:{0}",  v => $"{v:0.0}%"),
+                    "N1 command: "  + Grp("A32NX_AUTOTHRUST_N1_COMMANDED:{0}", v => $"{v:0.0}%"),
+                    "EGT: "         + Grp("A32NX_ENGINE_EGT:{0}", v => $"{v:0}°C"),
+                    "N2: "          + Grp("A32NX_ENGINE_N2:{0}",  v => $"{v:0.0}%"),
+                    "N3: "          + Grp("A32NX_ENGINE_N3:{0}",  v => $"{v:0.0}%"),
+                    "Fuel Flow: "   + Grp("A32NX_ENGINE_FF:{0}",  v => $"{v:0} kg/h"),
+                    "Engine state: "+ Grp("A32NX_ENGINE_STATE:{0}", EngState),
                 };
                 // Live ECAM memo / warning lines — decoded from the EWD_LOWER code cache
                 // (the same source ReadAllEwdWarnings / Alt+E uses).
@@ -4111,6 +4142,17 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         string OpenShut(double v) => v > 0.5 ? "open" : "closed";
         string Healthy(double v) => v > 0.5 ? "healthy" : "failed";
         string Locked(double v) => v > 0.5 ? "locked" : "unlocked";
+        string DoorState(double pct) => pct > 20 ? "open" : "closed";   // FBW Door page threshold
+        string Auto(double v) => v > 0.5 ? "auto" : "off";
+        string Active(double v) => v > 0.5 ? "running" : "off";
+        string Flag(double v, string set, string clr) => v > 0.5 ? set : clr;
+        // Signed surface-deflection as a percentage of travel (the FBW F/CTL page draws a
+        // bar from a normalized -1..1 value); a blind pilot sweeping the controls hears
+        // the percentage change.
+        string Defl(double v) => $"{v * 100:0} percent";
+        // Engine oil pressure is NOT modelled on the A380 dev build (stock simvar returns
+        // negative garbage); the FBW page clamps negatives to 0, so mirror that.
+        string OilP(double v) => v <= 0 ? "not available" : $"{v:0} psi";
         // ARINC429 decoder: payload + unit, or "not available" when the SSM isn't normal.
         string A(double v, string unit, string fmt = "0") { var w = new SimConnect.Arinc429Word(v); return (w.IsNormalOperation || w.IsFunctionalTest) ? $"{w.Value.ToString(fmt)} {unit}" : "not available"; }
         // ARINC429 kg word -> user weight units (kg/lb per the metric toggle).
@@ -4127,7 +4169,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                     r.Add(($"Engine {e} fuel flow", $"A32NX_ENGINE_FF:{e}", Kgh));
                     r.Add(($"Engine {e} oil quantity", $"A32NX_ENGINE_OIL_QTY:{e}", Qt));
                     r.Add(($"Engine {e} oil temperature", $"GENERAL_ENG_OIL_TEMPERATURE:{e}", C));
-                    r.Add(($"Engine {e} oil pressure", $"ENG_OIL_PRESSURE:{e}", Psi));
+                    r.Add(($"Engine {e} oil pressure", $"ENG_OIL_PRESSURE:{e}", OilP));
                     r.Add(($"Engine {e} vibration", $"TURB_ENG_VIBRATION:{e}", v => $"{v:0.0}"));
                 }
                 break;
@@ -4147,6 +4189,15 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 r.Add(("APU generator 2 load", "A32NX_ELEC_APU_GEN_2_LOAD", Pct));
                 break;
             case 2: // BLEED
+                for (int e = 1; e <= 4; e++)
+                {
+                    r.Add(($"Engine {e} bleed valve", $"A32NX_PNEU_ENG_{e}_PR_VALVE_OPEN", OpenShut));
+                    r.Add(($"Engine {e} HP valve", $"A32NX_PNEU_ENG_{e}_HP_VALVE_OPEN", OpenShut));
+                    r.Add(($"Engine {e} bleed pressure", $"A32NX_PNEU_ENG_{e}_REGULATED_TRANSDUCER_PRESSURE", Psi));
+                    r.Add(($"Engine {e} precooler outlet temp", $"A32NX_PNEU_ENG_{e}_PRECOOLER_OUTLET_TEMPERATURE", C));
+                }
+                r.Add(("Pack 1 outlet temp", "A32NX_COND_PACK_1_OUTLET_TEMPERATURE", C));
+                r.Add(("Pack 2 outlet temp", "A32NX_COND_PACK_2_OUTLET_TEMPERATURE", C));
                 r.Add(("Pack 1 flow valve 1", "A32NX_COND_PACK_1_FLOW_VALVE_1_IS_OPEN", OpenShut));
                 r.Add(("Pack 1 flow valve 2", "A32NX_COND_PACK_1_FLOW_VALVE_2_IS_OPEN", OpenShut));
                 r.Add(("Pack 2 flow valve 1", "A32NX_COND_PACK_2_FLOW_VALVE_1_IS_OPEN", OpenShut));
@@ -4155,8 +4206,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 r.Add(("Crossbleed valve centre", "A32NX_PNEU_XBLEED_VALVE_C_OPEN", OpenShut));
                 r.Add(("Crossbleed valve right", "A32NX_PNEU_XBLEED_VALVE_R_OPEN", OpenShut));
                 r.Add(("APU bleed valve", "A32NX_APU_BLEED_AIR_VALVE_OPEN", OpenShut));
-                for (int e = 1; e <= 4; e++)
-                    r.Add(($"Engine {e} bleed pressure", $"A32NX_PNEU_ENG_{e}_REGULATED_TRANSDUCER_PRESSURE", Psi));
+                r.Add(("Ram air valve", "A32NX_OVHD_COND_RAM_AIR_PB_IS_ON", v => v > 0.5 ? "open" : "closed"));
                 break;
             case 3: // COND (Air Conditioning)
                 r.Add(("Cockpit temp", "A32NX_COND_CKPT_TEMP", v => $"{v:0.0} degrees"));
@@ -4164,19 +4214,35 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 for (int z = 1; z <= 7; z++) r.Add(($"Upper deck zone {z} temp", $"A32NX_COND_UPPER_DECK_{z}_TEMP", v => $"{v:0.0} degrees"));
                 r.Add(("Forward cargo temp", "A32NX_COND_CARGO_FWD_TEMP", v => $"{v:0.0} degrees"));
                 r.Add(("Bulk cargo temp", "A32NX_COND_CARGO_BULK_TEMP", v => $"{v:0.0} degrees"));
+                r.Add(("Cabin air extract valve", "A32NX_VENT_OVERPRESSURE_RELIEF_VALVE_IS_OPEN", OpenShut));
+                r.Add(("Ram air valve", "A32NX_OVHD_COND_RAM_AIR_PB_IS_ON", v => v > 0.5 ? "open" : "closed"));
                 break;
             case 4: // PRESS (Pressurization) — block-1 ARINC words
                 r.Add(("Cabin altitude", "A32NX_PRESS_CABIN_ALTITUDE_B1", v => A(v, "feet")));
                 r.Add(("Cabin vertical speed", "A32NX_PRESS_CABIN_VS_B1", v => A(v, "feet per minute")));
                 r.Add(("Differential pressure", "A32NX_PRESS_CABIN_DELTA_PRESSURE_B1", v => A(v, "psi", "0.0")));
                 r.Add(("Cabin altitude target", "A32NX_PRESS_CABIN_ALTITUDE_TARGET_B1", v => A(v, "feet")));
-                r.Add(("Landing elevation", "A32NX_FM1_LANDING_ELEVATION", v => $"{v:0} feet"));
-                for (int n = 1; n <= 4; n++) r.Add(($"Outflow valve {n}", $"A32NX_PRESS_OUTFLOW_VALVE_{n}_OPEN_PERCENTAGE", Pct));
+                // FM1 landing elevation: 0 = not set / AUTO (no destination elevation).
+                r.Add(("Landing elevation", "A32NX_FM1_LANDING_ELEVATION", v => v <= 0 ? "not set (auto)" : $"{v:0} feet"));
+                // Outflow valves are the ARINC429 `_OPEN_PERCENTAGE_B1` words (the un-suffixed
+                // name does not exist → read 0). B1 = the normally-active CPCS system.
+                for (int n = 1; n <= 4; n++) r.Add(($"Outflow valve {n}", $"A32NX_PRESS_OUTFLOW_VALVE_{n}_OPEN_PERCENTAGE_B1", v => A(v, "%")));
+                r.Add(("Pack 1", "A32NX_COND_PACK_1_FLOW_VALVE_1_IS_OPEN", v => v > 0.5 ? "on" : "off"));
+                r.Add(("Pack 2", "A32NX_COND_PACK_2_FLOW_VALVE_1_IS_OPEN", v => v > 0.5 ? "on" : "off"));
                 break;
-            case 5: // DOORS
-                r.Add(("Forward cargo door", "A32NX_FWD_DOOR_CARGO_LOCKED", Locked));
-                r.Add(("Aft cargo door", "A32NX_AFT_DOOR_CARGO_LOCKED", Locked));
-                r.Add(("Escape slides", "A32NX_SLIDES_ARMED", v => v > 0.5 ? "armed" : "disarmed"));
+            case 5: // DOORS — all 16 passenger doors (FBW Door page, INTERACTIVE POINT OPEN:0-15)
+                {
+                    string[] dn = { "Main 1 left", "Main 1 right", "Main 2 left", "Main 2 right",
+                                    "Main 3 left", "Main 3 right", "Main 4 left", "Main 4 right",
+                                    "Main 5 left", "Main 5 right", "Upper 1 left", "Upper 1 right",
+                                    "Upper 2 left", "Upper 2 right", "Upper 3 left", "Upper 3 right" };
+                    for (int i = 0; i < dn.Length; i++)
+                        r.Add(($"{dn[i]} door", $"INTERACTIVE POINT OPEN:{i}", DoorState));
+                }
+                r.Add(("Forward cargo door", "A32NX_FWD_DOOR_CARGO_LOCKED", v => v > 0.5 ? "closed" : "open"));
+                r.Add(("Aft cargo door", "A32NX_AFT_DOOR_CARGO_LOCKED", v => v > 0.5 ? "closed" : "open"));
+                r.Add(("Captain sliding window", "CPT_SLIDING_WINDOW", v => v > 0.05 ? "open" : "closed"));
+                r.Add(("First officer sliding window", "FO_SLIDING_WINDOW", v => v > 0.05 ? "open" : "closed"));
                 r.Add(("Crew oxygen supply", "PUSH_OVHD_OXYGEN_CREW", v => v > 0.5 ? "on" : "off"));
                 break;
             case 6: // ELEC AC
@@ -4194,43 +4260,99 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 r.Add(("APU generator 1 load", "A32NX_ELEC_APU_GEN_1_LOAD", Pct));
                 r.Add(("APU generator 2 voltage", "A32NX_ELEC_APU_GEN_2_POTENTIAL", V));
                 r.Add(("APU generator 2 frequency", "A32NX_ELEC_APU_GEN_2_FREQUENCY", Hz));
+                r.Add(("APU generator 2 load", "A32NX_ELEC_APU_GEN_2_LOAD", Pct));
                 r.Add(("External power voltage", "A32NX_ELEC_EXT_PWR_POTENTIAL", V));
                 r.Add(("External power frequency", "A32NX_ELEC_EXT_PWR_FREQUENCY", Hz));
                 r.Add(("Emergency gen voltage", "A32NX_ELEC_EMER_GEN_POTENTIAL", V));
+                r.Add(("Emergency gen load", "A32NX_ELEC_EMER_GEN_LOAD", Pct));
+                r.Add(("RAT", "A32NX_RAT_STOW_POSITION", v => v > 0.9 ? "deployed" : "stowed"));
                 r.Add(("Static inverter voltage", "A32NX_ELEC_STAT_INV_POTENTIAL", V));
+                r.Add(("Static inverter frequency", "A32NX_ELEC_STAT_INV_FREQUENCY", Hz));
                 for (int n = 1; n <= 4; n++) r.Add(($"AC bus {n}", $"A32NX_ELEC_AC_{n}_BUS_IS_POWERED", OnOff));
-                r.Add(("AC ESS bus", "A32NX_ELEC_AC_ESS_BUS_IS_POWERED", OnOff));
+                r.Add(("AC ESS bus", "A32NX_ELEC_AC_ESS_SHED_BUS_IS_POWERED", OnOff));
+                r.Add(("AC EMER bus", "A32NX_ELEC_AC_ESS_BUS_IS_POWERED", OnOff));
                 break;
             case 7: // ELEC DC
-                foreach (var b in new[] { "1", "2", "ESS", "APU" })
+                // The A380 batteries are NUMERIC-indexed 1/2/3/4 (3 = ESS, 4 = APU). The
+                // string-named ..._BAT_ESS_/_APU_POTENTIAL vars do NOT exist (read 0) — only
+                // the pushbuttons use the ESS/APU names.
+                foreach (var (idx, name) in new[] { ("1", "1"), ("2", "2"), ("3", "ESS"), ("4", "APU") })
                 {
-                    r.Add(($"Battery {b} voltage", $"A32NX_ELEC_BAT_{b}_POTENTIAL", v => $"{v:0.0} volts"));
-                    r.Add(($"Battery {b} current", $"A32NX_ELEC_BAT_{b}_CURRENT", v => $"{v:0} amps"));
+                    r.Add(($"Battery {name} voltage", $"A32NX_ELEC_BAT_{idx}_POTENTIAL", v => $"{v:0.0} volts"));
+                    r.Add(($"Battery {name} current", $"A32NX_ELEC_BAT_{idx}_CURRENT", v => $"{v:0} amps"));
                 }
-                for (int n = 1; n <= 2; n++) r.Add(($"TR {n} voltage", $"A32NX_ELEC_TR_{n}_POTENTIAL", V));
+                // 4 TRs: TR1(idx1), TR2(idx2), ESS TR(idx3), APU TR(idx4) — voltage + current.
+                foreach (var (idx, name) in new[] { ("1", "1"), ("2", "2"), ("3", "ESS"), ("4", "APU") })
+                {
+                    r.Add(($"TR {name} voltage", $"A32NX_ELEC_TR_{idx}_POTENTIAL", V));
+                    r.Add(($"TR {name} current", $"A32NX_ELEC_TR_{idx}_CURRENT", v => $"{v:0} amps"));
+                }
                 for (int n = 1; n <= 2; n++) r.Add(($"DC bus {n}", $"A32NX_ELEC_DC_{n}_BUS_IS_POWERED", OnOff));
                 r.Add(("DC ESS bus", "A32NX_ELEC_DC_ESS_BUS_IS_POWERED", OnOff));
+                r.Add(("DC APU bus", "A32NX_ELEC_309PP_BUS_IS_POWERED", OnOff));
                 break;
-            case 8: // FUEL — FQDC per-tank quantities are ARINC429 words (kg)
+            case 8: // FUEL — per-tank quantities are ARINC429 words (kg); FQMS is the page's
+                    // primary source (the app previously read the FQDC fallback).
                 foreach (var t in new[] { "FEED_1", "FEED_2", "FEED_3", "FEED_4", "LEFT_OUTER", "LEFT_MID", "LEFT_INNER", "RIGHT_OUTER", "RIGHT_MID", "RIGHT_INNER", "TRIM" })
-                    r.Add(($"{t.Replace('_', ' ')} tank", $"A32NX_FQDC_1_{t}_TANK_QUANTITY", AWt));
+                    r.Add(($"{t.Replace('_', ' ')} tank", $"A32NX_FQMS_{t}_TANK_QUANTITY", AWt));
                 r.Add(("Total fuel on board", "A32NX_FQMS_TOTAL_FUEL_ON_BOARD", AWt));
+                for (int e = 1; e <= 4; e++) r.Add(($"Engine {e} fuel used", $"A32NX_FUEL_USED:{e}", Wt));
+                r.Add(("APU fuel used", "A32NX_APU_FUEL_USED", AWt));
+                for (int e = 1; e <= 4; e++) r.Add(($"Engine {e} fuel flow", $"A32NX_ENGINE_FF:{e}", Kgh));
                 break;
-            case 9: // WHEEL — braked-wheel temperatures + gear position
-                r.Add(("Nose gear", "GEAR_CENTER_POSITION", Pct));
-                r.Add(("Left main gear", "GEAR_LEFT_POSITION", Pct));
-                r.Add(("Right main gear", "GEAR_RIGHT_POSITION", Pct));
+            case 9: // WHEEL — gear + doors + braked-wheel temperatures (FBW Wheel page L:vars)
+                r.Add(("Nose gear", "A32NX_GEAR_CENTER_POSITION", v => v > 98 ? "down and locked" : v < 2 ? "up" : $"in transit {v:0} percent"));
+                r.Add(("Left main gear", "A32NX_GEAR_LEFT_POSITION", v => v > 98 ? "down and locked" : v < 2 ? "up" : $"in transit {v:0} percent"));
+                r.Add(("Right main gear", "A32NX_GEAR_RIGHT_POSITION", v => v > 98 ? "down and locked" : v < 2 ? "up" : $"in transit {v:0} percent"));
+                r.Add(("Nose gear door", "A32NX_GEAR_DOOR_CENTER_POSITION", v => v > 2 ? "open" : "closed"));
+                r.Add(("Left gear door", "A32NX_GEAR_DOOR_LEFT_POSITION", v => v > 2 ? "open" : "closed"));
+                r.Add(("Right gear door", "A32NX_GEAR_DOOR_RIGHT_POSITION", v => v > 2 ? "open" : "closed"));
                 for (int w = 1; w <= 16; w++) r.Add(($"Brake {w} temp", $"A32NX_REPORTED_BRAKE_TEMPERATURE_{w}", C));
                 break;
             case 10: // HYD (A380 has Green + Yellow)
-                r.Add(("Green pressure", "A32NX_HYD_GREEN_SYSTEM_1_SECTION_PRESSURE", Psi));
-                r.Add(("Green reservoir", "A32NX_HYD_GREEN_RESERVOIR_LEVEL", v => $"{v:0.0} gallons"));
-                r.Add(("Yellow pressure", "A32NX_HYD_YELLOW_SYSTEM_1_SECTION_PRESSURE", Psi));
-                r.Add(("Yellow reservoir", "A32NX_HYD_YELLOW_RESERVOIR_LEVEL", v => $"{v:0.0} gallons"));
+                foreach (var (sys, e1, e2) in new[] { ("GREEN", 1, 2), ("YELLOW", 3, 4) })
+                {
+                    string s = sys[0] == 'G' ? "Green" : "Yellow";
+                    r.Add(($"{s} pressure", $"A32NX_HYD_{sys}_SYSTEM_1_SECTION_PRESSURE", Psi));
+                    r.Add(($"{s} system pressurised", $"A32NX_HYD_{sys}_SYSTEM_1_SECTION_PRESSURE_SWITCH", v => Flag(v, "yes", "no")));
+                    r.Add(($"{s} reservoir level", $"A32NX_HYD_{sys}_RESERVOIR_LEVEL", v => $"{v:0.0} gallons"));
+                    r.Add(($"{s} reservoir low", $"A32NX_HYD_{sys}_RESERVOIR_LEVEL_IS_LOW", v => Flag(v, "LOW", "normal")));
+                    r.Add(($"{s} reservoir overheat", $"A32NX_HYD_{sys}_RESERVOIR_OVHT", v => Flag(v, "OVERHEAT", "normal")));
+                    r.Add(($"{s} reservoir air pressure low", $"A32NX_HYD_{sys}_RESERVOIR_AIR_PRESSURE_IS_LOW", v => Flag(v, "LOW", "normal")));
+                    // Two engine-driven pumps per system (one per engine), pushbutton + DISC.
+                    foreach (int e in new[] { e1, e2 })
+                    {
+                        r.Add(($"Engine {e} pump A", $"A32NX_OVHD_HYD_ENG_{e}A_PUMP_PB_IS_AUTO", Auto));
+                        r.Add(($"Engine {e} pump B", $"A32NX_OVHD_HYD_ENG_{e}B_PUMP_PB_IS_AUTO", Auto));
+                        r.Add(($"Engine {e} pumps disconnect", $"A32NX_HYD_ENG_{e}AB_PUMP_DISC", v => Flag(v, "disconnected", "normal")));
+                    }
+                    // Two electric pumps per system (A/B).
+                    foreach (var p in new[] { "A", "B" })
+                    {
+                        string ep = $"{sys[0]}{p}";   // GA, GB, YA, YB
+                        r.Add(($"{s} electric pump {p}", $"A32NX_HYD_{ep}_EPUMP_ACTIVE", Active));
+                        r.Add(($"{s} electric pump {p} overheat", $"A32NX_HYD_{ep}_EPUMP_OVHT", v => Flag(v, "OVERHEAT", "normal")));
+                    }
+                }
                 break;
-            case 11: // F/CTL — flight-control computer health + speed brake
+            case 11: // F/CTL — computer health + surface deflections + trims (FBW Fctl page)
                 for (int n = 1; n <= 3; n++) r.Add(($"PRIM {n}", $"A32NX_PRIM_{n}_HEALTHY", Healthy));
                 for (int n = 1; n <= 3; n++) r.Add(($"SEC {n}", $"A32NX_SEC_{n}_HEALTHY", Healthy));
+                // Aileron / elevator / rudder deflections (normalized → percent of travel).
+                foreach (var side in new[] { "LEFT", "RIGHT" })
+                    foreach (var pos in new[] { "OUTWARD", "MIDDLE", "INWARD" })
+                        r.Add(($"{(side == "LEFT" ? "Left" : "Right")} {pos.ToLower()} aileron", $"A32NX_HYD_AILERON_{side}_{pos}_DEFLECTION", Defl));
+                foreach (var side in new[] { "LEFT", "RIGHT" })
+                    foreach (var pos in new[] { "OUTWARD", "INWARD" })
+                        r.Add(($"{(side == "LEFT" ? "Left" : "Right")} {pos.ToLower()} elevator", $"A32NX_HYD_ELEVATOR_{side}_{pos}_DEFLECTION", Defl));
+                r.Add(("Upper rudder", "A32NX_HYD_UPPER_RUDDER_DEFLECTION", Defl));
+                r.Add(("Lower rudder", "A32NX_HYD_LOWER_RUDDER_DEFLECTION", Defl));
+                for (int sp = 1; sp <= 8; sp++)
+                {
+                    r.Add(($"Left spoiler {sp}", $"A32NX_HYD_SPOILER_{sp}_LEFT_DEFLECTION", Defl));
+                    r.Add(($"Right spoiler {sp}", $"A32NX_HYD_SPOILER_{sp}_RIGHT_DEFLECTION", Defl));
+                }
+                r.Add(("Pitch trim (THS)", "ELEVATOR_TRIM", v => $"{Math.Abs(v):0.0} degrees {(v >= 0 ? "up" : "down")}"));
                 r.Add(("Speed brake handle", "A32NX_SPOILERS_HANDLE_POSITION", v => $"{v * 100:0} %"));
                 r.Add(("Ground spoilers armed", "A32NX_SPOILERS_ARMED", v => v > 0.5 ? "armed" : "disarmed"));
                 r.Add(("Flaps angle", "A32NX_LEFT_FLAPS_ANGLE", v => $"{v:0.0} degrees"));
