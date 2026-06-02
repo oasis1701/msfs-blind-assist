@@ -39,6 +39,14 @@ public class SimConnectManager
     public double AircraftWingSpan { get; private set; } // Wing span in feet, populated on connect
     private bool wasConnected = false; // Track if we've already announced connection state
     private System.Windows.Forms.Timer reconnectTimer = null!;
+    // Aircraft-detection retry. RequestAircraftInfo() fires once at Connect() with PERIOD.ONCE;
+    // on a heavy aircraft the one-shot AIRCRAFT_INFO/ATC response can be missed, so
+    // IsFullyConnected never flips and every hotkey reports "not connected" (continuous
+    // monitoring/auto-announce works — separate path). This timer re-requests every 2s until
+    // detection completes, independent of continuous monitoring. (5 doors connected fine; 16
+    // pushed setup past the tipping point — this makes it self-heal regardless of load.)
+    private System.Windows.Forms.Timer _detectRetryTimer = null!;
+    private int _detectRetryCount = 0;
 
     // MobiFlight WASM integration
     private MobiFlightWasmModule? mobiFlightWasm;
@@ -467,6 +475,25 @@ public class SimConnectManager
         reconnectTimer = new System.Windows.Forms.Timer();
         reconnectTimer.Interval = 5000;
         reconnectTimer.Tick += ReconnectTimer_Tick;
+
+        _detectRetryTimer = new System.Windows.Forms.Timer();
+        _detectRetryTimer.Interval = 2000;
+        _detectRetryTimer.Tick += DetectRetryTimer_Tick;
+    }
+
+    // Re-request aircraft info until detection completes (IsFullyConnected). Stops itself
+    // once connected. Ultimate fallback: after several retries, if aircraft info has arrived
+    // but ATC data never did, stop waiting on ATC and complete detection so hotkeys unblock.
+    private void DetectRetryTimer_Tick(object? sender, EventArgs e)
+    {
+        if (!IsConnected || IsFullyConnected) { _detectRetryTimer.Stop(); return; }
+        _detectRetryCount++;
+        try { RequestAircraftInfo(); } catch { }
+        if (_detectRetryCount >= 5 && pendingAircraftInfo.HasValue && !atcDataReceived)
+        {
+            atcDataReceived = true;
+            TryAnnounceConnection();
+        }
     }
 
     public void Connect()
@@ -497,8 +524,12 @@ public class SimConnectManager
                 SimulatorVersionDetected?.Invoke(this, "MSFS 2024 detected");
             }
 
-            // Check aircraft type
+            // Check aircraft type — fire once now, and start the retry timer so a missed
+            // one-shot response self-heals (otherwise IsFullyConnected can stick at false).
+            _detectRetryCount = 0;
             RequestAircraftInfo();
+            _detectRetryTimer.Stop();
+            _detectRetryTimer.Start();
         }
         catch (COMException)
         {
