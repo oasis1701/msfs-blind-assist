@@ -788,6 +788,15 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // On-demand readout sources for global hotkeys (not paneled, not announced).
         Stock("KOHLSMAN_HG", "KOHLSMAN SETTING HG", "Altimeter", "inHg");
         Stock("GROSS_WEIGHT_KG", "TOTAL WEIGHT", "Gross Weight", "kilograms");
+        // PFD read-out additions (source-confirmed missing). All OnRequest stock simvars
+        // (NOT continuous) so they add nothing to the monitoring batch / aircraft detection.
+        Stock("PFD_V1", "AIRLINER V1 SPEED", "V1", "knots");
+        Stock("PFD_VR", "AIRLINER VR SPEED", "VR", "knots");
+        Stock("PFD_V2", "AIRLINER V2 SPEED", "V2", "knots");
+        Stock("PFD_MACH", "AIRSPEED MACH", "Mach", "mach");          // decoded in TryGetDisplayOverride
+        Stock("PFD_TRACK", "GPS GROUND MAGNETIC TRACK", "Track", "degrees");
+        Stock("PFD_ILS_FREQ", "NAV ACTIVE FREQUENCY:3", "ILS Frequency", "MHz");
+        Stock("PFD_ILS_DME", "NAV DME:3", "ILS DME", "nautical miles");
         // Gross-weight CG (%MAC), cached for the W / Shift+W readouts (Gus's GW-CG; kept
         // across the doors/PFD revert). Plain numeric FBW L-var (~40% MAC live). MonNum
         // registers it Units="number" (required for the L-var read) and routes it to a
@@ -2610,7 +2619,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "PLANE PITCH DEGREES", "PLANE BANK DEGREES", "PLANE HEADING DEGREES MAGNETIC",
             "AIRSPEED INDICATED", "INDICATED ALTITUDE",
             "A32NX_PFD_MSG_SET_HOLD_SPEED", "A32NX_PFD_MSG_TD_REACHED",
-            "A32NX_PFD_MSG_CHECK_SPEED_MODE", "A32NX_PFD_LINEAR_DEVIATION_ACTIVE"
+            "A32NX_PFD_MSG_CHECK_SPEED_MODE", "A32NX_PFD_LINEAR_DEVIATION_ACTIVE",
+            // Source-confirmed PFD additions: weight/CG, takeoff V-speeds, Mach, track, ILS.
+            "GROSS_WEIGHT_KG", "A32NX_AIRFRAME_GW_CG_PERCENT_MAC",
+            "PFD_V1", "PFD_VR", "PFD_V2", "PFD_MACH", "PFD_TRACK",
+            "PFD_ILS_FREQ", "PFD_ILS_DME"
         };
         // ND accessible snapshot — mode/range, TO waypoint (decoded ident + distance/
         // bearing/ETA), cross-track, RNP, and ILS LOC/GS validity + deviation.
@@ -3899,6 +3912,23 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             displayText = pct < 1 ? "Centred" : $"{pct}% {(value < 0 ? "left" : "right")}";
             return true;
         }
+        // GW CG % of MAC (Gus's FBW airframe value, more accurate than the stock CG PERCENT).
+        if (varKey == "A32NX_AIRFRAME_GW_CG_PERCENT_MAC")
+        {
+            displayText = (value > 5 && value < 60) ? $"{value:0.0} percent MAC" : "not available";
+            return true;
+        }
+        // Mach — two decimals (default F0 would render "0").
+        if (varKey == "PFD_MACH") { displayText = $"{value:0.00}"; return true; }
+        // Takeoff V-speeds: 0 = not entered in the MCDU.
+        if (varKey == "PFD_V1" || varKey == "PFD_VR" || varKey == "PFD_V2")
+        {
+            displayText = value < 1 ? "not set" : $"{value:0} knots";
+            return true;
+        }
+        // ILS DME — one decimal nm; ILS freq — three decimals MHz.
+        if (varKey == "PFD_ILS_DME") { displayText = value < 0.05 ? "no DME" : $"{value:0.0} nautical miles"; return true; }
+        if (varKey == "PFD_ILS_FREQ") { displayText = value < 100 ? "none" : $"{value:0.000} MHz"; return true; }
         switch (varKey)
         {
             // ECAM Control Panel "Status display" box: show the SELECTED SD page name
