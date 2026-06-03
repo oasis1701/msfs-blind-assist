@@ -120,6 +120,20 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             };
             _momentaryButtons.Add(key);
         }
+        // Push-BUTTON whose click is handled by a DEDICATED HandleUIVariableSet branch (fires a
+        // stock K-event etc.) rather than the generic _momentaryButtons L:var pulse. Used for
+        // synthetic action keys (ground services) that have no backing L:var to pulse — NOT
+        // added to _momentaryButtons so HandleUIVariableSet falls through to their event branch.
+        void EvtBtn(string key, string display)
+        {
+            vars[key] = new SimVarDefinition
+            {
+                Name = key, DisplayName = display, Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.OnRequest, IsAnnounced = false,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Activate" },
+                RenderAsButton = true
+            };
+        }
         // Latching/momentary PB L:var as a combo (Released / Pressed).
         void Press(string key, string display) =>
             Sel(key, display, new Dictionary<double, string> { [0] = "Released", [1] = "Pressed" });
@@ -2095,9 +2109,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // combo would announce a position it can't actually know (and either option fired
         // the toggle). Present it honestly as a momentary "Toggle" action; only the Toggle
         // option fires (guarded in HandleUIVariableSet).
-        var idleToggle = new Dictionary<double, string> { [0] = "Idle", [1] = "Toggle" };
-        Act("A380X_GND_JETWAY", "Jet Bridge", idleToggle);
-        Act("A380X_GND_STAIRS", "Passenger Stairs", idleToggle);
+        // Push-BUTTONS (user request) — clicking fires the stock event via HandleUIVariableSet
+        // (jetway/stairs TOGGLE, trucks REQUEST), no fake state shown. Need a serviced gate.
+        EvtBtn("A380X_GND_JETWAY", "Jet Bridge");
+        EvtBtn("A380X_GND_STAIRS", "Passenger Stairs");
         // Jet-bridge MOVING readout (stock SimVar — the only readable jetway state; the FBW
         // EFB itself only infers connection from the fwd door). Auto-announces Moving/Stopped
         // so a blind pilot gets feedback after a Jet Bridge toggle. Stairs have no equivalent.
@@ -2111,10 +2126,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // Ground-service vehicle requests (flyPad Ground page parity) — momentary Activate
         // combos firing the stock REQUEST_* events (the same the EFB uses). Handled in
         // HandleUIVariableSet.
-        var idleAct = new Dictionary<double, string> { [0] = "Idle", [1] = "Request" };
-        Act("A380X_GND_FUELTRUCK", "Fuel Truck", idleAct);
-        Act("A380X_GND_BAGGAGE", "Baggage Truck", idleAct);
-        Act("A380X_GND_CATERING", "Catering Truck", idleAct);
+        EvtBtn("A380X_GND_FUELTRUCK", "Fuel Truck");
+        EvtBtn("A380X_GND_BAGGAGE", "Baggage Truck");
+        EvtBtn("A380X_GND_CATERING", "Catering Truck");
 
         // Wheel chocks + safety cones (FBW model state; auto-announced).
         vars["A380X_GND_CHOCKS"] = new SimVarDefinition
