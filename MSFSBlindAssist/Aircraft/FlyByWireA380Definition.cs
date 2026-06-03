@@ -1166,6 +1166,23 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Mon("A32NX_FMA_MODE_REVERSION", "FMA Reversion",
             new Dictionary<double, string> { [0] = "none", [1] = "mode reversion" });
 
+        // ---- SAFETY AURAL CALLOUTS — the EGPWS / stall / AP-disconnect aurals a blind pilot
+        // otherwise can't hear. Auto-announced on onset (the L-var holds the current warning,
+        // so it speaks once per event, not per aural repeat). Mutable via Ctrl+M. ----
+        // EGPWS (GPWS/TAWS) escape-maneuver callouts — A32NX_GPWS_AURAL_OUTPUT enum (FBW EGPWS).
+        ReadEnum("A32NX_GPWS_AURAL_OUTPUT", "GPWS", new Dictionary<double, string>
+        {
+            [0] = "none", [1] = "PULL UP", [2] = "TERRAIN", [3] = "TOO LOW TERRAIN", [4] = "TOO LOW GEAR",
+            [5] = "TOO LOW FLAPS", [6] = "SINK RATE", [7] = "DON'T SINK", [8] = "GLIDESLOPE",
+            [9] = "GLIDESLOPE", [10] = "TERRAIN AHEAD", [11] = "OBSTACLE AHEAD"
+        });
+        // Stall warning aural ("STALL STALL").
+        ReadEnum("A32NX_AUDIO_STALL_WARNING", "Stall warning",
+            new Dictionary<double, string> { [0] = "off", [1] = "STALL" });
+        // Autopilot-disconnect cavalry charge (the AP-disconnect aural).
+        ReadEnum("A32NX_FWC_CAVALRY_CHARGE", "Autopilot disconnect",
+            new Dictionary<double, string> { [0] = "off", [1] = "autopilot disconnect" });
+
         // ---- Thrust levers (detent combos) ----
         // Command a thrust-lever detent from a combo. The write is intercepted in
         // HandleUIVariableSet, which fires THROTTLEn_AXIS_SET_EX1 with the detent's
