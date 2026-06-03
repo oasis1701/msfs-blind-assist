@@ -144,10 +144,11 @@ public class FBWA380ISISForm : Form
         sb.AppendLine();
 
         // SLIP/SKID — the ISIS sideslip ball is driven by lateral (body-X) acceleration,
-        // clamped to ±0.3 G. Positive body-X accel = ball to the right ("slip right").
+        // clamped to ±0.3 G. FBW's SideslipIndicator NEGATES body-X, so POSITIVE body-X accel
+        // moves the ball to the LEFT (slip left).
         double accX = R("ACCELERATION BODY X");
         string slip = Math.Abs(accX) < 0.02 ? "centred"
-                    : $"{Math.Min(100, Math.Abs(accX) / 0.3 * 100):0}% {(accX > 0 ? "right" : "left")}";
+                    : $"{Math.Min(100, Math.Abs(accX) / 0.3 * 100):0}% {(accX > 0 ? "left" : "right")}";
         sb.AppendLine($"Slip/skid: {slip}");
         sb.AppendLine();
 
@@ -159,7 +160,7 @@ public class FBWA380ISISForm : Form
         {
             if (R("A32NX_RADIO_RECEIVER_LOC_IS_VALID") > 0.5)
             {
-                double locDots = R("A32NX_RADIO_RECEIVER_LOC_DEVIATION") / 0.4;
+                double locDots = R("A32NX_RADIO_RECEIVER_LOC_DEVIATION") / 0.8;   // LOC full-scale 0.8 (GS is 0.4)
                 sb.AppendLine($"  Localizer: {DotsPhrase(locDots, "left", "right")}");
             }
             else sb.AppendLine("  Localizer: no signal");

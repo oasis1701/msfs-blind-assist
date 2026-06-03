@@ -228,7 +228,7 @@ public partial class PFDForm : Form
             data.AppendLine("APPROACH & NAVIGATION");
             data.AppendLine($"Approach Capability: {GetVariableValue("A32NX_APPROACH_CAPABILITY")}");
             data.AppendLine($"Linear Deviation: {GetVariableValue("A32NX_PFD_LINEAR_DEVIATION_ACTIVE")}");
-            data.AppendLine($"FMGC L/DEV Request: {GetVariableValue("A32NX_FMGC_1_LDEV_REQUEST")}");
+            data.AppendLine($"FMGC L/DEV Request: {GetVariableValue("A32NX_FMGC_L_LDEV_REQUEST")}");
             data.AppendLine();
 
             data.AppendLine("APPROACH SETTINGS");

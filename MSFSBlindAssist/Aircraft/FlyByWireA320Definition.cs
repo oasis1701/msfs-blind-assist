@@ -2748,9 +2748,9 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
                 [0] = "Not shown", [1] = "Linear Deviation Active"
             }
         },
-        ["A32NX_FMGC_1_LDEV_REQUEST"] = new SimConnect.SimVarDefinition
+        ["A32NX_FMGC_L_LDEV_REQUEST"] = new SimConnect.SimVarDefinition
         {
-            Name = "A32NX_FMGC_1_LDEV_REQUEST",
+            Name = "A32NX_FMGC_L_LDEV_REQUEST",   // _1_ does not exist in FBW source; _L_ is real
             DisplayName = "FMGC L DEV Request",
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.Continuous,

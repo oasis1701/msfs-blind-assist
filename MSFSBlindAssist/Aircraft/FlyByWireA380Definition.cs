@@ -1169,7 +1169,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             //  "GPU {n} Available" readout in Ground Services, same A32NX_EXT_PWR_
             //  AVAIL:{n} SimVar. Having both double-announced when a GPU connects.)
         }
-        foreach (var bus in new[] { "AC_1", "AC_2", "AC_3", "AC_4", "AC_ESS", "AC_ESS_SCHED", "AC_247XP",
+        foreach (var bus in new[] { "AC_1", "AC_2", "AC_3", "AC_4", "AC_ESS", "AC_ESS_SHED", "AC_247XP",
                                     "DC_1", "DC_2", "DC_ESS", "DC_247PP", "DC_HOT_1", "DC_HOT_2", "DC_HOT_3", "DC_HOT_4", "DC_GND_FLT_SVC" })
             ReadEnum($"A32NX_ELEC_{bus}_BUS_IS_POWERED", $"{bus.Replace('_', ' ')} Bus", powered);
 
@@ -1425,7 +1425,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Mon("A32NX_FMA_LATERAL_ARMED", "Armed Lateral Modes", new Dictionary<double, string>());
         Read("A32NX_FMA_CRUISE_ALT_MODE", "Cruise Altitude Mode");
         Read("A32NX_PFD_LINEAR_DEVIATION_ACTIVE", "Linear Deviation Active");
-        Read("A32NX_FMGC_1_LDEV_REQUEST", "FMGC L DEV Request");
+        // FBW exposes the lateral-deviation request as _L_/_R_ (per FMGC), NOT _1_ — the _1_
+        // name does not exist in source and always read 0. Use the captain's (_L_).
+        Read("A32NX_FMGC_L_LDEV_REQUEST", "FMGC L DEV Request");
         // (A32NX_FM1_MINIMUM_DESCENT_ALTITUDE is registered once in the MINIMUMS section.)
         Read("A32NX_DESTINATION_QNH", "Destination QNH");
 
@@ -2487,7 +2489,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             // (A32NX_EXT_PWR_AVAIL:{n} shows once as "GPU {n} Available" in Ground
             //  Services — not duplicated in the ELEC panel.)
         }
-        foreach (var bus in new[] { "AC_1", "AC_2", "AC_3", "AC_4", "AC_ESS", "AC_ESS_SCHED", "AC_247XP",
+        foreach (var bus in new[] { "AC_1", "AC_2", "AC_3", "AC_4", "AC_ESS", "AC_ESS_SHED", "AC_247XP",
                                     "DC_1", "DC_2", "DC_ESS", "DC_247PP", "DC_HOT_1", "DC_HOT_2", "DC_HOT_3", "DC_HOT_4", "DC_GND_FLT_SVC" })
             elec.Add($"A32NX_ELEC_{bus}_BUS_IS_POWERED");
         d["ELEC"] = elec;
@@ -4499,8 +4501,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 }
                 break;
             case 1: // APU
-                r.Add(("APU N", "A32NX_APU_N", Pct1));
-                r.Add(("APU N2", "A32NX_APU_N2", Pct1));
+                // APU N / N2 are ARINC429 words (FBW ApuPage useArinc429Var) — decode, not plain
+                // (plain would show the raw ~1.1e9 word as "%"). Confirmed: APU_EGT on this page
+                // reads a raw ARINC word too.
+                r.Add(("APU N", "A32NX_APU_N", v => A(v, "%", "0.0")));
+                r.Add(("APU N2", "A32NX_APU_N2", v => A(v, "%", "0.0")));
                 r.Add(("APU EGT", "A32NX_APU_EGT", v => A(v, "degrees")));
                 r.Add(("APU fuel used", "A32NX_APU_FUEL_USED", AWt));
                 r.Add(("APU flap open", "A32NX_APU_FLAP_OPEN_PERCENTAGE", Pct));
@@ -4570,7 +4575,12 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 r.Add(("Differential pressure", "A32NX_PRESS_CABIN_DELTA_PRESSURE_B1", v => A(v, "psi", "0.0")));
                 r.Add(("Cabin altitude target", "A32NX_PRESS_CABIN_ALTITUDE_TARGET_B1", v => A(v, "feet")));
                 // FM1 landing elevation: 0 = not set / AUTO (no destination elevation).
-                r.Add(("Landing elevation", "A32NX_FM1_LANDING_ELEVATION", v => v <= 0 ? "not set (auto)" : $"{v:0} feet"));
+                // Landing elevation is an ARINC429 word (FBW LandingElevation useArinc429Var):
+                // decode it; "not set (auto)" when the word isn't NormalOp (no destination).
+                r.Add(("Landing elevation", "A32NX_FM1_LANDING_ELEVATION", v => {
+                    var w = new SimConnect.Arinc429Word(v);
+                    return (w.IsNormalOperation || w.IsFunctionalTest) ? $"{w.Value:0} feet" : "not set (auto)";
+                }));
                 // Outflow valves are the ARINC429 `_OPEN_PERCENTAGE_B1` words (the un-suffixed
                 // name does not exist → read 0). B1 = the normally-active CPCS system.
                 for (int n = 1; n <= 4; n++) r.Add(($"Outflow valve {n}", $"A32NX_PRESS_OUTFLOW_VALVE_{n}_OPEN_PERCENTAGE_B1", v => A(v, "%")));
