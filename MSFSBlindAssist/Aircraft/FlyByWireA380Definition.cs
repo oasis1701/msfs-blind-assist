@@ -5636,11 +5636,28 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 simConnect.ExecuteCalculatorCode("(>H:A320_Neo_FCU_VS_PULL)"); return true;
 
             case HotkeyAction.ReadFlaps:
-                if (simConnect.IsConnected) { _reqFlaps = true; simConnect.RequestVariable("A32NX_FLAPS_HANDLE_INDEX", forceUpdate: true); }
+            {
+                // Announce straight from the live cache — the handle index is a monitored
+                // combo, so a forced request of an UNCHANGED value never re-fires
+                // ProcessSimVarUpdate and the read stayed silent (the "] L does nothing"
+                // bug). Fall back to a request only if it isn't cached yet.
+                double? fv = simConnect.GetCachedVariableValue("A32NX_FLAPS_HANDLE_INDEX");
+                if (fv.HasValue)
+                {
+                    string[] detents = { "Up", "1", "2", "3", "Full" };
+                    int i = (int)Math.Round(fv.Value);
+                    announcer.AnnounceImmediate("Flaps " + (i >= 0 && i < detents.Length ? detents[i] : fv.Value.ToString()));
+                }
+                else if (simConnect.IsConnected) { _reqFlaps = true; simConnect.RequestVariable("A32NX_FLAPS_HANDLE_INDEX", forceUpdate: true); }
                 return true;
+            }
             case HotkeyAction.ReadGear:
-                if (simConnect.IsConnected) { _reqGear = true; simConnect.RequestVariable("A32NX_GEAR_HANDLE_POSITION", forceUpdate: true); }
+            {
+                double? gv = simConnect.GetCachedVariableValue("A32NX_GEAR_HANDLE_POSITION");
+                if (gv.HasValue) announcer.AnnounceImmediate(gv.Value > 0.5 ? "Gear down" : "Gear up");
+                else if (simConnect.IsConnected) { _reqGear = true; simConnect.RequestVariable("A32NX_GEAR_HANDLE_POSITION", forceUpdate: true); }
                 return true;
+            }
             // On-demand readouts ported from the A320 (vars shared / already defined).
             case HotkeyAction.ReadSpeedVLS: RequestReadout(simConnect, "A32NX_SPEEDS_VLS", "V L S", "knots"); return true;
             case HotkeyAction.ReadSpeedF: RequestReadout(simConnect, "A32NX_SPEEDS_F", "F speed", "knots"); return true;
@@ -5671,9 +5688,14 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             // ShowPFD/ShowNavigationDisplay/ShowECAM/ShowStatusPage hotkeys are gone;
             // the shared ReadDisplay* actions fall through to no-op on the FBW jets
             // (still used by PMDG/Fenix). Alt+E still speaks the current E/WD lines.
+            // Alt+E now opens the E/WD as a pop-out WINDOW (auto-refreshing, F5 to
+            // refresh, Escape to close) showing the whole E/WD — engine parameters plus
+            // the live ECAM memo / warning lines — instead of speaking it once. The old
+            // spoken read lives on as ReadAllEwdWarnings (still used by the live monitor).
             case HotkeyAction.ReadDisplayUpperECAM:
-                ReadAllEwdWarnings(announcer);
                 hotkeyManager.ExitOutputHotkeyMode();
+                new Forms.FbwEwdWindow("A380 E/WD — Engine / Warning Display",
+                    () => BuildEwdWindowTextAsync(simConnect), announcer).Show();
                 return true;
             // W repurposed to gross weight in pounds (matches PMDG / Fenix, which also
             // repurpose the waypoint key). The MCDU/MFD covers waypoint data.
@@ -5762,6 +5784,101 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         announcer.Announce(lines.Count == 0
             ? "No ECAM warnings or memos."
             : $"ECAM E W D, {lines.Count} line{(lines.Count == 1 ? "" : "s")}: {string.Join(". ", lines)}");
+    }
+
+    // Build the FULL upper-E/WD text for the Alt+E pop-out window (FbwEwdWindow):
+    // engine primaries grouped per parameter + thrust rating/limit + autothrust message
+    // + reversers + bleed + IDLE memo + the live ECAM memo / warning lines. Self-contained
+    // (mirrors the SD "Upper E/WD" decode at the ECAM-CP combo) so the always-on SD path is
+    // never touched. Requests the engine vars, gives the WASM a moment, then reads the cache.
+    public async Task<string> BuildEwdWindowTextAsync(SimConnectManager simConnect)
+    {
+        if (!simConnect.IsConnected) return "(not connected to the simulator)";
+        int[] engs = { 1, 2, 3, 4 };
+        foreach (int e in engs)
+        {
+            foreach (var p in new[] { "N1", "EGT", "N2", "N3", "FF" })
+                simConnect.RequestVariable($"A32NX_ENGINE_{p}:{e}", forceUpdate: true);
+            simConnect.RequestVariable($"A32NX_AUTOTHRUST_N1_COMMANDED:{e}", forceUpdate: true);
+            simConnect.RequestVariable($"A32NX_ENGINE_STATE:{e}", forceUpdate: true);
+        }
+        foreach (var g in new[] { "A32NX_AUTOTHRUST_THRUST_LIMIT_TYPE", "A32NX_AIRLINER_TO_FLEX_TEMP",
+                                  "A32NX_AUTOTHRUST_THRUST_LIMIT_IDLE", "A32NX_AUTOTHRUST_THRUST_LIMIT_TOGA",
+                                  "A32NX_PNEU_WING_ANTI_ICE_SYSTEM_ON", "A32NX_COND_CPIOM_B1_AGS_DISCRETE_WORD",
+                                  "ENG_ANTI_ICE:1", "ENG_ANTI_ICE:2", "ENG_ANTI_ICE:3", "ENG_ANTI_ICE:4",
+                                  "A32NX_AUTOTHRUST_MODE_MESSAGE", "A32NX_AUTOTHRUST_REVERSE:2", "A32NX_AUTOTHRUST_REVERSE:3" })
+            simConnect.RequestVariable(g, forceUpdate: true);
+        await Task.Delay(500);
+
+        string Grp(string varFmt, Func<double, string> fmt)
+        {
+            var parts = new List<string>();
+            foreach (int e in engs)
+            {
+                double? cv = simConnect.GetCachedVariableValue(string.Format(varFmt, e));
+                parts.Add($"Engine {e} " + (cv.HasValue ? fmt(cv.Value) : "--"));
+            }
+            return string.Join(", ", parts);
+        }
+        string[] thrModes = { "", "CLB", "MCT", "FLX", "TOGA", "MREV" };
+        int tltI = (int)Math.Round(simConnect.GetCachedVariableValue("A32NX_AUTOTHRUST_THRUST_LIMIT_TYPE") ?? 0);
+        string thrMode = (tltI >= 1 && tltI < thrModes.Length) ? thrModes[tltI] : "none";
+        double? flex = simConnect.GetCachedVariableValue("A32NX_AIRLINER_TO_FLEX_TEMP");
+        if (thrMode == "FLX" && flex.HasValue && flex.Value > 0) thrMode += $" {flex.Value:0}°C";
+        string EngState(double v) => v >= 2 ? "starting" : v >= 1 ? "on" : "off";
+        double idleLim = simConnect.GetCachedVariableValue("A32NX_AUTOTHRUST_THRUST_LIMIT_IDLE") ?? 0;
+        double togaLim = simConnect.GetCachedVariableValue("A32NX_AUTOTHRUST_THRUST_LIMIT_TOGA") ?? 100;
+        string ThrPct(int e)
+        {
+            double? n1 = simConnect.GetCachedVariableValue($"A32NX_ENGINE_N1:{e}");
+            if (!n1.HasValue || togaLim <= idleLim) return $"Engine {e} --";
+            double off = (simConnect.GetCachedVariableValue($"A32NX_ENGINE_STATE:{e}") ?? 0) == 1 ? 0.042 : 0;
+            double frac = Math.Min(1.0, Math.Max(0.0, (n1.Value - idleLim) / (togaLim - idleLim)) * (1 - off) + off);
+            return $"Engine {e} {frac * 100:0}%";
+        }
+        var lines = new List<string>
+        {
+            "Thrust rating: " + thrMode,
+            "Thrust limit: " + string.Join(", ", engs.Select(ThrPct)),
+            "N1: "          + Grp("A32NX_ENGINE_N1:{0}",  v => $"{v:0.0}%"),
+            "N1 command: "  + Grp("A32NX_AUTOTHRUST_N1_COMMANDED:{0}", v => $"{v:0.0}%"),
+            "EGT: "         + Grp("A32NX_ENGINE_EGT:{0}", v => $"{v:0}°C"),
+            "N2: "          + Grp("A32NX_ENGINE_N2:{0}",  v => $"{v:0.0}%"),
+            "N3: "          + Grp("A32NX_ENGINE_N3:{0}",  v => $"{v:0.0}%"),
+            "Fuel Flow: "   + Grp("A32NX_ENGINE_FF:{0}",  v => $"{v:0} kg/h"),
+            "Engine state: "+ Grp("A32NX_ENGINE_STATE:{0}", EngState),
+        };
+        string[] athrMsgs = { "", "THR LK", "LVR TOGA", "LVR CLB", "LVR MCT", "LVR ASYM" };
+        int athrMsg = (int)Math.Round(simConnect.GetCachedVariableValue("A32NX_AUTOTHRUST_MODE_MESSAGE") ?? 0);
+        if (athrMsg >= 1 && athrMsg < athrMsgs.Length) lines.Add("Autothrust message: " + athrMsgs[athrMsg]);
+        var revOn = new[] { 2, 3 }.Where(e => (simConnect.GetCachedVariableValue($"A32NX_AUTOTHRUST_REVERSE:{e}") ?? 0) > 0.5).ToList();
+        if (revOn.Count > 0) lines.Add("Reverser: " + string.Join(" and ", revOn.Select(e => $"engine {e}")) + " deployed");
+        var bleed = new List<string>();
+        var agsWord = new SimConnect.Arinc429Word(simConnect.GetCachedVariableValue("A32NX_COND_CPIOM_B1_AGS_DISCRETE_WORD") ?? 0);
+        if (agsWord.BitValueOr(13, false) || agsWord.BitValueOr(14, false)) bleed.Add("packs");
+        if (engs.Any(e => (simConnect.GetCachedVariableValue($"ENG_ANTI_ICE:{e}") ?? 0) > 0.5)) bleed.Add("nacelle anti-ice");
+        if ((simConnect.GetCachedVariableValue("A32NX_PNEU_WING_ANTI_ICE_SYSTEM_ON") ?? 0) > 0.5) bleed.Add("wing anti-ice");
+        if (bleed.Count > 0) lines.Add("Bleed: " + string.Join(", ", bleed));
+        double? fmgcPhase = simConnect.GetCachedVariableValue("A32NX_FMGC_FLIGHT_PHASE");
+        int idleEngs = engs.Count(e => { var n1 = simConnect.GetCachedVariableValue($"A32NX_ENGINE_N1:{e}"); return n1.HasValue && n1.Value <= idleLim + 2; });
+        if (fmgcPhase.HasValue && fmgcPhase.Value >= 4 && idleEngs >= 3) lines.Add("IDLE");
+
+        var memos = new List<string>();
+        foreach (var lr in new[] { "LEFT", "RIGHT" })
+            for (int i = 1; i <= 10; i++)
+                if (_lastEwdCode.TryGetValue($"A32NX_EWD_LOWER_{lr}_LINE_{i}", out var code) && code != 0)
+                {
+                    string mtext = EWDMessageLookupA380.GetMessage(code);
+                    if (!string.IsNullOrWhiteSpace(mtext) && !mtext.Equals("NORMAL", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string priority = EWDMessageLookupA380.GetMessagePriority(code);
+                        memos.Add(string.IsNullOrEmpty(priority) ? mtext : $"{mtext} ({priority})");
+                    }
+                }
+        lines.Add("");
+        lines.Add(memos.Count == 0 ? "Memo / warnings: none" : "Memo / warnings:");
+        lines.AddRange(memos);
+        return string.Join("\r\n", lines);
     }
 
     // ECAM System Display (SD) window — decodes the FQMS/PRESS/APU ARINC429 words

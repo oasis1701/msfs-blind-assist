@@ -80,8 +80,9 @@ CTRL+D, Distance to Selected Runway
 CTRL+I, ILS guidance system
 CTRL+E, Toggle Engine/Warning Display (E/WD) auto call-outs — continuously monitors
         and announces new warnings, cautions and memos as they appear.
-ALT+E,  Read the live E/WD aloud right now (engine row + memos + active warnings) —
-        the "what's going on" snapshot, same as the A380's Alt+E.
+ALT+E,  Open the E/WD (Engine/Warning Display) as a pop-out window — the whole E/WD
+        (engine row + memos + active warnings). Read with the arrow keys; it
+        auto-refreshes, F5 refreshes now, Escape closes. Same as the A380's Alt+E.
 
 Taxi Guidance (turn-by-turn taxi assistance with audio steering tone):
   Y          Taxi Status (current taxiway, next turn, distance to destination)
@@ -106,7 +107,7 @@ Displays:
   through the accessible status-box panels — open the Panels list (Ctrl+2) and pick
   them under the Instrument section. They have NO hotkeys (the same paradigm as the
   A380). The E/WD is the one display that keeps hotkeys: Ctrl+E (monitor) and Alt+E
-  (read aloud), listed under Tools above.
+  (pop-out window), listed under Tools above.
 
 Other windows:
 shift+e, Route viewer, procedure planning and airport lookup

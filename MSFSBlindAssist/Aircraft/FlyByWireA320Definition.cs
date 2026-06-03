@@ -5045,16 +5045,36 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             // upper E/WD (engine row + memos + warnings) aloud, mirroring the A380's
             // Alt+E ReadAllEwdWarnings. The EWD also stays available as the display
             // (System Display page 0 status box + the continuous EWD monitor).
+            // Alt+E opens the E/WD as a pop-out WINDOW (auto-refreshing, F5 to refresh,
+            // Escape to close) with the whole E/WD scraped live — instead of speaking it
+            // once. ReadEwdAloud stays for the always-on monitor / other callers.
             case HotkeyAction.ReadDisplayUpperECAM:
-                ReadEwdAloud(announcer);
+                hotkeyManager.ExitOutputHotkeyMode();
+                new Forms.FbwEwdWindow("A320 E/WD — Engine / Warning Display",
+                    () => BuildEwdWindowTextAsync(), announcer).Show();
                 return true;
-            // On-demand flaps / gear read (parity with the A380; L and Shift+G).
+            // On-demand flaps / gear read (parity with the A380; L and Shift+G). Read
+            // straight from the live cache — a forced request of an UNCHANGED monitored
+            // var never re-fires ProcessSimVarUpdate, which left the read silent.
             case HotkeyAction.ReadFlaps:
-                if (simConnect.IsConnected) { _reqFlaps = true; simConnect.RequestVariable("A32NX_FLAPS_HANDLE_INDEX", forceUpdate: true); }
+            {
+                double? fv = simConnect.GetCachedVariableValue("A32NX_FLAPS_HANDLE_INDEX");
+                if (fv.HasValue)
+                {
+                    string[] detents = { "Up", "1", "2", "3", "Full" };
+                    int i = (int)Math.Round(fv.Value);
+                    announcer.AnnounceImmediate("Flaps " + (i >= 0 && i < detents.Length ? detents[i] : fv.Value.ToString()));
+                }
+                else if (simConnect.IsConnected) { _reqFlaps = true; simConnect.RequestVariable("A32NX_FLAPS_HANDLE_INDEX", forceUpdate: true); }
                 return true;
+            }
             case HotkeyAction.ReadGear:
-                if (simConnect.IsConnected) { _reqGear = true; simConnect.RequestVariable("GEAR_HANDLE_POSITION", forceUpdate: true); }
+            {
+                double? gv = simConnect.GetCachedVariableValue("GEAR_HANDLE_POSITION");
+                if (gv.HasValue) announcer.AnnounceImmediate(gv.Value > 0.5 ? "Gear down" : "Gear up");
+                else if (simConnect.IsConnected) { _reqGear = true; simConnect.RequestVariable("GEAR_HANDLE_POSITION", forceUpdate: true); }
                 return true;
+            }
             case HotkeyAction.ReadFuelInfo:
                 if (simConnect.IsConnected) { _reqFuelKg = true; simConnect.RequestVariable("FUEL_QUANTITY_KG", forceUpdate: true); }
                 return true;
@@ -5457,6 +5477,28 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
                 announcer.AnnounceImmediate("E W D. " + string.Join(". ", rows));
         }
         catch { announcer.AnnounceImmediate("E W D read failed."); }
+    }
+
+    // Build the full upper-E/WD text for the Alt+E pop-out window (FbwEwdWindow) by
+    // scraping the live A32NX_EWD_1 view (engine row + memos / warnings) — the same
+    // source ReadEwdAloud speaks and the SD page-0 box shows. Returns the clean joined
+    // rows, or "" when nothing is available (the window then shows its own placeholder).
+    public async Task<string> BuildEwdWindowTextAsync()
+    {
+        try
+        {
+            if (_ewdScrapeClient == null)
+            {
+                _ewdScrapeClient = new SimConnect.CoherentDisplayClient("A32NX_EWD_1");
+                _ewdScrapeClient.Start();
+                _ewdScrapeClient.SetActive(false);   // on-demand only
+            }
+            await System.Threading.Tasks.Task.Delay(400);
+            var rows = await _ewdScrapeClient.ScrapeNowAsync();
+            if (rows == null || rows.Count == 0) return "";
+            return string.Join("\r\n", rows.Where(r => !string.IsNullOrWhiteSpace(r)));
+        }
+        catch { return ""; }
     }
 
     // Populate the System Display status box for the selected page, then force the box

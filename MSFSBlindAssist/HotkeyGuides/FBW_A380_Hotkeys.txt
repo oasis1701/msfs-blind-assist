@@ -68,7 +68,9 @@ OUTPUT MODE  (press ] first)
   Shift+M    METAR report
 
   Display windows
-  Alt+E      E/WD (Engine/Warning Display) window
+  Alt+E      E/WD (Engine/Warning Display) pop-out window — the whole E/WD (engine
+             parameters + the live ECAM memo / warning lines). Read with the arrow
+             keys; it auto-refreshes, F5 refreshes now, Escape closes.
   Alt+I      Standby Instruments (ISIS) window
   Alt+D      Describe Scene (AI)
 
