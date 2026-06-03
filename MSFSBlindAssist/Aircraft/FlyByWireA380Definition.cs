@@ -914,6 +914,21 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // permanent footer shows. Auto-decoded by the generic ARINC path.
         ArincUnit("PFD_SAT", "A32NX_ADIRS_ADR_1_STATIC_AIR_TEMPERATURE", "Static air temperature", "celsius");
         ArincUnit("PFD_TAT", "A32NX_ADIRS_ADR_1_TOTAL_AIR_TEMPERATURE", "Total air temperature", "celsius");
+        // ND velocities + wind (ADIRS ARINC429 BNR words). Registered with the RAW var name as
+        // the key (so the ND form keeps reading them) but as IsArinc429, so the monitored ND
+        // status box decodes them instead of showing the ~14-billion raw word. "not available"
+        // (NCD) on the ground until the ADIRS aligns + the aircraft is moving.
+        ArincUnit("A32NX_ADIRS_IR_1_GROUND_SPEED", "A32NX_ADIRS_IR_1_GROUND_SPEED", "Ground speed", "knots");
+        ArincUnit("A32NX_ADIRS_ADR_1_TRUE_AIRSPEED", "A32NX_ADIRS_ADR_1_TRUE_AIRSPEED", "True airspeed", "knots");
+        ArincUnit("A32NX_ADIRS_IR_1_WIND_DIRECTION_BNR", "A32NX_ADIRS_IR_1_WIND_DIRECTION_BNR", "Wind direction", "degrees");
+        ArincUnit("A32NX_ADIRS_IR_1_WIND_SPEED_BNR", "A32NX_ADIRS_IR_1_WIND_SPEED_BNR", "Wind speed", "knots");
+        // ND heading reference (magnetic vs true) — auto-announced on change.
+        ReadEnum("A32NX_FMGC_TRUE_REF", "Heading reference",
+            new Dictionary<double, string> { [0] = "magnetic", [1] = "true" });
+        // ISIS speed-bugs active flag (the bug VALUES are JS-only on the FBW ISIS, no L-var;
+        // the ATT-10s realign flag is likewise scrape-only). Friendly label for the status box.
+        ReadEnumQuiet("A32NX_ISIS_BUGS_ACTIVE", "ISIS speed bugs",
+            new Dictionary<double, string> { [0] = "off", [1] = "on" });
         // Beta-target (sideslip target on engine-out / crosswind approach) — gated on _ACTIVE,
         // decoded in TryGetDisplayOverride ("X.X degrees left/right" / "not active").
         Read("A32NX_BETA_TARGET", "Sideslip target", "degrees");
@@ -926,6 +941,17 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // meaningful during an RA; decoded "fly to N fpm" / "—" in TryGetDisplayOverride.
         Read("A32NX_TCAS_VSPEED_GREEN", "TCAS target vertical speed", "feet per minute");
         Read("A32NX_TCAS_VSPEED_RED", "TCAS avoid vertical speed", "feet per minute");
+        // Managed / preselected target speeds + selected V/S + expedite + flight directors.
+        // Decoded in TryGetDisplayOverride (none / knots / mach / fpm). Preselect = -1 when unset.
+        Read("A32NX_SPEEDS_MANAGED_PFD", "Managed speed", "knots");
+        Read("A32NX_SpeedPreselVal", "Preselected speed", "knots");
+        Read("A32NX_MachPreselVal", "Preselected Mach", "mach");
+        Read("A32NX_AUTOPILOT_VS_SELECTED", "Selected vertical speed", "feet per minute");
+        ReadEnum("A32NX_FMA_EXPEDITE_MODE", "Expedite", new Dictionary<double, string> { [0] = "off", [1] = "on" });
+        Stock("FD_1", "AUTOPILOT FLIGHT DIRECTOR ACTIVE:1", "Flight director 1", "bool",
+            new Dictionary<double, string> { [0] = "off", [1] = "on" });
+        Stock("FD_2", "AUTOPILOT FLIGHT DIRECTOR ACTIVE:2", "Flight director 2", "bool",
+            new Dictionary<double, string> { [0] = "off", [1] = "on" });
         // Nav radios — VOR 1/2 frequency + DME and ADF 1/2 frequency (stock simvars; the IDENTS
         // are read by the Output+N "nav radio" hotkey via the NAV IDENT string struct). On the ND.
         Stock("ND_VOR1_FREQ", "NAV ACTIVE FREQUENCY:1", "VOR 1 frequency", "MHz");
@@ -2886,7 +2912,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "A32NX_BETA_TARGET", "A32NX_TCAS_VSPEED_GREEN", "A32NX_TCAS_VSPEED_RED",
             "PFD_ILS_FREQ", "PFD_ILS_DME", "A32NX_FM_LS_COURSE", "MARKER_BEACON",
             "PFD_VMAX", "PFD_VLS", "PFD_VALPHAPROT", "PFD_VALPHAMAX", "PFD_VSW",
-            "PFD_GREENDOT", "PFD_V3", "PFD_V4", "PFD_VFENEXT"
+            "PFD_GREENDOT", "PFD_V3", "PFD_V4", "PFD_VFENEXT",
+            // Target/preselect speeds + selected V/S + expedite + flight directors + autobrake.
+            "A32NX_SPEEDS_MANAGED_PFD", "A32NX_SpeedPreselVal", "A32NX_MachPreselVal",
+            "A32NX_AUTOPILOT_VS_SELECTED", "A32NX_FMA_EXPEDITE_MODE", "FD_1", "FD_2",
+            "A32NX_AUTOBRAKES_ARMED_MODE"
         };
         // ND accessible snapshot — mode/range, TO waypoint (decoded ident + distance/
         // bearing/ETA), cross-track, RNP, and ILS LOC/GS validity + deviation.
@@ -2902,7 +2932,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             // Output+N "nav radio" hotkey (NAV IDENT string struct), which the numeric display
             // pipeline can't carry.
             "ND_VOR1_FREQ", "ND_VOR1_DME", "ND_VOR2_FREQ", "ND_VOR2_DME",
-            "ND_ADF1_FREQ", "ND_ADF2_FREQ"
+            "ND_ADF1_FREQ", "ND_ADF2_FREQ",
+            // Velocities + wind + heading reference (ARINC, decoded; "not available" on the ground).
+            "A32NX_ADIRS_IR_1_GROUND_SPEED", "A32NX_ADIRS_ADR_1_TRUE_AIRSPEED",
+            "A32NX_ADIRS_IR_1_WIND_DIRECTION_BNR", "A32NX_ADIRS_IR_1_WIND_SPEED_BNR",
+            "A32NX_FMGC_TRUE_REF"
         };
         d["Oxygen"] = new List<string> { "A32NX_OXYGEN_TMR_RESET_FAULT" };
         d["Calls"] = new List<string> { "A32NX_SLIDES_ARMED", "A32NX_EVAC_COMMAND_FAULT" };
@@ -4261,6 +4295,17 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         }
         // Mach — two decimals (default F0 would render "0").
         if (varKey == "PFD_MACH") { displayText = $"{value:0.00}"; return true; }
+        // Managed target speed on the PFD (0 = none shown).
+        if (varKey == "A32NX_SPEEDS_MANAGED_PFD") { displayText = value < 1 ? "none" : $"{value:0} knots"; return true; }
+        // Preselected speed / Mach (set in the MCDU PERF page; -1 = none).
+        if (varKey == "A32NX_SpeedPreselVal") { displayText = value < 0 ? "none" : $"{value:0} knots"; return true; }
+        if (varKey == "A32NX_MachPreselVal") { displayText = value < 0 ? "none" : $"{value:0.00}"; return true; }
+        // Selected vertical speed (FCU V/S window; 0 = not selected / not in V/S).
+        if (varKey == "A32NX_AUTOPILOT_VS_SELECTED")
+        {
+            displayText = Math.Abs(value) < 1 ? "not selected" : $"{Math.Abs(value):0} feet per minute {(value > 0 ? "up" : "down")}";
+            return true;
+        }
         // Takeoff V-speeds: 0 = not entered in the MCDU.
         if (varKey == "PFD_V1" || varKey == "PFD_VR" || varKey == "PFD_V2")
         {
@@ -4272,6 +4317,12 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         if (varKey == "PFD_ILS_FREQ") { displayText = value < 100 ? "none" : $"{value:0.000} MHz"; return true; }
         // ILS/LS course — -1 (or any negative) means no course is set.
         if (varKey == "A32NX_FM_LS_COURSE") { displayText = value < 0 ? "no course set" : $"{value:000} degrees"; return true; }
+        // Cross-track error — magnitude in NM with left/right of track (FBW sign: positive = right).
+        if (varKey == "A32NX_FG_CROSS_TRACK_ERROR")
+        {
+            displayText = Math.Abs(value) < 0.01 ? "on track" : $"{Math.Abs(value):0.00} NM {(value > 0 ? "right" : "left")} of track";
+            return true;
+        }
         // EWD thrust limit — the max-N1 % for the current thrust-rating mode.
         if (varKey == "A32NX_AUTOTHRUST_THRUST_LIMIT") { displayText = $"{value:0} percent N1"; return true; }
         switch (varKey)
