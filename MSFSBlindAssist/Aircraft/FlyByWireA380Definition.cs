@@ -2345,21 +2345,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             };
         }
 
-        // Jet bridge + passenger stairs (stock MSFS ground-service events;
-        // airport/parking dependent). Catering, fuel-truck, baggage and pushback
-        // are intentionally NOT exposed — GSX owns those.
-        // Idle/Toggle action — NOT a Retracted/Extended state. There is no readable
-        // jetway/stairs position L:var, and the stock event only TOGGLES, so a two-state
-        // combo would announce a position it can't actually know (and either option fired
-        // the toggle). Present it honestly as a momentary "Toggle" action; only the Toggle
-        // option fires (guarded in HandleUIVariableSet).
-        // Push-BUTTONS (user request) — clicking fires the stock event via HandleUIVariableSet
-        // (jetway/stairs TOGGLE, trucks REQUEST), no fake state shown. Need a serviced gate.
-        EvtBtn("A380X_GND_JETWAY", "Jet Bridge");
-        EvtBtn("A380X_GND_STAIRS", "Passenger Stairs");
-        // Jet-bridge MOVING readout (stock SimVar — the only readable jetway state; the FBW
-        // EFB itself only infers connection from the fwd door). Auto-announces Moving/Stopped
-        // so a blind pilot gets feedback after a Jet Bridge toggle. Stairs have no equivalent.
+        // Ground-service ACTION buttons (jet bridge, stairs, fuel/baggage/catering trucks)
+        // were REMOVED — they're done on the flyPad Ground page now, not via panels. Only the
+        // jet-bridge MOTION readout stays, so a blind pilot still hears Moving/Stopped after a
+        // flyPad jet-bridge call (stock SimVar — the only readable jetway state; the FBW EFB
+        // itself only infers connection from the fwd door). Auto-announces on change.
         vars["JETWAY_MOVING_STATE"] = new SimVarDefinition
         {
             Name = "JETWAY MOVING", DisplayName = "Jet Bridge Motion",
@@ -2367,12 +2357,6 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Stopped", [1] = "Moving" }
         };
-        // Ground-service vehicle requests (flyPad Ground page parity) — momentary Activate
-        // combos firing the stock REQUEST_* events (the same the EFB uses). Handled in
-        // HandleUIVariableSet.
-        EvtBtn("A380X_GND_FUELTRUCK", "Fuel Truck");
-        EvtBtn("A380X_GND_BAGGAGE", "Baggage Truck");
-        EvtBtn("A380X_GND_CATERING", "Catering Truck");
 
         // Wheel chocks + safety cones (FBW model state; auto-announced).
         vars["A380X_GND_CHOCKS"] = new SimVarDefinition
@@ -2446,9 +2430,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 "Transponder", "RMP", "Audio Control Panel Captain", "Audio Control Panel First Officer",
                 "Cockpit"
             },
-            // All ground-related panels live under one category (doors, equipment, pushback/
-            // presets) — the old standalone "Ground" panel under Displays was confusing.
-            ["Ground Services"] = new List<string> { "Ground Equipment", "Doors" },
+            // Ground services (doors + equipment) were removed from the panels entirely —
+            // everything ground/handling is done through the flyPad. The door / jetway /
+            // chocks / cones / external-power STATE still auto-announces on change (the vars
+            // stay registered + IsAnnounced); they just no longer have navigable panels here.
             ["Displays"] = new List<string> { "PFD", "ND", "Status", "Speeds", "Minimums" }
         };
     }
@@ -2774,20 +2759,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // Cabin Ready is read-only (auto-announced via Mon) — surfaced as a status readout in
         // d["Cockpit"] (display section below), not a settable control.
 
-        // ---- Ground Services (flyPad Ground page) ----
-        // Doors: NO controls — it's a read-only STATUS DISPLAY panel (all 18 doors auto-announce
-        // + read in d["Doors"]; open/close via the flyPad). Empty control list so the panel still
-        // builds (and gets its status box from GetPanelDisplayVariables).
-        p["Doors"] = new List<string>();
-        p["Ground Equipment"] = new List<string>
-        {
-            // Only jetway/stairs are user-callable. CHOCKS, CONES and GPU-available
-            // are read-only model/sim state (writing them reverts), so they live in
-            // the read-out (d["Ground Equipment"]) instead of rendering as settable
-            // combos a user could change to no effect.
-            "A380X_GND_JETWAY", "A380X_GND_STAIRS",
-            "A380X_GND_FUELTRUCK", "A380X_GND_BAGGAGE", "A380X_GND_CATERING"
-        };
+        // ---- Ground Services panels REMOVED (everything ground/handling via the flyPad) ----
+        // No "Doors", "Ground Equipment" or "Ground Services" panels: the jetway / stairs /
+        // fuel-truck / baggage / catering ACTIONS are done on the flyPad Ground page, not here.
+        // The door / jetway-motion / chocks / cones / external-power STATE still auto-announces
+        // on change (those vars stay registered + IsAnnounced) — there's just no panel to Tab to.
 
         p["Status"] = new List<string>
         {
@@ -3048,17 +3024,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // ANTISKID is a read-only sim state (moved out of the Autobrake controls).
         d["Autobrake"].Add("ANTISKID_BRAKES_ACTIVE");
         d["Autobrake"].Add("A32NX_AUTOBRAKES_DECEL_LIGHT");   // DECEL light (auto-announced)
-        // Ground equipment read-outs: chocks/cones model state + per-receptacle GPU
-        // availability (all read-only; the GPU connect is the overhead EXT PWR PBs).
-        d["Ground Equipment"] = new List<string>
-        {
-            "A380X_GND_CHOCKS", "A380X_GND_CONES", "JETWAY_MOVING_STATE",
-            "A380X_GND_GPU_AVAIL_1", "A380X_GND_GPU_AVAIL_2", "A380X_GND_GPU_AVAIL_3", "A380X_GND_GPU_AVAIL_4"
-        };
-
-        // Doors status display — all 18 doors (read-only; TryGetDisplayOverride renders
-        // Open / Closed / N% open). The panel itself has no controls (open/close via flyPad).
-        d["Doors"] = _doorDefs.Select(dd => dd.Key).ToList();
+        // (Ground Equipment + Doors read-out panels REMOVED — ground handling is flyPad-only.
+        // The chocks / cones / jetway-motion / external-power / door vars stay registered and
+        // IsAnnounced, so every change still auto-announces; there's just no panel to read.)
 
         // Clock readouts (the chrono + elapsed-time fields shown read-only in the
         // Clock panel; the controls live in p["Clock"]).
@@ -4126,15 +4094,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             simConnect.ExecuteCalculatorCode($"{value:0} (>L:{lvar})");
             return true;
         }
-        // (Doors are read-only status now — no settable combos; open/close via the flyPad.)
-        // Ground-service toggle combos (no clean state SimVar) — any change toggles.
-        if (varKey == "A380X_GND_JETWAY") { if (value > 0.5) simConnect.SendEvent("TOGGLE_JETWAY"); return true; }
-        if (varKey == "A380X_GND_STAIRS") { if (value > 0.5) simConnect.SendEvent("TOGGLE_RAMPTRUCK"); return true; }
-        // Ground-service vehicle requests (flyPad Ground page parity) — fire the stock
-        // REQUEST_* events on "Request".
-        if (varKey == "A380X_GND_FUELTRUCK") { if (value > 0.5) simConnect.SendEvent("REQUEST_FUEL_KEY"); return true; }
-        if (varKey == "A380X_GND_BAGGAGE")   { if (value > 0.5) simConnect.SendEvent("REQUEST_LUGGAGE"); return true; }
-        if (varKey == "A380X_GND_CATERING")  { if (value > 0.5) simConnect.SendEvent("REQUEST_CATERING"); return true; }
+        // (Doors + ground-service action buttons were removed from the panels — jet bridge,
+        // stairs, fuel/baggage/catering and all door open/close are done on the flyPad now.
+        // Their write handlers are gone with them; the ground STATE still auto-announces.)
         // Momentary ACTION combos: fire only when the action option (value 1) is
         // chosen; the idle option (0) does nothing.
         if (varKey == "XPNDR_IDENT_ON") { if (value > 0.5) simConnect.SendEvent("XPNDR_IDENT_ON"); return true; }
