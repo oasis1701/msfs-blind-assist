@@ -48,6 +48,23 @@ public class SimConnectManager
     private System.Windows.Forms.Timer _detectRetryTimer = null!;
     private int _detectRetryCount = 0;
 
+    // --- TEMP diagnostic: map SimConnect SendID -> the variable whose AddToDataDefinition
+    // produced it, so OnRecvException can name the exact var that SimConnect rejected.
+    // Writes to %LOCALAPPDATA%/MSFSBlindAssist/logs/simconnect_diag.txt.
+    private readonly Dictionary<uint, string> _sendIdToVar = new();
+    private static readonly string _diagLogPath = System.IO.Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "MSFSBlindAssist", "logs", "simconnect_diag.txt");
+    private static void DiagLog(string msg)
+    {
+        try
+        {
+            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(_diagLogPath)!);
+            System.IO.File.AppendAllText(_diagLogPath, $"{DateTime.Now:HH:mm:ss.fff} {msg}{Environment.NewLine}");
+        }
+        catch { }
+    }
+
     // MobiFlight WASM integration
     private MobiFlightWasmModule? mobiFlightWasm;
     public bool IsMobiFlightConnected => mobiFlightWasm?.IsConnected == true;
@@ -758,6 +775,9 @@ public class SimConnectManager
         var sc = simConnect!; // Local reference for cleaner null-safety
         int registeredCount = 0;
         var variables = CurrentAircraft?.GetVariables() ?? new Dictionary<string, SimVarDefinition>();
+        _sendIdToVar.Clear();
+        try { System.IO.File.WriteAllText(_diagLogPath, ""); } catch { }
+        DiagLog($"=== RegisterAllVariables START: aircraft={CurrentAircraft?.GetType().Name}, {variables.Count} vars ===");
 
         foreach (var kvp in variables)
         {
@@ -783,9 +803,13 @@ public class SimConnectManager
                     sc.AddToDataDefinition((DATA_DEFINITIONS)dataDefId,
                         varDef.Name, varDef.Units ?? "number", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
                 }
+                // TEMP diagnostic: record the SendID of the AddToDataDefinition we just
+                // issued so OnRecvException can name the exact variable SimConnect rejects.
+                try { uint _sid = sc.GetLastSentPacketID(); string _info = $"{kvp.Key} [Name='{varDef.Name}' Type={varDef.Type} Units='{varDef.Units}' Freq={varDef.UpdateFrequency} Excl={varDef.ExcludeFromBatch}]"; _sendIdToVar[_sid] = _info; DiagLog($"REG def sid={_sid} {_info}"); } catch { }
 
                 // Register the SingleValue struct for this definition
                 sc.RegisterDataDefineStruct<SingleValue>((DATA_DEFINITIONS)dataDefId);
+                try { uint _sid2 = sc.GetLastSentPacketID(); _sendIdToVar[_sid2] = $"{kvp.Key} (RegisterDataDefineStruct)"; } catch { }
 
                 // Only add to dictionary if registration was successful
                 variableDataDefinitions.TryAdd(kvp.Key, dataDefId);
@@ -807,6 +831,7 @@ public class SimConnectManager
                         SIMCONNECT_PERIOD.SECOND,
                         SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT,
                         0, 0, 0);
+                    try { uint _sid3 = sc.GetLastSentPacketID(); _sendIdToVar[_sid3] = $"{kvp.Key} (CONTINUOUS RequestDataOnSimObject)"; DiagLog($"REG cont sid={_sid3} {kvp.Key}"); } catch { }
                     System.Diagnostics.Debug.WriteLine($"[RegisterAllVariables] Individual continuous subscription set up for {kvp.Key} -> ID {dataDefId}");
                 }
 
@@ -3156,6 +3181,9 @@ public class SimConnectManager
         }
 
         System.Diagnostics.Debug.WriteLine($"SimConnect Exception: {data.dwException} ({exceptionName}) - SendID: {data.dwSendID}, Index: {data.dwIndex}");
+        // TEMP diagnostic: name the variable whose AddToDataDefinition triggered this.
+        string culprit = _sendIdToVar.TryGetValue(data.dwSendID, out var v) ? v : "(not a tracked var registration)";
+        DiagLog($"EXCEPTION {data.dwException} ({exceptionName}) SendID={data.dwSendID} Index={data.dwIndex} -> {culprit}");
     }
 
     private void SimConnect_OnRecvClientData(Microsoft.FlightSimulator.SimConnect.SimConnect sender, SIMCONNECT_RECV_CLIENT_DATA data)
