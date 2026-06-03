@@ -2116,7 +2116,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             },
             // All ground-related panels live under one category (doors, equipment, pushback/
             // presets) — the old standalone "Ground" panel under Displays was confusing.
-            ["Ground Services"] = new List<string> { "Ground Equipment", "Doors", "Pushback" },
+            ["Ground Services"] = new List<string> { "Ground Equipment", "Doors", "Aircraft Preset" },
             ["Displays"] = new List<string> { "PFD", "ND", "Status", "Speeds", "Minimums" }
         };
     }
@@ -2489,12 +2489,14 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // KCCU (keyboard/cursor control unit) is the MCDU's input device — it is
         // driven through the MCDU form (Coherent agent), not as a standalone
         // control panel, so it is intentionally NOT exposed as a panel here.
-        // Pushback + aircraft-preset loading (was the standalone "Ground" panel; renamed and
-        // moved under the Ground Services category so all ground controls are together).
-        p["Pushback"] = new List<string>
+        // Aircraft-preset loading (cold&dark → ready-for-takeoff power-up shortcut). The
+        // PUSHBACK controls (system-enable + speed/heading factors) were REMOVED per user
+        // request — pushback is handled by the flyPad Ground page / GSX, and MSFSBA's raw
+        // pushback factor knobs were clunky and low-value. (Note for A32NX parity: remove
+        // the same A32NX_PUSHBACK_* controls there.)
+        p["Aircraft Preset"] = new List<string>
         {
-            "A32NX_AIRCRAFT_PRESET_LOAD", "A32NX_PUSHBACK_SYSTEM_ENABLED",
-            "A32NX_PUSHBACK_SPD_FACTOR", "A32NX_PUSHBACK_HDG_FACTOR"
+            "A32NX_AIRCRAFT_PRESET_LOAD"
         };
 
         return p;
@@ -2772,7 +2774,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         d["ECAM Control Panel"] = new List<string> { "A32NX_ECAM_SD_CURRENT_PAGE_INDEX" };
         d["Wipers"] = new List<string> { "WIPER_LEFT", "WIPER_RIGHT" };
         d["Speeds"] = new List<string> { "A32NX_SPEEDS_VLS", "A32NX_SPEEDS_VAPP", "A32NX_SPEEDS_GD", "A32NX_SPEEDS_F", "A32NX_SPEEDS_S" };
-        d["Pushback"] = new List<string> { "A32NX_AIRCRAFT_PRESET_LOAD_PROGRESS" };
+        d["Aircraft Preset"] = new List<string> { "A32NX_AIRCRAFT_PRESET_LOAD_PROGRESS" };
 
         // ---- plain SD-page scalar readouts ----
         for (int n = 1; n <= 4; n++)

@@ -5892,6 +5892,17 @@ public partial class MainForm : Form
             }
             if (simConnectManager == null || !simConnectManager.IsConnected) return;
 
+            // DON'T refresh the status box WHILE THE USER IS READING IT. Replacing a
+            // read-only multiline TextBox's .Text fires an MSAA value-change that resets
+            // NVDA's review cursor to the top even though the system caret is preserved
+            // (SetDisplayTextPreserveCaret can't stop the review-cursor reset). So if the
+            // display box currently has focus, skip this auto tick entirely — the content
+            // the user is reading stays frozen and stable. Ticks resume the moment they
+            // move focus away (combo/another control), and manual F5 always refreshes.
+            if (currentControls.TryGetValue("_DISPLAY_", out var dc) && dc is TextBox dtb
+                && dtb.IsHandleCreated && dtb.Focused)
+                return;
+
             // (a) Rebuild any snapshot SD-page content (FOB, engine, fuel, etc.) — silent,
             //     no speech, pushes into the box via the page-index display var.
             try { currentAircraft.OnDisplayPanelShown(currentPanel, simConnectManager); } catch { }
