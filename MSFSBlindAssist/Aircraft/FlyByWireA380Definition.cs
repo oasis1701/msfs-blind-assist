@@ -3865,6 +3865,17 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     public override bool HandleUIVariableSet(string varKey, double value, SimVarDefinition varDef,
         SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
     {
+        // Continuous-axis SLIDERS (cockpit seats, armrests, sunshades, forward visors, fine
+        // speed-brake) are FBW L:vars. Write them through the MobiFlight CALCULATOR path, never
+        // SetLVar's SimConnect data-def write: the data-def path is unreliable for FBW L:vars —
+        // it set the number but the 3-D model didn't take it cleanly, so the seats jittered and
+        // didn't feel like a smooth motorised chair. The model animates from the L:var.
+        if (varDef.RenderAsSlider)
+        {
+            simConnect.ExecuteCalculatorCode(
+                value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) + " (>L:" + varDef.Name + ")");
+            return true;
+        }
         // FCU SPD/MACH toggle from a panel button: the legacy dotted event is inert on the A380's
         // new FCU — switch via the stock K-events instead (see SpdMachToggleRpn). Then re-read.
         if (varKey == "A32NX.FCU_SPD_MACH_TOGGLE_PUSH")
@@ -5567,26 +5578,21 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             // RequestFCU*WithStatus readback spoke the value on every press regardless of
             // whether anything changed, which was identical to the output-mode read query
             // and masked the dead actuation.
-            case HotkeyAction.FCUHeadingPush:
-                simConnect.ExecuteCalculatorCode("(>H:A320_Neo_FCU_HDG_PUSH)"); return true;
-            case HotkeyAction.FCUHeadingPull:
-                simConnect.ExecuteCalculatorCode("(>H:A320_Neo_FCU_HDG_PULL)"); return true;
-            case HotkeyAction.FCUSpeedPush:
-                simConnect.ExecuteCalculatorCode("(>H:A320_Neo_FCU_SPEED_PUSH)"); return true;
-            case HotkeyAction.FCUSpeedPull:
-                simConnect.ExecuteCalculatorCode("(>H:A320_Neo_FCU_SPEED_PULL)"); return true;
-            case HotkeyAction.FCUAltitudePush:
-                simConnect.ExecuteCalculatorCode("(>H:A320_Neo_FCU_ALT_PUSH)"); return true;
-            case HotkeyAction.FCUAltitudePull:
-                simConnect.ExecuteCalculatorCode("(>H:A320_Neo_FCU_ALT_PULL)"); return true;
-            // The A380X V/S knob is pull-to-engage: the FBW VerticalSpeedManager handles
-            // VS_PULL + rotation but has NO VS_PUSH (no managed-V/S on the knob — managed
-            // vertical is armed via the ALT knob). VS push is therefore a no-op on the
-            // aircraft; we still fire the H-event for forward-compatibility.
-            case HotkeyAction.FCUVSPush:
-                simConnect.ExecuteCalculatorCode("(>H:A320_Neo_FCU_VS_PUSH)"); return true;
-            case HotkeyAction.FCUVSPull:
-                simConnect.ExecuteCalculatorCode("(>H:A320_Neo_FCU_VS_PULL)"); return true;
+            // CRITICAL: the A380's NEW FCU consumes K-events (K:A32NX.FCU_*), NOT the dotted
+            // A320 H-events — firing the H-event does NOTHING (this is why one push of the ALT
+            // knob "did nothing" and you had to push again: the first push was the dead H-event).
+            // Route through FireFCUButton, exactly like the FCU window Push/Pull buttons, so a
+            // single push actually fires (and re-reads the value). Event names match the windows.
+            case HotkeyAction.FCUHeadingPush: FireFCUButton("A32NX.FCU_TO_AP_HDG_PUSH", simConnect, announcer); return true;
+            case HotkeyAction.FCUHeadingPull: FireFCUButton("A32NX.FCU_TO_AP_HDG_PULL", simConnect, announcer); return true;
+            case HotkeyAction.FCUSpeedPush: FireFCUButton("A32NX.FCU_SPD_PUSH", simConnect, announcer); return true;
+            case HotkeyAction.FCUSpeedPull: FireFCUButton("A32NX.FCU_SPD_PULL", simConnect, announcer); return true;
+            case HotkeyAction.FCUAltitudePush: FireFCUButton("A32NX.FCU_ALT_PUSH", simConnect, announcer); return true;
+            case HotkeyAction.FCUAltitudePull: FireFCUButton("A32NX.FCU_ALT_PULL", simConnect, announcer); return true;
+            // The A380X V/S knob is pull-to-engage (managed vertical is armed via the ALT knob),
+            // so VS push is a no-op on the jet; fire the K-event anyway for consistency.
+            case HotkeyAction.FCUVSPush: FireFCUButton("A32NX.FCU_VS_PUSH", simConnect, announcer); return true;
+            case HotkeyAction.FCUVSPull: FireFCUButton("A32NX.FCU_TO_AP_VS_PULL", simConnect, announcer); return true;
 
             case HotkeyAction.ReadFlaps:
             {
