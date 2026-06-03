@@ -151,15 +151,19 @@ INSIDE THE MCDU / MFD WINDOW
 
 
 INSIDE THE RADIO MANAGEMENT PANEL (RMP) WINDOW (Ctrl+Shift+R opens it)
-  The list of RMP rows refreshes automatically; read it with the arrow keys.
-  Ctrl+1 / 2 / 3   Select radio 1 / 2 / 3 (same as the Radio 1/2/3 buttons)
-  (type digits)    Each digit is keyed into the RMP live; the standby auto-completes
-  Backspace        Delete the last digit
-  Enter            Load the typed frequency into standby (the line key)
-  Swap button      Make the standby active (manual — the pilot's call)
-  Clear button     Fully reset a stuck entry
-  Page buttons     VHF / HF / TEL / SQWK / NAV / MENU; Mode up / down
-  Captain / First Officer combo switches which RMP you are controlling
+  The RMP screen is read-only text — read it with the arrow keys. It refreshes
+  automatically and announces the standby and any message (e.g. FREQ NOT VALID).
+  Soft keys (same scheme as the MCDU: left = Ctrl, right = Alt):
+  Ctrl+1 / 2 / 3   Select radio 1 / 2 / 3 (the left line keys; again = load standby)
+  Alt+1 / 2 / 3    Swap that radio's active and standby (the right keys; manual)
+                   (or F1/2/3 = select, F7/8/9 = swap, with alternate MCDU keys on)
+  Alt+V/H/T/Q/N/M  VHF / HF / TEL / SQWK / NAV / MENU page
+  Alt+Up / Down    Standby mode up / down
+  Alt+C            Fully clear the entry (resets a stuck entry)
+  Alt+S            Focus the Frequency box;  Alt+Home  back to the screen
+  In the Frequency box: type the digits (keyed live, no decimal point), Enter
+  loads the standby, Backspace deletes a digit. Then Alt+n swaps it active.
+  Side combo (Captain / First Officer) switches which RMP you control.
 
 
 INSIDE THE LIVE CHECKLIST (ECL) WINDOW (Ctrl+Shift+C opens it)

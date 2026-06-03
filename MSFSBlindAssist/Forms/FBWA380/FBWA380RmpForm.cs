@@ -1,4 +1,3 @@
-using System.Linq;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.SimConnect;
@@ -7,23 +6,19 @@ namespace MSFSBlindAssist.Forms.FBWA380;
 
 /// <summary>
 /// Accessible Radio Management Panel (RMP) window for the FlyByWire A380X (Ctrl+Shift+R, input
-/// mode). It SCRAPES the live A380X_RMP_1 (Captain) / A380X_RMP_2 (First Officer) Coherent view
-/// (coherent-rmp-agent.js, via <see cref="CoherentDisplayClient"/>) into a list of rows you walk
-/// with the arrows — VHF1/2/3 active + standby (incl. the live scratchpad while typing), which is
-/// transmitting/selected, the transponder and the message line — auto-refreshing (no manual
-/// refresh) and announcing changes as a live region.
+/// mode), modelled on the accessible MCDU/CDU forms. The live RMP touchscreen is scraped
+/// (coherent-rmp-agent.js via <see cref="CoherentDisplayClient"/>) into a read-only TEXT box the
+/// user reads with the arrows; it auto-refreshes and announces the selected radio's standby and
+/// any RMP message (e.g. "VHF FREQ NOT VALID") as they change, debounced like the MCDU scratchpad.
 ///
-/// Tuning is REALISTIC, driven by the real cockpit keypad H-events:
-///   • Type the frequency into the Frequency field — each digit is keyed into the RMP in REAL
-///     TIME (so the standby auto-completes as you type, e.g. "8" → 118.000); Backspace = one-digit
-///     clear. The FBW RMP auto-completes, so no decimal point.
-///   • Enter = LOAD the typed standby (the line key). The swap is NOT automatic — that's the
-///     pilot's call.
-///   • Swap = exchange active ↔ standby on the selected radio. Clear = full scratchpad clear
-///     (needed if a bad entry got stuck — it blocks further digits otherwise).
-///   • Radio 1/2/3 (or Ctrl+1/2/3) select the radio the entry/swap act on; page selectors
-///     (VHF/HF/TEL/SQWK/NAV/MENU) and the standby-mode Up/Down are buttons too.
-/// Captain ↔ First Officer is a combo that re-points the scrape and the H-event index.
+/// Everything is a KEYBOARD SHORTCUT (no button clutter), mirroring the MCDU soft-key scheme:
+///   Ctrl+1/2/3  = the LEFT line keys (LSK) — select radio 1/2/3, or load the typed standby.
+///   Alt+1/2/3   = the RIGHT keys (ADK) — swap that radio's active ↔ standby (manual).
+///   (or F1/2/3 = LSK, F7/8/9 = ADK when MCDUUseAlternateLSKKeys is on.)
+///   Alt+V/H/T/Q/N/M = the VHF / HF / TEL / SQWK / NAV / MENU pages; Alt+Up/Down = standby mode.
+///   In the Frequency box: each digit is keyed into the RMP LIVE; Enter loads the standby;
+///   Backspace deletes a digit; Alt+C does a full clear. Alt+S focuses the box, Alt+Home the text.
+/// Captain ↔ First Officer is a combo (re-points the scrape + the H-event index).
 /// </summary>
 public sealed class FBWA380RmpForm : Form
 {
@@ -34,29 +29,24 @@ public sealed class FBWA380RmpForm : Form
     private CoherentDisplayClient _disp = null!;
     private int _rmp = 1;                  // 1 = Captain, 2 = First Officer
     private bool _haveRows;
+    private int _selectedRowIndex;        // transceiver row the RMP has selected (0..2)
+    private bool _busy;                   // held-clear running
 
-    // Live-region change tracking (announce the SELECTED row's standby + new messages, not the
-    // active freq — the global FBW_RMP_FREQUENCY_ACTIVE auto-announce owns that, so no duplicate).
+    // Announce-on-change (debounced, like the MCDU scratchpad) — selected standby + message line.
     private bool _firstScrape = true;
-    private string _lastSelectedStandby = "";
-    private string _lastMessage = "";
-
-    // The transceiver row the RMP currently has selected (0=row1 … 2=row3), scraped from the
-    // ", selected" marker. The Frequency entry + Enter(load) + Swap act on this row's keys.
-    private int _selectedRowIndex;
-    private bool _busy;                    // a held-clear sequence is running — block re-entry
+    private string _standby = "", _lastAnnouncedStandby = "";
+    private string _message = "", _lastAnnouncedMessage = "";
+    private System.Windows.Forms.Timer? _announceTimer;
+    private System.Windows.Forms.Timer? _refreshTimer;
 
     private ComboBox _side = null!;
-    private ListBox _rows = null!;
+    private TextBox _display = null!;
     private TextBox _freq = null!;
     private Label _status = null!;
-    private System.Windows.Forms.Timer? _refreshTimer;
 
     public FBWA380RmpForm(ScreenReaderAnnouncer announcer, FlyByWireA380Definition def, SimConnectManager sim)
     {
-        _announcer = announcer;
-        _def = def;
-        _sim = sim;
+        _announcer = announcer; _def = def; _sim = sim;
         BuildUi();
         StartScrape();
     }
@@ -64,165 +54,158 @@ public sealed class FBWA380RmpForm : Form
     private void BuildUi()
     {
         Text = "A380 Radio Management Panel";
-        Size = new Size(640, 640);
+        Size = new Size(620, 560);
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.Sizable;
         ShowInTaskbar = false;
+        KeyPreview = true;
+        KeyDown += OnFormKeyDown;
 
-        var sideLabel = new Label { Text = "&Radio panel:", Location = new Point(12, 14), Size = new Size(90, 22) };
-        _side = new ComboBox
-        {
-            Location = new Point(104, 11), Size = new Size(180, 24),
-            DropDownStyle = ComboBoxStyle.DropDownList,
-            AccessibleName = "Radio panel side"
-        };
-        _side.Items.AddRange(new object[] { "Captain (RMP 1)", "First Officer (RMP 2)" });
+        var sideLabel = new Label { Text = "&Side:", Location = new Point(12, 14), Size = new Size(40, 22) };
+        _side = new ComboBox { Location = new Point(56, 11), Size = new Size(170, 24), DropDownStyle = ComboBoxStyle.DropDownList, AccessibleName = "Side" };
+        _side.Items.AddRange(new object[] { "Captain", "First Officer" });
         _side.SelectedIndex = 0;
         _side.SelectedIndexChanged += (_, _) => { _rmp = _side.SelectedIndex == 1 ? 2 : 1; SwitchSide(); };
+        _status = new Label { Location = new Point(240, 14), Size = new Size(360, 22), Text = "Connecting…", AccessibleName = "Status" };
 
-        _status = new Label { Location = new Point(300, 14), Size = new Size(320, 22), Text = "Connecting…", AccessibleName = "Status" };
-
-        _rows = new ListBox
+        _display = new TextBox
         {
-            Location = new Point(12, 44), Size = new Size(608, 300),
-            Font = new Font("Consolas", 11),
-            AccessibleName = "RMP display rows — read with the arrow keys",
-            IntegralHeight = false
+            Location = new Point(12, 44), Size = new Size(584, 330),
+            Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical,
+            Font = new Font("Consolas", 11), AccessibleName = "RMP screen", Text = "Loading…"
         };
 
-        var freqLabel = new Label
-        {
-            Text = "&Frequency for the selected radio (digits only — typed in real time, Enter loads standby):",
-            Location = new Point(12, 352), Size = new Size(608, 22)
-        };
-        _freq = new TextBox
-        {
-            Location = new Point(12, 376), Size = new Size(300, 26),
-            AccessibleName = "Frequency — type digits, each is keyed live; Enter loads the standby"
-        };
-        // Real-time: each digit is fired into the RMP as it is typed; the standby auto-completes.
-        _freq.KeyPress += (s, e) =>
-        {
-            if (e.KeyChar >= '0' && e.KeyChar <= '9')
-            {
-                _def.SendRmpKey(_rmp, $"DIGIT_{e.KeyChar}", _sim);
-                ScheduleRefresh();
-                // leave the char in the box as a visual echo of what was typed
-            }
-            else if (e.KeyChar != (char)Keys.Back)
-            {
-                e.Handled = true;   // ignore the decimal point and any non-digit
-            }
-        };
-        _freq.KeyDown += (s, e) =>
-        {
-            if (e.KeyCode == Keys.Enter)
-            {
-                e.SuppressKeyPress = true;
-                _def.SendRmpKey(_rmp, $"LSK_{_selectedRowIndex + 1}", _sim);  // load standby (manual; no auto-swap)
-                _announcer?.AnnounceImmediate("Standby loaded");
-                _freq.Clear();
-                ScheduleRefresh();
-            }
-            else if (e.KeyCode == Keys.Back)
-            {
-                _def.SendRmpKey(_rmp, "DIGIT_CLR", _sim);  // one-digit backspace in the RMP entry
-                ScheduleRefresh();
-                // let the TextBox delete its own character too (don't suppress)
-            }
-        };
-
-        int x = 12, yPage = 412, yAct = 448, yMode = 484;
-        AddKeyButton("&VHF", "VHF", "VHF page", ref x, yPage);
-        AddKeyButton("&HF", "HF", "HF page", ref x, yPage);
-        AddKeyButton("&TEL", "TEL", "Telephone page", ref x, yPage);
-        AddKeyButton("S&QWK", "SQWK", "Transponder page", ref x, yPage);
-        AddKeyButton("&NAV", "NAV", "Nav page", ref x, yPage);
-        AddKeyButton("&MENU", "MENU", "Menu", ref x, yPage);
-
-        x = 12;
-        AddRadioButton("Radio &1", 0, ref x, yAct);
-        AddRadioButton("Radio &2", 1, ref x, yAct);
-        AddRadioButton("Radio &3", 2, ref x, yAct);
-        AddActionButton("S&wap", "Swapped", () => _def.SendRmpKey(_rmp, $"ADK_{_selectedRowIndex + 1}", _sim), ref x, yAct, 90);
-        AddHeldClearButton("C&lear", ref x, yAct, 90);
-
-        x = 12;
-        AddKeyButton("Mode &up", "UP", "Mode up", ref x, yMode, 110);
-        AddKeyButton("Mode &down", "DOWN", "Mode down", ref x, yMode, 110);
-
-        var close = new Button { Text = "&Close", Location = new Point(12, 552), Size = new Size(100, 32), DialogResult = DialogResult.OK, AccessibleName = "Close" };
-        close.Click += (_, _) => Close();
+        var freqLabel = new Label { Text = "&Frequency (digits; Enter loads standby):", Location = new Point(12, 384), Size = new Size(584, 20) };
+        _freq = new TextBox { Location = new Point(12, 406), Size = new Size(220, 26), AccessibleName = "Frequency" };
+        _freq.KeyPress += OnFreqKeyPress;
+        _freq.KeyDown += OnFreqKeyDown;
 
         var help = new Label
         {
-            Location = new Point(124, 548), Size = new Size(496, 64),
-            Text = "Choose the radio (Radio 1/2/3 or Ctrl+1/2/3), type the frequency\n" +
-                   "(each digit is keyed live, no decimal point), press Enter to load the\n" +
-                   "standby, then Swap to make it active. Clear fully resets the entry."
+            Location = new Point(12, 440), Size = new Size(584, 40),
+            Text = "Keys: Ctrl+1/2/3 select radio · Alt+1/2/3 swap · Alt+V/H/T/Q/N/M page · " +
+                   "Alt+C clear · Alt+S frequency · Alt+Home screen"
         };
+        var close = new Button { Text = "&Close", Location = new Point(12, 484), Size = new Size(100, 30), DialogResult = DialogResult.OK, AccessibleName = "Close" };
+        close.Click += (_, _) => Close();
 
-        Controls.AddRange(new Control[] { sideLabel, _side, _status, _rows, freqLabel, _freq, close, help });
+        Controls.AddRange(new Control[] { sideLabel, _side, _status, _display, freqLabel, _freq, help, close });
         CancelButton = close;
-        Load += (_, _) => _rows.Focus();
+        Load += (_, _) => _display.Focus();
     }
 
-    // A page/mode key: fire the H-event, give immediate spoken feedback, refresh.
-    private void AddKeyButton(string label, string key, string spoken, ref int x, int y, int width = 70)
+    // ---- keyboard: the soft keys + pages, MCDU-style -----------------------------------------
+
+    private void OnFormKeyDown(object? sender, KeyEventArgs e)
     {
-        var b = new Button { Text = label, Location = new Point(x, y), Size = new Size(width, 30), AccessibleName = label.Replace("&", "") };
-        b.Click += (_, _) =>
+        bool alt = MSFSBlindAssist.Settings.SettingsManager.Current.MCDUUseAlternateLSKKeys;
+
+        // Line keys (LSK, left) and adjacent keys (ADK, right = swap), rows 1..3.
+        if (alt)
         {
-            if (_busy) return;
-            _def.SendRmpKey(_rmp, key, _sim);
-            _announcer?.AnnounceImmediate(spoken);
-            ScheduleRefresh();
-        };
-        Controls.Add(b);
-        x += width + 6;
+            if (NoMods(e) && e.KeyCode >= Keys.F1 && e.KeyCode <= Keys.F3) { PressLine(e.KeyCode - Keys.F1); Handled(e); return; }
+            if (NoMods(e) && e.KeyCode >= Keys.F7 && e.KeyCode <= Keys.F9) { Swap(e.KeyCode - Keys.F7); Handled(e); return; }
+        }
+        else
+        {
+            if (e.Control && !e.Alt && e.KeyCode >= Keys.D1 && e.KeyCode <= Keys.D3) { PressLine(e.KeyCode - Keys.D1); Handled(e); return; }
+            if (e.Alt && !e.Control && e.KeyCode >= Keys.D1 && e.KeyCode <= Keys.D3) { Swap(e.KeyCode - Keys.D1); Handled(e); return; }
+        }
+
+        if (e.Alt && !e.Control)
+        {
+            switch (e.KeyCode)
+            {
+                case Keys.V: Page("VHF", "VHF page"); Handled(e); return;
+                case Keys.H: Page("HF", "HF page"); Handled(e); return;
+                case Keys.T: Page("TEL", "Telephone page"); Handled(e); return;
+                case Keys.Q: Page("SQWK", "Transponder page"); Handled(e); return;
+                case Keys.N: Page("NAV", "Nav page"); Handled(e); return;
+                case Keys.M: Page("MENU", "Menu"); Handled(e); return;
+                case Keys.Up: Page("UP", "Mode up"); Handled(e); return;
+                case Keys.Down: Page("DOWN", "Mode down"); Handled(e); return;
+                case Keys.C: _ = FullClear(); Handled(e); return;
+                case Keys.S: _freq.Focus(); Handled(e); return;
+                case Keys.Home: _display.Focus(); Handled(e); return;
+            }
+        }
     }
 
-    // Radio 1/2/3 = the line key (LSK): selects the row, or loads the typed standby if already selected.
-    private void AddRadioButton(string label, int rowIndex, ref int x, int y, int width = 80)
-    {
-        var b = new Button { Text = label, Location = new Point(x, y), Size = new Size(width, 30), AccessibleName = $"Radio {rowIndex + 1}, select or load" };
-        b.Click += (_, _) => PressLine(rowIndex);
-        Controls.Add(b);
-        x += width + 6;
-    }
+    private static bool NoMods(KeyEventArgs e) => !e.Control && !e.Alt && !e.Shift;
+    private static void Handled(KeyEventArgs e) { e.Handled = true; e.SuppressKeyPress = true; }
 
-    private void PressLine(int rowIndex)
+    private void PressLine(int row)
     {
         if (_busy) return;
-        bool wasSelected = _selectedRowIndex == rowIndex;
-        _def.SendRmpKey(_rmp, $"LSK_{rowIndex + 1}", _sim);
-        _announcer?.AnnounceImmediate(wasSelected ? "Standby loaded" : $"Radio {rowIndex + 1} selected");
+        bool wasSel = _selectedRowIndex == row;
+        _def.SendRmpKey(_rmp, $"LSK_{row + 1}", _sim);
+        _announcer?.Announce(wasSel ? "Standby loaded" : $"Radio {row + 1}");
         ScheduleRefresh();
     }
 
-    private void AddActionButton(string label, string spoken, Action onClick, ref int x, int y, int width = 90)
+    private void Swap(int row)
     {
-        var b = new Button { Text = label, Location = new Point(x, y), Size = new Size(width, 30), AccessibleName = label.Replace("&", "") };
-        b.Click += (_, _) => { if (_busy) return; onClick(); _announcer?.AnnounceImmediate(spoken); ScheduleRefresh(); };
-        Controls.Add(b);
-        x += width + 6;
+        if (_busy) return;
+        _def.SendRmpKey(_rmp, $"ADK_{row + 1}", _sim);
+        _announcer?.Announce("Swapped");
+        ScheduleRefresh();
     }
 
-    private void AddHeldClearButton(string label, ref int x, int y, int width = 90)
+    private void Page(string key, string spoken)
     {
-        var b = new Button { Text = label, Location = new Point(x, y), Size = new Size(width, 30), AccessibleName = "Clear the entry" };
-        b.Click += (_, _) => { _ = FullClearAndRefresh(); };
-        Controls.Add(b);
-        x += width + 6;
+        if (_busy) return;
+        _def.SendRmpKey(_rmp, key, _sim);
+        _announcer?.Announce(spoken);
+        ScheduleRefresh();
     }
+
+    // ---- frequency entry: real-time digits, Enter = load -------------------------------------
+
+    private void OnFreqKeyPress(object? sender, KeyPressEventArgs e)
+    {
+        if (e.KeyChar >= '0' && e.KeyChar <= '9')
+            _def.SendRmpKey(_rmp, $"DIGIT_{e.KeyChar}", _sim);   // keyed live; the standby auto-completes
+        else if (e.KeyChar != (char)Keys.Back)
+            e.Handled = true;                                    // ignore the decimal + non-digits
+        if (e.KeyChar >= '0' && e.KeyChar <= '9') ScheduleRefresh();
+    }
+
+    private void OnFreqKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.KeyCode == Keys.Enter)
+        {
+            e.SuppressKeyPress = true;
+            _def.SendRmpKey(_rmp, $"LSK_{_selectedRowIndex + 1}", _sim);   // load standby (manual; no auto-swap)
+            _announcer?.Announce("Standby loaded");
+            _freq.Clear();
+            ScheduleRefresh();
+        }
+        else if (e.KeyCode == Keys.Back)
+        {
+            _def.SendRmpKey(_rmp, "DIGIT_CLR", _sim);   // one-digit backspace in the RMP entry
+            ScheduleRefresh();
+        }
+    }
+
+    // ---- held clear (full reset of a stuck entry) -------------------------------------------
+
+    private async Task FullClear()
+    {
+        if (_busy) return;
+        _busy = true;
+        try { _def.SendRmpKeyPress(_rmp, "DIGIT_CLR", _sim); await Task.Delay(1150); }
+        finally { _def.SendRmpKeyRelease(_rmp, "DIGIT_CLR", _sim); _busy = false; }
+        _freq.Clear();
+        _announcer?.Announce("Cleared");
+        Apply(await _disp.ScrapeNowAsync());
+    }
+
+    // ---- scrape + display -------------------------------------------------------------------
 
     private void StartScrape()
     {
-        _haveRows = false;
-        _firstScrape = true;
-        _lastSelectedStandby = "";
-        _lastMessage = "";
-        // ~500 ms poll so the list + live-region track typing/actions snappily.
+        _haveRows = false; _firstScrape = true;
+        _lastAnnouncedStandby = ""; _lastAnnouncedMessage = "";
         _disp = new CoherentDisplayClient($"A380X_RMP_{_rmp}", 500, "coherent-rmp-agent.js");
         _disp.RowsUpdated += OnRowsUpdated;
         _disp.Start();
@@ -232,14 +215,12 @@ public sealed class FBWA380RmpForm : Form
     private void SwitchSide()
     {
         try { _disp.RowsUpdated -= OnRowsUpdated; _disp.Dispose(); } catch { }
-        _status.Text = _rmp == 1 ? "Captain RMP — connecting…" : "First Officer RMP — connecting…";
+        _status.Text = _rmp == 1 ? "Captain — connecting…" : "First Officer — connecting…";
         StartScrape();
     }
 
     private async Task InitialScrape() => Apply(await _disp.ScrapeNowAsync());
 
-    // Debounced re-scrape after an action/keystroke (the RMP updates a frame or two later). One
-    // reusable timer so fast typing doesn't spawn many timers.
     private void ScheduleRefresh()
     {
         if (_refreshTimer == null)
@@ -247,8 +228,7 @@ public sealed class FBWA380RmpForm : Form
             _refreshTimer = new System.Windows.Forms.Timer { Interval = 250 };
             _refreshTimer.Tick += async (_, _) => { _refreshTimer!.Stop(); Apply(await _disp.ScrapeNowAsync()); };
         }
-        _refreshTimer.Stop();
-        _refreshTimer.Start();
+        _refreshTimer.Stop(); _refreshTimer.Start();
     }
 
     private void OnRowsUpdated(List<string> rows) => Apply(rows);
@@ -257,80 +237,68 @@ public sealed class FBWA380RmpForm : Form
     {
         if (rows == null || rows.Count == 0)
         {
-            if (!_haveRows) _status.Text = "RMP view not reachable — is the A380X loaded and the RMP powered?";
+            if (!_haveRows) _status.Text = "RMP not reachable — is the A380X loaded and powered?";
             return;
         }
         _haveRows = true;
-        _status.Text = _rmp == 1 ? "Live — Captain RMP" : "Live — First Officer RMP";
+        _status.Text = _rmp == 1 ? "Live — Captain" : "Live — First Officer";
 
-        int sel = _rows.SelectedIndex;
-        _rows.BeginUpdate();
-        _rows.Items.Clear();
-        foreach (var r in rows) _rows.Items.Add(r);
-        if (sel >= 0 && sel < _rows.Items.Count) _rows.SelectedIndex = sel;
-        _rows.EndUpdate();
+        // Render the RMP as plain text (the touchscreen IS text), preserving the read caret.
+        string text = string.Join("\r\n", rows);
+        if (_display.Text != text)
+        {
+            int caret = _display.SelectionStart;
+            _display.Text = text;
+            _display.SelectionStart = Math.Min(caret, _display.TextLength);
+        }
 
-        int tIdx = 0;
+        // Track the selected row + its standby + the message line for the announce.
+        _selectedRowIndex = 0;
+        int tIdx = 0; string selRow = "";
         foreach (var r in rows)
         {
-            if (r.IndexOf(": active ", System.StringComparison.Ordinal) < 0) continue;
-            if (r.IndexOf(", selected", System.StringComparison.Ordinal) >= 0) { _selectedRowIndex = tIdx; break; }
+            if (r.IndexOf(": active ", StringComparison.Ordinal) < 0) continue;
+            if (r.IndexOf(", selected", StringComparison.Ordinal) >= 0) { _selectedRowIndex = tIdx; selRow = r; }
             tIdx++;
         }
+        _standby = Token(selRow, "standby ");
+        var msgRow = rows.Find(r => r.StartsWith("Message: ", StringComparison.Ordinal)) ?? "";
+        _message = msgRow.Length > 0 ? msgRow.Substring("Message: ".Length) : "";
 
-        AnnounceChanges(rows);
+        if (_firstScrape) { _lastAnnouncedStandby = _standby; _lastAnnouncedMessage = _message; _firstScrape = false; }
+        else ScheduleAnnounce();
     }
 
-    private void AnnounceChanges(List<string> rows)
+    // Debounced announce (mirrors the MCDU scratchpad): once the dust settles, speak the
+    // selected radio's standby if it changed, and any new RMP message (e.g. FREQ NOT VALID).
+    private void ScheduleAnnounce()
     {
-        string selRow = rows.Find(r => r.IndexOf(", selected", System.StringComparison.Ordinal) >= 0) ?? "";
-        string standby = Token(selRow, "standby ");
-        string msgRow = rows.Find(r => r.StartsWith("Message: ", System.StringComparison.Ordinal)) ?? "";
-        string message = msgRow.Length > 0 ? msgRow.Substring("Message: ".Length) : "";
-
-        if (!_firstScrape)
+        if (_announceTimer == null)
         {
-            if (standby.Length > 0 && standby != _lastSelectedStandby)
-                _announcer?.Announce($"Standby {standby}");
-            if (message.Length > 0 && message != _lastMessage)
-                _announcer?.Announce(message);
+            _announceTimer = new System.Windows.Forms.Timer { Interval = 300 };
+            _announceTimer.Tick += (_, _) =>
+            {
+                _announceTimer!.Stop();
+                if (_message.Length > 0 && _message != _lastAnnouncedMessage)
+                { _lastAnnouncedMessage = _message; _announcer?.Announce(_message); }
+                if (_standby.Length > 0 && _standby != _lastAnnouncedStandby)
+                { _lastAnnouncedStandby = _standby; _announcer?.Announce($"Standby {_standby}"); }
+            };
         }
-        _lastSelectedStandby = standby;
-        _lastMessage = message;
-        _firstScrape = false;
+        _announceTimer.Stop(); _announceTimer.Start();
     }
 
     private static string Token(string row, string after)
     {
-        int i = row.IndexOf(after, System.StringComparison.Ordinal);
+        int i = row.IndexOf(after, StringComparison.Ordinal);
         if (i < 0) return "";
         int start = i + after.Length;
-        int end = row.IndexOf(", ", start, System.StringComparison.Ordinal);
+        int end = row.IndexOf(", ", start, StringComparison.Ordinal);
         return (end < 0 ? row.Substring(start) : row.Substring(start, end - start)).Trim();
-    }
-
-    // HOLD Clear past the FBW 1 s timer = FULL scratchpad clear (a tap is a single-digit backspace).
-    private async Task FullClearAndRefresh()
-    {
-        if (_busy) return;
-        _busy = true;
-        try
-        {
-            _def.SendRmpKeyPress(_rmp, "DIGIT_CLR", _sim);
-            await Task.Delay(1150);
-        }
-        finally { _def.SendRmpKeyRelease(_rmp, "DIGIT_CLR", _sim); _busy = false; }
-        _freq.Clear();
-        _announcer?.AnnounceImmediate("Entry cleared");
-        Apply(await _disp.ScrapeNowAsync());
     }
 
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
     {
-        // Ctrl+1/2/3 = the line keys (select the radio / load the standby), MCDU-style.
-        if (keyData == (Keys.Control | Keys.D1)) { PressLine(0); return true; }
-        if (keyData == (Keys.Control | Keys.D2)) { PressLine(1); return true; }
-        if (keyData == (Keys.Control | Keys.D3)) { PressLine(2); return true; }
         if (keyData == Keys.Escape) { Close(); return true; }
         return base.ProcessCmdKey(ref msg, keyData);
     }
@@ -338,6 +306,7 @@ public sealed class FBWA380RmpForm : Form
     protected override void OnFormClosed(FormClosedEventArgs e)
     {
         try { _refreshTimer?.Stop(); _refreshTimer?.Dispose(); } catch { }
+        try { _announceTimer?.Stop(); _announceTimer?.Dispose(); } catch { }
         try { _disp.RowsUpdated -= OnRowsUpdated; _disp.Dispose(); } catch { }
         base.OnFormClosed(e);
     }
