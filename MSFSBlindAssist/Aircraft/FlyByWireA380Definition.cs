@@ -741,6 +741,15 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         RmpKey("MECH_CALL", "Mechanic call"); RmpKey("CAB_CALL", "Cabin call"); RmpKey("PA_CALL", "PA call");
         RmpKey("VOICE", "Voice"); RmpKey("MSG_CLR", "Message clear"); RmpKey("RST", "Reset");
         EvtBtn("A380X_MSFSBA_RMP1_DISPLAY", "Read RMP screen");
+        // Frequency ENTRY edit field (practical alternative to mashing digit buttons): type the
+        // digits + a decimal point (e.g. "118.50", "8901") and press Set/Enter, and MSFSBA fires
+        // the RMP keypad digit H-events in sequence (handled in MainForm's _SET text-input path →
+        // SendRmpKeypad). Select the page (VHF/HF/TEL/SQWK) first, then enter, then swap via LSK.
+        vars["A380X_MSFSBA_RMP1_FREQ_SET"] = new SimVarDefinition
+        {
+            Name = "A380X_MSFSBA_RMP1_FREQ_SET", DisplayName = "Frequency entry",
+            Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest
+        };
 
         // ---- INTERIOR LIGHTING ----
         Sel("A380X_OVHD_ANN_LT_POSITION", "Annunciator Lights",
@@ -1317,7 +1326,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             ReadEnum($"A380X_RMP_{r}_STATE", $"RMP {r} State", rmpState);
         for (int v = 1; v <= 3; v++)
         {
-            Read($"FBW_RMP_FREQUENCY_ACTIVE_{v}", $"VHF {v} Active Frequency");
+            // Active freq is continuously monitored so it auto-announces on change (the format +
+            // VHF-band gate + silent baseline live in ProcessSimVarUpdate). Standby stays on-request.
+            MonNum($"FBW_RMP_FREQUENCY_ACTIVE_{v}", $"VHF {v} Active Frequency");
             Read($"FBW_RMP_FREQUENCY_STANDBY_{v}", $"VHF {v} Standby Frequency");
         }
 
@@ -2612,10 +2623,13 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         };
         // Captain RMP keypad — every key as a button + a "Read RMP screen" scrape opener.
         var rmp1 = new List<string>();
+        // Frequency entry edit field FIRST (the practical way to tune — type + Set), then the page
+        // selectors, line keys, clear, calls. The individual digit buttons are intentionally NOT
+        // listed (impractical to mash one at a time — the edit field types them out instead).
+        rmp1.Add("A380X_MSFSBA_RMP1_FREQ_SET");
         foreach (var k in new[] {
             "VHF","HF","TEL","SQWK","NAV","MENU",
-            "LSK_1","LSK_2","LSK_3","ADK_1","ADK_2","ADK_3","UP","DOWN",
-            "DIGIT_1","DIGIT_2","DIGIT_3","DIGIT_4","DIGIT_5","DIGIT_6","DIGIT_7","DIGIT_8","DIGIT_9","DIGIT_0","DIGIT_DOT","DIGIT_CLR",
+            "LSK_1","LSK_2","LSK_3","ADK_1","ADK_2","ADK_3","UP","DOWN","DIGIT_CLR",
             "VHF_CALL_1","VHF_CALL_2","VHF_CALL_3","HF_CALL_1","HF_CALL_2","TEL_CALL_1","TEL_CALL_2",
             "MECH_CALL","CAB_CALL","PA_CALL","VOICE","MSG_CLR","RST","DISPLAY" })
             rmp1.Add($"A380X_MSFSBA_RMP1_{k}");
@@ -3203,6 +3217,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     // The set of E/WD codes currently on screen (across all lines) that have been
     // announced — so a message that scrolls between lines isn't re-announced.
     private readonly HashSet<long> _announcedEwdCodes = new();
+    // Last announced RMP active VHF frequency per channel ("1"/"2"/"3"), raw Hz — for the
+    // change-detect + silent-baseline of the active-frequency auto-announce in ProcessSimVarUpdate.
+    private readonly Dictionary<string, double> _rmpActiveFreq = new();
     /// <summary>Set by MainForm when the E/WD DOM-scrape monitor (CoherentEWDClient)
     /// is running. While true, the SimVar EWD_LOWER memo auto-announce is suppressed
     /// so the scrape is the single source for E/WD call-outs (it announces both the
@@ -3299,6 +3316,24 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         if (varName == "A32NX_EFIS_L_TO_WPT_IDENT_0") _ndIdent0 = value;
         else if (varName == "A32NX_EFIS_L_TO_WPT_IDENT_1") _ndIdent1 = value;
         else if (varName == "A32NX_BETA_TARGET_ACTIVE") _betaTargetActive = value > 0.5;
+
+        // RMP active VHF frequency — auto-announce on change so a blind pilot hears the new
+        // ACTIVE frequency after a transfer/swap (the standby stays an on-request panel readout,
+        // so this is the single non-duplicate call-out). The register is raw Hz; range-gate to a
+        // valid VHF band (118.000–136.975 MHz) so the UNINITIALISED value the FBW RMP holds while
+        // unpowered (reads ~19 MHz) is cached silently and never spoken. Honours the Ctrl+M mute.
+        if (varName.StartsWith("FBW_RMP_FREQUENCY_ACTIVE_", StringComparison.Ordinal))
+        {
+            string ch = varName.Substring("FBW_RMP_FREQUENCY_ACTIVE_".Length);
+            double mhz = value / 1_000_000.0;
+            bool plausible = mhz >= 118.0 && mhz <= 137.0;
+            bool changed = !_rmpActiveFreq.TryGetValue(ch, out var prev) || Math.Abs(prev - value) > 0.5;
+            _rmpActiveFreq[ch] = value;
+            if (plausible && changed && prev != 0
+                && !Settings.SettingsManager.Current.A380DisabledMonitorVariables.Contains(varName))
+                announcer.Announce($"VHF {ch} active {mhz:0.000}");
+            return true;
+        }
 
         // Doors — read-only auto-announce. Passenger doors are INTERACTIVE POINT OPEN, a 0..1
         // animation fraction (open > 0.05); cargo doors are the inverted LOCKED L:var (1 = locked
@@ -4325,7 +4360,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // RMP 1 keypad — fire the cockpit keypad H-event (PRESSED then RELEASED) for the captain's
         // Radio Management Panel, or open the live RMP-screen scrape. Checked BEFORE the A380X_
         // catch-all (these synthetic keys have no backing L:var).
-        if (varKey.StartsWith("A380X_MSFSBA_RMP1_", StringComparison.Ordinal))
+        if (varKey.StartsWith("A380X_MSFSBA_RMP1_", StringComparison.Ordinal)
+            && varKey != "A380X_MSFSBA_RMP1_FREQ_SET")   // the freq field is a string entry — handled in MainForm via SendRmpKeypad
         {
             string k = varKey.Substring("A380X_MSFSBA_RMP1_".Length);
             if (k == "DISPLAY")
@@ -4346,6 +4382,25 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             return true;
         }
         return base.HandleUIVariableSet(varKey, value, varDef, simConnect, announcer);
+    }
+
+    /// <summary>Type a frequency/digit string into the captain RMP by firing the keypad digit
+    /// H-events in sequence (each 0-9 → RMP_1_DIGIT_n, '.' → RMP_1_DIGIT_DOT) — the practical
+    /// alternative to mashing the digit buttons. Called from MainForm's _SET text-input path.
+    /// Select the page (VHF/HF/...) first; the RMP must be powered on; swap to active via an LSK.</summary>
+    public void SendRmpKeypad(string text, SimConnectManager s, ScreenReaderAnnouncer a)
+    {
+        if (s == null || !s.IsConnected) { a?.Announce("Not connected"); return; }
+        int sent = 0;
+        foreach (char c in (text ?? "").Trim())
+        {
+            string? key = (c == '.' || c == ',') ? "DIGIT_DOT" : char.IsDigit(c) ? $"DIGIT_{c}" : null;
+            if (key == null) continue;
+            s.ExecuteCalculatorCode($"(>H:RMP_1_{key}_PRESSED)");
+            s.ExecuteCalculatorCode($"(>H:RMP_1_{key}_RELEASED)");
+            sent++;
+        }
+        a?.Announce(sent > 0 ? $"Entered {text?.Trim()}" : "Type a frequency first");
     }
 
     // ===================================================================

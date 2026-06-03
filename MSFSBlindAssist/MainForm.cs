@@ -5463,6 +5463,16 @@ public partial class MainForm : Form
                         return;
                     }
 
+                    // RMP frequency entry: type the RAW digit string the user entered into the
+                    // captain RMP keypad (fires the digit H-events), so "118.50" is keyed in
+                    // exactly instead of losing trailing zeros through the double parse.
+                    if (varKey == "A380X_MSFSBA_RMP1_FREQ_SET" &&
+                        currentAircraft is Aircraft.FlyByWireA380Definition a380Rmp)
+                    {
+                        a380Rmp.SendRmpKeypad(textBox.Text, simConnectManager!, announcer);
+                        return;
+                    }
+
                     // Special handling for transponder code (requires BCD encoding)
                     if (varKey == "TRANSPONDER_CODE_SET")
                     {
