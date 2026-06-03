@@ -1203,7 +1203,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // ---- Situational-awareness auto-announces (status enums; batch-covered, so no
         // SimConnect-def cost). These announce on change and appear in the Ctrl+M monitor.
         // TCAS surveillance mode + system fault; FMA speed-protection + mode-reversion. ----
-        Mon("A32NX_TCAS_MODE", "TCAS Operating Mode", new Dictionary<double, string>
+        Mon("A32NX_TCAS_MODE", "TCAS Mode", new Dictionary<double, string>
             { [0] = "standby", [1] = "traffic advisory only", [2] = "traffic and resolution advisories" });
         ReadEnum("A32NX_TCAS_FAULT", "TCAS Fault", new Dictionary<double, string> { [0] = "normal", [1] = "fault" });
         Mon("A32NX_FMA_SPEED_PROTECTION_MODE", "Speed Protection",
@@ -1817,19 +1817,13 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // Only the squawk code (above) and IDENT (XPNDR_IDENT_ON) have working write paths.
         // The mode is observable read-only via the RMP SQWK page (AUTO/STBY) instead.
 
-        // TCAS SURVEILLANCE — settable, UNLIKE the transponder mode. The TCAS *output* mode
-        // (A32NX_TCAS_MODE, announced read-only above) is driven by two INPUT L-vars that the
-        // shared FlyByWire `systems` WASM binary reads: A32NX_SWITCH_TCAS_POSITION (mode) and
-        // A32NX_SWITCH_TCAS_TRAFFIC_POSITION (altitude band). These already work on the A32NX
-        // (same binary) — the A380 runs that same computer, so setting them drives its TCAS.
-        // They have ZERO references in the TS/Rust source because the rust crate binds them by
-        // name at runtime (not a string literal grep can find), which is why the dead MFD SURV
-        // radios — which only publish unsubscribed mfd_tcas_* EventBus events — are NOT the path.
-        // (Live in-flight confirmation pending; if the A380 turns out not to read them, remove.)
-        Sel("A32NX_SWITCH_TCAS_POSITION", "TCAS Mode",
-            new Dictionary<double, string> { [0] = "standby", [1] = "traffic advisory", [2] = "traffic and resolution advisories" });
-        Sel("A32NX_SWITCH_TCAS_TRAFFIC_POSITION", "TCAS Traffic Display",
-            new Dictionary<double, string> { [0] = "below", [1] = "normal", [2] = "above" });
+        // TCAS mode is NOT settable on the FBW A380 — REMOVED after a live in-flight test.
+        // A32NX_SWITCH_TCAS_POSITION / _TRAFFIC_POSITION drive TCAS on the A32NX, but the A380
+        // does not consume them: airborne at 4000 ft (above the TCAS threshold), cycling the
+        // switch through 0/1/2 left A32NX_TCAS_MODE (and TA_ONLY/FAULT) flat at 0. Source agrees —
+        // the A380 has zero consumers of the switch and nothing writes A32NX_TCAS_MODE. The mode
+        // stays read-only (announced via the A32NX_TCAS_MODE Mon above); the MFD SURV TCAS radios
+        // are dead stubs too. (Squawk code + IDENT remain the only working surveillance writes.)
 
         // ============================ MINIMUMS ============================
         // FMS-set decision minimums (best-effort; var reused from A32NX FM).
@@ -2742,11 +2736,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         };
         p["Transponder"] = new List<string>
         {
-            // Mode (STBY/AUTO/ON) + ALT RPTG removed — dead on the FBW A380 (see the
-            // GetVariables note). Only squawk code + IDENT actually work here.
-            // TCAS Mode + Traffic Display ARE settable (shared-systems input vars).
-            "TRANSPONDER_CODE_SET", "XPNDR_IDENT_ON",
-            "A32NX_SWITCH_TCAS_POSITION", "A32NX_SWITCH_TCAS_TRAFFIC_POSITION"
+            // Mode (STBY/AUTO/ON) + ALT RPTG + TCAS mode all removed — dead on the FBW A380
+            // (see the GetVariables note). Only squawk code + IDENT actually work here.
+            "TRANSPONDER_CODE_SET", "XPNDR_IDENT_ON"
         };
         // "Radios" (stock COM standby-set + swap) REMOVED — the FBW A380 ignores the stock
         // COM_STBY_RADIO_SET_HZ / COM*_RADIO_SWAP events (live-verified: setting COM1 standby
@@ -3808,14 +3800,14 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 if (managed)
                     spoken = "FCU speed managed";
                 else
-                    // SPEED_SELECTED carries mach (< 1, dimensionless — no SI scaling)
-                    // in mach mode; otherwise it's a velocity, so the SimConnect L:var
-                    // read returns m/s (SI) and must be converted to knots (x1.943844).
-                    // Unlike the A320 (which reads the pre-formatted A32NX_FCU_AFS_DISPLAY_*
-                    // value), the A380 has no display var and reads the raw target.
+                    // A32NX_AUTOPILOT_SPEED_SELECTED holds the target DIRECTLY: a mach number
+                    // when < 1 (e.g. 0.82), otherwise the speed already in KNOTS (e.g. 220 = 220 kt).
+                    // It is NOT an SI velocity — the earlier ×1.943844 m/s→kt conversion was wrong
+                    // and reported 220 kt as "428 knots" (220 × 1.943844). Live-verified airborne:
+                    // the L:var read = 220 with IAS 220. So announce knots verbatim, no scaling.
                     spoken = _pSpdVal.Value < 10
                         ? $"FCU speed mach {_pSpdVal.Value:0.00}, selected"
-                        : $"FCU speed {_pSpdVal.Value * 1.943844:000} knots, selected";
+                        : $"FCU speed {_pSpdVal.Value:000} knots, selected";
                 announcer.AnnounceImmediate(spoken);
                 _pSpdVal = _pSpdMgd = null; _reqSpd = false;
             }
