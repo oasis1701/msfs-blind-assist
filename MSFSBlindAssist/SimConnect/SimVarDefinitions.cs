@@ -55,6 +55,13 @@ public class SimVarDefinition
 
     // UI customization properties (aircraft-specific)
     public bool RenderAsButton { get; set; }  // True to render as button instead of combo box (e.g., APU Start)
+    // Accessible SLIDER (WinForms TrackBar) for a continuous axis control (cockpit window/
+    // sunshade/seat position, speedbrake handle, trims). The TrackBar is 0-100 and maps linearly
+    // to [SliderMin, SliderMax]; on change MSFSBA writes the mapped value live (HandleUIVariableSet,
+    // else SetLVar). Screen readers expose it as a slider (arrow = 1%, Page = 10%).
+    public bool RenderAsSlider { get; set; }
+    public double SliderMin { get; set; } = 0;
+    public double SliderMax { get; set; } = 100;
     public string? StateVariable { get; set; }  // LVar name to read for actual button on/off state (e.g., I_ indicator for S_ switch buttons)
 
     // ----- ARINC429 auto-decode -----

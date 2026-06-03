@@ -554,6 +554,25 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Sel("A380_CPT_FOOTREST", "Captain Footrest", stowedDeployed);
         Sel("A380_FO_FOOTREST", "First Officer Footrest", stowedDeployed);
         Sel("A380_LGPIN_DOOR", "Landing Gear Pins Compartment", closedOpenC);
+        // ---- COCKPIT axis controls as ACCESSIBLE SLIDERS (the 0..100 drag-axis items that used
+        // to be skipped — seats, forward/aft windshield sunshades). A WinForms TrackBar that
+        // writes the L-var live as the user arrows/drags it (live-verified the writes stick:
+        // SUNSHADE_FWD_LH/CTR, AFT_LH_SUNSHADE_OPENING, SEAT_CPT_MOVE_FWD_AFT all held at 30/50).
+        void Slider(string key, string display, double min = 0, double max = 100) => vars[key] = new SimVarDefinition
+        {
+            Name = key, DisplayName = display, Type = SimVarType.LVar,
+            UpdateFrequency = UpdateFrequency.OnRequest,
+            RenderAsSlider = true, SliderMin = min, SliderMax = max
+        };
+        Slider("SUNSHADE_FWD_LH", "Forward sunshade left");
+        Slider("SUNSHADE_FWD_CTR", "Forward sunshade centre");
+        Slider("SUNSHADE_FWD_RH", "Forward sunshade right");
+        Slider("AFT_LH_SUNSHADE_OPENING", "Aft sunshade left");
+        Slider("AFT_RH_SUNSHADE_OPENING", "Aft sunshade right");
+        Slider("SEAT_CPT_MOVE_FWD_AFT", "Captain seat forward/aft");
+        Slider("SEAT_CPT_MOVE_UP_DOWN", "Captain seat up/down");
+        Slider("SEAT_FO_MOVE_FWD_AFT", "First officer seat forward/aft");
+        Slider("SEAT_FO_MOVE_UP_DOWN", "First officer seat up/down");
         // Cabin Ready signal (cabin-crew "cabin ready"; settable bool).
         Sel("A32NX_CABIN_READY", "Cabin Ready",
             new Dictionary<double, string> { [0] = "Not Ready", [1] = "Ready" });
@@ -2483,7 +2502,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         p["Windows and Shades"] = new List<string>
         {
             "CPT_SLIDING_WINDOW", "FO_SLIDING_WINDOW",
-            "SUNSHADE_CPT_OPENING", "SUNSHADE_FO_OPENING"
+            "SUNSHADE_CPT_OPENING", "SUNSHADE_FO_OPENING",
+            // Windshield sunshades as accessible sliders (0-100% drag axis).
+            "SUNSHADE_FWD_LH", "SUNSHADE_FWD_CTR", "SUNSHADE_FWD_RH",
+            "AFT_LH_SUNSHADE_OPENING", "AFT_RH_SUNSHADE_OPENING"
         };
         // Cockpit comfort/misc openables (oxygen panels, tables, footrests, LG-pins door).
         p["Cockpit"] = new List<string>
@@ -2491,7 +2513,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "CPT_OXY_FWD_OPENING", "AFT_OXY_OPENING",
             "A380_CPT_TABLE", "A380_FO_TABLE",
             "A380_CPT_FOOTREST", "A380_FO_FOOTREST",
-            "A380_LGPIN_DOOR"
+            "A380_LGPIN_DOOR",
+            // Crew seats as accessible sliders (0-100% drag axis).
+            "SEAT_CPT_MOVE_FWD_AFT", "SEAT_CPT_MOVE_UP_DOWN",
+            "SEAT_FO_MOVE_FWD_AFT", "SEAT_FO_MOVE_UP_DOWN"
         };
         p["Signs"] = new List<string>
         {

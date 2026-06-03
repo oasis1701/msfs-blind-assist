@@ -1179,7 +1179,19 @@ public partial class MainForm : Form
             updatingFromSim = true;
 
             Control control = currentControls[varName];
-            if (control is ComboBox combo)
+            if (control is TrackBar slider)
+            {
+                // Reflect a sim-side axis change back into the slider (updatingFromSim is set,
+                // so the slider's ValueChanged handler won't write it back — no feedback loop).
+                if (currentAircraft.GetVariables().TryGetValue(varName, out var sVarDef) && sVarDef.RenderAsSlider)
+                {
+                    double sspan = (sVarDef.SliderMax - sVarDef.SliderMin) == 0 ? 1 : (sVarDef.SliderMax - sVarDef.SliderMin);
+                    int pct = (int)Math.Round((value - sVarDef.SliderMin) / sspan * 100.0);
+                    pct = Math.Max(0, Math.Min(100, pct));
+                    if (slider.Value != pct) slider.Value = pct;
+                }
+            }
+            else if (control is ComboBox combo)
             {
                 // Find the matching value in the combo box
                 if (currentAircraft.GetVariables().ContainsKey(varName))
@@ -4902,9 +4914,9 @@ public partial class MainForm : Form
 
             var varDef = currentAircraft.GetVariables()[varKey];
             
-            // Add a new row
+            // Add a new row (sliders need a little more height for the TrackBar).
             int rowIndex = layout.RowCount++;
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 35));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, varDef.RenderAsSlider ? 48 : 35));
 
             // Create label
             Label label = new Label();
@@ -4914,9 +4926,40 @@ public partial class MainForm : Form
             label.Size = new Size(140, 25);
             layout.Controls.Add(label, 0, rowIndex);
 
-            // Create control based on type
-            // Check RenderAsButton FIRST — buttons may have no ValueDescriptions
-            if (varDef.RenderAsButton)
+            // Create control based on type.
+            // Accessible SLIDER (TrackBar) for continuous axis controls — checked first.
+            if (varDef.RenderAsSlider)
+            {
+                double smin = varDef.SliderMin, smax = varDef.SliderMax;
+                double span = (smax - smin) == 0 ? 1 : (smax - smin);
+                TrackBar tb = new TrackBar
+                {
+                    Minimum = 0,
+                    Maximum = 100,
+                    SmallChange = 1,
+                    LargeChange = 10,
+                    TickStyle = TickStyle.None,
+                    Size = new Size(240, 40),
+                    Name = varKey,
+                    AccessibleName = varDef.DisplayName
+                };
+                if (currentSimVarValues.ContainsKey(varKey))
+                {
+                    int pct = (int)Math.Round((currentSimVarValues[varKey] - smin) / span * 100.0);
+                    tb.Value = Math.Max(0, Math.Min(100, pct));
+                }
+                tb.ValueChanged += (s2, e2) =>
+                {
+                    if (updatingFromSim) return;   // change came from the sim, don't write back
+                    double mapped = smin + (tb.Value / 100.0) * span;
+                    bool handled = currentAircraft.HandleUIVariableSet(varKey, mapped, varDef, simConnectManager, announcer);
+                    if (!handled) simConnectManager?.SetLVar(varDef.Name, mapped);
+                };
+                layout.Controls.Add(tb, 1, rowIndex);
+                currentControls[varKey] = tb;
+            }
+            // Check RenderAsButton next — buttons may have no ValueDescriptions
+            else if (varDef.RenderAsButton)
             {
                 // Render as button (momentary pushbutton, action button, etc.)
                 // If StateVariable is set, show on/off state from the indicator LVar
