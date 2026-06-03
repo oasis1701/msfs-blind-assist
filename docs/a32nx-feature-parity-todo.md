@@ -18,6 +18,44 @@ to `bin\Debug` and you'll launch a STALE `bin\x64` exe.
 
 ---
 
+## ✅ COMPLETED 2026-06-03 (A32NX parity session — implemented + verified live in-sim)
+
+- **Correctness fixes (existing A320 bugs surfaced by the audit):** the 6 V-speed readout
+  hotkeys (VLS/green-dot/S/F/VFE/VS) were firing into the FUEL/W&B dispatch (request-ids 340-345
+  collided with fuel) — fixed to 330/331/332/335/336/337; VFE re-sourced to the plain
+  `A32NX_SPEEDS_VFEN` (the FAC word is an un-decodable ARINC word via the temp-def path). ND
+  cross-track `/1852` (read NM as metres → always "on track") fixed. `ReadAltimeter` now reads STD
+  + the baro word from the live cache (recurring-theme fix). The PFD/ISIS "indicated airspeed" box
+  field was re-aliased to a non-special key (`PFD_IAS`) so panel-focus stops re-firing the
+  universal airspeed announce. (The recurring-theme sweep otherwise found the A320 already correct
+  — flaps/gear were fixed earlier; OnRequest + ExcludeFromBatch + dedicated-request-id readouts are safe.)
+- **Safety/awareness auto-announces (G4):** GPWS aural callouts (`A32NX_GPWS_AURAL_OUTPUT`, 12-value
+  enum source-verified), stall (`A32NX_AUDIO_STALL_WARNING`), AP-disconnect cavalry charge
+  (`A32NX_FWC_CAVALRY_CHARGE`), TCAS computed mode + fault. FMA speed-protection / mode-reversion are
+  **A380-only** (verified read 0 / PFD-local on the A32NX) — NOT ported.
+- **PFD/ND/ISIS display fields (B, G3, G3b, G7-autoland):** managed/preselect speed+Mach, selected
+  V/S, expedite, FD 1/2, the weight/config speeds from `A32NX_SPEEDS_*` (G3b), FAC alpha-protection
+  speeds (ARINC), transition level/alt, SAT/TAT, FCU-selected ALT/HDG (`AUTOPILOT ALTITUDE LOCK VAR:3`
+  verified), autoland capability (`A32NX_FMGC_1_DISCRETE_WORD_4` bits 23/24/25 — **NOT** FCDC), ND
+  GS/TAS/wind/heading-ref + tuned VOR/DME/ADF freqs.
+- **Controls (C, G5, G7-slider):** rudder-trim LEFT/RIGHT nudge buttons + nosewheel/tiller readouts;
+  oxygen-timer-reset / APU-auto-exit-test / emer-gen-test / lighting-preset load+save buttons;
+  speed-brake fine slider (SPOILERS_SET 0-16383). Cockpit sunshades/seats/armrests/sliding-windows
+  are **NOT MODELLED** on the A32NX (Agent 5 source-verified) — SKIP.
+- **Doors / ground / preset (C):** doors → READ-ONLY auto-announced status (passenger =
+  `INTERACTIVE POINT OPEN:0/1/2/3` SimVar, cargo = `A32NX_{FWD,AFT}_DOOR_CARGO_LOCKED` LVar inverted
+  — the old `:4/:5` cargo mapping was wrong); Ground Services panels REMOVED (flyPad-only, matching
+  A380 d48b275) keeping a `JETWAY MOVING` auto-announce; aircraft-preset loading-progress
+  auto-announce (`A32NX_AIRCRAFT_PRESET_LOAD_PROGRESS`, must be IsAnnounced=true to be monitored);
+  standalone slides-armed readout.
+
+**STILL OPEN:** SD-page readout additions (G1 — the big per-page re-map, in progress), EWD decode
+(G2), PRESS overhead-panel verify (B), fire-test aural-cancel (C — needs a live fire to test),
+squawk read-back (D — optional), RMP scraped-window (A — assessed NOT worth porting), SimConnect-
+ceiling live A32NX connect check (A — manual log check).
+
+---
+
 ## A. Connection-safety / shared
 
 - [x] **Landing-rate + landing-G output hotkeys — ALREADY shared, work on the A32NX now.**
