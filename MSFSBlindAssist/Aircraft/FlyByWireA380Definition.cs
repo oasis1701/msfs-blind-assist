@@ -739,6 +739,14 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             new Dictionary<double, string> { [0] = "Up", [1] = "Down" });
         Sel("A32NX_LG_GRVTY_SWITCH_POS", "Gravity Gear Extension",
             new Dictionary<double, string> { [0] = "Reset", [1] = "Off", [2] = "Down" });
+        // Gravity-extension guards — ALL three must be lifted before the gravity lever
+        // above can reach DOWN (the FBW CODE_POS_2_VERIF gates the Down position on
+        // master + guard 1 + guard 2). Plain 0/1 L:vars, calc-write (live-verified
+        // settable). The master guard was previously a read-only readout.
+        var guardSw = new Dictionary<double, string> { [0] = "Stowed", [1] = "Lifted" };
+        Sel("A32NX_LG_GRVTY_MASTER_SWITCH_GUARD", "Gravity Extension Master Guard", guardSw);
+        Sel("A32NX_LG_GRVTY_SWITCH_GUARD_1", "Gravity Extension Guard Left", guardSw);
+        Sel("A32NX_LG_GRVTY_SWITCH_GUARD_2", "Gravity Extension Guard Right", guardSw);
 
         // ---- Autobrake / Anti-skid ----
         Sel("A32NX_AUTOBRAKES_SELECTED_MODE", "Autobrake",
@@ -1495,8 +1503,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Read("A32NX_CHRONO_ELAPSED_TIME", "Chronometer", "seconds");
         Read("A32NX_CHRONO_ET_ELAPSED_TIME", "Elapsed Time", "seconds");
 
-        // ISIS standby instrument.
-        ReadEnum("A32NX_ISIS_LS_ACTIVE", "ISIS LS", onOff);
+        // ISIS standby instrument. LS is a settable toggle (shows the ILS scales on the
+        // standby instrument) — promoted from readout to control (live-verified writable).
+        OnOff("A32NX_ISIS_LS_ACTIVE", "ISIS LS");
         ReadEnum("A32NX_ISIS_BUGS_ACTIVE", "ISIS Bugs Page", onOff);
         Sel("A32NX_ISIS_BARO_MODE", "ISIS Baro Mode", new Dictionary<double, string> { [0] = "Set", [1] = "Standard" });
         OnOff("A32NX_ISIS_BARO_UNIT_INHG", "ISIS Baro in inHg");
@@ -1505,6 +1514,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         OnOff("A32NX_BRAKE_FAN_BTN_PRESSED", "Brake Fan", button: true);
         ReadEnum("A32NX_BRAKE_FAN_RUNNING", "Brake Fan Running", new Dictionary<double, string> { [0] = "Off", [1] = "Running" });
         ReadEnum("A32NX_BRAKES_HOT", "Brakes Hot", new Dictionary<double, string> { [0] = "Normal", [1] = "HOT" });
+        // Autobrake DECEL light — illuminates while the autobrake is achieving its target
+        // deceleration on the rollout. Auto-announced on change.
+        ReadEnum("A32NX_AUTOBRAKES_DECEL_LIGHT", "Autobrake DECEL Light", onOff);
         // Normal (green-system) brake pressure L/R — the "triple indicator". The
         // taxi brake check wants this at ~0 while braking (brakes on the normal
         // system) vs the accumulator below. (#107 transcript gap: brake check.)
@@ -1516,7 +1528,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
 
         // Gear.
         ReadEnum("A32NX_GEAR_LEVER_LOCKED", "Gear Lever Locked", new Dictionary<double, string> { [0] = "Unlocked", [1] = "Locked" });
-        ReadEnum("A32NX_LG_GRVTY_MASTER_SWITCH_GUARD", "Gravity Extension Guard", openVd);
+        // (A32NX_LG_GRVTY_MASTER_SWITCH_GUARD promoted to a settable control in the Gear panel.)
 
         // Pressurization manual selectors (manual mode only). The FBW knob L:vars
         // are written directly with a rotary POSITION value (not feet/fpm — the
@@ -1650,7 +1662,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         {
             string who = side == "L" ? "Capt" : "F/O";
             Sel($"A380X_EFIS_{side}_ACTIVE_FILTER", $"{who} ND Filter",
-                new Dictionary<double, string> { [1] = "Waypoints", [2] = "VOR/DME", [3] = "NDB" });
+                new Dictionary<double, string> { [0] = "Off", [1] = "Waypoints", [2] = "VOR/DME", [3] = "NDB" });
             Sel($"A380X_EFIS_{side}_ACTIVE_OVERLAY", $"{who} ND Overlay",
                 new Dictionary<double, string> { [0] = "Off", [1] = "Weather", [2] = "Terrain" });
             // A380 baro unit lives on XMLVAR_Baro_Selector_HPA_{1|2} (1=hPa, 0=inHg),
@@ -2268,7 +2280,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         };
         p["OIT"] = new List<string> { "A380X_SWITCH_OIT_SIDE_LEFT", "A380X_SWITCH_OIT_SIDE_RIGHT" };
 
-        p["Gear"] = new List<string> { "A32NX_GEAR_HANDLE_POSITION", "A32NX_LG_GRVTY_SWITCH_POS" };
+        p["Gear"] = new List<string> { "A32NX_GEAR_HANDLE_POSITION", "A32NX_LG_GRVTY_SWITCH_POS",
+            "A32NX_LG_GRVTY_MASTER_SWITCH_GUARD", "A32NX_LG_GRVTY_SWITCH_GUARD_1", "A32NX_LG_GRVTY_SWITCH_GUARD_2" };
         p["Autobrake"] = new List<string>
         {
             // ANTISKID_BRAKES_ACTIVE is a read-only sim state — it lives in the
@@ -2387,7 +2400,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         p["Transponder"].Add("A32NX_DCDU_ATC_MSG_ACK");
 
         // ---- new panels ----
-        p["ISIS"] = new List<string> { "A32NX_ISIS_BARO_MODE", "A32NX_ISIS_BARO_UNIT_INHG" };
+        p["ISIS"] = new List<string> { "A32NX_ISIS_LS_ACTIVE", "A32NX_ISIS_BARO_MODE", "A32NX_ISIS_BARO_UNIT_INHG" };
         p["Wipers"] = new List<string> { "WIPER_LEFT", "WIPER_RIGHT" };
         p["Speeds"] = new List<string>();
         // KCCU (keyboard/cursor control unit) is the MCDU's input device — it is
@@ -2602,7 +2615,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "A32NX_HYD_BRAKE_NORM_LEFT_PRESS", "A32NX_HYD_BRAKE_NORM_RIGHT_PRESS",
             "A32NX_HYD_BRAKE_ALTN_LEFT_PRESS", "A32NX_HYD_BRAKE_ALTN_RIGHT_PRESS", "A32NX_HYD_BRAKE_ALTN_ACC_PRESS"
         });
-        d["Gear"].AddRange(new[] { "A32NX_GEAR_LEVER_LOCKED", "A32NX_LG_GRVTY_MASTER_SWITCH_GUARD" });
+        d["Gear"].Add("A32NX_GEAR_LEVER_LOCKED");   // master guard moved to p["Gear"] as a control
         d["Pressurization"].AddRange(new[] { "A32NX_OVHD_PRESS_MAN_ALTITUDE_KNOB", "A32NX_OVHD_PRESS_MAN_VS_CTL_KNOB" });
         d["Fuel"].AddRange(new[] { "A380X_OVHD_FUEL_JETTISON_IS_OPEN", "A32NX_TOTAL_FUEL_VOLUME" });
         d["Hydraulics"].Add("A32NX_OVHD_HYD_PTU_PB_HAS_FAULT");
@@ -2613,6 +2626,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         d["Status"].AddRange(new[] { "A380X_FMS_DEST_EFOB_BELOW_MIN", "A32NX_FMS_PAX_NUMBER", "A32NX_ECAM_FAILURE_ACTIVE" });
         // ANTISKID is a read-only sim state (moved out of the Autobrake controls).
         d["Autobrake"].Add("ANTISKID_BRAKES_ACTIVE");
+        d["Autobrake"].Add("A32NX_AUTOBRAKES_DECEL_LIGHT");   // DECEL light (auto-announced)
         // Ground equipment read-outs: chocks/cones model state + per-receptacle GPU
         // availability (all read-only; the GPU connect is the overhead EXT PWR PBs).
         d["Ground Equipment"] = new List<string>
@@ -2632,7 +2646,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         {
             "PLANE PITCH DEGREES", "PLANE BANK DEGREES", "PLANE HEADING DEGREES MAGNETIC",
             "AIRSPEED INDICATED", "INDICATED ALTITUDE",
-            "A32NX_ISIS_BARO_MODE", "A32NX_ISIS_LS_ACTIVE", "A32NX_ISIS_BUGS_ACTIVE"
+            "A32NX_ISIS_BARO_MODE", "A32NX_ISIS_BUGS_ACTIVE"   // LS moved to p["ISIS"] as a control
         };
         // PFD accessible snapshot — FMA modes + armed, autothrust, approach capability,
         // attitude/heading/speed/altitude, and the PFD message line. Single status box.
