@@ -15,7 +15,7 @@ namespace MSFSBlindAssist.Forms.FBWA380;
 ///   Ctrl+1/2/3  = the LEFT line keys (LSK) — select radio 1/2/3, or load the typed standby.
 ///   Alt+1/2/3   = the RIGHT keys (ADK) — swap that radio's active ↔ standby (manual).
 ///   (or F1/2/3 = LSK, F7/8/9 = ADK when MCDUUseAlternateLSKKeys is on.)
-///   Alt+V / Alt+Q = the VHF / Transponder (SQWK) pages (the only two the FBW build models).
+///   Alt+V / Alt+T = the VHF / Transponder (SQWK) pages (the only two the FBW build models).
 ///   Just TYPE the digits on the screen itself (no separate field): each is keyed into the RMP
 ///   LIVE (the box is read-only, so the digits go to the radio, not the text); Enter loads the standby;
 ///   Backspace deletes a digit; Alt+C does a full clear. Alt+S focuses the box, Alt+Home the text.
@@ -93,7 +93,7 @@ public sealed class FBWA380RmpForm : Form
         {
             Location = new Point(12, 424), Size = new Size(584, 44),
             Text = "Type the frequency / squawk digits right on the screen. Enter loads · Backspace deletes.\n" +
-                   "Ctrl+1/2/3 select radio · Alt+1/2/3 swap · Alt+V / Alt+Q pages · Alt+C clear (SQWK: Alt+3 ident)."
+                   "Ctrl+1/2/3 select radio · Alt+1/2/3 swap · Alt+V / Alt+T pages · Alt+C clear (SQWK: Alt+3 ident)."
         };
         var close = new Button { Text = "&Close", Location = new Point(12, 472), Size = new Size(100, 30), DialogResult = DialogResult.OK, AccessibleName = "Close" };
         close.Click += (_, _) => Close();
@@ -126,8 +126,9 @@ public sealed class FBWA380RmpForm : Form
             switch (e.KeyCode)
             {
                 // Only VHF + Transponder (SQWK) pages are modelled by the FBW A380 dev build.
+                // Alt+T matches the "&Transponder page" button mnemonic (one key, no duplicate).
                 case Keys.V: Page("VHF", "VHF page"); Handled(e); return;
-                case Keys.Q: Page("SQWK", "Transponder page"); Handled(e); return;
+                case Keys.T: Page("SQWK", "Transponder page"); Handled(e); return;
                 case Keys.C: _ = FullClear(); Handled(e); return;
                 case Keys.Home: _display.Focus(); Handled(e); return;   // jump back to the screen from a button
             }

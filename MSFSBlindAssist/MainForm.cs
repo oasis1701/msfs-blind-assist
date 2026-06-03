@@ -2619,6 +2619,14 @@ public partial class MainForm : Form
     private void ShowFBWA380RmpDialog()
     {
         if (currentAircraft is not FlyByWireA380Definition a380rmp) return;
+        // CRITICAL: release the mode hotkeys before showing. The RMP window is opened by an
+        // INPUT-mode hotkey (Ctrl+Shift+R), so input mode is still active and its global
+        // RegisterHotKey shortcuts (Ctrl+1/2/3 = FCU pulls, Alt+n, digits via Track Slots,
+        // etc.) would be consumed system-wide and NEVER reach the RMP window — making the
+        // RMP soft keys, page switching and digit entry all appear dead. Exiting both modes
+        // unregisters those, so every keystroke flows to the form. (Mirrors the OANS dialog.)
+        hotkeyManager.ExitInputHotkeyMode();
+        hotkeyManager.ExitOutputHotkeyMode();
         if (fbwA380RmpForm == null || fbwA380RmpForm.IsDisposed)
         {
             fbwA380RmpForm = new Forms.FBWA380.FBWA380RmpForm(announcer, a380rmp, simConnectManager);

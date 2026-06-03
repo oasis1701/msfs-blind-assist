@@ -159,7 +159,7 @@ INSIDE THE RADIO MANAGEMENT PANEL (RMP) WINDOW (Ctrl+Shift+R opens it)
   Alt+1 / 2 / 3    Swap that radio's active and standby (the right keys; manual)
                    (or F1/2/3 = select, F7/8/9 = swap, with alternate MCDU keys on)
   Pages (also buttons in the Tab order):
-  Alt+V            VHF page          Alt+Q   Transponder (SQWK) page
+  Alt+V            VHF page          Alt+T   Transponder (SQWK) page
                    (HF / TEL / NAV / MENU are not modelled by FBW — those do nothing)
   Alt+C            Fully clear the entry (resets a stuck entry)
   Alt+Home         Jump back to the screen (e.g. from a page button)
