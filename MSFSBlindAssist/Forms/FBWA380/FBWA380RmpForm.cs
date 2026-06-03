@@ -296,7 +296,11 @@ public sealed class FBWA380RmpForm : Form
         _message = msgRow.Length > 0 ? msgRow.Substring("Message: ".Length) : "";
 
         if (_firstScrape) { _lastAnnouncedStandby = _standby; _lastAnnouncedMessage = _message; _firstScrape = false; }
-        else ScheduleAnnounce();
+        // Only (re)start the debounce when there is genuinely something NEW to announce. Calling
+        // it on every poll restarted the timer each tick — and with the 300 ms poll equal to the
+        // 300 ms debounce, any screen flicker kept resetting it so it never fired (no announcements
+        // at all). Now the timer fires 300 ms after the LAST real standby/message change.
+        else if (_standby != _lastAnnouncedStandby || _message != _lastAnnouncedMessage) ScheduleAnnounce();
     }
 
     // Debounced announce (mirrors the MCDU scratchpad): once the dust settles, speak the

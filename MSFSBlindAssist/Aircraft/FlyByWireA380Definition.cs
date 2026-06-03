@@ -2066,7 +2066,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         var normOff = new Dictionary<double, string> { [0] = "Normal", [1] = "Off" };
         Sel("A32NX_GPWS_SYS_OFF", "GPWS System", normOff);
         Sel("A32NX_GPWS_GS_OFF", "GPWS Glideslope Mode", normOff);
-        Sel("A32NX_GPWS_FLAP_OFF", "GPWS Flap Mode", normOff);
+        Sel("A32NX_GPWS_FLAPS_OFF", "GPWS Flap Mode", normOff);
         Sel("A32NX_GPWS_TERR_OFF", "GPWS Terrain", normOff);
         Sel("A32NX_GPWS_FLAPS3", "Landing Flap 3", new Dictionary<double, string> { [0] = "Off", [1] = "On" });
         OnOff("A32NX_GPWS_TEST", "GPWS Test");   // HOLD self-test: On runs the test audio, Off ends it
@@ -2800,7 +2800,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         });
         p["GPWS"] = new List<string>
         {
-            "A32NX_GPWS_SYS_OFF", "A32NX_GPWS_GS_OFF", "A32NX_GPWS_FLAP_OFF",
+            "A32NX_GPWS_SYS_OFF", "A32NX_GPWS_GS_OFF", "A32NX_GPWS_FLAPS_OFF",
             "A32NX_GPWS_TERR_OFF", "A32NX_GPWS_FLAPS3", "A32NX_GPWS_TEST"
         };
         // "PFD" is NOT a navigable control panel — it's the variable set the PFD
