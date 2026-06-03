@@ -50,6 +50,8 @@ public class HotkeyManager : IDisposable
         private const int HOTKEY_TOGGLE_LOC = 9231;    // Ctrl+L (Localizer)   — input mode
         private const int HOTKEY_FCU_VSFPA = 9029;
         private const int HOTKEY_APPROACH_CAPABILITY = 9030;
+        private const int HOTKEY_LANDING_RATE = 9240;     // Ctrl+Shift+R (last landing rate)  — output mode
+        private const int HOTKEY_LANDING_PEAK_G = 9241;   // Ctrl+Shift+G (last landing g-force) — output mode
 
         // FCU push/pull hotkey IDs
         private const int HOTKEY_FCU_HDG_PUSH = 9031;
@@ -289,6 +291,12 @@ public class HotkeyManager : IDisposable
                             break;
                         case HOTKEY_MACH_SPEED:
                             TriggerHotkey(HotkeyAction.ReadMachSpeed);
+                            break;
+                        case HOTKEY_LANDING_RATE:
+                            TriggerHotkey(HotkeyAction.ReadLastLandingRate);
+                            break;
+                        case HOTKEY_LANDING_PEAK_G:
+                            TriggerHotkey(HotkeyAction.ReadLastLandingPeakG);
                             break;
                         case HOTKEY_VERTICAL_SPEED:
                         case HOTKEY_HANDFLY_VERTICAL_SPEED:
@@ -684,6 +692,8 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_SIMBRIEF_BRIEFING, MOD_SHIFT, 0x42); // Shift+B (SimBrief Briefing)
             RegisterHotKey(windowHandle, HOTKEY_DISTANCE_TO_TOD, MOD_SHIFT, 0x44); // Shift+D (Distance to TOD)
             RegisterHotKey(windowHandle, HOTKEY_APPROACH_CAPABILITY, MOD_CONTROL, 0x30); // Ctrl+0 (Approach Capability)
+            RegisterHotKey(windowHandle, HOTKEY_LANDING_RATE, MOD_CONTROL | MOD_SHIFT, 0x52);   // Ctrl+Shift+R (Last Landing Rate)
+            RegisterHotKey(windowHandle, HOTKEY_LANDING_PEAK_G, MOD_CONTROL | MOD_SHIFT, 0x47);  // Ctrl+Shift+G (Last Landing Peak G)
 
             // Register speed tape hotkeys
             RegisterHotKey(windowHandle, HOTKEY_SPEED_GD, MOD_SHIFT, 0x31);      // Shift+1 (O Speed)
@@ -793,6 +803,8 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_DISTANCE_TO_TOD);
             UnregisterHotKey(windowHandle, HOTKEY_NAV_RADIO_INFO);
             UnregisterHotKey(windowHandle, HOTKEY_APPROACH_CAPABILITY);
+            UnregisterHotKey(windowHandle, HOTKEY_LANDING_RATE);
+            UnregisterHotKey(windowHandle, HOTKEY_LANDING_PEAK_G);
 
             // Unregister speed tape hotkeys
             UnregisterHotKey(windowHandle, HOTKEY_SPEED_GD);
@@ -1207,6 +1219,8 @@ public class HotkeyManager : IDisposable
         ReadAirspeedTrue,
         ReadGroundSpeed,
         ReadMachSpeed,
+        ReadLastLandingRate,
+        ReadLastLandingPeakG,
         ReadVerticalSpeed,
         ReadHeadingMagnetic,
         ReadHeadingTrue,

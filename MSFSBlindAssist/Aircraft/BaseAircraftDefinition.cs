@@ -94,6 +94,30 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true
             },
+            // Vertical g-force — fed continuously to the LandingRateAnnouncer so it can capture
+            // the PEAK g of a touchdown (the ReadLastLandingPeakG output hotkey). Not announced
+            // on its own (MainForm routes it to the announcer and suppresses the generic call-out).
+            ["G_FORCE"] = new SimConnect.SimVarDefinition
+            {
+                Name = "G FORCE",
+                DisplayName = "G Force",
+                Type = SimConnect.SimVarType.SimVar,
+                Units = "GForce",
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = false
+            },
+            // Touchdown vertical speed — the sim latches this at touchdown and it persists until
+            // the next landing, so the ReadLastLandingRate output hotkey reads it straight from
+            // the cache (×60 → fpm). Continuous so it's always in the cache; not announced.
+            ["PLANE_TOUCHDOWN_NORMAL_VELOCITY"] = new SimConnect.SimVarDefinition
+            {
+                Name = "PLANE TOUCHDOWN NORMAL VELOCITY",
+                DisplayName = "Touchdown Vertical Speed",
+                Type = SimConnect.SimVarType.SimVar,
+                Units = "feet per second",
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = false
+            },
 
             // Glideslope signal - monitors NAV1 glideslope alive/lost transitions
             ["MON_GlideSlopeAlive"] = new SimConnect.SimVarDefinition

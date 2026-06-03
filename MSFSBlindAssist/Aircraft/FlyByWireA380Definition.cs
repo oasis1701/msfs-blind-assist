@@ -2426,7 +2426,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             {
                 "Engines", "Thrust Levers", "Flaps and Brakes", "Speed Brake", "ECAM Control Panel", "Weather Radar",
                 "Transponder", "Radios", "RMP", "Radio Management Panel", "Audio Control Panel Captain", "Audio Control Panel First Officer",
-                "Cockpit Door", "Windows and Shades", "Cockpit"
+                "Cockpit"
             },
             // All ground-related panels live under one category (doors, equipment, pushback/
             // presets) — the old standalone "Ground" panel under Displays was confusing.
@@ -2542,28 +2542,31 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "A32NX_CABIN_READY",
             "PUSH_OVHD_CALLS_ALL", "PUSH_OVHD_CALLS_FWD", "PUSH_OVHD_CALLS_AFT", "PUSH_OVHD_CALLS_MECH"
         };
-        // Cockpit sliding windows + sunshades (settable).
-        p["Windows and Shades"] = new List<string>
-        {
-            "CPT_SLIDING_WINDOW", "FO_SLIDING_WINDOW",
-            "SUNSHADE_CPT_OPENING", "SUNSHADE_FO_OPENING",
-            // Windshield sunshades as accessible sliders (0-100% drag axis).
-            "SUNSHADE_FWD_LH", "SUNSHADE_FWD_CTR", "SUNSHADE_FWD_RH",
-            "AFT_LH_SUNSHADE_OPENING", "AFT_RH_SUNSHADE_OPENING"
-        };
-        // Cockpit comfort/misc openables (oxygen panels, tables, footrests, LG-pins door).
+        // UNIFIED Cockpit panel — the cockpit door, the sliding windows + shades, and the
+        // openable cockpit panels/seats are now one organized group (was three separate panels:
+        // "Cockpit Door", "Windows and Shades", "Cockpit"). Ordered: door → windows → shades →
+        // openable panels → seats/armrests.
         p["Cockpit"] = new List<string>
         {
+            // ---- Door ----
+            "A32NX_COCKPIT_DOOR_LOCKED", "A32NX_OVHD_COCKPITDOORVIDEO_TOGGLE",
+            // ---- Sliding windows ----
+            "CPT_SLIDING_WINDOW", "FO_SLIDING_WINDOW",
+            // ---- Sunshades / visors (accessible 0-100% drag sliders) ----
+            "SUNSHADE_CPT_OPENING", "SUNSHADE_FO_OPENING",
+            "SUNSHADE_FWD_LH", "SUNSHADE_FWD_CTR", "SUNSHADE_FWD_RH",
+            "AFT_LH_SUNSHADE_OPENING", "AFT_RH_SUNSHADE_OPENING",
+            "CPT_SMALL_SHADE", "FO_SMALL_SHADE",
+            // ---- Openable cockpit panels (oxygen, tables, footrests, LG-pins door) ----
             "CPT_OXY_FWD_OPENING", "AFT_OXY_OPENING",
             "A380_CPT_TABLE", "A380_FO_TABLE",
             "A380_CPT_FOOTREST", "A380_FO_FOOTREST",
             "A380_LGPIN_DOOR",
-            // Crew seats + armrests + forward visors as accessible sliders (drag axes).
+            // ---- Crew seats + armrests (accessible drag sliders) ----
             "SEAT_CPT_MOVE_FWD_AFT", "SEAT_CPT_MOVE_UP_DOWN",
             "SEAT_FO_MOVE_FWD_AFT", "SEAT_FO_MOVE_UP_DOWN",
             "BIGARMREST_CPT_UP_DOWN", "BIGARMREST_CPT_TILT", "SMALLARMREST_CPT_FWD",
-            "BIGARMREST_FO_UP_DOWN", "BIGARMREST_FO_TILT", "SMALLARMREST_FO_FWD",
-            "CPT_SMALL_SHADE", "FO_SMALL_SHADE"
+            "BIGARMREST_FO_UP_DOWN", "BIGARMREST_FO_TILT", "SMALLARMREST_FO_FWD"
         };
         p["Signs"] = new List<string>
         {
@@ -2594,7 +2597,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         p["Recorder and Misc"] = new List<string>
         {
             "A32NX_RCDR_GROUND_CONTROL_ON", "A32NX_ELT_ON", "A32NX_AVIONICS_COMPLT_ON",
-            "A380X_OVHD_STORM_LT", "A32NX_OVHD_COCKPITDOORVIDEO_TOGGLE",
+            "A380X_OVHD_STORM_LT",   // cockpit door video moved to the unified p["Cockpit"]
             "A32NX_ACMS_TRIGGER_ON", "A32NX_CREW_HEAD_SET", "A32NX_SVGEINT_OVRD_ON",
             "A32NX_ENGMANSTARTALTN_TOGGLE", "A32NX_ENTERTAINMENT_CWS_OFF",
             "A32NX_ENTERTAINMENT_IFEC_OFF", "A380X_REMOTE_CB_CTRL",
@@ -2759,10 +2762,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "A380X_RMP_1_STATE", "A380X_RMP_2_STATE", "A380X_RMP_3_STATE"
         };
         p["Minimums"] = new List<string>();
-        // Cabin Ready is read-only (auto-announced via Mon) — surfaced as a status
-        // readout (d["Cockpit Door"], in the display section below), not a settable
-        // control. Cockpit Door lock IS settable.
-        p["Cockpit Door"] = new List<string> { "A32NX_COCKPIT_DOOR_LOCKED" };
+        // Cockpit Door lock + door video live in the unified p["Cockpit"] now (see above).
+        // Cabin Ready is read-only (auto-announced via Mon) — surfaced as a status readout in
+        // d["Cockpit"] (display section below), not a settable control.
 
         // ---- Ground Services (flyPad Ground page) ----
         // Doors: NO controls — it's a read-only STATUS DISPLAY panel (all 18 doors auto-announce
@@ -3057,7 +3059,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // Clock readouts (the chrono + elapsed-time fields shown read-only in the
         // Clock panel; the controls live in p["Clock"]).
         d["Clock"] = new List<string> { "A32NX_CHRONO_ELAPSED_TIME", "A32NX_CHRONO_ET_ELAPSED_TIME" };
-        d["Cockpit Door"] = new List<string> { "A32NX_CABIN_READY" };
+        d["Cockpit"] = new List<string> { "A32NX_CABIN_READY" };
         // ISIS standby-instrument snapshot (attitude/heading/speed/altitude/baro +
         // ILS), decoded in TryGetDisplayOverride. Standby simvars read in DEGREES on
         // the A380 (registered with "degrees" units), unlike the A320 (radians).

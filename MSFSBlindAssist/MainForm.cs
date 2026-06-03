@@ -72,6 +72,7 @@ public partial class MainForm : Form
     private HandFlyManager handFlyManager = null!;
     private VisualGuidanceManager visualGuidanceManager = null!;
     private MSFSBlindAssist.Services.GroundSpeedAnnouncer groundSpeedAnnouncer = null!;
+    private MSFSBlindAssist.Services.LandingRateAnnouncer landingRateAnnouncer = null!;
     private MSFSBlindAssist.Services.AltitudeCalloutAnnouncer altitudeCalloutAnnouncer = null!;
     private ElectronicFlightBagForm? electronicFlightBagForm;
     private TrackFixForm? trackFixForm;
@@ -303,6 +304,9 @@ public partial class MainForm : Form
         // variable, so callouts work in every phase (takeoff roll, landing rollout, taxi),
         // not just while taxi guidance is active.
         groundSpeedAnnouncer = new MSFSBlindAssist.Services.GroundSpeedAnnouncer(announcer);
+        // Captures the last landing's touchdown rate + peak g (the ReadLastLandingRate /
+        // ReadLastLandingPeakG output hotkeys). Fed by the always-on G FORCE var.
+        landingRateAnnouncer = new MSFSBlindAssist.Services.LandingRateAnnouncer();
         // 1,000-foot crossing callouts, fed by the always-on INDICATED ALTITUDE var.
         altitudeCalloutAnnouncer = new MSFSBlindAssist.Services.AltitudeCalloutAnnouncer(announcer);
 
@@ -781,6 +785,14 @@ public partial class MainForm : Form
             return true;
         }
 
+        // Feed g-force to the landing-rate tracker so it can capture the peak touchdown g
+        // inside the post-touchdown window (the ReadLastLandingPeakG hotkey). Not announced.
+        if (e.VarName == "G_FORCE")
+        {
+            landingRateAnnouncer.ProcessG(e.Value);
+            return true;
+        }
+
         // Handle takeoff assist toggle activation (receives position from RequestPositionForTakeoffAssist)
         if (e.VarName == "POSITION_FOR_TAKEOFF_ASSIST")
         {
@@ -934,6 +946,15 @@ public partial class MainForm : Form
             if (justTouchedDown && visualGuidanceManager.IsActive)
             {
                 visualGuidanceManager.Toggle();
+            }
+
+            // Open the peak-g capture window at the touchdown edge, seeded with the g at contact,
+            // so the ReadLastLandingPeakG hotkey reports the impact spike. The landing RATE itself
+            // is read live from the persistent PLANE_TOUCHDOWN_NORMAL_VELOCITY cache by its hotkey.
+            if (justTouchedDown)
+            {
+                landingRateAnnouncer.OnTouchdown(
+                    simConnectManager.GetCachedVariableValue("G_FORCE") ?? 1.0);
             }
 
             // Feed SIM_ON_GROUND transitions to the landing-exit planner so it
@@ -1688,6 +1709,35 @@ public partial class MainForm : Form
             case HotkeyAction.ReadMachSpeed:
                 simConnectManager.RequestMachSpeed();
                 break;
+            case HotkeyAction.ReadLastLandingRate:
+            {
+                // Read straight from the persistent touchdown-velocity cache (ft/s × 60 = fpm).
+                // The value is latched by the sim at touchdown and survives until the next landing.
+                double? td = simConnectManager.GetCachedVariableValue("PLANE_TOUCHDOWN_NORMAL_VELOCITY");
+                if (td.HasValue && System.Math.Abs(td.Value) > 0.01)
+                {
+                    int fpm = (int)System.Math.Round(System.Math.Abs(td.Value) * 60.0);
+                    announcer.AnnounceImmediate($"Landing rate {fpm} feet per minute.");
+                }
+                else
+                {
+                    announcer.AnnounceImmediate("No landing recorded this session.");
+                }
+                break;
+            }
+            case HotkeyAction.ReadLastLandingPeakG:
+            {
+                double? g = landingRateAnnouncer.LastPeakG;
+                if (g.HasValue)
+                {
+                    announcer.AnnounceImmediate($"Landing g-force {g.Value:F2} g.");
+                }
+                else
+                {
+                    announcer.AnnounceImmediate("No landing recorded this session.");
+                }
+                break;
+            }
             case HotkeyAction.ReadVerticalSpeed:
                 simConnectManager.RequestVerticalSpeed();
                 break;
