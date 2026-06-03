@@ -1075,6 +1075,17 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                     };
                 }
 
+        // ---- Situational-awareness auto-announces (status enums; batch-covered, so no
+        // SimConnect-def cost). These announce on change and appear in the Ctrl+M monitor.
+        // TCAS surveillance mode + system fault; FMA speed-protection + mode-reversion. ----
+        Mon("A32NX_TCAS_MODE", "TCAS Mode", new Dictionary<double, string>
+            { [0] = "standby", [1] = "traffic advisory only", [2] = "traffic and resolution advisories" });
+        ReadEnum("A32NX_TCAS_FAULT", "TCAS Fault", new Dictionary<double, string> { [0] = "normal", [1] = "fault" });
+        Mon("A32NX_FMA_SPEED_PROTECTION_MODE", "Speed Protection",
+            new Dictionary<double, string> { [0] = "off", [1] = "active" });
+        Mon("A32NX_FMA_MODE_REVERSION", "FMA Reversion",
+            new Dictionary<double, string> { [0] = "none", [1] = "mode reversion" });
+
         // ---- Thrust levers (detent combos) ----
         // Command a thrust-lever detent from a combo. The write is intercepted in
         // HandleUIVariableSet, which fires THROTTLEn_AXIS_SET_EX1 with the detent's
@@ -4621,7 +4632,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                                           "A32NX_AUTOTHRUST_THRUST_LIMIT_IDLE", "A32NX_AUTOTHRUST_THRUST_LIMIT_TOGA",
                                           // BLEED line consumers + AGS word for PACKS.
                                           "A32NX_PNEU_WING_ANTI_ICE_SYSTEM_ON", "A32NX_COND_CPIOM_B1_AGS_DISCRETE_WORD",
-                                          "ENG_ANTI_ICE:1", "ENG_ANTI_ICE:2", "ENG_ANTI_ICE:3", "ENG_ANTI_ICE:4" })
+                                          "ENG_ANTI_ICE:1", "ENG_ANTI_ICE:2", "ENG_ANTI_ICE:3", "ENG_ANTI_ICE:4",
+                                          // Autothrust mode message + inboard reversers (eng 2/3).
+                                          "A32NX_AUTOTHRUST_MODE_MESSAGE", "A32NX_AUTOTHRUST_REVERSE:2", "A32NX_AUTOTHRUST_REVERSE:3" })
                     simConnect.RequestVariable(g, forceUpdate: true);
                 await Task.Delay(550);
 
@@ -4674,6 +4687,14 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                     "Fuel Flow: "   + Grp("A32NX_ENGINE_FF:{0}",  v => $"{v:0} kg/h"),
                     "Engine state: "+ Grp("A32NX_ENGINE_STATE:{0}", EngState),
                 };
+                // Autothrust mode message (the amber/white E/WD memo above the thrust gauges):
+                // THR LK / LVR TOGA / LVR CLB / LVR MCT / LVR ASYM.
+                string[] athrMsgs = { "", "THR LK", "LVR TOGA", "LVR CLB", "LVR MCT", "LVR ASYM" };
+                int athrMsg = (int)Math.Round(simConnect.GetCachedVariableValue("A32NX_AUTOTHRUST_MODE_MESSAGE") ?? 0);
+                if (athrMsg >= 1 && athrMsg < athrMsgs.Length) ewdLines.Add("Autothrust message: " + athrMsgs[athrMsg]);
+                // Inboard thrust reversers (engines 2 & 3 on the A380).
+                var revOn = new[] { 2, 3 }.Where(e => (simConnect.GetCachedVariableValue($"A32NX_AUTOTHRUST_REVERSE:{e}") ?? 0) > 0.5).ToList();
+                if (revOn.Count > 0) ewdLines.Add("Reverser: " + string.Join(" and ", revOn.Select(e => $"engine {e}")) + " deployed");
                 // BLEED line — what's drawing engine bleed air (PACKS / nacelle anti-ice / wing
                 // anti-ice), the FBW upper-E/WD BleedSupply element.
                 var bleed = new List<string>();
