@@ -1276,7 +1276,7 @@
       var m = mfd.fsInstrument.fmcService.master;
       var gc = m && m.guidanceController;
       if (!gc) return JSON.stringify({ ok: false, error: "no guidance" });
-      var info = { ok: true, distToDest: null, distToTD: null, distToTC: null };
+      var info = { ok: true, distToDest: null, distToTD: null, distToTC: null, timeToTD: null, timeToTC: null };
       var map = gc.alongTrackDistancesToDestination;
       var dtd = (map && map.get) ? map.get(0) : null;        // 0 = active plan
       if (typeof dtd === "number" && isFinite(dtd)) info.distToDest = dtd;
@@ -1308,8 +1308,13 @@
         if (typeof dfs !== "number" || !isFinite(dfs) || info.distToDest == null || total == null) continue;
         var toGo = info.distToDest - (total - dfs);
         if (!isFinite(toGo)) continue;
-        if (id.indexOf("T/D") >= 0 || id.indexOf("DECEL") >= 0) { if (info.distToTD == null) info.distToTD = toGo; }
-        else if (id.indexOf("T/C") >= 0) { if (info.distToTC == null) info.distToTC = toGo; }
+        // FMS's own time-to-go (seconds) for this pseudo-waypoint, from its
+        // VerticalWaypointPrediction — accounts for the descent/decel/wind profile,
+        // so it beats distance/ground-speed (live-verified on the T/D). null until computed.
+        var fpi = pw[p].flightPlanInfo;
+        var secs = (fpi && typeof fpi.secondsFromPresent === "number" && isFinite(fpi.secondsFromPresent)) ? fpi.secondsFromPresent : null;
+        if (id.indexOf("T/D") >= 0 || id.indexOf("DECEL") >= 0) { if (info.distToTD == null) { info.distToTD = toGo; info.timeToTD = secs; } }
+        else if (id.indexOf("T/C") >= 0) { if (info.distToTC == null) { info.distToTC = toGo; info.timeToTC = secs; } }
       }
       return JSON.stringify(info);
     } catch (e) { return JSON.stringify({ ok: false, error: (e && e.message) ? e.message : String(e) }); }
