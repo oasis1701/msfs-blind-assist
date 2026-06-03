@@ -1782,8 +1782,12 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         OnOff("A32NX_ISIS_BARO_UNIT_INHG", "ISIS Baro in inHg");
 
         // Brakes.
-        OnOff("A32NX_BRAKE_FAN_BTN_PRESSED", "Brake Fan", button: true);
-        ReadEnum("A32NX_BRAKE_FAN_RUNNING", "Brake Fan Running", new Dictionary<double, string> { [0] = "Off", [1] = "Running" });
+        // NOTE: the BRAKE FAN is NOT modelled on the FBW A380 dev build — all four brake
+        // assemblies pass `None` for the brake-fan electrical bus (a `// TODO` in
+        // a380x .../hydraulic/mod.rs), so `A32NX_BRAKE_FAN_RUNNING` is hardwired to 0 and
+        // pressing `A32NX_BRAKE_FAN_BTN_PRESSED` does nothing (live-verified: writing the
+        // button = 1 left RUNNING at 0). The control + RUNNING readout were therefore removed
+        // (they presented a dead button); BRAKES HOT is real (written from brake temperature).
         ReadEnum("A32NX_BRAKES_HOT", "Brakes Hot", new Dictionary<double, string> { [0] = "Normal", [1] = "HOT" });
         // Autobrake DECEL light — illuminates while the autobrake is achieving its target
         // deceleration on the rollout. Auto-announced on change.
@@ -2696,7 +2700,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         });
         p["Hydraulics"].Add("A32NX_OVHD_HYD_PTU_PB_IS_AUTO");
         p["Ventilation"].AddRange(new[] { "A32NX_VENTILATION_BLOWER_TOGGLE", "A32NX_VENTILATION_EXTRACT_TOGGLE" });
-        p["Autobrake"].Add("A32NX_BRAKE_FAN_BTN_PRESSED");
+        // (Brake Fan control removed — not modelled on the A380 dev build; see the Brakes section.)
         p["Recorder and Misc"].AddRange(new[]
         {
             "A32NX_RCDR_TEST", "A32NX_ELT_TEST_RESET", "A32NX_DFDR_EVENT_ON",
@@ -2928,7 +2932,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // ---- A32NX shared gap readouts ----
         d["Autobrake"].AddRange(new[]
         {
-            "A32NX_BRAKE_FAN_RUNNING", "A32NX_BRAKES_HOT",
+            "A32NX_BRAKES_HOT",
             "A32NX_HYD_BRAKE_NORM_LEFT_PRESS", "A32NX_HYD_BRAKE_NORM_RIGHT_PRESS",
             "A32NX_HYD_BRAKE_ALTN_LEFT_PRESS", "A32NX_HYD_BRAKE_ALTN_RIGHT_PRESS", "A32NX_HYD_BRAKE_ALTN_ACC_PRESS"
         });
