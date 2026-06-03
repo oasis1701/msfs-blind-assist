@@ -145,6 +145,18 @@ at a time, verify live, delete the line.
 - [ ] **RMP transmit selectors** — A380-only (`A380X_RMP_*`). The A320 RMP is different (`A32NX_RMP_*` or
   the legacy ACP); **verify the A320 RMP/ACP var scheme** before porting transmit selects.
 
+### G7. "Implement the do-not-chase list" round (2026-06-03) — port the real ones
+- [ ] **EHA buses** (`A32NX_ELEC_AC/DC_EHA_BUS_IS_POWERED` + contactors 911XN/911XH/14PH/970PN2) into
+  the A320 ELEC SD readouts — the A320 EHA architecture differs (verify which contactors exist).
+- [ ] **Autoland capability** (LAND2 / LAND3 SINGLE / LAND3 DUAL) — decode from the FCDC FG discrete
+  word 4 (`A32NX_FCDC_1_FG_DISCRETE_WORD_4`, bits 23/24/25). Shared FCDC scheme — verify on A320.
+- [ ] **SD display constants** (oxygen 1829/1854 PSI, tire 220, nacelle 240, wing-accu 4800) — the
+  A320 SD hardcodes its own equivalents; surface to match its display.
+- [ ] **ACCESSIBLE SLIDERS** — the `RenderAsSlider` TrackBar control type is in the SHARED framework
+  (MainForm + SimVarDefinition), so it's already available to the A320. Apply it to the A320's own
+  0..100 drag-axis comfort items (sunshades/seats — re-map the A320 `interactive-parts.xml` names)
+  and consider speedbrake/trims.
+
 ### G6. Correctness
 - [ ] **B1→B4 CPCS** best-source for PRESS/CRUISE — A320 has a different pressurization system (single CPC,
   no B1-B4 CPIOM). **Likely N/A** — verify; the A320 may already be correct with its single source.
@@ -206,8 +218,20 @@ ASU/SATCOM/ACARS/DLS/printer (EFB-side), **ANP on ND** (FBW publishes only RNP),
 ATT-10s flag (JS-only), PFD autoland-capability (FCDC discrete words — not yet decoded), MFD FMS
 PERF/FUEL&LOAD computed results (no SimVars — reachable via the existing MFD page scrape), ND
 FM/TCAS/WXR message lines + RWY-AHEAD QFU text (reachable via the ND form's F6 live scrape). The
-0..100 drag-axis comfort items (seats/armrests/forward visors) stay intentionally skipped as panel
-clutter.
+0..100 drag-axis comfort items (forward/aft sunshades, captain/FO seats) are now exposed as
+**accessible sliders** (the new `RenderAsSlider` TrackBar — see G7), no longer skipped.
+
+"IMPLEMENT THE DO-NOT-CHASE LIST" round (2026-06-03) — genuinely attempted every item, build after
+each. IMPLEMENTED (were real after all): EHA buses+contactors, autoland capability (FCDC), the SD
+display constants (oxygen/tire/nacelle/wing-accu, surfaced to match the real SD), and the accessible
+sliders for the comfort drag-axes. CONFIRMED NOT MODELLED via FBW source (do-not-chase, source-cited
+this time): brake fan (None bus), body-wheel-steering / A-SKID / BRK-STEER-LG-CTL computer status
+(no L-vars anywhere), CIDS/cabin status, OIS/OIT terminal, wing flex. DEFERRED (real features, not
+quick adds): seat-belt sign AUTO position (the 3-pos L-var write now STICKS, but AUTO has no distinct
+functional bool state — it's a cosmetic switch position; the working On/Off control drives the real
+sign, so left as-is); **HF / RMP frequency entry** (no settable freq L-var — the FBW A380 tunes via
+the RMP touchscreen, so it needs a Coherent RMP-scrape/interaction client like the MFD; the single
+genuine remaining operable-control gap).
 
 NON-DISPLAY FEATURE AUDIT (2026-06-03, 4 agents: overhead/systems, autoflight/protections/warnings,
 pedestal/comms/MFD/flyPad/ground, A380-specific). Verdict: coverage is strong-to-comprehensive.
