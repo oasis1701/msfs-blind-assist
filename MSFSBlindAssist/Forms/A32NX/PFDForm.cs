@@ -227,7 +227,23 @@ public partial class PFDForm : Form
 
             data.AppendLine("APPROACH & NAVIGATION");
             data.AppendLine($"Approach Capability: {GetVariableValue("A32NX_APPROACH_CAPABILITY")}");
-            data.AppendLine($"Linear Deviation: {GetVariableValue("A32NX_PFD_LINEAR_DEVIATION_ACTIVE")}");
+            // Vertical deviation (V/DEV): the FMS linear deviation = current altitude
+            // minus the vertical-profile target altitude. Only meaningful while it is
+            // active (managed climb/descent / FINAL APP); read from the live cache so it
+            // tracks the PFD. (The bare "active" flag alone wasn't useful.)
+            bool vdevActive = (_simConnectManager?.GetCachedVariableValue("A32NX_PFD_LINEAR_DEVIATION_ACTIVE") ?? 0) > 0.5;
+            if (vdevActive)
+            {
+                double? tgt = _simConnectManager?.GetCachedVariableValue("A32NX_PFD_TARGET_ALTITUDE");
+                double? alt = _simConnectManager?.GetCachedVariableValue("INDICATED ALTITUDE");
+                if (tgt.HasValue && alt.HasValue && tgt.Value != 0)
+                {
+                    double dev = alt.Value - tgt.Value;
+                    data.AppendLine($"Vertical deviation (V/DEV): {Math.Abs(dev):0} feet {(dev >= 0 ? "above" : "below")} profile");
+                }
+                else data.AppendLine("Vertical deviation (V/DEV): active");
+            }
+            else data.AppendLine("Vertical deviation (V/DEV): not active");
             data.AppendLine($"FMGC L/DEV Request: {GetVariableValue("A32NX_FMGC_L_LDEV_REQUEST")}");
             data.AppendLine();
 

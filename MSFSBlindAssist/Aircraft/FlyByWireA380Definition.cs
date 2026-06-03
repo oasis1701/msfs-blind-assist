@@ -1725,6 +1725,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Mon("A32NX_FMA_LATERAL_ARMED", "Armed Lateral Modes", new Dictionary<double, string>());
         Read("A32NX_FMA_CRUISE_ALT_MODE", "Cruise Altitude Mode");
         Read("A32NX_PFD_LINEAR_DEVIATION_ACTIVE", "Linear Deviation Active");
+        // FMS vertical-profile target altitude at the current position — the basis for
+        // the PFD linear (V/DEV) deviation: deviation = current altitude − this, shown
+        // only while LINEAR_DEVIATION_ACTIVE (managed climb/descent / FINAL APP).
+        Read("A32NX_PFD_TARGET_ALTITUDE", "Vertical Profile Target Altitude", "feet");
         // FBW exposes the lateral-deviation request as _L_/_R_ (per FMGC), NOT _1_ — the _1_
         // name does not exist in source and always read 0. Use the captain's (_L_).
         Read("A32NX_FMGC_L_LDEV_REQUEST", "FMGC L DEV Request");
@@ -3080,7 +3084,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "PLANE PITCH DEGREES", "PLANE BANK DEGREES", "PLANE HEADING DEGREES MAGNETIC",
             "AIRSPEED INDICATED", "INDICATED ALTITUDE",
             "A32NX_PFD_MSG_SET_HOLD_SPEED", "A32NX_PFD_MSG_TD_REACHED",
-            "A32NX_PFD_MSG_CHECK_SPEED_MODE", "A32NX_PFD_LINEAR_DEVIATION_ACTIVE",
+            "A32NX_PFD_MSG_CHECK_SPEED_MODE", "A32NX_PFD_LINEAR_DEVIATION_ACTIVE", "A32NX_PFD_TARGET_ALTITUDE",
             // Source-confirmed PFD additions: weight/CG, takeoff V-speeds, Mach, track, ILS.
             "PFD_GROSS_WEIGHT", "A32NX_AIRFRAME_GW_CG_PERCENT_MAC",
             "PFD_V1", "PFD_VR", "PFD_V2", "PFD_MACH", "PFD_TRACK",
