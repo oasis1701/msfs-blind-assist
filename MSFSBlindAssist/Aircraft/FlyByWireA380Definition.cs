@@ -4368,6 +4368,26 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         s.ExecuteCalculatorCode($"(>H:RMP_{rmp}_{key}_RELEASED)");
     }
 
+    /// <summary>Press a single RMP keypad key WITHOUT releasing it. Pair with
+    /// <see cref="SendRmpKeyRelease"/> — used by the RMP window to HOLD the Clear key: held for
+    /// &gt;1 s the FBW RMP does a FULL scratchpad clear (vs a single-digit backspace on a tap).
+    /// A full clear is REQUIRED before typing a new frequency, because an invalid scratchpad entry
+    /// blocks all further digits (<c>VhfComController.onDigitEntered</c> early-returns when invalid).</summary>
+    public void SendRmpKeyPress(int rmp, string key, SimConnectManager s)
+    {
+        if (s == null || !s.IsConnected) return;
+        if (rmp != 1 && rmp != 2) rmp = 1;
+        s.ExecuteCalculatorCode($"(>H:RMP_{rmp}_{key}_PRESSED)");
+    }
+
+    /// <summary>Release a single RMP keypad key (the up half of <see cref="SendRmpKeyPress"/>).</summary>
+    public void SendRmpKeyRelease(int rmp, string key, SimConnectManager s)
+    {
+        if (s == null || !s.IsConnected) return;
+        if (rmp != 1 && rmp != 2) rmp = 1;
+        s.ExecuteCalculatorCode($"(>H:RMP_{rmp}_{key}_RELEASED)");
+    }
+
     // ===================================================================
     // FCU — ported from the A320 integration (same SET events; A380 readout
     // vars). Set dialogs send A32NX.FCU_*_SET; reads request value + managed

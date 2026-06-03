@@ -1,3 +1,4 @@
+using System.Linq;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.SimConnect;
@@ -13,12 +14,14 @@ namespace MSFSBlindAssist.Forms.FBWA380;
 /// transmit/selected markers, the transponder and the message line as a list the user walks
 /// with the UP/DOWN arrows.
 ///
-/// Input is by a single FREQUENCY edit field (type the digits + Enter and MSFSBA fires the
-/// keypad digit H-events — the FBW RMP auto-completes, so "8" → 118.000, "11850" → 118.500),
-/// plus a small set of action buttons that fire the real cockpit keypad H-events: the page
-/// selectors (VHF/HF/TEL/SQWK), the per-row line keys (VHF 1/2/3 = select the row, press again
-/// to load the typed standby), the swap keys (swap active/standby) and Clear. Captain ↔ First
-/// Officer is a combo that re-points the scrape and the H-event index.
+/// To tune: pick the radio (Select 1/2/3), type the frequency (digits only — the FBW RMP
+/// auto-completes, so "8" → 118.000, "11850" → 118.500) and press Enter / Set standby, or
+/// Set active to set-and-swap in one step. Each of these runs the FULL real sequence MSFSBA
+/// verified the RMP needs: HOLD Clear for a full scratchpad clear (an invalid leftover entry
+/// otherwise blocks all digits), type the digit H-events, LSK to LOAD the standby, then ADK to
+/// SWAP it active. Swap/Clear and the page selectors (VHF/HF/TEL/SQWK/NAV/MENU) and the standby
+/// mode Up/Down are also buttons. Captain ↔ First Officer is a combo that re-points the scrape
+/// and the H-event index. The result is announced as a live region as it commits.
 /// </summary>
 public sealed class FBWA380RmpForm : Form
 {
@@ -37,6 +40,11 @@ public sealed class FBWA380RmpForm : Form
     private bool _firstScrape = true;
     private string _lastSelectedStandby = "";
     private string _lastMessage = "";
+
+    // The transceiver row the RMP currently has selected (0=row1/VHF1 … 2=row3/VHF3), scraped from
+    // the ", selected" marker. Frequency entry + swap act on this row's LSK_/ADK_ keys.
+    private int _selectedRowIndex;
+    private bool _busy;            // a tune sequence is in progress — block re-entry
 
     private ComboBox _side = null!;
     private ListBox _rows = null!;
@@ -91,27 +99,31 @@ public sealed class FBWA380RmpForm : Form
 
         var freqLabel = new Label
         {
-            Text = "&Frequency entry (type digits, Enter to type into the selected row):",
+            Text = "&Frequency for the selected radio (digits only, e.g. 11850 for 118.500):",
             Location = new Point(12, 356), Size = new Size(608, 22)
         };
         _freq = new TextBox
         {
             Location = new Point(12, 380), Size = new Size(200, 26),
-            AccessibleName = "Frequency entry — type digits then press Enter"
+            AccessibleName = "Frequency — digits only, then Enter to set standby"
         };
-        _freq.KeyDown += (s, e) =>
+        // Enter = Set standby (the realistic step). Tune the SELECTED radio's standby.
+        _freq.KeyDown += async (s, e) =>
         {
             if (e.KeyCode == Keys.Enter)
             {
                 e.SuppressKeyPress = true;
-                _def.SendRmpKeypad(_freq.Text, _rmp, _sim, _announcer);
-                _freq.SelectAll();
-                ScheduleRefresh();
+                await TuneSelected(makeActive: false);
             }
         };
 
+        var setStby = new Button { Text = "&Set standby", Location = new Point(220, 379), Size = new Size(110, 28), AccessibleName = "Set standby on the selected radio" };
+        setStby.Click += async (_, _) => await TuneSelected(makeActive: false);
+        var setActive = new Button { Text = "Set &active", Location = new Point(336, 379), Size = new Size(110, 28), AccessibleName = "Set active now on the selected radio (sets standby then swaps)" };
+        setActive.Click += async (_, _) => await TuneSelected(makeActive: true);
+
         // Action buttons fire the real cockpit keypad H-events on the selected RMP.
-        int x = 12, yPage = 416, yRow = 452, ySwap = 488;
+        int x = 12, yPage = 420, yRow = 456, ySwap = 492;
         AddKeyButton("&VHF", "VHF", ref x, yPage);
         AddKeyButton("&HF", "HF", ref x, yPage);
         AddKeyButton("&TEL", "TEL", ref x, yPage);
@@ -120,17 +132,15 @@ public sealed class FBWA380RmpForm : Form
         AddKeyButton("&MENU", "MENU", ref x, yPage);
 
         x = 12;
-        // LSK_n: first press selects row n, second press LOADS the typed standby into it.
-        AddKeyButton("VHF &1 (select / load)", "LSK_1", ref x, yRow, 150);
-        AddKeyButton("VHF &2 (select / load)", "LSK_2", ref x, yRow, 150);
-        AddKeyButton("VHF &3 (select / load)", "LSK_3", ref x, yRow, 150);
-        AddKeyButton("C&lear", "DIGIT_CLR", ref x, yRow, 90);
+        // Select which transceiver row the frequency entry + swap act on (page-agnostic: on the
+        // HF/TEL page these select the HF/TEL rows). Guarded so they only fire when not already selected.
+        AddSelectButton("Select &1", 0, ref x, yRow, 95);
+        AddSelectButton("Select &2", 1, ref x, yRow, 95);
+        AddSelectButton("Select &3", 2, ref x, yRow, 95);
+        AddActionButton("S&wap", () => SwapSelected(), ref x, yRow, 90);
+        AddActionButton("C&lear", () => { _ = FullClearAndRefresh(); }, ref x, yRow, 90);
 
         x = 12;
-        // ADK_n: first press selects row n, second press SWAPS active/standby.
-        AddKeyButton("S&wap 1", "ADK_1", ref x, ySwap, 95);
-        AddKeyButton("Swap &2", "ADK_2", ref x, ySwap, 95);
-        AddKeyButton("Swap 3", "ADK_3", ref x, ySwap, 95);
         AddKeyButton("&Up (mode)", "UP", ref x, ySwap, 110);
         AddKeyButton("&Down (mode)", "DOWN", ref x, ySwap, 110);
 
@@ -141,12 +151,13 @@ public sealed class FBWA380RmpForm : Form
 
         var help = new Label
         {
-            Location = new Point(232, 560), Size = new Size(388, 56),
-            Text = "Tip: pick the row (VHF 1/2/3), type the frequency + Enter, then\n" +
-                   "press that row again to load standby, then Swap to make it active."
+            Location = new Point(232, 556), Size = new Size(388, 64),
+            Text = "To tune: choose the radio (Select 1/2/3), type the frequency,\n" +
+                   "then Enter or Set standby. Use Set active to set it and swap to\n" +
+                   "active in one step, or Swap to swap standby and active."
         };
 
-        Controls.AddRange(new Control[] { sideLabel, _side, _status, _rows, freqLabel, _freq, refresh, close, help });
+        Controls.AddRange(new Control[] { sideLabel, _side, _status, _rows, freqLabel, _freq, setStby, setActive, refresh, close, help });
         CancelButton = close;
         Load += (_, _) => _rows.Focus();
     }
@@ -160,11 +171,100 @@ public sealed class FBWA380RmpForm : Form
         };
         b.Click += (_, _) =>
         {
+            if (_busy) return;
             _def.SendRmpKey(_rmp, key, _sim);
             ScheduleRefresh();
         };
         Controls.Add(b);
         x += width + 6;
+    }
+
+    private void AddActionButton(string label, Action onClick, ref int x, int y, int width = 90)
+    {
+        var b = new Button { Text = label, Location = new Point(x, y), Size = new Size(width, 30), AccessibleName = label.Replace("&", "") };
+        b.Click += (_, _) => { if (!_busy) onClick(); };
+        Controls.Add(b);
+        x += width + 6;
+    }
+
+    private void AddSelectButton(string label, int rowIndex, ref int x, int y, int width = 95)
+    {
+        var b = new Button { Text = label, Location = new Point(x, y), Size = new Size(width, 30), AccessibleName = $"Select radio {rowIndex + 1}" };
+        b.Click += (_, _) =>
+        {
+            if (_busy) return;
+            if (_selectedRowIndex == rowIndex) { _announcer?.Announce($"Radio {rowIndex + 1} already selected"); return; }
+            // LSK on a NOT-selected row selects it (it only loads when already selected).
+            _def.SendRmpKey(_rmp, $"LSK_{rowIndex + 1}", _sim);
+            ScheduleRefresh();
+        };
+        Controls.Add(b);
+        x += width + 6;
+    }
+
+    private void SwapSelected()
+    {
+        // ADK on the selected row swaps active/standby (it would only select if not selected).
+        _def.SendRmpKey(_rmp, $"ADK_{_selectedRowIndex + 1}", _sim);
+        ScheduleRefresh();
+    }
+
+    // Tune the SELECTED radio: FULL-clear any stuck entry, type the digits (the RMP auto-completes),
+    // LSK to load the standby, then optionally ADK to swap it active. This is the sequence the FBW
+    // RMP actually requires — a plain "type the digits" does nothing because an invalid scratchpad
+    // blocks input and an un-loaded entry is never committed (live-verified).
+    private async Task TuneSelected(bool makeActive)
+    {
+        if (_busy) return;
+        string digits = new string((_freq.Text ?? "").Where(char.IsDigit).ToArray());
+        if (digits.Length == 0) { _announcer?.Announce("Type a frequency first"); return; }
+
+        _busy = true;
+        _freq.Enabled = false;
+        _announcer?.Announce(makeActive ? "Setting active…" : "Setting standby…");
+        try
+        {
+            int row = _selectedRowIndex + 1;             // 1-based LSK/ADK
+            await FullClearAsync();
+            foreach (char c in digits)
+            {
+                _def.SendRmpKey(_rmp, $"DIGIT_{c}", _sim);
+                await Task.Delay(130);                   // let each digit (incl. repeats) register
+            }
+            await Task.Delay(120);
+            _def.SendRmpKey(_rmp, $"LSK_{row}", _sim);    // load the standby
+            await Task.Delay(350);
+            if (makeActive)
+            {
+                _def.SendRmpKey(_rmp, $"ADK_{row}", _sim); // swap standby <-> active
+                await Task.Delay(350);
+            }
+            _freq.Clear();
+            Apply(await _disp.ScrapeNowAsync());          // silent refresh; live region announces the result
+        }
+        catch { _announcer?.Announce("Radio entry failed"); }
+        finally { _busy = false; _freq.Enabled = true; _freq.Focus(); }
+    }
+
+    // HOLD the Clear key past the FBW 1-second timer so it does a FULL scratchpad clear (a tap is
+    // only a single-digit backspace). Required before typing — an invalid entry blocks all digits.
+    private async Task FullClearAsync()
+    {
+        try
+        {
+            _def.SendRmpKeyPress(_rmp, "DIGIT_CLR", _sim);
+            await Task.Delay(1150);
+        }
+        finally { _def.SendRmpKeyRelease(_rmp, "DIGIT_CLR", _sim); }
+        await Task.Delay(200);
+    }
+
+    private async Task FullClearAndRefresh()
+    {
+        if (_busy) return;
+        _busy = true;
+        try { await FullClearAsync(); Apply(await _disp.ScrapeNowAsync()); }
+        finally { _busy = false; }
     }
 
     private void StartScrape()
@@ -222,6 +322,16 @@ public sealed class FBWA380RmpForm : Form
         foreach (var r in rows) _rows.Items.Add(r);
         if (sel >= 0 && sel < _rows.Items.Count) _rows.SelectedIndex = sel;
         _rows.EndUpdate();
+
+        // Track which transceiver row the RMP has selected (its position among the "X: active …"
+        // rows), so the frequency entry + swap fire the correct LSK_/ADK_ index.
+        int tIdx = 0;
+        foreach (var r in rows)
+        {
+            if (r.IndexOf(": active ", System.StringComparison.Ordinal) < 0) continue;
+            if (r.IndexOf(", selected", System.StringComparison.Ordinal) >= 0) { _selectedRowIndex = tIdx; break; }
+            tIdx++;
+        }
 
         AnnounceChanges(rows);
     }
