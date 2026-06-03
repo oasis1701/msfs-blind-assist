@@ -31,10 +31,11 @@ public class FBWA380ISISForm : Form
         "PLANE PITCH DEGREES", "PLANE BANK DEGREES",
         "PLANE HEADING DEGREES MAGNETIC",
         "AIRSPEED INDICATED", "AIRSPEED MACH",
-        // The ISIS uses the STANDBY air-data source (index :3), shown in both hPa and
-        // inHg, plus body-X accel for the slip/skid ball — exactly what the real ISIS
-        // renders (these can differ from the PFD during an ADR fault).
-        "INDICATED ALTITUDE:3", "KOHLSMAN SETTING MB:3", "KOHLSMAN_SETTING_INHG_3",
+        // Altitude + baro shown in both hPa and inHg, plus body-X accel for the slip/skid
+        // ball. NOTE: uses the non-indexed simvars (NOT the standby `:3` source) — the
+        // stock `INDICATED ALTITUDE:3` name isn't a valid SimConnect data-def var and
+        // broke aircraft detection; the A320 ISIS reads non-indexed for the same reason.
+        "INDICATED ALTITUDE", "KOHLSMAN SETTING MB", "KOHLSMAN_SETTING_INHG",
         "ACCELERATION BODY X",
         "A32NX_ISIS_BARO_MODE", "A32NX_ISIS_LS_ACTIVE",
         // LS overlay deviations (only meaningful when LS is active) — the same
@@ -132,12 +133,12 @@ public class FBWA380ISISForm : Form
         int baroMode = (int)Math.Round(R("A32NX_ISIS_BARO_MODE"));
         string baroRef = baroMode == 1 ? "STD" : "QNH";
         sb.AppendLine("ALTITUDE");
-        sb.AppendLine($"  Indicated: {R("INDICATED ALTITUDE:3"):0} feet");
+        sb.AppendLine($"  Indicated: {R("INDICATED ALTITUDE"):0} feet");
         sb.AppendLine($"  Baro reference: {baroRef}");
         if (baroMode != 1)
         {
-            double hpa = R("KOHLSMAN SETTING MB:3");
-            double inHg = R("KOHLSMAN_SETTING_INHG_3");
+            double hpa = R("KOHLSMAN SETTING MB");
+            double inHg = R("KOHLSMAN_SETTING_INHG");
             sb.AppendLine($"  Baro setting: {hpa:0} hectopascals ({inHg:0.00} inHg)");
         }
         sb.AppendLine();

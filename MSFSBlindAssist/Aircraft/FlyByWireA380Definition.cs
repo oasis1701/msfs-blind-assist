@@ -929,13 +929,15 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Stock("AIRSPEED MACH", "AIRSPEED MACH", "Standby Mach", "mach");
         Stock("INDICATED ALTITUDE", "INDICATED ALTITUDE", "Standby Altitude", "feet");
         Stock("KOHLSMAN SETTING MB", "KOHLSMAN SETTING MB", "Standby Baro Setting", "millibars");
-        // The real ISIS reads its OWN air-data source (index :3 = the standby ADM), not
-        // the PFD/baro source. During an ADR fault these differ — the whole point of a
-        // standby instrument. So the ISIS window reads the :3 altitude + baro (and shows
-        // both hPa and inHg, like the real ISIS) plus body-X accel for the slip/skid ball.
-        Stock("INDICATED ALTITUDE:3", "INDICATED ALTITUDE:3", "Standby Altitude (ISIS)", "feet");
-        Stock("KOHLSMAN SETTING MB:3", "KOHLSMAN SETTING MB:3", "Standby Baro hPa (ISIS)", "millibars");
-        Stock("KOHLSMAN_SETTING_INHG_3", "KOHLSMAN SETTING MB:3", "Standby Baro inHg (ISIS)", "inHg");
+        // ISIS extras: baro in inHg (the non-indexed KOHLSMAN, shown alongside the hPa
+        // value the ISIS already reads) + body-X accel for the slip/skid ball.
+        // NOTE: deliberately NOT using the indexed `:3` standby air-data source. Although
+        // the real ISIS reads ADR :3, the stock `INDICATED ALTITUDE:3` name is NOT a valid
+        // SimConnect data-definition var (INDICATED ALTITUDE is not an indexed simvar) —
+        // adding it made SimConnect raise a name exception that broke aircraft detection
+        // (the "MSFS detected but every hotkey says not connected" bug). The A320 ISIS uses
+        // the non-indexed simvars for the same reason; mirror that here.
+        Stock("KOHLSMAN_SETTING_INHG", "KOHLSMAN SETTING MB", "Standby Baro inHg", "inHg");
         Stock("ACCELERATION BODY X", "ACCELERATION BODY X", "Standby Slip/Skid", "GFORCE");
 
         // ENGINE SD-page stock simvars (oil temp/press + vibration per engine — the
@@ -1757,14 +1759,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         OnOff("A32NX_PUSHBACK_SYSTEM_ENABLED", "Pushback System");
         Read("A32NX_PUSHBACK_SPD_FACTOR", "Pushback Speed Factor");
         Read("A32NX_PUSHBACK_HDG_FACTOR", "Pushback Heading Factor");
-        // Pushback tug state readouts (stock SimVars — space names -> SimVar, never L:var).
-        // Tug Attached tells a blind pilot whether the tug is physically connected; State
-        // gives the direction / no-tug. (Calling/releasing the tug stays on the EFB/keybind;
-        // the EFB sets these via the pushback state machine — see deferred note.)
-        Stock("PUSHBACK STATE", "PUSHBACK STATE", "Pushback State", "number",
-            new Dictionary<double, string> { [0] = "Straight", [1] = "Left", [2] = "Right", [3] = "No tug" });
-        Stock("PUSHBACK ATTACHED", "PUSHBACK ATTACHED", "Tug Attached", "bool",
-            new Dictionary<double, string> { [0] = "No", [1] = "Yes" });
+        // NOTE: pushback tug-state readouts (PUSHBACK STATE / PUSHBACK ATTACHED) were
+        // dropped — they are non-standard stock SimVar names that risk a SimConnect
+        // data-definition name exception (the same failure mode that broke aircraft
+        // detection). Re-add only if each name is verified addable to a data def first.
 
         // KCCU keyboard/cursor enable vars are intentionally NOT defined as
         // controls — the KCCU is the MCDU's input device, driven through the
@@ -2738,7 +2736,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         d["ECAM Control Panel"] = new List<string> { "A32NX_ECAM_SD_CURRENT_PAGE_INDEX" };
         d["Wipers"] = new List<string> { "WIPER_LEFT", "WIPER_RIGHT" };
         d["Speeds"] = new List<string> { "A32NX_SPEEDS_VLS", "A32NX_SPEEDS_VAPP", "A32NX_SPEEDS_GD", "A32NX_SPEEDS_F", "A32NX_SPEEDS_S" };
-        d["Pushback"] = new List<string> { "PUSHBACK ATTACHED", "PUSHBACK STATE", "A32NX_AIRCRAFT_PRESET_LOAD_PROGRESS" };
+        d["Pushback"] = new List<string> { "A32NX_AIRCRAFT_PRESET_LOAD_PROGRESS" };
 
         // ---- plain SD-page scalar readouts ----
         for (int n = 1; n <= 4; n++)
