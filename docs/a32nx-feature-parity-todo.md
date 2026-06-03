@@ -86,6 +86,60 @@ to `bin\Debug` and you'll launch a STALE `bin\x64` exe.
   `A32NX_SLIDES_ARMED`; no settable per-door arm). Keep the readout.
 - PFD CG readout — Gus already added GW-CG to the A320 W/Shift+W readouts; no PFD CG line.
 
+## G. NEW A380 additions (2026-06-03 exhaustive pass) — port + verify on A32NX
+
+The A380 had a full "add everything addable" pass. Port each to the A32NX **and verify the var name
+exists on the FBW A32NX first** — many `A32NX_`-prefixed vars are shared, but some are A380-only
+(4 engines, CPIOM, FQMS, 4 OCSM, A380X_RMP) and the A320 equivalent differs or doesn't exist. Do one
+at a time, verify live, delete the line.
+
+### G1. SD-page additions (A380 `A380SdRows`, mostly shared `A32NX_` vars)
+- [ ] **FUEL valve/pump layer** — engine LP / crossfeed / jettison valves (stock `FUELSYSTEM VALVE OPEN:n`;
+  **A320 indices differ** — re-map from the A320 `flight_model.cfg`), + pump-running bits. The A320 has
+  no FQMS word (`A32NX_FQMS_*_FUEL_PUMP_RUNNING_WORD` is A380-only) — the A320 uses per-pump
+  `A32NX_FUELSYSTEM_PUMP_*` / `CIRCUIT CONNECTION ON:n`; **verify + re-map**.
+- [ ] **ELEC contactors + battery direction + gen-OFF** — `A32NX_ELEC_CONTACTOR_*_IS_CLOSED` (A320 has
+  fewer: 2 gens not 4, different contactor IDs — verify), battery charge/discharge from current sign,
+  `A32NX_OVHD_ELEC_BAT_{1,2}_PB_IS_AUTO`.
+- [ ] **Controller channel-failure flags** — A320 has FDAC/TADD/VCM/OCSM? The A320 air-con/press
+  architecture differs (no CPIOM/OCSM ×4). **Verify which exist**; skip the A380-only ones.
+- [ ] **APU avail/master/flap memo**, **escape slides** (`A32NX_SLIDES_ARMED` shared), **CRUISE fill**
+  (fuel-used + cargo temps — A320 has 1 cargo zone, fewer deck zones; re-map), **HYD pump
+  section-switch/fire-valve/elec-OFF-PB** (A320 is Green/Blue/Yellow, 3 systems — totally different
+  pump map; re-derive from the A320 HydPage source).
+
+### G2. EWD additions
+- [ ] **Autothrust mode-message** (THR LK / LVR TOGA/CLB/MCT/ASYM via `A32NX_AUTOTHRUST_MODE_MESSAGE`,
+  shared enum) + **reverser deployed** (`A32NX_AUTOTHRUST_REVERSE:n` — A320 has 2 engines, both reverse;
+  use `:1`/`:2`).
+
+### G3. PFD/ND/ISIS status-box additions (mostly shared)
+- [ ] **PFD**: managed speed (`A32NX_SPEEDS_MANAGED_PFD`), preselect speed/Mach (`A32NX_SpeedPreselVal`/
+  `A32NX_MachPreselVal`), selected V/S (`A32NX_AUTOPILOT_VS_SELECTED`), expedite (`A32NX_FMA_EXPEDITE_MODE`),
+  flight directors (`AUTOPILOT FLIGHT DIRECTOR ACTIVE:1/2`), autobrake mode. All shared — verify + add to the A320 `d["PFD"]` + TryGetDisplayOverride decodes.
+- [ ] **ND**: GS/TAS/wind (`A32NX_ADIRS_IR_1_GROUND_SPEED` / `A32NX_ADIRS_ADR_1_TRUE_AIRSPEED` /
+  `_WIND_DIRECTION_BNR` / `_WIND_SPEED_BNR`, ARINC) into the monitored `d["ND"]`, heading-reference
+  (`A32NX_FMGC_TRUE_REF`), cross-track L/R formatting. All shared.
+- [ ] **ISIS**: `A32NX_ISIS_BUGS_ACTIVE` friendly label (bug VALUES + ATT-10s are JS-only — not modelled).
+
+### G4. Auto-announces (shared enums)
+- [ ] TCAS mode (`A32NX_TCAS_MODE`) + TCAS fault (`A32NX_TCAS_FAULT`) + FMA speed-protection
+  (`A32NX_FMA_SPEED_PROTECTION_MODE`) + FMA mode-reversion (`A32NX_FMA_MODE_REVERSION`). All shared.
+
+### G5. Controls
+- [ ] **APU auto-exit test** (`A32NX_APU_AUTOEXITING_TEST_ON`), **emer-gen test** (`A32NX_EMERELECPWR_GEN_TEST`),
+  **lighting preset load/save** (`A32NX_LIGHTING_PRESET_LOAD/_SAVE`) — all shared L-vars, add as buttons.
+- [ ] **RMP transmit selectors** — A380-only (`A380X_RMP_*`). The A320 RMP is different (`A32NX_RMP_*` or
+  the legacy ACP); **verify the A320 RMP/ACP var scheme** before porting transmit selects.
+
+### G6. Correctness
+- [ ] **B1→B4 CPCS** best-source for PRESS/CRUISE — A320 has a different pressurization system (single CPC,
+  no B1-B4 CPIOM). **Likely N/A** — verify; the A320 may already be correct with its single source.
+- [ ] **SEC1→SEC3 rudder-trim** fallback — A320 has 2 ELACs/3 SECs but a different rudder-trim source;
+  verify the A320 rudder-trim word + whether a fallback applies.
+
+---
+
 ## F. A380 base — all items RESOLVED (2026-06-03)
 
 The A380 has no open items left. For the record, the final disposition of everything that was
@@ -109,3 +163,31 @@ CLOSED — covered elsewhere / not worth a dedicated path:
   Left for an in-flight session.
 - ACP TX channels / pushback Call-Release Tug — need write plumbing + state-machine testing
   (mirror-var/name mismatch per the finish-pass); audited, not cleanly feasible now.
+
+### 2026-06-03 EXHAUSTIVE "add everything addable" pass — DONE
+
+A full survey (3-agent sweep of EWD/SD, PFD/ND/ISIS, flyPad/MFD, the whole cockpit L-var surface)
+was run and **every actionable item implemented** (see section G for the A32NX port list). Added:
+SD fuel valve/pump layer + ELEC contactors/battery-direction + TR contactors + COND/BLEED/PRESS
+controller channel-failure flags + APU avail/master + cabin-VS mode + escape slides + HYD pump
+section-switch/fire-valve/elec-OFF-PB + CRUISE fuel-used/cargo-temps/landing-elev; EWD autothrust
+mode-message + inboard reverser; PFD managed/preselect speed + selected V/S + expedite + FD 1/2 +
+autobrake; ND GS/TAS/wind/heading-ref + cross-track L/R; ISIS bugs label; TCAS mode/fault + FMA
+speed-protection/mode-reversion auto-announces; RMP transmit selectors (both ACPs); APU auto-exit
+test + emer-gen test + lighting preset load/save; **B1→B4 CPCS + SEC1→SEC3 rudder-trim correctness
+fixes**. New build connects FULLY CONNECTED at approxTotalDefs~602 (ceiling 1000), 0 capped. The
+standalone "addable backlog" doc was retired; the live-flight audit checklist is now
+`docs/live-flight-audit-checklist.md`.
+
+GENUINELY NOT MODELLED on this FBW A380 dev build (do-not-chase — recorded so they're not
+re-attempted): crew/cabin oxygen PSI (hardcoded 1829/1854), ENG nacelle temp, tire pressure (220),
+WING ACCU / A-SKID / BRK-STEER-LG computers, FUEL collector cells, F/CTL SFCC computer health, HYD
+reservoir normal-filling band, AVNCS/BULK cargo doors, all cargo SMOKE/OVHT + trim-air duct "H",
+PRESS avncs/cab-air extract valves, CIDS/cabin-lighting-scenes/water-waste/service-interphone (no
+L-vars — flyPad/EFB only), individual cockpit dome/flood light knobs, OIS/laptop power,
+ASU/SATCOM/ACARS/DLS/printer (EFB-side), **ANP on ND** (FBW publishes only RNP), ISIS bug VALUES +
+ATT-10s flag (JS-only), PFD autoland-capability (FCDC discrete words — not yet decoded), MFD FMS
+PERF/FUEL&LOAD computed results (no SimVars — reachable via the existing MFD page scrape), ND
+FM/TCAS/WXR message lines + RWY-AHEAD QFU text (reachable via the ND form's F6 live scrape). The
+0..100 drag-axis comfort items (seats/armrests/forward visors) stay intentionally skipped as panel
+clutter.
