@@ -15,7 +15,7 @@ namespace MSFSBlindAssist.Forms.FBWA380;
 ///   Ctrl+1/2/3  = the LEFT line keys (LSK) — select radio 1/2/3, or load the typed standby.
 ///   Alt+1/2/3   = the RIGHT keys (ADK) — swap that radio's active ↔ standby (manual).
 ///   (or F1/2/3 = LSK, F7/8/9 = ADK when MCDUUseAlternateLSKKeys is on.)
-///   Alt+V/H/T/Q/N/M = the VHF / HF / TEL / SQWK / NAV / MENU pages; Alt+Up/Down = standby mode.
+///   Alt+V / Alt+Q = the VHF / Transponder (SQWK) pages (the only two the FBW build models).
 ///   Just TYPE the digits on the screen itself (no separate field): each is keyed into the RMP
 ///   LIVE (the box is read-only, so the digits go to the radio, not the text); Enter loads the standby;
 ///   Backspace deletes a digit; Alt+C does a full clear. Alt+S focuses the box, Alt+Home the text.
@@ -128,8 +128,6 @@ public sealed class FBWA380RmpForm : Form
                 // Only VHF + Transponder (SQWK) pages are modelled by the FBW A380 dev build.
                 case Keys.V: Page("VHF", "VHF page"); Handled(e); return;
                 case Keys.Q: Page("SQWK", "Transponder page"); Handled(e); return;
-                case Keys.Up: Page("UP", "Mode up"); Handled(e); return;
-                case Keys.Down: Page("DOWN", "Mode down"); Handled(e); return;
                 case Keys.C: _ = FullClear(); Handled(e); return;
                 case Keys.Home: _display.Focus(); Handled(e); return;   // jump back to the screen from a button
             }

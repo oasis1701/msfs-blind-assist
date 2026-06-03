@@ -160,7 +160,6 @@ INSIDE THE RADIO MANAGEMENT PANEL (RMP) WINDOW (Ctrl+Shift+R opens it)
   Pages (also buttons in the Tab order):
   Alt+V            VHF page          Alt+Q   Transponder (SQWK) page
                    (HF / TEL / NAV / MENU are not modelled by FBW — those do nothing)
-  Alt+Up / Down    Standby mode up / down (VHF page)
   Alt+C            Fully clear the entry (resets a stuck entry)
   Alt+Home         Jump back to the screen (e.g. from a page button)
   You TYPE the digits right on the screen — there is no separate entry box (the

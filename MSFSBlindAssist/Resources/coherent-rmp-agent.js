@@ -46,6 +46,15 @@
           var transmit = (idents[i].className || '').indexOf('reverse-video') >= 0;
           var selected = (cells[i].className || '').indexOf('selected') >= 0;
           var line = ident + ': active ' + active + ', standby ' + standby;
+          // Standby MODE title (.stdby-mode is only shown for the selected row).
+          // "STBY" = a normal tunable frequency; "EMER" = emergency guard (121.5);
+          // DATA mode shows "DATA" in the standby freq area (already captured above).
+          // Only VHF3 has more than one mode -- Alt+Up/Down cycles it.
+          var modeEl = cells[i].querySelector('.stdby-mode');
+          if (modeEl && vis(modeEl)) {
+            var mode = tight(modeEl);
+            if (mode === 'EMER') line += ', standby emergency';
+          }
           if (transmit) line += ', transmit';
           if (selected) line += ', selected';
           rows.push(line);
