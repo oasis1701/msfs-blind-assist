@@ -1,0 +1,26 @@
+# perf_clb
+text | idx 0 | ACTIVE/PERF
+input | idx 1 | CRZ: FL 380
+text | idx 0 | OPT, FL, 405, REC MAX, FL, 425
+text | idx 0 | EO MAX, FL, 340
+subtab | idx 2 | T.O
+subtab | idx 3 | CLB (active)
+subtab | idx 4 | CRZ
+subtab | idx 5 | DES
+subtab | idx 6 | APPR
+subtab | idx 7 | GA
+input | idx 8 | ECON (combobox)
+input | idx 9 | CI: 15
+input | idx 10 | DERATED CLB: NONE (combobox)
+text | idx 0 | PRED TO
+text | idx 0 | MODE, SPD
+input | idx 11 | MACH: FL 380
+text | idx 0 | MANAGED, 290, KT, .84
+input | idx 12 | THR RED: 1510 FT
+input | idx 13 | ACCEL: 1510 FT
+text | idx 0 | CLB SPD LIM, 250, KT, /, FL, 100
+input | idx 14 | TRANS: 18000 FT
+button | idx 16 | ACTIVATE APPR *
+button | idx 15 | RETURN
+button | idx 17 | POS MONITOR
+button | idx 18 | MSG LIST

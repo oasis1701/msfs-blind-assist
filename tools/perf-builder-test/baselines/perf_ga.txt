@@ -1,0 +1,66 @@
+# perf_ga
+input | idx 8 | ---- FT
+input | idx 9 | 139 KT
+input | idx 10 | 144 KT
+input | idx 11 | 150 KT
+radio | idx 12 | TOGA
+radio | idx 13 | FLEX
+radio | idx 14 | DERATED
+input | idx 15 | +65 °C
+input | idx 16 | 1 (combobox)
+input | idx 17 | 40.3 %
+input | idx 18 | ON (combobox)
+input | idx 19 | OFF (combobox)
+input | idx 20 | 1510 FT
+input | idx 22 | 18000 FT
+input | idx 23 | 1510 FT
+input | idx 24 | ECON (combobox)
+input | idx 25 | 15
+input | idx 26 | NONE (combobox)
+input | idx 27 | FL 380
+input | idx 28 | 1510 FT
+input | idx 30 | 18000 FT
+input | idx 31 | ECON (combobox)
+input | idx 32 | 15
+input | idx 33 | .--
+input | idx 34 | --- KT
+button | idx 35 | CMS
+button | idx 36 | STEP ALTs
+input | idx 37 | ECON (combobox)
+input | idx 38 | 15
+input | idx 39 | -350 FT/MN
+input | idx 40 | ----- FT
+input | idx 41 | .84
+input | idx 42 | 288 KT
+button | idx 43 | SPD CSTR
+input | idx 44 | --- °
+input | idx 45 | --- KT
+input | idx 46 | blank °C
+input | idx 47 | blank
+input | idx 48 | ----- FT
+radio | idx 50 | CONF 3
+radio | idx 51 | FULL
+input | idx 52 | 137 KT
+input | idx 53 | FL 180
+text | idx 0 | RWY, 04L, T.O SHIFT, V1, F, 156, KT, VR, S, 181, KT, V2, 244, KT, FLAPS, THS FOR, PACKS, ANTI ICE, THR RED, ACCEL, TRANS, EO ACCEL, CI, DERATED CLB, MODE, SPD, MACH, PRED TO, MANAGED, 290, KT, .84, THR RED, ACCEL, CLB SPD LIM, 250, KT, /, FL, 100, TRANS, CI, MODE, MACH, SPD, PRED TO, T/D, PRESEL, MANAGED, .85, ---, KT, --:-- ----, NM, LRC, .84, ---, MAX TURB, .85, ---, DEST, KLAX, 19:57, 29.4, KLB, CI, DES CABIN RATE, MODE, MACH, SPD, PRED TO, MANAGED, --:-- ----, DEST, KLAX, 19:57, 29.4, KLB, APPR, ILS24R, KLAX, LW, 800.1, KLB, MAG WIND, HD, ---, KT, CROSS, ---, KT, OAT, QNH, MINIMUM, BARO, RADIO, 194, KT, S, 177, KT, F, 144, KT, VREF, 132, KT, VLS, 132, KT, VAPP, TRANS, VERT DEV, +-----
+text | idx 0 | ACTIVE/PERF
+input | idx 1 | CRZ: FL 380
+text | idx 0 | OPT, FL, 405, REC MAX, FL, 425
+text | idx 0 | EO MAX, FL, 340
+subtab | idx 2 | T.O
+subtab | idx 3 | CLB
+subtab | idx 4 | CRZ
+subtab | idx 5 | DES
+subtab | idx 6 | APPR
+subtab | idx 7 | GA (active)
+text | idx 0 | F, 144, KT
+text | idx 0 | S, 177, KT
+text | idx 0 | 194, KT
+input | idx 54 | THR RED: 1590 FT
+input | idx 55 | ACCEL: 1590 FT
+input | idx 56 | EO ACCEL: 1590 FT
+text | idx 0 | TRANS, 18000, FT
+button | idx 58 | ACTIVATE APPR *
+button | idx 57 | RETURN
+button | idx 59 | POS MONITOR
+button | idx 60 | MSG LIST

@@ -1,0 +1,16 @@
+# stepalts
+text | idx 0 | ACTIVE/F-PLN/VERT REV
+subtab | idx 1 | RTA
+subtab | idx 2 | SPD
+subtab | idx 3 | CMS
+subtab | idx 4 | ALT
+subtab | idx 5 | STEP ALTs (active)
+text | idx 0 | STEP ALTs FROM CRZ, FL, 380
+text | idx 0 | DIST, UTC
+input | idx 6 | WPT: ------- (combobox)
+input | idx 7 | ALT: ----- FT
+text | idx 0 | OPTIMUM STEP POINT
+text | idx 0 | TO, FL, ---
+text | idx 0 | NO OPTIMUM STEP FOUND
+button | idx 8 | RETURN
+button | idx 9 | MSG LIST
