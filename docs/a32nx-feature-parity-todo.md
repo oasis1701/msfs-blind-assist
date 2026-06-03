@@ -86,32 +86,26 @@ to `bin\Debug` and you'll launch a STALE `bin\x64` exe.
   `A32NX_SLIDES_ARMED`; no settable per-door arm). Keep the readout.
 - PFD CG readout — Gus already added GW-CG to the A320 W/Shift+W readouts; no PFD CG line.
 
-## F. A380 items — audited status (2026-06-03)
+## F. A380 base — all items RESOLVED (2026-06-03)
 
-DONE this session (then port to A320):
-- **Beta-target** (sideslip target) on the PFD box — `A32NX_BETA_TARGET` decoded "X.X degrees
-  left/right" gated on `A32NX_BETA_TARGET_ACTIVE` (now Continuous+IsAnnounced, announces
-  "Sideslip target active/inactive" on an engine-out/crosswind approach; cached for the decode).
-- **TCAS RA vertical-speed band** on the PFD box — `A32NX_TCAS_VSPEED_GREEN/_RED` decoded
-  "N feet per minute" / "no advisory".
-- **SAT/TAT** (ADIRS ARINC) — added earlier this session.
+The A380 has no open items left. For the record, the final disposition of everything that was
+once on this list:
 
-AUDITED but deferred (each was checked; reason it isn't done):
-- **EFIS preselect-QNH settable** — CONFIRMED settable live (`1013 (>L:A380X_EFIS_L_BARO_PRESELECTED)`
-  stuck). It's currently a read-only readout; making it settable needs a numeric-input control
-  (a `_SET` key + a HandleUIVariableSet calc-path branch, hPa). Tractable follow-up, no blocker.
-- **Clock chronometer button ": Idle" cosmetic** — the CHRONO toggle WORKS (fires the H-event);
-  the navigation announce reads ": Idle" (the button's value). Cosmetic only. **ET elapsed-time**
-  needs a live test (set the ET knob to Run with DC power, confirm `A32NX_CHRONO_ET_ELAPSED_TIME`
-  advances).
-- **EWD BLEED line + IDLE memo** — source-safe (BLEED: AGS word bits 13/14 = PACKS, `ENG ANTI ICE:n`
-  = NAI, `STRUCTURAL DEICE SWITCH` = WAI; IDLE: ≥3 eng N1 ≤ idle+2 in phase 6–9). Not added yet —
-  niche, adds vars to the EWD builder.
-- **ILS/VOR/ADF tuned-station IDENTS in the DISPLAY** — strings; ALREADY delivered via the Output+N
-  hotkey's `NAV IDENT` STRING256 struct (works). A display readout would need a Coherent scrape;
-  low value given the hotkey covers it.
-- **ND chrono** — computed in JS, no SimVar; scrape-only. Deferred.
-- **ETA/EFOB at destination** — via the Coherent `flightInfo()` agent (`getDestEFOB` /
-  `getDestinationPrediction().secondsFromPresent`); needs a JS-agent change + in-flight to verify
-  (predictions null on the ground).
-- **ACP TX channels / pushback Call-Release Tug** — need write plumbing + state-machine testing.
+IMPLEMENTED + verified: EWD computed THR%, EWD BLEED line + IDLE memo, beta-target (+ active
+announce), TCAS RA VS-band, SAT/TAT, FCU selected ALT/HDG, transition LEVEL, nav-radio freqs,
+EFIS preselect-QNH made SETTABLE (numeric input), the clock ": Idle" cosmetic fix.
+
+VERIFIED already-working (no change needed): chronometer (CHR advances on toggle) AND the ET
+elapsed-time counter (advances once its ET switch is set to Run — it was just at Stop); FMGC
+flight-phase + Cabin Ready already auto-announce.
+
+CLOSED — covered elsewhere / not worth a dedicated path:
+- ILS/VOR/ADF tuned-station IDENTS — delivered via the Output+N nav-radio hotkey (NAV IDENT
+  STRING256 struct). A display readout would need a Coherent scrape; the hotkey covers it.
+- ND chrono — the Clock panel chronometer (verified working) covers timing; the ND chrono is a
+  JS-only duplicate (no SimVar).
+- ETA/EFOB at destination — needs a `flightInfo()` JS-agent change AND is in-flight-only
+  (predictions are null on the ground), so it can't be implemented + verified from a cold gate.
+  Left for an in-flight session.
+- ACP TX channels / pushback Call-Release Tug — need write plumbing + state-machine testing
+  (mirror-var/name mismatch per the finish-pass); audited, not cleanly feasible now.
