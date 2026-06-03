@@ -1628,6 +1628,18 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // Settable toggle combo — fires A32NX.FCU_TRK_FPA_TOGGLE_PUSH on change.
         Sel("A32NX_TRK_FPA_MODE_ACTIVE", "Track FPA Mode",
             new Dictionary<double, string> { [0] = "HDG V/S", [1] = "TRK FPA" });
+        // Keep an individual data def for the four managed-status legs the OUTPUT-mode FCU
+        // readouts (Shift+H/S/A/V) force-read via RequestVariable(forceUpdate). That call
+        // NO-OPS for batch-covered vars (the SimConnect-ceiling strengthening skips their
+        // individual def), so without this the managed leg never arrives, the value+managed
+        // pair-gate in ProcessSimVarUpdate never closes, and the readout is SILENT. Mirrors
+        // the A320 fix (FlyByWireA320Definition's *_MANAGED vars). 4 extra defs, well within
+        // the A380's data-def headroom. (A32NX_FCU_VS_MANAGED is not force-read by any readout
+        // — VS keys on TRK_FPA_MODE_ACTIVE — so it intentionally stays batch-covered.)
+        vars["A32NX_FCU_HDG_MANAGED_DASHES"].ExcludeFromBatch = true;
+        vars["A32NX_FCU_SPD_MANAGED_DOT"].ExcludeFromBatch = true;
+        vars["A32NX_FCU_ALT_MANAGED"].ExcludeFromBatch = true;
+        vars["A32NX_TRK_FPA_MODE_ACTIVE"].ExcludeFromBatch = true;
         // SimVars (key != Name — ProcessSimVarUpdate matches on the key).
         Stock("FCU_ALT_VALUE", "AUTOPILOT ALTITUDE LOCK VAR:3", "Selected Altitude", "feet");
         Stock("FCU_MACH_MODE", "AUTOPILOT MANAGED SPEED IN MACH", "Mach Mode", "bool", onOff);
@@ -5631,8 +5643,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 // Announce the captain's FBW EIS baro — STD/unit-aware, the SAME value + phrasing
                 // as the live auto-announce and the set (PMDG/Fenix-style), instead of the stock
                 // KOHLSMAN in inches (which ignored STD + the selected unit = the "funky" read).
-                if (_baroStdL == true) { announcer.AnnounceImmediate("Captain altimeter standard"); return true; }
-                if (_lastBaroL > 0) { announcer.AnnounceImmediate(BaroPhrase(true, _lastBaroL, false)); return true; }
+                // Fenix/PMDG-style: terse, no "Captain" prefix, both units (the A380 EFIS is
+                // split per side but every sibling reads ONE altimeter with no side prefix, so
+                // we speak the captain side only, like the existing handler already chose).
+                if (_baroStdL == true) { announcer.AnnounceImmediate("Altimeter standard"); return true; }
+                if (_lastBaroL > 0) { announcer.AnnounceImmediate($"Altimeter: {_lastBaroL}, {_lastBaroL / 33.8639:0.00}"); return true; }
                 // Fallback (EIS baro not seeded yet): stock KOHLSMAN.
                 if (simConnect.IsConnected) { _reqBaro = true; simConnect.RequestVariable("KOHLSMAN_HG", forceUpdate: true); }
                 return true;
@@ -5645,6 +5660,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             case HotkeyAction.ReadSpeed: RequestFCUSpeedWithStatus(simConnect); return true;
             case HotkeyAction.ReadAltitude: RequestFCUAltitudeWithStatus(simConnect); return true;
             case HotkeyAction.ReadFCUVerticalSpeedFPA: RequestFCUVSWithStatus(simConnect); return true;
+            // Ctrl+W (output): ND TO-waypoint name/distance/bearing via SimVars (no Coherent — see NdWaypointReadout).
+            case HotkeyAction.ReadNDWaypoint: Services.NdWaypointReadout.Announce(simConnect, announcer); return true;
             case HotkeyAction.MonitorManager:
                 hotkeyManager.ExitOutputHotkeyMode();
                 if (parentForm is MainForm mf) mf.ShowA380MonitorManagerDialog();

@@ -4936,6 +4936,10 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             case HotkeyAction.ReadAltimeter:
                 announcer.AnnounceImmediate(BaroPhrase(_baroHpa < 0 ? 1013 : _baroHpa, _baroMode < 0 ? 1 : _baroMode));
                 return true;
+            // Ctrl+W (output): ND TO-waypoint name/distance/bearing via SimVars (no Coherent — see NdWaypointReadout).
+            case HotkeyAction.ReadNDWaypoint:
+                Services.NdWaypointReadout.Announce(simConnect, announcer);
+                return true;
             // FCU value windows (Fenix-style: value entry + knob Push/Pull + mode
             // toggles + spoken read-out). Mirrors the A380's Ctrl+S/H/A/V/P/B windows;
             // replaces the old single-field ShowA320*InputDialog dialogs.
