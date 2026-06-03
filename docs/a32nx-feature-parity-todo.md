@@ -192,8 +192,12 @@ fixes**. New build connects FULLY CONNECTED at approxTotalDefs~602 (ceiling 1000
 standalone "addable backlog" doc was retired; the live-flight audit checklist is now
 `docs/live-flight-audit-checklist.md`.
 
-GENUINELY NOT MODELLED on this FBW A380 dev build (do-not-chase — recorded so they're not
-re-attempted): crew/cabin oxygen PSI (hardcoded 1829/1854), ENG nacelle temp, tire pressure (220),
+GENUINELY NOT MODELLED on this FBW A380 dev build (do-not-chase — **source-verified 2026-06-03**,
+not just assumed): **BRAKE FAN** — all four A380 brake assemblies pass `None` for the fan bus
+(`// TODO` in a380x hydraulic/mod.rs), so `A32NX_BRAKE_FAN_RUNNING` is hardwired to 0 and the button
+does nothing (live-tested: wrote button=1, RUNNING stayed 0); the dead A380 control was REMOVED.
+**⚠ A320 KEEPS its brake fan** (the A320 models it — do NOT remove it there during parity). Also
+crew/cabin oxygen PSI (literal `1829`/`1854` in Oxygen.tsx), ENG nacelle temp (literal `240`), tire pressure (220),
 WING ACCU / A-SKID / BRK-STEER-LG computers, FUEL collector cells, F/CTL SFCC computer health, HYD
 reservoir normal-filling band, AVNCS/BULK cargo doors, all cargo SMOKE/OVHT + trim-air duct "H",
 PRESS avncs/cab-air extract valves, CIDS/cabin-lighting-scenes/water-waste/service-interphone (no
@@ -216,8 +220,10 @@ needs design), recorded so they're not re-discovered:
 - **Seat-belt sign AUTO position** — currently On/Off via the stock simvar; the FBW switch is 3-pos
   (ON/AUTO/OFF, `XMLVAR_SWITCH_OVHD_INTLT_SEATBELT_Position`). Switching risks regressing the
   existing seat-belt EWD announce behaviour; deferred.
-- **EHA/EBHA electric-actuator buses, body-wheel-steering state, CIDS/cabin status, OIS/OIT terminal,
-  NSS/ATSU network, wing flex** — mostly NOT modelled by the FBW dev build (or visual-only); a blind
-  pilot has the readouts/controls that DO exist. Do-not-chase.
+- **EHA/EBHA buses** — the EHA bus *powered* state IS already exposed (the AC/DC EHA buses are
+  `247XP`/`247PP`, in MSFSBA's ELEC readouts); only the individual EHA contactors (14PH/911XN/911XH/
+  970PN2) aren't — deep maintenance detail, do-not-chase. **body-wheel-steering state, CIDS/cabin
+  status, OIS/OIT terminal, NSS/ATSU network, wing flex** — NOT modelled by the FBW dev build (or
+  visual-only); a blind pilot has the readouts/controls that DO exist. Do-not-chase.
 - Active alpha-prot/high-speed/bank protection has no dedicated callout beyond the FMA + alpha-floor
   announce (which IS present); FWS `FWC_FLIGHT_PHASE` not surfaced (FMGC phase suffices). Low value.
