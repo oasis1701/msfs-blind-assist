@@ -984,6 +984,21 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // data definitions was the root cause of the aircraft-detection break, and
         // nothing in the SD form referenced them anyway.
 
+        // ND status-box vars — pre-register with FRIENDLY display names so the status box
+        // shows "TO Waypoint: PPOS" instead of the raw key "A32NX_EFIS_L_TO_WPT_IDENT_0: PPOS"
+        // (the windowReadVars loop below otherwise registers them with DisplayName = key).
+        // Values still decode via TryGetDisplayOverride / the ND form.
+        Read("A32NX_EFIS_L_TO_WPT_IDENT_0", "TO Waypoint");
+        Read("A32NX_EFIS_L_TO_WPT_DISTANCE", "Distance to Waypoint");
+        Read("A32NX_EFIS_L_TO_WPT_BEARING", "Bearing to Waypoint");
+        Read("A32NX_EFIS_L_TO_WPT_ETA", "Time to Waypoint");
+        Read("A32NX_FG_CROSS_TRACK_ERROR", "Cross-track Error");
+        Read("A32NX_FMGC_L_RNP", "Required Nav Performance");
+        Read("A32NX_RADIO_RECEIVER_LOC_IS_VALID", "Localizer Valid");
+        Read("A32NX_RADIO_RECEIVER_LOC_DEVIATION", "Localizer Deviation");
+        Read("A32NX_RADIO_RECEIVER_GS_IS_VALID", "Glideslope Valid");
+        Read("A32NX_RADIO_RECEIVER_GS_DEVIATION", "Glideslope Deviation");
+
         var windowReadVars = Forms.FBWA380.FBWA380SystemDisplayForm.AllVariableNames()
             .Concat(Forms.FBWA380.FBWA380NavDisplayForm.AllVariableNames())
             .Concat(Forms.FBWA380.FBWA380ISISForm.AllVariableNames());
@@ -1058,7 +1073,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             {
                 [-1] = "None", [0] = "Engine", [1] = "APU", [2] = "Bleed", [3] = "Cond", [4] = "Press",
                 [5] = "Door", [6] = "Elec AC", [7] = "Elec DC", [8] = "Fuel", [9] = "Wheel", [10] = "Hyd",
-                [11] = "F/Ctl", [12] = "C/B", [13] = "Cruise", [14] = "Status", [15] = "Video",
+                [11] = "F/Ctl", [13] = "Cruise",
+                // C/B (12), Status (14) and Video (15) were REMOVED from the picker: the FBW SD
+                // rejects those page indices (rewrites the index back a few frames later), so the
+                // combo snapped back and the slow DOM-scrape fallback ran for nothing. The
+                // remaining pages are all SimVar-decoded.
                 // Not an SD page — selecting this scrapes the UPPER ECAM / E-WD instead
                 // (engine N1/EGT/N2/FF + memos/warnings) into the same status box.
                 [16] = "Upper E/WD"
@@ -1293,10 +1312,24 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             IsArinc429 = true, Arinc429Unit = "psi", Arinc429Format = "0.0",
             Arinc429NotAvailableText = "not available"
         };
-        Read("A32NX_PRESS_AUTO_LANDING_ELEVATION", "Landing Elevation", "feet");
-        // The four cabin outflow valves — open percentage.
+        // Landing elevation — the FM1 ARINC429 word (the _AUTO_ var reads static 0). Same
+        // source + "not set (auto)" the SD PRESS page uses.
+        vars["A32NX_FM1_LANDING_ELEVATION"] = new SimVarDefinition
+        {
+            Name = "A32NX_FM1_LANDING_ELEVATION", DisplayName = "Landing Elevation",
+            Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest,
+            IsArinc429 = true, Arinc429Unit = "feet", Arinc429Format = "0",
+            Arinc429NotAvailableText = "not set (auto)"
+        };
+        // The four cabin outflow valves — the CPIOM-B1 ARINC429 % word (the _ANIM var reads 0).
         for (int v = 1; v <= 4; v++)
-            Read($"A32NX_PRESS_OUTFLOW_VALVE_{v}_OPEN_PERCENTAGE_ANIM", $"Outflow Valve {v}", "percent");
+            vars[$"A32NX_PRESS_OUTFLOW_VALVE_{v}_OPEN_PERCENTAGE_B1"] = new SimVarDefinition
+            {
+                Name = $"A32NX_PRESS_OUTFLOW_VALVE_{v}_OPEN_PERCENTAGE_B1", DisplayName = $"Outflow Valve {v}",
+                Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest,
+                IsArinc429 = true, Arinc429Unit = "%", Arinc429Format = "0",
+                Arinc429NotAvailableText = "not available"
+            };
 
         // VENTILATION
         foreach (var id in new[] { "FWD", "AFT" })
@@ -1543,8 +1576,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 Type = SimVarType.Event, EventParam = (uint)n
             };
             Act($"COM{n}_RADIO_SWAP", $"VHF {n} Swap", new Dictionary<double, string> { [0] = "Idle", [1] = "Swap active and standby" });
-            Stock($"COM_ACTIVE_FREQUENCY:{n}", $"COM ACTIVE FREQUENCY:{n}", $"VHF {n} Active", "MHz");
-            Stock($"COM_STANDBY_FREQUENCY:{n}", $"COM STANDBY FREQUENCY:{n}", $"VHF {n} Standby", "MHz");
+            // Units "kHz" (NOT "MHz"): the stock COM freq simvars return kHz, and MainForm's
+            // formatter only has a "kHz" case (÷1000, 3 decimals -> "122.800 MHz"). "MHz" fell to
+            // the default integer format -> "123". Matches the A320.
+            Stock($"COM_ACTIVE_FREQUENCY:{n}", $"COM ACTIVE FREQUENCY:{n}", $"VHF {n} Active", "kHz");
+            Stock($"COM_STANDBY_FREQUENCY:{n}", $"COM STANDBY FREQUENCY:{n}", $"VHF {n} Standby", "kHz");
         }
 
         // ============================ TRANSPONDER / ATC ============================
@@ -2610,8 +2646,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         press.Add("A32NX_PRESS_CABIN_ALTITUDE_B1");
         press.Add("A32NX_PRESS_CABIN_VS_B1");
         press.Add("A32NX_PRESS_CABIN_DELTA_PRESSURE_B1");
-        press.Add("A32NX_PRESS_AUTO_LANDING_ELEVATION");
-        for (int v = 1; v <= 4; v++) press.Add($"A32NX_PRESS_OUTFLOW_VALVE_{v}_OPEN_PERCENTAGE_ANIM");
+        press.Add("A32NX_FM1_LANDING_ELEVATION");
+        for (int v = 1; v <= 4; v++) press.Add($"A32NX_PRESS_OUTFLOW_VALVE_{v}_OPEN_PERCENTAGE_B1");
         d["Pressurization"] = press;
 
         var vent = new List<string>();
@@ -4090,6 +4126,20 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             displayText = (w.IsNormalOperation || w.IsFunctionalTest) ? $"flight level {w.Value:0}" : "not set";
             return true;
         }
+        // Transponder squawk: TRANSPONDER CODE:1 reads as a raw BCD16 word (0x2000 = 8192);
+        // decode each nibble to the 4-digit squawk (8192 -> "2000").
+        if (varKey == "XPNDR_CODE")
+        {
+            int bcd = (int)Math.Round(value);
+            displayText = $"{(bcd >> 12) & 0xF}{(bcd >> 8) & 0xF}{(bcd >> 4) & 0xF}{bcd & 0xF}";
+            return true;
+        }
+        // RMP frequencies are FBW L:vars in raw Hz (122800000 = 122.800 MHz).
+        if (varKey.StartsWith("FBW_RMP_FREQUENCY_", StringComparison.Ordinal))
+        {
+            displayText = $"{value / 1_000_000.0:0.000} MHz";
+            return true;
+        }
         // Speed-brake handle: a 0..1 fraction — show "Retracted" / "Full" / "N percent".
         if (varKey == "A32NX_SPOILERS_HANDLE_POSITION")
         {
@@ -4384,6 +4434,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     // announces the page NAME; the CONTENT is read on demand in the box, and it updates
     // immediately on a page switch with no manual refresh.
     private string _sdPageContent = "";
+    private int _sdRefreshSeq;   // bumped per SD-page refresh; "latest request wins" guard
     private static readonly Dictionary<int, string> _sdPageNames = new()
     {
         [-1] = "Default", [0] = "Engine", [1] = "APU", [2] = "Bleed", [3] = "Air Cond",
@@ -4442,16 +4493,30 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 var decoded = A380SdRows(pageIndex);
                 if (decoded.Count > 0)
                 {
-                    foreach (var row in decoded) simConnect.RequestVariable(row.var, forceUpdate: true);
-                    await Task.Delay(550);
-                    var sb = new System.Text.StringBuilder();
-                    foreach (var row in decoded)
+                    // "Latest request wins" — a newer page switch invalidates this one so a slow
+                    // refresh can never stamp the box with a stale page's content (the old race
+                    // that made the content trail the title by up to a minute).
+                    int seq = ++_sdRefreshSeq;
+                    void Paint()
                     {
-                        double? cv = simConnect.GetCachedVariableValue(row.var);
-                        sb.AppendLine(cv.HasValue ? $"{row.label}: {row.fmt(cv.Value)}" : $"{row.label}: --");
+                        var sb = new System.Text.StringBuilder();
+                        foreach (var row in decoded)
+                        {
+                            double? cv = simConnect.GetCachedVariableValue(row.var);
+                            sb.AppendLine(cv.HasValue ? $"{row.label}: {row.fmt(cv.Value)}" : $"{row.label}: --");
+                        }
+                        _sdPageContent = sb.ToString().TrimEnd();
+                        simConnect.RequestVariable("A32NX_ECAM_SD_CURRENT_PAGE_INDEX", forceUpdate: true);
                     }
-                    _sdPageContent = sb.ToString().TrimEnd();
-                    simConnect.RequestVariable("A32NX_ECAM_SD_CURRENT_PAGE_INDEX", forceUpdate: true);
+                    // Paint IMMEDIATELY from the cache (decoded vars are already monitored), so the
+                    // content appears the instant the page is selected — no 550 ms blank/lag.
+                    Paint();
+                    // Then force a fresh read and repaint ~0.4 s later — but only if this is still
+                    // the most-recent page request.
+                    foreach (var row in decoded) simConnect.RequestVariable(row.var, forceUpdate: true);
+                    await Task.Delay(400);
+                    if (seq != _sdRefreshSeq) return;
+                    Paint();
                     return;
                 }
             }
@@ -4471,7 +4536,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                     simConnect.RequestVariable($"A32NX_AUTOTHRUST_N1_COMMANDED:{e}", forceUpdate: true);
                     simConnect.RequestVariable($"A32NX_ENGINE_STATE:{e}", forceUpdate: true);
                 }
-                foreach (var g in new[] { "A32NX_AUTOTHRUST_THRUST_LIMIT_TYPE", "A32NX_AIRLINER_TO_FLEX_TEMP" })
+                foreach (var g in new[] { "A32NX_AUTOTHRUST_THRUST_LIMIT_TYPE", "A32NX_AIRLINER_TO_FLEX_TEMP",
+                                          "A32NX_AUTOTHRUST_THRUST_LIMIT_IDLE", "A32NX_AUTOTHRUST_THRUST_LIMIT_TOGA" })
                     simConnect.RequestVariable(g, forceUpdate: true);
                 await Task.Delay(550);
 
@@ -4498,9 +4564,24 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 // Engine state enum → text.
                 string EngState(double v) => v >= 2 ? "starting" : v >= 1 ? "on" : "off";
 
+                // Computed thrust-limit % per engine (the EWD ThrustGauge green number). FBW
+                // formula: pct = clamp01((N1-idle)/(toga-idle))*(1-off)+off, where off = 0.042
+                // when the engine is starting (state==1). idle/toga = AUTOTHRUST_THRUST_LIMIT_*.
+                double idleLim = simConnect.GetCachedVariableValue("A32NX_AUTOTHRUST_THRUST_LIMIT_IDLE") ?? 0;
+                double togaLim = simConnect.GetCachedVariableValue("A32NX_AUTOTHRUST_THRUST_LIMIT_TOGA") ?? 100;
+                string ThrPct(int e)
+                {
+                    double? n1 = simConnect.GetCachedVariableValue($"A32NX_ENGINE_N1:{e}");
+                    if (!n1.HasValue || togaLim <= idleLim) return $"Engine {e} --";
+                    double off = (simConnect.GetCachedVariableValue($"A32NX_ENGINE_STATE:{e}") ?? 0) == 1 ? 0.042 : 0;
+                    double frac = Math.Min(1.0, Math.Max(0.0, (n1.Value - idleLim) / (togaLim - idleLim)) * (1 - off) + off);
+                    return $"Engine {e} {frac * 100:0}%";
+                }
+
                 var ewdLines = new List<string>
                 {
                     "Thrust rating: " + thrMode,
+                    "Thrust limit: " + string.Join(", ", engs.Select(ThrPct)),
                     "N1: "          + Grp("A32NX_ENGINE_N1:{0}",  v => $"{v:0.0}%"),
                     "N1 command: "  + Grp("A32NX_AUTOTHRUST_N1_COMMANDED:{0}", v => $"{v:0.0}%"),
                     "EGT: "         + Grp("A32NX_ENGINE_EGT:{0}", v => $"{v:0}°C"),
