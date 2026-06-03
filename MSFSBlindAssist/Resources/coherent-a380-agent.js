@@ -189,6 +189,18 @@
     return "";
   };
 
+  // Some InputFields render their unit LEADING (e.g. a transition LEVEL field shows
+  // "FL" before the value) rather than trailing. Captured separately so it can be
+  // placed BEFORE the value ("FL 180", not "180 FL").
+  A.inputLeadUnit = function (node) {
+    var us = node.querySelectorAll(".mfd-input-field-unit.mfd-unit-leading");
+    for (var i = 0; i < us.length; i++) {
+      var t = clean(us[i].textContent);
+      if (t) return t;
+    }
+    return "";
+  };
+
   // The A380 MFD fills an empty entry field with U+25AF boxes (one per character
   // slot). A screen reader would read each as "white vertical rectangle". Render
   // a field that's ONLY boxes + template punctuation as "blank" (these are
@@ -401,13 +413,18 @@
         // Strip a trailing colon the MFD already prints on the label (e.g.
         // "NOTIFY TO ATC :") so we don't end up with a double colon.
         var lbl = clean(best.text).replace(/\s*:\s*$/, "");
-        inp.text = lbl + ": " + (val || "blank") + (inp.isChoice ? " (combobox)" : "");
+        // Include the field's OWN unit — leading (e.g. "FL 180") or trailing (e.g.
+        // "1510 FT", "----- FT"). The unit is a sibling span so it never appears in
+        // the value; without this a LABELED input drops its unit (the FT-on-ALT and
+        // THR RED / ACCEL / TRANS / DES CABIN RATE bug — see captures).
+        var shown = (inp.leadUnit ? inp.leadUnit + " " : "") + (val || "blank") + (inp.ownUnit ? " " + inp.ownUnit : "");
+        inp.text = lbl + ": " + shown + (inp.isChoice ? " (combobox)" : "");
         best.consumed = true;
-      } else if (inp.ownUnit) {
+      } else if (inp.ownUnit || inp.leadUnit) {
         // No naming label in this cell, but the field carries its own unit (the PERF
         // T.O FLEX TEMP °C field): show value + unit so it isn't an anonymous "---".
         var v2 = inp.value || inp.text || "";
-        inp.text = (v2 || "blank") + " " + inp.ownUnit + (inp.isChoice ? " (combobox)" : "");
+        inp.text = (inp.leadUnit ? inp.leadUnit + " " : "") + (v2 || "blank") + (inp.ownUnit ? " " + inp.ownUnit : "") + (inp.isChoice ? " (combobox)" : "");
       }
     }
   };
@@ -684,6 +701,7 @@
         idx: idx, kind: kind, text: label,
         value: kind === "input" ? A.readInputValue(n) : "",
         ownUnit: kind === "input" ? A.inputOwnUnit(n) : "",
+        leadUnit: kind === "input" ? A.inputLeadUnit(n) : "",
         isChoice: isChoice,
         disabled: n.classList.contains("disabled"),
         expanded: isCombo ? A.comboExpanded(n) : null,
