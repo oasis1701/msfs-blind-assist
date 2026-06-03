@@ -11,10 +11,25 @@ lists; a 5-agent panel-by-panel sweep (Overhead/Pedestal/Glareshield/Instrument/
 FCU excluded) produced the control gaps. All var names cited back to FBW A380 source
 (`fbw-aircraft/fbw-a380x/src/systems/instruments/src`).
 
-## ⛔ STATUS — REVERTED to baseline (the additions hit MobiFlight's variable ceiling)
+## ✅ STATUS — RESOLVED: architecture strengthened, ALL additions re-applied + live-verified
 
-**The finish-pass display + panel additions were REVERTED** (commit `2935c3b`) because they
-re-broke aircraft detection — and this time it was root-caused empirically, not guessed.
+The additions were briefly reverted (`2935c3b`) after they hit the registration ceiling, then
+the **registration architecture was strengthened** (`72ced22`) and **all the additions
+re-applied on top** (`60c5a07`). Live-verified on a running A380X:
+`[Registration] individualDefs=505 batchCovered=561 ~530 total defs` + `[Detection] FULLY
+CONNECTED — 'FlyByWire A380X'`. The A380 now uses ~530 of the 1000 SimConnect data-definition
+budget (was ~1083 and overflowing) — ~470 vars of headroom.
+
+**The ceiling was SimConnect's documented 1000-data-definition limit (NOT MobiFlight).** The fix:
+(1) stop double-registering continuous vars (read them from the batch cache; ~1083→~530 defs);
+(2) register bulk vars LAST so detection can't be stranded by an overflow; (3) a 900-def cap +
+persistent `logs/registration.log` (footprint, "FULLY CONNECTED", "[CEILING]"). See CLAUDE.md
+"THE SIMCONNECT DATA-DEFINITION CEILING" for the full writeup. **A320 still needs a live connect
+check** (shared `SimConnectManager`).
+
+---
+
+### (historical) Why it was reverted first
 
 **Real root cause (proven via live SimConnect-exception logging):** the A380 was already at
 **MobiFlight WASM's variable-table ceiling**. Baseline = **1015** registered vars → connects
