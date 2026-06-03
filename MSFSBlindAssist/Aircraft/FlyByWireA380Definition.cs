@@ -320,14 +320,6 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             new Dictionary<double, string> { [0] = "ESS", [1] = "APU", [2] = "Off", [3] = "Battery 1", [4] = "Battery 2" });
         for (int n = 1; n <= 4; n++) Read($"A32NX_ELEC_BAT_{n}_POTENTIAL", $"Battery {n} Voltage", "volts");
 
-        // ---- RESET (computer-reset panel, overhead behind the captain) ----
-        // 10 latching reset pushbuttons (FMC A/B/C, FWS 1/2, AESU 1/2, NSS AVNCS / FLT
-        // OPS, ARPT NAV) — used to reset a faulted computer. Plain A32NX_ L:vars,
-        // calc-write (live-verified settable). 0 = normal (in), 1 = reset (held out).
-        var resetVd = new Dictionary<double, string> { [0] = "Normal", [1] = "Reset" };
-        foreach (var (rk, rn) in _resetPanelVars)
-            Sel(rk, rn, resetVd);
-
         // ---- APU ----
         OnOff("A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", "APU Master Switch");
         OnOff("A32NX_OVHD_APU_START_PB_IS_ON", "APU Start", button: true);
@@ -479,18 +471,6 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Press("A32NX_FIRE_BUTTON_APU", "APU Fire Button");
         Mon("A32NX_FIRE_DETECTED_APU", "APU Fire",
             new Dictionary<double, string> { [0] = "Normal", [1] = "FIRE" });
-        // Fire-extinguisher AGENT discharge pushbuttons (momentary). After pulling a fire
-        // handle, these discharge the bottle into the affected engine/APU — completing the
-        // fire drill the handles begin. Each engine has 2 agents; the APU has 1. Source:
-        // behaviour/overhead/fire.xml FBW_Airbus_FIRE_AGENT (momentary 1 -> 0). The squib
-        // armed/discharged states are already read in d["Fire"]. (Not live-fired in test —
-        // pressing actually discharges the bottle; registration follows the proven Press path.)
-        for (int n = 1; n <= 4; n++)
-        {
-            Press($"A32NX_OVHD_FIRE_AGENT_1_ENG_{n}_IS_PRESSED", $"Engine {n} Agent 1 Discharge");
-            Press($"A32NX_OVHD_FIRE_AGENT_2_ENG_{n}_IS_PRESSED", $"Engine {n} Agent 2 Discharge");
-        }
-        Press("A32NX_OVHD_FIRE_AGENT_1_APU_1_IS_PRESSED", "APU Agent Discharge");
         // Fire Test + Cargo Smoke Detection Test are HOLD on/off tests — they STAY combos
         // (Off/On): the user picks On (test runs, the EWD speaks the result), then Off, and
         // the combo always shows the current state. Only true one-shot momentary actions are
@@ -621,11 +601,6 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // interphone selected"). Settable L:vars via the calculator catch-all.
         OnOff("A380X_RMP_1_VHF_VOL_RX_SWITCH_1", "VHF 1 Receive");
         OnOff("A380X_RMP_1_VHF_VOL_RX_SWITCH_2", "VHF 2 Receive");
-        OnOff("A380X_RMP_1_VHF_VOL_RX_SWITCH_3", "VHF 3 Receive");
-        OnOff("A380X_RMP_1_HF_VOL_RX_SWITCH_1", "HF 1 Receive");
-        OnOff("A380X_RMP_1_HF_VOL_RX_SWITCH_2", "HF 2 Receive");
-        OnOff("A380X_RMP_1_TEL_VOL_RX_SWITCH_1", "TEL 1 Receive");
-        OnOff("A380X_RMP_1_TEL_VOL_RX_SWITCH_2", "TEL 2 Receive");
         OnOff("A380X_RMP_1_CAB_VOL_RX_SWITCH", "Cabin Interphone Receive");
         OnOff("A380X_RMP_1_INT_VOL_RX_SWITCH", "Interphone Receive");
         OnOff("A380X_RMP_1_PA_VOL_RX_SWITCH", "PA Receive");
@@ -638,11 +613,6 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // exist. Same receive selectors + transmit as the captain side.
         OnOff("A380X_RMP_2_VHF_VOL_RX_SWITCH_1", "VHF 1 Receive");
         OnOff("A380X_RMP_2_VHF_VOL_RX_SWITCH_2", "VHF 2 Receive");
-        OnOff("A380X_RMP_2_VHF_VOL_RX_SWITCH_3", "VHF 3 Receive");
-        OnOff("A380X_RMP_2_HF_VOL_RX_SWITCH_1", "HF 1 Receive");
-        OnOff("A380X_RMP_2_HF_VOL_RX_SWITCH_2", "HF 2 Receive");
-        OnOff("A380X_RMP_2_TEL_VOL_RX_SWITCH_1", "TEL 1 Receive");
-        OnOff("A380X_RMP_2_TEL_VOL_RX_SWITCH_2", "TEL 2 Receive");
         OnOff("A380X_RMP_2_CAB_VOL_RX_SWITCH", "Cabin Interphone Receive");
         OnOff("A380X_RMP_2_INT_VOL_RX_SWITCH", "Interphone Receive");
         OnOff("A380X_RMP_2_PA_VOL_RX_SWITCH", "PA Receive");
@@ -769,14 +739,6 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             new Dictionary<double, string> { [0] = "Up", [1] = "Down" });
         Sel("A32NX_LG_GRVTY_SWITCH_POS", "Gravity Gear Extension",
             new Dictionary<double, string> { [0] = "Reset", [1] = "Off", [2] = "Down" });
-        // Gravity-extension guards — ALL three must be lifted before the gravity lever
-        // above can reach DOWN (the FBW CODE_POS_2_VERIF gates the Down position on
-        // master + guard 1 + guard 2). Plain 0/1 L:vars, calc-write (live-verified
-        // settable). The master guard was previously a read-only readout.
-        var guardSw = new Dictionary<double, string> { [0] = "Stowed", [1] = "Lifted" };
-        Sel("A32NX_LG_GRVTY_MASTER_SWITCH_GUARD", "Gravity Extension Master Guard", guardSw);
-        Sel("A32NX_LG_GRVTY_SWITCH_GUARD_1", "Gravity Extension Guard Left", guardSw);
-        Sel("A32NX_LG_GRVTY_SWITCH_GUARD_2", "Gravity Extension Guard Right", guardSw);
 
         // ---- Autobrake / Anti-skid ----
         Sel("A32NX_AUTOBRAKES_SELECTED_MODE", "Autobrake",
@@ -862,30 +824,6 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         ArincKt("PFD_VALPHAPROT", "A32NX_FAC_1_V_ALPHA_PROT", "Alpha Prot speed");
         ArincKt("PFD_VALPHAMAX", "A32NX_FAC_1_V_ALPHA_LIM", "Alpha Max speed");
         ArincKt("PFD_VSW", "A32NX_FAC_1_V_STALL_WARN", "Stall Warning speed");
-        // More PFD speed-tape characteristic bugs (FAC ARINC429 words, knots). Read
-        // "not available" when the FAC isn't computing (e.g. on the ground = NCD).
-        ArincKt("PFD_GREENDOT", "A32NX_FAC_1_V_MAN", "Green dot speed");
-        ArincKt("PFD_V3", "A32NX_FAC_1_V_3", "F speed (slat retract)");
-        ArincKt("PFD_V4", "A32NX_FAC_1_V_4", "S speed (flap retract)");
-        ArincKt("PFD_VFENEXT", "A32NX_FAC_1_V_FE_NEXT", "VFE next");
-        // ARINC429 words in non-knots units (RA, vertical speed, transition altitude).
-        // Same SSM-gated decode as ArincKt; live-verified RA1 + VS read Normal Operation.
-        void ArincUnit(string key, string name, string display, string unit) => vars[key] = new SimVarDefinition
-        {
-            Name = name, DisplayName = display, Type = SimVarType.LVar,
-            UpdateFrequency = UpdateFrequency.OnRequest,
-            IsArinc429 = true, Arinc429Unit = unit, Arinc429Format = "0",
-            Arinc429NotAvailableText = "not available"
-        };
-        ArincUnit("PFD_RA", "A32NX_RA_1_RADIO_ALTITUDE", "Radio altitude", "feet");
-        ArincUnit("PFD_VS", "A32NX_ADIRS_IR_1_VERTICAL_SPEED", "Vertical speed", "feet per minute");
-        ArincUnit("PFD_TRANS_ALT", "A32NX_FM1_TRANS_ALT", "Transition altitude", "feet");
-        // Marker beacon (stock enum) + ILS/LS course (plain L:var; -1 = no course set,
-        // decoded in TryGetDisplayOverride). These complete the ILS block alongside the
-        // existing PFD_ILS_FREQ / PFD_ILS_DME.
-        Stock("MARKER_BEACON", "MARKER BEACON STATE", "Marker beacon", "number",
-            new Dictionary<double, string> { [0] = "None", [1] = "Outer marker", [2] = "Middle marker", [3] = "Inner marker" });
-        Read("A32NX_FM_LS_COURSE", "ILS course");
         // Gross-weight CG (%MAC), cached for the W / Shift+W readouts (Gus's GW-CG; kept
         // across the doors/PFD revert). Plain numeric FBW L-var (~40% MAC live). MonNum
         // registers it Units="number" (required for the L-var read) and routes it to a
@@ -929,16 +867,6 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Stock("AIRSPEED MACH", "AIRSPEED MACH", "Standby Mach", "mach");
         Stock("INDICATED ALTITUDE", "INDICATED ALTITUDE", "Standby Altitude", "feet");
         Stock("KOHLSMAN SETTING MB", "KOHLSMAN SETTING MB", "Standby Baro Setting", "millibars");
-        // ISIS extras: baro in inHg (the non-indexed KOHLSMAN, shown alongside the hPa
-        // value the ISIS already reads) + body-X accel for the slip/skid ball.
-        // NOTE: deliberately NOT using the indexed `:3` standby air-data source. Although
-        // the real ISIS reads ADR :3, the stock `INDICATED ALTITUDE:3` name is NOT a valid
-        // SimConnect data-definition var (INDICATED ALTITUDE is not an indexed simvar) —
-        // adding it made SimConnect raise a name exception that broke aircraft detection
-        // (the "MSFS detected but every hotkey says not connected" bug). The A320 ISIS uses
-        // the non-indexed simvars for the same reason; mirror that here.
-        Stock("KOHLSMAN_SETTING_INHG", "KOHLSMAN SETTING MB", "Standby Baro inHg", "inHg");
-        Stock("ACCELERATION BODY X", "ACCELERATION BODY X", "Standby Slip/Skid", "GFORCE");
 
         // ENGINE SD-page stock simvars (oil temp/press + vibration per engine — the
         // FBW SD ENG page reads these, like the A32NX). Pre-declared as SimVar so the
@@ -1118,10 +1046,6 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             Stock($"ENG_OIL_TEMP:{n}", $"GENERAL ENG OIL TEMPERATURE:{n}", $"Engine {n} Oil Temperature", "celsius");
         }
         Read("A32NX_AIRLINER_TO_FLEX_TEMP", "Flex Temperature", "celsius");   // Upper E/WD flex readout
-        // EWD thrust limit — the green max-N1 % shown beside the thrust-rating mode
-        // (CLB/FLX/TOGA). Tells the pilot how much thrust the current mode allows; the
-        // limit TYPE is already announced via A32NX_AUTOTHRUST_THRUST_LIMIT_TYPE.
-        Read("A32NX_AUTOTHRUST_THRUST_LIMIT", "Thrust limit N1", "percent");
         // The A380 has thrust reversers ONLY on the inboard engines (2 and 3); the
         // outboard 1 and 4 have none (their _REVERSER_ vars stay 0 forever), so only
         // 2 and 3 are exposed/announced — "only engine 2 and 3 deploy" is correct.
@@ -1535,9 +1459,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Read("A32NX_CHRONO_ELAPSED_TIME", "Chronometer", "seconds");
         Read("A32NX_CHRONO_ET_ELAPSED_TIME", "Elapsed Time", "seconds");
 
-        // ISIS standby instrument. LS is a settable toggle (shows the ILS scales on the
-        // standby instrument) — promoted from readout to control (live-verified writable).
-        OnOff("A32NX_ISIS_LS_ACTIVE", "ISIS LS");
+        // ISIS standby instrument.
+        ReadEnum("A32NX_ISIS_LS_ACTIVE", "ISIS LS", onOff);
         ReadEnum("A32NX_ISIS_BUGS_ACTIVE", "ISIS Bugs Page", onOff);
         Sel("A32NX_ISIS_BARO_MODE", "ISIS Baro Mode", new Dictionary<double, string> { [0] = "Set", [1] = "Standard" });
         OnOff("A32NX_ISIS_BARO_UNIT_INHG", "ISIS Baro in inHg");
@@ -1546,9 +1469,6 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         OnOff("A32NX_BRAKE_FAN_BTN_PRESSED", "Brake Fan", button: true);
         ReadEnum("A32NX_BRAKE_FAN_RUNNING", "Brake Fan Running", new Dictionary<double, string> { [0] = "Off", [1] = "Running" });
         ReadEnum("A32NX_BRAKES_HOT", "Brakes Hot", new Dictionary<double, string> { [0] = "Normal", [1] = "HOT" });
-        // Autobrake DECEL light — illuminates while the autobrake is achieving its target
-        // deceleration on the rollout. Auto-announced on change.
-        ReadEnum("A32NX_AUTOBRAKES_DECEL_LIGHT", "Autobrake DECEL Light", onOff);
         // Normal (green-system) brake pressure L/R — the "triple indicator". The
         // taxi brake check wants this at ~0 while braking (brakes on the normal
         // system) vs the accumulator below. (#107 transcript gap: brake check.)
@@ -1560,7 +1480,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
 
         // Gear.
         ReadEnum("A32NX_GEAR_LEVER_LOCKED", "Gear Lever Locked", new Dictionary<double, string> { [0] = "Unlocked", [1] = "Locked" });
-        // (A32NX_LG_GRVTY_MASTER_SWITCH_GUARD promoted to a settable control in the Gear panel.)
+        ReadEnum("A32NX_LG_GRVTY_MASTER_SWITCH_GUARD", "Gravity Extension Guard", openVd);
 
         // Pressurization manual selectors (manual mode only). The FBW knob L:vars
         // are written directly with a rotary POSITION value (not feet/fpm — the
@@ -1694,7 +1614,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         {
             string who = side == "L" ? "Capt" : "F/O";
             Sel($"A380X_EFIS_{side}_ACTIVE_FILTER", $"{who} ND Filter",
-                new Dictionary<double, string> { [0] = "Off", [1] = "Waypoints", [2] = "VOR/DME", [3] = "NDB" });
+                new Dictionary<double, string> { [1] = "Waypoints", [2] = "VOR/DME", [3] = "NDB" });
             Sel($"A380X_EFIS_{side}_ACTIVE_OVERLAY", $"{who} ND Overlay",
                 new Dictionary<double, string> { [0] = "Off", [1] = "Weather", [2] = "Terrain" });
             // A380 baro unit lives on XMLVAR_Baro_Selector_HPA_{1|2} (1=hPa, 0=inHg),
@@ -1759,10 +1679,6 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         OnOff("A32NX_PUSHBACK_SYSTEM_ENABLED", "Pushback System");
         Read("A32NX_PUSHBACK_SPD_FACTOR", "Pushback Speed Factor");
         Read("A32NX_PUSHBACK_HDG_FACTOR", "Pushback Heading Factor");
-        // NOTE: pushback tug-state readouts (PUSHBACK STATE / PUSHBACK ATTACHED) were
-        // dropped — they are non-standard stock SimVar names that risk a SimConnect
-        // data-definition name exception (the same failure mode that broke aircraft
-        // detection). Re-add only if each name is verified addable to a data def first.
 
         // KCCU keyboard/cursor enable vars are intentionally NOT defined as
         // controls — the KCCU is the MCDU's input device, driven through the
@@ -2076,7 +1992,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 "ELEC", "APU", "Fuel", "Hydraulics", "Bleed Air", "Air Conditioning",
                 "Pressurization", "Ventilation", "Cargo Air", "Anti Ice", "Fire", "Oxygen",
                 "Calls", "Signs", "Wipers", "ADIRS", "Flight Control Computers", "Engine Start",
-                "Recorder and Misc", "GPWS", "Reset", "Interior Lighting", "Exterior Lighting"
+                "Recorder and Misc", "GPWS", "Interior Lighting", "Exterior Lighting"
             },
             ["Glareshield"] = new List<string> { "FCU", "EFIS Captain", "EFIS First Officer", "Warnings", "OIT" },
             ["Instrument"] = new List<string> { "Gear", "Autobrake", "ISIS", "Source Switching", "Clock" },
@@ -2181,13 +2097,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         p["Fire"] = new List<string>
         {
             "A32NX_FIRE_BUTTON_ENG1", "A32NX_FIRE_BUTTON_ENG2", "A32NX_FIRE_BUTTON_ENG3",
-            "A32NX_FIRE_BUTTON_ENG4", "A32NX_FIRE_BUTTON_APU",
-            "A32NX_OVHD_FIRE_AGENT_1_ENG_1_IS_PRESSED", "A32NX_OVHD_FIRE_AGENT_2_ENG_1_IS_PRESSED",
-            "A32NX_OVHD_FIRE_AGENT_1_ENG_2_IS_PRESSED", "A32NX_OVHD_FIRE_AGENT_2_ENG_2_IS_PRESSED",
-            "A32NX_OVHD_FIRE_AGENT_1_ENG_3_IS_PRESSED", "A32NX_OVHD_FIRE_AGENT_2_ENG_3_IS_PRESSED",
-            "A32NX_OVHD_FIRE_AGENT_1_ENG_4_IS_PRESSED", "A32NX_OVHD_FIRE_AGENT_2_ENG_4_IS_PRESSED",
-            "A32NX_OVHD_FIRE_AGENT_1_APU_1_IS_PRESSED",
-            "A32NX_OVHD_FIRE_TEST_PB_IS_PRESSED", "A32NX_FIRE_TEST_CARGO"
+            "A32NX_FIRE_BUTTON_ENG4", "A32NX_FIRE_BUTTON_APU", "A32NX_OVHD_FIRE_TEST_PB_IS_PRESSED",
+            "A32NX_FIRE_TEST_CARGO"
         };
         p["Oxygen"] = new List<string>
         {
@@ -2249,18 +2160,14 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         };
         p["Audio Control Panel Captain"] = new List<string>
         {
-            "A380X_RMP_1_VHF_VOL_RX_SWITCH_1", "A380X_RMP_1_VHF_VOL_RX_SWITCH_2", "A380X_RMP_1_VHF_VOL_RX_SWITCH_3",
-            "A380X_RMP_1_HF_VOL_RX_SWITCH_1", "A380X_RMP_1_HF_VOL_RX_SWITCH_2",
-            "A380X_RMP_1_TEL_VOL_RX_SWITCH_1", "A380X_RMP_1_TEL_VOL_RX_SWITCH_2",
+            "A380X_RMP_1_VHF_VOL_RX_SWITCH_1", "A380X_RMP_1_VHF_VOL_RX_SWITCH_2",
             "A380X_RMP_1_CAB_VOL_RX_SWITCH", "A380X_RMP_1_INT_VOL_RX_SWITCH",
             "A380X_RMP_1_PA_VOL_RX_SWITCH", "A380X_RMP_1_NAV_VOL_RX_SWITCH",
             "A380X_RMP_1_VHF_TX_1"
         };
         p["Audio Control Panel First Officer"] = new List<string>
         {
-            "A380X_RMP_2_VHF_VOL_RX_SWITCH_1", "A380X_RMP_2_VHF_VOL_RX_SWITCH_2", "A380X_RMP_2_VHF_VOL_RX_SWITCH_3",
-            "A380X_RMP_2_HF_VOL_RX_SWITCH_1", "A380X_RMP_2_HF_VOL_RX_SWITCH_2",
-            "A380X_RMP_2_TEL_VOL_RX_SWITCH_1", "A380X_RMP_2_TEL_VOL_RX_SWITCH_2",
+            "A380X_RMP_2_VHF_VOL_RX_SWITCH_1", "A380X_RMP_2_VHF_VOL_RX_SWITCH_2",
             "A380X_RMP_2_CAB_VOL_RX_SWITCH", "A380X_RMP_2_INT_VOL_RX_SWITCH",
             "A380X_RMP_2_PA_VOL_RX_SWITCH", "A380X_RMP_2_NAV_VOL_RX_SWITCH",
             "A380X_RMP_2_VHF_TX_1"
@@ -2325,10 +2232,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         };
         p["OIT"] = new List<string> { "A380X_SWITCH_OIT_SIDE_LEFT", "A380X_SWITCH_OIT_SIDE_RIGHT" };
 
-        p["Gear"] = new List<string> { "A32NX_GEAR_HANDLE_POSITION", "A32NX_LG_GRVTY_SWITCH_POS",
-            "A32NX_LG_GRVTY_MASTER_SWITCH_GUARD", "A32NX_LG_GRVTY_SWITCH_GUARD_1", "A32NX_LG_GRVTY_SWITCH_GUARD_2" };
-        // Computer-reset (CB) overhead panel — the 10 latching reset pushbuttons.
-        p["Reset"] = _resetPanelVars.Select(t => t.key).ToList();
+        p["Gear"] = new List<string> { "A32NX_GEAR_HANDLE_POSITION", "A32NX_LG_GRVTY_SWITCH_POS" };
         p["Autobrake"] = new List<string>
         {
             // ANTISKID_BRAKES_ACTIVE is a read-only sim state — it lives in the
@@ -2447,7 +2351,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         p["Transponder"].Add("A32NX_DCDU_ATC_MSG_ACK");
 
         // ---- new panels ----
-        p["ISIS"] = new List<string> { "A32NX_ISIS_LS_ACTIVE", "A32NX_ISIS_BARO_MODE", "A32NX_ISIS_BARO_UNIT_INHG" };
+        p["ISIS"] = new List<string> { "A32NX_ISIS_BARO_MODE", "A32NX_ISIS_BARO_UNIT_INHG" };
         p["Wipers"] = new List<string> { "WIPER_LEFT", "WIPER_RIGHT" };
         p["Speeds"] = new List<string>();
         // KCCU (keyboard/cursor control unit) is the MCDU's input device — it is
@@ -2613,8 +2517,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         d["Thrust Levers"] = new List<string>
         {
             "A32NX_AUTOTHRUST_TLA:1", "A32NX_AUTOTHRUST_TLA:2",
-            "A32NX_AUTOTHRUST_TLA:3", "A32NX_AUTOTHRUST_TLA:4",
-            "A32NX_AUTOTHRUST_THRUST_LIMIT"   // EWD green N1-limit % for the current mode
+            "A32NX_AUTOTHRUST_TLA:3", "A32NX_AUTOTHRUST_TLA:4"
         };
 
         // Flaps handle is a settable, auto-announced combo in the panel; the speed-brake
@@ -2662,7 +2565,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "A32NX_HYD_BRAKE_NORM_LEFT_PRESS", "A32NX_HYD_BRAKE_NORM_RIGHT_PRESS",
             "A32NX_HYD_BRAKE_ALTN_LEFT_PRESS", "A32NX_HYD_BRAKE_ALTN_RIGHT_PRESS", "A32NX_HYD_BRAKE_ALTN_ACC_PRESS"
         });
-        d["Gear"].Add("A32NX_GEAR_LEVER_LOCKED");   // master guard moved to p["Gear"] as a control
+        d["Gear"].AddRange(new[] { "A32NX_GEAR_LEVER_LOCKED", "A32NX_LG_GRVTY_MASTER_SWITCH_GUARD" });
         d["Pressurization"].AddRange(new[] { "A32NX_OVHD_PRESS_MAN_ALTITUDE_KNOB", "A32NX_OVHD_PRESS_MAN_VS_CTL_KNOB" });
         d["Fuel"].AddRange(new[] { "A380X_OVHD_FUEL_JETTISON_IS_OPEN", "A32NX_TOTAL_FUEL_VOLUME" });
         d["Hydraulics"].Add("A32NX_OVHD_HYD_PTU_PB_HAS_FAULT");
@@ -2673,7 +2576,6 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         d["Status"].AddRange(new[] { "A380X_FMS_DEST_EFOB_BELOW_MIN", "A32NX_FMS_PAX_NUMBER", "A32NX_ECAM_FAILURE_ACTIVE" });
         // ANTISKID is a read-only sim state (moved out of the Autobrake controls).
         d["Autobrake"].Add("ANTISKID_BRAKES_ACTIVE");
-        d["Autobrake"].Add("A32NX_AUTOBRAKES_DECEL_LIGHT");   // DECEL light (auto-announced)
         // Ground equipment read-outs: chocks/cones model state + per-receptacle GPU
         // availability (all read-only; the GPU connect is the overhead EXT PWR PBs).
         d["Ground Equipment"] = new List<string>
@@ -2693,7 +2595,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         {
             "PLANE PITCH DEGREES", "PLANE BANK DEGREES", "PLANE HEADING DEGREES MAGNETIC",
             "AIRSPEED INDICATED", "INDICATED ALTITUDE",
-            "A32NX_ISIS_BARO_MODE", "A32NX_ISIS_BUGS_ACTIVE"   // LS moved to p["ISIS"] as a control
+            "A32NX_ISIS_BARO_MODE", "A32NX_ISIS_LS_ACTIVE", "A32NX_ISIS_BUGS_ACTIVE"
         };
         // PFD accessible snapshot — FMA modes + armed, autothrust, approach capability,
         // attitude/heading/speed/altitude, and the PFD message line. Single status box.
@@ -2710,10 +2612,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             // Source-confirmed PFD additions: weight/CG, takeoff V-speeds, Mach, track, ILS.
             "GROSS_WEIGHT_KG", "A32NX_AIRFRAME_GW_CG_PERCENT_MAC",
             "PFD_V1", "PFD_VR", "PFD_V2", "PFD_MACH", "PFD_TRACK",
-            "PFD_RA", "PFD_VS", "PFD_TRANS_ALT",
-            "PFD_ILS_FREQ", "PFD_ILS_DME", "A32NX_FM_LS_COURSE", "MARKER_BEACON",
-            "PFD_VMAX", "PFD_VLS", "PFD_VALPHAPROT", "PFD_VALPHAMAX", "PFD_VSW",
-            "PFD_GREENDOT", "PFD_V3", "PFD_V4", "PFD_VFENEXT"
+            "PFD_ILS_FREQ", "PFD_ILS_DME",
+            "PFD_VMAX", "PFD_VLS", "PFD_VALPHAPROT", "PFD_VALPHAMAX", "PFD_VSW"
         };
         // ND accessible snapshot — mode/range, TO waypoint (decoded ident + distance/
         // bearing/ETA), cross-track, RNP, and ILS LOC/GS validity + deviation.
@@ -3887,19 +3787,6 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     private bool? _baroStdL, _baroStdR; // last EFIS baro STD(true)/QNH(false) per side
     private bool? _baroInHgL, _baroInHgR; // last EFIS baro unit inHg(true)/hPa(false) per side
     private int _lastBaroMin = -2, _lastDh = -2; // last announced minimums (ft; -1 = none/NCD)
-
-    // Computer-reset (CB) panel pushbuttons — (L:var, label). Shared by GetVariables
-    // (registration) and BuildPanelControls (the "Reset" overhead panel). Source:
-    // fbw-a380x behaviour/overhead/reset.xml + A380_COCKPIT Overhead_Reset_Panel.
-    private static readonly (string key, string name)[] _resetPanelVars =
-    {
-        ("A32NX_RESET_PANEL_FMC_A", "Reset FMC A"), ("A32NX_RESET_PANEL_FMC_B", "Reset FMC B"),
-        ("A32NX_RESET_PANEL_FMC_C", "Reset FMC C"), ("A32NX_RESET_PANEL_FWS1", "Reset FWS 1"),
-        ("A32NX_RESET_PANEL_FWS2", "Reset FWS 2"), ("A32NX_RESET_PANEL_AESU1", "Reset AESU 1"),
-        ("A32NX_RESET_PANEL_AESU2", "Reset AESU 2"), ("A32NX_RESET_PANEL_NSS_AVNCS", "Reset NSS Avionics"),
-        ("A32NX_RESET_PANEL_NSS_FLT_OPS", "Reset NSS Flight Ops"), ("A32NX_RESET_PANEL_ARPT_NAV", "Reset Airport Nav"),
-    };
-
     // Decode/normalise an EFIS baro setting to whole hPa; false for STD/no-data.
     // The FBW _HPA var is hPa, but range-detect inHg too so the read-out still
     // works if the EFIS is switched to inches and the value comes through scaled.
@@ -3963,10 +3850,6 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // ILS DME — one decimal nm; ILS freq — three decimals MHz.
         if (varKey == "PFD_ILS_DME") { displayText = value < 0.05 ? "no DME" : $"{value:0.0} nautical miles"; return true; }
         if (varKey == "PFD_ILS_FREQ") { displayText = value < 100 ? "none" : $"{value:0.000} MHz"; return true; }
-        // ILS/LS course — -1 (or any negative) means no course is set.
-        if (varKey == "A32NX_FM_LS_COURSE") { displayText = value < 0 ? "no course set" : $"{value:000} degrees"; return true; }
-        // EWD thrust limit — the max-N1 % for the current thrust-rating mode.
-        if (varKey == "A32NX_AUTOTHRUST_THRUST_LIMIT") { displayText = $"{value:0} percent N1"; return true; }
         switch (varKey)
         {
             // ECAM Control Panel "Status display" box: show the SELECTED SD page name
@@ -4494,8 +4377,6 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                     r.Add(($"Engine {e} oil temperature", $"GENERAL_ENG_OIL_TEMPERATURE:{e}", C));
                     r.Add(($"Engine {e} oil pressure", $"ENG_OIL_PRESSURE:{e}", OilP));
                     r.Add(($"Engine {e} vibration", $"TURB_ENG_VIBRATION:{e}", v => $"{v:0.0}"));
-                    // Starter (cranking) valve — open while motoring/starting the engine.
-                    r.Add(($"Engine {e} starter valve", $"A32NX_PNEU_ENG_{e}_STARTER_VALVE_OPEN", OpenShut));
                 }
                 break;
             case 1: // APU
@@ -4563,8 +4444,6 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 r.Add(("Pack 2 operative", "A32NX_COND_CPIOM_B1_AGS_DISCRETE_WORD", Bit(14, "operative", "off")));
                 break;
             case 4: // PRESS (Pressurization) — block-1 ARINC words
-                // The PRESS page's prominent AUTO/MAN cabin-pressure mode label.
-                r.Add(("Pressurization mode", "A32NX_OVHD_PRESS_MAN_ALTITUDE_PB_IS_AUTO", v => v > 0.5 ? "auto" : "manual"));
                 r.Add(("Cabin altitude", "A32NX_PRESS_CABIN_ALTITUDE_B1", v => A(v, "feet")));
                 r.Add(("Cabin vertical speed", "A32NX_PRESS_CABIN_VS_B1", v => A(v, "feet per minute")));
                 r.Add(("Differential pressure", "A32NX_PRESS_CABIN_DELTA_PRESSURE_B1", v => A(v, "psi", "0.0")));

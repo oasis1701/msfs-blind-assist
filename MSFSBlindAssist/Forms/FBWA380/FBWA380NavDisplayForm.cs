@@ -18,22 +18,13 @@ public class FBWA380NavDisplayForm : Form
     private TextBox _text = null!;
 
     private static readonly string[] NdModes = { "ROSE ILS", "ROSE VOR", "ROSE NAV", "ARC", "PLAN" };
-    // A380 ND range is an INDEX into a380EfisRangeSettings = [-1,10,20,40,80,160,320,640]
-    // (fbw-a380x NavigationDisplay.ts). Index 0 = -1 = ZOOM/OANS-plan. (The A320's
-    // 6-entry 10..320 array was wrong for the A380 — every range read one step high.)
-    private static readonly string[] NdRanges = { "ZOOM", "10", "20", "40", "80", "160", "320", "640" };
+    private static readonly string[] NdRanges = { "10", "20", "40", "80", "160", "320" };
 
     private static readonly string[] Vars =
     {
         "A32NX_EFIS_L_TO_WPT_IDENT_0", "A32NX_EFIS_L_TO_WPT_IDENT_1",
-        "A32NX_EFIS_L_TO_WPT_DISTANCE", "A32NX_EFIS_L_TO_WPT_BEARING",
-        "A32NX_EFIS_L_TO_WPT_TRUE_BEARING", "A32NX_EFIS_L_TO_WPT_ETA",
-        "A32NX_EFIS_L_ND_MODE", "A32NX_EFIS_L_ND_RANGE", "A32NX_FMGC_TRUE_REF",
-        // Velocities + wind (ARINC429 BNR words from the ADIRS — decode via Arinc429Word).
-        "A32NX_ADIRS_IR_1_GROUND_SPEED", "A32NX_ADIRS_ADR_1_TRUE_AIRSPEED",
-        "A32NX_ADIRS_IR_1_WIND_DIRECTION_BNR", "A32NX_ADIRS_IR_1_WIND_SPEED_BNR",
-        // Approach capability message (packed 6-bit, same encoding as the wpt ident).
-        "A32NX_EFIS_L_APPR_MSG_0", "A32NX_EFIS_L_APPR_MSG_1",
+        "A32NX_EFIS_L_TO_WPT_DISTANCE", "A32NX_EFIS_L_TO_WPT_BEARING", "A32NX_EFIS_L_TO_WPT_ETA",
+        "A32NX_EFIS_L_ND_MODE", "A32NX_EFIS_L_ND_RANGE",
         "A32NX_FG_CROSS_TRACK_ERROR", "A32NX_FMGC_L_RNP",
         "A32NX_RADIO_RECEIVER_LOC_IS_VALID", "A32NX_RADIO_RECEIVER_LOC_DEVIATION",
         "A32NX_RADIO_RECEIVER_GS_IS_VALID", "A32NX_RADIO_RECEIVER_GS_DEVIATION",
@@ -121,29 +112,8 @@ public class FBWA380NavDisplayForm : Form
 
         int mode = (int)Math.Round(R("A32NX_EFIS_L_ND_MODE"));
         int range = (int)Math.Round(R("A32NX_EFIS_L_ND_RANGE"));
-        bool trueRef = R("A32NX_FMGC_TRUE_REF") > 0.5;
         sb.AppendLine($"ND mode: {(mode >= 0 && mode < NdModes.Length ? NdModes[mode] : mode.ToString())}");
-        string rangeStr = range >= 0 && range < NdRanges.Length
-            ? (range == 0 ? "ZOOM" : NdRanges[range] + " NM") : range.ToString();
-        sb.AppendLine($"ND range: {rangeStr}");
-        if (trueRef) sb.AppendLine("Reference: TRUE");
-        sb.AppendLine();
-
-        // VELOCITIES + WIND — ARINC429 BNR words from the ADIRS; "---" when not in
-        // Normal Operation (e.g. on the ground TAS/wind read No-Computed-Data).
-        var gs = new Arinc429Word(R("A32NX_ADIRS_IR_1_GROUND_SPEED"));
-        var tas = new Arinc429Word(R("A32NX_ADIRS_ADR_1_TRUE_AIRSPEED"));
-        var windDir = new Arinc429Word(R("A32NX_ADIRS_IR_1_WIND_DIRECTION_BNR"));
-        var windSpd = new Arinc429Word(R("A32NX_ADIRS_IR_1_WIND_SPEED_BNR"));
-        sb.AppendLine("VELOCITIES");
-        sb.AppendLine($"  Ground speed: {(gs.IsNormalOperation ? $"{gs.Value:0} knots" : "---")}");
-        sb.AppendLine($"  True airspeed: {(tas.IsNormalOperation ? $"{tas.Value:0} knots" : "---")}");
-        if (windDir.IsNormalOperation && windSpd.IsNormalOperation)
-        {
-            double wd = windDir.Value; if (wd < 0) wd += 360;
-            sb.AppendLine($"  Wind: {wd:000} degrees true at {windSpd.Value:0} knots");
-        }
-        else sb.AppendLine("  Wind: ---");
+        sb.AppendLine($"ND range: {(range >= 0 && range < NdRanges.Length ? NdRanges[range] + " NM" : range.ToString())}");
         sb.AppendLine();
 
         string ident = UnpackIdent(R("A32NX_EFIS_L_TO_WPT_IDENT_0"), R("A32NX_EFIS_L_TO_WPT_IDENT_1"));
@@ -154,16 +124,11 @@ public class FBWA380NavDisplayForm : Form
         }
         else
         {
-            // Bearing follows the ND reference: TRUE bearing (degrees) when TRUE REF is
-            // selected, else the magnetic bearing (radians -> degrees).
-            double trueBrg = R("A32NX_EFIS_L_TO_WPT_TRUE_BEARING");
-            double brg; string brgRef;
-            if (trueRef && trueBrg >= 0) { brg = trueBrg; brgRef = "true"; }
-            else { brg = R("A32NX_EFIS_L_TO_WPT_BEARING") * 180.0 / Math.PI; brgRef = "magnetic"; }
+            double brg = R("A32NX_EFIS_L_TO_WPT_BEARING") * 180.0 / Math.PI;
             if (brg < 0) brg += 360;
             sb.AppendLine($"  Ident: {ident}");
             sb.AppendLine($"  Distance: {R("A32NX_EFIS_L_TO_WPT_DISTANCE"):0.0} NM");
-            sb.AppendLine($"  Bearing: {brg:0} degrees {brgRef}");
+            sb.AppendLine($"  Bearing: {brg:0} degrees");
             double etaSec = R("A32NX_EFIS_L_TO_WPT_ETA");
             if (etaSec > 0)
             {
@@ -177,9 +142,6 @@ public class FBWA380NavDisplayForm : Form
         sb.AppendLine($"  Cross-track error: {R("A32NX_FG_CROSS_TRACK_ERROR"):0.00} NM");
         double rnp = R("A32NX_FMGC_L_RNP");
         sb.AppendLine($"  RNP: {(rnp > 0 ? rnp.ToString("0.00") + " NM" : "Not set")}");
-        // Approach capability (e.g. "CAT3 DUAL") — packed 6-bit, same encoding as idents.
-        string apprMsg = UnpackIdent(R("A32NX_EFIS_L_APPR_MSG_0"), R("A32NX_EFIS_L_APPR_MSG_1"));
-        if (!string.IsNullOrWhiteSpace(apprMsg)) sb.AppendLine($"  Approach capability: {apprMsg}");
         sb.AppendLine();
 
         sb.AppendLine("ILS");
