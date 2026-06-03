@@ -794,6 +794,14 @@ public partial class MainForm : Form
             return true;
         }
 
+        // Touchdown vertical speed is monitored only so the ReadLastLandingRate hotkey can
+        // read it from the cache (it's latched by the sim at touchdown). It must never be
+        // spoken as a generic "value changed" call-out — swallow it here.
+        if (e.VarName == "PLANE_TOUCHDOWN_NORMAL_VELOCITY")
+        {
+            return true;
+        }
+
         // Handle takeoff assist toggle activation (receives position from RequestPositionForTakeoffAssist)
         if (e.VarName == "POSITION_FOR_TAKEOFF_ASSIST")
         {

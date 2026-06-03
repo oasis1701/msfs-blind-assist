@@ -104,7 +104,12 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
                 Type = SimConnect.SimVarType.SimVar,
                 Units = "GForce",
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = false
+                // MUST be IsAnnounced=true: the continuous monitoring batch only includes
+                // Continuous + IsAnnounced vars (SimConnectManager ~L805). With it false this
+                // was never monitored, so the peak-g tracker never got fed and the landing
+                // readout always said "no landing recorded". MainForm routes G_FORCE to the
+                // landing tracker and suppresses the generic call-out (HandleSpecialAnnouncements).
+                IsAnnounced = true
             },
             // Touchdown vertical speed — the sim latches this at touchdown and it persists until
             // the next landing, so the ReadLastLandingRate output hotkey reads it straight from
@@ -116,7 +121,11 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
                 Type = SimConnect.SimVarType.SimVar,
                 Units = "feet per second",
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = false
+                // MUST be IsAnnounced=true to be monitored at all (continuous batch =
+                // Continuous + IsAnnounced; SimConnectManager ~L805). With it false the cache
+                // stayed empty and ReadLastLandingRate always said "no landing recorded".
+                // MainForm.HandleSpecialAnnouncements suppresses its generic call-out.
+                IsAnnounced = true
             },
 
             // Glideslope signal - monitors NAV1 glideslope alive/lost transitions
