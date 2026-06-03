@@ -224,7 +224,19 @@
   A.ensureAirportZoom = function () {
     try {
       var p = A.findRoot();
-      if (p && p.getBoundingClientRect().width > 1) return true;
+      if (p) {
+        // The control panel lays out at the airport zoom but stays visibility:hidden until
+        // it's "opened" on the ND map — and its controls then INHERIT visibility:hidden, so
+        // they have geometry but fail our isVisible() test (the panel reads but the agent
+        // finds "nothing"). A screen-reader user can't open it on the map, so force it (and
+        // its background) visible. React may re-hide on a re-render, so re-apply every poll;
+        // scrape() forces this then enumerates synchronously, so the controls are visible the
+        // instant we read them.
+        try { p.style.visibility = "visible"; } catch (e1) {}
+        var bg = document.querySelector(".oans-control-panel-background");
+        if (bg) { try { bg.style.visibility = "visible"; } catch (e2) {} }
+        if (p.getBoundingClientRect().width > 1) return true;
+      }
       if (typeof SimVar !== "undefined") SimVar.SetSimVarValue("L:A32NX_EFIS_L_ND_RANGE", "number", A.AIRPORT_ZOOM);
     } catch (e) {}
     return false;
