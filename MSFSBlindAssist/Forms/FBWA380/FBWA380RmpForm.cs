@@ -18,7 +18,7 @@ namespace MSFSBlindAssist.Forms.FBWA380;
 ///   Alt+V / Alt+T = the VHF / Transponder (SQWK) pages (the only two the FBW build models).
 ///   Just TYPE the digits on the screen itself (no separate field): each is keyed into the RMP
 ///   LIVE (the box is read-only, so the digits go to the radio, not the text); Enter loads the standby;
-///   Backspace deletes a digit; Alt+C does a full clear. Alt+S focuses the box, Alt+Home the text.
+///   Backspace deletes a digit; Alt+C does a full clear; Alt+Home jumps back to the screen.
 /// Captain ↔ First Officer is a combo (re-points the scrape + the H-event index).
 /// </summary>
 public sealed class FBWA380RmpForm : Form
@@ -95,12 +95,34 @@ public sealed class FBWA380RmpForm : Form
             Text = "Type the frequency / squawk digits right on the screen. Enter loads · Backspace deletes.\n" +
                    "Ctrl+1/2/3 select radio · Alt+1/2/3 swap · Alt+V / Alt+T pages · Alt+C clear (SQWK: Alt+3 ident)."
         };
-        var close = new Button { Text = "&Close", Location = new Point(12, 472), Size = new Size(100, 30), DialogResult = DialogResult.OK, AccessibleName = "Close" };
-        close.Click += (_, _) => Close();
+        var close = new Button { Text = "&Close", Location = new Point(12, 472), Size = new Size(100, 30), AccessibleName = "Close" };
+        close.Click += (_, _) => Hide();   // hide, don't dispose — keeps the scrape warm for instant reopen
 
         Controls.AddRange(new Control[] { sideLabel, _side, _status, _display, pVhf, pSqwk, help, close });
-        CancelButton = close;
-        Load += (_, _) => _display.Focus();
+    }
+
+    // Focus the screen (not the Side combo) every time the window is shown, and pause/resume
+    // the scrape with visibility so a hidden window costs nothing. Showing forces an instant
+    // refresh so the screen is current the moment it appears.
+    protected override void OnVisibleChanged(EventArgs e)
+    {
+        base.OnVisibleChanged(e);
+        if (Visible)
+        {
+            _disp?.SetActive(true);
+            ActiveControl = _display;
+            _display.Focus();
+            _ = InitialScrape();
+        }
+        else _disp?.SetActive(false);
+    }
+
+    // The window is reused across opens (Ctrl+Shift+R), so the X / Alt+F4 just HIDES it and
+    // keeps the Coherent connection alive — only a real app/aircraft teardown disposes it.
+    protected override void OnFormClosing(FormClosingEventArgs e)
+    {
+        if (e.CloseReason == CloseReason.UserClosing) { e.Cancel = true; Hide(); return; }
+        base.OnFormClosing(e);
     }
 
     // ---- keyboard: the soft keys + pages, MCDU-style -----------------------------------------
@@ -174,7 +196,8 @@ public sealed class FBWA380RmpForm : Form
         {
             _def.SendRmpKey(_rmp, $"DIGIT_{e.KeyChar}", _sim);   // keyed live; the standby auto-completes
             e.Handled = true;                                    // swallow so there's no error ding
-            ScheduleRefresh();
+            // No per-keystroke scrape here — that stacked a Coherent round-trip on every digit and
+            // made fast typing lag. The auto-poll (RowsUpdated) refreshes the screen within one tick.
         }
     }
 
@@ -213,7 +236,7 @@ public sealed class FBWA380RmpForm : Form
     {
         _haveRows = false; _firstScrape = true;
         _lastAnnouncedStandby = ""; _lastAnnouncedMessage = "";
-        _disp = new CoherentDisplayClient($"A380X_RMP_{_rmp}", 500, "coherent-rmp-agent.js");
+        _disp = new CoherentDisplayClient($"A380X_RMP_{_rmp}", 300, "coherent-rmp-agent.js");
         _disp.RowsUpdated += OnRowsUpdated;
         _disp.Start();
         _ = InitialScrape();
@@ -306,7 +329,7 @@ public sealed class FBWA380RmpForm : Form
 
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
     {
-        if (keyData == Keys.Escape) { Close(); return true; }
+        if (keyData == Keys.Escape) { Hide(); return true; }
         return base.ProcessCmdKey(ref msg, keyData);
     }
 
