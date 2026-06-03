@@ -3884,6 +3884,14 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     public override bool HandleUIVariableSet(string varKey, double value, SimVarDefinition varDef,
         SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
     {
+        // FCU SPD/MACH toggle from a panel button: the legacy dotted event is inert on the A380's
+        // new FCU — switch via the stock K-events instead (see SpdMachToggleRpn). Then re-read.
+        if (varKey == "A32NX.FCU_SPD_MACH_TOGGLE_PUSH")
+        {
+            simConnect.ExecuteCalculatorCode(SpdMachToggleRpn);
+            RequestFCUSpeedWithStatus(simConnect);
+            return true;
+        }
         // Fire Test / Cargo Smoke Test (HOLD on/off tests). Setting ON triggers the fire
         // MASTER WARNING + the continuous repetitive chime (CRC) aural. Writing the var 0
         // ends the test, but the CRC can keep sounding until the master warning is
@@ -5879,9 +5887,19 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     public void FireFCUButton(string evt, SimConnectManager s, ScreenReaderAnnouncer a)
     {
         if (!s.IsConnected) { a.AnnounceImmediate("Not connected to simulator."); return; }
-        s.SendEvent(evt);
+        if (evt == "A32NX.FCU_SPD_MACH_TOGGLE_PUSH") s.ExecuteCalculatorCode(SpdMachToggleRpn);
+        else s.SendEvent(evt);
         OnPanelButtonFired(evt, s, a);
     }
+
+    // The A380's NEW FCU ignores the legacy dotted "A32NX.FCU_SPD_MACH_TOGGLE_PUSH" H-event the
+    // A320 used — live-verified that firing it (either dot or underscore form) does NOTHING. Its
+    // SpeedManager (FCU/Managers/SpeedManager.ts) switches SPD<->MACH via the STOCK K-events
+    // AP_MANAGED_SPEED_IN_MACH_ON / _OFF. This one conditional RPN reads the current mode (the
+    // stock SimVar AUTOPILOT MANAGED SPEED IN MACH) and fires the opposite — verified live to flip
+    // the mode. (Used by both the FCU Speed window MACH button and the panel Speed/Mach toggle.)
+    private const string SpdMachToggleRpn =
+        "(A:AUTOPILOT MANAGED SPEED IN MACH, Bool) if{ 1 (>K:AP_MANAGED_SPEED_IN_MACH_OFF) } els{ 1 (>K:AP_MANAGED_SPEED_IN_MACH_ON) }";
 
     // Request the live AP/mode state vars so a window can refresh its button labels.
     public void RequestAutopilotStates(SimConnectManager s)

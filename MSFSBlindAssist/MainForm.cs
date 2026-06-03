@@ -1111,10 +1111,13 @@ public partial class MainForm : Form
         // the A380 by both the aircraft-type check and the MetricAlt flag — no other aircraft
         // and no non-metric A380 state reach this branch, so feet behaviour is unchanged.
         if ((e.VarName == "ALTITUDE_MSL" || e.VarName == "ALTITUDE_AGL")
-            && currentAircraft is Aircraft.FlyByWireA380Definition a380Alt && a380Alt.MetricAlt)
+            && currentAircraft is Aircraft.FlyByWireA380Definition a380Alt)
         {
-            double metres = e.Value * 0.3048;
-            announcer.AnnounceImmediate($"{metres:0} meters");
+            // Metric on -> "X meters"; metric off -> "X feet". Previously the off case fell
+            // through and spoke just the number with no unit — now it says "feet" for
+            // consistency with the "meters" suffix.
+            if (a380Alt.MetricAlt) announcer.AnnounceImmediate($"{e.Value * 0.3048:0} meters");
+            else announcer.AnnounceImmediate($"{e.Value:0} feet");
             return true;
         }
 
