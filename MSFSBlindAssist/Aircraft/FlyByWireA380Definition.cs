@@ -1286,6 +1286,16 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             PressSilent($"A32NX_BTN_{k}", $"ECAM {d}");
 
         // ---- Weather radar / SURV ----
+        // The WEATHER RADAR (the radar that paints precip/storms) and PWS (Predictive WindShear)
+        // are DIFFERENT systems sharing the antenna. The radar itself is the Sys on/off + the
+        // mode knob (WX / WX+T / TURB / MAP) — XMLVAR_A320_WeatherRadar_Sys/_Mode (the A380 reuses
+        // the A320 weather-radar model vars; live-verified settable). PWS is the separate AUTO/OFF
+        // switch below. (The radar IMAGE on the ND is still WIP in the FBW A380 dev build, but the
+        // switch states are real and settable, so they're exposed for the pilot.)
+        Sel("XMLVAR_A320_WeatherRadar_Sys", "Weather Radar System",
+            new Dictionary<double, string> { [0] = "Off", [1] = "On" });
+        Sel("XMLVAR_A320_WeatherRadar_Mode", "Weather Radar Mode",
+            new Dictionary<double, string> { [0] = "Weather", [1] = "Weather plus Turbulence", [2] = "Turbulence", [3] = "Map" });
         Sel("A32NX_SWITCH_RADAR_PWS_Position", "Predictive Windshear",
             new Dictionary<double, string> { [0] = "Auto", [1] = "Off" });
         OnOff("A32NX_RADAR_MULTISCAN_AUTO", "WXR Multiscan Auto");
@@ -2734,6 +2744,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         };
         p["Weather Radar"] = new List<string>
         {
+            "XMLVAR_A320_WeatherRadar_Sys", "XMLVAR_A320_WeatherRadar_Mode",
             "A32NX_SWITCH_RADAR_PWS_Position", "A32NX_RADAR_MULTISCAN_AUTO", "A32NX_RADAR_GCS_AUTO"
         };
         p["Transponder"] = new List<string>
