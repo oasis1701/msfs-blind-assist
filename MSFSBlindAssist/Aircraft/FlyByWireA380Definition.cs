@@ -528,20 +528,16 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         OnOff("A32NX_EVAC_COMMAND_TOGGLE", "Evacuation Command");
         Sel("A32NX_EVAC_CAPT_TOGGLE", "Evacuation Capt / Purser",
             new Dictionary<double, string> { [0] = "Purser", [1] = "Capt and Purser" });
-        // ---- WINDOWS + flight-deck door + cabin (interactive-parts.xml) ----
-        var closedOpenW = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" };
-        // Cockpit sliding / DV windows — plain L:vars (0=closed, 1=open). Settable via the
-        // calc path (a HandleUIVariableSet branch routes these prefix-less keys). In the sim
-        // opening is pressure-gated (>=1.2 psi cabin delta snaps them shut), so realistically
-        // only on the ground / depressurised.
-        Sel("CPT_SLIDING_WINDOW", "Captain Sliding Window", closedOpenW);
-        Sel("FO_SLIDING_WINDOW", "First Officer Sliding Window", closedOpenW);
-        // Cockpit window sunshades — plain L:var bool toggles (0 = stowed, 1 = placed over
-        // the side window). Source: interactive-parts.xml "Place Captain/First Officer
-        // Sunshade". Written via the same prefix-less calc-path branch as the windows.
-        var stowedPlaced = new Dictionary<double, string> { [0] = "Stowed", [1] = "Placed" };
-        Sel("SUNSHADE_CPT_OPENING", "Captain Sunshade", stowedPlaced);
-        Sel("SUNSHADE_FO_OPENING", "First Officer Sunshade", stowedPlaced);
+        // ---- WINDOWS + side sunshades — continuous 0..1 SLIDE axes, exposed as accessible
+        // sliders (the cockpit "sliding window" + the side sunshade are drag positions, live-
+        // verified to hold a fractional value, e.g. 0.5). Written via the prefix-less calc-path
+        // HandleUIVariableSet branch, which now preserves the fraction. Opening the window is
+        // pressure-gated in the sim (>=1.2 psi cabin delta snaps it shut), so realistically only
+        // on the ground / depressurised. (Slider() is defined below; C# hoists local functions.)
+        Slider("CPT_SLIDING_WINDOW", "Captain Sliding Window", 0, 1);
+        Slider("FO_SLIDING_WINDOW", "First Officer Sliding Window", 0, 1);
+        Slider("SUNSHADE_CPT_OPENING", "Captain Sunshade", 0, 1);
+        Slider("SUNSHADE_FO_OPENING", "First Officer Sunshade", 0, 1);
         // ---- COCKPIT comfort/misc openables (interactive-parts.xml bool toggles, prefix-
         // less L:vars -> calc-path write branch). Low day-to-day value but exposed per user
         // request. The 0..100 drag-axis items (seats, armrests, forward visors) are skipped.
@@ -573,6 +569,20 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Slider("SEAT_CPT_MOVE_UP_DOWN", "Captain seat up/down");
         Slider("SEAT_FO_MOVE_FWD_AFT", "First officer seat forward/aft");
         Slider("SEAT_FO_MOVE_UP_DOWN", "First officer seat up/down");
+        // Armrests (big = up/down + tilt; small = fwd) + forward windshield visors — all 0..100
+        // drag axes, live-verified writable (held at 40/50).
+        Slider("BIGARMREST_CPT_UP_DOWN", "Captain armrest up/down");
+        Slider("BIGARMREST_CPT_TILT", "Captain armrest tilt");
+        Slider("SMALLARMREST_CPT_FWD", "Captain small armrest forward");
+        Slider("BIGARMREST_FO_UP_DOWN", "First officer armrest up/down");
+        Slider("BIGARMREST_FO_TILT", "First officer armrest tilt");
+        Slider("SMALLARMREST_FO_FWD", "First officer small armrest forward");
+        Slider("CPT_SMALL_SHADE", "Captain forward visor");
+        Slider("FO_SMALL_SHADE", "First officer forward visor");
+        // Speed-brake handle as a FINE slider (0-100% of full deflection) alongside the
+        // Retract/Half/Full combo — written via the stock SPOILERS_SET event (0-16383),
+        // handled in HandleUIVariableSet.
+        Slider("A380X_MSFSBA_SPEEDBRAKE_SLIDER", "Speed Brake (fine)", 0, 16383);
         // Cabin Ready signal (cabin-crew "cabin ready"; settable bool).
         Sel("A32NX_CABIN_READY", "Cabin Ready",
             new Dictionary<double, string> { [0] = "Not Ready", [1] = "Ready" });
@@ -2514,9 +2524,12 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "A380_CPT_TABLE", "A380_FO_TABLE",
             "A380_CPT_FOOTREST", "A380_FO_FOOTREST",
             "A380_LGPIN_DOOR",
-            // Crew seats as accessible sliders (0-100% drag axis).
+            // Crew seats + armrests + forward visors as accessible sliders (drag axes).
             "SEAT_CPT_MOVE_FWD_AFT", "SEAT_CPT_MOVE_UP_DOWN",
-            "SEAT_FO_MOVE_FWD_AFT", "SEAT_FO_MOVE_UP_DOWN"
+            "SEAT_FO_MOVE_FWD_AFT", "SEAT_FO_MOVE_UP_DOWN",
+            "BIGARMREST_CPT_UP_DOWN", "BIGARMREST_CPT_TILT", "SMALLARMREST_CPT_FWD",
+            "BIGARMREST_FO_UP_DOWN", "BIGARMREST_FO_TILT", "SMALLARMREST_FO_FWD",
+            "CPT_SMALL_SHADE", "FO_SMALL_SHADE"
         };
         p["Signs"] = new List<string>
         {
@@ -2673,7 +2686,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "THROTTLE_3_DETENT", "THROTTLE_4_DETENT"
         };
         p["Flaps and Brakes"] = new List<string> { "A32NX_FLAPS_HANDLE_INDEX", "A32NX_PARK_BRAKE_LEVER_POS" };
-        p["Speed Brake"] = new List<string> { "A380X_MSFSBA_SPEEDBRAKE", "A380X_MSFSBA_SPOILERS_ARM" };
+        p["Speed Brake"] = new List<string> { "A380X_MSFSBA_SPEEDBRAKE", "A380X_MSFSBA_SPEEDBRAKE_SLIDER", "A380X_MSFSBA_SPOILERS_ARM" };
         p["ECAM Control Panel"] = new List<string>
         {
             "A32NX_ECAM_SD_CURRENT_PAGE_INDEX", "A32NX_BTN_ALL", "A32NX_BTN_ABNPROC", "A32NX_BTN_CL",
@@ -3953,6 +3966,13 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             simConnect.ExecuteCalculatorCode($"{axis[pos]} (>K:SPOILERS_SET)");
             return true;
         }
+        // Speed-brake FINE slider — the TrackBar already maps 0-100% to 0-16383; fire SPOILERS_SET.
+        if (varKey == "A380X_MSFSBA_SPEEDBRAKE_SLIDER")
+        {
+            int axis = Math.Max(0, Math.Min(16383, (int)Math.Round(value)));
+            simConnect.ExecuteCalculatorCode($"{axis} (>K:SPOILERS_SET)");
+            return true;
+        }
         // Ground-spoiler arm: synthetic Disarm/Arm combo -> SPOILERS_ARM_OFF / _ON.
         if (varKey == "A380X_MSFSBA_SPOILERS_ARM")
         {
@@ -4264,7 +4284,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             || varKey == "A380_CPT_FOOTREST" || varKey == "A380_FO_FOOTREST"
             || varKey == "A380_LGPIN_DOOR")
         {
-            simConnect.ExecuteCalculatorCode($"{(int)Math.Round(value)} (>L:{varKey})");
+            // Write the RAW value (not rounded) so 0..1 slider positions (sliding windows, side
+            // sunshades) carry their fraction; the 0/1 combo items still write 0.0/1.0 fine.
+            simConnect.ExecuteCalculatorCode($"{value.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)} (>L:{varKey})");
             return true;
         }
         if (varKey.StartsWith("A32NX_", StringComparison.Ordinal)
