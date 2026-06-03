@@ -4591,7 +4591,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                     simConnect.RequestVariable($"A32NX_ENGINE_STATE:{e}", forceUpdate: true);
                 }
                 foreach (var g in new[] { "A32NX_AUTOTHRUST_THRUST_LIMIT_TYPE", "A32NX_AIRLINER_TO_FLEX_TEMP",
-                                          "A32NX_AUTOTHRUST_THRUST_LIMIT_IDLE", "A32NX_AUTOTHRUST_THRUST_LIMIT_TOGA" })
+                                          "A32NX_AUTOTHRUST_THRUST_LIMIT_IDLE", "A32NX_AUTOTHRUST_THRUST_LIMIT_TOGA",
+                                          // BLEED line consumers + AGS word for PACKS.
+                                          "A32NX_PNEU_WING_ANTI_ICE_SYSTEM_ON", "A32NX_COND_CPIOM_B1_AGS_DISCRETE_WORD",
+                                          "ENG_ANTI_ICE:1", "ENG_ANTI_ICE:2", "ENG_ANTI_ICE:3", "ENG_ANTI_ICE:4" })
                     simConnect.RequestVariable(g, forceUpdate: true);
                 await Task.Delay(550);
 
@@ -4644,6 +4647,19 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                     "Fuel Flow: "   + Grp("A32NX_ENGINE_FF:{0}",  v => $"{v:0} kg/h"),
                     "Engine state: "+ Grp("A32NX_ENGINE_STATE:{0}", EngState),
                 };
+                // BLEED line — what's drawing engine bleed air (PACKS / nacelle anti-ice / wing
+                // anti-ice), the FBW upper-E/WD BleedSupply element.
+                var bleed = new List<string>();
+                var agsWord = new SimConnect.Arinc429Word(simConnect.GetCachedVariableValue("A32NX_COND_CPIOM_B1_AGS_DISCRETE_WORD") ?? 0);
+                if (agsWord.BitValueOr(13, false) || agsWord.BitValueOr(14, false)) bleed.Add("packs");
+                if (engs.Any(e => (simConnect.GetCachedVariableValue($"ENG_ANTI_ICE:{e}") ?? 0) > 0.5)) bleed.Add("nacelle anti-ice");
+                if ((simConnect.GetCachedVariableValue("A32NX_PNEU_WING_ANTI_ICE_SYSTEM_ON") ?? 0) > 0.5) bleed.Add("wing anti-ice");
+                if (bleed.Count > 0) ewdLines.Add("Bleed: " + string.Join(", ", bleed));
+                // IDLE memo — thrust at idle (≥3 engines at/near idle N1) in descent or later
+                // (FMGC phase ≥ 4 Descent), so it can't false-fire on the ground.
+                double? fmgcPhase = simConnect.GetCachedVariableValue("A32NX_FMGC_FLIGHT_PHASE");
+                int idleEngs = engs.Count(e => { var n1 = simConnect.GetCachedVariableValue($"A32NX_ENGINE_N1:{e}"); return n1.HasValue && n1.Value <= idleLim + 2; });
+                if (fmgcPhase.HasValue && fmgcPhase.Value >= 4 && idleEngs >= 3) ewdLines.Add("IDLE");
                 // Live ECAM memo / warning lines — decoded from the EWD_LOWER code cache
                 // (the same source ReadAllEwdWarnings / Alt+E uses).
                 int memoCount = 0;

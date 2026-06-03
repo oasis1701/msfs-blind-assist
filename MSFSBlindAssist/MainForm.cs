@@ -4928,9 +4928,12 @@ public partial class MainForm : Form
                 }
                 else if (varDef.ValueDescriptions != null && varDef.ValueDescriptions.Count >= 2 && currentSimVarValues.ContainsKey(varKey))
                 {
-                    // Fallback for non-Fenix buttons that still use ValueDescriptions
+                    // Fallback for non-Fenix buttons that still use ValueDescriptions. Skip the
+                    // RESTING state (value 0 = Off/Idle): a momentary push-button has no
+                    // meaningful resting value, so appending it read as noise ("Chronometer
+                    // Start / Stop: Idle, button"). Only show a non-zero (active/latched) state.
                     double val = currentSimVarValues[varKey];
-                    if (varDef.ValueDescriptions.TryGetValue(val, out string? stateText))
+                    if (val != 0 && varDef.ValueDescriptions.TryGetValue(val, out string? stateText))
                         buttonText = $"{varDef.DisplayName}: {stateText}";
                 }
 
