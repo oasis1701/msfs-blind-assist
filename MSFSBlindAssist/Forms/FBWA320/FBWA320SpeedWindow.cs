@@ -8,6 +8,8 @@ namespace MSFSBlindAssist.Forms.FBWA320;
 public class FBWA320SpeedWindow : FBWA320FCUWindowBase
 {
     private readonly TextBox speedTextBox;
+    private readonly Button machButton;
+    private System.Windows.Forms.Timer? _modeTimer;
 
     public FBWA320SpeedWindow(FlyByWireA320Definition aircraft, SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
         : base(aircraft, simConnect, announcer)
@@ -24,17 +26,38 @@ public class FBWA320SpeedWindow : FBWA320FCUWindowBase
         pushButton.Click += (s, e) => aircraft.FireFCUButton("A32NX.FCU_SPD_PUSH", simConnect, announcer);
         var pullButton = new Button { Text = "Speed Pull (selected)", Location = new Point(195, 65), Size = new Size(165, 35), TabIndex = 3, AccessibleName = "Speed Pull" };
         pullButton.Click += (s, e) => aircraft.FireFCUButton("A32NX.FCU_SPD_PULL", simConnect, announcer);
-        var machButton = new Button { Text = "SPD / MACH toggle", Location = new Point(20, 110), Size = new Size(340, 35), TabIndex = 4, AccessibleName = "Speed Mach toggle" };
-        machButton.Click += (s, e) => aircraft.FireFCUButton("A32NX.FCU_SPD_MACH_TOGGLE_PUSH", simConnect, announcer);
+        machButton = new Button { Text = "SPD / MACH toggle", Location = new Point(20, 110), Size = new Size(340, 35), TabIndex = 4, AccessibleName = "Speed Mach toggle" };
+        machButton.Click += (s, e) => { aircraft.FireFCUButton("A32NX.FCU_SPD_MACH_TOGGLE_PUSH", simConnect, announcer); UpdateMachLabel(); };
         var closeButton = new Button { Text = "Close", Location = new Point(130, 155), Size = new Size(140, 35), TabIndex = 5, DialogResult = DialogResult.OK, AccessibleName = "Close" };
         closeButton.Click += (s, e) => Close();
 
         Controls.AddRange(new Control[] { label, speedTextBox, setButton, pushButton, pullButton, machButton, closeButton });
         AcceptButton = setButton;
         CancelButton = closeButton;
+
+        // Reflect the live SPD/MACH mode in the toggle button's label (Mach target reads < 1,
+        // knots >= 100). Same "new standard" as the A380 FCU windows.
+        _modeTimer = new System.Windows.Forms.Timer { Interval = 500 };
+        _modeTimer.Tick += (s, e) => UpdateMachLabel();
     }
 
-    protected override void SpeakInitialReadout() { aircraft.RequestFCUSpeedReadout(simConnect); speedTextBox.Focus(); }
+    protected override void SpeakInitialReadout() { aircraft.RequestFCUSpeedReadout(simConnect); UpdateMachLabel(); _modeTimer?.Start(); speedTextBox.Focus(); }
+
+    private void UpdateMachLabel()
+    {
+        double v = simConnect.GetCachedVariableValue("A32NX_AUTOPILOT_SPEED_SELECTED") ?? -1;
+        string text, mode;
+        if (v > 0 && v < 1) { mode = "Mach"; text = "SPD / MACH toggle — now Mach (press for knots)"; }
+        else if (v >= 100) { mode = "knots"; text = "SPD / MACH toggle — now knots (press for Mach)"; }
+        else { mode = "managed"; text = "SPD / MACH toggle"; }
+        if (machButton.Text != text)
+        {
+            machButton.Text = text;
+            machButton.AccessibleName = $"Speed Mach toggle, currently {mode}";
+        }
+    }
+
+    protected override void OnFormClosing(FormClosingEventArgs e) { _modeTimer?.Stop(); _modeTimer?.Dispose(); _modeTimer = null; base.OnFormClosing(e); }
 
     private void HandleSet()
     {

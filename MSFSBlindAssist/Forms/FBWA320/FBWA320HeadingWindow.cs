@@ -8,6 +8,8 @@ namespace MSFSBlindAssist.Forms.FBWA320;
 public class FBWA320HeadingWindow : FBWA320FCUWindowBase
 {
     private readonly TextBox headingTextBox;
+    private readonly Button trkButton;
+    private System.Windows.Forms.Timer? _modeTimer;
 
     public FBWA320HeadingWindow(FlyByWireA320Definition aircraft, SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
         : base(aircraft, simConnect, announcer)
@@ -24,17 +26,36 @@ public class FBWA320HeadingWindow : FBWA320FCUWindowBase
         pushButton.Click += (s, e) => aircraft.FireFCUButton("A32NX.FCU_TO_AP_HDG_PUSH", simConnect, announcer);
         var pullButton = new Button { Text = "Heading Pull (selected)", Location = new Point(195, 65), Size = new Size(165, 35), TabIndex = 3, AccessibleName = "Heading Pull" };
         pullButton.Click += (s, e) => aircraft.FireFCUButton("A32NX.FCU_TO_AP_HDG_PULL", simConnect, announcer);
-        var trkButton = new Button { Text = "HDG·V/S / TRK·FPA toggle", Location = new Point(20, 110), Size = new Size(340, 35), TabIndex = 4, AccessibleName = "Track FPA toggle" };
-        trkButton.Click += (s, e) => aircraft.FireFCUButton("A32NX.FCU_TRK_FPA_TOGGLE_PUSH", simConnect, announcer);
+        trkButton = new Button { Text = "HDG·V/S / TRK·FPA toggle", Location = new Point(20, 110), Size = new Size(340, 35), TabIndex = 4, AccessibleName = "Track FPA toggle" };
+        trkButton.Click += (s, e) => { aircraft.FireFCUButton("A32NX.FCU_TRK_FPA_TOGGLE_PUSH", simConnect, announcer); UpdateTrkLabel(); };
         var closeButton = new Button { Text = "Close", Location = new Point(130, 155), Size = new Size(140, 35), TabIndex = 5, DialogResult = DialogResult.OK, AccessibleName = "Close" };
         closeButton.Click += (s, e) => Close();
 
         Controls.AddRange(new Control[] { label, headingTextBox, setButton, pushButton, pullButton, trkButton, closeButton });
         AcceptButton = setButton;
         CancelButton = closeButton;
+
+        // Reflect the live HDG·V/S vs TRK·FPA mode in the toggle button label.
+        _modeTimer = new System.Windows.Forms.Timer { Interval = 500 };
+        _modeTimer.Tick += (s, e) => UpdateTrkLabel();
     }
 
-    protected override void SpeakInitialReadout() { aircraft.RequestFCUHeadingReadout(simConnect); headingTextBox.Focus(); }
+    protected override void SpeakInitialReadout() { aircraft.RequestFCUHeadingReadout(simConnect); UpdateTrkLabel(); _modeTimer?.Start(); headingTextBox.Focus(); }
+
+    private void UpdateTrkLabel()
+    {
+        bool isTrk = (simConnect.GetCachedVariableValue("A32NX_TRK_FPA_MODE_ACTIVE") ?? 0) > 0.5;
+        string text = isTrk
+            ? "TRK·FPA / HDG·V/S toggle — now TRK·FPA (press for HDG·V/S)"
+            : "HDG·V/S / TRK·FPA toggle — now HDG·V/S (press for TRK·FPA)";
+        if (trkButton.Text != text)
+        {
+            trkButton.Text = text;
+            trkButton.AccessibleName = isTrk ? "Track FPA toggle, currently TRK FPA" : "Track FPA toggle, currently HDG V/S";
+        }
+    }
+
+    protected override void OnFormClosing(FormClosingEventArgs e) { _modeTimer?.Stop(); _modeTimer?.Dispose(); _modeTimer = null; base.OnFormClosing(e); }
 
     private void HandleSet()
     {

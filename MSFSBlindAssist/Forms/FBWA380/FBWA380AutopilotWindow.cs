@@ -42,8 +42,11 @@ public class FBWA380AutopilotWindow : FBWA380FCUWindowBase
         Controls.AddRange(new Control[] { ap1, ap2, loc, appr, exped, athr, apDisc, athrDisc, fdLabel, closeButton });
         CancelButton = closeButton;
 
-        refreshTimer = new System.Windows.Forms.Timer { Interval = 250 };
-        refreshTimer.Tick += (s, e) => UpdateLabels();
+        // Continuous refresh so every button label tracks the LIVE state — including EXPED,
+        // which only engages when there's an altitude gap and so often flips a moment AFTER the
+        // press (the old one-shot 250 ms timer stopped itself and missed that late change).
+        refreshTimer = new System.Windows.Forms.Timer { Interval = 400 };
+        refreshTimer.Tick += (s, e) => { aircraft.RequestAutopilotStates(simConnect); UpdateLabels(); };
     }
 
     private Button MakeToggle(string name, int x, int y, string evt, int tab)
@@ -57,13 +60,14 @@ public class FBWA380AutopilotWindow : FBWA380FCUWindowBase
         return b;
     }
 
-    protected override void SpeakInitialReadout() { RefreshStates(); }
+    protected override void SpeakInitialReadout() { RefreshStates(); refreshTimer.Start(); }
 
-    private void RefreshStates() { aircraft.RequestAutopilotStates(simConnect); refreshTimer.Stop(); refreshTimer.Start(); }
+    // Request a fresh read + repaint the labels right now (on open and after a press, for
+    // immediate feedback); the continuous timer keeps them current thereafter.
+    private void RefreshStates() { aircraft.RequestAutopilotStates(simConnect); UpdateLabels(); }
 
     private void UpdateLabels()
     {
-        refreshTimer.Stop();
         SetState(ap1, "AP 1", "A32NX_AUTOPILOT_1_ACTIVE");
         SetState(ap2, "AP 2", "A32NX_AUTOPILOT_2_ACTIVE");
         SetState(loc, "LOC", "A32NX_FCU_LOC_MODE_ACTIVE");
