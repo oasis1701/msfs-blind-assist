@@ -27,6 +27,16 @@ Commits this pass (oldest→newest), all on top of `b8db3b8`:
 - `51fa0eb` Panels: new Reset overhead panel, fire-agent discharge, pushback readouts
 - `3b578d6` ACP: VHF3/HF1-2/TEL1-2 receive (both RMPs)
 - `b8db3b8` docs: CLAUDE.md finish-pass record
+- `bba7602` **FIX: re-broken aircraft detection** — the pass reintroduced the "not
+  connected" bug via two stock-SimVar readouts whose NAMES aren't valid SimConnect
+  data-definition vars: `INDICATED ALTITUDE:3` (INDICATED ALTITUDE isn't indexable) and
+  `PUSHBACK STATE`/`PUSHBACK ATTACHED`. `AddToDataDefinition` is async so the bad name
+  doesn't throw in the per-var try/catch — SimConnect raises an exception later that
+  disrupts the one-shot AIRCRAFT_INFO/ATC response → detection never completes. Reverted
+  ISIS to the **non-indexed** altitude/baro (like the proven A320 ISIS; kept slip/skid +
+  LS deviation) and dropped the pushback readouts. **NEW RULE: a stock SimVar must be a
+  real data-definition name, and an indexed one (`NAME:n`) only works if the base simvar
+  is actually indexable (KOHLSMAN:n ✓, INDICATED ALTITUDE:n ✗) — verify before adding.**
 
 **⚠️ Recommended before relying on it:** start MSFSBA against the A380 and confirm it
 announces the aircraft + hotkeys work (detection sanity), then spot-check a new panel
