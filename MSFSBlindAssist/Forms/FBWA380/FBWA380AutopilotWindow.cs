@@ -28,9 +28,11 @@ public class FBWA380AutopilotWindow : FBWA380FCUWindowBase
         var athr = new Button { Text = "A/THR engage", Location = new Point(210, 110), Size = new Size(180, 35), TabIndex = 5, AccessibleName = "Autothrust engage" };
         athr.Click += (s, e) => { simConnect.SendEvent("AUTO_THROTTLE_ARM"); RefreshStates(); };
         var apDisc = new Button { Text = "AP disconnect", Location = new Point(20, 155), Size = new Size(180, 35), TabIndex = 6, AccessibleName = "Autopilot disconnect" };
-        apDisc.Click += (s, e) => { simConnect.SendEvent("A32NX.FCU_AP_DISCONNECT_PUSH"); RefreshStates(); };
+        // Same A380-new-FCU K-event family as the mode buttons (the dotted H-event is inert).
+        // NOTE: not fire-tested live (would disconnect the AP in flight) — verify on the ground.
+        apDisc.Click += (s, e) => { simConnect.ExecuteCalculatorCode("(>K:A32NX.FCU_AP_DISCONNECT_PUSH)"); RefreshStates(); };
         var athrDisc = new Button { Text = "A/THR disconnect", Location = new Point(210, 155), Size = new Size(180, 35), TabIndex = 7, AccessibleName = "Autothrust disconnect" };
-        athrDisc.Click += (s, e) => { simConnect.SendEvent("A32NX.FCU_ATHR_DISCONNECT_PUSH"); RefreshStates(); };
+        athrDisc.Click += (s, e) => { simConnect.ExecuteCalculatorCode("(>K:A32NX.FCU_ATHR_DISCONNECT_PUSH)"); RefreshStates(); };
 
         fdLabel = new Label { Location = new Point(20, 205), Size = new Size(370, 20), AccessibleName = "Flight Director status", Text = "Flight Director: ..." };
 
@@ -47,7 +49,11 @@ public class FBWA380AutopilotWindow : FBWA380FCUWindowBase
     private Button MakeToggle(string name, int x, int y, string evt, int tab)
     {
         var b = new Button { Text = name + " ...", Location = new Point(x, y), Size = new Size(180, 35), TabIndex = tab, AccessibleName = name, Tag = name };
-        b.Click += (s, e) => { simConnect.SendEvent(evt); RefreshStates(); };
+        // CRITICAL: the A380's NEW FCU (FCU/Managers/AutopilotManager.ts) consumes these as
+        // K-EVENTS (K:A32NX.FCU_AP_1_PUSH / AP_2 / LOC / APPR / EXPED) — NOT the dotted H-event the
+        // A320 used. Firing the H-event does NOTHING (live-verified: H:A32NX.FCU_AP_2_PUSH left
+        // A32NX_AUTOPILOT_2_ACTIVE at 0; the K-event flipped it to 1). So fire via the calc K path.
+        b.Click += (s, e) => { simConnect.ExecuteCalculatorCode($"(>K:{evt})"); RefreshStates(); };
         return b;
     }
 
