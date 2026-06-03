@@ -837,7 +837,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
 
         // On-demand readout sources for global hotkeys (not paneled, not announced).
         Stock("KOHLSMAN_HG", "KOHLSMAN SETTING HG", "Altimeter", "inHg");
-        Stock("GROSS_WEIGHT_KG", "TOTAL WEIGHT", "Gross Weight", "kilograms");
+        // PFD display gross weight. KEY is "PFD_GROSS_WEIGHT" (NOT "GROSS_WEIGHT_KG") on purpose:
+        // MainForm's special-announce list speaks "GROSS_WEIGHT_KG" on every SimVarUpdated, so a
+        // status-box force-read of that key auto-announced gross weight every refresh. A distinct
+        // display key avoids the collision; the W/Shift+W hotkeys read the separate GW_KG_CACHE.
+        Stock("PFD_GROSS_WEIGHT", "TOTAL WEIGHT", "Gross Weight", "kilograms");
         // PFD read-out additions (source-confirmed missing). All OnRequest stock simvars
         // (NOT continuous) so they add nothing to the monitoring batch / aircraft detection.
         Stock("PFD_V1", "AIRLINER V1 SPEED", "V1", "knots");
@@ -2772,7 +2776,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "A32NX_PFD_MSG_SET_HOLD_SPEED", "A32NX_PFD_MSG_TD_REACHED",
             "A32NX_PFD_MSG_CHECK_SPEED_MODE", "A32NX_PFD_LINEAR_DEVIATION_ACTIVE",
             // Source-confirmed PFD additions: weight/CG, takeoff V-speeds, Mach, track, ILS.
-            "GROSS_WEIGHT_KG", "A32NX_AIRFRAME_GW_CG_PERCENT_MAC",
+            "PFD_GROSS_WEIGHT", "A32NX_AIRFRAME_GW_CG_PERCENT_MAC",
             "PFD_V1", "PFD_VR", "PFD_V2", "PFD_MACH", "PFD_TRACK",
             "PFD_RA", "PFD_VS", "PFD_TRANS_ALT", "PFD_TRANS_LVL",
             "FCU_SEL_ALT", "FCU_SEL_HDG",
@@ -4243,7 +4247,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             }
             // Weight panel fields — show in the pilot's selected unit (kg/lb), the
             // same choice the EFB Units toggle drives. The raw simvars are kg.
-            case "GROSS_WEIGHT_KG":
+            case "PFD_GROSS_WEIGHT":
             case "A32NX_TOTAL_FUEL_QUANTITY":
             {
                 var (wv, wu) = WeightUser(value);
