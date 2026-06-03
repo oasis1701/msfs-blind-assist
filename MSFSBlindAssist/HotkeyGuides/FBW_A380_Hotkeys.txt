@@ -150,6 +150,18 @@ INSIDE THE MCDU / MFD WINDOW
   Alt+U  Toggle weight units (kilograms / pounds) for MSFSBA read-outs
 
 
+INSIDE THE RADIO MANAGEMENT PANEL (RMP) WINDOW (Ctrl+Shift+R opens it)
+  The list of RMP rows refreshes automatically; read it with the arrow keys.
+  Ctrl+1 / 2 / 3   Select radio 1 / 2 / 3 (same as the Radio 1/2/3 buttons)
+  (type digits)    Each digit is keyed into the RMP live; the standby auto-completes
+  Backspace        Delete the last digit
+  Enter            Load the typed frequency into standby (the line key)
+  Swap button      Make the standby active (manual — the pilot's call)
+  Clear button     Fully reset a stuck entry
+  Page buttons     VHF / HF / TEL / SQWK / NAV / MENU; Mode up / down
+  Captain / First Officer combo switches which RMP you are controlling
+
+
 INSIDE THE LIVE CHECKLIST (ECL) WINDOW (Ctrl+Shift+C opens it)
   The checklist is shown automatically when the window opens and hidden when it
   closes -- no need to toggle it.
