@@ -719,6 +719,29 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         OnOff("A380X_RMP_2_PA_TX_1", "PA Transmit");
         OnOff("A380X_RMP_2_NAV_TX_1", "Navaid Transmit");
 
+        // ---- RADIO MANAGEMENT PANEL (RMP 1) KEYPAD ----
+        // The A380 tunes VHF / HF / TEL frequencies, the transponder (SQWK page) and NAV via the
+        // RMP touchscreen keypad. MSFSBA drives the captain's RMP through the cockpit keypad
+        // H-events (RMP_1_<KEY>_PRESSED/_RELEASED, the FBW KeypadController) — so EVERY RMP
+        // function, including HF tuning, becomes operable as accessible buttons. Each button fires
+        // PRESSED then RELEASED via the A380X_MSFSBA_RMP1_ HandleUIVariableSet branch. The RMP must
+        // be powered ON (A380X_RMP_1_STATE = On) for keypresses to register, as in the real jet.
+        // "Read RMP screen" opens the live Coherent scrape of the RMP display.
+        void RmpKey(string key, string display) => EvtBtn($"A380X_MSFSBA_RMP1_{key}", display);
+        RmpKey("VHF", "VHF page"); RmpKey("HF", "HF page"); RmpKey("TEL", "Telephone page");
+        RmpKey("SQWK", "Transponder page"); RmpKey("NAV", "Nav page"); RmpKey("MENU", "Menu");
+        RmpKey("LSK_1", "Line key 1"); RmpKey("LSK_2", "Line key 2"); RmpKey("LSK_3", "Line key 3");
+        RmpKey("ADK_1", "Adjacent key 1"); RmpKey("ADK_2", "Adjacent key 2"); RmpKey("ADK_3", "Adjacent key 3");
+        RmpKey("UP", "Scroll up"); RmpKey("DOWN", "Scroll down");
+        for (int d = 0; d <= 9; d++) RmpKey($"DIGIT_{d}", $"Digit {d}");
+        RmpKey("DIGIT_DOT", "Decimal point"); RmpKey("DIGIT_CLR", "Clear");
+        RmpKey("VHF_CALL_1", "VHF 1 call"); RmpKey("VHF_CALL_2", "VHF 2 call"); RmpKey("VHF_CALL_3", "VHF 3 call");
+        RmpKey("HF_CALL_1", "HF 1 call"); RmpKey("HF_CALL_2", "HF 2 call");
+        RmpKey("TEL_CALL_1", "Telephone 1 call"); RmpKey("TEL_CALL_2", "Telephone 2 call");
+        RmpKey("MECH_CALL", "Mechanic call"); RmpKey("CAB_CALL", "Cabin call"); RmpKey("PA_CALL", "PA call");
+        RmpKey("VOICE", "Voice"); RmpKey("MSG_CLR", "Message clear"); RmpKey("RST", "Reset");
+        EvtBtn("A380X_MSFSBA_RMP1_DISPLAY", "Read RMP screen");
+
         // ---- INTERIOR LIGHTING ----
         Sel("A380X_OVHD_ANN_LT_POSITION", "Annunciator Lights",
             new Dictionary<double, string> { [0] = "Test", [1] = "Bright", [2] = "Dim" });
@@ -2391,7 +2414,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             ["Pedestal"] = new List<string>
             {
                 "Engines", "Thrust Levers", "Flaps and Brakes", "Speed Brake", "ECAM Control Panel", "Weather Radar",
-                "Transponder", "Radios", "RMP", "Audio Control Panel Captain", "Audio Control Panel First Officer",
+                "Transponder", "Radios", "RMP", "Radio Management Panel", "Audio Control Panel Captain", "Audio Control Panel First Officer",
                 "Cockpit Door", "Windows and Shades", "Cockpit"
             },
             // All ground-related panels live under one category (doors, equipment, pushback/
@@ -2587,6 +2610,16 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "A380X_RMP_2_HF_TX_1", "A380X_RMP_2_HF_TX_2", "A380X_RMP_2_TEL_TX_1", "A380X_RMP_2_TEL_TX_2",
             "A380X_RMP_2_INT_TX_1", "A380X_RMP_2_CAB_TX_1", "A380X_RMP_2_PA_TX_1", "A380X_RMP_2_NAV_TX_1"
         };
+        // Captain RMP keypad — every key as a button + a "Read RMP screen" scrape opener.
+        var rmp1 = new List<string>();
+        foreach (var k in new[] {
+            "VHF","HF","TEL","SQWK","NAV","MENU",
+            "LSK_1","LSK_2","LSK_3","ADK_1","ADK_2","ADK_3","UP","DOWN",
+            "DIGIT_1","DIGIT_2","DIGIT_3","DIGIT_4","DIGIT_5","DIGIT_6","DIGIT_7","DIGIT_8","DIGIT_9","DIGIT_0","DIGIT_DOT","DIGIT_CLR",
+            "VHF_CALL_1","VHF_CALL_2","VHF_CALL_3","HF_CALL_1","HF_CALL_2","TEL_CALL_1","TEL_CALL_2",
+            "MECH_CALL","CAB_CALL","PA_CALL","VOICE","MSG_CLR","RST","DISPLAY" })
+            rmp1.Add($"A380X_MSFSBA_RMP1_{k}");
+        p["Radio Management Panel"] = rmp1;
         p["Interior Lighting"] = new List<string>
         {
             "A380X_OVHD_ANN_LT_POSITION", "A32NX_OVHD_INTLT_ANN",
@@ -4287,6 +4320,22 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             // Write the RAW value (not rounded) so 0..1 slider positions (sliding windows, side
             // sunshades) carry their fraction; the 0/1 combo items still write 0.0/1.0 fine.
             simConnect.ExecuteCalculatorCode($"{value.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)} (>L:{varKey})");
+            return true;
+        }
+        // RMP 1 keypad — fire the cockpit keypad H-event (PRESSED then RELEASED) for the captain's
+        // Radio Management Panel, or open the live RMP-screen scrape. Checked BEFORE the A380X_
+        // catch-all (these synthetic keys have no backing L:var).
+        if (varKey.StartsWith("A380X_MSFSBA_RMP1_", StringComparison.Ordinal))
+        {
+            string k = varKey.Substring("A380X_MSFSBA_RMP1_".Length);
+            if (k == "DISPLAY")
+            {
+                try { new Forms.FBWA380.FBWA380LiveDisplayForm(announcer, "A380X_RMP_1", "Radio Management Panel").Show(); }
+                catch { announcer.Announce("RMP screen unavailable"); }
+                return true;
+            }
+            simConnect.ExecuteCalculatorCode($"(>H:RMP_1_{k}_PRESSED)");
+            simConnect.ExecuteCalculatorCode($"(>H:RMP_1_{k}_RELEASED)");
             return true;
         }
         if (varKey.StartsWith("A32NX_", StringComparison.Ordinal)
