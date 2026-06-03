@@ -2555,17 +2555,19 @@ public partial class MainForm : Form
                 double? td = Num("distToTD");
                 double? tc = Num("distToTC");
                 double? tdSecs = Num("timeToTD");   // FMS time-to-go (seconds), null until computed
-                if (td.HasValue)
+                double? phase = Num("flightPhase");  // FMGC phase: >=4 = descent/approach/… = past TOD
+                // Past TOD once descending — the robust PMDG-parity signal (PMDG keys off
+                // FMC_DistanceToTOD going negative; the A380's (T/D) pseudo-waypoint just
+                // disappears, so its distance/time can read stale — phase is authoritative).
+                bool pastTod = phase.HasValue && phase.Value >= 4 && phase.Value <= 7;
+                if (pastTod || (td.HasValue && td.Value <= 0.5))
+                    announcer.AnnounceImmediate("Past top of descent");
+                else if (td.HasValue)
                 {
-                    if (td.Value <= 0.5)
-                        announcer.AnnounceImmediate("Past top of descent");
-                    else
-                    {
-                        // Match the PMDG TOD readout format exactly:
-                        // "145 miles to top of descent: 00:16:58" (time from the FMS).
-                        string eta = tdSecs.HasValue ? FormatEtaSeconds(tdSecs.Value) : "";
-                        announcer.AnnounceImmediate($"{Math.Round(td.Value)} miles to top of descent{eta}");
-                    }
+                    // Match the PMDG TOD readout format exactly:
+                    // "145 miles to top of descent: 00:16:58" (time from the FMS).
+                    string eta = tdSecs.HasValue ? FormatEtaSeconds(tdSecs.Value) : "";
+                    announcer.AnnounceImmediate($"{Math.Round(td.Value)} miles to top of descent{eta}");
                 }
                 else if (tc.HasValue && tc.Value > 0.5)
                     announcer.AnnounceImmediate($"{Math.Round(tc.Value)} miles to top of climb");

@@ -1276,7 +1276,7 @@
       var m = mfd.fsInstrument.fmcService.master;
       var gc = m && m.guidanceController;
       if (!gc) return JSON.stringify({ ok: false, error: "no guidance" });
-      var info = { ok: true, distToDest: null, distToTD: null, distToTC: null, timeToTD: null, timeToTC: null };
+      var info = { ok: true, distToDest: null, distToTD: null, distToTC: null, timeToTD: null, timeToTC: null, flightPhase: null };
       var map = gc.alongTrackDistancesToDestination;
       var dtd = (map && map.get) ? map.get(0) : null;        // 0 = active plan
       if (typeof dtd === "number" && isFinite(dtd)) info.distToDest = dtd;
@@ -1302,20 +1302,37 @@
       } catch (e) {}
       var pw = gc.currentPseudoWaypoints || [];
       for (var p = 0; p < pw.length; p++) {
-        if (!pw[p]) continue; // some pseudo-waypoint slots are null in flight; deref guard (was crashing flightInfo → dead D/Shift+D)
+        if (!pw[p]) continue; // some pseudo-waypoint slots are null in flight; deref guard
         var id = ((pw[p].ident || pw[p].mcduIdent || "") + "").toUpperCase();
-        var dfs = pw[p].distanceFromStart;
-        if (typeof dfs !== "number" || !isFinite(dfs) || info.distToDest == null || total == null) continue;
-        var toGo = info.distToDest - (total - dfs);
-        if (!isFinite(toGo)) continue;
-        // FMS's own time-to-go (seconds) for this pseudo-waypoint, from its
-        // VerticalWaypointPrediction — accounts for the descent/decel/wind profile,
-        // so it beats distance/ground-speed (live-verified on the T/D). null until computed.
+        // Match ONLY the real Top of Descent / Top of Climb. NOT (DECEL): that is a
+        // SEPARATE deceleration point that stays AHEAD during the descent, so matching it
+        // made Shift+D keep reporting "N miles to top of descent" after the real T/D was
+        // passed (the FMS drops the (T/D) pseudo-waypoint once behind you). Live-confirmed.
+        var isTD = id.indexOf("T/D") >= 0, isTC = id.indexOf("T/C") >= 0;
+        if (!isTD && !isTC) continue;
+        // FMS's own time-to-go + distance-to-go from the VerticalWaypointPrediction —
+        // accounts for the descent/decel/wind profile (live-verified), and the prediction
+        // disappears once the point is passed. Fall back to the along-track derivation
+        // only when the FMS doesn't supply a distance.
         var fpi = pw[p].flightPlanInfo;
         var secs = (fpi && typeof fpi.secondsFromPresent === "number" && isFinite(fpi.secondsFromPresent)) ? fpi.secondsFromPresent : null;
-        if (id.indexOf("T/D") >= 0 || id.indexOf("DECEL") >= 0) { if (info.distToTD == null) { info.distToTD = toGo; info.timeToTD = secs; } }
-        else if (id.indexOf("T/C") >= 0) { if (info.distToTC == null) { info.distToTC = toGo; info.timeToTC = secs; } }
+        var dGo = (fpi && typeof fpi.distanceFromAircraft === "number" && isFinite(fpi.distanceFromAircraft)) ? fpi.distanceFromAircraft : null;
+        if (dGo == null) {
+          var dfs = pw[p].distanceFromStart;
+          if (typeof dfs === "number" && isFinite(dfs) && info.distToDest != null && total != null) {
+            var toGo = info.distToDest - (total - dfs);
+            if (isFinite(toGo)) dGo = toGo;
+          }
+        }
+        if (dGo == null) continue;
+        if (isTD) { if (info.distToTD == null) { info.distToTD = dGo; info.timeToTD = secs; } }
+        else { if (info.distToTC == null) { info.distToTC = dGo; info.timeToTC = secs; } }
       }
+      // FMS flight phase (A32NX/A380 shared L:var): 0 preflight, 1 takeoff, 2 climb,
+      // 3 cruise, 4 descent, 5 approach, 6 go-around, 7 done. >= 4 means the TOD is
+      // behind us ("past top of descent") — the robust signal PMDG gets from its
+      // FMC_DistanceToTOD going negative (the A380's (T/D) pseudo-waypoint just vanishes).
+      try { var ph = SimVar.GetSimVarValue("L:A32NX_FMGC_FLIGHT_PHASE", "number"); if (typeof ph === "number") info.flightPhase = ph; } catch (e) {}
       return JSON.stringify(info);
     } catch (e) { return JSON.stringify({ ok: false, error: (e && e.message) ? e.message : String(e) }); }
   };
