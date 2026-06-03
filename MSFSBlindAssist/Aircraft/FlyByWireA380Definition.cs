@@ -621,6 +621,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // interphone selected"). Settable L:vars via the calculator catch-all.
         OnOff("A380X_RMP_1_VHF_VOL_RX_SWITCH_1", "VHF 1 Receive");
         OnOff("A380X_RMP_1_VHF_VOL_RX_SWITCH_2", "VHF 2 Receive");
+        OnOff("A380X_RMP_1_VHF_VOL_RX_SWITCH_3", "VHF 3 Receive");
+        OnOff("A380X_RMP_1_HF_VOL_RX_SWITCH_1", "HF 1 Receive");
+        OnOff("A380X_RMP_1_HF_VOL_RX_SWITCH_2", "HF 2 Receive");
+        OnOff("A380X_RMP_1_TEL_VOL_RX_SWITCH_1", "TEL 1 Receive");
+        OnOff("A380X_RMP_1_TEL_VOL_RX_SWITCH_2", "TEL 2 Receive");
         OnOff("A380X_RMP_1_CAB_VOL_RX_SWITCH", "Cabin Interphone Receive");
         OnOff("A380X_RMP_1_INT_VOL_RX_SWITCH", "Interphone Receive");
         OnOff("A380X_RMP_1_PA_VOL_RX_SWITCH", "PA Receive");
@@ -633,6 +638,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // exist. Same receive selectors + transmit as the captain side.
         OnOff("A380X_RMP_2_VHF_VOL_RX_SWITCH_1", "VHF 1 Receive");
         OnOff("A380X_RMP_2_VHF_VOL_RX_SWITCH_2", "VHF 2 Receive");
+        OnOff("A380X_RMP_2_VHF_VOL_RX_SWITCH_3", "VHF 3 Receive");
+        OnOff("A380X_RMP_2_HF_VOL_RX_SWITCH_1", "HF 1 Receive");
+        OnOff("A380X_RMP_2_HF_VOL_RX_SWITCH_2", "HF 2 Receive");
+        OnOff("A380X_RMP_2_TEL_VOL_RX_SWITCH_1", "TEL 1 Receive");
+        OnOff("A380X_RMP_2_TEL_VOL_RX_SWITCH_2", "TEL 2 Receive");
         OnOff("A380X_RMP_2_CAB_VOL_RX_SWITCH", "Cabin Interphone Receive");
         OnOff("A380X_RMP_2_INT_VOL_RX_SWITCH", "Interphone Receive");
         OnOff("A380X_RMP_2_PA_VOL_RX_SWITCH", "PA Receive");
@@ -2241,14 +2251,18 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         };
         p["Audio Control Panel Captain"] = new List<string>
         {
-            "A380X_RMP_1_VHF_VOL_RX_SWITCH_1", "A380X_RMP_1_VHF_VOL_RX_SWITCH_2",
+            "A380X_RMP_1_VHF_VOL_RX_SWITCH_1", "A380X_RMP_1_VHF_VOL_RX_SWITCH_2", "A380X_RMP_1_VHF_VOL_RX_SWITCH_3",
+            "A380X_RMP_1_HF_VOL_RX_SWITCH_1", "A380X_RMP_1_HF_VOL_RX_SWITCH_2",
+            "A380X_RMP_1_TEL_VOL_RX_SWITCH_1", "A380X_RMP_1_TEL_VOL_RX_SWITCH_2",
             "A380X_RMP_1_CAB_VOL_RX_SWITCH", "A380X_RMP_1_INT_VOL_RX_SWITCH",
             "A380X_RMP_1_PA_VOL_RX_SWITCH", "A380X_RMP_1_NAV_VOL_RX_SWITCH",
             "A380X_RMP_1_VHF_TX_1"
         };
         p["Audio Control Panel First Officer"] = new List<string>
         {
-            "A380X_RMP_2_VHF_VOL_RX_SWITCH_1", "A380X_RMP_2_VHF_VOL_RX_SWITCH_2",
+            "A380X_RMP_2_VHF_VOL_RX_SWITCH_1", "A380X_RMP_2_VHF_VOL_RX_SWITCH_2", "A380X_RMP_2_VHF_VOL_RX_SWITCH_3",
+            "A380X_RMP_2_HF_VOL_RX_SWITCH_1", "A380X_RMP_2_HF_VOL_RX_SWITCH_2",
+            "A380X_RMP_2_TEL_VOL_RX_SWITCH_1", "A380X_RMP_2_TEL_VOL_RX_SWITCH_2",
             "A380X_RMP_2_CAB_VOL_RX_SWITCH", "A380X_RMP_2_INT_VOL_RX_SWITCH",
             "A380X_RMP_2_PA_VOL_RX_SWITCH", "A380X_RMP_2_NAV_VOL_RX_SWITCH",
             "A380X_RMP_2_VHF_TX_1"
