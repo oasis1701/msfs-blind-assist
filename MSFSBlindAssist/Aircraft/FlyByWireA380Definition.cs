@@ -4814,6 +4814,15 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                     r.Add(($"Right spoiler {sp}", $"A32NX_HYD_SPOILER_{sp}_RIGHT_DEFLECTION", Defl));
                 }
                 r.Add(("Pitch trim (THS)", "ELEVATOR_TRIM", v => $"{Math.Abs(v):0.0} degrees {(v >= 0 ? "up" : "down")}"));
+                // Rudder trim — the SEC ARINC429 degrees word (positive = nose-LEFT), same
+                // source + convention as the FCC-panel "Rudder Trim" readout (the SD F/CTL page
+                // shows it but A380SdRows previously omitted it).
+                r.Add(("Rudder trim", "A32NX_SEC_1_RUDDER_ACTUAL_POSITION", v =>
+                {
+                    var w = new SimConnect.Arinc429Word(v);
+                    if (!w.IsNormalOperation && !w.IsFunctionalTest) return "not available";
+                    return Math.Abs(w.Value) < 0.05 ? "Neutral" : $"{Math.Abs(w.Value):0.0} degrees {(w.Value > 0 ? "left" : "right")}";
+                }));
                 r.Add(("Speed brake handle", "A32NX_SPOILERS_HANDLE_POSITION", v => $"{v * 100:0} %"));
                 r.Add(("Ground spoilers armed", "A32NX_SPOILERS_ARMED", v => v > 0.5 ? "armed" : "disarmed"));
                 r.Add(("Flaps angle", "A32NX_LEFT_FLAPS_ANGLE", v => $"{v:0.0} degrees"));
