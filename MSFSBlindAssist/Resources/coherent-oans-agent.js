@@ -75,6 +75,29 @@
     return s ? clean(s.textContent) : "";
   };
 
+  // An OANS InputField shows its empty state as a run of dashes/underscores
+  // (e.g. "------"); surface that as "blank" rather than reading the dashes.
+  A.isBlankValue = function (v) {
+    return !v || /^[\s\-–—_.]+$/.test(v);
+  };
+
+  // The OANS entry fields carry NO .mfd-label sibling in the DOM, so a screen
+  // reader would hear only the value. Label them by the active tab: the ARPT SEL
+  // field is the airport code, the MAP DATA field is the BTV runway/exit entry.
+  A.oansFieldLabel = function () {
+    var tabs = document.querySelectorAll(".mfd-top-tab-navigator-bar-element-outer");
+    for (var i = 0; i < tabs.length; i++) {
+      var lab = tabs[i].querySelector(".mfd-top-tab-navigator-bar-element-label");
+      var on = tabs[i].classList.contains("active") || (lab && lab.classList.contains("active"));
+      if (on && lab) {
+        var t = clean(lab.textContent);
+        if (t.indexOf("ARPT") >= 0) return "Airport";
+        if (t.indexOf("MAP") >= 0) return "Runway or exit";
+      }
+    }
+    return "";
+  };
+
   A.directText = function (n) {
     var s = "";
     for (var c = 0; c < n.childNodes.length; c++) {
@@ -96,7 +119,7 @@
 
   // Short label/value for one control line.
   A.lineText = function (n, kind) {
-    if (kind === "input") { return A.readInputValue(n) || "(empty)"; }
+    if (kind === "input") { var iv = A.readInputValue(n); return A.isBlankValue(iv) ? "blank" : iv; }
     if (kind === "dropdown") {
       var di = n.querySelector(".mfd-dropdown-inner");
       return clean(di ? di.textContent : n.textContent) || "(choice)";
@@ -157,8 +180,10 @@
       var kind = A.classify(n);
       var text = A.lineText(n, kind);
       if (kind === "input") {
-        var lbl = A.inputLabel(n);
-        if (lbl) text = lbl + ": " + (A.readInputValue(n) || "(empty)");
+        var lbl = A.inputLabel(n) || A.oansFieldLabel();
+        var val = A.readInputValue(n);
+        if (A.isBlankValue(val)) val = "blank";
+        text = lbl ? (lbl + ": " + val) : val;
       }
       if (!text && kind !== "input") continue;
       n.setAttribute(A.STAMP, String(idx));
@@ -192,7 +217,19 @@
     }
 
     items.sort(function (a, b) {
-      var dy = Math.round(a.top / 14) - Math.round(b.top / 14);
+      // The top tab bar (MAP DATA / ARPT SEL / STATUS) reads first, as a single row.
+      var at = (a.kind === "tab") ? 0 : 1, bt = (b.kind === "tab") ? 0 : 1;
+      if (at !== bt) return at - bt;
+      if (at === 0) return a.left - b.left;
+      // OANS pages are laid out in COLUMNS, not rows. ARPT SEL, for example, has the
+      // airport-entry field + ICAO/IATA/CITY-NAME mode radios on the left, DISPLAY
+      // AIRPORT in the centre, and the ORIGIN/DEST/ALTN preset buttons on the right.
+      // Reading zig-zag across rows (the old top-then-left sort) interleaved the radios
+      // with the preset buttons. Read each column top-to-bottom, left column first:
+      // cluster x into ~200px bands, then order by vertical position within the column.
+      var ca = Math.floor(a.left / 200), cb = Math.floor(b.left / 200);
+      if (ca !== cb) return ca - cb;
+      var dy = a.top - b.top;
       return dy || (a.left - b.left);
     });
 
