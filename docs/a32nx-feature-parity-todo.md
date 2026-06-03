@@ -153,9 +153,16 @@ at a time, verify live, delete the line.
 - [ ] **SD display constants** (oxygen 1829/1854 PSI, tire 220, nacelle 240, wing-accu 4800) — the
   A320 SD hardcodes its own equivalents; surface to match its display.
 - [ ] **ACCESSIBLE SLIDERS** — the `RenderAsSlider` TrackBar control type is in the SHARED framework
-  (MainForm + SimVarDefinition), so it's already available to the A320. Apply it to the A320's own
-  0..100 drag-axis comfort items (sunshades/seats — re-map the A320 `interactive-parts.xml` names)
-  and consider speedbrake/trims.
+  (MainForm `RenderAsSlider` branch + two-way sync in `UpdateControlFromSimVar`; `SimVarDefinition`
+  has `RenderAsSlider`/`SliderMin`/`SliderMax`), so it's already available to the A320. The A380
+  now exposes the FULL set as sliders: forward+aft windshield sunshades, captain/FO **seats**
+  (fwd-aft + up-down), **armrests** (big up-down + tilt, small forward), **forward visors**
+  (small shades), the **sliding windows + side sunshades** (0..1, converted from combos), and a
+  **speed-brake fine slider** (0-16383 via SPOILERS_SET). NOTE: the prefix-less calc-path write in
+  `HandleUIVariableSet` was changed to preserve the fraction (was rounding to int) — needed for the
+  0..1 sliders. Apply the same to the A320's own `interactive-parts.xml` axis names; the speed-brake
+  fine slider ports directly (shared SPOILERS_SET). (The seat "motor whine" on move is the FBW
+  motorized-seat SFX — cosmetic, not a bug.)
 
 ### G6. Correctness
 - [ ] **B1→B4 CPCS** best-source for PRESS/CRUISE — A320 has a different pressurization system (single CPC,
