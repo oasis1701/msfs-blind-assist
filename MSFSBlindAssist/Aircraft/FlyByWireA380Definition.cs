@@ -583,9 +583,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // Retract/Half/Full combo — written via the stock SPOILERS_SET event (0-16383),
         // handled in HandleUIVariableSet.
         Slider("A380X_MSFSBA_SPEEDBRAKE_SLIDER", "Speed Brake (fine)", 0, 16383);
-        // Cabin Ready signal (cabin-crew "cabin ready"; settable bool).
-        Sel("A32NX_CABIN_READY", "Cabin Ready",
-            new Dictionary<double, string> { [0] = "Not Ready", [1] = "Ready" });
+        // Cabin Ready is registered ONCE, read-only, further down via Mon (auto-announce on
+        // change). The earlier settable Sel here was a duplicate of the same L-var — removed so
+        // the read-only Mon is the sole registration and the auto-announce path is unambiguous.
+        // (It reads 1 after a ready-for-flight preset; the announce only fires on a live 0->1
+        // change, not on the instant preset set during first-aircraft-detect suppression.)
         // Cabin-crew / ground-mechanic call push-buttons (momentary). Buttons that pulse.
         Btn("PUSH_OVHD_CALLS_ALL", "Call All Stations");
         Btn("PUSH_OVHD_CALLS_FWD", "Call Forward");
