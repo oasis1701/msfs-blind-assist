@@ -330,6 +330,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // Released/Pressed combo. (Marked Inop in the current FBW build, but the render
         // shape is now correct.)
         Btn("A32NX_OVHD_EMER_ELEC_RAT_AND_EMER_GEN_IS_PRESSED", "RAT and Emergency Generator Deploy");
+        // Emergency electrical power GEN TEST pushbutton (momentary self-test).
+        Btn("A32NX_EMERELECPWR_GEN_TEST", "Emergency Generator Test");
         Sel("A380X_OVHD_ELEC_BAT_SELECTOR_KNOB", "Battery Display Selector",
             new Dictionary<double, string> { [0] = "ESS", [1] = "APU", [2] = "Off", [3] = "Battery 1", [4] = "Battery 2" });
         for (int n = 1; n <= 4; n++) Read($"A32NX_ELEC_BAT_{n}_POTENTIAL", $"Battery {n} Voltage", "volts");
@@ -344,6 +346,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
 
         // ---- APU ----
         OnOff("A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", "APU Master Switch");
+        // APU auto-exit TEST pushbutton (momentary maintenance self-test).
+        Btn("A32NX_APU_AUTOEXITING_TEST_ON", "APU Auto Exit Test");
         OnOff("A32NX_OVHD_APU_START_PB_IS_ON", "APU Start", button: true);
         // APU Available auto-announces ("APU Available: Available") AND shows in the
         // APU status readout. It overlaps the E/WD "APU AVAIL" memo — that twin
@@ -644,8 +648,21 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         OnOff("A380X_RMP_1_INT_VOL_RX_SWITCH", "Interphone Receive");
         OnOff("A380X_RMP_1_PA_VOL_RX_SWITCH", "PA Receive");
         OnOff("A380X_RMP_1_NAV_VOL_RX_SWITCH", "Navaid Receive");
-        // Transmit (which radio the PTT keys) — the captain's TX select. (live-verified the L:var exists.)
+        // Transmit (which radio the PTT keys) — the captain's TX select. All channels
+        // live-verified ({CHANNEL}_TX_n). The real RMP transmit is mutually exclusive
+        // (radio-button); modelled here as independent On/Off combos like the verified
+        // VHF_TX_1, so the pilot can select/clear each channel's transmit.
         OnOff("A380X_RMP_1_VHF_TX_1", "VHF 1 Transmit");
+        OnOff("A380X_RMP_1_VHF_TX_2", "VHF 2 Transmit");
+        OnOff("A380X_RMP_1_VHF_TX_3", "VHF 3 Transmit");
+        OnOff("A380X_RMP_1_HF_TX_1", "HF 1 Transmit");
+        OnOff("A380X_RMP_1_HF_TX_2", "HF 2 Transmit");
+        OnOff("A380X_RMP_1_TEL_TX_1", "TEL 1 Transmit");
+        OnOff("A380X_RMP_1_TEL_TX_2", "TEL 2 Transmit");
+        OnOff("A380X_RMP_1_INT_TX_1", "Interphone Transmit");
+        OnOff("A380X_RMP_1_CAB_TX_1", "Cabin Interphone Transmit");
+        OnOff("A380X_RMP_1_PA_TX_1", "PA Transmit");
+        OnOff("A380X_RMP_1_NAV_TX_1", "Navaid Transmit");
 
         // ---- AUDIO CONTROL PANEL — First Officer (RMP 2), captain/F-O split ----
         // The RMP is identical hardware per seat; all RMP-2 switches live-verified to
@@ -662,12 +679,28 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         OnOff("A380X_RMP_2_PA_VOL_RX_SWITCH", "PA Receive");
         OnOff("A380X_RMP_2_NAV_VOL_RX_SWITCH", "Navaid Receive");
         OnOff("A380X_RMP_2_VHF_TX_1", "VHF 1 Transmit");
+        OnOff("A380X_RMP_2_VHF_TX_2", "VHF 2 Transmit");
+        OnOff("A380X_RMP_2_VHF_TX_3", "VHF 3 Transmit");
+        OnOff("A380X_RMP_2_HF_TX_1", "HF 1 Transmit");
+        OnOff("A380X_RMP_2_HF_TX_2", "HF 2 Transmit");
+        OnOff("A380X_RMP_2_TEL_TX_1", "TEL 1 Transmit");
+        OnOff("A380X_RMP_2_TEL_TX_2", "TEL 2 Transmit");
+        OnOff("A380X_RMP_2_INT_TX_1", "Interphone Transmit");
+        OnOff("A380X_RMP_2_CAB_TX_1", "Cabin Interphone Transmit");
+        OnOff("A380X_RMP_2_PA_TX_1", "PA Transmit");
+        OnOff("A380X_RMP_2_NAV_TX_1", "Navaid Transmit");
 
         // ---- INTERIOR LIGHTING ----
         Sel("A380X_OVHD_ANN_LT_POSITION", "Annunciator Lights",
             new Dictionary<double, string> { [0] = "Test", [1] = "Bright", [2] = "Dim" });
         Sel("A32NX_OVHD_INTLT_ANN", "Integral Lights",
             new Dictionary<double, string> { [0] = "Test", [1] = "Bright", [2] = "Dim" });
+        // Cockpit lighting preset load / save (the only cockpit-side light control on this
+        // build — the individual dome/flood knobs are not modelled as L:vars; lighting is
+        // otherwise flyPad-preset driven). Pulsing the L:var with the preset id triggers it;
+        // here the buttons load/save preset 1 as a momentary action.
+        Btn("A32NX_LIGHTING_PRESET_LOAD", "Load Lighting Preset");
+        Btn("A32NX_LIGHTING_PRESET_SAVE", "Save Lighting Preset");
 
         // ---- EXTERIOR LIGHTING ----
         // On/Off COMBOS (not toggle buttons) backed by the stock *_LIGHTS_SET
@@ -2306,11 +2339,12 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "ELEC_ENG_GEN:1", "ELEC_ENG_GEN:2", "ELEC_ENG_GEN:3", "ELEC_ENG_GEN:4",
             "ELEC_APU_GEN:1", "ELEC_APU_GEN:2",
             "A32NX_OVHD_EMER_ELEC_GEN_1_LINE_PB_IS_ON", "A32NX_OVHD_EMER_ELEC_RAT_AND_EMER_GEN_IS_PRESSED",
-            "A380X_OVHD_ELEC_BAT_SELECTOR_KNOB"
+            "A32NX_EMERELECPWR_GEN_TEST", "A380X_OVHD_ELEC_BAT_SELECTOR_KNOB"
         };
         p["APU"] = new List<string>
         {
-            "A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", "A32NX_OVHD_APU_START_PB_IS_ON"
+            "A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", "A32NX_OVHD_APU_START_PB_IS_ON",
+            "A32NX_APU_AUTOEXITING_TEST_ON"
         };
         p["Fuel"] = new List<string>
         {
@@ -2449,7 +2483,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "A380X_RMP_1_TEL_VOL_RX_SWITCH_1", "A380X_RMP_1_TEL_VOL_RX_SWITCH_2",
             "A380X_RMP_1_CAB_VOL_RX_SWITCH", "A380X_RMP_1_INT_VOL_RX_SWITCH",
             "A380X_RMP_1_PA_VOL_RX_SWITCH", "A380X_RMP_1_NAV_VOL_RX_SWITCH",
-            "A380X_RMP_1_VHF_TX_1"
+            "A380X_RMP_1_VHF_TX_1", "A380X_RMP_1_VHF_TX_2", "A380X_RMP_1_VHF_TX_3",
+            "A380X_RMP_1_HF_TX_1", "A380X_RMP_1_HF_TX_2", "A380X_RMP_1_TEL_TX_1", "A380X_RMP_1_TEL_TX_2",
+            "A380X_RMP_1_INT_TX_1", "A380X_RMP_1_CAB_TX_1", "A380X_RMP_1_PA_TX_1", "A380X_RMP_1_NAV_TX_1"
         };
         p["Audio Control Panel First Officer"] = new List<string>
         {
@@ -2458,11 +2494,14 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "A380X_RMP_2_TEL_VOL_RX_SWITCH_1", "A380X_RMP_2_TEL_VOL_RX_SWITCH_2",
             "A380X_RMP_2_CAB_VOL_RX_SWITCH", "A380X_RMP_2_INT_VOL_RX_SWITCH",
             "A380X_RMP_2_PA_VOL_RX_SWITCH", "A380X_RMP_2_NAV_VOL_RX_SWITCH",
-            "A380X_RMP_2_VHF_TX_1"
+            "A380X_RMP_2_VHF_TX_1", "A380X_RMP_2_VHF_TX_2", "A380X_RMP_2_VHF_TX_3",
+            "A380X_RMP_2_HF_TX_1", "A380X_RMP_2_HF_TX_2", "A380X_RMP_2_TEL_TX_1", "A380X_RMP_2_TEL_TX_2",
+            "A380X_RMP_2_INT_TX_1", "A380X_RMP_2_CAB_TX_1", "A380X_RMP_2_PA_TX_1", "A380X_RMP_2_NAV_TX_1"
         };
         p["Interior Lighting"] = new List<string>
         {
-            "A380X_OVHD_ANN_LT_POSITION", "A32NX_OVHD_INTLT_ANN"
+            "A380X_OVHD_ANN_LT_POSITION", "A32NX_OVHD_INTLT_ANN",
+            "A32NX_LIGHTING_PRESET_LOAD", "A32NX_LIGHTING_PRESET_SAVE"
         };
         p["Exterior Lighting"] = new List<string>
         {
