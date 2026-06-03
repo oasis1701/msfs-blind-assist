@@ -30,6 +30,14 @@ public sealed class FBWA380RmpForm : Form
     private int _rmp = 1;                 // 1 = Captain, 2 = First Officer
     private bool _haveRows;
 
+    // Live-region change tracking: when the SELECTED row's standby auto-completes/changes as the
+    // user types (e.g. "121.950" → "118.000"), or a new RMP message appears, announce it so the
+    // pilot hears the result without re-reading the list. The active-frequency change is NOT
+    // announced here (the global FBW_RMP_FREQUENCY_ACTIVE auto-announce owns that — no duplicate).
+    private bool _firstScrape = true;
+    private string _lastSelectedStandby = "";
+    private string _lastMessage = "";
+
     private ComboBox _side = null!;
     private ListBox _rows = null!;
     private TextBox _freq = null!;
@@ -162,6 +170,9 @@ public sealed class FBWA380RmpForm : Form
     private void StartScrape()
     {
         _haveRows = false;
+        _firstScrape = true;           // re-baseline the change announcer on (re)connect / side switch
+        _lastSelectedStandby = "";
+        _lastMessage = "";
         _disp = new CoherentDisplayClient($"A380X_RMP_{_rmp}", 800, "coherent-rmp-agent.js");
         _disp.RowsUpdated += OnRowsUpdated;
         _disp.Start();
@@ -211,6 +222,40 @@ public sealed class FBWA380RmpForm : Form
         foreach (var r in rows) _rows.Items.Add(r);
         if (sel >= 0 && sel < _rows.Items.Count) _rows.SelectedIndex = sel;
         _rows.EndUpdate();
+
+        AnnounceChanges(rows);
+    }
+
+    // Live-region announcing: speak the selected row's standby when it auto-completes/changes,
+    // and any new RMP message. Silent on the first scrape (baseline). The active frequency is
+    // intentionally NOT announced here — the global active-freq auto-announce already does it.
+    private void AnnounceChanges(List<string> rows)
+    {
+        string selRow = rows.Find(r => r.IndexOf(", selected", System.StringComparison.Ordinal) >= 0) ?? "";
+        string standby = Token(selRow, "standby ");
+        string msgRow = rows.Find(r => r.StartsWith("Message: ", System.StringComparison.Ordinal)) ?? "";
+        string message = msgRow.Length > 0 ? msgRow.Substring("Message: ".Length) : "";
+
+        if (!_firstScrape)
+        {
+            if (standby.Length > 0 && standby != _lastSelectedStandby)
+                _announcer?.Announce($"Standby {standby}");
+            if (message.Length > 0 && message != _lastMessage)
+                _announcer?.Announce(message);
+        }
+        _lastSelectedStandby = standby;
+        _lastMessage = message;
+        _firstScrape = false;
+    }
+
+    // Extract the value following a label up to the next ", " (or end of line).
+    private static string Token(string row, string after)
+    {
+        int i = row.IndexOf(after, System.StringComparison.Ordinal);
+        if (i < 0) return "";
+        int start = i + after.Length;
+        int end = row.IndexOf(", ", start, System.StringComparison.Ordinal);
+        return (end < 0 ? row.Substring(start) : row.Substring(start, end - start)).Trim();
     }
 
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)

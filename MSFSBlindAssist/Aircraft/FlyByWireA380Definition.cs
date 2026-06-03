@@ -721,7 +721,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
 
         // ---- RADIO MANAGEMENT PANEL (RMP 1) KEYPAD ----
         // The A380 RMP (VHF/HF/TEL/transponder/NAV tuning) is operated through the dedicated
-        // accessible RMP WINDOW (Ctrl+R in input mode → FBWA380RmpForm), NOT a control panel:
+        // accessible RMP WINDOW (Ctrl+Shift+R in input mode → FBWA380RmpForm), NOT a control panel:
         // it scrapes the live A380X_RMP_1/2 Coherent views and drives the cockpit keypad H-events
         // (RMP_n_<KEY>_PRESSED/_RELEASED) via SendRmpKey / SendRmpKeypad. The old per-key button
         // panel was impractical (one digit at a time) and has been removed.
@@ -2400,7 +2400,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             ["Pedestal"] = new List<string>
             {
                 "Engines", "Thrust Levers", "Flaps and Brakes", "Speed Brake", "ECAM Control Panel", "Weather Radar",
-                "Transponder", "Radios", "RMP", "Audio Control Panel Captain", "Audio Control Panel First Officer",
+                "Transponder", "RMP", "Audio Control Panel Captain", "Audio Control Panel First Officer",
                 "Cockpit"
             },
             // All ground-related panels live under one category (doors, equipment, pushback/
@@ -2600,7 +2600,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "A380X_RMP_2_INT_TX_1", "A380X_RMP_2_CAB_TX_1", "A380X_RMP_2_PA_TX_1", "A380X_RMP_2_NAV_TX_1"
         };
         // (Radio Management Panel removed — the RMP is now the dedicated accessible RMP WINDOW,
-        // Ctrl+R in input mode → FBWA380RmpForm, scraping A380X_RMP_1/2 + firing the keypad H-events.)
+        // Ctrl+Shift+R in input mode → FBWA380RmpForm, scraping A380X_RMP_1/2 + firing the keypad H-events.)
         p["Interior Lighting"] = new List<string>
         {
             "A380X_OVHD_ANN_LT_POSITION", "A32NX_OVHD_INTLT_ANN",
@@ -2715,12 +2715,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         {
             "TRANSPONDER_CODE_SET", "XPNDR_IDENT_ON", "A32NX_TRANSPONDER_MODE", "A32NX_SWITCH_ATC_ALT"
         };
-        p["Radios"] = new List<string>
-        {
-            "COM_STANDBY_FREQUENCY_SET:1", "COM1_RADIO_SWAP",
-            "COM_STANDBY_FREQUENCY_SET:2", "COM2_RADIO_SWAP",
-            "COM_STANDBY_FREQUENCY_SET:3", "COM3_RADIO_SWAP"
-        };
+        // "Radios" (stock COM standby-set + swap) REMOVED — the FBW A380 ignores the stock
+        // COM_STBY_RADIO_SET_HZ / COM*_RADIO_SWAP events (live-verified: setting COM1 standby
+        // to 119.000 left it at 121.95). All radio tuning goes through the RMP, so the dedicated
+        // RMP window (Ctrl+Shift+R) is the real interface. "RMP" stays as a read-only quick-glance.
         p["RMP"] = new List<string>
         {
             "A380X_RMP_1_STATE", "A380X_RMP_2_STATE", "A380X_RMP_3_STATE"
@@ -2977,12 +2975,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // plain preselected QNH.
         d["EFIS Captain"] = new List<string> { "A32NX_FCU_LEFT_EIS_BARO_HPA", "A380X_EFIS_L_BARO_PRESELECTED" };
         d["EFIS First Officer"] = new List<string> { "A32NX_FCU_RIGHT_EIS_BARO_HPA", "A380X_EFIS_R_BARO_PRESELECTED" };
-        d["Radios"] = new List<string>
-        {
-            "COM_ACTIVE_FREQUENCY:1", "COM_STANDBY_FREQUENCY:1",
-            "COM_ACTIVE_FREQUENCY:2", "COM_STANDBY_FREQUENCY:2",
-            "COM_ACTIVE_FREQUENCY:3", "COM_STANDBY_FREQUENCY:3"
-        };
+        // d["Radios"] removed with the dead "Radios" panel — the RMP active/standby freqs are
+        // in d["RMP"] (FBW L:vars) and the RMP window.
         d["Transponder"] = new List<string> { "XPNDR_CODE", "A32NX_DCDU_ATC_MSG_WAITING" };
         // Minimums are ARINC429 words — TryGetDisplayOverride decodes them to
         // "200 feet" / "Not set" (the raw word reads ~4.29e9). They also

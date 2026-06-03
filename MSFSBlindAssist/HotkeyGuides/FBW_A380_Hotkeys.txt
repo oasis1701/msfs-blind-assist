@@ -94,7 +94,7 @@ INPUT MODE  (press [ first)
   Windows
   Shift+M    Open MCDU / MFD window
   Shift+T    Open flyPad EFB window
-  Ctrl+R     Open Radio Management Panel (RMP) window — Captain / First Officer,
+  Ctrl+Shift+R  Open Radio Management Panel (RMP) window — Captain / First Officer,
              type a frequency + Enter, page / line / swap / clear keys
   Alt+G      Open GSX window
 

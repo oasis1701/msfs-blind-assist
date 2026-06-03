@@ -354,7 +354,8 @@
 <p>ECAM ALL, Abnormal Proc, Checklist, Clear, Recall, T.O Config, Emergency Cancel, Up/Down/More, plus the SD page selector.</p>
 
 <h4>Transponder / radios / audio</h4>
-<p>Squawk code (edit field), transponder mode and ident, ATC altitude reporting; VHF 1–3 standby/active and swap; RMP state. The <strong>Audio Control Panel</strong> (Pedestal) exposes the captain's RMP-1 receive selectors — VHF 1, VHF 2, cabin interphone, interphone, PA and NAV — so you can confirm which sources you are listening to.</p>
+<p>Squawk code (edit field), transponder mode and ident, ATC altitude reporting. The <strong>RMP</strong> panel shows the three RMP states plus the VHF 1–3 active and standby frequencies as a quick read-only glance.</p>
+<p>To <strong>tune the radios</strong>, open the dedicated <strong>Radio Management Panel window</strong> with <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd> in input mode. The window reads the live RMP screen as a list you walk with the Up/Down arrows (VHF 1/2/3 active and standby, which one is transmitting and selected, the message line), with a <strong>Captain / First Officer</strong> selector. To set a frequency: pick the row (VHF 1/2/3 button), type the digits into the <strong>Frequency entry</strong> field and press Enter — the RMP auto-completes (type <kbd>8</kbd> for 118.000, <kbd>1 1 8 5 0</kbd> for 118.500; no decimal point), then press that row again to load the standby and the swap key to make it active. The standby is announced as it auto-completes, and tuning messages are read aloud. HF and TEL use the same window (the page keys). The old stock-radio panel was removed — on the A380 all tuning goes through the RMP. The <strong>Audio Control Panel</strong> (Pedestal) still exposes the captain's RMP-1 receive selectors — VHF 1, VHF 2, cabin interphone, interphone, PA and NAV — so you can confirm which sources you are listening to.</p>
 
 <h4>Fuel system</h4>
 <p>The feed-tank <strong>pumps</strong> are settable: Feed Tank 1–4 main and standby pumps (each on/off). MSFSBA toggles them through the aircraft's electrical-circuit model, so a set takes effect immediately and the true state is read back. Also here: fuel transfer and jettison, crossfeed valves, per-engine fuel used, and the total/per-tank fuel quantities (which honour the kg/lb unit toggle).</p>
@@ -446,6 +447,7 @@
 <tr><td><kbd>H</kbd> / <kbd>U</kbd> / <kbd>V</kbd></td><td>Magnetic Heading / True Heading / Vertical Speed</td></tr>
 <tr><td><kbd>D</kbd></td><td>Distance to destination (from the FMS)</td></tr>
 <tr><td><kbd>Shift</kbd>+<kbd>D</kbd></td><td>Distance to Top of Descent (once computed in flight)</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd></td><td>Last landing rate (touchdown vertical speed, fpm) / last landing peak g-force</td></tr>
 <tr><td><kbd>Shift</kbd>+<kbd>H</kbd> / <kbd>Shift</kbd>+<kbd>S</kbd> / <kbd>Shift</kbd>+<kbd>A</kbd> / <kbd>Shift</kbd>+<kbd>V</kbd></td><td>Read FCU Heading / Speed / Altitude / Vertical Speed</td></tr>
 <tr><td><kbd>Shift</kbd>+<kbd>1</kbd>…<kbd>6</kbd></td><td>Characteristic speeds: Green Dot, S, F, VLS, VS, VFE-next</td></tr>
 <tr><td><kbd>I</kbd> / <kbd>O</kbd> / <kbd>Z</kbd> / <kbd>Shift</kbd>+<kbd>Z</kbd> / <kbd>X</kbd> / <kbd>C</kbd></td><td>Wind / Outside Temp / Local Time / Zulu Time / Squawk / Nearest City</td></tr>
@@ -464,6 +466,7 @@
 <tr><th>Key</th><th>Action</th></tr>
 <tr><td><kbd>Shift</kbd>+<kbd>M</kbd></td><td>Open the MCDU / MFD window</td></tr>
 <tr><td><kbd>Shift</kbd>+<kbd>T</kbd></td><td>Open the flyPad EFB window</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd></td><td>Open the Radio Management Panel (RMP) window — Captain/First Officer, read the live RMP, type a frequency + Enter, page / line / swap / clear keys</td></tr>
 <tr><td><kbd>Shift</kbd>+<kbd>Y</kbd> / <kbd>Y</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd></td><td>Open Taxi Assist / Continue past hold-short / Stop taxi guidance</td></tr>
 <tr><td><kbd>Shift</kbd>+<kbd>X</kbd></td><td>Open Landing Exit Planner</td></tr>
 <tr><td><kbd>Shift</kbd>+<kbd>R</kbd> / <kbd>Shift</kbd>+<kbd>G</kbd> / <kbd>Shift</kbd>+<kbd>F</kbd> / <kbd>Shift</kbd>+<kbd>D</kbd></td><td>Runway teleport / Gate teleport / Fix tracking / Select destination runway</td></tr>
