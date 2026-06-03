@@ -209,21 +209,31 @@
     return out;
   };
 
-  // Open the OANS control panel if it is hidden. It is toggled by the ND map
-  // context-menu item "MAP DATA" (which flips controlPanelVisible). We click that
-  // element directly — only when the panel is hidden, so we never toggle it shut.
+  // KEY: the OANS airport map + its control panel only RENDER at the lowest "airport
+  // zoom" ND range. At any normal nav range the whole .oans-control-panel is 0x0 / hidden
+  // and nothing can be read or clicked (live-verified: range 1 -> 0x0; range 0 -> 768x256
+  // with the MAP DATA / ARPT SEL / STATUS tabs visible). A blind pilot can't turn the EFIS
+  // range knob and watch the map appear, so we force the captain ND to the airport zoom
+  // whenever the panel has no geometry. (Harmless when not near an airport — it just zooms
+  // the captain ND, which a screen-reader user doesn't see anyway.)
+  A.AIRPORT_ZOOM = 0;            // lowest ND range = airport map
+  A.ensureAirportZoom = function () {
+    try {
+      var p = A.findRoot();
+      var rendered = p && p.getBoundingClientRect().width > 1;
+      if (!rendered && typeof SimVar !== "undefined") {
+        SimVar.SetSimVarValue("L:A32NX_EFIS_L_ND_RANGE", "number", A.AIRPORT_ZOOM);
+      }
+    } catch (e) {}
+  };
+
+  // Open / reveal the OANS control panel. With the map rendered (see ensureAirportZoom),
+  // the MAP DATA / ARPT SEL / STATUS tab bar is already visible — selecting a tab shows its
+  // content. We just make sure the map is zoomed in; the user drives the tabs via the list.
   A.openPanel = function () {
+    A.ensureAirportZoom();
     var p = A.findRoot();
-    if (p && window.getComputedStyle(p).visibility !== "hidden") return "open";
-    var items = document.querySelectorAll(".mfd-context-menu-element");
-    for (var i = 0; i < items.length; i++) {
-      if (clean(items[i].textContent) === "MAP DATA") { A.clickNode(items[i]); return "opened"; }
-    }
-    var all = document.querySelectorAll("span, div");
-    for (var j = 0; j < all.length; j++) {
-      if (clean(all[j].textContent) === "MAP DATA" && all[j].children.length <= 2) { A.clickNode(all[j]); return "opened"; }
-    }
-    return "notfound";
+    return (p && p.getBoundingClientRect().width > 1) ? "open" : "zooming";
   };
 
   A.hasInteractive = function (els) {
@@ -254,9 +264,10 @@
   // ---- read ----
   A.scrape = function () {
     try {
-      // NOTE: opening the panel is done via the explicit openPanel() command
-      // (on form open / refresh), NOT here — otherwise a routine poll would
-      // re-open the panel every time the user closed it on the ND.
+      // Self-heal: keep the OANS map zoomed in so it stays rendered (it only draws at the
+      // airport zoom). Only forces the range when the panel currently has no geometry, so
+      // it doesn't fight a sighted pilot who has the map up already.
+      A.ensureAirportZoom();
       var root = A.findRoot();
       if (!root) return JSON.stringify({ ok: false, error: "OANS not present on this ND view" });
       var els = A.enumerate(root);
