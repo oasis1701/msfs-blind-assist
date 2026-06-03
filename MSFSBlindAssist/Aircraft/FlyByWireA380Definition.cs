@@ -1327,14 +1327,18 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         Mon("A32NX_CABIN_READY", "Cabin Ready", new Dictionary<double, string> { [0] = "Not Ready", [1] = "Ready" });
 
         // ============================ DISPLAYS / STATUS ============================
-        // Settable toggle combo — fires K:AUTO_THROTTLE_ARM via HandleUIVariableSet
-        // (the A380X A/THR button uses the stock arm event, not A32NX.FCU_ATHR_PUSH).
-        // The toggle only commands Disengaged<->Armed; "Active" is an automatic state
-        // (it engages itself with thrust), so it's kept in the dict for the READOUT
-        // (so the combo reads "Active" when active) but picking it just arms — the
-        // real active/armed status also comes through the FMA autothrust-mode announce.
-        Sel("A32NX_AUTOTHRUST_STATUS", "Autothrust",
+        // Autothrust = READ-ONLY status (auto-announced on change: Disengaged / Armed / Active).
+        // It used to be a settable combo, but "Active" is an automatic state you can't command
+        // (the toggle could only arm), which was confusing. A/THR is now ENGAGED/DISCONNECTED from
+        // the Autopilot dialog (Ctrl+P) — the single control point — and this Mon just SPEAKS the
+        // resulting state when it changes, so the pilot always hears A/THR engaging/dropping.
+        Mon("A32NX_AUTOTHRUST_STATUS", "Autothrust",
             new Dictionary<double, string> { [0] = "Disengaged", [1] = "Armed", [2] = "Active" });
+        // Render read-only in its panel (it stays in the Autopilot panel list so the
+        // user can Tab to read the live state) — WITHOUT this the renderer treats any
+        // multi-state ValueDescriptions var as a settable combo (MainForm ~5178), which
+        // is exactly the confusing A/THR combo we're dropping.
+        vars["A32NX_AUTOTHRUST_STATUS"].RenderAsReadOnlyStatus = true;
         Read("A32NX_FMS_PAX_NUMBER", "Passenger Number");
         ReadEnum("A32NX_ECAM_FAILURE_ACTIVE", "ECAM Failure Active", onOff);
         Mon("A32NX_FMGC_FLIGHT_PHASE", "Flight Phase",

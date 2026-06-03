@@ -12,6 +12,8 @@ public class FBWA380BaroWindow : FBWA380FCUWindowBase
 {
     private readonly TextBox qnhTextBox;
     private readonly Label unitLabel;
+    private readonly Button stdButton, qnhButton, unitButton;
+    private System.Windows.Forms.Timer? _modeTimer;
     private bool inHg; // entry unit; seeded from the captain side on open.
 
     public FBWA380BaroWindow(FlyByWireA380Definition aircraft, SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
@@ -27,11 +29,11 @@ public class FBWA380BaroWindow : FBWA380FCUWindowBase
         qnhTextBox.KeyDown += (s, e) => { if (e.KeyCode == Keys.Enter) { e.Handled = true; e.SuppressKeyPress = true; HandleSet(); } };
         var setButton = new Button { Text = "Set", Location = new Point(295, 20), Size = new Size(80, 30), TabIndex = 1, AccessibleName = "Set QNH both sides" };
         setButton.Click += (s, e) => HandleSet();
-        var stdButton = new Button { Text = "STD (both)", Location = new Point(20, 65), Size = new Size(175, 35), TabIndex = 2, AccessibleName = "Standard pressure both sides" };
+        stdButton = new Button { Text = "STD (both)", Location = new Point(20, 65), Size = new Size(175, 35), TabIndex = 2, AccessibleName = "Standard pressure both sides" };
         stdButton.Click += (s, e) => SetStd(true);
-        var qnhButton = new Button { Text = "QNH (both)", Location = new Point(205, 65), Size = new Size(175, 35), TabIndex = 3, AccessibleName = "QNH mode both sides" };
+        qnhButton = new Button { Text = "QNH (both)", Location = new Point(205, 65), Size = new Size(175, 35), TabIndex = 3, AccessibleName = "QNH mode both sides" };
         qnhButton.Click += (s, e) => SetStd(false);
-        var unitButton = new Button { Text = "hPa / inHg toggle (both)", Location = new Point(20, 110), Size = new Size(360, 35), TabIndex = 4, AccessibleName = "Pressure unit toggle both sides" };
+        unitButton = new Button { Text = "hPa / inHg toggle (both)", Location = new Point(20, 110), Size = new Size(360, 35), TabIndex = 4, AccessibleName = "Pressure unit toggle both sides" };
         unitButton.Click += (s, e) => ToggleUnit();
         var closeButton = new Button { Text = "Close", Location = new Point(150, 160), Size = new Size(140, 35), TabIndex = 5, DialogResult = DialogResult.OK, AccessibleName = "Close" };
         closeButton.Click += (s, e) => Close();
@@ -40,9 +42,35 @@ public class FBWA380BaroWindow : FBWA380FCUWindowBase
         AcceptButton = setButton;
         CancelButton = closeButton;
         RefreshUnitLabel();
+
+        // Keep the STD/QNH and unit buttons showing the live state (they can change
+        // from the cockpit FCU baro knobs too, not just these buttons).
+        _modeTimer = new System.Windows.Forms.Timer { Interval = 500 };
+        _modeTimer.Tick += (s, e) => RefreshModeLabels();
+        _modeTimer.Start();
+        RefreshModeLabels();
     }
 
-    private void RefreshUnitLabel() { unitLabel.Text = inHg ? "QNH (26.6-32.5 inHg):" : "QNH (900-1100 hPa):"; }
+    private void RefreshUnitLabel()
+    {
+        unitLabel.Text = inHg ? "QNH (26.6-32.5 inHg):" : "QNH (900-1100 hPa):";
+        unitButton.Text = inHg ? "Unit — now inHg (press for hPa)" : "Unit — now hPa (press for inHg)";
+        unitButton.AccessibleName = inHg ? "Pressure unit toggle, currently inches of mercury" : "Pressure unit toggle, currently hectopascals";
+    }
+
+    private void RefreshModeLabels()
+    {
+        // Mirror the live captain-side unit (the cockpit knob can change it) and the STD state.
+        inHg = (simConnect.GetCachedVariableValue("XMLVAR_Baro_Selector_HPA_1") ?? 1) < 0.5;
+        RefreshUnitLabel();
+        bool std = (simConnect.GetCachedVariableValue("A32NX_FCU_LEFT_EIS_BARO_IS_STD") ?? 0) > 0.5;
+        stdButton.Text = std ? "STD (both) — ACTIVE" : "STD (both)";
+        stdButton.AccessibleName = std ? "Standard pressure both sides, active" : "Standard pressure both sides";
+        qnhButton.Text = std ? "QNH (both)" : "QNH (both) — ACTIVE";
+        qnhButton.AccessibleName = std ? "QNH mode both sides" : "QNH mode both sides, active";
+    }
+
+    protected override void OnFormClosing(FormClosingEventArgs e) { _modeTimer?.Stop(); _modeTimer?.Dispose(); _modeTimer = null; base.OnFormClosing(e); }
 
     protected override void SpeakInitialReadout()
     {

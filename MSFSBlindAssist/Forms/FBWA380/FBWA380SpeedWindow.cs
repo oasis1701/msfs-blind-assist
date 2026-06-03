@@ -8,6 +8,8 @@ namespace MSFSBlindAssist.Forms.FBWA380;
 public class FBWA380SpeedWindow : FBWA380FCUWindowBase
 {
     private readonly TextBox speedTextBox;
+    private readonly Button machButton;
+    private System.Windows.Forms.Timer? _modeTimer;
 
     public FBWA380SpeedWindow(FlyByWireA380Definition aircraft, SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
         : base(aircraft, simConnect, announcer)
@@ -24,17 +26,40 @@ public class FBWA380SpeedWindow : FBWA380FCUWindowBase
         pushButton.Click += (s, e) => aircraft.FireFCUButton("A32NX.FCU_SPD_PUSH", simConnect, announcer);
         var pullButton = new Button { Text = "Speed Pull (selected)", Location = new Point(195, 65), Size = new Size(165, 35), TabIndex = 3, AccessibleName = "Speed Pull" };
         pullButton.Click += (s, e) => aircraft.FireFCUButton("A32NX.FCU_SPD_PULL", simConnect, announcer);
-        var machButton = new Button { Text = "SPD / MACH toggle", Location = new Point(20, 110), Size = new Size(340, 35), TabIndex = 4, AccessibleName = "Speed Mach toggle" };
-        machButton.Click += (s, e) => aircraft.FireFCUButton("A32NX.FCU_SPD_MACH_TOGGLE_PUSH", simConnect, announcer);
+        machButton = new Button { Text = "SPD / MACH toggle", Location = new Point(20, 110), Size = new Size(340, 35), TabIndex = 4, AccessibleName = "Speed Mach toggle" };
+        machButton.Click += (s, e) => { aircraft.FireFCUButton("A32NX.FCU_SPD_MACH_TOGGLE_PUSH", simConnect, announcer); UpdateMachLabel(); };
         var closeButton = new Button { Text = "Close", Location = new Point(130, 155), Size = new Size(140, 35), TabIndex = 5, DialogResult = DialogResult.OK, AccessibleName = "Close" };
         closeButton.Click += (s, e) => Close();
 
         Controls.AddRange(new Control[] { label, speedTextBox, setButton, pushButton, pullButton, machButton, closeButton });
         AcceptButton = setButton;
         CancelButton = closeButton;
+
+        // Reflect the live SPD/MACH mode in the toggle button's label so the user
+        // always knows which mode they're in (and which one a press switches to).
+        // Derived from the cached selected-speed: a Mach target reads < 1, a knots
+        // target reads >= 100, and -1 (managed/dashes) is left ambiguous.
+        _modeTimer = new System.Windows.Forms.Timer { Interval = 500 };
+        _modeTimer.Tick += (s, e) => UpdateMachLabel();
     }
 
-    protected override void SpeakInitialReadout() { aircraft.RequestFCUSpeedWithStatus(simConnect); speedTextBox.Focus(); }
+    protected override void SpeakInitialReadout() { aircraft.RequestFCUSpeedWithStatus(simConnect); UpdateMachLabel(); _modeTimer?.Start(); speedTextBox.Focus(); }
+
+    private void UpdateMachLabel()
+    {
+        double v = simConnect.GetCachedVariableValue("A32NX_AUTOPILOT_SPEED_SELECTED") ?? -1;
+        string text, mode;
+        if (v > 0 && v < 1) { mode = "Mach"; text = "SPD / MACH toggle — now Mach (press for knots)"; }
+        else if (v >= 100) { mode = "knots"; text = "SPD / MACH toggle — now knots (press for Mach)"; }
+        else { mode = "managed"; text = "SPD / MACH toggle"; }
+        if (machButton.Text != text)
+        {
+            machButton.Text = text;
+            machButton.AccessibleName = $"Speed Mach toggle, currently {mode}";
+        }
+    }
+
+    protected override void OnFormClosing(FormClosingEventArgs e) { _modeTimer?.Stop(); _modeTimer?.Dispose(); _modeTimer = null; base.OnFormClosing(e); }
 
     private void HandleSet()
     {

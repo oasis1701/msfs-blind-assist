@@ -10,6 +10,7 @@ public class FBWA380AltitudeWindow : FBWA380FCUWindowBase
 {
     private readonly TextBox altTextBox;
     private readonly Label label;
+    private readonly Button metricButton;
 
     public FBWA380AltitudeWindow(FlyByWireA380Definition aircraft, SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
         : base(aircraft, simConnect, announcer)
@@ -30,7 +31,7 @@ public class FBWA380AltitudeWindow : FBWA380FCUWindowBase
         inc100.Click += (s, e) => aircraft.SetAltIncrement(100, simConnect);
         var inc1000 = new Button { Text = "Increment 1000", Location = new Point(205, 110), Size = new Size(175, 35), TabIndex = 5, AccessibleName = "Increment 1000 feet" };
         inc1000.Click += (s, e) => aircraft.SetAltIncrement(1000, simConnect);
-        var metricButton = new Button { Text = "Metric (MTRS) toggle", Location = new Point(20, 155), Size = new Size(360, 35), TabIndex = 6, AccessibleName = "Metric altitude toggle" };
+        metricButton = new Button { Location = new Point(20, 155), Size = new Size(360, 35), TabIndex = 6, AccessibleName = "Metric altitude toggle" };
         metricButton.Click += (s, e) => { aircraft.ToggleMetricAltitude(simConnect, announcer); RefreshLabel(); };
         var closeButton = new Button { Text = "Close", Location = new Point(140, 200), Size = new Size(140, 35), TabIndex = 7, DialogResult = DialogResult.OK, AccessibleName = "Close" };
         closeButton.Click += (s, e) => Close();
@@ -41,7 +42,13 @@ public class FBWA380AltitudeWindow : FBWA380FCUWindowBase
         RefreshLabel();
     }
 
-    private void RefreshLabel() { label.Text = aircraft.MetricAlt ? "Altitude (30-14935 m):" : "Altitude (100-49000 ft):"; }
+    private void RefreshLabel()
+    {
+        bool metric = aircraft.MetricAlt;
+        label.Text = metric ? "Altitude (30-14935 m):" : "Altitude (100-49000 ft):";
+        metricButton.Text = metric ? "Metric (MTRS) — now ON (press for feet)" : "Metric (MTRS) — now OFF (press for metres)";
+        metricButton.AccessibleName = metric ? "Metric altitude toggle, currently on" : "Metric altitude toggle, currently off";
+    }
 
     protected override void SpeakInitialReadout() { aircraft.RequestFCUAltitudeWithStatus(simConnect); altTextBox.Focus(); }
 
