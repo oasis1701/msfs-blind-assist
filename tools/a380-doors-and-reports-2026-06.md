@@ -161,6 +161,61 @@ completeness adds): PFD transition LEVEL (`A32NX_FM1_TRANS_LVL`, FL format), PFD
 ALT/HDG (stock `AUTOPILOT ALTITUDE LOCK VAR:3` / `HEADING LOCK DIR`), EWD computed THR% +
 BLEED line + IDLE memo (replicate `thrustPercentFromN1`).
 
+## 5b. Session-2/3 changes + A32NX parity TODO (2026-06-03)
+
+Everything below was done for the A380 this session and must be ported/checked on the A32NX
+(verify each var name against A32NX source — do NOT blind-copy A380 names). "DONE-A320" =
+already applied to the A320 this session.
+
+DISPLAY DECODE / FORMAT FIXES (apply to A320 where the same surface exists):
+- Squawk BCD decode (raw 8192 -> "2000") — A320 doesn't display the squawk read-back (only
+  TRANSPONDER_CODE_SET input), so N/A unless a squawk readout is added.
+- VHF COM freq "MHz"->"kHz" units so it formats "123.450 MHz" — A320 ALREADY uses kHz (no fix).
+- RMP raw-Hz freq decode (/1e6) — A320 has no FBW_RMP_FREQUENCY_* vars (N/A).
+- ND raw-key labels -> friendly DisplayNames — A320 ALREADY has friendly names (no fix).
+- PRESS overhead Landing Elev + Outflow Valves: dead _ANIM/_AUTO_ vars -> CPIOM-B1 ARINC
+  (FM1_LANDING_ELEVATION, OUTFLOW_*_B1). A320 uses the CPC words already — verify its overhead
+  PRESS panel isn't on the dead names.
+- ELEC 247XP/247PP bus name typo, PRESS MAN->B1, APU N2 ARINC — A380-specific buses; A320 PRESS
+  MAN->CPC already fixed; check APU N2 (A320 APU has no N2).
+- Transition LEVEL (A32NX_FM1_TRANS_LVL, FL format) + FCU selected ALT/HDG (stock simvars) +
+  nav-radio freqs (NAV/ADF) + SAT/TAT (ADIRS ADR-1 ARINC) on the PFD/ND boxes — PORT to A320.
+- EWD computed THR% (ThrustGauge formula) — port to the A320 EWD decode if/when it gets one.
+
+SD PAGE LAG FIX — DONE-A320: immediate cache paint + _sdRefreshSeq "latest-wins" guard added to
+both RefreshSdPageDisplayAsync (A380) and RefreshDisplayBoxAsync (A320). A380 also removed
+C/B/Status/Video from the page picker (FBW reverts those indices); the A320 SD page index is
+read-only so it has no equivalent revert.
+
+GROSS-WEIGHT AUTO-ANNOUNCE COLLISION (general rule): a display var must NOT reuse one of
+MainForm's special-announce keys (GROSS_WEIGHT_KG, FUEL_QUANTITY*, FLAP_POSITION, GEAR_POSITION,
+SPEED_*, OUTSIDE_TEMP, SQUAWK_CODE, ALTITUDE_*, AIRSPEED_*, etc. — MainForm.cs ~line 1099),
+or the status-box force-read announces it every refresh. A380's PFD GW renamed to PFD_GROSS_WEIGHT.
+A320 doesn't put GROSS_WEIGHT_KG in a display set (no bug). Audit any new A320 display var against
+that list.
+
+FCU READOUT REGRESSION — DONE both: A32NX + Fenix force-read FCU legs marked ExcludeFromBatch=true.
+
+CONTROLS:
+- Doors: all 18 are read-only auto-announced status (NO combos) on the A380 (Type=SimVar
+  passenger / inverted-LOCKED cargo). A320 already has working door combos — give them the same
+  read-only-status treatment + map its own ip indices/cargo vars.
+- Pushback panel REMOVED, Aircraft Preset panel REMOVED (load from flyPad), preset LOAD made
+  not-announced (was announcing "...: None" on reset), preset PROGRESS auto-announces
+  "loading N percent". PORT to A320.
+- Ground Equipment combos -> push-BUTTONS (new EvtBtn helper: RenderAsButton but NOT in
+  _momentaryButtons, so HandleUIVariableSet hits the stock-event branch). PORT to A320.
+- Oxygen Timer Reset combo -> Btn (button). PORT if the A320 has it.
+- Cabin Ready already auto-announces (Mon). Reset panel + fire-agent discharge present (combos).
+
+BUILD GOTCHA: build with `-p:Platform=x64` (or the .sln); bare `dotnet build csproj` outputs
+AnyCPU to bin\Debug and you launch a STALE bin\x64 exe.
+
+STILL-OPEN A380 items (need a flight or more work): clock chronometer button ": Idle" cosmetic +
+ET elapsed-time live-verify; ILS/VOR/ADF idents in the DISPLAY (strings — currently in the
+Output+N hotkey via the NAV IDENT struct); EFIS preselect-QNH settable; in-flight-only adds
+(ETA/EFOB at dest, beta-target, TCAS RA band).
+
 ## 6. A320-parity notes (for when loaded into the A32NX)
 - Doors: the A32NX already has working doors (Type=SimVar) — its exit indices/door count differ
   (re-map from its `flight_model.cfg`); don't copy the A380 map.
