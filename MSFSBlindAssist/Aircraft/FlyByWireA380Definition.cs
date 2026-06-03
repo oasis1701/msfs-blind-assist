@@ -1169,8 +1169,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             //  "GPU {n} Available" readout in Ground Services, same A32NX_EXT_PWR_
             //  AVAIL:{n} SimVar. Having both double-announced when a GPU connects.)
         }
-        foreach (var bus in new[] { "AC_1", "AC_2", "AC_3", "AC_4", "AC_ESS", "AC_ESS_SHED", "AC_247XP",
-                                    "DC_1", "DC_2", "DC_ESS", "DC_247PP", "DC_HOT_1", "DC_HOT_2", "DC_HOT_3", "DC_HOT_4", "DC_GND_FLT_SVC" })
+        foreach (var bus in new[] { "AC_1", "AC_2", "AC_3", "AC_4", "AC_ESS", "AC_ESS_SHED", "247XP",
+                                    "DC_1", "DC_2", "DC_ESS", "247PP", "DC_HOT_1", "DC_HOT_2", "DC_HOT_3", "DC_HOT_4", "DC_GND_FLT_SVC" })
             ReadEnum($"A32NX_ELEC_{bus}_BUS_IS_POWERED", $"{bus.Replace('_', ' ')} Bus", powered);
 
         // APU
@@ -1181,7 +1181,16 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // APU running parameters (the start monitor: N2, EGT, inlet flap, fuel used).
         // EGT is an ARINC429 word -> decoded to celsius in TryGetDisplayOverride; the
         // rest are plain (0 when the APU is off).
-        Read("A32NX_APU_N2", "APU N2", "percent");
+        // APU N2 is an ARINC429 word (FBW ApuPage useArinc429Var) — the old plain Read showed
+        // the raw ~12.8-billion SSM word when the APU was running. Decode it ("not available"
+        // when the APU FADEC isn't powered, like APU EGT).
+        vars["A32NX_APU_N2"] = new SimVarDefinition
+        {
+            Name = "A32NX_APU_N2", DisplayName = "APU N2",
+            Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest,
+            IsArinc429 = true, Arinc429Unit = "%", Arinc429Format = "0.0",
+            Arinc429NotAvailableText = "not available"
+        };
         Read("A32NX_APU_EGT", "APU EGT", "celsius");
         Read("A32NX_APU_FLAP_OPEN_PERCENTAGE", "APU Inlet Flap", "percent");
         Read("A32NX_APU_FUEL_USED", "APU Fuel Used", "kilograms");
@@ -1246,9 +1255,20 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 ReadEnum($"A32NX_PRESS_OCSM_{n}_CHANNEL_{ch}_FAILURE", $"OCSM {n} Channel {ch}", fault);
             ReadEnum($"A32NX_PRESS_OCSM_{n}_AUTO_PARTITION_FAILURE", $"OCSM {n} Auto Control", fault);
         }
-        Read("A32NX_PRESS_MAN_CABIN_DELTA_PRESSURE", "Cabin Delta Pressure", "psi");
-        Read("A32NX_PRESS_MAN_CABIN_ALTITUDE", "Cabin Altitude", "feet");
-        Read("A32NX_PRESS_MAN_CABIN_VS", "Cabin Vertical Speed", "feet per minute");
+        // Cabin pressurization — the CPIOM-B1 ARINC429 words (what the SD PRESS page shows).
+        // The old MAN_CABIN_* L:vars were WRONG: they're written only in manual/emergency mode
+        // and read static garbage in AUTO (live: MAN_CABIN_ALTITUDE = -415 ft on the ground,
+        // while _CABIN_ALTITUDE_B1 = a real ARINC word). Auto-decoded by the generic ARINC
+        // path ("not available" on bad SSM). Delta keeps one decimal.
+        ArincUnit("A32NX_PRESS_CABIN_ALTITUDE_B1", "A32NX_PRESS_CABIN_ALTITUDE_B1", "Cabin Altitude", "feet");
+        ArincUnit("A32NX_PRESS_CABIN_VS_B1", "A32NX_PRESS_CABIN_VS_B1", "Cabin Vertical Speed", "feet per minute");
+        vars["A32NX_PRESS_CABIN_DELTA_PRESSURE_B1"] = new SimVarDefinition
+        {
+            Name = "A32NX_PRESS_CABIN_DELTA_PRESSURE_B1", DisplayName = "Cabin Delta Pressure",
+            Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest,
+            IsArinc429 = true, Arinc429Unit = "psi", Arinc429Format = "0.0",
+            Arinc429NotAvailableText = "not available"
+        };
         Read("A32NX_PRESS_AUTO_LANDING_ELEVATION", "Landing Elevation", "feet");
         // The four cabin outflow valves — open percentage.
         for (int v = 1; v <= 4; v++)
@@ -2525,8 +2545,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             // (A32NX_EXT_PWR_AVAIL:{n} shows once as "GPU {n} Available" in Ground
             //  Services — not duplicated in the ELEC panel.)
         }
-        foreach (var bus in new[] { "AC_1", "AC_2", "AC_3", "AC_4", "AC_ESS", "AC_ESS_SHED", "AC_247XP",
-                                    "DC_1", "DC_2", "DC_ESS", "DC_247PP", "DC_HOT_1", "DC_HOT_2", "DC_HOT_3", "DC_HOT_4", "DC_GND_FLT_SVC" })
+        foreach (var bus in new[] { "AC_1", "AC_2", "AC_3", "AC_4", "AC_ESS", "AC_ESS_SHED", "247XP",
+                                    "DC_1", "DC_2", "DC_ESS", "247PP", "DC_HOT_1", "DC_HOT_2", "DC_HOT_3", "DC_HOT_4", "DC_GND_FLT_SVC" })
             elec.Add($"A32NX_ELEC_{bus}_BUS_IS_POWERED");
         d["ELEC"] = elec;
 
@@ -2581,9 +2601,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             for (int ch = 1; ch <= 2; ch++) press.Add($"A32NX_PRESS_OCSM_{n}_CHANNEL_{ch}_FAILURE");
             press.Add($"A32NX_PRESS_OCSM_{n}_AUTO_PARTITION_FAILURE");
         }
-        press.Add("A32NX_PRESS_MAN_CABIN_DELTA_PRESSURE");
-        press.Add("A32NX_PRESS_MAN_CABIN_ALTITUDE");
-        press.Add("A32NX_PRESS_MAN_CABIN_VS");
+        press.Add("A32NX_PRESS_CABIN_ALTITUDE_B1");
+        press.Add("A32NX_PRESS_CABIN_VS_B1");
+        press.Add("A32NX_PRESS_CABIN_DELTA_PRESSURE_B1");
         press.Add("A32NX_PRESS_AUTO_LANDING_ELEVATION");
         for (int v = 1; v <= 4; v++) press.Add($"A32NX_PRESS_OUTFLOW_VALVE_{v}_OPEN_PERCENTAGE_ANIM");
         d["Pressurization"] = press;
