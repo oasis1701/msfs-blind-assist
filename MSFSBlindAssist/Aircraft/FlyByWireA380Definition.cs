@@ -1006,6 +1006,15 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             new Dictionary<double, string> { [0] = "off", [1] = "on" });
         Stock("FD_2", "AUTOPILOT FLIGHT DIRECTOR ACTIVE:2", "Flight director 2", "bool",
             new Dictionary<double, string> { [0] = "off", [1] = "on" });
+        // Autoland capability (the PFD D1/D2 cell: LAND2 / LAND3 SINGLE / LAND3 DUAL) — decoded
+        // from the FCDC flight-guidance discrete word 4 (bit 23 = LAND2, 24 = LAND3 fail-passive
+        // "single", 25 = LAND3 fail-operational "dual"). NCD until on an ILS approach with the
+        // capability computed → "none" on the ground. Decoded in TryGetDisplayOverride.
+        vars["PFD_AUTOLAND"] = new SimVarDefinition
+        {
+            Name = "A32NX_FCDC_1_FG_DISCRETE_WORD_4", DisplayName = "Autoland capability",
+            Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest
+        };
         // Nav radios — VOR 1/2 frequency + DME and ADF 1/2 frequency (stock simvars; the IDENTS
         // are read by the Output+N "nav radio" hotkey via the NAV IDENT string struct). On the ND.
         Stock("ND_VOR1_FREQ", "NAV ACTIVE FREQUENCY:1", "VOR 1 frequency", "MHz");
@@ -2997,7 +3006,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             // Target/preselect speeds + selected V/S + expedite + flight directors + autobrake.
             "A32NX_SPEEDS_MANAGED_PFD", "A32NX_SpeedPreselVal", "A32NX_MachPreselVal",
             "A32NX_AUTOPILOT_VS_SELECTED", "A32NX_FMA_EXPEDITE_MODE", "FD_1", "FD_2",
-            "A32NX_AUTOBRAKES_ARMED_MODE"
+            "A32NX_AUTOBRAKES_ARMED_MODE", "PFD_AUTOLAND"
         };
         // ND accessible snapshot — mode/range, TO waypoint (decoded ident + distance/
         // bearing/ETA), cross-track, RNP, and ILS LOC/GS validity + deviation.
@@ -4376,6 +4385,17 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         }
         // Mach — two decimals (default F0 would render "0").
         if (varKey == "PFD_MACH") { displayText = $"{value:0.00}"; return true; }
+        // Autoland capability (FCDC FG discrete word 4): bit 23 LAND2, 24 LAND3 single, 25 LAND3 dual.
+        if (varKey == "PFD_AUTOLAND")
+        {
+            var w = new SimConnect.Arinc429Word(value);
+            if (!w.IsNormalOperation && !w.IsFunctionalTest) displayText = "none";
+            else if (w.BitValueOr(23, false)) displayText = "LAND2";
+            else if (w.BitValueOr(24, false)) displayText = "LAND3 single";
+            else if (w.BitValueOr(25, false)) displayText = "LAND3 dual";
+            else displayText = "none";
+            return true;
+        }
         // Managed target speed on the PFD (0 = none shown).
         if (varKey == "A32NX_SPEEDS_MANAGED_PFD") { displayText = value < 1 ? "none" : $"{value:0} knots"; return true; }
         // Preselected speed / Mach (set in the MCDU PERF page; -1 = none).
