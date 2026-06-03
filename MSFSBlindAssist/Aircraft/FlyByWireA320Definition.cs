@@ -2523,6 +2523,11 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
             IsAnnounced = true,
+            // Keep an individual data def. The FCU readout force-reads this status leg via
+            // RequestVariable(forceUpdate), which NO-OPS for batch-covered vars (the SimConnect-
+            // ceiling strengthening skips their individual def). Without this the HDG readout's
+            // managed-status leg never arrives and the readout goes silent. (Regression fix.)
+            ExcludeFromBatch = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Select heading mode", [1] = "Managed heading mode" }
         },
         ["A32NX_FCU_LOC_LIGHT_ON"] = new SimConnect.SimVarDefinition
@@ -2539,6 +2544,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
             IsAnnounced = true,
+            ExcludeFromBatch = true,   // see HDG_TRK_MANAGED — keep individual def for the forced readout
             ValueDescriptions = new Dictionary<double, string> { [0] = "Selected speed", [1] = "Managed speed" }
         },
         ["A32NX_FCU_AFS_DISPLAY_LVL_CH_MANAGED"] = new SimConnect.SimVarDefinition
@@ -2547,6 +2553,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
             IsAnnounced = true,
+            ExcludeFromBatch = true,   // see HDG_TRK_MANAGED — keep individual def for the forced readout
             ValueDescriptions = new Dictionary<double, string> { [0] = "Selected Altitude", [1] = "Managed altitude" }
         },
         ["A32NX_FCU_EXPED_LIGHT_ON"] = new SimConnect.SimVarDefinition

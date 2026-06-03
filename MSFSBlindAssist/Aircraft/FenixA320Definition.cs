@@ -525,7 +525,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             },
             ["I_FCU_SPEED_MANAGED"] = new SimConnect.SimVarDefinition
             {
-                Name = "I_FCU_SPEED_MANAGED",
+                Name = "I_FCU_SPEED_MANAGED", ExcludeFromBatch = true, // FCU readout force-reads this — keep individual def (SimConnect-ceiling batch-skip regression)
                 DisplayName = "FCU SPEED Mode",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -534,7 +534,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             },
             ["I_FCU_HEADING_MANAGED"] = new SimConnect.SimVarDefinition
             {
-                Name = "I_FCU_HEADING_MANAGED",
+                Name = "I_FCU_HEADING_MANAGED", ExcludeFromBatch = true,
                 DisplayName = "FCU HEADING Mode",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -543,7 +543,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             },
             ["I_FCU_ALTITUDE_MANAGED"] = new SimConnect.SimVarDefinition
             {
-                Name = "I_FCU_ALTITUDE_MANAGED",
+                Name = "I_FCU_ALTITUDE_MANAGED", ExcludeFromBatch = true,
                 DisplayName = "FCU ALTITUDE MODE",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -570,7 +570,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             },
             ["N_FCU_SPEED"] = new SimConnect.SimVarDefinition
             {
-                Name = "N_FCU_SPEED",
+                Name = "N_FCU_SPEED", ExcludeFromBatch = true,
                 DisplayName = "FCU SPEED",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -578,7 +578,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             },
             ["N_FCU_HEADING"] = new SimConnect.SimVarDefinition
             {
-                Name = "N_FCU_HEADING",
+                Name = "N_FCU_HEADING", ExcludeFromBatch = true,
                 DisplayName = "FCU HEADING",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -586,7 +586,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             },
             ["N_FCU_ALTITUDE"] = new SimConnect.SimVarDefinition
             {
-                Name = "N_FCU_ALTITUDE",
+                Name = "N_FCU_ALTITUDE", ExcludeFromBatch = true,
                 DisplayName = "FCU ALTITUDE",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -594,7 +594,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             },
             ["N_FCU_VS"] = new SimConnect.SimVarDefinition
             {
-                Name = "N_FCU_VS",
+                Name = "N_FCU_VS", ExcludeFromBatch = true,
                 DisplayName = "FCU VERTICAL SPEED",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -620,7 +620,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             },
             ["B_FCU_VERTICALSPEED_DASHED"] = new SimConnect.SimVarDefinition
             {
-                Name = "B_FCU_VERTICALSPEED_DASHED",
+                Name = "B_FCU_VERTICALSPEED_DASHED", ExcludeFromBatch = true,
                 DisplayName = "FCU VERTICAL SPEED DISPLAY",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -1332,7 +1332,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             },
             ["N_FCU_EFIS1_BARO_INCH"] = new SimConnect.SimVarDefinition
             {
-                Name = "N_FCU_EFIS1_BARO_INCH",
+                Name = "N_FCU_EFIS1_BARO_INCH", ExcludeFromBatch = true, // baro readout force-reads this — keep individual def
                 DisplayName = "EFIS1 BARO INHG Value",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -1341,7 +1341,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             },
             ["N_FCU_EFIS1_BARO_HPA"] = new SimConnect.SimVarDefinition
             {
-                Name = "N_FCU_EFIS1_BARO_HPA",
+                Name = "N_FCU_EFIS1_BARO_HPA", ExcludeFromBatch = true, // baro readout force-reads this — keep individual def
                 DisplayName = "EFIS1 BARO HPA Value",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
