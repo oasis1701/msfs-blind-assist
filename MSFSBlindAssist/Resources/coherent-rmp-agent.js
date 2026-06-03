@@ -4,14 +4,16 @@
 // A380X_RMP_2 view; exposes window.__MSFSBA_DISP.scrape() -> {ok, rows[]} (the same
 // contract the generic display agent uses, so the existing client reads it unchanged).
 //
-// The RMP renders one page at a time (VHF/HF/TEL = transceiver rows; SQWK =
-// transponder; MENU/NAV). For the frequency pages each transceiver row is a flat
-// fragment of .active-frequency + .transceiver-ident + .stby-frequency-cell, rendered
-// in DOM order, so we zip the three class lists by index. The .stby-frequency div's
-// textContent already concatenates its 6 digit children + the dot into "121.950",
-// and during entry it shows the live scratchpad ("118.000") — exactly what a blind
-// pilot needs to hear as they type. reverse-video on the ident = transmit-selected;
-// .selected on the cell = the row the keypad types into.
+// The FBW A380 RMP dev build renders ONE of TWO pages at a time: VHF (the 3 transceiver
+// rows) or Transponder/SQWK. (HF/TEL/NAV/MENU are not modelled — those page keys do
+// nothing.) The hidden page's elements still exist in the DOM (display:none, rect 0×0),
+// so we gate every row on vis() to read only the active page. On the VHF page each
+// transceiver row is a flat fragment of .active-frequency + .transceiver-ident +
+// .stby-frequency-cell (DOM order), so we zip the three class lists by index; the
+// .stby-frequency div's textContent already concatenates its 6 digit children + the dot
+// into "121.950", and during entry it shows the live scratchpad ("118.000"). reverse-video
+// on the ident = transmit-selected; .selected on the cell = the row the keypad types into.
+// On the SQWK page we read .transponder-mode / .transponder-code .cyan / .transponder-ident.
 (function () {
   try {
     function vis(el) {
