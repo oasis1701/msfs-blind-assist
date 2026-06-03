@@ -503,7 +503,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             new Dictionary<double, string> { [0] = "Auto", [1] = "Off" });
         OnOff("A32NX_OXYGEN_MASKS_DEPLOYED", "Passenger Masks Deployed");
         ReadEnum("A32NX_OXYGEN_PASSENGER_LIGHT_ON", "Passenger Oxygen Light", onOff);
-        Press("A32NX_OXYGEN_TMR_RESET", "Oxygen Timer Reset");
+        Btn("A32NX_OXYGEN_TMR_RESET", "Oxygen Timer Reset");   // momentary push-button (was a combo)
 
         // ---- CALLS / EVAC ----
         OnOff("A32NX_CALLS_EMER_ON", "Emergency Call");
