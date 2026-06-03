@@ -3,13 +3,20 @@ namespace MSFSBlindAssist.Forms;
 public partial class HotkeyListForm : Form
 {
     private const string AllCategoriesLabel = "All Categories";
+    private const string ShowAllModesLabel = "All hotkeys";
+    private const string ShowOutputModeLabel = "Output hotkeys";
+    private const string ShowInputModeLabel = "Input hotkeys";
 
-    private ComboBox categoryComboBox = null!;
+    private Label modeLabel = null!;
+    private ComboBox modeComboBox = null!;
+    private Label searchLabel = null!;
+    private ComboBox searchComboBox = null!;
     private TextBox hotkeyTextBox = null!;
     private Button okButton = null!;
     private readonly string aircraftCode;
     private string fullHotkeyListText = string.Empty;
     private readonly List<CategorySection> categorySections = new();
+    private bool updatingSearchChoices;
 
     public HotkeyListForm(string aircraftCode)
     {
@@ -31,37 +38,63 @@ public partial class HotkeyListForm : Form
         fullHotkeyListText = GetHotkeyListText();
         PopulateCategorySections(fullHotkeyListText);
 
-        categoryComboBox = new ComboBox
+        modeLabel = new Label
         {
             Location = new Point(20, 20),
-            Size = new Size(550, 25),
+            Size = new Size(80, 20),
+            Text = "Show:"
+        };
+
+        modeComboBox = new ComboBox
+        {
+            Location = new Point(105, 17),
+            Size = new Size(465, 25),
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            AccessibleName = "Show Hotkey Mode",
+            AccessibleDescription = "Choose whether to show all hotkeys, output hotkeys, or input hotkeys"
+        };
+        modeComboBox.Items.AddRange(new object[]
+        {
+            ShowAllModesLabel,
+            ShowOutputModeLabel,
+            ShowInputModeLabel
+        });
+        modeComboBox.SelectedIndex = 0;
+        modeComboBox.SelectedIndexChanged += FilterControls_Changed;
+
+        searchLabel = new Label
+        {
+            Location = new Point(20, 52),
+            Size = new Size(80, 20),
+            Text = "Search:"
+        };
+
+        searchComboBox = new ComboBox
+        {
+            Location = new Point(105, 49),
+            Size = new Size(465, 25),
             DropDownStyle = ComboBoxStyle.DropDown,
             AutoCompleteMode = AutoCompleteMode.SuggestAppend,
             AutoCompleteSource = AutoCompleteSource.ListItems,
-            AccessibleName = "Hotkey Search",
-            AccessibleDescription = "Type a hotkey, command, or category to filter the list"
+            AccessibleName = "Search by category or keyword",
+            AccessibleDescription = "Type a category or command keyword to filter the hotkey list"
         };
-        categoryComboBox.Items.Add(AllCategoriesLabel);
-        foreach (var section in categorySections
-            .OrderBy(section => section.ModeOrder)
-            .ThenBy(section => section.CategoryName))
-        {
-            categoryComboBox.Items.Add(section.DisplayName);
-        }
-        categoryComboBox.SelectedIndex = 0;
+        searchComboBox.Items.Add(AllCategoriesLabel);
+        AddSearchChoicesForMode(selectedMode: null);
+        searchComboBox.SelectedIndex = 0;
         // TextChanged fires for both typing and dropdown selections (Text is
         // updated when SelectedIndex changes), so a single subscription covers
         // both paths without filtering twice on dropdown picks.
-        categoryComboBox.TextChanged += CategoryComboBox_TextChanged;
-        categoryComboBox.KeyDown += CategoryComboBox_KeyDown;
+        searchComboBox.TextChanged += FilterControls_Changed;
+        searchComboBox.KeyDown += SearchComboBox_KeyDown;
 
         // Hotkey TextBox (read-only, multi-line, tabbable)
         hotkeyTextBox = new TextBox
         {
             Text = fullHotkeyListText,
             Font = new Font("Consolas", 9),
-            Location = new Point(20, 55),
-            Size = new Size(550, 355),
+            Location = new Point(20, 82),
+            Size = new Size(550, 328),
             Multiline = true,
             ReadOnly = true,
             TabStop = true,
@@ -87,7 +120,7 @@ public partial class HotkeyListForm : Form
         // Add controls to form
         Controls.AddRange(new Control[]
         {
-            categoryComboBox, hotkeyTextBox, okButton
+            modeLabel, modeComboBox, searchLabel, searchComboBox, hotkeyTextBox, okButton
         });
 
         AcceptButton = okButton;
@@ -137,9 +170,10 @@ public partial class HotkeyListForm : Form
     private void SetupAccessibility()
     {
         // Set tab order for logical navigation
-        categoryComboBox.TabIndex = 0;
-        hotkeyTextBox.TabIndex = 1;
-        okButton.TabIndex = 2;
+        modeComboBox.TabIndex = 0;
+        searchComboBox.TabIndex = 1;
+        hotkeyTextBox.TabIndex = 2;
+        okButton.TabIndex = 3;
 
         // Focus and bring window to front when opened
         Load += (sender, e) =>
@@ -148,7 +182,7 @@ public partial class HotkeyListForm : Form
             Activate();
             TopMost = true;
             TopMost = false; // Flash to bring to front
-            categoryComboBox.Focus();
+            searchComboBox.Focus();
         };
     }
 
@@ -162,8 +196,8 @@ public partial class HotkeyListForm : Form
     {
         if (keyData == (Keys.Control | Keys.F))
         {
-            categoryComboBox.Focus();
-            categoryComboBox.SelectAll();
+            searchComboBox.Focus();
+            searchComboBox.SelectAll();
             return true;
         }
 
@@ -178,25 +212,36 @@ public partial class HotkeyListForm : Form
         return base.ProcessDialogKey(keyData);
     }
 
-    private void CategoryComboBox_TextChanged(object? sender, EventArgs e)
+    private void FilterControls_Changed(object? sender, EventArgs e)
     {
-        ApplyCategoryFilter(categoryComboBox.Text);
+        if (updatingSearchChoices)
+        {
+            return;
+        }
+
+        if (sender == modeComboBox)
+        {
+            UpdateSearchChoicesForSelectedMode();
+        }
+
+        ApplyFilters();
     }
 
-    private void CategoryComboBox_KeyDown(object? sender, KeyEventArgs e)
+    private void SearchComboBox_KeyDown(object? sender, KeyEventArgs e)
     {
         if (e.KeyCode == Keys.Enter)
         {
-            ApplyCategoryFilter(categoryComboBox.Text);
+            ApplyFilters();
             hotkeyTextBox.Focus();
             e.Handled = true;
             e.SuppressKeyPress = true;
         }
     }
 
-    private void ApplyCategoryFilter(string searchText)
+    private void ApplyFilters()
     {
-        string search = searchText.Trim();
+        string search = searchComboBox.Text.Trim();
+        HotkeyMode? selectedMode = GetSelectedMode();
 
         // Empty, exact match, or any case-insensitive prefix of "All Categories"
         // at least 3 chars long (covers "all", "all c", "All Categ", etc.).
@@ -207,7 +252,7 @@ public partial class HotkeyListForm : Form
             || (search.Length >= 3
                 && AllCategoriesLabel.StartsWith(search, StringComparison.OrdinalIgnoreCase));
 
-        if (isAllCategoriesSentinel)
+        if (isAllCategoriesSentinel && selectedMode is null)
         {
             hotkeyTextBox.Text = fullHotkeyListText;
             hotkeyTextBox.SelectionStart = 0;
@@ -217,7 +262,8 @@ public partial class HotkeyListForm : Form
         }
 
         var matchingSections = categorySections
-            .Where(section => section.Matches(search))
+            .Where(section => selectedMode is null || section.Mode == selectedMode)
+            .Where(section => isAllCategoriesSentinel || section.Matches(search))
             .OrderBy(section => section.ModeOrder)
             .ThenBy(section => section.CategoryName)
             .ToList();
@@ -230,10 +276,67 @@ public partial class HotkeyListForm : Form
 
         hotkeyTextBox.Text = string.Join(
             "\r\n\r\n",
-            matchingSections.Select(section => section.GetFilteredText(search)));
+            matchingSections.Select(section => isAllCategoriesSentinel
+                ? section.SectionText
+                : section.GetFilteredText(search)));
         hotkeyTextBox.SelectionStart = 0;
         hotkeyTextBox.SelectionLength = 0;
         hotkeyTextBox.ScrollToCaret();
+    }
+
+    private HotkeyMode? GetSelectedMode()
+    {
+        return modeComboBox.Text switch
+        {
+            ShowOutputModeLabel => HotkeyMode.Output,
+            ShowInputModeLabel => HotkeyMode.Input,
+            _ => null
+        };
+    }
+
+    private void UpdateSearchChoicesForSelectedMode()
+    {
+        string currentSearch = searchComboBox.Text.Trim();
+        HotkeyMode? selectedMode = GetSelectedMode();
+        bool currentSearchIsCategory = categorySections.Any(section =>
+            section.DisplayName.Equals(currentSearch, StringComparison.OrdinalIgnoreCase));
+        bool currentSearchIsCompatible = categorySections.Any(section =>
+            (selectedMode is null || section.Mode == selectedMode)
+            && section.DisplayName.Equals(currentSearch, StringComparison.OrdinalIgnoreCase));
+
+        updatingSearchChoices = true;
+        try
+        {
+            searchComboBox.Items.Clear();
+            searchComboBox.Items.Add(AllCategoriesLabel);
+            AddSearchChoicesForMode(selectedMode);
+
+            if (string.IsNullOrEmpty(currentSearch)
+                || AllCategoriesLabel.Equals(currentSearch, StringComparison.OrdinalIgnoreCase)
+                || (currentSearchIsCategory && !currentSearchIsCompatible))
+            {
+                searchComboBox.SelectedIndex = 0;
+            }
+            else
+            {
+                searchComboBox.Text = currentSearch;
+            }
+        }
+        finally
+        {
+            updatingSearchChoices = false;
+        }
+    }
+
+    private void AddSearchChoicesForMode(HotkeyMode? selectedMode)
+    {
+        foreach (var section in categorySections
+            .Where(section => selectedMode is null || section.Mode == selectedMode)
+            .OrderBy(section => section.ModeOrder)
+            .ThenBy(section => section.CategoryName))
+        {
+            searchComboBox.Items.Add(section.DisplayName);
+        }
     }
 
     private void PopulateCategorySections(string hotkeyText)
