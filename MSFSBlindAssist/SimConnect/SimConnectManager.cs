@@ -18,6 +18,16 @@ public class SimConnectManager
     private IntPtr windowHandle;
     private const int WM_USER_SIMCONNECT = 0x0402;
 
+    // Re-entrancy guard for ReceiveMessage(). The managed SimConnect ReceiveMessage()
+    // is NOT reentrant: a nested call corrupts its internal receive buffer, which shows
+    // up as a native heap-corruption access violation (0xC0000005) inside coreclr.dll
+    // and a 0x80131506 ExecutionEngineException — uncatchable by managed try/catch.
+    // Application.DoEvents() pump loops (used while waiting for data-definition changes
+    // during aircraft switches/disconnect) can dispatch a queued WM_USER_SIMCONNECT and
+    // re-enter ReceiveMessage() in the middle of one already in flight. This flag blocks
+    // that; the skipped message stays queued and is drained on the next non-nested pump.
+    private bool _inReceiveMessage;
+
     // Events
     public event EventHandler<string>? ConnectionStatusChanged;
     public event EventHandler<string>? SimulatorVersionDetected;
@@ -3959,6 +3969,12 @@ public class SimConnectManager
     {
         if (m.Msg == WM_USER_SIMCONNECT && simConnect != null)
         {
+            // Never dispatch ReceiveMessage() reentrantly (see _inReceiveMessage). A DoEvents()
+            // pump can land us back here while an outer ReceiveMessage() is still on the stack;
+            // skipping leaves the data queued for the next clean pump rather than corrupting the
+            // marshalling buffer.
+            if (_inReceiveMessage) return;
+            _inReceiveMessage = true;
             try
             {
                 simConnect.ReceiveMessage();
@@ -3977,6 +3993,10 @@ public class SimConnectManager
             {
                 // Unexpected exception - log but don't crash
                 System.Diagnostics.Debug.WriteLine($"Unexpected exception in ProcessWindowMessage: {ex}");
+            }
+            finally
+            {
+                _inReceiveMessage = false;
             }
         }
     }
