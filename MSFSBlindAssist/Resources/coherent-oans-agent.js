@@ -217,23 +217,26 @@
   // whenever the panel has no geometry. (Harmless when not near an airport — it just zooms
   // the captain ND, which a screen-reader user doesn't see anyway.)
   A.AIRPORT_ZOOM = 0;            // lowest ND range = airport map
+  A._emptyZoomedTicks = 0;       // consecutive empty polls while already at the airport zoom
+  // Returns true if the panel HAS geometry (is rendered), false otherwise. Forces the zoom
+  // when needed; the map then takes ~0.5-1 s to draw, so the first poll after a fresh open
+  // is normally still empty (handled by the "loading" message in scrape()).
   A.ensureAirportZoom = function () {
     try {
       var p = A.findRoot();
-      var rendered = p && p.getBoundingClientRect().width > 1;
-      if (!rendered && typeof SimVar !== "undefined") {
-        SimVar.SetSimVarValue("L:A32NX_EFIS_L_ND_RANGE", "number", A.AIRPORT_ZOOM);
-      }
+      if (p && p.getBoundingClientRect().width > 1) return true;
+      if (typeof SimVar !== "undefined") SimVar.SetSimVarValue("L:A32NX_EFIS_L_ND_RANGE", "number", A.AIRPORT_ZOOM);
     } catch (e) {}
+    return false;
   };
 
   // Open / reveal the OANS control panel. With the map rendered (see ensureAirportZoom),
   // the MAP DATA / ARPT SEL / STATUS tab bar is already visible — selecting a tab shows its
   // content. We just make sure the map is zoomed in; the user drives the tabs via the list.
   A.openPanel = function () {
-    A.ensureAirportZoom();
-    var p = A.findRoot();
-    return (p && p.getBoundingClientRect().width > 1) ? "open" : "zooming";
+    A._emptyZoomedTicks = 0;     // fresh "loading" window on every open / refresh
+    var rendered = A.ensureAirportZoom();
+    return rendered ? "open" : "zooming";
   };
 
   A.hasInteractive = function (els) {
@@ -265,20 +268,27 @@
   A.scrape = function () {
     try {
       // Self-heal: keep the OANS map zoomed in so it stays rendered (it only draws at the
-      // airport zoom). Only forces the range when the panel currently has no geometry, so
-      // it doesn't fight a sighted pilot who has the map up already.
-      A.ensureAirportZoom();
+      // airport zoom). Returns true once the panel actually has geometry.
+      var rendered = A.ensureAirportZoom();
       var root = A.findRoot();
       if (!root) return JSON.stringify({ ok: false, error: "OANS not present on this ND view" });
       var els = A.enumerate(root);
       if (!A.hasInteractive(els)) {
-        // Panel is hidden/empty (OANS not rendering): give a position-aware
-        // reason instead of always blaming the ADIRS.
+        // No controls yet. The map takes ~0.5-1 s to draw after we force the zoom, so the
+        // first poll(s) after opening are normally still empty — show a LOADING message for
+        // the first few seconds and only fall back to the "not available" reason once it's
+        // stayed empty long enough that we're genuinely not near a usable airport.
+        A._emptyZoomedTicks++;
+        var text = (A._emptyZoomedTicks <= 6)
+          ? "Loading the airport map - give it a moment, then press F5 to refresh."
+          : A.unavailableReason();
         els = [{
           top: 0, left: 0, idx: 0, kind: "text", tag: "div", role: "",
-          text: A.unavailableReason(),
+          text: text,
           value: "", controlType: "", clickable: false, level: 0, live: "", disabled: false, options: []
         }];
+      } else {
+        A._emptyZoomedTicks = 0;
       }
       return JSON.stringify({ ok: true, page: "OANS Airport Map / BTV", elements: els });
     } catch (e) {
