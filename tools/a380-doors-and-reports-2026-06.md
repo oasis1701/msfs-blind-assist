@@ -125,7 +125,43 @@ SKIP — WIP / not modelled (verified):
 
 ---
 
-## 5. A320-parity notes (for when loaded into the A32NX)
+## 5. Display hybrid audit + "not available" verification (2026-06-03 session 2)
+
+USER QUESTION: "can a hybrid be done — where a value with no SimVar is SCRAPED instead,
+per-display, formatted properly?" ANSWER: **YES, feasible** — and the cleanest mechanism is
+NOT DOM scraping but reading the value via the **Coherent debugger** (`coherentClient.
+EvalForResultAsync`, the same hook the D/Shift+D distance uses), which can read STRING
+simvars and JS-internal values that MSFSBA's numeric SimConnect pipeline cannot.
+
+3 parallel agents audited every SD page (0-15), the Upper E/WD, PFD, ND, ISIS, AND every
+panel status display. KEY CONCLUSION: **the hybrid is rarely needed** — almost everything
+was already correctly decoded, genuinely not-modelled, or a wrong-var BUG (now fixed).
+
+FIXED this session (confirmed-live wrong-var bugs — the "not available / garbage" the user saw):
+- ELEC 247XP / 247PP buses: read non-existent `_AC_247XP_` / `_DC_247PP_` (static 0) →
+  the real names drop the AC_/DC_ prefix (live: `A32NX_ELEC_247XP_BUS_IS_POWERED` = 1).
+- PRESS cabin alt / VS / ΔP: read `MAN_CABIN_*` (manual-mode-only, static garbage in AUTO;
+  live MAN_CABIN_ALTITUDE = -415 ft) → the CPIOM-B1 ARINC words `_CABIN_*_B1` (IsArinc429).
+- APU N2: plain Read showed the raw ~12.8e9 ARINC word when running → IsArinc429 decode.
+- F/CTL SD: added the missing rudder-trim row (`A32NX_SEC_1_RUDDER_ACTUAL_POSITION`).
+
+CONFIRMED-GENUINE (no fix — correctly "not modelled" in the FBW dev build):
+oil pressure (clamped ≤0), oxygen PSI (no var; hardcoded 1829/1854 in source), landing-elev
+auto, minimums not-set, TO pitch-trim not-computed, GW-CG range guard, APU EGT no-data.
+
+SCRAPE-HYBRID candidates (the ONLY genuine ones — all STRING simvars / JS-internal, no
+numeric SimVar; read via the Coherent debugger eval): **ILS ident** (`NAV IDENT:3`),
+**VOR 1/2 ident** (`NAV IDENT:1/2`), **ADF 1/2 ident** (`ADF IDENT:1/2`), **ND chrono**.
+Plus SD oxygen PSI (1829/1854 hardcoded constant — low value). Passenger doors already scrape.
+⚠️ On the A380 the PFD/ND are HOTKEY-readouts (no status box), so these idents need a NEW
+readout home (a hotkey or appended to an existing one) — a design choice flagged for the user.
+
+VAR-FIXABLE remaining (pure SimVar, no scrape — not yet done, need a readout home or are
+completeness adds): PFD transition LEVEL (`A32NX_FM1_TRANS_LVL`, FL format), PFD FCU selected
+ALT/HDG (stock `AUTOPILOT ALTITUDE LOCK VAR:3` / `HEADING LOCK DIR`), EWD computed THR% +
+BLEED line + IDLE memo (replicate `thrustPercentFromN1`).
+
+## 6. A320-parity notes (for when loaded into the A32NX)
 - Doors: the A32NX already has working doors (Type=SimVar) — its exit indices/door count differ
   (re-map from its `flight_model.cfg`); don't copy the A380 map.
 - The display decode fixes (FMGC LDEV name) were already applied to the A320 def + shared PFDForm
