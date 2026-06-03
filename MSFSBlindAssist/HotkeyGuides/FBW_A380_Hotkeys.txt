@@ -162,10 +162,12 @@ INSIDE THE RADIO MANAGEMENT PANEL (RMP) WINDOW (Ctrl+Shift+R opens it)
                    (HF / TEL / NAV / MENU are not modelled by FBW — those do nothing)
   Alt+Up / Down    Standby mode up / down (VHF page)
   Alt+C            Fully clear the entry (resets a stuck entry)
-  Alt+S            Focus the Frequency box;  Alt+Home  back to the screen
-  VHF page  — Frequency box: type the digits (keyed live, no decimal), Enter loads
-             the standby, Backspace deletes a digit; Alt+n swaps it active.
-  SQWK page — Frequency box: type the 4 squawk digits, Enter validates, Alt+3 = ident.
+  Alt+Home         Jump back to the screen (e.g. from a page button)
+  You TYPE the digits right on the screen — there is no separate entry box (the
+  screen is read-only, so the digits go to the radio, not the text):
+  VHF page  — type the digits (keyed live, no decimal), Enter loads the standby,
+             Backspace deletes a digit; Alt+n swaps it active.
+  SQWK page — type the 4 squawk digits, Enter validates, Alt+3 = ident.
   Side combo (Captain / First Officer) switches which RMP you control — the screen,
   the announcements and the keys all follow it.
 

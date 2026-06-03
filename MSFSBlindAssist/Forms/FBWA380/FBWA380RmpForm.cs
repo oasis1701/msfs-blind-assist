@@ -16,7 +16,8 @@ namespace MSFSBlindAssist.Forms.FBWA380;
 ///   Alt+1/2/3   = the RIGHT keys (ADK) — swap that radio's active ↔ standby (manual).
 ///   (or F1/2/3 = LSK, F7/8/9 = ADK when MCDUUseAlternateLSKKeys is on.)
 ///   Alt+V/H/T/Q/N/M = the VHF / HF / TEL / SQWK / NAV / MENU pages; Alt+Up/Down = standby mode.
-///   In the Frequency box: each digit is keyed into the RMP LIVE; Enter loads the standby;
+///   Just TYPE the digits on the screen itself (no separate field): each is keyed into the RMP
+///   LIVE (the box is read-only, so the digits go to the radio, not the text); Enter loads the standby;
 ///   Backspace deletes a digit; Alt+C does a full clear. Alt+S focuses the box, Alt+Home the text.
 /// Captain ↔ First Officer is a combo (re-points the scrape + the H-event index).
 /// </summary>
@@ -41,7 +42,6 @@ public sealed class FBWA380RmpForm : Form
 
     private ComboBox _side = null!;
     private TextBox _display = null!;
-    private TextBox _freq = null!;
     private Label _status = null!;
 
     public FBWA380RmpForm(ScreenReaderAnnouncer announcer, FlyByWireA380Definition def, SimConnectManager sim)
@@ -68,36 +68,37 @@ public sealed class FBWA380RmpForm : Form
         _side.SelectedIndexChanged += (_, _) => { _rmp = _side.SelectedIndex == 1 ? 2 : 1; SwitchSide(); };
         _status = new Label { Location = new Point(240, 14), Size = new Size(360, 22), Text = "Connecting…", AccessibleName = "Status" };
 
+        // The RMP screen IS the input surface (like the real touchscreen): read it with the
+        // arrows, and just TYPE the frequency / squawk digits right here — each digit is keyed
+        // into the RMP live (the box is read-only, so the digits never change its text; they go
+        // to the radio). Enter loads the standby, Backspace deletes a digit. No separate field.
         _display = new TextBox
         {
-            Location = new Point(12, 44), Size = new Size(584, 300),
+            Location = new Point(12, 44), Size = new Size(584, 340),
             Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical,
-            Font = new Font("Consolas", 11), AccessibleName = "RMP screen", Text = "Loading…"
+            Font = new Font("Consolas", 11), AccessibleName = "RMP screen — type digits to enter a frequency", Text = "Loading…"
         };
+        _display.KeyPress += OnDigitKeyPress;
+        _display.KeyDown += OnDisplayKeyDown;
 
         // Page selectors, in the tab order. The FBW A380 RMP only models the VHF and Transponder
         // (SQWK) pages — HF / TEL / NAV / MENU are not implemented on this build, so they are not
         // offered (pressing those keys does nothing).
-        var pVhf = new Button { Text = "&VHF page", Location = new Point(12, 350), Size = new Size(130, 28), AccessibleName = "VHF page" };
+        var pVhf = new Button { Text = "&VHF page", Location = new Point(12, 390), Size = new Size(130, 28), AccessibleName = "VHF page" };
         pVhf.Click += (_, _) => Page("VHF", "VHF page");
-        var pSqwk = new Button { Text = "&Transponder page", Location = new Point(150, 350), Size = new Size(160, 28), AccessibleName = "Transponder page" };
+        var pSqwk = new Button { Text = "&Transponder page", Location = new Point(150, 390), Size = new Size(160, 28), AccessibleName = "Transponder page" };
         pSqwk.Click += (_, _) => Page("SQWK", "Transponder page");
-
-        var freqLabel = new Label { Text = "&Frequency (digits; Enter loads standby):", Location = new Point(12, 384), Size = new Size(584, 20) };
-        _freq = new TextBox { Location = new Point(12, 406), Size = new Size(220, 26), AccessibleName = "Frequency" };
-        _freq.KeyPress += OnFreqKeyPress;
-        _freq.KeyDown += OnFreqKeyDown;
 
         var help = new Label
         {
-            Location = new Point(12, 440), Size = new Size(584, 44),
-            Text = "VHF: Ctrl+1/2/3 select radio · Alt+1/2/3 swap · Alt+V VHF page · Alt+Q transponder.\n" +
-                   "SQWK: type the code, Enter validates, Alt+3 ident. Alt+C clear · Alt+S frequency · Alt+Home screen."
+            Location = new Point(12, 424), Size = new Size(584, 44),
+            Text = "Type the frequency / squawk digits right on the screen. Enter loads · Backspace deletes.\n" +
+                   "Ctrl+1/2/3 select radio · Alt+1/2/3 swap · Alt+V / Alt+Q pages · Alt+C clear (SQWK: Alt+3 ident)."
         };
-        var close = new Button { Text = "&Close", Location = new Point(12, 488), Size = new Size(100, 30), DialogResult = DialogResult.OK, AccessibleName = "Close" };
+        var close = new Button { Text = "&Close", Location = new Point(12, 472), Size = new Size(100, 30), DialogResult = DialogResult.OK, AccessibleName = "Close" };
         close.Click += (_, _) => Close();
 
-        Controls.AddRange(new Control[] { sideLabel, _side, _status, _display, pVhf, pSqwk, freqLabel, _freq, help, close });
+        Controls.AddRange(new Control[] { sideLabel, _side, _status, _display, pVhf, pSqwk, help, close });
         CancelButton = close;
         Load += (_, _) => _display.Focus();
     }
@@ -130,8 +131,7 @@ public sealed class FBWA380RmpForm : Form
                 case Keys.Up: Page("UP", "Mode up"); Handled(e); return;
                 case Keys.Down: Page("DOWN", "Mode down"); Handled(e); return;
                 case Keys.C: _ = FullClear(); Handled(e); return;
-                case Keys.S: _freq.Focus(); Handled(e); return;
-                case Keys.Home: _display.Focus(); Handled(e); return;
+                case Keys.Home: _display.Focus(); Handled(e); return;   // jump back to the screen from a button
             }
         }
     }
@@ -164,29 +164,33 @@ public sealed class FBWA380RmpForm : Form
         ScheduleRefresh();
     }
 
-    // ---- frequency entry: real-time digits, Enter = load -------------------------------------
+    // ---- digit entry on the screen itself: type digits, Enter = load -------------------------
 
-    private void OnFreqKeyPress(object? sender, KeyPressEventArgs e)
+    // The display is read-only, so typing never edits its text — we intercept the keystrokes and
+    // key them straight into the RMP (digits keyed live, Enter loads the standby, Backspace
+    // deletes a digit). Arrow keys still read the screen normally.
+    private void OnDigitKeyPress(object? sender, KeyPressEventArgs e)
     {
         if (e.KeyChar >= '0' && e.KeyChar <= '9')
+        {
             _def.SendRmpKey(_rmp, $"DIGIT_{e.KeyChar}", _sim);   // keyed live; the standby auto-completes
-        else if (e.KeyChar != (char)Keys.Back)
-            e.Handled = true;                                    // ignore the decimal + non-digits
-        if (e.KeyChar >= '0' && e.KeyChar <= '9') ScheduleRefresh();
+            e.Handled = true;                                    // swallow so there's no error ding
+            ScheduleRefresh();
+        }
     }
 
-    private void OnFreqKeyDown(object? sender, KeyEventArgs e)
+    private void OnDisplayKeyDown(object? sender, KeyEventArgs e)
     {
         if (e.KeyCode == Keys.Enter)
         {
             e.SuppressKeyPress = true;
             _def.SendRmpKey(_rmp, $"LSK_{_selectedRowIndex + 1}", _sim);   // load standby (manual; no auto-swap)
             _announcer?.Announce("Standby loaded");
-            _freq.Clear();
             ScheduleRefresh();
         }
         else if (e.KeyCode == Keys.Back)
         {
+            e.SuppressKeyPress = true;
             _def.SendRmpKey(_rmp, "DIGIT_CLR", _sim);   // one-digit backspace in the RMP entry
             ScheduleRefresh();
         }
@@ -200,7 +204,6 @@ public sealed class FBWA380RmpForm : Form
         _busy = true;
         try { _def.SendRmpKeyPress(_rmp, "DIGIT_CLR", _sim); await Task.Delay(1150); }
         finally { _def.SendRmpKeyRelease(_rmp, "DIGIT_CLR", _sim); _busy = false; }
-        _freq.Clear();
         _announcer?.Announce("Cleared");
         Apply(await _disp.ScrapeNowAsync());
     }
