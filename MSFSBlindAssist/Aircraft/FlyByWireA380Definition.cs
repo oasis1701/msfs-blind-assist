@@ -962,6 +962,14 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // the ATT-10s realign flag is likewise scrape-only). Friendly label for the status box.
         ReadEnumQuiet("A32NX_ISIS_BUGS_ACTIVE", "ISIS speed bugs",
             new Dictionary<double, string> { [0] = "off", [1] = "on" });
+        // CPCS B2-B4 sibling words (PRESS/CRUISE) + SEC3 rudder + SEC1 status word — read-only,
+        // force-read on the relevant SD pages so the best-source decode can fall back off B1/SEC1.
+        foreach (var bas in new[] { "A32NX_PRESS_CABIN_ALTITUDE", "A32NX_PRESS_CABIN_VS",
+                                    "A32NX_PRESS_CABIN_DELTA_PRESSURE", "A32NX_PRESS_CABIN_ALTITUDE_TARGET" })
+            foreach (var sfx in new[] { "_B2", "_B3", "_B4" })
+                Read(bas + sfx, bas + sfx);
+        Read("A32NX_SEC_3_RUDDER_ACTUAL_POSITION", "SEC 3 rudder position");
+        Read("A32NX_SEC_1_RUDDER_STATUS_WORD", "SEC 1 rudder status word");
         // Beta-target (sideslip target on engine-out / crosswind approach) — gated on _ACTIVE,
         // decoded in TryGetDisplayOverride ("X.X degrees left/right" / "not active").
         Read("A32NX_BETA_TARGET", "Sideslip target", "degrees");
@@ -4662,10 +4670,15 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     /// SD page straight from the panel. The page NAME is announced by the combo itself;
     /// this adds the CONTENT. On-demand scrape (the background poll stays paused).
     /// </summary>
+    // Render-time SimConnect handle so A380SdRows fmt closures can read sibling ARINC words
+    // (B1→B4 CPCS source selection, SEC1↔SEC3 rudder-trim) at paint time.
+    private SimConnectManager? _sdRender;
+
     private async void RefreshSdPageDisplayAsync(SimConnectManager simConnect, int pageIndex = -99, bool ewd = false)
     {
         try
         {
+            _sdRender = simConnect;
             // DECODED path (preferred): build clean "Label: value" rows from SimVars for
             // the data pages, instead of the schematic Coherent scrape (which interleaves
             // the 4 engines'/gens' values with their labels). Pages without a decode (C/B,
@@ -4696,6 +4709,19 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                     // Then force a fresh read and repaint ~0.4 s later — but only if this is still
                     // the most-recent page request.
                     foreach (var row in decoded) simConnect.RequestVariable(row.var, forceUpdate: true);
+                    // Sibling ARINC sources for B1→B4 CPCS selection (PRESS/CRUISE) and the SEC3
+                    // rudder-trim backup (F/CTL) — force-read so the best-source fmt can pick a
+                    // NormalOp word if B1/SEC1 has failed.
+                    if (pageIndex == 4 || pageIndex == 13)
+                        foreach (var bas in new[] { "A32NX_PRESS_CABIN_ALTITUDE", "A32NX_PRESS_CABIN_VS",
+                                                    "A32NX_PRESS_CABIN_DELTA_PRESSURE", "A32NX_PRESS_CABIN_ALTITUDE_TARGET" })
+                            foreach (var sfx in new[] { "_B2", "_B3", "_B4" })
+                                simConnect.RequestVariable(bas + sfx, forceUpdate: true);
+                    if (pageIndex == 11)
+                    {
+                        simConnect.RequestVariable("A32NX_SEC_3_RUDDER_ACTUAL_POSITION", forceUpdate: true);
+                        simConnect.RequestVariable("A32NX_SEC_1_RUDDER_STATUS_WORD", forceUpdate: true);
+                    }
                     await Task.Delay(400);
                     if (seq != _sdRefreshSeq) return;
                     Paint();
@@ -4934,6 +4960,20 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         string FlowPct(double v) => $"{v * 100:0} %";   // PNEU pack flow-rate 0..1 -> percent
         // ARINC429 kg word -> user weight units (kg/lb per the metric toggle).
         string AWt(double v) { var w = new SimConnect.Arinc429Word(v); return (w.IsNormalOperation || w.IsFunctionalTest) ? Wt(w.Value) : "not available"; }
+        // Best-source CPCS decode: the FBW PRESS/CRUISE pages pick the first NormalOp word among
+        // the B1→B4 CPIOM sources. Reading B1 only shows "not available" on a B1 failure while the
+        // real ECAM is still valid on B2-B4. Read all four (force-read in RefreshSdPageDisplayAsync)
+        // and return the first NormalOp. Ignores the passed B1 value (reads from the render cache).
+        Func<double, string> ABest(string b1Var, string unit, string fmt = "0") => _ =>
+        {
+            foreach (var sfx in new[] { "_B1", "_B2", "_B3", "_B4" })
+            {
+                string name = b1Var.EndsWith("_B1") ? b1Var.Substring(0, b1Var.Length - 3) + sfx : b1Var;
+                double? cv = _sdRender?.GetCachedVariableValue(name);
+                if (cv.HasValue) { var w = new SimConnect.Arinc429Word(cv.Value); if (w.IsNormalOperation || w.IsFunctionalTest) return $"{w.Value.ToString(fmt)} {unit}"; }
+            }
+            return "not available";
+        };
         var r = new List<(string, string, Func<double, string>)>();
         switch (page)
         {
@@ -5031,10 +5071,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             case 4: // PRESS (Pressurization) — block-1 ARINC words
                 // The PRESS page's prominent AUTO/MAN cabin-pressure mode label.
                 r.Add(("Pressurization mode", "A32NX_OVHD_PRESS_MAN_ALTITUDE_PB_IS_AUTO", v => v > 0.5 ? "auto" : "manual"));
-                r.Add(("Cabin altitude", "A32NX_PRESS_CABIN_ALTITUDE_B1", v => A(v, "feet")));
-                r.Add(("Cabin vertical speed", "A32NX_PRESS_CABIN_VS_B1", v => A(v, "feet per minute")));
-                r.Add(("Differential pressure", "A32NX_PRESS_CABIN_DELTA_PRESSURE_B1", v => A(v, "psi", "0.0")));
-                r.Add(("Cabin altitude target", "A32NX_PRESS_CABIN_ALTITUDE_TARGET_B1", v => A(v, "feet")));
+                r.Add(("Cabin altitude", "A32NX_PRESS_CABIN_ALTITUDE_B1", ABest("A32NX_PRESS_CABIN_ALTITUDE_B1", "feet")));
+                r.Add(("Cabin vertical speed", "A32NX_PRESS_CABIN_VS_B1", ABest("A32NX_PRESS_CABIN_VS_B1", "feet per minute")));
+                r.Add(("Differential pressure", "A32NX_PRESS_CABIN_DELTA_PRESSURE_B1", ABest("A32NX_PRESS_CABIN_DELTA_PRESSURE_B1", "psi", "0.0")));
+                r.Add(("Cabin altitude target", "A32NX_PRESS_CABIN_ALTITUDE_TARGET_B1", ABest("A32NX_PRESS_CABIN_ALTITUDE_TARGET_B1", "feet")));
                 // FM1 landing elevation: 0 = not set / AUTO (no destination elevation).
                 // Landing elevation is an ARINC429 word (FBW LandingElevation useArinc429Var):
                 // decode it; "not set (auto)" when the word isn't NormalOp (no destination).
@@ -5228,7 +5268,15 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 r.Add(("Rudder trim", "A32NX_SEC_1_RUDDER_ACTUAL_POSITION", v =>
                 {
                     var w = new SimConnect.Arinc429Word(v);
-                    if (!w.IsNormalOperation && !w.IsFunctionalTest) return "not available";
+                    // FBW selects SEC3 as the rudder-trim source if SEC1's word is invalid.
+                    if (!w.IsNormalOperation && !w.IsFunctionalTest)
+                    {
+                        double? cv = _sdRender?.GetCachedVariableValue("A32NX_SEC_3_RUDDER_ACTUAL_POSITION");
+                        if (!cv.HasValue) return "not available";
+                        var w3 = new SimConnect.Arinc429Word(cv.Value);
+                        if (!w3.IsNormalOperation && !w3.IsFunctionalTest) return "not available";
+                        w = w3;
+                    }
                     return Math.Abs(w.Value) < 0.05 ? "Neutral" : $"{Math.Abs(w.Value):0.0} degrees {(w.Value > 0 ? "left" : "right")}";
                 }));
                 r.Add(("Speed brake handle", "A32NX_SPOILERS_HANDLE_POSITION", v => $"{v * 100:0} %"));
@@ -5240,9 +5288,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 for (int e = 1; e <= 4; e++) r.Add(($"Engine {e} fuel flow", $"A32NX_ENGINE_FF:{e}", Kgh));
                 for (int e = 1; e <= 4; e++) r.Add(($"Engine {e} fuel used", $"A32NX_FUEL_USED:{e}", Wt));
                 r.Add(("APU fuel used", "A32NX_APU_FUEL_USED", AWt));
-                r.Add(("Cabin altitude", "A32NX_PRESS_CABIN_ALTITUDE_B1", v => A(v, "feet")));
-                r.Add(("Cabin vertical speed", "A32NX_PRESS_CABIN_VS_B1", v => A(v, "feet per minute")));
-                r.Add(("Differential pressure", "A32NX_PRESS_CABIN_DELTA_PRESSURE_B1", v => A(v, "psi", "0.0")));
+                r.Add(("Cabin altitude", "A32NX_PRESS_CABIN_ALTITUDE_B1", ABest("A32NX_PRESS_CABIN_ALTITUDE_B1", "feet")));
+                r.Add(("Cabin vertical speed", "A32NX_PRESS_CABIN_VS_B1", ABest("A32NX_PRESS_CABIN_VS_B1", "feet per minute")));
+                r.Add(("Differential pressure", "A32NX_PRESS_CABIN_DELTA_PRESSURE_B1", ABest("A32NX_PRESS_CABIN_DELTA_PRESSURE_B1", "psi", "0.0")));
                 r.Add(("Landing elevation", "A32NX_FM1_LANDING_ELEVATION", v => {
                     var w = new SimConnect.Arinc429Word(v);
                     return (w.IsNormalOperation || w.IsFunctionalTest) ? $"{w.Value:0} feet" : "not set (auto)";
