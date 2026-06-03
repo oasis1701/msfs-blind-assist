@@ -908,16 +908,29 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             IsArinc429 = true, Arinc429Unit = "knots", Arinc429Format = "0",
             Arinc429NotAvailableText = "not available"
         };
-        ArincKt("PFD_VMAX", "A32NX_FAC_1_V_MAX", "Vmax");
-        ArincKt("PFD_VLS", "A32NX_FAC_1_V_LS", "VLS lowest selectable speed");
+        // WEIGHT/CONFIG-BASED speeds (VLS, VMAX, green-dot, F, S) — source from the FBW
+        // managed-speed L-vars `A32NX_SPEEDS_*`, which compute continuously and have real
+        // values on the GROUND as well as in flight (live-verified VLS 147, VMAX 222, GD 211,
+        // F 159, S 191 cold on the ground). The FAC ARINC words `A32NX_FAC_1_V_*` were NCD on
+        // the ground → "not available"; the SPEEDS_* set fixes that and matches the PFD tape in
+        // flight. Plain numeric L-vars (knots); formatted in TryGetDisplayOverride.
+        void SpdLvar(string key, string name, string display) => vars[key] = new SimVarDefinition
+        {
+            Name = name, DisplayName = display, Type = SimVarType.LVar,
+            UpdateFrequency = UpdateFrequency.OnRequest, Units = "knots"
+        };
+        SpdLvar("PFD_VMAX", "A32NX_SPEEDS_VMAX", "Vmax");
+        SpdLvar("PFD_VLS", "A32NX_SPEEDS_VLS", "VLS lowest selectable speed");
+        SpdLvar("PFD_GREENDOT", "A32NX_SPEEDS_GD", "Green dot speed");
+        SpdLvar("PFD_V3", "A32NX_SPEEDS_F", "F speed (slat retract)");
+        SpdLvar("PFD_V4", "A32NX_SPEEDS_S", "S speed (flap retract)");
+        // PROTECTION speeds (alpha-prot, alpha-max, stall-warn, VFE-next) — genuinely
+        // in-flight-only: the FAC computes them only with live AoA/airspeed, so they read
+        // "not available" on the ground (NCD) and that is correct + unavoidable (no managed-
+        // speed equivalent exists). FAC1 ARINC429 words, knots.
         ArincKt("PFD_VALPHAPROT", "A32NX_FAC_1_V_ALPHA_PROT", "Alpha Prot speed");
         ArincKt("PFD_VALPHAMAX", "A32NX_FAC_1_V_ALPHA_LIM", "Alpha Max speed");
         ArincKt("PFD_VSW", "A32NX_FAC_1_V_STALL_WARN", "Stall Warning speed");
-        // More PFD speed-tape characteristic bugs (FAC ARINC429 words, knots). Read
-        // "not available" when the FAC isn't computing (e.g. on the ground = NCD).
-        ArincKt("PFD_GREENDOT", "A32NX_FAC_1_V_MAN", "Green dot speed");
-        ArincKt("PFD_V3", "A32NX_FAC_1_V_3", "F speed (slat retract)");
-        ArincKt("PFD_V4", "A32NX_FAC_1_V_4", "S speed (flap retract)");
         ArincKt("PFD_VFENEXT", "A32NX_FAC_1_V_FE_NEXT", "VFE next");
         // ARINC429 words in non-knots units (RA, vertical speed, transition altitude).
         // Same SSM-gated decode as ArincKt; live-verified RA1 + VS read Normal Operation.
@@ -4357,6 +4370,12 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         if (varKey == "PFD_V1" || varKey == "PFD_VR" || varKey == "PFD_V2")
         {
             displayText = value < 1 ? "not set" : $"{value:0} knots";
+            return true;
+        }
+        // Weight/config speeds sourced from A32NX_SPEEDS_* (valid on the ground too); 0 = not computed.
+        if (varKey == "PFD_VMAX" || varKey == "PFD_VLS" || varKey == "PFD_GREENDOT" || varKey == "PFD_V3" || varKey == "PFD_V4")
+        {
+            displayText = value < 1 ? "not available" : $"{value:0} knots";
             return true;
         }
         // ILS DME — one decimal nm; ILS freq — three decimals MHz.
