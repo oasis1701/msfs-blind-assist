@@ -5312,6 +5312,10 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                 // Tire pressure — the FBW WHEEL page hardcodes 220 psi for every wheel (not yet
                 // modelled); surfaced once to match the real SD. Constant.
                 r.Add(("Tire pressure (all wheels)", "GEAR_CENTER_POSITION", _ => "220 psi"));
+                // Wing-brake accumulator pressure — likewise hardcoded (4.8 × 1000 psi) on the FBW
+                // WHEEL page; surfaced to match the SD. Constant. (Body-wheel-steering angle,
+                // A-SKID per-bogie + BRK/STEER/LG CTL computer status are not modelled — no L-vars.)
+                r.Add(("Wing accumulator pressure", "GEAR_CENTER_POSITION", _ => "4800 psi"));
                 break;
             case 10: // HYD (A380 has Green + Yellow)
                 foreach (var (sys, e1, e2) in new[] { ("GREEN", 1, 2), ("YELLOW", 3, 4) })
