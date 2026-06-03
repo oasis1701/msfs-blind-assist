@@ -61,6 +61,7 @@ public partial class MainForm : Form
     // new failures. Runs whenever the A380X is active — no window needed.
     private CoherentEWDClient? coherentEWDClient;
     private Forms.FBWA380.FbwEfbForm? fbwA380OansForm;
+    private Forms.FBWA380.FBWA380RmpForm? fbwA380RmpForm;
     // Live A380X Electronic Checklist window (normal checklists + ECP controls),
     // read from the E/WD Coherent view. Opened by the Checklist hotkey on the A380.
     private Forms.FBWA380.FBWA380ChecklistForm? fbwA380ChecklistForm;
@@ -1856,6 +1857,16 @@ public partial class MainForm : Form
                     ShowFbwEfbDialog();
                 }
                 break;
+            case HotkeyAction.ShowRMP:
+                if (currentAircraft is FlyByWireA380Definition)
+                {
+                    ShowFBWA380RmpDialog();
+                }
+                else
+                {
+                    announcer.Announce("The Radio Management Panel window is only available on the A380.");
+                }
+                break;
             case HotkeyAction.ShowOANS:
                 if (currentAircraft?.AircraftCode == "FBW_A380")
                 {
@@ -2603,6 +2614,20 @@ public partial class MainForm : Form
     // A380 ND OANS / BTV control panel — reuses the WebView2 EFB form, but driven
     // by the ND Coherent view through CoherentNDClient. Used for BTV (Brake-To-
     // Vacate) exit selection and airport/runway/exit search.
+    // Open the accessible A380 RMP window (Shift+R in input mode) — replaces the old
+    // per-key RMP button panel. Scrapes A380X_RMP_1/2 live; one window, Captain ↔ FO combo.
+    private void ShowFBWA380RmpDialog()
+    {
+        if (currentAircraft is not FlyByWireA380Definition a380rmp) return;
+        if (fbwA380RmpForm == null || fbwA380RmpForm.IsDisposed)
+        {
+            fbwA380RmpForm = new Forms.FBWA380.FBWA380RmpForm(announcer, a380rmp, simConnectManager);
+        }
+        fbwA380RmpForm.Show();
+        fbwA380RmpForm.BringToFront();
+        fbwA380RmpForm.Activate();
+    }
+
     private void ShowFBWA380OansDialog()
     {
         hotkeyManager.ExitOutputHotkeyMode();
@@ -5510,16 +5535,6 @@ public partial class MainForm : Form
                     if (currentAircraft.HandleUIVariableSet(
                             varKey, parsedValue, varDef, simConnectManager, announcer))
                     {
-                        return;
-                    }
-
-                    // RMP frequency entry: type the RAW digit string the user entered into the
-                    // captain RMP keypad (fires the digit H-events), so "118.50" is keyed in
-                    // exactly instead of losing trailing zeros through the double parse.
-                    if (varKey == "A380X_MSFSBA_RMP1_FREQ_SET" &&
-                        currentAircraft is Aircraft.FlyByWireA380Definition a380Rmp)
-                    {
-                        a380Rmp.SendRmpKeypad(textBox.Text, simConnectManager!, announcer);
                         return;
                     }
 

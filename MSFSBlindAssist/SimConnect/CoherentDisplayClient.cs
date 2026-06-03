@@ -29,6 +29,7 @@ namespace MSFSBlindAssist.SimConnect
 
         private readonly string _titleNeedle;
         private readonly int _pollIntervalMs;
+        private readonly string _agentFileName;
 
         /// <summary>Raised (on the creating thread) with the new rows when they change.</summary>
         public event Action<List<string>>? RowsUpdated;
@@ -55,10 +56,12 @@ namespace MSFSBlindAssist.SimConnect
 
         /// <param name="titleNeedle">Substring of the Coherent view title, e.g. "A380X_SDv2".</param>
         /// <param name="pollIntervalMs">How often to re-scrape while active.</param>
-        public CoherentDisplayClient(string titleNeedle, int pollIntervalMs = 1200)
+        public CoherentDisplayClient(string titleNeedle, int pollIntervalMs = 1200,
+            string agentFileName = "coherent-display-agent.js")
         {
             _titleNeedle = titleNeedle;
             _pollIntervalMs = pollIntervalMs;
+            _agentFileName = agentFileName;
             _syncContext = SynchronizationContext.Current;
         }
 
@@ -68,7 +71,7 @@ namespace MSFSBlindAssist.SimConnect
             _cts = new CancellationTokenSource();
             try
             {
-                string path = Path.Combine(AppContext.BaseDirectory, "Resources", "coherent-display-agent.js");
+                string path = Path.Combine(AppContext.BaseDirectory, "Resources", _agentFileName);
                 _agentJs = File.ReadAllText(path);
             }
             catch (Exception ex)

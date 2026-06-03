@@ -720,36 +720,11 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         OnOff("A380X_RMP_2_NAV_TX_1", "Navaid Transmit");
 
         // ---- RADIO MANAGEMENT PANEL (RMP 1) KEYPAD ----
-        // The A380 tunes VHF / HF / TEL frequencies, the transponder (SQWK page) and NAV via the
-        // RMP touchscreen keypad. MSFSBA drives the captain's RMP through the cockpit keypad
-        // H-events (RMP_1_<KEY>_PRESSED/_RELEASED, the FBW KeypadController) — so EVERY RMP
-        // function, including HF tuning, becomes operable as accessible buttons. Each button fires
-        // PRESSED then RELEASED via the A380X_MSFSBA_RMP1_ HandleUIVariableSet branch. The RMP must
-        // be powered ON (A380X_RMP_1_STATE = On) for keypresses to register, as in the real jet.
-        // "Read RMP screen" opens the live Coherent scrape of the RMP display.
-        void RmpKey(string key, string display) => EvtBtn($"A380X_MSFSBA_RMP1_{key}", display);
-        RmpKey("VHF", "VHF page"); RmpKey("HF", "HF page"); RmpKey("TEL", "Telephone page");
-        RmpKey("SQWK", "Transponder page"); RmpKey("NAV", "Nav page"); RmpKey("MENU", "Menu");
-        RmpKey("LSK_1", "Line key 1"); RmpKey("LSK_2", "Line key 2"); RmpKey("LSK_3", "Line key 3");
-        RmpKey("ADK_1", "Adjacent key 1"); RmpKey("ADK_2", "Adjacent key 2"); RmpKey("ADK_3", "Adjacent key 3");
-        RmpKey("UP", "Scroll up"); RmpKey("DOWN", "Scroll down");
-        for (int d = 0; d <= 9; d++) RmpKey($"DIGIT_{d}", $"Digit {d}");
-        RmpKey("DIGIT_DOT", "Decimal point"); RmpKey("DIGIT_CLR", "Clear");
-        RmpKey("VHF_CALL_1", "VHF 1 call"); RmpKey("VHF_CALL_2", "VHF 2 call"); RmpKey("VHF_CALL_3", "VHF 3 call");
-        RmpKey("HF_CALL_1", "HF 1 call"); RmpKey("HF_CALL_2", "HF 2 call");
-        RmpKey("TEL_CALL_1", "Telephone 1 call"); RmpKey("TEL_CALL_2", "Telephone 2 call");
-        RmpKey("MECH_CALL", "Mechanic call"); RmpKey("CAB_CALL", "Cabin call"); RmpKey("PA_CALL", "PA call");
-        RmpKey("VOICE", "Voice"); RmpKey("MSG_CLR", "Message clear"); RmpKey("RST", "Reset");
-        EvtBtn("A380X_MSFSBA_RMP1_DISPLAY", "Read RMP screen");
-        // Frequency ENTRY edit field (practical alternative to mashing digit buttons): type the
-        // digits + a decimal point (e.g. "118.50", "8901") and press Set/Enter, and MSFSBA fires
-        // the RMP keypad digit H-events in sequence (handled in MainForm's _SET text-input path →
-        // SendRmpKeypad). Select the page (VHF/HF/TEL/SQWK) first, then enter, then swap via LSK.
-        vars["A380X_MSFSBA_RMP1_FREQ_SET"] = new SimVarDefinition
-        {
-            Name = "A380X_MSFSBA_RMP1_FREQ_SET", DisplayName = "Frequency entry",
-            Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest
-        };
+        // The A380 RMP (VHF/HF/TEL/transponder/NAV tuning) is operated through the dedicated
+        // accessible RMP WINDOW (Shift+R in input mode → FBWA380RmpForm), NOT a control panel:
+        // it scrapes the live A380X_RMP_1/2 Coherent views and drives the cockpit keypad H-events
+        // (RMP_n_<KEY>_PRESSED/_RELEASED) via SendRmpKey / SendRmpKeypad. The old per-key button
+        // panel was impractical (one digit at a time) and has been removed.
 
         // ---- INTERIOR LIGHTING ----
         Sel("A380X_OVHD_ANN_LT_POSITION", "Annunciator Lights",
@@ -2425,7 +2400,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             ["Pedestal"] = new List<string>
             {
                 "Engines", "Thrust Levers", "Flaps and Brakes", "Speed Brake", "ECAM Control Panel", "Weather Radar",
-                "Transponder", "Radios", "RMP", "Radio Management Panel", "Audio Control Panel Captain", "Audio Control Panel First Officer",
+                "Transponder", "Radios", "RMP", "Audio Control Panel Captain", "Audio Control Panel First Officer",
                 "Cockpit"
             },
             // All ground-related panels live under one category (doors, equipment, pushback/
@@ -2624,19 +2599,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "A380X_RMP_2_HF_TX_1", "A380X_RMP_2_HF_TX_2", "A380X_RMP_2_TEL_TX_1", "A380X_RMP_2_TEL_TX_2",
             "A380X_RMP_2_INT_TX_1", "A380X_RMP_2_CAB_TX_1", "A380X_RMP_2_PA_TX_1", "A380X_RMP_2_NAV_TX_1"
         };
-        // Captain RMP keypad — every key as a button + a "Read RMP screen" scrape opener.
-        var rmp1 = new List<string>();
-        // Frequency entry edit field FIRST (the practical way to tune — type + Set), then the page
-        // selectors, line keys, clear, calls. The individual digit buttons are intentionally NOT
-        // listed (impractical to mash one at a time — the edit field types them out instead).
-        rmp1.Add("A380X_MSFSBA_RMP1_FREQ_SET");
-        foreach (var k in new[] {
-            "VHF","HF","TEL","SQWK","NAV","MENU",
-            "LSK_1","LSK_2","LSK_3","ADK_1","ADK_2","ADK_3","UP","DOWN","DIGIT_CLR",
-            "VHF_CALL_1","VHF_CALL_2","VHF_CALL_3","HF_CALL_1","HF_CALL_2","TEL_CALL_1","TEL_CALL_2",
-            "MECH_CALL","CAB_CALL","PA_CALL","VOICE","MSG_CLR","RST","DISPLAY" })
-            rmp1.Add($"A380X_MSFSBA_RMP1_{k}");
-        p["Radio Management Panel"] = rmp1;
+        // (Radio Management Panel removed — the RMP is now the dedicated accessible RMP WINDOW,
+        // Shift+R in input mode → FBWA380RmpForm, scraping A380X_RMP_1/2 + firing the keypad H-events.)
         p["Interior Lighting"] = new List<string>
         {
             "A380X_OVHD_ANN_LT_POSITION", "A32NX_OVHD_INTLT_ANN",
@@ -4359,23 +4323,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             simConnect.ExecuteCalculatorCode($"{value.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)} (>L:{varKey})");
             return true;
         }
-        // RMP 1 keypad — fire the cockpit keypad H-event (PRESSED then RELEASED) for the captain's
-        // Radio Management Panel, or open the live RMP-screen scrape. Checked BEFORE the A380X_
-        // catch-all (these synthetic keys have no backing L:var).
-        if (varKey.StartsWith("A380X_MSFSBA_RMP1_", StringComparison.Ordinal)
-            && varKey != "A380X_MSFSBA_RMP1_FREQ_SET")   // the freq field is a string entry — handled in MainForm via SendRmpKeypad
-        {
-            string k = varKey.Substring("A380X_MSFSBA_RMP1_".Length);
-            if (k == "DISPLAY")
-            {
-                try { new Forms.FBWA380.FBWA380LiveDisplayForm(announcer, "A380X_RMP_1", "Radio Management Panel").Show(); }
-                catch { announcer.Announce("RMP screen unavailable"); }
-                return true;
-            }
-            simConnect.ExecuteCalculatorCode($"(>H:RMP_1_{k}_PRESSED)");
-            simConnect.ExecuteCalculatorCode($"(>H:RMP_1_{k}_RELEASED)");
-            return true;
-        }
+        // (The RMP keypad panel was removed — the RMP is now the dedicated accessible window,
+        // FBWA380RmpForm, which calls SendRmpKey / SendRmpKeypad directly.)
         if (varKey.StartsWith("A32NX_", StringComparison.Ordinal)
             || varKey.StartsWith("A380X_", StringComparison.Ordinal)
             || varKey.StartsWith("FBW_", StringComparison.Ordinal))
@@ -4391,18 +4340,38 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
     /// alternative to mashing the digit buttons. Called from MainForm's _SET text-input path.
     /// Select the page (VHF/HF/...) first; the RMP must be powered on; swap to active via an LSK.</summary>
     public void SendRmpKeypad(string text, SimConnectManager s, ScreenReaderAnnouncer a)
+        => SendRmpKeypad(text, 1, s, a);
+
+    /// <summary>
+    /// Type a frequency string into RMP <paramref name="rmp"/> (1 = Captain, 2 = First Officer)
+    /// by firing the keypad digit H-events for the SELECTED transceiver row. The FBW RMP
+    /// AUTO-COMPLETES (you type only the significant digits, no decimal point: "8" → 118.000,
+    /// "11850" → 118.500), so any '.'/',' the user types is stripped. After typing, press the
+    /// row's line key (LSK) to load the standby, then ADK to swap it active.
+    /// </summary>
+    public void SendRmpKeypad(string text, int rmp, SimConnectManager s, ScreenReaderAnnouncer a)
     {
         if (s == null || !s.IsConnected) { a?.Announce("Not connected"); return; }
+        if (rmp != 1 && rmp != 2) rmp = 1;
         int sent = 0;
         foreach (char c in (text ?? "").Trim())
         {
-            string? key = (c == '.' || c == ',') ? "DIGIT_DOT" : char.IsDigit(c) ? $"DIGIT_{c}" : null;
-            if (key == null) continue;
-            s.ExecuteCalculatorCode($"(>H:RMP_1_{key}_PRESSED)");
-            s.ExecuteCalculatorCode($"(>H:RMP_1_{key}_RELEASED)");
+            if (c == '.' || c == ',' || c == ' ') continue;   // RMP VHF entry auto-completes; no dot
+            if (!char.IsDigit(c)) continue;
+            SendRmpKey(rmp, $"DIGIT_{c}", s);
             sent++;
         }
-        a?.Announce(sent > 0 ? $"Entered {text?.Trim()}" : "Type a frequency first");
+        a?.Announce(sent > 0 ? $"Typed {sent} digit{(sent == 1 ? "" : "s")}. Press load to set standby." : "Type a frequency first");
+    }
+
+    /// <summary>Fire a single RMP keypad key (press + release) on RMP <paramref name="rmp"/>.
+    /// Used by the RMP window for the page selectors / line keys / swap / clear / calls.</summary>
+    public void SendRmpKey(int rmp, string key, SimConnectManager s)
+    {
+        if (s == null || !s.IsConnected) return;
+        if (rmp != 1 && rmp != 2) rmp = 1;
+        s.ExecuteCalculatorCode($"(>H:RMP_{rmp}_{key}_PRESSED)");
+        s.ExecuteCalculatorCode($"(>H:RMP_{rmp}_{key}_RELEASED)");
     }
 
     // ===================================================================

@@ -52,6 +52,7 @@ public class HotkeyManager : IDisposable
         private const int HOTKEY_APPROACH_CAPABILITY = 9030;
         private const int HOTKEY_LANDING_RATE = 9240;     // Ctrl+Shift+R (last landing rate)  — output mode
         private const int HOTKEY_LANDING_PEAK_G = 9241;   // Ctrl+Shift+G (last landing g-force) — output mode
+        private const int HOTKEY_SHOW_RMP = 9242;         // Shift+R (A380 Radio Management Panel) — input mode
 
         // FCU push/pull hotkey IDs
         private const int HOTKEY_FCU_HDG_PUSH = 9031;
@@ -588,6 +589,9 @@ public class HotkeyManager : IDisposable
                         case HOTKEY_PMDG_EFB:
                             TriggerHotkey(HotkeyAction.ShowPMDGEFB);
                             break;
+                        case HOTKEY_SHOW_RMP:
+                            TriggerHotkey(HotkeyAction.ShowRMP);
+                            break;
                         case HOTKEY_TAXI_FORM:
                             TriggerHotkey(HotkeyAction.TaxiAssistForm);
                             break;
@@ -902,6 +906,7 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_TRACK_FIX, MOD_SHIFT, 0x46);         // Shift+F (Track Fix Window)
             RegisterHotKey(windowHandle, HOTKEY_FENIX_MCDU, MOD_SHIFT, 0x4D);       // Shift+M (Fenix MCDU)
             RegisterHotKey(windowHandle, HOTKEY_PMDG_EFB, MOD_SHIFT, 0x54);        // Shift+T (PMDG EFB Tablet)
+            RegisterHotKey(windowHandle, HOTKEY_SHOW_RMP, MOD_SHIFT, 0x52);        // Shift+R (A380 Radio Management Panel)
 
             // Taxi guidance hotkeys (Input mode)
             RegisterHotKey(windowHandle, HOTKEY_TAXI_FORM, MOD_SHIFT, 0x59);            // Shift+Y (Open Taxi Form)
@@ -954,6 +959,7 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_TRACK_FIX);
             UnregisterHotKey(windowHandle, HOTKEY_FENIX_MCDU);
             UnregisterHotKey(windowHandle, HOTKEY_PMDG_EFB);
+            UnregisterHotKey(windowHandle, HOTKEY_SHOW_RMP);
 
             // Taxi guidance hotkeys
             UnregisterHotKey(windowHandle, HOTKEY_TAXI_FORM);
@@ -1299,6 +1305,7 @@ public class HotkeyManager : IDisposable
         ReadTargetFPM,
         ShowFenixMCDU,
         ShowPMDGEFB,
+        ShowRMP,
         ShowOANS,
         ReadNearestCity,
         ReadDistanceToTOD,
