@@ -38,8 +38,8 @@ public partial class HotkeyListForm : Form
             DropDownStyle = ComboBoxStyle.DropDown,
             AutoCompleteMode = AutoCompleteMode.SuggestAppend,
             AutoCompleteSource = AutoCompleteSource.ListItems,
-            AccessibleName = "Hotkey Category Search",
-            AccessibleDescription = "Type or choose a hotkey category to filter the list"
+            AccessibleName = "Hotkey Search",
+            AccessibleDescription = "Type a hotkey, command, or category to filter the list"
         };
         categoryComboBox.Items.Add(AllCategoriesLabel);
         foreach (var section in categorySections
@@ -194,18 +194,18 @@ public partial class HotkeyListForm : Form
         }
     }
 
-    private void ApplyCategoryFilter(string categoryText)
+    private void ApplyCategoryFilter(string searchText)
     {
-        string category = categoryText.Trim();
+        string search = searchText.Trim();
 
         // Empty, exact match, or any case-insensitive prefix of "All Categories"
         // at least 3 chars long (covers "all", "all c", "All Categ", etc.).
         // The 3-char floor prevents "a"/"al" from short-circuiting filters
         // for categories that start with those letters (e.g. Altitude, Airspeed).
         bool isAllCategoriesSentinel =
-            string.IsNullOrEmpty(category)
-            || (category.Length >= 3
-                && AllCategoriesLabel.StartsWith(category, StringComparison.OrdinalIgnoreCase));
+            string.IsNullOrEmpty(search)
+            || (search.Length >= 3
+                && AllCategoriesLabel.StartsWith(search, StringComparison.OrdinalIgnoreCase));
 
         if (isAllCategoriesSentinel)
         {
@@ -217,24 +217,20 @@ public partial class HotkeyListForm : Form
         }
 
         var matchingSections = categorySections
-            .Where(section => section.SearchText.Contains(category, StringComparison.OrdinalIgnoreCase))
+            .Where(section => section.Matches(search))
             .OrderBy(section => section.ModeOrder)
             .ThenBy(section => section.CategoryName)
             .ToList();
 
         if (matchingSections.Count == 0)
         {
-            hotkeyTextBox.Text = $"No hotkey categories match \"{category}\".";
+            hotkeyTextBox.Text = $"No hotkeys match \"{search}\".";
             return;
         }
 
-        // SectionText already starts with the category heading line (e.g.
-        // "FCU Controls:"). The dropdown shows the activation-mode prefix
-        // (Output ] / Input [) when the user picks, so prepending DisplayName
-        // here would duplicate the heading in the text body.
         hotkeyTextBox.Text = string.Join(
             "\r\n\r\n",
-            matchingSections.Select(section => section.SectionText));
+            matchingSections.Select(section => section.GetFilteredText(search)));
         hotkeyTextBox.SelectionStart = 0;
         hotkeyTextBox.SelectionLength = 0;
         hotkeyTextBox.ScrollToCaret();
@@ -361,6 +357,99 @@ public partial class HotkeyListForm : Form
             _ => $"General - {CategoryName}"
         };
 
-        public string SearchText => $"{DisplayName} {CategoryName}";
+        public string SearchText => $"{DisplayName} {CategoryName} {SectionText}";
+
+        public bool Matches(string searchText)
+        {
+            return SearchText.Contains(searchText, StringComparison.OrdinalIgnoreCase);
+        }
+
+        public string GetFilteredText(string searchText)
+        {
+            if (DisplayName.Contains(searchText, StringComparison.OrdinalIgnoreCase)
+                || CategoryName.Contains(searchText, StringComparison.OrdinalIgnoreCase))
+            {
+                return SectionText;
+            }
+
+            var lines = SectionText.Replace("\r\n", "\n").Split('\n');
+            if (lines.Length == 0)
+            {
+                return SectionText;
+            }
+
+            var filteredLines = new List<string> { lines[0] };
+            foreach (var block in GetCommandBlocks(lines))
+            {
+                if (block.Any(line => line.Contains(searchText, StringComparison.OrdinalIgnoreCase)))
+                {
+                    filteredLines.AddRange(block);
+                }
+            }
+
+            return NormalizeLineEndings(string.Join("\n", filteredLines));
+        }
+
+        private static IEnumerable<List<string>> GetCommandBlocks(string[] lines)
+        {
+            var currentBlock = new List<string>();
+
+            for (int i = 1; i < lines.Length; i++)
+            {
+                string line = lines[i];
+                if (string.IsNullOrWhiteSpace(line))
+                {
+                    if (currentBlock.Count > 0)
+                    {
+                        yield return currentBlock;
+                        currentBlock = new List<string>();
+                    }
+
+                    continue;
+                }
+
+                if (StartsNewHotkeyLine(line))
+                {
+                    if (currentBlock.Count > 0)
+                    {
+                        yield return currentBlock;
+                    }
+
+                    currentBlock = new List<string> { line };
+                    continue;
+                }
+
+                if (currentBlock.Count > 0)
+                {
+                    currentBlock.Add(line);
+                }
+                else
+                {
+                    currentBlock = new List<string> { line };
+                }
+            }
+
+            if (currentBlock.Count > 0)
+            {
+                yield return currentBlock;
+            }
+        }
+
+        private static bool StartsNewHotkeyLine(string line)
+        {
+            string trimmedLine = line.TrimStart();
+            if (line.Length == 0 || !char.IsWhiteSpace(line[0]) || trimmedLine.Length == 0)
+            {
+                return false;
+            }
+
+            string firstToken = trimmedLine.Split(' ', StringSplitOptions.RemoveEmptyEntries)[0];
+            char firstChar = firstToken[0];
+
+            return char.IsDigit(firstChar)
+                || char.IsUpper(firstChar)
+                || firstToken.Contains('+')
+                || firstToken.Contains('/');
+        }
     }
 }
