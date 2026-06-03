@@ -11,11 +11,57 @@ lists; a 5-agent panel-by-panel sweep (Overhead/Pedestal/Glareshield/Instrument/
 FCU excluded) produced the control gaps. All var names cited back to FBW A380 source
 (`fbw-aircraft/fbw-a380x/src/systems/instruments/src`).
 
-## STATUS — push-ready (NOT pushed; waiting for the user)
+## ⛔ STATUS — REVERTED to baseline (the additions hit MobiFlight's variable ceiling)
 
-Branch `fly-by-wire-A380-integration`. Final build: **0 errors**. Aircraft detection NOT
-re-broken (every new stock SimVar registered as `SimVar`, never L:var — the door-class
-rule). Sim left clean (all write-test L:vars restored to 0).
+**The finish-pass display + panel additions were REVERTED** (commit `2935c3b`) because they
+re-broke aircraft detection — and this time it was root-caused empirically, not guessed.
+
+**Real root cause (proven via live SimConnect-exception logging):** the A380 was already at
+**MobiFlight WASM's variable-table ceiling**. Baseline = **1015** registered vars → connects
+cleanly (0 SimConnect exceptions). The pass pushed it to **1066** vars; the 2nd
+continuous-monitoring batch's `AddToDataDefinition` then failed wholesale
+(`SIMCONNECT_EXCEPTION_TOO_MANY_OBJECTS` + `UNRECOGNIZED_ID`). That async exception disrupts
+the one-shot AIRCRAFT_INFO/ATC response → `IsFullyConnected` never sets → "MSFS detected but
+every hotkey says not connected" (auto-announce is a separate path, so it kept working).
+
+How it was found: instrumented `RegisterAllVariables` + `OnRecvException` to log
+SendID→variable, launched MSFSBA against the live sim, read the exact failing ops.
+Demonstrated baseline(1015)=clean, pass(1066)=BATCH2 fails. Demoting the new controls to
+OnRequest (continuous 561→528=baseline) did NOT fix it — it's the **total** var count, not
+the continuous count.
+
+**The earlier "fix" theories in the commit log (INDICATED ALTITUDE:3 / pushback names) were
+WRONG** — those `NAME_UNRECOGNIZED` exceptions are pre-existing and harmless (present in the
+working baseline too). The only thing that matters is the total var count vs the ceiling.
+
+### To re-apply the work (the real plan)
+The A380 needs HEADROOM before any net var additions. Options, best first:
+1. **Eliminate the continuous-var double-registration.** Every Continuous+IsAnnounced var is
+   registered TWICE — once as an individual data def (for on-demand reads) AND again inside a
+   `CONTINUOUS_BATCH_n` def (for auto-announce). Make continuous vars read their on-demand
+   value from the batch cache instead of an individual def, and skip the individual
+   registration for them. That frees ~528 MobiFlight slots → huge headroom. **Risk:** affects
+   the shared `SimConnectManager` (A320 too); must verify on-demand reads of continuous vars
+   still work (RequestVariable currently needs an individual def — line ~3284). Test live.
+2. Trim ~50+ low-value EXISTING continuous vars to OnRequest to make room (regresses some
+   existing auto-announce; judgment-heavy).
+3. Re-apply additions in small batches, testing the connection (via the diagnostic below)
+   after each, staying under the ceiling.
+
+All the finish-pass code is in git history: commits `32b6a3a` (ISIS) … `3b578d6` (ACP),
+`b8db3b8`/`89d2066` (docs). Cherry-pick once headroom exists.
+
+### Diagnostic recipe (reusable)
+Instrument `SimConnectManager.RegisterAllVariables` (capture `GetLastSentPacketID()` per
+`AddToDataDefinition` into a `SendID→var` map) + `StartContinuousMonitoring` (same, per batch
+add) + `OnRecvException` (write exception name/SendID/Index + mapped var to a log file).
+Launch `MSFSBlindAssist.exe` against the running sim for ~12s, kill it, read the log. The
+exact failing variable/operation is named. (This instrumentation was applied, used, and then
+reverted with the baseline restore.)
+
+---
+
+## (Below: the additions that were made then reverted — kept for the re-apply effort)
 
 Commits this pass (oldest→newest), all on top of `b8db3b8`:
 - `32b6a3a` ISIS: standby `:3` source + slip/skid + LS deviation
