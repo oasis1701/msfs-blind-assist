@@ -1807,12 +1807,15 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // BCD16-encodes the entered code (4242 -> 0x4242). Sending the raw decimal
         // via the generic event path produced a wrong squawk. Event name stays XPNDR_SET.
         Evt("TRANSPONDER_CODE_SET", "XPNDR_SET", "Squawk Code");
-        // Settable: the mode L:var is writable and sticks (verified live — STBY/AUTO/
-        // ON all hold). Set via the calculator catch-all at the end of HandleUIVariableSet.
-        Sel("A32NX_TRANSPONDER_MODE", "Transponder Mode",
-            new Dictionary<double, string> { [0] = "Standby", [1] = "Auto", [2] = "On" });
-        Sel("A32NX_SWITCH_ATC_ALT", "ATC Altitude Reporting",
-            new Dictionary<double, string> { [0] = "Off", [1] = "On" });
+        // NOTE: the transponder MODE (STBY/AUTO/ON) and ALT RPTG are NOT settable on the
+        // FBW A380. They were previously exposed as combos over A32NX_TRANSPONDER_MODE /
+        // A32NX_SWITCH_ATC_ALT, but those L:vars are dead on the A380 — verified from source
+        // (zero consumers anywhere in fbw-a380x; the MFD SURV AUTO/STBY + ALT RPTG controls
+        // just publish mfd_xpdr_set_auto / mfd_xpdr_set_alt_reporting events that NOTHING
+        // subscribes to) and live (A32NX_TRANSPONDER_MODE read 2/"On" while the real
+        // TRANSPONDER STATE:1 read 1/STBY — the var holds a value but drives nothing).
+        // Only the squawk code (above) and IDENT (XPNDR_IDENT_ON) have working write paths.
+        // The mode is observable read-only via the RMP SQWK page (AUTO/STBY) instead.
 
         // ============================ MINIMUMS ============================
         // FMS-set decision minimums (best-effort; var reused from A32NX FM).
@@ -2725,7 +2728,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         };
         p["Transponder"] = new List<string>
         {
-            "TRANSPONDER_CODE_SET", "XPNDR_IDENT_ON", "A32NX_TRANSPONDER_MODE", "A32NX_SWITCH_ATC_ALT"
+            // Mode (STBY/AUTO/ON) + ALT RPTG removed — dead on the FBW A380 (see the
+            // GetVariables note). Only squawk code + IDENT actually work here.
+            "TRANSPONDER_CODE_SET", "XPNDR_IDENT_ON"
         };
         // "Radios" (stock COM standby-set + swap) REMOVED — the FBW A380 ignores the stock
         // COM_STBY_RADIO_SET_HZ / COM*_RADIO_SWAP events (live-verified: setting COM1 standby
