@@ -880,6 +880,26 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         ArincUnit("PFD_RA", "A32NX_RA_1_RADIO_ALTITUDE", "Radio altitude", "feet");
         ArincUnit("PFD_VS", "A32NX_ADIRS_IR_1_VERTICAL_SPEED", "Vertical speed", "feet per minute");
         ArincUnit("PFD_TRANS_ALT", "A32NX_FM1_TRANS_ALT", "Transition altitude", "feet");
+        // Transition LEVEL (descent) — ARINC429 word, engineering value already in FL hundreds
+        // (e.g. 60 = FL060). Decoded to "flight level N" / "not set" in TryGetDisplayOverride
+        // (NOT IsArinc429 so the generic feet decoder doesn't grab it). Complements TRANS ALT.
+        vars["PFD_TRANS_LVL"] = new SimVarDefinition
+        {
+            Name = "A32NX_FM1_TRANS_LVL", DisplayName = "Transition level",
+            Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest
+        };
+        // FCU selected altitude + heading targets (stock autopilot simvars; the A380 has no
+        // A32NX_FCU_*_DISPLAY var for these). On the PFD status box next to the FMA.
+        Stock("FCU_SEL_ALT", "AUTOPILOT ALTITUDE LOCK VAR:3", "FCU selected altitude", "feet");
+        Stock("FCU_SEL_HDG", "AUTOPILOT HEADING LOCK DIR", "FCU selected heading", "degrees");
+        // Nav radios — VOR 1/2 frequency + DME and ADF 1/2 frequency (stock simvars; the IDENTS
+        // are read by the Output+N "nav radio" hotkey via the NAV IDENT string struct). On the ND.
+        Stock("ND_VOR1_FREQ", "NAV ACTIVE FREQUENCY:1", "VOR 1 frequency", "MHz");
+        Stock("ND_VOR2_FREQ", "NAV ACTIVE FREQUENCY:2", "VOR 2 frequency", "MHz");
+        Stock("ND_VOR1_DME", "NAV DME:1", "VOR 1 DME", "nautical miles");
+        Stock("ND_VOR2_DME", "NAV DME:2", "VOR 2 DME", "nautical miles");
+        Stock("ND_ADF1_FREQ", "ADF ACTIVE FREQUENCY:1", "ADF 1 frequency", "KHz");
+        Stock("ND_ADF2_FREQ", "ADF ACTIVE FREQUENCY:2", "ADF 2 frequency", "KHz");
         // Marker beacon (stock enum) + ILS/LS course (plain L:var; -1 = no course set,
         // decoded in TryGetDisplayOverride). These complete the ILS block alongside the
         // existing PFD_ILS_FREQ / PFD_ILS_DME.
@@ -1777,7 +1797,14 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // Ground / automation helpers (whole-aircraft state + pushback).
         Sel("A32NX_AIRCRAFT_PRESET_LOAD", "Load Aircraft Preset",
             new Dictionary<double, string> { [0] = "None", [1] = "Cold and Dark", [2] = "Powered", [3] = "Pushback", [4] = "Taxi", [5] = "Takeoff" });
-        Read("A32NX_AIRCRAFT_PRESET_LOAD_PROGRESS", "Preset Load Progress");
+        // Preset load progress — auto-announced as "Aircraft preset loading N percent" at
+        // milestones while the flyPad loads a preset (and "complete" at the end). Continuous +
+        // IsAnnounced; the custom ProcessSimVarUpdate branch does the milestone throttling.
+        vars["A32NX_AIRCRAFT_PRESET_LOAD_PROGRESS"] = new SimVarDefinition
+        {
+            Name = "A32NX_AIRCRAFT_PRESET_LOAD_PROGRESS", DisplayName = "Preset Load Progress",
+            Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true
+        };
         OnOff("A32NX_PUSHBACK_SYSTEM_ENABLED", "Pushback System");
         Read("A32NX_PUSHBACK_SPD_FACTOR", "Pushback Speed Factor");
         Read("A32NX_PUSHBACK_HDG_FACTOR", "Pushback Heading Factor");
@@ -2123,7 +2150,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             },
             // All ground-related panels live under one category (doors, equipment, pushback/
             // presets) — the old standalone "Ground" panel under Displays was confusing.
-            ["Ground Services"] = new List<string> { "Ground Equipment", "Doors", "Aircraft Preset" },
+            ["Ground Services"] = new List<string> { "Ground Equipment", "Doors" },
             ["Displays"] = new List<string> { "PFD", "ND", "Status", "Speeds", "Minimums" }
         };
     }
@@ -2490,15 +2517,9 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         // KCCU (keyboard/cursor control unit) is the MCDU's input device — it is
         // driven through the MCDU form (Coherent agent), not as a standalone
         // control panel, so it is intentionally NOT exposed as a panel here.
-        // Aircraft-preset loading (cold&dark → ready-for-takeoff power-up shortcut). The
-        // PUSHBACK controls (system-enable + speed/heading factors) were REMOVED per user
-        // request — pushback is handled by the flyPad Ground page / GSX, and MSFSBA's raw
-        // pushback factor knobs were clunky and low-value. (Note for A32NX parity: remove
-        // the same A32NX_PUSHBACK_* controls there.)
-        p["Aircraft Preset"] = new List<string>
-        {
-            "A32NX_AIRCRAFT_PRESET_LOAD"
-        };
+        // (Aircraft-preset loading + pushback panels REMOVED per user request — both are done
+        // from the flyPad. MSFSBA auto-announces the preset LOAD PROGRESS instead, see the
+        // A32NX_AIRCRAFT_PRESET_LOAD_PROGRESS branch in ProcessSimVarUpdate.)
 
         return p;
     }
@@ -2753,7 +2774,8 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             // Source-confirmed PFD additions: weight/CG, takeoff V-speeds, Mach, track, ILS.
             "GROSS_WEIGHT_KG", "A32NX_AIRFRAME_GW_CG_PERCENT_MAC",
             "PFD_V1", "PFD_VR", "PFD_V2", "PFD_MACH", "PFD_TRACK",
-            "PFD_RA", "PFD_VS", "PFD_TRANS_ALT",
+            "PFD_RA", "PFD_VS", "PFD_TRANS_ALT", "PFD_TRANS_LVL",
+            "FCU_SEL_ALT", "FCU_SEL_HDG",
             "PFD_ILS_FREQ", "PFD_ILS_DME", "A32NX_FM_LS_COURSE", "MARKER_BEACON",
             "PFD_VMAX", "PFD_VLS", "PFD_VALPHAPROT", "PFD_VALPHAMAX", "PFD_VSW",
             "PFD_GREENDOT", "PFD_V3", "PFD_V4", "PFD_VFENEXT"
@@ -2767,7 +2789,12 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
             "A32NX_EFIS_L_TO_WPT_BEARING", "A32NX_EFIS_L_TO_WPT_ETA",
             "A32NX_FG_CROSS_TRACK_ERROR", "A32NX_FMGC_L_RNP",
             "A32NX_RADIO_RECEIVER_LOC_IS_VALID", "A32NX_RADIO_RECEIVER_LOC_DEVIATION",
-            "A32NX_RADIO_RECEIVER_GS_IS_VALID", "A32NX_RADIO_RECEIVER_GS_DEVIATION"
+            "A32NX_RADIO_RECEIVER_GS_IS_VALID", "A32NX_RADIO_RECEIVER_GS_DEVIATION",
+            // Tuned nav radios (frequencies + DME). The tuned-station IDENTS are read by the
+            // Output+N "nav radio" hotkey (NAV IDENT string struct), which the numeric display
+            // pipeline can't carry.
+            "ND_VOR1_FREQ", "ND_VOR1_DME", "ND_VOR2_FREQ", "ND_VOR2_DME",
+            "ND_ADF1_FREQ", "ND_ADF2_FREQ"
         };
         d["Oxygen"] = new List<string> { "A32NX_OXYGEN_TMR_RESET_FAULT" };
         d["Calls"] = new List<string> { "A32NX_SLIDES_ARMED", "A32NX_EVAC_COMMAND_FAULT" };
@@ -2779,7 +2806,6 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         d["ECAM Control Panel"] = new List<string> { "A32NX_ECAM_SD_CURRENT_PAGE_INDEX" };
         d["Wipers"] = new List<string> { "WIPER_LEFT", "WIPER_RIGHT" };
         d["Speeds"] = new List<string> { "A32NX_SPEEDS_VLS", "A32NX_SPEEDS_VAPP", "A32NX_SPEEDS_GD", "A32NX_SPEEDS_F", "A32NX_SPEEDS_S" };
-        d["Aircraft Preset"] = new List<string> { "A32NX_AIRCRAFT_PRESET_LOAD_PROGRESS" };
 
         // ---- plain SD-page scalar readouts ----
         for (int n = 1; n <= 4; n++)
@@ -2940,6 +2966,7 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         ("A380X_MSFSBA_CARGO_AFT", "Aft Cargo Door",     "A32NX_AFT_DOOR_CARGO_LOCKED", false, true),
     };
     private readonly Dictionary<string, bool> _doorOpen = new();
+    private int _presetBucket = -1;   // last-announced preset-load progress 10%-bucket (-1 = idle)
     private static string UnpackSixBitIdent(double w0, double w1)
     {
         double[] words = { w0, w1 };
@@ -2984,6 +3011,29 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
                     && !Settings.SettingsManager.Current.A380DisabledMonitorVariables.Contains(varName))
                     announcer.Announce($"{dd.Name} {(open ? "open" : "closed")}");
                 break;
+            }
+            return true;
+        }
+
+        // Aircraft-preset load progress (flyPad loads the preset; MSFSBA narrates it). The L:var
+        // runs 0..1 while loading then resets to 0. Announce each 10% milestone once, "complete"
+        // at 100%, and stay silent at idle (0). Honours the Ctrl+M mute.
+        if (varName == "A32NX_AIRCRAFT_PRESET_LOAD_PROGRESS")
+        {
+            int pct = value <= 1.0 ? (int)Math.Round(value * 100) : (int)Math.Round(value);
+            pct = Math.Max(0, Math.Min(100, pct));
+            if (pct <= 0) { _presetBucket = -1; return true; }   // idle / reset — silent
+            if (!Settings.SettingsManager.Current.A380DisabledMonitorVariables.Contains(varName))
+            {
+                if (pct >= 100)
+                {
+                    if (_presetBucket < 100) { _presetBucket = 100; announcer.Announce("Aircraft preset loading complete"); }
+                }
+                else
+                {
+                    int bucket = (pct / 10) * 10;
+                    if (bucket > _presetBucket) { _presetBucket = bucket; announcer.Announce($"Aircraft preset loading {bucket} percent"); }
+                }
             }
             return true;
         }
@@ -4027,6 +4077,13 @@ public class FlyByWireA380Definition : BaseAircraftDefinition,
         if (varKey.StartsWith("A380X_MSFSBA_CARGO_", StringComparison.Ordinal))
         {
             displayText = value < 0.5 ? "Open" : "Closed";   // LOCKED inverted
+            return true;
+        }
+        // Transition LEVEL — ARINC429 word; engineering value is the flight level (60 = FL060).
+        if (varKey == "PFD_TRANS_LVL")
+        {
+            var w = new SimConnect.Arinc429Word(value);
+            displayText = (w.IsNormalOperation || w.IsFunctionalTest) ? $"flight level {w.Value:0}" : "not set";
             return true;
         }
         // Speed-brake handle: a 0..1 fraction — show "Retracted" / "Full" / "N percent".
