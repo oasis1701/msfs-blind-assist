@@ -31,8 +31,17 @@ public class FBWA380ISISForm : Form
         "PLANE PITCH DEGREES", "PLANE BANK DEGREES",
         "PLANE HEADING DEGREES MAGNETIC",
         "AIRSPEED INDICATED", "AIRSPEED MACH",
-        "INDICATED ALTITUDE", "KOHLSMAN SETTING MB",
+        // Altitude + baro shown in both hPa and inHg, plus body-X accel for the slip/skid
+        // ball. NOTE: uses the non-indexed simvars (NOT the standby `:3` source) — the
+        // stock `INDICATED ALTITUDE:3` name isn't a valid SimConnect data-def var and
+        // broke aircraft detection; the A320 ISIS reads non-indexed for the same reason.
+        "INDICATED ALTITUDE", "KOHLSMAN SETTING MB", "KOHLSMAN_SETTING_INHG",
+        "ACCELERATION BODY X",
         "A32NX_ISIS_BARO_MODE", "A32NX_ISIS_LS_ACTIVE",
+        // LS overlay deviations (only meaningful when LS is active) — the same
+        // radio-receiver L:vars the PFD/ND use.
+        "A32NX_RADIO_RECEIVER_LOC_IS_VALID", "A32NX_RADIO_RECEIVER_LOC_DEVIATION",
+        "A32NX_RADIO_RECEIVER_GS_IS_VALID", "A32NX_RADIO_RECEIVER_GS_DEVIATION",
     };
 
     /// <summary>L:var / simvar names this window reads (for registration in the aircraft def).</summary>
@@ -120,7 +129,7 @@ public class FBWA380ISISForm : Form
         if (mach >= 0.10) sb.AppendLine($"  Mach: {mach:0.00}");
         sb.AppendLine();
 
-        // ALTITUDE + baro reference
+        // ALTITUDE + baro reference (standby ADM, index :3)
         int baroMode = (int)Math.Round(R("A32NX_ISIS_BARO_MODE"));
         string baroRef = baroMode == 1 ? "STD" : "QNH";
         sb.AppendLine("ALTITUDE");
@@ -129,14 +138,49 @@ public class FBWA380ISISForm : Form
         if (baroMode != 1)
         {
             double hpa = R("KOHLSMAN SETTING MB");
-            sb.AppendLine($"  Baro setting: {hpa:0} hectopascals");
+            double inHg = R("KOHLSMAN_SETTING_INHG");
+            sb.AppendLine($"  Baro setting: {hpa:0} hectopascals ({inHg:0.00} inHg)");
         }
         sb.AppendLine();
 
-        // LS overlay
-        sb.AppendLine($"LS (ILS) overlay: {(R("A32NX_ISIS_LS_ACTIVE") > 0.5 ? "On" : "Off")}");
+        // SLIP/SKID — the ISIS sideslip ball is driven by lateral (body-X) acceleration,
+        // clamped to ±0.3 G. Positive body-X accel = ball to the right ("slip right").
+        double accX = R("ACCELERATION BODY X");
+        string slip = Math.Abs(accX) < 0.02 ? "centred"
+                    : $"{Math.Min(100, Math.Abs(accX) / 0.3 * 100):0}% {(accX > 0 ? "right" : "left")}";
+        sb.AppendLine($"Slip/skid: {slip}");
+        sb.AppendLine();
+
+        // LS overlay — when active, surface the LOC/G-S deviation in dots (full scale
+        // = 2 dots) so the "LS overlay: On" line is actionable on a standby approach.
+        bool lsActive = R("A32NX_ISIS_LS_ACTIVE") > 0.5;
+        sb.AppendLine($"LS (ILS) overlay: {(lsActive ? "On" : "Off")}");
+        if (lsActive)
+        {
+            if (R("A32NX_RADIO_RECEIVER_LOC_IS_VALID") > 0.5)
+            {
+                double locDots = R("A32NX_RADIO_RECEIVER_LOC_DEVIATION") / 0.4;
+                sb.AppendLine($"  Localizer: {DotsPhrase(locDots, "left", "right")}");
+            }
+            else sb.AppendLine("  Localizer: no signal");
+            if (R("A32NX_RADIO_RECEIVER_GS_IS_VALID") > 0.5)
+            {
+                double gsDots = R("A32NX_RADIO_RECEIVER_GS_DEVIATION") / 0.4;
+                sb.AppendLine($"  Glideslope: {DotsPhrase(gsDots, "up", "down")}");
+            }
+            else sb.AppendLine("  Glideslope: no signal");
+        }
 
         return sb.ToString();
+    }
+
+    // Render an ILS deviation in dots with a direction word (the sign convention:
+    // positive deviation = fly-toward is the "neg" word). |dots| < 0.1 reads "centred".
+    private static string DotsPhrase(double dots, string negWord, string posWord)
+    {
+        if (Math.Abs(dots) < 0.1) return "centred";
+        string dir = dots > 0 ? posWord : negWord;
+        return $"{Math.Min(2.0, Math.Abs(dots)):0.0} dots {dir}";
     }
 
     private void OnSimVarUpdated(object? sender, SimVarUpdateEventArgs e)
