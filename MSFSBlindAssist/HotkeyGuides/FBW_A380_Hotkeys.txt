@@ -37,7 +37,8 @@ OUTPUT MODE  (press ] first)
   U          True Heading
   V          Vertical Speed
   D          Distance to destination (from the FMS)
-  Shift+D    Distance to Top of Descent (once computed in flight)
+  Shift+D    Distance + time to Top of Descent, e.g. "145 miles to top of
+             descent: 00:16:58" (once computed in flight)
              (Q / A / Shift+A read in metres when the FCU MTRS button is on)
   Ctrl+W     ND active (TO) waypoint: name, distance, and bearing
   Ctrl+Shift+R  Last landing rate (touchdown vertical speed, feet per minute)

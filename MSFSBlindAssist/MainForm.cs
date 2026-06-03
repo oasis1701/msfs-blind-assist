@@ -2554,10 +2554,19 @@ public partial class MainForm : Form
             {
                 double? td = Num("distToTD");
                 double? tc = Num("distToTC");
+                double? tdSecs = Num("timeToTD");   // FMS time-to-go (seconds), null until computed
                 if (td.HasValue)
-                    announcer.AnnounceImmediate(td.Value <= 0.5
-                        ? "Past top of descent"
-                        : $"{Math.Round(td.Value)} miles to top of descent");
+                {
+                    if (td.Value <= 0.5)
+                        announcer.AnnounceImmediate("Past top of descent");
+                    else
+                    {
+                        // Match the PMDG TOD readout format exactly:
+                        // "145 miles to top of descent: 00:16:58" (time from the FMS).
+                        string eta = tdSecs.HasValue ? FormatEtaSeconds(tdSecs.Value) : "";
+                        announcer.AnnounceImmediate($"{Math.Round(td.Value)} miles to top of descent{eta}");
+                    }
+                }
                 else if (tc.HasValue && tc.Value > 0.5)
                     announcer.AnnounceImmediate($"{Math.Round(tc.Value)} miles to top of climb");
                 else
@@ -2577,6 +2586,18 @@ public partial class MainForm : Form
             System.Diagnostics.Debug.WriteLine($"[A380 flightInfo] {ex.Message}");
             announcer.AnnounceImmediate("Flight info error.");
         }
+    }
+
+    // ": HH:MM:SS" suffix for the A380 TOD readout — identical to the PMDG TOD
+    // format (PMDG737Definition.FormatEtaFromDistance). Empty when there's no time.
+    private static string FormatEtaSeconds(double seconds)
+    {
+        if (seconds <= 0) return "";
+        int totalSeconds = (int)Math.Round(seconds);
+        int hh = totalSeconds / 3600;
+        int mm = (totalSeconds % 3600) / 60;
+        int ss = totalSeconds % 60;
+        return $": {hh:D2}:{mm:D2}:{ss:D2}";
     }
 
     private void ShowFBWA380MCDUDialog()
